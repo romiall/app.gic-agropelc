@@ -72,6 +72,12 @@ export class EventConsumerRunner {
 
     let processed = 0;
     let failed = 0;
+    // Dernière erreur rencontrée dans CET appel (pas seulement pour l'événement courant) :
+    // un échec doit rester visible pour diagnostic même si un événement suivant du même lot
+    // réussit ensuite — sans quoi le succès du suivant écraserait `last_error` avec `null` et
+    // effacerait la trace d'un échec pourtant définitif (l'événement en échec n'est jamais
+    // retenté, sa position est dépassée).
+    let batchError: string | null = null;
     for (const row of rows) {
       const event = toDomainEvent(row);
       let succeeded = false;
@@ -89,8 +95,9 @@ export class EventConsumerRunner {
         processed++;
       } else {
         failed++;
+        batchError = errorMessageOf(lastError);
       }
-      await this.saveOffset(consumerName, lastSeq, succeeded ? null : errorMessageOf(lastError));
+      await this.saveOffset(consumerName, lastSeq, batchError);
     }
 
     if (rows.length === 0 && !offset) {

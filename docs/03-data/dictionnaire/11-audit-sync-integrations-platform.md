@@ -281,3 +281,24 @@ worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de mess
 - Pas de `[STD-AUDIT]` (créée par du code système, pas par une commande utilisateur ; aucune
   concurrence optimiste — le verrou de ligne/`SKIP LOCKED` la remplace) ni `[STD-ORIGIN]`
   (aucun lien à un appareil), à la différence des tables des modules métier.
+
+## platform.event_consumer_marks
+
+**Responsabilité** : marque de traitement idempotent par consommateur (P0-08 ;
+08-api-events/02-catalogue-evenements.md §1, §3 « consommateurs idempotents (position +
+clé) »). Utilitaire optionnel : un consommateur dont l'effet de bord n'a pas déjà sa propre
+contrainte d'unicité métier peut s'appuyer sur cette table plutôt que d'en construire une
+pour son propre domaine. Aujourd'hui exercée uniquement par le consommateur de démonstration
+du critère de sortie P0-08 (« consommateur de test exactement-une-fois par clé ») ; les
+consommateurs réels (alertes, projections, Kommo…) restent hors périmètre P0-08.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `consumer_name` | code | Non | — | Même espace de noms que `event_consumer_offsets.consumer_name` |
+| `event_id` | uuid | Non | — | `platform_domain_events.event_id` (sans FK — outbox non liée) |
+| `processed_at` | ts | Non | `now()` | |
+
+- **PK** `(consumer_name, event_id)`.
+- **Suppr.** Ajout seul (comme `domain_events`) : la preuve d'idempotence tient à ce qu'une
+  seconde écriture pour la même clé échoue (contrainte PK) plutôt que d'écraser la première —
+  ni `UPDATE` ni `DELETE` pour l'application.

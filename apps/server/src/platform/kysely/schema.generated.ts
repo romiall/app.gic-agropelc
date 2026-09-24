@@ -381,6 +381,12 @@ export interface PlatformDomainEvents {
   seq: Generated<number>;
 }
 
+export interface PlatformEventConsumerMarks {
+  consumer_name: string;
+  event_id: Buffer;
+  processed_at: Generated<Date>;
+}
+
 export interface PlatformEventConsumerOffsets {
   consumer_name: string;
   last_error: string | null;
@@ -399,6 +405,10 @@ export interface PlatformJobs {
   payload: Json;
   run_at: Date;
   status: Generated<string>;
+}
+
+export interface SchemaMigrations {
+  version: string;
 }
 
 export interface SyncChangeFeed {
@@ -498,8 +508,10 @@ export interface DB {
   organization_zones: OrganizationZones;
   platform_document_sequences: PlatformDocumentSequences;
   platform_domain_events: PlatformDomainEvents;
+  platform_event_consumer_marks: PlatformEventConsumerMarks;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
   platform_jobs: PlatformJobs;
+  schema_migrations: SchemaMigrations;
   sync_change_feed: SyncChangeFeed;
   sync_command_inbox: SyncCommandInbox;
   sync_device_sync_state: SyncDeviceSyncState;

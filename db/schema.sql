@@ -1342,6 +1342,20 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `platform_event_consumer_marks`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `platform_event_consumer_marks` (
+  `consumer_name` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `event_id` binary(16) NOT NULL,
+  `processed_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`consumer_name`,`event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `platform_event_consumer_offsets`
 --
 
@@ -1672,5 +1686,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260924100600'),
   ('20260924100700'),
   ('20260924110000'),
-  ('20260924120000');
+  ('20260924120000'),
+  ('20260924130000');
 UNLOCK TABLES;
