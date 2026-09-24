@@ -106,6 +106,7 @@ Classification (PM §45) :
 | AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; **MySQL** (ADR-023, remplace PostgreSQL) | **TRANCHÉ** (voir journal §3) |
 | AV-090 | Modalité d'exécution du serveur Node.js chez Hostinger sans VPS | IMPORTANTE | Déploiement | Application Node.js gérée par l'hébergeur si disponible, sinon plateforme tierce à bas coût en complément | OUVERT |
 | AV-091 | Fournisseur de stockage objet S3-compatible (Hostinger sans VPS n'en propose pas) | SECONDAIRE | Déploiement | Cloudflare R2 ou Backblaze B2 | OUVERT |
+| AV-092 | Permissions marquant `identity.permissions.is_sensitive` (audit renforcé et revue d'attribution périodique) | IMPORTANTE | P0 | `false` pour les 117 permissions (défaut du schéma ; aucune n'est désignée par une source) | OUVERT |
 
 ---
 
@@ -480,6 +481,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) Cloudflare R2 ; (b) Backblaze B2 ; (c) AWS S3.
 - **Recommandation** : (a) ou (b), pour le coût au volume attendu (~30 Go la première année).
 - **Impact** : aucun sur P0 à P3 (émulateur S3 local, ex. MinIO, en développement et en CI). Détermine les identifiants de service à provisionner avant le déploiement de `staging`.
+
+### AV-092 — Permissions sensibles (audit renforcé, revue d'attribution) — IMPORTANTE
+- **Question** : parmi les 117 permissions du catalogue ([`07-security-rbac/01-rbac.md`](07-security-rbac/01-rbac.md) §5), lesquelles doivent porter `identity.permissions.is_sensitive = true` — colonne qui « déclenche un audit renforcé et une revue d'attribution » ([`03-data/dictionnaire/01-identity.md`](03-data/dictionnaire/01-identity.md)) ?
+- **Pourquoi** : la matrice RBAC documente `max_scope`, `is_approval` (préfixe `A·`) et les `limits` pour chaque permission, mais ne renseigne `is_sensitive` nulle part — ni dans la matrice, ni ailleurs dans `docs/`. Le mécanisme le plus proche déjà spécifié, RC-05 (masquage des colonnes financières sans `inventory.valuation.read`), est une permission *additionnelle* requise à la lecture, pas le marqueur `is_sensitive` (qui gouverne l'audit et la revue périodique, un mécanisme distinct).
+- **Choix** : (a) `false` partout (aucune permission désignée, statu quo jusqu'à décision) ; (b) `true` pour les permissions financières et de valorisation (`inventory.valuation.read`, `finance.*`, `sales.price.override`…) ; (c) `true` pour toute permission `is_approval = true` (les 19 permissions d'approbation) ; (d) une liste que la Direction arrête explicitement.
+- **Recommandation** : (a) pour démarrer — le défaut du schéma (`DEFAULT FALSE`) ne réduit aucune garantie déjà accordée ailleurs (RC-05 reste actif indépendamment), et évite de figer une liste non demandée par une source.
+- **Impact** : aucun sur P0 (le seed RBAC, `db/seeds/rbac-data.ts`, fonctionne avec `false` partout). Détermine, quand tranché, les permissions couvertes par la revue d'attribution périodique et l'audit renforcé (mécanisme à spécifier séparément si (b), (c) ou (d) est retenu).
 
 ---
 

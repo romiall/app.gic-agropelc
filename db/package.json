@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Migrations SQL versionnées (dbmate, MySQL 8, ADR-023) et seeds. Source de vérité du schéma : docs/03-data/dictionnaire/.",
+  "type": "module",
   "scripts": {
     "migrate": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql up",
     "migrate:test": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql up",

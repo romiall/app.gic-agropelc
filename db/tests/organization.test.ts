@@ -71,10 +71,17 @@ describe('organization_locations', () => {
   it('refuse un second emplacement virtuel actif du même type (index unique partiel)', async () => {
     await withRollback(async (conn) => {
       const admin = await insertAdmin(conn);
-      await conn.query(
-        `INSERT INTO organization_locations (id, code, name, location_type, status, created_by) VALUES (?, 'P1', 'Pertes', 'V_LOSS', 'ACTIVE', ?)`,
-        [randomId(), admin],
-      );
+      // Un V_LOSS actif peut déjà exister (seed P0-05, BR-ADM-010) : cette première ligne
+      // peut donc elle-même être rejetée — équivalent pour ce test (au moins un actif
+      // existe déjà), on vérifie ensuite qu'une ligne supplémentaire est toujours refusée.
+      try {
+        await conn.query(
+          `INSERT INTO organization_locations (id, code, name, location_type, status, created_by) VALUES (?, 'P1', 'Pertes', 'V_LOSS', 'ACTIVE', ?)`,
+          [randomId(), admin],
+        );
+      } catch {
+        // Déjà un V_LOSS actif (seed) : attendu, on passe directement à l'assertion.
+      }
       await expect(
         conn.query(
           `INSERT INTO organization_locations (id, code, name, location_type, status, created_by) VALUES (?, 'P2', 'Pertes bis', 'V_LOSS', 'ACTIVE', ?)`,

@@ -77,7 +77,8 @@ async function seedPermissions(conn: mysql.Connection): Promise<void> {
       `INSERT INTO identity_permissions (code, module, description, supported_scopes, is_approval, is_sensitive)
        VALUES (?, ?, ?, CAST(? AS JSON), ?, ?)
        ON DUPLICATE KEY UPDATE module = VALUES(module), description = VALUES(description),
-         supported_scopes = VALUES(supported_scopes), is_approval = VALUES(is_approval), is_sensitive = VALUES(is_sensitive)`,
+         supported_scopes = VALUES(supported_scopes), is_approval = VALUES(is_approval), is_sensitive = VALUES(is_sensitive),
+         deprecated_at = NULL`,
       [
         permission.code,
         permission.module,
@@ -88,7 +89,19 @@ async function seedPermissions(conn: mysql.Connection): Promise<void> {
       ],
     );
   }
-  console.log(`  + identity_permissions (${PERMISSIONS.length})`);
+  // Cycle de vie (03-data/dictionnaire/01-identity.md, identity.permissions) : une
+  // permission retirée du code est marquée obsolète, jamais supprimée (le déclencheur
+  // trg_identity_permissions_no_delete bloque toute suppression physique).
+  const codes = PERMISSIONS.map((p) => p.code);
+  const placeholders = codes.map(() => '?').join(', ');
+  const [deprecated] = await conn.query<mysql.ResultSetHeader>(
+    `UPDATE identity_permissions SET deprecated_at = NOW(6)
+     WHERE code NOT IN (${placeholders}) AND deprecated_at IS NULL`,
+    codes,
+  );
+  console.log(
+    `  + identity_permissions (${PERMISSIONS.length}, ${deprecated.affectedRows} dépréciée(s))`,
+  );
 }
 
 async function seedRolePermissions(

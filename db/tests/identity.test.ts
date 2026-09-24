@@ -176,7 +176,7 @@ describe('identity_user_role_assignments', () => {
       const admin = await insertBootstrapUser(conn);
       const roleId = randomId();
       await conn.query(
-        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'RESP_COMMERCIAL', 'Resp.', JSON_ARRAY('SITE', 'ZONE'), ?)`,
+        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'TEST_RESP_COMM', 'Resp. (test)', JSON_ARRAY('SITE', 'ZONE'), ?)`,
         [roleId, admin],
       );
       await expect(
@@ -193,7 +193,7 @@ describe('identity_user_role_assignments', () => {
       const admin = await insertBootstrapUser(conn);
       const roleId = randomId();
       await conn.query(
-        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'RESP_COMMERCIAL', 'Resp.', JSON_ARRAY('GLOBAL'), ?)`,
+        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'TEST_RESP_COMM', 'Resp. (test)', JSON_ARRAY('GLOBAL'), ?)`,
         [roleId, admin],
       );
       const assignmentId = randomId();
@@ -227,7 +227,7 @@ describe('identity_user_role_assignments', () => {
       const admin = await insertBootstrapUser(conn);
       const roleId = randomId();
       await conn.query(
-        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'RESP_COMMERCIAL', 'Resp.', JSON_ARRAY('GLOBAL'), ?)`,
+        `INSERT INTO identity_roles (id, code, name, allowed_scope_types, created_by) VALUES (?, 'TEST_RESP_COMM', 'Resp. (test)', JSON_ARRAY('GLOBAL'), ?)`,
         [roleId, admin],
       );
       const assignmentId = randomId();

@@ -30,12 +30,12 @@ describe('approvals_control_policies', () => {
     await withRollback(async (conn) => {
       const admin = await insertAdmin(conn);
       await conn.query(
-        `INSERT INTO identity_permissions (code, module, description, supported_scopes) VALUES ('inventory.loss.approve', 'inventory', 'desc', JSON_ARRAY('SITE'))`,
+        `INSERT INTO identity_permissions (code, module, description, supported_scopes) VALUES ('test.permission.approve', 'test', 'desc', JSON_ARRAY('SITE'))`,
       );
       const policyId = randomId();
       await conn.query(
         `INSERT INTO approvals_control_policies (id, code, operation_type, \`condition\`, requires_approval, approver_permission, valid_from, created_by)
-         VALUES (?, 'POL1', 'EXPENSE', JSON_OBJECT(), TRUE, 'inventory.loss.approve', NOW(6), ?)`,
+         VALUES (?, 'POL1', 'EXPENSE', JSON_OBJECT(), TRUE, 'test.permission.approve', NOW(6), ?)`,
         [policyId, admin],
       );
       await conn.query("UPDATE approvals_control_policies SET status = 'RETIRED' WHERE id = ?", [
