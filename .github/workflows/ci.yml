@@ -1,0 +1,120 @@
+name: CI
+
+# Chaîne CI/CD, étapes 1 à 4 (docs/05-architecture/04-deploiement.md §3).
+# Les étapes 5 (staging) et 6 (production) n'existent pas encore : aucun déploiement
+# Hostinger n'est requis pour P0 à P3 (ADR-024 §5).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: '10.33.0'
+
+jobs:
+  verify:
+    name: Vérifications (lint, formatage, typage, frontières, documentation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formatage (Prettier)
+        run: pnpm run format:check
+
+      - name: Lint (ESLint)
+        run: pnpm run lint
+
+      - name: Typage (TypeScript, chaque paquet)
+        run: pnpm run typecheck
+
+      - name: Frontières de modules (NFR-32, AT-055)
+        run: pnpm run check:boundaries
+
+      - name: Détection de secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Références et liens de la documentation
+        run: python3 docs/_tools/check_refs.py
+
+  test:
+    name: Tests (unitaires, propriétés, intégration MySQL, RBAC généré)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: gic_agropelc_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root@127.0.0.1:3306/gic_agropelc_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Migrations (base de test)
+        run: pnpm run db:migrate:test
+
+      - name: Tests (unitaires, propriétés, intégration, RBAC généré)
+        run: pnpm run test:coverage
+
+      - name: Couverture de packages/domain ≥ 90 % (NFR-31)
+        run: node tools/check-coverage.mjs packages/domain 90
+
+  build:
+    name: Build (bundle PWA, budget de taille)
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (paquets et applications)
+        run: pnpm run build
+
+      - name: Budget de bundle PWA (NFR-05)
+        run: pnpm --filter @gic/pwa run size-check

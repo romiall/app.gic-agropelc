@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'db'
+
+# Dépendances dont le script d'installation (postinstall) est explicitement approuvé.
+# pnpm >= 10 n'exécute plus aucun script d'installation par défaut (sécurité de la
+# chaîne, NFR-25) ; cette liste est la seule exception.
+onlyBuiltDependencies:
+  - esbuild

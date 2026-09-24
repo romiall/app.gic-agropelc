@@ -1,0 +1,28 @@
+# Dépendances
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+coverage/
+
+# PWA
+apps/pwa/dist/
+apps/pwa/dev-dist/
+
+# Environnement
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Éditeurs / OS
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+
+# Tests
+*.lcov

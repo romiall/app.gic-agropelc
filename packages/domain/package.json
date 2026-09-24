@@ -1,0 +1,30 @@
+{
+  "name": "@gic/domain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bibliothèque métier partagée (appareil + serveur), sans entrée-sortie. ADR-021.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "@vitest/coverage-v8": "^2.1.4",
+    "fast-check": "^3.22.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
