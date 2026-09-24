@@ -54,7 +54,7 @@ export default [
   {
     // Scripts CLI (dbmate seeds) et amorçage du serveur (avant les logs structurés pino de
     // l'observabilité, P0-16) : la sortie console *est* l'interface utilisateur.
-    files: ['db/seeds/**/*.ts', 'apps/server/src/main.ts'],
+    files: ['db/seeds/**/*.ts', 'apps/server/src/main.ts', 'apps/server/src/worker.ts'],
     rules: {
       'no-console': 'off',
     },

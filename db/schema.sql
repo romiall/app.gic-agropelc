@@ -1357,6 +1357,29 @@ CREATE TABLE `platform_event_consumer_offsets` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `platform_jobs`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `platform_jobs` (
+  `id` binary(16) NOT NULL,
+  `job_type` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `payload` json NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PENDING',
+  `run_at` datetime(6) NOT NULL,
+  `attempts` smallint NOT NULL DEFAULT '0',
+  `max_attempts` smallint NOT NULL DEFAULT '5',
+  `last_error` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `completed_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_platform_jobs_poll` (`status`,`run_at`),
+  CONSTRAINT `ck_platform_jobs_status` CHECK ((`status` in (_utf8mb4'PENDING',_utf8mb4'DONE',_utf8mb4'FAILED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `schema_migrations`
 --
 
@@ -1620,7 +1643,7 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Dumping routines for database 'gic_agropelc_test'
+-- Dumping routines for database 'gic_agropelc_dev'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -1648,5 +1671,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260924100500'),
   ('20260924100600'),
   ('20260924100700'),
-  ('20260924110000');
+  ('20260924110000'),
+  ('20260924120000');
 UNLOCK TABLES;

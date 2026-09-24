@@ -388,6 +388,19 @@ export interface PlatformEventConsumerOffsets {
   updated_at: Generated<Date>;
 }
 
+export interface PlatformJobs {
+  attempts: Generated<number>;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  id: Buffer;
+  job_type: string;
+  last_error: string | null;
+  max_attempts: Generated<number>;
+  payload: Json;
+  run_at: Date;
+  status: Generated<string>;
+}
+
 export interface SyncChangeFeed {
   change_type: string;
   dataset: string;
@@ -486,6 +499,7 @@ export interface DB {
   platform_document_sequences: PlatformDocumentSequences;
   platform_domain_events: PlatformDomainEvents;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
+  platform_jobs: PlatformJobs;
   sync_change_feed: SyncChangeFeed;
   sync_command_inbox: SyncCommandInbox;
   sync_device_sync_state: SyncDeviceSyncState;

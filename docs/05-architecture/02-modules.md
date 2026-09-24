@@ -32,7 +32,7 @@
 | Rubrique | Contenu |
 |---|---|
 | Responsabilité | Types transverses (UUIDv7, argent, quantités, temps métier), unité de travail, outbox d'événements, séquences documentaires, file de tâches, registre des commandes et des consommateurs |
-| Tables | `platform.domain_events`, `platform.event_consumer_offsets`, `platform.document_sequences` (+ table de tâches) |
+| Tables | `platform.domain_events`, `platform.event_consumer_offsets`, `platform.document_sequences`, `platform.jobs` |
 | API | `uow.begin()`, `events.publish(uow, evt)`, `sequences.next(uow, type, site, year)`, `jobs.enqueue(...)`, `clock.now()` |
 | Événements | — |
 | Dépendances autorisées | Aucune |

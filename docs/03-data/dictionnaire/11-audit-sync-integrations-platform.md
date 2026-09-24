@@ -255,3 +255,29 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `next_value` | int | Non | 1 | Incrément sous verrou de ligne (numérotation sans trou) |
 
 - **PK** `(doc_type, site_id, year)`.
+
+## platform.jobs
+
+**Responsabilité** : file de tâches maison (P0-08 ; ADR-011, ADR-023 « pg-boss abandonné,
+table de tâches maison, `SELECT … FOR UPDATE SKIP LOCKED` ») — travaux différés/planifiés du
+worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de messages.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | uuid | Non | généré par l'application | PK |
+| `job_type` | varchar(80) | Non | — | Résolu vers un gestionnaire enregistré (comme `command_type`) |
+| `payload` | json | Non | — | Paramètres de la tâche (charge technique) |
+| `status` | varchar(10) | Non | `PENDING` | `PENDING`, `DONE`, `FAILED` |
+| `run_at` | ts | Non | — | Éligible dès que `run_at ≤ now()` ; une reprise avec attente progressive réécrit cette colonne — pas de statut `PROCESSING` séparé, le verrou de ligne tenu pendant le traitement en tient lieu |
+| `attempts` | smallint | Non | 0 | |
+| `max_attempts` | smallint | Non | 5 | Nombre d'essais avant `FAILED` (08-api-events/02-catalogue-evenements.md §3) |
+| `last_error` | text | Oui | — | |
+| `created_at` | ts | Non | `now()` | |
+| `completed_at` | ts | Oui | — | |
+
+- **PK** `id`. **IX** `(status, run_at)` (lecture du worker).
+- **Suppr.** PURGE_TECHNIQUE : table opérationnelle, pas un registre métier ni un journal —
+  contrairement à `domain_events` (outbox, ajout seul), une tâche terminée peut être purgée.
+- Pas de `[STD-AUDIT]` (créée par du code système, pas par une commande utilisateur ; aucune
+  concurrence optimiste — le verrou de ligne/`SKIP LOCKED` la remplace) ni `[STD-ORIGIN]`
+  (aucun lien à un appareil), à la différence des tables des modules métier.

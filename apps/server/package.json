@@ -10,6 +10,8 @@
     "typecheck": "tsc -b",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start:worker": "node dist/worker.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

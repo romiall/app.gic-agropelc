@@ -67,7 +67,7 @@ Codes : `IMMUABLE` (ni modification ni suppression, correction par écriture inv
 | `pricing.price_rules`, `approvals.control_policies`, `organization.system_settings`, `catalog.product_standard_costs` | VERSIONNEMENT | Nouvelle version |
 | `identity.users`, `identity.devices`, `crm.customers`, `procurement.suppliers`, `catalog.*`, `organization.*` (hors historiques), `finance.cash_accounts`, `finance.payment_methods`, `finance.expense_categories`, référentiels CRM | DESACTIVATION | Statut ; fusion pour les doublons de clients |
 | `identity.role_permissions` | Modification autorisée, **auditée** | — |
-| `sync.change_feed`, `identity.auth_sessions`, `communication.notifications`, `communication.push_subscriptions`, `integrations.inbox_messages` / `outbox_messages` (traités), fichiers d'`analytics.export_jobs` | PURGE_TECHNIQUE | Rétentions : 60 j, 90 j, 90 j, à la révocation, 180 j, 30 j |
+| `sync.change_feed`, `identity.auth_sessions`, `communication.notifications`, `communication.push_subscriptions`, `integrations.inbox_messages` / `outbox_messages` (traités), fichiers d'`analytics.export_jobs`, `platform.jobs` (terminées, P0-08) | PURGE_TECHNIQUE | Rétentions : 60 j, 90 j, 90 j, à la révocation, 180 j, 30 j, 30 j |
 | `analytics.saved_views` | LIBRE | Suppression par le propriétaire, auditée |
 | `analytics.kpi_snapshots`, `inventory.stock_balances`, `inventory.product_valuations`, `inventory.stock_balance_snapshots` | Projection | Recalcul |
 

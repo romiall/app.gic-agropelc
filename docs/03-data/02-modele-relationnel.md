@@ -196,11 +196,12 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `platform.domain_events` | PLAT | Événements métier (outbox transactionnelle) | — | SRV | idem |
 | `platform.event_consumer_offsets` | PLAT | Position de chaque consommateur | — | SRV | idem |
 | `platform.document_sequences` | PLAT | Compteurs de numérotation | sites | SRV | idem |
+| `platform.jobs` | PLAT | File de tâches maison (P0-08) | — | SRV | idem |
 | `analytics.saved_views` | TX | Vues sauvegardées | users | SRV | [dict](dictionnaire/12-analytics.md) |
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **108 objets** : 106 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL.
+Total : **109 objets** : 107 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` (file de tâches maison) a été ajoutée en P0-08, non prévue au décompte initial (ADR-011/ADR-023 ne documentaient que le mécanisme, pas le schéma).
 
 ## 3. Références inter-schémas autorisées
 
