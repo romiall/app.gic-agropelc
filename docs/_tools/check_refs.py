@@ -8,12 +8,14 @@ Usage :
 Principe : chaque identifiant (AV, BR, INV, ADR, REQ, ECR, SM, NFR, RISK, AT, C) a UNE source de
 définition (voir docs/00-reference/00-conventions.md §3). Le script extrait les identifiants définis,
 puis vérifie que toute référence trouvée dans docs/ (et CLAUDE.md) pointe vers un identifiant défini.
+Il vérifie aussi que chaque lien Markdown relatif (docs/, CLAUDE.md, README.md) mène à un fichier existant.
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
@@ -54,12 +56,36 @@ IGNORED_FILES = {"docs/00-reference/00-conventions.md"}  # contient des identifi
 IGNORED_REFS = {"REQ-199", "ECR-PRD-05"}  # borne de plage ; identifiant explicitement non attribué
 
 
-def md_files() -> list[Path]:
+def md_files(with_readme: bool = False) -> list[Path]:
     files = sorted(DOCS.rglob("*.md"))
-    claude = ROOT / "CLAUDE.md"
-    if claude.exists():
-        files.append(claude)
+    extras = ["CLAUDE.md", "README.md"] if with_readme else ["CLAUDE.md"]
+    for name in extras:
+        extra = ROOT / name
+        if extra.exists():
+            files.append(extra)
     return files
+
+
+# Cible entre chevrons (peut contenir des espaces) ou cible simple, titre optionnel
+LINK_RX = re.compile(r'\]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+"[^"]*")?\s*\)')
+
+
+def broken_links() -> dict[str, set[str]]:
+    """Liens relatifs dont la cible (fichier ou dossier) n'existe pas, par fichier source."""
+    broken: dict[str, set[str]] = {}
+    for path in md_files(with_readme=True):
+        rel = str(path.relative_to(ROOT))
+        if rel in IGNORED_FILES:
+            continue
+        text = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.S)
+        for bracketed, plain in LINK_RX.findall(text):
+            target = bracketed or plain
+            if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
+                continue  # URL absolue, mailto:, ancre interne
+            file_part = unquote(target.split("#", 1)[0])
+            if file_part and not (path.parent / file_part).exists():
+                broken.setdefault(rel, set()).add(target)
+    return broken
 
 
 def collect_definitions() -> dict[str, set[str]]:
@@ -83,14 +109,24 @@ def check() -> int:
                 if ref not in defined[family] and ref not in IGNORED_REFS:
                     missing.setdefault(family, {}).setdefault(ref, set()).add(rel)
     print("Identifiants définis :", ", ".join(f"{k}={len(v)}" for k, v in defined.items()))
+    status = 0
     if not missing:
         print("OK : aucune référence orpheline.")
-        return 0
-    print("Références orphelines :")
-    for family in sorted(missing):
-        for ref in sorted(missing[family]):
-            print(f"  {ref}  <- {', '.join(sorted(missing[family][ref]))}")
-    return 1
+    else:
+        status = 1
+        print("Références orphelines :")
+        for family in sorted(missing):
+            for ref in sorted(missing[family]):
+                print(f"  {ref}  <- {', '.join(sorted(missing[family][ref]))}")
+    links = broken_links()
+    if not links:
+        print("OK : aucun lien relatif cassé.")
+    else:
+        status = 1
+        print("Liens relatifs cassés :")
+        for rel in sorted(links):
+            print(f"  {rel} -> {', '.join(sorted(links[rel]))}")
+    return status
 
 
 ROW_RX = re.compile(r"^\|\s*(BR-[A-Z]{3}-\d{3})\s*\|\s*(.+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.M)

@@ -113,7 +113,7 @@ Ces règles sont reprises dans [`../../CLAUDE.md`](../../CLAUDE.md).
 |---|---|---|
 | État des phases | Plan §2 (colonne à ajouter : « État ») | À chaque fin de phase |
 | Décisions métier | Registre AV §3 (journal) | À chaque décision |
-| Décisions techniques | Nouvel ADR (numérotation continue à partir d'ADR-023) | À chaque décision structurante |
+| Décisions techniques | Nouvel ADR (numérotation continue après ADR-022) | À chaque décision structurante |
 | Couverture des exigences | Matrice de traçabilité | À chaque fin de phase |
 | Risques | Registre des risques (mise à jour de la probabilité et de l'impact) | Mensuellement |
 

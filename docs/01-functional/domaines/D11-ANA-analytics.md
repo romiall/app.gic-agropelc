@@ -17,7 +17,7 @@ Tous les rôles, chacun dans son périmètre. `DIRECTION` (vue globale), `FINANC
 
 | Entité | Support | Rôle |
 |---|---|---|
-| Jeux de faits (datasets) | Vues SQL ou projections dans le schéma `analytics` (voir [`../../03-data/dictionnaire/15-analytics.md`](../../03-data/dictionnaire/15-analytics.md)) | Couche sémantique unique |
+| Jeux de faits (datasets) | Vues SQL ou projections dans le schéma `analytics` (voir [`../../03-data/dictionnaire/12-analytics.md`](../../03-data/dictionnaire/12-analytics.md)) | Couche sémantique unique |
 | Vue sauvegardée | `analytics.saved_views` | Définition d'une analyse (filtres, colonnes, groupements, agrégats, tri) |
 | Export | `analytics.export_jobs` | Export asynchrone audité |
 | Instantané d'indicateurs | `analytics.kpi_snapshots` | Indicateurs personnels précalculés, téléchargés pour la consultation hors ligne |

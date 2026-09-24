@@ -130,4 +130,4 @@ Ces conventions sont détaillées et justifiées dans [`03-data/01-identifiants-
 | Cadrage initial | Session de cadrage | Production des livrables PM §21–§50. |
 | Décision métier | GIC AGROPELC | Mise à jour de `A-VALIDER.md`, propagation du statut, ADR éventuel. |
 | Développement d'une phase | Session de développement | Lit `CLAUDE.md`, puis le plan de phase, puis les documents référencés. Toute divergence nécessaire est d'abord documentée (ADR ou modification de spec) **avant** le code. |
-| Contrôle | Outil `docs/_tools/check_refs.py` | Vérifie que chaque identifiant référencé (`AV-`, `INV-`, `BR-`, `ADR-`, `REQ-`) est défini. |
+| Contrôle | Outil `docs/_tools/check_refs.py` | Vérifie que chaque identifiant référencé (`AV-`, `BR-`, `INV-`, `ADR-`, `REQ-`, `ECR-`, `SM-`, `NFR-`, `RISK-`, `AT-`, `C-`) est défini et que chaque lien relatif mène à un fichier existant. |
