@@ -51,7 +51,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|---|
 | `ControlPolicyChanged` | approvals | SYN | `policy_id`, version | Téléchargement |
 | `ApprovalRequested` | approvals | NOT | `approval_id`, `operation_type`, `subject`, `amount_xaf`, `site_id` | Notification aux approbateurs du périmètre |
-| `ApprovalGranted`, `ApprovalRejected` | approvals | Module propriétaire du sujet (STK, VEN, FIN, APP, TER, PRD), NOT | `approval_id`, `subject`, `decision_option`, `decided_by` | Le module exécute la transition de son document (réaction idempotente) ; notification au demandeur |
+| `ApprovalGranted`, `ApprovalRejected` | approvals | NOT, ANA | `approval_id`, `subject`, `decision_option`, `decided_by` | Notification au demandeur. La transition du document est exécutée **de manière synchrone**, dans la transaction de la décision, par le gestionnaire que le module propriétaire a enregistré auprès d'`approvals` (ADR-018) ; l'événement ne sert qu'aux effets secondaires |
 | `ApprovalCancelled` | approvals | NOT | `approval_id` | — |
 | `AttachmentRegistered` | attachments | — | `attachment_id`, `owner` | — |
 | `AttachmentUploaded` | attachments | approvals, NOT | `attachment_id` | Déblocage d'une validation en attente de pièce |

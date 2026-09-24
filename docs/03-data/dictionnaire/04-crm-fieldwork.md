@@ -2,7 +2,9 @@
 
 ## Référentiels CRM
 
-### crm.customer_categories · crm.lead_sources · crm.sales_channels · crm.pipeline_steps
+### crm.lead_sources · crm.pipeline_steps (et, dans le schéma `catalog`, `catalog.customer_categories` · `catalog.sales_channels`)
+
+> `customer_categories` et `sales_channels` sont des référentiels commerciaux **partagés** (CRM, tarification, ventes). Ils appartiennent au module `catalog`, ce qui permet de livrer la tarification (phase 1) sans dépendre du CRM. Leurs colonnes suivent la même structure que ci-dessous.
 
 **Responsabilité** : référentiels configurables (AV-011, AV-017, AV-018).
 

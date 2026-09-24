@@ -61,21 +61,21 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `catalog.product_units` | REF | Conditionnements par produit | products, units | DL | idem |
 | `catalog.reason_codes` | REF | Motifs par catégorie | — | DL | idem |
 | `catalog.product_standard_costs` | HIST | Coût standard historisé | products | SRV | idem |
+| `catalog.customer_categories` | REF | Catégories de clients (référentiel commercial partagé) | — | DL | [dict](dictionnaire/04-crm-fieldwork.md) |
+| `catalog.sales_channels` | REF | Canaux de vente (référentiel commercial partagé) | — | DL | idem |
 
 ### 2.4 `pricing`
 
 | Table | Cat. | Responsabilité | Références | Hors ligne | Détail |
 |---|---|---|---|---|---|
 | `pricing.commercial_campaigns` | REF | Campagnes commerciales | — | DL (actives et futures) | [dict](dictionnaire/03-catalog-pricing.md) |
-| `pricing.price_rules` | CONF/HIST | Règles tarifaires versionnées | products, zones, sites, customer_categories (crm), sales_channels (crm), campaigns, price_rules (remplacée) | DL (actives et futures du périmètre) | idem |
+| `pricing.price_rules` | CONF/HIST | Règles tarifaires versionnées | products, zones, sites, customer_categories (catalog), sales_channels (catalog), campaigns, price_rules (remplacée) | DL (actives et futures du périmètre) | idem |
 
 ### 2.5 `crm`
 
 | Table | Cat. | Responsabilité | Références | Hors ligne | Détail |
 |---|---|---|---|---|---|
-| `crm.customer_categories` | REF | Catégories de clients | — | DL | [dict](dictionnaire/04-crm-fieldwork.md) |
-| `crm.lead_sources` | REF | Sources de prospects | — | DL | idem |
-| `crm.sales_channels` | REF | Canaux de vente | — | DL | idem |
+| `crm.lead_sources` | REF | Sources de prospects | — | DL | [dict](dictionnaire/04-crm-fieldwork.md) |
 | `crm.pipeline_steps` | REF | Étapes configurables | — | DL | idem |
 | `crm.customers` | MASTER | Comptes clients | users (acquéreur, titulaire), zones, categories, steps, sites (rattachement PDV), customers (fusion) | DL (portefeuille), CR | idem |
 | `crm.customer_assignments` | HIST | Titulaires successifs | customers, users | DL (portefeuille) | idem |
@@ -205,13 +205,16 @@ Total : **105 tables** (dont 3 vues). Les jeux de faits analytiques (`analytics.
 
 Une clé étrangère inter-schéma n'est permise que dans le sens du graphe de dépendances ([`../05-architecture/03-graphe-dependances.md`](../05-architecture/03-graphe-dependances.md)) :
 
+**Références universelles** : `identity.users` et `identity.devices` peuvent être référencées par clé étrangère depuis **tous** les schémas (`created_by`, détenteurs, appareils). Ce sont des tables de référence d'identité, sans dépendance de code. Le module `identity` (rôles, affectations, droits) se situe lui-même **au-dessus** d'`organization`, car ses affectations référencent sites, zones et équipes.
+
 | De (schéma) | Vers (schémas lus) |
 |---|---|
-| `organization` | `identity` |
+| `organization` | (références universelles seulement) |
+| `identity` | `organization` |
 | `catalog` | — (et `identity` pour `created_by`) |
 | `crm` | `identity`, `organization`, `catalog`, `fieldwork` |
 | `fieldwork` | `identity`, `organization`, `approvals` |
-| `pricing` | `organization`, `catalog`, `crm` |
+| `pricing` | `organization`, `catalog` |
 | `inventory` | `identity`, `organization`, `catalog`, `approvals` |
 | `production` | `inventory`, `organization`, `catalog`, `procurement` (fournisseurs), `approvals` |
 | `procurement` | `inventory`, `organization`, `catalog`, `approvals` |

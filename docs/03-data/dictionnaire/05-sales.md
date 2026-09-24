@@ -10,7 +10,7 @@
 | [STD-DOC] | | | | Type `CMD` |
 | `customer_id` | uuid → crm.customers | Non | — | Client identifié (BR-VEN-001) |
 | `commercial_user_id` | uuid → identity.users | Non | — | Commercial ayant obtenu la commande (attribution) |
-| `channel_code` | code → crm.sales_channels | Non | — | |
+| `channel_code` | code → catalog.sales_channels | Non | — | |
 | `fulfilment_location_id` | uuid → organization.locations | Non | — | Emplacement de préparation (réservation) |
 | `requested_delivery_date` | date | Oui | — | |
 | `delivery_address` | text | Oui | — | |
@@ -65,7 +65,7 @@
 | `order_id` | uuid → sales_orders | Oui | — | Requis si `ORDER_FULFILMENT` |
 | `customer_id` | uuid → crm.customers | Oui | — | Nul = vente anonyme (AV-027) |
 | `customer_category_id_snapshot` | uuid | Oui | — | Catégorie au moment de la vente |
-| `channel_code` | code → crm.sales_channels | Non | — | Figé (BR-VEN-021) |
+| `channel_code` | code → catalog.sales_channels | Non | — | Figé (BR-VEN-021) |
 | `from_location_id` | uuid → organization.locations | Non | — | Emplacement source (BR-VEN-017) |
 | `zone_id` | uuid → organization.zones | Non | — | Zone figée (BR-VEN-022) |
 | `seller_user_id` | uuid → identity.users | Non | — | Vendeur exécutant |

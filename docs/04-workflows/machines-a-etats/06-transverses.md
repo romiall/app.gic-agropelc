@@ -86,7 +86,7 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | API interne `approvals.requestApproval` (dans la transaction du document) | Politique applicable | `PENDING` | Version de politique figée ; routage vers les approbateurs du périmètre ; `ApprovalRequested` | — | — | `system` |
-| `PENDING` | `approvals.request.approve` | Approbateur autorisé ; ≠ demandeur (sauf `SELF_APPROVED` Direction) ; pièces requises reçues | `APPROVED` | `ApprovalGranted` → le module demandeur exécute la transition de son document (dans la même transaction, via son API) | Selon le document | Selon le document | Permission `*.approve` du type |
+| `PENDING` | `approvals.request.approve` | Approbateur autorisé ; ≠ demandeur (sauf `SELF_APPROVED` Direction) ; pièces requises reçues | `APPROVED` | `ApprovalGranted` ; le gestionnaire enregistré par le module propriétaire exécute la transition de son document dans la même transaction (ADR-018) | Selon le document | Selon le document | Permission `*.approve` du type |
 | `PENDING` | `approvals.request.reject` | Motif obligatoire ; décision choisie parmi les issues du type (ex. AV-038) | `REJECTED` | `ApprovalRejected` → transition du document | Selon le document | Selon le document | idem |
 | `PENDING` | Retrait du demandeur, ou annulation du document | — | `CANCELLED` | `ApprovalCancelled` | — | — | Demandeur / `system` |
 | `PENDING` | Délai de 24 h dépassé | — | `PENDING` (escaladée) | `AlertEscalated` vers le niveau supérieur | — | — | `system` |

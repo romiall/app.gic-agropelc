@@ -138,8 +138,8 @@
 | `pricing_unit_code` | code → catalog.units | Non | — | |
 | `zone_id` | uuid → organization.zones | Oui | — | Dimension |
 | `site_id` | uuid → organization.sites | Oui | — | Dimension |
-| `customer_category_id` | uuid → crm.customer_categories | Oui | — | Dimension |
-| `channel_code` | code → crm.sales_channels | Oui | — | Dimension |
+| `customer_category_id` | uuid → catalog.customer_categories | Oui | — | Dimension |
+| `channel_code` | code → catalog.sales_channels | Oui | — | Dimension |
 | `min_quantity` | qty | Oui | — | Palier |
 | `commercial_campaign_id` | uuid → commercial_campaigns | Oui | — | Dimension |
 | `priority` | int | Non | 0 | |

@@ -20,6 +20,7 @@ Définir **une seule fois** ce qui peut être stocké, produit, acheté, consomm
 | Unité | `catalog.units` | Unités de mesure (tête, œuf, kg, g, L, sac, plateau, carton) |
 | Produit | `catalog.products` | Article : famille de stock, unité de base, suivi par lot, drapeaux vendable / achetable / produit / consommable, mode de tarification, statut |
 | Unité de conditionnement | `catalog.product_units` | Conversion d'une unité vers l'unité de base, par produit |
+| Catégorie de client, canal de vente | `catalog.customer_categories`, `catalog.sales_channels` | Référentiels commerciaux **partagés** par CRM, tarification et ventes (AV-017, AV-018) |
 | Code motif | `catalog.reason_codes` | Motifs par catégorie : `LOSS`, `REJECTION`, `INVENTORY_ADJUSTMENT`, `CANCELLATION`, `PRICE_OVERRIDE`, `VISIT_OUTCOME`, `PROSPECT_LOST`, `CHECKIN_OVERRIDE`, `PRODUCTION_YIELD`, `CASH_VARIANCE` |
 
 ## 4. Cas d'usage

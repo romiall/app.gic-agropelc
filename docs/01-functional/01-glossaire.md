@@ -52,8 +52,8 @@
 | **Prochaine action** | Action planifiée à l'issue d'une visite ou interaction (date + note), qui alimente « actions à réaliser ». | Relancer le 15/10 | `crm.visits.next_action_at` | D (CM §34.3) |
 | **Objectif commercial** | Valeur cible d'une métrique pour une cible (utilisateur, équipe, PDV) sur une période. | CA de 2 000 000 XAF en octobre pour Paul | `crm.sales_targets` | C (CM §34.3, §57) / AV-016 |
 | **Source (de prospect)** | Origine de l'acquisition du compte client. | `PROSPECTION_TERRAIN`, `KOMMO` | `crm.customers.source_code`, `crm.lead_sources` | C (CM §7) / AV-018 |
-| **Canal de vente** | Canal par lequel une commande ou une vente est obtenue. | `POINT_DE_VENTE`, `WHATSAPP` | `crm.sales_channels`, `sales.sales.channel_code` | C (CM §11) / AV-018 |
-| **Catégorie de client** | Classification utilisée pour la tarification et l'analyse. | `REVENDEUR` | `crm.customer_categories` | C (CM §29 « type de client ») / AV-017 |
+| **Canal de vente** | Canal par lequel une commande ou une vente est obtenue. | `POINT_DE_VENTE`, `WHATSAPP` | `catalog.sales_channels`, `sales.sales.channel_code` | C (CM §11) / AV-018 |
+| **Catégorie de client** | Classification utilisée pour la tarification et l'analyse. | `REVENDEUR` | `catalog.customer_categories` | C (CM §29 « type de client ») / AV-017 |
 | **Commercial terrain** | Utilisateur qui prospecte physiquement. | — | rôle `COMMERCIAL_TERRAIN` | C (CM §6) |
 | **Commercial sédentaire** | Utilisateur qui travaille depuis un bureau ou les canaux digitaux. | — | rôle `COMMERCIAL_SEDENTAIRE` | C (CM §6) |
 | **Vendeur (de PDV)** | Utilisateur qui vend depuis un point de vente. | — | rôle `VENDEUR_PDV` | C (CM §6) |

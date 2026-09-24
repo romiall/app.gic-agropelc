@@ -18,7 +18,7 @@ Chaque vendeur obtient **automatiquement le bon prix** selon le contexte (produi
 |---|---|---|
 | Règle tarifaire | `pricing.price_rules` | Prix d'un produit dans un contexte, sur une période, avec une priorité |
 | Campagne commerciale | `pricing.commercial_campaigns` | Période commerciale nommée qui regroupe des règles |
-| Catégorie de client | `crm.customer_categories` | Dimension tarifaire (propriété du CRM) |
+| Catégorie de client, canal | `catalog.customer_categories`, `catalog.sales_channels` | Dimensions tarifaires (référentiels partagés du catalogue) |
 | Zone, site | `organization.zones`, `organization.sites` | Dimensions tarifaires (propriété de l'organisation) |
 | Prix figé sur la transaction | `sales.sale_lines`, `sales.sales_order_lines` | Snapshot (propriété des ventes) |
 
@@ -74,7 +74,7 @@ Prix résolu avec : règle et version, prix catalogue, spécificité, motif de c
 
 ## 9. Dépendances
 
-ADM (zones, sites), CAT (produits, unités), CRM (catégories de client, canaux). Utilisé par VEN, DIS, ANA (écarts de prix), KOM (informatif).
+ADM (zones, sites), CAT (produits, unités, catégories de client, canaux de vente — référentiels commerciaux partagés). Utilisé par VEN, DIS, ANA (écarts de prix), KOM (informatif).
 
 ## 10. Événements produits
 

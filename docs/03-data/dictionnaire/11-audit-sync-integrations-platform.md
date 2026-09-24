@@ -234,7 +234,7 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `doc_type` | code | Non | — | `VTE`, `CMD`, … |
-| `site_id` | uuid → organization.sites | Non | — | |
+| `site_id` | uuid | Non | — | Réf. sans FK (le noyau `platform` ne dépend d'aucun module) |
 | `year` | smallint | Non | — | |
 | `next_value` | int | Non | 1 | Incrément sous verrou de ligne (numérotation sans trou) |
 

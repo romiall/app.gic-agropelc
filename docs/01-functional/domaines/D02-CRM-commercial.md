@@ -26,7 +26,7 @@ Sources : CM §6–§9, §11, §34.2, §34.3, §50 ; PM §12.
 | Visite | `crm.visits` | Rencontre physique géolocalisée |
 | Interaction | `crm.interactions` | Contact non physique hors Kommo |
 | Objectif commercial | `crm.sales_targets` | Cible × métrique × période |
-| Catégorie de client, source, canal | `crm.customer_categories`, `crm.lead_sources`, `crm.sales_channels` | Référentiels (AV-017, AV-018) |
+| Catégorie de client, source, canal | `catalog.customer_categories`, `crm.lead_sources`, `catalog.sales_channels` | Référentiels (AV-017, AV-018) |
 
 ## 4. Cas d'usage
 
