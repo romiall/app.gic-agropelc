@@ -120,7 +120,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | BR-STK-033 | Approbation : `V_PENDING_LOSS` → `V_LOSS`, statut `APPROVED`. Rejet, selon la décision : `ERREUR_DECLARATION` → retour `V_PENDING_LOSS` → emplacement (`REJECTED_RETURNED`) ; `PERTE_NON_JUSTIFIEE` → `V_PENDING_LOSS` → `V_LOSS`, catégorie reclassée `INEXPLIQUEE` et responsabilité imputée (`REJECTED_UNJUSTIFIED`). | AV-038 |
 | BR-STK-034 | Une perte `RECORDED` ne peut être annulée que par une annulation soumise à validation (`inventory.loss.approve`), qui crée le mouvement inverse. | C (CM §41) |
 | BR-STK-035 | La valeur d'une perte = quantité × coût unitaire figé sur le mouvement. Pour un produit biologique de lot, c'est une **valeur économique indicative** : le coût du lot n'est pas réduit, il est réparti sur les survivants (voir stratégie finance). | C (CM §16, §32) / AV-042 |
-| BR-STK-036 | Une consommation déplace un intrant de son emplacement vers `V_CONSUMPTION` et l'impute à un objet de coût : lot de production, lot d'incubation, site ou PDV. La valeur est enregistrée au registre de coûts (D09). | C (CM §4 « coût d'un lot », §21) |
+| BR-STK-036 | Une consommation déplace un intrant de son emplacement vers `V_CONSUMPTION` et l'impute à un objet de coût : lot de production, lot d'incubation, site ou PDV. La valeur est enregistrée au registre de coûts `inventory.cost_entries`, dans la même transaction (règles de coût en D09 §7.5). | C (CM §4 « coût d'un lot », §21) |
 
 ### 7.5 Inventaires
 
@@ -142,7 +142,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | BR-STK-051 | Un seuil (minimum, cible) par emplacement × produit déclenche `STOCK_LOW` si disponible < minimum, et `STOCK_OUT` si disponible ≤ 0. La quantité suggérée de réapprovisionnement = cible − disponible − transit entrant. | C (CM §12, §54) / AV-040 |
 | BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur **au moment de son application** : CMUP courant du produit ; ou coût du lot par tête pour un produit biologique de lot ; ou coût standard pour une production interne sans lot ; ou coût d'achat pour une réception. Un mouvement inverse reprend le coût du mouvement d'origine. | AV-042 |
 | BR-STK-053 | Le CMUP d'un produit est recalculé à chaque entrée valorisée (réception, ouverture, gain d'inventaire valorisé), selon l'**ordre d'application serveur**. | AV-042 |
-| BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.stock_value.read`. | C (CM §48 « magasinier sans finance ») |
+| BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.valuation.read`. | C (CM §48 « magasinier sans finance ») |
 
 ### 7.7 Table des types de mouvement
 
@@ -186,7 +186,7 @@ Tout mouvement peut avoir un inverse (`is_reversal = true`), qui porte le même 
 
 ## 9. Dépendances
 
-- **Dépend de** : ADM (emplacements, RBAC, validations, pièces), CAT (produits, unités, suivi par lot), FIN (enregistrement des coûts au registre de coûts).
+- **Dépend de** : ADM (emplacements, RBAC, validations, pièces), CAT (produits, unités, suivi par lot), aucune dépendance vers FIN : le registre de coûts et la valorisation appartiennent à `inventory` ; `finance` appelle `inventory` pour imputer une dépense à un objet de coût.
 - **Utilisé par** : VEN, APP, PRD, DIS, FIN (valorisation, coût des ventes), ANA, NOT.
 - **Règle de frontière** : seul `inventory` écrit dans ses tables. Les autres modules appellent son API interne (`recordMoves`, `reserve`, `consumeAllocation`…), dans la **même transaction** que leur propre document (ADR-011).
 
@@ -218,7 +218,7 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 
 ## 13. Permissions
 
-`inventory.stock.read`, `inventory.stock_value.read`, `inventory.ledger.read`, `inventory.transfer.request`, `inventory.transfer.dispatch`, `inventory.transfer.receive`, `inventory.transfer.cancel`, `inventory.transfer_discrepancy.approve`, `inventory.allocation.manage`, `inventory.loss.declare`, `inventory.loss.approve`, `inventory.count.perform`, `inventory.count.approve`, `inventory.consumption.record`, `inventory.threshold.manage`, `inventory.opening.post`.
+`inventory.stock.read`, `inventory.valuation.read`, `inventory.ledger.read`, `inventory.transfer.request`, `inventory.transfer.dispatch`, `inventory.transfer.receive`, `inventory.transfer.cancel`, `inventory.transfer_discrepancy.approve`, `inventory.allocation.manage`, `inventory.loss.declare`, `inventory.loss.approve`, `inventory.count.perform`, `inventory.count.approve`, `inventory.consumption.record`, `inventory.threshold.manage`, `inventory.opening.post`.
 
 ## 14. Exceptions
 

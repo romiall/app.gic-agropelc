@@ -127,6 +127,7 @@
 
 | ID | Invariant | Problème empêché | Application | Tests |
 |---|---|---|---|---|
+| INV-CAT-01 | L'unité de base d'un produit ne change plus dès qu'un mouvement de stock existe pour ce produit. | Registre faussé par un changement d'unité (des « têtes » relues comme des « kg ») | TX + DB (déclencheur) | I |
 | INV-ADM-01 | Au moins un utilisateur `ADMIN` actif. | Système inadministrable | TX | U |
 | INV-ADM-02 | Approbateur ≠ demandeur, sauf `SELF_APPROVED` par un utilisateur `DIRECTION`. | Auto-validation frauduleuse (CM §5.3) | TX | U, I |
 | INV-ADM-03 | Aucune commande d'un appareil `BLOCKED`, `LOST` ou `RETIRED` dont `occurred_at` est postérieur au blocage n'est appliquée automatiquement. | Utilisation d'un appareil volé | TX | S |

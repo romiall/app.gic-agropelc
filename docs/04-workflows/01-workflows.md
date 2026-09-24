@@ -58,7 +58,7 @@ sequenceDiagram
 |---|---|
 | Stock | `SALE` : emplacement PDV → `V_CUSTOMER`, 3 têtes, lot choisi par FIFO serveur, coût unitaire figé ; consommation d'allocation si mode `SHARED`. |
 | Finance | Vente 13 500 XAF (`occurred_at` 11:47) ; encaissement `ESPECES` affecté ; mouvement de trésorerie `IN` sur `CAISSE_PDV`, rattaché à la session ; `payment_status = PAID`. |
-| Audit | `sales.sale.record` (auteur, appareil, capture hors ligne, délai de synchronisation 2 h 35) ; `finance.payment.record`. |
+| Audit | `sales.sale.record` (auteur, appareil, capture hors ligne, délai de synchronisation 2 h 35) ; `sales.payment.record`. |
 | Sync | Une commande (le paiement est inclus). Hors ligne : effet local immédiat ; `SYNCED` à 14:23. |
 | Échecs | Stock serveur insuffisant → appliquée, conflit `STOCK_NEGATIVE`. Prix serveur différent → appliquée, `PRICE_MISMATCH`. Appareil révoqué avant 11:47 → `CONFLICT` (quarantaine). |
 
@@ -95,13 +95,13 @@ sequenceDiagram
 
 1. Le commercial ouvre la fiche client (ECR-CRM-03) et voit les créances.
 2. Il saisit ENCAISSER : 25 000 XAF par `MOBILE_MONEY_MTN`, référence `MP2609...`.
-3. Commande `finance.payment.record`. Le serveur affecte l'encaissement aux ventes impayées les plus anciennes (BR-FIN-004).
+3. Commande `sales.payment.record`. Le serveur affecte l'encaissement aux ventes impayées les plus anciennes (BR-FIN-004).
 
 | Effet | Détail |
 |---|---|
 | Stock | Aucun. |
 | Finance | Encaissement `RECORDED` ; affectations ; `payment_status` des ventes recalculé ; mouvement `IN` sur le compte `MOBILE_MONEY`. Référence en doublon → `SUSPECT_DUPLICATE`, sans effet (SM-CUSTOMER-PAYMENT). |
-| Audit | `finance.payment.record`. |
+| Audit | `sales.payment.record`. |
 | Sync | Hors ligne possible ; l'unicité de la référence est contrôlée par le serveur. |
 
 ---

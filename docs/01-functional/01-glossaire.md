@@ -133,7 +133,7 @@
 | **Taux d'éclosion** | Poussins obtenus ÷ œufs incubés (et ÷ œufs fertiles, en indicateur secondaire). | 83 % | calcul | C (CM §18) |
 | **Sortie vers commercialisation** | Transfert d'animaux d'un lot, depuis leur emplacement d'élevage vers un emplacement commercial, ou vente directe depuis la ferme. | — | `inventory.stock_transfers` ou `sales.sales` | C (CM §15) |
 | **Clôture de lot** | Fin d'un lot à effectif nul, qui fige ses indicateurs. | — | `production.production_lots.status = CLOSED` | D |
-| **Coût de lot** | Somme des coûts imputés au lot (animaux d'origine, intrants consommés, dépenses directes). | — | `finance.cost_entries` | C (CM §15, §33) / AV-043 |
+| **Coût de lot** | Somme des coûts imputés au lot (animaux d'origine, intrants consommés, dépenses directes). | — | `inventory.cost_entries` | C (CM §15, §33) / AV-043 |
 
 ## 7. Ventes et commandes
 
@@ -172,9 +172,9 @@
 
 | Terme | Définition | Exemple | Entités liées | Statut |
 |---|---|---|---|---|
-| **Encaissement** | Somme reçue d'un client, par un moyen de paiement, à un instant réel, affectée à une ou plusieurs ventes ou commandes. | 13 500 XAF en espèces | `finance.customer_payments` | C (CM §31) |
-| **Affectation de paiement** | Répartition d'un encaissement sur une vente (règlement) ou une commande (acompte). | — | `finance.payment_allocations` | D |
-| **Créance** | Montant restant dû par un client sur ses ventes confirmées = montant des ventes − affectations actives. **Calculée.** | — | vue `finance.v_receivables` | C (CM §13, §31) |
+| **Encaissement** | Somme reçue d'un client, par un moyen de paiement, à un instant réel, affectée à une ou plusieurs ventes ou commandes. | 13 500 XAF en espèces | `sales.customer_payments` | C (CM §31) |
+| **Affectation de paiement** | Répartition d'un encaissement sur une vente (règlement) ou une commande (acompte). | — | `sales.payment_allocations` | D |
+| **Créance** | Montant restant dû par un client sur ses ventes confirmées = montant des ventes − affectations actives. **Calculée.** | — | vue `sales.v_receivables` | C (CM §13, §31) |
 | **Créance en retard** | Créance dont l'échéance est dépassée. | — | calcul sur `sales.sales.due_date` | C (CM §54) |
 | **Moyen de paiement** | Mode de règlement (référentiel). | `ESPECES`, `MOBILE_MONEY_MTN` | `finance.payment_methods` | AV-056 |
 | **Compte de trésorerie** | Réceptacle d'argent suivi par le système : caisse d'un PDV, caisse centrale, compte mobile money, compte bancaire. | Caisse PDV Mboppi | `finance.cash_accounts` | C (CM §12 « caisse », §31 « caisses ») / D (généralisation) |
@@ -184,7 +184,7 @@
 | **Dépense** | Sortie d'argent pour une charge non stockée, catégorisée, éventuellement imputée à un objet de coût. | Carburant 15 000 XAF | `finance.expenses` | C (CM §31) |
 | **Dette fournisseur** | Montant dû à un fournisseur = factures − paiements affectés. | — | vue `finance.v_payables` | C (CM §32) |
 | **Paiement fournisseur** | Sortie d'argent réglant une ou plusieurs factures fournisseur. | — | `finance.supplier_payments` | C (CM §27) |
-| **Objet de coût** | Entité à laquelle un coût est imputé : lot de production, lot d'incubation, site, PDV. | — | `finance.cost_entries.cost_object_*` | D (CM §33) |
+| **Objet de coût** | Entité à laquelle un coût est imputé : lot de production, lot d'incubation, site, PDV. | — | `inventory.cost_entries.cost_object_*` | D (CM §33) |
 | **Coût des ventes** (COGS) | Σ quantité vendue × coût unitaire figé sur le mouvement de sortie. | — | calcul | D (CM §31 « marges ») |
 | **Marge** | CA − coût des ventes (marge brute), éventuellement − coûts directs imputés. | — | calcul | C (CM §31, §33) |
 | **Valeur perdue** | Σ quantité perdue × coût unitaire figé sur le mouvement de perte. | — | calcul | C (CM §32) |

@@ -1,7 +1,12 @@
 # D09 — Finance opérationnelle (FIN)
 
 > Couvre : comptes de trésorerie, registre de trésorerie, sessions de caisse, remises de fonds, encaissements clients et affectations, créances, dépenses, factures et paiements fournisseurs, dettes fournisseurs, registre de coûts, coût des ventes, marges, valeur des pertes.
-> Module de code : `finance`. Stratégie : [`../../02-domain-model/05-strategie-finance-couts.md`](../../02-domain-model/05-strategie-finance-couts.md). Décision : ADR-010.
+> **Modules de code** (le domaine fonctionnel FIN s'étend sur trois modules pour garder un graphe de dépendances sans cycle, ADR-011) :
+> - `finance` : trésorerie (comptes, mouvements, sessions, remises), dépenses, factures et paiements fournisseurs, dettes ;
+> - `sales` : encaissements clients, affectations et créances (chaîne commande → encaissement), car ils sont saisis avec la vente et portent sur des ventes ;
+> - `inventory` : registre de coûts et valorisation (sous-domaine *valorisation*), car le coût par tête d'un lot sert à valoriser les mouvements de stock.
+>
+> Stratégie : [`../../02-domain-model/05-strategie-finance-couts.md`](../../02-domain-model/05-strategie-finance-couts.md). Décision : ADR-010.
 
 ---
 
@@ -30,23 +35,23 @@ Tout cela doit rester **cohérent avec le stock** (CM §32).
 | Session de caisse | `finance.cash_sessions` | Ouverture, clôture, écart (D05) |
 | Remise de fonds | `finance.cash_transfers` | Argent entre comptes, en deux temps |
 | Moyen de paiement | `finance.payment_methods` | Référentiel (AV-056) |
-| Encaissement client | `finance.customer_payments` | Argent reçu d'un client |
-| Affectation de paiement | `finance.payment_allocations` | Répartition sur ventes ou commandes (acomptes) |
+| Encaissement client | `sales.customer_payments` | Argent reçu d'un client |
+| Affectation de paiement | `sales.payment_allocations` | Répartition sur ventes ou commandes (acomptes) |
 | Catégorie de dépense | `finance.expense_categories` | Référentiel (AV-058) |
 | Dépense | `finance.expenses` | Charge non stockée |
 | Facture fournisseur et lignes | `finance.supplier_invoices`, `finance.supplier_invoice_lines` | Dette fournisseur |
 | Paiement fournisseur et affectations | `finance.supplier_payments`, `finance.supplier_payment_allocations` | Règlement des dettes |
-| Écriture de coût | `finance.cost_entries` | Registre de coûts par objet de coût |
-| Créances, dettes (vues) | `finance.v_receivables`, `finance.v_payables` | Calculées, jamais saisies |
+| Écriture de coût | `inventory.cost_entries` | Registre de coûts par objet de coût |
+| Créances, dettes (vues) | `sales.v_receivables`, `finance.v_payables` | Calculées, jamais saisies |
 
 ## 4. Cas d'usage
 
 | ID | Cas d'usage | Commande technique | Acteur | Hors ligne |
 |---|---|---|---|---|
 | UC-FIN-01 | Encaisser avec une vente | inclus dans `sales.sale.record` | Vendeur, commerciaux | **Oui** |
-| UC-FIN-02 | ENCAISSER un règlement de créance ou un acompte | `finance.payment.record` | Vendeur, commerciaux, FINANCE | **Oui** |
-| UC-FIN-03 | Réaffecter un encaissement | `finance.payment.reallocate` | FINANCE | Non |
-| UC-FIN-04 | Annuler un encaissement | `finance.payment.request_cancellation` → validation | FINANCE | Non |
+| UC-FIN-02 | ENCAISSER un règlement de créance ou un acompte | `sales.payment.record` | Vendeur, commerciaux, FINANCE | **Oui** |
+| UC-FIN-03 | Réaffecter un encaissement | `sales.payment.reallocate` | FINANCE | Non |
+| UC-FIN-04 | Annuler un encaissement | `sales.payment.request_cancellation` → validation | FINANCE | Non |
 | UC-FIN-05 | Traiter un encaissement suspect de doublon | `approvals.request.approve` / `reject` | FINANCE | Non |
 | UC-FIN-06 | Ouvrir, clôturer, valider une session de caisse | `finance.cash_session.open`, `close`, `validate` | Vendeur ; FINANCE | **Oui** (ouvrir, clôturer) |
 | UC-FIN-07 | Remettre des fonds ; confirmer la réception des fonds | `finance.cash_transfer.send`, `receive` | Détenteur de caisse ; FINANCE | **Oui** (envoi) |
@@ -55,7 +60,7 @@ Tout cela doit rester **cohérent avec le stock** (CM §32).
 | UC-FIN-10 | Enregistrer une facture fournisseur et la rapprocher | `finance.supplier_invoice.record` | FINANCE | Non |
 | UC-FIN-11 | Approuver une facture ; la contester | `finance.supplier_invoice.approve`, `finance.supplier_invoice.dispute` | FINANCE, DIRECTION | Non |
 | UC-FIN-12 | Payer un fournisseur | `finance.supplier_payment.record` | FINANCE | Non |
-| UC-FIN-13 | Imputer manuellement un coût à un lot ou un site | `finance.cost_entry.record` | FINANCE | Non |
+| UC-FIN-13 | Imputer manuellement un coût à un lot ou un site | `inventory.cost_entry.record` | FINANCE | Non |
 | UC-FIN-14 | Suivre créances (âge, retards), dettes, trésorerie, coûts et marges | requêtes (ECR-FIN-*) | FINANCE, DIRECTION | Non |
 
 ## 5. Entrées
@@ -97,7 +102,7 @@ Soldes de trésorerie par compte et par responsable, créances par client, par c
 |---|---|---|
 | BR-FIN-020 | Une dépense porte : catégorie, montant, `occurred_at` (date de la charge), bénéficiaire, description, objet de coût optionnel (lot de production, lot d'incubation, site, PDV), justificatif selon la politique, et indicateur « payée immédiatement » avec son compte. | C (CM §31, §42) / AV-058 |
 | BR-FIN-021 | **Payée immédiatement** : le mouvement de trésorerie `EXPENSE` est enregistré tout de suite (fait accompli) ; la validation, si requise, est a posteriori (statut `PAID_PENDING_APPROVAL`). **À payer** : `PENDING_APPROVAL` ou `APPROVED`, puis `PAID` par `finance.expense.pay`. | D |
-| BR-FIN-022 | Une dépense imputée à un objet de coût crée une écriture de coût (`finance.cost_entries`) à son approbation, ou dès l'enregistrement si aucune validation n'est requise. Une dépense rejetée après paiement reste un décaissement réel : elle est reclassée en catégorie `NON_JUSTIFIEE` et imputée au déclarant pour suivi. | D |
+| BR-FIN-022 | Une dépense imputée à un objet de coût crée une écriture de coût (`inventory.cost_entries`) à son approbation, ou dès l'enregistrement si aucune validation n'est requise. Une dépense rejetée après paiement reste un décaissement réel : elle est reclassée en catégorie `NON_JUSTIFIEE` et imputée au déclarant pour suivi. | D |
 
 ### 7.4 Fournisseurs
 
@@ -112,8 +117,8 @@ Soldes de trésorerie par compte et par responsable, créances par client, par c
 
 | ID | Règle | Statut |
 |---|---|---|
-| BR-FIN-040 | Le **registre de coûts** (`cost_entries`) est en ajout seul. Chaque écriture porte : objet de coût, type de coût (`ANIMAUX`, `ALIMENT`, `VETERINAIRE`, `AUTRE_INTRANT`, `DEPENSE_DIRECTE`, `AJUSTEMENT`), montant, document source, `occurred_at`. Correction par écriture de sens opposé liée à l'originale. | C (CM §15, §33) / D |
-| BR-FIN-041 | Sources automatiques d'écritures de coût : consommations imputées à un lot (valeur de la sortie de stock), mise en place (valeur des animaux d'origine), dépenses imputées. | D |
+| BR-FIN-040 | Le **registre de coûts** (`inventory.cost_entries`, module `inventory`) est en ajout seul. Chaque écriture porte : objet de coût, type de coût (`ANIMAUX`, `ALIMENT`, `VETERINAIRE`, `AUTRE_INTRANT`, `DEPENSE_DIRECTE`, `AJUSTEMENT`), montant, document source, `occurred_at`. Correction par écriture de sens opposé liée à l'originale. | C (CM §15, §33) / D |
+| BR-FIN-041 | Sources d'écritures de coût : consommations imputées à un lot et mises en place (écrites par `inventory` dans la transaction du mouvement) ; dépenses imputées (écrites par `finance` via l'API d'`inventory` à l'approbation ou à l'enregistrement) ; imputation manuelle (`inventory.cost_entry.record`). | D |
 | BR-FIN-042 | **CA** d'une période = Σ montants des ventes dont `occurred_at` est dans la période − Σ montants des ventes **annulées dont l'annulation** est dans la période (l'annulation est une contre-écriture datée de son propre `occurred_at`). Un rapport passé n'est donc jamais réécrit par une annulation ultérieure. Une vue « net par date de vente » est aussi disponible. | C (CM §30, §41) / D |
 | BR-FIN-043 | **Coût des ventes** = Σ (quantité × coût unitaire figé) des mouvements `SALE` − ceux de leurs inverses, sur les mêmes principes de date. **Marge brute** = CA − coût des ventes. | C (CM §31) / D |
 | BR-FIN-044 | **Valeur des pertes** = Σ (quantité × coût unitaire figé) des mouvements vers `V_LOSS` et des ajustements d'inventaire négatifs. Pour les produits biologiques de lot, c'est un indicateur économique (BR-PRD-013). | C (CM §32) |
@@ -152,7 +157,7 @@ ADM, CRM (clients, crédit), VEN (ventes, commandes), STK (valorisation des mouv
 
 ## 13. Permissions
 
-`finance.payment.record`, `finance.payment.read`, `finance.payment.cancel`, `finance.receivable.read`, `finance.cash_session.operate`, `finance.cash_session.validate`, `finance.cash_account.manage`, `finance.cash_transfer.record`, `finance.expense.record`, `finance.expense.approve`, `finance.expense.pay`, `finance.supplier_invoice.record`, `finance.supplier_invoice.approve`, `finance.supplier_payment.record`, `finance.supplier_payment.approve`, `finance.cost.read`, `finance.cost_entry.record`.
+`sales.payment.record`, `sales.payment.read`, `sales.payment.cancel`, `sales.receivable.read`, `finance.cash_session.operate`, `finance.cash_session.validate`, `finance.cash_account.manage`, `finance.cash_transfer.record`, `finance.expense.record`, `finance.expense.approve`, `finance.expense.pay`, `finance.supplier_invoice.record`, `finance.supplier_invoice.approve`, `finance.supplier_payment.record`, `finance.supplier_payment.approve`, `inventory.valuation.read`, `inventory.cost_entry.record`.
 
 ## 14. Exceptions
 

@@ -104,7 +104,7 @@ flowchart TB
   subgraph APP["Approvisionnement"]
     PO[purchase_orders] --- GR[goods_receipts]
   end
-  subgraph FIN["Finance"]
+  subgraph FIN["Finance (sales : encaissements · finance : trésorerie, dettes · inventory : coûts)"]
     CP[customer_payments] --- PA[payment_allocations]
     CM[cash_movements]
     CE[cost_entries]

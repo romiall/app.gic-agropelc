@@ -48,7 +48,7 @@ Indicateurs, tableaux, graphiques, exports, vues sauvegardées, instantanés per
 | BR-ANA-001 | Aucun indicateur n'est saisi. Tous sont calculés à partir des opérations enregistrées. | C (CM §9) |
 | BR-ANA-002 | La date d'analyse d'une opération est son `occurred_at`, ramenée au **jour métier** en fuseau `Africa/Douala`. Périodes proposées : aujourd'hui, hier, cette semaine (lundi à dimanche), ce mois, cette année, plage personnalisée. | C (CM §9, §38) |
 | BR-ANA-003 | Annulations : les vues « par période d'activité » comptent la contre-écriture à la date d'annulation (BR-FIN-042). Une vue « net par date de vente » est proposée explicitement, avec un libellé distinct. | D |
-| BR-ANA-004 | Le RBAC s'applique aux analyses **au niveau des lignes** (portée : OWN, TEAM, SITE, ZONE, ALL) et **au niveau des mesures** : coût, marge et valeur de stock exigent `finance.cost.read` ou `inventory.stock_value.read`. | C (CM §48) |
+| BR-ANA-004 | Le RBAC s'applique aux analyses **au niveau des lignes** (portée : OWN, TEAM, SITE, ZONE, ALL) et **au niveau des mesures** : coût, marge et valeur de stock exigent `inventory.valuation.read`. | C (CM §48) |
 | BR-ANA-005 | Chaque tableau de bord affiche la **fraîcheur** : heure du dernier calcul, et nombre d'appareils du périmètre dont la dernière synchronisation date de plus de 2 h (paramètre). | C (CM §36) / D |
 | BR-ANA-006 | L'explorateur n'accepte que des jeux, dimensions, mesures et filtres **déclarés** dans la couche sémantique ; aucune requête libre. Limites : 10 000 lignes affichées, 100 000 lignes exportées, 15 s d'exécution. | D (sécurité, performance) |
 | BR-ANA-007 | Une vue sauvegardée partagée ne donne aucun droit supplémentaire : chaque lecteur la voit restreinte à son propre périmètre. | D |
@@ -98,8 +98,8 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-PRD-09 | Coût par tête | BR-PRD-012 | `f_costs` | C (CM §33) |
 | KPI-PRD-10 | Marge du lot | BR-PRD-014 | `f_costs`, `f_sales_line` | C (CM §33) |
 | KPI-FIN-01 | Encaissé | Σ encaissements confirmés dans P − annulations dans P | `f_payments` | C (CM §31) |
-| KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | `finance.v_receivables` | C (CM §31) |
-| KPI-FIN-03 | Créances en retard | Créances dont l'échéance est dépassée | `finance.v_receivables` | C (CM §54) |
+| KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | `sales.v_receivables` | C (CM §31) |
+| KPI-FIN-03 | Créances en retard | Créances dont l'échéance est dépassée | `sales.v_receivables` | C (CM §54) |
 | KPI-FIN-04 | Dépenses | Σ dépenses approuvées ou payées dans P, par catégorie et objet de coût | `f_expenses` | C (CM §31) |
 | KPI-FIN-05 | Dettes fournisseurs | BR-FIN-032 | `finance.v_payables` | C (CM §31) |
 | KPI-FIN-06 | Trésorerie | Solde par compte de trésorerie | `f_cash` | C (CM §31) |
@@ -150,7 +150,7 @@ Lecture de tous les modules, via des vues de lecture publiées par chaque module
 
 ## 13. Permissions
 
-`analytics.dashboard.direction`, `analytics.dashboard.commercial`, `analytics.dashboard.distribution`, `analytics.dashboard.stock`, `analytics.dashboard.production`, `analytics.dashboard.finance`, `analytics.explore`, `analytics.view.share`, `analytics.export`, plus les permissions de lecture des domaines (portée des lignes) et `finance.cost.read`, `inventory.stock_value.read` (mesures).
+`analytics.dashboard.direction`, `analytics.dashboard.commercial`, `analytics.dashboard.distribution`, `analytics.dashboard.stock`, `analytics.dashboard.production`, `analytics.dashboard.finance`, `analytics.explore`, `analytics.view.share`, `analytics.export`, plus les permissions de lecture des domaines (portée des lignes) et `inventory.valuation.read` (mesures).
 
 ## 14. Exceptions
 

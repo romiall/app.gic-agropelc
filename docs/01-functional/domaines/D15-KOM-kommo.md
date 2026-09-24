@@ -24,7 +24,7 @@ Kommo (système externe), `COMMERCIAL_SEDENTAIRE` (utilisateur principal des deu
 | Lien externe | `integrations.external_links` | Correspondance entité GIC ↔ identifiant Kommo (contact, lead, utilisateur) |
 | Boîte d'entrée d'intégration | `integrations.inbox_messages` | Webhooks Kommo reçus, dédupliqués |
 | Boîte de sortie d'intégration | `integrations.outbox_messages` | Appels vers Kommo, avec reprise |
-| Paramètres d'intégration | `integrations.settings` | Pipeline et statuts déclencheurs, champs personnalisés, correspondance utilisateurs |
+| Paramètres d'intégration | `integrations.integration_settings` | Pipeline et statuts déclencheurs, champs personnalisés, correspondance utilisateurs |
 
 ## 4. Cas d'usage
 

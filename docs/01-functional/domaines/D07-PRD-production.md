@@ -1,6 +1,6 @@
 # D07 — Production (PRD) : tronc commun, volaille (VOL), œufs (OEU), incubation (INC), porcs (POR)
 
-> Module de code : `production`. Les effets physiques passent par l'API d'`inventory` (D06) ; les coûts par le registre de coûts de `finance` (D09).
+> Module de code : `production`. Les effets physiques passent par l'API d'`inventory` (D06) ; les coûts par le registre de coûts, module `inventory` (sous-domaine valorisation ; règles en D09 §7.5).
 > Principe (CM §14, PM §10) : **un modèle de lot commun, des règles propres à chaque filière**, sans confondre les réalités.
 
 ---
@@ -34,7 +34,7 @@ Sources : CM §14–§19, §33, §34.5, §49 ; PM §10.
 | Observation de lot | `production.lot_observations` | Note datée (état sanitaire, incident) |
 | Mortalité | `inventory.loss_declarations` (catégorie `MORTALITE`) | Propriété de D06 (tension C-09) |
 | Consommation d'intrants | `inventory.consumptions` (objet de coût = lot) | Propriété de D06 |
-| Coûts de lot | `finance.cost_entries` | Propriété de D09 |
+| Coûts de lot | `inventory.cost_entries` | Propriété du module `inventory` (règles en D09 §7.5) |
 | Lot de traçabilité | `inventory.stock_lots` (origine `PRODUCTION_LOT` ou `INCUBATION_BATCH`) | Lien avec le registre |
 
 Produits minimaux (référentiel, D) : `Poussin d'un jour (chair)`, `Poulet de chair vif`, `Poulette / pondeuse`, `Œuf de consommation`, `Œuf à couver`, `Porcelet`, `Porc vif`, aliments et intrants.
@@ -85,7 +85,7 @@ Effectifs, stock biologique et disponibilité à la vente, œufs commercialisabl
 | BR-PRD-009 | Les statuts d'un lot sont `PLANNED` → `ACTIVE` (première entrée) → `SELLING` (animaux déclarés prêts ou disponibles à la vente) → `CLOSED`. `PLANNED` → `CANCELLED` est possible sans entrée. | D (SM-PRODUCTION-LOT) |
 | BR-PRD-010 | Seuls les animaux d'un lot `SELLING` peuvent être vendus directement depuis un emplacement d'élevage. Les transferts vers un emplacement commercial sont possibles à partir de `ACTIVE` (sortie vers commercialisation). | C (CM §15, §2 « prêts à la vente ») / D |
 | BR-PRD-011 | Un lot ne peut être clôturé qu'avec un effectif non vendu nul. La clôture fige les indicateurs finaux (mortalité cumulée, coût total, CA attribué, marge). | D |
-| BR-PRD-012 | Le **coût du lot** = Σ `finance.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées. Coût par tête à un instant = coût cumulé ÷ effectif non vendu. Ce coût par tête valorise les sorties du lot (transferts, ventes, pertes). | C (CM §15, §33) / AV-042, AV-043 |
+| BR-PRD-012 | Le **coût du lot** = Σ `inventory.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées. Coût par tête à un instant = coût cumulé ÷ effectif non vendu. Ce coût par tête valorise les sorties du lot (transferts, ventes, pertes). | C (CM §15, §33) / AV-042, AV-043 |
 | BR-PRD-013 | La mortalité ne réduit pas le coût du lot : elle le répartit sur un effectif plus faible (hausse du coût par tête). Sa « valeur économique » (quantité × coût par tête au moment de la perte) est un indicateur de perte, pas une charge supplémentaire. | C (CM §16) |
 | BR-PRD-014 | Marge d'un lot = CA des ventes portant le lot − coût du lot imputable aux têtes vendues. Pour un lot clôturé : CA total − coût total. | C (CM §33) / D |
 | BR-PRD-015 | Une pesée enregistre la taille d'échantillon, le poids moyen (g) et, optionnellement, le poids total ; elle n'a aucun effet de stock. | C (CM §15, §19) |
@@ -147,7 +147,7 @@ Effectifs, stock biologique et disponibilité à la vente, œufs commercialisabl
 
 ## 9. Dépendances
 
-ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits biologiques, intrants), STK (mouvements, pertes, consommations, lots de traçabilité), APP (achats d'animaux et d'intrants), FIN (registre de coûts), VEN (ventes portant le lot), ANA.
+ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits biologiques, intrants), STK (mouvements, pertes, consommations, lots de traçabilité), APP (achats d'animaux et d'intrants), STK/valorisation (registre de coûts), FIN (dépenses imputées), VEN (ventes portant le lot), ANA.
 
 ## 10. Événements produits
 
@@ -168,7 +168,7 @@ ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits 
 
 ## 13. Permissions
 
-`production.lot.read`, `production.lot.manage`, `production.daily.record`, `production.mortality.approve`, `production.incubation.record`, plus les permissions de stock utilisées (`inventory.transfer.*`, `inventory.consumption.record`) et `finance.cost.read` pour les coûts et marges.
+`production.lot.read`, `production.lot.manage`, `production.daily.record`, `production.mortality.approve`, `production.incubation.record`, plus les permissions de stock utilisées (`inventory.transfer.*`, `inventory.consumption.record`) et `inventory.valuation.read` pour les coûts et marges.
 
 ## 14. Exceptions
 

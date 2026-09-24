@@ -11,7 +11,7 @@ GIC AGROPELC a besoin d'une **comptabilité opérationnelle fiable**, pas d'un l
 1. des **documents financiers** typés et immuables : vente, encaissement, dépense, facture fournisseur, paiement fournisseur, remise de fonds ;
 2. trois **registres** en ajout seul :
    - **trésorerie** (`cash_movements`) : où est l'argent ;
-   - **coûts** (`cost_entries`) : ce que coûtent les lots et les sites ;
+   - **coûts** (`inventory.cost_entries`, tenu par le module `inventory`) : ce que coûtent les lots et les sites ;
    - **stock valorisé** : le coût unitaire figé sur chaque `stock_move` ;
 3. des **vues calculées** : créances, dettes fournisseurs, marges, valeur du stock, valeur des pertes.
 
@@ -48,7 +48,7 @@ créance(client) = Σ créances de ses ventes CONFIRMED − crédit client non a
 dette(facture) = montant − Σ affectations de paiements fournisseurs
 ```
 
-Les deux sont des **vues** (`finance.v_receivables`, `finance.v_payables`). Elles ne sont jamais stockées comme soldes saisis.
+Les deux sont des **vues** (`sales.v_receivables`, `finance.v_payables`). Elles ne sont jamais stockées comme soldes saisis.
 
 ## 5. Trésorerie
 
@@ -99,7 +99,7 @@ C'est un choix assumé : le coût des ventes au fil de l'eau ne peut pas connaî
 marge_brute(P, dimensions) = CA(P) − Σ (qté × unit_cost_xaf) des mouvements SALE nets de P
 ```
 
-Elle est déclinable par produit, PDV, zone, commercial, canal, client et lot. Elle n'est visible qu'avec `finance.cost.read` (BR-ANA-004).
+Elle est déclinable par produit, PDV, zone, commercial, canal, client et lot. Elle n'est visible qu'avec `inventory.valuation.read` (BR-ANA-004).
 
 ## 7. Valorisation (rappel)
 

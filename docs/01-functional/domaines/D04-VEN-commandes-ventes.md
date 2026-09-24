@@ -1,7 +1,7 @@
 # D04 — Commandes et ventes (VEN)
 
 > Couvre : commandes clients, réservations, livraison (vente sur commande), ventes directes, prix appliqués, attribution commerciale, encaissement intégré à la vente, annulation.
-> Module de code : `sales`. Les encaissements sont **enregistrés** par le module `finance` (D09) mais **saisis** dans le même geste que la vente. Les mouvements de stock sont **créés** par le module `inventory` (D06) à la demande de `sales`.
+> Module de code : `sales`. Le module `sales` possède aussi les encaissements clients, leurs affectations et les créances (règles fonctionnelles en D09 §7.1). Il appelle `finance` pour le mouvement de trésorerie correspondant. Les mouvements de stock sont **créés** par le module `inventory` (D06) à la demande de `sales`.
 
 ---
 
@@ -33,7 +33,7 @@ Sources : CM §4, §7, §11, §13, §30, §32, §38, §39, §41 ; PM §9, §24.
 | Réservation | `inventory.stock_allocations` (type `ORDER_RESERVATION`) | Stock bloqué pour la commande (propriété de D06) |
 | Vente | `sales.sales` | Remise de produits contre un prix (directe ou sur commande) |
 | Ligne de vente | `sales.sale_lines` | Produit, lot, quantité, prix figé, règle, coût figé |
-| Encaissement | `finance.customer_payments`, `finance.payment_allocations` | Propriété de D09 |
+| Encaissement, affectation | `sales.customer_payments`, `sales.payment_allocations` | Module `sales` ; règles fonctionnelles D09 §7.1 |
 
 ## 4. Cas d'usage
 

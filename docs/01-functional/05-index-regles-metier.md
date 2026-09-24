@@ -193,7 +193,7 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-051 | Un seuil (minimum, cible) par emplacement × produit déclenche `STOCK_LOW` si disponible < minimum, et `STOCK_OUT` si disponible ≤ 0. La qua… | C (CM §12, §54) / AV-040 |
 | BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur au moment de son application : CMUP courant du produit ; ou coût du lot par tête pour un p… | AV-042 |
 | BR-STK-053 | Le CMUP d'un produit est recalculé à chaque entrée valorisée (réception, ouverture, gain d'inventaire valorisé), selon l'ordre d'applicatio… | AV-042 |
-| BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.stock_val… | C (CM §48 « magasinier sans finance ») |
+| BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.valuation… | C (CM §48 « magasinier sans finance ») |
 
 ## D07 — Production (PRD) : tronc commun, volaille (VOL), œufs (OEU), incubation (INC), porcs (POR)
 
@@ -212,7 +212,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-009 | Les statuts d'un lot sont `PLANNED` → `ACTIVE` (première entrée) → `SELLING` (animaux déclarés prêts ou disponibles à la vente) → `CLOSED`.… | D (SM-PRODUCTION-LOT) |
 | BR-PRD-010 | Seuls les animaux d'un lot `SELLING` peuvent être vendus directement depuis un emplacement d'élevage. Les transferts vers un emplacement co… | C (CM §15, §2 « prêts à la vente ») / D |
 | BR-PRD-011 | Un lot ne peut être clôturé qu'avec un effectif non vendu nul. La clôture fige les indicateurs finaux (mortalité cumulée, coût total, CA at… | D |
-| BR-PRD-012 | Le coût du lot = Σ `finance.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées. Coût par t… | C (CM §15, §33) / AV-042, AV-043 |
+| BR-PRD-012 | Le coût du lot = Σ `inventory.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées. Coût par… | C (CM §15, §33) / AV-042, AV-043 |
 | BR-PRD-013 | La mortalité ne réduit pas le coût du lot : elle le répartit sur un effectif plus faible (hausse du coût par tête). Sa « valeur économique… | C (CM §16) |
 | BR-PRD-014 | Marge d'un lot = CA des ventes portant le lot − coût du lot imputable aux têtes vendues. Pour un lot clôturé : CA total − coût total. | C (CM §33) / D |
 | BR-PRD-015 | Une pesée enregistre la taille d'échantillon, le poids moyen (g) et, optionnellement, le poids total ; elle n'a aucun effet de stock. | C (CM §15, §19) |
@@ -285,13 +285,13 @@ Fichier : [`domaines/D09-FIN-finance.md`](domaines/D09-FIN-finance.md)
 | BR-FIN-014 | Session de caisse : voir D05 (BR-DIS-005 à BR-DIS-008). À l'ouverture, un fonds compté différent du solde du compte produit un mouvement `S… | AV-057 |
 | BR-FIN-020 | Une dépense porte : catégorie, montant, `occurred_at` (date de la charge), bénéficiaire, description, objet de coût optionnel (lot de produ… | C (CM §31, §42) / AV-058 |
 | BR-FIN-021 | Payée immédiatement : le mouvement de trésorerie `EXPENSE` est enregistré tout de suite (fait accompli) ; la validation, si requise, est a… | D |
-| BR-FIN-022 | Une dépense imputée à un objet de coût crée une écriture de coût (`finance.cost_entries`) à son approbation, ou dès l'enregistrement si auc… | D |
+| BR-FIN-022 | Une dépense imputée à un objet de coût crée une écriture de coût (`inventory.cost_entries`) à son approbation, ou dès l'enregistrement si a… | D |
 | BR-FIN-030 | Une facture fournisseur porte : fournisseur, référence du fournisseur (unique par fournisseur), date, échéance, montant total, lignes ratta… | C (CM §26, §27) |
 | BR-FIN-031 | Rapprochement à l'enregistrement : quantité facturée ≤ quantité acceptée, prix facturé = prix du BC. Tout écart met la facture en `MISMATCH… | C (CM §26 « écarts ») / AV-053 |
 | BR-FIN-032 | Dette fournisseur = Σ factures approuvées − Σ affectations de paiements fournisseurs. Un paiement non affecté est une avance fournisseur. | C (CM §32) / AV-055 |
 | BR-FIN-033 | Un paiement fournisseur au-delà du seuil (500 000 XAF) exige l'approbation de la Direction avant le décaissement. | AV-055 |
-| BR-FIN-040 | Le registre de coûts (`cost_entries`) est en ajout seul. Chaque écriture porte : objet de coût, type de coût (`ANIMAUX`, `ALIMENT`, `VETERI… | C (CM §15, §33) / D |
-| BR-FIN-041 | Sources automatiques d'écritures de coût : consommations imputées à un lot (valeur de la sortie de stock), mise en place (valeur des animau… | D |
+| BR-FIN-040 | Le registre de coûts (`inventory.cost_entries`, module `inventory`) est en ajout seul. Chaque écriture porte : objet de coût, type de coût… | C (CM §15, §33) / D |
+| BR-FIN-041 | Sources d'écritures de coût : consommations imputées à un lot et mises en place (écrites par `inventory` dans la transaction du mouvement)… | D |
 | BR-FIN-042 | CA d'une période = Σ montants des ventes dont `occurred_at` est dans la période − Σ montants des ventes annulées dont l'annulation est dans… | C (CM §30, §41) / D |
 | BR-FIN-043 | Coût des ventes = Σ (quantité × coût unitaire figé) des mouvements `SALE` − ceux de leurs inverses, sur les mêmes principes de date. Marge… | C (CM §31) / D |
 | BR-FIN-044 | Valeur des pertes = Σ (quantité × coût unitaire figé) des mouvements vers `V_LOSS` et des ajustements d'inventaire négatifs. Pour les produ… | C (CM §32) |
