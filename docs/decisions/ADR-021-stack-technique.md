@@ -1,6 +1,6 @@
 # ADR-021 — Stack technique : TypeScript de bout en bout et bibliothèque métier partagée
 
-- **Statut** : PROPOSÉ (recommandation de fin de cadrage, PM §46) — à confirmer avant P0
+- **Statut** : PROPOSÉ (recommandation de fin de cadrage, PM §46) — à confirmer avant P0 (AV-089)
 - **Date** : 24/09/2026
 
 ## Contexte

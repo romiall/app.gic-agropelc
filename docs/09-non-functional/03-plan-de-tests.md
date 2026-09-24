@@ -127,6 +127,11 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-048 | Note de direction à accusé de lecture | Lue et accusée hors ligne ; synchronisée | REQ-068 |
 | AT-049 | Solde négatif provoqué par une vente hors ligne | Conflit `STOCK_NEGATIVE` ; résolution par inventaire ; conflit fermé | INV-STK-05, C-08 |
 | AT-050 | Mise à jour de l'application avec des commandes N-1 en attente | Commandes acceptées ; mise à jour activée ensuite | BR-SYN-016 |
+| AT-051 | Visite hors ligne d'un client géolocalisé, saisie à 800 m de sa position, sans session de travail ouverte | Visite appliquée avec `far_from_customer` et `out_of_session` visibles du responsable ; comptée dans « prospects visités » ; non modifiable après synchronisation (correction = annulation + nouvelle visite) | REQ-009, BR-CRM-012, BR-CRM-013, BR-CRM-015, BR-CRM-016 |
+| AT-052 | Groupe de 40 porcs réparti sur 2 cases ; déplacement de 5 têtes d'une case à l'autre ; pesée d'échantillon ; vente de 3 têtes | Effectif par case = solde par emplacement ; effectif du groupe inchangé par le déplacement ; vente à la tête ou au kilo vif selon le mode de tarification (AV-031) ; aucun identifiant individuel demandé | REQ-034, REQ-035, BR-POR-001 à 004 |
+| AT-053 | Ajout par l'Admin d'une nouvelle catégorie d'œufs (ex. gros calibre) | Nouveau produit et nouveau champ de collecte utilisables sans modification du modèle de mouvement ; collectes antérieures inchangées | REQ-032, BR-OEU-006 |
+| AT-054 | Indicateur « ventes de la semaine » lu sur le tableau commercial, la tour de contrôle et l'explorateur, pour le même périmètre | Valeurs identiques ; un commercial ne voit que ses lignes (portée OWN) ; sans `inventory.valuation.read`, aucun coût ni marge affiché | REQ-017, REQ-055, REQ-056, REQ-059, BR-ANA-004, BR-ANA-009 |
+| AT-055 | Ajout, dans une branche, d'un import interdit entre modules (ex. `inventory` qui importe `sales`) | CI en échec sur le contrôle des frontières de modules | REQ-082, REQ-214, NFR-32 |
 
 ## 7. Critères de sortie d'une phase (rappel)
 

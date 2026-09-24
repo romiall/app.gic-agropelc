@@ -103,6 +103,7 @@ Classification (PM §45) :
 | AV-086 | Volumétrie cible à 3 ans | IMPORTANTE | P0/P9 | 150 utilisateurs, 40 sites, 5 000 lignes de vente/jour | OUVERT |
 | AV-087 | Prix appliqué à la livraison d'une commande | SECONDAIRE | P4 | Prix convenu à la commande | OUVERT |
 | AV-088 | Clôture et verrouillage de période | SECONDAIRE | P8 | Pas de verrouillage au MVP | OUVERT |
+| AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; PostgreSQL ; pg-boss | OUVERT |
 
 ---
 
@@ -456,6 +457,14 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) pas de verrouillage ; (b) verrouillage mensuel par la Finance, avec les écritures tardives redatées au premier jour de la période ouverte ; (c) verrouillage avec dérogation.
 - **Recommandation** : (a) au MVP. La fenêtre de saisie rétroactive (AV-078), l'immuabilité des sessions de caisse validées et le principe des contre-écritures datées de leur propre `occurred_at` suffisent. (b) sera nécessaire avec une intégration comptable (AV-059).
 - **Impact** : règles de datation des écritures tardives ; rapports financiers.
+
+
+### AV-089 — Confirmation de la stack technique — IMPORTANTE
+- **Question** : la stack proposée en fin de cadrage ([`05-architecture/05-stack.md`](05-architecture/05-stack.md), ADR-021) est-elle retenue ?
+- **Pourquoi** : le choix conditionne le squelette du dépôt en P0, le profil des développeurs à mobiliser (AV-084) et la possibilité de partager la logique métier entre l'appareil et le serveur (INV-PRX-04).
+- **Choix** : (a) stack proposée (TypeScript partout) ; (b) serveur dans un autre langage (Python, Kotlin, PHP) avec la PWA en TypeScript ; (c) application native au lieu d'une PWA.
+- **Recommandation** : (a). Seule option qui garantit que les validations et le moteur de prix sont identiques hors ligne et en ligne sans duplication. (b) impose de maintenir deux implémentations de `packages/domain` ; (c) contredit ADR-001 et le principe PWA du PM.
+- **Impact** : P0 ne démarre qu'après cette confirmation. Un changement de framework (React → Preact, NestJS → Fastify seul) ne remet pas en cause l'architecture ; un changement de langage serveur la remet en cause (nouvel ADR).
 
 ---
 

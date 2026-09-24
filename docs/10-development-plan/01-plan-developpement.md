@@ -27,13 +27,13 @@
 | **P0** Fondations (XL, 5 à 6 sem.) | Socle technique, sécurité et offline éprouvés | Dépôt et conventions, CI/CD, base et migrations, bibliothèque partagée, `platform`, `audit`, `identity` (authentification, appareils, RBAC), `organization` (sites, zones, emplacements, équipes, paramètres), `sync` (push, pull, bootstrap, états), `approvals` et `attachments` (socle), PWA squelette (connexion, PIN, accueil par rôle, pastille de synchronisation) | — | Une commande de démonstration (`organization.setting.set`) et une commande hors ligne (`identity.device.*` / note de test) traversent tout le pipeline, avec audit | Tests des invariants GLO, SYN, ADM, AUD ; harnais de synchronisation de base ; E2E connexion + hors ligne + reprise |
 | **P1** Référentiels métier (M, 2 à 3 sem.) | Catalogue et prix partagés | Produits, unités, conditionnements, catégories, motifs, coûts standard ; catégories de client et canaux ; fournisseurs (fiche) ; règles tarifaires, campagnes, simulateur ; import CSV des référentiels (AV-072) | P0 | Catalogue et grille tarifaire administrables ; moteur de prix identique sur l'appareil et le serveur | INV-PRX-*, INV-CAT-01 ; AT-006, AT-007 (partiel) |
 | **P2** Stock et mouvements (L, 4 sem.) | Stock fiable et traçable au magasin et au PDV pilote | Registre, soldes, lots, transferts (avec transit, écarts, réception sans document), pertes avec politiques et validations, consommations, inventaires (dont ouverture), seuils, valorisation CMUP, registre de coûts (socle), alertes de stock | P0, P1 | Magasin et PDV gèrent réceptions d'ouverture, transferts, pertes et inventaires, hors ligne | INV-STK-* ; AT-016, 017, 019, 020, 021, 022, 047, 049 |
-| **P3** CRM terrain et pointage (M, 3 sem.) | Effort commercial mesuré | Comptes clients, portefeuille, doublons, fusion, pipeline, visites, interactions, objectifs, pointage, dérogations, tableau commercial simple | P0, P1 (parallélisable avec P2) | Commerciaux terrain équipés, hors ligne | INV-CRM-*, INV-TER-* ; AT-011 (partiel), 012, 013, 014, 015 |
+| **P3** CRM terrain et pointage (M, 3 sem.) | Effort commercial mesuré | Comptes clients, portefeuille, doublons, fusion, pipeline, visites, interactions, objectifs, pointage, dérogations, tableau commercial simple | P0, P1 (parallélisable avec P2) | Commerciaux terrain équipés, hors ligne | INV-CRM-*, INV-TER-* ; AT-011 (partiel), 012, 013, 014, 015, 051 |
 | **P4** Commandes, ventes, encaissements (L, 4 sem.) | Vendre et encaisser partout, même hors ligne | Commandes, réservations, livraisons ; ventes directes et sur commande ; dérogations ; crédit ; annulations ; encaissements et affectations ; créances ; socle de trésorerie (comptes, mouvements, moyens) ; stock mobile des commerciaux ; conversion prospect → client | P1, P2, P3 | Vente de bout en bout (terrain et PDV) avec caisse utilisateur | INV-VEN-*, INV-FIN-01 à 04, 09, 10 ; AT-001 à 011, 018, 030, 032, 033 |
 | **P5** Distribution et PDV (M, 3 sem.) | PDV autonomes et pilotés | Configuration PDV (mode de garde), allocations, sessions de caisse, remises de fonds, réapprovisionnement suggéré, tableau de distribution | P4 | Un PDV fonctionne toute la journée hors ligne, avec une caisse contrôlée | INV-FIN-05, 06 ; AT-003, 004, 031, 042 |
 | **P6** Approvisionnement (M, 3 sem.) | Achats contrôlés | Demandes d'achat, validations, bons de commande, réceptions (livré, rejeté, accepté), quarantaine, réception sans BC, reliquats | P2 | Chaîne Besoin → Réception opérationnelle | INV-APP-* ; AT-023, 024 |
-| **P7** Production (L, 4 sem.) | Production suivie par lot | Lots (chair, pondeuses, porcs), mise en place (stock interne ou achat direct), saisie du jour, mortalité avec seuils, consommations imputées, pesées, collectes d'œufs, incubation, sortie vers commercialisation, clôture, coût par tête | P2, P6 | Fermes équipées ; indicateurs de lot | INV-PRD-*, INV-OEU-01, INV-INC-01 ; AT-026 à 029 |
+| **P7** Production (L, 4 sem.) | Production suivie par lot | Lots (chair, pondeuses, porcs), mise en place (stock interne ou achat direct), saisie du jour, mortalité avec seuils, consommations imputées, pesées, collectes d'œufs, incubation, sortie vers commercialisation, clôture, coût par tête | P2, P6 | Fermes équipées ; indicateurs de lot | INV-PRD-*, INV-OEU-01, INV-INC-01 ; AT-026 à 029, 052, 053 |
 | **P8** Finance opérationnelle (M, 3 sem.) | Coûts, marges, dettes | Dépenses (imputées), factures fournisseurs et rapprochement, paiements fournisseurs, dettes, coûts de lot complets, marges, valeur des pertes | P4, P6, P7 | Vue financière opérationnelle complète | INV-FIN-07, 08 ; AT-025, 040, 041 |
-| **P9** Analytics et direction (L, 4 sem.) | Tour de contrôle et analyse flexible | Couche sémantique, jeux de faits, tour de contrôle, tableaux par rôle complets, explorateur, vues sauvegardées, exports, catalogue complet d'alertes, notes de direction | P4 à P8 | Direction autonome sur ses questions (CM §62) | AT-038, 039, 043, 045, 046, 048 ; NFR-12, 13 |
+| **P9** Analytics et direction (L, 4 sem.) | Tour de contrôle et analyse flexible | Couche sémantique, jeux de faits, tour de contrôle, tableaux par rôle complets, explorateur, vues sauvegardées, exports, catalogue complet d'alertes, notes de direction | P4 à P8 | Direction autonome sur ses questions (CM §62) | AT-038, 039, 043, 045, 046, 048, 054 ; NFR-12, 13 |
 | **P10** Intégration Kommo (M, 2 à 3 sem.) | Parcours digital continu | Liens externes, webhooks entrants, messages sortants, anti-boucle, supervision, rejeu | P3, P4 ; AV-068 tranché | Leads qualifiés convertis en clients GIC ; enrichissement Kommo | INV-KOM-* ; AT-044 |
 
 Durée indicative totale : environ 37 à 40 semaines de développement pour 2 développeurs, hors recette et formation (AV-084).
@@ -67,8 +67,8 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests unitaires | UUIDv7, horloge, argent et quantités, évaluation des portées, évaluation des politiques, sérialisation canonique d'audit |
 | Tests d'intégration | Déclencheurs d'immuabilité (INV-GLO-03), chaîne d'audit (INV-AUD-01), idempotence de l'inbox (INV-SYN-01 à 05), RBAC généré (socle), dernier Admin (INV-ADM-01) |
 | Tests E2E | Enrôlement et approbation d'appareil ; connexion et PIN ; commande hors ligne puis reprise ; rejet affiché ; révocation d'appareil |
-| Critères d'acceptation | AT-002, AT-034, AT-035, AT-036, AT-050 (sur une commande de démonstration) |
-| Prérequis | Décisions : AV-006, AV-008, AV-009, AV-010, AV-073 (hébergement), AV-075, AV-077, AV-078, AV-079 ; stack validée (ADR-021) ; comptes d'hébergement |
+| Critères d'acceptation | AT-002, AT-034, AT-035, AT-036, AT-050 (sur une commande de démonstration), AT-055 |
+| Prérequis | Décisions : AV-006, AV-008, AV-009, AV-010, AV-073 (hébergement), AV-075, AV-077, AV-078, AV-079 ; stack validée (ADR-021, AV-089) ; comptes d'hébergement |
 | Risques | RISK-01, RISK-03, RISK-07, RISK-08, RISK-09, RISK-16, RISK-21, RISK-26 |
 | Définition de Done | CI verte (y compris contrôle des modules et de la documentation) ; staging déployé ; runbook de restauration testé ; documentation mise à jour ; démonstration hors ligne réussie sur l'appareil de référence |
 
@@ -127,7 +127,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests unitaires | Géorepère (distance, précision), signaux de suspicion, fusion de champs |
 | Tests d'intégration | INV-CRM-01 à 05, INV-TER-01, 02 |
 | Tests E2E | Journée d'un commercial terrain hors ligne |
-| Critères d'acceptation | AT-012, 013, 014, 015 |
+| Critères d'acceptation | AT-012, 013, 014, 015, 051 |
 | Prérequis | AV-003, AV-011, AV-012, AV-013, AV-014, AV-015, AV-016, AV-021, AV-022, AV-023 ; zones et géorepères saisis |
 | Risques | RISK-10, RISK-15, RISK-17 |
 | DoD | Deux commerciaux pilotes l'utilisent une semaine sans retour au papier |
@@ -205,7 +205,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests unitaires | Bilans (œufs, incubation), seuil relatif de mortalité, coût par tête |
 | Tests d'intégration | INV-PRD-01 à 03, INV-OEU-01, INV-INC-01 |
 | Tests E2E | Saisie du jour d'une semaine hors ligne |
-| Critères d'acceptation | AT-026 à 029 |
+| Critères d'acceptation | AT-026 à 029, 052, 053 |
 | Prérequis | AV-004, AV-005, AV-032, AV-043 à AV-050 |
 | Risques | RISK-24 |
 | DoD | Un lot pilote suivi de la mise en place à la clôture |
@@ -241,7 +241,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Permissions | `analytics.*`, `comm.*` |
 | Offline | Instantanés `kpi` ; notes et alertes |
 | Tests | Cohérence entre écrans (BR-ANA-009), RLS, limites, performance (NFR-12, NFR-13) |
-| Critères d'acceptation | AT-038, 039, 043, 045, 046, 048 |
+| Critères d'acceptation | AT-038, 039, 043, 045, 046, 048, 054 |
 | Prérequis | AV-013, AV-064 à AV-067, AV-086 |
 | Risques | RISK-13 |
 | DoD | La Direction répond seule aux questions du CM §62 |
