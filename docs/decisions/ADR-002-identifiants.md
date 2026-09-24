@@ -9,12 +9,12 @@ Il faut créer des entités hors ligne sans demander d'identifiant au serveur (P
 ## Décision
 | Usage | Identifiant |
 |---|---|
-| Clé primaire de toute entité | **UUIDv7**, généré par l'appareil ou par le serveur ; type `uuid` natif PostgreSQL |
+| Clé primaire de toute entité | **UUIDv7**, généré par l'appareil ou par le serveur ; stocké en `BINARY(16)` (MySQL, ADR-023 — pas de type `uuid` natif) |
 | Idempotence | `command_id` (UUIDv7) distinct des identifiants d'entités |
 | Référence locale (reçu hors ligne) | `{CODE_APPAREIL}-{seq6}` |
 | Numéro officiel | `{TYPE}-{CODE_SITE}-{AAAA}-{seq6}`, attribué par le serveur (compteur par type, site et année) |
 | Ordre et intégrité par appareil | `device_seq` strictement croissant |
-| Curseurs | `bigserial` serveur (flux de changements, audit) |
+| Curseurs | `BIGINT UNSIGNED AUTO_INCREMENT` serveur (flux de changements, audit) |
 
 Le serveur vérifie le format UUIDv7 et l'horodatage embarqué (≤ 24 h dans le futur) ; il n'utilise jamais cet horodatage comme heure métier.
 

@@ -52,7 +52,7 @@ flowchart LR
     MODS["Modules métier<br/>CRM · Ventes · Stock · Production<br/>Achats · Finance · Pricing …"]
     EVT[["Événements métier<br/>(outbox transactionnelle)"]]
     WRK["Worker<br/>projections, alertes, notifications,<br/>Kommo, pièces jointes"]
-    DB[("PostgreSQL<br/>registres + documents + audit")]
+    DB[("MySQL<br/>registres + documents + audit")]
     OBJ[("Stockage objet<br/>photos, justificatifs")]
     SYNC --> CMD --> MODS --> DB
     MODS --> EVT --> WRK

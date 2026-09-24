@@ -28,7 +28,7 @@ flowchart LR
     API["Processus API<br/>HTTP : sync, commandes, requêtes,<br/>analytics, webhooks, pièces jointes"]
     WRK["Processus Worker<br/>consommateurs d'événements · ordonnanceur ·<br/>Kommo · notifications · projections · exports"]
   end
-  PG[("PostgreSQL<br/>schémas par module, outbox,<br/>file de tâches")]
+  DB[("MySQL<br/>espaces de noms par module, outbox,<br/>file de tâches")]
   OBJ[("Stockage objet S3-compatible<br/>pièces jointes, exports, archives")]
   SEC["Gestionnaire de secrets"]
   PUSH["Services Web Push"]
@@ -36,9 +36,9 @@ flowchart LR
   OBS["Observabilité<br/>(erreurs, métriques, logs)"]
   PWA --> CDN --> API
   WEB --> CDN
-  API --> PG
+  API --> DB
   API --> OBJ
-  WRK --> PG
+  WRK --> DB
   WRK --> OBJ
   WRK --> PUSH
   WRK <--> KOMMO
@@ -53,7 +53,7 @@ flowchart LR
 |---|---|---|
 | **API** | Point d'entrée HTTP ; gestionnaires de commandes ; requêtes ; synchronisation | Sans état (mise à l'échelle horizontale possible) ; une transaction par commande |
 | **Worker** | Traitements asynchrones | Même code et mêmes modules que l'API, démarré en mode worker ; plusieurs instances possibles (verrous `SKIP LOCKED`) |
-| **File de messages** | Événements métier, tâches différées | **PostgreSQL** (outbox `platform.domain_events` + table de tâches consommée avec `FOR UPDATE SKIP LOCKED`). Pas de RabbitMQ, Kafka ni Redis au MVP : un seul système de persistance, et des transactions qui couvrent l'écriture métier et la publication |
+| **File de messages** | Événements métier, tâches différées | **MySQL** (ADR-023) : outbox `platform.domain_events` + table de tâches maison consommée avec `SELECT … FOR UPDATE SKIP LOCKED`. Pas de RabbitMQ, Kafka ni Redis au MVP : un seul système de persistance, et des transactions qui couvrent l'écriture métier et la publication |
 | **Ordonnanceur** | Tâches planifiées : clôtures à 23:59, alertes quotidiennes, créances échues, vérification de l'audit, instantanés, purges | Intégré au worker ; chaque tâche prend un verrou consultatif pour ne s'exécuter qu'une fois ; horaires en `Africa/Douala` |
 | **Stockage de fichiers** | Photos, justificatifs, exports, archives d'audit | Stockage objet S3-compatible, privé ; URL signées ; verrou d'objet pour les ancres d'audit |
 | **Cache** | Droits effectifs, référentiels chauds | En mémoire du processus, avec invalidation par événement ; pas de cache distribué au MVP. Redis seulement si plusieurs instances d'API rendent l'invalidation coûteuse (seuil de revue) |
@@ -89,7 +89,7 @@ sequenceDiagram
   participant R as Registre des commandes
   participant H as Gestionnaire (module propriétaire)
   participant M as API internes (autres modules)
-  participant DB as PostgreSQL
+  participant DB as MySQL
   C->>S: enveloppe
   S->>DB: inbox (idempotence) — BEGIN
   S->>R: résolution command_type → gestionnaire, schéma, permission
@@ -117,7 +117,7 @@ sequenceDiagram
 |---|---|---|
 | **P1 (MVP)** | Volumétrie H-06 | Vues SQL `analytics.f_*` sur les tables transactionnelles, avec index dédiés (`business_date`, dimensions) ; RLS ; tableaux de bord servis par des requêtes agrégées sur 1 à 90 jours ; instantanés personnels (`kpi_snapshots`) calculés par le worker toutes les 15 min |
 | **P2** | p95 des tableaux de bord > 3 s, ou > 20 millions de lignes de faits | Tables d'agrégats journaliers (`analytics.agg_daily_*`) maintenues de façon incrémentale par le worker à partir des événements et des mouvements, avec recalcul du jour J et J−7 pour absorber les opérations tardives |
-| **P3** | Charge analytique qui gêne l'OLTP | Réplique en lecture PostgreSQL dédiée aux requêtes analytiques et aux exports |
+| **P3** | Charge analytique qui gêne l'OLTP | Réplique en lecture MySQL dédiée aux requêtes analytiques et aux exports (si l'offre Hostinger le permet, sinon fournisseur managé dédié) |
 | **P4** (hors horizon) | Besoins de BI avancée | Export vers un entrepôt externe |
 
 Les agrégats sont **recalculables** et n'ont jamais valeur de vérité (catégorie `PROJ`).

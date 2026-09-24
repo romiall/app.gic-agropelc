@@ -62,7 +62,7 @@
 - **PK** `id`. **FK** vers les référentiels, zones, utilisateurs et sites.
 - **UQ** `phone_primary` parmi `stage <> 'MERGED'` (INV-CRM-03) ; `command_id`.
 - **CK** `phone_primary` ou (`lat`, `lng`) renseigné (BR-CRM-002) ; cohérence stade / colonnes (`LOST` ⇒ motif ; `MERGED` ⇒ `merged_into_id` ; `CUSTOMER` ⇒ `first_sale_id`).
-- **IX** `(owner_user_id)`, `(zone_id)`, `(stage)`, trigramme sur `display_name` (recherche), `(acquired_by_user_id, acquired_at)`.
+- **IX** `(owner_user_id)`, `(zone_id)`, `(stage)`, plein texte `ngram` sur `display_name` (recherche approchée, MySQL — ADR-023), `(acquired_by_user_id, acquired_at)`.
 - **Suppr.** `DESACTIVATION` / fusion (`MERGED`) ; pseudonymisation sur demande (données personnelles, AV-073).
 - **Hist.** Stades et étapes dans `customer_stage_history` ; titulaires dans `customer_assignments` ; coordonnées et position dans l'audit (avant et après).
 - **Audit** Création, modification, réaffectation, fusion, conditions de crédit, perte, réouverture.
@@ -84,7 +84,7 @@
 | `command_id` | uuid | Oui | — | |
 | `created_at` | ts | Non | `now()` | |
 
-- **PK** `id`. **Contrainte d'exclusion** : pas de chevauchement par `customer_id` (INV-CRM-02).
+- **PK** `id`. **Non-chevauchement** par `customer_id` (INV-CRM-02) : verrouillage de ligne + déclencheur de re-vérification (MySQL, ADR-023).
 - **IX** `(user_id, valid_from)`, `(customer_id, valid_from)`.
 - **Suppr.** `IMMUABLE` sauf fermeture de `valid_to`. **Audit** Chaque affectation. **Offline** DL (affectations courantes du portefeuille).
 
@@ -164,11 +164,11 @@
 | `metric` | enum(`CA`,`QTE_PRODUIT`,`NOUVEAUX_CLIENTS`,`VISITES`,`PROSPECTS_CREES`) | Non | — | |
 | `product_id` | uuid → catalog.products | Oui | — | Requis si `QTE_PRODUIT` |
 | `period_start`, `period_end` | date | Non | — | |
-| `target_value` | numeric(16,3) | Non | — | > 0 |
+| `target_value` | DECIMAL(16,3) | Non | — | > 0 |
 | `status` | enum(`ACTIVE`,`CANCELLED`) | Non | `ACTIVE` | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **Contrainte d'exclusion** : pas de chevauchement pour (cible, métrique, produit) actifs (BR-CRM-018).
+- **PK** `id`. **Non-chevauchement** pour (cible, métrique, produit) actifs (BR-CRM-018) : verrouillage de ligne + déclencheur de re-vérification (MySQL, ADR-023).
 - **Suppr.** `ANNULATION`. **Offline** DL (les siens et ceux de son équipe).
 
 ---

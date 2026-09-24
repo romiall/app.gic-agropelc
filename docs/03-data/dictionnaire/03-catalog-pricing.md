@@ -65,7 +65,7 @@
 | [STD-ID] | | | | |
 | `product_id` | uuid → products | Non | — | |
 | `unit_code` | code → units | Non | — | |
-| `factor_to_base` | numeric(14,6) | Non | — | 1 plateau = 30 œufs ; 1 sac = 50 kg |
+| `factor_to_base` | DECIMAL(14,6) | Non | — | 1 plateau = 30 œufs ; 1 sac = 50 kg |
 | `is_sales_unit`, `is_purchase_unit`, `is_count_unit` | boolean | Non | false | Usages |
 | `is_active` | boolean | Non | true | |
 | [STD-AUDIT] | | | | |

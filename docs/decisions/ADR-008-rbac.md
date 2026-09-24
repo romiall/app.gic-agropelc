@@ -12,7 +12,7 @@ Un utilisateur cumule plusieurs rôles (CM §6, §47). Les accès dépendent du 
 - Évaluation **à `occurred_at`** pour les commandes (hors ligne comprises).
 - Séparation des tâches : approbateur ≠ demandeur ; Admin sans approbation métier (AV-010).
 - Matrice versionnée en données de référence ; tests générés depuis la matrice.
-- RLS PostgreSQL sur les vues analytiques, en défense en profondeur.
+- Défense en profondeur pour l'analytique : sous MySQL (ADR-023, pas de RLS natif), le filtrage de portée applicatif (`scopeFilter`) reste l'unique ligne d'exécution, compensé par une fonction de filtrage unique et partagée, une couverture de test systématique par (rôle × jeu de faits) et l'absence de tout accès direct à la base pour un utilisateur final. Voir RISK-28.
 
 ## Alternatives étudiées
 - Champ `role` unique sur l'utilisateur : incompatible avec le cumul (PM §17).

@@ -6,8 +6,8 @@
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| `seq` | bigserial | Non | — | PK, ordre global |
-| `id` | uuid | Non | `uuidv7()` | Identifiant exposé |
+| `seq` | BIGINT UNSIGNED AUTO_INCREMENT | Non | — | PK, ordre global |
+| `id` | uuid | Non | généré par l'application | Identifiant exposé (aucune fonction `uuidv7()` native en MySQL — voir `01-identifiants-et-conventions.md` §3.1) |
 | `occurred_at` | ts | Non | — | Heure métier (de la commande) |
 | `recorded_at` | ts | Non | `now()` | Heure serveur |
 | `actor_user_id` | uuid → identity.users | Non | — | Utilisateur ou `system` |
@@ -23,8 +23,8 @@
 | `entity_type` | code | Non | — | |
 | `entity_id` | uuid | Oui | — | |
 | `site_id` | uuid | Oui | — | Pour le filtrage par périmètre |
-| `before` | jsonb | Oui | — | Champs modifiés, valeurs avant |
-| `after` | jsonb | Oui | — | Valeurs après |
+| `before` | json | Oui | — | Champs modifiés, valeurs avant |
+| `after` | json | Oui | — | Valeurs après |
 | `reason` | text | Oui | — | Motif ou commentaire |
 | `approval_request_id` | uuid | Oui | — | |
 | `result` | enum(`SUCCESS`,`DENIED`,`FAILED`,`QUARANTINED`) | Non | — | |
@@ -55,7 +55,7 @@
 | `aggregate_type`, `aggregate_id` | code, uuid | Oui | — | Cible principale |
 | `base_version` | int | Oui | — | Concurrence optimiste |
 | `depends_on` | uuid[] | Non | `{}` | |
-| `payload` | jsonb | Non | — | Contenu de la commande (conservé pour le rejeu et l'enquête) |
+| `payload` | json | Non | — | Contenu de la commande (conservé pour le rejeu et l'enquête) |
 | `payload_hash` | char(64) | Non | — | INV-SYN-02 |
 | `occurred_at` | ts | Non | — | |
 | `client_created_at` | ts | Oui | — | |
@@ -66,7 +66,7 @@
 | `captured_offline` | boolean | Non | false | |
 | `batch_id` | uuid | Oui | — | Lot d'envoi |
 | `status` | enum(`RECEIVED`,`APPLIED`,`APPLIED_WITH_WARNINGS`,`CONFLICT`,`REJECTED`,`FAILED_RETRYABLE`) | Non | `RECEIVED` | |
-| `result` | jsonb | Oui | — | Identifiants et numéros créés, avertissements |
+| `result` | json | Oui | — | Identifiants et numéros créés, avertissements |
 | `error_code`, `error_message` | varchar, text | Oui | — | |
 | `attempts` | smallint | Non | 1 | Tentatives d'application serveur |
 
@@ -88,7 +88,7 @@
 | `site_id` | uuid | Oui | — | Routage |
 | `owner_role` | code | Non | — | Rôle chargé de la résolution |
 | `applied` | boolean | Non | — | La commande a-t-elle été appliquée (conflit informatif) ou non (quarantaine) ? |
-| `details` | jsonb | Non | — | État serveur et intention client, différences |
+| `details` | json | Non | — | État serveur et intention client, différences |
 | `status` | enum(`OPEN`,`RESOLVED`,`DISMISSED`) | Non | `OPEN` | SM-CONFLICT |
 | `resolution` | enum(`ACCEPT_CLIENT`,`KEEP_SERVER`,`MERGE`,`COMPENSATE`) | Oui | — | |
 | `resolution_refs` | uuid[] | Non | `{}` | Documents compensatoires créés |
@@ -103,7 +103,7 @@
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| `seq` | bigserial | Non | — | PK, curseur |
+| `seq` | BIGINT UNSIGNED AUTO_INCREMENT | Non | — | PK, curseur |
 | `dataset` | code | Non | — | Jeu de données (`catalog`, `price_rules`, `customers`, `stock_balances`…) |
 | `entity_type` | code | Non | — | |
 | `entity_id` | uuid | Non | — | |
@@ -130,7 +130,7 @@
 | `bootstrapped_at` | ts | Oui | — | |
 | `needs_rebootstrap` | boolean | Non | false | |
 
-Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (int8range[]), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations en attente déclaré par l'appareil), `app_version`.
+Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]`), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations en attente déclaré par l'appareil), `app_version`.
 
 - **PK** `(device_id, dataset)`. **Suppr.** Technique (suit l'appareil). **Offline** SRV.
 
@@ -166,8 +166,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `event_type` | varchar(80) | Non | — | |
 | `received_at` | ts | Non | `now()` | |
 | `signature_valid` | boolean | Non | — | |
-| `headers` | jsonb | Non | — | Sans secret |
-| `payload` | jsonb | Non | — | Brut |
+| `headers` | json | Non | — | Sans secret |
+| `payload` | json | Non | — | Brut |
 | `status` | enum(`RECEIVED`,`PROCESSED`,`IGNORED_DUPLICATE`,`IGNORED_ECHO`,`FAILED`,`DEAD`) | Non | `RECEIVED` | |
 | `attempts` | smallint | Non | 0 | |
 | `processed_at` | ts | Oui | — | |
@@ -186,7 +186,7 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `operation` | varchar(80) | Non | — | Ex. `contact.upsert`, `lead.update_fields` |
 | `entity_type`, `entity_id` | code, uuid | Non | — | |
 | `idempotency_key` | varchar(200) | Non | — | BR-KOM-007 |
-| `payload` | jsonb | Non | — | Valeurs absolues |
+| `payload` | json | Non | — | Valeurs absolues |
 | `payload_hash` | char(64) | Non | — | |
 | `caused_by_event_id` | uuid | Oui | — | Événement métier source |
 | `status` | enum(`PENDING`,`SENT`,`DEAD`) | Non | `PENDING` | |
@@ -206,7 +206,7 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 |---|---|---:|---|---|
 | `system` | enum(`KOMMO`) | Non | — | |
 | `key` | varchar(100) | Non | — | Ex. `qualified_status_ids`, `field_map.total_revenue`, `user_map` |
-| `value` | jsonb | Non | — | |
+| `value` | json | Non | — | |
 | `updated_at`, `updated_by` | | | | |
 
 - **PK** `(system, key)`. Les secrets (jetons d'API Kommo) sont **hors base**, dans le gestionnaire de secrets.
@@ -217,15 +217,15 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| `seq` | bigserial | Non | — | PK, ordre de consommation |
-| `event_id` | uuid | Non | `uuidv7()` | |
+| `seq` | BIGINT UNSIGNED AUTO_INCREMENT | Non | — | PK, ordre de consommation |
+| `event_id` | uuid | Non | généré par l'application | |
 | `event_type` | varchar(80) | Non | — | `SaleConfirmed` |
 | `event_version` | smallint | Non | 1 | |
 | `producer_module` | code | Non | — | |
 | `aggregate_type`, `aggregate_id` | code, uuid | Non | — | |
 | `occurred_at` | ts | Non | — | Heure métier |
 | `recorded_at` | ts | Non | `now()` | |
-| `payload` | jsonb | Non | — | Données minimum du catalogue |
+| `payload` | json | Non | — | Données minimum du catalogue |
 | `command_id` | uuid | Oui | — | Causalité |
 | `correlation_id`, `causation_id` | uuid | Oui | — | Traçage |
 

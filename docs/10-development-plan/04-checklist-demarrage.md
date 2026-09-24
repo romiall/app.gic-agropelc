@@ -40,7 +40,7 @@ Aucun AV bloquant ne concerne P0 à P3 : **la release R1 peut être développée
 
 | ✓ | Élément | Référence | Resp. |
 |---|---|---|---|
-| [ ] | Équipe constituée (profils TypeScript, React, PostgreSQL) et budget d'exploitation validé | AV-084, RISK-21 | DIR |
+| [ ] | Équipe constituée (profils TypeScript, React, MySQL) et budget d'exploitation validé | AV-084, RISK-21 | DIR |
 | [ ] | Référent métier GIC désigné, disponible pour les arbitrages | RISK-18 | DIR |
 | [ ] | Revue hebdomadaire du registre À VALIDER planifiée | RISK-18 | DIR + TECH |
 | [ ] | Utilisateurs pilotes de R1 identifiés (magasin central, 1 PDV, 2 commerciaux terrain) | Plan §3 | DIR |
@@ -50,11 +50,12 @@ Aucun AV bloquant ne concerne P0 à P3 : **la release R1 peut être développée
 
 | ✓ | Élément | Référence | Resp. |
 |---|---|---|---|
-| [ ] | Hébergeur et région retenus ; vérification juridique de la localisation des données | AV-073, [`05-architecture/04-deploiement.md`](../05-architecture/04-deploiement.md) | DIR + TECH |
-| [ ] | PostgreSQL managé ≥ 16 (18 si disponible) avec PITR ; extensions `btree_gist`, `pg_trgm`, `pgcrypto` disponibles | ADR-020, NFR-20 | TECH |
-| [ ] | Stockage objet S3-compatible privé, versionné ; CDN pour la PWA | ADR-012 | TECH |
+| [ ] | Hébergeur retenu : **Hostinger, sans VPS** (tranché, ADR-024) ; plan précis choisi | AV-073, [`05-architecture/04-deploiement.md`](../05-architecture/04-deploiement.md) | DIR + TECH |
+| [ ] | Modalité d'exécution du serveur Node.js chez Hostinger sans VPS choisie | AV-090 — sans impact sur P0 à P3 | DIR + TECH |
+| [ ] | Base **MySQL 8 ≥ 8.0.19** managée disponible chez Hostinger | ADR-023, NFR-20 | TECH |
+| [ ] | Fournisseur de stockage objet S3-compatible choisi (Hostinger sans VPS n'en propose pas) ; privé, versionné ; CDN pour la PWA | ADR-012, AV-091 | TECH |
 | [ ] | Environnements `dev`, `staging`, `production` créés | Déploiement §1 | TECH |
-| [ ] | Nom de domaine ; TLS automatique | NFR-26 | TECH |
+| [ ] | Sous-domaine `app.gic-agropelc.com` pointé vers l'hébergement retenu ; TLS automatique | NFR-26, ADR-024 §2 | TECH |
 | [ ] | Dépôt : branche principale protégée, revue obligatoire, CI GitHub Actions | Déploiement §3 | TECH |
 | [ ] | Secrets générés et stockés dans le gestionnaire de secrets : clé de signature des jetons (EdDSA), clés VAPID, accès au stockage objet | [`07-security-rbac/02-securite.md`](../07-security-rbac/02-securite.md) | TECH |
 | [ ] | Supervision : capture des erreurs, collecte OpenTelemetry, sonde de disponibilité externe | [`09-non-functional/02-observabilite.md`](../09-non-functional/02-observabilite.md) | TECH |
@@ -86,12 +87,14 @@ Aucun AV bloquant ne concerne P0 à P3 : **la release R1 peut être développée
 |---|---|---|
 | Exigences sources, règles métier, invariants | Stabilisé | 99 exigences, 313 règles, 81 invariants ; statut de chaque règle indiqué |
 | Workflows, machines à états | Stabilisé | 18 workflows, 30 machines à états |
-| Modèle de données | Stabilisé pour P0 à P5 | Tables de P6 à P10 à confirmer avec leurs AV |
+| Modèle de données | Stabilisé pour P0 à P5 | Tables de P6 à P10 à confirmer avec leurs AV ; types recadrés pour MySQL (ADR-023) |
 | Offline, synchronisation, conflits | Stabilisé | Politique de dépassement d'allocation dépendante d'AV-025 (bloquant P4) |
-| Sécurité, RBAC, audit | Stabilisé | Rôles additionnels : AV-004 |
+| Sécurité, RBAC, audit | Stabilisé | Rôles additionnels : AV-004 ; défense en profondeur analytique reportée sur les tests (RISK-28) |
 | API, événements | Stabilisé (principes, catalogue) | Contrats détaillés écrits phase par phase dans `packages/contracts` |
-| Architecture, modules, déploiement | Stabilisé | Hébergeur : AV-073 |
-| Stack | Proposée | AV-089 |
-| Décisions métier | 89 points ouverts, dont 2 bloquants (P4) | Voir le registre |
+| Base de données | **Tranchée** | MySQL 8, remplace PostgreSQL (ADR-023) |
+| Hébergement | **Tranché** | Hostinger, sans VPS (ADR-024, AV-073) ; modalité d'exécution du serveur encore ouverte (AV-090), sans impact sur P0 à P3 |
+| Architecture, modules | Stabilisé | — |
+| Stack | Proposée | AV-089 (composants applicatifs inchangés ; seule la base a changé) |
+| Décisions métier | 91 points ouverts, dont 2 bloquants (P4) | Voir le registre |
 
-**Verdict** : le développement de **P0** peut commencer dès que les sections 1, 3, 4 et 5 sont cochées et que les AV de P0 sont tranchés ou leurs valeurs par défaut acceptées. Aucune spécification manquante n'oblige à improviser pour P0 à P3.
+**Verdict** : le développement de **P0** peut commencer dès que les sections 1, 3, 4 et 5 sont cochées et que les AV de P0 sont tranchés ou leurs valeurs par défaut acceptées. Aucune spécification manquante n'oblige à improviser pour P0 à P3. Le recadrage base de données et hébergement (ADR-023, ADR-024) ne retarde pas ce verdict : le développement reste entièrement local jusqu'au déploiement.

@@ -39,7 +39,7 @@ Règles d'usage :
 
 - Une valeur par défaut proposée pour un point À VALIDER est **utilisable pour avancer**, mais doit rester paramétrable ou facilement modifiable tant que le point n'est pas tranché.
 - Un point À VALIDER tranché par GIC AGROPELC devient **CONFIRMÉ (décision AV-nnn du JJ/MM/AAAA)** ; le registre est mis à jour et le statut est propagé dans les documents qui le référencent.
-- Une décision technique (ex. PostgreSQL, UUIDv7) n'est **jamais** présentée comme une exigence métier. Elle est **DÉDUIT** et documentée par un ADR.
+- Une décision technique (ex. MySQL, UUIDv7) n'est **jamais** présentée comme une exigence métier. Elle est **DÉDUIT** et documentée par un ADR.
 - Abréviations autorisées dans les tableaux : `C` = CONFIRMÉ, `D` = DÉDUIT, `AV` = À VALIDER.
 
 ---
@@ -85,7 +85,7 @@ La documentation est rédigée en **français**. Les **identifiants techniques s
 
 | Élément | Convention | Exemple |
 |---|---|---|
-| Schéma PostgreSQL (= module propriétaire) | `snake_case` | `inventory` |
+| Espace de noms logique par module (« schéma » ; physiquement un préfixe de table sous MySQL, ADR-023) | `snake_case` | `inventory` |
 | Table | `snake_case`, **pluriel** | `inventory.stock_moves` |
 | Colonne | `snake_case` | `occurred_at` |
 | Valeur d'énumération | `UPPER_SNAKE_CASE` | `PENDING_APPROVAL` |
@@ -105,7 +105,7 @@ Ces conventions sont détaillées et justifiées dans [`03-data/01-identifiants-
 |---|---|---|
 | Identifiant technique | UUIDv7 généré par le client ou par le serveur (ADR-002) | D |
 | Monnaie | Franc CFA BEAC (`XAF`), montants **entiers** en francs (ADR-013) | D (monnaie CM §30 « FCFA ») / AV-041 (taxes) |
-| Fuseau horaire métier | `Africa/Douala` (UTC+1, pas d'heure d'été) ; stockage `timestamptz` en UTC | D (CM §29 Douala, Yaoundé) |
+| Fuseau horaire métier | `Africa/Douala` (UTC+1, pas d'heure d'été) ; stockage `DATETIME(6)` en UTC, converti à l'affichage seulement (MySQL, ADR-023) | D (CM §29 Douala, Yaoundé) |
 | Heure métier | `occurred_at` : heure réelle de l'opération, jamais remplacée par l'heure de synchronisation | C (CM §38, PM §5) |
 | Quantités | `numeric(14,3)` en **unité de base** du produit ; entier imposé pour les produits comptés à l'unité | D |
 

@@ -73,7 +73,7 @@
 | `role_id` | uuid → roles | Non | — | |
 | `permission_code` | varchar(80) → permissions | Non | — | |
 | `max_scope` | enum(`OWN`,`TEAM`,`SITE`,`ZONE`,`ALL`) | Non | — | Portée maximale (PM §31) |
-| `limits` | jsonb | Oui | — | Limites paramétriques, ex. `{"max_discount_pct": 5}` |
+| `limits` | json | Oui | — | Limites paramétriques, ex. `{"max_discount_pct": 5}` |
 | `granted_at` | ts | Non | `now()` | |
 | `granted_by` | uuid → users | Non | — | |
 

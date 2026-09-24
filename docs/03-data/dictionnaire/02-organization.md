@@ -12,7 +12,6 @@
 | `code` | code | Non | — | |
 | `name` | label | Non | — | |
 | `depth` | smallint | Non | calculé | Profondeur (1 = racine utile), utilisée par la spécificité tarifaire |
-| `path` | uuid[] | Non | calculé | Ancêtres, de la racine à la zone elle-même (recherche d'appartenance) |
 | `geofence_lat` | lat | Oui | — | Point de référence du géorepère |
 | `geofence_lng` | lng | Oui | — | |
 | `geofence_radius_m` | meters | Oui | 500 | Rayon (CM §10) |
@@ -22,9 +21,25 @@
 
 - **PK** `id`. **FK** `parent_id`. **UQ** `code`.
 - **CK** Latitude, longitude et rayon renseignés ensemble ou pas du tout ; rayon entre 50 et 5 000 ; pas de cycle (TX).
-- **IX** `(parent_id)`, index GIN sur `path`.
+- **IX** `(parent_id)`.
 - **Suppr.** `DESACTIVATION`. **Hist.** Géorepère figé sur chaque tentative de pointage (BR-ADM-013) ; modifications auditées.
 - **Offline** DL : zones du périmètre de l'utilisateur, leurs ancêtres et leurs géorepères.
+- **Recherche d'appartenance** (« la zone B est-elle sous la zone A ? ») : table de fermeture transitive `organization.zone_ancestors`, ci-dessous — remplace la colonne `path` + index GIN de la version PostgreSQL du cadrage (ADR-023, [`../../05-architecture/05-stack.md`](../../05-architecture/05-stack.md) §3.2).
+
+## organization.zone_ancestors
+
+**Responsabilité** : table de fermeture transitive de la hiérarchie des zones — un couple (zone, ancêtre) par ancêtre, y compris la zone elle-même (`depth = 0`). Maintenue par le gestionnaire de commande à la création ou au déplacement d'une zone.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `zone_id` | uuid → zones | Non | — | Zone descendante (ou elle-même) |
+| `ancestor_id` | uuid → zones | Non | — | Ancêtre (ou la zone elle-même si `depth = 0`) |
+| `depth` | smallint | Non | — | 0 = la zone elle-même ; 1 = parent direct ; etc. |
+
+- **PK** `(zone_id, ancestor_id)`. **IX** `(ancestor_id)` (recherche des descendants d'une zone donnée).
+- **Suppr.** Recalculée entièrement à chaque changement de parent d'une zone (déplacement rare).
+- **Usage** : appartenance = `EXISTS (SELECT 1 FROM zone_ancestors WHERE zone_id = :b AND ancestor_id = :a)` ; descendants d'une zone = `SELECT zone_id FROM zone_ancestors WHERE ancestor_id = :a`.
+- **Offline** DL : dérivée des zones téléchargées (reconstruite localement depuis `parent_id`, pas synchronisée en tant que telle).
 
 ## organization.sites
 
@@ -118,7 +133,7 @@
 | `valid_to` | ts | Oui | — | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **Contrainte d'exclusion** : pas deux appartenances d'un même utilisateur qui se chevauchent (`EXCLUDE USING gist (user_id WITH =, tstzrange(valid_from, valid_to) WITH &&)`), conformément à BR-ADM-014.
+- **PK** `id`. **Non-chevauchement** : pas deux appartenances d'un même utilisateur qui se chevauchent, conformément à BR-ADM-014 — verrouillage de ligne (`SELECT … FOR UPDATE`) sur les appartenances existantes de l'utilisateur dans le gestionnaire de commande + déclencheur `BEFORE INSERT/UPDATE` de re-vérification (MySQL, ADR-023 ; équivalent PostgreSQL : `EXCLUDE USING gist`).
 - **Suppr.** `IMMUABLE` sauf fermeture. **Hist.** La table est l'historique. **Offline** DL (son équipe).
 
 ## organization.system_settings
@@ -129,7 +144,7 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `key` | varchar(100) | Non | — | Ex. `crm.visit.max_distance_m`, `pricing.max_discount_pct.VENDEUR_PDV` |
-| `value` | jsonb | Non | — | Valeur typée |
+| `value` | json | Non | — | Valeur typée |
 | `scope_type` | enum(`GLOBAL`,`SITE`,`ZONE`,`ROLE`) | Non | `GLOBAL` | Portée de la valeur |
 | `scope_id` | uuid | Oui | — | Cible si non globale |
 | `valid_from` | ts | Non | `now()` | Date d'effet |

@@ -7,7 +7,7 @@ Application de gestion de la ferme GIC-AGROPELC : une application métier intég
 | Étape | État |
 |---|---|
 | Cadrage fonctionnel et technique | **Terminé** — référentiel complet dans [`docs/`](docs/README.md) |
-| Décisions de démarrage (stack, hébergement, valeurs par défaut) | En attente de la Direction — voir la [checklist de démarrage](docs/10-development-plan/04-checklist-demarrage.md) |
+| Décisions de démarrage | Hébergement **tranché** (Hostinger, sans VPS) ; stack et valeurs par défaut en attente de la Direction — voir la [checklist de démarrage](docs/10-development-plan/04-checklist-demarrage.md) |
 | Développement | Non démarré — commence par la phase P0 ([passage au développement](docs/10-development-plan/06-passage-au-developpement.md)) |
 
 ## Par où commencer

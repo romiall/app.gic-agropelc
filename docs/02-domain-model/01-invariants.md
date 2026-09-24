@@ -6,6 +6,7 @@
 > - le **type de test** qui le couvre : `U` (unitaire), `P` (propriété / génératif), `I` (intégration base réelle), `S` (scénario de synchronisation), `E` (E2E).
 >
 > Ce document est la source des suites de tests d'invariants (voir [`../09-non-functional/03-plan-de-tests.md`](../09-non-functional/03-plan-de-tests.md) §4). Un invariant violé en production est un **incident**, pas une anomalie métier.
+> Mécanisme `DB` : la base cible est MySQL (ADR-023). « Index unique partiel » et « contrainte d'exclusion » désignent la **garantie recherchée**, reportée sur les équivalents MySQL (colonne générée + `UNIQUE`, verrou de ligne + déclencheur) détaillés dans [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3 — non répétés ligne par ligne ci-dessous.
 
 ---
 

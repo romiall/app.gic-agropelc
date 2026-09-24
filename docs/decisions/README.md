@@ -24,8 +24,10 @@
 | [ADR-017](ADR-017-compte-client-unique.md) | Compte client unique | ACCEPTÉ (AV-012) | — |
 | [ADR-018](ADR-018-validations-generiques.md) | Validations génériques | ACCEPTÉ | — |
 | [ADR-019](ADR-019-style-api.md) | Style d'API | ACCEPTÉ | — |
-| [ADR-020](ADR-020-postgresql.md) | PostgreSQL | ACCEPTÉ | — |
+| [ADR-020](ADR-020-postgresql.md) | PostgreSQL | REMPLACÉ (par ADR-023) | — |
 | [ADR-021](ADR-021-stack-technique.md) | Stack technique | PROPOSÉ | — |
 | [ADR-022](ADR-022-structure-documentaire.md) | Organisation de la documentation | ACCEPTÉ | — |
+| [ADR-023](ADR-023-mysql.md) | Base de données : MySQL (remplace ADR-020) | ACCEPTÉ | — |
+| [ADR-024](ADR-024-hebergement-hostinger.md) | Hébergement cible : Hostinger sans VPS | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

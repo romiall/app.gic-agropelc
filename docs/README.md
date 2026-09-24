@@ -52,7 +52,7 @@
 | 34 | Matrice de traçabilité | [`10-development-plan/02-matrice-tracabilite.md`](10-development-plan/02-matrice-tracabilite.md) | n°17 |
 | 35 | ADR | [`decisions/README.md`](decisions/README.md) (ADR-001 à ADR-022) | n°18 |
 | 36 | Registre des risques | [`10-development-plan/03-registre-risques.md`](10-development-plan/03-registre-risques.md) | n°19 |
-| 37 | Questions ouvertes | [`A-VALIDER.md`](A-VALIDER.md) (registre central, 89 points) | n°20 |
+| 37 | Questions ouvertes | [`A-VALIDER.md`](A-VALIDER.md) (registre central, 91 points) | n°20 |
 | 38 | Recommandation de stack | [`05-architecture/05-stack.md`](05-architecture/05-stack.md) | — |
 | 39 | Checklist avant démarrage du développement | [`10-development-plan/04-checklist-demarrage.md`](10-development-plan/04-checklist-demarrage.md) | — |
 | — | **AUDIT DE COHÉRENCE DU CAHIER DES CHARGES** (PM §50) | [`10-development-plan/05-audit-coherence.md`](10-development-plan/05-audit-coherence.md) | — |

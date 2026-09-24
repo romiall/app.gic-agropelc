@@ -1,6 +1,6 @@
 # ADR-020 — Base de données : PostgreSQL
 
-- **Statut** : ACCEPTÉ (DÉDUIT de PM §47)
+- **Statut** : **REMPLACÉ** par [ADR-023](ADR-023-mysql.md) — contrainte d'hébergement confirmée (Hostinger sans VPS, AV-073) après la rédaction de cet ADR. L'analyse ci-dessous reste l'état historique du raisonnement fonctionnel **hors contrainte d'hébergement** ; elle n'est pas supprimée (règle de conservation des ADR remplacés).
 - **Date** : 24/09/2026
 
 ## Contexte

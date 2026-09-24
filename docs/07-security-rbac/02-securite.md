@@ -44,7 +44,7 @@
 
 1. **RBAC côté serveur** sur chaque commande et chaque requête ([`01-rbac.md`](01-rbac.md)), évalué à `occurred_at` pour les commandes.
 2. **Filtrage de portée systématique** : chaque requête de lecture passe par une fonction de filtrage (`scopeFilter(user, resource)`) de la couche d'accès aux données. Aucune requête ne lit une ressource par son seul identifiant sans contrôle de portée (anti-IDOR).
-3. **Défense en profondeur pour l'analytics** : sécurité au niveau des lignes (RLS) PostgreSQL sur les vues `analytics.f_*`, paramétrée par le contexte de session (utilisateur, périmètres), en plus du filtrage applicatif.
+3. **Défense en profondeur pour l'analytics** : MySQL n'offre pas d'équivalent à la sécurité au niveau des lignes (RLS) de PostgreSQL (ADR-023, recadrage Hostinger sans VPS). Le filtrage applicatif (point 2) reste donc l'**unique** ligne d'exécution pour les vues `analytics.f_*`, compensé par une fonction de filtrage unique et partagée entre toutes les lectures analytiques, une couverture de test systématique (un test de propriété par rôle × jeu de faits, à chaque commit) et l'absence de tout accès direct à la base pour un utilisateur final. Réduction assumée et suivie : RISK-28.
 4. **Mesures sensibles** : colonnes financières masquées sans `inventory.valuation.read` (RC-05).
 5. **Séparation des tâches** : RC-03 (approbateur ≠ demandeur ; Admin sans approbation métier).
 

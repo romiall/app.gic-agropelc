@@ -32,7 +32,7 @@ La complexité est portée par le moteur, pas par l'utilisateur : un vendeur dé
 | 7 | **11 rôles, 117 permissions**, avec des portées (soi, équipe, site, zone, tout) évaluées à l'heure réelle de l'opération | Chacun ne voit et ne fait que ce qui relève de sa responsabilité (CM §47, §48) | CONFIRMÉ / DÉDUIT | ADR-008 |
 | 8 | **Kommo reste l'outil des conversations et des leads digitaux ; GIC est la source de vérité** des clients, ventes, stocks et prix | Pas de double vérité (CM §44 à §46, §59) | CONFIRMÉ | ADR-009 |
 | 9 | **Comptabilité opérationnelle** (pas une comptabilité générale) : ventes, encaissements, créances, caisses, dépenses, dettes, coûts de lot et marges | Besoin de pilotage (CM §31 à §33) | CONFIRMÉ ; méthode de valorisation À VALIDER (AV-042, AV-043) | ADR-010, ADR-015 |
-| 10 | **Monolithe modulaire** : un seul déploiement, 19 modules aux frontières contrôlées, PostgreSQL | Simplicité d'exploitation pour une petite équipe, sans sacrifier les frontières (PM §34) | DÉDUIT | ADR-011, ADR-020 |
+| 10 | **Monolithe modulaire** : un seul déploiement, 19 modules aux frontières contrôlées, MySQL | Simplicité d'exploitation pour une petite équipe, sans sacrifier les frontières (PM §34) ; base MySQL suite à la contrainte d'hébergement Hostinger sans VPS | DÉDUIT | ADR-011, ADR-023, ADR-024 |
 | 11 | **Stack proposée** : TypeScript de bout en bout (React + IndexedDB sur l'appareil ; NestJS + PostgreSQL sur le serveur) | Même code métier hors ligne et en ligne ; technologies matures | **PROPOSÉ**, à confirmer (AV-089) | ADR-021, [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) |
 
 ## 4. Le cadrage en chiffres
@@ -45,12 +45,12 @@ La complexité est portée par le moteur, pas par l'utilisateur : un vendeur dé
 | Invariants (propriétés toujours vraies, testées) | 81 | [`../02-domain-model/01-invariants.md`](../02-domain-model/01-invariants.md) |
 | Workflows interdomaines / parcours types / machines à états | 18 / 8 / 30 | [`../04-workflows/`](../04-workflows/) |
 | Écrans inventoriés | 69 | [`../01-functional/03-parcours-et-ecrans.md`](../01-functional/03-parcours-et-ecrans.md) |
-| Modules / tables (+ vues) | 19 / 105 (+ 2) | [`../03-data/02-modele-relationnel.md`](../03-data/02-modele-relationnel.md) |
+| Modules / tables (+ vues) | 19 / 106 (+ 2) | [`../03-data/02-modele-relationnel.md`](../03-data/02-modele-relationnel.md) |
 | Commandes métier / événements | 159 / 170 | [`../08-api-events/`](../08-api-events/) |
 | Rôles / permissions | 11 / 117 | [`../07-security-rbac/01-rbac.md`](../07-security-rbac/01-rbac.md) |
 | Exigences non fonctionnelles / tests d'acceptation | 40 / 55 | [`../09-non-functional/`](../09-non-functional/) |
-| Décisions d'architecture (ADR) / risques techniques | 22 / 26 | [`../decisions/`](../decisions/README.md), [`../10-development-plan/03-registre-risques.md`](../10-development-plan/03-registre-risques.md) |
-| Questions ouvertes : bloquantes / importantes / secondaires | 2 / 47 / 40 | [`../A-VALIDER.md`](../A-VALIDER.md) |
+| Décisions d'architecture (ADR) / risques techniques | 24 / 28 | [`../decisions/`](../decisions/README.md), [`../10-development-plan/03-registre-risques.md`](../10-development-plan/03-registre-risques.md) |
+| Questions ouvertes : bloquantes / importantes / secondaires | 2 / 48 / 41 | [`../A-VALIDER.md`](../A-VALIDER.md) |
 
 Chaque exigence est reliée à ses règles, ses tables, ses écrans et ses tests dans la [matrice de traçabilité](../10-development-plan/02-matrice-tracabilite.md) : aucune exigence n'est restée sans réponse.
 
@@ -70,7 +70,7 @@ Détail : [`../10-development-plan/01-plan-developpement.md`](../10-development-
 
 ## 6. Ce que la Direction doit décider
 
-**Avant le démarrage (P0)** : confirmer la stack (AV-089), l'hébergement et la localisation des données (AV-073), l'équipe et le budget (AV-001, AV-084), et accepter ou modifier les valeurs par défaut des règles d'accès et d'appareils (AV-004, AV-006 à AV-010, AV-075, AV-078). La liste complète est dans la [checklist de démarrage](../10-development-plan/04-checklist-demarrage.md).
+**Avant le démarrage (P0)** : confirmer la stack, y compris le remplacement de PostgreSQL par MySQL (AV-089, [ADR-023](../decisions/ADR-023-mysql.md)), l'équipe et le budget (AV-001, AV-084), et accepter ou modifier les valeurs par défaut des règles d'accès et d'appareils (AV-004, AV-006 à AV-010, AV-075, AV-078). L'hébergement est **déjà tranché** : Hostinger, sans VPS (AV-073, [ADR-024](../decisions/ADR-024-hebergement-hostinger.md)). La liste complète est dans la [checklist de démarrage](../10-development-plan/04-checklist-demarrage.md).
 
 **Deux décisions bloquantes, avant la phase P4 (ventes)** :
 

@@ -184,8 +184,8 @@
 | REQ-210 | Intégration Kommo bidirectionnelle par API et webhooks | ADR-009 ; BR-KOM-* ; INV-KOM-* | integrations | Lien externe ; messages | `integrations.*` | `/integrations/kommo/*` | ECR-KOM-01 | AT-044 | P10 |
 | REQ-211 | Appareils Android modestes, faible bande passante | NFR-05, NFR-07, NFR-34, NFR-40 ; [`05-architecture/05-stack.md`](../05-architecture/05-stack.md) | PWA | — | — | — | Tous | Tests E2E sur l'appareil de référence ; budget de bundle en CI | P0 |
 | REQ-212 | Le client n'est jamais une autorité | P11 ; RC-08 ; BR-SYN-001 | Tous | — | — | Revalidation serveur de chaque commande | — | AT-022, AT-033 | P0 |
-| REQ-213 | Base relationnelle justifiée | ADR-020 ; [`05-stack.md`](../05-architecture/05-stack.md) §3 | — | — | PostgreSQL | — | — | Revue d'architecture | P0 |
-| REQ-214 | Pas de microservices ; frontières fonctionnelles préservées | ADR-011 ; NFR-32 | Tous | — | Un schéma par module | — | — | AT-055 | P0 |
+| REQ-213 | Base relationnelle justifiée | ADR-023 (remplace ADR-020) ; [`05-stack.md`](../05-architecture/05-stack.md) §3 | — | — | MySQL | — | — | Revue d'architecture | P0 |
+| REQ-214 | Pas de microservices ; frontières fonctionnelles préservées | ADR-011 ; NFR-32 | Tous | — | Un espace de noms par module (une base MySQL, tables préfixées) | — | — | AT-055 | P0 |
 | REQ-215 | Pas de génération de l'application avant stabilisation du cadrage | [`04-checklist-demarrage.md`](04-checklist-demarrage.md) | — | — | — | — | — | Checklist de démarrage cochée | Avant P0 |
 
 ---

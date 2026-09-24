@@ -323,7 +323,7 @@
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `product_id` | uuid → catalog.products | Non | — | PK |
-| `avg_unit_cost_xaf` | numeric(14,2) | Non | 0 | CMUP (précision interne ; arrondi au franc à l'usage) |
+| `avg_unit_cost_xaf` | DECIMAL(14,2) | Non | 0 | CMUP (précision interne ; arrondi au franc à l'usage) |
 | `qty_basis` | qty | Non | 0 | Quantité de référence |
 | `last_entry_move_id` | uuid → stock_moves | Oui | — | Dernière entrée valorisée |
 | `updated_at` | ts | Non | `now()` | |

@@ -1,6 +1,7 @@
 # Identifiants, types et conventions de colonnes
 
-> Répond au PM §26 (stratégie d'identification) et fixe les conventions communes à toutes les tables du dictionnaire. Décisions : ADR-002 (identifiants), ADR-013 (monnaie et quantités), ADR-016 (temps).
+> Répond au PM §26 (stratégie d'identification) et fixe les conventions communes à toutes les tables du dictionnaire. Décisions : ADR-002 (identifiants), ADR-013 (monnaie et quantités), ADR-016 (temps), ADR-023 (base de données : MySQL, remplace PostgreSQL — recadrage Hostinger sans VPS).
+> Les types listés ci-dessous sont ceux de **MySQL 8** (≥ 8.0.19). Le raisonnement de choix (options étudiées, décision) est inchangé par le recadrage ; seule la colonne « stockage » a été mise à jour. Détail des équivalences et de leurs garanties : [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3.
 
 ---
 
@@ -12,12 +13,12 @@ Le fonctionnement hors ligne impose de **créer une entité sans demander d'iden
 
 ### 1.2 Options étudiées
 
-| Option | Génération hors ligne | Ordre temporel (localité d'index) | Stockage PostgreSQL | Fuite d'information | Verdict |
+| Option | Génération hors ligne | Ordre temporel (localité d'index) | Stockage MySQL | Fuite d'information | Verdict |
 |---|---|---|---|---|---|
-| UUID v4 | Oui | Non : insertions aléatoires, index B-tree fragmentés | `uuid` natif, 16 octets | Aucune | Écarté : fragmentation des index sur les tables volumineuses (registres) |
-| **UUID v7** | Oui | **Oui** (48 bits de temps en tête) | `uuid` natif, 16 octets | Horodatage de création approximatif | **Retenu** |
-| ULID | Oui | Oui | Pas de type natif : `bytea` ou `text` (26 caractères), conversions | Horodatage | Écarté : pas de type natif, outillage moins standard |
-| Identifiant numérique séquentiel | **Non** sans serveur (ou plages pré-allouées fragiles) | Oui | `bigint` | Volume d'activité | Écarté comme clé primaire ; conservé pour des séquences serveur (§1.4) |
+| UUID v4 | Oui | Non : insertions aléatoires, index B-tree fragmentés | `BINARY(16)` | Aucune | Écarté : fragmentation des index sur les tables volumineuses (registres) |
+| **UUID v7** | Oui | **Oui** (48 bits de temps en tête) | `BINARY(16)`, via `UUID_TO_BIN()` / `BIN_TO_UUID()` ; aucun réordonnancement nécessaire (`swap_flag`), l'horodatage est déjà en tête | Horodatage de création approximatif | **Retenu** |
+| ULID | Oui | Oui | Pas de type natif : `BINARY(16)` ou `CHAR(26)`, conversions | Horodatage | Écarté : pas de type natif, outillage moins standard |
+| Identifiant numérique séquentiel | **Non** sans serveur (ou plages pré-allouées fragiles) | Oui | `BIGINT` | Volume d'activité | Écarté comme clé primaire ; conservé pour des séquences serveur (§1.4) |
 
 ### 1.3 Décision
 
@@ -37,30 +38,31 @@ Le fonctionnement hors ligne impose de **créer une entité sans demander d'iden
 | **Référence locale** (`local_ref`) | Appareil, hors ligne | `{CODE_APPAREIL}-{seq6}`, ex. `PDV2-000184` ; séquence par appareil | Reçu remis au client hors ligne, recherche immédiate |
 | **Numéro officiel** (`doc_number`) | Serveur, à l'application | `{TYPE}-{CODE_SITE}-{AAAA}-{seq6}`, ex. `VTE-MBP-2026-000731` (AV-077) | Document de référence ; compteur par (type, site, année) sans trou en conditions normales |
 | **Séquence d'appareil** (`device_seq`) | Appareil | Entier strictement croissant | Ordre d'application et détection de trous (INV-SYN-03) |
-| **Séquence de flux** (`change_feed.seq`) | Serveur | `bigserial` | Curseur de téléchargement incrémental |
-| **Séquence d'audit** (`audit_log.seq`) | Serveur | `bigserial` | Ordre et chaînage |
+| **Séquence de flux** (`change_feed.seq`) | Serveur | `BIGINT UNSIGNED AUTO_INCREMENT` | Curseur de téléchargement incrémental |
+| **Séquence d'audit** (`audit_log.seq`) | Serveur | `BIGINT UNSIGNED AUTO_INCREMENT` | Ordre et chaînage |
 | **Codes de référentiel** (`code`) | Humain (Admin) | `UPPER_SNAKE_CASE` ou code court, unique | Produits, sites, zones, motifs |
 
 Préfixes `{TYPE}` : `VTE` vente, `CMD` commande client, `TRF` transfert, `PRT` perte, `INV` inventaire, `DA` demande d'achat, `BC` bon de commande, `REC` réception, `ENC` encaissement, `DEP` dépense, `FF` facture fournisseur, `PF` paiement fournisseur, `RMF` remise de fonds, `LOT` lot de production, `INC` lot d'incubation.
 
 ## 2. Types logiques
 
-| Type logique | Type PostgreSQL | Règle |
+| Type logique | Type MySQL | Règle |
 |---|---|---|
-| `uuid` | `uuid` | UUIDv7 |
-| `code` | `varchar(40)` | `UPPER_SNAKE_CASE` ou alphanumérique, unique dans son référentiel |
-| `label` | `varchar(200)` | Texte d'affichage |
-| `text` | `text` | Texte libre (commentaires), longueur applicative ≤ 2 000 |
-| `phone` | `varchar(20)` | E.164 normalisé (`+2376XXXXXXXX`) |
-| `money_xaf` | `bigint` | Francs CFA entiers ; ≥ 0 sauf mention contraire (INV-GLO-06) |
-| `qty` | `numeric(14,3)` | Quantité en unité de base ; entière pour les unités comptées (BR-CAT-003) |
-| `rate` | `numeric(7,4)` | Taux (0,1925 = 19,25 %) |
-| `ts` | `timestamptz` | Stocké en UTC ; affiché en `Africa/Douala` |
-| `date` | `date` | Date métier (jour de Douala) |
-| `lat`, `lng` | `numeric(9,6)` | WGS84 ; précision ≈ 0,1 m |
-| `meters` | `numeric(8,1)` | Distances, précisions GPS |
-| `enum(...)` | `text` + `CHECK (col IN (...))` | Plutôt que le type `ENUM` natif : ajouter une valeur ne demande qu'une migration simple |
-| `json` | `jsonb` | Réservé aux charges techniques (commandes, événements, audit avant/après, définitions de vues). **Jamais** pour une donnée métier interrogée ou contrainte. |
+| `uuid` | `BINARY(16)` | UUIDv7 ; conversion `UUID_TO_BIN()` / `BIN_TO_UUID()` centralisée dans `packages/domain` |
+| `code` | `VARCHAR(40)` | `UPPER_SNAKE_CASE` ou alphanumérique, unique dans son référentiel |
+| `label` | `VARCHAR(200)` | Texte d'affichage |
+| `text` | `TEXT` | Texte libre (commentaires), longueur applicative ≤ 2 000 |
+| `phone` | `VARCHAR(20)` | E.164 normalisé (`+2376XXXXXXXX`) |
+| `money_xaf` | `BIGINT` | Francs CFA entiers ; ≥ 0 sauf mention contraire (INV-GLO-06) |
+| `qty` | `DECIMAL(14,3)` | Quantité en unité de base ; entière pour les unités comptées (BR-CAT-003) |
+| `rate` | `DECIMAL(7,4)` | Taux (0,1925 = 19,25 %) |
+| `ts` | `DATETIME(6)` | Toujours écrit et lu en **UTC** par le convertisseur unique de `packages/domain` (MySQL n'a pas de type conscient du fuseau) ; affiché en `Africa/Douala` |
+| `date` | `DATE` | Date métier (jour de Douala) |
+| `lat`, `lng` | `DECIMAL(9,6)` | WGS84 ; précision ≈ 0,1 m |
+| `meters` | `DECIMAL(8,1)` | Distances, précisions GPS |
+| `enum(...)` | `VARCHAR(n)` + `CHECK (col IN (...))` | Plutôt que le type `ENUM` natif : ajouter une valeur ne demande qu'une migration simple (`CHECK` réellement appliqué depuis MySQL 8.0.16) |
+| `json` | `JSON` | Réservé aux charges techniques (commandes, événements, audit avant/après, définitions de vues). **Jamais** pour une donnée métier interrogée ou contrainte. |
+| `text[]`, `uuid[]` (« type[] ») | `JSON` (tableau JSON de chaînes ou d'UUID en forme texte) | Petites listes bornées, lues et écrites en entier par l'application (drapeaux, rôles autorisés, identifiants liés) : `flags`, `allowed_scope_types`, `recipient_roles`, `required_attachment_ids`… **Jamais** filtrées au niveau SQL dans le cadrage actuel ; MySQL n'a pas de type tableau natif (équivalent PostgreSQL : `text[]`/`uuid[]`). Si un filtrage SQL devenait nécessaire, `JSON_CONTAINS()` ou une table de liaison le permettent sans changer le type logique. |
 
 ## 3. Blocs de colonnes standard
 
@@ -70,7 +72,7 @@ Le dictionnaire référence ces blocs au lieu de les répéter. Un bloc s'appliq
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| `id` | uuid | Non | fourni (client) ou `uuidv7()` (serveur) | Clé primaire |
+| `id` | uuid | Non | fourni (client) ou généré par `packages/domain` (serveur) | Clé primaire. Généré en code applicatif (aucune fonction `uuidv7()` native en MySQL) |
 
 ### 3.2 `[STD-AUDIT]` — toute table modifiable
 
@@ -122,10 +124,10 @@ Le dictionnaire référence ces blocs au lieu de les répéter. Un bloc s'appliq
 | Convention | Règle |
 |---|---|
 | Clés étrangères | `ON DELETE RESTRICT` partout. Aucune suppression en cascade sur des données métier. |
-| Références inter-modules | Clé étrangère **autorisée** vers les tables d'un module dont on dépend (graphe des dépendances), **en lecture**. Aucune écriture inter-schémas (INV-GLO-05). |
+| Références inter-modules | Clé étrangère **autorisée** vers les tables d'un module dont on dépend (graphe des dépendances), **en lecture**. Aucune écriture inter-schémas (INV-GLO-05 ; « schéma » = espace de noms logique par module — une seule base MySQL, tables préfixées par module, `GRANT` par table, voir ADR-023). |
 | Références polymorphes | `subject_type` (code) + `subject_id` (uuid), sans clé étrangère, validées par le module propriétaire (voir le modèle conceptuel §4.9) |
-| Unicités partielles | `CREATE UNIQUE INDEX … WHERE status IN (...)`, pour les règles « au plus un actif » |
-| Contraintes d'exclusion | `EXCLUDE USING gist` (extension `btree_gist`) pour les périodes non chevauchantes (affectations de titulaire, appartenances d'équipe) |
+| Unicités partielles | Colonne générée stockée (`NULL` hors condition) + `UNIQUE` sur cette colonne, pour les règles « au plus un actif » (MySQL n'a pas d'index unique partiel natif — voir [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3) |
+| Périodes non chevauchantes | Verrouillage de ligne (`SELECT … FOR UPDATE`) dans le gestionnaire de commande + déclencheur `BEFORE INSERT/UPDATE` de re-vérification, pour les affectations de titulaire et les appartenances d'équipe (MySQL n'a pas de contrainte d'exclusion native — voir [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3) |
 | Immuabilité | Déclencheur `BEFORE UPDATE` refusant la modification des colonnes immuables (liste blanche des colonnes modifiables par table) ; `BEFORE DELETE` refusant la suppression sur les tables protégées |
 | Nommage | `pk_<table>`, `fk_<table>_<col>`, `uq_<table>_<cols>`, `ck_<table>_<règle>`, `ix_<table>_<cols>` |
 

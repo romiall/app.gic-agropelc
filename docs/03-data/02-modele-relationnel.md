@@ -1,7 +1,7 @@
 # Modèle relationnel (Livrable n°5)
 
 > Section 14 du format final (PM §48). Construit à partir du modèle conceptuel ([`../02-domain-model/02-modele-conceptuel-erd.md`](../02-domain-model/02-modele-conceptuel-erd.md)). Le détail colonne par colonne est dans le [dictionnaire](dictionnaire/README.md) (section 15).
-> SGBD : PostgreSQL (ADR-020). **Un schéma par module**, et chaque schéma n'est écrit que par son module (INV-GLO-05).
+> SGBD : **MySQL 8** ([ADR-023](../decisions/ADR-023-mysql.md), remplace PostgreSQL — recadrage Hostinger sans VPS). **Un espace de noms logique par module** (« schéma » ci-dessous), et chaque espace de noms n'est écrit que par son module (INV-GLO-05). Physiquement : une seule base MySQL, tables préfixées par module, `GRANT` par table (au lieu d'un schéma PostgreSQL par module) — voir [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3.2.
 
 ---
 
@@ -44,6 +44,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | Table | Cat. | Responsabilité | Références | Hors ligne | Détail |
 |---|---|---|---|---|---|
 | `organization.zones` | REF | Hiérarchie de zones, géorepères | zones (parent) | DL (périmètre + ancêtres) | [dict](dictionnaire/02-organization.md) |
+| `organization.zone_ancestors` | REF | Fermeture transitive de la hiérarchie des zones (recherche d'appartenance, remplace `path` + GIN de la version PostgreSQL — ADR-023) | zones ×2 | DL (dérivée des zones téléchargées) | idem |
 | `organization.sites` | REF | Sites (ferme, magasin, PDV, bureau) | zones | DL | idem |
 | `organization.points_of_sale` | REF | Configuration d'un PDV | sites, locations, devices (appareil désigné) — la caisse du PDV se retrouve par `finance.cash_accounts (site_id, type CAISSE_PDV)` pour éviter une dépendance organization → finance | DL (son PDV) | idem |
 | `organization.locations` | REF | Emplacements physiques et virtuels | sites, locations (parent), users (détenteur), devices (appareil désigné) | DL (périmètre) | idem |
@@ -199,7 +200,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **107 objets** : 105 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics.
+Total : **108 objets** : 106 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL.
 
 ## 3. Références inter-schémas autorisées
 

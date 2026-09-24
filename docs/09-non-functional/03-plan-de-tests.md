@@ -10,7 +10,8 @@
 |---|---|---|---|
 | **Unitaire** | Bibliothèque métier partagée : moteur de prix, conversions d'unités, arrondis, évaluation des politiques, calculs de disponibilité et d'allocation, transitions des machines à états, validations de schémas | Framework de test TypeScript | Chaque commit |
 | **Propriété (génératif)** | Invariants algébriques : conservation du stock, idempotence, arrondis, déterminisme du prix, bilans (œufs, incubation), affectations ≤ montants | Bibliothèque de tests de propriétés | Chaque commit |
-| **Intégration** | Gestionnaires de commandes sur **PostgreSQL réel** (conteneur jetable) : transactions, contraintes, déclencheurs d'immuabilité, index uniques partiels, exclusions, RLS | Conteneurs de test | Chaque commit |
+| **Intégration** | Gestionnaires de commandes sur **MySQL réel** (conteneur jetable, ADR-023) : transactions, contraintes, déclencheurs d'immuabilité, unicités conditionnelles (colonnes générées), non-chevauchements (verrou + déclencheur) | Conteneurs de test | Chaque commit |
+| **Portée analytique** | Un test de propriété par (rôle × jeu de faits `analytics.f_*`) : aucune ligne hors portée jamais renvoyée par `scopeFilter` — remplace la défense en profondeur RLS, absente en MySQL (RISK-28) | Tests générés | Chaque commit |
 | **Contrat** | Schémas de commandes et de jeux de synchronisation partagés entre PWA et serveur ; compatibilité N-1 | Tests de schémas versionnés | Chaque commit |
 | **Scénarios de synchronisation** | Appareils simulés : hors ligne, rejeux, coupures au milieu d'un lot, désordre, horloges faussées, périodes de plusieurs jours, révocations | Harnais de simulation (plusieurs clients virtuels contre un serveur de test) | Chaque commit (sous-ensemble) ; nightly (complet) |
 | **RBAC généré** | Pour chaque (rôle, permission) de la matrice : accès dans la portée, refus hors portée, refus sans permission | Tests générés depuis la matrice (données de référence) | Chaque commit |

@@ -17,7 +17,7 @@ sequenceDiagram
   participant A as Appareil
   participant S as API /sync
   participant H as Gestionnaires de commandes
-  participant DB as PostgreSQL
+  participant DB as MySQL
   A->>S: POST /sync/push {device_id, batch_id, device_sent_at, commands[≤50]}
   S->>S: auth (session de l'auteur), appareil ACTIVE, version supportée
   loop pour chaque commande, dans l'ordre de device_seq

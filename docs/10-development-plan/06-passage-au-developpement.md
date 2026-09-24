@@ -49,13 +49,13 @@ Règles structurelles (déjà décidées, à respecter dès le premier commit) :
 
 | Règle | Source |
 |---|---|
-| Les 19 dossiers de `apps/server/src/modules` portent les noms des modules et des schémas PostgreSQL | [`../05-architecture/02-modules.md`](../05-architecture/02-modules.md) |
+| Les 19 dossiers de `apps/server/src/modules` portent les noms des modules et de leurs espaces de noms de données (une base MySQL, tables préfixées par module, ADR-023) | [`../05-architecture/02-modules.md`](../05-architecture/02-modules.md) |
 | Un module n'importe que l'API publique des modules de niveau inférieur ; contrôle en CI | [`../05-architecture/03-graphe-dependances.md`](../05-architecture/03-graphe-dependances.md), NFR-32 |
 | Structure interne `api/`, `application/`, `domain/`, `infrastructure/` | [`../05-architecture/01-architecture-logicielle.md`](../05-architecture/01-architecture-logicielle.md) §3 |
 | `packages/domain` n'a aucune entrée-sortie (horloge et identifiants injectés) | ADR-021, audit DT-06 |
 | Toute écriture passe par une commande ; pas d'endpoint CRUD sur une table transactionnelle | BR-SYN-001, ADR-019 |
-| Une table n'est écrite que par son module propriétaire ; un rôle de base par schéma | INV-GLO-05 |
-| Tables de registre et journaux partitionnés dès leur création | Audit DT-04 |
+| Une table n'est écrite que par son module propriétaire ; `GRANT` par table (au lieu d'un rôle par schéma sous MySQL) | INV-GLO-05, ADR-023 |
+| Tables de registre et journaux **non partitionnées au P0/P2** (contrainte MySQL sur les clés étrangères entrantes) ; archivage applicatif prévu avant la limite de volumétrie | Audit DT-04, RISK-27 |
 
 ## 3. Backlog de P0 (ordonné)
 
@@ -68,7 +68,7 @@ Chaque élément cite ses spécifications. « Fait » = critère vérifiable. Le
 | P0-02 | `packages/domain` socle : UUIDv7, horloge injectée, argent (XAF entiers), quantités (millièmes), jour métier `Africa/Douala`, arrondis | ADR-002, ADR-013, ADR-016 ; [`../03-data/01-identifiants-et-conventions.md`](../03-data/01-identifiants-et-conventions.md) | Tests unitaires et de propriétés verts ; couverture ≥ 90 % (NFR-31) |
 | P0-03 | `packages/contracts` : enveloppe de commande, résultats, codes d'erreur, versionnement par type | [`../06-offline-sync/02-synchronisation.md`](../06-offline-sync/02-synchronisation.md) §2, §3.3, §7 ; [`../08-api-events/01-architecture-api.md`](../08-api-events/01-architecture-api.md) | Schémas partagés compilés côté appareil et serveur ; OpenAPI générée |
 | **Bloc B — base de données** | | | |
-| P0-04 | Migrations des schémas `platform`, `audit`, `identity`, `organization`, `approvals`, `attachments`, `sync` ; extensions ; rôles de base par schéma ; déclencheurs d'immuabilité ; partitionnement | Dictionnaire [`01`](../03-data/dictionnaire/01-identity.md), [`02`](../03-data/dictionnaire/02-organization.md), [`10`](../03-data/dictionnaire/10-approvals-attachments-communication.md), [`11`](../03-data/dictionnaire/11-audit-sync-integrations-platform.md) ; [`../03-data/03-historisation-suppression.md`](../03-data/03-historisation-suppression.md) ; INV-GLO-03 | Migrations rejouables en staging ; tests d'intégration des contraintes et de l'immuabilité verts |
+| P0-04 | Migrations des espaces de noms `platform`, `audit`, `identity`, `organization`, `approvals`, `attachments`, `sync` (MySQL, ADR-023) ; `GRANT` par table ; déclencheurs d'immuabilité ; index adaptés à la volumétrie H-06 (partitionnement natif reporté, DT-04, RISK-27) | Dictionnaire [`01`](../03-data/dictionnaire/01-identity.md), [`02`](../03-data/dictionnaire/02-organization.md), [`10`](../03-data/dictionnaire/10-approvals-attachments-communication.md), [`11`](../03-data/dictionnaire/11-audit-sync-integrations-platform.md) ; [`../03-data/03-historisation-suppression.md`](../03-data/03-historisation-suppression.md) ; INV-GLO-03 | Migrations rejouables en staging ; tests d'intégration des contraintes et de l'immuabilité verts |
 | P0-05 | Seeds : 11 rôles, 117 permissions et portées, emplacements virtuels, paramètres par défaut (valeurs par défaut des AV) | [`../07-security-rbac/01-rbac.md`](../07-security-rbac/01-rbac.md) ; BR-ADM-010 ; dictionnaire `organization.system_settings` | Seed idempotent ; tests RBAC générés depuis le seed |
 | **Bloc C — serveur** | | | |
 | P0-06 | Pipeline de commande : authentification → appareil → droits à `occurred_at` → validation → gestionnaire → écriture + audit + événement + réponse d'inbox, dans une seule transaction | [`../05-architecture/01-architecture-logicielle.md`](../05-architecture/01-architecture-logicielle.md) §4 ; ADR-011 ; BR-SYN-001 à 008 ; RC-01, RC-02 | Une commande de démonstration traverse le pipeline ; rejet sans effet (INV-SYN-05) |
@@ -122,6 +122,9 @@ Ces règles sont reprises dans [`../../CLAUDE.md`](../../CLAUDE.md).
 | Élément | Raison | Déclencheur |
 |---|---|---|
 | Code applicatif, migrations, composants UI, endpoints | Interdit avant la validation du cadrage (PM §51, consigne de démarrage) | Checklist P0 cochée |
-| Choix définitif de l'hébergeur | Décision juridique et budgétaire de GIC (AV-073, AV-084) | Décision de la Direction |
+| Modalité précise d'exécution du serveur Node.js chez Hostinger sans VPS | Fournisseur tranché (Hostinger, ADR-024) ; reste le mode d'exécution exact (AV-090) | Phase de déploiement ; sans impact sur P0 à P3 |
+| Fournisseur de stockage objet S3-compatible | Hostinger sans VPS n'en propose pas ; choix indépendant (AV-091) | Phase de déploiement ; émulateur local en attendant |
 | Contrats détaillés de chaque commande | Écrits phase par phase dans `packages/contracts`, à partir des domaines et du catalogue de commandes de l'API | Début de chaque phase |
 | Maquettes graphiques des écrans | L'inventaire des écrans et les règles UX sont fixés ; la charte graphique n'est pas une exigence des sources | Début de P0 (écrans ECR-ADM, ECR-SYN), avec les utilisateurs pilotes |
+
+Voir aussi [ADR-024](../decisions/ADR-024-hebergement-hostinger.md) §5 : la liste précise de ce qui tourne en local pendant le développement (base, serveur, PWA, stockage, tests).

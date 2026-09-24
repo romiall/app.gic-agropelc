@@ -12,7 +12,7 @@
 | `owner_user_id` | uuid → identity.users | Non | — | |
 | `name` | label | Non | — | |
 | `dataset` | code | Non | — | Jeu de faits (`f_sales_line`…) |
-| `definition` | jsonb | Non | — | Filtres, colonnes, groupements, agrégats, tri (schéma versionné de la couche sémantique) |
+| `definition` | json | Non | — | Filtres, colonnes, groupements, agrégats, tri (schéma versionné de la couche sémantique) |
 | `shared_with_roles` | text[] | Non | `{}` | Partage (BR-ANA-007) |
 | `is_default_for_role` | code | Oui | — | Vue par défaut d'un rôle |
 | [STD-AUDIT] | | | | |
@@ -28,7 +28,7 @@
 | [STD-ID] | | | | |
 | `requested_by` | uuid → identity.users | Non | — | |
 | `dataset` | code | Non | — | |
-| `definition` | jsonb | Non | — | Requête exportée |
+| `definition` | json | Non | — | Requête exportée |
 | `format` | enum(`CSV`,`XLSX`) | Non | — | AV-067 |
 | `row_count` | int | Oui | — | |
 | `status` | enum(`QUEUED`,`RUNNING`,`DONE`,`FAILED`,`EXPIRED`) | Non | `QUEUED` | |
@@ -46,7 +46,7 @@
 | `user_id` | uuid → identity.users | Non | — | |
 | `scope_key` | varchar(100) | Non | — | Ex. `OWN`, `TEAM:<id>`, `SITE:<id>` |
 | `period_key` | varchar(20) | Non | — | `TODAY`, `WEEK`, `MONTH` |
-| `payload` | jsonb | Non | — | Valeurs des indicateurs |
+| `payload` | json | Non | — | Valeurs des indicateurs |
 | `computed_at` | ts | Non | — | Affiché comme « à jour au » |
 
 - **PK** `(user_id, scope_key, period_key)`. **Suppr.** Écrasé à chaque calcul. **Offline** DL.

@@ -10,7 +10,7 @@
 | `code` | code | Non | — | Lignée de la politique |
 | `version` | int | Non | 1 | |
 | `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`) | Non | — | |
-| `condition` | jsonb | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
+| `condition` | json | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
 | `requires_photo` | boolean | Non | false | |
 | `requires_comment` | boolean | Non | false | |
 | `requires_approval` | boolean | Non | false | |
@@ -94,7 +94,7 @@
 | `alert_type` | code | Non | — | PK (catalogue D13 §7.1) |
 | `enabled` | boolean | Non | true | |
 | `severity` | enum(`INFO`,`WARNING`,`CRITICAL`) | Non | — | |
-| `thresholds` | jsonb | Non | `{}` | Seuils paramétrables (AV-065) |
+| `thresholds` | json | Non | `{}` | Seuils paramétrables (AV-065) |
 | `recipient_roles` | text[] | Non | — | Codes de rôles destinataires |
 | `resolution_mode` | enum(`AUTO`,`MANUAL`) | Non | — | |
 | `escalation_hours` | smallint | Oui | 4 | Alertes `CRITICAL` |

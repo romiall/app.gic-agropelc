@@ -21,7 +21,7 @@
 | `planned_end_date` | date | Oui | — | |
 | `status` | enum(`PLANNED`,`ACTIVE`,`SELLING`,`CLOSED`,`CANCELLED`) | Non | `PLANNED` | |
 | `closed_at` | ts | Oui | — | |
-| `closing_summary` | jsonb | Oui | — | Indicateurs figés à la clôture (mortalité, coût total, CA, marge) — instantané technique, pas une source de vérité |
+| `closing_summary` | json | Oui | — | Indicateurs figés à la clôture (mortalité, coût total, CA, marge) — instantané technique, pas une source de vérité |
 | `notes` | text | Oui | — | |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
@@ -65,8 +65,8 @@
 | `production_lot_id` | uuid → production_lots | Non | — | |
 | `location_id` | uuid → organization.locations | Oui | — | |
 | `sample_size` | int | Non | — | > 0 |
-| `avg_weight_g` | numeric(10,1) | Non | — | > 0 |
-| `total_weight_kg` | numeric(12,3) | Oui | — | |
+| `avg_weight_g` | DECIMAL(10,1) | Non | — | > 0 |
+| `total_weight_kg` | DECIMAL(12,3) | Oui | — | |
 | `source` | enum(`MANUAL`,`DEVICE`) | Non | `MANUAL` | `DEVICE` : extension F-04 |
 | `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
 | [STD-CANCEL] | | | | |
@@ -133,7 +133,7 @@
 | `expected_candling_date`, `expected_transfer_date`, `expected_hatch_date` | date | Oui | — | Échéancier (BR-INC-008) |
 | `infertile_qty`, `early_dead_qty`, `accidental_loss_qty`, `transferred_qty`, `hatched_viable_qty`, `hatched_nonviable_qty`, `unhatched_qty` | int | Non | 0 | Compteurs (dénormalisés depuis les étapes) |
 | `status` | enum(`INCUBATING`,`IN_HATCHER`,`CLOSED`,`CANCELLED`) | Non | `INCUBATING` | |
-| `hatch_rate` | numeric(5,4) | Oui | — | BR-INC-007 (figé à la clôture) |
+| `hatch_rate` | DECIMAL(5,4) | Oui | — | BR-INC-007 (figé à la clôture) |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
 

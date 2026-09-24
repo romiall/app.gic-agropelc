@@ -20,7 +20,7 @@
 | `notes` | text | Oui | — | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `code`. **IX** trigramme sur `name`. **Suppr.** `DESACTIVATION`. **Audit** Toute modification. **Offline** DL (actifs : id, code, nom).
+- **PK** `id`. **UQ** `code`. **IX** plein texte `ngram` sur `name` (MySQL — ADR-023). **Suppr.** `DESACTIVATION`. **Audit** Toute modification. **Offline** DL (actifs : id, code, nom).
 
 ## procurement.purchase_requests
 

@@ -173,7 +173,7 @@
 | `tax_total_xaf` | money_xaf | Non | 0 | AV-041 |
 | `paid_xaf` | money_xaf | Non | 0 | Dénormalisé |
 | `status` | enum(`MISMATCH`,`DISPUTED`,`APPROVED`,`PARTIALLY_PAID`,`PAID`,`CANCELLED`) | Non | — | |
-| `mismatch_details` | jsonb | Oui | — | Écarts de rapprochement (technique, affichage) |
+| `mismatch_details` | json | Oui | — | Écarts de rapprochement (technique, affichage) |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
 | [STD-CANCEL] | | | | |
 | [STD-AUDIT] | | | | |

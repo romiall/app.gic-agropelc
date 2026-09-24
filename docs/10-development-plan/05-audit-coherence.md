@@ -130,7 +130,7 @@ Points où une implémentation approximative casserait un invariant. Chacun a un
 | DT-01 | **Projections et colonnes dénormalisées** qui divergent de leur source | Réconciliation quotidienne (NFR-38) de : `inventory.stock_balances`, `inventory.product_valuations`, `inventory.stock_allocations.quantity_remaining`, `finance.cash_accounts.balance_xaf`, `finance.supplier_invoices.paid_xaf`, `sales.sales.amount_paid_xaf` et `payment_status`, `sales.sales_orders.advance_paid_xaf`, `sales.sales_order_lines.delivered_quantity_base`, `sales.customer_payments.unallocated_xaf`, `crm.customers.owner_user_id` et `last_sale_at`, `procurement.purchase_request_lines.ordered_qty_base`, `procurement.purchase_order_lines.accepted_qty_base` et `invoiced_qty_base`, compteurs de `production.incubation_batches`. Chaque projection est reconstructible depuis sa source |
 | DT-02 | Écart entre le dictionnaire de données et les migrations SQL | Toute migration met à jour la fiche du dictionnaire dans le même commit ; revue obligatoire ; à terme, génération d'un rapport de schéma comparé en CI |
 | DT-03 | Évolution des contrats de commandes | Version par `command_type` ; support N-1 pendant 30 jours ; tests de contrat appareil ⇄ serveur en CI |
-| DT-04 | Partitionnement ajouté trop tard (difficile sur des tables volumineuses) | `audit.audit_log`, `inventory.stock_moves`, `sync.command_inbox`, `sync.change_feed`, `platform.domain_events` créées **partitionnées dès P0/P2** |
+| DT-04 | Croissance non maîtrisée des registres et journaux volumineux, en l'absence de partitionnement natif | `audit.audit_log`, `inventory.stock_moves`, `sync.command_inbox`, `sync.change_feed`, `platform.domain_events` : **non partitionnées au P0/P2 sous MySQL** (le partitionnement imposerait que la colonne de partition figure dans toute clé, et interdit les clés étrangères entrantes — trop contraignant pour ces tables très référencées, ADR-023). Mesure : bons index (entité, acteur, action, date) dès la création ; volumétrie H-06 gérable plusieurs années ; **archivage applicatif planifié** (export périodique vers stockage froid) avant la limite ; réévaluation au palier de volumétrie suivant (RISK-27) |
 | DT-05 | Analytique sur la base transactionnelle | Paliers définis (ADR-011) ; seuils de bascule = dépassement de NFR-12 ou NFR-13 |
 | DT-06 | Bibliothèque métier partagée contaminée par des dépendances d'exécution | Règle : aucune entrée-sortie dans `packages/domain` (horloge, identifiants, accès aux données injectés) ; contrôle des imports en CI |
 | DT-07 | Double maintenance de la matrice RBAC (documentation et code) | Une seule source versionnée (fichier de seed) dont la documentation et les tests RBAC sont générés |
@@ -166,5 +166,51 @@ Points où une implémentation approximative casserait un invariant. Chacun a un
 | Événements cités dans les domaines (produits et consommés) ↔ catalogue d'événements | Extraction des sections 10 et 11 des 16 domaines | 0 écart |
 | Permissions citées dans les domaines ↔ matrice RBAC | Extraction des sections 13 et de la matrice | 0 écart après I-08 ; 0 permission orpheline |
 | Tables citées ↔ catalogue du modèle relationnel ↔ dictionnaire | Extraction des noms `schéma.table` | 0 écart (hors paramètres, permissions et extensions futures explicitement marquées) |
-| Fiches du dictionnaire avec responsabilité | Recherche de la ligne « Responsabilité » | 106 des 107 objets du catalogue après I-11 ; la vue `finance.v_payables` est décrite en prose |
+| Fiches du dictionnaire avec responsabilité | Recherche de la ligne « Responsabilité » | 107 des 108 objets du catalogue après I-11 et l'ajout de `organization.zone_ancestors` (recadrage MySQL, ADR-023) ; la vue `finance.v_payables` est décrite en prose |
 | Couverture de la matrice de traçabilité | Analyse des 99 lignes | 0 exigence sans règle ; 9 sans AT, toutes justifiées (§1, contrôle 1) |
+
+---
+
+## 4. Addendum — recadrage infrastructure (Hostinger / MySQL)
+
+> Réalisé après la fin du cadrage initial, suite à la confirmation par le porteur du projet de contraintes d'hébergement (Hostinger, sans VPS) qui remettaient en cause le choix de PostgreSQL. Contrôles demandés explicitement pour ce recadrage, dans l'ordre où ils ont été menés.
+
+### 4.1 Résumé des changements
+
+| Domaine | Avant | Après |
+|---|---|---|
+| Base de données | PostgreSQL ([ADR-020](../decisions/ADR-020-postgresql.md)) | **MySQL 8 (≥ 8.0.19)** ([ADR-023](../decisions/ADR-023-mysql.md)) |
+| Hébergement | Ouvert (AV-073) | **Hostinger, sans VPS** ([ADR-024](../decisions/ADR-024-hebergement-hostinger.md)), AV-073 tranché |
+| Domaine de production | Non spécifié | `app.gic-agropelc.com`, toujours résolu par variable d'environnement |
+| Modèle de données | 105 tables + 2 vues | **106 tables + 2 vues** (ajout de `organization.zone_ancestors`, fermeture transitive des zones, remplace `path` + GIN) |
+| ADR | 22 | **24** (ADR-020 REMPLACÉ, ADR-021/008/011 mis à jour, ADR-023/024 créés) |
+| Risques | 26 | **28** (RISK-27 dette technique des reports MySQL, RISK-28 perte de la défense en profondeur RLS) |
+| Registre À VALIDER | 89 points | **91 points** (AV-073 tranché ; AV-090, AV-091 ajoutés) |
+
+### 4.2 Contrôles demandés (recadrage)
+
+| # | Contrôle | Résultat |
+|---|---|---|
+| 1 | Références croisées | `python3 docs/_tools/check_refs.py` : 0 référence orpheline, 0 lien cassé (AV=91, ADR=24, RISK=28) |
+| 2 | Mentions résiduelles présentant PostgreSQL comme obligatoire | Recherche exhaustive (`grep -rn "PostgreSQL\|Postgres\b"`) sur tout `docs/`. Toutes corrigées sauf les mentions **intentionnellement historiques** (ADR-020, marqué REMPLACÉ mais conservé par convention ; comparaisons explicites « équivalent PostgreSQL : … » ajoutées par ce recadrage pour tracer chaque report) |
+| 3 | Mentions imposant un VPS | Aucune trouvée. Le VPS est maintenant listé explicitement comme **écarté** dans [`05-architecture/05-stack.md`](../05-architecture/05-stack.md) §4 et dans [ADR-024](../decisions/ADR-024-hebergement-hostinger.md) |
+| 4 | Exigences de déploiement prématuré | Aucune. [ADR-024](../decisions/ADR-024-hebergement-hostinger.md) §5 énumère explicitement ce qui reste local jusqu'au déploiement (base, serveur, PWA, stockage, tests) |
+| 5 | Plan P0 | Backlog [`06-passage-au-developpement.md`](06-passage-au-developpement.md) §3 : P0-04 et les règles structurelles mises à jour (espaces de noms MySQL, partitionnement reporté) |
+| 6 | ADR | ADR-020 → REMPLACÉ (conservé, non supprimé) ; ADR-021 (dialecte Kysely, file de tâches) ; ADR-008 et ADR-011 (RLS, schéma → espace de noms) mis à jour ; ADR-023 et ADR-024 créés |
+| 7 | Dictionnaire de données | 19 occurrences `jsonb` → `json` (cohérence du nom logique) ; 6 `numeric(...)` → `DECIMAL(...)` ; 3 contraintes d'exclusion → verrou + déclencheur ; 2 recherches trigramme → `ngram` ; 5 `bigserial`/`uuidv7()` → équivalents MySQL ; 13 champs `text[]`/`uuid[]` couverts par une note centrale (`JSON`) ; colonne `path uuid[]` + GIN remplacée par la table `organization.zone_ancestors` |
+| 8 | Tests | [`09-non-functional/03-plan-de-tests.md`](../09-non-functional/03-plan-de-tests.md) §1 : niveau d'intégration reciblé sur MySQL ; nouveau niveau « Portée analytique » (compense l'absence de RLS) |
+| 9 | Risques | RISK-27, RISK-28 ajoutés ; RISK-25 (contention) reste valable (verrous de ligne au lieu de verrous consultatifs) |
+| 10 | `check_refs.py` | Exécuté après chaque lot de modifications ; propre au dernier commit de ce recadrage |
+
+### 4.3 Garanties fonctionnelles : bilan
+
+Sur les 19 dépendances PostgreSQL recensées ([`05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3.2) : **17 obtiennent une garantie strictement équivalente** au niveau base de données (dont deux plus portables que l'original : la table de fermeture transitive et la levée de la limite du nombre de schémas), **1 est reportée** sans affaiblir une garantie de correction (partitionnement, RISK-27), et **1 est réellement réduite** de façon transparente et compensée (défense en profondeur RLS de l'analytique, RISK-28). Aucun invariant `INV-*` de premier rang n'est affaibli. Aucun repli vers un VPS n'a été nécessaire.
+
+### 4.4 Nouveaux points fragiles introduits par le recadrage
+
+| # | Point | Garde-fou |
+|---|---|---|
+| PF-13 | Non-chevauchement de périodes (titulaire client, équipe, objectifs) garanti par verrou + déclencheur plutôt que par une contrainte déclarative unique | Test d'intégration dédié par cas (concurrence simulée) ; le déclencheur reste le filet de sécurité si le verrou applicatif est contourné |
+| PF-14 | Discipline UTC pure pour `DATETIME(6)` (MySQL n'a pas de type conscient du fuseau) | Convertisseur unique dans `packages/domain` ; test qui interdit toute écriture hors de ce convertisseur |
+
+(Numérotation à la suite de PF-01 à PF-12, §2.3.)

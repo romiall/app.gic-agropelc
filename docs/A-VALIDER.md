@@ -87,7 +87,7 @@ Classification (PM §45) :
 | AV-070 | Données remontées de GIC vers Kommo | SECONDAIRE | P10 | Exemple CM §46 | OUVERT |
 | AV-071 | Correspondance utilisateurs GIC ↔ Kommo | SECONDAIRE | P10 | Table de correspondance explicite | OUVERT |
 | AV-072 | Reprise des données existantes | IMPORTANTE | P1/P2 | Modèles CSV + inventaire d'ouverture | OUVERT |
-| AV-073 | Hébergement, localisation et protection des données | IMPORTANTE | P0 | Cloud, région UE ou Afrique ; vérification juridique | OUVERT |
+| AV-073 | Hébergement, localisation et protection des données | IMPORTANTE | P0 | Hostinger, sans VPS ; région selon l'offre | **TRANCHÉ** (voir journal §3) |
 | AV-074 | Durées de conservation | SECONDAIRE | P0/P9 | Audit et finance 10 ans ; GPS 2 ans ; photos 5 ans | OUVERT |
 | AV-075 | Parc d'appareils cible | IMPORTANTE | P0 | Android ≥ 8, Chrome ≥ 100, 2 Go RAM | OUVERT |
 | AV-076 | Impression de reçus au point de vente | SECONDAIRE | Futur | Reçu numérique / partage | OUVERT |
@@ -103,7 +103,9 @@ Classification (PM §45) :
 | AV-086 | Volumétrie cible à 3 ans | IMPORTANTE | P0/P9 | 150 utilisateurs, 40 sites, 5 000 lignes de vente/jour | OUVERT |
 | AV-087 | Prix appliqué à la livraison d'une commande | SECONDAIRE | P4 | Prix convenu à la commande | OUVERT |
 | AV-088 | Clôture et verrouillage de période | SECONDAIRE | P8 | Pas de verrouillage au MVP | OUVERT |
-| AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; PostgreSQL ; pg-boss | OUVERT |
+| AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; **MySQL** (ADR-023, remplace PostgreSQL) | OUVERT |
+| AV-090 | Modalité d'exécution du serveur Node.js chez Hostinger sans VPS | IMPORTANTE | Déploiement | Application Node.js gérée par l'hébergeur si disponible, sinon plateforme tierce à bas coût en complément | OUVERT |
+| AV-091 | Fournisseur de stockage objet S3-compatible (Hostinger sans VPS n'en propose pas) | SECONDAIRE | Déploiement | Cloudflare R2 ou Backblaze B2 | OUVERT |
 
 ---
 
@@ -401,8 +403,10 @@ Politique par défaut, paramétrable :
 ### AV-072 — Reprise de données — IMPORTANTE
 - **Recommandation** : modèles CSV d'import pour clients, fournisseurs, produits et lots en cours. Le stock initial est chargé par un **inventaire d'ouverture** (`OPENING`), donc tracé comme n'importe quel mouvement.
 
-### AV-073 — Hébergement et données personnelles — IMPORTANTE
-- **Recommandation** : hébergement cloud managé, région UE ou Afrique la plus proche en latence. Chiffrement au repos et en transit. La conformité à la réglementation camerounaise sur les données personnelles est à vérifier par GIC.
+### AV-073 — Hébergement et données personnelles — IMPORTANTE — **TRANCHÉ**
+- **Décision** (confirmée par le porteur du projet) : hébergement chez **Hostinger**, **sans VPS**. Base de données MySQL (conséquence : [ADR-023](decisions/ADR-023-mysql.md)) ; calcul et hébergement du domaine chez le même fournisseur ([ADR-024](decisions/ADR-024-hebergement-hostinger.md)). Région : celle proposée par Hostinger ; vérification de la conformité à la réglementation camerounaise sur les données personnelles toujours à la charge de GIC, au moment du déploiement.
+- **Ce qui reste ouvert** : la modalité précise d'exécution du serveur Node.js (AV-090) et le fournisseur de stockage objet (AV-091), aucun des deux ne bloquant le développement (voir [ADR-024](decisions/ADR-024-hebergement-hostinger.md) §5).
+- **Chiffrement** : au repos et en transit, selon l'offre retenue — à vérifier au déploiement.
 
 ### AV-074 — Conservation — SECONDAIRE
 - **Recommandation** : journal d'audit et pièces financières conservés 10 ans. Positions GPS conservées 2 ans. Photos conservées 5 ans.
@@ -462,9 +466,23 @@ Politique par défaut, paramétrable :
 ### AV-089 — Confirmation de la stack technique — IMPORTANTE
 - **Question** : la stack proposée en fin de cadrage ([`05-architecture/05-stack.md`](05-architecture/05-stack.md), ADR-021) est-elle retenue ?
 - **Pourquoi** : le choix conditionne le squelette du dépôt en P0, le profil des développeurs à mobiliser (AV-084) et la possibilité de partager la logique métier entre l'appareil et le serveur (INV-PRX-04).
-- **Choix** : (a) stack proposée (TypeScript partout) ; (b) serveur dans un autre langage (Python, Kotlin, PHP) avec la PWA en TypeScript ; (c) application native au lieu d'une PWA.
+- **Choix** : (a) stack proposée (TypeScript partout, base MySQL depuis le recadrage ADR-023) ; (b) serveur dans un autre langage (Python, Kotlin, PHP) avec la PWA en TypeScript ; (c) application native au lieu d'une PWA.
 - **Recommandation** : (a). Seule option qui garantit que les validations et le moteur de prix sont identiques hors ligne et en ligne sans duplication. (b) impose de maintenir deux implémentations de `packages/domain` ; (c) contredit ADR-001 et le principe PWA du PM.
-- **Impact** : P0 ne démarre qu'après cette confirmation. Un changement de framework (React → Preact, NestJS → Fastify seul) ne remet pas en cause l'architecture ; un changement de langage serveur la remet en cause (nouvel ADR).
+- **Impact** : P0 ne démarre qu'après cette confirmation. Un changement de framework (React → Preact, NestJS → Fastify seul) ne remet pas en cause l'architecture ; un changement de langage serveur la remet en cause (nouvel ADR). Le remplacement de PostgreSQL par MySQL (AV-073 tranché) est déjà intégré à la proposition ci-dessus : confirmer AV-089 revient à confirmer la stack **telle que recadrée**, pas à rouvrir le choix de base.
+
+### AV-090 — Modalité d'exécution du serveur Node.js chez Hostinger sans VPS — IMPORTANTE
+- **Question** : comment le processus API et le processus worker (Node.js) s'exécutent-ils concrètement chez Hostinger, qui n'offre pas de VPS ?
+- **Pourquoi** : conditionne le format de l'artefact de build (image de conteneur ou paquet Node.js) et la façon dont le worker exécute ses tâches planifiées (processus persistant ou invocation périodique par une tâche cron de l'hébergeur).
+- **Choix** : (a) offre Hostinger d'exécution d'applications Node.js, si elle couvre un processus de fond persistant ou une invocation cron suffisamment fréquente pour le worker ; (b) plateforme tierce à bas coût, sans VPS, uniquement pour le calcul (API + worker), la base restant chez Hostinger ; (c) repli vers un VPS, en dernier recours, si (a) et (b) s'avèrent impraticables — **à proposer explicitement à la Direction avant d'être retenu**, la contrainte « sans VPS » étant ferme.
+- **Recommandation** : (a), avec le worker adapté en invocation périodique (cron) plutôt qu'en processus persistant si nécessaire — adaptation sans effet sur le modèle de données ni la logique métier.
+- **Impact** : aucun sur P0 à P3 (développement entièrement local, [ADR-024](decisions/ADR-024-hebergement-hostinger.md) §5). Détermine le contenu de l'étape « Build » de la CI/CD et la configuration de l'environnement `staging`.
+
+### AV-091 — Fournisseur de stockage objet S3-compatible — SECONDAIRE
+- **Question** : quel fournisseur héberge les pièces jointes (photos, justificatifs, exports) puisque Hostinger sans VPS n'expose pas de produit de stockage objet ?
+- **Pourquoi** : ADR-012 (pièces jointes offline) suppose un stockage S3-compatible, privé, avec URL signées et verrou d'objet pour les ancres d'audit.
+- **Choix** : (a) Cloudflare R2 ; (b) Backblaze B2 ; (c) AWS S3.
+- **Recommandation** : (a) ou (b), pour le coût au volume attendu (~30 Go la première année).
+- **Impact** : aucun sur P0 à P3 (émulateur S3 local, ex. MinIO, en développement et en CI). Détermine les identifiants de service à provisionner avant le déploiement de `staging`.
 
 ---
 
@@ -472,4 +490,4 @@ Politique par défaut, paramétrable :
 
 | Date | ID | Décision | Décideur |
 |---|---|---|---|
-| — | — | Aucune décision enregistrée à ce jour | — |
+| 24/09/2026 | AV-073 | Hébergement chez Hostinger, sans VPS. Conséquence technique : base de données MySQL au lieu de PostgreSQL (ADR-023) ; domaine de production `app.gic-agropelc.com` (ADR-024) | Porteur du projet |
