@@ -51,7 +51,7 @@ Sessions de travail (base de rattachement des visites et ventes terrain), tentat
 | BR-TER-002 | Résultat d'une prise de service. `ACCEPTED` si distance ≤ rayon du géorepère **et** précision ≤ précision maximale. `REJECTED_LOW_ACCURACY` si la précision dépasse le maximum. `REJECTED_OUT_OF_ZONE` si la précision est acceptable mais la distance supérieure au rayon. `NO_POSITION` si aucune position n'a pu être obtenue. Rayon par défaut 500 m, précision maximale 150 m. | C (CM §10, 500 m) / AV-022 |
 | BR-TER-003 | La distance est la distance orthodromique (haversine) entre la position et le point de référence du géorepère. Elle est calculée sur l'appareil pour le retour immédiat, **puis recalculée par le serveur** avec le géorepère en vigueur à `occurred_at`. En cas de divergence, le résultat serveur fait foi et la divergence est signalée. | D (PM §37) |
 | BR-TER-004 | Une prise de service `ACCEPTED` ouvre une session de travail `OPEN`. Un utilisateur a au plus une session non clôturée à la fois. | D |
-| BR-TER-005 | Après un refus, l'utilisateur peut réessayer. Après 3 refus sur au moins 2 minutes, il peut demander une dérogation avec un motif obligatoire. La session s'ouvre alors en `PENDING_APPROVAL` et l'activité est autorisée mais signalée. Approbation → `OPEN` avec `override = true`. Rejet → `REJECTED` : les activités rattachées restent enregistrées et portent l'indicateur `session_rejected`. | AV-021 |
+| BR-TER-005 | Après un refus, l'utilisateur peut réessayer. Après 3 refus sur au moins 2 minutes, il peut demander une dérogation avec un motif obligatoire. La session s'ouvre alors (`status = OPEN`) avec `override_status = PENDING` ; l'activité est autorisée mais signalée. Approbation → `override_status = APPROVED`. Rejet → `override_status = REJECTED` : les activités rattachées restent enregistrées et portent l'indicateur `session_rejected` (SM-WORK-SESSION). | AV-021 |
 | BR-TER-006 | La zone déclarée est choisie parmi les zones affectées à l'utilisateur (affectations de rôle de portée `ZONE`). Un utilisateur sans affectation de zone peut déclarer toute zone active dotée d'un géorepère. | D (CM §10) |
 | BR-TER-007 | La fin de service est optionnelle. Elle enregistre une position ; un résultat hors zone est simplement signalé, jamais bloquant. | C (CM §10 « éventuellement ») / D |
 | BR-TER-008 | Toute session non clôturée l'est automatiquement à 23:59 (heure de Douala), statut `AUTO_CLOSED` : sur l'appareil s'il est hors ligne, sinon par le serveur. | AV-023 |
@@ -88,7 +88,7 @@ Sessions de travail (base de rattachement des visites et ventes terrain), tentat
 - Les géorepères des zones de l'utilisateur sont téléchargés. Le calcul local donne un résultat immédiat.
 - La tentative (acceptée ou refusée) est placée en outbox. Rien n'est perdu, conformément à l'exigence d'audit du CM §10.
 - La session est ouverte localement ; visites et ventes s'y rattachent localement.
-- À la synchronisation, le serveur recalcule (BR-TER-003). Si le serveur refuse une prise acceptée localement (géorepère modifié entre-temps), la session passe `PENDING_APPROVAL` avec une dérogation automatiquement demandée, et le commercial est notifié.
+- À la synchronisation, le serveur recalcule (BR-TER-003). Si le serveur refuse une prise acceptée localement (géorepère modifié entre-temps), la session garde `status = OPEN` et passe à `override_status = PENDING`, avec une dérogation automatiquement demandée ; le commercial est notifié.
 
 ## 13. Permissions
 
