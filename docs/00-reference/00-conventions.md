@@ -75,6 +75,7 @@ Codes de domaine `<DOM>` :
 | `VOL` | Volaille de chair | `KOM` | Intégration Kommo |
 | `OEU` | Œufs | `SEC` | Sécurité (transverse) |
 | `INC` | Incubation | `POR` | Porcs |
+| `CAT` | Catalogue et référentiels | `OPS` | Exploitation technique (observabilité) |
 
 ---
 
