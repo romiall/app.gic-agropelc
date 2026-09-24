@@ -5,6 +5,7 @@ import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import prettierConfig from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default [
   {
@@ -19,6 +20,15 @@ export default [
   },
   js.configs.recommended,
   {
+    // Scripts Node exécutés directement, hors TypeScript compilé (tools/*.mjs,
+    // configuration *.cjs) : sans ceci, no-undef (hérité de js.configs.recommended)
+    // rejette process/console, absents des globals par défaut d'ESLint.
+    files: ['**/*.mjs', '**/*.cjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsparser,
@@ -32,6 +42,10 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      // TypeScript (pnpm run typecheck) vérifie déjà les identifiants non définis avec la
+      // connaissance complète des libs (Node, DOM…) ; no-undef, analyse statique d'ESLint
+      // sans cette connaissance, produit des faux positifs sur ces mêmes globals (ex. URL).
+      'no-undef': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-console': ['warn', { allow: ['warn', 'error'] }],

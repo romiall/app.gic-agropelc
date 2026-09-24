@@ -19,7 +19,9 @@ let lcov;
 try {
   lcov = readFileSync(lcovPath, 'utf8');
 } catch {
-  console.error(`Rapport de couverture introuvable : ${lcovPath} (lancer "vitest run --coverage" avant).`);
+  console.error(
+    `Rapport de couverture introuvable : ${lcovPath} (lancer "vitest run --coverage" avant).`,
+  );
   process.exit(2);
 }
 
