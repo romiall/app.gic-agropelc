@@ -15,7 +15,7 @@
 | [ ] | Glossaire relu : chaque terme a le sens attendu par les équipes GIC | [`01-functional/01-glossaire.md`](../01-functional/01-glossaire.md) | DIR |
 | [ ] | Périmètre du MVP et découpage en releases R1 à R5 validés (AV-001) | [`01-functional/02-perimetre.md`](../01-functional/02-perimetre.md), plan §3 | DIR |
 | [ ] | Rôles et matrice RBAC validés, y compris les rôles non listés au CM (AV-004) | [`01-functional/04-acteurs-et-roles.md`](../01-functional/04-acteurs-et-roles.md), [`07-security-rbac/01-rbac.md`](../07-security-rbac/01-rbac.md) | DIR |
-| [ ] | Stack technique confirmée (AV-089) | [`05-architecture/05-stack.md`](../05-architecture/05-stack.md), ADR-021 | DIR + TECH |
+| [x] | Stack technique confirmée (AV-089), MySQL comprise (ADR-023) — **P0 démarré** | [`05-architecture/05-stack.md`](../05-architecture/05-stack.md), ADR-021 | DIR + TECH |
 | [ ] | Registre À VALIDER parcouru ; décision ou acceptation explicite des valeurs par défaut pour tous les AV de P0 (§2) | [`A-VALIDER.md`](../A-VALIDER.md) | DIR |
 
 ## 2. Décisions À VALIDER par phase

@@ -5,7 +5,7 @@ Ce fichier s'adresse à toute session Claude Code et à tout développeur qui tr
 ## 1. État du projet
 
 - **Cadrage terminé** : le référentiel d'ingénierie complet est dans [`docs/`](docs/README.md) (39 sections du Prompt maître §48, puis l'audit de cohérence).
-- **Développement non démarré.** Il commence par la phase P0, **uniquement** quand la [checklist de démarrage](docs/10-development-plan/04-checklist-demarrage.md) est cochée pour P0 (en particulier AV-089, confirmation de la stack, et AV-073, hébergement). Tant que ce n'est pas le cas, ne crée ni code applicatif, ni migration, ni composant d'interface, ni endpoint, ni donnée fictive.
+- **Développement démarré : phase P0** (AV-089 et AV-073 tranchés le 24/09/2026 ; voir [`docs/A-VALIDER.md`](docs/A-VALIDER.md) §3). Backlog et structure : [`docs/10-development-plan/06-passage-au-developpement.md`](docs/10-development-plan/06-passage-au-developpement.md). GitHub est la source de vérité : chaque incrément est commité et poussé ; l'environnement local ne sert qu'à récupérer le dépôt et exécuter/tester. Aucun déploiement Hostinger n'est requis pour P0 à P3 (ADR-024 §5).
 - Documentation rédigée en **français**.
 
 ## 2. Sources et hiérarchie

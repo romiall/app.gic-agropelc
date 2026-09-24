@@ -1,7 +1,7 @@
 # Recommandation de stack technique
 
 > Section 38 du format final (PM §48). Conformément au PM §46, la stack est proposée **en fin de cadrage** : chaque choix découle d'une exigence déjà établie (NFR, ADR, invariant) et non l'inverse.
-> **Statut** : la base de données est **MySQL 8**, ACCEPTÉE ([ADR-023](../decisions/ADR-023-mysql.md), qui remplace [ADR-020](../decisions/ADR-020-postgresql.md) — recadrage lié à la contrainte d'hébergement Hostinger sans VPS, [ADR-024](../decisions/ADR-024-hebergement-hostinger.md)). Le reste de la stack est PROPOSÉ ([ADR-021](../decisions/ADR-021-stack-technique.md)) et doit être confirmé avant P0 (AV-089) ; il n'est **pas remis en cause** par le changement de base, à l'exception des points explicitement marqués « *(MySQL)* » ci-dessous. Les bibliothèques marquées *(interchangeable)* peuvent être remplacées pendant P0 sans nouvel ADR, tant que le remplaçant respecte les mêmes contraintes.
+> **Statut** : **ACCEPTÉE dans son ensemble** — la base de données est MySQL 8 ([ADR-023](../decisions/ADR-023-mysql.md), remplace [ADR-020](../decisions/ADR-020-postgresql.md) ; recadrage Hostinger sans VPS, [ADR-024](../decisions/ADR-024-hebergement-hostinger.md)) ; le reste ([ADR-021](../decisions/ADR-021-stack-technique.md)) est confirmé par AV-089 (tranché le 24/09/2026, P0 démarré). Les bibliothèques marquées *(interchangeable)* peuvent être remplacées pendant P0 sans nouvel ADR, tant que le remplaçant respecte les mêmes contraintes.
 > **Développement local d'abord** : aucun composant de ce chapitre n'exige d'accès à Hostinger pour développer ou tester P0 à P3 — voir [ADR-024](../decisions/ADR-024-hebergement-hostinger.md) §5.
 
 ---

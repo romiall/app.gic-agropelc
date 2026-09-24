@@ -103,7 +103,7 @@ Classification (PM §45) :
 | AV-086 | Volumétrie cible à 3 ans | IMPORTANTE | P0/P9 | 150 utilisateurs, 40 sites, 5 000 lignes de vente/jour | OUVERT |
 | AV-087 | Prix appliqué à la livraison d'une commande | SECONDAIRE | P4 | Prix convenu à la commande | OUVERT |
 | AV-088 | Clôture et verrouillage de période | SECONDAIRE | P8 | Pas de verrouillage au MVP | OUVERT |
-| AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; **MySQL** (ADR-023, remplace PostgreSQL) | OUVERT |
+| AV-089 | Confirmation de la stack technique proposée (ADR-021) | IMPORTANTE | P0 | TypeScript de bout en bout : React + Vite + Dexie ; NestJS (Fastify) + Kysely ; **MySQL** (ADR-023, remplace PostgreSQL) | **TRANCHÉ** (voir journal §3) |
 | AV-090 | Modalité d'exécution du serveur Node.js chez Hostinger sans VPS | IMPORTANTE | Déploiement | Application Node.js gérée par l'hébergeur si disponible, sinon plateforme tierce à bas coût en complément | OUVERT |
 | AV-091 | Fournisseur de stockage objet S3-compatible (Hostinger sans VPS n'en propose pas) | SECONDAIRE | Déploiement | Cloudflare R2 ou Backblaze B2 | OUVERT |
 
@@ -463,12 +463,9 @@ Politique par défaut, paramétrable :
 - **Impact** : règles de datation des écritures tardives ; rapports financiers.
 
 
-### AV-089 — Confirmation de la stack technique — IMPORTANTE
-- **Question** : la stack proposée en fin de cadrage ([`05-architecture/05-stack.md`](05-architecture/05-stack.md), ADR-021) est-elle retenue ?
-- **Pourquoi** : le choix conditionne le squelette du dépôt en P0, le profil des développeurs à mobiliser (AV-084) et la possibilité de partager la logique métier entre l'appareil et le serveur (INV-PRX-04).
-- **Choix** : (a) stack proposée (TypeScript partout, base MySQL depuis le recadrage ADR-023) ; (b) serveur dans un autre langage (Python, Kotlin, PHP) avec la PWA en TypeScript ; (c) application native au lieu d'une PWA.
-- **Recommandation** : (a). Seule option qui garantit que les validations et le moteur de prix sont identiques hors ligne et en ligne sans duplication. (b) impose de maintenir deux implémentations de `packages/domain` ; (c) contredit ADR-001 et le principe PWA du PM.
-- **Impact** : P0 ne démarre qu'après cette confirmation. Un changement de framework (React → Preact, NestJS → Fastify seul) ne remet pas en cause l'architecture ; un changement de langage serveur la remet en cause (nouvel ADR). Le remplacement de PostgreSQL par MySQL (AV-073 tranché) est déjà intégré à la proposition ci-dessus : confirmer AV-089 revient à confirmer la stack **telle que recadrée**, pas à rouvrir le choix de base.
+### AV-089 — Confirmation de la stack technique — IMPORTANTE — **TRANCHÉ**
+- **Décision** (confirmée par le porteur du projet) : la stack recadrée est retenue telle que documentée dans [`05-architecture/05-stack.md`](05-architecture/05-stack.md) et [ADR-021](decisions/ADR-021-stack-technique.md) : TypeScript de bout en bout, monorepo `apps/pwa` + `apps/server` + `packages/domain` + `packages/contracts` (React + Vite + Workbox + Dexie côté appareil ; NestJS/Fastify + Kysely côté serveur), **MySQL 8 ≥ 8.0.19** (ADR-023, remplace PostgreSQL). Ce n'était pas un choix entre plusieurs options (l'alternative « serveur dans un autre langage » aurait imposé deux implémentations de `packages/domain`, contraire à K1) : la proposition de fin de cadrage est retenue sans réserve.
+- **Impact** : **P0 démarre.** Un changement de framework (React → Preact, NestJS → Fastify seul) ne remettrait pas en cause l'architecture ; un changement de langage serveur la remettrait en cause (nouvel ADR).
 
 ### AV-090 — Modalité d'exécution du serveur Node.js chez Hostinger sans VPS — IMPORTANTE
 - **Question** : comment le processus API et le processus worker (Node.js) s'exécutent-ils concrètement chez Hostinger, qui n'offre pas de VPS ?
@@ -491,3 +488,4 @@ Politique par défaut, paramétrable :
 | Date | ID | Décision | Décideur |
 |---|---|---|---|
 | 24/09/2026 | AV-073 | Hébergement chez Hostinger, sans VPS. Conséquence technique : base de données MySQL au lieu de PostgreSQL (ADR-023) ; domaine de production `app.gic-agropelc.com` (ADR-024) | Porteur du projet |
+| 24/09/2026 | AV-089 | Stack recadrée confirmée sans réserve (TypeScript de bout en bout, MySQL). P0 démarre | Porteur du projet |
