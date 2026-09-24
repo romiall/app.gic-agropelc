@@ -72,6 +72,9 @@ jobs:
           --health-retries=10
     env:
       DATABASE_URL: mysql://root@127.0.0.1:3306/gic_agropelc_test
+      # Connexion applicative (apps/server, à partir de P0-06) : identifiants gic_app,
+      # distincts de DATABASE_URL ci-dessus (admin, migrations — db/README.md §1).
+      SERVER_DATABASE_URL: mysql://gic_app:ci_only_not_a_secret@127.0.0.1:3306/gic_agropelc_test
     steps:
       - uses: actions/checkout@v4
 
