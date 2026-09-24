@@ -32,6 +32,8 @@
 
 ## sales.sales_order_lines
 
+**Responsabilité** : lignes de commande.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -96,6 +98,8 @@
 - **Audit** Enregistrement, demande d'annulation, annulation. **Offline** DL (7 jours de l'utilisateur ou du PDV), CR.
 
 ## sales.sale_lines
+
+**Responsabilité** : lignes de vente.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

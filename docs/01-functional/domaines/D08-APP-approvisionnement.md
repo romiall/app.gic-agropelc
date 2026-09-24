@@ -100,7 +100,7 @@ ADM (validations, pièces, emplacements), CAT (produits achetables), STK (entré
 
 ## 13. Permissions
 
-`procurement.supplier.read`, `procurement.supplier.manage`, `procurement.request.create`, `procurement.request.approve`, `procurement.order.manage`, `procurement.order.approve`, `procurement.receipt.record`, `procurement.receipt.cancel`, `procurement.receipt_exception.approve`.
+`procurement.supplier.read`, `procurement.supplier.manage`, `procurement.request.create`, `procurement.request.approve`, `procurement.order.read`, `procurement.order.manage`, `procurement.order.approve`, `procurement.receipt.record`, `procurement.receipt.cancel`, `procurement.receipt_exception.approve`.
 
 ## 14. Exceptions
 

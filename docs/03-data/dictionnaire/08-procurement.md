@@ -43,6 +43,8 @@
 
 ## procurement.purchase_request_lines
 
+**Responsabilité** : lignes de DA.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -81,6 +83,8 @@
 - **Suppr.** `ANNULATION`. **Audit** Chaque transition. **Offline** DL (`SENT` et `PARTIALLY_RECEIVED` livrables sur le site de l'utilisateur).
 
 ## procurement.purchase_order_lines
+
+**Responsabilité** : lignes de BC.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -128,6 +132,8 @@
 - **Suppr.** `ANNULATION`. **Audit** Chaque transition. **Offline** DL (30 j du site), CR. **Intégrité** INV-APP-03.
 
 ## procurement.goods_receipt_lines
+
+**Responsabilité** : lignes de réception.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

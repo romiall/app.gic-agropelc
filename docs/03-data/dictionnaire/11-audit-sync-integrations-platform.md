@@ -77,6 +77,8 @@
 
 ## sync.sync_conflicts
 
+**Responsabilité** : conflits.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -117,6 +119,8 @@
 
 ## sync.device_sync_state
 
+**Responsabilité** : curseurs et état par appareil.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `device_id` | uuid → identity.devices | Non | — | |
@@ -131,6 +135,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 - **PK** `(device_id, dataset)`. **Suppr.** Technique (suit l'appareil). **Offline** SRV.
 
 ## integrations.external_links
+
+**Responsabilité** : `CUSTOMER`, `SALES_ORDER`, `USER`.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -150,6 +156,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 
 ## integrations.inbox_messages
 
+**Responsabilité** : webhooks reçus.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -168,6 +176,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 - **PK** `id`. **UQ** `(system, dedup_key)` (INV-KOM-02). **Suppr.** `PURGE_TECHNIQUE` après 180 jours pour les `PROCESSED` et `IGNORED_*`.
 
 ## integrations.outbox_messages
+
+**Responsabilité** : appels sortants.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -189,6 +199,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 - **PK** `id`. **UQ** `idempotency_key`. **IX** `(status, next_attempt_at)`. **Suppr.** `PURGE_TECHNIQUE` après 180 jours pour les `SENT`.
 
 ## integrations.integration_settings
+
+**Responsabilité** : paramètres Kommo.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -222,6 +234,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 
 ## platform.event_consumer_offsets
 
+**Responsabilité** : position de chaque consommateur.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `consumer_name` | code | Non | — | PK (ex. `communication.alerts`, `integrations.kommo`, `analytics.projections`) |
@@ -230,6 +244,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `last_error` | text | Oui | — | |
 
 ## platform.document_sequences
+
+**Responsabilité** : compteurs de numérotation.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

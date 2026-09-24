@@ -43,6 +43,6 @@
 | NFR-35 | Utilisabilité | Ergonomie terrain | Contraste AA ; zones tactiles ≥ 44 px ; action courante ≤ 5 champs obligatoires ; nouvel utilisateur autonome sur son action principale après 30 min de formation | Tests utilisateurs pilotes | CM §3, §49 |
 | NFR-36 | Maintenabilité | Internationalisation | 100 % des textes via clés de traduction ; français complet | Lint i18n | AV-079 |
 | NFR-37 | Confidentialité | Minimisation et conservation | Périmètre local minimal (O3) ; conservation selon AV-074 ; pseudonymisation possible sous 30 jours après la demande | Revue + procédure | AV-073 |
-| NFR-38 | Intégrité | Réconciliation des registres | 0 écart quotidien entre registres et projections (INV-STK-01, INV-FIN-02) ; tout écart = incident | Tâche quotidienne + alerte | PM §6 |
+| NFR-38 | Intégrité | Réconciliation des registres | 0 écart quotidien entre registres et projections (INV-STK-01, INV-FIN-02) et entre chaque colonne dénormalisée et sa source (liste : [`../10-development-plan/05-audit-coherence.md`](../10-development-plan/05-audit-coherence.md) §2.4, DT-01) ; tout écart = incident | Tâche quotidienne + alerte | PM §6 |
 | NFR-39 | Intégrité | Horloge serveur | Synchronisée NTP, écart < 1 s | Supervision | CM §38 |
 | NFR-40 | Offline | Chargement initial d'un nouvel appareil | ≤ 3 min en 3G pour le périmètre d'un vendeur ou d'un commercial | Test E2E | PM §29 |

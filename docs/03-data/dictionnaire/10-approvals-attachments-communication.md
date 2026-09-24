@@ -87,6 +87,8 @@
 
 ## communication.alert_rules
 
+**Responsabilité** : règles d'alerte.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `alert_type` | code | Non | — | PK (catalogue D13 §7.1) |
@@ -101,6 +103,8 @@
 - **PK** `alert_type`. **Suppr.** Désactivation (`enabled`). **Audit** Modification.
 
 ## communication.alerts
+
+**Responsabilité** : toute entité.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -124,6 +128,8 @@
 
 ## communication.notifications
 
+**Responsabilité** : notifications par utilisateur.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -140,6 +146,8 @@
 
 ## communication.push_subscriptions
 
+**Responsabilité** : abonnements Web Push.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -153,6 +161,8 @@
 - **PK** `id`. **UQ** `endpoint`. **Suppr.** `PURGE_TECHNIQUE` des abonnements révoqués ou invalides (réponse 410).
 
 ## communication.internal_notes
+
+**Responsabilité** : notes de direction.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -171,6 +181,8 @@
 
 ## communication.note_audiences
 
+**Responsabilité** : audience d'une note.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `note_id` | uuid → internal_notes | Non | — | |
@@ -180,6 +192,8 @@
 - **PK** `(note_id, audience_type, audience_ref)`. **Suppr.** Suit la note.
 
 ## communication.note_acknowledgements
+
+**Responsabilité** : lectures et accusés.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

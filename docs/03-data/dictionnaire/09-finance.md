@@ -4,6 +4,8 @@
 
 ## finance.payment_methods
 
+**Responsabilité** : moyens de paiement.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `code` | code | Non | — | PK : `ESPECES`, `MOBILE_MONEY_ORANGE`, `MOBILE_MONEY_MTN`, `VIREMENT`, `CHEQUE` (AV-056) |
@@ -111,6 +113,8 @@
 
 ## finance.expense_categories
 
+**Responsabilité** : catégories de dépenses.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -180,6 +184,8 @@
 
 ## finance.supplier_invoice_lines
 
+**Responsabilité** : lignes de facture.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -195,6 +201,8 @@
 - **PK** `id`. **Suppr.** Suit la facture.
 
 ## finance.supplier_payments
+
+**Responsabilité** : paiements fournisseurs.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -216,6 +224,8 @@
 - **PK** `id`. **UQ** `doc_number`. **Suppr.** `ANNULATION`. **Offline** SRV.
 
 ## finance.supplier_payment_allocations
+
+**Responsabilité** : affectations aux factures.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

@@ -4,6 +4,8 @@
 
 ## analytics.saved_views
 
+**Responsabilité** : vues sauvegardées.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -18,6 +20,8 @@
 - **PK** `id`. **Suppr.** Suppression physique autorisée par le propriétaire (objet de confort, non métier), auditée.
 
 ## analytics.export_jobs
+
+**Responsabilité** : exports.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -34,6 +38,8 @@
 - **PK** `id`. **Suppr.** Fichier purgé après 30 jours ; ligne conservée (audit, BR-ANA-008).
 
 ## analytics.kpi_snapshots
+
+**Responsabilité** : instantanés d'indicateurs personnels.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

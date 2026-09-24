@@ -199,7 +199,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **105 tables** (dont 3 vues). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics.
+Total : **107 objets** : 105 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics.
 
 ## 3. Références inter-schémas autorisées
 

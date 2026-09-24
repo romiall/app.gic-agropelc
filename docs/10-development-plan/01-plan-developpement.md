@@ -68,7 +68,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests d'intégration | Déclencheurs d'immuabilité (INV-GLO-03), chaîne d'audit (INV-AUD-01), idempotence de l'inbox (INV-SYN-01 à 05), RBAC généré (socle), dernier Admin (INV-ADM-01) |
 | Tests E2E | Enrôlement et approbation d'appareil ; connexion et PIN ; commande hors ligne puis reprise ; rejet affiché ; révocation d'appareil |
 | Critères d'acceptation | AT-002, AT-034, AT-035, AT-036, AT-050 (sur une commande de démonstration), AT-055 |
-| Prérequis | Décisions : AV-006, AV-008, AV-009, AV-010, AV-073 (hébergement), AV-075, AV-077, AV-078, AV-079 ; stack validée (ADR-021, AV-089) ; comptes d'hébergement |
+| Prérequis | Décisions (ou acceptation explicite des valeurs par défaut) : AV-001 et AV-084 (plan), AV-004 (rôles du seed RBAC), AV-006, AV-007 (appareils partagés : conception), AV-008, AV-009, AV-010, AV-073 (hébergement), AV-074 (rétention, partitionnement), AV-075, AV-077, AV-078, AV-079, AV-086 (dimensionnement) ; stack validée (ADR-021, AV-089) ; comptes d'hébergement. Voir [`04-checklist-demarrage.md`](04-checklist-demarrage.md) |
 | Risques | RISK-01, RISK-03, RISK-07, RISK-08, RISK-09, RISK-16, RISK-21, RISK-26 |
 | Définition de Done | CI verte (y compris contrôle des modules et de la documentation) ; staging déployé ; runbook de restauration testé ; documentation mise à jour ; démonstration hors ligne réussie sur l'appareil de référence |
 
@@ -88,7 +88,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests d'intégration | Immuabilité des règles actives, refus des conflits, versionnement, unité de base immuable |
 | Tests E2E | Activation d'une règle future, puis résolution hors ligne à la date d'effet |
 | Critères d'acceptation | AT-006, AT-007 (sur le simulateur) |
-| Prérequis | AV-017, AV-018, AV-031, AV-061, AV-062, AV-080 ; données produits et prix fournies par GIC (AV-072) |
+| Prérequis | AV-003 (hiérarchie des zones, dimension de prix), AV-017, AV-018, AV-031, AV-061, AV-062, AV-080 ; données produits et prix fournies par GIC (AV-072) |
 | Risques | RISK-06, RISK-19 |
 | DoD | Catalogue et prix initiaux chargés en staging ; moteur partagé identique client et serveur (INV-PRX-04 testé) |
 

@@ -157,7 +157,7 @@ ADM, CRM (clients, crédit), VEN (ventes, commandes), STK (valorisation des mouv
 
 ## 13. Permissions
 
-`sales.payment.record`, `sales.payment.read`, `sales.payment.cancel`, `sales.receivable.read`, `finance.cash_session.operate`, `finance.cash_session.validate`, `finance.cash_account.manage`, `finance.cash_transfer.record`, `finance.expense.record`, `finance.expense.approve`, `finance.expense.pay`, `finance.supplier_invoice.record`, `finance.supplier_invoice.approve`, `finance.supplier_payment.record`, `finance.supplier_payment.approve`, `inventory.valuation.read`, `inventory.cost_entry.record`.
+`sales.payment.record`, `sales.payment.read`, `sales.payment.cancel`, `sales.receivable.read`, `finance.cash.read`, `finance.cash_session.operate`, `finance.cash_session.validate`, `finance.cash_account.manage`, `finance.cash_transfer.record`, `finance.expense.read`, `finance.expense.record`, `finance.expense.approve`, `finance.expense.pay`, `finance.supplier_invoice.record`, `finance.supplier_invoice.approve`, `finance.supplier_payment.record`, `finance.supplier_payment.approve`, `finance.payable.read`, `inventory.valuation.read`, `inventory.cost_entry.record`.
 
 ## 14. Exceptions
 

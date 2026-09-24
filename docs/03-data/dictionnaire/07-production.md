@@ -57,6 +57,8 @@
 
 ## production.lot_weighings
 
+**Responsabilité** : pesées.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -74,6 +76,8 @@
 - **PK** `id`. **UQ** `command_id`. **Suppr.** `ANNULATION`. **Offline** DL (30 j), CR.
 
 ## production.lot_observations
+
+**Responsabilité** : observations.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -138,6 +142,8 @@
 - **Suppr.** `ANNULATION`. **Offline** DL (en cours), CR.
 
 ## production.incubation_events
+
+**Responsabilité** : étapes d'incubation.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|

@@ -133,6 +133,8 @@
 
 ## inventory.stock_transfer_lines
 
+**Responsabilité** : lignes de transfert.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -179,6 +181,8 @@
 - **Suppr.** `IMMUABLE` sauf transitions. **Audit** Octroi, augmentation, libération, révocation. **Offline** DL (les quotas de l'appareil).
 
 ## inventory.stock_allocation_entries
+
+**Responsabilité** : registre des quotas.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
@@ -276,6 +280,8 @@
 
 ## inventory.inventory_count_lines
 
+**Responsabilité** : lignes d'inventaire.
+
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
@@ -296,6 +302,8 @@
 - **PK** `id`. **UQ** `(count_id, product_id, lot_id)`. **Suppr.** Suit l'inventaire. **Intégrité** INV-STK-09.
 
 ## inventory.stock_thresholds
+
+**Responsabilité** : seuils de réapprovisionnement.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
