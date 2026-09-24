@@ -168,7 +168,7 @@ ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits 
 
 ## 13. Permissions
 
-`production.lot.read`, `production.lot.manage`, `production.daily.record`, `production.mortality.approve`, `production.incubation.record`, plus les permissions de stock utilisées (`inventory.transfer.*`, `inventory.consumption.record`) et `inventory.valuation.read` pour les coûts et marges.
+`production.lot.read`, `production.lot.manage` (création, statut, annulation, clôture), `production.daily.record` (entrées de lot, mortalité, consommations, pesées, observations, collectes), `production.mortality.approve`, `production.incubation.record`, plus les permissions de stock utilisées (`inventory.transfer.*`, `inventory.consumption.record`) et `inventory.valuation.read` pour les coûts et marges.
 
 ## 14. Exceptions
 
