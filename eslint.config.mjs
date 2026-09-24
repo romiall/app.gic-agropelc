@@ -52,10 +52,23 @@ export default [
     },
   },
   {
-    // Scripts CLI (dbmate seeds) : la sortie console *est* l'interface utilisateur.
-    files: ['db/seeds/**/*.ts'],
+    // Scripts CLI (dbmate seeds) et amorçage du serveur (avant les logs structurés pino de
+    // l'observabilité, P0-16) : la sortie console *est* l'interface utilisateur.
+    files: ['db/seeds/**/*.ts', 'apps/server/src/main.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    // NestJS (apps/server) résout l'injection de dépendances par métadonnées de décorateur
+    // (`emitDecoratorMetadata`, tsconfig.json) : le type d'un paramètre de constructeur doit
+    // rester un import de **valeur**, même quand il n'apparaît autrement qu'en position de
+    // type dans le fichier — `import type` efface l'import à la compilation et casse la
+    // résolution DI à l'exécution. `consistent-type-imports` ne peut pas distinguer ce cas
+    // d'un import réellement type-only ; désactivé ici plutôt que corrigé au cas par cas.
+    files: ['apps/server/src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': 'off',
     },
   },
   {

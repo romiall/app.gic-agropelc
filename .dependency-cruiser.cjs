@@ -79,6 +79,32 @@ const graphRules = ALL_MODULES.map((mod) => {
   };
 }).filter(Boolean);
 
+// Une règle par module (comme graphRules) plutôt qu'une règle générique avec `pathNot:
+// ['^apps/server/src/modules/\\1/']` : dependency-cruiser ne réutilise pas, dans `to`, un
+// groupe capturé par le pattern de `from` (chaque pattern est évalué indépendamment) — la
+// version générique ne s'auto-exemptait donc jamais réellement (bloquait tout import d'un
+// module vers son *propre* dossier api/domain/infrastructure/application, découvert dès le
+// premier module réel construit sous apps/server/src/modules/, P0-06/identity). En excluant
+// `mod` lui-même de la liste des « autres modules » ciblés par `to`, l'auto-import n'est
+// même plus dans le champ de la règle, sans dépendre d'un mécanisme de référence croisée.
+const publicApiOnlyRules = ALL_MODULES.map((mod) => {
+  const others = ALL_MODULES.filter((m) => m !== mod);
+  if (others.length === 0) return null;
+  return {
+    name: `module-public-api-only-${mod}`,
+    severity: 'error',
+    comment:
+      `Le module '${mod}' n'importe que l'API publique (application/public) d'un autre ` +
+      'module : jamais son domaine interne, son infrastructure ou son adaptateur HTTP ' +
+      '(01-architecture-logicielle.md §3, règle 1).',
+    from: { path: `^apps/server/src/modules/${mod}/` },
+    to: {
+      path: `^apps/server/src/modules/(${others.join('|')})/(api|domain|infrastructure|application)/`,
+      pathNot: [`^apps/server/src/modules/(${others.join('|')})/application/public/`],
+    },
+  };
+}).filter(Boolean);
+
 module.exports = {
   forbidden: [
     {
@@ -88,22 +114,7 @@ module.exports = {
       from: {},
       to: { circular: true },
     },
-    {
-      name: 'module-public-api-only',
-      severity: 'error',
-      comment:
-        "Un module n'importe que l'API publique (application/public) d'un autre module : " +
-        'jamais son domaine interne, son infrastructure ou son adaptateur HTTP ' +
-        '(01-architecture-logicielle.md §3, règle 1).',
-      from: { path: '^apps/server/src/modules/([^/]+)/' },
-      to: {
-        path: '^apps/server/src/modules/([^/]+)/(api|domain|infrastructure|application)/',
-        pathNot: [
-          '^apps/server/src/modules/\\1/', // un module peut tout importer de lui-même
-          '^apps/server/src/modules/([^/]+)/application/public/',
-        ],
-      },
-    },
+    ...publicApiOnlyRules,
     ...graphRules,
     {
       name: 'no-sync-core-business-logic',

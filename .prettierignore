@@ -5,3 +5,6 @@ coverage
 pnpm-lock.yaml
 docs/**/*.md
 *.md
+# Généré par kysely-codegen (apps/server/package.json, db:codegen) : reformater ici serait
+# défait au prochain `db:codegen`, comme pnpm-lock.yaml ci-dessus.
+apps/server/src/platform/kysely/schema.generated.ts

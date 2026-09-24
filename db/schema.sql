@@ -1363,9 +1363,9 @@ CREATE TABLE `platform_event_consumer_offsets` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `schema_migrations` (
-  `version` varchar(128) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `version` varchar(128) NOT NULL,
   PRIMARY KEY (`version`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1647,5 +1647,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260924100400'),
   ('20260924100500'),
   ('20260924100600'),
-  ('20260924100700');
+  ('20260924100700'),
+  ('20260924110000');
 UNLOCK TABLES;

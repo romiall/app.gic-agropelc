@@ -15,6 +15,8 @@ export {
   isUuidv7,
   extractUuidv7Timestamp,
   checkClientProvidedUuidv7,
+  uuidToBin,
+  binToUuid,
 } from './uuid.js';
 export type { ClientProvidedIdCheck } from './uuid.js';
 export { Uuidv7Generator } from './uuidv7-generator.js';

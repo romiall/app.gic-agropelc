@@ -3,6 +3,13 @@
 // réellement dans DATABASE_URL (le seed n'a pas vocation à être annulé — withRollback,
 // helpers.ts, ne convient pas ici) et vérifie l'idempotence par une seconde exécution
 // réelle, pas une simulation.
+//
+// Décomptes de rôles/octrois toujours filtrés par `is_system = TRUE` (jamais un COUNT(*)
+// brut) : depuis P0-06, apps/server/test crée aussi, réellement (même raison : pas de
+// rollback possible sur des tables en ajout renforcé), des rôles de test — non-`is_system`
+// par construction (insertTestRole, apps/server/test/helpers.ts). `identity_permissions`
+// n'a pas besoin du même traitement : le seed déprécie déjà tout code hors catalogue
+// (seedPermissions, seeds/run.ts), ce qui neutralise les permissions de test au passage.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -48,7 +55,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect(PERMISSIONS.length).toBe(117);
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_role_permissions',
+      `SELECT COUNT(*) AS c FROM identity_role_permissions rp
+       JOIN identity_roles r ON r.id = rp.role_id
+       WHERE r.is_system = TRUE`,
     );
     expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
     expect(ROLE_PERMISSIONS.length).toBe(472);
@@ -118,17 +127,19 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     runSeed();
 
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_roles',
+      'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
     expect((roles as unknown as { c: number }).c).toBe(ROLES.length);
 
     const [[permissions]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_permissions',
+      'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_role_permissions',
+      `SELECT COUNT(*) AS c FROM identity_role_permissions rp
+       JOIN identity_roles r ON r.id = rp.role_id
+       WHERE r.is_system = TRUE`,
     );
     expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
 

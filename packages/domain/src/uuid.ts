@@ -74,6 +74,46 @@ export function isUuidv7(value: string): boolean {
   return UUIDV7_RE.test(value);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Conversion UUID texte ↔ 16 octets (05-stack.md §2.4 « Type d'identifiant » : colonne
+ * `BINARY(16)`, équivalent applicatif de `UUID_TO_BIN()`/`BIN_TO_UUID()`), point unique
+ * pour tout le code qui franchit cette frontière. `Uint8Array`, pas `Buffer` (packages/
+ * domain reste exécutable dans le navigateur, K1) : `apps/server` construit un `Buffer`
+ * Node à partir du résultat au point d'appel Kysely (`Buffer.from(...)`, coût négligeable
+ * sur 16 octets).
+ */
+export function uuidToBin(uuid: string): Uint8Array {
+  if (!UUID_RE.test(uuid)) {
+    throw new Error(`uuidToBin : format UUID invalide « ${uuid} ».`);
+  }
+  const hex = uuid.replace(/-/g, '');
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/** Inverse de {@link uuidToBin}. N'importe quelle vue de 16 octets (`Buffer` compris). */
+export function binToUuid(bytes: Uint8Array): string {
+  if (bytes.length !== 16) {
+    throw new Error(`binToUuid : 16 octets attendus, reçu ${bytes.length}.`);
+  }
+  return (
+    toHex(bytes, 0, 4) +
+    '-' +
+    toHex(bytes, 4, 6) +
+    '-' +
+    toHex(bytes, 6, 8) +
+    '-' +
+    toHex(bytes, 8, 10) +
+    '-' +
+    toHex(bytes, 10, 16)
+  );
+}
+
 /**
  * Horodatage embarqué dans un UUIDv7, ou `null` si `value` n'en est pas un.
  * Ne fait jamais foi comme heure métier (ADR-016) : usage limité au diagnostic et à la

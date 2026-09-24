@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
+  binToUuid,
   buildUuidv7,
   checkClientProvidedUuidv7,
   extractUuidv7Timestamp,
   isUuidv7,
+  uuidToBin,
 } from './uuid.js';
 
 function randomBytes(seed: number): Uint8Array {
@@ -116,5 +118,40 @@ describe('checkClientProvidedUuidv7 (03-data/01-identifiants-et-conventions.md �
     const receivedAt = new Date('2026-09-24T12:00:00.000Z');
     const id = buildUuidv7(receivedAt.getTime() + 24 * 60 * 60 * 1000, randomBytes(1));
     expect(checkClientProvidedUuidv7(id, receivedAt).ok).toBe(true);
+  });
+});
+
+describe('uuidToBin / binToUuid (05-stack.md §2.4, colonnes BINARY(16))', () => {
+  it('aller-retour : binToUuid(uuidToBin(u)) === u (minuscules), pour tout UUIDv7', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 0xffffffffffff }),
+        fc.integer({ min: 0 }),
+        (ts, seed) => {
+          const id = buildUuidv7(ts, randomBytes(seed));
+          expect(binToUuid(uuidToBin(id))).toBe(id);
+        },
+      ),
+    );
+  });
+
+  it('produit 16 octets, conformes à un exemple connu', () => {
+    const bytes = uuidToBin('0192f6c4-7c1a-7cc2-9b1e-4b2f0c8e5a11');
+    expect(bytes).toHaveLength(16);
+    expect(binToUuid(bytes)).toBe('0192f6c4-7c1a-7cc2-9b1e-4b2f0c8e5a11');
+  });
+
+  it('normalise la casse en minuscules', () => {
+    const bytes = uuidToBin('0192F6C4-7C1A-7CC2-9B1E-4B2F0C8E5A11');
+    expect(binToUuid(bytes)).toBe('0192f6c4-7c1a-7cc2-9b1e-4b2f0c8e5a11');
+  });
+
+  it('rejette un format invalide', () => {
+    expect(() => uuidToBin('pas-un-uuid')).toThrow();
+  });
+
+  it("rejette une longueur d'octets différente de 16", () => {
+    expect(() => binToUuid(new Uint8Array(15))).toThrow();
+    expect(() => binToUuid(new Uint8Array(17))).toThrow();
   });
 });

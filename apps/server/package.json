@@ -1,0 +1,42 @@
+{
+  "name": "@gic/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Serveur (API + worker) : monolithe modulaire, pipeline de commande (ADR-011, 05-architecture/01-architecture-logicielle.md §4).",
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:codegen": "kysely-codegen --dialect mysql --url \"$DATABASE_URL\" --out-file src/platform/kysely/schema.generated.ts"
+  },
+  "dependencies": {
+    "@gic/contracts": "workspace:*",
+    "@gic/domain": "workspace:*",
+    "@nestjs/common": "^12.1.0",
+    "@nestjs/core": "^12.1.0",
+    "@nestjs/platform-fastify": "^12.1.0",
+    "fastify": "^5.12.5",
+    "jose": "^6.2.12",
+    "kysely": "^0.29.6",
+    "mysql2": "^3.24.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.1.0",
+    "@types/node": "^20.16.11",
+    "@vitest/coverage-v8": "^2.1.4",
+    "fast-check": "^3.22.0",
+    "kysely-codegen": "^0.20.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
