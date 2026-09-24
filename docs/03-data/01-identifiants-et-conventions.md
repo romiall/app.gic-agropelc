@@ -53,6 +53,8 @@ Préfixes `{TYPE}` : `VTE` vente, `CMD` commande client, `TRF` transfert, `PRT` 
 | `label` | `VARCHAR(200)` | Texte d'affichage |
 | `text` | `TEXT` | Texte libre (commentaires), longueur applicative ≤ 2 000 |
 | `phone` | `VARCHAR(20)` | E.164 normalisé (`+2376XXXXXXXX`) |
+| `hash` | `CHAR(64)` | Empreinte SHA-256 hexadécimale (`prev_hash`, `row_hash`, `refresh_token_hash`, `payload_hash`…) ; `CHAR(64)` plutôt que `text` dès qu'une contrainte `UNIQUE` ou un index porte dessus |
+| `inet` | `VARCHAR(45)` | Adresse IPv4 ou IPv6 textuelle (`ip`, `ip_first`, `ip_last`) ; pas de type réseau natif exploité (simplicité, filtrage applicatif) |
 | `money_xaf` | `BIGINT` | Francs CFA entiers ; ≥ 0 sauf mention contraire (INV-GLO-06) |
 | `qty` | `DECIMAL(14,3)` | Quantité en unité de base ; entière pour les unités comptées (BR-CAT-003) |
 | `rate` | `DECIMAL(7,4)` | Taux (0,1925 = 19,25 %) |
@@ -130,6 +132,7 @@ Le dictionnaire référence ces blocs au lieu de les répéter. Un bloc s'appliq
 | Périodes non chevauchantes | Verrouillage de ligne (`SELECT … FOR UPDATE`) dans le gestionnaire de commande + déclencheur `BEFORE INSERT/UPDATE` de re-vérification, pour les affectations de titulaire et les appartenances d'équipe (MySQL n'a pas de contrainte d'exclusion native — voir [`../05-architecture/05-stack.md`](../05-architecture/05-stack.md) §3) |
 | Immuabilité | Déclencheur `BEFORE UPDATE` refusant la modification des colonnes immuables (liste blanche des colonnes modifiables par table) ; `BEFORE DELETE` refusant la suppression sur les tables protégées |
 | Nommage | `pk_<table>`, `fk_<table>_<col>`, `uq_<table>_<cols>`, `ck_<table>_<règle>`, `ix_<table>_<cols>` |
+| Mots réservés MySQL | Une colonne qui coïncide avec un mot réservé (ex. `condition`, `key`, `before`, `after`) est quotée avec des backticks partout où elle apparaît, y compris dans `NEW.`/`OLD.` en déclencheur |
 
 ## 5. Temps (ADR-016)
 

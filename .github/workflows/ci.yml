@@ -86,6 +86,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Utilisateur applicatif gic_app (db/README.md §1) et déclencheurs
+        run: |
+          mysql --host=127.0.0.1 --port=3306 -uroot -e "
+            SET GLOBAL log_bin_trust_function_creators = 1;
+            CREATE USER IF NOT EXISTS 'gic_app'@'%' IDENTIFIED BY 'ci_only_not_a_secret';
+          "
+
       - name: Migrations (base de test)
         run: pnpm run db:migrate:test
 
