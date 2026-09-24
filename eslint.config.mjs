@@ -52,6 +52,13 @@ export default [
     },
   },
   {
+    // Scripts CLI (dbmate seeds) : la sortie console *est* l'interface utilisateur.
+    files: ['db/seeds/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     // packages/domain n'a aucune entrée-sortie implicite (ADR-021, K1) : l'horloge et les
     // identifiants sont injectés (Clock, IdGenerator), jamais lus directement. Interdit
     // seulement la lecture de l'heure *courante* (`new Date()` sans argument, `Date.now()`) :

@@ -87,7 +87,30 @@ doit retirer cette contrainte explicitement dans sa propre section `migrate:down
 TABLE` avec `FOREIGN_KEY_CHECKS=0` ne nettoie pas la définition de la table qui porte la
 contrainte, qui référencerait sinon une table absente au prochain `up`.
 
-## 5. Tests
+## 5. Seeds
+
+```bash
+export DATABASE_URL="mysql://<admin>:<mot de passe>@127.0.0.1:3306/gic_agropelc_dev"
+pnpm run db:seed
+```
+
+Rôles, permissions et portées (matrice RBAC, [`docs/07-security-rbac/01-rbac.md`](../docs/07-security-rbac/01-rbac.md)),
+emplacements virtuels (BR-ADM-010) et paramètres système par défaut
+(`organization.system_settings`, BR-ADM-015) — source de vérité dans [`seeds/rbac-data.ts`](seeds/rbac-data.ts),
+[`seeds/virtual-locations.ts`](seeds/virtual-locations.ts) et [`seeds/system-settings.ts`](seeds/system-settings.ts),
+exécutés par [`seeds/run.ts`](seeds/run.ts) (`tsx`, pas de compilation préalable).
+Idempotent : chaque étape vérifie l'existant par clé naturelle (`code`, `location_type`,
+`key`) avant d'écrire, donc rejouable sans effet destructif ni doublon. `identity.
+role_permissions` fait exception : reconstruite en entier à chaque exécution (upsert),
+puisque ce fichier **est** la source de vérité courante de la matrice, pas seulement son
+état initial — modifier une portée accordée se fait en éditant `rbac-data.ts`, pas en
+écrivant une migration.
+
+`identity.role_permissions.limits`/`identity.permissions.supported_scopes` etc. utilisent
+`CAST(? AS JSON)` avec un paramètre `JSON.stringify`-é côté Node : `mysql2` n'encode pas
+automatiquement une valeur JS pour une colonne `JSON`.
+
+## 6. Tests
 
 `pnpm --filter @gic/db run test` (intégration, MySQL réel — voir
 [`tests/`](tests/)) vérifie les contraintes, colonnes générées et déclencheurs
