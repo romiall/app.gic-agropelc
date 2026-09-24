@@ -178,12 +178,12 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
-| ECR-PRD-01 | Lots actifs (effectif, âge, alertes) | RESP_PRODUCTION, RESP_FERME | Oui | P6 |
-| ECR-PRD-02 | SAISIE DU JOUR (mortalité, aliment, pesée, collecte d'œufs, observation) | RESP_FERME, (OPERATEUR_FERME) | Oui | P6 |
-| ECR-PRD-03 | Fiche lot (effectif, mortalité, consommations, coûts, ventes, marge) | RESP_PRODUCTION, DIRECTION | Partiel | P6/P8 |
-| ECR-PRD-04 | Nouveau lot / mise en place / entrée | RESP_PRODUCTION | Oui | P6 |
-| ECR-PRD-06 | Incubation (lots, étapes, taux d'éclosion) | RESP_FERME, RESP_PRODUCTION | Oui | P6 |
-| ECR-PRD-07 | SORTIE VERS COMMERCIALISATION | RESP_FERME | Oui | P6 |
+| ECR-PRD-01 | Lots actifs (effectif, âge, alertes) | RESP_PRODUCTION, RESP_FERME | Oui | P7 |
+| ECR-PRD-02 | SAISIE DU JOUR (mortalité, aliment, pesée, collecte d'œufs, observation) | RESP_FERME, (OPERATEUR_FERME) | Oui | P7 |
+| ECR-PRD-03 | Fiche lot (effectif, mortalité, consommations, coûts, ventes, marge) | RESP_PRODUCTION, DIRECTION | Partiel | P7/P8 |
+| ECR-PRD-04 | Nouveau lot / mise en place / entrée | RESP_PRODUCTION | Oui | P7 |
+| ECR-PRD-06 | Incubation (lots, étapes, taux d'éclosion) | RESP_FERME, RESP_PRODUCTION | Oui | P7 |
+| ECR-PRD-07 | SORTIE VERS COMMERCIALISATION | RESP_FERME | Oui | P7 |
 
 Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait partie de la saisie du jour (ECR-PRD-02).
 
@@ -191,10 +191,10 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
-| ECR-APP-01 | Fournisseurs | RESP_ACHATS | Non | P7 |
-| ECR-APP-02 | Demande d'achat | Tous les demandeurs, RESP_ACHATS | Oui (création) | P7 |
-| ECR-APP-03 | Bons de commande | RESP_ACHATS | Non | P7 |
-| ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME | Oui | P7 |
+| ECR-APP-01 | Fournisseurs | RESP_ACHATS | Non | P6 |
+| ECR-APP-02 | Demande d'achat | Tous les demandeurs, RESP_ACHATS | Oui (création) | P6 |
+| ECR-APP-03 | Bons de commande | RESP_ACHATS | Non | P6 |
+| ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME | Oui | P6 |
 | ECR-APP-05 | Rapprochement commande / réception / facture | RESP_ACHATS, FINANCE | Non | P8 |
 | ECR-FIN-01 | Encaissements et créances (âge, retards) | FINANCE, RESP_COMMERCIAL | Non | P4/P8 |
 | ECR-FIN-02 | + DÉPENSE | Tous les rôles autorisés | Oui | P8 |

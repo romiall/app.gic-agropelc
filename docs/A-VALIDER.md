@@ -19,7 +19,7 @@ Classification (PM §45) :
 | AV-002 | Inventaire des sites, magasins, points de vente et bâtiments existants | IMPORTANTE | P1 | Modèle générique ; données fournies par GIC | OUVERT |
 | AV-003 | Hiérarchie des zones et géométrie des zones de pointage | IMPORTANTE | P0/P1 | Zones hiérarchiques ; géorepère = centre + rayon | OUVERT |
 | AV-004 | Rôles non listés au CM : opérateur de ferme, livreur, caissier | IMPORTANTE | P0 | Non créés ; rôle optionnel `OPERATEUR_FERME` proposé | OUVERT |
-| AV-005 | Répartition Responsable ferme / Responsable production | IMPORTANTE | P6 | Ferme = site ; Production = toutes fermes + lots | OUVERT |
+| AV-005 | Répartition Responsable ferme / Responsable production | IMPORTANTE | P7 | Ferme = site ; Production = toutes fermes + lots | OUVERT |
 | AV-006 | Politique d'enrôlement des appareils | IMPORTANTE | P0 | Appareil `PENDING` jusqu'à approbation | OUVERT |
 | AV-007 | Appareils partagés entre plusieurs utilisateurs | IMPORTANTE | P0/P5 | Autorisés ; session et allocation par couple utilisateur/appareil | OUVERT |
 | AV-008 | Mode d'authentification des utilisateurs terrain | IMPORTANTE | P0 | Téléphone + mot de passe à l'enrôlement ; PIN local | OUVERT |
@@ -46,29 +46,29 @@ Classification (PM §45) :
 | AV-029 | Retours clients | SECONDAIRE | Futur | Hors MVP ; annulation encadrée | OUVERT |
 | AV-030 | Conditions d'annulation d'une vente | IMPORTANTE | P4 | Validation requise sauf ≤ 15 min et caisse ouverte | OUVERT |
 | AV-031 | Vente au poids ou à l'unité selon les produits | IMPORTANTE | P1/P4 | Les deux supportés ; à l'unité par défaut | OUVERT |
-| AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P6 | Vif uniquement au MVP | OUVERT |
+| AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P7 | Vif uniquement au MVP | OUVERT |
 | AV-033 | Acomptes sur commande | SECONDAIRE | P4 | Autorisés, affectés à la commande | OUVERT |
 | AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Portée par la vente sur commande | OUVERT |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
-| AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P6 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
+| AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
 | AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) | OUVERT |
 | AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée | OUVERT |
 | AV-039 | Fréquence et procédure d'inventaire | SECONDAIRE | P2/P5 | Mensuel complet recommandé + ponctuel | OUVERT |
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
 | AV-041 | TVA et taxes | IMPORTANTE | P4/P8 | Prix TTC, pas de ventilation fiscale | OUVERT |
 | AV-042 | Méthode de valorisation du stock | IMPORTANTE | P2/P8 | CMUP perpétuel ; coût de lot pour le biologique | OUVERT |
-| AV-043 | Coûts incorporés au coût d'un lot | IMPORTANTE | P6/P8 | Coûts directs uniquement | OUVERT |
-| AV-044 | Types de lots exploités | IMPORTANTE | P6 | Chair, pondeuse, porc d'engraissement | OUVERT |
-| AV-045 | Naissage porcin dans le MVP | IMPORTANTE | P6 | Non ; entrées génériques | OUVERT |
-| AV-046 | Classification des œufs et conditionnement | IMPORTANTE | P6 | Catégories CM ; plateau de 30 ; déclassés non vendus | OUVERT |
-| AV-047 | Origine des œufs à couver et paramètres d'incubation | SECONDAIRE | P6 | Interne ou achat ; durées configurables | OUVERT |
-| AV-048 | Seuil de validation de la mortalité | IMPORTANTE | P6 | > 0,5 % de l'effectif ou > 20 têtes / jour | OUVERT |
-| AV-049 | Indicateurs zootechniques attendus | SECONDAIRE | P6/P9 | Ceux du CM + taux calculables | OUVERT |
+| AV-043 | Coûts incorporés au coût d'un lot | IMPORTANTE | P7/P8 | Coûts directs uniquement | OUVERT |
+| AV-044 | Types de lots exploités | IMPORTANTE | P7 | Chair, pondeuse, porc d'engraissement | OUVERT |
+| AV-045 | Naissage porcin dans le MVP | IMPORTANTE | P7 | Non ; entrées génériques | OUVERT |
+| AV-046 | Classification des œufs et conditionnement | IMPORTANTE | P7 | Catégories CM ; plateau de 30 ; déclassés non vendus | OUVERT |
+| AV-047 | Origine des œufs à couver et paramètres d'incubation | SECONDAIRE | P7 | Interne ou achat ; durées configurables | OUVERT |
+| AV-048 | Seuil de validation de la mortalité | IMPORTANTE | P7 | > 0,5 % de l'effectif ou > 20 têtes / jour | OUVERT |
+| AV-049 | Indicateurs zootechniques attendus | SECONDAIRE | P7/P9 | Ceux du CM + taux calculables | OUVERT |
 | AV-050 | Suivi sanitaire (vaccination, traitements) | SECONDAIRE | Futur | Consommations uniquement | OUVERT |
-| AV-051 | Seuils de validation des achats | IMPORTANTE | P7 | Toute DA validée ; BC > 500 000 XAF par Direction | OUVERT |
-| AV-052 | Réception sans bon de commande | IMPORTANTE | P7 | Autorisée avec justification et validation | OUVERT |
-| AV-053 | Tolérances de rapprochement commande / réception / facture | SECONDAIRE | P7/P8 | Tolérance nulle ; écart signalé | OUVERT |
-| AV-054 | Traitement des quantités rejetées à réception | SECONDAIRE | P7 | Hors stock ; avoir sur facture | OUVERT |
+| AV-051 | Seuils de validation des achats | IMPORTANTE | P6 | Toute DA validée ; BC > 500 000 XAF par Direction | OUVERT |
+| AV-052 | Réception sans bon de commande | IMPORTANTE | P6 | Autorisée avec justification et validation | OUVERT |
+| AV-053 | Tolérances de rapprochement commande / réception / facture | SECONDAIRE | P6/P8 | Tolérance nulle ; écart signalé | OUVERT |
+| AV-054 | Traitement des quantités rejetées à réception | SECONDAIRE | P6 | Hors stock ; avoir sur facture | OUVERT |
 | AV-055 | Règles de paiement fournisseur | SECONDAIRE | P8 | Finance enregistre ; Direction approuve > seuil | OUVERT |
 | AV-056 | Moyens de paiement et vérification mobile money | IMPORTANTE | P4 | Liste configurable ; référence saisie manuellement | OUVERT |
 | AV-057 | Procédure de caisse du point de vente | IMPORTANTE | P5 | Session quotidienne ; clôture comptée ; écart validé | OUVERT |
