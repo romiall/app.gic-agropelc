@@ -31,6 +31,7 @@
  * renvoyé, pas ici : ce pipeline reste agnostique du transport qui l'appelle.
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { Clock, IdGenerator } from '@gic/domain';
 import { rawCommandEnvelopeSchema, type CommandResult } from '@gic/contracts';
 import { CLOCK } from '../platform/clock.provider.js';
@@ -111,16 +112,17 @@ export class CommandPipelineService {
       };
     }
 
-    // Étape 1 : rejeu (INV-SYN-01, INV-SYN-02).
+    // Étape 1 : rejeu (INV-SYN-01, INV-SYN-02). `FAILED_RETRYABLE` (étape 7) n'est **pas** un
+    // résultat final : c'est l'échec transitoire lui-même (verrou, délai) que l'appareil est
+    // censé faire disparaître en renvoyant le même lot (§4 « reprise »). Le renvoyer tel quel
+    // ici bloquerait la commande pour toujours (aucun code n'incrémente jamais `attempts` en
+    // dehors de cette reprise) — au lieu de ça, l'enveloppe identique relance les étapes 3 à 6.
     const existing = await this.db
       .selectFrom('sync_command_inbox')
       .select(['payload_hash', 'status', 'result', 'error_code', 'error_message'])
       .where('command_id', '=', commandIdBin)
       .executeTakeFirst();
-    if (existing) {
-      if (existing.payload_hash === payloadHash) {
-        return storedResult(envelope.command_id, existing);
-      }
+    if (existing && existing.payload_hash !== payloadHash) {
       return {
         command_id: envelope.command_id,
         status: 'REJECTED',
@@ -130,33 +132,46 @@ export class CommandPipelineService {
         },
       };
     }
+    if (existing && existing.status !== 'FAILED_RETRYABLE') {
+      return storedResult(envelope.command_id, existing);
+    }
 
-    // Étape 2 : insertion RECEIVED (la clé primaire command_id garantit l'unicité même en concurrence).
-    await this.db
-      .insertInto('sync_command_inbox')
-      .values({
-        command_id: commandIdBin,
-        device_id: toBin(ctx.authenticatedDeviceId),
-        user_id: toBin(envelope.author_user_id),
-        device_seq: ctx.transport === 'SYNC_PUSH' ? envelope.device_seq : null,
-        transport: ctx.transport,
-        command_type: envelope.command_type,
-        command_version: envelope.command_version,
-        aggregate_type: envelope.aggregate_type,
-        aggregate_id: toBin(envelope.aggregate_id),
-        base_version: envelope.base_version,
-        depends_on: jsonValue(envelope.depends_on),
-        payload: jsonValue(envelope.payload),
-        payload_hash: payloadHash,
-        occurred_at: new Date(envelope.occurred_at),
-        client_created_at: new Date(envelope.client_created_at),
-        device_sent_at: ctx.deviceSentAt ?? null,
-        batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
-        clock_skew_ms: ctx.clockSkewMs ?? null,
-        captured_offline: toDbBool(envelope.captured_offline),
-        status: 'RECEIVED',
-      })
-      .execute();
+    if (existing) {
+      // Reprise après échec transitoire : la ligne existe déjà (contrainte de clé primaire),
+      // on la remet à RECEIVED plutôt que d'en insérer une seconde.
+      await this.db
+        .updateTable('sync_command_inbox')
+        .set({ status: 'RECEIVED', attempts: sql`attempts + 1`, error_message: null })
+        .where('command_id', '=', commandIdBin)
+        .execute();
+    } else {
+      // Étape 2 : insertion RECEIVED (la clé primaire command_id garantit l'unicité même en concurrence).
+      await this.db
+        .insertInto('sync_command_inbox')
+        .values({
+          command_id: commandIdBin,
+          device_id: toBin(ctx.authenticatedDeviceId),
+          user_id: toBin(envelope.author_user_id),
+          device_seq: ctx.transport === 'SYNC_PUSH' ? envelope.device_seq : null,
+          transport: ctx.transport,
+          command_type: envelope.command_type,
+          command_version: envelope.command_version,
+          aggregate_type: envelope.aggregate_type,
+          aggregate_id: toBin(envelope.aggregate_id),
+          base_version: envelope.base_version,
+          depends_on: jsonValue(envelope.depends_on),
+          payload: jsonValue(envelope.payload),
+          payload_hash: payloadHash,
+          occurred_at: new Date(envelope.occurred_at),
+          client_created_at: new Date(envelope.client_created_at),
+          device_sent_at: ctx.deviceSentAt ?? null,
+          batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
+          clock_skew_ms: ctx.clockSkewMs ?? null,
+          captured_offline: toDbBool(envelope.captured_offline),
+          status: 'RECEIVED',
+        })
+        .execute();
+    }
 
     // Étape 3a : dépendances (BR-SYN-004) — aucun statut « en attente » propre à inbox :
     // une dépendance non connue laisse la ligne RECEIVED, seule la réponse diffère.
