@@ -6,6 +6,7 @@ import { IdentityModule } from './modules/identity/identity.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
 import { AttachmentsModule } from './modules/attachments/attachments.module.js';
 import { ApprovalsModule } from './modules/approvals/approvals.module.js';
+import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
@@ -21,6 +22,7 @@ import { HealthController } from './health/health.controller.js';
     OrganizationModule,
     AttachmentsModule,
     ApprovalsModule,
+    CatalogModule,
     CommandsModule,
     ChainVerificationModule,
     AuditApiModule,
