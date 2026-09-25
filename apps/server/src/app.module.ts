@@ -8,6 +8,7 @@ import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
+import { SyncModule } from './sync/sync.module.js';
 import { HealthController } from './health/health.controller.js';
 
 @Module({
@@ -19,6 +20,7 @@ import { HealthController } from './health/health.controller.js';
     ChainVerificationModule,
     AuditApiModule,
     OrganizationApiModule,
+    SyncModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_FILTER, useClass: ApiErrorFilter }],

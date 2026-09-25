@@ -21,10 +21,14 @@
  * Hors périmètre P0-06, délibérément non traité ici (voir docs/10-development-plan/
  * 06-passage-au-developpement.md §3 et le plan de cette session) :
  * - fenêtre de rétrodatation (AV-078) → P0-12 ;
- * - correction d'écart d'horloge par lot (device_sent_at du push) → P0-12, propre à
- *   `/sync/push` ; `/commands` compare directement `occurred_at` à l'horloge serveur ;
  * - fusion automatique / `base_version` (intentions sur état partagé) → chaque module
  *   métier la décide dans son propre gestionnaire (ce pipeline reste générique).
+ *
+ * P0-12 (`sync/sync-push.service.ts`) : `HandleCommandContext` porte en plus, en option,
+ * `deviceSentAt`/`batchId`/`clockSkewMs` — propres à `/sync/push` (un lot), absents pour
+ * `/commands` (ONLINE_API, pas de lot ni d'horloge appareil à comparer par lot). L'avertissement
+ * `CLOCK_SUSPECT` lui-même (§9, |écart| > 5 min) est ajouté par l'appelant sur le résultat
+ * renvoyé, pas ici : ce pipeline reste agnostique du transport qui l'appelle.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import type { Clock, IdGenerator } from '@gic/domain';
@@ -63,6 +67,12 @@ export interface HandleCommandContext {
   readonly authenticatedUserId: string;
   readonly authenticatedDeviceId: string;
   readonly transport: 'ONLINE_API' | 'SYNC_PUSH' | 'SYSTEM';
+  /** `/sync/push` seulement (§9) : horodatage d'envoi déclaré par l'appareil pour ce lot. */
+  readonly deviceSentAt?: Date;
+  /** `/sync/push` seulement : identifiant du lot d'envoi. */
+  readonly batchId?: string;
+  /** `/sync/push` seulement : `server_time − device_sent_at`, calculé une fois par lot par l'appelant. */
+  readonly clockSkewMs?: number;
 }
 
 @Injectable()
@@ -140,6 +150,9 @@ export class CommandPipelineService {
         payload_hash: payloadHash,
         occurred_at: new Date(envelope.occurred_at),
         client_created_at: new Date(envelope.client_created_at),
+        device_sent_at: ctx.deviceSentAt ?? null,
+        batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
+        clock_skew_ms: ctx.clockSkewMs ?? null,
         captured_offline: toDbBool(envelope.captured_offline),
         status: 'RECEIVED',
       })
