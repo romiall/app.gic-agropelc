@@ -18,6 +18,7 @@ import { jsonValue } from '../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../platform/kysely/bool-column.js';
 import { computeAuditRowHash, GENESIS_PREV_HASH, type AuditCanonFields } from './hash-chain.js';
+import { redactSecrets } from './redact.js';
 
 export type AuditResult = 'SUCCESS' | 'DENIED' | 'FAILED' | 'QUARANTINED';
 
@@ -69,6 +70,11 @@ export async function recordAudit(
   const id = deps.idGenerator.newId();
   const recordedAt = deps.clock.now();
 
+  // Masqué avant hachage ET stockage (INV-AUD-02) : la chaîne ne certifie et ne conserve
+  // jamais que la version déjà masquée — vérifiable à partir de ce qui est réellement stocké.
+  const before = entry.before === undefined ? null : redactSecrets(entry.before);
+  const after = entry.after === undefined ? null : redactSecrets(entry.after);
+
   const canonFields: AuditCanonFields = {
     seq: nextSeq,
     id,
@@ -80,8 +86,8 @@ export async function recordAudit(
     action: entry.action,
     entity_type: entry.entityType,
     entity_id: entry.entityId ?? null,
-    before: entry.before ?? null,
-    after: entry.after ?? null,
+    before,
+    after,
     reason: entry.reason ?? null,
     result: entry.result,
     command_id: entry.commandId ?? null,
@@ -108,8 +114,8 @@ export async function recordAudit(
       entity_type: entry.entityType,
       entity_id: toBinOrNull(entry.entityId),
       site_id: toBinOrNull(entry.siteId),
-      before: entry.before === undefined ? null : jsonValue(entry.before),
-      after: entry.after === undefined ? null : jsonValue(entry.after),
+      before: before === null ? null : jsonValue(before),
+      after: after === null ? null : jsonValue(after),
       reason: entry.reason ?? null,
       approval_request_id: toBinOrNull(entry.approvalRequestId),
       result: entry.result,

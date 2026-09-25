@@ -33,13 +33,24 @@ export class JobRunner {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async claimAndProcessOne(): Promise<JobRunOutcome> {
+  /**
+   * `jobTypes` restreint la réclamation à ces types (utile à un worker spécialisé, ou pour
+   * isoler une démonstration/un test des autres tâches en attente dans la même table
+   * partagée) ; omis, n'importe quelle tâche due peut être réclamée.
+   */
+  async claimAndProcessOne(
+    options: { readonly jobTypes?: readonly string[] } = {},
+  ): Promise<JobRunOutcome> {
     return this.db.transaction().execute(async (trx) => {
-      const job = await trx
+      let query = trx
         .selectFrom('platform_jobs')
         .selectAll()
         .where('status', '=', 'PENDING')
-        .where('run_at', '<=', this.clock.now())
+        .where('run_at', '<=', this.clock.now());
+      if (options.jobTypes) {
+        query = query.where('job_type', 'in', options.jobTypes);
+      }
+      const job = await query
         .orderBy('run_at', 'asc')
         .limit(1)
         .forUpdate()
