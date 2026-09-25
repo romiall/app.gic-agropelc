@@ -274,7 +274,7 @@ describe('pricing.* (P1-04)', () => {
     expect(conflictResult).toMatchObject({ error: { code: 'PRICE_RULE_CONFLICT' } });
   });
 
-  it('supersede — nouvelle version remplace l\'ancienne ; le prix résolu au passé reste inchangé (AT-007)', async () => {
+  it("supersede — nouvelle version remplace l'ancienne ; le prix résolu au passé reste inchangé (AT-007)", async () => {
     const categoryId = freshUuid();
     const localProductId = freshUuid();
     await pipeline.handle(
@@ -396,7 +396,7 @@ describe('pricing.* (P1-04)', () => {
     if (currentResolution.found) expect(currentResolution.resolution.unitPriceXaf).toBe(4800);
   });
 
-  it('draft à date d\'effet future -> résolution appliquée automatiquement à la date d\'effet (AT-006)', async () => {
+  it("draft à date d'effet future -> résolution appliquée automatiquement à la date d'effet (AT-006)", async () => {
     const categoryId = freshUuid();
     const localProductId = freshUuid();
     await pipeline.handle(

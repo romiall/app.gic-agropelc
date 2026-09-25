@@ -173,7 +173,10 @@ const unitCreate: CommandHandler<UnitCreatePayload> = async (uow, envelope) => {
     .where('code', '=', code)
     .executeTakeFirst();
   if (already) return { status: 'APPLIED' };
-  await uow.insertInto('catalog_units').values({ code, name, is_count: toDbBool(isCount) }).execute();
+  await uow
+    .insertInto('catalog_units')
+    .values({ code, name, is_count: toDbBool(isCount) })
+    .execute();
   return { status: 'APPLIED' };
 };
 
@@ -186,16 +189,32 @@ function registerCodeKeyedSetActive(
   const emptySchema = z.object({});
   const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) => {
     const code = envelope.aggregate_id;
-    const row = await uow.selectFrom(table).select('code').where('code', '=', code).executeTakeFirst();
+    const row = await uow
+      .selectFrom(table)
+      .select('code')
+      .where('code', '=', code)
+      .executeTakeFirst();
     if (!row) return notFound(notFoundMessageFr);
-    await uow.updateTable(table).set({ is_active: toDbBool(false) }).where('code', '=', code).execute();
+    await uow
+      .updateTable(table)
+      .set({ is_active: toDbBool(false) })
+      .where('code', '=', code)
+      .execute();
     return { status: 'APPLIED' };
   };
   const reactivate: CommandHandler<Record<string, never>> = async (uow, envelope) => {
     const code = envelope.aggregate_id;
-    const row = await uow.selectFrom(table).select('code').where('code', '=', code).executeTakeFirst();
+    const row = await uow
+      .selectFrom(table)
+      .select('code')
+      .where('code', '=', code)
+      .executeTakeFirst();
     if (!row) return notFound(notFoundMessageFr);
-    await uow.updateTable(table).set({ is_active: toDbBool(true) }).where('code', '=', code).execute();
+    await uow
+      .updateTable(table)
+      .set({ is_active: toDbBool(true) })
+      .where('code', '=', code)
+      .execute();
     return { status: 'APPLIED' };
   };
   registry.register({

@@ -1,15 +1,22 @@
-/** Lecture HTTP `GET /api/v1/suppliers` (phase P1). */
+/**
+ * Lecture HTTP `GET /api/v1/suppliers` (phase P1). Composition transport hors du module
+ * (comme `organization-api/`) : `AuthGuard` reste le transport interne d'`identity`, jamais
+ * son API publique (.dependency-cruiser.cjs, `module-public-api-only-*`).
+ */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { DATABASE, type Database } from '../../../platform/kysely/database.provider.js';
-import { CLOCK } from '../../../platform/clock.provider.js';
+import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
+import { CLOCK } from '../platform/clock.provider.js';
 import type { Clock } from '@gic/domain';
-import { ApiError } from '../../../platform/http/api-error.exception.js';
-import { AuthGuard, type AuthenticatedRequest } from '../../identity/api/auth.guard.js';
-import { hasPermissionAt } from '../../identity/application/public/index.js';
-import { RequiresPermission } from '../../../platform/http/authorization.decorators.js';
-import { toBin } from '../../../platform/kysely/uuid-columns.js';
-import { listSuppliers, type SupplierSummary } from '../application/public/index.js';
+import { ApiError } from '../platform/http/api-error.exception.js';
+import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
+import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { RequiresPermission } from '../platform/http/authorization.decorators.js';
+import { toBin } from '../platform/kysely/uuid-columns.js';
+import {
+  listSuppliers,
+  type SupplierSummary,
+} from '../modules/procurement/application/public/index.js';
 
 const READ_PERMISSION = 'procurement.supplier.read';
 
@@ -31,7 +38,12 @@ export class SupplierReadController {
     @Req() request: AuthenticatedRequest,
   ): Promise<{ suppliers: readonly SupplierSummary[] }> {
     const auth = request.auth!;
-    const allowed = await hasPermissionAt(this.db, toBin(auth.sub), READ_PERMISSION, this.clock.now());
+    const allowed = await hasPermissionAt(
+      this.db,
+      toBin(auth.sub),
+      READ_PERMISSION,
+      this.clock.now(),
+    );
     if (!allowed) {
       throw new ApiError(403, 'FORBIDDEN', 'Droit insuffisant pour consulter les fournisseurs.');
     }

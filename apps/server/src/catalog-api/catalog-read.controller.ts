@@ -1,19 +1,21 @@
 /**
- * Lectures HTTP du catalogue (phase P1 : `/products`, `/units`, `/reason-codes`). `catalog`
- * peut dépendre directement d'`identity` (03-graphe-dependances.md), donc ce contrôleur vit
- * dans le module lui-même — pas de composition séparée comme `organization-api/` (qui doit
- * contourner l'interdiction inverse `organization -> identity`).
+ * Lectures HTTP du catalogue (phase P1 : `/products`, `/units`, `/reason-codes`). Composition
+ * transport hors du module (comme `organization-api/`, `audit-api/`) : `AuthGuard` est
+ * transport interne d'`identity` (`api/`), jamais son API publique
+ * (`application/public/`) — un module ne peut importer que celle-ci
+ * (.dependency-cruiser.cjs, `module-public-api-only-*`), même quand le graphe des
+ * dépendances métier l'autorise par ailleurs (`catalog -> identity`).
  */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { DATABASE, type Database } from '../../../platform/kysely/database.provider.js';
-import { CLOCK } from '../../../platform/clock.provider.js';
+import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
+import { CLOCK } from '../platform/clock.provider.js';
 import type { Clock } from '@gic/domain';
-import { ApiError } from '../../../platform/http/api-error.exception.js';
-import { AuthGuard, type AuthenticatedRequest } from '../../identity/api/auth.guard.js';
-import { hasPermissionAt } from '../../identity/application/public/index.js';
-import { RequiresPermission } from '../../../platform/http/authorization.decorators.js';
-import { toBin } from '../../../platform/kysely/uuid-columns.js';
+import { ApiError } from '../platform/http/api-error.exception.js';
+import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
+import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { RequiresPermission } from '../platform/http/authorization.decorators.js';
+import { toBin } from '../platform/kysely/uuid-columns.js';
 import {
   listProducts,
   listUnits,
@@ -21,7 +23,7 @@ import {
   type ProductSummary,
   type UnitSummary,
   type ReasonCodeSummary,
-} from '../application/public/index.js';
+} from '../modules/catalog/application/public/index.js';
 
 const READ_PERMISSION = 'catalog.product.read';
 

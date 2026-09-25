@@ -1,25 +1,26 @@
 /**
  * Lectures HTTP de `pricing` (phase P1 : `/price-rules`, `/campaigns`, `/prices/resolve` —
- * UC-PRX-06, simulateur). `pricing` peut dépendre directement d'`identity`
- * (03-graphe-dependances.md), donc ce contrôleur vit dans le module lui-même.
+ * UC-PRX-06, simulateur). Composition transport hors du module (comme `organization-api/`) :
+ * `AuthGuard` reste le transport interne d'`identity`, jamais son API publique
+ * (.dependency-cruiser.cjs, `module-public-api-only-*`).
  */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { DATABASE, type Database } from '../../../platform/kysely/database.provider.js';
-import { CLOCK } from '../../../platform/clock.provider.js';
+import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
+import { CLOCK } from '../platform/clock.provider.js';
 import type { Clock } from '@gic/domain';
-import { ApiError } from '../../../platform/http/api-error.exception.js';
-import { AuthGuard, type AuthenticatedRequest } from '../../identity/api/auth.guard.js';
-import { hasPermissionAt } from '../../identity/application/public/index.js';
-import { RequiresPermission } from '../../../platform/http/authorization.decorators.js';
-import { toBin } from '../../../platform/kysely/uuid-columns.js';
+import { ApiError } from '../platform/http/api-error.exception.js';
+import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
+import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { RequiresPermission } from '../platform/http/authorization.decorators.js';
+import { toBin } from '../platform/kysely/uuid-columns.js';
 import {
   listPriceRules,
   listCampaigns,
   resolvePriceForContext,
   type PriceRuleView,
   type CampaignView,
-} from '../application/public/index.js';
+} from '../modules/pricing/application/public/index.js';
 
 const READ_PERMISSION = 'pricing.price.read';
 
@@ -114,7 +115,9 @@ export class PricingReadController {
       quantity: q.quantity,
       ...(q.site_id !== undefined ? { siteId: q.site_id } : {}),
       ...(q.zone_id !== undefined ? { zoneId: q.zone_id } : {}),
-      ...(q.customer_category_id !== undefined ? { customerCategoryId: q.customer_category_id } : {}),
+      ...(q.customer_category_id !== undefined
+        ? { customerCategoryId: q.customer_category_id }
+        : {}),
       ...(q.channel_code !== undefined ? { channelCode: q.channel_code } : {}),
     });
     if (!result.found) return { found: false };

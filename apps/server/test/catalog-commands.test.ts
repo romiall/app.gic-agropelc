@@ -10,7 +10,11 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerReferenceCommands } from '../src/modules/catalog/application/commands/reference-commands.js';
 import { registerProductCommands } from '../src/modules/catalog/application/commands/product-commands.js';
-import { listProducts, listUnits, listReasonCodes } from '../src/modules/catalog/application/public/index.js';
+import {
+  listProducts,
+  listUnits,
+  listReasonCodes,
+} from '../src/modules/catalog/application/public/index.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,

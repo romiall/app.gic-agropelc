@@ -14,6 +14,9 @@ import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
 import { AttachmentsApiModule } from './attachments-api/attachments-api.module.js';
+import { CatalogApiModule } from './catalog-api/catalog-api.module.js';
+import { PricingApiModule } from './pricing-api/pricing-api.module.js';
+import { ProcurementApiModule } from './procurement-api/procurement-api.module.js';
 import { SyncModule } from './sync/sync.module.js';
 import { HealthController } from './health/health.controller.js';
 
@@ -32,6 +35,9 @@ import { HealthController } from './health/health.controller.js';
     AuditApiModule,
     OrganizationApiModule,
     AttachmentsApiModule,
+    CatalogApiModule,
+    PricingApiModule,
+    ProcurementApiModule,
     SyncModule,
   ],
   controllers: [HealthController],

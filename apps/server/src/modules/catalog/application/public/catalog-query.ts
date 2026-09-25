@@ -58,7 +58,9 @@ export async function listProducts(
 export async function findProductForPricing(
   executor: Kysely<DB> | Transaction<DB>,
   productId: string,
-): Promise<{ readonly id: string; readonly baseUnitCode: string; readonly status: string } | undefined> {
+): Promise<
+  { readonly id: string; readonly baseUnitCode: string; readonly status: string } | undefined
+> {
   const row = await executor
     .selectFrom('catalog_products')
     .select(['id', 'base_unit_code', 'status'])
@@ -78,7 +80,11 @@ export interface UnitSummary {
 export async function listUnits(
   executor: Kysely<DB> | Transaction<DB>,
 ): Promise<readonly UnitSummary[]> {
-  const rows = await executor.selectFrom('catalog_units').selectAll().orderBy('code', 'asc').execute();
+  const rows = await executor
+    .selectFrom('catalog_units')
+    .selectAll()
+    .orderBy('code', 'asc')
+    .execute();
   return rows.map((row) => ({
     code: row.code,
     name: row.name,

@@ -64,5 +64,11 @@ export { buildGeofence } from './geofence.js';
 
 export { CLOCK_SKEW_SUSPECT_MS, isClockSkewSuspect } from './clock-skew.js';
 
-export type { PriceRule, PriceContext, PriceRuleStatus, ResolvedPrice, ResolvePriceResult } from './pricing-engine.js';
+export type {
+  PriceRule,
+  PriceContext,
+  PriceRuleStatus,
+  ResolvedPrice,
+  ResolvePriceResult,
+} from './pricing-engine.js';
 export { resolvePrice, specificityOf, findConflicts } from './pricing-engine.js';

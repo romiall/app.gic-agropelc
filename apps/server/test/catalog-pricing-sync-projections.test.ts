@@ -146,7 +146,10 @@ describe('projections catalog/pricing/procurement pour /sync/pull (P1-06)', () =
       ctx(),
     );
     const productProjection = await resolveEntityProjection('PRODUCT')!(db, productId);
-    expect(productProjection).toMatchObject({ id: productId, code: expect.stringContaining('POULET-') });
+    expect(productProjection).toMatchObject({
+      id: productId,
+      code: expect.stringContaining('POULET-'),
+    });
     // Aucune colonne interne (created_by, updated_at…) ne fuite dans la projection.
     expect(Object.keys(productProjection!).sort()).toEqual(
       [
@@ -199,7 +202,11 @@ describe('projections catalog/pricing/procurement pour /sync/pull (P1-06)', () =
       ctx(),
     );
     const ruleProjection = await resolveEntityProjection('PRICE_RULE')!(db, draftRuleId);
-    expect(ruleProjection).toMatchObject({ id: draftRuleId, unit_price_xaf: 4500, status: 'ACTIVE' });
+    expect(ruleProjection).toMatchObject({
+      id: draftRuleId,
+      unit_price_xaf: 4500,
+      status: 'ACTIVE',
+    });
 
     const supplierId = freshUuid();
     await pipeline.handle(

@@ -62,7 +62,11 @@ const createPayloadSchema = z
   })
   .superRefine((data, ctx) => {
     // BR-CAT-005 : SERVICE => lot_tracking NONE (aussi imposé en base, CK).
-    if (data.stockFamily === 'SERVICE' && data.lotTracking !== undefined && data.lotTracking !== 'NONE') {
+    if (
+      data.stockFamily === 'SERVICE' &&
+      data.lotTracking !== undefined &&
+      data.lotTracking !== 'NONE'
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Un produit de famille SERVICE ne peut avoir de suivi par lot (BR-CAT-005).',

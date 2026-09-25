@@ -63,7 +63,7 @@ async function validateDimensions(
     .select('code')
     .where('code', '=', payload.pricingUnitCode)
     .executeTakeFirst();
-  if (!unit) return notFound("Unité de tarification introuvable.");
+  if (!unit) return notFound('Unité de tarification introuvable.');
 
   let zoneDepth: number | null = null;
   if (payload.zoneId !== undefined) {
@@ -110,7 +110,10 @@ async function validateDimensions(
   return { zoneDepth };
 }
 
-function computeSpecificity(payload: z.infer<typeof dimensionsSchema>, zoneDepth: number | null): number {
+function computeSpecificity(
+  payload: z.infer<typeof dimensionsSchema>,
+  zoneDepth: number | null,
+): number {
   return specificityOf({
     id: '',
     productId: payload.productId,
@@ -241,23 +244,26 @@ const supersede: CommandHandler<SupersedePayload> = async (uow, envelope) => {
 const activateSchema = z.object({});
 type ActivatePayload = z.infer<typeof activateSchema>;
 
-function toDomainRule(row: {
-  id: Buffer;
-  product_id: Buffer;
-  unit_price_xaf: number;
-  pricing_unit_code: string;
-  zone_id: Buffer | null;
-  site_id: Buffer | null;
-  customer_category_id: Buffer | null;
-  channel_code: string | null;
-  min_quantity: string | null;
-  commercial_campaign_id: Buffer | null;
-  priority: number;
-  specificity: number;
-  valid_from: Date;
-  valid_to: Date | null;
-  status: string;
-}, zoneDepthByHex: ReadonlyMap<string, number>): PriceRule {
+function toDomainRule(
+  row: {
+    id: Buffer;
+    product_id: Buffer;
+    unit_price_xaf: number;
+    pricing_unit_code: string;
+    zone_id: Buffer | null;
+    site_id: Buffer | null;
+    customer_category_id: Buffer | null;
+    channel_code: string | null;
+    min_quantity: string | null;
+    commercial_campaign_id: Buffer | null;
+    priority: number;
+    specificity: number;
+    valid_from: Date;
+    valid_to: Date | null;
+    status: string;
+  },
+  zoneDepthByHex: ReadonlyMap<string, number>,
+): PriceRule {
   return {
     id: fromBin(row.id),
     productId: fromBin(row.product_id),
@@ -377,7 +383,11 @@ const end: CommandHandler<EndPayload> = async (uow, envelope) => {
       'La nouvelle date de fin doit réduire la période en vigueur (BR-PRX-007).',
     );
   }
-  await uow.updateTable('pricing_price_rules').set({ valid_to: newValidTo }).where('id', '=', ruleId).execute();
+  await uow
+    .updateTable('pricing_price_rules')
+    .set({ valid_to: newValidTo })
+    .where('id', '=', ruleId)
+    .execute();
   return { status: 'APPLIED' };
 };
 

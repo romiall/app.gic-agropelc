@@ -51,8 +51,7 @@ export interface ResolvedPrice {
 }
 
 export type ResolvePriceResult =
-  | { readonly found: true; readonly resolution: ResolvedPrice }
-  | { readonly found: false };
+  { readonly found: true; readonly resolution: ResolvedPrice } | { readonly found: false };
 
 /** BR-PRX-005 : Σ des poids des dimensions renseignées. */
 export function specificityOf(rule: PriceRule): number {
@@ -99,10 +98,7 @@ function compareCandidates(a: PriceRule, b: PriceRule): number {
 }
 
 /** §3 de la stratégie pricing : filtre puis départage. `PRICE_NOT_FOUND` si aucune candidate. */
-export function resolvePrice(
-  ctx: PriceContext,
-  rules: readonly PriceRule[],
-): ResolvePriceResult {
+export function resolvePrice(ctx: PriceContext, rules: readonly PriceRule[]): ResolvePriceResult {
   const candidates = rules.filter((rule) => isCandidate(rule, ctx));
   if (candidates.length === 0) return { found: false };
   const [winner] = [...candidates].sort(compareCandidates);
@@ -144,7 +140,8 @@ export function findConflicts(
     if (other.priority !== candidate.priority) return false;
     if (specificityOf(other) !== candidateSpecificity) return false;
     const periodsOverlap =
-      other.validFrom < (candidateEnd ?? MAX_DATE) && (other.validTo ?? MAX_DATE) > candidate.validFrom;
+      other.validFrom < (candidateEnd ?? MAX_DATE) &&
+      (other.validTo ?? MAX_DATE) > candidate.validFrom;
     if (!periodsOverlap) return false;
     if (!dimensionCompatible(other.zoneId, candidate.zoneId)) return false;
     if (!dimensionCompatible(other.siteId, candidate.siteId)) return false;

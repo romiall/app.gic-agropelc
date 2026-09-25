@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { xaf } from './money.js';
-import {
-  findConflicts,
-  resolvePrice,
-  specificityOf,
-  type PriceRule,
-} from './pricing-engine.js';
+import { findConflicts, resolvePrice, specificityOf, type PriceRule } from './pricing-engine.js';
 
 const PRODUCT = 'product-poulet-chair';
 
@@ -59,7 +54,13 @@ describe('resolvePrice — exemple de la stratégie pricing (§5)', () => {
 
   it('vente au PDV Mboppi, client anonyme, 2 têtes, hors campagne -> R4 (le plus spécifique)', () => {
     const result = resolvePrice(
-      { productId: PRODUCT, at: new Date('2026-02-01'), siteId: 'pdv-mboppi', zonePath: ['mboppi', 'douala'], quantity: 2 },
+      {
+        productId: PRODUCT,
+        at: new Date('2026-02-01'),
+        siteId: 'pdv-mboppi',
+        zonePath: ['mboppi', 'douala'],
+        quantity: 2,
+      },
       allRules,
     );
     expect(result.found).toBe(true);
@@ -155,7 +156,7 @@ describe('resolvePrice — déterminisme (INV-PRX-04)', () => {
     if (result.found) expect(result.resolution.rule.id).toBe('2');
   });
 
-  it('à tout le reste égal, l\'identifiant le plus grand (UUIDv7 le plus récent) gagne', () => {
+  it("à tout le reste égal, l'identifiant le plus grand (UUIDv7 le plus récent) gagne", () => {
     const a = rule({ id: '0190aaaa-0000-7000-8000-000000000001' });
     const b = rule({ id: '0190bbbb-0000-7000-8000-000000000002' });
     const result = resolvePrice({ productId: PRODUCT, at: new Date('2026-03-01'), quantity: 1 }, [
@@ -166,7 +167,7 @@ describe('resolvePrice — déterminisme (INV-PRX-04)', () => {
     if (result.found) expect(result.resolution.rule.id).toBe(b.id);
   });
 
-  it('une règle DRAFT ou hors période n\'est jamais candidate', () => {
+  it("une règle DRAFT ou hors période n'est jamais candidate", () => {
     const draft = rule({ id: '1', status: 'DRAFT' });
     const future = rule({ id: '2', validFrom: new Date('2099-01-01') });
     const ended = rule({ id: '3', validTo: new Date('2020-01-01') });

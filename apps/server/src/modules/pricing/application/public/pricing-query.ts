@@ -8,7 +8,12 @@
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
-import { resolvePrice, type PriceContext, type PriceRule, type ResolvePriceResult } from '@gic/domain';
+import {
+  resolvePrice,
+  type PriceContext,
+  type PriceRule,
+  type ResolvePriceResult,
+} from '@gic/domain';
 
 export interface PriceRuleView {
   readonly id: string;
@@ -77,7 +82,9 @@ export async function listPriceRules(
   const rows = await executor
     .selectFrom('pricing_price_rules')
     .selectAll()
-    .$if(filter.productId !== undefined, (qb) => qb.where('product_id', '=', toBin(filter.productId!)))
+    .$if(filter.productId !== undefined, (qb) =>
+      qb.where('product_id', '=', toBin(filter.productId!)),
+    )
     .$if(filter.status !== undefined, (qb) => qb.where('status', '=', filter.status!))
     .orderBy('code', 'asc')
     .orderBy('version', 'asc')
