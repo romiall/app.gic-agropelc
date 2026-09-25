@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
+  },
+  "references": [{ "path": "../../packages/domain" }, { "path": "../../packages/contracts" }],
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}

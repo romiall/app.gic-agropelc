@@ -1,0 +1,45 @@
+{
+  "name": "gic-agropelc",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GIC AGROPELC — application métier intégrée, offline-first.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.11 <23",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* --filter=./apps/* run build",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r run typecheck",
+    "check:boundaries": "depcruise apps/server/src packages/domain/src packages/contracts/src --config .dependency-cruiser.cjs",
+    "check:docs": "python3 docs/_tools/check_refs.py",
+    "db:migrate": "pnpm --filter @gic/db run migrate",
+    "db:migrate:test": "pnpm --filter @gic/db run migrate:test",
+    "db:seed": "pnpm --filter @gic/db run seed",
+    "db:create-local-admin": "pnpm --filter @gic/db run create-local-admin --",
+    "db:rollback": "pnpm --filter @gic/db run rollback",
+    "server:dev": "pnpm --filter @gic/server run dev",
+    "pwa:dev": "pnpm --filter @gic/pwa run dev",
+    "ci": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run check:boundaries && pnpm run test && pnpm run check:docs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "dependency-cruiser": "^16.4.2",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^15.9.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}

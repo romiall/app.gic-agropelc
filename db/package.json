@@ -1,0 +1,30 @@
+{
+  "name": "@gic/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Migrations SQL versionnées (dbmate, MySQL 8, ADR-023) et seeds. Source de vérité du schéma : docs/03-data/dictionnaire/.",
+  "type": "module",
+  "scripts": {
+    "migrate": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql up",
+    "migrate:test": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql up",
+    "rollback": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql down",
+    "status": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql status",
+    "new": "dbmate --migrations-dir ./migrations new",
+    "seed": "tsx seeds/run.ts",
+    "create-local-admin": "tsx seeds/create-local-admin.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@node-rs/argon2": "^2.2.1",
+    "@types/node": "^20.16.11",
+    "@vitest/coverage-v8": "^2.1.4",
+    "dbmate": "^2.36.0",
+    "mysql2": "^3.11.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
