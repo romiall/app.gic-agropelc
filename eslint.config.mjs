@@ -6,6 +6,8 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
   {
@@ -57,6 +59,19 @@ export default [
     files: ['db/seeds/**/*.ts', 'apps/server/src/main.ts', 'apps/server/src/worker.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    // apps/pwa (React) : règles des hooks (dépendances exhaustives, appels au niveau racine)
+    // et alerte sur un export non composant dans un fichier de composant (Vite Fast Refresh).
+    files: ['apps/pwa/src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
   {

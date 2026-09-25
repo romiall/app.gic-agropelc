@@ -11,6 +11,8 @@ coverage/
 # PWA
 apps/pwa/dist/
 apps/pwa/dev-dist/
+apps/pwa/test-results/
+apps/pwa/playwright-report/
 
 # Environnement
 .env

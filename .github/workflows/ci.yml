@@ -128,3 +128,30 @@ jobs:
 
       - name: Budget de bundle PWA (NFR-05)
         run: pnpm --filter @gic/pwa run size-check
+
+  e2e-pwa:
+    name: E2E PWA (coquille hors ligne, NFR-02)
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (paquets partagés et PWA)
+        run: pnpm run build
+
+      - name: Navigateur Playwright (Chromium)
+        run: pnpm --filter @gic/pwa exec playwright install --with-deps chromium
+
+      - name: Tests de bout en bout (coquille hors ligne)
+        run: pnpm --filter @gic/pwa run e2e
