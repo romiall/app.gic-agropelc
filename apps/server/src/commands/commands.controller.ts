@@ -7,6 +7,7 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import type { CommandResult } from '@gic/contracts';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
+import { CommandRegistryDelegated } from '../platform/http/authorization.decorators.js';
 import { CommandPipelineService } from './command-pipeline.service.js';
 
 @Controller('api/v1/commands')
@@ -23,6 +24,7 @@ export class CommandsController {
   @Post()
   @HttpCode(200)
   @UseGuards(AuthGuard)
+  @CommandRegistryDelegated()
   async submit(
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,

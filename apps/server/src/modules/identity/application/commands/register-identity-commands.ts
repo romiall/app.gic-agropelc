@@ -10,6 +10,7 @@ import {
 } from '../../../../platform/sync/command-handler-registry.provider.js';
 import { registerDeviceCommands } from './device-commands.js';
 import { registerUserCommands } from './user-commands.js';
+import { registerRoleAssignmentCommands } from './role-assignment-commands.js';
 
 @Injectable()
 export class IdentityCommandsRegistrar implements OnModuleInit {
@@ -20,5 +21,6 @@ export class IdentityCommandsRegistrar implements OnModuleInit {
   onModuleInit(): void {
     registerDeviceCommands(this.registry);
     registerUserCommands(this.registry);
+    registerRoleAssignmentCommands(this.registry);
   }
 }

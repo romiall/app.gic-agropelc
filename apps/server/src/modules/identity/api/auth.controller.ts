@@ -23,6 +23,7 @@ import {
   type JwtKeyPair,
 } from '../application/public/jwt.js';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
+import { Public, SelfScoped } from '../../../platform/http/authorization.decorators.js';
 import { hashPassword, verifyPassword } from '../application/auth/password.js';
 import {
   checkLoginLock,
@@ -67,6 +68,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @Public()
   async login(@Body() rawBody: unknown, @Req() request: FastifyRequest) {
     const parsed = loginSchema.safeParse(rawBody);
     if (!parsed.success) throw validationError(parsed.error.issues);
@@ -183,6 +185,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(200)
+  @Public()
   async refresh(@Body() rawBody: unknown, @Req() request: FastifyRequest) {
     const parsed = refreshSchema.safeParse(rawBody);
     if (!parsed.success) throw validationError(parsed.error.issues);
@@ -244,6 +247,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   @UseGuards(AuthGuard)
+  @SelfScoped()
   async logout(@Req() request: AuthenticatedRequest) {
     const auth = request.auth!;
     const now = this.clock.now();
@@ -271,6 +275,7 @@ export class AuthController {
   @Post('change-password')
   @HttpCode(200)
   @UseGuards(AuthGuard)
+  @SelfScoped()
   async changePassword(@Body() rawBody: unknown, @Req() request: AuthenticatedRequest) {
     const parsed = changePasswordSchema.safeParse(rawBody);
     if (!parsed.success) throw validationError(parsed.error.issues);

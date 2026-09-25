@@ -29,6 +29,7 @@ import {
 } from '../audit/audit-log-query.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
 import { hasPermissionAt } from '../modules/identity/application/public/index.js';
+import { RequiresPermission } from '../platform/http/authorization.decorators.js';
 
 const AUDIT_LOG_READ_PERMISSION = 'audit.log.read';
 
@@ -52,6 +53,7 @@ export class AuditController {
   @Get()
   @HttpCode(200)
   @UseGuards(AuthGuard)
+  @RequiresPermission(AUDIT_LOG_READ_PERMISSION)
   async list(
     @Query() rawQuery: unknown,
     @Req() request: AuthenticatedRequest,

@@ -138,7 +138,15 @@ export async function insertTestPermission(trx: UnitOfWork, code: string): Promi
     .execute();
 }
 
-export async function insertTestRole(trx: UnitOfWork, createdBy: string): Promise<string> {
+export interface TestRoleOptions {
+  readonly allowedScopeTypes?: readonly ('GLOBAL' | 'SITE' | 'ZONE' | 'TEAM')[];
+}
+
+export async function insertTestRole(
+  trx: UnitOfWork,
+  createdBy: string,
+  options: TestRoleOptions = {},
+): Promise<string> {
   const id = freshUuid();
   // Les 12 premiers hex de l'UUIDv7 encodent l'horodatage (uuid.ts) : peu de variation
   // entre deux appels rapprochés. Les 20 derniers (rand_b) sont la partie aléatoire —
@@ -146,9 +154,20 @@ export async function insertTestRole(trx: UnitOfWork, createdBy: string): Promis
   const code = `TEST_ROLE_${id.replace(/-/g, '').slice(-20).toUpperCase()}`;
   await trx
     .insertInto('identity_roles')
-    .values({ id: toBin(id), code, name: 'Rôle de test', created_by: toBin(createdBy) })
+    .values({
+      id: toBin(id),
+      code,
+      name: 'Rôle de test',
+      allowed_scope_types: JSON.stringify(options.allowedScopeTypes ?? ['GLOBAL']),
+      created_by: toBin(createdBy),
+    })
     .execute();
   return id;
+}
+
+export interface TestRolePermissionOptions {
+  readonly maxScope?: 'OWN' | 'TEAM' | 'SITE' | 'ZONE' | 'ALL';
+  readonly limits?: Record<string, unknown>;
 }
 
 export async function grantTestPermission(
@@ -156,13 +175,15 @@ export async function grantTestPermission(
   roleId: string,
   permissionCode: string,
   grantedBy: string,
+  options: TestRolePermissionOptions = {},
 ): Promise<void> {
   await trx
     .insertInto('identity_role_permissions')
     .values({
       role_id: toBin(roleId),
       permission_code: permissionCode,
-      max_scope: 'ALL',
+      max_scope: options.maxScope ?? 'ALL',
+      limits: options.limits !== undefined ? JSON.stringify(options.limits) : null,
       granted_by: toBin(grantedBy),
     })
     .execute();
@@ -172,6 +193,10 @@ export interface TestAssignmentOptions {
   readonly validFrom?: Date;
   readonly validTo?: Date | null;
   readonly revokedAt?: Date | null;
+  readonly scopeType?: 'GLOBAL' | 'SITE' | 'ZONE' | 'TEAM';
+  readonly scopeSiteId?: string;
+  readonly scopeZoneId?: string;
+  readonly scopeTeamId?: string;
 }
 
 export async function assignTestRole(
@@ -180,17 +205,139 @@ export async function assignTestRole(
   roleId: string,
   createdBy: string,
   options: TestAssignmentOptions = {},
-): Promise<void> {
+): Promise<string> {
+  const id = freshUuid();
   await trx
     .insertInto('identity_user_role_assignments')
     .values({
-      id: toBin(freshUuid()),
+      id: toBin(id),
       user_id: toBin(userId),
       role_id: toBin(roleId),
-      scope_type: 'GLOBAL',
+      scope_type: options.scopeType ?? 'GLOBAL',
+      scope_site_id: options.scopeSiteId !== undefined ? toBin(options.scopeSiteId) : null,
+      scope_zone_id: options.scopeZoneId !== undefined ? toBin(options.scopeZoneId) : null,
+      scope_team_id: options.scopeTeamId !== undefined ? toBin(options.scopeTeamId) : null,
       valid_from: options.validFrom ?? new Date('2020-01-01T00:00:00.000Z'),
       valid_to: options.validTo ?? null,
       revoked_at: options.revokedAt ?? null,
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  return id;
+}
+
+/** Zone de test (organization.zones) — maintient `zone_ancestors` comme le ferait un
+ * gestionnaire de commande réel (dictionnaire §zone_ancestors : « maintenue par le
+ * gestionnaire de commande à la création ou au déplacement d'une zone »). */
+export async function insertTestZone(
+  trx: UnitOfWork,
+  createdBy: string,
+  options: { readonly parentId?: string } = {},
+): Promise<string> {
+  const id = freshUuid();
+  const code = `TEST_ZONE_${id.replace(/-/g, '').slice(-20).toUpperCase()}`;
+  let depth = 1;
+  if (options.parentId !== undefined) {
+    const parent = await trx
+      .selectFrom('organization_zones')
+      .select('depth')
+      .where('id', '=', toBin(options.parentId))
+      .executeTakeFirstOrThrow();
+    depth = parent.depth + 1;
+  }
+  await trx
+    .insertInto('organization_zones')
+    .values({
+      id: toBin(id),
+      parent_id: options.parentId !== undefined ? toBin(options.parentId) : null,
+      level: 'SECTEUR',
+      code,
+      name: 'Zone de test',
+      depth,
+      created_by: toBin(createdBy),
+    })
+    .execute();
+
+  await trx
+    .insertInto('organization_zone_ancestors')
+    .values({ zone_id: toBin(id), ancestor_id: toBin(id), depth: 0 })
+    .execute();
+  if (options.parentId !== undefined) {
+    const parentAncestors = await trx
+      .selectFrom('organization_zone_ancestors')
+      .select(['ancestor_id', 'depth'])
+      .where('zone_id', '=', toBin(options.parentId))
+      .execute();
+    for (const ancestor of parentAncestors) {
+      await trx
+        .insertInto('organization_zone_ancestors')
+        .values({
+          zone_id: toBin(id),
+          ancestor_id: ancestor.ancestor_id,
+          depth: ancestor.depth + 1,
+        })
+        .execute();
+    }
+  }
+  return id;
+}
+
+export async function insertTestSite(
+  trx: UnitOfWork,
+  createdBy: string,
+  zoneId: string,
+): Promise<string> {
+  const id = freshUuid();
+  const code = id.replace(/-/g, '').slice(-8).toUpperCase();
+  await trx
+    .insertInto('organization_sites')
+    .values({
+      id: toBin(id),
+      code,
+      name: 'Site de test',
+      site_type: 'MAGASIN',
+      zone_id: toBin(zoneId),
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  return id;
+}
+
+export async function insertTestTeam(
+  trx: UnitOfWork,
+  managerUserId: string,
+  createdBy: string,
+): Promise<string> {
+  const id = freshUuid();
+  const code = `TEST_TEAM_${id.replace(/-/g, '').slice(-20).toUpperCase()}`;
+  await trx
+    .insertInto('organization_teams')
+    .values({
+      id: toBin(id),
+      code,
+      name: 'Équipe de test',
+      manager_user_id: toBin(managerUserId),
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  return id;
+}
+
+export async function insertTestTeamMembership(
+  trx: UnitOfWork,
+  teamId: string,
+  userId: string,
+  createdBy: string,
+  options: { readonly validFrom?: Date; readonly validTo?: Date | null } = {},
+): Promise<void> {
+  await trx
+    .insertInto('organization_team_memberships')
+    .values({
+      id: toBin(freshUuid()),
+      team_id: toBin(teamId),
+      user_id: toBin(userId),
+      valid_from: options.validFrom ?? new Date('2020-01-01T00:00:00.000Z'),
+      valid_to: options.validTo ?? null,
       created_by: toBin(createdBy),
     })
     .execute();
