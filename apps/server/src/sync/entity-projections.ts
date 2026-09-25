@@ -366,6 +366,212 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       superseded_by_id: fromBinOrNull(row.superseded_by_id),
     };
   },
+  // P1-06 : `catalog.unit.create` et `catalog.sales_channel.create` n'ont **pas** de
+  // projection ici — leur clé primaire réelle est `code` (dictionnaire), alors que
+  // `sync_change_feed.entity_id` ne peut porter qu'un UUID (`aggregate_id`, sans rapport
+  // avec `code`). Aucune valeur de repli ne serait correcte : signalé, pas comblé en
+  // silence (CLAUDE.md règle #2) — ces deux référentiels restent accessibles hors ligne
+  // uniquement via `GET /units` et `GET /sales-channels` en ligne jusqu'à ce qu'une vraie
+  // solution existe (clé de projection alternative, ou `id` UUID au lieu de `code`).
+
+  PRODUCT_CATEGORY: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_product_categories')
+      .select(['id', 'parent_id', 'code', 'name', 'is_active'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      parent_id: fromBinOrNull(row.parent_id),
+      code: row.code,
+      name: row.name,
+      is_active: Boolean(row.is_active),
+    };
+  },
+
+  PRODUCT: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_products')
+      .select([
+        'id',
+        'code',
+        'name',
+        'category_id',
+        'stock_family',
+        'base_unit_code',
+        'lot_tracking',
+        'expiry_tracking',
+        'is_sellable',
+        'is_purchasable',
+        'is_producible',
+        'is_consumable',
+        'pricing_mode',
+        'species',
+        'status',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      name: row.name,
+      category_id: fromBin(row.category_id),
+      stock_family: row.stock_family,
+      base_unit_code: row.base_unit_code,
+      lot_tracking: row.lot_tracking,
+      expiry_tracking: Boolean(row.expiry_tracking),
+      is_sellable: Boolean(row.is_sellable),
+      is_purchasable: Boolean(row.is_purchasable),
+      is_producible: Boolean(row.is_producible),
+      is_consumable: Boolean(row.is_consumable),
+      pricing_mode: row.pricing_mode,
+      species: row.species,
+      status: row.status,
+    };
+  },
+
+  PRODUCT_UNIT: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_product_units')
+      .select([
+        'id',
+        'product_id',
+        'unit_code',
+        'factor_to_base',
+        'is_sales_unit',
+        'is_purchase_unit',
+        'is_count_unit',
+        'is_active',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      product_id: fromBin(row.product_id),
+      unit_code: row.unit_code,
+      factor_to_base: row.factor_to_base,
+      is_sales_unit: Boolean(row.is_sales_unit),
+      is_purchase_unit: Boolean(row.is_purchase_unit),
+      is_count_unit: Boolean(row.is_count_unit),
+      is_active: Boolean(row.is_active),
+    };
+  },
+
+  PRODUCT_STANDARD_COST: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_product_standard_costs')
+      .select(['id', 'product_id', 'unit_cost_xaf', 'valid_from', 'reason'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      product_id: fromBin(row.product_id),
+      unit_cost_xaf: row.unit_cost_xaf,
+      valid_from: row.valid_from,
+      reason: row.reason,
+    };
+  },
+
+  REASON_CODE: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_reason_codes')
+      .select(['id', 'category', 'code', 'label', 'loss_category', 'requires_comment', 'is_active'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      category: row.category,
+      code: row.code,
+      label: row.label,
+      loss_category: row.loss_category,
+      requires_comment: Boolean(row.requires_comment),
+      is_active: Boolean(row.is_active),
+    };
+  },
+
+  CUSTOMER_CATEGORY: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('catalog_customer_categories')
+      .select(['id', 'code', 'name', 'is_active'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      name: row.name,
+      is_active: Boolean(row.is_active),
+    };
+  },
+
+  // dictionnaire pricing.price_rules : « Offline DL : règles ACTIVE non terminées (y
+  // compris futures) pour les produits vendables, les zones (avec ancêtres) et les sites du
+  // périmètre » — ce filtrage fin n'est pas encore fait ici (comme ZONE/SITE en P0-11) :
+  // repli GLOBAL générique (command-pipeline.service.ts), affiné quand `sales` (P4) en aura
+  // besoin. Une règle DRAFT ou RETIRED n'est volontairement pas transmise (elle ne sert à
+  // rien hors ligne, et pourrait révéler un prix pas encore en vigueur).
+  PRICE_RULE: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('pricing_price_rules')
+      .selectAll()
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE') return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      version: row.version,
+      product_id: fromBin(row.product_id),
+      unit_price_xaf: row.unit_price_xaf,
+      pricing_unit_code: row.pricing_unit_code,
+      zone_id: fromBinOrNull(row.zone_id),
+      site_id: fromBinOrNull(row.site_id),
+      customer_category_id: fromBinOrNull(row.customer_category_id),
+      channel_code: row.channel_code,
+      min_quantity: row.min_quantity,
+      commercial_campaign_id: fromBinOrNull(row.commercial_campaign_id),
+      priority: row.priority,
+      specificity: row.specificity,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      status: row.status,
+    };
+  },
+
+  COMMERCIAL_CAMPAIGN: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('pricing_commercial_campaigns')
+      .select(['id', 'code', 'name', 'valid_from', 'valid_to', 'status'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      name: row.name,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      status: row.status,
+    };
+  },
+
+  // dictionnaire procurement.suppliers : « Offline DL (actifs : id, code, nom) » — projection
+  // volontairement réduite à ces trois champs (pas de téléphone/adresse/notes, non utiles
+  // hors ligne en P1, aucun module ne les consomme encore côté appareil).
+  SUPPLIER: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('procurement_suppliers')
+      .select(['id', 'code', 'name', 'status'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE') return undefined;
+    return { id: fromBin(row.id), code: row.code, name: row.name };
+  },
 };
 
 export function resolveEntityProjection(entityType: string): EntityProjectionReader | undefined {
