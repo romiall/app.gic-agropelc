@@ -17,6 +17,9 @@
  * - À VALIDER : `isSensitive` — AV-092, `false` partout (aucune permission désignée par une
  *   source ; défaut du schéma). `RESP_PRODUCTION.finance.expense.approve.limits` — AV-058
  *   (montant non chiffré dans la matrice pour ce rôle précisément) : accordé sans `limits`.
+ *   `attachments.attachment.manage` — AV-093 (permission générique, portée OWN pour les 11
+ *   rôles : « Permission de l'opération » de SM-ATTACHMENT n'est pas résolvable avant qu'un
+ *   module propriétaire, P2+, n'existe).
  *
  * Rôles proposés mais non créés (AV-004, OUVERT) : OPERATEUR_FERME, LIVREUR, CAISSIER —
  * volontairement absents de ROLES.
@@ -254,6 +257,16 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     module: 'approvals',
     description: 'Créer et modifier les politiques de contrôle',
     supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
+
+  // attachments (1)
+  {
+    code: 'attachments.attachment.manage',
+    module: 'attachments',
+    description: 'Joindre une pièce justificative à une opération (AV-093)',
+    supportedScopes: ['OWN'],
     isApproval: false,
     isSensitive: false,
   },
@@ -1138,7 +1151,7 @@ function grants(
 // la matrice source plutôt que silencieusement omise).
 // ---------------------------------------------------------------------------------------
 export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
-  // DIRECTION — 76, toujours ALL
+  // DIRECTION — 77, toujours ALL
   ...grants('DIRECTION', [
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
@@ -1148,6 +1161,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['org.settings.manage', 'ALL'],
     ['approvals.request.read', 'ALL'],
     ['approvals.policy.manage', 'ALL'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['audit.log.read', 'ALL'],
     ['sync.monitor.read', 'ALL'],
@@ -1218,7 +1232,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 27, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS)
+  // ADMIN — 28, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS)
   ...grants('ADMIN', [
     ['identity.user.read', 'ALL'],
     ['identity.user.manage', 'ALL'],
@@ -1232,6 +1246,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['org.structure.manage', 'ALL'],
     ['org.settings.manage', 'ALL'],
     ['approvals.policy.manage', 'ALL'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['catalog.product.manage', 'ALL'],
     ['catalog.reference.manage', 'ALL'],
@@ -1249,7 +1264,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.opening.post', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 57
+  // RESP_COMMERCIAL — 58
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],
     ['identity.device.read', 'TEAM'],
@@ -1257,6 +1272,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['identity.device.block', 'TEAM'],
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'TEAM'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['sync.monitor.read', 'TEAM'],
     ['sync.conflict.resolve', 'TEAM'],
@@ -1310,10 +1326,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'TEAM'],
   ]),
 
-  // COMMERCIAL_TERRAIN — 42
+  // COMMERCIAL_TERRAIN — 43
   ...grants('COMMERCIAL_TERRAIN', [
     ['org.structure.read', 'ZONE'],
     ['approvals.request.read', 'OWN'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['comm.alert.read', 'OWN'],
     ['comm.alert.manage', 'OWN'],
@@ -1356,10 +1373,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.commercial', 'OWN'],
   ]),
 
-  // COMMERCIAL_SEDENTAIRE — 32
+  // COMMERCIAL_SEDENTAIRE — 33
   ...grants('COMMERCIAL_SEDENTAIRE', [
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'OWN'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['comm.alert.read', 'OWN'],
     ['comm.alert.manage', 'OWN'],
@@ -1392,10 +1410,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.commercial', 'OWN'],
   ]),
 
-  // VENDEUR_PDV — 35 (sales.price.override délibérément absent : plafond 0 %, AV-026)
+  // VENDEUR_PDV — 36 (sales.price.override délibérément absent : plafond 0 %, AV-026)
   ...grants('VENDEUR_PDV', [
     ['org.structure.read', 'SITE'],
     ['approvals.request.read', 'OWN'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['comm.alert.read', 'SITE'],
     ['comm.alert.manage', 'SITE'],
@@ -1431,13 +1450,14 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 42
+  // RESP_PRODUCTION — 43
   ...grants('RESP_PRODUCTION', [
     ['identity.user.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
     ['identity.device.block', 'SITE'],
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'ALL'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['sync.monitor.read', 'SITE'],
     ['sync.conflict.resolve', 'ALL'],
@@ -1478,7 +1498,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 51
+  // RESP_FERME — 52
   ...grants('RESP_FERME', [
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
@@ -1486,6 +1506,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['identity.device.block', 'SITE'],
     ['org.structure.read', 'SITE'],
     ['approvals.request.read', 'SITE'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['sync.monitor.read', 'SITE'],
     ['sync.conflict.resolve', 'SITE'],
@@ -1533,12 +1554,13 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.production', 'SITE'],
   ]),
 
-  // MAGASINIER — 33
+  // MAGASINIER — 34
   ...grants('MAGASINIER', [
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
     ['org.structure.read', 'SITE'],
     ['approvals.request.read', 'OWN'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['sync.monitor.read', 'SITE'],
     ['sync.conflict.resolve', 'SITE'],
@@ -1570,10 +1592,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.stock', 'SITE'],
   ]),
 
-  // RESP_ACHATS — 25
+  // RESP_ACHATS — 26
   ...grants('RESP_ACHATS', [
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'ALL'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['sync.conflict.resolve', 'ALL'],
     ['comm.alert.read', 'ALL'],
@@ -1599,11 +1622,12 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // FINANCE — 52
+  // FINANCE — 53
   ...grants('FINANCE', [
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
     ['approvals.request.read', 'ALL'],
+    ['attachments.attachment.manage', 'OWN'],
     ['catalog.product.read', 'ALL'],
     ['audit.log.read', 'ALL'],
     ['sync.conflict.resolve', 'ALL'],

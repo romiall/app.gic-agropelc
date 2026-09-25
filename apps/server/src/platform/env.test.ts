@@ -29,4 +29,11 @@ describe('loadEnv (01-architecture-logicielle.md §7 « Configuration »)', () =
       loadEnv({ ...BASE, NODE_ENV: 'production', JWT_PRIVATE_KEY: 'pk', JWT_PUBLIC_KEY: 'pub' }),
     ).not.toThrow();
   });
+
+  it('ATTACHMENTS_STORAGE_DIR : répertoire temporaire système par défaut (AV-091), surchargeable', () => {
+    expect(loadEnv(BASE).ATTACHMENTS_STORAGE_DIR).toMatch(/gic-attachments$/);
+    expect(
+      loadEnv({ ...BASE, ATTACHMENTS_STORAGE_DIR: '/srv/attachments' }).ATTACHMENTS_STORAGE_DIR,
+    ).toBe('/srv/attachments');
+  });
 });

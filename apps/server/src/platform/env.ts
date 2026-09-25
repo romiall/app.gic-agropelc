@@ -4,6 +4,8 @@
  * le gestionnaire de secrets »). Aucun secret par défaut en production : `JWT_PRIVATE_KEY`
  * absente est tolérée seulement hors production (voir identity/jwt.ts).
  */
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -17,6 +19,15 @@ const envSchema = z.object({
   // production : une paire éphémère est générée au démarrage si absentes (identity/jwt.ts).
   JWT_PRIVATE_KEY: z.string().min(1).optional(),
   JWT_PUBLIC_KEY: z.string().min(1).optional(),
+  // Émulateur local de stockage objet (AV-091, SECONDAIRE/OUVERT : « aucun impact sur P0 à
+  // P3 » — fournisseur S3-compatible réel différé à la phase de déploiement). Répertoire des
+  // pièces jointes en cours d'upload (platform/storage/local-fs-chunk-storage.ts). Hors de
+  // l'arbre du dépôt par défaut (répertoire temporaire système) : aucun fichier de
+  // développement ou de test à exclure par .gitignore.
+  ATTACHMENTS_STORAGE_DIR: z
+    .string()
+    .min(1)
+    .default(() => join(tmpdir(), 'gic-attachments')),
 });
 
 export type Env = z.infer<typeof envSchema>;

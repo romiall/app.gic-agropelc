@@ -16,15 +16,12 @@
  * non nécessaire à la correction — DÉDUIT, paramétrable plus tard (règle CLAUDE.md #2).
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type { Clock } from '@gic/domain';
+import { isClockSkewSuspect, type Clock } from '@gic/domain';
 import type { CommandResult, PushRequest, PushResponse } from '@gic/contracts';
 import { CommandPipelineService } from '../commands/command-pipeline.service.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-
-/** |écart| > 5 min (§9) : jeton `CLOCK_SUSPECT` sur chaque résultat du lot. */
-const CLOCK_SKEW_SUSPECT_MS = 5 * 60 * 1000;
 
 export interface SyncPushContext {
   readonly authenticatedUserId: string;
@@ -43,7 +40,7 @@ export class SyncPushService {
     const receivedAt = this.clock.now();
     const deviceSentAt = new Date(request.device_sent_at);
     const clockSkewMs = receivedAt.getTime() - deviceSentAt.getTime();
-    const clockSuspect = Math.abs(clockSkewMs) > CLOCK_SKEW_SUSPECT_MS;
+    const clockSuspect = isClockSkewSuspect(clockSkewMs);
 
     // Ordre croissant de device_seq (§3.1) : le lot peut arriver dans le désordre du
     // transport (HTTP ne le garantit pas), le serveur l'impose lui-même.

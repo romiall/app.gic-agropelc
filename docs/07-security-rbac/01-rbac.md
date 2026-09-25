@@ -93,6 +93,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `org.settings.manage` | ALL | ALL | — | — | — | — | — | — | — | — | — |
 | `approvals.request.read` | ALL | — | TEAM | OWN | OWN | OWN | ALL | SITE | OWN | ALL | ALL |
 | `approvals.policy.manage` | ALL | ALL | — | — | — | — | — | — | — | — | — |
+| `attachments.attachment.manage` | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN | OWN |
 | `catalog.product.read` | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL | ALL |
 | `catalog.product.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `catalog.reference.manage` | — | ALL | — | — | — | — | — | — | — | — | — |

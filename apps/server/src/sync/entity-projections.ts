@@ -3,9 +3,9 @@
  * 02-synchronisation.md §5.2 : « le flux ne stocke pas de copie des données » — chaque
  * `UPSERT` de `sync_change_feed` est résolu ici, au moment du téléchargement). Un lecteur par
  * `entity_type` réellement produit par un gestionnaire de commande à ce jour (identity,
- * organization) — table fixe, tous définis dans ce seul fichier (contrairement à
- * `CommandHandlerRegistry`, alimenté par plusieurs modules indépendants, une simple table
- * couvre ce besoin sans registre mutable).
+ * organization, approvals, attachments) — table fixe, tous définis dans ce seul fichier
+ * (contrairement à `CommandHandlerRegistry`, alimenté par plusieurs modules indépendants,
+ * une simple table couvre ce besoin sans registre mutable).
  *
  * Jamais de colonne sensible (`password_hash`…) dans une projection : ce module est le seul
  * point qui décide ce qu'un appareil reçoit d'une table, indépendamment de ce que la table
@@ -249,6 +249,121 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       scope_type: row.scope_type,
       scope_id: fromBinOrNull(row.scope_id),
       valid_from: row.valid_from,
+    };
+  },
+
+  // dictionnaire approvals.control_policies : « Offline DL (politiques actives, pour
+  // l'évaluation indicative sur l'appareil) » — condition non interprétée ici (jamais
+  // interrogée comme donnée métier, voir policy-commands.ts), transmise telle quelle.
+  CONTROL_POLICY: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('approvals_control_policies')
+      .select([
+        'id',
+        'code',
+        'version',
+        'operation_type',
+        'condition',
+        'requires_photo',
+        'requires_comment',
+        'requires_approval',
+        'approver_permission',
+        'approver_scope',
+        'valid_from',
+        'valid_to',
+        'status',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE') return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      version: row.version,
+      operation_type: row.operation_type,
+      condition: row.condition,
+      requires_photo: Boolean(row.requires_photo),
+      requires_comment: Boolean(row.requires_comment),
+      requires_approval: Boolean(row.requires_approval),
+      approver_permission: row.approver_permission,
+      approver_scope: row.approver_scope,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+    };
+  },
+
+  // dictionnaire approvals.approval_requests : « Offline DL (celles de l'utilisateur, en
+  // lecture seule) » — filtrage par utilisateur non encore fait par device-scope.ts (P0-13,
+  // comme toute entité P0-11/P0-13 : repli GLOBAL générique, commentaire command-pipeline.
+  // service.ts « portée réelle déterminée par chaque module »).
+  APPROVAL_REQUEST: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('approvals_approval_requests')
+      .select([
+        'id',
+        'operation_type',
+        'subject_type',
+        'subject_id',
+        'subject_summary',
+        'site_id',
+        'zone_id',
+        'amount_xaf',
+        'requested_by',
+        'requested_at',
+        'status',
+        'decision_option',
+        'decided_by',
+        'decided_at',
+        'decision_comment',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      operation_type: row.operation_type,
+      subject_type: row.subject_type,
+      subject_id: fromBin(row.subject_id),
+      subject_summary: row.subject_summary,
+      site_id: fromBinOrNull(row.site_id),
+      zone_id: fromBinOrNull(row.zone_id),
+      amount_xaf: row.amount_xaf,
+      requested_by: fromBin(row.requested_by),
+      requested_at: row.requested_at,
+      status: row.status,
+      decision_option: row.decision_option,
+      decided_by: fromBinOrNull(row.decided_by),
+      decided_at: row.decided_at,
+      decision_comment: row.decision_comment,
+    };
+  },
+
+  // P0-13 : ni storage_key (clé de stockage interne) ni sha256 (déjà connue de l'appareil
+  // qui l'a calculée à la capture, ADR-012 point 1) ne sont projetées — seul upload_status
+  // importe côté appareil (BR-ADM-020, « justificatif en cours de transmission »).
+  ATTACHMENT: async (executor, entityId) => {
+    const row = await executor
+      .selectFrom('attachments_attachments')
+      .select([
+        'id',
+        'owner_type',
+        'owner_id',
+        'kind',
+        'mime_type',
+        'upload_status',
+        'superseded_by_id',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      owner_type: row.owner_type,
+      owner_id: fromBin(row.owner_id),
+      kind: row.kind,
+      mime_type: row.mime_type,
+      upload_status: row.upload_status,
+      superseded_by_id: fromBinOrNull(row.superseded_by_id),
     };
   },
 };

@@ -25,6 +25,7 @@ import {
   EVENT_CONSUMER_REGISTRY,
 } from './events/event-consumer-registry.provider.js';
 import { DocumentSequenceService } from './document-sequences/document-sequence.service.js';
+import { chunkStorageProvider, CHUNK_STORAGE } from './storage/chunk-storage.provider.js';
 
 @Global()
 @Module({
@@ -40,6 +41,7 @@ import { DocumentSequenceService } from './document-sequences/document-sequence.
     EventConsumerRunner,
     eventConsumerRegistryProvider,
     DocumentSequenceService,
+    chunkStorageProvider,
   ],
   exports: [
     CLOCK,
@@ -53,6 +55,7 @@ import { DocumentSequenceService } from './document-sequences/document-sequence.
     EventConsumerRunner,
     EVENT_CONSUMER_REGISTRY,
     DocumentSequenceService,
+    CHUNK_STORAGE,
   ],
 })
 export class PlatformModule {}

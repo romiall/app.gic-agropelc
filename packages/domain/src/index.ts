@@ -61,3 +61,5 @@ export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';
 
 export type { Geofence, GeofenceInput } from './geofence.js';
 export { buildGeofence } from './geofence.js';
+
+export { CLOCK_SKEW_SUSPECT_MS, isClockSkewSuspect } from './clock-skew.js';

@@ -41,7 +41,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 11 rôles, 117 permissions et 472 octrois attendus', async () => {
+  it('crée exactement les 11 rôles, 118 permissions et 483 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -52,7 +52,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(117);
+    expect(PERMISSIONS.length).toBe(118);
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -60,7 +60,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
        WHERE r.is_system = TRUE`,
     );
     expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
-    expect(ROLE_PERMISSIONS.length).toBe(472);
+    expect(ROLE_PERMISSIONS.length).toBe(483);
   });
 
   it('crée les 9 emplacements virtuels (BR-ADM-010)', async () => {
