@@ -193,6 +193,9 @@ importers:
 
   db:
     devDependencies:
+      '@node-rs/argon2':
+        specifier: ^2.2.1
+        version: 2.2.1
       '@types/node':
         specifier: ^20.16.11
         version: 20.19.43

@@ -23,6 +23,7 @@
     "db:migrate": "pnpm --filter @gic/db run migrate",
     "db:migrate:test": "pnpm --filter @gic/db run migrate:test",
     "db:seed": "pnpm --filter @gic/db run seed",
+    "db:create-local-admin": "pnpm --filter @gic/db run create-local-admin --",
     "db:rollback": "pnpm --filter @gic/db run rollback",
     "server:dev": "pnpm --filter @gic/server run dev",
     "pwa:dev": "pnpm --filter @gic/pwa run dev",

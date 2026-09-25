@@ -11,12 +11,14 @@
     "status": "dbmate --migrations-dir ./migrations --schema-file ./schema.sql status",
     "new": "dbmate --migrations-dir ./migrations new",
     "seed": "tsx seeds/run.ts",
+    "create-local-admin": "tsx seeds/create-local-admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@node-rs/argon2": "^2.2.1",
     "@types/node": "^20.16.11",
     "@vitest/coverage-v8": "^2.1.4",
     "dbmate": "^2.36.0",
