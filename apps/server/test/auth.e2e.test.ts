@@ -7,6 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module.js';
+import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
+import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { hashPassword } from '../src/modules/identity/application/auth/password.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
@@ -54,6 +56,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
       'mysql://gic_app:gic_app_password@127.0.0.1:3306/gic_agropelc_test';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    registerCorrelationId(app, app.get(ID_GENERATOR));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
   });

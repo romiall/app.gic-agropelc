@@ -6,13 +6,14 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker/worker.module.js';
 import { WorkerService } from './worker/worker.service.js';
+import { appLogger } from './platform/observability/logger.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(WorkerModule);
   const worker = app.get(WorkerService);
 
   const shutdown = (signal: string): void => {
-    console.log(`${signal} reçu, arrêt du worker...`);
+    appLogger.info({ module: 'platform' }, `${signal} reçu, arrêt du worker...`);
     worker.stop();
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
@@ -23,6 +24,6 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error);
+  appLogger.error({ module: 'platform' }, error instanceof Error ? error.stack : String(error));
   process.exitCode = 1;
 });

@@ -52,6 +52,7 @@ export class SyncController {
     return this.pushService.push(req, {
       authenticatedUserId: auth.sub,
       authenticatedDeviceId: auth.device_id,
+      correlationId: request.correlationId,
     });
   }
 

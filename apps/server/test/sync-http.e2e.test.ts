@@ -13,6 +13,8 @@ import { z } from 'zod';
 import type { Clock } from '@gic/domain';
 import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
+import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
+import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import {
   COMMAND_HANDLER_REGISTRY,
   type CommandHandlerRegistry,
@@ -60,6 +62,7 @@ describe('POST /api/v1/sync/push, GET /api/v1/sync/pull (câblage NestJS + Fasti
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    registerCorrelationId(app, app.get(ID_GENERATOR));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 

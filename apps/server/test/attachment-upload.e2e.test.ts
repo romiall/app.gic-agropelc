@@ -12,6 +12,8 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
 import { registerRawBodyParser } from '../src/platform/http/register-raw-body-parser.js';
+import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
+import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import {
@@ -48,6 +50,7 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     registerRawBodyParser(app);
+    registerCorrelationId(app, app.get(ID_GENERATOR));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 

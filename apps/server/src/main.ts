@@ -5,16 +5,24 @@ import { AppModule } from './app.module.js';
 import { ENV } from './platform/env.provider.js';
 import type { Env } from './platform/env.js';
 import { registerRawBodyParser } from './platform/http/register-raw-body-parser.js';
+import { registerCorrelationId } from './platform/http/register-correlation-id.js';
+import { appLogger } from './platform/observability/logger.js';
+import { ID_GENERATOR } from './platform/id-generator.provider.js';
+import type { IdGenerator } from '@gic/domain';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
   registerRawBodyParser(app);
+  registerCorrelationId(app, app.get<IdGenerator>(ID_GENERATOR));
   const env = app.get<Env>(ENV);
   await app.listen(env.PORT, env.HOST);
-  console.log(`@gic/server à l'écoute sur http://${env.HOST}:${env.PORT} (${env.NODE_ENV}).`);
+  appLogger.info(
+    { module: 'platform', env: env.NODE_ENV },
+    `@gic/server à l'écoute sur http://${env.HOST}:${env.PORT}.`,
+  );
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error);
+  appLogger.error({ module: 'platform' }, error instanceof Error ? error.stack : String(error));
   process.exitCode = 1;
 });

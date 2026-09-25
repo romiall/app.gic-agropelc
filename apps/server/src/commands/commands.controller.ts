@@ -36,6 +36,7 @@ export class CommandsController {
       authenticatedUserId: auth.sub,
       authenticatedDeviceId: auth.device_id,
       transport: 'ONLINE_API',
+      correlationId: request.correlationId,
     });
   }
 }

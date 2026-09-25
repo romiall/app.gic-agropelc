@@ -11,6 +11,9 @@ import { z } from 'zod';
 import type { Clock } from '@gic/domain';
 import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
+import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
+import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   COMMAND_HANDLER_REGISTRY,
   type CommandHandlerRegistry,
@@ -61,6 +64,7 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    registerCorrelationId(app, app.get(ID_GENERATOR));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
@@ -106,6 +110,15 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
+  it('GET /health/ready répond 200 (base joignable, retard du worker sous seuil)', async () => {
+    const response = await app.inject({ method: 'GET', url: '/health/ready' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.status).toBe('ok');
+    expect(body.checks.database).toBe('ok');
+    expect(typeof body.checks.worker_lag_events).toBe('number');
+  });
+
   it('POST /api/v1/commands sans Authorization renvoie 401 (apiErrorSchema)', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/v1/commands', payload: {} });
     expect(response.statusCode).toBe(401);
@@ -113,6 +126,31 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
     expect(body.error.code).toBe('UNAUTHENTICATED');
     expect(typeof body.error.correlation_id).toBe('string');
   });
+
+  it(
+    'correlation_id (P0-16, NFR-28) : présent sur toute réponse (en-tête), identique côté ' +
+      'succès et dans la charge d’erreur, honoré quand le client en fournit un',
+    async () => {
+      const success = await app.inject({ method: 'GET', url: '/health' });
+      expect(success.headers['x-correlation-id']).toBeTruthy();
+
+      const failure = await app.inject({ method: 'POST', url: '/api/v1/commands', payload: {} });
+      const failureHeader = failure.headers['x-correlation-id'];
+      expect(failureHeader).toBeTruthy();
+      expect(failure.json().error.correlation_id).toBe(failureHeader);
+
+      // Un client (PWA) peut déjà porter son propre identifiant de corrélation : le serveur
+      // le reprend tel quel plutôt que d'en fabriquer un second, pour une future corrélation
+      // de bout en bout appareil → serveur.
+      const clientProvided = 'client-side-correlation-42';
+      const withClientId = await app.inject({
+        method: 'GET',
+        url: '/health',
+        headers: { 'x-correlation-id': clientProvided },
+      });
+      expect(withClientId.headers['x-correlation-id']).toBe(clientProvided);
+    },
+  );
 
   it('POST /api/v1/commands avec un jeton invalide renvoie 401', async () => {
     const response = await app.inject({
@@ -164,5 +202,27 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ command_id: commandId, status: 'APPLIED' });
+
+    // P0-16 (NFR-28) : le correlation_id de la requête HTTP se retrouve, identique, dans
+    // l'audit et dans l'événement de domaine émis par cette même commande — pas seulement
+    // dans une réponse d'erreur.
+    const correlationId = response.headers['x-correlation-id'] as string;
+    expect(correlationId).toBeTruthy();
+
+    const auditRow = await db
+      .selectFrom('audit_audit_log')
+      .select('correlation_id')
+      .where('command_id', '=', toBin(commandId))
+      .executeTakeFirstOrThrow();
+    expect(auditRow.correlation_id).not.toBeNull();
+    expect(fromBin(auditRow.correlation_id!)).toBe(correlationId);
+
+    const eventRow = await db
+      .selectFrom('platform_domain_events')
+      .select('correlation_id')
+      .where('command_id', '=', toBin(commandId))
+      .executeTakeFirstOrThrow();
+    expect(eventRow.correlation_id).not.toBeNull();
+    expect(fromBin(eventRow.correlation_id!)).toBe(correlationId);
   });
 });

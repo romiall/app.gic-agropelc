@@ -50,6 +50,7 @@ import {
 } from '../modules/identity/application/public/index.js';
 import { recordAudit } from '../audit/record-audit.js';
 import { recordDenied } from '../audit/record-denied.js';
+import { logStructured } from '../platform/observability/logger.js';
 import {
   COMMAND_HANDLER_REGISTRY,
   type CommandHandlerRegistry,
@@ -74,6 +75,9 @@ export interface HandleCommandContext {
   readonly batchId?: string;
   /** `/sync/push` seulement : `server_time − device_sent_at`, calculé une fois par lot par l'appelant. */
   readonly clockSkewMs?: number;
+  /** Un par requête (`/commands`) ou par lot (`/sync/push`) — 09-non-functional/
+   * 02-observabilite.md §1 : propagé à l'audit, aux événements et aux logs. */
+  readonly correlationId?: string | undefined;
 }
 
 @Injectable()
@@ -85,7 +89,58 @@ export class CommandPipelineService {
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
   ) {}
 
+  /**
+   * Point d'entrée observable (P0-16) : mesure la durée totale et journalise l'issue
+   * (`command_type`, `correlation_id`, `user_id` pseudonymisé, `device_id`, `code`) sans
+   * toucher à `handleInternal`, dont chaque branche est déjà exercée par une suite de tests
+   * conséquente — un second `safeParse`, pur et sans effet, isole ce changement du reste.
+   */
   async handle(raw: unknown, ctx: HandleCommandContext): Promise<CommandResult> {
+    const startedAt = performance.now();
+    const envelopeForLog = rawCommandEnvelopeSchema.safeParse(raw);
+    const commandType = envelopeForLog.success ? envelopeForLog.data.command_type : undefined;
+    const module = commandType?.split('.')[0];
+
+    try {
+      const result = await this.handleInternal(raw, ctx);
+      logStructured(
+        result.status === 'REJECTED' || result.status === 'CONFLICT' ? 'warn' : 'info',
+        {
+          module: module ?? 'commands',
+          correlationId: ctx.correlationId,
+          userId: ctx.authenticatedUserId,
+          deviceId: ctx.authenticatedDeviceId,
+          commandType,
+          durationMs: Math.round(performance.now() - startedAt),
+          code:
+            result.status === 'RETRY_LATER' ||
+            result.status === 'REJECTED' ||
+            result.status === 'CONFLICT'
+              ? result.error?.code
+              : result.status,
+        },
+        `Commande ${commandType ?? '(enveloppe invalide)'} : ${result.status}.`,
+      );
+      return result;
+    } catch (error) {
+      logStructured(
+        'error',
+        {
+          module: module ?? 'commands',
+          correlationId: ctx.correlationId,
+          userId: ctx.authenticatedUserId,
+          deviceId: ctx.authenticatedDeviceId,
+          commandType,
+          durationMs: Math.round(performance.now() - startedAt),
+          code: 'VALIDATION_ERROR',
+        },
+        `Commande ${commandType ?? '(enveloppe invalide)'} : enveloppe rejetée avant traitement.`,
+      );
+      throw error;
+    }
+  }
+
+  private async handleInternal(raw: unknown, ctx: HandleCommandContext): Promise<CommandResult> {
     // Les colonnes NOT NULL de sync_command_inbox exigent une enveloppe entièrement valide
     // avant même l'étape 1 : seule la validation du *payload* (schéma propre au
     // command_type) reste à l'étape 5, conformément à l'algorithme.
@@ -289,6 +344,7 @@ export class CommandPipelineService {
           entityId: envelope.aggregate_id,
           reason: `Permission manquante : ${entry.permissionCode}.`,
           errorCode: 'FORBIDDEN',
+          correlationId: ctx.correlationId ?? null,
         },
       );
       return this.markAndReject(
@@ -334,6 +390,7 @@ export class CommandPipelineService {
             entityId: envelope.aggregate_id,
             after: envelope.payload,
             result: 'SUCCESS',
+            correlationId: ctx.correlationId ?? null,
           },
         );
 
@@ -348,6 +405,7 @@ export class CommandPipelineService {
             occurred_at: occurredAt,
             payload: jsonValue(envelope.payload),
             command_id: commandIdBin,
+            correlation_id: ctx.correlationId ? toBin(ctx.correlationId) : null,
           })
           .execute();
 

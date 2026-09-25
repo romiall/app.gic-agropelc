@@ -117,6 +117,7 @@ export class AuthController {
               entityId: actorUserId,
               ip,
               result: 'FAILED',
+              correlationId: request.correlationId,
             },
           );
         }
@@ -164,6 +165,7 @@ export class AuthController {
           entityId: userId,
           ip,
           result: 'SUCCESS',
+          correlationId: request.correlationId,
         },
       );
       return issued;
@@ -216,6 +218,7 @@ export class AuthController {
               ip,
               result: 'FAILED',
               errorCode: 'TOKEN_REUSE',
+              correlationId: request.correlationId,
             },
           ),
         );
@@ -266,6 +269,7 @@ export class AuthController {
           entityId: auth.session_id,
           reason: 'LOGOUT',
           result: 'SUCCESS',
+          correlationId: request.correlationId,
         },
       );
     });
@@ -311,6 +315,7 @@ export class AuthController {
           entityType: 'USER',
           entityId: auth.sub,
           result: 'SUCCESS',
+          correlationId: request.correlationId,
         },
       );
     });

@@ -93,6 +93,23 @@ export interface TestDeviceOptions {
   readonly statusChangedAt?: Date;
 }
 
+const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const MAX_SHORT_CODE_ATTEMPTS = 5;
+
+function randomShortCode(): string {
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += SHORT_CODE_CHARS[Math.floor(Math.random() * SHORT_CODE_CHARS.length)];
+  }
+  return code;
+}
+
+/**
+ * `short_code` (varchar(4), unique) : `randomShortCode` + retry, comme la vraie
+ * implémentation (`device-enrollment.ts`) — un short_code dérivé de l'UUID (4 hex, 16^4
+ * combinaisons) collisionnait trop souvent sur une suite qui crée des centaines
+ * d'appareils par exécution (collision réelle observée à plusieurs reprises).
+ */
 export async function insertTestDevice(
   trx: UnitOfWork,
   enrolledByUserId: string,
@@ -100,23 +117,33 @@ export async function insertTestDevice(
 ): Promise<string> {
   const id = freshUuid();
   const status = options.status ?? 'ACTIVE';
-  // Hex 18-31 de l'UUIDv7 (sans tirets) = octets 9-15 = rand_b (uuid.ts) : partie purement
-  // aléatoire, contrairement aux 12 premiers hex (horodatage, peu de variation entre deux
-  // appels rapprochés — cause d'une collision réelle observée sur insertTestRole ci-dessus).
-  const shortCode = id.replace(/-/g, '').slice(18, 22).toUpperCase();
-  await trx
-    .insertInto('identity_devices')
-    .values({
-      id: toBin(id),
-      short_code: shortCode,
-      enrolled_by_user_id: toBin(enrolledByUserId),
-      status,
-      status_changed_at: options.statusChangedAt ?? new Date(),
-      approved_by: status === 'ACTIVE' ? toBin(enrolledByUserId) : null,
-      created_by: toBin(enrolledByUserId),
-    })
-    .execute();
-  return id;
+
+  for (let attempt = 1; attempt <= MAX_SHORT_CODE_ATTEMPTS; attempt++) {
+    try {
+      await trx
+        .insertInto('identity_devices')
+        .values({
+          id: toBin(id),
+          short_code: randomShortCode(),
+          enrolled_by_user_id: toBin(enrolledByUserId),
+          status,
+          status_changed_at: options.statusChangedAt ?? new Date(),
+          approved_by: status === 'ACTIVE' ? toBin(enrolledByUserId) : null,
+          created_by: toBin(enrolledByUserId),
+        })
+        .execute();
+      return id;
+    } catch (error) {
+      const isDuplicateShortCode =
+        typeof error === 'object' &&
+        error !== null &&
+        (error as { code?: string }).code === 'ER_DUP_ENTRY' &&
+        (error as { message?: string }).message?.includes('short_code');
+      if (!isDuplicateShortCode || attempt === MAX_SHORT_CODE_ATTEMPTS) throw error;
+    }
+  }
+  /* istanbul ignore next -- la boucle retourne ou lève systématiquement */
+  throw new Error('Impossible d’attribuer un code court unique (test).');
 }
 
 /**

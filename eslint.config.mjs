@@ -54,9 +54,10 @@ export default [
     },
   },
   {
-    // Scripts CLI (dbmate seeds) et amorçage du serveur (avant les logs structurés pino de
-    // l'observabilité, P0-16) : la sortie console *est* l'interface utilisateur.
-    files: ['db/seeds/**/*.ts', 'apps/server/src/main.ts', 'apps/server/src/worker.ts'],
+    // Scripts CLI (dbmate seeds) : la sortie console *est* l'interface utilisateur. Depuis
+    // P0-16, `apps/server/src/main.ts`/`worker.ts` journalisent via `appLogger` (pino
+    // structuré) et n'ont plus besoin de cette dérogation.
+    files: ['db/seeds/**/*.ts'],
     rules: {
       'no-console': 'off',
     },

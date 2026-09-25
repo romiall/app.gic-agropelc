@@ -26,6 +26,9 @@ import { toBin } from '../platform/kysely/uuid-columns.js';
 export interface SyncPushContext {
   readonly authenticatedUserId: string;
   readonly authenticatedDeviceId: string;
+  /** Un par lot (P0-16, 09-non-functional/02-observabilite.md §1), partagé par toutes les
+   * commandes de ce `/sync/push` — jamais un par commande à l'intérieur du lot. */
+  readonly correlationId?: string | undefined;
 }
 
 @Injectable()
@@ -56,6 +59,7 @@ export class SyncPushService {
         deviceSentAt,
         batchId: request.batch_id,
         clockSkewMs,
+        correlationId: ctx.correlationId,
       });
       results.push(clockSuspect ? withClockSuspectWarning(result) : result);
       lastDeviceSeq = raw.device_seq;
