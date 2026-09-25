@@ -163,6 +163,14 @@ export interface IdentityDevices {
   version: Generated<number>;
 }
 
+export interface IdentityLoginAttempts {
+  blocked_until: Date | null;
+  failed_count: Generated<number>;
+  scope_type: string;
+  scope_value: string;
+  updated_at: Generated<Date>;
+}
+
 export interface IdentityPermissions {
   code: string;
   deprecated_at: Date | null;
@@ -493,6 +501,7 @@ export interface DB {
   audit_audit_log: AuditAuditLog;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
+  identity_login_attempts: IdentityLoginAttempts;
   identity_permissions: IdentityPermissions;
   identity_role_permissions: IdentityRolePermissions;
   identity_roles: IdentityRoles;

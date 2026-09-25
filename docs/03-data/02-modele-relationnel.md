@@ -38,6 +38,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `identity.user_role_assignments` | HIST | Rôle × utilisateur × périmètre × période | users, roles, sites, zones, teams | DL (soi-même) | idem |
 | `identity.devices` | MASTER | Appareils enrôlés | users | DL (soi-même) | idem |
 | `identity.auth_sessions` | TECH | Sessions et jetons de rafraîchissement (hachés) | users, devices | SRV | idem |
+| `identity.login_attempts` | TECH | Verrouillage progressif de connexion (P0-09) | — | SRV | idem |
 
 ### 2.2 `organization`
 
@@ -202,7 +203,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **110 objets** : 108 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08, non prévues au décompte initial (ADR-011/ADR-023 ne documentaient que les mécanismes, pas les schémas).
+Total : **111 objets** : 109 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08 ; `identity.login_attempts` (verrouillage progressif de connexion) en P0-09 — aucune n'était prévue au décompte initial (seuls les mécanismes étaient documentés, pas les schémas).
 
 ## 3. Références inter-schémas autorisées
 

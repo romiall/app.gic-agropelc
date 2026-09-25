@@ -417,7 +417,7 @@ CREATE TABLE `identity_auth_sessions` (
   KEY `fk_identity_auth_sessions_device` (`device_id`),
   CONSTRAINT `fk_identity_auth_sessions_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_identity_auth_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_identity_auth_sessions_revoked_reason` CHECK (((`revoked_reason` is null) or (`revoked_reason` in (_utf8mb4'LOGOUT',_utf8mb4'ADMIN',_utf8mb4'USER_DEACTIVATED',_utf8mb4'DEVICE_BLOCKED',_utf8mb4'TOKEN_REUSE',_utf8mb4'EXPIRED'))))
+  CONSTRAINT `ck_identity_auth_sessions_revoked_reason` CHECK (((`revoked_reason` is null) or (`revoked_reason` in (_utf8mb4'LOGOUT',_utf8mb4'ADMIN',_utf8mb4'USER_DEACTIVATED',_utf8mb4'DEVICE_BLOCKED',_utf8mb4'TOKEN_REUSE',_utf8mb4'EXPIRED',_utf8mb4'ROTATED'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -480,6 +480,23 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `identity_login_attempts`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `identity_login_attempts` (
+  `scope_type` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `scope_value` varchar(64) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `failed_count` smallint NOT NULL DEFAULT '0',
+  `blocked_until` datetime(6) DEFAULT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`scope_type`,`scope_value`),
+  CONSTRAINT `ck_identity_login_attempts_scope_type` CHECK ((`scope_type` in (_utf8mb4'IDENTIFIER',_utf8mb4'IP')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `identity_permissions`
@@ -1687,5 +1704,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260924100700'),
   ('20260924110000'),
   ('20260924120000'),
-  ('20260924130000');
+  ('20260924130000'),
+  ('20260925090000'),
+  ('20260925090100');
 UNLOCK TABLES;

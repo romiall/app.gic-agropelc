@@ -153,10 +153,29 @@
 | `expires_at` | ts | Non | — | Expiration du jeton de rafraîchissement (30 jours glissants) |
 | `offline_grant_until` | ts | Non | — | Fin de l'autonomie hors ligne accordée (AV-009) |
 | `revoked_at` | ts | Oui | — | |
-| `revoked_reason` | enum(`LOGOUT`,`ADMIN`,`USER_DEACTIVATED`,`DEVICE_BLOCKED`,`TOKEN_REUSE`,`EXPIRED`) | Oui | — | |
+| `revoked_reason` | enum(`LOGOUT`,`ADMIN`,`USER_DEACTIVATED`,`DEVICE_BLOCKED`,`TOKEN_REUSE`,`EXPIRED`,`ROTATED`) | Oui | — | `ROTATED` (P0-09) : ligne remplacée par la rotation normale du jeton — distinct de `TOKEN_REUSE` (présentation d'une ligne déjà `ROTATED`, famille entière révoquée) |
 | `ip_first`, `ip_last` | inet | Oui | — | Adresses de création et de dernier usage |
 
 - **PK** `id`. **UQ** `refresh_token_hash`.
 - **IX** `(user_id, device_id)`, `(expires_at)`.
 - **Suppr.** `PURGE_TECHNIQUE` 90 jours après expiration ou révocation (les événements d'authentification restent dans l'audit).
 - **Audit** Création (connexion), révocation, détection de réutilisation. **Offline** SRV (l'appareil conserve ses jetons dans un stockage local protégé).
+- **Rotation** (P0-09) : chaque rafraîchissement insère une **nouvelle ligne** (même `token_family_id`, nouveau `refresh_token_hash`) et marque l'ancienne `ROTATED` — la table garde ainsi la trace nécessaire pour détecter la réutilisation d'un jeton déjà tourné (recherche par `refresh_token_hash` : une ligne trouvée mais déjà `revoked_at` non nul, quelle qu'en soit la raison, signale une réutilisation → révocation de toute la famille, `TOKEN_REUSE`).
+
+## identity.login_attempts
+
+**Responsabilité** : verrouillage progressif de connexion (07-security-rbac/02-securite.md
+§2 « 5 échecs → blocage progressif (1, 5, 15 min) par identifiant et par IP »), P0-09.
+Aucun schéma n'était documenté pour ce mécanisme — seule la règle l'était.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `scope_type` | code | Non | — | `IDENTIFIER` (téléphone) ou `IP` — deux compteurs indépendants |
+| `scope_value` | varchar(64) | Non | — | Valeur du périmètre (téléphone E.164 ou adresse IP textuelle) |
+| `failed_count` | smallint | Non | 0 | Échecs consécutifs depuis la dernière réinitialisation |
+| `blocked_until` | ts | Oui | — | Blocage en cours jusqu'à cet instant (`NULL` = pas de blocage) |
+| `updated_at` | ts | Non | `now()` | |
+
+- **PK** `(scope_type, scope_value)`.
+- **Suppr.** Aucune politique de purge documentée (à revoir si le volume le justifie) ; réinitialisé (`failed_count = 0`, `blocked_until = NULL`) à chaque connexion réussie.
+- **Audit** `auth.login.failed` (audit_audit_log) porte déjà la trace par tentative ; cette table ne sert qu'au calcul du blocage courant.

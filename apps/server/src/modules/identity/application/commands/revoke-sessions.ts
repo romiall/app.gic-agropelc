@@ -40,3 +40,22 @@ export async function revokeDeviceSessions(
     .where('revoked_at', 'is', null)
     .execute();
 }
+
+/**
+ * Révoque toute une famille de rotation (§3 « la réutilisation d'un jeton déjà utilisé
+ * révoque toute la famille »). `tokenFamilyId` est déjà sous forme binaire ici (lu depuis
+ * une ligne `identity_auth_sessions`, jamais saisi par un appelant externe).
+ */
+export async function revokeSessionFamily(
+  uow: UnitOfWork,
+  tokenFamilyId: Buffer,
+  reason: RevokedReason,
+  now: Date,
+): Promise<void> {
+  await uow
+    .updateTable('identity_auth_sessions')
+    .set({ revoked_at: now, revoked_reason: reason })
+    .where('token_family_id', '=', tokenFamilyId)
+    .where('revoked_at', 'is', null)
+    .execute();
+}
