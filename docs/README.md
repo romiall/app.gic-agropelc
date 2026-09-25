@@ -66,6 +66,7 @@
 | [`01-functional/00-exigences-sources.md`](01-functional/00-exigences-sources.md) | Extraction fidèle des exigences des sources (REQ-001 à REQ-084, REQ-201 à REQ-215) |
 | [`02-domain-model/05-strategie-finance-couts.md`](02-domain-model/05-strategie-finance-couts.md) | Finance opérationnelle, valorisation et coûts de lot, avec exemple chiffré |
 | [`10-development-plan/06-passage-au-developpement.md`](10-development-plan/06-passage-au-developpement.md) | Structure cible du dépôt, backlog ordonné de P0, règles de travail des sessions de développement |
+| [`10-development-plan/07-demonstration-p0.md`](10-development-plan/07-demonstration-p0.md) | Démonstration de sortie de la phase P0 (P0-18) : tests d'acceptation, parcours hors ligne, éléments encore ouverts |
 | [`_tools/check_refs.py`](_tools/check_refs.py) | Contrôle des identifiants et des liens de la documentation ; régénération de l'index des règles |
 
 ## 3. Parcours de lecture conseillés

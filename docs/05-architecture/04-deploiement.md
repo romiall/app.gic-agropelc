@@ -72,6 +72,40 @@ Voir NFR-20 à NFR-23 :
 - procédure écrite de reprise après sinistre ;
 - stockage objet versionné (fournisseur séparé, AV-091).
 
+### 5.1 Procédure écrite de reprise (NFR-23)
+
+Indépendante de Hostinger (§ intro, ADR-024 §5) : repose uniquement sur `mysqldump`/`mysql`
+et les outils déjà du dépôt (`dbmate`, `db/tests`). La modalité exacte de sauvegarde
+continue en production (PITR, NFR-20) dépend de l'offre managée retenue chez Hostinger
+(AV-090) et reste à documenter au moment du déploiement ; la procédure de restauration
+elle-même, ci-dessous, ne change pas selon l'offre — seule la source du fichier de
+sauvegarde diffère (export de l'offre managée au lieu d'un `mysqldump` local).
+
+1. **Sauvegarde** : `mysqldump --single-transaction --routines --triggers <base> > backup.sql`
+   (`--single-transaction` : cohérence sans verrouiller les tables en écriture, InnoDB).
+2. **Restauration sur une base neuve** : `mysql <nouvelle_base> < backup.sql` (jamais sur la
+   base source — une restauration teste toujours une cible neuve, jamais un remplacement en
+   place).
+3. **Vérification d'intégrité** : `DATABASE_URL=mysql://…/<nouvelle_base> pnpm --filter @gic/db run test`
+   (contraintes, déclencheurs d'immuabilité, invariants métier — pas seulement un décompte de
+   lignes) ; en production, y ajouter la vérification quotidienne du chaînage d'audit
+   (`ChainVerificationJob`, P0-07, INV-AUD-01) sur la copie restaurée.
+4. **Procès-verbal** (NFR-23) : durée de la restauration, résultat de l'étape 3, écart éventuel
+   avec la source.
+
+**Exécution locale de validation (25/09/2026, session P0-17/18)** : migrations rejouées
+(13 fichiers, `pnpm run db:migrate`) puis seed P0-05 sur une base neuve ; `mysqldump` (196 Ko) ;
+restauration sur une seconde base neuve (1,2 s) ; les 47 tests d'intégration de `db/tests`
+(contraintes, déclencheurs, idempotence du seed) verts sur la copie restaurée, décomptes
+identiques à la source (11 rôles, 118 permissions, 483 octrois, 24 paramètres). Ce test valide
+la **procédure**, pas le NFR-21 (RTO ≤ 4 h) lui-même : le jeu synthétique local (quelques
+centaines de lignes) restaure en secondes, sans rapport avec un volume de production — à
+remesurer, avec la vraie volumétrie, une fois `staging` déployé (AV-090). Reste donc ouvert
+avant la fin réelle de P0 : déploiement de `staging` chez Hostinger, choix de la modalité de
+sauvegarde continue managée, et un premier procès-verbal de restauration **sur ce staging**
+(pas seulement en local) — hors de portée d'une session de développement sans accès
+Hostinger (ADR-024 §5).
+
 ## 6. Estimation de coût (ordre de grandeur, AV-084)
 
 L'estimation précédente (services managés génériques : conteneurs + PostgreSQL + S3 + CDN, environ 150 à 400 USD/mois) est **caduque** : Hostinger sans VPS vise un coût nettement inférieur pour le calcul et la base (plans d'hébergement mutualisé ou cloud d'entrée de gamme, généralement de l'ordre de quelques à quelques dizaines de USD par mois), auquel s'ajoutent le stockage objet séparé (AV-091, quelques USD/mois au volume attendu) et le domaine (`gic-agropelc.com`, coût annuel usuel d'un domaine `.com`). **Chiffrage précis différé à la phase de déploiement**, une fois le plan Hostinger et la modalité d'exécution Node.js choisis (AV-090).
