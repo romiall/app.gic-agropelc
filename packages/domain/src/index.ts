@@ -1,5 +1,6 @@
 // Bibliothèque métier partagée (appareil + serveur), sans entrée-sortie — ADR-021.
 // Portée de P0-02 : identifiants, horloge, argent, quantités, jour métier, arrondis.
+// P0-11 : géorepère (organization.zones, BR-ADM-012).
 // Le moteur de prix, l'évaluation des politiques et les calculs de disponibilité
 // arrivent avec les modules qui les motivent (pricing en P1, inventory en P2).
 
@@ -57,3 +58,6 @@ export {
 } from './business-day.js';
 
 export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';
+
+export type { Geofence, GeofenceInput } from './geofence.js';
+export { buildGeofence } from './geofence.js';
