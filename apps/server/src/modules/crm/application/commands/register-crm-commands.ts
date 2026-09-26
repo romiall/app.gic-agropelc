@@ -12,6 +12,8 @@ import {
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { registerCustomerCommands } from './customer-commands.js';
 import { registerPipelineCommands } from './pipeline-commands.js';
+import { registerActivityCommands } from './activity-commands.js';
+import { registerTargetCommands } from './target-commands.js';
 
 @Injectable()
 export class CrmCommandsRegistrar implements OnModuleInit {
@@ -23,5 +25,7 @@ export class CrmCommandsRegistrar implements OnModuleInit {
   onModuleInit(): void {
     registerCustomerCommands(this.registry, this.idGenerator);
     registerPipelineCommands(this.registry);
+    registerActivityCommands(this.registry);
+    registerTargetCommands(this.registry);
   }
 }

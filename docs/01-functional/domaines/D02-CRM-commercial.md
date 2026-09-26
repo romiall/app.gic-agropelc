@@ -147,7 +147,7 @@ Sources : CM §6–§9, §11, §34.2, §34.3, §50 ; PM §12.
 | Utilisateur titulaire désactivé | Le portefeuille reste attaché à lui (historique) jusqu'à réaffectation ; alerte au responsable. |
 | Conversion déclenchée par une vente ensuite annulée | Voir §11 : le stade `CUSTOMER` est conservé, avec l'indicateur `conversion_reverted`. |
 
-## 15. Choix d'implémentation (P3-04)
+## 15. Choix d'implémentation (P3-04, P3-05)
 
 Précisions retenues par le module `crm` là où les règles ci-dessus laissent un choix ; toutes **DÉDUITES**, sans effet sur les règles confirmées.
 
@@ -164,4 +164,10 @@ Précisions retenues par le module `crm` là où les règles ci-dessus laissent 
 | Réaffectation (BR-CRM-020) | Droit de réaffecter sur le compte **et** sur le nouveau titulaire ; la nouvelle période ne peut précéder la période en cours (`ASSIGNMENT_OVERLAP`). | RC-04 ; INV-CRM-02. |
 | Fusion (BR-CRM-007) | Le compte **conservé** est le plus anciennement acquis (`MERGE_INVALID` sinon) : son acquéreur est retenu sans modifier un acquéreur immuable. Le titulaire du compte absorbé est clos ; les comptes qui pointaient vers l'absorbé (fusion, doublon) pointent vers le conservé (INV-CRM-05) ; une conversion portée par l'absorbé passe au conservé. Aucune recopie automatique de champs (correction par modification). Les liens externes Kommo suivront en P10. | INV-CRM-01, INV-CRM-05. |
 | Pipeline (AV-011) | Une commande par étape ; code immuable (`CODE_IMMUTABLE`), unique (`CODE_EXISTS`) ; étape système non désactivable (`SYSTEM_REFERENCE`) ; au moins une étape active (`PIPELINE_EMPTY`). | Un prospect exige une étape (dictionnaire). |
+| Visite : session (BR-CRM-013) | Le serveur rattache la visite à la session de l'utilisateur **couvrant** son `occurred_at` (`findWorkSessionAt`), quel que soit le rattachement local ; dérogation en attente = session valable. Indicateurs : `OUT_OF_SESSION`, `FAR_FROM_CUSTOMER` (paramètre `crm.visit.max_distance_m`), `SESSION_REJECTED` (à la création si la dérogation est déjà rejetée, sinon posé par réaction au rejet — `crm` s'enregistre auprès de `fieldwork`), `CLOCK_SUSPECT`. | Signalent, ne bloquent pas (AV-023). |
+| Visite ou interaction d'un compte fusionné | Refusée en ligne (`CUSTOMER_MERGED`) ; hors ligne, conservée sur le compte d'origine (`customer_stage_at_visit = MERGED`). | Fait accompli (BR-SYN-007) ; lectures par la chaîne de fusion (BR-CRM-007). |
+| Ancien titulaire hors ligne (§12) | Une visite ou interaction **hors ligne** d'un utilisateur qui a détenu le compte avant `occurred_at` est acceptée même après une réaffectation, s'il garde la permission sur son portefeuille ; en ligne, `FORBIDDEN_SCOPE`. | « Postérieures : acceptées (visites, commandes) » (§12). |
+| Résultat de visite (BR-CRM-012) | Motif de catégorie `VISIT_OUTCOME`, actif en ligne ; un motif désactivé entre-temps reste accepté hors ligne. | Fait accompli. |
+| Annulation (BR-CRM-016, SM-VISIT) | Par l'auteur (`crm.visit.record` / `crm.interaction.record` sur son propre fait, dans la zone du compte) ou par un responsable ayant `crm.customer.reassign` sur l'auteur ; commentaire obligatoire, motif facultatif de catégorie `CANCELLATION` ; `ALREADY_CANCELLED` au second essai. | SM-VISIT. |
+| Objectifs (BR-CRM-018) | Cible `USER` : portée sur le commercial ; `SITE` : sur le site ; `TEAM` : responsable de l'équipe ou portée `ALL`. `CA` (XAF) et comptages entiers, seule `QTE_PRODUIT` est décimale et exige un produit. Non modifiable : annulation puis nouvelle définition. | ADR-013 ; une équipe n'a ni titulaire ni site. |
 | Conversion (BR-CRM-010) | API interne `convertOnConfirmedSale` pour `sales` (P4) : la vente confirmée **la plus ancienne** fixe `converted_at` et `first_sale_id`, même synchronisée après une autre ; un compte fusionné est converti via son compte conservé ; `markConversionReverted` pose `conversion_reverted` (§11). | Conversion exclusivement serveur (SM-CUSTOMER). |
