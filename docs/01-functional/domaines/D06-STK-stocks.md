@@ -162,12 +162,13 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | `LOSS_CONFIRMATION` | `V_PENDING_LOSS` → `V_LOSS` | Perte approuvée ou rejet `PERTE_NON_JUSTIFIEE` | D |
 | `LOSS_RELEASE` | `V_PENDING_LOSS` → emplacement | Rejet `ERREUR_DECLARATION` | D |
 | `CONSUMPTION` | emplacement → `V_CONSUMPTION` | Consommation | C (CM §21) |
+| `CONSUMPTION_REVERSAL` | `V_CONSUMPTION` → emplacement | Annulation d'une consommation (inverse, BR-STK-036) | D |
 | `PRODUCTION_OUTPUT` | `V_PRODUCTION` → emplacement | Collecte d'œufs, éclosion, entrée de lot par naissance ou reclassement | C (CM §17, §18) |
 | `PRODUCTION_INPUT` | emplacement → `V_PRODUCTION` | Œufs consommés à l'éclosion, reclassement de mise en place, transformation (extension) | D |
 | `INVENTORY_GAIN` | `V_ADJUSTMENT` → emplacement | Inventaire | C (CM §25) |
 | `INVENTORY_LOSS` | emplacement → `V_ADJUSTMENT` | Inventaire | C (CM §25) |
 
-Tout mouvement peut avoir un inverse (`is_reversal = true`), qui porte le même type et échange source et destination.
+Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`), qui échange source et destination et reprend le produit, le lot, la quantité et le coût unitaire du mouvement d'origine (INV-STK-04, BR-STK-052). Le contrôle des couples (BR-STK-006) restant strict **par type**, un inverse porte un type dont le couple est l'inverse de celui d'origine : en P2, seule l'annulation d'une consommation est construite, avec le type dédié `CONSUMPTION_REVERSAL` (D, P2-04) — il distingue aussi, dans le registre, la seule entrée légitime depuis `V_CONSUMPTION`. Les inverses des autres types (vente, réception…) suivront le même principe avec les documents qui les annulent.
 
 ## 8. Validations
 
@@ -183,6 +184,13 @@ Tout mouvement peut avoir un inverse (`is_reversal = true`), qui porte le même 
 | Photo requise présente (référence de pièce) | `ATTACHMENT_REQUIRED` |
 | Commentaire requis pour `INEXPLIQUEE` et `VOL_SUSPECTE` | `COMMENT_REQUIRED` |
 | Un seul inventaire ouvert à la fois par emplacement | `COUNT_ALREADY_OPEN` |
+| Produit existant | `PRODUCT_INVALID` |
+| Coût déclaré présent pour une entrée valorisée (ouverture, réception, gain d'inventaire) | `UNIT_COST_REQUIRED` |
+| Inverse conforme à son origine (même produit, lot, quantité et coût, source et destination échangées) et unique (INV-STK-04) | `REVERSAL_INVALID` |
+| Politique de contrôle active pour une validation inconditionnelle (écart de transfert, écart d'inventaire au-dessus du seuil) | `CONTROL_POLICY_MISSING` |
+| Inventaire soumis avec au moins une ligne comptée | `COUNT_NO_LINES` |
+| Document dans le statut attendu par la transition (SM-TRANSFER, SM-LOSS, SM-INVENTORY-COUNT) | `TRANSFER_STATUS_INVALID`, `LOSS_STATUS_INVALID`, `CONSUMPTION_STATUS_INVALID`, `COUNT_STATUS_INVALID` |
+| Document visé existant | `NOT_FOUND` |
 
 ## 9. Dépendances
 

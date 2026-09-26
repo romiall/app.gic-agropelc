@@ -21,9 +21,10 @@
  * (champ présent, valeur masquée — le contrat de réponse reste le même pour tous).
  *
  * Droit de lecture des documents (transferts, pertes, consommations, inventaires, seuils) :
- * `inventory.stock.read` — DÉDUIT, la matrice (01-rbac.md §5.3) ne définit aucune permission
- * de lecture propre à ces documents ; le registre des mouvements a la sienne
- * (`inventory.ledger.read`), le registre de coûts relève de `inventory.valuation.read`.
+ * `inventory.stock.read` — valeur par défaut d'AV-094 (OUVERT) : la matrice (01-rbac.md §5.3)
+ * ne définit aucune permission de lecture propre à ces documents ; le registre des mouvements
+ * a la sienne (`inventory.ledger.read`), le registre de coûts relève de
+ * `inventory.valuation.read`.
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';

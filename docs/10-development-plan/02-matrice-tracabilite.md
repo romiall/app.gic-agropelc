@@ -81,11 +81,11 @@
 | REQ-036 | Distinguer stock biologique, commercialisable, commercial | BR-CAT-001 ; BR-STK-010 ; BR-VOL-002 | catalog, inventory, organization | Produit (famille de stock) ; emplacement | `catalog.products`, `organization.locations`, `inventory.stock_balances` | `GET /stock` | ECR-STK-01 | AT-038 | P1, P2 |
 | REQ-037 | Toute variation de stock a une cause | BR-STK-001, 002, 006 ; INV-STK-01 à 04 ; ADR-003 | inventory | Mouvement (type = cause) | `inventory.stock_moves`, `inventory.stock_balances` | Toute commande à effet stock ; `GET /stock-moves` | ECR-STK-07 | AT-022, AT-043 | P2 |
 | REQ-038 | Quel stock, où, depuis quand, d'où, combien disponible | BR-STK-004, 005, 011, 050 | inventory | Solde ; lot de traçabilité ; allocation | `inventory.stock_balances`, `inventory.stock_lots`, `inventory.stock_allocations` | `GET /stock`, `/stock-moves` | ECR-STK-01, ECR-STK-07 | AT-038, AT-043 | P2 |
-| REQ-039 | Transferts entre emplacements, avec écarts | BR-STK-020, 021, 022, 025 ; BR-DIS-012 ; INV-STK-08 | inventory | Transfert ; ligne ; mouvement de transit | `inventory.stock_transfers`, `inventory.stock_transfer_lines`, `inventory.stock_moves` | `inventory.transfer.request`, `.dispatch`, `.receive` | ECR-STK-02, ECR-STK-03 | AT-016, AT-017 | P2 |
+| REQ-039 | Transferts entre emplacements, avec écarts | BR-STK-020, 021, 022, 025 ; BR-DIS-012 ; INV-STK-08 | inventory | Transfert ; ligne ; mouvement de transit | `inventory.stock_transfers`, `inventory.stock_transfer_lines`, `inventory.stock_moves` | `inventory.transfer.request`, `.decline`, `.cancel`, `.dispatch`, `.receive`, `.move_internal` ; `GET /transfers` | ECR-STK-02, ECR-STK-03 | AT-016, AT-017 | P2 |
 | REQ-040 | Stock confié à un vendeur ou commercial, sous sa responsabilité | BR-STK-016, 023 ; BR-ADM-009 ; BR-VEN-017 ; INV-ADM-05 | inventory, organization | Emplacement MOBILE ; transfert | `organization.locations`, `inventory.stock_transfers` | `inventory.transfer.dispatch`, `.return_to_source` | ECR-STK-02, ECR-STK-01 | AT-018 | P4 |
-| REQ-041 | Perte documentée (nature, produit, quantité, lieu, date, utilisateur, motif, lot) | BR-STK-030, 032 ; BR-OEU-003 | inventory | Déclaration de perte ; mouvement | `inventory.loss_declarations`, `inventory.stock_moves` | `inventory.loss.declare` | ECR-STK-04 | AT-019, AT-020 | P2 |
+| REQ-041 | Perte documentée (nature, produit, quantité, lieu, date, utilisateur, motif, lot) | BR-STK-030, 032 ; BR-OEU-003 | inventory | Déclaration de perte ; mouvement | `inventory.loss_declarations`, `inventory.stock_moves` | `inventory.loss.declare`, `.withdraw` ; `GET /losses` | ECR-STK-04 | AT-019, AT-020 | P2 |
 | REQ-042 | Photo, validation ou justification selon le niveau de perte | BR-STK-031, 033 ; BR-ADM-016, 020 ; INV-STK-14 ; ADR-018 | approvals, attachments, inventory | Politique de contrôle ; demande de validation ; pièce jointe | `approvals.control_policies`, `approvals.approval_requests`, `attachments.attachments` | `approvals.request.approve`, `.reject`, `approvals.policy.set` | ECR-STK-04, ECR-ADM-08, ECR-ADM-07 | AT-019, AT-020 | P0, P2 |
-| REQ-043 | Inventaire : théorique vs physique, écart expliqué et régularisé | BR-STK-040 à 044 ; INV-STK-09 | inventory | Inventaire ; ligne de comptage | `inventory.inventory_counts`, `inventory.inventory_count_lines`, `inventory.stock_moves` | `inventory.count.open`, `.record_lines`, `.submit` | ECR-STK-05 | AT-021 | P2 |
+| REQ-043 | Inventaire : théorique vs physique, écart expliqué et régularisé | BR-STK-040 à 044 ; INV-STK-09 | inventory | Inventaire ; ligne de comptage | `inventory.inventory_counts`, `inventory.inventory_count_lines`, `inventory.stock_moves` | `inventory.count.open`, `.record_lines`, `.submit`, `.cancel` ; `GET /inventory-counts` | ECR-STK-05 | AT-021 | P2 |
 
 ## 7. Approvisionnement
 
@@ -203,3 +203,26 @@ Contrôle effectué à la rédaction de cette matrice (fin de cadrage) :
 | Écrans non rattachés à une exigence | 0 (ECR-PRD-05 est volontairement non attribué) |
 
 **Règle de maintien** : toute nouvelle exigence reçoit un identifiant `REQ-nnn` dans [`00-exigences-sources.md`](../01-functional/00-exigences-sources.md) **et** une ligne dans cette matrice, dans le même commit. Le script [`../_tools/check_refs.py`](../_tools/check_refs.py) signale toute référence orpheline (REQ, BR, INV, AT, ECR, ADR…).
+
+## 17. Vérification de fin de phase
+
+Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les tests automatisés qui la vérifient et ce qui reste. Les fichiers de test sont sous `apps/server/test/` (sauf mention). Détail et justification des éléments non livrés : démonstration de la phase.
+
+### 17.1 Phase P2 (26/09/2026) — [`09-demonstration-p2.md`](09-demonstration-p2.md)
+
+| REQ | Vérifié par | État à la fin de P2 |
+|---|---|---|
+| REQ-002 (part P2) | `inventory-read.e2e.test.ts` (registre : document, auteur, appareil, commande — AT-043) | Vérifié pour le stock ; ventes et trésorerie en P4, analyse en P9 |
+| REQ-004 (part P2) | `inventory-loss-commands.test.ts` (coût figé, responsabilité imputée), `inventory-record-move.test.ts` | Vérifié pour les pertes et mouvements ; encaissements en P4 |
+| REQ-036 | `inventory-read.e2e.test.ts` (`GET /stock`, disponible commercial par zone) | Partiel : classification analytique calculée (stratégie stock §4) et écran ECR-STK-01 non construits |
+| REQ-037 | `inventory-invariants.test.ts` (AT-022, INV-STK-01 à 04), `inventory-record-move.test.ts` | Vérifié |
+| REQ-038 | `inventory-read.e2e.test.ts` (`/stock`, `/stock/at`, `/stock/availability`, `/stock-moves`) | Vérifié ; réservations et allocations (colonnes `qty_reserved`, `qty_allocated`) alimentées en P5 |
+| REQ-039 | `inventory-transfer-commands.test.ts`, `inventory-invariants.test.ts` (AT-016, INV-STK-08) | Partiel : natures `STANDARD` et `INTERNAL` ; réception sans document (AT-017, BR-STK-024) et retour à la source non construits |
+| REQ-041 | `inventory-loss-commands.test.ts` | Vérifié |
+| REQ-042 | `inventory-loss-commands.test.ts`, `approval-commands.test.ts` (P0) | Partiel : validation selon la politique active et ses deux issues de rejet (AT-020) ; photo exigée avant approbation (AT-019) et seuils par catégorie et montant (AV-037) non construits |
+| REQ-043 | `inventory-count-commands.test.ts` | Partiel : théorique à `counted_at`, écart valorisé, seuil paramétrable, validation ; rapprochement tardif (BR-STK-044, AT-021, INV-STK-09) non construit |
+| REQ-052 (part P2) | `inventory-record-move.test.ts` (CMUP), `inventory-consumption-commands.test.ts` (écritures de coût), `inventory-read.e2e.test.ts` (`/costs`, masquage RC-05), `packages/domain` (`stockValueXaf`) | Vérifié pour le socle ; coût de lot biologique et marges en P7/P8 |
+| REQ-057 (simple) | `inventory-read.e2e.test.ts` (`/thresholds`, BR-STK-051), `packages/domain` (`evaluateStockThreshold`) | Partiel : état des seuils calculé ; alerte `STOCK_LOW` unique et résolue automatiquement (AT-047) et tableau ECR-ANA-03 non construits (module `communication`) |
+| REQ-077 | — | Non commencé (module `communication`, P9 ; la part P2 se limite à l'état des seuils ci-dessus) |
+| REQ-083 (part P2) | `inventory-read.e2e.test.ts` (`/stock-moves` paginé), `inventory-invariants.test.ts` (réconciliation) | Vérifié pour le registre ; AT-054 en P9 |
+| REQ-204 (part P2) | `inventory-invariants.test.ts` (INV-STK-01, reconstruction), `inventory-count-commands.test.ts` | Partiel : stock = Σ mouvements et inventaire → ajustement vérifiés ; prévention de la double consommation hors ligne (allocations, INV-STK-10/11) en P5 |

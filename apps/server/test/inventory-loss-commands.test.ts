@@ -328,7 +328,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     });
   });
 
-  it('commentaire requis pour INEXPLIQUEE/VOL_SUSPECTE (CK) -> REJECTED VALIDATION_ERROR', async () => {
+  it('commentaire requis pour INEXPLIQUEE/VOL_SUSPECTE (CK) -> REJECTED COMMENT_REQUIRED (D06 §8)', async () => {
     const productId = await insertProduct(admin);
     const result = await pipeline.handle(
       buildEnvelope(admin, {
@@ -340,7 +340,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
       adminCtx(),
     );
     expect(result.status).toBe('REJECTED');
-    expect(result.status === 'REJECTED' && result.error.code).toMatch(/^VALIDATION_ERROR/);
+    expect(result.status === 'REJECTED' && result.error.code).toBe('COMMENT_REQUIRED');
   });
 
   it('productionLotId requis pour MORTALITE (CK) -> REJECTED VALIDATION_ERROR', async () => {

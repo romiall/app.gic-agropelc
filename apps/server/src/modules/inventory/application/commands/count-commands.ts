@@ -210,7 +210,7 @@ function buildCountCommands(
     if (existing) {
       return {
         status: 'REJECTED',
-        errorCode: 'COUNT_ALREADY_IN_PROGRESS',
+        errorCode: 'COUNT_ALREADY_OPEN',
         messageFr: 'Un inventaire est déjà en cours sur cet emplacement.',
       };
     }

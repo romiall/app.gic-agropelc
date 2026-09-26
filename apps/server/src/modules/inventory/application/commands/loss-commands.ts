@@ -67,16 +67,8 @@ const declarePayloadSchema = z
     comment: z.string().max(2000).optional(),
   })
   .superRefine((data, ctx) => {
-    if (
-      (data.category === 'INEXPLIQUEE' || data.category === 'VOL_SUSPECTE') &&
-      !data.comment?.trim()
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'Un commentaire est requis pour les catégories INEXPLIQUEE et VOL_SUSPECTE (CK, dictionnaire).',
-      });
-    }
+    // Commentaire requis pour INEXPLIQUEE/VOL_SUSPECTE : contrôlé par le gestionnaire, qui
+    // renvoie le code documenté `COMMENT_REQUIRED` (D06 §8), pas un VALIDATION_ERROR générique.
     if (data.category === 'MORTALITE' && data.productionLotId === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -126,6 +118,14 @@ function buildLossCommands(
       reasonCodeId,
       comment,
     } = envelope.payload;
+    if ((category === 'INEXPLIQUEE' || category === 'VOL_SUSPECTE') && !comment?.trim()) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'COMMENT_REQUIRED',
+        messageFr:
+          'Un commentaire est requis pour les catégories INEXPLIQUEE et VOL_SUSPECTE (D06 §8, dictionnaire).',
+      };
+    }
     const occurredAt = new Date(envelope.occurred_at);
     const { siteId, codeSite } = await loadLocationSite(uow, locationId);
     const origin = await loadCommandOrigin(uow, envelope.command_id);

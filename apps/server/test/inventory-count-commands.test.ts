@@ -247,7 +247,7 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
     expect(result.status).toBe('APPLIED');
   }
 
-  it('open : IN_PROGRESS ; un second open sur le même emplacement -> REJECTED COUNT_ALREADY_IN_PROGRESS', async () => {
+  it('open : IN_PROGRESS ; un second open sur le même emplacement -> REJECTED COUNT_ALREADY_OPEN (D06 §8)', async () => {
     const locationId = await newStore();
     const countId = await openCount(locationId);
 
@@ -269,7 +269,7 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       adminCtx(),
     );
     expect(second.status).toBe('REJECTED');
-    expect(second.status === 'REJECTED' && second.error.code).toBe('COUNT_ALREADY_IN_PROGRESS');
+    expect(second.status === 'REJECTED' && second.error.code).toBe('COUNT_ALREADY_OPEN');
   });
 
   it('record_lines : upsert — une seconde saisie du même (produit, sans lot) corrige la ligne, n’en crée pas une seconde', async () => {
