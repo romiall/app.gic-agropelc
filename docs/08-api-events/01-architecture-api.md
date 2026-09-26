@@ -90,7 +90,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 | Élément | Contenu |
 |---|---|
 | Commandes | `crm.customer.create` (F pour la création), `.update` (I, fusion champ par champ), `.set_pipeline_step` (I), `.mark_lost` (I), `.reopen` (I), `.reassign` (I, en ligne), `.merge` (en ligne), `.set_credit_terms` (en ligne) ; `crm.visit.record` (F), `.cancel` ; `crm.interaction.record` (F), `.cancel` ; `crm.target.set`, `.cancel` ; `crm.pipeline.configure` ; `fieldwork.checkin.record` (F), `fieldwork.checkin.request_override` (F) |
-| Requêtes | `GET /customers?owner=me&stage=&q=`, `/customers/{id}` (fiche : historique, visites, commandes, ventes, créances, liens Kommo), `GET /customers/duplicate-check?phone=` (réponse masquée, AV-014), `/visits?user_id=&from=&to=`, `/targets?user_id=`, `/work-sessions?team_id=&date=` |
+| Requêtes | `GET /customers?owner=me&site_id=&zone_id=&stage=&q=&cursor=&limit=`, `/customers/{id}` (fiche : titulaires, historique, visites et interactions récentes — commandes, ventes, créances en P4, liens Kommo en P10), `GET /customers/duplicate-check?phone=` (réponse masquée, AV-014), `/visits?user_id=&customer_id=&from=&to=`, `/interactions?user_id=&customer_id=&from=&to=`, `/targets?user_id=&team_id=&site_id=&active_on=`, `/performance/commercial?user_id=&from=&to=` (effort commercial et réalisé des objectifs, P3-06), `/work-sessions?user_id=&team_id=&date=` (sessions et toutes les tentatives du jour) |
 | Événements | `ProspectCreated`, `CustomerConverted`, `CustomerReassigned`, `VisitRecorded`, `WorkSessionStarted`, `CheckInRejected` |
 | Permissions | `crm.*`, `fieldwork.*` |
 

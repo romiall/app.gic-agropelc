@@ -68,3 +68,101 @@ export async function findWorkSessionAt(
     .executeTakeFirst();
   return row ? toRef(row) : undefined;
 }
+
+export interface WorkSessionSummary extends WorkSessionRef {
+  readonly deviceId: string;
+  readonly declaredZoneId: string;
+  readonly closeCause: string | null;
+  readonly overrideReason: string | null;
+  readonly approvalRequestId: string | null;
+  readonly startCheckinId: string;
+  readonly endCheckinId: string | null;
+}
+
+/** Sessions des utilisateurs commencées dans `[fromUtc, toUtc[` (ex. un jour métier). */
+export async function listWorkSessions(
+  executor: Executor,
+  filter: { readonly userIds: readonly string[]; readonly fromUtc: Date; readonly toUtc: Date },
+): Promise<readonly WorkSessionSummary[]> {
+  if (filter.userIds.length === 0) return [];
+  const rows = await executor
+    .selectFrom('fieldwork_work_sessions')
+    .selectAll()
+    .where(
+      'user_id',
+      'in',
+      filter.userIds.map((id) => toBin(id)),
+    )
+    .where('started_at', '>=', filter.fromUtc)
+    .where('started_at', '<', filter.toUtc)
+    .orderBy('started_at', 'asc')
+    .execute();
+  return rows.map((row) => ({
+    ...toRef(row),
+    deviceId: fromBin(row.device_id),
+    declaredZoneId: fromBin(row.declared_zone_id),
+    closeCause: row.close_cause,
+    overrideReason: row.override_reason,
+    approvalRequestId: row.approval_request_id ? fromBin(row.approval_request_id) : null,
+    startCheckinId: fromBin(row.start_checkin_id),
+    endCheckinId: row.end_checkin_id ? fromBin(row.end_checkin_id) : null,
+  }));
+}
+
+export interface CheckinSummary {
+  readonly id: string;
+  readonly userId: string;
+  readonly checkinType: string;
+  readonly declaredZoneId: string;
+  readonly position: { readonly lat: number; readonly lng: number } | null;
+  readonly accuracyM: number | null;
+  readonly distanceM: number | null;
+  readonly geofenceRadiusM: number | null;
+  readonly clientResult: string;
+  readonly serverResult: string;
+  readonly resultDivergence: boolean;
+  readonly workSessionId: string | null;
+  readonly suspicionFlags: readonly string[];
+  readonly occurredAt: Date;
+  readonly clockSuspect: boolean;
+}
+
+/** Toutes les tentatives (acceptées ou refusées, INV-TER-02) des utilisateurs sur la période. */
+export async function listCheckins(
+  executor: Executor,
+  filter: { readonly userIds: readonly string[]; readonly fromUtc: Date; readonly toUtc: Date },
+): Promise<readonly CheckinSummary[]> {
+  if (filter.userIds.length === 0) return [];
+  const rows = await executor
+    .selectFrom('fieldwork_geo_checkins')
+    .selectAll()
+    .where(
+      'user_id',
+      'in',
+      filter.userIds.map((id) => toBin(id)),
+    )
+    .where('occurred_at', '>=', filter.fromUtc)
+    .where('occurred_at', '<', filter.toUtc)
+    .orderBy('occurred_at', 'asc')
+    .execute();
+  return rows.map((row) => ({
+    id: fromBin(row.id),
+    userId: fromBin(row.user_id),
+    checkinType: row.checkin_type,
+    declaredZoneId: fromBin(row.declared_zone_id),
+    position:
+      row.lat === null || row.lng === null ? null : { lat: Number(row.lat), lng: Number(row.lng) },
+    accuracyM: row.accuracy_m === null ? null : Number(row.accuracy_m),
+    distanceM: row.distance_m === null ? null : Number(row.distance_m),
+    geofenceRadiusM: row.geofence_radius_m === null ? null : Number(row.geofence_radius_m),
+    clientResult: row.client_result,
+    serverResult: row.server_result,
+    resultDivergence: Boolean(row.result_divergence),
+    workSessionId: row.work_session_id ? fromBin(row.work_session_id) : null,
+    suspicionFlags: Array.isArray(row.suspicion_flags)
+      ? row.suspicion_flags.filter((v): v is string => typeof v === 'string')
+      : [],
+    occurredAt: row.occurred_at,
+    clockSuspect: Boolean(row.clock_suspect),
+  }));
+}

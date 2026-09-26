@@ -147,7 +147,7 @@ Sources : CM §6–§9, §11, §34.2, §34.3, §50 ; PM §12.
 | Utilisateur titulaire désactivé | Le portefeuille reste attaché à lui (historique) jusqu'à réaffectation ; alerte au responsable. |
 | Conversion déclenchée par une vente ensuite annulée | Voir §11 : le stade `CUSTOMER` est conservé, avec l'indicateur `conversion_reverted`. |
 
-## 15. Choix d'implémentation (P3-04, P3-05)
+## 15. Choix d'implémentation (P3-04 à P3-06)
 
 Précisions retenues par le module `crm` là où les règles ci-dessus laissent un choix ; toutes **DÉDUITES**, sans effet sur les règles confirmées.
 
@@ -170,4 +170,5 @@ Précisions retenues par le module `crm` là où les règles ci-dessus laissent 
 | Résultat de visite (BR-CRM-012) | Motif de catégorie `VISIT_OUTCOME`, actif en ligne ; un motif désactivé entre-temps reste accepté hors ligne. | Fait accompli. |
 | Annulation (BR-CRM-016, SM-VISIT) | Par l'auteur (`crm.visit.record` / `crm.interaction.record` sur son propre fait, dans la zone du compte) ou par un responsable ayant `crm.customer.reassign` sur l'auteur ; commentaire obligatoire, motif facultatif de catégorie `CANCELLATION` ; `ALREADY_CANCELLED` au second essai. | SM-VISIT. |
 | Objectifs (BR-CRM-018) | Cible `USER` : portée sur le commercial ; `SITE` : sur le site ; `TEAM` : responsable de l'équipe ou portée `ALL`. `CA` (XAF) et comptages entiers, seule `QTE_PRODUIT` est décimale et exige un produit. Non modifiable : annulation puis nouvelle définition. | ADR-013 ; une équipe n'a ni titulaire ni site. |
+| Lectures (P3-06) | Chaque élément renvoyé est filtré par sa portée (RC-04). Sans critère, une liste porte, sauf portée `ALL`, sur l'utilisateur, les membres des équipes qu'il dirige et, pour les comptes, ses sites d'affectation. Interactions lues avec `crm.visit.read` (aucune permission de lecture propre). Ses propres objectifs et son effort se lisent avec la seule permission `crm.target.read`. Effort commercial : prospects **acquis** (hors comptes absorbés), visites et interactions non annulées, comptes et prospects visités distincts, conversions attribuées au titulaire à la date de conversion ; chiffre d'affaires en P4. | BR-CRM-019 ; « mon portefeuille, celui de mon équipe, les clients de mon PDV » (§12). |
 | Conversion (BR-CRM-010) | API interne `convertOnConfirmedSale` pour `sales` (P4) : la vente confirmée **la plus ancienne** fixe `converted_at` et `first_sale_id`, même synchronisée après une autre ; un compte fusionné est converti via son compte conservé ; `markConversionReverted` pose `conversion_reverted` (§11). | Conversion exclusivement serveur (SM-CUSTOMER). |
