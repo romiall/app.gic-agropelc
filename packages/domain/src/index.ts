@@ -72,3 +72,12 @@ export type {
   ResolvePriceResult,
 } from './pricing-engine.js';
 export { resolvePrice, specificityOf, findConflicts } from './pricing-engine.js';
+
+export type { LotBalance, LotAllocation, LotSelectionResult } from './stock-engine.js';
+export {
+  availableOnExclusive,
+  availableOnShared,
+  selectLotsFifo,
+  recalculateCmup,
+  roundCmupToXaf,
+} from './stock-engine.js';
