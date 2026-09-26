@@ -20,6 +20,7 @@ import {
 import { registerTransferCommands } from './transfer-commands.js';
 import { registerLossCommands } from './loss-commands.js';
 import { registerConsumptionCommands } from './consumption-commands.js';
+import { registerThresholdCommands } from './threshold-commands.js';
 
 @Injectable()
 export class InventoryCommandsRegistrar implements OnModuleInit {
@@ -45,5 +46,6 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
       this.documentSequences,
     );
     registerConsumptionCommands(this.registry, this.idGenerator);
+    registerThresholdCommands(this.registry);
   }
 }
