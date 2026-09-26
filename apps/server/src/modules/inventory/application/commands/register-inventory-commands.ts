@@ -19,6 +19,7 @@ import {
 } from '../../../approvals/application/public/index.js';
 import { registerTransferCommands } from './transfer-commands.js';
 import { registerLossCommands } from './loss-commands.js';
+import { registerConsumptionCommands } from './consumption-commands.js';
 
 @Injectable()
 export class InventoryCommandsRegistrar implements OnModuleInit {
@@ -43,5 +44,6 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
       this.idGenerator,
       this.documentSequences,
     );
+    registerConsumptionCommands(this.registry, this.idGenerator);
   }
 }
