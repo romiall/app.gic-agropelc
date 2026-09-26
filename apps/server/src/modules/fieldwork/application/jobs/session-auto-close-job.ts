@@ -10,6 +10,7 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
 import { resolveSessionEnd, type Clock } from '@gic/domain';
 import { CLOCK } from '../../../../platform/clock.provider.js';
+import { emitWorkSessionChanges } from '../sync-changes.js';
 import {
   JOB_HANDLER_REGISTRY,
   type JobHandlerRegistry,
@@ -51,6 +52,7 @@ export class SessionAutoCloseJob implements OnModuleInit {
           })
           .where('id', '=', session.id)
           .execute();
+        await emitWorkSessionChanges(uow, [session.id]);
         closed += 1;
       }
       this.logger.log(`Sessions clôturées automatiquement (23:59) : ${closed}.`);

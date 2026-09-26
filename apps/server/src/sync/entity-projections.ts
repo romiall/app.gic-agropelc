@@ -12,7 +12,7 @@
  * point qui décide ce qu'un appareil reçoit d'une table, indépendamment de ce que la table
  * porte en interne.
  */
-import type { Kysely, Transaction } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
 
@@ -36,6 +36,55 @@ export type EntityProjectionReader = (
 function locationScopeOf(context: EntityProjectionContext): string | undefined {
   return context.scopeType === 'LOCATION' && context.scopeId !== null ? context.scopeId : undefined;
 }
+
+/** Périmètres CRM (P3-07) : `USER` (titulaire ou auteur), `TEAM`, `SITE` — jamais `GLOBAL`. */
+function crmScopeOf(
+  context: EntityProjectionContext,
+): { readonly type: 'USER' | 'TEAM' | 'SITE'; readonly id: string } | undefined {
+  if (context.scopeId === null) return undefined;
+  if (
+    context.scopeType === 'USER' ||
+    context.scopeType === 'TEAM' ||
+    context.scopeType === 'SITE'
+  ) {
+    return { type: context.scopeType, id: context.scopeId };
+  }
+  return undefined;
+}
+
+/** L'un des utilisateurs est membre de l'équipe maintenant (appartenance courante). */
+async function anyTeamMemberNow(
+  executor: Kysely<DB> | Transaction<DB>,
+  teamId: string,
+  userIds: readonly (Buffer | null)[],
+): Promise<boolean> {
+  const ids = userIds.filter((id): id is Buffer => id !== null);
+  if (ids.length === 0) return false;
+  const row = await executor
+    .selectFrom('organization_team_memberships')
+    .select('id')
+    .where('team_id', '=', toBin(teamId))
+    .where('user_id', 'in', ids)
+    .where(sql<boolean>`valid_from <= UTC_TIMESTAMP(6)`)
+    .where(sql<boolean>`(valid_to IS NULL OR valid_to > UTC_TIMESTAMP(6))`)
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+function flagsOf(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+/** Colonne `DATE` lue (mysql2 : minuit local) → `AAAA-MM-JJ`. */
+function dateOnly(value: Date | null): string | null {
+  if (value === null) return null;
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${value.getFullYear()}-${month}-${day}`;
+}
+
+/** Fenêtre du jeu `crm_activity` (01-architecture-offline.md §3.1 : « des 90 derniers jours »). */
+const ACTIVITY_WINDOW = sql<boolean>`a.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 90 DAY)`;
 
 const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
   USER: async (executor, entityId) => {
@@ -814,6 +863,197 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         variance_reason_code_id: fromBinOrNull(line.variance_reason_code_id),
         comment: line.comment,
       })),
+    };
+  },
+
+  // Jeu `customers` (P3-07) : servi seulement si le compte appartient encore au périmètre de la
+  // ligne — titulaire (USER), équipe du titulaire (TEAM), PDV de rattachement (SITE). Une
+  // réaffectation émet `SCOPE_EXIT` vers l'ancien titulaire (§5.3). `version` sert de
+  // `base_version` aux modifications hors ligne (fusion champ par champ).
+  CUSTOMER: async (executor, entityId, context) => {
+    const scope = crmScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('crm_customers')
+      .selectAll()
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const owner = fromBinOrNull(row.owner_user_id);
+    const inScope =
+      scope.type === 'USER'
+        ? owner === scope.id
+        : scope.type === 'SITE'
+          ? fromBinOrNull(row.home_site_id) === scope.id
+          : await anyTeamMemberNow(executor, scope.id, [row.owner_user_id]);
+    if (!inScope) return undefined;
+    return {
+      id: fromBin(row.id),
+      stage: row.stage,
+      pipeline_step_id: fromBinOrNull(row.pipeline_step_id),
+      customer_type: row.customer_type,
+      display_name: row.display_name,
+      contact_name: row.contact_name,
+      business_activity: row.business_activity,
+      category_id: fromBinOrNull(row.category_id),
+      phone_primary: row.phone_primary,
+      phone_secondary: row.phone_secondary,
+      email: row.email,
+      address_text: row.address_text,
+      zone_id: fromBin(row.zone_id),
+      lat: row.lat,
+      lng: row.lng,
+      geo_accuracy_m: row.geo_accuracy_m,
+      source_code: row.source_code,
+      acquired_by_user_id: fromBin(row.acquired_by_user_id),
+      acquired_at: row.acquired_at,
+      owner_user_id: owner,
+      home_site_id: fromBinOrNull(row.home_site_id),
+      converted_at: row.converted_at,
+      conversion_reverted: Boolean(row.conversion_reverted),
+      merged_into_id: fromBinOrNull(row.merged_into_id),
+      duplicate_of_id: fromBinOrNull(row.duplicate_of_id),
+      credit_allowed: Boolean(row.credit_allowed),
+      credit_limit_xaf: row.credit_limit_xaf === null ? null : Number(row.credit_limit_xaf),
+      payment_terms_days: row.payment_terms_days,
+      last_sale_at: row.last_sale_at,
+      version: row.version,
+    };
+  },
+
+  // Jeu `crm_activity` (P3-07) : visites des 90 derniers jours, pour leur auteur, le titulaire
+  // du compte et leurs équipes.
+  VISIT: async (executor, entityId, context) => {
+    const scope = crmScopeOf(context);
+    if (scope === undefined || scope.type === 'SITE') return undefined;
+    const row = await executor
+      .selectFrom('crm_visits as a')
+      .innerJoin('crm_customers as c', 'c.id', 'a.customer_id')
+      .selectAll('a')
+      .select('c.owner_user_id as owner_user_id')
+      .where('a.id', '=', toBin(entityId))
+      .where(ACTIVITY_WINDOW)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(row.user_id) === scope.id || fromBinOrNull(row.owner_user_id) === scope.id
+        : await anyTeamMemberNow(executor, scope.id, [row.user_id, row.owner_user_id]);
+    if (!inScope) return undefined;
+    return {
+      id: fromBin(row.id),
+      customer_id: fromBin(row.customer_id),
+      user_id: fromBin(row.user_id),
+      work_session_id: fromBinOrNull(row.work_session_id),
+      customer_stage_at_visit: row.customer_stage_at_visit,
+      lat: row.lat,
+      lng: row.lng,
+      accuracy_m: row.accuracy_m,
+      distance_to_customer_m: row.distance_to_customer_m,
+      outcome_reason_code_id: fromBin(row.outcome_reason_code_id),
+      notes: row.notes,
+      next_action_at: dateOnly(row.next_action_at),
+      next_action_note: row.next_action_note,
+      flags: flagsOf(row.flags),
+      status: row.status,
+      cancelled_at: row.cancelled_at,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  INTERACTION: async (executor, entityId, context) => {
+    const scope = crmScopeOf(context);
+    if (scope === undefined || scope.type === 'SITE') return undefined;
+    const row = await executor
+      .selectFrom('crm_interactions as a')
+      .innerJoin('crm_customers as c', 'c.id', 'a.customer_id')
+      .selectAll('a')
+      .select('c.owner_user_id as owner_user_id')
+      .where('a.id', '=', toBin(entityId))
+      .where(ACTIVITY_WINDOW)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(row.user_id) === scope.id || fromBinOrNull(row.owner_user_id) === scope.id
+        : await anyTeamMemberNow(executor, scope.id, [row.user_id, row.owner_user_id]);
+    if (!inScope) return undefined;
+    return {
+      id: fromBin(row.id),
+      customer_id: fromBin(row.customer_id),
+      user_id: fromBin(row.user_id),
+      channel: row.channel,
+      direction: row.direction,
+      summary: row.summary,
+      next_action_at: dateOnly(row.next_action_at),
+      next_action_note: row.next_action_note,
+      status: row.status,
+      cancelled_at: row.cancelled_at,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  SALES_TARGET: async (executor, entityId, context) => {
+    const scope = crmScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('crm_sales_targets')
+      .selectAll()
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const target =
+      scope.type === 'USER' ? row.user_id : scope.type === 'TEAM' ? row.team_id : row.site_id;
+    if (target === null || fromBin(target) !== scope.id) return undefined;
+    return {
+      id: fromBin(row.id),
+      target_type: row.target_type,
+      user_id: fromBinOrNull(row.user_id),
+      team_id: fromBinOrNull(row.team_id),
+      site_id: fromBinOrNull(row.site_id),
+      metric: row.metric,
+      product_id: fromBinOrNull(row.product_id),
+      period_start: dateOnly(row.period_start),
+      period_end: dateOnly(row.period_end),
+      target_value: row.target_value,
+      status: row.status,
+      version: row.version,
+    };
+  },
+
+  // Jeu `fieldwork` (P3-07) : sessions de l'agent, pour lui renvoyer les décisions du serveur.
+  WORK_SESSION: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('fieldwork_work_sessions')
+      .select([
+        'id',
+        'user_id',
+        'declared_zone_id',
+        'started_at',
+        'ended_at',
+        'status',
+        'close_cause',
+        'override_status',
+        'approval_request_id',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || fromBin(row.user_id) !== context.scopeId) return undefined;
+    return {
+      id: fromBin(row.id),
+      user_id: fromBin(row.user_id),
+      declared_zone_id: fromBin(row.declared_zone_id),
+      started_at: row.started_at,
+      ended_at: row.ended_at,
+      status: row.status,
+      close_cause: row.close_cause,
+      override_status: row.override_status,
+      approval_request_id: fromBinOrNull(row.approval_request_id),
+      version: row.version,
     };
   },
 };

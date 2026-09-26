@@ -9,7 +9,8 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { emitActivityChange } from '../sync-changes.js';
 import {
   SESSION_REJECTED_LISTENERS,
   type SessionRejectedListenerRegistry,
@@ -28,6 +29,14 @@ export async function flagVisitsOfRejectedSession(
     .where('work_session_id', '=', toBin(sessionId))
     .where(sql<boolean>`NOT JSON_CONTAINS(flags, '"SESSION_REJECTED"')`)
     .execute();
+  const visits = await uow
+    .selectFrom('crm_visits')
+    .select(['id', 'occurred_at'])
+    .where('work_session_id', '=', toBin(sessionId))
+    .execute();
+  for (const visit of visits) {
+    await emitActivityChange(uow, 'VISIT', fromBin(visit.id), visit.occurred_at);
+  }
 }
 
 @Injectable()

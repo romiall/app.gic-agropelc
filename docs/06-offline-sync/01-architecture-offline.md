@@ -63,6 +63,7 @@ flowchart TB
 | `policies` | Politiques de contrôle actives | Global | < 20 Ko | Incrémental |
 | `customers` | Comptes du portefeuille (équipe pour un responsable ; clients rattachés au PDV), affectations courantes, encours, liens Kommo | `USER`, `TEAM`, `SITE` | ≤ 2 000 comptes ≈ 1 Mo | Incrémental ; `SCOPE_EXIT` sur réaffectation |
 | `crm_activity` | Visites et interactions des 90 derniers jours ; objectifs | Idem | < 1 Mo | Incrémental |
+| `fieldwork` | Sessions de travail de l'agent : décisions du serveur (recalcul défavorable et dérogation, remplacement, clôture de 23:59, décision du responsable) — DÉDUIT (P3-07), aucun autre jeu ne portant les sessions (D03 §12) | `USER` | < 10 Ko | Incrémental |
 | `orders` | Commandes ouvertes du périmètre (commercial, emplacement de préparation) | `USER`, `LOCATION` | < 500 Ko | Incrémental |
 | `sales_recent` | Ventes et encaissements des 7 derniers jours de l'utilisateur ou du PDV | `USER`, `SITE` | < 2 Mo | Incrémental ; purge locale au-delà de 7 j |
 | `stock` | Soldes, lots en solde, seuils des emplacements du périmètre | `LOCATION` | < 500 Ko | Incrémental (`row_version`) |
@@ -85,6 +86,7 @@ Budget total visé par appareil : **≤ 20 Mo de données + ≤ 50 Mo de pièces
 | `pricing` | ○ | — | ● | ● | ● | ● | — | ● | — | — | ○ |
 | `policies` | — | — | ● | ● | ● | ● | ● | ● | ● | — | ● |
 | `customers`, `crm_activity` | — | — | ● (équipe) | ● | ● | ● (PDV) | — | ○ | — | — | — |
+| `fieldwork` | — | — | ● | ● | — | — | — | — | — | — | — |
 | `orders` | — | — | ● | ● | ● | ○ | — | — | ● | — | — |
 | `sales_recent` | — | — | ○ | ● | ● | ● | — | ● | — | — | — |
 | `stock`, `transfers`, `counts` | — | — | ○ | ● (mobile) | — | ● (PDV) | ● | ● | ● | — | — |

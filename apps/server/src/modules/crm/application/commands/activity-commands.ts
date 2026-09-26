@@ -27,6 +27,7 @@ import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-co
 import { findReasonCode } from '../../../catalog/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import { findWorkSessionAt } from '../../../fieldwork/application/public/index.js';
+import { emitActivityChange } from '../sync-changes.js';
 import {
   CUSTOMER_MERGED,
   CUSTOMER_NOT_FOUND,
@@ -179,6 +180,7 @@ const recordVisit: CommandHandler<VisitPayload> = async (uow, envelope) => {
       created_by: toBin(author),
     })
     .execute();
+  await emitActivityChange(uow, 'VISIT', envelope.aggregate_id, at);
   return { status: 'APPLIED' };
 };
 
@@ -228,6 +230,7 @@ const recordInteraction: CommandHandler<InteractionPayload> = async (uow, envelo
       created_by: toBin(author),
     })
     .execute();
+  await emitActivityChange(uow, 'INTERACTION', envelope.aggregate_id, at);
   return { status: 'APPLIED' };
 };
 
@@ -289,6 +292,12 @@ function buildCancel(
       })
       .where('id', '=', row.id)
       .execute();
+    await emitActivityChange(
+      uow,
+      table === 'crm_visits' ? 'VISIT' : 'INTERACTION',
+      envelope.aggregate_id,
+      at,
+    );
     return { status: 'APPLIED' };
   };
   return handler;

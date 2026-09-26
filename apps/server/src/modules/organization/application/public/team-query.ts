@@ -38,3 +38,19 @@ export async function listManagedTeamMembersAt(
     .execute();
   return [...new Set(rows.map((row) => fromBin(row.user_id)))];
 }
+
+/** Équipes dont l'utilisateur est membre à `at` (audience `TEAM` du flux de synchronisation). */
+export async function listTeamsOfUserAt(
+  executor: Kysely<DB> | Transaction<DB>,
+  userId: string,
+  at: Date,
+): Promise<readonly string[]> {
+  const rows = await executor
+    .selectFrom('organization_team_memberships')
+    .select('team_id')
+    .where('user_id', '=', toBin(userId))
+    .where('valid_from', '<=', at)
+    .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', at)]))
+    .execute();
+  return [...new Set(rows.map((row) => fromBin(row.team_id)))];
+}

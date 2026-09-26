@@ -58,6 +58,7 @@ import {
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
 import type { SessionRejectedListenerRegistry } from '../session-rejection.js';
+import { emitWorkSessionChanges } from '../sync-changes.js';
 
 type Uow = Transaction<DB>;
 
@@ -303,6 +304,7 @@ async function openSession(uow: Uow, session: NewSession, now: Date): Promise<vo
         })
         .where('id', '=', current.id)
         .execute();
+      await emitWorkSessionChanges(uow, [current.id]);
     } else {
       supersededAt = current.started_at;
     }
@@ -334,6 +336,7 @@ async function openSession(uow: Uow, session: NewSession, now: Date): Promise<vo
       created_by: toBin(session.userId),
     })
     .execute();
+  await emitWorkSessionChanges(uow, [session.id]);
 }
 
 /** Demande de dérogation `CHECKIN_OVERRIDE` ; `undefined` si aucune politique n'est active. */
@@ -408,6 +411,7 @@ async function closeOnEndService(
       })
       .where('id', '=', target.id)
       .execute();
+    await emitWorkSessionChanges(uow, [target.id]);
   }
   return fromBin(target.id);
 }
@@ -707,6 +711,7 @@ function registerOverrideDecisionHandler(
       })
       .where('id', '=', session.id)
       .execute();
+    await emitWorkSessionChanges(uow, [session.id]);
     if (overrideStatus === 'REJECTED') await listeners.notify(uow, ctx.subjectId);
   });
 }

@@ -749,7 +749,9 @@ describe('crm.customer.* (P3-04)', () => {
     expect(fromBinOrNull(row.first_sale_id)).toBe(s0);
     expect(row.converted_at?.toISOString()).toBe(at('09:00:00'));
     expect(row.last_sale_at?.toISOString()).toBe(at('11:00:00'));
-    await db.transaction().execute((trx) => markConversionReverted(trx, id));
+    await db
+      .transaction()
+      .execute((trx) => markConversionReverted(trx, id, new Date(at('12:00:00'))));
     expect((await customer(id)).conversion_reverted).toBe(1);
 
     // Vente enregistrée sur un compte absorbé : la conversion porte sur le compte conservé.

@@ -40,6 +40,7 @@ import {
   checkUserActive,
 } from '../../../identity/application/public/index.js';
 import { findReasonCode } from '../../../catalog/application/public/index.js';
+import { emitCustomerChange } from '../sync-changes.js';
 import {
   CUSTOMER_MERGED,
   CUSTOMER_NOT_FOUND,
@@ -420,6 +421,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       commandId: envelope.command_id,
     });
 
+    await emitCustomerChange(uow, customerId, at);
     if (duplicateOf) {
       await recordConflict(uow, {
         id: idGenerator.newId(),
@@ -520,6 +522,7 @@ function buildHandlers(idGenerator: IdGenerator) {
         .where('id', '=', customer.id)
         .execute();
     }
+    if (appliedFields.length > 0) await emitCustomerChange(uow, envelope.aggregate_id, at);
     const audit = {
       before: Object.fromEntries(appliedFields.map((field) => [field, current[field]])),
       after: merge.applied,
@@ -597,6 +600,7 @@ function buildHandlers(idGenerator: IdGenerator) {
         })
         .where('id', '=', customer.id)
         .execute();
+      await emitCustomerChange(uow, envelope.aggregate_id, at);
     }
     return { status: 'APPLIED' };
   };
@@ -653,6 +657,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       reasonCodeId: reason.id,
       commandId: envelope.command_id,
     });
+    await emitCustomerChange(uow, envelope.aggregate_id, at);
     return { status: 'APPLIED' };
   };
 
@@ -703,6 +708,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       actorUserId: author,
       commandId: envelope.command_id,
     });
+    await emitCustomerChange(uow, envelope.aggregate_id, at);
     return { status: 'APPLIED' };
   };
 
@@ -770,6 +776,8 @@ function buildHandlers(idGenerator: IdGenerator) {
       .set({ owner_user_id: toBin(newOwner), updated_by: toBin(author), version: sql`version + 1` })
       .where('id', '=', customer.id)
       .execute();
+    // §5.3 : SCOPE_EXIT vers l'ancien titulaire (et les équipes quittées), UPSERT vers le nouveau.
+    await emitCustomerChange(uow, envelope.aggregate_id, at, { previousOwnerId: currentOwner });
     return {
       status: 'APPLIED',
       audit: {
@@ -922,6 +930,8 @@ function buildHandlers(idGenerator: IdGenerator) {
         .execute();
     }
 
+    await emitCustomerChange(uow, absorbedId, at);
+    await emitCustomerChange(uow, keptId, at);
     await resolveOpenConflicts(uow, {
       conflictType: 'DUPLICATE_CUSTOMER',
       entityType: 'CUSTOMER',
@@ -972,6 +982,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       })
       .where('id', '=', customer.id)
       .execute();
+    await emitCustomerChange(uow, envelope.aggregate_id, at);
     return {
       status: 'APPLIED',
       audit: {

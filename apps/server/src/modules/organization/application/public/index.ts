@@ -7,4 +7,4 @@
  */
 export { listSettingHistory, currentSettingValue } from './setting-query.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
-export { listTeamMembersAt, listManagedTeamMembersAt } from './team-query.js';
+export { listTeamMembersAt, listManagedTeamMembersAt, listTeamsOfUserAt } from './team-query.js';

@@ -18,6 +18,7 @@ import type {
 import { fromBinOrNull, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import type { ResourceLocator } from '../../../identity/application/public/index.js';
 import { DATE_ONLY, FORBIDDEN_SCOPE, dateColumn, isAllowed, rejected, type Uow } from './shared.js';
+import { emitTargetChange } from '../sync-changes.js';
 
 const setPayloadSchema = z
   .object({
@@ -176,6 +177,7 @@ const setTarget: CommandHandler<SetPayload> = async (uow, envelope) => {
       created_by: toBin(author),
     })
     .execute();
+  await emitTargetChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -202,6 +204,7 @@ const cancelTarget: CommandHandler<z.infer<typeof cancelPayloadSchema>> = async 
     .set({ status: 'CANCELLED', updated_by: toBin(author), version: sql`version + 1` })
     .where('id', '=', row.id)
     .execute();
+  await emitTargetChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

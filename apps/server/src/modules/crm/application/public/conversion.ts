@@ -10,6 +10,7 @@
 import { sql, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { emitCustomerChange } from '../sync-changes.js';
 
 export type ConversionOutcome = 'CONVERTED' | 'FIRST_SALE_UPDATED' | 'UNCHANGED' | 'NOT_FOUND';
 
@@ -47,6 +48,7 @@ export async function convertOnConfirmedSale(
       })
       .where('id', '=', customer.id)
       .execute();
+    await emitCustomerChange(uow, fromBin(customer.id), at);
     return earlier ? 'FIRST_SALE_UPDATED' : 'UNCHANGED';
   }
 
@@ -76,12 +78,14 @@ export async function convertOnConfirmedSale(
       cause_ref: toBin(input.saleId),
     })
     .execute();
+  await emitCustomerChange(uow, fromBin(customer.id), at);
   return 'CONVERTED';
 }
 
 export async function markConversionReverted(
   uow: Transaction<DB>,
   customerId: string,
+  at: Date,
 ): Promise<void> {
   await uow
     .updateTable('crm_customers')
@@ -89,6 +93,7 @@ export async function markConversionReverted(
     .where('id', '=', toBin(customerId))
     .where('stage', '=', 'CUSTOMER')
     .execute();
+  await emitCustomerChange(uow, customerId, at);
 }
 
 async function lock(uow: Transaction<DB>, customerId: string) {
