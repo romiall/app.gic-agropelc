@@ -350,6 +350,317 @@ export interface IdentityUsers {
   version: Generated<number>;
 }
 
+export interface InventoryConsumptions {
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  cost_object_id: Buffer;
+  cost_object_type: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  location_id: Buffer;
+  lot_id: Buffer | null;
+  occurred_at: Date;
+  product_id: Buffer;
+  quantity: Decimal;
+  quantity_base: Decimal;
+  received_at_server: Date | null;
+  recorded_by: Buffer;
+  status: Generated<string>;
+  unit_code: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  value_xaf: number;
+  version: Generated<number>;
+}
+
+export interface InventoryCostEntries {
+  amount_xaf: number;
+  comment: string | null;
+  cost_object_id: Buffer;
+  cost_object_type: string;
+  cost_type: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  direction: Generated<string>;
+  id: Buffer;
+  occurred_at: Date;
+  reverses_entry_id: Buffer | null;
+  source_id: Buffer;
+  source_type: string;
+}
+
+export interface InventoryInventoryCountLines {
+  command_id: Buffer | null;
+  comment: string | null;
+  count_id: Buffer;
+  counted_at: Date;
+  counted_qty_base: Decimal;
+  declared_unit_cost_xaf: number | null;
+  id: Buffer;
+  lot_id: Buffer | null;
+  lot_key: Buffer | null;
+  product_id: Buffer;
+  reconciled_adjustment_qty_base: Generated<Decimal>;
+  theoretical_qty_base: Decimal | null;
+  unit_cost_xaf: number | null;
+  variance_qty_base: Decimal | null;
+  variance_reason_code_id: Buffer | null;
+}
+
+export interface InventoryInventoryCounts {
+  abs_variance_value_xaf: number | null;
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  count_type: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  id: Buffer;
+  in_progress_key: Buffer | null;
+  local_ref: string | null;
+  location_id: Buffer;
+  net_variance_after_reconciliation_xaf: number | null;
+  occurred_at: Date;
+  opened_by: Buffer | null;
+  opening_posted_key: Buffer | null;
+  posted_at: Date | null;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  status: string;
+  submitted_at: Date | null;
+  submitted_by: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  variance_value_xaf: number | null;
+  version: Generated<number>;
+}
+
+export interface InventoryLossDeclarations {
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  business_date: Date | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  category: string;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  comment: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  declared_by: Buffer;
+  doc_number: string;
+  id: Buffer;
+  local_ref: string | null;
+  location_id: Buffer;
+  lot_id: Buffer | null;
+  occurred_at: Date;
+  policy_id: Buffer | null;
+  policy_version: number | null;
+  product_id: Buffer;
+  production_lot_id: Buffer | null;
+  quantity: Decimal;
+  quantity_base: Decimal;
+  reason_code_id: Buffer | null;
+  received_at_server: Date | null;
+  requires_approval: Generated<number>;
+  requires_photo: Generated<number>;
+  responsibility_user_id: Buffer | null;
+  site_id: Buffer;
+  status: string;
+  unit_code: string;
+  unit_cost_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  value_xaf: number;
+  version: Generated<number>;
+}
+
+export interface InventoryProductValuations {
+  avg_unit_cost_xaf: Generated<Decimal>;
+  last_entry_move_id: Buffer | null;
+  product_id: Buffer;
+  qty_basis: Generated<Decimal>;
+  updated_at: Generated<Date>;
+}
+
+export interface InventoryStockAllocationEntries {
+  allocation_id: Buffer;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  entry_type: string;
+  id: Buffer;
+  occurred_at: Date;
+  quantity: Decimal;
+  stock_move_id: Buffer | null;
+}
+
+export interface InventoryStockAllocations {
+  active_device_quota_key: string | null;
+  allocation_type: string;
+  close_cause: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  granted_by: Buffer;
+  holder_device_id: Buffer | null;
+  holder_user_id: Buffer | null;
+  id: Buffer;
+  location_id: Buffer;
+  lot_id: Buffer | null;
+  product_id: Buffer;
+  quantity_granted: Decimal;
+  quantity_remaining: Decimal;
+  revocation_pending: Generated<number>;
+  sales_order_line_id: Buffer | null;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  valid_until: Date | null;
+  version: Generated<number>;
+}
+
+export interface InventoryStockBalances {
+  last_move_at: Date | null;
+  location_id: Buffer;
+  lot_key: Buffer;
+  product_id: Buffer;
+  qty_allocated: Generated<Decimal>;
+  qty_on_hand: Generated<Decimal>;
+  qty_reserved: Generated<Decimal>;
+  row_version: Generated<number>;
+  updated_at: Generated<Date>;
+  value_xaf: Generated<number>;
+}
+
+export interface InventoryStockLots {
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  expiry_date: Date | null;
+  fifo_rank_at: Date;
+  id: Buffer;
+  lot_code: string;
+  origin_id: Buffer | null;
+  origin_type: string;
+  product_id: Buffer | null;
+  status: Generated<string>;
+  supplier_id: Buffer | null;
+  supplier_lot_ref: string | null;
+}
+
+export interface InventoryStockMoves {
+  allocation_id: Buffer | null;
+  business_date: Date | null;
+  captured_offline: Generated<number>;
+  command_id: Buffer | null;
+  cost_object_id: Buffer | null;
+  cost_object_type: string | null;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  from_location_id: Buffer;
+  id: Buffer;
+  is_reversal: Generated<number>;
+  lot_id: Buffer | null;
+  move_type: string;
+  occurred_at: Date;
+  product_id: Buffer;
+  quantity: Decimal;
+  reason_code_id: Buffer | null;
+  recorded_at: Generated<Date>;
+  reverses_move_id: Buffer | null;
+  source_doc_id: Buffer;
+  source_doc_type: string;
+  source_line_id: Buffer | null;
+  to_location_id: Buffer;
+  unit_cost_xaf: number;
+  value_xaf: number;
+}
+
+export interface InventoryStockThresholds {
+  active_key: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  location_id: Buffer;
+  min_qty_base: Decimal;
+  product_id: Buffer;
+  target_qty_base: Decimal;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface InventoryStockTransferLines {
+  discrepancy_qty_base: Decimal | null;
+  discrepancy_reason_code_id: Buffer | null;
+  dispatched_qty_base: Decimal | null;
+  id: Buffer;
+  lot_id: Buffer | null;
+  product_id: Buffer;
+  received_qty_base: Decimal | null;
+  requested_qty_base: Decimal | null;
+  returned_qty_base: Generated<Decimal>;
+  transfer_id: Buffer;
+  unit_code: string;
+}
+
+export interface InventoryStockTransfers {
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  carrier_name: string | null;
+  carrier_user_id: Buffer | null;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  dispatched_at: Date | null;
+  dispatched_by: Buffer | null;
+  doc_number: string;
+  from_location_id: Buffer;
+  id: Buffer;
+  local_ref: string | null;
+  matched_transfer_id: Buffer | null;
+  notes: string | null;
+  occurred_at: Date;
+  received_at: Date | null;
+  received_at_server: Date | null;
+  received_by: Buffer | null;
+  requested_at: Date | null;
+  requested_by: Buffer | null;
+  sales_order_id: Buffer | null;
+  site_id: Buffer;
+  status: string;
+  to_location_id: Buffer;
+  transfer_kind: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface OrganizationLocations {
   active_mobile_custodian: Buffer | null;
   active_virtual_type: string | null;
@@ -680,6 +991,20 @@ export interface DB {
   identity_roles: IdentityRoles;
   identity_user_role_assignments: IdentityUserRoleAssignments;
   identity_users: IdentityUsers;
+  inventory_consumptions: InventoryConsumptions;
+  inventory_cost_entries: InventoryCostEntries;
+  inventory_inventory_count_lines: InventoryInventoryCountLines;
+  inventory_inventory_counts: InventoryInventoryCounts;
+  inventory_loss_declarations: InventoryLossDeclarations;
+  inventory_product_valuations: InventoryProductValuations;
+  inventory_stock_allocation_entries: InventoryStockAllocationEntries;
+  inventory_stock_allocations: InventoryStockAllocations;
+  inventory_stock_balances: InventoryStockBalances;
+  inventory_stock_lots: InventoryStockLots;
+  inventory_stock_moves: InventoryStockMoves;
+  inventory_stock_thresholds: InventoryStockThresholds;
+  inventory_stock_transfer_lines: InventoryStockTransferLines;
+  inventory_stock_transfers: InventoryStockTransfers;
   organization_locations: OrganizationLocations;
   organization_points_of_sale: OrganizationPointsOfSale;
   organization_sites: OrganizationSites;

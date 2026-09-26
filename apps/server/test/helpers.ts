@@ -330,6 +330,28 @@ export async function insertTestSite(
   return id;
 }
 
+export async function insertTestLocation(
+  trx: UnitOfWork,
+  createdBy: string,
+  siteId: string,
+  options: { readonly locationType?: string } = {},
+): Promise<string> {
+  const id = freshUuid();
+  const code = id.replace(/-/g, '').slice(-8).toUpperCase();
+  await trx
+    .insertInto('organization_locations')
+    .values({
+      id: toBin(id),
+      site_id: toBin(siteId),
+      code,
+      name: 'Emplacement de test',
+      location_type: options.locationType ?? 'STORE',
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  return id;
+}
+
 export async function insertTestTeam(
   trx: UnitOfWork,
   managerUserId: string,

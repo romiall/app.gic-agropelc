@@ -1145,6 +1145,947 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `inventory_consumptions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_consumptions` (
+  `id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `cost_object_id` binary(16) NOT NULL,
+  `recorded_by` binary(16) NOT NULL,
+  `value_xaf` bigint NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_consumptions_command` (`command_id`),
+  KEY `ix_inventory_consumptions_cost_object` (`cost_object_type`,`cost_object_id`,`occurred_at`),
+  KEY `fk_inventory_consumptions_location` (`location_id`),
+  KEY `fk_inventory_consumptions_product` (`product_id`),
+  KEY `fk_inventory_consumptions_lot` (`lot_id`),
+  KEY `fk_inventory_consumptions_unit` (`unit_code`),
+  KEY `fk_inventory_consumptions_recorded_by` (`recorded_by`),
+  KEY `fk_inventory_consumptions_cancelled_by` (`cancelled_by`),
+  KEY `fk_inventory_consumptions_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_inventory_consumptions_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_inventory_consumptions_device` (`created_device_id`),
+  KEY `fk_inventory_consumptions_created_by` (`created_by`),
+  KEY `fk_inventory_consumptions_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_consumptions_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_consumptions_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_consumptions_cost_object` CHECK ((`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE'))),
+  CONSTRAINT `ck_inventory_consumptions_qty` CHECK (((`quantity_base` > 0) and (`quantity` > 0))),
+  CONSTRAINT `ck_inventory_consumptions_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_consumptions_no_delete` BEFORE DELETE ON `inventory_consumptions` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_consumptions : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_cost_entries`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_cost_entries` (
+  `id` binary(16) NOT NULL,
+  `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `cost_object_id` binary(16) NOT NULL,
+  `cost_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `direction` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DEBIT',
+  `source_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `source_id` binary(16) NOT NULL,
+  `reverses_entry_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `comment` text COLLATE utf8mb4_0900_as_cs,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_cost_entries_source` (`source_type`,`source_id`,`cost_object_id`),
+  UNIQUE KEY `uq_inventory_cost_entries_reverses` (`reverses_entry_id`),
+  KEY `ix_inventory_cost_entries_object` (`cost_object_type`,`cost_object_id`,`occurred_at`),
+  KEY `fk_inventory_cost_entries_created_by` (`created_by`),
+  CONSTRAINT `fk_inventory_cost_entries_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_cost_entries_reverses` FOREIGN KEY (`reverses_entry_id`) REFERENCES `inventory_cost_entries` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_cost_entries_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_inventory_cost_entries_cost_object` CHECK ((`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE'))),
+  CONSTRAINT `ck_inventory_cost_entries_cost_type` CHECK ((`cost_type` in (_utf8mb4'ANIMAUX',_utf8mb4'OEUFS',_utf8mb4'ALIMENT',_utf8mb4'VETERINAIRE',_utf8mb4'AUTRE_INTRANT',_utf8mb4'DEPENSE_DIRECTE',_utf8mb4'AJUSTEMENT'))),
+  CONSTRAINT `ck_inventory_cost_entries_direction` CHECK ((`direction` in (_utf8mb4'DEBIT',_utf8mb4'CREDIT'))),
+  CONSTRAINT `ck_inventory_cost_entries_source_type` CHECK ((`source_type` in (_utf8mb4'STOCK_MOVE',_utf8mb4'EXPENSE',_utf8mb4'MANUAL')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_cost_entries_no_update` BEFORE UPDATE ON `inventory_cost_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_cost_entries : registre immuable ; créer une écriture inverse.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_cost_entries_no_delete` BEFORE DELETE ON `inventory_cost_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_cost_entries : suppression physique interdite.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_inventory_count_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_inventory_count_lines` (
+  `id` binary(16) NOT NULL,
+  `count_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `lot_key` binary(16) GENERATED ALWAYS AS (coalesce(`lot_id`,0x00000000000000000000000000000000)) STORED,
+  `counted_at` datetime(6) NOT NULL,
+  `counted_qty_base` decimal(14,3) NOT NULL,
+  `theoretical_qty_base` decimal(14,3) DEFAULT NULL,
+  `variance_qty_base` decimal(14,3) DEFAULT NULL,
+  `reconciled_adjustment_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `unit_cost_xaf` bigint DEFAULT NULL,
+  `variance_reason_code_id` binary(16) DEFAULT NULL,
+  `declared_unit_cost_xaf` bigint DEFAULT NULL,
+  `comment` text COLLATE utf8mb4_0900_as_cs,
+  `command_id` binary(16) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_inventory_count_lines_product_lot` (`count_id`,`product_id`,`lot_key`),
+  KEY `fk_inventory_inventory_count_lines_product` (`product_id`),
+  KEY `fk_inventory_inventory_count_lines_lot` (`lot_id`),
+  KEY `fk_inventory_inventory_count_lines_reason` (`variance_reason_code_id`),
+  CONSTRAINT `fk_inventory_inventory_count_lines_count` FOREIGN KEY (`count_id`) REFERENCES `inventory_inventory_counts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_count_lines_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_count_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_count_lines_reason` FOREIGN KEY (`variance_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_inventory_count_lines_counted` CHECK ((`counted_qty_base` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_inventory_count_lines_no_delete` BEFORE DELETE ON `inventory_inventory_count_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_inventory_count_lines : suit l''inventaire, jamais supprimée indépendamment.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_inventory_counts`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_inventory_counts` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `count_type` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `opened_by` binary(16) DEFAULT NULL,
+  `submitted_by` binary(16) DEFAULT NULL,
+  `submitted_at` datetime(6) DEFAULT NULL,
+  `variance_value_xaf` bigint DEFAULT NULL,
+  `abs_variance_value_xaf` bigint DEFAULT NULL,
+  `net_variance_after_reconciliation_xaf` bigint DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `posted_at` datetime(6) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `in_progress_key` binary(16) GENERATED ALWAYS AS (if((`status` = _utf8mb4'IN_PROGRESS'),`location_id`,NULL)) STORED,
+  `opening_posted_key` binary(16) GENERATED ALWAYS AS (if(((`count_type` = _utf8mb4'OPENING') and (`status` = _utf8mb4'POSTED')),`location_id`,NULL)) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_inventory_counts_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_inventory_inventory_counts_command` (`command_id`),
+  UNIQUE KEY `uq_inventory_inventory_counts_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_inventory_inventory_counts_in_progress` (`in_progress_key`),
+  UNIQUE KEY `uq_inventory_inventory_counts_opening_posted` (`opening_posted_key`),
+  KEY `fk_inventory_inventory_counts_site` (`site_id`),
+  KEY `fk_inventory_inventory_counts_location` (`location_id`),
+  KEY `fk_inventory_inventory_counts_opened_by` (`opened_by`),
+  KEY `fk_inventory_inventory_counts_submitted_by` (`submitted_by`),
+  KEY `fk_inventory_inventory_counts_approval` (`approval_request_id`),
+  KEY `fk_inventory_inventory_counts_created_by` (`created_by`),
+  KEY `fk_inventory_inventory_counts_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_inventory_counts_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_opened_by` FOREIGN KEY (`opened_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_submitted_by` FOREIGN KEY (`submitted_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_inventory_counts_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_inventory_counts_status` CHECK ((`status` in (_utf8mb4'IN_PROGRESS',_utf8mb4'SUBMITTED',_utf8mb4'PENDING_APPROVAL',_utf8mb4'POSTED',_utf8mb4'REJECTED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_inventory_inventory_counts_type` CHECK ((`count_type` in (_utf8mb4'FULL',_utf8mb4'PARTIAL',_utf8mb4'SPOT',_utf8mb4'OPENING')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_inventory_counts_no_delete` BEFORE DELETE ON `inventory_inventory_counts` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_inventory_counts : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED/REJECTED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_loss_declarations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_loss_declarations` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `production_lot_id` binary(16) DEFAULT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `category` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `reason_code_id` binary(16) DEFAULT NULL,
+  `comment` text COLLATE utf8mb4_0900_as_cs,
+  `declared_by` binary(16) NOT NULL,
+  `policy_id` binary(16) DEFAULT NULL,
+  `policy_version` int DEFAULT NULL,
+  `requires_photo` tinyint(1) NOT NULL DEFAULT '0',
+  `requires_approval` tinyint(1) NOT NULL DEFAULT '0',
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `unit_cost_xaf` bigint NOT NULL,
+  `value_xaf` bigint NOT NULL,
+  `responsibility_user_id` binary(16) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_loss_declarations_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_inventory_loss_declarations_command` (`command_id`),
+  UNIQUE KEY `uq_inventory_loss_declarations_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_inventory_loss_declarations_location` (`location_id`,`occurred_at`),
+  KEY `ix_inventory_loss_declarations_production_lot` (`production_lot_id`,`occurred_at`),
+  KEY `ix_inventory_loss_declarations_category` (`category`,`business_date`),
+  KEY `ix_inventory_loss_declarations_status` (`status`),
+  KEY `fk_inventory_loss_declarations_site` (`site_id`),
+  KEY `fk_inventory_loss_declarations_product` (`product_id`),
+  KEY `fk_inventory_loss_declarations_lot` (`lot_id`),
+  KEY `fk_inventory_loss_declarations_unit` (`unit_code`),
+  KEY `fk_inventory_loss_declarations_reason` (`reason_code_id`),
+  KEY `fk_inventory_loss_declarations_declared_by` (`declared_by`),
+  KEY `fk_inventory_loss_declarations_policy` (`policy_id`),
+  KEY `fk_inventory_loss_declarations_approval` (`approval_request_id`),
+  KEY `fk_inventory_loss_declarations_responsibility` (`responsibility_user_id`),
+  KEY `fk_inventory_loss_declarations_cancelled_by` (`cancelled_by`),
+  KEY `fk_inventory_loss_declarations_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_inventory_loss_declarations_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_inventory_loss_declarations_created_by` (`created_by`),
+  KEY `fk_inventory_loss_declarations_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_loss_declarations_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_declared_by` FOREIGN KEY (`declared_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_policy` FOREIGN KEY (`policy_id`) REFERENCES `approvals_control_policies` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_reason` FOREIGN KEY (`reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_responsibility` FOREIGN KEY (`responsibility_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_loss_declarations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_loss_declarations_category` CHECK ((`category` in (_utf8mb4'MORTALITE',_utf8mb4'CASSE',_utf8mb4'DETERIORATION',_utf8mb4'IMPROPRE',_utf8mb4'DESTRUCTION',_utf8mb4'INEXPLIQUEE',_utf8mb4'VOL_SUSPECTE',_utf8mb4'ECART_TRANSFERT'))),
+  CONSTRAINT `ck_inventory_loss_declarations_comment` CHECK (((`category` not in (_utf8mb4'INEXPLIQUEE',_utf8mb4'VOL_SUSPECTE')) or ((`comment` is not null) and (`comment` <> _utf8mb4'')))),
+  CONSTRAINT `ck_inventory_loss_declarations_mortality` CHECK (((`category` <> _utf8mb4'MORTALITE') or (`production_lot_id` is not null))),
+  CONSTRAINT `ck_inventory_loss_declarations_qty` CHECK (((`quantity_base` > 0) and (`quantity` > 0))),
+  CONSTRAINT `ck_inventory_loss_declarations_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'PENDING_APPROVAL',_utf8mb4'APPROVED',_utf8mb4'REJECTED_RETURNED',_utf8mb4'REJECTED_UNJUSTIFIED',_utf8mb4'CANCELLATION_PENDING',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_loss_declarations_no_delete` BEFORE DELETE ON `inventory_loss_declarations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_loss_declarations : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_product_valuations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_product_valuations` (
+  `product_id` binary(16) NOT NULL,
+  `avg_unit_cost_xaf` decimal(14,2) NOT NULL DEFAULT '0.00',
+  `qty_basis` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `last_entry_move_id` binary(16) DEFAULT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`product_id`),
+  KEY `fk_inventory_product_valuations_move` (`last_entry_move_id`),
+  CONSTRAINT `fk_inventory_product_valuations_move` FOREIGN KEY (`last_entry_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_product_valuations_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `inventory_stock_allocation_entries`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_allocation_entries` (
+  `id` binary(16) NOT NULL,
+  `allocation_id` binary(16) NOT NULL,
+  `entry_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `stock_move_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_inventory_stock_allocation_entries_allocation` (`allocation_id`),
+  KEY `fk_inventory_stock_allocation_entries_move` (`stock_move_id`),
+  KEY `fk_inventory_stock_allocation_entries_created_by` (`created_by`),
+  CONSTRAINT `fk_inventory_stock_allocation_entries_allocation` FOREIGN KEY (`allocation_id`) REFERENCES `inventory_stock_allocations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocation_entries_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocation_entries_move` FOREIGN KEY (`stock_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_allocation_entries_type` CHECK ((`entry_type` in (_utf8mb4'GRANT',_utf8mb4'INCREASE',_utf8mb4'CONSUME',_utf8mb4'RELEASE',_utf8mb4'REVOKE',_utf8mb4'TRANSFER',_utf8mb4'ADJUST')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_allocation_entries_no_update` BEFORE UPDATE ON `inventory_stock_allocation_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocation_entries : registre immuable.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_allocation_entries_no_delete` BEFORE DELETE ON `inventory_stock_allocation_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocation_entries : suppression physique interdite.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_allocations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_allocations` (
+  `id` binary(16) NOT NULL,
+  `allocation_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `holder_user_id` binary(16) DEFAULT NULL,
+  `holder_device_id` binary(16) DEFAULT NULL,
+  `sales_order_line_id` binary(16) DEFAULT NULL,
+  `quantity_granted` decimal(14,3) NOT NULL,
+  `quantity_remaining` decimal(14,3) NOT NULL,
+  `valid_until` datetime(6) DEFAULT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
+  `close_cause` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `revocation_pending` tinyint(1) NOT NULL DEFAULT '0',
+  `granted_by` binary(16) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `active_device_quota_key` varchar(200) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS (if(((`status` = _utf8mb4'ACTIVE') and (`allocation_type` = _utf8mb4'DEVICE_QUOTA')),concat(hex(`holder_user_id`),_utf8mb4'-',hex(`holder_device_id`),_utf8mb4'-',hex(`location_id`),_utf8mb4'-',hex(`product_id`),_utf8mb4'-',hex(coalesce(`lot_id`,0x00000000000000000000000000000000))),NULL)) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_allocations_active_device_quota` (`active_device_quota_key`),
+  KEY `ix_inventory_stock_allocations_location_status` (`location_id`,`product_id`,`status`),
+  KEY `ix_inventory_stock_allocations_holder_device` (`holder_device_id`,`status`),
+  KEY `fk_inventory_stock_allocations_product` (`product_id`),
+  KEY `fk_inventory_stock_allocations_lot` (`lot_id`),
+  KEY `fk_inventory_stock_allocations_holder_user` (`holder_user_id`),
+  KEY `fk_inventory_stock_allocations_granted_by` (`granted_by`),
+  KEY `fk_inventory_stock_allocations_created_by` (`created_by`),
+  KEY `fk_inventory_stock_allocations_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_stock_allocations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_holder_device` FOREIGN KEY (`holder_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_holder_user` FOREIGN KEY (`holder_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_allocations_close_cause` CHECK (((`close_cause` is null) or (`close_cause` in (_utf8mb4'RELEASED',_utf8mb4'CONSUMED',_utf8mb4'CANCELLED',_utf8mb4'TRANSFERRED',_utf8mb4'EXPIRED_RELEASED')))),
+  CONSTRAINT `ck_inventory_stock_allocations_holder` CHECK ((((`allocation_type` = _utf8mb4'DEVICE_QUOTA') and (`holder_user_id` is not null) and (`holder_device_id` is not null) and (`sales_order_line_id` is null)) or ((`allocation_type` = _utf8mb4'ORDER_RESERVATION') and (`sales_order_line_id` is not null) and (`holder_user_id` is null) and (`holder_device_id` is null)))),
+  CONSTRAINT `ck_inventory_stock_allocations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'CLOSED',_utf8mb4'REVOKED'))),
+  CONSTRAINT `ck_inventory_stock_allocations_type` CHECK ((`allocation_type` in (_utf8mb4'DEVICE_QUOTA',_utf8mb4'ORDER_RESERVATION')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_allocations_no_delete` BEFORE DELETE ON `inventory_stock_allocations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocations : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_balances`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_balances` (
+  `location_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_key` binary(16) NOT NULL,
+  `qty_on_hand` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `qty_reserved` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `qty_allocated` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `value_xaf` bigint NOT NULL DEFAULT '0',
+  `last_move_at` datetime(6) DEFAULT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `row_version` bigint NOT NULL DEFAULT '0',
+  PRIMARY KEY (`location_id`,`product_id`,`lot_key`),
+  KEY `ix_inventory_stock_balances_product` (`product_id`,`location_id`),
+  CONSTRAINT `fk_inventory_stock_balances_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_balances_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_balances_allocated` CHECK ((`qty_allocated` >= 0)),
+  CONSTRAINT `ck_inventory_stock_balances_reserved` CHECK ((`qty_reserved` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `inventory_stock_lots`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_lots` (
+  `id` binary(16) NOT NULL,
+  `lot_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `product_id` binary(16) DEFAULT NULL,
+  `origin_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `origin_id` binary(16) DEFAULT NULL,
+  `supplier_id` binary(16) DEFAULT NULL,
+  `supplier_lot_ref` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `fifo_rank_at` datetime(6) NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_lots_code` (`lot_code`),
+  KEY `ix_inventory_stock_lots_origin` (`origin_type`,`origin_id`),
+  KEY `ix_inventory_stock_lots_expiry` (`expiry_date`),
+  KEY `fk_inventory_stock_lots_product` (`product_id`),
+  KEY `fk_inventory_stock_lots_supplier` (`supplier_id`),
+  KEY `fk_inventory_stock_lots_created_by` (`created_by`),
+  CONSTRAINT `fk_inventory_stock_lots_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_lots_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_lots_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_lots_origin_type` CHECK ((`origin_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SUPPLIER_LOT',_utf8mb4'COLLECTION'))),
+  CONSTRAINT `ck_inventory_stock_lots_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'CLOSED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_lots_update_guard` BEFORE UPDATE ON `inventory_stock_lots` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.lot_code <=> OLD.lot_code AND NEW.product_id <=> OLD.product_id AND
+    NEW.origin_type <=> OLD.origin_type AND NEW.origin_id <=> OLD.origin_id AND
+    NEW.supplier_id <=> OLD.supplier_id AND NEW.supplier_lot_ref <=> OLD.supplier_lot_ref AND
+    NEW.expiry_date <=> OLD.expiry_date AND NEW.fifo_rank_at <=> OLD.fifo_rank_at AND
+    NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_lots : seul le statut est modifiable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_lots_no_delete` BEFORE DELETE ON `inventory_stock_lots` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_lots : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_moves`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_moves` (
+  `id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `from_location_id` binary(16) NOT NULL,
+  `to_location_id` binary(16) NOT NULL,
+  `move_type` varchar(30) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `reason_code_id` binary(16) DEFAULT NULL,
+  `unit_cost_xaf` bigint NOT NULL,
+  `value_xaf` bigint NOT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `recorded_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `source_doc_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `source_doc_id` binary(16) NOT NULL,
+  `source_line_id` binary(16) DEFAULT NULL,
+  `allocation_id` binary(16) DEFAULT NULL,
+  `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cost_object_id` binary(16) DEFAULT NULL,
+  `is_reversal` tinyint(1) NOT NULL DEFAULT '0',
+  `reverses_move_id` binary(16) DEFAULT NULL,
+  `created_by` binary(16) NOT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_moves_reverses` (`reverses_move_id`),
+  KEY `ix_inventory_stock_moves_from` (`from_location_id`,`product_id`,`occurred_at`),
+  KEY `ix_inventory_stock_moves_to` (`to_location_id`,`product_id`,`occurred_at`),
+  KEY `ix_inventory_stock_moves_source_doc` (`source_doc_type`,`source_doc_id`),
+  KEY `ix_inventory_stock_moves_lot` (`lot_id`),
+  KEY `ix_inventory_stock_moves_business_date` (`business_date`,`move_type`),
+  KEY `ix_inventory_stock_moves_command` (`command_id`),
+  KEY `fk_inventory_stock_moves_product` (`product_id`),
+  KEY `fk_inventory_stock_moves_reason` (`reason_code_id`),
+  KEY `fk_inventory_stock_moves_created_by` (`created_by`),
+  KEY `fk_inventory_stock_moves_device` (`created_device_id`),
+  KEY `fk_inventory_stock_moves_allocation` (`allocation_id`),
+  CONSTRAINT `fk_inventory_stock_moves_allocation` FOREIGN KEY (`allocation_id`) REFERENCES `inventory_stock_allocations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_from` FOREIGN KEY (`from_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_reason` FOREIGN KEY (`reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_reverses` FOREIGN KEY (`reverses_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_to` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_moves_cost_object` CHECK (((`cost_object_type` is null) or (`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE')))),
+  CONSTRAINT `ck_inventory_stock_moves_locations` CHECK ((`from_location_id` <> `to_location_id`)),
+  CONSTRAINT `ck_inventory_stock_moves_move_type` CHECK ((`move_type` in (_utf8mb4'OPENING_BALANCE',_utf8mb4'PURCHASE_RECEIPT',_utf8mb4'SUPPLIER_RETURN',_utf8mb4'TRANSFER_DISPATCH',_utf8mb4'TRANSFER_RECEIPT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'INTERNAL_MOVE',_utf8mb4'SALE',_utf8mb4'CUSTOMER_RETURN',_utf8mb4'LOSS',_utf8mb4'LOSS_PENDING',_utf8mb4'LOSS_CONFIRMATION',_utf8mb4'LOSS_RELEASE',_utf8mb4'CONSUMPTION',_utf8mb4'PRODUCTION_OUTPUT',_utf8mb4'PRODUCTION_INPUT',_utf8mb4'INVENTORY_GAIN',_utf8mb4'INVENTORY_LOSS'))),
+  CONSTRAINT `ck_inventory_stock_moves_quantity` CHECK ((`quantity` > 0)),
+  CONSTRAINT `ck_inventory_stock_moves_reversal` CHECK ((((`is_reversal` = false) and (`reverses_move_id` is null)) or ((`is_reversal` = true) and (`reverses_move_id` is not null)))),
+  CONSTRAINT `ck_inventory_stock_moves_source_doc_type` CHECK ((`source_doc_type` in (_utf8mb4'SALE',_utf8mb4'TRANSFER',_utf8mb4'LOSS',_utf8mb4'CONSUMPTION',_utf8mb4'INVENTORY_COUNT',_utf8mb4'GOODS_RECEIPT',_utf8mb4'EGG_COLLECTION',_utf8mb4'INCUBATION_EVENT',_utf8mb4'LOT_ENTRY'))),
+  CONSTRAINT `ck_inventory_stock_moves_unit_cost` CHECK ((`unit_cost_xaf` >= 0)),
+  CONSTRAINT `ck_inventory_stock_moves_value` CHECK ((`value_xaf` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_moves_no_update` BEFORE UPDATE ON `inventory_stock_moves` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : registre immuable (INV-STK-04) ; créer un mouvement inverse.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_moves_no_delete` BEFORE DELETE ON `inventory_stock_moves` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : suppression physique interdite (INV-STK-04).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_thresholds`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_thresholds` (
+  `id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `min_qty_base` decimal(14,3) NOT NULL,
+  `target_qty_base` decimal(14,3) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `active_key` varchar(65) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS (if(`is_active`,concat(hex(`location_id`),_utf8mb4'-',hex(`product_id`)),NULL)) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_thresholds_active` (`active_key`),
+  KEY `fk_inventory_stock_thresholds_location` (`location_id`),
+  KEY `fk_inventory_stock_thresholds_product` (`product_id`),
+  KEY `fk_inventory_stock_thresholds_created_by` (`created_by`),
+  KEY `fk_inventory_stock_thresholds_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_stock_thresholds_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_thresholds_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_thresholds_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_thresholds_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_thresholds_qty` CHECK (((`min_qty_base` >= 0) and (`target_qty_base` >= `min_qty_base`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_thresholds_no_delete` BEFORE DELETE ON `inventory_stock_thresholds` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_thresholds : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_transfer_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_transfer_lines` (
+  `id` binary(16) NOT NULL,
+  `transfer_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `lot_id` binary(16) DEFAULT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `requested_qty_base` decimal(14,3) DEFAULT NULL,
+  `dispatched_qty_base` decimal(14,3) DEFAULT NULL,
+  `received_qty_base` decimal(14,3) DEFAULT NULL,
+  `discrepancy_qty_base` decimal(14,3) GENERATED ALWAYS AS (if(((`dispatched_qty_base` is not null) and (`received_qty_base` is not null)),(`dispatched_qty_base` - `received_qty_base`),NULL)) STORED,
+  `discrepancy_reason_code_id` binary(16) DEFAULT NULL,
+  `returned_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  PRIMARY KEY (`id`),
+  KEY `ix_inventory_stock_transfer_lines_transfer` (`transfer_id`),
+  KEY `fk_inventory_stock_transfer_lines_product` (`product_id`),
+  KEY `fk_inventory_stock_transfer_lines_lot` (`lot_id`),
+  KEY `fk_inventory_stock_transfer_lines_unit` (`unit_code`),
+  KEY `fk_inventory_stock_transfer_lines_reason` (`discrepancy_reason_code_id`),
+  CONSTRAINT `fk_inventory_stock_transfer_lines_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfer_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfer_lines_reason` FOREIGN KEY (`discrepancy_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfer_lines_transfer` FOREIGN KEY (`transfer_id`) REFERENCES `inventory_stock_transfers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfer_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_transfer_lines_qty` CHECK ((((`requested_qty_base` is null) or (`requested_qty_base` >= 0)) and ((`dispatched_qty_base` is null) or (`dispatched_qty_base` >= 0)) and ((`received_qty_base` is null) or (`received_qty_base` >= 0)) and (`returned_qty_base` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_transfer_lines_no_delete` BEFORE DELETE ON `inventory_stock_transfer_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_transfer_lines : suit le transfert, jamais supprimée indépendamment.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_stock_transfers`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_stock_transfers` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `transfer_kind` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'STANDARD',
+  `from_location_id` binary(16) NOT NULL,
+  `to_location_id` binary(16) NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `requested_by` binary(16) DEFAULT NULL,
+  `requested_at` datetime(6) DEFAULT NULL,
+  `dispatched_by` binary(16) DEFAULT NULL,
+  `dispatched_at` datetime(6) DEFAULT NULL,
+  `carrier_user_id` binary(16) DEFAULT NULL,
+  `carrier_name` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `received_by` binary(16) DEFAULT NULL,
+  `received_at` datetime(6) DEFAULT NULL,
+  `matched_transfer_id` binary(16) DEFAULT NULL,
+  `sales_order_id` binary(16) DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_transfers_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_inventory_stock_transfers_command` (`command_id`),
+  UNIQUE KEY `uq_inventory_stock_transfers_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_inventory_stock_transfers_to_status` (`to_location_id`,`status`),
+  KEY `ix_inventory_stock_transfers_from_status` (`from_location_id`,`status`),
+  KEY `ix_inventory_stock_transfers_dispatched` (`dispatched_at`),
+  KEY `fk_inventory_stock_transfers_site` (`site_id`),
+  KEY `fk_inventory_stock_transfers_requested_by` (`requested_by`),
+  KEY `fk_inventory_stock_transfers_dispatched_by` (`dispatched_by`),
+  KEY `fk_inventory_stock_transfers_carrier` (`carrier_user_id`),
+  KEY `fk_inventory_stock_transfers_received_by` (`received_by`),
+  KEY `fk_inventory_stock_transfers_matched` (`matched_transfer_id`),
+  KEY `fk_inventory_stock_transfers_approval` (`approval_request_id`),
+  KEY `fk_inventory_stock_transfers_created_by` (`created_by`),
+  KEY `fk_inventory_stock_transfers_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_stock_transfers_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_carrier` FOREIGN KEY (`carrier_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_dispatched_by` FOREIGN KEY (`dispatched_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_from` FOREIGN KEY (`from_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_matched` FOREIGN KEY (`matched_transfer_id`) REFERENCES `inventory_stock_transfers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_received_by` FOREIGN KEY (`received_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_to` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_transfers_kind` CHECK ((`transfer_kind` in (_utf8mb4'STANDARD',_utf8mb4'INTERNAL',_utf8mb4'BLIND_RECEIPT'))),
+  CONSTRAINT `ck_inventory_stock_transfers_locations` CHECK ((`from_location_id` <> `to_location_id`)),
+  CONSTRAINT `ck_inventory_stock_transfers_status` CHECK ((`status` in (_utf8mb4'REQUESTED',_utf8mb4'DECLINED',_utf8mb4'CANCELLED',_utf8mb4'DISPATCHED',_utf8mb4'RECEIVED',_utf8mb4'DISCREPANCY_PENDING',_utf8mb4'CLOSED',_utf8mb4'RETURNED',_utf8mb4'COMPLETED',_utf8mb4'UNMATCHED',_utf8mb4'MATCHED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_transfers_no_delete` BEFORE DELETE ON `inventory_stock_transfers` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_transfers : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `organization_locations`
 --
 
@@ -2260,7 +3201,7 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Dumping routines for database 'gic_p1_test'
+-- Dumping routines for database 'gic_agropelc_test'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -2295,5 +3236,10 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260925090100'),
   ('20260926090000'),
   ('20260926090100'),
-  ('20260926090200');
+  ('20260926090200'),
+  ('20260927090000'),
+  ('20260927090100'),
+  ('20260927090200'),
+  ('20260927090300'),
+  ('20260927090400');
 UNLOCK TABLES;
