@@ -226,7 +226,7 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 
 ## 13. Permissions
 
-`inventory.stock.read`, `inventory.valuation.read`, `inventory.ledger.read`, `inventory.transfer.request`, `inventory.transfer.dispatch`, `inventory.transfer.receive`, `inventory.transfer.cancel`, `inventory.transfer_discrepancy.approve`, `inventory.allocation.manage`, `inventory.loss.declare`, `inventory.loss.approve`, `inventory.count.perform`, `inventory.count.approve`, `inventory.consumption.record`, `inventory.threshold.manage`, `inventory.opening.post`.
+`inventory.stock.read`, `inventory.valuation.read`, `inventory.ledger.read`, `inventory.transfer.request`, `inventory.transfer.dispatch`, `inventory.transfer.receive`, `inventory.transfer.cancel`, `inventory.transfer_discrepancy.approve`, `inventory.allocation.manage`, `inventory.loss.declare`, `inventory.loss.approve`, `inventory.loss.read` (AV-094 : encadrement dans son périmètre, déclarants de terrain limités à leurs propres pertes), `inventory.count.perform`, `inventory.count.approve`, `inventory.consumption.record`, `inventory.threshold.manage`, `inventory.opening.post`.
 
 ## 14. Exceptions
 

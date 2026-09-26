@@ -14,7 +14,9 @@
  * d'approbation (`approvals.request.approve`, gestionnaire de décision d'`inventory`) doit
  * atteindre le jeu `stock` sans que la commande `approvals` le sache.
  */
+import type { Kysely } from 'kysely';
 import type { UnitOfWork } from '../unit-of-work.js';
+import type { DB } from '../kysely/database.js';
 import { toBin, toBinOrNull } from '../kysely/uuid-columns.js';
 
 export type ChangeScopeType = 'GLOBAL' | 'SITE' | 'ZONE' | 'TEAM' | 'USER' | 'DEVICE' | 'LOCATION';
@@ -32,8 +34,11 @@ export interface ChangeFeedEntry {
   readonly rowVersion?: number;
 }
 
+/** `executor` est normalement la transaction du gestionnaire (même atomicité que l'écriture
+ * décrite) ; un exécuteur hors transaction n'est admis que pour les appelants déjà tolérés
+ * ainsi par leur propre API (ex. `requestApproval`). */
 export async function recordChanges(
-  uow: UnitOfWork,
+  uow: UnitOfWork | Kysely<DB>,
   entries: readonly ChangeFeedEntry[],
 ): Promise<void> {
   if (entries.length === 0) return;

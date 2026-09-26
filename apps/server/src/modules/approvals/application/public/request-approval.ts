@@ -15,6 +15,7 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import type { OperationType } from '../commands/operation-types.js';
+import { recordRequesterChange } from '../approval-changes.js';
 
 export interface RequestApprovalInput {
   /** UUIDv7 fourni par l'appelant (idempotence : même convention que `aggregate_id`). */
@@ -56,4 +57,5 @@ export async function requestApproval(
       created_by: toBin(input.requestedBy),
     })
     .execute();
+  await recordRequesterChange(executor, input.requestId, input.requestedBy);
 }

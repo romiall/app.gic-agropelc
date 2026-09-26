@@ -52,7 +52,7 @@ Classification (PM §45) :
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
 | AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
 | AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) | OUVERT |
-| AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée | OUVERT |
+| AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée au déclarant ; rejet sans motif = erreur de déclaration | **TRANCHÉ** (voir journal §3) |
 | AV-039 | Fréquence et procédure d'inventaire | SECONDAIRE | P2/P5 | Mensuel complet recommandé + ponctuel | OUVERT |
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
 | AV-041 | TVA et taxes | IMPORTANTE | P4/P8 | Prix TTC, pas de ventilation fiscale | OUVERT |
@@ -108,7 +108,7 @@ Classification (PM §45) :
 | AV-091 | Fournisseur de stockage objet S3-compatible (Hostinger sans VPS n'en propose pas) | SECONDAIRE | Déploiement | Cloudflare R2 ou Backblaze B2 | OUVERT |
 | AV-092 | Permissions marquant `identity.permissions.is_sensitive` (audit renforcé et revue d'attribution périodique) | IMPORTANTE | P0 | `false` pour les 117 permissions (défaut du schéma ; aucune n'est désignée par une source) | OUVERT |
 | AV-093 | Permission gouvernant `attachments.attachment.register` | SECONDAIRE | P0 | Permission générique `attachments.attachment.manage`, accordée à tous les rôles opérationnels | OUVERT |
-| AV-094 | Permission de lecture des documents de stock (transferts, pertes, consommations, inventaires, seuils) | SECONDAIRE | P2 | `inventory.stock.read`, à la portée de l'emplacement du document | OUVERT |
+| AV-094 | Permission de lecture des documents de stock (transferts, pertes, consommations, inventaires, seuils) | SECONDAIRE | P2 | Pertes : `inventory.loss.read`, encadrement dans son périmètre, déclarants de terrain limités à leurs propres pertes ; autres documents : `inventory.stock.read` | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -293,8 +293,9 @@ Politique par défaut, paramétrable :
 | `INEXPLIQUEE`, `VOL_SUSPECTE` | non (commentaire obligatoire) | toujours |
 | `MORTALITE` | voir AV-048 | voir AV-048 |
 
-### AV-038 — Rejet d'une perte — SECONDAIRE
+### AV-038 — Rejet d'une perte — SECONDAIRE — **TRANCHÉ**
 - **Recommandation** : l'approbateur choisit entre deux issues. `ERREUR_DECLARATION` : la marchandise existe et retourne en stock. `PERTE_NON_JUSTIFIEE` : la perte est confirmée mais reclassée en perte inexpliquée imputée au déclarant ou au lieu.
+- **Décision** (porteur du projet, 26/09/2026) : les deux issues sont retenues ; `PERTE_NON_JUSTIFIEE` impute la responsabilité **au déclarant** (`responsibility_user_id`) ; un rejet sans option de décision est traité comme `ERREUR_DECLARATION` (la quantité revient en stock). C'est le comportement construit en P2-04 (`loss-commands.ts`), désormais confirmé.
 
 ### AV-039 — Inventaires — SECONDAIRE
 - **Recommandation** : inventaire complet mensuel recommandé par emplacement, plus inventaires ponctuels. Un écart dont la valeur absolue dépasse 25 000 XAF nécessite une validation.
@@ -498,7 +499,8 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a) — la vérification RC-01 de `attachments.attachment.register` reste un filtre existence-seule générique (comme tout `command_type`, RC-01 tel que P0-06 l'a posé) ; elle n'empêche ni ne remplace la vérification, par le module propriétaire, que l'auteur avait bien le droit de créer *le document* auquel la pièce est jointe. Un rôle qui ne peut créer aucune opération contrôlée n'a aucune raison de détenir `attachments.attachment.manage` non plus (à retirer alors du seed).
 - **Impact** : aucun sur la correction de P0 (permission nouvelle, ajoutée au catalogue et au seed comme n'importe quelle autre ; RBAC généré depuis le seed reste la source unique). À revisiter quand un premier module propriétaire (P2, `inventory`) existe réellement, pour confirmer que la portée `OWN` générique suffit ou si RC-04 exige un filtrage plus fin par `owner_type`.
 
-### AV-094 — Permission de lecture des documents de stock — SECONDAIRE
+### AV-094 — Permission de lecture des documents de stock — SECONDAIRE — **TRANCHÉ**
+- **Décision** (porteur du projet, 26/09/2026) : quiconque a la capacité de voir les pertes les lit **dans son périmètre**, mais cette capacité est réservée à l'**encadrement** (« secret administratif ») : une vendeuse qui déclare une perte ne doit pas voir les pertes déclarées par ses collègues. Traduction dans la matrice (seed `db/seeds/rbac-data.ts`, portées DÉDUITES de la décision et de la portée d'approbation existante de chaque rôle) : nouvelle permission `inventory.loss.read` — Direction ALL, responsable commercial ZONE, responsable de production ALL, responsable de ferme SITE, magasinier SITE, finance ALL ; vendeur PDV et commercial terrain OWN (leurs propres déclarations seulement) ; administrateur technique, commercial sédentaire, achats : aucune. Les autres documents (transferts, consommations, inventaires, seuils) restent sous `inventory.stock.read`. Conséquence technique appliquée en même temps : une demande de validation (qui résume l'opération, dont les pertes) ne descend hors ligne que sur l'appareil de son demandeur (projection `APPROVAL_REQUEST`, jeu `comms`), plus jamais vers tous les appareils.
 - **Question** : quelle permission gouverne la consultation des transferts, des déclarations de perte, des consommations, des inventaires et des seuils (`GET /transfers`, `/losses`, `/consumptions`, `/inventory-counts`, `/thresholds`) ?
 - **Pourquoi** : la matrice RBAC ([`07-security-rbac/01-rbac.md`](07-security-rbac/01-rbac.md) §5.3) définit `inventory.stock.read` (soldes), `inventory.ledger.read` (registre) et `inventory.valuation.read` (montants), mais aucune permission de lecture propre à ces documents. Or une déclaration de perte peut porter une catégorie sensible (`VOL_SUSPECTE`, `INEXPLIQUEE`) et, après un rejet `PERTE_NON_JUSTIFIEE`, une responsabilité imputée à une personne (AV-038) : la lire n'est pas anodin pour un vendeur de PDV qui voit le stock de son site.
 - **Choix** : (a) `inventory.stock.read`, à la portée de l'emplacement du document ; (b) une permission de lecture par document (`inventory.transfer.read`, `inventory.loss.read`…) ajoutée à la matrice et au seed ; (c) (a) pour tous les documents sauf les pertes, lisibles seulement avec `inventory.loss.declare` (ses propres déclarations) ou `inventory.loss.approve`.
@@ -513,3 +515,5 @@ Politique par défaut, paramétrable :
 |---|---|---|---|
 | 24/09/2026 | AV-073 | Hébergement chez Hostinger, sans VPS. Conséquence technique : base de données MySQL au lieu de PostgreSQL (ADR-023) ; domaine de production `app.gic-agropelc.com` (ADR-024) | Porteur du projet |
 | 24/09/2026 | AV-089 | Stack recadrée confirmée sans réserve (TypeScript de bout en bout, MySQL). P0 démarre | Porteur du projet |
+| 26/09/2026 | AV-038 | Rejet d'une perte : deux issues ; `PERTE_NON_JUSTIFIEE` imputée au déclarant ; rejet sans option = `ERREUR_DECLARATION` (comportement P2-04 confirmé) | Porteur du projet |
+| 26/09/2026 | AV-094 | Lecture des pertes réservée à l'encadrement dans son périmètre (`inventory.loss.read`) ; déclarants de terrain limités à leurs propres déclarations ; autres documents de stock sous `inventory.stock.read` | Porteur du projet |

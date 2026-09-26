@@ -310,10 +310,13 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
   },
 
   // dictionnaire approvals.approval_requests : « Offline DL (celles de l'utilisateur, en
-  // lecture seule) » — filtrage par utilisateur non encore fait par device-scope.ts (P0-13,
-  // comme toute entité P0-11/P0-13 : repli GLOBAL générique, commentaire command-pipeline.
-  // service.ts « portée réelle déterminée par chaque module »).
-  APPROVAL_REQUEST: async (executor, entityId) => {
+  // lecture seule) ». Servie seulement par une ligne `USER` dont le périmètre est le demandeur
+  // (émise par `approvals`, approval-changes.ts, jeu `comms`) : le repli GLOBAL du pipeline
+  // (commandes `approvals.request.*`) diffusait sinon à tout appareil le résumé d'opérations
+  // confidentielles (pertes, écarts — AV-094, P2). Sans `amount_xaf` : mesure financière
+  // (RC-05), inutile au demandeur hors ligne.
+  APPROVAL_REQUEST: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
     const row = await executor
       .selectFrom('approvals_approval_requests')
       .select([
@@ -324,7 +327,6 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'subject_summary',
         'site_id',
         'zone_id',
-        'amount_xaf',
         'requested_by',
         'requested_at',
         'status',
@@ -335,7 +337,7 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       ])
       .where('id', '=', toBin(entityId))
       .executeTakeFirst();
-    if (!row) return undefined;
+    if (!row || fromBin(row.requested_by) !== context.scopeId) return undefined;
     return {
       id: fromBin(row.id),
       operation_type: row.operation_type,
@@ -344,7 +346,6 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       subject_summary: row.subject_summary,
       site_id: fromBinOrNull(row.site_id),
       zone_id: fromBinOrNull(row.zone_id),
-      amount_xaf: row.amount_xaf,
       requested_by: fromBin(row.requested_by),
       requested_at: row.requested_at,
       status: row.status,

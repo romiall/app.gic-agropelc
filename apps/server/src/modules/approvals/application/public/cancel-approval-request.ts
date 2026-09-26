@@ -11,7 +11,8 @@
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { recordRequesterChange } from '../approval-changes.js';
 
 export interface CancelApprovalRequestInput {
   readonly requestId: string;
@@ -22,6 +23,12 @@ export async function cancelApprovalRequest(
   executor: Kysely<DB> | Transaction<DB>,
   input: CancelApprovalRequestInput,
 ): Promise<void> {
+  const row = await executor
+    .selectFrom('approvals_approval_requests')
+    .select(['requested_by', 'status'])
+    .where('id', '=', toBin(input.requestId))
+    .executeTakeFirst();
+  if (!row || row.status !== 'PENDING') return;
   await executor
     .updateTable('approvals_approval_requests')
     .set({
@@ -32,4 +39,5 @@ export async function cancelApprovalRequest(
     .where('id', '=', toBin(input.requestId))
     .where('status', '=', 'PENDING')
     .execute();
+  await recordRequesterChange(executor, input.requestId, fromBin(row.requested_by));
 }

@@ -61,7 +61,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(118);
+    expect(PERMISSIONS.length).toBe(119); // + inventory.loss.read (AV-094, P2)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -69,7 +69,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
        WHERE r.is_system = TRUE`,
     );
     expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
-    expect(ROLE_PERMISSIONS.length).toBe(483);
+    expect(ROLE_PERMISSIONS.length).toBe(491); // + 8 octrois inventory.loss.read (AV-094)
   });
 
   it('crée les 9 emplacements virtuels (BR-ADM-010)', async () => {

@@ -35,6 +35,7 @@ import {
 } from '../../../identity/application/public/index.js';
 import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
 import type { ApprovalDecisionHandlerRegistry } from '../decision-handler-registry.js';
+import { recordRequesterChange } from '../approval-changes.js';
 
 const decisionBasePayloadSchema = z.object({
   requestId: z.string().uuid(),
@@ -179,6 +180,7 @@ function buildDecisionCommandHandler(
       })
       .where('id', '=', requestId)
       .execute();
+    await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
 
     return { status: 'APPLIED' };
   };
@@ -212,6 +214,7 @@ const withdraw: CommandHandler<WithdrawPayload> = async (uow, envelope) => {
     })
     .where('id', '=', requestId)
     .execute();
+  await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
 
   return { status: 'APPLIED' };
 };

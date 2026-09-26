@@ -207,16 +207,24 @@ export interface LossDeclarationSummary {
   readonly capturedOffline: boolean;
 }
 
-/** `GET /losses?location_id=&status=`. */
+/** `GET /losses?location_id=&status=` ; `declaredBy` restreint aux déclarations d'un auteur
+ * (portée `OWN` de `inventory.loss.read`, AV-094). */
 export async function listLossDeclarations(
   executor: Executor,
-  params: PageRequest & { readonly locationId: string; readonly status?: string },
+  params: PageRequest & {
+    readonly locationId: string;
+    readonly status?: string;
+    readonly declaredBy?: string;
+  },
 ): Promise<Page<LossDeclarationSummary>> {
   const rows = await executor
     .selectFrom('inventory_loss_declarations')
     .selectAll()
     .where('location_id', '=', toBin(params.locationId))
     .$if(params.status !== undefined, (qb) => qb.where('status', '=', params.status!))
+    .$if(params.declaredBy !== undefined, (qb) =>
+      qb.where('declared_by', '=', toBin(params.declaredBy!)),
+    )
     .$if(params.beforeId !== undefined, (qb) => qb.where('id', '<', toBin(params.beforeId!)))
     .orderBy('id', 'desc')
     .limit(params.limit + 1)

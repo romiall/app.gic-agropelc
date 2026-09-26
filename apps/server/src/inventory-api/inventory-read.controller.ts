@@ -20,11 +20,14 @@
  * `inventory.valuation.read` en plus du droit de lecture ; sinon remplacés par `null`
  * (champ présent, valeur masquée — le contrat de réponse reste le même pour tous).
  *
- * Droit de lecture des documents (transferts, pertes, consommations, inventaires, seuils) :
- * `inventory.stock.read` — valeur par défaut d'AV-094 (OUVERT) : la matrice (01-rbac.md §5.3)
- * ne définit aucune permission de lecture propre à ces documents ; le registre des mouvements
- * a la sienne (`inventory.ledger.read`), le registre de coûts relève de
- * `inventory.valuation.read`.
+ * Droit de lecture des documents — AV-094 (TRANCHÉ 26/09/2026) :
+ * - pertes : `inventory.loss.read`, réservé à l'encadrement dans son périmètre (Direction,
+ *   responsables commercial, de production et de ferme, magasinier, finance) ; un déclarant de
+ *   terrain (vendeur, commercial) détient la portée `OWN` et ne lit que **ses** déclarations —
+ *   une vendeuse ne lit pas les pertes déclarées par ses collègues (secret administratif) ;
+ * - transferts, consommations, inventaires, seuils : `inventory.stock.read` ;
+ * - registre des mouvements : `inventory.ledger.read` ; registre de coûts :
+ *   `inventory.valuation.read`.
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -66,6 +69,7 @@ import {
 const STOCK_READ = 'inventory.stock.read';
 const LEDGER_READ = 'inventory.ledger.read';
 const VALUATION_READ = 'inventory.valuation.read';
+const LOSS_READ = 'inventory.loss.read';
 
 /** Toutes les valeurs de `organization.locations.location_type` physiques (dictionnaire D02). */
 const PHYSICAL_LOCATION_TYPES = [
@@ -428,17 +432,73 @@ export class InventoryReadController {
     return this.deny(request, now, { type: 'STOCK_TRANSFER', id }, STOCK_READ, reason);
   }
 
+  /** AV-094 : portée pleine (`ALL`, `ZONE`, `SITE`) sur l'emplacement ⇒ toutes ses
+   * déclarations ; portée `OWN` seulement ⇒ celles dont l'utilisateur est le déclarant. La
+   * portée pleine est évaluée **sans** propriétaire : le détenteur d'un emplacement `MOBILE` n'est
+   * pas, par là même, lecteur des pertes que d'autres y auraient déclarées. */
   @Get('losses')
   @HttpCode(200)
   @UseGuards(AuthGuard)
-  @RequiresPermission(STOCK_READ)
+  @RequiresPermission(LOSS_READ)
   async losses(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
     const query = parseOrThrow(documentsQuerySchema, rawQuery);
     const now = this.clock.now();
-    const location = await this.authorizedLocation(request, now, query.location_id, STOCK_READ);
-    const financial = await this.canReadValuation(request, now, resourceOf(location));
+    const userId = request.auth!.sub;
+    const location = await findStockLocation(this.db, query.location_id);
+    if (!location) {
+      if (!(await hasPermissionAt(this.db, toBin(userId), LOSS_READ, now))) {
+        return this.deny(
+          request,
+          now,
+          { type: 'LOCATION', id: query.location_id },
+          LOSS_READ,
+          'NO_PERMISSION',
+        );
+      }
+      throw new ApiError(404, 'NOT_FOUND', NOT_FOUND_MESSAGE);
+    }
+    const siteAndZone: ResourceLocator = {
+      ...(location.siteId !== null ? { siteId: location.siteId } : {}),
+      ...(location.zoneId !== null ? { zoneId: location.zoneId } : {}),
+    };
+    const full = await evaluateAccess(this.db, {
+      userId,
+      permissionCode: LOSS_READ,
+      occurredAt: now,
+      resource: siteAndZone,
+    });
+    let declaredBy: string | undefined;
+    if (!full.allowed) {
+      if (full.reason === 'NO_PERMISSION') {
+        return this.deny(
+          request,
+          now,
+          { type: 'LOCATION', id: location.id },
+          LOSS_READ,
+          'NO_PERMISSION',
+        );
+      }
+      const own = await evaluateAccess(this.db, {
+        userId,
+        permissionCode: LOSS_READ,
+        occurredAt: now,
+        resource: { ...siteAndZone, ownerUserId: userId },
+      });
+      if (!own.allowed) {
+        return this.deny(
+          request,
+          now,
+          { type: 'LOCATION', id: location.id },
+          LOSS_READ,
+          'OUT_OF_SCOPE',
+        );
+      }
+      declaredBy = userId;
+    }
+    const financial = await this.canReadValuation(request, now, siteAndZone);
     const page = await listLossDeclarations(this.db, {
       locationId: location.id,
+      ...(declaredBy !== undefined ? { declaredBy } : {}),
       ...(query.status !== undefined ? { status: query.status } : {}),
       ...(query.cursor !== undefined ? { beforeId: query.cursor } : {}),
       limit: pageLimit(query.limit),

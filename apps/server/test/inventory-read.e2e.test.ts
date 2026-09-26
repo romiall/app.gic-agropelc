@@ -51,6 +51,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
   let adminDevice: string;
   let magA: string;
   let seller: string;
+  let vendor: string;
   let noRight: string;
   const tokens: Record<string, string> = {};
 
@@ -74,6 +75,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     aggregateId: string,
     occurredAt: string,
     payload: unknown,
+    author: string = admin,
   ) {
     const result = await pipeline.handle(
       {
@@ -83,7 +85,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
         command_type: commandType,
         aggregate_type: aggregateType,
         aggregate_id: aggregateId,
-        author_user_id: admin,
+        author_user_id: author,
         base_version: null,
         depends_on: [],
         occurred_at: occurredAt,
@@ -93,7 +95,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
         attachment_ids: [],
         payload,
       },
-      { authenticatedUserId: admin, authenticatedDeviceId: adminDevice, transport: 'ONLINE_API' },
+      { authenticatedUserId: author, authenticatedDeviceId: adminDevice, transport: 'ONLINE_API' },
     );
     expect(result.status, JSON.stringify(result)).toMatch(/^APPLIED/);
   }
@@ -144,6 +146,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
       admin = await insertTestUser(trx);
       magA = await insertTestUser(trx);
       seller = await insertTestUser(trx);
+      vendor = await insertTestUser(trx);
       noRight = await insertTestUser(trx);
       adminDevice = await insertTestDevice(trx, admin, { status: 'ACTIVE' });
 
@@ -183,11 +186,27 @@ describe('Lectures HTTP du stock (P2-05)', () => {
       }
       await assignTestRole(trx, admin, adminRole, admin);
 
-      // Magasinier du site A : portée SITE, sans valorisation (01-rbac.md §5.3, colonne MAG).
+      // Magasinier du site A : portée SITE, sans valorisation (01-rbac.md §5.3, colonne MAG) ;
+      // lit toutes les pertes de son site (AV-094).
       const magRole = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
       await grantTestPermission(trx, magRole, 'inventory.stock.read', admin, { maxScope: 'SITE' });
       await grantTestPermission(trx, magRole, 'inventory.ledger.read', admin, { maxScope: 'SITE' });
+      await grantTestPermission(trx, magRole, 'inventory.loss.read', admin, { maxScope: 'SITE' });
       await assignTestRole(trx, magA, magRole, admin, { scopeType: 'SITE', scopeSiteId: siteA });
+
+      // Vendeuse du site A (seed VENDEUR_PDV) : déclare des pertes, ne lit que les siennes (AV-094).
+      const vendorRole = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
+      await grantTestPermission(trx, vendorRole, 'inventory.stock.read', admin, {
+        maxScope: 'SITE',
+      });
+      await grantTestPermission(trx, vendorRole, 'inventory.loss.declare', admin, {
+        maxScope: 'SITE',
+      });
+      await grantTestPermission(trx, vendorRole, 'inventory.loss.read', admin, { maxScope: 'OWN' });
+      await assignTestRole(trx, vendor, vendorRole, admin, {
+        scopeType: 'SITE',
+        scopeSiteId: siteA,
+      });
 
       // Commercial terrain : stock OWN (son emplacement MOBILE uniquement).
       const sellerRole = await insertTestRole(trx, admin);
@@ -232,7 +251,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
         .execute();
     });
 
-    for (const userId of [admin, magA, seller, noRight]) {
+    for (const userId of [admin, magA, seller, vendor, noRight]) {
       tokens[userId] = await signAccessToken(
         jwtKeys.privateKey,
         { sub: userId, device_id: adminDevice, session_id: freshUuid() },
@@ -264,6 +283,21 @@ describe('Lectures HTTP du stock (P2-05)', () => {
       quantity: 1,
       category: 'CASSE',
     });
+    await command(
+      'inventory.loss.declare',
+      'LOSS_DECLARATION',
+      freshUuid(),
+      LATER_AT,
+      {
+        locationId: storeA,
+        productId,
+        quantityBase: 1,
+        unitCode: 'TETE',
+        quantity: 1,
+        category: 'DETERIORATION',
+      },
+      vendor,
+    );
     await command('inventory.consumption.record', 'CONSUMPTION', freshUuid(), LATER_AT, {
       locationId: storeA,
       productId,
@@ -318,11 +352,11 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     const response = await get(magA, `/api/v1/stock?location_id=${storeA}`);
     expect(response.statusCode).toBe(200);
     const [line] = response.json().balances;
-    // 10 (ouverture) − 2 (expédition) − 1 (perte, si RECORDED ou en attente : V_PENDING_LOSS
-    // sort aussi du physique) − 1 (consommation) = 6.
+    // 10 (ouverture) − 2 (expédition) − 2 (deux pertes, RECORDED ou en attente : V_PENDING_LOSS
+    // sort aussi du physique) − 1 (consommation) = 5.
     expect(line.productId).toBe(productId);
-    expect(line.qtyOnHand).toBe(6);
-    expect(line.qtyAvailable).toBe(6);
+    expect(line.qtyOnHand).toBe(5);
+    expect(line.qtyAvailable).toBe(5);
     expect(line.unitCostXaf).toBeNull();
     expect(line.valueXaf).toBeNull();
   });
@@ -332,7 +366,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     expect(response.statusCode).toBe(200);
     const [line] = response.json().balances;
     expect(line.unitCostXaf).toBe(OPENING_UNIT_COST_XAF);
-    expect(line.valueXaf).toBe(6 * OPENING_UNIT_COST_XAF);
+    expect(line.valueXaf).toBe(5 * OPENING_UNIT_COST_XAF);
   });
 
   it('GET /stock — emplacement d’un autre site : 404 (hors portée = inexistant), refus audité', async () => {
@@ -381,8 +415,8 @@ describe('Lectures HTTP du stock (P2-05)', () => {
       `/api/v1/stock/availability?zone_id=${zoneId}&product_id=${productId}`,
     );
     expect(all.statusCode).toBe(200);
-    // Emplacements commerciaux : A (6) + B (4) + mobile (3) = 13.
-    expect(all.json().total_available).toBe(13);
+    // Emplacements commerciaux : A (5) + B (4) + mobile (3) = 12.
+    expect(all.json().total_available).toBe(12);
     expect(all.json().locations).toHaveLength(3);
 
     const siteOnly = await get(
@@ -390,8 +424,8 @@ describe('Lectures HTTP du stock (P2-05)', () => {
       `/api/v1/stock/availability?zone_id=${zoneId}&product_id=${productId}`,
     );
     expect(siteOnly.statusCode).toBe(200);
-    // Site A : magasin (6) + mobile rattaché au site A (3) ; le site B est filtré.
-    expect(siteOnly.json().total_available).toBe(9);
+    // Site A : magasin (5) + mobile rattaché au site A (3) ; le site B est filtré.
+    expect(siteOnly.json().total_available).toBe(8);
     expect(
       (siteOnly.json().locations as { locationId: string }[]).map((l) => l.locationId).sort(),
     ).toEqual([storeA, mobile].sort());
@@ -457,13 +491,26 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     expect(threshold.suggestedQty).toBe(24); // 30 − 4 − 2
   });
 
-  it('GET /losses et /consumptions — documents de l’emplacement, valeur masquée sans valorisation', async () => {
-    const losses = await get(magA, `/api/v1/losses?location_id=${storeA}`);
-    expect(losses.statusCode).toBe(200);
-    expect(losses.json().losses).toHaveLength(1);
-    expect(losses.json().losses[0].category).toBe('CASSE');
-    expect(losses.json().losses[0].valueXaf).toBeNull();
+  it('GET /losses — AV-094 : l’encadrement lit toutes les pertes de son site, une vendeuse seulement les siennes', async () => {
+    const all = await get(magA, `/api/v1/losses?location_id=${storeA}`);
+    expect(all.statusCode).toBe(200);
+    const categories = (all.json().losses as { category: string }[]).map((l) => l.category);
+    expect(categories.sort()).toEqual(['CASSE', 'DETERIORATION']);
+    expect(all.json().losses[0].valueXaf).toBeNull(); // RC-05 : pas de valorisation
 
+    const own = await get(vendor, `/api/v1/losses?location_id=${storeA}`);
+    expect(own.statusCode).toBe(200);
+    expect(own.json().losses).toHaveLength(1);
+    expect(own.json().losses[0].declaredBy).toBe(vendor);
+    expect(own.json().losses[0].category).toBe('DETERIORATION');
+
+    // Hors de son site, même ses propres pertes ne sont pas une porte d'entrée : 404.
+    expect((await get(vendor, `/api/v1/losses?location_id=${storeB}`)).statusCode).toBe(404);
+    // Voir le stock ne donne pas le droit de lire les pertes.
+    expect((await get(seller, `/api/v1/losses?location_id=${mobile}`)).statusCode).toBe(403);
+  });
+
+  it('GET /consumptions — documents de l’emplacement, valeur visible avec la valorisation', async () => {
     const consumptions = await get(
       admin,
       `/api/v1/consumptions?location_id=${storeA}&cost_object_type=SITE`,

@@ -139,7 +139,9 @@ export const ROLES: readonly RoleSeed[] = [
 ] as const;
 
 // ---------------------------------------------------------------------------------------
-// 117 permissions (docs/07-security-rbac/01-rbac.md §5). `module` = préfixe littéral du
+// 119 permissions : les 117 de docs/07-security-rbac/01-rbac.md §5, plus
+// `attachments.attachment.manage` (AV-093, P0-13) et `inventory.loss.read` (AV-094, P2).
+// `module` = préfixe littéral du
 // code (`org`, pas `organization` — les deux orthographes coexistent volontairement dans
 // ce projet : `org.*` pour les codes de permission, `organization` pour les tables et le
 // module de code, D01-ADM-core-administration.md §3).
@@ -682,7 +684,7 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // inventory (17)
+  // inventory (18)
   {
     code: 'inventory.stock.read',
     module: 'inventory',
@@ -769,6 +771,16 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     description: 'Approuver une déclaration de perte',
     supportedScopes: ['ALL', 'ZONE', 'SITE'],
     isApproval: true,
+    isSensitive: false,
+  },
+  // AV-094 (TRANCHÉ 26/09/2026) : lecture des déclarations de perte réservée à l'encadrement,
+  // dans son périmètre ; un déclarant de terrain (vendeur, commercial) ne lit que les siennes.
+  {
+    code: 'inventory.loss.read',
+    module: 'inventory',
+    description: 'Consulter les déclarations de perte (confidentialité administrative, AV-094)',
+    supportedScopes: ['ALL', 'ZONE', 'SITE', 'OWN'],
+    isApproval: false,
     isSensitive: false,
   },
   {
@@ -1145,13 +1157,14 @@ function grants(
 }
 
 // ---------------------------------------------------------------------------------------
-// Matrice d'octroi (472 lignes, docs/07-security-rbac/01-rbac.md §5, transposée par rôle).
+// Matrice d'octroi (491 lignes : les 472 de docs/07-security-rbac/01-rbac.md §5, transposées par
+// rôle, plus 11 pour AV-093 et 8 pour AV-094).
 // `sales.price.override` porte le seul `limits` chiffré par la matrice (RC-06, AV-026) ;
 // VENDEUR_PDV n'a volontairement aucune ligne pour cette permission (annotée « 0 % » dans
 // la matrice source plutôt que silencieusement omise).
 // ---------------------------------------------------------------------------------------
 export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
-  // DIRECTION — 77, toujours ALL
+  // DIRECTION — 78, toujours ALL
   ...grants('DIRECTION', [
     ['identity.user.read', 'ALL'],
     ['identity.device.read', 'ALL'],
@@ -1202,6 +1215,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer_discrepancy.approve', 'ALL'],
     ['inventory.allocation.manage', 'ALL'],
     ['inventory.loss.approve', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
     ['inventory.count.approve', 'ALL'],
     ['inventory.threshold.manage', 'ALL'],
     ['production.lot.read', 'ALL'],
@@ -1264,7 +1278,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.opening.post', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 58
+  // RESP_COMMERCIAL — 59
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],
     ['identity.device.read', 'TEAM'],
@@ -1316,6 +1330,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.ledger.read', 'ZONE'],
     ['inventory.allocation.manage', 'ZONE'],
     ['inventory.loss.approve', 'ZONE'],
+    ['inventory.loss.read', 'ZONE'],
     ['inventory.count.approve', 'ZONE'],
     ['inventory.threshold.manage', 'ZONE'],
     ['finance.expense.read', 'TEAM'],
@@ -1326,7 +1341,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'TEAM'],
   ]),
 
-  // COMMERCIAL_TERRAIN — 43
+  // COMMERCIAL_TERRAIN — 44
   ...grants('COMMERCIAL_TERRAIN', [
     ['org.structure.read', 'ZONE'],
     ['approvals.request.read', 'OWN'],
@@ -1365,6 +1380,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer.receive', 'OWN'],
     ['inventory.transfer.cancel', 'OWN'],
     ['inventory.loss.declare', 'OWN'],
+    ['inventory.loss.read', 'OWN'],
     ['inventory.count.perform', 'OWN'],
     ['finance.cash.read', 'OWN'],
     ['finance.cash_transfer.record', 'OWN'],
@@ -1410,7 +1426,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.commercial', 'OWN'],
   ]),
 
-  // VENDEUR_PDV — 36 (sales.price.override délibérément absent : plafond 0 %, AV-026)
+  // VENDEUR_PDV — 37 (sales.price.override délibérément absent : plafond 0 %, AV-026)
   ...grants('VENDEUR_PDV', [
     ['org.structure.read', 'SITE'],
     ['approvals.request.read', 'OWN'],
@@ -1440,6 +1456,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer.receive', 'SITE'],
     ['inventory.transfer.cancel', 'SITE'],
     ['inventory.loss.declare', 'SITE'],
+    ['inventory.loss.read', 'OWN'],
     ['inventory.count.perform', 'SITE'],
     ['inventory.consumption.record', 'SITE'],
     ['finance.cash.read', 'SITE'],
@@ -1450,7 +1467,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 43
+  // RESP_PRODUCTION — 44
   ...grants('RESP_PRODUCTION', [
     ['identity.user.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
@@ -1474,6 +1491,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer_discrepancy.approve', 'ALL'],
     ['inventory.loss.declare', 'ALL'],
     ['inventory.loss.approve', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
     ['inventory.count.perform', 'ALL'],
     ['inventory.count.approve', 'ALL'],
     ['inventory.consumption.record', 'ALL'],
@@ -1498,7 +1516,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 52
+  // RESP_FERME — 53
   ...grants('RESP_FERME', [
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
@@ -1535,6 +1553,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.allocation.manage', 'SITE'],
     ['inventory.loss.declare', 'SITE'],
     ['inventory.loss.approve', 'SITE'],
+    ['inventory.loss.read', 'SITE'],
     ['inventory.count.perform', 'SITE'],
     ['inventory.count.approve', 'SITE'],
     ['inventory.consumption.record', 'SITE'],
@@ -1554,7 +1573,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.production', 'SITE'],
   ]),
 
-  // MAGASINIER — 34
+  // MAGASINIER — 35
   ...grants('MAGASINIER', [
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
@@ -1578,6 +1597,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer_discrepancy.approve', 'SITE'],
     ['inventory.allocation.manage', 'SITE'],
     ['inventory.loss.declare', 'SITE'],
+    ['inventory.loss.read', 'SITE'],
     ['inventory.count.perform', 'SITE'],
     ['inventory.consumption.record', 'SITE'],
     ['inventory.threshold.manage', 'SITE'],
@@ -1622,7 +1642,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // FINANCE — 53
+  // FINANCE — 54
   ...grants('FINANCE', [
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
@@ -1648,6 +1668,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.stock.read', 'ALL'],
     ['inventory.valuation.read', 'ALL'],
     ['inventory.ledger.read', 'ALL'],
+    ['inventory.loss.read', 'ALL'],
     ['inventory.count.perform', 'ALL'],
     ['inventory.count.approve', 'ALL'],
     ['inventory.opening.post', 'ALL'],
