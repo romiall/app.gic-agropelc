@@ -11,7 +11,7 @@
 // n'a pas besoin du même traitement : le seed déprécie déjà tout code hors catalogue
 // (seedPermissions, seeds/run.ts), ce qui neutralise les permissions de test au passage.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 import {
@@ -26,7 +26,16 @@ import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
 
 function runSeed(): void {
-  execFileSync('npx', ['tsx', 'seeds/run.ts'], { cwd: dbRoot, env: process.env, stdio: 'pipe' });
+  // `execSync` (commande unique) plutôt que `execFileSync('npx', [...])` : sous Windows,
+  // `npx` résout vers `npx.cmd` (shim npm), que Node ne peut exécuter directement sans
+  // passer par un shell (limitation documentée de `child_process` sur Windows) — sans
+  // cela, `execFileSync` échoue en ENOENT (spawn direct, pas de résolution de l'extension).
+  // `execSync` route toujours par un shell, donc pas de bascule `shell: true` séparée ici
+  // (qui, combinée à un tableau d'arguments, déclenche l'avertissement DEP0190). Sans
+  // incidence sur POSIX (commande figée, aucune entrée utilisateur interpolée). Bug
+  // d'environnement local (première exécution native Windows de cette suite), sans
+  // rapport avec P2-04.
+  execSync('npx tsx seeds/run.ts', { cwd: dbRoot, env: process.env, stdio: 'pipe' });
 }
 
 describe('seed P0-05 (db/seeds/run.ts)', () => {
