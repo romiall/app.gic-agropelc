@@ -8,6 +8,7 @@ import { AttachmentsModule } from './modules/attachments/attachments.module.js';
 import { ApprovalsModule } from './modules/approvals/approvals.module.js';
 import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { PricingModule } from './modules/pricing/pricing.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { ProcurementModule } from './modules/procurement/procurement.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
@@ -29,6 +30,7 @@ import { HealthController } from './health/health.controller.js';
     ApprovalsModule,
     CatalogModule,
     PricingModule,
+    InventoryModule,
     ProcurementModule,
     CommandsModule,
     ChainVerificationModule,
