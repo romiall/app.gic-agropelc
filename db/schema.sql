@@ -776,6 +776,1010 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `crm_customer_assignments`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_customer_assignments` (
+  `id` binary(16) NOT NULL,
+  `customer_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `valid_from` datetime(6) NOT NULL,
+  `valid_to` datetime(6) DEFAULT NULL,
+  `assigned_by` binary(16) NOT NULL,
+  `reason` text COLLATE utf8mb4_0900_as_cs,
+  `command_id` binary(16) DEFAULT NULL,
+  `active_key` binary(16) GENERATED ALWAYS AS ((case when (`valid_to` is null) then `customer_id` end)) STORED,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_customer_assignments_active` (`active_key`),
+  KEY `ix_crm_customer_assignments_user` (`user_id`,`valid_from`),
+  KEY `ix_crm_customer_assignments_customer` (`customer_id`,`valid_from`),
+  KEY `fk_crm_customer_assignments_assigned_by` (`assigned_by`),
+  CONSTRAINT `fk_crm_customer_assignments_assigned_by` FOREIGN KEY (`assigned_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_assignments_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_assignments_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_customer_assignments_period` CHECK (((`valid_to` is null) or (`valid_to` >= `valid_from`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customer_assignments_overlap_ins` BEFORE INSERT ON `crm_customer_assignments` FOR EACH ROW BEGIN
+  IF EXISTS (
+    SELECT 1 FROM crm_customer_assignments
+    WHERE customer_id = NEW.customer_id
+      AND id <> NEW.id
+      AND valid_from < COALESCE(NEW.valid_to, '9999-12-31 23:59:59.999999')
+      AND COALESCE(valid_to, '9999-12-31 23:59:59.999999') > NEW.valid_from
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_assignments : périodes de titulaire chevauchantes (INV-CRM-02).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customer_assignments_update_guard` BEFORE UPDATE ON `crm_customer_assignments` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.user_id <=> OLD.user_id AND
+    NEW.valid_from <=> OLD.valid_from AND
+    NEW.assigned_by <=> OLD.assigned_by AND
+    NEW.reason <=> OLD.reason AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_assignments : seule la fermeture (valid_to) est modifiable.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM crm_customer_assignments
+    WHERE customer_id = NEW.customer_id
+      AND id <> NEW.id
+      AND valid_from < COALESCE(NEW.valid_to, '9999-12-31 23:59:59.999999')
+      AND COALESCE(valid_to, '9999-12-31 23:59:59.999999') > NEW.valid_from
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_assignments : périodes de titulaire chevauchantes (INV-CRM-02).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customer_assignments_no_delete` BEFORE DELETE ON `crm_customer_assignments` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_assignments : suppression physique interdite ; fermer par valid_to.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_customer_stage_history`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_customer_stage_history` (
+  `id` binary(16) NOT NULL,
+  `customer_id` binary(16) NOT NULL,
+  `from_stage` varchar(10) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `to_stage` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `from_step_id` binary(16) DEFAULT NULL,
+  `to_step_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `actor_user_id` binary(16) NOT NULL,
+  `reason_code_id` binary(16) DEFAULT NULL,
+  `cause_ref` binary(16) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_crm_customer_stage_history_customer` (`customer_id`,`occurred_at`),
+  KEY `fk_crm_customer_stage_history_from_step` (`from_step_id`),
+  KEY `fk_crm_customer_stage_history_to_step` (`to_step_id`),
+  KEY `fk_crm_customer_stage_history_actor` (`actor_user_id`),
+  KEY `fk_crm_customer_stage_history_reason` (`reason_code_id`),
+  CONSTRAINT `fk_crm_customer_stage_history_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_stage_history_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_stage_history_from_step` FOREIGN KEY (`from_step_id`) REFERENCES `crm_pipeline_steps` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_stage_history_reason` FOREIGN KEY (`reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customer_stage_history_to_step` FOREIGN KEY (`to_step_id`) REFERENCES `crm_pipeline_steps` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_customer_stage_history_stages` CHECK ((((`from_stage` is null) or (`from_stage` in (_utf8mb4'PROSPECT',_utf8mb4'CUSTOMER',_utf8mb4'LOST',_utf8mb4'MERGED'))) and (`to_stage` in (_utf8mb4'PROSPECT',_utf8mb4'CUSTOMER',_utf8mb4'LOST',_utf8mb4'MERGED'))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customer_stage_history_no_update` BEFORE UPDATE ON `crm_customer_stage_history` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_stage_history : historique immuable (BR-CRM-008).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customer_stage_history_no_delete` BEFORE DELETE ON `crm_customer_stage_history` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customer_stage_history : suppression physique interdite (BR-CRM-008).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_customers`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_customers` (
+  `id` binary(16) NOT NULL,
+  `stage` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PROSPECT',
+  `pipeline_step_id` binary(16) DEFAULT NULL,
+  `customer_type` varchar(12) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PARTICULIER',
+  `display_name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `contact_name` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `business_activity` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `category_id` binary(16) DEFAULT NULL,
+  `phone_primary` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `phone_secondary` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `email` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `address_text` text COLLATE utf8mb4_0900_as_cs,
+  `zone_id` binary(16) NOT NULL,
+  `lat` decimal(9,6) DEFAULT NULL,
+  `lng` decimal(9,6) DEFAULT NULL,
+  `geo_accuracy_m` decimal(8,1) DEFAULT NULL,
+  `source_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `acquired_by_user_id` binary(16) NOT NULL,
+  `acquired_at` datetime(6) NOT NULL,
+  `owner_user_id` binary(16) DEFAULT NULL,
+  `home_site_id` binary(16) DEFAULT NULL,
+  `converted_at` datetime(6) DEFAULT NULL,
+  `first_sale_id` binary(16) DEFAULT NULL,
+  `conversion_reverted` tinyint(1) NOT NULL DEFAULT '0',
+  `lost_reason_code_id` binary(16) DEFAULT NULL,
+  `merged_into_id` binary(16) DEFAULT NULL,
+  `duplicate_of_id` binary(16) DEFAULT NULL,
+  `credit_allowed` tinyint(1) NOT NULL DEFAULT '0',
+  `credit_limit_xaf` bigint DEFAULT NULL,
+  `payment_terms_days` smallint DEFAULT NULL,
+  `last_sale_at` datetime(6) DEFAULT NULL,
+  `field_versions` json NOT NULL DEFAULT (json_object()),
+  `phone_key` varchar(20) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`stage` <> _utf8mb4'MERGED') and (`duplicate_of_id` is null)) then `phone_primary` end)) STORED,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_customers_phone` (`phone_key`),
+  UNIQUE KEY `uq_crm_customers_command` (`command_id`),
+  KEY `ix_crm_customers_owner` (`owner_user_id`),
+  KEY `ix_crm_customers_zone` (`zone_id`),
+  KEY `ix_crm_customers_stage` (`stage`),
+  KEY `ix_crm_customers_home_site` (`home_site_id`),
+  KEY `ix_crm_customers_acquired` (`acquired_by_user_id`,`acquired_at`),
+  KEY `ix_crm_customers_phone_primary` (`phone_primary`),
+  KEY `fk_crm_customers_step` (`pipeline_step_id`),
+  KEY `fk_crm_customers_category` (`category_id`),
+  KEY `fk_crm_customers_source` (`source_code`),
+  KEY `fk_crm_customers_lost_reason` (`lost_reason_code_id`),
+  KEY `fk_crm_customers_merged_into` (`merged_into_id`),
+  KEY `fk_crm_customers_duplicate_of` (`duplicate_of_id`),
+  KEY `fk_crm_customers_created_device` (`created_device_id`),
+  KEY `fk_crm_customers_created_by` (`created_by`),
+  KEY `fk_crm_customers_updated_by` (`updated_by`),
+  FULLTEXT KEY `ftx_crm_customers_display_name` (`display_name`) /*!50100 WITH PARSER `ngram` */ ,
+  CONSTRAINT `fk_crm_customers_acquired_by` FOREIGN KEY (`acquired_by_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_category` FOREIGN KEY (`category_id`) REFERENCES `catalog_customer_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_duplicate_of` FOREIGN KEY (`duplicate_of_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_home_site` FOREIGN KEY (`home_site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_lost_reason` FOREIGN KEY (`lost_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_merged_into` FOREIGN KEY (`merged_into_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_owner` FOREIGN KEY (`owner_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_source` FOREIGN KEY (`source_code`) REFERENCES `crm_lead_sources` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_step` FOREIGN KEY (`pipeline_step_id`) REFERENCES `crm_pipeline_steps` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_customers_zone` FOREIGN KEY (`zone_id`) REFERENCES `organization_zones` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_customers_credit` CHECK ((((`credit_limit_xaf` is null) or (`credit_limit_xaf` >= 0)) and ((`payment_terms_days` is null) or (`payment_terms_days` >= 0)))),
+  CONSTRAINT `ck_crm_customers_customer` CHECK (((`stage` <> _utf8mb4'CUSTOMER') or (`first_sale_id` is not null))),
+  CONSTRAINT `ck_crm_customers_findable` CHECK (((`phone_primary` is not null) or ((`lat` is not null) and (`lng` is not null)))),
+  CONSTRAINT `ck_crm_customers_lost` CHECK (((`stage` <> _utf8mb4'LOST') or (`lost_reason_code_id` is not null))),
+  CONSTRAINT `ck_crm_customers_merged` CHECK ((((`stage` = _utf8mb4'MERGED') and (`merged_into_id` is not null)) or ((`stage` <> _utf8mb4'MERGED') and (`merged_into_id` is null)))),
+  CONSTRAINT `ck_crm_customers_position` CHECK ((((`lat` is null) and (`lng` is null)) or ((`lat` is not null) and (`lng` is not null)))),
+  CONSTRAINT `ck_crm_customers_prospect_step` CHECK (((`stage` <> _utf8mb4'PROSPECT') or (`pipeline_step_id` is not null))),
+  CONSTRAINT `ck_crm_customers_ranges` CHECK ((((`lat` is null) or (`lat` between -(90) and 90)) and ((`lng` is null) or (`lng` between -(180) and 180)) and ((`geo_accuracy_m` is null) or (`geo_accuracy_m` >= 0)))),
+  CONSTRAINT `ck_crm_customers_self_refs` CHECK ((((`merged_into_id` is null) or (`merged_into_id` <> `id`)) and ((`duplicate_of_id` is null) or (`duplicate_of_id` <> `id`)))),
+  CONSTRAINT `ck_crm_customers_stage` CHECK ((`stage` in (_utf8mb4'PROSPECT',_utf8mb4'CUSTOMER',_utf8mb4'LOST',_utf8mb4'MERGED'))),
+  CONSTRAINT `ck_crm_customers_type` CHECK ((`customer_type` in (_utf8mb4'PARTICULIER',_utf8mb4'ENTREPRISE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customers_update_guard` BEFORE UPDATE ON `crm_customers` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.acquired_by_user_id <=> OLD.acquired_by_user_id AND
+    NEW.acquired_at <=> OLD.acquired_at AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customers : acquéreur et date d''acquisition immuables (INV-CRM-01).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_customers_no_delete` BEFORE DELETE ON `crm_customers` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_customers : suppression physique interdite (INV-GLO-03) ; fusionner ou marquer perdu.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_interactions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_interactions` (
+  `id` binary(16) NOT NULL,
+  `customer_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `channel` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `direction` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'SORTANT',
+  `summary` text COLLATE utf8mb4_0900_as_cs,
+  `next_action_at` date DEFAULT NULL,
+  `next_action_note` text COLLATE utf8mb4_0900_as_cs,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_interactions_command` (`command_id`),
+  KEY `ix_crm_interactions_user_occurred` (`user_id`,`occurred_at`),
+  KEY `ix_crm_interactions_customer_occurred` (`customer_id`,`occurred_at`),
+  KEY `fk_crm_interactions_cancelled_by` (`cancelled_by`),
+  KEY `fk_crm_interactions_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_crm_interactions_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_crm_interactions_created_device` (`created_device_id`),
+  KEY `fk_crm_interactions_created_by` (`created_by`),
+  KEY `fk_crm_interactions_updated_by` (`updated_by`),
+  CONSTRAINT `fk_crm_interactions_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_interactions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_interactions_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_crm_interactions_channel` CHECK ((`channel` in (_utf8mb4'APPEL',_utf8mb4'SMS',_utf8mb4'EMAIL',_utf8mb4'AUTRE'))),
+  CONSTRAINT `ck_crm_interactions_direction` CHECK ((`direction` in (_utf8mb4'ENTRANT',_utf8mb4'SORTANT'))),
+  CONSTRAINT `ck_crm_interactions_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_interactions_update_guard` BEFORE UPDATE ON `crm_interactions` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.user_id <=> OLD.user_id AND
+    NEW.channel <=> OLD.channel AND
+    NEW.direction <=> OLD.direction AND
+    NEW.summary <=> OLD.summary AND
+    NEW.next_action_at <=> OLD.next_action_at AND
+    NEW.next_action_note <=> OLD.next_action_note AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_interactions : interaction non modifiable ; l''annuler et en saisir une nouvelle (BR-CRM-016).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_interactions_no_delete` BEFORE DELETE ON `crm_interactions` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_interactions : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_lead_sources`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_lead_sources` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `label` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `sort_order` smallint NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_system` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_lead_sources_code` (`code`),
+  KEY `fk_crm_lead_sources_created_by` (`created_by`),
+  KEY `fk_crm_lead_sources_updated_by` (`updated_by`),
+  CONSTRAINT `fk_crm_lead_sources_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_lead_sources_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_lead_sources_system` CHECK (((`is_system` = false) or (`is_active` = true)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_lead_sources_update_guard` BEFORE UPDATE ON `crm_lead_sources` FOR EACH ROW BEGIN
+  IF NOT (NEW.code <=> OLD.code AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_lead_sources : le code est immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_lead_sources_no_delete` BEFORE DELETE ON `crm_lead_sources` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_lead_sources : suppression physique interdite ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_pipeline_steps`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_pipeline_steps` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `label` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `sort_order` smallint NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_system` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_pipeline_steps_code` (`code`),
+  KEY `ix_crm_pipeline_steps_order` (`is_active`,`sort_order`),
+  KEY `fk_crm_pipeline_steps_created_by` (`created_by`),
+  KEY `fk_crm_pipeline_steps_updated_by` (`updated_by`),
+  CONSTRAINT `fk_crm_pipeline_steps_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_pipeline_steps_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_pipeline_steps_system` CHECK (((`is_system` = false) or (`is_active` = true)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_pipeline_steps_update_guard` BEFORE UPDATE ON `crm_pipeline_steps` FOR EACH ROW BEGIN
+  IF NOT (NEW.code <=> OLD.code AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_pipeline_steps : le code est immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_pipeline_steps_no_delete` BEFORE DELETE ON `crm_pipeline_steps` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_pipeline_steps : suppression physique interdite ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_sales_targets`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_sales_targets` (
+  `id` binary(16) NOT NULL,
+  `target_type` varchar(5) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `user_id` binary(16) DEFAULT NULL,
+  `team_id` binary(16) DEFAULT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `metric` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `product_id` binary(16) DEFAULT NULL,
+  `period_start` date NOT NULL,
+  `period_end` date NOT NULL,
+  `target_value` decimal(16,3) NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  KEY `ix_crm_sales_targets_user` (`user_id`,`period_start`),
+  KEY `ix_crm_sales_targets_team` (`team_id`,`period_start`),
+  KEY `ix_crm_sales_targets_site` (`site_id`,`period_start`),
+  KEY `fk_crm_sales_targets_product` (`product_id`),
+  KEY `fk_crm_sales_targets_created_by` (`created_by`),
+  KEY `fk_crm_sales_targets_updated_by` (`updated_by`),
+  CONSTRAINT `fk_crm_sales_targets_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_sales_targets_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_sales_targets_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_sales_targets_team` FOREIGN KEY (`team_id`) REFERENCES `organization_teams` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_sales_targets_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_sales_targets_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_sales_targets_metric` CHECK ((`metric` in (_utf8mb4'CA',_utf8mb4'QTE_PRODUIT',_utf8mb4'NOUVEAUX_CLIENTS',_utf8mb4'VISITES',_utf8mb4'PROSPECTS_CREES'))),
+  CONSTRAINT `ck_crm_sales_targets_period` CHECK ((`period_end` >= `period_start`)),
+  CONSTRAINT `ck_crm_sales_targets_product` CHECK (((`metric` <> _utf8mb4'QTE_PRODUIT') or (`product_id` is not null))),
+  CONSTRAINT `ck_crm_sales_targets_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_crm_sales_targets_target` CHECK ((((`target_type` = _utf8mb4'USER') and (`user_id` is not null) and (`team_id` is null) and (`site_id` is null)) or ((`target_type` = _utf8mb4'TEAM') and (`team_id` is not null) and (`user_id` is null) and (`site_id` is null)) or ((`target_type` = _utf8mb4'SITE') and (`site_id` is not null) and (`user_id` is null) and (`team_id` is null)))),
+  CONSTRAINT `ck_crm_sales_targets_type` CHECK ((`target_type` in (_utf8mb4'USER',_utf8mb4'TEAM',_utf8mb4'SITE'))),
+  CONSTRAINT `ck_crm_sales_targets_value` CHECK ((`target_value` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_sales_targets_overlap_ins` BEFORE INSERT ON `crm_sales_targets` FOR EACH ROW BEGIN
+  IF NEW.status = 'ACTIVE' AND EXISTS (
+    SELECT 1 FROM crm_sales_targets
+    WHERE id <> NEW.id AND status = 'ACTIVE'
+      AND target_type = NEW.target_type
+      AND user_id <=> NEW.user_id AND team_id <=> NEW.team_id AND site_id <=> NEW.site_id
+      AND metric = NEW.metric AND product_id <=> NEW.product_id
+      AND period_start <= NEW.period_end AND period_end >= NEW.period_start
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_sales_targets : objectif actif chevauchant (BR-CRM-018).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_sales_targets_update_guard` BEFORE UPDATE ON `crm_sales_targets` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.target_type <=> OLD.target_type AND
+    NEW.user_id <=> OLD.user_id AND
+    NEW.team_id <=> OLD.team_id AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.metric <=> OLD.metric AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.period_start <=> OLD.period_start AND
+    NEW.period_end <=> OLD.period_end AND
+    NEW.target_value <=> OLD.target_value AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_sales_targets : objectif non modifiable ; l''annuler et en définir un nouveau.';
+  END IF;
+  IF NEW.status = 'ACTIVE' AND EXISTS (
+    SELECT 1 FROM crm_sales_targets
+    WHERE id <> NEW.id AND status = 'ACTIVE'
+      AND target_type = NEW.target_type
+      AND user_id <=> NEW.user_id AND team_id <=> NEW.team_id AND site_id <=> NEW.site_id
+      AND metric = NEW.metric AND product_id <=> NEW.product_id
+      AND period_start <= NEW.period_end AND period_end >= NEW.period_start
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_sales_targets : objectif actif chevauchant (BR-CRM-018).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_sales_targets_no_delete` BEFORE DELETE ON `crm_sales_targets` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_sales_targets : suppression physique interdite ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `crm_visits`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crm_visits` (
+  `id` binary(16) NOT NULL,
+  `customer_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `work_session_id` binary(16) DEFAULT NULL,
+  `customer_stage_at_visit` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `lat` decimal(9,6) DEFAULT NULL,
+  `lng` decimal(9,6) DEFAULT NULL,
+  `accuracy_m` decimal(8,1) DEFAULT NULL,
+  `distance_to_customer_m` decimal(8,1) DEFAULT NULL,
+  `outcome_reason_code_id` binary(16) NOT NULL,
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `next_action_at` date DEFAULT NULL,
+  `next_action_note` text COLLATE utf8mb4_0900_as_cs,
+  `flags` json NOT NULL DEFAULT (json_array()),
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `open_next_action_at` date GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'RECORDED') then `next_action_at` end)) STORED,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_crm_visits_command` (`command_id`),
+  KEY `ix_crm_visits_user_occurred` (`user_id`,`occurred_at`),
+  KEY `ix_crm_visits_customer_occurred` (`customer_id`,`occurred_at`),
+  KEY `ix_crm_visits_next_action` (`open_next_action_at`),
+  KEY `ix_crm_visits_session` (`work_session_id`),
+  KEY `fk_crm_visits_outcome` (`outcome_reason_code_id`),
+  KEY `fk_crm_visits_cancelled_by` (`cancelled_by`),
+  KEY `fk_crm_visits_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_crm_visits_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_crm_visits_created_device` (`created_device_id`),
+  KEY `fk_crm_visits_created_by` (`created_by`),
+  KEY `fk_crm_visits_updated_by` (`updated_by`),
+  CONSTRAINT `fk_crm_visits_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_outcome` FOREIGN KEY (`outcome_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_session` FOREIGN KEY (`work_session_id`) REFERENCES `fieldwork_work_sessions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_crm_visits_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_crm_visits_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_crm_visits_position` CHECK ((((`lat` is null) and (`lng` is null)) or ((`lat` is not null) and (`lng` is not null)))),
+  CONSTRAINT `ck_crm_visits_ranges` CHECK ((((`lat` is null) or (`lat` between -(90) and 90)) and ((`lng` is null) or (`lng` between -(180) and 180)) and ((`accuracy_m` is null) or (`accuracy_m` >= 0)))),
+  CONSTRAINT `ck_crm_visits_stage` CHECK ((`customer_stage_at_visit` in (_utf8mb4'PROSPECT',_utf8mb4'CUSTOMER',_utf8mb4'LOST',_utf8mb4'MERGED'))),
+  CONSTRAINT `ck_crm_visits_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_visits_update_guard` BEFORE UPDATE ON `crm_visits` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.user_id <=> OLD.user_id AND
+    NEW.work_session_id <=> OLD.work_session_id AND
+    NEW.customer_stage_at_visit <=> OLD.customer_stage_at_visit AND
+    NEW.lat <=> OLD.lat AND
+    NEW.lng <=> OLD.lng AND
+    NEW.accuracy_m <=> OLD.accuracy_m AND
+    NEW.distance_to_customer_m <=> OLD.distance_to_customer_m AND
+    NEW.outcome_reason_code_id <=> OLD.outcome_reason_code_id AND
+    NEW.notes <=> OLD.notes AND
+    NEW.next_action_at <=> OLD.next_action_at AND
+    NEW.next_action_note <=> OLD.next_action_note AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_visits : visite non modifiable ; l''annuler et en saisir une nouvelle (BR-CRM-016).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_crm_visits_no_delete` BEFORE DELETE ON `crm_visits` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'crm_visits : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `fieldwork_geo_checkins`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `fieldwork_geo_checkins` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `checkin_type` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `declared_zone_id` binary(16) NOT NULL,
+  `lat` decimal(9,6) DEFAULT NULL,
+  `lng` decimal(9,6) DEFAULT NULL,
+  `accuracy_m` decimal(8,1) DEFAULT NULL,
+  `geofence_lat` decimal(9,6) DEFAULT NULL,
+  `geofence_lng` decimal(9,6) DEFAULT NULL,
+  `geofence_radius_m` decimal(8,1) DEFAULT NULL,
+  `max_accuracy_m` decimal(8,1) DEFAULT NULL,
+  `distance_m` decimal(8,1) DEFAULT NULL,
+  `client_result` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `server_result` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `result_divergence` tinyint(1) NOT NULL DEFAULT '0',
+  `work_session_id` binary(16) DEFAULT NULL,
+  `suspicion_flags` json NOT NULL DEFAULT (json_array()),
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_fieldwork_geo_checkins_command` (`command_id`),
+  KEY `ix_fieldwork_geo_checkins_user_occurred` (`user_id`,`occurred_at`),
+  KEY `ix_fieldwork_geo_checkins_session` (`work_session_id`),
+  KEY `fk_fieldwork_geo_checkins_zone` (`declared_zone_id`),
+  KEY `fk_fieldwork_geo_checkins_created_device` (`created_device_id`),
+  KEY `fk_fieldwork_geo_checkins_created_by` (`created_by`),
+  CONSTRAINT `fk_fieldwork_geo_checkins_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_geo_checkins_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_geo_checkins_session` FOREIGN KEY (`work_session_id`) REFERENCES `fieldwork_work_sessions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_geo_checkins_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_geo_checkins_zone` FOREIGN KEY (`declared_zone_id`) REFERENCES `organization_zones` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_fieldwork_geo_checkins_client_result` CHECK ((`client_result` in (_utf8mb4'ACCEPTED',_utf8mb4'REJECTED_OUT_OF_ZONE',_utf8mb4'REJECTED_LOW_ACCURACY',_utf8mb4'NO_POSITION'))),
+  CONSTRAINT `ck_fieldwork_geo_checkins_no_position` CHECK (((`server_result` <> _utf8mb4'NO_POSITION') or (`lat` is null))),
+  CONSTRAINT `ck_fieldwork_geo_checkins_position` CHECK ((((`lat` is null) and (`lng` is null)) or ((`lat` is not null) and (`lng` is not null)))),
+  CONSTRAINT `ck_fieldwork_geo_checkins_ranges` CHECK ((((`lat` is null) or (`lat` between -(90) and 90)) and ((`lng` is null) or (`lng` between -(180) and 180)) and ((`accuracy_m` is null) or (`accuracy_m` >= 0)))),
+  CONSTRAINT `ck_fieldwork_geo_checkins_server_result` CHECK ((`server_result` in (_utf8mb4'ACCEPTED',_utf8mb4'REJECTED_OUT_OF_ZONE',_utf8mb4'REJECTED_LOW_ACCURACY',_utf8mb4'NO_POSITION',_utf8mb4'ZONE_INACTIVE'))),
+  CONSTRAINT `ck_fieldwork_geo_checkins_type` CHECK ((`checkin_type` in (_utf8mb4'START_SERVICE',_utf8mb4'END_SERVICE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_fieldwork_geo_checkins_no_update` BEFORE UPDATE ON `fieldwork_geo_checkins` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fieldwork_geo_checkins : tentative de pointage immuable (INV-TER-02).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_fieldwork_geo_checkins_no_delete` BEFORE DELETE ON `fieldwork_geo_checkins` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fieldwork_geo_checkins : suppression physique interdite (INV-TER-02, INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `fieldwork_work_sessions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `fieldwork_work_sessions` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `device_id` binary(16) NOT NULL,
+  `declared_zone_id` binary(16) NOT NULL,
+  `started_at` datetime(6) NOT NULL,
+  `start_checkin_id` binary(16) NOT NULL,
+  `ended_at` datetime(6) DEFAULT NULL,
+  `end_checkin_id` binary(16) DEFAULT NULL,
+  `status` varchar(12) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `close_cause` varchar(12) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `override_status` varchar(12) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'NOT_REQUIRED',
+  `override_reason` text COLLATE utf8mb4_0900_as_cs,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `open_user_key` binary(16) GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'OPEN') then `user_id` end)) STORED,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_fieldwork_work_sessions_open_user` (`open_user_key`),
+  UNIQUE KEY `uq_fieldwork_work_sessions_command` (`command_id`),
+  KEY `ix_fieldwork_work_sessions_user_started` (`user_id`,`started_at`),
+  KEY `fk_fieldwork_work_sessions_device` (`device_id`),
+  KEY `fk_fieldwork_work_sessions_zone` (`declared_zone_id`),
+  KEY `fk_fieldwork_work_sessions_approval` (`approval_request_id`),
+  KEY `fk_fieldwork_work_sessions_created_device` (`created_device_id`),
+  KEY `fk_fieldwork_work_sessions_created_by` (`created_by`),
+  KEY `fk_fieldwork_work_sessions_updated_by` (`updated_by`),
+  CONSTRAINT `fk_fieldwork_work_sessions_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_fieldwork_work_sessions_zone` FOREIGN KEY (`declared_zone_id`) REFERENCES `organization_zones` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_fieldwork_work_sessions_close_cause` CHECK (((`close_cause` is null) or (`close_cause` in (_utf8mb4'END_SERVICE',_utf8mb4'SUPERSEDED',_utf8mb4'AUTO_2359',_utf8mb4'FORCED')))),
+  CONSTRAINT `ck_fieldwork_work_sessions_lifecycle` CHECK ((((`status` = _utf8mb4'OPEN') and (`ended_at` is null) and (`close_cause` is null) and (`end_checkin_id` is null)) or ((`status` <> _utf8mb4'OPEN') and (`ended_at` is not null) and (`close_cause` is not null)))),
+  CONSTRAINT `ck_fieldwork_work_sessions_override` CHECK ((`override_status` in (_utf8mb4'NOT_REQUIRED',_utf8mb4'PENDING',_utf8mb4'APPROVED',_utf8mb4'REJECTED'))),
+  CONSTRAINT `ck_fieldwork_work_sessions_period` CHECK (((`ended_at` is null) or (`ended_at` >= `started_at`))),
+  CONSTRAINT `ck_fieldwork_work_sessions_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'CLOSED',_utf8mb4'AUTO_CLOSED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_fieldwork_work_sessions_update_guard` BEFORE UPDATE ON `fieldwork_work_sessions` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.user_id <=> OLD.user_id AND
+    NEW.device_id <=> OLD.device_id AND
+    NEW.declared_zone_id <=> OLD.declared_zone_id AND
+    NEW.started_at <=> OLD.started_at AND
+    NEW.start_checkin_id <=> OLD.start_checkin_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fieldwork_work_sessions : seules la clôture et la dérogation sont modifiables.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_fieldwork_work_sessions_no_delete` BEFORE DELETE ON `fieldwork_work_sessions` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fieldwork_work_sessions : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `identity_auth_sessions`
 --
 
@@ -3259,5 +4263,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260927090300'),
   ('20260927090400'),
   ('20260928090000'),
-  ('20260929090000');
+  ('20260929090000'),
+  ('20260930090000'),
+  ('20260930090100');
 UNLOCK TABLES;

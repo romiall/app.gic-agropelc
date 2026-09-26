@@ -22,6 +22,7 @@ import {
 } from '../seeds/rbac-data.js';
 import { VIRTUAL_LOCATIONS } from '../seeds/virtual-locations.js';
 import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
+import { LEAD_SOURCES, PIPELINE_STEPS } from '../seeds/crm-references.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -78,6 +79,21 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     );
     expect((locations as unknown as { c: number }).c).toBe(VIRTUAL_LOCATIONS.length);
     expect(VIRTUAL_LOCATIONS.length).toBe(9);
+  });
+
+  it('crée les référentiels CRM par défaut (AV-011, AV-018), KOMMO en source système', async () => {
+    // Filtré par code : les tests serveur créent aussi leurs propres étapes et sources.
+    const [steps] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT code FROM crm_pipeline_steps WHERE code IN (?) AND is_active = TRUE',
+      [PIPELINE_STEPS.map((s) => s.code)],
+    );
+    expect(steps).toHaveLength(PIPELINE_STEPS.length);
+    const [sources] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT code, is_system FROM crm_lead_sources WHERE code IN (?)',
+      [LEAD_SOURCES.map((s) => s.code)],
+    );
+    expect(sources).toHaveLength(LEAD_SOURCES.length);
+    expect(sources.find((s) => s.code === 'KOMMO')?.is_system).toBe(1);
   });
 
   it('crée au moins les paramètres système par défaut documentés', async () => {

@@ -13,6 +13,7 @@ import mysql from 'mysql2/promise';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
 import { SYSTEM_SETTINGS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
+import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -189,6 +190,31 @@ async function seedSystemSettings(conn: mysql.Connection, systemUserId: Buffer):
   );
 }
 
+/** Référentiels CRM (P3-02) : insertion des seuls codes absents (crm-references.ts). */
+async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): Promise<void> {
+  const tables = [
+    { table: 'crm_pipeline_steps', rows: PIPELINE_STEPS },
+    { table: 'crm_lead_sources', rows: LEAD_SOURCES },
+  ] as const;
+  for (const { table, rows } of tables) {
+    let inserted = 0;
+    for (const row of rows) {
+      const [existing] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT id FROM ${table} WHERE code = ?`,
+        [row.code],
+      );
+      if (existing.length > 0) continue;
+      await conn.query(
+        `INSERT INTO ${table} (id, code, label, sort_order, is_active, is_system, created_by)
+         VALUES (?, ?, ?, ?, TRUE, ?, ?)`,
+        [randomId(), row.code, row.label, row.sortOrder, row.isSystem, systemUserId],
+      );
+      inserted++;
+    }
+    console.log(`  + ${table} (${inserted} nouveau(x) code(s) sur ${rows.length})`);
+  }
+}
+
 async function main(): Promise<void> {
   const conn = await mysql.createConnection(DATABASE_URL!);
   try {
@@ -199,6 +225,7 @@ async function main(): Promise<void> {
     await seedRolePermissions(conn, roleIds, systemUserId);
     await seedVirtualLocations(conn, systemUserId);
     await seedSystemSettings(conn, systemUserId);
+    await seedCrmReferences(conn, systemUserId);
     console.log('Terminé.');
   } finally {
     await conn.end();

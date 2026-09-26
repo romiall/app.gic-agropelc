@@ -51,16 +51,18 @@
 | `conversion_reverted` | boolean | Non | false | BR-CRM-011 / D02 §11 |
 | `lost_reason_code_id` | uuid → catalog.reason_codes | Oui | — | Requis si `LOST` |
 | `merged_into_id` | uuid → customers | Oui | — | Requis si `MERGED` |
+| `duplicate_of_id` | uuid → customers | Oui | — | DÉDUIT (P3-02) : prospect créé hors ligne avec le téléphone d'un compte existant — fait accompli enregistré (BR-SYN-007), rattaché au compte existant et exclu de l'unicité du téléphone jusqu'à la fusion (conflit `DUPLICATE_CUSTOMER`, BR-CRM-006) |
 | `credit_allowed` | boolean | Non | false | AV-028 |
 | `credit_limit_xaf` | money_xaf | Oui | — | |
 | `payment_terms_days` | smallint | Oui | — | Défaut : paramètre système |
 | `last_sale_at` | ts | Oui | — | Dénormalisé (actif / inactif, KPI) |
+| `field_versions` | json | Non | `{}` | DÉDUIT (P3-02), donnée technique : dernière écriture (`version`, `occurred_at`) de chaque champ modifiable, pour la fusion champ par champ d'un compte modifié sur deux appareils (matrice des conflits ; `mergeFieldPatch`, `packages/domain`) |
 | `kommo_contact_ref` | — | — | — | *(absent : dans `integrations.external_links`)* |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **FK** vers les référentiels, zones, utilisateurs et sites.
-- **UQ** `phone_primary` parmi `stage <> 'MERGED'` (INV-CRM-03) ; `command_id`.
+- **UQ** `phone_primary` parmi `stage <> 'MERGED'` et hors doublons en attente de fusion (`duplicate_of_id` nul) — colonne générée `phone_key` (INV-CRM-03) ; `command_id`.
 - **CK** `phone_primary` ou (`lat`, `lng`) renseigné (BR-CRM-002) ; cohérence stade / colonnes (`LOST` ⇒ motif ; `MERGED` ⇒ `merged_into_id` ; `CUSTOMER` ⇒ `first_sale_id`).
 - **IX** `(owner_user_id)`, `(zone_id)`, `(stage)`, plein texte `ngram` sur `display_name` (recherche approchée, MySQL — ADR-023), `(acquired_by_user_id, acquired_at)`.
 - **Suppr.** `DESACTIVATION` / fusion (`MERGED`) ; pseudonymisation sur demande (données personnelles, AV-073).
@@ -103,6 +105,7 @@
 | `reason_code_id` | uuid → catalog.reason_codes | Oui | — | |
 | `cause_ref` | uuid | Oui | — | Ex. vente déclenchant la conversion |
 | `command_id` | uuid | Oui | — | |
+| `created_at` | ts | Non | `now()` | Application serveur |
 
 - **PK** `id`. **IX** `(customer_id, occurred_at)`. **Suppr.** `IMMUABLE`. **Offline** SRV.
 
@@ -210,9 +213,9 @@
 | `device_id` | uuid → identity.devices | Non | — | |
 | `declared_zone_id` | uuid → organization.zones | Non | — | |
 | `started_at` | ts | Non | — | = `occurred_at` du pointage d'ouverture |
-| `start_checkin_id` | uuid → geo_checkins | Non | — | |
+| `start_checkin_id` | uuid (réf. sans FK) | Non | — | Tentative d'ouverture. Sans clé étrangère : référence circulaire avec `geo_checkins.work_session_id`, MySQL ne différant pas la vérification des clés (la session est insérée d'abord) — vérifiée par le gestionnaire |
 | `ended_at` | ts | Oui | — | |
-| `end_checkin_id` | uuid → geo_checkins | Oui | — | |
+| `end_checkin_id` | uuid (réf. sans FK) | Oui | — | Tentative de fin (même raison) |
 | `status` | enum(`OPEN`,`CLOSED`,`AUTO_CLOSED`) | Non | `OPEN` | |
 | `close_cause` | enum(`END_SERVICE`,`SUPERSEDED`,`AUTO_2359`,`FORCED`) | Oui | — | |
 | `override_status` | enum(`NOT_REQUIRED`,`PENDING`,`APPROVED`,`REJECTED`) | Non | `NOT_REQUIRED` | |

@@ -236,6 +236,257 @@ export interface CatalogUnits {
   name: string;
 }
 
+export interface CrmCustomerAssignments {
+  active_key: Buffer | null;
+  assigned_by: Buffer;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  customer_id: Buffer;
+  id: Buffer;
+  reason: string | null;
+  user_id: Buffer;
+  valid_from: Date;
+  valid_to: Date | null;
+}
+
+export interface CrmCustomers {
+  acquired_at: Date;
+  acquired_by_user_id: Buffer;
+  address_text: string | null;
+  backdated_reason: string | null;
+  business_activity: string | null;
+  captured_offline: Generated<number>;
+  category_id: Buffer | null;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  contact_name: string | null;
+  conversion_reverted: Generated<number>;
+  converted_at: Date | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  credit_allowed: Generated<number>;
+  credit_limit_xaf: number | null;
+  customer_type: Generated<string>;
+  display_name: string;
+  duplicate_of_id: Buffer | null;
+  email: string | null;
+  field_versions: Generated<Json>;
+  first_sale_id: Buffer | null;
+  geo_accuracy_m: Decimal | null;
+  home_site_id: Buffer | null;
+  id: Buffer;
+  last_sale_at: Date | null;
+  lat: Decimal | null;
+  lng: Decimal | null;
+  lost_reason_code_id: Buffer | null;
+  merged_into_id: Buffer | null;
+  occurred_at: Date;
+  owner_user_id: Buffer | null;
+  payment_terms_days: number | null;
+  phone_key: string | null;
+  phone_primary: string | null;
+  phone_secondary: string | null;
+  pipeline_step_id: Buffer | null;
+  received_at_server: Date | null;
+  source_code: string;
+  stage: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+  zone_id: Buffer;
+}
+
+export interface CrmCustomerStageHistory {
+  actor_user_id: Buffer;
+  cause_ref: Buffer | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  customer_id: Buffer;
+  from_stage: string | null;
+  from_step_id: Buffer | null;
+  id: Buffer;
+  occurred_at: Date;
+  reason_code_id: Buffer | null;
+  to_stage: string;
+  to_step_id: Buffer | null;
+}
+
+export interface CrmInteractions {
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  channel: string;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  customer_id: Buffer;
+  direction: Generated<string>;
+  id: Buffer;
+  next_action_at: Date | null;
+  next_action_note: string | null;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  status: Generated<string>;
+  summary: string | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  user_id: Buffer;
+  version: Generated<number>;
+}
+
+export interface CrmLeadSources {
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  is_system: Generated<number>;
+  label: string;
+  sort_order: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CrmPipelineSteps {
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  is_system: Generated<number>;
+  label: string;
+  sort_order: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CrmSalesTargets {
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  metric: string;
+  period_end: Date;
+  period_start: Date;
+  product_id: Buffer | null;
+  site_id: Buffer | null;
+  status: Generated<string>;
+  target_type: string;
+  target_value: Decimal;
+  team_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  user_id: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CrmVisits {
+  accuracy_m: Decimal | null;
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  customer_id: Buffer;
+  customer_stage_at_visit: string;
+  distance_to_customer_m: Decimal | null;
+  flags: Generated<Json>;
+  id: Buffer;
+  lat: Decimal | null;
+  lng: Decimal | null;
+  next_action_at: Date | null;
+  next_action_note: string | null;
+  notes: string | null;
+  occurred_at: Date;
+  open_next_action_at: Date | null;
+  outcome_reason_code_id: Buffer;
+  received_at_server: Date | null;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  user_id: Buffer;
+  version: Generated<number>;
+  work_session_id: Buffer | null;
+}
+
+export interface FieldworkGeoCheckins {
+  accuracy_m: Decimal | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  checkin_type: string;
+  client_created_at: Date | null;
+  client_result: string;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  declared_zone_id: Buffer;
+  distance_m: Decimal | null;
+  geofence_lat: Decimal | null;
+  geofence_lng: Decimal | null;
+  geofence_radius_m: Decimal | null;
+  id: Buffer;
+  lat: Decimal | null;
+  lng: Decimal | null;
+  max_accuracy_m: Decimal | null;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  result_divergence: Generated<number>;
+  server_result: string;
+  suspicion_flags: Generated<Json>;
+  user_id: Buffer;
+  work_session_id: Buffer | null;
+}
+
+export interface FieldworkWorkSessions {
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  close_cause: string | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  declared_zone_id: Buffer;
+  device_id: Buffer;
+  end_checkin_id: Buffer | null;
+  ended_at: Date | null;
+  id: Buffer;
+  occurred_at: Date;
+  open_user_key: Buffer | null;
+  override_reason: string | null;
+  override_status: Generated<string>;
+  received_at_server: Date | null;
+  start_checkin_id: Buffer;
+  started_at: Date;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  user_id: Buffer;
+  version: Generated<number>;
+}
+
 export interface IdentityAuthSessions {
   created_at: Generated<Date>;
   device_id: Buffer;
@@ -991,6 +1242,16 @@ export interface DB {
   catalog_reason_codes: CatalogReasonCodes;
   catalog_sales_channels: CatalogSalesChannels;
   catalog_units: CatalogUnits;
+  crm_customer_assignments: CrmCustomerAssignments;
+  crm_customer_stage_history: CrmCustomerStageHistory;
+  crm_customers: CrmCustomers;
+  crm_interactions: CrmInteractions;
+  crm_lead_sources: CrmLeadSources;
+  crm_pipeline_steps: CrmPipelineSteps;
+  crm_sales_targets: CrmSalesTargets;
+  crm_visits: CrmVisits;
+  fieldwork_geo_checkins: FieldworkGeoCheckins;
+  fieldwork_work_sessions: FieldworkWorkSessions;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
