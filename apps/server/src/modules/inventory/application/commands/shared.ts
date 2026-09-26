@@ -5,7 +5,6 @@
  * plutôt qu'une API publique dédiée, `organization` n'en exposant pas encore).
  */
 import type { Transaction } from 'kysely';
-import { isClockSkewSuspect } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { toBin, fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
@@ -75,26 +74,6 @@ export async function tryRecordMove(
   }
 }
 
-export interface CommandOrigin {
-  readonly deviceId: string | null;
-  readonly receivedAt: Date;
-  readonly clockSuspect: boolean;
-}
-
-/** `[STD-ORIGIN]` : `sync_command_inbox` est déjà écrite quand le gestionnaire s'exécute
- * (command-pipeline.service.ts) — même précédent que `attachments/attachment-commands.ts`. */
-export async function loadCommandOrigin(
-  uow: Transaction<DB>,
-  commandId: string,
-): Promise<CommandOrigin> {
-  const row = await uow
-    .selectFrom('sync_command_inbox')
-    .select(['device_id', 'received_at', 'clock_skew_ms'])
-    .where('command_id', '=', toBin(commandId))
-    .executeTakeFirstOrThrow();
-  return {
-    deviceId: row.device_id ? fromBin(row.device_id) : null,
-    receivedAt: row.received_at,
-    clockSuspect: isClockSkewSuspect(row.clock_skew_ms),
-  };
-}
+/** `[STD-ORIGIN]` : lecture partagée par tous les modules (platform/sync/command-origin.ts). */
+export { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
+export type { CommandOrigin } from '../../../../platform/sync/command-origin.js';

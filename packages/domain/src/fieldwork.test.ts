@@ -6,6 +6,8 @@ import {
   evaluateCheckin,
   evaluateVisit,
   haversineDistanceM,
+  resolveSessionEnd,
+  sessionAutoCloseAt,
 } from './fieldwork.js';
 
 // Douala, carrefour Ndokoti (point de référence arbitraire des tests).
@@ -68,6 +70,78 @@ describe('canRequestOverride — BR-TER-005', () => {
   it('moins de 3 refus, ou refus trop rapprochés : refusé', () => {
     expect(canRequestOverride([at(0), at(5)], 3, 2)).toBe(false);
     expect(canRequestOverride([at(0), at(0), at(1)], 3, 2)).toBe(false);
+  });
+});
+
+describe('sessionAutoCloseAt / resolveSessionEnd — BR-TER-008, BR-TER-009 (SM-WORK-SESSION)', () => {
+  const at = (iso: string) => new Date(iso);
+
+  it('23:59 heure de Douala du jour métier de début ; dernière minute : l’heure de début', () => {
+    expect(sessionAutoCloseAt(at('2026-10-05T07:00:00Z')).toISOString()).toBe(
+      '2026-10-05T22:59:00.000Z',
+    );
+    // 23:30 à Douala (22:30 UTC) : même jour métier.
+    expect(sessionAutoCloseAt(at('2026-10-05T22:30:00Z')).toISOString()).toBe(
+      '2026-10-05T22:59:00.000Z',
+    );
+    // 00:30 à Douala le 6 (23:30 UTC le 5) : jour métier suivant.
+    expect(sessionAutoCloseAt(at('2026-10-05T23:30:00Z')).toISOString()).toBe(
+      '2026-10-06T22:59:00.000Z',
+    );
+    expect(sessionAutoCloseAt(at('2026-10-05T22:59:30Z')).toISOString()).toBe(
+      '2026-10-05T22:59:30.000Z',
+    );
+  });
+
+  it('reste ouverte tant que 23:59 n’est pas passé et qu’aucune prise ne la remplace', () => {
+    expect(
+      resolveSessionEnd({
+        startedAt: at('2026-10-05T07:00:00Z'),
+        supersededAt: null,
+        now: at('2026-10-05T20:00:00Z'),
+      }),
+    ).toBeNull();
+  });
+
+  it('remplacée le même jour : SUPERSEDED à l’heure de la nouvelle prise', () => {
+    expect(
+      resolveSessionEnd({
+        startedAt: at('2026-10-05T07:00:00Z'),
+        supersededAt: at('2026-10-05T13:00:00Z'),
+        now: at('2026-10-05T13:00:05Z'),
+      }),
+    ).toEqual({ endedAt: at('2026-10-05T13:00:00Z'), cause: 'SUPERSEDED' });
+  });
+
+  it('jour révolu : AUTO_2359, sauf remplacement antérieur à 23:59 (l’heure la plus ancienne l’emporte)', () => {
+    const startedAt = at('2026-10-05T07:00:00Z');
+    const now = at('2026-10-06T09:00:00Z');
+    expect(resolveSessionEnd({ startedAt, supersededAt: null, now })).toEqual({
+      endedAt: at('2026-10-05T22:59:00Z'),
+      cause: 'AUTO_2359',
+    });
+    expect(resolveSessionEnd({ startedAt, supersededAt: at('2026-10-06T07:00:00Z'), now })).toEqual(
+      {
+        endedAt: at('2026-10-05T22:59:00Z'),
+        cause: 'AUTO_2359',
+      },
+    );
+    expect(resolveSessionEnd({ startedAt, supersededAt: at('2026-10-05T16:00:00Z'), now })).toEqual(
+      {
+        endedAt: at('2026-10-05T16:00:00Z'),
+        cause: 'SUPERSEDED',
+      },
+    );
+  });
+
+  it('un remplacement antérieur au début (horloge incohérente) est ignoré', () => {
+    expect(
+      resolveSessionEnd({
+        startedAt: at('2026-10-05T07:00:00Z'),
+        supersededAt: at('2026-10-05T06:00:00Z'),
+        now: at('2026-10-05T08:00:00Z'),
+      }),
+    ).toBeNull();
   });
 });
 

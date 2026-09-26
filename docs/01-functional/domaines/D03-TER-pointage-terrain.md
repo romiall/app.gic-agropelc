@@ -102,3 +102,20 @@ Sessions de travail (base de rattachement des visites et ventes terrain), tentat
 | Horloge de l'appareil faussée | Le serveur compare l'écart d'horloge du lot (D14) ; au-delà du seuil, la tentative porte l'indicateur `clock_suspect`. |
 | Zone supprimée ou désactivée pendant une période hors ligne | Tentative conservée ; résultat serveur `ZONE_INACTIVE`, qui nécessite une dérogation. |
 | Commercial affecté à plusieurs zones éloignées dans la même journée | Une nouvelle prise de service dans la seconde zone clôt la première (BR-TER-009). |
+
+## 15. Choix d'implémentation (P3-03)
+
+Précisions retenues par le module `fieldwork` là où les règles ci-dessus laissent un choix ; toutes **DÉDUITES**, sans effet sur les règles confirmées.
+
+| Point | Choix | Justification |
+|---|---|---|
+| Identifiant de session (§12) | L'appareil qui obtient un résultat local `ACCEPTED` ouvre la session et la transmet (`sessionId`) ; le serveur la crée sous le **même identifiant**. | Les visites et ventes hors ligne s'y rattachent avant la synchronisation. |
+| Zone déclarée (BR-TER-006) | Une **sous-zone** d'une zone affectée est admise (ancêtres de `organization.zone_ancestors`). | Les géorepères portent souvent sur des secteurs, sous-zones de la zone d'affectation (AV-003). |
+| Précision absente | Résultat `REJECTED_LOW_ACCURACY` (`evaluateCheckin`). | Une précision inconnue ne peut pas être vérifiée (BR-TER-002). |
+| Prise tardive (INV-TER-01) | Une prise de service acceptée, antérieure à la session ouverte et synchronisée après elle, est enregistrée **déjà close** à l'heure d'ouverture de celle-ci (`SUPERSEDED`). | Au plus une session non close ; l'ordre réel des prises est respecté. |
+| Clôture de 23:59 (BR-TER-008) | Instant : 23:59:00 heure de Douala du jour métier de début (`sessionAutoCloseAt`). Une session dont ce moment est passé quand le serveur applique la commande est enregistrée `AUTO_CLOSED`, comme l'appareil hors ligne l'a fait ; entre la clôture de 23:59 et un remplacement, l'heure la plus ancienne l'emporte (`resolveSessionEnd`, `packages/domain`). La tâche `fieldwork.session.auto_close` clôt les sessions restées ouvertes. | SM-WORK-SESSION : « l'heure réelle la plus ancienne l'emporte ». |
+| Fin de service tardive | Une fin de service antérieure à une clôture déjà enregistrée (23:59 ou remplacement) la remplace (`CLOSED`, `END_SERVICE`) ; postérieure, elle est rattachée à la session sans la modifier. | Même principe. |
+| Dérogation (BR-TER-005) | Les refus comptés sont ceux du jour métier postérieurs à la dernière prise acceptée ; la session de dérogation pointe la dernière tentative refusée (`start_checkin_id`). Sans politique `CHECKIN_OVERRIDE` active : `CONTROL_POLICY_MISSING`. | La dérogation suit une série de refus ; la politique porte l'approbateur (AV-021). |
+| Rejet d'une dérogation | Les modules propriétaires des activités rattachées s'enregistrent auprès de `fieldwork` (registre `SESSION_REJECTED_LISTENERS`) pour poser l'indicateur `session_rejected`. | `fieldwork` ne peut pas écrire les tables de `crm` ni de `sales` (graphe des dépendances). |
+| Signaux de suspicion (BR-TER-010) | Calculés sur les **pointages** de l'utilisateur ; les positions des visites et ventes terrain (tables de `crm` et `sales`) ne sont pas lues ; positions d'autres jours bornées aux 90 derniers jours. | Frontières de modules ; limite à lever par écoute d'événements si le besoin se confirme. |
+| Pointage sans appareil identifié | Refusé (`DEVICE_REQUIRED`). | Une session exige son appareil (dictionnaire). |

@@ -95,6 +95,7 @@ export type {
   CheckinResult,
   CheckinEvaluation,
   CheckinSuspicionFlag,
+  SessionEndCause,
   VisitFlag,
 } from './fieldwork.js';
 export {
@@ -102,6 +103,8 @@ export {
   haversineDistanceM,
   evaluateCheckin,
   canRequestOverride,
+  sessionAutoCloseAt,
+  resolveSessionEnd,
   detectCheckinSuspicion,
   evaluateVisit,
 } from './fieldwork.js';

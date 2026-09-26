@@ -11,6 +11,8 @@ import { PricingModule } from './modules/pricing/pricing.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { InventoryJobsModule } from './modules/inventory/inventory-jobs.module.js';
 import { ProcurementModule } from './modules/procurement/procurement.module.js';
+import { FieldworkModule } from './modules/fieldwork/fieldwork.module.js';
+import { FieldworkJobsModule } from './modules/fieldwork/fieldwork-jobs.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
@@ -35,6 +37,8 @@ import { HealthController } from './health/health.controller.js';
     InventoryModule,
     InventoryJobsModule,
     ProcurementModule,
+    FieldworkModule,
+    FieldworkJobsModule,
     CommandsModule,
     ChainVerificationModule,
     AuditApiModule,

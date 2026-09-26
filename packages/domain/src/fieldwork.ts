@@ -5,6 +5,7 @@
  * entrée-sortie : l'appelant fournit le géorepère, les seuils (paramètres système, jamais codés
  * en dur — CLAUDE.md règle 8) et l'historique utile.
  */
+import { businessDayOf, businessDayStartUtc } from './business-day.js';
 import { DomainError } from './errors.js';
 import type { Geofence } from './geofence.js';
 
@@ -90,6 +91,44 @@ export function canRequestOverride(
   const times = rejectedAt.map((d) => d.getTime());
   const spanMs = Math.max(...times) - Math.min(...times);
   return spanMs >= minMinutes * 60_000;
+}
+
+/** 23 h 59 après le début du jour métier (Douala). */
+const AUTO_CLOSE_OFFSET_MS = (23 * 60 + 59) * 60_000;
+
+/**
+ * BR-TER-008 (AV-023) : instant de clôture automatique d'une session non close — 23:59 (heure de
+ * Douala) de son jour métier de début (DÉDUIT : minute exacte de la règle). Une session ouverte
+ * après 23:59 (dernière minute du jour) est close à son heure de début, jamais avant elle.
+ */
+export function sessionAutoCloseAt(startedAt: Date): Date {
+  const at = businessDayStartUtc(businessDayOf(startedAt)).getTime() + AUTO_CLOSE_OFFSET_MS;
+  return new Date(Math.max(at, startedAt.getTime()));
+}
+
+export type SessionEndCause = 'SUPERSEDED' | 'AUTO_2359';
+
+/**
+ * Fin d'une session sans fin de service (SM-WORK-SESSION) : la plus ancienne entre la prise de
+ * service qui la remplace (`supersededAt`, BR-TER-009) et la clôture de 23:59 si elle est déjà
+ * passée à `now` (BR-TER-008) — « l'heure réelle la plus ancienne l'emporte ». `null` : la session
+ * reste ouverte. Même calcul sur l'appareil (hors ligne) et sur le serveur (ADR-021).
+ */
+export function resolveSessionEnd(input: {
+  readonly startedAt: Date;
+  readonly supersededAt: Date | null;
+  readonly now: Date;
+}): { readonly endedAt: Date; readonly cause: SessionEndCause } | null {
+  const autoAt = sessionAutoCloseAt(input.startedAt);
+  const autoDue = input.now.getTime() >= autoAt.getTime();
+  const superseded =
+    input.supersededAt !== null && input.supersededAt.getTime() >= input.startedAt.getTime()
+      ? input.supersededAt
+      : null;
+  if (superseded !== null && (!autoDue || superseded.getTime() <= autoAt.getTime())) {
+    return { endedAt: superseded, cause: 'SUPERSEDED' };
+  }
+  return autoDue ? { endedAt: autoAt, cause: 'AUTO_2359' } : null;
 }
 
 export type CheckinSuspicionFlag =
