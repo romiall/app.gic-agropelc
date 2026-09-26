@@ -2,8 +2,8 @@
  * Enregistrement des gestionnaires de commande `inventory` au démarrage (même précédent
  * que `ApprovalsCommandsRegistrar`/`ProcurementCommandsRegistrar`). Contrairement à ces
  * deux-là, `inventory` a aussi besoin de `ID_GENERATOR` et `DocumentSequenceService`
- * (numérotation `TRF` des transferts, `document-sequence.service.ts`) en plus du registre
- * de décisions d'approbation (`TRANSFER_DISCREPANCY`, P2-04).
+ * (numérotation `TRF`/`PRT`, `document-sequence.service.ts`) en plus du registre de
+ * décisions d'approbation (`TRANSFER_DISCREPANCY`, `LOSS_DECLARATION`, P2-04).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import type { IdGenerator } from '@gic/domain';
@@ -18,6 +18,7 @@ import {
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
 import { registerTransferCommands } from './transfer-commands.js';
+import { registerLossCommands } from './loss-commands.js';
 
 @Injectable()
 export class InventoryCommandsRegistrar implements OnModuleInit {
@@ -31,6 +32,12 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
 
   onModuleInit(): void {
     registerTransferCommands(
+      this.registry,
+      this.decisionRegistry,
+      this.idGenerator,
+      this.documentSequences,
+    );
+    registerLossCommands(
       this.registry,
       this.decisionRegistry,
       this.idGenerator,
