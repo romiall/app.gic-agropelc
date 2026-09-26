@@ -6,6 +6,8 @@ import {
   recalculateCmup,
   roundCmupToXaf,
   selectLotsFifo,
+  stockValueXaf,
+  evaluateStockThreshold,
 } from './stock-engine.js';
 
 function domainErrorCode(fn: () => unknown): string {
@@ -103,5 +105,48 @@ describe('roundCmupToXaf — ADR-013 (demi supérieur)', () => {
     expect(roundCmupToXaf(102.31)).toBe(102);
     expect(roundCmupToXaf(102.5)).toBe(103);
     expect(roundCmupToXaf(102.49)).toBe(102);
+  });
+});
+
+describe('stockValueXaf — BR-STK-054', () => {
+  it('solde × CMUP arrondi au franc, puis montant arrondi demi supérieur', () => {
+    // CMUP 102,5 → 103 XAF ; 12,5 × 103 = 1 287,5 → 1 288.
+    expect(stockValueXaf(12.5, 102.5)).toBe(1288);
+    expect(stockValueXaf(10, 2500)).toBe(25000);
+  });
+
+  it('solde nul → 0 ; solde négatif (INV-STK-05) → valeur négative', () => {
+    expect(stockValueXaf(0, 2500)).toBe(0);
+    expect(stockValueXaf(-3, 2500)).toBe(-7500);
+  });
+});
+
+describe('evaluateStockThreshold — BR-STK-051', () => {
+  it('disponible ≥ minimum → OK ; suggestion = cible − disponible − transit entrant', () => {
+    expect(
+      evaluateStockThreshold({ available: 12, minQty: 10, targetQty: 30, inTransitIn: 5 }),
+    ).toEqual({ state: 'OK', suggestedQty: 13 });
+  });
+
+  it('0 < disponible < minimum → STOCK_LOW', () => {
+    expect(
+      evaluateStockThreshold({ available: 4, minQty: 10, targetQty: 30, inTransitIn: 0 }),
+    ).toEqual({ state: 'STOCK_LOW', suggestedQty: 26 });
+  });
+
+  it('disponible ≤ 0 → STOCK_OUT (même sous un minimum nul)', () => {
+    expect(
+      evaluateStockThreshold({ available: 0, minQty: 0, targetQty: 5, inTransitIn: 0 }).state,
+    ).toBe('STOCK_OUT');
+    expect(
+      evaluateStockThreshold({ available: -2, minQty: 10, targetQty: 30, inTransitIn: 0 }),
+    ).toEqual({ state: 'STOCK_OUT', suggestedQty: 32 });
+  });
+
+  it('transit entrant couvrant la cible → suggestion plancher 0, jamais négative', () => {
+    expect(
+      evaluateStockThreshold({ available: 20, minQty: 10, targetQty: 30, inTransitIn: 25 })
+        .suggestedQty,
+    ).toBe(0);
   });
 });

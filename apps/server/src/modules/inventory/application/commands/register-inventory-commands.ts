@@ -30,7 +30,11 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
     @Inject(APPROVAL_DECISION_HANDLER_REGISTRY)
     private readonly decisionRegistry: ApprovalDecisionHandlerRegistry,
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
-    private readonly documentSequences: DocumentSequenceService,
+    // `@Inject` explicite (comme sync.controller.ts) : sous vitest (esbuild), aucune
+    // métadonnée de décorateur n'est émise — une injection par le seul type laissait
+    // `documentSequences` à `undefined` dans l'application Nest réelle (révélé par
+    // inventory-read.e2e.test.ts, P2-05 ; les tests P2-04 construisaient le registre à la main).
+    @Inject(DocumentSequenceService) private readonly documentSequences: DocumentSequenceService,
   ) {}
 
   onModuleInit(): void {
