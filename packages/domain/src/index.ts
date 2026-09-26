@@ -1,8 +1,8 @@
 // Bibliothèque métier partagée (appareil + serveur), sans entrée-sortie — ADR-021.
 // Portée de P0-02 : identifiants, horloge, argent, quantités, jour métier, arrondis.
-// P0-11 : géorepère (organization.zones, BR-ADM-012).
-// Le moteur de prix, l'évaluation des politiques et les calculs de disponibilité
-// arrivent avec les modules qui les motivent (pricing en P1, inventory en P2).
+// P0-11 : géorepère (organization.zones, BR-ADM-012). P1 : moteur de prix (pricing-engine.ts).
+// L'évaluation des politiques et les calculs de disponibilité arrivent avec les modules qui
+// les motivent (inventory en P2).
 
 export { DomainError, assertSafeInteger } from './errors.js';
 
@@ -63,3 +63,12 @@ export type { Geofence, GeofenceInput } from './geofence.js';
 export { buildGeofence } from './geofence.js';
 
 export { CLOCK_SKEW_SUSPECT_MS, isClockSkewSuspect } from './clock-skew.js';
+
+export type {
+  PriceRule,
+  PriceContext,
+  PriceRuleStatus,
+  ResolvedPrice,
+  ResolvePriceResult,
+} from './pricing-engine.js';
+export { resolvePrice, specificityOf, findConflicts } from './pricing-engine.js';

@@ -126,6 +126,109 @@ export interface AuditAuditLog {
   user_agent: string | null;
 }
 
+export interface CatalogCustomerCategories {
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  name: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CatalogProductCategories {
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  name: string;
+  parent_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CatalogProducts {
+  base_unit_code: string;
+  category_id: Buffer;
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  expiry_tracking: Generated<number>;
+  id: Buffer;
+  is_consumable: Generated<number>;
+  is_producible: Generated<number>;
+  is_purchasable: Generated<number>;
+  is_sellable: Generated<number>;
+  lot_tracking: Generated<string>;
+  name: string;
+  pricing_mode: Generated<string>;
+  sellable_since: Date | null;
+  species: string | null;
+  status: Generated<string>;
+  stock_family: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CatalogProductStandardCosts {
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  product_id: Buffer;
+  reason: string | null;
+  unit_cost_xaf: number;
+  valid_from: Date;
+}
+
+export interface CatalogProductUnits {
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  factor_to_base: Decimal;
+  id: Buffer;
+  is_active: Generated<number>;
+  is_count_unit: Generated<number>;
+  is_purchase_unit: Generated<number>;
+  is_sales_unit: Generated<number>;
+  product_id: Buffer;
+  unit_code: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CatalogReasonCodes {
+  category: string;
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  is_active: Generated<number>;
+  label: string;
+  loss_category: string | null;
+  requires_comment: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CatalogSalesChannels {
+  code: string;
+  is_active: Generated<number>;
+  name: string;
+}
+
+export interface CatalogUnits {
+  code: string;
+  is_active: Generated<number>;
+  is_count: number;
+  name: string;
+}
+
 export interface IdentityAuthSessions {
   created_at: Generated<Date>;
   device_id: Buffer;
@@ -415,6 +518,68 @@ export interface PlatformJobs {
   status: Generated<string>;
 }
 
+export interface PricingCommercialCampaigns {
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  name: string;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  valid_from: Date;
+  valid_to: Date;
+  version: Generated<number>;
+}
+
+export interface PricingPriceRules {
+  approved_at: Date | null;
+  approved_by: Buffer | null;
+  channel_code: string | null;
+  code: string;
+  commercial_campaign_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  customer_category_id: Buffer | null;
+  id: Buffer;
+  min_quantity: Decimal | null;
+  notes: string | null;
+  pricing_unit_code: string;
+  priority: Generated<number>;
+  product_id: Buffer;
+  site_id: Buffer | null;
+  specificity: Generated<number>;
+  status: Generated<string>;
+  supersedes_rule_id: Buffer | null;
+  unit_price_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  valid_from: Date;
+  valid_to: Date | null;
+  version: Generated<number>;
+  zone_id: Buffer | null;
+}
+
+export interface ProcurementSuppliers {
+  address: string | null;
+  code: string;
+  contact_name: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  email: string | null;
+  id: Buffer;
+  name: string;
+  notes: string | null;
+  payment_terms_days: number | null;
+  phone: string | null;
+  status: Generated<string>;
+  supplied_categories: Json;
+  tax_id: string | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface SchemaMigrations {
   version: string;
 }
@@ -499,6 +664,14 @@ export interface DB {
   approvals_control_policies: ApprovalsControlPolicies;
   attachments_attachments: AttachmentsAttachments;
   audit_audit_log: AuditAuditLog;
+  catalog_customer_categories: CatalogCustomerCategories;
+  catalog_product_categories: CatalogProductCategories;
+  catalog_product_standard_costs: CatalogProductStandardCosts;
+  catalog_product_units: CatalogProductUnits;
+  catalog_products: CatalogProducts;
+  catalog_reason_codes: CatalogReasonCodes;
+  catalog_sales_channels: CatalogSalesChannels;
+  catalog_units: CatalogUnits;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
@@ -520,6 +693,9 @@ export interface DB {
   platform_event_consumer_marks: PlatformEventConsumerMarks;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
   platform_jobs: PlatformJobs;
+  pricing_commercial_campaigns: PricingCommercialCampaigns;
+  pricing_price_rules: PricingPriceRules;
+  procurement_suppliers: ProcurementSuppliers;
   schema_migrations: SchemaMigrations;
   sync_change_feed: SyncChangeFeed;
   sync_command_inbox: SyncCommandInbox;

@@ -391,6 +391,375 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `catalog_customer_categories`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_customer_categories` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_customer_categories_code` (`code`),
+  KEY `fk_catalog_customer_categories_created_by` (`created_by`),
+  KEY `fk_catalog_customer_categories_updated_by` (`updated_by`),
+  CONSTRAINT `fk_catalog_customer_categories_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_customer_categories_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_customer_categories_no_delete` BEFORE DELETE ON `catalog_customer_categories` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_customer_categories : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_product_categories`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_product_categories` (
+  `id` binary(16) NOT NULL,
+  `parent_id` binary(16) DEFAULT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_product_categories_code` (`code`),
+  KEY `ix_catalog_product_categories_parent` (`parent_id`),
+  KEY `fk_catalog_product_categories_created_by` (`created_by`),
+  KEY `fk_catalog_product_categories_updated_by` (`updated_by`),
+  CONSTRAINT `fk_catalog_product_categories_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_categories_parent` FOREIGN KEY (`parent_id`) REFERENCES `catalog_product_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_categories_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_product_categories_no_delete` BEFORE DELETE ON `catalog_product_categories` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_product_categories : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_product_standard_costs`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_product_standard_costs` (
+  `id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `unit_cost_xaf` bigint NOT NULL,
+  `valid_from` datetime(6) NOT NULL,
+  `reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_product_standard_costs_version` (`product_id`,`valid_from`),
+  KEY `fk_catalog_product_standard_costs_created_by` (`created_by`),
+  CONSTRAINT `fk_catalog_product_standard_costs_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_standard_costs_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_catalog_product_standard_costs_unit_cost` CHECK ((`unit_cost_xaf` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_product_standard_costs_no_update` BEFORE UPDATE ON `catalog_product_standard_costs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_product_standard_costs : aucune modification (versionnement) ; insérer une nouvelle version.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_product_standard_costs_no_delete` BEFORE DELETE ON `catalog_product_standard_costs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_product_standard_costs : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_product_units`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_product_units` (
+  `id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `factor_to_base` decimal(14,6) NOT NULL,
+  `is_sales_unit` tinyint(1) NOT NULL DEFAULT '0',
+  `is_purchase_unit` tinyint(1) NOT NULL DEFAULT '0',
+  `is_count_unit` tinyint(1) NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_product_units_product_unit` (`product_id`,`unit_code`),
+  KEY `fk_catalog_product_units_unit` (`unit_code`),
+  KEY `fk_catalog_product_units_created_by` (`created_by`),
+  KEY `fk_catalog_product_units_updated_by` (`updated_by`),
+  CONSTRAINT `fk_catalog_product_units_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_units_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_units_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_product_units_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_catalog_product_units_factor` CHECK ((`factor_to_base` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_product_units_no_delete` BEFORE DELETE ON `catalog_product_units` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_product_units : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_products`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_products` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `category_id` binary(16) NOT NULL,
+  `stock_family` varchar(30) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `base_unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `lot_tracking` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'NONE',
+  `expiry_tracking` tinyint(1) NOT NULL DEFAULT '0',
+  `is_sellable` tinyint(1) NOT NULL DEFAULT '0',
+  `is_purchasable` tinyint(1) NOT NULL DEFAULT '0',
+  `is_producible` tinyint(1) NOT NULL DEFAULT '0',
+  `is_consumable` tinyint(1) NOT NULL DEFAULT '0',
+  `pricing_mode` varchar(12) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PER_UNIT',
+  `species` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
+  `sellable_since` datetime(6) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_products_code` (`code`),
+  KEY `ix_catalog_products_category` (`category_id`),
+  KEY `ix_catalog_products_status_sellable` (`status`,`is_sellable`),
+  KEY `fk_catalog_products_base_unit` (`base_unit_code`),
+  KEY `fk_catalog_products_created_by` (`created_by`),
+  KEY `fk_catalog_products_updated_by` (`updated_by`),
+  CONSTRAINT `fk_catalog_products_base_unit` FOREIGN KEY (`base_unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_products_category` FOREIGN KEY (`category_id`) REFERENCES `catalog_product_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_products_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_products_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_catalog_products_lot_tracking` CHECK ((`lot_tracking` in (_utf8mb4'REQUIRED',_utf8mb4'OPTIONAL',_utf8mb4'NONE'))),
+  CONSTRAINT `ck_catalog_products_pricing_mode` CHECK ((`pricing_mode` in (_utf8mb4'PER_UNIT',_utf8mb4'PER_WEIGHT'))),
+  CONSTRAINT `ck_catalog_products_service_no_lot` CHECK (((`stock_family` <> _utf8mb4'SERVICE') or (`lot_tracking` = _utf8mb4'NONE'))),
+  CONSTRAINT `ck_catalog_products_species` CHECK (((`species` is null) or (`species` in (_utf8mb4'POULET_CHAIR',_utf8mb4'PONDEUSE',_utf8mb4'PORC')))),
+  CONSTRAINT `ck_catalog_products_species_required` CHECK (((`stock_family` <> _utf8mb4'BIOLOGIQUE') or (`species` is not null))),
+  CONSTRAINT `ck_catalog_products_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'INACTIVE'))),
+  CONSTRAINT `ck_catalog_products_stock_family` CHECK ((`stock_family` in (_utf8mb4'BIOLOGIQUE',_utf8mb4'PRODUCTION_COMMERCIALISABLE',_utf8mb4'INTRANT',_utf8mb4'MARCHANDISE',_utf8mb4'EMBALLAGE_CONSOMMABLE',_utf8mb4'SERVICE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_products_no_delete` BEFORE DELETE ON `catalog_products` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_products : suppression physique interdite (INV-GLO-03) ; utiliser status=INACTIVE.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_reason_codes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_reason_codes` (
+  `id` binary(16) NOT NULL,
+  `category` varchar(30) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `label` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `loss_category` varchar(30) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `requires_comment` tinyint(1) NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_reason_codes_category_code` (`category`,`code`),
+  KEY `fk_catalog_reason_codes_created_by` (`created_by`),
+  KEY `fk_catalog_reason_codes_updated_by` (`updated_by`),
+  CONSTRAINT `fk_catalog_reason_codes_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_catalog_reason_codes_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_catalog_reason_codes_category` CHECK ((`category` in (_utf8mb4'LOSS',_utf8mb4'REJECTION',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'CANCELLATION',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'VISIT_OUTCOME',_utf8mb4'PROSPECT_LOST',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'PRODUCTION_YIELD',_utf8mb4'CASH_VARIANCE',_utf8mb4'TRANSFER_DISCREPANCY')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_reason_codes_no_delete` BEFORE DELETE ON `catalog_reason_codes` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_reason_codes : suppression physique interdite (BR-CAT-010) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_sales_channels`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_sales_channels` (
+  `code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(60) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_sales_channels_no_delete` BEFORE DELETE ON `catalog_sales_channels` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_sales_channels : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `catalog_units`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_units` (
+  `code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(60) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `is_count` tinyint(1) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_units_no_delete` BEFORE DELETE ON `catalog_units` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_units : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `identity_auth_sessions`
 --
 
@@ -1411,6 +1780,223 @@ CREATE TABLE `platform_jobs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `pricing_commercial_campaigns`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `pricing_commercial_campaigns` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `valid_from` datetime(6) NOT NULL,
+  `valid_to` datetime(6) NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DRAFT',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_pricing_commercial_campaigns_code` (`code`),
+  KEY `fk_pricing_commercial_campaigns_created_by` (`created_by`),
+  KEY `fk_pricing_commercial_campaigns_updated_by` (`updated_by`),
+  CONSTRAINT `fk_pricing_commercial_campaigns_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_commercial_campaigns_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_pricing_commercial_campaigns_period` CHECK ((`valid_to` > `valid_from`)),
+  CONSTRAINT `ck_pricing_commercial_campaigns_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'ACTIVE',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_pricing_commercial_campaigns_no_delete` BEFORE DELETE ON `pricing_commercial_campaigns` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'pricing_commercial_campaigns : suppression physique interdite (INV-GLO-03) ; utiliser status=CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `pricing_price_rules`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `pricing_price_rules` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  `supersedes_rule_id` binary(16) DEFAULT NULL,
+  `product_id` binary(16) NOT NULL,
+  `unit_price_xaf` bigint NOT NULL,
+  `pricing_unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `zone_id` binary(16) DEFAULT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `customer_category_id` binary(16) DEFAULT NULL,
+  `channel_code` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `min_quantity` decimal(14,3) DEFAULT NULL,
+  `commercial_campaign_id` binary(16) DEFAULT NULL,
+  `priority` int NOT NULL DEFAULT '0',
+  `specificity` smallint NOT NULL DEFAULT '0',
+  `valid_from` datetime(6) NOT NULL,
+  `valid_to` datetime(6) DEFAULT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DRAFT',
+  `approved_by` binary(16) DEFAULT NULL,
+  `approved_at` datetime(6) DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_pricing_price_rules_code_version` (`code`,`version`),
+  KEY `ix_pricing_price_rules_product_status_from` (`product_id`,`status`,`valid_from`),
+  KEY `ix_pricing_price_rules_zone` (`zone_id`),
+  KEY `ix_pricing_price_rules_site` (`site_id`),
+  KEY `fk_pricing_price_rules_supersedes` (`supersedes_rule_id`),
+  KEY `fk_pricing_price_rules_pricing_unit` (`pricing_unit_code`),
+  KEY `fk_pricing_price_rules_customer_category` (`customer_category_id`),
+  KEY `fk_pricing_price_rules_channel` (`channel_code`),
+  KEY `fk_pricing_price_rules_campaign` (`commercial_campaign_id`),
+  KEY `fk_pricing_price_rules_approved_by` (`approved_by`),
+  KEY `fk_pricing_price_rules_created_by` (`created_by`),
+  KEY `fk_pricing_price_rules_updated_by` (`updated_by`),
+  CONSTRAINT `fk_pricing_price_rules_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_campaign` FOREIGN KEY (`commercial_campaign_id`) REFERENCES `pricing_commercial_campaigns` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_channel` FOREIGN KEY (`channel_code`) REFERENCES `catalog_sales_channels` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_customer_category` FOREIGN KEY (`customer_category_id`) REFERENCES `catalog_customer_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_pricing_unit` FOREIGN KEY (`pricing_unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_supersedes` FOREIGN KEY (`supersedes_rule_id`) REFERENCES `pricing_price_rules` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pricing_price_rules_zone` FOREIGN KEY (`zone_id`) REFERENCES `organization_zones` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_pricing_price_rules_approved` CHECK ((((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')) and (`approved_by` is not null) and (`approved_at` is not null)) or (`status` in (_utf8mb4'DRAFT',_utf8mb4'CANCELLED')))),
+  CONSTRAINT `ck_pricing_price_rules_min_quantity` CHECK (((`min_quantity` is null) or (`min_quantity` > 0))),
+  CONSTRAINT `ck_pricing_price_rules_period` CHECK (((`valid_to` is null) or (`valid_to` > `valid_from`))),
+  CONSTRAINT `ck_pricing_price_rules_price` CHECK ((`unit_price_xaf` > 0)),
+  CONSTRAINT `ck_pricing_price_rules_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'ACTIVE',_utf8mb4'RETIRED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_pricing_price_rules_update_guard` BEFORE UPDATE ON `pricing_price_rules` FOR EACH ROW BEGIN
+  IF OLD.status IN ('ACTIVE', 'RETIRED') THEN
+    IF NOT (
+      NEW.code <=> OLD.code AND NEW.version <=> OLD.version AND
+      NEW.supersedes_rule_id <=> OLD.supersedes_rule_id AND
+      NEW.product_id <=> OLD.product_id AND NEW.unit_price_xaf <=> OLD.unit_price_xaf AND
+      NEW.pricing_unit_code <=> OLD.pricing_unit_code AND NEW.zone_id <=> OLD.zone_id AND
+      NEW.site_id <=> OLD.site_id AND NEW.customer_category_id <=> OLD.customer_category_id AND
+      NEW.channel_code <=> OLD.channel_code AND NEW.min_quantity <=> OLD.min_quantity AND
+      NEW.commercial_campaign_id <=> OLD.commercial_campaign_id AND
+      NEW.priority <=> OLD.priority AND NEW.specificity <=> OLD.specificity AND
+      NEW.valid_from <=> OLD.valid_from AND
+      NEW.approved_by <=> OLD.approved_by AND NEW.approved_at <=> OLD.approved_at AND
+      NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by AND
+      (NEW.valid_to <=> OLD.valid_to OR (NEW.valid_to IS NOT NULL AND (OLD.valid_to IS NULL OR NEW.valid_to < OLD.valid_to)))
+    ) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'pricing_price_rules : règle active ou terminée immuable, sauf réduction de valid_to (BR-PRX-007).';
+    END IF;
+    IF NEW.status NOT IN ('ACTIVE', 'RETIRED') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'pricing_price_rules : une règle active ou terminée ne redevient jamais brouillon.';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_pricing_price_rules_no_delete` BEFORE DELETE ON `pricing_price_rules` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'pricing_price_rules : suppression physique interdite (INV-PRX-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_suppliers`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_suppliers` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `name` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `supplied_categories` json NOT NULL,
+  `contact_name` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `phone` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `email` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `address` text COLLATE utf8mb4_0900_as_cs,
+  `tax_id` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `payment_terms_days` smallint DEFAULT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_procurement_suppliers_code` (`code`),
+  KEY `fk_procurement_suppliers_created_by` (`created_by`),
+  KEY `fk_procurement_suppliers_updated_by` (`updated_by`),
+  FULLTEXT KEY `ftx_procurement_suppliers_name` (`name`) /*!50100 WITH PARSER `ngram` */ ,
+  CONSTRAINT `fk_procurement_suppliers_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_suppliers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_suppliers_payment_terms` CHECK (((`payment_terms_days` is null) or (`payment_terms_days` >= 0))),
+  CONSTRAINT `ck_procurement_suppliers_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'INACTIVE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_suppliers_no_delete` BEFORE DELETE ON `procurement_suppliers` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_suppliers : suppression physique interdite (INV-GLO-03) ; utiliser status=INACTIVE.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `schema_migrations`
 --
 
@@ -1674,7 +2260,7 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Dumping routines for database 'gic_agropelc_dev'
+-- Dumping routines for database 'gic_p1_test'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -1706,5 +2292,8 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260924120000'),
   ('20260924130000'),
   ('20260925090000'),
-  ('20260925090100');
+  ('20260925090100'),
+  ('20260926090000'),
+  ('20260926090100'),
+  ('20260926090200');
 UNLOCK TABLES;
