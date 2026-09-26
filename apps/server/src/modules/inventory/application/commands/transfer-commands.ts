@@ -16,7 +16,12 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { IdGenerator } from '@gic/domain';
-import { toBin, toBinOrNull, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  toBin,
+  toBinOrNull,
+  fromBin,
+  fromBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import {
   requestApproval,
@@ -62,7 +67,10 @@ const dispatchPayloadSchema = z
     notes: z.string().max(2000).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.transferId === undefined && (data.fromLocationId === undefined || data.toLocationId === undefined)) {
+    if (
+      data.transferId === undefined &&
+      (data.fromLocationId === undefined || data.toLocationId === undefined)
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Expédition directe (sans transferId) : fromLocationId et toLocationId requis.',
@@ -128,7 +136,11 @@ function buildTransferCommands(
   const request: CommandHandler<RequestPayload> = async (uow, envelope) => {
     const { fromLocationId, toLocationId, lines } = envelope.payload;
     if (fromLocationId === toLocationId) {
-      return { status: 'REJECTED', errorCode: 'LOCATION_INVALID', messageFr: 'Source et destination doivent différer.' };
+      return {
+        status: 'REJECTED',
+        errorCode: 'LOCATION_INVALID',
+        messageFr: 'Source et destination doivent différer.',
+      };
     }
     const occurredAt = new Date(envelope.occurred_at);
     const { siteId, codeSite } = await loadLocationSite(uow, fromLocationId);
@@ -211,12 +223,20 @@ function buildTransferCommands(
     if (!row) return notFound();
     if (row.status !== 'REQUESTED') return badStatus('REQUESTED');
     if (fromBinOrNull(row.requested_by) !== envelope.author_user_id) {
-      return { status: 'REJECTED', errorCode: 'FORBIDDEN', messageFr: 'Seul le demandeur peut annuler.' };
+      return {
+        status: 'REJECTED',
+        errorCode: 'FORBIDDEN',
+        messageFr: 'Seul le demandeur peut annuler.',
+      };
     }
 
     await uow
       .updateTable('inventory_stock_transfers')
-      .set({ status: 'CANCELLED', updated_by: toBin(envelope.author_user_id), version: sql`version + 1` })
+      .set({
+        status: 'CANCELLED',
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
       .where('id', '=', row.id)
       .execute();
     return { status: 'APPLIED' };
@@ -224,7 +244,8 @@ function buildTransferCommands(
 
   const dispatch: CommandHandler<DispatchPayload> = async (uow, envelope) => {
     const occurredAt = new Date(envelope.occurred_at);
-    const { transferId, fromLocationId, toLocationId, lines, carrierUserId, carrierName } = envelope.payload;
+    const { transferId, fromLocationId, toLocationId, lines, carrierUserId, carrierName } =
+      envelope.payload;
     const origin = await loadCommandOrigin(uow, envelope.command_id);
 
     let transfer: TransferRow;
@@ -319,13 +340,19 @@ function buildTransferCommands(
       if (transferId !== undefined && line.transferLineId !== undefined) {
         await uow
           .updateTable('inventory_stock_transfer_lines')
-          .set({ dispatched_qty_base: String(line.quantityBase), lot_id: toBinOrNull(dispatchedLotId) })
+          .set({
+            dispatched_qty_base: String(line.quantityBase),
+            lot_id: toBinOrNull(dispatchedLotId),
+          })
           .where('id', '=', toBin(line.transferLineId))
           .execute();
       } else if (transferId !== undefined) {
         await uow
           .updateTable('inventory_stock_transfer_lines')
-          .set({ dispatched_qty_base: String(line.quantityBase), lot_id: toBinOrNull(dispatchedLotId) })
+          .set({
+            dispatched_qty_base: String(line.quantityBase),
+            lot_id: toBinOrNull(dispatchedLotId),
+          })
           .where('transfer_id', '=', transfer.id)
           .where('product_id', '=', toBin(line.productId))
           .execute();
@@ -370,7 +397,11 @@ function buildTransferCommands(
         .where('transfer_id', '=', transferRow.id)
         .executeTakeFirst();
       if (!lineRow || lineRow.dispatched_qty_base === null) {
-        return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr: 'Ligne de transfert introuvable ou non expédiée.' };
+        return {
+          status: 'REJECTED',
+          errorCode: 'NOT_FOUND',
+          messageFr: 'Ligne de transfert introuvable ou non expédiée.',
+        };
       }
       const dispatchedQty = Number(lineRow.dispatched_qty_base);
       if (line.receivedQtyBase > dispatchedQty) {
@@ -460,7 +491,8 @@ function buildTransferCommands(
       return {
         status: 'REJECTED',
         errorCode: 'CONTROL_POLICY_MISSING',
-        messageFr: 'Aucune politique de contrôle TRANSFER_DISCREPANCY configurée (approvals.policy.set).',
+        messageFr:
+          'Aucune politique de contrôle TRANSFER_DISCREPANCY configurée (approvals.policy.set).',
       };
     }
     const approvalRequestId = idGenerator.newId();
@@ -494,7 +526,11 @@ function buildTransferCommands(
   const moveInternal: CommandHandler<MoveInternalPayload> = async (uow, envelope) => {
     const { fromLocationId, toLocationId, lines } = envelope.payload;
     if (fromLocationId === toLocationId) {
-      return { status: 'REJECTED', errorCode: 'LOCATION_INVALID', messageFr: 'Source et destination doivent différer.' };
+      return {
+        status: 'REJECTED',
+        errorCode: 'LOCATION_INVALID',
+        messageFr: 'Source et destination doivent différer.',
+      };
     }
     const occurredAt = new Date(envelope.occurred_at);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
@@ -595,7 +631,8 @@ function registerTransferDiscrepancyDecisionHandler(
     const toLocationId = fromBin(transferRow.to_location_id);
 
     for (const line of lines) {
-      const discrepancyQty = line.discrepancy_qty_base !== null ? Number(line.discrepancy_qty_base) : 0;
+      const discrepancyQty =
+        line.discrepancy_qty_base !== null ? Number(line.discrepancy_qty_base) : 0;
       if (discrepancyQty <= 0) continue;
       const lotId = fromBinOrNull(line.lot_id);
       const moveInput = {

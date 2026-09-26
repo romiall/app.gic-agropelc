@@ -14,7 +14,10 @@ import { registerTransferCommands } from '../src/modules/inventory/application/c
 import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
-import { recordStockMove, type RecordMoveDeps } from '../src/modules/inventory/application/public/index.js';
+import {
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../src/modules/inventory/application/public/index.js';
 import { toBin, fromBin, fromBinOrNull } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -63,11 +66,23 @@ async function insertProduct(admin: string): Promise<string> {
   const categoryId = freshUuid();
   await db
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(admin) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(admin),
+    })
     .execute();
-  const already = await db.selectFrom('catalog_units').select('code').where('code', '=', 'TETE').executeTakeFirst();
+  const already = await db
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
   if (!already) {
-    await db.insertInto('catalog_units').values({ code: 'TETE', name: 'Tête', is_count: 1 }).execute();
+    await db
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
   }
   const productId = freshUuid();
   await db
@@ -107,15 +122,24 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
     decisionRegistry = new ApprovalDecisionHandlerRegistry();
 
     const registry = new CommandHandlerRegistry();
-    registerTransferCommands(registry, decisionRegistry, idGenerator, new DocumentSequenceService());
+    registerTransferCommands(
+      registry,
+      decisionRegistry,
+      idGenerator,
+      new DocumentSequenceService(),
+    );
     registerPolicyCommands(registry);
     registerRequestCommands(registry, decisionRegistry);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    adminDevice = await db.transaction().execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
+    adminDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
     approver = await db.transaction().execute((trx) => insertTestUser(trx));
-    approverDevice = await db.transaction().execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
+    approverDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
 
     await db.transaction().execute(async (trx) => {
       const zoneId = await insertTestZone(trx, admin);
@@ -134,11 +158,22 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
       // approver : détient inventory.transfer_discrepancy.approve à la portée SITE, affecté
       // sur `siteId` — même patron que approval-commands.test.ts (BR-ADM-018).
       const approverRole = await insertTestRole(trx, approver, { allowedScopeTypes: ['SITE'] });
-      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, { maxScope: 'ALL' });
-      await grantTestPermission(trx, approverRole, 'inventory.transfer_discrepancy.approve', admin, {
-        maxScope: 'SITE',
+      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, {
+        maxScope: 'ALL',
       });
-      await assignTestRole(trx, approver, approverRole, admin, { scopeType: 'SITE', scopeSiteId: siteId });
+      await grantTestPermission(
+        trx,
+        approverRole,
+        'inventory.transfer_discrepancy.approve',
+        admin,
+        {
+          maxScope: 'SITE',
+        },
+      );
+      await assignTestRole(trx, approver, approverRole, admin, {
+        scopeType: 'SITE',
+        scopeSiteId: siteId,
+      });
     });
 
     // Politique de contrôle TRANSFER_DISCREPANCY unique pour tout ce fichier (§5, décision
@@ -178,7 +213,11 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
     transport: 'ONLINE_API' as const,
   });
 
-  async function openingBalance(productId: string, locationId: string, quantityBase: number): Promise<void> {
+  async function openingBalance(
+    productId: string,
+    locationId: string,
+    quantityBase: number,
+  ): Promise<void> {
     const opening = await db
       .selectFrom('organization_locations')
       .select('id')
@@ -251,7 +290,9 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
         aggregate_id: transferId,
         payload: {
           transferId,
-          lines: [{ transferLineId: fromBin(line.id), productId, unitCode: 'TETE', quantityBase: 40 }],
+          lines: [
+            { transferLineId: fromBin(line.id), productId, unitCode: 'TETE', quantityBase: 40 },
+          ],
         },
       }),
       adminCtx(),
@@ -469,7 +510,10 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
           command_type: 'inventory.transfer.receive',
           aggregate_type: 'STOCK_TRANSFER',
           aggregate_id: transferId,
-          payload: { transferId, lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: quantityReceived }] },
+          payload: {
+            transferId,
+            lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: quantityReceived }],
+          },
         }),
         adminCtx(),
       );
@@ -629,7 +673,10 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
           command_type: 'inventory.transfer.receive',
           aggregate_type: 'STOCK_TRANSFER',
           aggregate_id: transferId,
-          payload: { transferId, lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: 7 }] },
+          payload: {
+            transferId,
+            lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: 7 }],
+          },
         }),
         adminCtx(),
       );

@@ -24,7 +24,12 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { IdGenerator } from '@gic/domain';
-import { toBin, toBinOrNull, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  toBin,
+  toBinOrNull,
+  fromBin,
+  fromBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
 import { loadCommandOrigin, virtualLocationId, tryRecordMove } from './shared.js';
 
@@ -78,8 +83,17 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
   const deps: RecordMoveDeps = { idGenerator };
 
   const record: CommandHandler<RecordPayload> = async (uow, envelope) => {
-    const { locationId, productId, lotId, quantityBase, unitCode, quantity, costObjectType, costObjectId, costType } =
-      envelope.payload;
+    const {
+      locationId,
+      productId,
+      lotId,
+      quantityBase,
+      unitCode,
+      quantity,
+      costObjectType,
+      costObjectId,
+      costType,
+    } = envelope.payload;
     const occurredAt = new Date(envelope.occurred_at);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     const consumptionId = envelope.aggregate_id;
@@ -255,7 +269,10 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
   return { record, cancel };
 }
 
-export function registerConsumptionCommands(registry: CommandHandlerRegistry, idGenerator: IdGenerator): void {
+export function registerConsumptionCommands(
+  registry: CommandHandlerRegistry,
+  idGenerator: IdGenerator,
+): void {
   const handlers = buildConsumptionCommands(idGenerator);
   registry.register({
     commandType: 'inventory.consumption.record',

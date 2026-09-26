@@ -55,7 +55,12 @@ async function insertProduct(admin: string): Promise<string> {
   const categoryId = freshUuid();
   await db
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(admin) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(admin),
+    })
     .execute();
   const productId = freshUuid();
   await db
@@ -90,7 +95,9 @@ describe('inventory.threshold.set (P2-04)', () => {
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    adminDevice = await db.transaction().execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
+    adminDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
     await db.transaction().execute(async (trx) => {
       const zoneId = await insertTestZone(trx, admin);
       const siteId = await insertTestSite(trx, admin, zoneId);

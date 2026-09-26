@@ -15,7 +15,10 @@ import { registerCountCommands } from '../src/modules/inventory/application/comm
 import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
-import { recordStockMove, type RecordMoveDeps } from '../src/modules/inventory/application/public/index.js';
+import {
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../src/modules/inventory/application/public/index.js';
 import { toBin, fromBin, fromBinOrNull } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -62,11 +65,23 @@ async function insertProduct(admin: string): Promise<string> {
   const categoryId = freshUuid();
   await db
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(admin) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(admin),
+    })
     .execute();
-  const already = await db.selectFrom('catalog_units').select('code').where('code', '=', 'TETE').executeTakeFirst();
+  const already = await db
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
   if (!already) {
-    await db.insertInto('catalog_units').values({ code: 'TETE', name: 'Tête', is_count: 1 }).execute();
+    await db
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
   }
   const productId = freshUuid();
   await db
@@ -110,9 +125,13 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    adminDevice = await db.transaction().execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
+    adminDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
     approver = await db.transaction().execute((trx) => insertTestUser(trx));
-    approverDevice = await db.transaction().execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
+    approverDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
 
     await db.transaction().execute(async (trx) => {
       const zoneId = await insertTestZone(trx, admin);
@@ -124,9 +143,16 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       await assignTestRole(trx, admin, adminRole, admin);
 
       const approverRole = await insertTestRole(trx, approver, { allowedScopeTypes: ['SITE'] });
-      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, { maxScope: 'ALL' });
-      await grantTestPermission(trx, approverRole, 'inventory.count.approve', admin, { maxScope: 'SITE' });
-      await assignTestRole(trx, approver, approverRole, admin, { scopeType: 'SITE', scopeSiteId: siteId });
+      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, {
+        maxScope: 'ALL',
+      });
+      await grantTestPermission(trx, approverRole, 'inventory.count.approve', admin, {
+        maxScope: 'SITE',
+      });
+      await assignTestRole(trx, approver, approverRole, admin, {
+        scopeType: 'SITE',
+        scopeSiteId: siteId,
+      });
     });
   });
 
@@ -146,10 +172,17 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
   });
 
   async function newStore(): Promise<string> {
-    return db.transaction().execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'STORE' }));
+    return db
+      .transaction()
+      .execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'STORE' }));
   }
 
-  async function openingBalance(productId: string, locationId: string, quantityBase: number, unitCostXaf: number): Promise<void> {
+  async function openingBalance(
+    productId: string,
+    locationId: string,
+    quantityBase: number,
+    unitCostXaf: number,
+  ): Promise<void> {
     const opening = await db
       .selectFrom('organization_locations')
       .select('id')
@@ -197,7 +230,11 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
     return countId;
   }
 
-  async function recordLine(countId: string, productId: string, countedQtyBase: number): Promise<void> {
+  async function recordLine(
+    countId: string,
+    productId: string,
+    countedQtyBase: number,
+  ): Promise<void> {
     const result = await pipeline.handle(
       buildEnvelope(admin, {
         command_type: 'inventory.count.record_lines',
@@ -435,7 +472,11 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       expect(result.status).toBe('APPLIED');
     });
 
-    async function submitWithGap(): Promise<{ readonly countId: string; readonly locationId: string; readonly productId: string }> {
+    async function submitWithGap(): Promise<{
+      readonly countId: string;
+      readonly locationId: string;
+      readonly productId: string;
+    }> {
       const locationId = await newStore();
       const productId = await insertProduct(admin);
       await openingBalance(productId, locationId, 100, 1000);

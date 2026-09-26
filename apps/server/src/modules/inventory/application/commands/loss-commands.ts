@@ -23,7 +23,12 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { IdGenerator } from '@gic/domain';
-import { toBin, toBinOrNull, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  toBin,
+  toBinOrNull,
+  fromBin,
+  fromBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import {
@@ -62,10 +67,14 @@ const declarePayloadSchema = z
     comment: z.string().max(2000).optional(),
   })
   .superRefine((data, ctx) => {
-    if ((data.category === 'INEXPLIQUEE' || data.category === 'VOL_SUSPECTE') && !data.comment?.trim()) {
+    if (
+      (data.category === 'INEXPLIQUEE' || data.category === 'VOL_SUSPECTE') &&
+      !data.comment?.trim()
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Un commentaire est requis pour les catégories INEXPLIQUEE et VOL_SUSPECTE (CK, dictionnaire).',
+        message:
+          'Un commentaire est requis pour les catégories INEXPLIQUEE et VOL_SUSPECTE (CK, dictionnaire).',
       });
     }
     if (data.category === 'MORTALITE' && data.productionLotId === undefined) {
@@ -81,7 +90,11 @@ const withdrawPayloadSchema = z.object({ lossId: z.string().uuid() });
 type WithdrawPayload = z.infer<typeof withdrawPayloadSchema>;
 
 function notFound(): CommandHandlerOutcome {
-  return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr: 'Déclaration de perte introuvable.' };
+  return {
+    status: 'REJECTED',
+    errorCode: 'NOT_FOUND',
+    messageFr: 'Déclaration de perte introuvable.',
+  };
 }
 function badStatus(expected: string): CommandHandlerOutcome {
   return {
@@ -131,7 +144,10 @@ function buildLossCommands(
     const policy = policies[0];
     const requiresApproval = policy?.requiresApproval ?? false;
 
-    const targetLocationId = await virtualLocationId(uow, requiresApproval ? 'V_PENDING_LOSS' : 'V_LOSS');
+    const targetLocationId = await virtualLocationId(
+      uow,
+      requiresApproval ? 'V_PENDING_LOSS' : 'V_LOSS',
+    );
     const moveResult = await tryRecordMove(() =>
       recordStockMove(uow, deps, {
         productId,
@@ -219,13 +235,26 @@ function buildLossCommands(
   const withdraw: CommandHandler<WithdrawPayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_loss_declarations')
-      .select(['id', 'status', 'declared_by', 'location_id', 'product_id', 'lot_id', 'quantity_base', 'approval_request_id'])
+      .select([
+        'id',
+        'status',
+        'declared_by',
+        'location_id',
+        'product_id',
+        'lot_id',
+        'quantity_base',
+        'approval_request_id',
+      ])
       .where('id', '=', toBin(envelope.payload.lossId))
       .executeTakeFirst();
     if (!row) return notFound();
     if (row.status !== 'PENDING_APPROVAL') return badStatus('PENDING_APPROVAL');
     if (fromBinOrNull(row.declared_by) !== envelope.author_user_id) {
-      return { status: 'REJECTED', errorCode: 'FORBIDDEN', messageFr: 'Seul le déclarant peut retirer sa demande.' };
+      return {
+        status: 'REJECTED',
+        errorCode: 'FORBIDDEN',
+        messageFr: 'Seul le déclarant peut retirer sa demande.',
+      };
     }
 
     const occurredAt = new Date(envelope.occurred_at);
@@ -258,7 +287,11 @@ function buildLossCommands(
 
     await uow
       .updateTable('inventory_loss_declarations')
-      .set({ status: 'CANCELLED', updated_by: toBin(envelope.author_user_id), version: sql`version + 1` })
+      .set({
+        status: 'CANCELLED',
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
       .where('id', '=', row.id)
       .execute();
     return { status: 'APPLIED' };
@@ -276,7 +309,15 @@ function registerLossDeclarationDecisionHandler(
   decisionRegistry.register('LOSS_DECLARATION', async (uow, ctx) => {
     const row = await uow
       .selectFrom('inventory_loss_declarations')
-      .select(['id', 'location_id', 'product_id', 'lot_id', 'quantity_base', 'declared_by', 'comment'])
+      .select([
+        'id',
+        'location_id',
+        'product_id',
+        'lot_id',
+        'quantity_base',
+        'declared_by',
+        'comment',
+      ])
       .where('id', '=', toBin(ctx.subjectId))
       .executeTakeFirstOrThrow();
     const deps: RecordMoveDeps = { idGenerator };
@@ -332,7 +373,10 @@ function registerLossDeclarationDecisionHandler(
           category: 'INEXPLIQUEE',
           responsibility_user_id: row.declared_by,
           ...(needsComment
-            ? { comment: 'Perte non justifiée : reclassée INEXPLIQUEE lors de la décision (voir la demande de validation pour le motif).' }
+            ? {
+                comment:
+                  'Perte non justifiée : reclassée INEXPLIQUEE lors de la décision (voir la demande de validation pour le motif).',
+              }
             : {}),
           updated_by: toBin(ctx.decidedBy),
           version: sql`version + 1`,
@@ -350,7 +394,11 @@ function registerLossDeclarationDecisionHandler(
     });
     await uow
       .updateTable('inventory_loss_declarations')
-      .set({ status: 'REJECTED_RETURNED', updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
+      .set({
+        status: 'REJECTED_RETURNED',
+        updated_by: toBin(ctx.decidedBy),
+        version: sql`version + 1`,
+      })
       .where('id', '=', row.id)
       .execute();
   });

@@ -9,7 +9,10 @@ import { FixedClock, Uuidv7Generator, type Clock, type IdGenerator } from '@gic/
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerConsumptionCommands } from '../src/modules/inventory/application/commands/consumption-commands.js';
-import { recordStockMove, type RecordMoveDeps } from '../src/modules/inventory/application/public/index.js';
+import {
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../src/modules/inventory/application/public/index.js';
 import { toBin, fromBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   closeTestDb,
@@ -56,11 +59,23 @@ async function insertProduct(admin: string): Promise<string> {
   const categoryId = freshUuid();
   await db
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(admin) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(admin),
+    })
     .execute();
-  const already = await db.selectFrom('catalog_units').select('code').where('code', '=', 'TETE').executeTakeFirst();
+  const already = await db
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
   if (!already) {
-    await db.insertInto('catalog_units').values({ code: 'TETE', name: 'Tête', is_count: 1 }).execute();
+    await db
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
   }
   const productId = freshUuid();
   await db
@@ -98,7 +113,9 @@ describe('inventory.consumption.* (P2-04, BR-STK-036)', () => {
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    adminDevice = await db.transaction().execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
+    adminDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
 
     await db.transaction().execute(async (trx) => {
       const zoneId = await insertTestZone(trx, admin);
@@ -121,7 +138,11 @@ describe('inventory.consumption.* (P2-04, BR-STK-036)', () => {
     transport: 'ONLINE_API' as const,
   });
 
-  async function openingBalance(productId: string, locationId: string, quantityBase: number): Promise<void> {
+  async function openingBalance(
+    productId: string,
+    locationId: string,
+    quantityBase: number,
+  ): Promise<void> {
     const opening = await db
       .selectFrom('organization_locations')
       .select('id')

@@ -16,7 +16,14 @@ import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { IdGenerator } from '@gic/domain';
-import { lineAmountXaf, quantityFromDecimal, recalculateCmup, roundCmupToXaf, selectLotsFifo, xaf } from '@gic/domain';
+import {
+  lineAmountXaf,
+  quantityFromDecimal,
+  recalculateCmup,
+  roundCmupToXaf,
+  selectLotsFifo,
+  xaf,
+} from '@gic/domain';
 import { toBin, toBinOrNull, fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 
@@ -351,7 +358,12 @@ async function recordSingleMove(
 
   if (isValuationEntry) {
     const before = await currentCmup(uow, input.productId);
-    const nextCmup = recalculateCmup(before.qtyBasis, before.avgUnitCostXaf, input.quantityBase, unitCostXaf);
+    const nextCmup = recalculateCmup(
+      before.qtyBasis,
+      before.avgUnitCostXaf,
+      input.quantityBase,
+      unitCostXaf,
+    );
     await uow
       .insertInto('inventory_product_valuations')
       .values({
@@ -403,7 +415,11 @@ export async function recordStockMove(
 
   const lotRows = await uow
     .selectFrom('inventory_stock_balances')
-    .innerJoin('inventory_stock_lots', 'inventory_stock_lots.id', 'inventory_stock_balances.lot_key')
+    .innerJoin(
+      'inventory_stock_lots',
+      'inventory_stock_lots.id',
+      'inventory_stock_balances.lot_key',
+    )
     .select([
       'inventory_stock_lots.id as lot_id',
       'inventory_stock_balances.qty_on_hand as qty_on_hand',
@@ -434,7 +450,11 @@ export async function recordStockMove(
   const results: RecordedMove[] = [];
   for (const allocation of selection.allocations) {
     results.push(
-      await recordSingleMove(uow, deps, { ...input, lotId: allocation.lotId, quantityBase: allocation.quantity }),
+      await recordSingleMove(uow, deps, {
+        ...input,
+        lotId: allocation.lotId,
+        quantityBase: allocation.quantity,
+      }),
     );
   }
   if (selection.shortfall > 0) {
@@ -442,7 +462,11 @@ export async function recordStockMove(
     // (ou sans lot si aucun lot n'existait) — traçabilité statistique, pas exacte (D06 §7, L-07).
     const lastLotId = lotRows.length > 0 ? fromBin(lotRows[lotRows.length - 1]!.lot_id) : null;
     results.push(
-      await recordSingleMove(uow, deps, { ...input, lotId: lastLotId, quantityBase: selection.shortfall }),
+      await recordSingleMove(uow, deps, {
+        ...input,
+        lotId: lastLotId,
+        quantityBase: selection.shortfall,
+      }),
     );
   }
   return results;

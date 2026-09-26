@@ -14,7 +14,10 @@ import { registerLossCommands } from '../src/modules/inventory/application/comma
 import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
-import { recordStockMove, type RecordMoveDeps } from '../src/modules/inventory/application/public/index.js';
+import {
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../src/modules/inventory/application/public/index.js';
 import { toBin, fromBin, fromBinOrNull } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -63,11 +66,23 @@ async function insertProduct(admin: string): Promise<string> {
   const categoryId = freshUuid();
   await db
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(admin) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(admin),
+    })
     .execute();
-  const already = await db.selectFrom('catalog_units').select('code').where('code', '=', 'TETE').executeTakeFirst();
+  const already = await db
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
   if (!already) {
-    await db.insertInto('catalog_units').values({ code: 'TETE', name: 'Tête', is_count: 1 }).execute();
+    await db
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
   }
   const productId = freshUuid();
   await db
@@ -112,9 +127,13 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    adminDevice = await db.transaction().execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
+    adminDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, admin, { status: 'ACTIVE' }));
     approver = await db.transaction().execute((trx) => insertTestUser(trx));
-    approverDevice = await db.transaction().execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
+    approverDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, approver, { status: 'ACTIVE' }));
 
     await db.transaction().execute(async (trx) => {
       const zoneId = await insertTestZone(trx, admin);
@@ -127,9 +146,16 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
       await assignTestRole(trx, admin, adminRole, admin);
 
       const approverRole = await insertTestRole(trx, approver, { allowedScopeTypes: ['SITE'] });
-      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, { maxScope: 'ALL' });
-      await grantTestPermission(trx, approverRole, 'inventory.loss.approve', admin, { maxScope: 'SITE' });
-      await assignTestRole(trx, approver, approverRole, admin, { scopeType: 'SITE', scopeSiteId: siteId });
+      await grantTestPermission(trx, approverRole, 'approvals.request.read', admin, {
+        maxScope: 'ALL',
+      });
+      await grantTestPermission(trx, approverRole, 'inventory.loss.approve', admin, {
+        maxScope: 'SITE',
+      });
+      await assignTestRole(trx, approver, approverRole, admin, {
+        scopeType: 'SITE',
+        scopeSiteId: siteId,
+      });
     });
   });
 
@@ -148,7 +174,11 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     transport: 'ONLINE_API' as const,
   });
 
-  async function openingBalance(productId: string, locationId: string, quantityBase: number): Promise<void> {
+  async function openingBalance(
+    productId: string,
+    locationId: string,
+    quantityBase: number,
+  ): Promise<void> {
     const opening = await db
       .selectFrom('organization_locations')
       .select('id')
@@ -181,7 +211,10 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     return row ? Number(row.qty_on_hand) : 0;
   }
 
-  function declarePayload(productId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  function declarePayload(
+    productId: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
     return {
       locationId: storeA,
       productId,
@@ -236,7 +269,9 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
           code: `LOSS_${policyId.slice(-8)}`,
           operationType: 'LOSS_DECLARATION',
           requiresApproval,
-          ...(requiresApproval ? { approverPermission: 'inventory.loss.approve', approverScope: 'SITE' } : {}),
+          ...(requiresApproval
+            ? { approverPermission: 'inventory.loss.approve', approverScope: 'SITE' }
+            : {}),
         },
       }),
       adminCtx(),
@@ -460,7 +495,11 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
           command_type: 'approvals.request.reject',
           aggregate_type: 'APPROVAL_REQUEST',
           aggregate_id: requestId,
-          payload: { requestId, comment: 'Erreur de saisie : produit intact.', decisionOption: 'ERREUR_DECLARATION' },
+          payload: {
+            requestId,
+            comment: 'Erreur de saisie : produit intact.',
+            decisionOption: 'ERREUR_DECLARATION',
+          },
         }),
         approverCtx(),
       );

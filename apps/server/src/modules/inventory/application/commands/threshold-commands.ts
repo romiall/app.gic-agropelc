@@ -46,7 +46,11 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
 
   await uow
     .updateTable('inventory_stock_thresholds')
-    .set({ is_active: toDbBool(false), updated_by: toBin(envelope.author_user_id), version: sql`version + 1` })
+    .set({
+      is_active: toDbBool(false),
+      updated_by: toBin(envelope.author_user_id),
+      version: sql`version + 1`,
+    })
     .where('location_id', '=', toBin(locationId))
     .where('product_id', '=', toBin(productId))
     .where('is_active', '=', 1)

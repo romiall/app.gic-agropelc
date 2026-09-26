@@ -39,7 +39,12 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { toBin, toBinOrNull, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  toBin,
+  toBinOrNull,
+  fromBin,
+  fromBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import {
@@ -98,7 +103,12 @@ function badStatus(expected: string): CommandHandlerOutcome {
  * l'emplacement (BR-STK-042) : entrées reçues moins sorties, `occurred_at <= at`. */
 async function computeTheoreticalQtyBase(
   uow: Transaction<DB>,
-  params: { readonly locationId: string; readonly productId: string; readonly lotId: string | null; readonly at: Date },
+  params: {
+    readonly locationId: string;
+    readonly productId: string;
+    readonly lotId: string | null;
+    readonly at: Date;
+  },
 ): Promise<number> {
   const inflow = await uow
     .selectFrom('inventory_stock_moves')
@@ -138,7 +148,12 @@ async function applyLineAdjustment(
   params: {
     readonly countId: string;
     readonly locationId: string;
-    readonly line: { readonly id: Buffer; readonly product_id: Buffer; readonly lot_id: Buffer | null; readonly counted_at: Date };
+    readonly line: {
+      readonly id: Buffer;
+      readonly product_id: Buffer;
+      readonly lot_id: Buffer | null;
+      readonly counted_at: Date;
+    };
     readonly variance: number;
     readonly unitCostXaf: number;
     readonly decidedBy: string;
@@ -277,7 +292,11 @@ function buildCountCommands(
       .where('count_id', '=', row.id)
       .execute();
     if (lines.length === 0) {
-      return { status: 'REJECTED', errorCode: 'COUNT_NO_LINES', messageFr: 'Au moins une ligne comptée est requise.' };
+      return {
+        status: 'REJECTED',
+        errorCode: 'COUNT_NO_LINES',
+        messageFr: 'Au moins une ligne comptée est requise.',
+      };
     }
 
     const occurredAt = new Date(envelope.occurred_at);
@@ -321,7 +340,10 @@ function buildCountCommands(
       scopeId: null,
       at: occurredAt,
     });
-    const threshold = thresholdSetting !== undefined ? Number(thresholdSetting) : COUNT_APPROVAL_THRESHOLD_FALLBACK_XAF;
+    const threshold =
+      thresholdSetting !== undefined
+        ? Number(thresholdSetting)
+        : COUNT_APPROVAL_THRESHOLD_FALLBACK_XAF;
     const requiresApproval = absVarianceValueXaf >= threshold;
 
     if (!requiresApproval) {
@@ -358,7 +380,8 @@ function buildCountCommands(
       return {
         status: 'REJECTED',
         errorCode: 'CONTROL_POLICY_MISSING',
-        messageFr: 'Aucune politique de contrôle INVENTORY_ADJUSTMENT configurée (approvals.policy.set).',
+        messageFr:
+          'Aucune politique de contrôle INVENTORY_ADJUSTMENT configurée (approvals.policy.set).',
       };
     }
 
@@ -406,7 +429,11 @@ function buildCountCommands(
 
     await uow
       .updateTable('inventory_inventory_counts')
-      .set({ status: 'CANCELLED', updated_by: toBin(envelope.author_user_id), version: sql`version + 1` })
+      .set({
+        status: 'CANCELLED',
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
       .where('id', '=', row.id)
       .execute();
     return { status: 'APPLIED' };
@@ -451,7 +478,12 @@ function registerInventoryAdjustmentDecisionHandler(
       }
       await uow
         .updateTable('inventory_inventory_counts')
-        .set({ status: 'POSTED', posted_at: ctx.decidedAt, updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
+        .set({
+          status: 'POSTED',
+          posted_at: ctx.decidedAt,
+          updated_by: toBin(ctx.decidedBy),
+          version: sql`version + 1`,
+        })
         .where('id', '=', row.id)
         .execute();
       return;

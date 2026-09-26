@@ -37,7 +37,10 @@ const virtualLocationCache = new Map<string, string>();
 /** Emplacement virtuel (D06 §7.7) : une seule ligne par `location_type` (db/seeds/
  * virtual-locations.ts, `uq_organization_locations_active_virtual_type`) — mise en cache par
  * process, la ligne n'est jamais recréée après le seed initial. */
-export async function virtualLocationId(uow: Transaction<DB>, locationType: string): Promise<string> {
+export async function virtualLocationId(
+  uow: Transaction<DB>,
+  locationType: string,
+): Promise<string> {
   const cached = virtualLocationCache.get(locationType);
   if (cached) return cached;
   const row = await uow
@@ -63,7 +66,10 @@ export async function tryRecordMove(
     return { ok: true, moves: await fn() };
   } catch (error) {
     if (error instanceof InventoryMoveError) {
-      return { ok: false, outcome: { status: 'REJECTED', errorCode: error.code, messageFr: error.message } };
+      return {
+        ok: false,
+        outcome: { status: 'REJECTED', errorCode: error.code, messageFr: error.message },
+      };
     }
     throw error;
   }

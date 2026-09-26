@@ -32,11 +32,23 @@ async function insertProduct(
   const categoryId = freshUuid();
   await trx
     .insertInto('catalog_product_categories')
-    .values({ id: toBin(categoryId), code: `CAT-${categoryId.slice(-8)}`, name: 'Test', created_by: toBin(createdBy) })
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(createdBy),
+    })
     .execute();
-  const already = await trx.selectFrom('catalog_units').select('code').where('code', '=', 'TETE').executeTakeFirst();
+  const already = await trx
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
   if (!already) {
-    await trx.insertInto('catalog_units').values({ code: 'TETE', name: 'Tête', is_count: 1 }).execute();
+    await trx
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
   }
   const productId = freshUuid();
   await trx
@@ -290,7 +302,9 @@ describe('recordStockMove (P2-03)', () => {
   });
 
   it('sortie sans lot désigné sur un produit multi-lots -> FIFO sur plusieurs lots (BR-STK-050)', async () => {
-    const productId = await db.transaction().execute((trx) => insertProduct(trx, admin, { lotTracking: 'OPTIONAL' }));
+    const productId = await db
+      .transaction()
+      .execute((trx) => insertProduct(trx, admin, { lotTracking: 'OPTIONAL' }));
     const supplier = await virtualLocationId('V_SUPPLIER');
     const customer = await virtualLocationId('V_CUSTOMER');
 
