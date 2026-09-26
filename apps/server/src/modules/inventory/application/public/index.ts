@@ -39,6 +39,7 @@ export type {
 
 export { verifyStockLedger, rebuildStockBalances } from './ledger-reconciliation.js';
 export type {
+  LedgerScope,
   LedgerVerification,
   LedgerMismatch,
   ConservationBreach,

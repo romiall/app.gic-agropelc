@@ -37,7 +37,22 @@
 - **IX** `(entity_type, entity_id)`, `(actor_user_id, recorded_at)`, `(action, recorded_at)`, `(site_id, recorded_at)`, `(device_id, recorded_at)`.
 - **Partitionnement** mensuel par `recorded_at`.
 - **Suppr.** `IMMUABLE` (privilèges + déclencheur) ; archivage froid après 24 mois ; conservation de 10 ans (AV-074).
-- **Offline** SRV. **Intégrité** INV-AUD-01, INV-AUD-02 ; chaînage calculé sous verrou séquentiel (une file d'écriture dédiée pour préserver l'ordre).
+- **Offline** SRV. **Intégrité** INV-AUD-01, INV-AUD-02 ; chaînage calculé sous verrou séquentiel (une file d'écriture dédiée pour préserver l'ordre) — le verrou porte sur `audit.chain_head`.
+
+## audit.chain_head
+
+**Responsabilité** : tête de la chaîne d'audit (dernier `seq`, dernier `row_hash`), seul point de sérialisation du chaînage. Ajoutée en P2 : verrouiller « la dernière ligne » d'`audit_log` posait un verrou d'intervalle (InnoDB) qui interbloquait deux écritures concurrentes ; un verrou de ligne par clé primaire exacte n'en pose aucun.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | smallint | Non | — | Toujours 1 (ligne unique) |
+| `last_seq` | bigint | Non | — | `seq` de la dernière entrée écrite (0 sur une base neuve) |
+| `last_row_hash` | char(64) | Non | — | `row_hash` de cette entrée (empreinte de genèse, 64 zéros, sur une base neuve) |
+| `updated_at` | ts | Non | `now()` | |
+
+- **PK** `id`. **CK** `id = 1`.
+- **Suppr.** Jamais (ligne unique posée par la migration, mise à jour par l'écriture d'audit dans la même transaction).
+- **Offline** SRV. **Intégrité** `last_seq` = `max(audit_log.seq)` et `last_row_hash` = son `row_hash` à tout instant (mise à jour atomique avec l'insertion).
 
 ## sync.command_inbox
 

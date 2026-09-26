@@ -57,16 +57,18 @@ export async function recordAudit(
   deps: { readonly idGenerator: IdGenerator; readonly clock: Clock },
   entry: AuditEntryInput,
 ): Promise<RecordedAudit> {
-  const last = await trx
-    .selectFrom('audit_audit_log')
-    .select(['seq', 'row_hash'])
-    .orderBy('seq', 'desc')
-    .limit(1)
+  // Verrou sur la ligne unique de tête de chaîne (clé primaire exacte, aucun verrou
+  // d'intervalle) : sérialise les écritures concurrentes sans verrou mortel — voir la migration
+  // 20260929090000_create_audit_chain_head.sql. Tête absente : base non migrée, erreur franche.
+  const head = await trx
+    .selectFrom('audit_chain_head')
+    .select(['last_seq', 'last_row_hash'])
+    .where('id', '=', 1)
     .forUpdate()
-    .executeTakeFirst();
+    .executeTakeFirstOrThrow();
 
-  const nextSeq = last ? Number(last.seq) + 1 : 1;
-  const prevHash = last ? last.row_hash : GENESIS_PREV_HASH;
+  const nextSeq = Number(head.last_seq) + 1;
+  const prevHash = Number(head.last_seq) === 0 ? GENESIS_PREV_HASH : head.last_row_hash;
   const id = deps.idGenerator.newId();
   const recordedAt = deps.clock.now();
 
@@ -124,6 +126,11 @@ export async function recordAudit(
       prev_hash: prevHash,
       row_hash: rowHash,
     })
+    .execute();
+  await trx
+    .updateTable('audit_chain_head')
+    .set({ last_seq: nextSeq, last_row_hash: rowHash })
+    .where('id', '=', 1)
     .execute();
 
   return { seq: nextSeq, id, rowHash };

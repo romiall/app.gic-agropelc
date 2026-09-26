@@ -13,14 +13,14 @@ P2 n'a aucun AV **bloquant** (checklist §2). Les AV listés en prérequis reste
 | AV-035 (partiel) | Table des allocations créée (P2-02), jamais alimentée : `qty_allocated` reste à 0 jusqu'à P5 | migration `inventory_allocations` |
 | AV-036 | FIFO automatique pour une sortie sans lot (BR-STK-050) ; lot obligatoire pour un produit `REQUIRED`, interdit pour `NONE` (`LOT_REQUIRED`, `LOT_MISMATCH`, P2-07) | `record-move.ts` |
 | AV-037 | Politique active `LOSS_DECLARATION` : sa validation et sa photo requises s'appliquent ; sans politique, perte `RECORDED` directe (BR-STK-032). La `condition` (seuils par catégorie et montant) n'est pas encore évaluée — voir §4 | `loss-commands.ts` |
-| AV-038 | Deux issues de rejet (`ERREUR_DECLARATION` → retour en stock ; `PERTE_NON_JUSTIFIEE` → perte confirmée, reclassée `INEXPLIQUEE`). Responsabilité imputée **au déclarant** (l'AV propose « déclarant ou lieu »). Rejet sans option : traité comme `ERREUR_DECLARATION` (DÉDUIT : l'issue la moins pénalisante) | `loss-commands.ts` |
+| AV-038 (**TRANCHÉ** le 26/09/2026) | Deux issues de rejet (`ERREUR_DECLARATION` → retour en stock ; `PERTE_NON_JUSTIFIEE` → perte confirmée, reclassée `INEXPLIQUEE`). Responsabilité imputée **au déclarant**. Rejet sans option : traité comme `ERREUR_DECLARATION`. Comportement confirmé par le porteur du projet | `loss-commands.ts` |
 | AV-039 | Seuil de validation d'un écart d'inventaire : paramètre `inventory.count_approval_threshold_xaf` (25 000 XAF, seed), repli documenté si absent. La fréquence des inventaires reste une procédure, non contrainte | `count-commands.ts` |
 | AV-040 | Un couple (minimum, cible) par emplacement × produit, sans valeur par défaut ; versionné par désactivation | `threshold-commands.ts` |
 | AV-042 | CMUP perpétuel par produit, recalculé à chaque entrée valorisée ; un inverse reprend le coût d'origine. Coût par tête d'un lot biologique : P7 | `record-move.ts`, ADR-015 |
 | AV-081 | Aucune validation préalable : une demande est acceptée par l'expédition ; expédition directe sans demande possible | `transfer-commands.ts` |
 | AV-082 | Écart de réception = perte en transit en attente (`V_PENDING_LOSS`), validée selon la politique `TRANSFER_DISCREPANCY` (portée : site expéditeur) ; sans politique active, refus `CONTROL_POLICY_MISSING` (validation inconditionnelle, jamais sautée) ; réception supérieure à l'expédition refusée (`TRANSFER_OVER_RECEIVED`) | `transfer-commands.ts` |
 
-Un point nouveau est ouvert : **AV-094** (permission de lecture des documents de stock ; défaut `inventory.stock.read` à la portée de l'emplacement). Voir [`../A-VALIDER.md`](../A-VALIDER.md).
+Un point nouveau, **AV-094** (permission de lecture des documents de stock), a été ouvert puis **tranché** le 26/09/2026 : la lecture des pertes est réservée à l'encadrement dans son périmètre (nouvelle permission `inventory.loss.read`, 119 permissions et 491 octrois au seed), un déclarant de terrain ne lit que ses propres pertes ; les demandes de validation ne descendent hors ligne que sur l'appareil de leur demandeur. Voir [`../A-VALIDER.md`](../A-VALIDER.md).
 
 ## 2. Tests d'acceptation et invariants
 
@@ -66,7 +66,7 @@ Tests d'acceptation d'autres phases, déjà démontrables sur la part stock : AT
 Notes d'exécution :
 
 - Le MySQL de XAMPP est un MariaDB 10.4 : inutilisable (collation `utf8mb4_0900_as_cs`, `CHECK`, colonnes générées). Les tests tournent sur un MySQL Community Server 8.4 installé à part (port 3307).
-- Même limite qu'en P0 et P1 ([`07-demonstration-p0.md`](07-demonstration-p0.md) §1) : un verrou mortel InnoDB intermittent sur `record-audit.test.ts` (insertions d'audit concurrentes) a été observé une fois ; vert en relance, sans lien avec P2.
+- Le verrou mortel InnoDB intermittent sur `record-audit.test.ts` (insertions d'audit concurrentes), noté depuis P0 ([`07-demonstration-p0.md`](07-demonstration-p0.md) §1), est devenu fréquent avec la taille de la suite : sa cause était structurelle (verrou d'intervalle posé en verrouillant « la dernière ligne » du journal). Corrigé à la clôture de P2 : le chaînage se sérialise désormais sur une ligne unique `audit.chain_head` (migration `20260929090000`), sans verrou d'intervalle — en production, les commandes concurrentes ne s'interbloquent plus sur l'audit.
 
 ## 3. Ce qui est livré
 

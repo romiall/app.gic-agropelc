@@ -391,6 +391,22 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `audit_chain_head`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `audit_chain_head` (
+  `id` tinyint unsigned NOT NULL,
+  `last_seq` bigint unsigned NOT NULL,
+  `last_row_hash` char(64) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  CONSTRAINT `ck_audit_chain_head_singleton` CHECK ((`id` = 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `catalog_customer_categories`
 --
 
@@ -3242,5 +3258,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260927090200'),
   ('20260927090300'),
   ('20260927090400'),
-  ('20260928090000');
+  ('20260928090000'),
+  ('20260929090000');
 UNLOCK TABLES;

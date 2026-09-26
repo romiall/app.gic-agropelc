@@ -532,11 +532,12 @@ describe('invariants du stock (P2-07)', () => {
     const jobs = new JobHandlerRegistry();
     new LedgerReconciliationJob(jobs).onModuleInit();
     const reconcile = jobs.resolve(LEDGER_RECONCILIATION_JOB_TYPE)!;
+    // Portée limitée au produit du test : la base de test est partagée (et, en exécution
+    // parallèle, écrite par d'autres fichiers au même moment) — seul ce produit est altéré.
+    const scope = { productIds: [productId] };
+    const verify = () => db.transaction().execute((trx) => verifyStockLedger(trx, scope));
 
-    // Base de test partagée et persistante : on part d'un état réconcilié.
-    await db.transaction().execute((trx) => rebuildStockBalances(trx));
-    expect((await verifyStockLedger(db)).ok).toBe(true);
-    await db.transaction().execute((trx) => reconcile(trx, {}));
+    expect((await verify()).ok).toBe(true);
 
     // Altération directe de la projection (hors registre) : exactement ce que le job doit voir.
     await db
@@ -546,24 +547,25 @@ describe('invariants du stock (P2-07)', () => {
       .where('product_id', '=', toBin(productId))
       .execute();
 
-    const verification = await verifyStockLedger(db);
-    expect(verification.ok).toBe(false);
-    expect(verification.mismatches).toContainEqual({
-      locationId: storeA,
-      productId,
-      lotId: null,
-      projectedQty: 13,
-      ledgerQty: 8,
-    });
-    expect(verification.conservationBreaches).toContainEqual({ productId, totalQty: 5 });
-    await expect(db.transaction().execute((trx) => reconcile(trx, {}))).rejects.toThrow(
-      /LEDGER_MISMATCH/,
-    );
+    try {
+      const verification = await verify();
+      expect(verification.ok).toBe(false);
+      expect(verification.mismatches).toEqual([
+        { locationId: storeA, productId, lotId: null, projectedQty: 13, ledgerQty: 8 },
+      ]);
+      expect(verification.conservationBreaches).toEqual([{ productId, totalQty: 5 }]);
+      // Le job, lui, vérifie toute la base : il voit au moins cette altération.
+      await expect(db.transaction().execute((trx) => reconcile(trx, {}))).rejects.toThrow(
+        /LEDGER_MISMATCH/,
+      );
+    } finally {
+      // Réparation garantie, même si une assertion échoue : aucune altération ne reste en base.
+      const corrected = await db.transaction().execute((trx) => rebuildStockBalances(trx, scope));
+      expect(corrected).toBe(1);
+    }
 
-    const corrected = await db.transaction().execute((trx) => rebuildStockBalances(trx));
-    expect(corrected).toBeGreaterThanOrEqual(1);
     expect(await balanceOf(productId, storeA)).toBe(8);
-    expect((await verifyStockLedger(db)).ok).toBe(true);
+    expect((await verify()).ok).toBe(true);
     await db.transaction().execute((trx) => reconcile(trx, {}));
   });
 });

@@ -7,24 +7,34 @@
  * - `verifyStockLedger` : compare, pour chaque (emplacement, produit, lot), le solde projeté
  *   à Σ entrées − Σ sorties du registre (INV-STK-01), et vérifie la conservation par produit
  *   (INV-STK-03 : Σ des soldes sur tous les emplacements, virtuels compris, = 0). Lecture
- *   seule ; agrégation complète du registre — acceptable au volume P2 (H-06), à restreindre aux
- *   (emplacement, produit) touchés depuis la dernière vérification quand le registre grossira
- *   (stratégie stock §10).
+ *   seule, **dans une transaction** : registre et projection sont lus dans le même instantané
+ *   (REPEATABLE READ) — un mouvement valide pendant la vérification est vu des deux côtés ou
+ *   d'aucun, jamais d'un seul (sinon faux écart). Agrégation complète du registre — acceptable
+ *   au volume P2 (H-06), à restreindre aux (emplacement, produit) touchés depuis la dernière
+ *   vérification quand le registre grossira (stratégie stock §10).
  * - `rebuildStockBalances` : remet `qty_on_hand`, `value_xaf` et `last_move_at` de la projection
  *   en accord avec le registre (seule source de vérité, ADR-003), ligne par ligne, et ré-émet le
- *   jeu `stock` pour les emplacements physiques corrigés. `qty_reserved`/`qty_allocated` ne
- *   viennent pas du registre (réservations, allocations : P5) et ne sont pas touchés.
+ *   jeu `stock` pour les emplacements physiques corrigés. Verrouille **d'abord** les soldes, lit
+ *   **ensuite** le registre : un mouvement en cours attend le verrou et applique son delta après
+ *   la reconstruction, au lieu d'être écrasé par un registre lu trop tôt. `qty_reserved`/
+ *   `qty_allocated` ne viennent pas du registre (réservations, allocations : P5), non touchés.
+ *
+ * Les deux acceptent une portée facultative par produits (`productIds`) : réparation ciblée
+ * après analyse d'un écart, sans verrouiller toute la projection.
  */
-import { sql, type Kysely, type Transaction } from 'kysely';
+import { sql, type RawBuilder, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { stockBalanceChange } from '../sync-changes.js';
 
-type Executor = Kysely<DB> | Transaction<DB>;
-
 /** Tolérance d'égalité des quantités `numeric(14,3)` (un demi-millième). */
 const QTY_EPSILON = 0.0005;
+
+export interface LedgerScope {
+  /** Produits vérifiés ou reconstruits ; tous si absent. */
+  readonly productIds?: readonly string[];
+}
 
 export interface LedgerMismatch {
   readonly locationId: string;
@@ -56,14 +66,32 @@ interface LedgerRow {
   readonly last_move_at: Date | null;
 }
 
+interface BalanceRow {
+  readonly locationId: Buffer;
+  readonly productId: Buffer;
+  readonly lotKey: Buffer;
+  readonly qty: number;
+  readonly value: number;
+}
+
 const LOT_KEY_NULL = Buffer.alloc(16);
 
 function keyOf(locationId: Buffer, productId: Buffer, lotKey: Buffer): string {
   return `${locationId.toString('hex')}|${productId.toString('hex')}|${lotKey.toString('hex')}`;
 }
 
+function productFilter(scope: LedgerScope): RawBuilder<unknown> {
+  if (scope.productIds === undefined) return sql``;
+  if (scope.productIds.length === 0) return sql`WHERE FALSE`;
+  return sql`WHERE product_id IN (${sql.join(scope.productIds.map((id) => toBin(id)))})`;
+}
+
 /** Σ signée du registre par (emplacement, produit, lot) — même clé que `stock_balances`. */
-async function ledgerTotals(executor: Executor): Promise<readonly LedgerRow[]> {
+async function ledgerTotals(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+): Promise<readonly LedgerRow[]> {
+  const filter = productFilter(scope);
   const result = await sql<LedgerRow>`
     SELECT location_id, product_id, lot_key,
            SUM(delta) AS qty, SUM(value_delta) AS value_xaf, MAX(occurred_at) AS last_move_at
@@ -71,47 +99,72 @@ async function ledgerTotals(executor: Executor): Promise<readonly LedgerRow[]> {
       SELECT to_location_id AS location_id, product_id,
              COALESCE(lot_id, ${LOT_KEY_NULL}) AS lot_key,
              quantity AS delta, value_xaf AS value_delta, occurred_at
-      FROM inventory_stock_moves
+      FROM inventory_stock_moves ${filter}
       UNION ALL
       SELECT from_location_id AS location_id, product_id,
              COALESCE(lot_id, ${LOT_KEY_NULL}) AS lot_key,
              -quantity AS delta, -value_xaf AS value_delta, occurred_at
-      FROM inventory_stock_moves
+      FROM inventory_stock_moves ${filter}
     ) AS ledger
     GROUP BY location_id, product_id, lot_key
-  `.execute(executor);
+  `.execute(trx);
   return result.rows;
 }
 
-export async function verifyStockLedger(executor: Executor): Promise<LedgerVerification> {
+async function projectedBalances(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+  lock: boolean,
+): Promise<readonly BalanceRow[]> {
+  const rows = await trx
+    .selectFrom('inventory_stock_balances')
+    .select(['location_id', 'product_id', 'lot_key', 'qty_on_hand', 'value_xaf'])
+    .$if(scope.productIds !== undefined, (qb) =>
+      scope.productIds!.length === 0
+        ? qb.where(sql<boolean>`FALSE`)
+        : qb.where(
+            'product_id',
+            'in',
+            scope.productIds!.map((id) => toBin(id)),
+          ),
+    )
+    .$if(lock, (qb) => qb.forUpdate())
+    .execute();
+  return rows.map((row) => ({
+    locationId: row.location_id,
+    productId: row.product_id,
+    lotKey: row.lot_key,
+    qty: Number(row.qty_on_hand),
+    value: Number(row.value_xaf),
+  }));
+}
+
+export async function verifyStockLedger(
+  trx: Transaction<DB>,
+  scope: LedgerScope = {},
+): Promise<LedgerVerification> {
   const ledger = new Map<string, LedgerRow>();
-  for (const row of await ledgerTotals(executor)) {
+  for (const row of await ledgerTotals(trx, scope)) {
     ledger.set(keyOf(row.location_id, row.product_id, row.lot_key), row);
   }
-
-  const balances = await executor
-    .selectFrom('inventory_stock_balances')
-    .select(['location_id', 'product_id', 'lot_key', 'qty_on_hand'])
-    .execute();
+  const balances = await projectedBalances(trx, scope, false);
 
   const mismatches: LedgerMismatch[] = [];
   const seen = new Set<string>();
+  const totalByProduct = new Map<string, { productId: Buffer; total: number }>();
   for (const balance of balances) {
-    const key = keyOf(balance.location_id, balance.product_id, balance.lot_key);
+    const key = keyOf(balance.locationId, balance.productId, balance.lotKey);
     seen.add(key);
     const ledgerQty = Number(ledger.get(key)?.qty ?? 0);
-    const projectedQty = Number(balance.qty_on_hand);
-    if (Math.abs(projectedQty - ledgerQty) > QTY_EPSILON) {
+    if (Math.abs(balance.qty - ledgerQty) > QTY_EPSILON) {
       mismatches.push(
-        mismatchOf(
-          balance.location_id,
-          balance.product_id,
-          balance.lot_key,
-          projectedQty,
-          ledgerQty,
-        ),
+        mismatchOf(balance.locationId, balance.productId, balance.lotKey, balance.qty, ledgerQty),
       );
     }
+    const productKey = balance.productId.toString('hex');
+    const running = totalByProduct.get(productKey) ?? { productId: balance.productId, total: 0 };
+    running.total += balance.qty;
+    totalByProduct.set(productKey, running);
   }
   // Registre sans ligne de projection (solde jamais créé) : écart si non nul.
   for (const [key, row] of ledger) {
@@ -122,14 +175,10 @@ export async function verifyStockLedger(executor: Executor): Promise<LedgerVerif
     }
   }
 
-  const conservation = await executor
-    .selectFrom('inventory_stock_balances')
-    .select(['product_id', sql<string>`SUM(qty_on_hand)`.as('total')])
-    .groupBy('product_id')
-    .execute();
-  const conservationBreaches = conservation
-    .filter((row) => Math.abs(Number(row.total)) > QTY_EPSILON)
-    .map((row) => ({ productId: fromBin(row.product_id), totalQty: Number(row.total) }));
+  const conservationBreaches = [...totalByProduct.values()]
+    .map(({ productId, total }) => ({ productId, total: Math.round(total * 1000) / 1000 }))
+    .filter(({ total }) => Math.abs(total) > QTY_EPSILON)
+    .map(({ productId, total }) => ({ productId: fromBin(productId), totalQty: total }));
 
   return {
     ok: mismatches.length === 0 && conservationBreaches.length === 0,
@@ -158,27 +207,19 @@ function mismatchOf(
 /**
  * Reconstruit la projection depuis le registre (procédure de maintenance, jamais appelée par une
  * commande) : corrige chaque ligne en écart, crée celles qui manquent. Renvoie le nombre de
- * lignes corrigées. À exécuter dans une transaction (`uow`).
+ * lignes corrigées. Une reconstruction complète (sans `productIds`) verrouille toute la
+ * projection le temps de la transaction : à lancer hors activité, les commandes concurrentes
+ * pouvant sinon attendre ou repartir en `RETRY_LATER`.
  */
-export async function rebuildStockBalances(uow: Transaction<DB>): Promise<number> {
-  const ledger = await ledgerTotals(uow);
-  const current = new Map<
-    string,
-    { locationId: Buffer; productId: Buffer; lotKey: Buffer; qty: number; value: number }
-  >();
-  for (const row of await uow
-    .selectFrom('inventory_stock_balances')
-    .select(['location_id', 'product_id', 'lot_key', 'qty_on_hand', 'value_xaf'])
-    .forUpdate()
-    .execute()) {
-    current.set(keyOf(row.location_id, row.product_id, row.lot_key), {
-      locationId: row.location_id,
-      productId: row.product_id,
-      lotKey: row.lot_key,
-      qty: Number(row.qty_on_hand),
-      value: Number(row.value_xaf),
-    });
+export async function rebuildStockBalances(
+  uow: Transaction<DB>,
+  scope: LedgerScope = {},
+): Promise<number> {
+  const current = new Map<string, BalanceRow>();
+  for (const row of await projectedBalances(uow, scope, true)) {
+    current.set(keyOf(row.locationId, row.productId, row.lotKey), row);
   }
+  const ledger = await ledgerTotals(uow, scope);
   const ledgerKeys = new Set(
     ledger.map((row) => keyOf(row.location_id, row.product_id, row.lot_key)),
   );

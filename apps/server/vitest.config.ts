@@ -13,10 +13,13 @@ export default defineConfig({
     },
   },
   test: {
-    // Tests d'intégration contre une vraie base MySQL (DATABASE_URL) : une commande à la
-    // fois par fichier réduit le risque de verrous consultatifs concurrents sur la même
-    // ligne (chaînage d'audit, §5) pendant que la suite tourne en parallèle par fichier.
-    fileParallelism: true,
+    // Tests d'intégration contre une vraie base MySQL partagée et persistante (aucun rollback
+    // entre fichiers) : plusieurs fichiers agissent sur un état global — politiques de contrôle
+    // actives d'un type d'opération (retirées puis restaurées par certains tests), positions des
+    // consommateurs d'événements, réconciliation globale du registre de stock. En parallèle, ces
+    // fichiers s'observent mutuellement et échouent de façon intermittente sans défaut du code.
+    // Exécution séquentielle par fichier : le mode dans lequel chaque phase est vérifiée (P0 à P2).
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

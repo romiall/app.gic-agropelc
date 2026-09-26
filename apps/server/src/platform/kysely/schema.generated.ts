@@ -126,6 +126,13 @@ export interface AuditAuditLog {
   user_agent: string | null;
 }
 
+export interface AuditChainHead {
+  id: number;
+  last_row_hash: string;
+  last_seq: number;
+  updated_at: Generated<Date>;
+}
+
 export interface CatalogCustomerCategories {
   code: string;
   created_at: Generated<Date>;
@@ -975,6 +982,7 @@ export interface DB {
   approvals_control_policies: ApprovalsControlPolicies;
   attachments_attachments: AttachmentsAttachments;
   audit_audit_log: AuditAuditLog;
+  audit_chain_head: AuditChainHead;
   catalog_customer_categories: CatalogCustomerCategories;
   catalog_product_categories: CatalogProductCategories;
   catalog_product_standard_costs: CatalogProductStandardCosts;
