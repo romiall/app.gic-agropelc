@@ -6,6 +6,9 @@
 export { requestApproval } from './request-approval.js';
 export type { RequestApprovalInput } from './request-approval.js';
 
+export { cancelApprovalRequest } from './cancel-approval-request.js';
+export type { CancelApprovalRequestInput } from './cancel-approval-request.js';
+
 export { currentPolicies } from './policy-query.js';
 export type { ActiveControlPolicy } from './policy-query.js';
 

@@ -37,6 +37,7 @@ export const MOVE_TYPES = [
   'LOSS_CONFIRMATION',
   'LOSS_RELEASE',
   'CONSUMPTION',
+  'CONSUMPTION_REVERSAL',
   'PRODUCTION_OUTPUT',
   'PRODUCTION_INPUT',
   'INVENTORY_GAIN',
@@ -73,6 +74,7 @@ const MOVE_TYPE_ENDPOINTS: Record<MoveType, { from: string; to: string }> = {
   LOSS_CONFIRMATION: { from: 'V_PENDING_LOSS', to: 'V_LOSS' },
   LOSS_RELEASE: { from: 'V_PENDING_LOSS', to: 'PHYSICAL' },
   CONSUMPTION: { from: 'PHYSICAL', to: 'V_CONSUMPTION' },
+  CONSUMPTION_REVERSAL: { from: 'V_CONSUMPTION', to: 'PHYSICAL' },
   PRODUCTION_OUTPUT: { from: 'V_PRODUCTION', to: 'PHYSICAL' },
   PRODUCTION_INPUT: { from: 'PHYSICAL', to: 'V_PRODUCTION' },
   INVENTORY_GAIN: { from: 'V_ADJUSTMENT', to: 'PHYSICAL' },
@@ -119,6 +121,14 @@ export interface RecordMoveInput {
   readonly capturedOffline?: boolean;
   /** BR-STK-017/018 : hors ligne, un fait physique est toujours appliqué, même si le solde devient négatif. */
   readonly allowNegative: boolean;
+  /**
+   * Mouvement inverse (BR-STK-002) : identifiant du mouvement corrigé. `unit_cost_xaf` reprend
+   * alors obligatoirement celui du mouvement d'origine (BR-STK-052), jamais le CMUP courant —
+   * fournir aussi `reversedUnitCostXaf`. N'est pas une entrée valorisée (pas de recalcul CMUP),
+   * même si le mouvement d'origine en était une.
+   */
+  readonly reversesMoveId?: string;
+  readonly reversedUnitCostXaf?: number;
 }
 
 export interface RecordedMove {
@@ -260,9 +270,18 @@ async function recordSingleMove(
     throw new InventoryMoveError('Source et destination doivent différer.', 'LOCATION_INVALID');
   }
 
-  const isValuationEntry = VALUATION_ENTRY_MOVE_TYPES.has(input.moveType);
+  const isReversal = input.reversesMoveId !== undefined;
+  const isValuationEntry = !isReversal && VALUATION_ENTRY_MOVE_TYPES.has(input.moveType);
   let unitCostXaf: number;
-  if (isValuationEntry) {
+  if (isReversal) {
+    if (input.reversedUnitCostXaf === undefined) {
+      throw new InventoryMoveError(
+        'Le coût du mouvement d’origine est requis pour un mouvement inverse (BR-STK-052).',
+        'UNIT_COST_REQUIRED',
+      );
+    }
+    unitCostXaf = input.reversedUnitCostXaf;
+  } else if (isValuationEntry) {
     if (input.declaredUnitCostXaf === undefined) {
       throw new InventoryMoveError(
         'Un coût unitaire déclaré est requis pour une entrée valorisée.',
@@ -300,7 +319,8 @@ async function recordSingleMove(
       source_line_id: toBinOrNull(input.sourceLineId ?? null),
       cost_object_type: input.costObjectType ?? null,
       cost_object_id: toBinOrNull(input.costObjectId ?? null),
-      is_reversal: toDbBool(false),
+      is_reversal: toDbBool(isReversal),
+      reverses_move_id: toBinOrNull(input.reversesMoveId ?? null),
       created_by: toBin(input.createdBy),
       created_device_id: toBinOrNull(input.createdDeviceId ?? null),
       command_id: toBinOrNull(input.commandId ?? null),
