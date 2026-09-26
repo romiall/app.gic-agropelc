@@ -4,5 +4,6 @@ export {
   listUnits,
   listReasonCodes,
   findProductForPricing,
+  findProductLotTracking,
 } from './catalog-query.js';
 export type { ProductSummary, UnitSummary, ReasonCodeSummary } from './catalog-query.js';

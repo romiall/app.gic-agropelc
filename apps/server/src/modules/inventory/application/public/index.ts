@@ -37,6 +37,13 @@ export type {
   StockMovesCursor,
 } from './stock-query.js';
 
+export { verifyStockLedger, rebuildStockBalances } from './ledger-reconciliation.js';
+export type {
+  LedgerVerification,
+  LedgerMismatch,
+  ConservationBreach,
+} from './ledger-reconciliation.js';
+
 export {
   listTransfers,
   getTransfer,

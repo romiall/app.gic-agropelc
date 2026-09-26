@@ -351,6 +351,9 @@ export interface StockMoveEntry {
   readonly isReversal: boolean;
   readonly reversesMoveId: string | null;
   readonly createdBy: string;
+  /** AT-043 : remonter jusqu'aux auteurs **et appareils** (nul pour un mouvement serveur). */
+  readonly createdDeviceId: string | null;
+  readonly commandId: string | null;
   readonly capturedOffline: boolean;
 }
 
@@ -444,6 +447,8 @@ export async function listStockMoves(
       isReversal: Boolean(row.is_reversal),
       reversesMoveId: fromBinOrNull(row.reverses_move_id),
       createdBy: fromBin(row.created_by),
+      createdDeviceId: fromBinOrNull(row.created_device_id),
+      commandId: fromBinOrNull(row.command_id),
       capturedOffline: Boolean(row.captured_offline),
     };
   });

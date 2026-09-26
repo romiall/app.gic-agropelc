@@ -24,7 +24,13 @@ import {
   selectLotsFifo,
   xaf,
 } from '@gic/domain';
-import { toBin, toBinOrNull, fromBin } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  toBin,
+  toBinOrNull,
+  fromBin,
+  fromBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
+import { findProductLotTracking } from '../../../catalog/application/public/index.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { stockBalanceChange } from '../sync-changes.js';
@@ -132,11 +138,12 @@ export interface RecordMoveInput {
   readonly allowNegative: boolean;
   /**
    * Mouvement inverse (BR-STK-002) : identifiant du mouvement corrigé. `unit_cost_xaf` reprend
-   * alors obligatoirement celui du mouvement d'origine (BR-STK-052), jamais le CMUP courant —
-   * fournir aussi `reversedUnitCostXaf`. N'est pas une entrée valorisée (pas de recalcul CMUP),
-   * même si le mouvement d'origine en était une.
+   * alors celui du mouvement d'origine, lu en base (BR-STK-052), jamais le CMUP courant ; même
+   * produit, lot et quantité, extrémités échangées (INV-STK-04, `checkReversal`). N'est pas
+   * une entrée valorisée (pas de recalcul CMUP), même si le mouvement d'origine en était une.
    */
   readonly reversesMoveId?: string;
+  /** Facultatif : s'il est fourni, doit égaler le coût du mouvement d'origine. */
   readonly reversedUnitCostXaf?: number;
 }
 
@@ -253,6 +260,105 @@ async function upsertBalance(
 }
 
 /**
+ * BR-STK-050, INV-STK-13 (D06 §8 : `LOT_REQUIRED`, `LOT_MISMATCH`) : produit `REQUIRED` ⇒ lot
+ * porté ; produit `NONE` ⇒ jamais de lot ; un lot porté existe et appartient au produit (ou
+ * couvre plusieurs produits : `stock_lots.product_id` nul). Exception assumée (DÉDUIT) : un fait
+ * hors ligne (`allowNegative`) sans lot résoluble — sortie d'un produit `REQUIRED` sans aucun
+ * lot en solde — est appliqué sans lot plutôt que rejeté (BR-SYN-007, INV-STK-05 priment : le
+ * fait physique existe) ; la traçabilité de ce mouvement reste alors statistique.
+ */
+async function checkLot(uow: Transaction<DB>, input: SingleMoveInput): Promise<void> {
+  const tracking = await findProductLotTracking(uow, input.productId);
+  if (tracking === undefined) {
+    throw new InventoryMoveError('Produit introuvable.', 'PRODUCT_INVALID');
+  }
+  if (input.lotId === null) {
+    if (tracking === 'REQUIRED' && !input.allowNegative) {
+      throw new InventoryMoveError(
+        'Ce produit est suivi par lot : le lot est obligatoire (BR-STK-050).',
+        'LOT_REQUIRED',
+      );
+    }
+    return;
+  }
+  if (tracking === 'NONE') {
+    throw new InventoryMoveError(
+      'Ce produit n’est pas suivi par lot : aucun lot ne peut être porté (BR-STK-050).',
+      'LOT_MISMATCH',
+    );
+  }
+  const lot = await uow
+    .selectFrom('inventory_stock_lots')
+    .select('product_id')
+    .where('id', '=', toBin(input.lotId))
+    .executeTakeFirst();
+  if (!lot || (lot.product_id !== null && fromBin(lot.product_id) !== input.productId)) {
+    throw new InventoryMoveError('Lot inconnu ou d’un autre produit.', 'LOT_MISMATCH');
+  }
+}
+
+/**
+ * INV-STK-04 : un inverse porte le même produit, le même lot et la même quantité que le
+ * mouvement d'origine, en échange sa source et sa destination, et ne peut exister qu'une fois
+ * (`UNIQUE (reverses_move_id)` en base — vérifié ici d'abord pour renvoyer une erreur métier
+ * plutôt qu'une violation de contrainte). Renvoie le coût du mouvement d'origine (BR-STK-052) :
+ * lu en base, jamais pris de l'appelant (`reversedUnitCostXaf`, s'il est fourni, doit concorder).
+ */
+async function checkReversal(
+  uow: Transaction<DB>,
+  input: SingleMoveInput,
+  reversesMoveId: string,
+): Promise<number> {
+  const original = await uow
+    .selectFrom('inventory_stock_moves')
+    .select([
+      'product_id',
+      'lot_id',
+      'quantity',
+      'from_location_id',
+      'to_location_id',
+      'unit_cost_xaf',
+    ])
+    .where('id', '=', toBin(reversesMoveId))
+    .executeTakeFirst();
+  if (!original) {
+    throw new InventoryMoveError('Mouvement d’origine introuvable.', 'REVERSAL_INVALID');
+  }
+  const sameLot = (fromBinOrNull(original.lot_id) ?? null) === (input.lotId ?? null);
+  const sameQuantity = Math.abs(Number(original.quantity) - input.quantityBase) < 0.0005;
+  const swapped =
+    fromBin(original.from_location_id) === input.toLocationId &&
+    fromBin(original.to_location_id) === input.fromLocationId;
+  if (fromBin(original.product_id) !== input.productId || !sameLot || !sameQuantity || !swapped) {
+    throw new InventoryMoveError(
+      'Un inverse porte le même produit, lot et quantité, source et destination échangées (INV-STK-04).',
+      'REVERSAL_INVALID',
+    );
+  }
+  if (
+    input.reversedUnitCostXaf !== undefined &&
+    input.reversedUnitCostXaf !== original.unit_cost_xaf
+  ) {
+    throw new InventoryMoveError(
+      'Le coût d’un inverse est celui du mouvement d’origine (BR-STK-052).',
+      'REVERSAL_INVALID',
+    );
+  }
+  const alreadyReversed = await uow
+    .selectFrom('inventory_stock_moves')
+    .select('id')
+    .where('reverses_move_id', '=', toBin(reversesMoveId))
+    .executeTakeFirst();
+  if (alreadyReversed) {
+    throw new InventoryMoveError(
+      'Ce mouvement a déjà été inversé (INV-STK-04).',
+      'REVERSAL_INVALID',
+    );
+  }
+  return original.unit_cost_xaf;
+}
+
+/**
  * Enregistre un mouvement pour une quantité déjà résolue sur un lot précis (ou aucun lot).
  * Usage interne de `recordStockMove` (résolution FIFO) et direct quand l'appelant connaît
  * déjà le lot exact (ex. réception avec lot fournisseur).
@@ -278,18 +384,13 @@ async function recordSingleMove(
   if (input.fromLocationId === input.toLocationId) {
     throw new InventoryMoveError('Source et destination doivent différer.', 'LOCATION_INVALID');
   }
+  await checkLot(uow, input);
 
   const isReversal = input.reversesMoveId !== undefined;
   const isValuationEntry = !isReversal && VALUATION_ENTRY_MOVE_TYPES.has(input.moveType);
   let unitCostXaf: number;
   if (isReversal) {
-    if (input.reversedUnitCostXaf === undefined) {
-      throw new InventoryMoveError(
-        'Le coût du mouvement d’origine est requis pour un mouvement inverse (BR-STK-052).',
-        'UNIT_COST_REQUIRED',
-      );
-    }
-    unitCostXaf = input.reversedUnitCostXaf;
+    unitCostXaf = await checkReversal(uow, input, input.reversesMoveId!);
   } else if (isValuationEntry) {
     if (input.declaredUnitCostXaf === undefined) {
       throw new InventoryMoveError(

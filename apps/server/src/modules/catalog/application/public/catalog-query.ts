@@ -70,6 +70,20 @@ export async function findProductForPricing(
   return { id: fromBin(row.id), baseUnitCode: row.base_unit_code, status: row.status };
 }
 
+/** Mode de suivi par lot d'un produit (BR-STK-050, INV-STK-13), pour que `inventory` contrôle
+ * chaque mouvement sans lire `catalog_products` lui-même (`inventory -> catalog` autorisé). */
+export async function findProductLotTracking(
+  executor: Kysely<DB> | Transaction<DB>,
+  productId: string,
+): Promise<'NONE' | 'OPTIONAL' | 'REQUIRED' | undefined> {
+  const row = await executor
+    .selectFrom('catalog_products')
+    .select('lot_tracking')
+    .where('id', '=', toBin(productId))
+    .executeTakeFirst();
+  return row?.lot_tracking as 'NONE' | 'OPTIONAL' | 'REQUIRED' | undefined;
+}
+
 export interface UnitSummary {
   readonly code: string;
   readonly name: string;

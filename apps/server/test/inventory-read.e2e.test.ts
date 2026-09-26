@@ -413,6 +413,11 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     );
     expect(second.json().moves[0].moveType).toBe('TRANSFER_DISPATCH');
     expect(second.json().moves[0].direction).toBe('OUT');
+    // AT-043 : remonter du mouvement au document, à l'auteur, à l'appareil et à la commande.
+    expect(second.json().moves[0].sourceDocId).toBe(transferId);
+    expect(second.json().moves[0].createdBy).toBe(admin);
+    expect(second.json().moves[0].createdDeviceId).toBe(adminDevice);
+    expect(second.json().moves[0].commandId).toEqual(expect.any(String));
 
     const all = await get(
       admin,

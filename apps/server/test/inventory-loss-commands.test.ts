@@ -227,6 +227,17 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
     };
   }
 
+  /** INV-STK-14 : solde `V_PENDING_LOSS` du produit (un produit neuf par test, donc
+   * imputable à la seule déclaration du test) — > 0 seulement tant qu'elle est en attente. */
+  async function pendingLossOf(productId: string): Promise<number> {
+    const vPendingLoss = await db
+      .selectFrom('organization_locations')
+      .select('id')
+      .where('location_type', '=', 'V_PENDING_LOSS')
+      .executeTakeFirstOrThrow();
+    return balanceOf(productId, fromBin(vPendingLoss.id));
+  }
+
   /** Retire toutes les politiques actives `LOSS_DECLARATION` puis restaure exactement
    * celles qui l'étaient (même précaution que le test CONTROL_POLICY_MISSING de
    * inventory-transfer-commands.test.ts : `approvals.policy.set` ne retire que la version
@@ -412,6 +423,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
         .executeTakeFirstOrThrow();
       expect(row.status).toBe('CANCELLED');
       expect(await balanceOf(productId, storeA)).toBe(50); // stock intégralement revenu
+      expect(await pendingLossOf(productId)).toBe(0); // INV-STK-14
 
       const approvalRow = await db
         .selectFrom('approvals_approval_requests')
@@ -513,6 +525,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
       expect(row.status).toBe('REJECTED_RETURNED');
       expect(row.category).toBe('CASSE'); // catégorie inchangée (contrairement à PERTE_NON_JUSTIFIEE)
       expect(await balanceOf(productId, storeA)).toBe(50); // stock intégralement revenu
+      expect(await pendingLossOf(productId)).toBe(0); // INV-STK-14
     });
 
     it('reject PERTE_NON_JUSTIFIEE -> REJECTED_UNJUSTIFIED, catégorie reclassée INEXPLIQUEE, responsabilité imputée au déclarant', async () => {
@@ -561,6 +574,7 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
         .where('source_doc_id', '=', toBin(lossId))
         .executeTakeFirstOrThrow();
       expect(Number(move.quantity)).toBe(5);
+      expect(await pendingLossOf(productId)).toBe(0); // INV-STK-14
     });
   });
 });
