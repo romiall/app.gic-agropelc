@@ -28,7 +28,10 @@ import {
   currentPolicies,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
+import { transferChanges } from '../sync-changes.js';
 import { loadCommandOrigin, loadLocationSite, virtualLocationId, tryRecordMove } from './shared.js';
 
 const lineInputSchema = z.object({
@@ -120,6 +123,21 @@ interface TransferRow {
   readonly requested_by: Buffer | null;
 }
 
+/** Jeu `transfers` (P2-06) : à chaque changement d'état, une ligne par extrémité. */
+async function recordTransferChanges(
+  uow: UnitOfWork,
+  row: {
+    readonly id: Buffer;
+    readonly from_location_id: Buffer;
+    readonly to_location_id: Buffer;
+  },
+): Promise<void> {
+  await recordChanges(
+    uow,
+    transferChanges(fromBin(row.id), fromBin(row.from_location_id), fromBin(row.to_location_id)),
+  );
+}
+
 function buildTransferCommands(
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
@@ -189,13 +207,14 @@ function buildTransferCommands(
         })
         .execute();
     }
+    await recordChanges(uow, transferChanges(transferId, fromLocationId, toLocationId));
     return { status: 'APPLIED' };
   };
 
   const decline: CommandHandler<DeclinePayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_stock_transfers')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'from_location_id', 'to_location_id'])
       .where('id', '=', toBin(envelope.payload.transferId))
       .executeTakeFirst();
     if (!row) return notFound();
@@ -211,13 +230,14 @@ function buildTransferCommands(
       })
       .where('id', '=', row.id)
       .execute();
+    await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
 
   const cancel: CommandHandler<CancelPayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_stock_transfers')
-      .select(['id', 'status', 'requested_by'])
+      .select(['id', 'status', 'requested_by', 'from_location_id', 'to_location_id'])
       .where('id', '=', toBin(envelope.payload.transferId))
       .executeTakeFirst();
     if (!row) return notFound();
@@ -239,6 +259,7 @@ function buildTransferCommands(
       })
       .where('id', '=', row.id)
       .execute();
+    await recordTransferChanges(uow, row);
     return { status: 'APPLIED' };
   };
 
@@ -371,13 +392,14 @@ function buildTransferCommands(
       }
     }
 
+    await recordTransferChanges(uow, transfer);
     return { status: 'APPLIED' };
   };
 
   const receive: CommandHandler<ReceivePayload> = async (uow, envelope) => {
     const transferRow = await uow
       .selectFrom('inventory_stock_transfers')
-      .select(['id', 'status', 'to_location_id', 'site_id'])
+      .select(['id', 'status', 'from_location_id', 'to_location_id', 'site_id'])
       .where('id', '=', toBin(envelope.payload.transferId))
       .executeTakeFirst();
     if (!transferRow) return notFound();
@@ -482,6 +504,7 @@ function buildTransferCommands(
         })
         .where('id', '=', transferRow.id)
         .execute();
+      await recordTransferChanges(uow, transferRow);
       return { status: 'APPLIED' };
     }
 
@@ -520,6 +543,7 @@ function buildTransferCommands(
       })
       .where('id', '=', transferRow.id)
       .execute();
+    await recordTransferChanges(uow, transferRow);
     return { status: 'APPLIED' };
   };
 
@@ -603,6 +627,7 @@ function buildTransferCommands(
         .execute();
     }
 
+    await recordChanges(uow, transferChanges(transferId, fromLocationId, toLocationId));
     return { status: 'APPLIED' };
   };
 
@@ -619,7 +644,7 @@ function registerTransferDiscrepancyDecisionHandler(
   decisionRegistry.register('TRANSFER_DISCREPANCY', async (uow, ctx) => {
     const transferRow = await uow
       .selectFrom('inventory_stock_transfers')
-      .select(['id', 'to_location_id'])
+      .select(['id', 'from_location_id', 'to_location_id'])
       .where('id', '=', toBin(ctx.subjectId))
       .executeTakeFirstOrThrow();
     const lines = await uow
@@ -669,6 +694,7 @@ function registerTransferDiscrepancyDecisionHandler(
       .set({ status: 'CLOSED', updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
       .where('id', '=', transferRow.id)
       .execute();
+    await recordTransferChanges(uow, transferRow);
   });
 }
 

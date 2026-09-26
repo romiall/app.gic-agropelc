@@ -7,23 +7,42 @@
  * permission précise sur une ressource précise), seulement l'ensemble des périmètres que les
  * affectations de l'utilisateur atteignent, à `at` (RC-01), pour filtrer `sync_change_feed`.
  *
- * Emplacements (« emplacements » du §5.2) : hors périmètre ici — aucun gestionnaire n'écrit
- * encore de ligne `change_feed` avec `scope_type = LOCATION` (P0-11 n'émet que du GLOBAL) ;
- * ajouté quand un module (stock…) en aura besoin.
+ * Emplacements (P2-06, jeux `stock`, `transfers`, `counts` filtrés par `LOCATION`) : contrairement
+ * aux sites/zones, le stock n'est pas une donnée que toute affectation doit recevoir — un
+ * commercial sédentaire affecté globalement n'a pas à télécharger le stock de tous les magasins
+ * (01-architecture-offline.md §3.2). Les emplacements sont donc dérivés des seules affectations
+ * dont le rôle porte `inventory.stock.read`, avec la même intersection « portée maximale ∩
+ * périmètre de l'affectation » que les lectures HTTP (`scope-evaluation.ts`, 01-rbac.md §2-§3) :
+ * `ALL` → tous les emplacements physiques ; `SITE`/`ZONE` → ceux du site ou des sites de la zone
+ * (et sous-zones) de l'affectation, tous pour une affectation `GLOBAL` ; `OWN` → les emplacements
+ * `MOBILE` dont l'utilisateur est le détenteur (01-rbac.md §3), dans ce même périmètre.
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
 import { fromBin, toBin } from '../platform/kysely/uuid-columns.js';
 
-export type DeviceScopeType = 'SITE' | 'ZONE' | 'TEAM' | 'USER' | 'DEVICE';
+export type DeviceScopeType = 'SITE' | 'ZONE' | 'TEAM' | 'USER' | 'DEVICE' | 'LOCATION';
 
 export interface DeviceScopeEntry {
   readonly scopeType: DeviceScopeType;
   readonly scopeId: string;
 }
 
+const STOCK_READ_PERMISSION = 'inventory.stock.read';
+
+type Executor = Kysely<DB> | Transaction<DB>;
+
+function isActiveAt(
+  row: { readonly valid_to: Date | null; readonly revoked_at: Date | null },
+  at: Date,
+): boolean {
+  if (row.valid_to !== null && row.valid_to <= at) return false;
+  if (row.revoked_at !== null && row.revoked_at <= at) return false;
+  return true;
+}
+
 export async function computeDeviceScope(
-  executor: Kysely<DB> | Transaction<DB>,
+  executor: Executor,
   userId: string,
   deviceId: string,
   at: Date,
@@ -49,8 +68,7 @@ export async function computeDeviceScope(
     .execute();
 
   for (const assignment of assignments) {
-    if (assignment.valid_to !== null && assignment.valid_to <= at) continue;
-    if (assignment.revoked_at !== null && assignment.revoked_at <= at) continue;
+    if (!isActiveAt(assignment, at)) continue;
     switch (assignment.scope_type) {
       case 'SITE':
         if (assignment.scope_site_id) {
@@ -70,5 +88,70 @@ export async function computeDeviceScope(
       // GLOBAL : aucune entrée propre — sync-pull.service.ts inclut toujours scope_type = GLOBAL.
     }
   }
+
+  for (const locationId of await stockLocationsInScope(executor, userId, at)) {
+    entries.push({ scopeType: 'LOCATION', scopeId: locationId });
+  }
   return entries;
+}
+
+async function stockLocationsInScope(
+  executor: Executor,
+  userId: string,
+  at: Date,
+): Promise<ReadonlySet<string>> {
+  const grants = (
+    await executor
+      .selectFrom('identity_user_role_assignments as ura')
+      .innerJoin('identity_role_permissions as rp', 'rp.role_id', 'ura.role_id')
+      .select([
+        'rp.max_scope as max_scope',
+        'ura.scope_type as scope_type',
+        'ura.scope_site_id as scope_site_id',
+        'ura.scope_zone_id as scope_zone_id',
+        'ura.valid_to as valid_to',
+        'ura.revoked_at as revoked_at',
+      ])
+      .where('ura.user_id', '=', toBin(userId))
+      .where('rp.permission_code', '=', STOCK_READ_PERMISSION)
+      .where('ura.valid_from', '<=', at)
+      .execute()
+  ).filter((grant) => isActiveAt(grant, at));
+
+  const locations = new Set<string>();
+  for (const grant of grants) {
+    // `TEAM` : aucune ressource de stock n'est rattachée à une équipe (01-rbac.md §5.3 n'accorde
+    // jamais `inventory.stock.read` en TEAM) — rien à télécharger à ce titre.
+    if (grant.max_scope === 'TEAM') continue;
+    const ownOnly = grant.max_scope === 'OWN';
+    const everywhere = grant.max_scope === 'ALL' || grant.scope_type === 'GLOBAL';
+    if (!everywhere && grant.scope_type === 'TEAM') continue;
+
+    const rows = await executor
+      .selectFrom('organization_locations as l')
+      .innerJoin('organization_sites as s', 's.id', 'l.site_id')
+      .select('l.id as id')
+      .where('l.is_virtual', '=', 0)
+      .$if(ownOnly, (qb) =>
+        qb.where('l.location_type', '=', 'MOBILE').where('l.custodian_user_id', '=', toBin(userId)),
+      )
+      .$if(!everywhere && grant.scope_type === 'SITE', (qb) =>
+        qb.where('l.site_id', '=', grant.scope_site_id ?? Buffer.alloc(16)),
+      )
+      .$if(!everywhere && grant.scope_type === 'ZONE', (qb) =>
+        qb.where((eb) =>
+          eb(
+            's.zone_id',
+            'in',
+            eb
+              .selectFrom('organization_zone_ancestors')
+              .select('zone_id')
+              .where('ancestor_id', '=', grant.scope_zone_id ?? Buffer.alloc(16)),
+          ),
+        ),
+      )
+      .execute();
+    for (const row of rows) locations.add(fromBin(row.id));
+  }
+  return locations;
 }

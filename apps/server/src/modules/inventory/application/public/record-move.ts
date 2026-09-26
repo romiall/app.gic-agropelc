@@ -26,6 +26,8 @@ import {
 } from '@gic/domain';
 import { toBin, toBinOrNull, fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import { stockBalanceChange } from '../sync-changes.js';
 
 const LOT_KEY_NULL = Buffer.alloc(16);
 
@@ -354,6 +356,19 @@ async function recordSingleMove(
     input.quantityBase,
     valueXaf,
     input.occurredAt,
+  );
+
+  // Jeu `stock` (P2-06) : émis ici, seul point qui modifie un solde — tout appelant (commande
+  // d'inventory, décision d'approbation, futurs modules ventes/achats/production) est couvert
+  // sans avoir à y penser. Emplacements physiques seulement (sync-changes.ts).
+  await recordChanges(
+    uow,
+    [
+      fromLocation.isVirtual ? null : input.fromLocationId,
+      toLocation.isVirtual ? null : input.toLocationId,
+    ]
+      .filter((locationId): locationId is string => locationId !== null)
+      .map((locationId) => stockBalanceChange(locationId, input.productId)),
   );
 
   if (isValuationEntry) {

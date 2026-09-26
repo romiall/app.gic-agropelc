@@ -52,7 +52,10 @@ import {
   currentPolicies,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
+import { inventoryCountChange } from '../sync-changes.js';
 import { loadCommandOrigin, loadLocationSite, virtualLocationId } from './shared.js';
 
 const COUNT_APPROVAL_THRESHOLD_KEY = 'inventory.count_approval_threshold_xaf';
@@ -243,13 +246,14 @@ function buildCountCommands(
       })
       .execute();
 
+    await recordChanges(uow, [inventoryCountChange(countId, locationId)]);
     return { status: 'APPLIED' };
   };
 
   const recordLines: CommandHandler<RecordLinesPayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_inventory_counts')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'location_id'])
       .where('id', '=', toBin(envelope.payload.countId))
       .executeTakeFirst();
     if (!row) return notFound();
@@ -274,6 +278,7 @@ function buildCountCommands(
         .execute();
     }
 
+    await recordCountChange(uow, row);
     return { status: 'APPLIED' };
   };
 
@@ -371,6 +376,7 @@ function buildCountCommands(
         })
         .where('id', '=', row.id)
         .execute();
+      await recordCountChange(uow, row);
       return { status: 'APPLIED' };
     }
 
@@ -415,13 +421,14 @@ function buildCountCommands(
       .where('id', '=', row.id)
       .execute();
 
+    await recordCountChange(uow, row);
     return { status: 'APPLIED' };
   };
 
   const cancel: CommandHandler<CancelPayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_inventory_counts')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'location_id'])
       .where('id', '=', toBin(envelope.payload.countId))
       .executeTakeFirst();
     if (!row) return notFound();
@@ -436,6 +443,7 @@ function buildCountCommands(
       })
       .where('id', '=', row.id)
       .execute();
+    await recordCountChange(uow, row);
     return { status: 'APPLIED' };
   };
 
@@ -486,6 +494,7 @@ function registerInventoryAdjustmentDecisionHandler(
         })
         .where('id', '=', row.id)
         .execute();
+      await recordCountChange(uow, row);
       return;
     }
 
@@ -494,7 +503,16 @@ function registerInventoryAdjustmentDecisionHandler(
       .set({ status: 'REJECTED', updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
       .where('id', '=', row.id)
       .execute();
+    await recordCountChange(uow, row);
   });
+}
+
+/** Jeu `counts` (P2-06) : à chaque changement d'état ou de lignes de l'inventaire. */
+async function recordCountChange(
+  uow: UnitOfWork,
+  row: { readonly id: Buffer; readonly location_id: Buffer },
+): Promise<void> {
+  await recordChanges(uow, [inventoryCountChange(fromBin(row.id), fromBin(row.location_id))]);
 }
 
 export function registerCountCommands(

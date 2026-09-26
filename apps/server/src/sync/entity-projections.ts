@@ -3,7 +3,8 @@
  * 02-synchronisation.md §5.2 : « le flux ne stocke pas de copie des données » — chaque
  * `UPSERT` de `sync_change_feed` est résolu ici, au moment du téléchargement). Un lecteur par
  * `entity_type` réellement produit par un gestionnaire de commande à ce jour (identity,
- * organization, approvals, attachments) — table fixe, tous définis dans ce seul fichier
+ * organization, approvals, attachments ; catalog, pricing, procurement en P1-06 ; inventory en
+ * P2-06, via `platform/sync/change-feed.ts`) — table fixe, tous définis dans ce seul fichier
  * (contrairement à `CommandHandlerRegistry`, alimenté par plusieurs modules indépendants,
  * une simple table couvre ce besoin sans registre mutable).
  *
@@ -15,10 +16,26 @@ import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
 
+/** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
+ * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
+ * émise par le module propriétaire, avec son vrai périmètre, doit être servie. */
+export interface EntityProjectionContext {
+  readonly scopeType: string;
+  readonly scopeId: string | null;
+}
+
 export type EntityProjectionReader = (
   executor: Kysely<DB> | Transaction<DB>,
   entityId: string,
+  context: EntityProjectionContext,
 ) => Promise<Record<string, unknown> | undefined>;
+
+/** Emplacement porté par une ligne `LOCATION` ; `undefined` pour toute autre portée — dont le
+ * repli générique `GLOBAL` du pipeline (même `entity_type` que l'agrégat de la commande), qui ne
+ * doit jamais servir une donnée de stock à tous les appareils (P2-06). */
+function locationScopeOf(context: EntityProjectionContext): string | undefined {
+  return context.scopeType === 'LOCATION' && context.scopeId !== null ? context.scopeId : undefined;
+}
 
 const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
   USER: async (executor, entityId) => {
@@ -571,6 +588,232 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       .executeTakeFirst();
     if (!row || row.status !== 'ACTIVE') return undefined;
     return { id: fromBin(row.id), code: row.code, name: row.name };
+  },
+
+  // P2-06 — jeux `stock`, `transfers`, `counts` (01-architecture-offline.md §3.1), filtrés par
+  // `LOCATION`, émis par `inventory` (sync-changes.ts). Aucune mesure financière (coût, valeur
+  // — RC-05, BR-STK-054) : les rôles qui téléchargent ces jeux (magasinier, vendeur PDV,
+  // responsables de ferme et de production, commercial pour son stock mobile, §3.2) ne sont
+  // pas tous titulaires de `inventory.valuation.read`.
+
+  // dictionnaire inventory.stock_balances : « Offline DL (emplacements du périmètre) » ; lots en
+  // solde (stock_lots « Offline DL »). Entité = produit, emplacement = périmètre de la ligne.
+  // Lignes à zéro incluses : un solde revenu à zéro doit remplacer l'ancien sur l'appareil.
+  STOCK_BALANCE: async (executor, entityId, context) => {
+    const locationId = locationScopeOf(context);
+    if (locationId === undefined) return undefined;
+    const rows = await executor
+      .selectFrom('inventory_stock_balances as b')
+      .leftJoin('inventory_stock_lots as lot', 'lot.id', 'b.lot_key')
+      .select([
+        'b.lot_key as lot_key',
+        'lot.id as lot_id',
+        'lot.lot_code as lot_code',
+        'lot.expiry_date as expiry_date',
+        'b.qty_on_hand as qty_on_hand',
+        'b.qty_reserved as qty_reserved',
+        'b.qty_allocated as qty_allocated',
+        'b.last_move_at as last_move_at',
+        'b.row_version as row_version',
+      ])
+      .where('b.location_id', '=', toBin(locationId))
+      .where('b.product_id', '=', toBin(entityId))
+      .orderBy('b.lot_key', 'asc')
+      .execute();
+    if (rows.length === 0) return undefined;
+    const lots = rows.map((row) => ({
+      lot_id: fromBinOrNull(row.lot_id),
+      lot_code: row.lot_code,
+      expiry_date: row.expiry_date,
+      qty_on_hand: row.qty_on_hand,
+      qty_reserved: row.qty_reserved,
+      qty_allocated: row.qty_allocated,
+      last_move_at: row.last_move_at,
+      row_version: row.row_version,
+    }));
+    const sum = (pick: (lot: (typeof lots)[number]) => string) =>
+      String(Math.round(lots.reduce((total, lot) => total + Number(pick(lot)), 0) * 1000) / 1000);
+    return {
+      location_id: locationId,
+      product_id: entityId,
+      qty_on_hand: sum((lot) => lot.qty_on_hand),
+      qty_reserved: sum((lot) => lot.qty_reserved),
+      qty_allocated: sum((lot) => lot.qty_allocated),
+      lots,
+    };
+  },
+
+  // dictionnaire inventory.stock_thresholds : « Offline DL ». Un seuil désactivé est projeté
+  // (`is_active = false`) : l'appareil le retire (threshold-commands.ts le ré-émet exprès).
+  STOCK_THRESHOLD: async (executor, entityId, context) => {
+    const locationId = locationScopeOf(context);
+    if (locationId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('inventory_stock_thresholds')
+      .select(['id', 'location_id', 'product_id', 'min_qty_base', 'target_qty_base', 'is_active'])
+      .where('id', '=', toBin(entityId))
+      .where('location_id', '=', toBin(locationId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      location_id: fromBin(row.location_id),
+      product_id: fromBin(row.product_id),
+      min_qty_base: row.min_qty_base,
+      target_qty_base: row.target_qty_base,
+      is_active: Boolean(row.is_active),
+    };
+  },
+
+  // dictionnaire inventory.stock_transfers : « Offline DL (ouverts du périmètre) ». Projeté quel
+  // que soit le statut : un transfert qui se ferme (RECEIVED, CLOSED, DECLINED…) doit parvenir
+  // à l'appareil pour qu'il le retire de sa liste des transferts ouverts.
+  STOCK_TRANSFER: async (executor, entityId, context) => {
+    const locationId = locationScopeOf(context);
+    if (locationId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('inventory_stock_transfers')
+      .select([
+        'id',
+        'doc_number',
+        'transfer_kind',
+        'from_location_id',
+        'to_location_id',
+        'status',
+        'requested_by',
+        'requested_at',
+        'dispatched_by',
+        'dispatched_at',
+        'carrier_user_id',
+        'carrier_name',
+        'received_by',
+        'received_at',
+        'approval_request_id',
+        'notes',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const fromLocationId = fromBin(row.from_location_id);
+    const toLocationId = fromBin(row.to_location_id);
+    if (locationId !== fromLocationId && locationId !== toLocationId) return undefined;
+    const lines = await executor
+      .selectFrom('inventory_stock_transfer_lines')
+      .select([
+        'id',
+        'product_id',
+        'lot_id',
+        'unit_code',
+        'requested_qty_base',
+        'dispatched_qty_base',
+        'received_qty_base',
+        'discrepancy_qty_base',
+        'returned_qty_base',
+      ])
+      .where('transfer_id', '=', row.id)
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      transfer_kind: row.transfer_kind,
+      from_location_id: fromLocationId,
+      to_location_id: toLocationId,
+      status: row.status,
+      requested_by: fromBinOrNull(row.requested_by),
+      requested_at: row.requested_at,
+      dispatched_by: fromBinOrNull(row.dispatched_by),
+      dispatched_at: row.dispatched_at,
+      carrier_user_id: fromBinOrNull(row.carrier_user_id),
+      carrier_name: row.carrier_name,
+      received_by: fromBinOrNull(row.received_by),
+      received_at: row.received_at,
+      approval_request_id: fromBinOrNull(row.approval_request_id),
+      notes: row.notes,
+      occurred_at: row.occurred_at,
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        product_id: fromBin(line.product_id),
+        lot_id: fromBinOrNull(line.lot_id),
+        unit_code: line.unit_code,
+        requested_qty_base: line.requested_qty_base,
+        dispatched_qty_base: line.dispatched_qty_base,
+        received_qty_base: line.received_qty_base,
+        discrepancy_qty_base: line.discrepancy_qty_base,
+        returned_qty_base: line.returned_qty_base,
+      })),
+    };
+  },
+
+  // dictionnaire inventory.inventory_counts : « Offline DL (ouverts) ». Même principe que
+  // STOCK_TRANSFER pour les statuts de sortie. Sans `variance_value_xaf`/coûts des lignes (RC-05).
+  INVENTORY_COUNT: async (executor, entityId, context) => {
+    const locationId = locationScopeOf(context);
+    if (locationId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('inventory_inventory_counts')
+      .select([
+        'id',
+        'doc_number',
+        'location_id',
+        'count_type',
+        'status',
+        'opened_by',
+        'occurred_at',
+        'submitted_by',
+        'submitted_at',
+        'posted_at',
+        'approval_request_id',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where('location_id', '=', toBin(locationId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const lines = await executor
+      .selectFrom('inventory_inventory_count_lines')
+      .select([
+        'id',
+        'product_id',
+        'lot_id',
+        'counted_at',
+        'counted_qty_base',
+        'theoretical_qty_base',
+        'variance_qty_base',
+        'variance_reason_code_id',
+        'comment',
+      ])
+      .where('count_id', '=', row.id)
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      location_id: fromBin(row.location_id),
+      count_type: row.count_type,
+      status: row.status,
+      opened_by: fromBinOrNull(row.opened_by),
+      occurred_at: row.occurred_at,
+      submitted_by: fromBinOrNull(row.submitted_by),
+      submitted_at: row.submitted_at,
+      posted_at: row.posted_at,
+      approval_request_id: fromBinOrNull(row.approval_request_id),
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        product_id: fromBin(line.product_id),
+        lot_id: fromBinOrNull(line.lot_id),
+        counted_at: line.counted_at,
+        counted_qty_base: line.counted_qty_base,
+        theoretical_qty_base: line.theoretical_qty_base,
+        variance_qty_base: line.variance_qty_base,
+        variance_reason_code_id: fromBinOrNull(line.variance_reason_code_id),
+        comment: line.comment,
+      })),
+    };
   },
 };
 

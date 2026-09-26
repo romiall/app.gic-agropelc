@@ -13,8 +13,10 @@ import type {
   CommandHandler,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import { stockThresholdChange } from '../sync-changes.js';
 
 const setPayloadSchema = z
   .object({
@@ -44,6 +46,14 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
 
   const { locationId, productId, minQtyBase, targetQtyBase } = envelope.payload;
 
+  const previous = await uow
+    .selectFrom('inventory_stock_thresholds')
+    .select('id')
+    .where('location_id', '=', toBin(locationId))
+    .where('product_id', '=', toBin(productId))
+    .where('is_active', '=', 1)
+    .execute();
+
   await uow
     .updateTable('inventory_stock_thresholds')
     .set({
@@ -68,6 +78,13 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+
+  // Jeu `stock` (P2-06) : le seuil désactivé est ré-émis aussi (projection `is_active =
+  // false`), pour que l'appareil le retire au lieu de garder deux seuils pour la paire.
+  await recordChanges(uow, [
+    ...previous.map((row) => stockThresholdChange(fromBin(row.id), locationId)),
+    stockThresholdChange(envelope.aggregate_id, locationId),
+  ]);
 
   return { status: 'APPLIED' };
 };

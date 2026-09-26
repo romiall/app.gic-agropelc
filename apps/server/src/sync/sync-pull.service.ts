@@ -70,7 +70,12 @@ export class SyncPullService {
         continue;
       }
       const reader = resolveEntityProjection(row.entity_type);
-      const data = reader ? await reader(this.db, fromBin(row.entity_id)) : undefined;
+      const data = reader
+        ? await reader(this.db, fromBin(row.entity_id), {
+            scopeType: row.scope_type,
+            scopeId: fromBinOrNull(row.scope_id),
+          })
+        : undefined;
       if (data === undefined) continue; // entité disparue, ou hors offre (ex. paramètre non client-visible)
       changes.push({ ...base, data });
     }
