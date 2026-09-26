@@ -97,6 +97,7 @@ Règles :
      gestionnaire métier : effets, contrôles d'état
        - intention sur état partagé + base_version obsolète → fusion automatique ou CONFLICT VERSION_CONFLICT
        - fait accompli + état incompatible → application + conflit informatif (APPLIED_WITH_WARNINGS)
+       - rejet métier → ROLLBACK de toute écriture du gestionnaire, inbox = REJECTED
      audit_log, domain_events, change_feed, command_inbox = APPLIED(_WITH_WARNINGS), result
    COMMIT
 7. En cas d'erreur transitoire (verrou, délai) : ROLLBACK, inbox = FAILED_RETRYABLE, réponse RETRY_LATER
@@ -120,7 +121,7 @@ Règles :
 | `DEPENDENCY_PENDING` | RETRY_LATER | Oui | Dépendance non reçue |
 | `DEPENDENCY_REJECTED` | REJECTED | Non | Dépendance rejetée |
 | `SERVER_BUSY` | RETRY_LATER | Oui | Erreur transitoire |
-| Avertissements | APPLIED_WITH_WARNINGS | — | `STOCK_NEGATIVE`, `PRICE_MISMATCH`, `DUPLICATE_CUSTOMER`, `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ALLOCATION_REVOKED_CONSUMED`, `ORDER_OVER_FULFILMENT`, `CANCEL_WINDOW_EXCEEDED`, `CLOCK_SUSPECT`, `RECEIPT_QUARANTINED`, `PAYMENT_SUSPECT_DUPLICATE`, `LOT_CLOSED`, `TRANSFER_UNMATCHED` |
+| Avertissements | APPLIED_WITH_WARNINGS | — | `STOCK_NEGATIVE`, `PRICE_MISMATCH`, `DUPLICATE_CUSTOMER`, `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ALLOCATION_REVOKED_CONSUMED`, `ORDER_OVER_FULFILMENT`, `CANCEL_WINDOW_EXCEEDED`, `CLOCK_SUSPECT`, `RECEIPT_QUARANTINED`, `PAYMENT_SUSPECT_DUPLICATE`, `LOT_CLOSED`, `TRANSFER_UNMATCHED`, `VERSION_CONFLICT` (collision de champs d'un compte client, fusionnée automatiquement ; conflit informatif — matrice des conflits) |
 
 ## 4. Reprise et attente progressive (appareil)
 

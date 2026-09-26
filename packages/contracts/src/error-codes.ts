@@ -56,6 +56,10 @@ export const WARNING_CODES = [
   'PAYMENT_SUSPECT_DUPLICATE',
   'LOT_CLOSED',
   'TRANSFER_UNMATCHED',
+  // P3-04 : collision sur un même champ d'un compte client modifié sur deux appareils — la
+  // valeur la plus récente est appliquée, l'autre conservée dans un conflit informatif
+  // (03-matrice-conflits.md, ligne « prospect modifié sur deux appareils »).
+  'VERSION_CONFLICT',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

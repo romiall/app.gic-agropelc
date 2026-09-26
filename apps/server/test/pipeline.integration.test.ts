@@ -32,6 +32,7 @@ import {
 const OCCURRED_AT = new Date('2026-09-24T09:00:00.000Z');
 const DEMO_PERMISSION = 'test.pipeline_demo.record';
 const DEMO_TYPE = 'test.pipeline_demo.record';
+const WRITE_THEN_REJECT_TYPE = 'test.pipeline_demo.write_then_reject';
 
 interface DemoPayload {
   readonly note: string;
@@ -56,6 +57,26 @@ function buildRegistry(): CommandHandlerRegistry {
         })
         .execute();
       return { status: 'APPLIED' as const };
+    },
+  });
+  // P3-04 : un gestionnaire qui écrit puis conclut au rejet — l'écriture doit être annulée.
+  registry.register<DemoPayload>({
+    commandType: WRITE_THEN_REJECT_TYPE,
+    version: 1,
+    payloadSchema: z.object({ note: z.string().min(1).max(200) }),
+    permissionCode: DEMO_PERMISSION,
+    handler: async (uow, envelope: CommandEnvelope<DemoPayload>) => {
+      await uow
+        .insertInto('organization_system_settings')
+        .values({
+          id: toBin(freshUuid()),
+          key: `test.pipeline_demo.${envelope.command_id}`,
+          value: JSON.stringify(envelope.payload.note),
+          scope_type: 'GLOBAL',
+          created_by: toBin(envelope.author_user_id),
+        })
+        .execute();
+      return { status: 'REJECTED' as const, errorCode: 'DEMO_REJECTED', messageFr: 'Rejet.' };
     },
   });
   return registry;
@@ -154,6 +175,41 @@ describe('CommandPipelineService (§3.2, RC-01, RC-02, INV-SYN-05)', () => {
       .where('key', '=', `test.pipeline_demo.${envelope.command_id}`)
       .executeTakeFirstOrThrow();
     expect(settingRow.value).toBe('note de test');
+  });
+
+  it('rejet par le gestionnaire après une écriture : transaction annulée, aucun effet (INV-SYN-05)', async () => {
+    const envelope = buildEnvelope({
+      author_user_id: authorizedUser,
+      command_type: WRITE_THEN_REJECT_TYPE,
+    });
+    const result = await pipeline.handle(envelope, {
+      authenticatedUserId: authorizedUser,
+      authenticatedDeviceId: activeDevice,
+      transport: 'ONLINE_API',
+    });
+    expect(result).toEqual({
+      command_id: envelope.command_id,
+      status: 'REJECTED',
+      error: { code: 'DEMO_REJECTED', message_fr: 'Rejet.' },
+    });
+    const inboxRow = await db
+      .selectFrom('sync_command_inbox')
+      .select(['status', 'error_code'])
+      .where('command_id', '=', toBin(envelope.command_id as string))
+      .executeTakeFirstOrThrow();
+    expect(inboxRow).toEqual({ status: 'REJECTED', error_code: 'DEMO_REJECTED' });
+    const setting = await db
+      .selectFrom('organization_system_settings')
+      .select('id')
+      .where('key', '=', `test.pipeline_demo.${envelope.command_id}`)
+      .executeTakeFirst();
+    expect(setting).toBeUndefined();
+    const audit = await db
+      .selectFrom('audit_audit_log')
+      .select('id')
+      .where('command_id', '=', toBin(envelope.command_id as string))
+      .executeTakeFirst();
+    expect(audit).toBeUndefined();
   });
 
   it('FORBIDDEN : droit absent → rejet sans effet métier (INV-SYN-05), mais audité (transaction séparée)', async () => {

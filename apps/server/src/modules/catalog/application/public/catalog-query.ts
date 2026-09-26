@@ -117,6 +117,29 @@ export interface ReasonCodeSummary {
   readonly isActive: boolean;
 }
 
+/** Un code motif par identifiant (ex. `crm` : catégories `PROSPECT_LOST`, `VISIT_OUTCOME`). */
+export async function findReasonCode(
+  executor: Kysely<DB> | Transaction<DB>,
+  id: string,
+): Promise<ReasonCodeSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_reason_codes')
+    .selectAll()
+    .where('id', '=', toBin(id))
+    .executeTakeFirst();
+  return row
+    ? {
+        id: fromBin(row.id),
+        category: row.category,
+        code: row.code,
+        label: row.label,
+        lossCategory: row.loss_category,
+        requiresComment: Boolean(row.requires_comment),
+        isActive: Boolean(row.is_active),
+      }
+    : undefined;
+}
+
 export async function listReasonCodes(
   executor: Kysely<DB> | Transaction<DB>,
   filter: { readonly category?: string } = {},

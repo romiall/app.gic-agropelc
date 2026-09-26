@@ -21,12 +21,26 @@ import {
 import type { z } from 'zod';
 import type { UnitOfWork } from '../unit-of-work.js';
 
+/**
+ * Valeurs avant et après à journaliser (BR-CRM-021 : « modifications auditées avec leurs valeurs
+ * avant et après ») ; à défaut, l'audit du pipeline enregistre le `payload` comme état après.
+ */
+export interface HandlerAuditValues {
+  readonly before?: unknown;
+  readonly after?: unknown;
+}
+
 export type CommandHandlerOutcome =
-  | { readonly status: 'APPLIED'; readonly serverRefs?: Record<string, string> }
+  | {
+      readonly status: 'APPLIED';
+      readonly serverRefs?: Record<string, string>;
+      readonly audit?: HandlerAuditValues;
+    }
   | {
       readonly status: 'APPLIED_WITH_WARNINGS';
       readonly warnings: readonly WarningCode[];
       readonly serverRefs?: Record<string, string>;
+      readonly audit?: HandlerAuditValues;
     }
   | { readonly status: 'CONFLICT'; readonly conflictId: string }
   | { readonly status: 'REJECTED'; readonly errorCode: string; readonly messageFr: string };

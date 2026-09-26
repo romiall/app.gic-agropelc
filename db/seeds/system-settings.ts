@@ -8,7 +8,8 @@
  */
 export interface SystemSettingSeed {
   readonly key: string;
-  readonly value: number;
+  /** Seuil numérique, ou liste de codes (ex. rôles commerciaux, P3-04). */
+  readonly value: number | readonly string[];
   readonly isClientVisible: boolean;
   /** Référence documentaire (AV/BR) pour la traçabilité de la valeur par défaut. */
   readonly ref: string;
@@ -46,6 +47,15 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // BR-CRM-006 (P3) : indicatif ajouté à un numéro national saisi sans indicatif (Cameroun,
   // DÉDUIT) — visible de l'appareil, qui normalise aussi pour son contrôle local de doublon.
   { key: 'crm.phone_default_country_code', value: 237, isClientVisible: true, ref: 'BR-CRM-006' },
+  // BR-CRM-003, BR-CRM-020 (P3-04) : rôles réputés « commerciaux » — titulaire d'un compte à sa
+  // création, seul titulaire possible d'une réaffectation (DÉDUIT : les trois rôles commerciaux
+  // du seed RBAC, AV-004).
+  {
+    key: 'crm.commercial_role_codes',
+    value: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+    isClientVisible: true,
+    ref: 'BR-CRM-003',
+  },
   { key: 'sales.direct_cancel_minutes', value: 15, isClientVisible: true, ref: 'AV-030' },
   { key: 'sales.default_payment_terms_days', value: 30, isClientVisible: false, ref: 'AV-028' },
   { key: 'pricing.stale_rules_hours', value: 24, isClientVisible: false, ref: 'AV-063' },

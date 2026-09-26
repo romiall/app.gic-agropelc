@@ -101,7 +101,7 @@
 | `conflict_type` | code | Non | — | Voir la matrice des conflits |
 | `entity_type`, `entity_id` | code, uuid | Non | — | |
 | `site_id` | uuid | Oui | — | Routage |
-| `owner_role` | code | Non | — | Rôle chargé de la résolution |
+| `owner_role` | code | Non | — | Rôle chargé de la résolution ; `TITULAIRE` = titulaire du compte client concerné (P3-04, matrice des conflits) |
 | `applied` | boolean | Non | — | La commande a-t-elle été appliquée (conflit informatif) ou non (quarantaine) ? |
 | `details` | json | Non | — | État serveur et intention client, différences |
 | `status` | enum(`OPEN`,`RESOLVED`,`DISMISSED`) | Non | `OPEN` | SM-CONFLICT |

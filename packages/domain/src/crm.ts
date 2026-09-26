@@ -46,6 +46,16 @@ export interface FieldCollision {
   readonly winner: 'CLIENT' | 'SERVER';
 }
 
+/** Égalité de valeur d'un champ : identité, ou même contenu pour une valeur composée (ex. la
+ * position `{ lat, lng, accuracyM }`, construite dans un ordre de clés fixe par l'appelant). */
+function sameFieldValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return false;
+}
+
 /**
  * Matrice des conflits (compte client modifié sur deux appareils) : si les champs modifiés par
  * l'appareil n'ont pas été modifiés côté serveur depuis `baseVersion`, ils sont appliqués. Pour un
@@ -73,7 +83,7 @@ export function mergeFieldPatch(input: {
       continue;
     }
     const serverValue = input.currentValues[field];
-    if (Object.is(serverValue, clientValue)) continue; // même valeur des deux côtés : rien à trancher
+    if (sameFieldValue(serverValue, clientValue)) continue; // même valeur des deux côtés : rien à trancher
     const clientWins =
       input.clientOccurredAt.getTime() > new Date(serverWrite.occurredAt).getTime();
     if (clientWins) applied[field] = clientValue;

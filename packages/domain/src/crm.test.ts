@@ -70,6 +70,18 @@ describe('mergeFieldPatch — matrice des conflits (compte modifié sur deux app
     expect(newer.collisions[0]!.winner).toBe('CLIENT');
   });
 
+  it('valeur composée identique des deux côtés (position) : ni appliquée ni rapportée', () => {
+    const position = { lat: 4.0511, lng: 9.7679, accuracyM: 12 };
+    const result = mergeFieldPatch({
+      patch: { position: { ...position } },
+      baseVersion: 1,
+      clientOccurredAt: new Date('2026-10-01T09:00:00Z'),
+      fieldVersions: { position: { version: 2, occurredAt: '2026-10-01T08:00:00.000Z' } },
+      currentValues: { position },
+    });
+    expect(result).toEqual({ applied: {}, collisions: [] });
+  });
+
   it('sans version de base (en ligne) : tout le patch s’applique', () => {
     expect(
       mergeFieldPatch({

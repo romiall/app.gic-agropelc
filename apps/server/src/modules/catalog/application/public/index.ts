@@ -3,6 +3,7 @@ export {
   listProducts,
   listUnits,
   listReasonCodes,
+  findReasonCode,
   findProductForPricing,
   findProductLotTracking,
 } from './catalog-query.js';

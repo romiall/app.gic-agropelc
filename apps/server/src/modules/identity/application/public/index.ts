@@ -22,5 +22,9 @@ export { checkUserActive } from './user-check.js';
 export type { UserCheckResult } from './user-check.js';
 
 export { hasPermissionAt, evaluateAccess } from './rights-check.js';
-export { activeZoneAssignmentsAt } from './assignment-query.js';
+export {
+  activeZoneAssignmentsAt,
+  activeSiteAssignmentsAt,
+  activeRoleCodesAt,
+} from './assignment-query.js';
 export type { AccessResult, EvaluateAccessInput, ResourceLocator } from './rights-check.js';

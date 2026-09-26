@@ -12,6 +12,9 @@
  *   6. BEGIN → gestionnaire → audit + domain_events + change_feed + inbox=APPLIED(_*) → COMMIT
  *   7. erreur transitoire → ROLLBACK, inbox=FAILED_RETRYABLE, réponse RETRY_LATER
  *
+ * Rejet par le gestionnaire (étape 6) : la transaction est annulée (P3-04), aucune écriture
+ * partielle n'est conservée.
+ *
  * Rejet à toute étape avant 6 : aucune table métier touchée (INV-SYN-05) — seul `inbox`
  * (registre de synchronisation, pas une table métier) change de statut ; une commande qui
  * attend une dépendance (RETRY_LATER/DEPENDENCY_PENDING) n'est même pas mise à jour, elle
@@ -372,8 +375,11 @@ export class CommandPipelineService {
       const outcome = await this.db.transaction().execute(async (trx) => {
         const handlerOutcome = await entry.handler(trx, parsed.envelope);
         if (handlerOutcome.status === 'REJECTED') {
-          return handlerOutcome;
+          // Un rejet n'a aucun effet : l'exception annule la transaction, y compris une
+          // écriture que le gestionnaire aurait faite avant de conclure au rejet.
+          throw new HandlerRejection(handlerOutcome);
         }
+        const handlerAudit = 'audit' in handlerOutcome ? handlerOutcome.audit : undefined;
 
         await recordAudit(
           trx,
@@ -388,7 +394,8 @@ export class CommandPipelineService {
             action: envelope.command_type,
             entityType: envelope.aggregate_type,
             entityId: envelope.aggregate_id,
-            after: envelope.payload,
+            ...(handlerAudit?.before !== undefined ? { before: handlerAudit.before } : {}),
+            after: handlerAudit?.after ?? envelope.payload,
             result: 'SUCCESS',
             correlationId: ctx.correlationId ?? null,
           },
@@ -438,17 +445,16 @@ export class CommandPipelineService {
 
         return handlerOutcome;
       });
-
-      if (outcome.status === 'REJECTED') {
+      return commandResultOf(envelope.command_id, outcome);
+    } catch (error) {
+      if (error instanceof HandlerRejection) {
         return this.markAndReject(
           commandIdBin,
           envelope.command_id,
-          outcome.errorCode,
-          outcome.messageFr,
+          error.outcome.errorCode,
+          error.outcome.messageFr,
         );
       }
-      return commandResultOf(envelope.command_id, outcome);
-    } catch (error) {
       // Étape 7 : erreur transitoire (verrou, délai, échec inattendu du gestionnaire) — la
       // transaction métier a déjà été annulée automatiquement (rejet de la promesse passée
       // à `transaction().execute`) ; seule la mise à jour de l'inbox, hors transaction,
@@ -546,6 +552,13 @@ function commandResultOf(
       };
     case 'CONFLICT':
       return { command_id: commandId, status: 'CONFLICT', conflict_id: outcome.conflictId };
+  }
+}
+
+/** Rejet métier d'un gestionnaire, levé pour annuler la transaction (étape 6). */
+class HandlerRejection extends Error {
+  constructor(readonly outcome: Extract<CommandHandlerOutcome, { status: 'REJECTED' }>) {
+    super(outcome.errorCode);
   }
 }
 
