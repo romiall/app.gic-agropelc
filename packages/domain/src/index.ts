@@ -89,3 +89,22 @@ export {
   stockValueXaf,
   evaluateStockThreshold,
 } from './stock-engine.js';
+
+export type {
+  GeoPoint,
+  CheckinResult,
+  CheckinEvaluation,
+  CheckinSuspicionFlag,
+  VisitFlag,
+} from './fieldwork.js';
+export {
+  assertGeoPoint,
+  haversineDistanceM,
+  evaluateCheckin,
+  canRequestOverride,
+  detectCheckinSuspicion,
+  evaluateVisit,
+} from './fieldwork.js';
+
+export type { FieldVersion, FieldCollision } from './crm.js';
+export { normalizePhone, mergeFieldPatch } from './crm.js';

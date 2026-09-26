@@ -163,11 +163,13 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `fieldwork.geofence_radius_m` | 500 | CM §10, AV-022 |
 | `fieldwork.max_gps_accuracy_m` | 150 | AV-022 |
 | `fieldwork.override_min_attempts` / `override_min_minutes` | 3 / 2 | AV-021 |
+| `fieldwork.suspicion_max_speed_kmh` / `suspicion_repeated_accuracy_count` | 150 / 5 | BR-TER-010 |
 | `offline.max_autonomy_hours` / `warning_hours` | 168 / 48 | AV-009 |
 | `sync.clock_skew_flag_minutes` | 5 | BR-SYN-011 |
 | `sync.backdate_max_hours` / `justification_after_hours` | 72 / 24 | AV-078 |
 | `crm.inactive_after_days` | 30 | AV-013 |
 | `crm.visit.max_distance_m` | 500 | BR-CRM-015 |
+| `crm.phone_default_country_code` | 237 | BR-CRM-006 (DÉDUIT : indicatif d'un numéro national) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |
 | `pricing.max_discount_pct.<ROLE>` | 0 / 5 / 15 | AV-026 |

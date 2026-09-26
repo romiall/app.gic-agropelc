@@ -23,6 +23,19 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'fieldwork.max_gps_accuracy_m', value: 150, isClientVisible: true, ref: 'AV-022' },
   { key: 'fieldwork.override_min_attempts', value: 3, isClientVisible: true, ref: 'AV-021' },
   { key: 'fieldwork.override_min_minutes', value: 2, isClientVisible: true, ref: 'AV-021' },
+  // BR-TER-010 (P3) : signaux de pointage suspect, calculés par le serveur seulement.
+  {
+    key: 'fieldwork.suspicion_max_speed_kmh',
+    value: 150,
+    isClientVisible: false,
+    ref: 'BR-TER-010',
+  },
+  {
+    key: 'fieldwork.suspicion_repeated_accuracy_count',
+    value: 5,
+    isClientVisible: false,
+    ref: 'BR-TER-010',
+  },
   { key: 'offline.max_autonomy_hours', value: 168, isClientVisible: true, ref: 'AV-009' },
   { key: 'offline.warning_hours', value: 48, isClientVisible: true, ref: 'AV-009' },
   { key: 'sync.clock_skew_flag_minutes', value: 5, isClientVisible: false, ref: 'BR-SYN-011' },
@@ -30,6 +43,9 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'sync.justification_after_hours', value: 24, isClientVisible: true, ref: 'AV-078' },
   { key: 'crm.inactive_after_days', value: 30, isClientVisible: false, ref: 'AV-013' },
   { key: 'crm.visit.max_distance_m', value: 500, isClientVisible: true, ref: 'BR-CRM-015' },
+  // BR-CRM-006 (P3) : indicatif ajouté à un numéro national saisi sans indicatif (Cameroun,
+  // DÉDUIT) — visible de l'appareil, qui normalise aussi pour son contrôle local de doublon.
+  { key: 'crm.phone_default_country_code', value: 237, isClientVisible: true, ref: 'BR-CRM-006' },
   { key: 'sales.direct_cancel_minutes', value: 15, isClientVisible: true, ref: 'AV-030' },
   { key: 'sales.default_payment_terms_days', value: 30, isClientVisible: false, ref: 'AV-028' },
   { key: 'pricing.stale_rules_hours', value: 24, isClientVisible: false, ref: 'AV-063' },
