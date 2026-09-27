@@ -55,6 +55,12 @@ describe('businessDayStartUtc / businessDayEndUtc', () => {
   it('rejette un format de jour métier invalide', () => {
     expect(() => businessDayStartUtc('24-09-2026')).toThrow();
   });
+
+  it('rejette une date inexistante au calendrier (sans report au mois suivant)', () => {
+    expect(() => businessDayStartUtc('2026-02-30')).toThrow(/date inexistante/);
+    expect(() => businessDayEndUtc('2026-13-01')).toThrow(/date inexistante/);
+    expect(businessDayStartUtc('2028-02-29').toISOString()).toBe('2028-02-28T23:00:00.000Z');
+  });
 });
 
 describe('isWithinBusinessDay', () => {

@@ -128,7 +128,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 | Élément | Contenu |
 |---|---|
 | Commandes | `procurement.supplier.create`, `.update` ; `procurement.request.submit` (F), `.cancel`, `.close` ; `procurement.order.create`, `.submit`, `.mark_sent`, `.close_remaining`, `.cancel` ; `procurement.receipt.record` (F), `.request_cancellation` |
-| Requêtes | `GET /suppliers`, `/purchase-orders?status=&site_id=` (reliquats), `/purchase-orders/{id}/matching` (commandé, livré, rejeté, accepté, facturé, payé), `/receipts?from=&to=` |
+| Requêtes | `GET /suppliers`, `/purchase-orders?status=&site_id=` (reliquats), `/purchase-orders/{id}/matching` (commandé, livré, rejeté, accepté, facturé, payé), `/receipts?from=&to=` — construites en P6-06 (`apps/server/src/procurement-api/`), avec en plus `/purchase-requests?status=&site_id=&requested_by=`, `/purchase-requests/{id}`, `/purchase-orders/{id}`, `/receipts/{id}` et les filtres `supplier_id`, `purchase_order_id`, `status`, `cursor`, `limit`. Droit `procurement.order.read` pour les trois documents ; portée : site du document (une DA est aussi visible de son demandeur) ; prix d'achat, coûts de réception et valeurs du rapprochement à `null` sans `inventory.valuation.read` (RC-05) ; au rapprochement, les réceptions en quarantaine sont comptées à part et le payé reste `null` jusqu'à `finance` (P8) |
 | Événements | `PurchaseRequestSubmitted`, `PurchaseOrderApproved`, `GoodsReceived`, `GoodsReceiptQuarantined` |
 | Permissions | `procurement.*` |
 

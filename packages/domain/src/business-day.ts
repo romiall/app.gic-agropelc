@@ -34,6 +34,18 @@ function parseBusinessDay(businessDay: string): { year: number; month: number; d
     );
   }
   const [year, month, day] = businessDay.split('-').map(Number) as [number, number, number];
+  // Date du calendrier : `2026-02-30` n'existe pas (Date.UTC la reporterait au 2 mars).
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    throw new DomainError(
+      `Jour métier invalide (date inexistante) : ${businessDay}`,
+      'INVALID_BUSINESS_DAY',
+    );
+  }
   return { year, month, day };
 }
 
