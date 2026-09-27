@@ -3,6 +3,8 @@
 > Couvre : commandes clients, réservations, livraison (vente sur commande), ventes directes, prix appliqués, attribution commerciale, encaissement intégré à la vente, annulation.
 > Module de code : `sales`. Le module `sales` possède aussi les encaissements clients, leurs affectations et les créances (règles fonctionnelles en D09 §7.1). Il appelle `finance` pour le mouvement de trésorerie correspondant. Les mouvements de stock sont **créés** par le module `inventory` (D06) à la demande de `sales`.
 
+> **Décisions du 27/09/2026 à reporter au démarrage de P4** : AV-024 est tranchée par [ADR-025](../../decisions/ADR-025-vente-a-la-confirmation.md) — la vente et le CA naissent à la **confirmation** de la commande, la marchandise passe dans un emplacement « vendu, à livrer » puis sort vers le client à la livraison. Les règles ci-dessous écrites sur la base d'ADR-014 (vente à la remise, notamment BR-VEN-006) seront réécrites dans le même commit que leur implémentation. AV-025 est tranchée : vente hors ligne bloquée au-delà de l'allocation (BR-VEN-018 inchangée).
+
 ---
 
 ## 1. Objectif

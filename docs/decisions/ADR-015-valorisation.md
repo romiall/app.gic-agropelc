@@ -1,6 +1,6 @@
 # ADR-015 — Valorisation des stocks et coûts de production
 
-- **Statut** : ACCEPTÉ provisoirement ; **À VALIDER** (AV-042, AV-043)
+- **Statut** : ACCEPTÉ provisoirement ; **À VALIDER** (AV-042) ; complété par [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) (AV-043 tranchée le 27/09/2026 : frais généraux répartis ; AV-032 : coproduits d'abattage)
 - **Date** : 24/09/2026
 
 ## Contexte

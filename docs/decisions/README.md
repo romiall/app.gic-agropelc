@@ -18,8 +18,8 @@
 | [ADR-011](ADR-011-architecture-backend.md) | Architecture backend | ACCEPTÉ | Oui |
 | [ADR-012](ADR-012-pieces-jointes-offline.md) | Pièces jointes offline | ACCEPTÉ | Oui |
 | [ADR-013](ADR-013-monnaie-quantites.md) | Monnaie, montants, quantités | ACCEPTÉ | — |
-| [ADR-014](ADR-014-commande-vente-livraison.md) | Commande, vente, livraison | À VALIDER (AV-024) | — |
-| [ADR-015](ADR-015-valorisation.md) | Valorisation et coûts de production | À VALIDER (AV-042, AV-043) | — |
+| [ADR-014](ADR-014-commande-vente-livraison.md) | Commande, vente, livraison | REMPLACÉ pour la naissance de la vente (par ADR-025) | — |
+| [ADR-015](ADR-015-valorisation.md) | Valorisation et coûts de production | À VALIDER (AV-042) ; complété par ADR-026 (AV-043) | — |
 | [ADR-016](ADR-016-temps-metier.md) | Temps métier et horloges | ACCEPTÉ | — |
 | [ADR-017](ADR-017-compte-client-unique.md) | Compte client unique | ACCEPTÉ (AV-012) | — |
 | [ADR-018](ADR-018-validations-generiques.md) | Validations génériques | ACCEPTÉ | — |
@@ -29,5 +29,7 @@
 | [ADR-022](ADR-022-structure-documentaire.md) | Organisation de la documentation | ACCEPTÉ | — |
 | [ADR-023](ADR-023-mysql.md) | Base de données : MySQL (remplace ADR-020) | ACCEPTÉ | — |
 | [ADR-024](ADR-024-hebergement-hostinger.md) | Hébergement cible : Hostinger sans VPS | ACCEPTÉ | — |
+| [ADR-025](ADR-025-vente-a-la-confirmation.md) | Vente reconnue à la confirmation, marchandise « à livrer » (remplace en partie ADR-014) | ACCEPTÉ | — |
+| [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) | Coût de lot : frais généraux de ferme et coproduits d'abattage (complète ADR-015) | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

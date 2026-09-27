@@ -105,7 +105,7 @@ Ces règles sont reprises dans [`../../CLAUDE.md`](../../CLAUDE.md).
 | R8 | Dans le même commit que le code : dictionnaire, matrice, registre AV, ADR, index des règles (`python3 docs/_tools/check_refs.py --index`) si concernés |
 | R9 | Avant de pousser : CI locale verte, y compris `python3 docs/_tools/check_refs.py` |
 | R10 | Aucune donnée réelle hors production ; jeux synthétiques uniquement |
-| R11 | Ne pas démarrer une phase dont un AV bloquant est ouvert (AV-024 et AV-025 pour P4) ; le signaler et travailler sur une autre phase ou préparer les éléments indépendants |
+| R11 | Ne pas démarrer une phase dont un AV bloquant est ouvert (aucun depuis le 27/09/2026 : AV-024 et AV-025, qui bloquaient P4, sont tranchés) ; le signaler et travailler sur une autre phase ou préparer les éléments indépendants |
 
 ## 5. Suivi de l'avancement
 

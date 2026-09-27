@@ -1,6 +1,6 @@
 # ADR-014 — Commande, vente et livraison
 
-- **Statut** : ACCEPTÉ provisoirement ; **À VALIDER** (AV-024 bloquante pour P4, AV-034)
+- **Statut** : **REMPLACÉ** pour la naissance de la vente et la sortie de stock par [ADR-025](ADR-025-vente-a-la-confirmation.md) (AV-024 tranchée le 27/09/2026 : vente à la confirmation) ; le reste (pas d'entité « livraison » distincte au MVP, acomptes) demeure, sous réserve d'AV-034
 - **Date** : 24/09/2026
 
 ## Contexte

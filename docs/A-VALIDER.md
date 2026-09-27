@@ -18,8 +18,8 @@ Classification (PM §45) :
 | AV-001 | Périmètre de la première mise en production | IMPORTANTE | Plan | Mise en production progressive par tranches, site pilote | OUVERT |
 | AV-002 | Inventaire des sites, magasins, points de vente et bâtiments existants | IMPORTANTE | P1 | Modèle générique ; données fournies par GIC | OUVERT |
 | AV-003 | Hiérarchie des zones et géométrie des zones de pointage | IMPORTANTE | P0/P1 | Zones hiérarchiques ; géorepère = centre + rayon | OUVERT |
-| AV-004 | Rôles non listés au CM : opérateur de ferme, livreur, caissier | IMPORTANTE | P0 | Non créés ; rôle optionnel `OPERATEUR_FERME` proposé | OUVERT |
-| AV-005 | Répartition Responsable ferme / Responsable production | IMPORTANTE | P7 | Ferme = site ; Production = toutes fermes + lots | OUVERT |
+| AV-004 | Rôles non listés au CM : opérateur de ferme, livreur, caissier | IMPORTANTE | P0 | Aucun rôle supplémentaire au lancement | **TRANCHÉ** (voir journal §3) |
+| AV-005 | Répartition Responsable ferme / Responsable production | IMPORTANTE | P7 | Ferme = son site (saisies, stock) ; Production = toutes les fermes (lots, validations, indicateurs) | **TRANCHÉ** (voir journal §3) |
 | AV-006 | Politique d'enrôlement des appareils | IMPORTANTE | P0 | Appareil `PENDING` jusqu'à approbation | OUVERT |
 | AV-007 | Appareils partagés entre plusieurs utilisateurs | IMPORTANTE | P0/P5 | Autorisés ; session et allocation par couple utilisateur/appareil | OUVERT |
 | AV-008 | Mode d'authentification des utilisateurs terrain | IMPORTANTE | P0 | Téléphone + mot de passe à l'enrôlement ; PIN local | OUVERT |
@@ -38,15 +38,15 @@ Classification (PM §45) :
 | AV-021 | Prise de service hors zone : refus ou acceptation signalée | IMPORTANTE | P3 | Refus + tentative conservée + dérogation | OUVERT |
 | AV-022 | Rayon de tolérance et précision GPS maximale | SECONDAIRE | P3 | 500 m (CM) ; précision ≤ 150 m | OUVERT |
 | AV-023 | Session de travail obligatoire pour visites et ventes terrain | IMPORTANTE | P3 | Rattachement automatique, pas de blocage | OUVERT |
-| AV-024 | Reconnaissance de la vente et sortie de stock pour les ventes sur commande | **BLOQUANTE** | P4 | Vente créée à la remise physique | OUVERT |
-| AV-025 | Vente hors ligne au-delà de l'allocation | **BLOQUANTE** | P4/P5 | Bloquée sur l'appareil | OUVERT |
+| AV-024 | Reconnaissance de la vente et sortie de stock pour les ventes sur commande | **BLOQUANTE** | P4 | Vente et CA à la confirmation ; marchandise en emplacement « à livrer » jusqu'à la livraison | **TRANCHÉ** (voir journal §3) |
+| AV-025 | Vente hors ligne au-delà de l'allocation | **BLOQUANTE** | P4/P5 | Bloquée sur l'appareil ; option « autorisée et signalée » activable par site, désactivée par défaut | **TRANCHÉ** (voir journal §3) |
 | AV-026 | Modification de prix / remise par le vendeur | IMPORTANTE | P4 | Interdite sauf permission, plafond et motif | OUVERT |
 | AV-027 | Ventes anonymes au point de vente | IMPORTANTE | P4 | Autorisées si payées comptant intégralement | OUVERT |
 | AV-028 | Politique de crédit client | IMPORTANTE | P4 | Clients autorisés, plafond, échéance 30 jours | OUVERT |
 | AV-029 | Retours clients | SECONDAIRE | Futur | Hors MVP ; annulation encadrée | OUVERT |
 | AV-030 | Conditions d'annulation d'une vente | IMPORTANTE | P4 | Validation requise sauf ≤ 15 min et caisse ouverte | OUVERT |
 | AV-031 | Vente au poids ou à l'unité selon les produits | IMPORTANTE | P1/P4 | Les deux supportés ; à l'unité par défaut | OUVERT |
-| AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P7 | Vif uniquement au MVP | OUVERT |
+| AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P7 | Vif et abattu dès P7 : transformation multi-produits (entier, découpes, abats), coût réparti au prorata du poids | **TRANCHÉ** (voir journal §3) |
 | AV-033 | Acomptes sur commande | SECONDAIRE | P4 | Autorisés, affectés à la commande | OUVERT |
 | AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Portée par la vente sur commande | OUVERT |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
@@ -57,14 +57,14 @@ Classification (PM §45) :
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
 | AV-041 | TVA et taxes | IMPORTANTE | P4/P8 | Prix TTC, pas de ventilation fiscale | OUVERT |
 | AV-042 | Méthode de valorisation du stock | IMPORTANTE | P2/P8 | CMUP perpétuel ; coût de lot pour le biologique | OUVERT |
-| AV-043 | Coûts incorporés au coût d'un lot | IMPORTANTE | P7/P8 | Coûts directs uniquement | OUVERT |
-| AV-044 | Types de lots exploités | IMPORTANTE | P7 | Chair, pondeuse, porc d'engraissement | OUVERT |
-| AV-045 | Naissage porcin dans le MVP | IMPORTANTE | P7 | Non ; entrées génériques | OUVERT |
-| AV-046 | Classification des œufs et conditionnement | IMPORTANTE | P7 | Catégories CM ; plateau de 30 ; déclassés non vendus | OUVERT |
-| AV-047 | Origine des œufs à couver et paramètres d'incubation | SECONDAIRE | P7 | Interne ou achat ; durées configurables | OUVERT |
-| AV-048 | Seuil de validation de la mortalité | IMPORTANTE | P7 | > 0,5 % de l'effectif ou > 20 têtes / jour | OUVERT |
-| AV-049 | Indicateurs zootechniques attendus | SECONDAIRE | P7/P9 | Ceux du CM + taux calculables | OUVERT |
-| AV-050 | Suivi sanitaire (vaccination, traitements) | SECONDAIRE | Futur | Consommations uniquement | OUVERT |
+| AV-043 | Coûts incorporés au coût d'un lot | IMPORTANTE | P7/P8 | Coûts directs + frais généraux du site, répartis chaque mois au prorata têtes × jours | **TRANCHÉ** (voir journal §3) |
+| AV-044 | Types de lots exploités | IMPORTANTE | P7 | Cinq types actifs dès P7 ; reproducteur volaille suivi comme une pondeuse | **TRANCHÉ** (voir journal §3) |
+| AV-045 | Naissage porcin dans le MVP | IMPORTANTE | P7 | Inclus : naissances dans le lot de naissage, sevrage = transfert vers un lot d'engraissement avec coût | **TRANCHÉ** (voir journal §3) |
+| AV-046 | Classification des œufs et conditionnement | IMPORTANTE | P7 | Catégories CM + calibres à la collecte (liste paramétrable, un produit par calibre) ; plateau de 30 | **TRANCHÉ** (voir journal §3) |
+| AV-047 | Origine des œufs à couver et paramètres d'incubation | SECONDAIRE | P7 | Œufs internes ou achetés ; durées paramétrées par espèce | **TRANCHÉ** (voir journal §3) |
+| AV-048 | Seuil de validation de la mortalité | IMPORTANTE | P7 | Toute mortalité validée (photo + Resp. production) ; seuils paramétrés en conséquence | **TRANCHÉ** (voir journal §3) |
+| AV-049 | Indicateurs zootechniques attendus | SECONDAIRE | P7/P9 | Base + indice de consommation, poids moyen et GMQ, taux de ponte | **TRANCHÉ** (voir journal §3) |
+| AV-050 | Suivi sanitaire (vaccination, traitements) | SECONDAIRE | Futur | Consommations vétérinaires imputées ; pas de plan de prophylaxie | **TRANCHÉ** (voir journal §3) |
 | AV-051 | Seuils de validation des achats | IMPORTANTE | P6 | Toute DA validée ; BC > 500 000 XAF par Direction | OUVERT |
 | AV-052 | Réception sans bon de commande | IMPORTANTE | P6 | Autorisée avec justification et validation | OUVERT |
 | AV-053 | Tolérances de rapprochement commande / réception / facture | SECONDAIRE | P6/P8 | Tolérance nulle ; écart signalé | OUVERT |
@@ -109,8 +109,8 @@ Classification (PM §45) :
 | AV-092 | Permissions marquant `identity.permissions.is_sensitive` (audit renforcé et revue d'attribution périodique) | IMPORTANTE | P0 | `false` pour les 117 permissions (défaut du schéma ; aucune n'est désignée par une source) | OUVERT |
 | AV-093 | Permission gouvernant `attachments.attachment.register` | SECONDAIRE | P0 | Permission générique `attachments.attachment.manage`, accordée à tous les rôles opérationnels | OUVERT |
 | AV-094 | Permission de lecture des documents de stock (transferts, pertes, consommations, inventaires, seuils) | SECONDAIRE | P2 | Pertes : `inventory.loss.read`, encadrement dans son périmètre, déclarants de terrain limités à leurs propres pertes ; autres documents : `inventory.stock.read` | **TRANCHÉ** (voir journal §3) |
-| AV-095 | Réception hors ligne dépassant le reliquat d'un bon de commande : quarantaine ou application avec excédent en revue | SECONDAIRE | P6 | Quarantaine (aucun effet stock jusqu'à décision), paramètre `procurement.offline_over_receipt_mode` | OUVERT |
-| AV-096 | Dérogation d'emplacement de réception (réception d'un BC hors de son site de livraison) : qui l'accorde et comment | SECONDAIRE | P6 | Non ouverte : refus `RECEIPT_LOCATION_INVALID` ; réception au site du BC puis transfert | OUVERT |
+| AV-095 | Réception hors ligne dépassant le reliquat d'un bon de commande : quarantaine ou application avec excédent en revue | SECONDAIRE | P6 | Quarantaine (défaut confirmé) | **TRANCHÉ** (voir journal §3) |
+| AV-096 | Dérogation d'emplacement de réception (réception d'un BC hors de son site de livraison) : qui l'accorde et comment | SECONDAIRE | P6 | Autorisée après validation du Resp. achats ; stock à la validation | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -142,19 +142,21 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 - **Impact** : calcul de distance au pointage, héritage tarifaire.
 - **Références** : CM §9, §10, §29 ; PM §13.
 
-### AV-004 — Rôles supplémentaires — IMPORTANTE
+### AV-004 — Rôles supplémentaires — IMPORTANTE — **TRANCHÉ**
 - **Question** : faut-il des rôles non listés au CM §47, comme opérateur ou agent de ferme (saisie quotidienne), livreur ou transporteur, caissier distinct du vendeur ?
 - **Pourquoi** : la « SAISIE DU JOUR » en ferme et les transferts physiques sont peut-être faits par des personnes qui n'ont aucun rôle du CM.
 - **Choix** : (a) aucun rôle supplémentaire ; (b) ajouter `OPERATEUR_FERME` (saisie seulement) ; (c) ajouter aussi `LIVREUR` et `CAISSIER`.
 - **Recommandation** : (a) au lancement. Le modèle RBAC permet d'ajouter (b) ou (c) par simple configuration, sans code. Le rôle `OPERATEUR_FERME` est décrit comme **proposé** dans la matrice RBAC.
 - **Impact** : paramétrage uniquement (RBAC data-driven).
 - **Références** : CM §47, §49 ; ADR-008.
+- **Décision** (porteur du projet, 27/09/2026) : **Aucun rôle supplémentaire** au lancement (option a) ; `OPERATEUR_FERME` reste un rôle proposé, ajoutable par paramétrage.
 
-### AV-005 — Responsable ferme vs Responsable production — IMPORTANTE
+### AV-005 — Responsable ferme vs Responsable production — IMPORTANTE — **TRANCHÉ**
 - **Question** : comment répartir les droits entre ces deux rôles (CM §47) ?
 - **Recommandation** : le Responsable ferme agit sur **son site** : saisies, stock de la ferme, validations locales sous seuil. Le Responsable production agit sur **toutes les fermes** : création et clôture des lots, validations au-dessus du seuil, indicateurs.
 - **Impact** : matrice RBAC uniquement.
 - **Références** : CM §47 ; C-11.
+- **Décision** (porteur du projet, 27/09/2026) : Recommandation retenue : le Responsable ferme agit sur **son site** (saisies, stock de la ferme) ; le Responsable production agit sur **toutes les fermes** (création et clôture des lots, validations, indicateurs).
 
 ### AV-006 — Enrôlement des appareils — IMPORTANTE
 - **Question** : un nouvel appareil peut-il synchroniser immédiatement, ou doit-il être approuvé ?
@@ -238,18 +240,20 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 ### AV-023 — Session obligatoire — IMPORTANTE
 - **Recommandation** : aucun blocage. Les visites et ventes terrain se rattachent automatiquement à la session ouverte. Si aucune session n'est ouverte, l'indicateur « visite hors session » est levé. Les sessions ouvertes sont clôturées automatiquement à 23:59 (heure de Douala).
 
-### AV-024 — Vente sur commande : reconnaissance et sortie de stock — BLOQUANTE (phase 4)
+### AV-024 — Vente sur commande : reconnaissance et sortie de stock — BLOQUANTE (phase 4) — **TRANCHÉ**
 - **Question** : pour une commande livrée plus tard, quand le stock sort-il et quand le chiffre d'affaires est-il reconnu ?
 - **Choix** : (a) à la confirmation de la commande ; (b) à la remise physique (livraison) ; (c) vente confirmée avant livraison, avec un état « à livrer ».
 - **Recommandation** : (b). La commande réserve le stock ; la livraison crée la vente, la sortie de stock et la créance. Une vente directe est à la fois vente et remise.
 - **Impact** : machines à états commande et vente, calcul du CA, créances. Voir ADR-014.
 - **Références** : CM §4, §13, §32 ; C-04.
+- **Décision** (porteur du projet, 27/09/2026) : Vente et chiffre d'affaires reconnus à la **confirmation** de la commande (option a, différente de la recommandation) ; la marchandise passe alors dans un emplacement « vendu, à livrer » et sort vers le client à la livraison (le comptage physique du magasin reste juste) ; une vente directe est à la fois vente et remise.
 
-### AV-025 — Vente hors ligne au-delà de l'allocation — BLOQUANTE (phases 4 et 5)
+### AV-025 — Vente hors ligne au-delà de l'allocation — BLOQUANTE (phases 4 et 5) — **TRANCHÉ**
 - **Choix** : (a) blocage sur l'appareil ; (b) autorisée et signalée, avec vérification à la synchronisation ; (c) autorisée seulement pour certains rôles.
 - **Recommandation** : (a). Un vendeur ne peut pas vendre hors ligne plus que son allocation ou que le stock de son emplacement exclusif. Une option (b) peut être activée **par site**, désactivée par défaut.
 - **Impact** : risque de vente manquée contre risque de survente.
 - **Références** : CM §39 ; PM §6 ; C-08 ; ADR-004.
+- **Décision** (porteur du projet, 27/09/2026) : Vente hors ligne au-delà de l'allocation **bloquée sur l'appareil** (option a) ; l'option « autorisée et signalée » reste activable par site, désactivée par défaut.
 
 ### AV-026 — Modification de prix par le vendeur — IMPORTANTE
 - **Recommandation** : interdite par défaut. Avec la permission `sales.price.override`, une remise est possible dans un plafond paramétré par rôle (Vendeur 0 %, Commercial 5 %, Resp. commercial 15 %), avec un motif obligatoire. Au-delà du plafond, une validation est requise.
@@ -270,8 +274,9 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 ### AV-031 — Poids ou unité — IMPORTANTE
 - **Recommandation** : le modèle supporte les deux par produit (`pricing_mode`). Au lancement, tout se vend à l'unité, avec une saisie de poids optionnelle.
 
-### AV-032 — Vif ou abattu — IMPORTANTE
+### AV-032 — Vif ou abattu — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : vif uniquement au MVP. L'abattage ou la transformation sera modélisé comme une opération de transformation (consommation → production), sans changer le registre de stock.
+- **Décision** (porteur du projet, 27/09/2026) : Poulet **vif et abattu dès P7** : l'abattage est une transformation (consommation des poulets vifs → production de plusieurs produits : poulet entier, découpes, abats), avec rendement et pertes d'abattage ; le coût est réparti entre les produits obtenus **au prorata du poids**.
 
 ### AV-033 — Acomptes — SECONDAIRE
 - **Recommandation** : autorisés. L'encaissement est affecté à la commande, puis réaffecté à la vente à la livraison.
@@ -313,29 +318,37 @@ Politique par défaut, paramétrable :
 - **Choix** : CMUP, FIFO, coût standard.
 - **Recommandation** : CMUP perpétuel par produit, recalculé à chaque entrée valorisée. Pour les produits biologiques issus d'un lot, le coût unitaire est le coût cumulé du lot divisé par l'effectif vivant. Voir ADR-015.
 
-### AV-043 — Composantes du coût de lot — IMPORTANTE
+### AV-043 — Composantes du coût de lot — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : coûts directs uniquement au MVP : animaux ou œufs d'origine, aliments et intrants consommés, dépenses directement imputées au lot. Aucune répartition de frais généraux.
+- **Décision** (porteur du projet, 27/09/2026) : Coût de lot = **coûts directs + frais généraux** de la ferme (option différente de la recommandation) : les frais généraux sont saisis comme écritures de coût sur le **site** (registre de coûts existant, relié aux dépenses en P8) et répartis **chaque mois** entre les lots actifs du site au prorata **têtes × jours**.
 
-### AV-044 — Types de lots — IMPORTANTE
+### AV-044 — Types de lots — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : `POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`. Types optionnels activables par configuration : `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE`.
+- **Décision** (porteur du projet, 27/09/2026) : Les **cinq types** actifs dès P7 (`POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`, `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE`) ; un lot reproducteur volaille est suivi **comme une pondeuse** (collectes), ses œufs allant surtout en œufs à couver.
 
-### AV-045 — Naissage porcin — IMPORTANTE
+### AV-045 — Naissage porcin — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : hors MVP. Les porcelets entrent dans un lot par une « entrée » générique (`BIRTH`, `PURCHASE`, `TRANSFER_IN`). L'identification individuelle est une évolution future (CM §19).
+- **Décision** (porteur du projet, 27/09/2026) : Naissage porcin **inclus** (conséquence d'AV-044) : lot `PORC_NAISSAGE` (truies et porcelets) ; les naissances y entrent (`BIRTH`) ; au **sevrage**, les porcelets sont transférés vers un lot d'engraissement avec leur coût.
 
-### AV-046 — Classification des œufs — IMPORTANTE
+### AV-046 — Classification des œufs — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : catégories du CM §17. Plateau de 30 œufs comme unité de vente. Les œufs cassés et non conformes n'entrent pas en stock commercial. Un produit « œuf déclassé » vendable pourra être activé.
+- **Décision** (porteur du projet, 27/09/2026) : Catégories du CM §17 **et calibres** : cassés et non conformes hors stock ; les œufs commercialisables sont répartis **par calibre dès la collecte** (liste de calibres paramétrable, chaque calibre étant un produit) ; plateau de 30 œufs pour la vente.
 
-### AV-047 — Incubation — SECONDAIRE
+### AV-047 — Incubation — SECONDAIRE — **TRANCHÉ**
 - **Recommandation** : œufs à couver issus de la production interne ou d'un achat. Durée d'incubation, jour de mirage et jour de transfert vers l'éclosoir paramétrés par espèce.
+- **Décision** (porteur du projet, 27/09/2026) : Recommandation retenue : œufs à couver issus de la production interne **ou** d'un achat ; durées (mirage, transfert vers l'éclosoir, éclosion) paramétrées par espèce, sans rien bloquer.
 
-### AV-048 — Validation de la mortalité — IMPORTANTE
+### AV-048 — Validation de la mortalité — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : une déclaration de mortalité journalière supérieure à 0,5 % de l'effectif du lot **ou** à 20 têtes exige une photo et une validation du Responsable production. En dessous, elle est enregistrée sans validation.
+- **Décision** (porteur du projet, 27/09/2026) : **Toute** déclaration de mortalité exige une photo et la validation du Responsable production (option différente de la recommandation) ; les seuils restent des paramètres (réglés pour exiger la validation dès la première tête).
 
-### AV-049 — Indicateurs zootechniques — SECONDAIRE
+### AV-049 — Indicateurs zootechniques — SECONDAIRE — **TRANCHÉ**
 - **Recommandation** : taux de mortalité, effectif, taux d'éclosion (CM §18), œufs commercialisables / collectés, coût par tête. Indicateurs proposés, à valider : indice de consommation, poids moyen, gain moyen quotidien, taux de ponte.
+- **Décision** (porteur du projet, 27/09/2026) : Indicateurs de base **plus** indice de consommation, poids moyen et gain moyen quotidien, taux de ponte, dès P7.
 
-### AV-050 — Suivi sanitaire — SECONDAIRE
+### AV-050 — Suivi sanitaire — SECONDAIRE — **TRANCHÉ**
 - **Recommandation** : seules les consommations de produits vétérinaires sont imputées au lot. Le plan de prophylaxie est une évolution future.
+- **Décision** (porteur du projet, 27/09/2026) : Recommandation retenue : seules les consommations de produits vétérinaires sont imputées au lot (et les observations sanitaires notées) ; pas de plan de prophylaxie.
 
 ### AV-051 — Validation des achats — IMPORTANTE
 - **Recommandation** : toute demande d'achat est validée par le Responsable achats ou la Direction. Un bon de commande supérieur à 500 000 XAF est approuvé par la Direction.
@@ -509,19 +522,21 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a) pour démarrer — c'est ce qui est implémenté en P2-05 (`apps/server/src/inventory-api/inventory-read.controller.ts`) : aucun droit n'est élargi au-delà de la portée de stock déjà accordée, et les montants restent masqués sans `inventory.valuation.read` (RC-05). (c) si la Direction juge que les pertes imputées doivent rester confidentielles au sein d'un site.
 - **Impact** : une seule constante par route dans le contrôleur de lecture (et, pour (b), des permissions nouvelles au catalogue, au seed et dans la matrice). Aucun effet sur les commandes d'écriture ni sur le jeu hors ligne (qui ne transporte pas les pertes).
 
-### AV-095 — Réception hors ligne dépassant le reliquat d'un BC — SECONDAIRE
+### AV-095 — Réception hors ligne dépassant le reliquat d'un BC — SECONDAIRE — **TRANCHÉ**
 - **Question** : une réception saisie hors ligne dont l'acceptation cumulée dépasse le reliquat de la ligne de bon de commande (au-delà de la tolérance, AV-053) doit-elle être **mise en quarantaine** (aucun effet stock jusqu'à décision) ou **appliquée**, l'excédent partant en revue ?
 - **Pourquoi** : deux règles du référentiel se recouvrent sans se trancher. BR-APP-010 : « Hors ligne, la réception est appliquée et l'excédent part en revue (`OVER_RECEIPT`) ». BR-APP-012 et D08 §14 : une réception dont « l'acceptation cumulée > commandée pour une réception concurrente hors ligne » est mise en `QUARANTINED`, sans effet stock (« la seconde passe en quarantaine si elle dépasse le reliquat »). Le serveur ne sait pas distinguer une livraison excédentaire unique d'une double saisie concurrente du même BC.
 - **Choix** : (a) quarantaine de toute réception hors ligne excédentaire ; (b) application, excédent tracé (`excess_qty_base`) et conflit informatif `OVER_RECEIPT` ; (c) (a) si une autre réception du même BC a été comptabilisée après l'heure métier de celle-ci, (b) sinon.
 - **Recommandation** : (a) — aucune entrée de stock fantôme possible (PM §30 « réception en double »), la décision du responsable des achats comptabilise la réception réelle. C'est la valeur par défaut, **paramétrable** (`procurement.offline_over_receipt_mode` = `QUARANTINE` ; `APPLY_WITH_REVIEW` pour (b)) — les deux modes sont implémentés (P6-05).
 - **Impact** : paramètre système seul ; aucun changement de schéma. En ligne, la réception excédentaire reste refusée (`OVER_RECEIPT`) dans les deux cas (BR-APP-010).
+- **Décision** (porteur du projet, 27/09/2026) : Défaut confirmé : une réception hors ligne dépassant le reliquat passe en **quarantaine** (`procurement.offline_over_receipt_mode` = `QUARANTINE`).
 
-### AV-096 — Dérogation d'emplacement de réception — SECONDAIRE
+### AV-096 — Dérogation d'emplacement de réception — SECONDAIRE — **TRANCHÉ**
 - **Question** : D08 §8 admet une réception sur un emplacement hors du site de livraison du bon de commande « ou dérogation motivée ». Qui accorde cette dérogation (le magasinier par un motif saisi, ou le responsable des achats par une validation), et la réception compte-t-elle alors pour le reliquat du BC ?
 - **Pourquoi** : aucune règle ne décrit la dérogation (ni rôle, ni politique de contrôle, ni colonne de motif au dictionnaire). L'ouvrir sans cadre permettrait de faire entrer du stock commandé pour un site dans un autre site sans contrôle.
 - **Choix** : (a) pas de dérogation : `RECEIPT_LOCATION_INVALID`, la marchandise est réceptionnée au site du BC puis transférée (D06) ; (b) dérogation par motif saisi à la réception (colonne `location_override_reason` à ajouter), tracée à l'audit ; (c) dérogation soumise à validation (`RECEIPT_LOCATION_OVERRIDE`, politique de contrôle), stock entré à la validation.
 - **Recommandation** : (a) tant que le besoin n'est pas avéré — le transfert conserve la traçabilité complète (transit, écarts) ; (b) si des livraisons directes vers un autre site sont courantes. Défaut implémenté (P6-05) : (a).
 - **Impact** : (b) ou (c) : une colonne et une règle dans `procurement.receipt.record` ; aucun effet sur le registre de stock.
+- **Décision** (porteur du projet, 27/09/2026) : Réception hors du site de livraison du BC **autorisée après validation** du responsable des achats (option c) : la réception attend la décision et le stock entre à la validation ; à construire en reprise de P6.
 
 ---
 
@@ -533,3 +548,18 @@ Politique par défaut, paramétrable :
 | 24/09/2026 | AV-089 | Stack recadrée confirmée sans réserve (TypeScript de bout en bout, MySQL). P0 démarre | Porteur du projet |
 | 26/09/2026 | AV-038 | Rejet d'une perte : deux issues ; `PERTE_NON_JUSTIFIEE` imputée au déclarant ; rejet sans option = `ERREUR_DECLARATION` (comportement P2-04 confirmé) | Porteur du projet |
 | 26/09/2026 | AV-094 | Lecture des pertes réservée à l'encadrement dans son périmètre (`inventory.loss.read`) ; déclarants de terrain limités à leurs propres déclarations ; autres documents de stock sous `inventory.stock.read` | Porteur du projet |
+| 27/09/2026 | AV-024 | Vente et CA à la confirmation ; marchandise en emplacement « à livrer » jusqu'à la livraison | Porteur du projet |
+| 27/09/2026 | AV-025 | Bloquée sur l'appareil ; option « autorisée et signalée » activable par site, désactivée par défaut | Porteur du projet |
+| 27/09/2026 | AV-004 | Aucun rôle supplémentaire au lancement | Porteur du projet |
+| 27/09/2026 | AV-005 | Ferme = son site (saisies, stock) ; Production = toutes les fermes (lots, validations, indicateurs) | Porteur du projet |
+| 27/09/2026 | AV-032 | Vif et abattu dès P7 : transformation multi-produits (entier, découpes, abats), coût réparti au prorata du poids | Porteur du projet |
+| 27/09/2026 | AV-043 | Coûts directs + frais généraux du site, répartis chaque mois au prorata têtes × jours | Porteur du projet |
+| 27/09/2026 | AV-044 | Cinq types actifs dès P7 ; reproducteur volaille suivi comme une pondeuse | Porteur du projet |
+| 27/09/2026 | AV-045 | Inclus : naissances dans le lot de naissage, sevrage = transfert vers un lot d'engraissement avec coût | Porteur du projet |
+| 27/09/2026 | AV-046 | Catégories CM + calibres à la collecte (liste paramétrable, un produit par calibre) ; plateau de 30 | Porteur du projet |
+| 27/09/2026 | AV-047 | Œufs internes ou achetés ; durées paramétrées par espèce | Porteur du projet |
+| 27/09/2026 | AV-048 | Toute mortalité validée (photo + Resp. production) ; seuils paramétrés en conséquence | Porteur du projet |
+| 27/09/2026 | AV-049 | Base + indice de consommation, poids moyen et GMQ, taux de ponte | Porteur du projet |
+| 27/09/2026 | AV-050 | Consommations vétérinaires imputées ; pas de plan de prophylaxie | Porteur du projet |
+| 27/09/2026 | AV-095 | Quarantaine (défaut confirmé) | Porteur du projet |
+| 27/09/2026 | AV-096 | Autorisée après validation du Resp. achats ; stock à la validation | Porteur du projet |

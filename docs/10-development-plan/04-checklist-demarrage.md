@@ -88,7 +88,7 @@ Aucun AV bloquant ne concerne P0 à P3 : **la release R1 peut être développée
 | Exigences sources, règles métier, invariants | Stabilisé | 99 exigences, 313 règles, 81 invariants ; statut de chaque règle indiqué |
 | Workflows, machines à états | Stabilisé | 18 workflows, 30 machines à états |
 | Modèle de données | Stabilisé pour P0 à P5 | Tables de P6 à P10 à confirmer avec leurs AV ; types recadrés pour MySQL (ADR-023) |
-| Offline, synchronisation, conflits | Stabilisé | Politique de dépassement d'allocation dépendante d'AV-025 (bloquant P4) |
+| Offline, synchronisation, conflits | Stabilisé | Politique de dépassement d'allocation : AV-025 tranchée le 27/09/2026 (blocage sur l'appareil ; option « autorisée et signalée » activable par site) |
 | Sécurité, RBAC, audit | Stabilisé | Rôles additionnels : AV-004 ; défense en profondeur analytique reportée sur les tests (RISK-28) |
 | API, événements | Stabilisé (principes, catalogue) | Contrats détaillés écrits phase par phase dans `packages/contracts` |
 | Base de données | **Tranchée** | MySQL 8, remplace PostgreSQL (ADR-023) |

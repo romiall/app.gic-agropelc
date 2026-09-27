@@ -148,7 +148,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests d'intégration | INV-VEN-01 à 10, INV-FIN-01 à 04, 09, 10, INV-STK-16 |
 | Tests E2E | WF-01 (commercial), WF-02, annulations, doublon de paiement |
 | Critères d'acceptation | AT-001, 002, 005, 007 à 011, 018, 030, 032, 033 |
-| Prérequis | AV-024 et AV-025 (**bloquantes**), AV-026 à AV-031, AV-033, AV-034, AV-041, AV-056, AV-060, AV-063, AV-083, AV-085, AV-087 |
+| Prérequis | AV-024 et AV-025 (bloquantes, **tranchées le 27/09/2026** : vente à la confirmation avec emplacement « à livrer », vente hors ligne bloquée au-delà de l'allocation), AV-026 à AV-031, AV-033, AV-034, AV-041, AV-056, AV-060, AV-063, AV-083, AV-085, AV-087 |
 | Risques | RISK-02, RISK-06, RISK-17 |
 | DoD | Journée de vente pilote rapprochée (stock, caisse, CA) à zéro écart |
 
