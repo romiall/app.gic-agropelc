@@ -20,6 +20,12 @@ export default defineConfig({
     // fichiers s'observent mutuellement et échouent de façon intermittente sans défaut du code.
     // Exécution séquentielle par fichier : le mode dans lequel chaque phase est vérifiée (P0 à P2).
     fileParallelism: false,
+    // Délais relevés (défauts : 5 s par test, 10 s par crochet) : chaque test traverse une vraie
+    // base et le premier d'un fichier paie l'ouverture des connexions et le démarrage de Nest.
+    // Sur un poste partagé et chargé, les défauts produisaient des dépassements sans défaut du
+    // code (clôture de P3 : 9 tests de P0 à P2, tous verts à la relance).
+    testTimeout: 20_000,
+    hookTimeout: 60_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

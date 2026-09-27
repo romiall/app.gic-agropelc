@@ -179,6 +179,105 @@ describe('organization.* (P0-11)', () => {
       expect(result).toMatchObject({ error: { code: 'GEOFENCE_INVALID' } });
     });
 
+    it('AV-022 : rayon par défaut = paramètre fieldwork.geofence_radius_m en vigueur (règle 8)', async () => {
+      // Versions datées de 2021 : sans effet sur les autres tests (heures métier ≥ 2026).
+      await db.transaction().execute(async (trx) => {
+        for (const [validFrom, value] of [
+          ['2021-03-01T00:00:00.000Z', 800],
+          ['2021-03-02T00:00:00.000Z', 500],
+        ] as const) {
+          await trx
+            .insertInto('organization_system_settings')
+            .values({
+              id: toBin(freshUuid()),
+              key: 'fieldwork.geofence_radius_m',
+              value: JSON.stringify(value),
+              scope_type: 'GLOBAL',
+              valid_from: new Date(validFrom),
+              is_client_visible: 1,
+              reason: 'Test AV-022',
+              created_by: toBin(admin),
+            })
+            .execute();
+        }
+      });
+      const zoneId = freshUuid();
+      const result = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.zone.create',
+          aggregate_type: 'ZONE',
+          aggregate_id: zoneId,
+          occurred_at: '2021-03-01T12:00:00.000Z',
+          payload: {
+            code: `Z-${zoneId.slice(-8)}`,
+            name: 'Paramétrée',
+            level: 'SECTEUR',
+            lat: 4.05,
+            lng: 9.7,
+          },
+        }),
+        ctx(),
+      );
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+      const row = await db
+        .selectFrom('organization_zones')
+        .select('geofence_radius_m')
+        .where('id', '=', toBin(zoneId))
+        .executeTakeFirstOrThrow();
+      expect(Number(row.geofence_radius_m)).toBe(800);
+    });
+
+    it('update : géorepère fixé, modifié (avant / après à l’audit), puis retiré', async () => {
+      const zoneId = freshUuid();
+      await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'organization.zone.create',
+          aggregate_type: 'ZONE',
+          aggregate_id: zoneId,
+          occurred_at: OCCURRED_AT,
+          payload: { code: `Z-${zoneId.slice(-8)}`, name: 'Marché', level: 'MARCHE' },
+        }),
+        ctx(),
+      );
+      const update = (geofence: unknown) =>
+        pipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'organization.zone.update',
+            aggregate_type: 'ZONE',
+            aggregate_id: zoneId,
+            occurred_at: LATER_OCCURRED_AT,
+            payload: { geofence },
+          }),
+          ctx(),
+        );
+      const geofenceOf = async () =>
+        db
+          .selectFrom('organization_zones')
+          .select(['geofence_lat', 'geofence_lng', 'geofence_radius_m'])
+          .where('id', '=', toBin(zoneId))
+          .executeTakeFirstOrThrow();
+
+      expect((await update({ lat: 4.0511, lng: 9.7679 })).status).toBe('APPLIED');
+      expect(Number((await geofenceOf()).geofence_radius_m)).toBe(500); // défaut paramétré
+      const moved = await update({ lat: 4.06, lng: 9.77, radiusM: 300 });
+      expect(moved.status).toBe('APPLIED');
+      const audit = await db
+        .selectFrom('audit_audit_log')
+        .select(['before', 'after'])
+        .where('command_id', '=', toBin(moved.command_id))
+        .executeTakeFirstOrThrow();
+      expect(audit.before).toEqual({ geofence: { lat: 4.0511, lng: 9.7679, radiusM: 500 } });
+      expect(audit.after).toMatchObject({ geofence: { lat: 4.06, lng: 9.77, radiusM: 300 } });
+      const invalid = await update({ lat: 4.06, lng: 9.77, radiusM: 20 });
+      expect(invalid).toMatchObject({ status: 'REJECTED', error: { code: 'GEOFENCE_INVALID' } });
+      expect((await update(null)).status).toBe('APPLIED');
+      expect(await geofenceOf()).toEqual({
+        geofence_lat: null,
+        geofence_lng: null,
+        geofence_radius_m: null,
+      });
+    });
+
     it('update : nom et actif', async () => {
       const zoneId = freshUuid();
       await pipeline.handle(

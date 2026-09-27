@@ -14,13 +14,13 @@
 | `depth` | smallint | Non | calculé | Profondeur (1 = racine utile), utilisée par la spécificité tarifaire |
 | `geofence_lat` | lat | Oui | — | Point de référence du géorepère |
 | `geofence_lng` | lng | Oui | — | |
-| `geofence_radius_m` | meters | Oui | 500 (applicatif) | Rayon (CM §10) |
+| `geofence_radius_m` | meters | Oui | paramètre `fieldwork.geofence_radius_m` (applicatif) | Rayon (CM §10, AV-022) |
 | `max_gps_accuracy_m` | meters | Oui | 150 | Précision maximale acceptée (AV-022) |
 | `is_active` | boolean | Non | true | |
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **FK** `parent_id`. **UQ** `code`.
-- **CK** Latitude, longitude et rayon renseignés ensemble ou pas du tout ; rayon entre 50 et 5 000 ; pas de cycle (TX). Le défaut de 500 pour `geofence_radius_m` est appliqué **côté application** (`packages/domain`) à la construction d'un géorepère, pas comme `DEFAULT` de colonne : un défaut de colonne s'appliquerait aussi quand aucun géorepère n'est fourni (`geofence_lat`/`geofence_lng` nuls), ce qui violerait la contrainte « ensemble ou pas du tout ».
+- **CK** Latitude, longitude et rayon renseignés ensemble ou pas du tout ; rayon entre 50 et 5 000 ; pas de cycle (TX). Le défaut de `geofence_radius_m` est appliqué **côté application** à la construction d'un géorepère (création ou modification de la zone) : paramètre `fieldwork.geofence_radius_m` en vigueur (500 au seed), à défaut la constante de `packages/domain` — pas comme `DEFAULT` de colonne : un défaut de colonne s'appliquerait aussi quand aucun géorepère n'est fourni (`geofence_lat`/`geofence_lng` nuls), ce qui violerait la contrainte « ensemble ou pas du tout ». Le géorepère est modifiable ou retirable (`organization.zone.update`, P3-09) ; l'ancien reste lisible dans l'audit (avant / après), et chaque tentative de pointage fige celui qu'elle a utilisé.
 - **IX** `(parent_id)`.
 - **Suppr.** `DESACTIVATION`. **Hist.** Géorepère figé sur chaque tentative de pointage (BR-ADM-013) ; modifications auditées.
 - **Offline** DL : zones du périmètre de l'utilisateur, leurs ancêtres et leurs géorepères.

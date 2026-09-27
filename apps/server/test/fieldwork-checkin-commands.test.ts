@@ -531,6 +531,24 @@ describe('fieldwork.checkin.* (P3-03)', () => {
     expect((await checkinRow(accepted.checkinId)).server_result).toBe('ACCEPTED');
   });
 
+  it('D03 §14 : zone privée de son géorepère pendant la période hors ligne — tentative conservée, ZONE_INACTIVE', async () => {
+    const agent = await newAgent();
+    const bare = await db.transaction().execute((trx) => insertTestZone(trx, admin));
+    const attempt = checkin(agent, at('07:30:00'), { zone: bare, sessionId: freshUuid() });
+    expect((await attempt.result).status).toBe('APPLIED');
+    const row = await checkinRow(attempt.checkinId);
+    expect(row.server_result).toBe('ZONE_INACTIVE');
+    expect(row.geofence_radius_m).toBeNull();
+    expect(row.result_divergence).toBe(1);
+    // Acceptée sur l'appareil, refusée par le serveur : session gardée, dérogation demandée.
+    const session = await db
+      .selectFrom('fieldwork_work_sessions')
+      .select(['status', 'override_status'])
+      .where('start_checkin_id', '=', toBin(attempt.checkinId))
+      .executeTakeFirstOrThrow();
+    expect(session).toEqual({ status: 'OPEN', override_status: 'PENDING' });
+  });
+
   it('BR-TER-002 / BR-TER-010 : sans position (NO_POSITION), précision nulle signalée', async () => {
     const agent = await newAgent();
     const noPosition = checkin(agent, at('06:00:00'), {

@@ -438,9 +438,7 @@ function buildHandlers(
     const origin = await loadCommandOrigin(uow, envelope.command_id);
 
     const zone = await loadZone(uow, payload.declaredZoneId);
-    if (!zone || zone.geofence === null) {
-      return rejected('ZONE_NOT_ALLOWED', 'Zone inconnue ou sans géorepère (BR-TER-006).');
-    }
+    if (!zone) return rejected('ZONE_NOT_ALLOWED', 'Zone inconnue (BR-TER-006).');
     if (!(await isZoneAllowed(uow, userId, zone.id, occurredAt))) {
       return rejected(
         'ZONE_NOT_ALLOWED',
@@ -454,11 +452,15 @@ function buildHandlers(
     let serverResult: ServerResult;
     let distanceM: number | null;
     try {
-      if (!zone.isActive) {
-        // D03 §14 : zone désactivée pendant la période hors ligne — tentative conservée,
-        // résultat ZONE_INACTIVE, qui ne peut ouvrir une session que par dérogation.
+      if (!zone.isActive || zone.geofence === null) {
+        // D03 §14 : zone désactivée — ou privée de son géorepère (DÉDUIT, même cas) — pendant
+        // la période hors ligne : tentative conservée (INV-TER-02), résultat ZONE_INACTIVE, qui
+        // ne peut ouvrir une session que par dérogation.
         serverResult = 'ZONE_INACTIVE';
-        distanceM = payload.position ? haversineDistanceM(payload.position, zone.geofence) : null;
+        distanceM =
+          payload.position && zone.geofence
+            ? haversineDistanceM(payload.position, zone.geofence)
+            : null;
       } else {
         const evaluation = evaluateCheckin({
           position: payload.position,
@@ -557,9 +559,9 @@ function buildHandlers(
         lat: payload.position === null ? null : String(payload.position.lat),
         lng: payload.position === null ? null : String(payload.position.lng),
         accuracy_m: payload.accuracyM === null ? null : String(payload.accuracyM),
-        geofence_lat: String(zone.geofence.lat),
-        geofence_lng: String(zone.geofence.lng),
-        geofence_radius_m: String(zone.geofence.radiusM),
+        geofence_lat: zone.geofence === null ? null : String(zone.geofence.lat),
+        geofence_lng: zone.geofence === null ? null : String(zone.geofence.lng),
+        geofence_radius_m: zone.geofence === null ? null : String(zone.geofence.radiusM),
         max_accuracy_m: String(maxAccuracyM),
         distance_m: distanceM === null ? null : String(distanceM),
         client_result: payload.clientResult,

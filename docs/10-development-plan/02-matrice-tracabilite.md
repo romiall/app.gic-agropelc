@@ -226,3 +226,21 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-077 | — | Non commencé (module `communication`, P9 ; la part P2 se limite à l'état des seuils ci-dessus) |
 | REQ-083 (part P2) | `inventory-read.e2e.test.ts` (`/stock-moves` paginé), `inventory-invariants.test.ts` (réconciliation) | Vérifié pour le registre ; AT-054 en P9 |
 | REQ-204 (part P2) | `inventory-invariants.test.ts` (INV-STK-01, reconstruction), `inventory-count-commands.test.ts` | Partiel : stock = Σ mouvements et inventaire → ajustement vérifiés ; prévention de la double consommation hors ligne (allocations, INV-STK-10/11) en P5 |
+
+### 17.2 Phase P3 (27/09/2026) — [`10-demonstration-p3.md`](10-demonstration-p3.md)
+
+| REQ | Vérifié par | État à la fin de P3 |
+|---|---|---|
+| REQ-008 | `crm-customer-commands.test.ts` (BR-CRM-002, 003, 006 ; AT-012), `crm-read.e2e.test.ts` (`GET /customers`, contrôle de doublon masqué) | Vérifié ; position du compte proposée depuis la première visite (BR-CRM-014) à l'écran |
+| REQ-009 | `crm-activity-commands.test.ts` (AT-051, visites, interactions, annulations), `crm-read.e2e.test.ts` (`/visits`, `/interactions`) | Vérifié |
+| REQ-010 (part P3) | `crm-customer-commands.test.ts` (historique de stade, étapes concurrentes, conversion par l'API interne) | Partiel : conversion déclenchée par la vente et commandes en P4 |
+| REQ-011 (part P3) | `crm-read.e2e.test.ts`, `crm-field-day.e2e.test.ts` (prospects ajoutés, visités, convertis) ; AT-012 | Partiel : CA acquis en P4, tableaux analytiques en P9 |
+| REQ-012 | `crm-customer-commands.test.ts` (titulaire, réaffectation), `crm-read.e2e.test.ts` (portefeuilles par portée), `crm-sync-projections.test.ts` | Vérifié |
+| REQ-013 (part P3) | `crm-customer-commands.test.ts` (périodes contiguës, motif, droits à `occurred_at`), `crm-read.e2e.test.ts` (fiche : titulaires successifs), `crm-sync-projections.test.ts` (`SCOPE_EXIT`) | Partiel : attribution figée des ventes (INV-VEN-10) en P4 |
+| REQ-014 (part P3) | `crm-read.e2e.test.ts` (titulaire de chaque compte, filtres) | Partiel : clients à fort CA et inactifs en P4 et P9 |
+| REQ-015 (part P3) | `crm-read.e2e.test.ts` (AT-015 : jour, semaine, plage libre), `crm-field-day.e2e.test.ts` | Partiel : effort commercial seulement ; ventes en P4, instantanés analytiques en P9 |
+| REQ-016 (part P3) | `crm-activity-commands.test.ts` (objectifs), `crm-read.e2e.test.ts` (`/targets`, réalisé des métriques d'effort) | Partiel : réalisé des métriques de vente (`CA`, `QTE_PRODUIT`) en P4 |
+| REQ-018 | `fieldwork-checkin-commands.test.ts` (AT-014, remplacement, 23:59), `crm-read.e2e.test.ts` (`/work-sessions`) | Vérifié |
+| REQ-019 | `fieldwork-checkin-commands.test.ts` (recalcul serveur, divergence), `packages/domain` (`evaluateCheckin`), `organization-commands.test.ts` (géorepère, rayon paramétré) | Vérifié ; historique des géorepères non construit (démonstration §4) |
+| REQ-020 | `fieldwork-checkin-commands.test.ts` (refus conservés, dérogation validée ou rejetée), `crm-fieldwork-invariants.test.ts` (INV-TER-02) | Vérifié ; alerte `CHECKIN_SUSPICIOUS` en P9 |
+| REQ-021 | Aucune table de trace GPS (schéma) ; positions captées aux seuls événements (pointage, visite) | Vérifié par construction (mesure NFR-09) |
