@@ -244,3 +244,16 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-019 | `fieldwork-checkin-commands.test.ts` (recalcul serveur, divergence), `packages/domain` (`evaluateCheckin`), `organization-commands.test.ts` (géorepère, rayon paramétré) | Vérifié ; historique des géorepères non construit (démonstration §4) |
 | REQ-020 | `fieldwork-checkin-commands.test.ts` (refus conservés, dérogation validée ou rejetée), `crm-fieldwork-invariants.test.ts` (INV-TER-02) | Vérifié ; alerte `CHECKIN_SUSPICIOUS` en P9 |
 | REQ-021 | Aucune table de trace GPS (schéma) ; positions captées aux seuls événements (pointage, visite) | Vérifié par construction (mesure NFR-09) |
+
+### 17.3 Phase P6 (27/09/2026) — [`11-demonstration-p6.md`](11-demonstration-p6.md)
+
+| REQ | Vérifié par | État à la fin de P6 |
+|---|---|---|
+| REQ-044 (part P6) | `procurement-read.e2e.test.ts` (`/purchase-orders`, `/receipts` filtrés par fournisseur, prix masqués sans `inventory.valuation.read`), `procurement-supplier-commands.test.ts` (P1) | Partiel : documents financiers et dettes fournisseur en P8 (AT-025) |
+| REQ-045 (part P6) | `procurement-request-commands.test.ts`, `procurement-order-commands.test.ts`, `procurement-receipt-commands.test.ts`, `procurement-receipt-day.e2e.test.ts` (besoin → DA → validation → BC → réception) | Partiel : facture et paiement en P8 |
+| REQ-046 (part P6) | `procurement-read.e2e.test.ts` (`/purchase-orders/{id}/matching` : commandé, livré, rejeté, accepté, en quarantaine, reliquat), `procurement-invariants.test.ts` (INV-APP-01, 02), `packages/domain` (`receiptLineQuantities`) | Partiel : facturé et payé exposés à 0 et `null` jusqu'à P8 |
+| REQ-047 | `procurement-receipt-commands.test.ts` (AT-023, AT-024, réception sans BC, dépassement en ligne et hors ligne), `procurement-receipt-day.e2e.test.ts`, `procurement-invariants.test.ts` (INV-APP-03, INV-STK-12) | Vérifié |
+| REQ-052 (part P6) | `procurement-receipt-commands.test.ts` (coût d'entrée figé au prix du BC ou déclaré, CMUP recalculé — BR-APP-008) | Vérifié pour les entrées d'achat ; recalcul du CMUP à l'annulation d'une réception non fait (démonstration §4) |
+| REQ-066 (part P6) | `procurement-receipt-commands.test.ts` (annulation validée par mouvements inverses au coût d'origine, refus si le stock est consommé), `procurement-invariants.test.ts` | Vérifié pour les réceptions ; retour fournisseur (extension) non construit |
+| REQ-067 (part P6) | `procurement-receipt-commands.test.ts` (photo exigée sans BC et au-delà du seuil, pièce reçue avant la décision — BR-APP-014, BR-ADM-020) | Vérifié |
+| REQ-077 (part P6) | — | Non commencé : alerte `RECEIPT_INCOMPLETE` (BR-APP-015) avec le module `communication`, P9 |

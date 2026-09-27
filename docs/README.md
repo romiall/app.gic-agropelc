@@ -70,6 +70,7 @@
 | [`10-development-plan/08-demonstration-p1.md`](10-development-plan/08-demonstration-p1.md) | Démonstration de sortie de la phase P1 : catalogue, moteur de tarification, tests d'acceptation AT-006/AT-007, éléments encore ouverts |
 | [`10-development-plan/09-demonstration-p2.md`](10-development-plan/09-demonstration-p2.md) | Démonstration de sortie de la phase P2 : registre de stock, transferts, pertes, consommations, inventaires, lectures et jeux hors ligne, invariants INV-STK, éléments encore ouverts |
 | [`10-development-plan/10-demonstration-p3.md`](10-development-plan/10-demonstration-p3.md) | Démonstration de sortie de la phase P3 : comptes clients, doublons et fusion, pipeline, visites, interactions, objectifs, pointage et dérogations, lectures et jeux hors ligne, invariants INV-CRM et INV-TER, éléments encore ouverts |
+| [`10-development-plan/11-demonstration-p6.md`](10-development-plan/11-demonstration-p6.md) | Démonstration de sortie de la phase P6 : demandes d'achat, bons de commande, réceptions (livré, rejeté, accepté), quarantaine, réception sans BC, annulation, lectures et rapprochement, jeu hors ligne, invariants INV-APP et INV-STK-12, éléments encore ouverts |
 | [`_tools/check_refs.py`](_tools/check_refs.py) | Contrôle des identifiants et des liens de la documentation ; régénération de l'index des règles |
 
 ## 3. Parcours de lecture conseillés
