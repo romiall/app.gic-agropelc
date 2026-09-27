@@ -109,5 +109,22 @@ export {
   evaluateVisit,
 } from './fieldwork.js';
 
+export type {
+  OrderLineProgress,
+  ReceivableOrderStatus,
+  OrderedRequestStatus,
+} from './procurement.js';
+export {
+  receiptLineQuantities,
+  orderLineRemaining,
+  overReceiptQuantity,
+  orderStatusFromLines,
+  requestStatusFromLines,
+  orderAmounts,
+  orderRequiresApproval,
+  receiptAcceptedValueXaf,
+  sumQuantities,
+} from './procurement.js';
+
 export type { FieldVersion, FieldCollision } from './crm.js';
 export { normalizePhone, mergeFieldPatch } from './crm.js';
