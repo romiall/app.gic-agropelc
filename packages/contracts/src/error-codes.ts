@@ -60,6 +60,9 @@ export const WARNING_CODES = [
   // valeur la plus récente est appliquée, l'autre conservée dans un conflit informatif
   // (03-matrice-conflits.md, ligne « prospect modifié sur deux appareils »).
   'VERSION_CONFLICT',
+  // P6-05 : réception hors ligne appliquée au-delà du reliquat, excédent tracé en revue
+  // (BR-APP-010, mode `APPLY_WITH_REVIEW` du paramètre procurement.offline_over_receipt_mode).
+  'OVER_RECEIPT',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

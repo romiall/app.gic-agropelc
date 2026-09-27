@@ -24,6 +24,27 @@ export interface ApprovalDecisionContext {
   readonly decisionOption?: string;
   readonly decidedBy: string;
   readonly decidedAt: Date;
+  /** Auteur de la demande (ex. auteur d'une demande d'annulation, `[STD-CANCEL]`). */
+  readonly requestedBy: string;
+  /** Résumé saisi à la demande (ex. motif d'une demande d'annulation). */
+  readonly subjectSummary: string;
+}
+
+/**
+ * Refus motivé d'une décision par le module propriétaire (P6-05) : la transition demandée est
+ * impossible dans l'état courant du document (ex. annulation d'une réception dont le stock a
+ * déjà été consommé, SM-RECEIPT « stock encore disponible »). La commande de décision est alors
+ * rejetée avec ce code — la demande reste `PENDING`, et l'annulation de la transaction du
+ * pipeline défait toute écriture déjà faite.
+ */
+export class ApprovalDecisionRefused extends Error {
+  constructor(
+    readonly code: string,
+    readonly messageFr: string,
+  ) {
+    super(messageFr);
+    this.name = 'ApprovalDecisionRefused';
+  }
 }
 
 export type ApprovalDecisionHandler = (

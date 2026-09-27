@@ -4014,7 +4014,8 @@ CREATE TABLE `procurement_goods_receipts` (
   `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `approval_request_id` binary(16) DEFAULT NULL,
   `total_accepted_value_xaf` bigint NOT NULL DEFAULT '0',
-  `posted_note_key` varchar(100) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`supplier_delivery_note_ref` is not null) and (`status` in (_utf8mb4'POSTED',_utf8mb4'POSTED_PENDING_REVIEW',_utf8mb4'REVIEW_REJECTED',_utf8mb4'CANCELLATION_PENDING'))) then concat(hex(`supplier_id`),_utf8mb4':',`supplier_delivery_note_ref`) end)) STORED,
+  `distinct_note_confirmed` tinyint(1) NOT NULL DEFAULT '0',
+  `posted_note_key` varchar(100) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`supplier_delivery_note_ref` is not null) and (`distinct_note_confirmed` = false) and (`status` in (_utf8mb4'POSTED',_utf8mb4'POSTED_PENDING_REVIEW',_utf8mb4'REVIEW_REJECTED',_utf8mb4'CANCELLATION_PENDING'))) then concat(hex(`supplier_id`),_utf8mb4':',`supplier_delivery_note_ref`) end)) STORED,
   `cancelled_at` datetime(6) DEFAULT NULL,
   `cancelled_by` binary(16) DEFAULT NULL,
   `cancel_reason_code_id` binary(16) DEFAULT NULL,
@@ -4852,5 +4853,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260929090000'),
   ('20260930090000'),
   ('20260930090100'),
-  ('20261001090000');
+  ('20261001090000'),
+  ('20261001090100');
 UNLOCK TABLES;

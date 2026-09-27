@@ -123,6 +123,7 @@ export {
   orderAmounts,
   orderRequiresApproval,
   receiptAcceptedValueXaf,
+  receiptPhotoRequired,
   sumQuantities,
 } from './procurement.js';
 

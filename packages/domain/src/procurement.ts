@@ -147,6 +147,18 @@ export function receiptAcceptedValueXaf(
   return values.length > 0 ? addXaf(...values) : xaf(0);
 }
 
+/**
+ * BR-APP-014 : photo du bon de livraison exigée pour toute réception sans BC et pour toute
+ * réception dont la valeur acceptée atteint le seuil (paramètre, 100 000 XAF par défaut, AV-037).
+ */
+export function receiptPhotoRequired(input: {
+  readonly withoutOrder: boolean;
+  readonly acceptedValueXaf: number;
+  readonly thresholdXaf: number;
+}): boolean {
+  return input.withoutOrder || input.acceptedValueXaf >= input.thresholdXaf;
+}
+
 /** Σ des quantités (ex. accepté cumulé d'une ligne de BC). */
 export function sumQuantities(values: readonly Quantity[]): Quantity {
   return values.length > 0 ? addQuantity(...values) : ZERO_QUANTITY;

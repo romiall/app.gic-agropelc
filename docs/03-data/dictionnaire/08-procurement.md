@@ -124,12 +124,13 @@
 | `status` | enum(`POSTED`,`POSTED_PENDING_REVIEW`,`REVIEW_REJECTED`,`QUARANTINED`,`REJECTED`,`CANCELLATION_PENDING`,`CANCELLED`) | Non | — | |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
 | `total_accepted_value_xaf` | money_xaf | Non | 0 | |
-| `posted_note_key` | varchar(100) | Oui | généré | DÉDUIT (P6-02), donnée technique : `fournisseur:numéro de BL` pour les réceptions comptabilisées (`POSTED`, `POSTED_PENDING_REVIEW`, `REVIEW_REJECTED`, `CANCELLATION_PENDING`), nul sinon — porte l'unicité partielle ci-dessous (conventions §4) |
+| `distinct_note_confirmed` | bool | Non | faux | DÉDUIT (P6-05) : réception mise en quarantaine pour bon de livraison déjà comptabilisé, puis confirmée « réception distincte » par la décision `RECEIPT_QUARANTINE` (BR-APP-012) ; seule cette décision le pose |
+| `posted_note_key` | varchar(100) | Oui | généré | DÉDUIT (P6-02, P6-05), donnée technique : `fournisseur:numéro de BL` pour les réceptions comptabilisées (`POSTED`, `POSTED_PENDING_REVIEW`, `REVIEW_REJECTED`, `CANCELLATION_PENDING`) non confirmées distinctes, nul sinon — porte l'unicité partielle ci-dessous (conventions §4) |
 | [STD-CANCEL] | | | | |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `doc_number`, `command_id` ; `(supplier_id, supplier_delivery_note_ref)` parmi les réceptions comptabilisées (index unique partiel, BR-APP-012).
+- **PK** `id`. **UQ** `doc_number`, `command_id` ; `(supplier_id, supplier_delivery_note_ref)` parmi les réceptions comptabilisées non confirmées distinctes (index unique partiel, BR-APP-012).
 - **IX** `(purchase_order_id)`, `(location_id, occurred_at)`.
 - **Suppr.** `ANNULATION`. **Audit** Chaque transition. **Offline** DL (30 j du site), CR. **Intégrité** INV-APP-03.
 

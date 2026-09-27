@@ -1162,6 +1162,7 @@ export interface ProcurementGoodsReceipts {
   created_at: Generated<Date>;
   created_by: Buffer;
   created_device_id: Buffer | null;
+  distinct_note_confirmed: Generated<number>;
   doc_number: string;
   id: Buffer;
   local_ref: string | null;

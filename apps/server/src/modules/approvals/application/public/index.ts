@@ -13,7 +13,10 @@ export { currentPolicies } from './policy-query.js';
 export type { ActiveControlPolicy } from './policy-query.js';
 
 export { APPROVAL_DECISION_HANDLER_REGISTRY } from '../decision-handler-registry.provider.js';
-export { ApprovalDecisionHandlerRegistry } from '../decision-handler-registry.js';
+export {
+  ApprovalDecisionHandlerRegistry,
+  ApprovalDecisionRefused,
+} from '../decision-handler-registry.js';
 export type {
   ApprovalDecisionContext,
   ApprovalDecisionHandler,

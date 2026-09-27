@@ -10,6 +10,7 @@ import {
   overReceiptQuantity,
   receiptAcceptedValueXaf,
   receiptLineQuantities,
+  receiptPhotoRequired,
   requestStatusFromLines,
 } from './procurement.js';
 
@@ -89,6 +90,28 @@ describe('statuts dérivés — SM-PURCHASE-ORDER, SM-PURCHASE-REQUEST', () => {
       ]),
     ).toBe('PARTIALLY_ORDERED');
     expect(requestStatusFromLines([{ requested: q(5), ordered: q(5) }])).toBe('ORDERED');
+  });
+});
+
+describe('receiptPhotoRequired — BR-APP-014', () => {
+  it('sans BC, ou à partir du seuil de valeur acceptée', () => {
+    expect(
+      receiptPhotoRequired({ withoutOrder: true, acceptedValueXaf: 0, thresholdXaf: 100_000 }),
+    ).toBe(true);
+    expect(
+      receiptPhotoRequired({
+        withoutOrder: false,
+        acceptedValueXaf: 100_000,
+        thresholdXaf: 100_000,
+      }),
+    ).toBe(true);
+    expect(
+      receiptPhotoRequired({
+        withoutOrder: false,
+        acceptedValueXaf: 99_999,
+        thresholdXaf: 100_000,
+      }),
+    ).toBe(false);
   });
 });
 

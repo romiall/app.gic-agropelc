@@ -69,3 +69,7 @@ export type {
   StockThresholdStatus,
   CostEntry,
 } from './document-query.js';
+
+export { ensureSupplierLot } from './stock-lots.js';
+export type { SupplierLotInput } from './stock-lots.js';
+export { virtualLocationId } from './virtual-locations.js';

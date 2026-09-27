@@ -34,7 +34,10 @@ import {
   type ResourceLocator,
 } from '../../../identity/application/public/index.js';
 import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
-import type { ApprovalDecisionHandlerRegistry } from '../decision-handler-registry.js';
+import {
+  ApprovalDecisionRefused,
+  type ApprovalDecisionHandlerRegistry,
+} from '../decision-handler-registry.js';
 import { recordRequesterChange } from '../approval-changes.js';
 
 const decisionBasePayloadSchema = z.object({
@@ -153,17 +156,27 @@ function buildDecisionCommandHandler(
     // P2) : no-op documenté (decision-handler-registry.ts).
     const decisionHandler = decisionRegistry.resolve(row.operation_type);
     if (decisionHandler) {
-      await decisionHandler(uow, {
-        requestId: fromBin(row.id),
-        subjectType: row.subject_type,
-        subjectId: fromBin(row.subject_id),
-        decision,
-        ...(envelope.payload.decisionOption !== undefined
-          ? { decisionOption: envelope.payload.decisionOption }
-          : {}),
-        decidedBy: envelope.author_user_id,
-        decidedAt: occurredAt,
-      });
+      try {
+        await decisionHandler(uow, {
+          requestId: fromBin(row.id),
+          subjectType: row.subject_type,
+          subjectId: fromBin(row.subject_id),
+          decision,
+          ...(envelope.payload.decisionOption !== undefined
+            ? { decisionOption: envelope.payload.decisionOption }
+            : {}),
+          decidedBy: envelope.author_user_id,
+          decidedAt: occurredAt,
+          requestedBy: fromBin(row.requested_by),
+          subjectSummary: row.subject_summary,
+        });
+      } catch (error) {
+        // Transition impossible pour le module propriétaire : décision refusée, sans effet.
+        if (error instanceof ApprovalDecisionRefused) {
+          return { status: 'REJECTED', errorCode: error.code, messageFr: error.messageFr };
+        }
+        throw error;
+      }
     }
 
     await uow

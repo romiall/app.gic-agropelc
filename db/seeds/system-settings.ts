@@ -8,8 +8,8 @@
  */
 export interface SystemSettingSeed {
   readonly key: string;
-  /** Seuil numérique, ou liste de codes (ex. rôles commerciaux, P3-04). */
-  readonly value: number | readonly string[];
+  /** Seuil numérique, code d'option, ou liste de codes (ex. rôles commerciaux, P3-04). */
+  readonly value: number | string | readonly string[];
   readonly isClientVisible: boolean;
   /** Référence documentaire (AV/BR) pour la traçabilité de la valeur par défaut. */
   readonly ref: string;
@@ -79,6 +79,15 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     value: 0,
     isClientVisible: true,
     ref: 'AV-053',
+  },
+  // AV-095 (P6-05) : réception hors ligne dépassant le reliquat d'un BC — `QUARANTINE`
+  // (BR-APP-012, D08 §14 : aucun effet stock jusqu'à décision) ou `APPLY_WITH_REVIEW`
+  // (BR-APP-010 : appliquée, excédent tracé en revue).
+  {
+    key: 'procurement.offline_over_receipt_mode',
+    value: 'QUARANTINE',
+    isClientVisible: true,
+    ref: 'AV-095',
   },
   // BR-APP-014 (P6-02) : photo du bon de livraison exigée pour toute réception sans BC et pour
   // toute réception dont la valeur acceptée atteint ce seuil (AV-037).

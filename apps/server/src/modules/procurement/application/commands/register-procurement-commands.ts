@@ -1,7 +1,7 @@
 /**
  * Enregistrement des gestionnaires de commande `procurement` au démarrage (même précédent que
  * `InventoryCommandsRegistrar`) : fournisseurs (P1-05), demandes d'achat (P6-03), bons de
- * commande (P6-04). Injections explicites (`@Inject`) : vitest/esbuild n'émet pas de
+ * commande (P6-04), réceptions (P6-05). Injections explicites (`@Inject`) : vitest/esbuild n'émet pas de
  * métadonnées de décorateur (P2-05).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
@@ -19,6 +19,7 @@ import {
 import { registerSupplierCommands } from './supplier-commands.js';
 import { registerRequestCommands } from './request-commands.js';
 import { registerOrderCommands } from './order-commands.js';
+import { registerReceiptCommands } from './receipt-commands.js';
 
 @Injectable()
 export class ProcurementCommandsRegistrar implements OnModuleInit {
@@ -39,6 +40,12 @@ export class ProcurementCommandsRegistrar implements OnModuleInit {
       this.documentSequences,
     );
     registerOrderCommands(
+      this.registry,
+      this.decisionRegistry,
+      this.idGenerator,
+      this.documentSequences,
+    );
+    registerReceiptCommands(
       this.registry,
       this.decisionRegistry,
       this.idGenerator,
