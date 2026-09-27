@@ -41,10 +41,15 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  monthEndOf,
+  recentBusinessDay,
 } from './helpers.js';
 
-const NOW = '2026-10-06T18:00:00.000Z';
-const at = (hhmmss: string) => `2026-10-06T${hhmmss}.000Z`;
+// Jour récent (heure réelle) : la fenêtre de 90 jours du jeu `crm_activity` est évaluée par la base.
+const DAY = recentBusinessDay(2);
+const NOW = `${DAY}T18:00:00.000Z`;
+const at = (hhmmss: string) => `${DAY}T${hhmmss}.000Z`;
+const MONTH_START = `${DAY.slice(0, 7)}-01`;
 const CENTER = { lat: 4.0511, lng: 9.7679 };
 const north = (meters: number) => ({ lat: CENTER.lat + meters / 111_195, lng: CENTER.lng });
 let deviceSeq = 0;
@@ -323,13 +328,13 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
       targetType: 'USER',
       userId: cte1.userId,
       metric: 'VISITES',
-      periodStart: '2026-10-01',
-      periodEnd: '2026-10-31',
+      periodStart: MONTH_START,
+      periodEnd: monthEndOf(DAY),
       targetValue: 30,
     });
     expect(latest(await pull(cte1, 'crm_activity'), 'SALES_TARGET', targetId)?.data).toMatchObject({
       metric: 'VISITES',
-      period_start: '2026-10-01',
+      period_start: MONTH_START,
       status: 'ACTIVE',
     });
     expect(latest(await pull(cte2, 'crm_activity'), 'SALES_TARGET', targetId)).toBeUndefined();

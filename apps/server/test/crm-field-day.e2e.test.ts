@@ -12,7 +12,13 @@
  * la journée égale les opérations (AT-015).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
+import {
+  FixedClock,
+  Uuidv7Generator,
+  businessDayEndUtc,
+  businessDayStartUtc,
+  type IdGenerator,
+} from '@gic/domain';
 import type { RawCommandEnvelope } from '@gic/contracts';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
@@ -35,9 +41,13 @@ import {
   insertTestDevice,
   insertTestUser,
   insertTestZone,
+  recentBusinessDay,
+  shiftBusinessDay,
 } from './helpers.js';
 
-const DAY = '2026-10-07';
+// Jour récent (heure réelle) : la fenêtre de 90 jours du jeu `crm_activity` est évaluée par la base.
+const DAY = recentBusinessDay(2);
+const NEXT_ACTION = shiftBusinessDay(DAY, 8);
 const at = (hhmmss: string) => `${DAY}T${hhmmss}.000Z`;
 const CENTER = { lat: 4.0511, lng: 9.7679 };
 const north = (meters: number) => ({ lat: CENTER.lat + meters / 111_195, lng: CENTER.lng });
@@ -149,13 +159,19 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
     // La veille, en ligne : un client déjà en portefeuille, géolocalisé.
     existingCustomer = freshUuid();
     const previous = await device.push([
-      envelope('crm.customer.create', 'CUSTOMER', existingCustomer, '2026-10-06T15:00:00.000Z', {
-        displayName: 'Épicerie du Carrefour',
-        zoneId,
-        sourceCode: 'PROSPECTION_TERRAIN',
-        phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
-        position: { ...CENTER, accuracyM: 10 },
-      }),
+      envelope(
+        'crm.customer.create',
+        'CUSTOMER',
+        existingCustomer,
+        `${shiftBusinessDay(DAY, -1)}T15:00:00.000Z`,
+        {
+          displayName: 'Épicerie du Carrefour',
+          zoneId,
+          sourceCode: 'PROSPECTION_TERRAIN',
+          phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+          position: { ...CENTER, accuracyM: 10 },
+        },
+      ),
     ]);
     expect(previous.results[0]!.status).toBe('APPLIED');
 
@@ -186,7 +202,7 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
           customerId: prospectId,
           position: { ...north(125), accuracyM: 12 },
           outcomeReasonCodeId: outcomeId,
-          nextActionAt: '2026-10-15',
+          nextActionAt: NEXT_ACTION,
           nextActionNote: 'Rappeler pour la commande de poulets',
         },
         [createProspect.command_id],
@@ -268,7 +284,7 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
     });
     expect(local.get(`crm_activity:VISIT:${nearVisitId}`)).toMatchObject({
       work_session_id: sessionId,
-      next_action_at: '2026-10-15',
+      next_action_at: NEXT_ACTION,
     });
     expect(local.get(`crm_activity:VISIT:${farVisitId}`)).toMatchObject({
       flags: ['FAR_FROM_CUSTOMER'],
@@ -282,8 +298,8 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
   it('AT-015 : l’effort commercial de la journée égale les opérations synchronisées', async () => {
     const effort = await commercialEffort(db, {
       userId: seller,
-      fromUtc: new Date('2026-10-06T23:00:00.000Z'), // 07/10, 00:00 à Douala
-      toUtc: new Date('2026-10-07T23:00:00.000Z'),
+      fromUtc: businessDayStartUtc(DAY), // 00:00 à Douala
+      toUtc: businessDayEndUtc(DAY),
     });
     expect(effort).toEqual({
       prospectsCreated: 1,

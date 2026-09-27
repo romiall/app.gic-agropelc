@@ -87,7 +87,7 @@ Décisions DÉDUITES à connaître (détail : D08 §15) :
 | Dérogation d'emplacement de réception | AV-096 ouvert, défaut « non ouverte » | Décision AV-096 |
 | DoD « tous les achats d'intrants du pilote passent par l'outil » | Exige les écrans et un déploiement | Déploiement (R3) |
 
-Risque connu relevé pendant P6-07 : les tests de projection du jeu `crm_activity` (P3-07) écrivent des visites datées du 06/10/2026, alors que la fenêtre de 90 jours est évaluée par la base à l'heure réelle ; ces assertions échoueront à partir de début janvier 2027. Les tests de P6 datent leurs données par rapport à l'heure réelle ; ceux de P3 sont à aligner (tâche courte, sans effet sur le code de production).
+Risque relevé pendant P6-07, corrigé après la clôture : les tests de projection du jeu `crm_activity` (P3-07, P3-08) écrivaient des visites datées du 06/10/2026 alors que la fenêtre de 90 jours est évaluée par la base à l'heure réelle ; ils datent désormais leurs données par rapport à l'heure réelle (`recentBusinessDay`, `apps/server/test/helpers.ts`), comme les tests de P6.
 
 ## 5. Prochaine étape
 

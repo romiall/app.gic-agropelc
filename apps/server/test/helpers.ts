@@ -7,7 +7,7 @@
  * avoir capturé le résultat ou l'erreur réels de `fn`, pour un rollback garanti quel que soit
  * l'issue testée (comme `withRollback`, dont c'est l'équivalent).
  */
-import { SystemClock, Uuidv7Generator } from '@gic/domain';
+import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
 import { createDatabase } from '../src/platform/kysely/database.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
@@ -390,4 +390,25 @@ export async function insertTestTeamMembership(
       created_by: toBin(createdBy),
     })
     .execute();
+}
+
+/** Jour métier `AAAA-MM-JJ` décalé de `days` jours (arithmétique sur la date seule). */
+export function shiftBusinessDay(day: string, days: number): string {
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
+}
+
+/** Dernier jour du mois du jour métier `day`. */
+export function monthEndOf(day: string): string {
+  const [year, month] = day.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * Jour métier (Douala) d'il y a `daysAgo` jours à l'heure **réelle**. Pour les données lues par
+ * une fenêtre que la base évalue à `UTC_TIMESTAMP` (jeu `crm_activity` : 90 jours ; réceptions :
+ * 30 jours) : des dates fixes finiraient par sortir de la fenêtre.
+ */
+export function recentBusinessDay(daysAgo: number): string {
+  return businessDayOf(new Date(Date.now() - daysAgo * 86_400_000));
 }
