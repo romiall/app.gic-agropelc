@@ -285,16 +285,13 @@ async function applyToOrder(
       cancelled: line.status === 'CANCELLED',
     });
   }
-  if (receiving) {
-    const status = orderStatusFromLines(progress);
-    if (status !== order.status) {
-      await uow
-        .updateTable('procurement_purchase_orders')
-        .set({ status, version: sql`version + 1` })
-        .where('id', '=', order.id)
-        .execute();
-    }
-  }
+  // Nouvelle version du BC à chaque changement de ses lignes (reliquats du jeu hors ligne).
+  const status = receiving ? orderStatusFromLines(progress) : order.status;
+  await uow
+    .updateTable('procurement_purchase_orders')
+    .set({ status, version: sql`version + 1` })
+    .where('id', '=', order.id)
+    .execute();
   await emitPurchaseOrderChange(uow, fromBin(order.id));
 }
 

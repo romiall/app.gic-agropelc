@@ -4,7 +4,8 @@
  * `UPSERT` de `sync_change_feed` est résolu ici, au moment du téléchargement). Un lecteur par
  * `entity_type` réellement produit par un gestionnaire de commande à ce jour (identity,
  * organization, approvals, attachments ; catalog, pricing, procurement en P1-06 ; inventory en
- * P2-06, via `platform/sync/change-feed.ts`) — table fixe, tous définis dans ce seul fichier
+ * P2-06 ; crm et fieldwork en P3-07 ; documents d'achat en P6-07, via
+ * `platform/sync/change-feed.ts`) — table fixe, tous définis dans ce seul fichier
  * (contrairement à `CommandHandlerRegistry`, alimenté par plusieurs modules indépendants,
  * une simple table couvre ce besoin sans registre mutable).
  *
@@ -1054,6 +1055,219 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       override_status: row.override_status,
       approval_request_id: fromBinOrNull(row.approval_request_id),
       version: row.version,
+    };
+  },
+
+  // P6-07 — jeu `procurement` (01-architecture-offline.md §3.1 : « BC livrables sur le site,
+  // fournisseurs actifs (liste courte), DA de l'utilisateur »), émis par `procurement`
+  // (sync-changes.ts). Aucun prix ni coût (RC-05) : le magasinier et le responsable de ferme qui
+  // téléchargent ce jeu ne sont pas titulaires de `inventory.valuation.read`.
+
+  // DA de l'utilisateur (`USER` = demandeur), tous statuts : il suit sa demande.
+  PURCHASE_REQUEST: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('procurement_purchase_requests')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'site_id',
+        'requested_by',
+        'justification',
+        'needed_by_date',
+        'status',
+        'estimated_total_xaf',
+        'approval_request_id',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || fromBin(row.requested_by) !== context.scopeId) return undefined;
+    const lines = await executor
+      .selectFrom('procurement_purchase_request_lines')
+      .select([
+        'id',
+        'product_id',
+        'unit_code',
+        'quantity',
+        'quantity_base',
+        'ordered_qty_base',
+        'estimated_unit_price_xaf',
+        'notes',
+      ])
+      .where('request_id', '=', row.id)
+      .orderBy('created_at', 'asc')
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      site_id: fromBin(row.site_id),
+      requested_by: fromBin(row.requested_by),
+      justification: row.justification,
+      needed_by_date: dateOnly(row.needed_by_date),
+      status: row.status,
+      estimated_total_xaf: Number(row.estimated_total_xaf),
+      approval_request_id: fromBinOrNull(row.approval_request_id),
+      occurred_at: row.occurred_at,
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        product_id: fromBin(line.product_id),
+        unit_code: line.unit_code,
+        quantity: Number(line.quantity),
+        quantity_base: Number(line.quantity_base),
+        ordered_qty_base: Number(line.ordered_qty_base),
+        estimated_unit_price_xaf:
+          line.estimated_unit_price_xaf === null ? null : Number(line.estimated_unit_price_xaf),
+        notes: line.notes,
+      })),
+    };
+  },
+
+  // BC livrable (`SENT`, `PARTIALLY_RECEIVED`) du site de livraison, avec ses reliquats — ce que
+  // le magasinier réceptionne hors ligne (D08 §12). Sorti du jeu par `SCOPE_EXIT` ensuite.
+  PURCHASE_ORDER: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('procurement_purchase_orders')
+      .select([
+        'id',
+        'doc_number',
+        'site_id',
+        'supplier_id',
+        'delivery_location_id',
+        'expected_delivery_date',
+        'status',
+        'sent_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (
+      !row ||
+      fromBin(row.site_id) !== context.scopeId ||
+      !['SENT', 'PARTIALLY_RECEIVED'].includes(row.status)
+    ) {
+      return undefined;
+    }
+    const lines = await executor
+      .selectFrom('procurement_purchase_order_lines')
+      .select([
+        'id',
+        'line_no',
+        'product_id',
+        'unit_code',
+        'ordered_qty_base',
+        'accepted_qty_base',
+        'closed_qty_base',
+        'status',
+      ])
+      .where('order_id', '=', row.id)
+      .orderBy('line_no', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      site_id: fromBin(row.site_id),
+      supplier_id: fromBin(row.supplier_id),
+      delivery_location_id: fromBin(row.delivery_location_id),
+      expected_delivery_date: dateOnly(row.expected_delivery_date),
+      status: row.status,
+      sent_at: row.sent_at,
+      version: row.version,
+      lines: lines.map((line) => {
+        const ordered = Math.round(Number(line.ordered_qty_base) * 1000);
+        const accepted = Math.round(Number(line.accepted_qty_base) * 1000);
+        const closed = Math.round(Number(line.closed_qty_base) * 1000);
+        return {
+          id: fromBin(line.id),
+          line_no: line.line_no,
+          product_id: fromBin(line.product_id),
+          unit_code: line.unit_code,
+          ordered_qty_base: ordered / 1000,
+          accepted_qty_base: accepted / 1000,
+          closed_qty_base: closed / 1000,
+          remaining_qty_base:
+            line.status === 'CANCELLED' ? 0 : Math.max(0, ordered - accepted - closed) / 1000,
+          status: line.status,
+        };
+      }),
+    };
+  },
+
+  // Réceptions du site des 30 derniers jours (dictionnaire goods_receipts : « Offline DL (30 j
+  // du site) ») : quantités livrées, rejetées, acceptées, sans coût.
+  GOODS_RECEIPT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('procurement_goods_receipts')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'site_id',
+        'purchase_order_id',
+        'supplier_id',
+        'location_id',
+        'received_by',
+        'supplier_delivery_note_ref',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)`)
+      .executeTakeFirst();
+    if (!row || fromBin(row.site_id) !== context.scopeId) return undefined;
+    const lines = await executor
+      .selectFrom('procurement_goods_receipt_lines')
+      .select([
+        'id',
+        'po_line_id',
+        'product_id',
+        'unit_code',
+        'qty_delivered_base',
+        'qty_rejected_base',
+        'qty_accepted_base',
+        'rejection_reason_code_id',
+        'supplier_lot_ref',
+        'expiry_date',
+        'stock_lot_id',
+      ])
+      .where('receipt_id', '=', row.id)
+      .orderBy('created_at', 'asc')
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      site_id: fromBin(row.site_id),
+      purchase_order_id: fromBinOrNull(row.purchase_order_id),
+      supplier_id: fromBin(row.supplier_id),
+      location_id: fromBin(row.location_id),
+      received_by: fromBin(row.received_by),
+      supplier_delivery_note_ref: row.supplier_delivery_note_ref,
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        po_line_id: fromBinOrNull(line.po_line_id),
+        product_id: fromBin(line.product_id),
+        unit_code: line.unit_code,
+        qty_delivered_base: Number(line.qty_delivered_base),
+        qty_rejected_base: Number(line.qty_rejected_base),
+        qty_accepted_base: Number(line.qty_accepted_base ?? 0),
+        rejection_reason_code_id: fromBinOrNull(line.rejection_reason_code_id),
+        supplier_lot_ref: line.supplier_lot_ref,
+        expiry_date: dateOnly(line.expiry_date),
+        stock_lot_id: fromBinOrNull(line.stock_lot_id),
+      })),
     };
   },
 };

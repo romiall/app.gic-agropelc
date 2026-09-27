@@ -1,6 +1,7 @@
 /**
- * Fiche fournisseur seule (procurement.suppliers, dictionnaire §suppliers ; CM §26). Le
- * reste du module (demandes d'achat, BC, réceptions) arrive en P6, avec `inventory`.
+ * Fiche fournisseur (procurement.suppliers, dictionnaire §suppliers ; CM §26). Depuis P6-07,
+ * chaque écriture alimente aussi la liste courte des fournisseurs actifs du jeu hors ligne
+ * `procurement` (`emitSupplierChange`).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -11,6 +12,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
+import { emitSupplierChange } from '../sync-changes.js';
 
 function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
@@ -69,6 +71,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+  await emitSupplierChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -125,6 +128,7 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
     })
     .where('id', '=', id)
     .execute();
+  await emitSupplierChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -144,6 +148,7 @@ function setStatus(status: 'ACTIVE' | 'INACTIVE'): CommandHandler<Record<string,
       .set({ status, updated_by: toBin(envelope.author_user_id), version: sql`version + 1` })
       .where('id', '=', id)
       .execute();
+    await emitSupplierChange(uow, envelope.aggregate_id);
     return { status: 'APPLIED' };
   };
 }

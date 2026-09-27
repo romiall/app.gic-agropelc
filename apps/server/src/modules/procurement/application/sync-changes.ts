@@ -3,8 +3,10 @@
  * `procurement` : « BC livrables sur le site, fournisseurs actifs (liste courte), DA de
  * l'utilisateur », filtres `SITE`, `USER`) :
  * - demande d'achat → son demandeur (`USER`) ;
- * - bon de commande → son site de livraison (`SITE`) ;
- * - réception → son site (`SITE`, 30 jours).
+ * - bon de commande → son site de livraison (`SITE`) tant qu'il est livrable (`SENT`,
+ *   `PARTIALLY_RECEIVED`), `SCOPE_EXIT` ensuite (reçu, clôturé, annulé : l'appareil le retire) ;
+ * - réception → son site (`SITE`, 30 jours) ;
+ * - fournisseur → tous (`GLOBAL`, liste courte des actifs), `SCOPE_EXIT` à la désactivation.
  * Les projections (`sync/entity-projections.ts`) ne servent une ligne que dans ce périmètre.
  */
 import { recordChanges } from '../../../platform/sync/change-feed.js';
@@ -32,10 +34,13 @@ export async function emitPurchaseRequestChange(uow: UnitOfWork, requestId: stri
   ]);
 }
 
+/** BC livrables hors ligne (D08 §12) : réceptionnables par le magasinier du site. */
+export const DELIVERABLE_ORDER_STATUSES: readonly string[] = ['SENT', 'PARTIALLY_RECEIVED'];
+
 export async function emitPurchaseOrderChange(uow: UnitOfWork, orderId: string): Promise<void> {
   const row = await uow
     .selectFrom('procurement_purchase_orders')
-    .select(['site_id', 'version'])
+    .select(['site_id', 'status', 'version'])
     .where('id', '=', toBin(orderId))
     .executeTakeFirst();
   if (!row) return;
@@ -46,6 +51,27 @@ export async function emitPurchaseOrderChange(uow: UnitOfWork, orderId: string):
       entityId: orderId,
       scopeType: 'SITE',
       scopeId: fromBin(row.site_id),
+      changeType: DELIVERABLE_ORDER_STATUSES.includes(row.status) ? 'UPSERT' : 'SCOPE_EXIT',
+      rowVersion: row.version,
+    },
+  ]);
+}
+
+export async function emitSupplierChange(uow: UnitOfWork, supplierId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('procurement_suppliers')
+    .select(['status', 'version'])
+    .where('id', '=', toBin(supplierId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: PROCUREMENT_DATASET,
+      entityType: 'SUPPLIER',
+      entityId: supplierId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      changeType: row.status === 'ACTIVE' ? 'UPSERT' : 'SCOPE_EXIT',
       rowVersion: row.version,
     },
   ]);

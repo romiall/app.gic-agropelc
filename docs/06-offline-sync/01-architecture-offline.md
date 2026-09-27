@@ -70,7 +70,7 @@ flowchart TB
 | `allocations` | Quotas et réservations de l'appareil | `DEVICE` | < 10 Ko | Chaque synchronisation |
 | `transfers` | Transferts ouverts entrants et sortants du périmètre | `LOCATION` | < 200 Ko | Incrémental |
 | `counts` | Inventaires ouverts du périmètre | `LOCATION` | < 100 Ko | Incrémental |
-| `procurement` | BC livrables sur le site, fournisseurs actifs (liste courte), DA de l'utilisateur | `SITE`, `USER` | < 300 Ko | Incrémental |
+| `procurement` | BC livrables sur le site, fournisseurs actifs (liste courte), DA de l'utilisateur — et, DÉDUIT (P6-07), réceptions du site des 30 derniers jours (dictionnaire `goods_receipts` « Offline DL (30 j du site) ») ; sans prix ni coût (RC-05) | `SITE`, `USER` (fournisseurs : `GLOBAL`) | < 300 Ko | Incrémental ; `SCOPE_EXIT` quand un BC n'est plus livrable (reçu, clôturé, annulé) ou qu'un fournisseur est désactivé |
 | `production` | Lots actifs du site, lots d'incubation en cours, saisies des 30 derniers jours, effectifs de référence | `SITE` | < 1 Mo | Incrémental |
 | `cash` | Comptes de trésorerie de l'utilisateur ou du PDV (solde), session ouverte | `USER`, `SITE` | < 10 Ko | Chaque synchronisation |
 | `comms` | 50 dernières alertes ouvertes, notifications non lues, notes non expirées, conflits de l'utilisateur, demandes de validation de l'utilisateur | `USER` | < 200 Ko | Chaque synchronisation |
