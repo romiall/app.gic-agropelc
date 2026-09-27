@@ -100,10 +100,11 @@
 | `accepted_qty_base` | qty | Non | 0 | Σ acceptés des réceptions `POSTED` (dénormalisé) |
 | `invoiced_qty_base` | qty | Non | 0 | Σ facturés (dénormalisé) |
 | `closed_qty_base` | qty | Non | 0 | Reliquat clôturé |
+| `excess_qty_base` | qty | Non | 0 | DÉDUIT (P6-02) : excédent accepté hors ligne au-delà du commandé, en revue `OVER_RECEIPT` (BR-APP-010) |
 | `status` | enum(`OPEN`,`RECEIVED`,`CLOSED`,`CANCELLED`) | Non | `OPEN` | |
 
 - **PK** `id`. **UQ** `(order_id, line_no)`.
-- **CK** `ordered_qty_base > 0` ; `accepted_qty_base + closed_qty_base ≤ ordered_qty_base`, sauf excédent tracé (INV-APP-02).
+- **CK** `ordered_qty_base > 0` ; `accepted_qty_base + closed_qty_base ≤ ordered_qty_base + excess_qty_base` : l'excédent n'est admis que tracé (INV-APP-02).
 - **Intégrité** INV-APP-04 (déclencheur : pas d'augmentation de `ordered_qty_base` ni de `unit_price_xaf` si le BC est `SENT` ou au-delà).
 
 ## procurement.goods_receipts
@@ -123,6 +124,7 @@
 | `status` | enum(`POSTED`,`POSTED_PENDING_REVIEW`,`REVIEW_REJECTED`,`QUARANTINED`,`REJECTED`,`CANCELLATION_PENDING`,`CANCELLED`) | Non | — | |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
 | `total_accepted_value_xaf` | money_xaf | Non | 0 | |
+| `posted_note_key` | varchar(100) | Oui | généré | DÉDUIT (P6-02), donnée technique : `fournisseur:numéro de BL` pour les réceptions comptabilisées (`POSTED`, `POSTED_PENDING_REVIEW`, `REVIEW_REJECTED`, `CANCELLATION_PENDING`), nul sinon — porte l'unicité partielle ci-dessous (conventions §4) |
 | [STD-CANCEL] | | | | |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
@@ -146,10 +148,12 @@
 | `qty_rejected_base` | qty | Non | 0 | Rejeté |
 | `qty_accepted_base` | qty | Non | calculé | = livré − rejeté |
 | `rejection_reason_code_id` | uuid → catalog.reason_codes | Oui | — | Requis si rejet > 0 |
+| `over_receipt_qty_base` | qty | Non | 0 | DÉDUIT (P6-02) : part acceptée au-delà du reliquat de la ligne de BC (`OVER_RECEIPT`, BR-APP-010) |
 | `unit_cost_xaf` | money_xaf | Non | — | Prix du BC ou déclaré |
 | `supplier_lot_ref` | varchar(60) | Oui | — | |
 | `expiry_date` | date | Oui | — | |
 | `stock_lot_id` | uuid → inventory.stock_lots | Oui | — | Lot créé pour le lot fournisseur |
 
-- **PK** `id`. **CK** `0 ≤ qty_rejected_base ≤ qty_delivered_base` ; `qty_accepted_base = qty_delivered_base − qty_rejected_base` (colonne générée, INV-APP-01).
+- **PK** `id`. **CK** `qty_delivered_base > 0` ; `0 ≤ qty_rejected_base ≤ qty_delivered_base` ; `qty_accepted_base = qty_delivered_base − qty_rejected_base` (colonne générée, INV-APP-01) ; motif présent si `qty_rejected_base > 0` (D08 §8) ; `0 ≤ over_receipt_qty_base ≤ qty_accepted_base`.
+- **Suppr.** `IMMUABLE` (seul `stock_lot_id` se renseigne après coup : comptabilisation différée d'une réception en quarantaine).
 - **Intégrité** INV-STK-12.

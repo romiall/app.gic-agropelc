@@ -1129,6 +1129,145 @@ export interface PricingPriceRules {
   zone_id: Buffer | null;
 }
 
+export interface ProcurementGoodsReceiptLines {
+  created_at: Generated<Date>;
+  expiry_date: Date | null;
+  id: Buffer;
+  over_receipt_qty_base: Generated<Decimal>;
+  po_line_id: Buffer | null;
+  product_id: Buffer;
+  qty_accepted_base: Decimal | null;
+  qty_delivered_base: Decimal;
+  qty_rejected_base: Generated<Decimal>;
+  receipt_id: Buffer;
+  rejection_reason_code_id: Buffer | null;
+  stock_lot_id: Buffer | null;
+  supplier_lot_ref: string | null;
+  unit_code: string;
+  unit_cost_xaf: number;
+}
+
+export interface ProcurementGoodsReceipts {
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  id: Buffer;
+  local_ref: string | null;
+  location_id: Buffer;
+  observations: string | null;
+  occurred_at: Date;
+  posted_note_key: string | null;
+  purchase_order_id: Buffer | null;
+  received_at_server: Date | null;
+  received_by: Buffer;
+  site_id: Buffer;
+  status: string;
+  supplier_delivery_note_ref: string | null;
+  supplier_id: Buffer;
+  total_accepted_value_xaf: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProcurementPurchaseOrderLines {
+  accepted_qty_base: Generated<Decimal>;
+  closed_qty_base: Generated<Decimal>;
+  created_at: Generated<Date>;
+  excess_qty_base: Generated<Decimal>;
+  id: Buffer;
+  invoiced_qty_base: Generated<Decimal>;
+  line_no: number;
+  line_total_xaf: number;
+  order_id: Buffer;
+  ordered_qty_base: Decimal;
+  product_id: Buffer;
+  request_line_id: Buffer | null;
+  status: Generated<string>;
+  unit_code: string;
+  unit_price_xaf: number;
+}
+
+export interface ProcurementPurchaseOrders {
+  approval_request_id: Buffer | null;
+  approved_at: Date | null;
+  approved_by: Buffer | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  closed_reason: string | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  delivery_location_id: Buffer;
+  doc_number: string;
+  expected_delivery_date: Date | null;
+  id: Buffer;
+  local_ref: string | null;
+  occurred_at: Date;
+  sent_at: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  supplier_id: Buffer;
+  total_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProcurementPurchaseRequestLines {
+  created_at: Generated<Date>;
+  estimated_unit_price_xaf: number | null;
+  id: Buffer;
+  notes: string | null;
+  ordered_qty_base: Generated<Decimal>;
+  product_id: Buffer;
+  quantity: Decimal;
+  quantity_base: Decimal;
+  request_id: Buffer;
+  unit_code: string;
+}
+
+export interface ProcurementPurchaseRequests {
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  estimated_total_xaf: Generated<number>;
+  id: Buffer;
+  justification: string;
+  local_ref: string | null;
+  needed_by_date: Date | null;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  requested_by: Buffer;
+  site_id: Buffer;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface ProcurementSuppliers {
   address: string | null;
   code: string;
@@ -1289,6 +1428,12 @@ export interface DB {
   platform_jobs: PlatformJobs;
   pricing_commercial_campaigns: PricingCommercialCampaigns;
   pricing_price_rules: PricingPriceRules;
+  procurement_goods_receipt_lines: ProcurementGoodsReceiptLines;
+  procurement_goods_receipts: ProcurementGoodsReceipts;
+  procurement_purchase_order_lines: ProcurementPurchaseOrderLines;
+  procurement_purchase_orders: ProcurementPurchaseOrders;
+  procurement_purchase_request_lines: ProcurementPurchaseRequestLines;
+  procurement_purchase_requests: ProcurementPurchaseRequests;
   procurement_suppliers: ProcurementSuppliers;
   schema_migrations: SchemaMigrations;
   sync_change_feed: SyncChangeFeed;

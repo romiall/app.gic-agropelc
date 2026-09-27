@@ -150,7 +150,7 @@ CREATE TABLE `approvals_control_policies` (
   CONSTRAINT `fk_approvals_control_policies_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_approvals_control_policies_permission` FOREIGN KEY (`approver_permission`) REFERENCES `identity_permissions` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `ck_approvals_control_policies_approver_scope` CHECK (((`approver_scope` is null) or (`approver_scope` in (_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'TEAM',_utf8mb4'ALL')))),
-  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE'))),
+  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION'))),
   CONSTRAINT `ck_approvals_control_policies_requires_approval` CHECK (((`requires_approval` = false) or (`approver_permission` is not null))),
   CONSTRAINT `ck_approvals_control_policies_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -3905,6 +3905,592 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `procurement_goods_receipt_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_goods_receipt_lines` (
+  `id` binary(16) NOT NULL,
+  `receipt_id` binary(16) NOT NULL,
+  `po_line_id` binary(16) DEFAULT NULL,
+  `product_id` binary(16) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `qty_delivered_base` decimal(14,3) NOT NULL,
+  `qty_rejected_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `qty_accepted_base` decimal(14,3) GENERATED ALWAYS AS ((`qty_delivered_base` - `qty_rejected_base`)) STORED,
+  `over_receipt_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `rejection_reason_code_id` binary(16) DEFAULT NULL,
+  `unit_cost_xaf` bigint NOT NULL,
+  `supplier_lot_ref` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `stock_lot_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_procurement_goods_receipt_lines_receipt` (`receipt_id`),
+  KEY `ix_procurement_goods_receipt_lines_po_line` (`po_line_id`),
+  KEY `fk_procurement_goods_receipt_lines_product` (`product_id`),
+  KEY `fk_procurement_goods_receipt_lines_unit` (`unit_code`),
+  KEY `fk_procurement_goods_receipt_lines_rejection_reason` (`rejection_reason_code_id`),
+  KEY `fk_procurement_goods_receipt_lines_stock_lot` (`stock_lot_id`),
+  CONSTRAINT `fk_procurement_goods_receipt_lines_po_line` FOREIGN KEY (`po_line_id`) REFERENCES `procurement_purchase_order_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipt_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipt_lines_receipt` FOREIGN KEY (`receipt_id`) REFERENCES `procurement_goods_receipts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipt_lines_rejection_reason` FOREIGN KEY (`rejection_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipt_lines_stock_lot` FOREIGN KEY (`stock_lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipt_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_goods_receipt_lines_cost` CHECK ((`unit_cost_xaf` >= 0)),
+  CONSTRAINT `ck_procurement_goods_receipt_lines_qty` CHECK (((`qty_delivered_base` > 0) and (`qty_rejected_base` >= 0) and (`qty_rejected_base` <= `qty_delivered_base`) and (`over_receipt_qty_base` >= 0) and (`over_receipt_qty_base` <= (`qty_delivered_base` - `qty_rejected_base`)))),
+  CONSTRAINT `ck_procurement_goods_receipt_lines_rejection` CHECK (((`qty_rejected_base` = 0) or (`rejection_reason_code_id` is not null)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_goods_receipt_lines_update_guard` BEFORE UPDATE ON `procurement_goods_receipt_lines` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.receipt_id <=> OLD.receipt_id AND
+    NEW.po_line_id <=> OLD.po_line_id AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.unit_code <=> OLD.unit_code AND
+    NEW.qty_delivered_base <=> OLD.qty_delivered_base AND
+    NEW.qty_rejected_base <=> OLD.qty_rejected_base AND
+    NEW.over_receipt_qty_base <=> OLD.over_receipt_qty_base AND
+    NEW.rejection_reason_code_id <=> OLD.rejection_reason_code_id AND
+    NEW.unit_cost_xaf <=> OLD.unit_cost_xaf AND
+    NEW.supplier_lot_ref <=> OLD.supplier_lot_ref AND
+    NEW.expiry_date <=> OLD.expiry_date AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_goods_receipt_lines : ligne de réception immuable (seul le lot de stock se renseigne).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_goods_receipt_lines_no_delete` BEFORE DELETE ON `procurement_goods_receipt_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_goods_receipt_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_goods_receipts`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_goods_receipts` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `purchase_order_id` binary(16) DEFAULT NULL,
+  `supplier_id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `received_by` binary(16) NOT NULL,
+  `supplier_delivery_note_ref` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `observations` text COLLATE utf8mb4_0900_as_cs,
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `total_accepted_value_xaf` bigint NOT NULL DEFAULT '0',
+  `posted_note_key` varchar(100) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`supplier_delivery_note_ref` is not null) and (`status` in (_utf8mb4'POSTED',_utf8mb4'POSTED_PENDING_REVIEW',_utf8mb4'REVIEW_REJECTED',_utf8mb4'CANCELLATION_PENDING'))) then concat(hex(`supplier_id`),_utf8mb4':',`supplier_delivery_note_ref`) end)) STORED,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_procurement_goods_receipts_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_procurement_goods_receipts_command` (`command_id`),
+  UNIQUE KEY `uq_procurement_goods_receipts_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_procurement_goods_receipts_posted_note` (`posted_note_key`),
+  KEY `ix_procurement_goods_receipts_order` (`purchase_order_id`),
+  KEY `ix_procurement_goods_receipts_location` (`location_id`,`occurred_at`),
+  KEY `ix_procurement_goods_receipts_supplier_note` (`supplier_id`,`supplier_delivery_note_ref`),
+  KEY `ix_procurement_goods_receipts_status` (`status`,`site_id`),
+  KEY `fk_procurement_goods_receipts_site` (`site_id`),
+  KEY `fk_procurement_goods_receipts_received_by` (`received_by`),
+  KEY `fk_procurement_goods_receipts_approval` (`approval_request_id`),
+  KEY `fk_procurement_goods_receipts_cancelled_by` (`cancelled_by`),
+  KEY `fk_procurement_goods_receipts_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_procurement_goods_receipts_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_procurement_goods_receipts_created_by` (`created_by`),
+  KEY `fk_procurement_goods_receipts_updated_by` (`updated_by`),
+  CONSTRAINT `fk_procurement_goods_receipts_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_order` FOREIGN KEY (`purchase_order_id`) REFERENCES `procurement_purchase_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_received_by` FOREIGN KEY (`received_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_goods_receipts_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_goods_receipts_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_procurement_goods_receipts_status` CHECK ((`status` in (_utf8mb4'POSTED',_utf8mb4'POSTED_PENDING_REVIEW',_utf8mb4'REVIEW_REJECTED',_utf8mb4'QUARANTINED',_utf8mb4'REJECTED',_utf8mb4'CANCELLATION_PENDING',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_procurement_goods_receipts_value` CHECK ((`total_accepted_value_xaf` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_goods_receipts_update_guard` BEFORE UPDATE ON `procurement_goods_receipts` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.purchase_order_id <=> OLD.purchase_order_id AND
+    NEW.supplier_id <=> OLD.supplier_id AND
+    NEW.location_id <=> OLD.location_id AND
+    NEW.received_by <=> OLD.received_by AND
+    NEW.supplier_delivery_note_ref <=> OLD.supplier_delivery_note_ref AND
+    NEW.observations <=> OLD.observations AND
+    NEW.total_accepted_value_xaf <=> OLD.total_accepted_value_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_goods_receipts : réception non modifiable ; seuls statut, validation et annulation évoluent.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_goods_receipts_no_delete` BEFORE DELETE ON `procurement_goods_receipts` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_goods_receipts : suppression physique interdite (INV-GLO-03) ; annuler par contre-écriture.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_purchase_order_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_purchase_order_lines` (
+  `id` binary(16) NOT NULL,
+  `order_id` binary(16) NOT NULL,
+  `line_no` smallint NOT NULL,
+  `request_line_id` binary(16) DEFAULT NULL,
+  `product_id` binary(16) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `ordered_qty_base` decimal(14,3) NOT NULL,
+  `unit_price_xaf` bigint NOT NULL,
+  `line_total_xaf` bigint NOT NULL,
+  `accepted_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `invoiced_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `closed_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `excess_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `status` varchar(12) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_procurement_purchase_order_lines_line_no` (`order_id`,`line_no`),
+  KEY `ix_procurement_purchase_order_lines_request_line` (`request_line_id`),
+  KEY `ix_procurement_purchase_order_lines_product` (`product_id`),
+  KEY `fk_procurement_purchase_order_lines_unit` (`unit_code`),
+  CONSTRAINT `fk_procurement_purchase_order_lines_order` FOREIGN KEY (`order_id`) REFERENCES `procurement_purchase_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_order_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_order_lines_request_line` FOREIGN KEY (`request_line_id`) REFERENCES `procurement_purchase_request_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_order_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_purchase_order_lines_amounts` CHECK (((`ordered_qty_base` > 0) and (`unit_price_xaf` >= 0) and (`line_total_xaf` >= 0) and (`accepted_qty_base` >= 0) and (`invoiced_qty_base` >= 0) and (`closed_qty_base` >= 0) and (`excess_qty_base` >= 0))),
+  CONSTRAINT `ck_procurement_purchase_order_lines_received` CHECK (((`accepted_qty_base` + `closed_qty_base`) <= (`ordered_qty_base` + `excess_qty_base`))),
+  CONSTRAINT `ck_procurement_purchase_order_lines_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'RECEIVED',_utf8mb4'CLOSED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_order_lines_update_guard` BEFORE UPDATE ON `procurement_purchase_order_lines` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.order_id <=> OLD.order_id AND
+    NEW.line_no <=> OLD.line_no AND
+    NEW.request_line_id <=> OLD.request_line_id AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.unit_code <=> OLD.unit_code AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_order_lines : produit et rattachement d''une ligne immuables.';
+  END IF;
+  IF (NEW.ordered_qty_base > OLD.ordered_qty_base OR NEW.unit_price_xaf > OLD.unit_price_xaf)
+     AND (SELECT status FROM procurement_purchase_orders WHERE id = NEW.order_id)
+         IN ('SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED', 'CANCELLED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_order_lines : ligne d''un BC envoyé jamais augmentée (INV-APP-04) ; créer un nouveau BC.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_order_lines_no_delete` BEFORE DELETE ON `procurement_purchase_order_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_order_lines : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_purchase_orders`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_purchase_orders` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `supplier_id` binary(16) NOT NULL,
+  `delivery_location_id` binary(16) NOT NULL,
+  `expected_delivery_date` date DEFAULT NULL,
+  `total_xaf` bigint NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DRAFT',
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `approved_by` binary(16) DEFAULT NULL,
+  `approved_at` datetime(6) DEFAULT NULL,
+  `sent_at` datetime(6) DEFAULT NULL,
+  `closed_reason` text COLLATE utf8mb4_0900_as_cs,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_procurement_purchase_orders_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_procurement_purchase_orders_command` (`command_id`),
+  KEY `ix_procurement_purchase_orders_supplier` (`supplier_id`,`status`),
+  KEY `ix_procurement_purchase_orders_location` (`delivery_location_id`,`status`),
+  KEY `fk_procurement_purchase_orders_site` (`site_id`),
+  KEY `fk_procurement_purchase_orders_approval` (`approval_request_id`),
+  KEY `fk_procurement_purchase_orders_approved_by` (`approved_by`),
+  KEY `fk_procurement_purchase_orders_cancelled_by` (`cancelled_by`),
+  KEY `fk_procurement_purchase_orders_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_procurement_purchase_orders_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_procurement_purchase_orders_created_by` (`created_by`),
+  KEY `fk_procurement_purchase_orders_updated_by` (`updated_by`),
+  CONSTRAINT `fk_procurement_purchase_orders_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_location` FOREIGN KEY (`delivery_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_orders_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_purchase_orders_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null) and (`cancel_approval_request_id` is null)))),
+  CONSTRAINT `ck_procurement_purchase_orders_sent` CHECK (((`status` not in (_utf8mb4'SENT',_utf8mb4'PARTIALLY_RECEIVED',_utf8mb4'RECEIVED',_utf8mb4'CLOSED')) or (`sent_at` is not null))),
+  CONSTRAINT `ck_procurement_purchase_orders_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'PENDING_APPROVAL',_utf8mb4'APPROVED',_utf8mb4'SENT',_utf8mb4'PARTIALLY_RECEIVED',_utf8mb4'RECEIVED',_utf8mb4'CLOSED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_procurement_purchase_orders_total` CHECK ((`total_xaf` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_orders_update_guard` BEFORE UPDATE ON `procurement_purchase_orders` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.supplier_id <=> OLD.supplier_id AND
+    NEW.delivery_location_id <=> OLD.delivery_location_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_orders : fournisseur, livraison et numéro immuables ; créer un nouveau BC.';
+  END IF;
+  IF OLD.status <> 'DRAFT' AND NOT (
+    NEW.total_xaf <=> OLD.total_xaf AND NEW.expected_delivery_date <=> OLD.expected_delivery_date
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_orders : BC approuvé ou envoyé non modifiable (BR-APP-006, INV-APP-04).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_orders_no_delete` BEFORE DELETE ON `procurement_purchase_orders` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_orders : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_purchase_request_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_purchase_request_lines` (
+  `id` binary(16) NOT NULL,
+  `request_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `estimated_unit_price_xaf` bigint DEFAULT NULL,
+  `ordered_qty_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_procurement_purchase_request_lines_request` (`request_id`),
+  KEY `fk_procurement_purchase_request_lines_product` (`product_id`),
+  KEY `fk_procurement_purchase_request_lines_unit` (`unit_code`),
+  CONSTRAINT `fk_procurement_purchase_request_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_request_lines_request` FOREIGN KEY (`request_id`) REFERENCES `procurement_purchase_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_request_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_purchase_request_lines_price` CHECK (((`estimated_unit_price_xaf` is null) or (`estimated_unit_price_xaf` >= 0))),
+  CONSTRAINT `ck_procurement_purchase_request_lines_qty` CHECK (((`quantity_base` > 0) and (`quantity` > 0) and (`ordered_qty_base` >= 0) and (`ordered_qty_base` <= `quantity_base`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_request_lines_update_guard` BEFORE UPDATE ON `procurement_purchase_request_lines` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.request_id <=> OLD.request_id AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.quantity_base <=> OLD.quantity_base AND
+    NEW.unit_code <=> OLD.unit_code AND
+    NEW.quantity <=> OLD.quantity AND
+    NEW.estimated_unit_price_xaf <=> OLD.estimated_unit_price_xaf AND
+    NEW.notes <=> OLD.notes AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_request_lines : seule la quantité commandée évolue (BR-APP-002, BR-APP-004).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_request_lines_no_delete` BEFORE DELETE ON `procurement_purchase_request_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_request_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `procurement_purchase_requests`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `procurement_purchase_requests` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `requested_by` binary(16) NOT NULL,
+  `needed_by_date` date DEFAULT NULL,
+  `justification` text COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `estimated_total_xaf` bigint NOT NULL DEFAULT '0',
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'SUBMITTED',
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_procurement_purchase_requests_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_procurement_purchase_requests_command` (`command_id`),
+  UNIQUE KEY `uq_procurement_purchase_requests_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_procurement_purchase_requests_requested_by` (`requested_by`,`occurred_at`),
+  KEY `ix_procurement_purchase_requests_status` (`status`,`site_id`),
+  KEY `fk_procurement_purchase_requests_site` (`site_id`),
+  KEY `fk_procurement_purchase_requests_approval` (`approval_request_id`),
+  KEY `fk_procurement_purchase_requests_created_by` (`created_by`),
+  KEY `fk_procurement_purchase_requests_updated_by` (`updated_by`),
+  CONSTRAINT `fk_procurement_purchase_requests_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_requests_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_requests_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_requests_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_requests_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_procurement_purchase_requests_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_procurement_purchase_requests_status` CHECK ((`status` in (_utf8mb4'SUBMITTED',_utf8mb4'APPROVED',_utf8mb4'REJECTED',_utf8mb4'CANCELLED',_utf8mb4'PARTIALLY_ORDERED',_utf8mb4'ORDERED',_utf8mb4'CLOSED'))),
+  CONSTRAINT `ck_procurement_purchase_requests_total` CHECK ((`estimated_total_xaf` >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_requests_update_guard` BEFORE UPDATE ON `procurement_purchase_requests` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.requested_by <=> OLD.requested_by AND
+    NEW.needed_by_date <=> OLD.needed_by_date AND
+    NEW.justification <=> OLD.justification AND
+    NEW.estimated_total_xaf <=> OLD.estimated_total_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_requests : demande soumise non modifiable ; l''annuler et en soumettre une nouvelle (BR-APP-002).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_procurement_purchase_requests_no_delete` BEFORE DELETE ON `procurement_purchase_requests` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'procurement_purchase_requests : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `procurement_suppliers`
 --
 
@@ -4265,5 +4851,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260928090000'),
   ('20260929090000'),
   ('20260930090000'),
-  ('20260930090100');
+  ('20260930090100'),
+  ('20261001090000');
 UNLOCK TABLES;

@@ -170,6 +170,8 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `crm.inactive_after_days` | 30 | AV-013 |
 | `crm.visit.max_distance_m` | 500 | BR-CRM-015 |
 | `crm.phone_default_country_code` | 237 | BR-CRM-006 (DÉDUIT : indicatif d'un numéro national) |
+| `procurement.receipt_over_tolerance_pct` | 0 | AV-053 (acceptation au-delà du commandé, en % du commandé) |
+| `procurement.receipt_photo_threshold_xaf` | 100 000 | BR-APP-014, AV-037 (photo du bon de livraison exigée à partir de cette valeur acceptée) |
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |

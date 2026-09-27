@@ -20,6 +20,10 @@ export const OPERATION_TYPES = [
   'CREDIT_LIMIT_EXCEEDED',
   'CASH_VARIANCE',
   'CHECKIN_OVERRIDE',
+  // P6-02 : réception en quarantaine (doublon suspecté, BR-APP-012) et annulation d'une
+  // réception comptabilisée (BR-APP-013) — D08 §11.
+  'RECEIPT_QUARANTINE',
+  'RECEIPT_CANCELLATION',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

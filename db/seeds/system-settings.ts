@@ -72,6 +72,22 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-051',
   },
+  // P6-02 : acceptation cumulée au-delà du commandé, en pourcentage du commandé (tolérance
+  // nulle par défaut ; hors ligne, l'excédent part en revue OVER_RECEIPT, BR-APP-010).
+  {
+    key: 'procurement.receipt_over_tolerance_pct',
+    value: 0,
+    isClientVisible: true,
+    ref: 'AV-053',
+  },
+  // BR-APP-014 (P6-02) : photo du bon de livraison exigée pour toute réception sans BC et pour
+  // toute réception dont la valeur acceptée atteint ce seuil (AV-037).
+  {
+    key: 'procurement.receipt_photo_threshold_xaf',
+    value: 100_000,
+    isClientVisible: true,
+    ref: 'BR-APP-014, AV-037',
+  },
   {
     key: 'inventory.count_approval_threshold_xaf',
     value: 25_000,
