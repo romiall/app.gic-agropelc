@@ -179,3 +179,19 @@ ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits 
 | Écart entre effectif théorique et comptage physique | Inventaire du bâtiment (D06) ; écart ajusté avec motif, visible sur la fiche lot. |
 | Poussins issus de l'éclosion et vendus directement | Vente depuis l'emplacement d'éclosion (lot `INCUBATION_BATCH`), sans mise en place. |
 | Lot réparti sur plusieurs bâtiments | Autorisé : l'effectif et les indicateurs sont agrégés sur le lot de traçabilité. |
+
+## 15. Choix d'implémentation (P7)
+
+Précisions retenues par le module `production` et la bibliothèque partagée (`packages/domain/src/production.ts`) là où les règles laissent un choix ; toutes **DÉDUITES**, sans effet sur les règles confirmées ni sur les décisions du porteur du projet du 27/09/2026 (A-VALIDER §3, ADR-025, ADR-026).
+
+| Point | Choix | Justification |
+|---|---|---|
+| Profil d'un type de lot (AV-044) | Collectes d'œufs pour `PONDEUSE` et `REPRODUCTEUR_VOLAILLE` ; naissances et sevrage pour `PORC_NAISSAGE` ; abattage pour `POULET_CHAIR` ; espèce (volaille, porc) pour les paramètres d'incubation. | Décisions AV-044, AV-045, AV-032 du 27/09/2026. |
+| Bilan de collecte (INV-OEU-01, AV-046) | Collectés = cassés + non conformes + Σ calibres commercialisables + à couver ; quantités entières ≥ 0 ; un calibre au plus une fois par collecte (`EGG_BALANCE_INVALID`). | BR-OEU-001 ; calibres à la collecte (AV-046). |
+| Bilan d'incubation (INV-INC-01) | Œufs restants = incubés − infertiles − mortalité embryonnaire − pertes accidentelles ; mirage borné par les œufs restants ; à l'éclosion, non éclos + viables + non viables = œufs restants (`INCUBATION_BALANCE_INVALID`). | BR-INC-003 à 006. |
+| Taux | Arrondis à 4 décimales (demi supérieur) ; `null` quand le dénominateur est nul. Taux d'éclosion ÷ œufs incubés, et ÷ œufs fertiles en indicateur secondaire. | Colonne `hatch_rate` DECIMAL(5,4) ; BR-INC-007. |
+| Seuil de mortalité (AV-048) | Validation si morts > seuil absolu **ou** morts ÷ effectif en élevage > seuil relatif (dépassement strict) ; seuils paramétrés ; réglés à 0 pour « toute mortalité validée ». Effectif en élevage nul : validation dès la première tête. | BR-PRD-006 ; décision AV-048. |
+| Coût par tête | Coût cumulé ÷ effectif non vendu, arrondi au franc demi supérieur ; aucun coût par tête sur un effectif nul. | BR-PRD-012 ; coût figé d'un mouvement (BR-STK-052). |
+| Répartitions (frais généraux, coproduits) | Au prorata de poids entiers, exacte au franc (méthode du plus fort reste, égalité départagée par l'ordre des lots ou produits) ; poids tous nuls : rien n'est réparti. | ADR-026 : la somme des parts égale toujours le montant réparti. |
+| Têtes × jours (AV-043) | Somme, sur chaque jour métier de la période, de l'effectif en fin de journée (jamais négatif). | ADR-026. |
+| Indicateurs (AV-049) | GMQ = écart de poids moyen entre deux pesées ÷ jours (au dixième de gramme) ; indice de consommation = aliment (kg) ÷ gain de poids vif du lot (kg), `null` si le gain n'est pas positif ; taux de ponte = œufs collectés ÷ pondeuses présentes ; rendement d'abattage = poids des produits ÷ poids vif. | Décision AV-049 ; formules usuelles. |

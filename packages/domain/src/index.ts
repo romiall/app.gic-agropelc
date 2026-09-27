@@ -129,3 +129,38 @@ export {
 
 export type { FieldVersion, FieldCollision } from './crm.js';
 export { normalizePhone, mergeFieldPatch } from './crm.js';
+
+export type {
+  ProductionLotType,
+  ProductionLotStatus,
+  LotTypeProfile,
+  EggGradeCount,
+  EggCollectionInput,
+  IncubationCounters,
+  MortalityThresholds,
+  ProRataShare,
+} from './production.js';
+export {
+  PRODUCTION_LOT_TYPES,
+  lotTypeProfile,
+  acceptsDailyEntries,
+  rate4,
+  eggCollectionBalance,
+  eggsRemaining,
+  checkCandling,
+  checkHatch,
+  incubationBalanced,
+  hatchRates,
+  mortalityRequiresApproval,
+  costPerHeadXaf,
+  allocateProRata,
+  headDaysInPeriod,
+  allocateByWeight,
+  unitCostXaf,
+  checkWeighing,
+  mortalityRate,
+  layingRate,
+  averageDailyGainG,
+  feedConversionRatio,
+  slaughterYield,
+} from './production.js';
