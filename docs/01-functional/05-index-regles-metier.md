@@ -204,7 +204,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-001 | Un lot a un type (`POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`, options activables `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE`), un produi… | C (CM §15, §19) / AV-044 |
 | BR-PRD-002 | La création d'un lot crée son lot de traçabilité (`inventory.stock_lots`, origine `PRODUCTION_LOT`). Tous les mouvements des animaux du lot… | D (CM §58) |
 | BR-PRD-003 | L'effectif d'un lot n'est jamais saisi : c'est la somme des soldes de son lot de traçabilité. On distingue l'effectif en élevage (emplaceme… | C (CM §15 ; REQ-029) |
-| BR-PRD-004 | Une entrée de lot est une mise en place (`PLACEMENT`), une naissance (`BIRTH`) ou un transfert entrant (`TRANSFER_IN`). Mise en place à par… | C (CM §15) / D |
+| BR-PRD-004 | Une entrée de lot est une mise en place (`PLACEMENT`), une naissance (`BIRTH`) ou un transfert entrant (`TRANSFER_IN`). Mise en place à par… | C (CM §15) / D / AV-112 |
 | BR-PRD-005 | La mortalité est une déclaration de perte de catégorie `MORTALITE` rattachée au lot et à l'emplacement (D06, BR-STK-030). Elle est saisie d… | C (CM §16) / AV-048 |
 | BR-PRD-006 | Le seuil relatif de mortalité se calcule sur l'effectif en élevage du lot à `occurred_at`, par l'appareil (approximation locale) puis par l… | D (PM §37) |
 | BR-PRD-007 | Une consommation d'intrant pour un lot est une consommation (D06, BR-STK-036) dont l'objet de coût est le lot. Sa valeur (quantité × coût u… | C (CM §4, §15, §33) |

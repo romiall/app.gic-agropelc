@@ -5,7 +5,8 @@
  *   inchangé (BR-PRD-013), contrôles de portée, d'emplacement, de cause et d'état du lot ;
  * - consommation d'intrant imputée au lot (BR-PRD-007), nature conservée ;
  * - pesée et son annulation (BR-PRD-015), observation « RAS » (AV-117) ;
- * - hors ligne sur un lot clôturé : saisie appliquée avec le conflit `LOT_CLOSED`.
+ * - hors ligne sur un lot clôturé : mortalité, consommation et observation appliquées avec le
+ *   conflit `LOT_CLOSED` ; rejeu d'une mortalité (même agrégat, nouvelle commande) sans doublon.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -343,6 +344,7 @@ describe('P7-06 : saisie du jour', () => {
         code: `MORTALITY_${policyId.slice(-8)}`,
         operationType: 'MORTALITY',
         validFrom: at('00:00:00'),
+        validTo: at('23:59:59'),
         requiresApproval: true,
         requiresPhoto: true,
         approverPermission: 'production.mortality.approve',
@@ -402,6 +404,21 @@ describe('P7-06 : saisie du jour', () => {
       .selectAll()
       .where('id', '=', toBin(lossId))
       .executeTakeFirstOrThrow();
+    // Rejeu : même agrégat sous une nouvelle commande → même numéro, aucune seconde déclaration.
+    const replayed = await run(
+      farmManager,
+      'production.mortality.record',
+      'STOCK_LOSS',
+      lossId,
+      at('08:00:00'),
+      mortality(lotId, 3),
+    );
+    expect(replayed).toMatchObject({
+      status: 'APPLIED',
+      server_refs: {
+        docNumber: (declared as { server_refs: { docNumber: string } }).server_refs.docNumber,
+      },
+    });
     expect(loss).toMatchObject({
       category: 'MORTALITE',
       status: 'PENDING_APPROVAL',
@@ -606,11 +623,47 @@ describe('P7-06 : saisie du jour', () => {
         ),
       ),
     ).toBe('LOT_NOT_ACTIVE');
+    const lateMortality = await run(
+      farmManager,
+      'production.mortality.record',
+      'STOCK_LOSS',
+      freshUuid(),
+      at('11:06:00'),
+      mortality(closedId, 1),
+      { offline: true },
+    );
+    expect(lateMortality).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['LOT_CLOSED'],
+    });
+    const lateInput = await run(
+      farmManager,
+      'production.input.record',
+      'CONSUMPTION',
+      freshUuid(),
+      at('11:07:00'),
+      {
+        productionLotId: closedId,
+        locationId: farmStoreId,
+        productId: feedId,
+        quantityBase: 2,
+        unitCode: 'KG',
+        quantity: 2,
+        costType: 'ALIMENT',
+      },
+      { offline: true },
+    );
+    expect(lateInput).toMatchObject({ status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] });
     const conflicts = await db
       .selectFrom('sync_sync_conflicts')
       .select(['conflict_type', 'owner_role'])
       .where('entity_id', '=', toBin(closedId))
       .execute();
-    expect(conflicts).toEqual([{ conflict_type: 'LOT_CLOSED', owner_role: 'RESP_PRODUCTION' }]);
+    expect(conflicts).toHaveLength(3);
+    expect(
+      conflicts.every(
+        (c) => c.conflict_type === 'LOT_CLOSED' && c.owner_role === 'RESP_PRODUCTION',
+      ),
+    ).toBe(true);
   });
 });

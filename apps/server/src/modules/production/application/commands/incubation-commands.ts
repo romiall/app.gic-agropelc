@@ -332,7 +332,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const incubator = await loadLocation(uow, p.incubatorLocationId);
     if (
       !incubator ||
-      !incubator.isActive ||
+      (!incubator.isActive && !offline) ||
       incubator.siteType !== 'FERME' ||
       incubator.locationType !== 'INCUBATOR'
     ) {
@@ -554,7 +554,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const hatcher = await loadLocation(uow, p.hatcherLocationId);
     if (
       !hatcher ||
-      !hatcher.isActive ||
+      (!hatcher.isActive && !envelope.captured_offline) ||
       hatcher.siteId !== batch.siteId ||
       hatcher.locationType !== 'HATCHER'
     ) {

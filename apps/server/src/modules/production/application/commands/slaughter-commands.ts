@@ -138,7 +138,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const house = await loadLocation(uow, p.slaughterhouseLocationId);
     if (
       !house ||
-      !house.isActive ||
+      (!house.isActive && !offline) ||
       house.siteId !== lot.siteId ||
       house.locationType !== 'SLAUGHTERHOUSE'
     ) {

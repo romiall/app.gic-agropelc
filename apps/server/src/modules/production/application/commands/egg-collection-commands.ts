@@ -180,7 +180,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (p.hatching > 0) {
       const code = await stringSetting(uow, 'production.hatching_egg_product_code', at);
       hatchingProduct = code ? await findProductByCode(uow, code) : undefined;
-      if (!hatchingProduct) {
+      if (
+        !hatchingProduct ||
+        hatchingProduct.stockFamily === 'BIOLOGIQUE' ||
+        (!offline && hatchingProduct.status !== 'ACTIVE')
+      ) {
         return rejected(
           'HATCHING_PRODUCT_MISSING',
           'Produit des œufs à couver non paramétré (production.hatching_egg_product_code).',

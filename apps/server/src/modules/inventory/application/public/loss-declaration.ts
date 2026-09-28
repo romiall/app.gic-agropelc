@@ -21,7 +21,7 @@
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { mortalityRequiresApproval, type IdGenerator } from '@gic/domain';
+import { mortalityRequiresApproval, type IdGenerator, businessDayOf } from '@gic/domain';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
@@ -169,7 +169,7 @@ export async function declareLoss(
     docType: 'PRT',
     siteId,
     codeSite,
-    year: input.occurredAt.getUTCFullYear(),
+    year: Number(businessDayOf(input.occurredAt).slice(0, 4)),
   });
   const targetLocationId = await virtualLocationId(
     uow,
@@ -483,4 +483,17 @@ export async function lotLossQuantity(
     .where('status', 'in', [...COUNTED_LOSS_STATUSES, 'PENDING_APPROVAL'])
     .executeTakeFirstOrThrow();
   return Math.round(Number(row.qty) * 1000) / 1000;
+}
+
+/** Déclaration de perte par identifiant : rejeu d'une commande qui la crée (revue P7). */
+export async function findLossDeclaration(
+  executor: Kysely<DB> | Transaction<DB>,
+  lossId: string,
+): Promise<{ readonly docNumber: string; readonly status: string } | undefined> {
+  const row = await executor
+    .selectFrom('inventory_loss_declarations')
+    .select(['doc_number', 'status'])
+    .where('id', '=', toBin(lossId))
+    .executeTakeFirst();
+  return row ? { docNumber: row.doc_number, status: row.status } : undefined;
 }

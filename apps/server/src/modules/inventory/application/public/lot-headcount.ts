@@ -16,12 +16,21 @@ import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
-export type HeadcountScope = 'REARING' | 'UNSOLD';
+/**
+ * `PENDING_LOSS` : têtes du lot en attente de validation d'une perte (`V_PENDING_LOSS`, toutes
+ * catégories) — elles peuvent revenir au lot si la déclaration est rejetée ; la clôture les
+ * refuse (revue P7).
+ */
+export type HeadcountScope = 'REARING' | 'UNSOLD' | 'PENDING_LOSS';
 
 function scopeCondition(scope: HeadcountScope, alias: 'fl' | 'tl') {
-  return scope === 'REARING'
-    ? sql<boolean>`${sql.ref(`${alias}.location_type`)} IN ('BUILDING', 'PEN')`
-    : sql<boolean>`(${sql.ref(`${alias}.is_virtual`)} = 0 OR ${sql.ref(`${alias}.location_type`)} = 'V_TRANSIT')`;
+  if (scope === 'REARING') {
+    return sql<boolean>`${sql.ref(`${alias}.location_type`)} IN ('BUILDING', 'PEN')`;
+  }
+  if (scope === 'PENDING_LOSS') {
+    return sql<boolean>`${sql.ref(`${alias}.location_type`)} = 'V_PENDING_LOSS'`;
+  }
+  return sql<boolean>`(${sql.ref(`${alias}.is_virtual`)} = 0 OR ${sql.ref(`${alias}.location_type`)} = 'V_TRANSIT')`;
 }
 
 /** Effectif du lot à `at` (inclus), ou actuel si `at` est omis. */

@@ -15,6 +15,7 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
+import { businessDayOf } from '@gic/domain';
 import type { IdGenerator } from '@gic/domain';
 import {
   toBin,
@@ -167,7 +168,7 @@ function buildTransferCommands(
       docType: 'TRF',
       siteId,
       codeSite,
-      year: occurredAt.getUTCFullYear(),
+      year: Number(businessDayOf(occurredAt).slice(0, 4)),
     });
     const transferId = envelope.aggregate_id;
 
@@ -300,7 +301,7 @@ function buildTransferCommands(
         docType: 'TRF',
         siteId,
         codeSite,
-        year: occurredAt.getUTCFullYear(),
+        year: Number(businessDayOf(occurredAt).slice(0, 4)),
       });
       await uow
         .insertInto('inventory_stock_transfers')
@@ -563,7 +564,7 @@ function buildTransferCommands(
       docType: 'TRF',
       siteId,
       codeSite,
-      year: occurredAt.getUTCFullYear(),
+      year: Number(businessDayOf(occurredAt).slice(0, 4)),
     });
     const transferId = envelope.aggregate_id;
 

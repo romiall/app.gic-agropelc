@@ -8,7 +8,9 @@
  * (BR-SYN-007), sans ligne de coût ; la nature est conservée sur la consommation (AV-049,
  * indice de consommation).
  */
+import type { Kysely, Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
+import type { DB } from '../../../../platform/kysely/database.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
@@ -114,4 +116,17 @@ export async function recordConsumption(
     });
   }
   return { ok: true, valueXaf };
+}
+
+/** Consommation déjà enregistrée : rejeu d'une commande qui la crée (revue P7). */
+export async function consumptionExists(
+  executor: Kysely<DB> | Transaction<DB>,
+  consumptionId: string,
+): Promise<boolean> {
+  const row = await executor
+    .selectFrom('inventory_consumptions')
+    .select('id')
+    .where('id', '=', toBin(consumptionId))
+    .executeTakeFirst();
+  return row !== undefined;
 }

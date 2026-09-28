@@ -24,7 +24,7 @@
 | `planned_end_date` | date | Oui | — | |
 | `status` | enum(`PLANNED`,`ACTIVE`,`SELLING`,`CLOSED`,`CANCELLED`) | Non | `PLANNED` | |
 | `closed_at` | ts | Oui | — | |
-| `closing_summary` | json | Oui | — | Indicateurs figés à la clôture (mortalité, coûts directs et frais généraux séparés, CA, marge) — instantané, pas une source de vérité |
+| `closing_summary` | json | Oui | — | Indicateurs figés à la clôture : effectif initial, entrées, mort-nés, mortalité et taux, autres pertes, débits, crédits, coût net, coût non emporté par les sorties (P7-05) ; part estimée de frais généraux (P7-10) ; CA et marge (P4) — instantané, pas une source de vérité |
 | `notes` | text | Oui | — | |
 | [STD-CANCEL] | | | | Renseigné si et seulement si `CANCELLED` |
 | [STD-ORIGIN] | | | | |
@@ -121,7 +121,7 @@
 | `nonconforming_qty` | int | Non | 0 | Hors stock |
 | `marketable_qty` | int | Non | — | = Σ des lignes par calibre |
 | `hatching_qty` | int | Non | 0 | |
-| `standard_value_xaf` | money_xaf | Non | 0 | Valeur au coût standard des œufs entrés, créditée au lot producteur (AV-098) |
+| `standard_value_xaf` | money_xaf | Non | 0 | Valeur d'entrée des œufs : coût standard en vigueur, sinon CMUP courant (AV-124) ; créditée au lot producteur (AV-098) |
 | `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
 | [STD-CANCEL] | | | | |
 | [STD-ORIGIN] | | | | |

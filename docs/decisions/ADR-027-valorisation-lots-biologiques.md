@@ -31,7 +31,7 @@ Choix du porteur du projet (28/09/2026), recommandations de l'analyse de P7 rete
 
 - BR-PRD-012, la stratégie de stock §9 et la stratégie finance §6 sont à corriger (coût restant) ; l'exemple chiffré d'AT-026 est à refaire avec les frais généraux (ADR-026).
 - `inventory` : valorisation des sorties d'un lot biologique au coût par tête ; coût déclaré accepté pour les entrées `PRODUCTION_OUTPUT` ; écritures de coût de production transférée (`CREDIT`).
-- Coût standard requis pour chaque produit produit en interne (œufs par calibre, porcelet, poussin) ; à défaut, entrée à 0 XAF signalée, jamais de rejet d'un fait physique.
+- Coût standard requis pour chaque produit produit en interne (œufs par calibre, porcelet, poussin) ; à défaut (amendement du 28/09/2026, AV-124) : saisie acceptée, œufs au CMUP courant et porcelets à 0 XAF, alerte `STANDARD_COST_MISSING` à l'administrateur (P9), jamais de rejet d'un fait physique.
 
 ## Risques
 

@@ -34,7 +34,7 @@
 import { z } from 'zod';
 import { sql, type Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
-import { roundCmupToXaf } from '@gic/domain';
+import { roundCmupToXaf, businessDayOf } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
@@ -240,7 +240,7 @@ function buildCountCommands(
       docType: 'INV',
       siteId,
       codeSite,
-      year: occurredAt.getUTCFullYear(),
+      year: Number(businessDayOf(occurredAt).slice(0, 4)),
     });
     const countId = envelope.aggregate_id;
 

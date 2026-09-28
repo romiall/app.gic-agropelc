@@ -27,7 +27,12 @@ import type { DocumentSequenceService } from '../../../../platform/document-sequ
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { findProduct, findReasonCode } from '../../../catalog/application/public/index.js';
-import { declareLoss, recordConsumption } from '../../../inventory/application/public/index.js';
+import {
+  consumptionExists,
+  declareLoss,
+  findLossDeclaration,
+  recordConsumption,
+} from '../../../inventory/application/public/index.js';
 import {
   DAILY,
   FORBIDDEN_SCOPE,
@@ -102,6 +107,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     uow,
     envelope,
   ) => {
+    const replay = await findLossDeclaration(uow, envelope.aggregate_id);
+    if (replay) {
+      return {
+        status: 'APPLIED',
+        serverRefs: { docNumber: replay.docNumber, status: replay.status },
+      };
+    }
     const guard = await dailyLot(uow, envelope);
     if (!guard.ok) return guard.outcome;
     const { lot, closed } = guard;
@@ -157,6 +169,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
   };
 
   const input: CommandHandler<z.infer<typeof inputPayloadSchema>> = async (uow, envelope) => {
+    if (await consumptionExists(uow, envelope.aggregate_id)) return { status: 'APPLIED' };
     const guard = await dailyLot(uow, envelope);
     if (!guard.ok) return guard.outcome;
     const { lot, closed } = guard;

@@ -14,7 +14,7 @@
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
-import { lineAmountXaf, xaf, type IdGenerator } from '@gic/domain';
+import { lineAmountXaf, xaf, type IdGenerator, businessDayOf } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -139,7 +139,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       docType: 'DA',
       siteId: site.id,
       codeSite: site.code,
-      year: at.getUTCFullYear(),
+      year: Number(businessDayOf(at).slice(0, 4)),
     });
     // BR-APP-003 : validation obligatoire, par un approbateur distinct du demandeur (BR-ADM-017).
     const approvalRequestId = idGenerator.newId();

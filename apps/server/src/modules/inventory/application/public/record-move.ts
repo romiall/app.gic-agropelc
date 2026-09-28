@@ -317,14 +317,17 @@ async function checkLot(uow: Transaction<DB>, input: SingleMoveInput): Promise<v
  * INV-STK-04 : un inverse porte le même produit, le même lot et la même quantité que le
  * mouvement d'origine, en échange sa source et sa destination, et ne peut exister qu'une fois
  * (`UNIQUE (reverses_move_id)` en base — vérifié ici d'abord pour renvoyer une erreur métier
- * plutôt qu'une violation de contrainte). Renvoie le coût du mouvement d'origine (BR-STK-052) :
- * lu en base, jamais pris de l'appelant (`reversedUnitCostXaf`, s'il est fourni, doit concorder).
+ * plutôt qu'une violation de contrainte). Renvoie le coût et la **valeur figée** du mouvement
+ * d'origine (BR-STK-052) : lus en base, jamais pris de l'appelant (`reversedUnitCostXaf`, s'il
+ * est fourni, doit concorder). L'inverse reprend la valeur exacte, pas quantité × coût arrondi :
+ * une sortie à valeur imposée (dernière sortie d'un lot, répartition au franc) se contrepasse
+ * sans écart (revue P7, ADR-027).
  */
 async function checkReversal(
   uow: Transaction<DB>,
   input: SingleMoveInput,
   reversesMoveId: string,
-): Promise<number> {
+): Promise<{ readonly unitCostXaf: number; readonly valueXaf: number }> {
   const original = await uow
     .selectFrom('inventory_stock_moves')
     .select([
@@ -334,6 +337,7 @@ async function checkReversal(
       'from_location_id',
       'to_location_id',
       'unit_cost_xaf',
+      'value_xaf',
     ])
     .where('id', '=', toBin(reversesMoveId))
     .executeTakeFirst();
@@ -371,7 +375,7 @@ async function checkReversal(
       'REVERSAL_INVALID',
     );
   }
-  return original.unit_cost_xaf;
+  return { unitCostXaf: original.unit_cost_xaf, valueXaf: Number(original.value_xaf) };
 }
 
 /** Emplacements virtuels de sortie définitive d'un lot (vente, transformation, retour fournisseur). */
@@ -536,7 +540,9 @@ async function recordSingleMove(
   let unitCostXaf: number;
   let valueOverrideXaf: number | null = null;
   if (isReversal) {
-    unitCostXaf = await checkReversal(uow, input, input.reversesMoveId!);
+    const original = await checkReversal(uow, input, input.reversesMoveId!);
+    unitCostXaf = original.unitCostXaf;
+    valueOverrideXaf = original.valueXaf;
   } else if (input.declaredValueXaf !== undefined) {
     valueOverrideXaf = input.declaredValueXaf;
     unitCostXaf = unitCostOfValue(input.declaredValueXaf, quantity);

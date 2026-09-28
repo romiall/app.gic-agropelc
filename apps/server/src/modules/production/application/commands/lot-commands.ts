@@ -28,6 +28,7 @@
 import { z } from 'zod';
 import { sql } from 'kysely';
 import {
+  DomainError,
   PRODUCTION_LOT_TYPES,
   acceptsDailyEntries,
   acceptsLotEntries,
@@ -49,6 +50,7 @@ import type {
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
+import { hasConflict } from '../../../../platform/sync/conflicts.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import {
   findProduct,
@@ -59,6 +61,9 @@ import {
   biologicalLotRemainingCostXaf,
   InventoryMoveError,
   costObjectBalance,
+  findStockLot,
+  lotLossQuantity,
+  stockLotBalance,
   createStockLot,
   lotHeadcount,
   lotMortalitySummary,
@@ -158,11 +163,20 @@ function dateOf(value: string) {
   return sql<Date>`${value}`;
 }
 
-async function rearingLocation(uow: Uow, locationId: string, siteId: string): Promise<boolean> {
+/**
+ * Bâtiment ou case de la ferme ; actif exigé en ligne seulement : un emplacement désactivé après
+ * une saisie hors ligne ne rejette pas le fait (BR-SYN-007, revue P7).
+ */
+async function rearingLocation(
+  uow: Uow,
+  locationId: string,
+  siteId: string,
+  offline: boolean,
+): Promise<boolean> {
   const location = await loadLocation(uow, locationId);
   return (
     location !== undefined &&
-    location.isActive &&
+    (location.isActive || offline) &&
     location.siteId === siteId &&
     REARING_LOCATION_TYPES.includes(location.locationType)
   );
@@ -183,10 +197,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const p = envelope.payload;
     const at = new Date(envelope.occurred_at);
     const author = envelope.author_user_id;
+    const offline = envelope.captured_offline;
     const location = await loadLocation(uow, p.mainLocationId);
     if (
       !location ||
-      !location.isActive ||
+      (!location.isActive && !offline) ||
       location.siteType !== 'FERME' ||
       !REARING_LOCATION_TYPES.includes(location.locationType)
     ) {
@@ -200,7 +215,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const product = await findProduct(uow, p.productId);
     if (
       !product ||
-      product.status !== 'ACTIVE' ||
+      (product.status !== 'ACTIVE' && !offline) ||
       product.stockFamily !== 'BIOLOGIQUE' ||
       product.lotTracking === 'NONE' ||
       !lotAcceptsProductSpecies(p.lotType, product.species)
@@ -215,8 +230,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       if (
         !parent ||
         parent.siteId !== location.siteId ||
-        parent.status === 'CLOSED' ||
-        parent.status === 'CANCELLED' ||
+        (!offline && (parent.status === 'CLOSED' || parent.status === 'CANCELLED')) ||
         lotTypeProfile(parent.lotType).species !== lotTypeProfile(p.lotType).species
       ) {
         return rejected(
@@ -363,7 +377,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { status: 'APPLIED' };
   };
 
-  /** Sorties `PRODUCTION_INPUT` des animaux d'origine ; valeur totale sortie. */
+  /**
+   * Sorties `PRODUCTION_INPUT` des animaux d'origine ; valeur totale sortie. Une mise en place
+   * ne prend jamais les animaux d'un lot de production (le sien ou un autre) : c'est un
+   * transfert, avec ses contrôles (`LOT_ENTRY_INVALID`, revue P7).
+   */
   async function takeSource(
     uow: Uow,
     envelope: Parameters<CommandHandler<EntryPayload>>[1],
@@ -374,6 +392,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       readonly locationId: string;
       readonly portions: readonly { readonly lotId: string | null; readonly quantity: number }[];
       readonly docType: 'LOT_ENTRY' | 'LOT_TRANSFER';
+      readonly refuseProductionLots: boolean;
     },
   ): Promise<number> {
     const productionLocation = await virtualLocationId(uow, 'V_PRODUCTION');
@@ -414,6 +433,17 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         throw error;
       }
       value += moves.reduce((sum, move) => sum + move.valueXaf, 0);
+      if (source.refuseProductionLots) {
+        for (const move of moves) {
+          const stockLot = move.lotId === null ? undefined : await findStockLot(uow, move.lotId);
+          if (stockLot?.originType === 'PRODUCTION_LOT') {
+            throw new DomainError(
+              'Ces animaux appartiennent à un lot de production : les faire entrer par un transfert.',
+              'LOT_ENTRY_INVALID',
+            );
+          }
+        }
+      }
     }
     return value;
   }
@@ -440,7 +470,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
 
     const toLocationId = p.toLocationId ?? lot.mainLocationId;
-    if (!(await rearingLocation(uow, toLocationId, lot.siteId))) {
+    if (!(await rearingLocation(uow, toLocationId, lot.siteId, offline))) {
       return rejected(
         'LOCATION_INVALID',
         'Destination : un bâtiment ou une case actif de la ferme du lot.',
@@ -505,6 +535,16 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           sourceLocationId = location.id;
           sourceStockLotId = p.sourceStockLotId ?? null;
           portions = [{ lotId: sourceStockLotId, quantity: p.quantity }];
+          if (sourceStockLotId !== null) {
+            const stockLot = await findStockLot(uow, sourceStockLotId);
+            if (!stockLot) return rejected('REFERENCE_INVALID', 'Lot de stock d’origine inconnu.');
+            if (stockLot.originType === 'PRODUCTION_LOT') {
+              return rejected(
+                'LOT_ENTRY_INVALID',
+                'Ces animaux appartiennent à un lot de production : les faire entrer par un transfert.',
+              );
+            }
+          }
         } else {
           if (!p.goodsReceiptId) {
             return rejected('SOURCE_REQUIRED', 'Réception d’achat requise (AV-112).');
@@ -521,10 +561,26 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           portions = [];
           let remaining = milli(p.quantity);
           if (PLACEABLE_RECEIPT_STATUSES.includes(receipt.status)) {
+            // Têtes encore disponibles sur chaque lot fournisseur de la réception : une mise en
+            // place précédente depuis la même réception a déjà pu en prendre (revue P7).
             for (const line of receipt.lines) {
               if (remaining <= 0) break;
               if (line.productId !== p.sourceProductId || milli(line.acceptedBase) <= 0) continue;
-              const take = Math.min(remaining, milli(line.acceptedBase));
+              const available =
+                line.stockLotId === null
+                  ? milli(line.acceptedBase)
+                  : Math.min(
+                      milli(line.acceptedBase),
+                      milli(
+                        await stockLotBalance(uow, {
+                          locationId: receipt.locationId,
+                          productId: line.productId,
+                          lotId: line.stockLotId,
+                        }),
+                      ),
+                    );
+              const take = Math.min(remaining, Math.max(0, available));
+              if (take <= 0) continue;
               portions.push({ lotId: line.stockLotId, quantity: fromMilli(take) });
               sourceStockLotId ??= line.stockLotId;
               remaining -= take;
@@ -539,7 +595,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
             if (!offline) {
               return rejected(
                 'PLACEMENT_EXCEEDS_RECEIPT',
-                'Mise en place supérieure aux têtes acceptées à la réception.',
+                'Mise en place supérieure aux têtes de la réception encore en stock.',
               );
             }
             // Hors ligne : le fait physique est appliqué (BR-SYN-007), le reste en FIFO.
@@ -551,6 +607,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           locationId: sourceLocationId,
           portions,
           docType: 'LOT_ENTRY',
+          refuseProductionLots: true,
         });
       } else if (p.sourceKind === 'TRANSFER' || p.sourceKind === 'WEANING') {
         if (!sourceLot || !p.sourceLocationId) {
@@ -574,6 +631,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           locationId: location.id,
           portions: [{ lotId: sourceLot.stockLotId, quantity: p.quantity }],
           docType: 'LOT_TRANSFER',
+          refuseProductionLots: false,
         });
       } else {
         // Naissance : coût standard du porcelet (AV-098) ; absent, entrée à 0 XAF (le coût
@@ -668,28 +726,42 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .execute();
 
-    if (closedLot) {
-      return recordLotClosedConflict(uow, deps, {
+    // Hors ligne, le lot d'origine (transfert, sevrage) ou de truies (naissance) a pu être clos
+    // entre-temps : le fait est appliqué, et chaque lot clos touché reçoit un conflit LOT_CLOSED.
+    const closedLots = [
+      ...(closedLot ? [lot] : []),
+      ...[sourceLot, parent].filter(
+        (other): other is LotRow => other !== undefined && !acceptsDailyEntries(other.status),
+      ),
+    ];
+    for (const closed of closedLots) {
+      await recordLotClosedConflict(uow, deps, {
         commandId: envelope.command_id,
-        lot,
-        details: { entryId, entryType, quantity: p.quantity },
+        lot: closed,
+        details: { entryId, entryType, quantity: p.quantity, destinationLotId: lot.id },
       });
     }
-    // Première entrée : PLANNED → ACTIVE, date de démarrage. Effectif initial = total des têtes
-    // entrées (mises en place, naissances, transferts ; base du taux de mortalité, AV-116).
-    const firstEntry = lot.status === 'PLANNED';
-    await uow
-      .updateTable('production_production_lots')
-      .set({
-        ...(firstEntry ? { status: 'ACTIVE', start_date: dateOf(businessDayOf(at)) } : {}),
-        initial_quantity: String(fromMilli(milli(lot.initialQuantity ?? 0) + milli(p.quantity))),
-        updated_by: toBin(author),
-        version: sql`version + 1`,
-      })
-      .where('id', '=', toBin(lot.id))
-      .execute();
-    await emitProductionLotChange(uow, lot.id);
-    return { status: 'APPLIED' };
+    if (!closedLot) {
+      // Première entrée : PLANNED → ACTIVE. Date de démarrage = jour de l'entrée la plus ancienne
+      // (une entrée hors ligne antérieure peut arriver après). Effectif initial = total des têtes
+      // entrées (mises en place, naissances, transferts ; base du taux de mortalité, AV-116).
+      const day = businessDayOf(at);
+      await uow
+        .updateTable('production_production_lots')
+        .set({
+          ...(lot.status === 'PLANNED' ? { status: 'ACTIVE' } : {}),
+          start_date: sql<Date>`LEAST(COALESCE(start_date, ${day}), ${day})`,
+          initial_quantity: String(fromMilli(milli(lot.initialQuantity ?? 0) + milli(p.quantity))),
+          updated_by: toBin(author),
+          version: sql`version + 1`,
+        })
+        .where('id', '=', toBin(lot.id))
+        .execute();
+      await emitProductionLotChange(uow, lot.id);
+    }
+    return closedLots.length > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] }
+      : { status: 'APPLIED' };
   };
 
   const cancelEntry: CommandHandler<z.infer<typeof cancelEntryPayloadSchema>> = async (
@@ -711,7 +783,30 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!(await isAllowed(uow, author, MANAGE, at, lot.siteId))) return FORBIDDEN_SCOPE;
     if (entry.status === 'CANCELLED') return { status: 'APPLIED' };
     if (!acceptsDailyEntries(lot.status)) {
-      return rejected('LOT_NOT_ACTIVE', 'Lot clôturé ou annulé : entrée non annulable.');
+      // Seule exception : une entrée appliquée hors ligne après la fermeture du lot (conflit
+      // LOT_CLOSED consigné sur ce lot) s'annule, sinon ses animaux resteraient bloqués dans un
+      // lot clos (revue P7).
+      const receivedAfterClosure =
+        entry.command_id !== null &&
+        (await hasConflict(uow, {
+          commandId: fromBin(entry.command_id),
+          conflictType: 'LOT_CLOSED',
+          entityId: lot.id,
+        }));
+      if (!receivedAfterClosure) {
+        return rejected('LOT_NOT_ACTIVE', 'Lot clôturé ou annulé : entrée non annulable.');
+      }
+    }
+    // L'annulation rend les animaux au lot d'origine (transfert, sevrage) ou reprend le crédit du
+    // lot de truies (naissance) : jamais sur un lot déjà clos, dont le coût est figé (revue P7).
+    if (entry.source_production_lot_id !== null) {
+      const source = await loadLot(uow, fromBin(entry.source_production_lot_id));
+      if (source && !acceptsDailyEntries(source.status)) {
+        return rejected(
+          'SOURCE_LOT_NOT_ACTIVE',
+          'Le lot d’origine (ou le lot de truies) est clôturé : son coût est figé, l’entrée ne s’annule plus.',
+        );
+      }
     }
     if (envelope.payload.reasonCodeId !== undefined) {
       const reason = await findReasonCode(uow, envelope.payload.reasonCodeId);
@@ -797,13 +892,22 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         `Effectif non vendu de ${unsold} : vendre, transférer ou déclarer les animaux restants (BR-PRD-011).`,
       );
     }
-    const mortality = await lotMortalitySummary(uow, { productionLotId: lot.id });
-    if (mortality.pendingCount > 0) {
+    // Têtes en attente de validation d'une perte (mortalité ou autre catégorie) : un rejet les
+    // rendrait au lot après sa clôture (revue P7).
+    const pendingLoss = await lotHeadcount(uow, { lotId: lot.stockLotId, scope: 'PENDING_LOSS' });
+    if (pendingLoss > 0) {
       return rejected(
-        'LOT_HAS_PENDING_MORTALITY',
-        'Des mortalités attendent leur validation : les traiter avant de clôturer.',
+        'LOT_HAS_PENDING_LOSS',
+        `${pendingLoss} têtes attendent la validation d’une mortalité ou d’une perte : la traiter avant de clôturer.`,
       );
     }
+    const mortality = await lotMortalitySummary(uow, { productionLotId: lot.id });
+    // Toutes les pertes du lot (mortalité comprise) ; une mortalité rejetée « non justifiée »
+    // n'est plus une mortalité mais reste une perte (catégorie INEXPLIQUEE).
+    const lostQuantity = await lotLossQuantity(uow, {
+      lotId: lot.stockLotId,
+      productId: lot.productId,
+    });
     const entries = await uow
       .selectFrom('production_lot_entries')
       .select([
@@ -826,6 +930,10 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       stillbornQuantity: Number(entries.stillborn),
       mortalityQuantity: mortality.countedQuantity,
       mortalityRate: mortalityRate(mortality.countedQuantity, entered),
+      otherLossQuantity: Math.max(
+        0,
+        fromMilli(milli(lostQuantity) - milli(mortality.countedQuantity)),
+      ),
       costDebitXaf: cost.debitXaf,
       costCreditXaf: cost.creditXaf,
       costNetXaf: cost.netXaf,

@@ -26,6 +26,7 @@ import {
   quantityToDecimal,
   xaf,
   type IdGenerator,
+  businessDayOf,
 } from '@gic/domain';
 import type {
   CommandHandler,
@@ -231,7 +232,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       docType: 'BC',
       siteId: location.site.id,
       codeSite: location.site.code,
-      year: at.getUTCFullYear(),
+      year: Number(businessDayOf(at).slice(0, 4)),
     });
     await uow
       .insertInto('procurement_purchase_orders')

@@ -5,10 +5,11 @@
  * — la traçabilité suit le lot du fournisseur. Code lisible `F:{référence}` (dictionnaire),
  * complété d'un suffixe si ce code est déjà pris par un autre lot (code unique).
  */
-import { sql } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import type { DB } from '../../../../platform/kysely/database.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 export interface SupplierLotInput {
   readonly productId: string;
@@ -127,4 +128,48 @@ export async function setStockLotStatus(
     .set({ status })
     .where('id', '=', toBin(lotId))
     .execute();
+}
+
+export interface StockLotSummary {
+  readonly id: string;
+  readonly originType: string;
+  readonly originId: string | null;
+  readonly productId: string | null;
+  readonly status: string;
+}
+
+/** Lot de stock par identifiant (origine : `production` refuse un lot d'animaux comme simple stock). */
+export async function findStockLot(
+  executor: Kysely<DB> | Transaction<DB>,
+  lotId: string,
+): Promise<StockLotSummary | undefined> {
+  const row = await executor
+    .selectFrom('inventory_stock_lots')
+    .select(['id', 'origin_type', 'origin_id', 'product_id', 'status'])
+    .where('id', '=', toBin(lotId))
+    .executeTakeFirst();
+  return row
+    ? {
+        id: fromBin(row.id),
+        originType: row.origin_type,
+        originId: fromBinOrNull(row.origin_id),
+        productId: fromBinOrNull(row.product_id),
+        status: row.status,
+      }
+    : undefined;
+}
+
+/** Solde d'un produit d'un lot à un emplacement (mise en place par achat bornée au solde réel). */
+export async function stockLotBalance(
+  executor: Kysely<DB> | Transaction<DB>,
+  key: { readonly locationId: string; readonly productId: string; readonly lotId: string },
+): Promise<number> {
+  const row = await executor
+    .selectFrom('inventory_stock_balances')
+    .select('qty_on_hand')
+    .where('location_id', '=', toBin(key.locationId))
+    .where('product_id', '=', toBin(key.productId))
+    .where('lot_key', '=', toBin(key.lotId))
+    .executeTakeFirst();
+  return row ? Number(row.qty_on_hand) : 0;
 }

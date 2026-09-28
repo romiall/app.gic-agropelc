@@ -100,7 +100,7 @@
 
 | ID | Invariant | Problème empêché | Application | Tests |
 |---|---|---|---|---|
-| INV-PRD-01 | L'effectif d'un lot n'est stocké nulle part comme valeur saisie : il est égal à Σ soldes de son lot de traçabilité. `initial_quantity` = Σ entrées `PLACEMENT`. | Effectif modifié arbitrairement (CM §15) | CODE (aucune colonne d'effectif modifiable) + JOB | I |
+| INV-PRD-01 | L'effectif d'un lot n'est stocké nulle part comme valeur saisie : il est égal à Σ soldes de son lot de traçabilité. `initial_quantity` = Σ des têtes des entrées enregistrées, toutes origines (mises en place, naissances, transferts ; défaut AV-116, base du taux de mortalité). | Effectif modifié arbitrairement (CM §15) | CODE (aucune colonne d'effectif modifiable) + JOB | I |
 | INV-PRD-02 | Un lot `CLOSED` a un effectif non vendu nul ; aucun nouveau mouvement ne porte son lot après la clôture, sauf opération hors ligne tardive (alors conflit `LOT_CLOSED`). | Mouvements sur un lot fermé | TX | I, S |
 | INV-PRD-03 | La mortalité n'existe qu'une fois : déclaration de perte de catégorie `MORTALITE` (aucune autre table de mortalité). | Double comptage (C-09) | CODE (modèle) | revue, I |
 | INV-OEU-01 | Pour une collecte : collectés = cassés + non conformes + commercialisables + à couver ; mouvements = commercialisables et à couver. | Œufs créés ou perdus sans trace (CM §17) | DB (`CHECK`) + TX | U, I |

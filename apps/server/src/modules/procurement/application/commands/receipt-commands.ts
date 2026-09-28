@@ -35,6 +35,7 @@ import {
   receiptPhotoRequired,
   type IdGenerator,
   type OrderLineProgress,
+  businessDayOf,
 } from '@gic/domain';
 import type {
   CommandHandler,
@@ -536,7 +537,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       docType: 'REC',
       siteId: location.site.id,
       codeSite: location.site.code,
-      year: at.getUTCFullYear(),
+      year: Number(businessDayOf(at).slice(0, 4)),
     });
     let approvalRequestId: string | null = null;
     if (operationType && policy) {

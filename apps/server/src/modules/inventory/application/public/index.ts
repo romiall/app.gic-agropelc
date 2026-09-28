@@ -72,8 +72,19 @@ export type {
   CostEntry,
 } from './document-query.js';
 
-export { ensureSupplierLot, createStockLot, setStockLotStatus } from './stock-lots.js';
-export type { SupplierLotInput, StockLotInput, ProducedStockLotOrigin } from './stock-lots.js';
+export {
+  ensureSupplierLot,
+  createStockLot,
+  setStockLotStatus,
+  findStockLot,
+  stockLotBalance,
+} from './stock-lots.js';
+export type {
+  SupplierLotInput,
+  StockLotInput,
+  ProducedStockLotOrigin,
+  StockLotSummary,
+} from './stock-lots.js';
 export { virtualLocationId } from './virtual-locations.js';
 
 // P7-02 : API de la production (ADR-026, ADR-027 ; 02-modules.md §11).
@@ -101,6 +112,7 @@ export {
   declareLoss,
   lotMortalitySummary,
   lotLossQuantity,
+  findLossDeclaration,
 } from './loss-declaration.js';
 export type {
   LossCategory,
@@ -108,7 +120,7 @@ export type {
   DeclareLossResult,
   LotMortalitySummary,
 } from './loss-declaration.js';
-export { recordConsumption } from './consumption.js';
+export { recordConsumption, consumptionExists } from './consumption.js';
 export type { RecordConsumptionInput, RecordConsumptionResult } from './consumption.js';
 export {
   reverseDocumentMoves,

@@ -7,9 +7,15 @@
  * - plusieurs collectes par jour (AV-110) ; refus de bilan, de calibre, de type de lot,
  *   d'emplacement, de date et de portée ;
  * - annulation : contre-passation, crédit repris, lot de stock clos ; œufs sortis : refus en
- *   ligne (`STOCK_UNAVAILABLE`), `STOCK_NEGATIVE` hors ligne.
+ *   ligne (`STOCK_UNAVAILABLE`), `STOCK_NEGATIVE` hors ligne ;
+ * - hors ligne, un calibre sorti de la liste est accepté ; sans coût standard, l'entrée se fait
+ *   au CMUP courant (AV-124).
+ *
+ * Les paramètres de calibres insérés ici gardent des codes stables d'une exécution à l'autre
+ * (pas de fin de validité sur les paramètres système) : leur valeur ne varie pas.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
@@ -395,7 +401,8 @@ describe('P7-07 : collectes d’œufs', () => {
   });
 
   it('AT-028 : bilan, calibres au coût standard, lot de stock propre avec péremption, crédit du lot', async () => {
-    expect(await lotNet(layerLotId)).toBe(1_500_000);
+    // Calculs par différence : aucun test ne dépend de l'ordre d'exécution (revue P7).
+    const before = await lotNet(layerLotId);
     const { id, result } = await collect(collection());
     expect(result).toMatchObject({
       status: 'APPLIED',
@@ -453,7 +460,7 @@ describe('P7-07 : collectes d’œufs', () => {
       ),
     ).toBe(true);
     expect(moves.reduce((sum, move) => sum + Number(move.value_xaf), 0)).toBe(154_950);
-    expect(await lotNet(layerLotId)).toBe(1_500_000 - 154_950);
+    expect(await lotNet(layerLotId)).toBe(before - 154_950);
 
     // AV-110 : seconde collecte du jour.
     const second = await collect(
@@ -468,7 +475,7 @@ describe('P7-07 : collectes d’œufs', () => {
       at('16:00:00'),
     );
     expect(second.result.status, JSON.stringify(second.result)).toBe('APPLIED');
-    expect(await lotNet(layerLotId)).toBe(1_500_000 - 154_950 - 9_000);
+    expect(await lotNet(layerLotId)).toBe(before - 154_950 - 9_000);
   });
 
   it('péremption du lot de stock : date de collecte + 28 jours (AV-122)', async () => {
@@ -485,12 +492,11 @@ describe('P7-07 : collectes d’œufs', () => {
     const row = await db
       .selectFrom('production_egg_collections as c')
       .innerJoin('inventory_stock_lots as l', 'l.id', 'c.stock_lot_id')
-      .select(['l.expiry_date', 'l.product_id'])
+      .select([sql<string>`DATE_FORMAT(l.expiry_date, '%Y-%m-%d')`.as('expiry'), 'l.product_id'])
       .where('c.id', '=', toBin(id))
       .executeTakeFirstOrThrow();
-    const expiry = row.expiry_date!;
-    const iso = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, '0')}-${String(expiry.getDate()).padStart(2, '0')}`;
-    expect(iso).toBe('2026-11-18');
+    // Date lue en SQL : indépendante du fuseau de la machine de test.
+    expect(row.expiry).toBe('2026-11-18');
     // Un seul produit : le lot de stock le porte.
     expect(fromBin(row.product_id!)).toBe(mediumId);
   });
@@ -597,5 +603,34 @@ describe('P7-07 : collectes d’œufs', () => {
       status: 'APPLIED_WITH_WARNINGS',
       warnings: ['STOCK_NEGATIVE'],
     });
+  });
+
+  it('hors ligne : calibre hors liste accepté ; sans coût standard, entrée au CMUP courant (AV-124)', async () => {
+    const before = await lotNet(layerLotId);
+    const id = freshUuid();
+    const result = await run(
+      farmManager,
+      'production.egg_collection.record',
+      'EGG_COLLECTION',
+      id,
+      at('18:00:00'),
+      collection({
+        collected: 12,
+        broken: 0,
+        nonconforming: 0,
+        hatching: 0,
+        grades: [{ productId: unlistedEggId, quantity: 12 }],
+      }),
+      { offline: true },
+    );
+    expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+    const row = await db
+      .selectFrom('production_egg_collections')
+      .select(['standard_value_xaf', 'marketable_qty'])
+      .where('id', '=', toBin(id))
+      .executeTakeFirstOrThrow();
+    // Produit jamais entré en stock : CMUP nul, aucun crédit du lot producteur.
+    expect(row).toEqual({ standard_value_xaf: 0, marketable_qty: 12 });
+    expect(await lotNet(layerLotId)).toBe(before);
   });
 });

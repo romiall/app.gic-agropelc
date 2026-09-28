@@ -78,3 +78,22 @@ export async function resolveOpenConflicts(
     .executeTakeFirst();
   return Number(result.numUpdatedRows);
 }
+
+/** Une commande a-t-elle consigné ce type de conflit sur cette entité (correction d'un fait) ? */
+export async function hasConflict(
+  uow: UnitOfWork,
+  input: {
+    readonly commandId: string;
+    readonly conflictType: string;
+    readonly entityId: string;
+  },
+): Promise<boolean> {
+  const row = await uow
+    .selectFrom('sync_sync_conflicts')
+    .select('id')
+    .where('command_id', '=', toBin(input.commandId))
+    .where('conflict_type', '=', input.conflictType)
+    .where('entity_id', '=', toBin(input.entityId))
+    .executeTakeFirst();
+  return row !== undefined;
+}

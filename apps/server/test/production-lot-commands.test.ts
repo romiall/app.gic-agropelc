@@ -8,7 +8,14 @@
  *   restant (AV-097) ;
  * - statut (SM-PRODUCTION-LOT), annulation d'un lot planifié, entrée hors ligne sur un lot annulé
  *   (`LOT_CLOSED`), annulation d'entrée (contre-passation, `STOCK_UNAVAILABLE`, AV-120), clôture
- *   (`LOT_NOT_EMPTY`, `LOT_HAS_PENDING_MORTALITY`, résumé figé, INV-PRD-02).
+ *   (`LOT_NOT_EMPTY`, `LOT_HAS_PENDING_LOSS`, résumé figé, INV-PRD-02).
+ * - revue P7 : inverse à la valeur exacte d'origine, lot d'origine clos (`SOURCE_LOT_NOT_ACTIVE`),
+ *   seconde mise en place depuis la même réception, animaux d'un lot refusés en mise en place,
+ *   entrée hors ligne sur un lot clos annulable, emplacement désactivé accepté hors ligne, date
+ *   de démarrage la plus ancienne, rejeu d'une création.
+ *
+ * Politiques de test bornées à la journée de test (`validTo`), pour ne pas peser sur les autres
+ * jeux de tests de la base partagée.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -22,6 +29,7 @@ import { registerLossCommands } from '../src/modules/inventory/application/comma
 import { registerReceiptCommands } from '../src/modules/procurement/application/commands/receipt-commands.js';
 import { registerLotCommands } from '../src/modules/production/application/commands/lot-commands.js';
 import {
+  biologicalLotRemainingCostXaf,
   costObjectBalance,
   createStockLot,
   ensureSupplierLot,
@@ -67,6 +75,7 @@ describe('P7-05 : lots de production', () => {
   let penId: string;
   let farmStoreId: string;
   let hatcherId: string;
+  let sparePenId: string;
   let supplierId: string;
   const products = {
     chick: '',
@@ -173,6 +182,18 @@ describe('P7-05 : lots de production', () => {
     return costObjectBalance(db, { costObjectType: 'PRODUCTION_LOT', costObjectId: lotId });
   }
 
+  async function remainingCost(lotId: string): Promise<number | null> {
+    const lot = await lotRow(lotId);
+    return db
+      .transaction()
+      .execute((trx) => biologicalLotRemainingCostXaf(trx, fromBin(lot.stock_lot_id)));
+  }
+
+  const ymd = (value: Date | null) =>
+    value === null
+      ? null
+      : `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+
   async function heads(lotId: string, scope: 'REARING' | 'UNSOLD' = 'UNSOLD') {
     const lot = await lotRow(lotId);
     return lotHeadcount(db, { lotId: fromBin(lot.stock_lot_id), scope });
@@ -217,6 +238,10 @@ describe('P7-05 : lots de production', () => {
       });
       farmStoreId = await insertTestLocation(trx, adminId, farmId);
       hatcherId = await insertTestLocation(trx, adminId, farmId, { locationType: 'HATCHER' });
+      sparePenId = await insertTestLocation(trx, adminId, farmId, {
+        locationType: 'PEN',
+        parentLocationId: buildingId,
+      });
       const actor = async (role: string, options: Parameters<typeof assignTestRole>[4] = {}) => {
         const userId = await insertTestUser(trx);
         const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
@@ -381,6 +406,40 @@ describe('P7-05 : lots de production', () => {
           allowNegative: false,
         },
       );
+      // Deux cents poussins achetés en stock au magasin (450 XAF), propres à ce fichier : aucun
+      // test ne dépend du stock créé par un autre (revue P7).
+      const boughtLotId = await ensureSupplierLot(
+        trx,
+        { idGenerator },
+        {
+          productId: products.boughtChick,
+          supplierId,
+          supplierLotRef: `PA-${supplierId.slice(-6)}`,
+          fallbackCode: `F:PA-${supplierId.slice(-6)}`,
+          expiryDate: null,
+          originId: freshUuid(),
+          fifoRankAt: new Date(at('05:00:00')),
+          createdBy: adminId,
+        },
+      );
+      await recordStockMove(
+        trx,
+        { idGenerator },
+        {
+          productId: products.boughtChick,
+          lotId: boughtLotId,
+          quantityBase: 200,
+          fromLocationId: await virtualLocationId(trx, 'V_OPENING'),
+          toLocationId: farmStoreId,
+          moveType: 'OPENING_BALANCE',
+          declaredUnitCostXaf: 450,
+          occurredAt: new Date(at('05:00:00')),
+          sourceDocType: 'INVENTORY_COUNT',
+          sourceDocId: freshUuid(),
+          createdBy: adminId,
+          allowNegative: false,
+        },
+      );
     });
 
     for (const [operationType, approverPermission, requiresPhoto, condition] of [
@@ -398,6 +457,7 @@ describe('P7-05 : lots de production', () => {
           code: `${operationType}_${policyId.slice(-8)}`,
           operationType,
           validFrom: at('00:00:00'),
+          validTo: at('23:59:59'),
           requiresApproval: true,
           requiresPhoto,
           approverPermission,
@@ -456,7 +516,16 @@ describe('P7-05 : lots de production', () => {
       status: 'OPEN',
     });
     expect(fromBin(stockLot.origin_id!)).toBe(created.id);
-    // Rejeu : même numéro.
+    // Rejeu (même agrégat, nouvelle commande) : même numéro, aucun second lot.
+    const replayed = await run(
+      productionManager,
+      'production.lot.create',
+      'PRODUCTION_LOT',
+      created.id,
+      at('06:00:00'),
+      { lotType: 'POULET_CHAIR', productId: products.broiler, mainLocationId: buildingId },
+    );
+    expect(replayed).toMatchObject({ status: 'APPLIED', server_refs: { lotCode: lot.lot_code } });
     const feed = await db
       .selectFrom('sync_change_feed')
       .select(['dataset', 'scope_type', 'change_type'])
@@ -536,6 +605,28 @@ describe('P7-05 : lots de production', () => {
         ).result,
       ),
     ).toBe('SOURCE_PRODUCT_INVALID');
+    // Les animaux d'un lot de production n'entrent pas par une mise en place (revue P7) : ni par
+    // le lot désigné, ni par le FIFO de l'emplacement (qui prendrait le lot lui-même).
+    const own = {
+      sourceKind: 'INTERNAL_STOCK',
+      sourceProductId: products.broiler,
+      sourceLocationId: buildingId,
+    };
+    expect(
+      code(
+        (
+          await entry(
+            lotId,
+            { ...own, sourceStockLotId: fromBin(lot.stock_lot_id), quantity: 10 },
+            at('07:50:00'),
+          )
+        ).result,
+      ),
+    ).toBe('LOT_ENTRY_INVALID');
+    expect(code((await entry(lotId, { ...own, quantity: 10 }, at('07:50:00'))).result)).toBe(
+      'LOT_ENTRY_INVALID',
+    );
+    expect(await heads(lotId)).toBe(1000);
 
     // Statut : en vente, puis retour en élevage.
     const status = (s: string) =>
@@ -562,28 +653,24 @@ describe('P7-05 : lots de production', () => {
     ).toBe('LOT_STATUS_INVALID');
   });
 
-  it('AV-112 : réception d’achat et mise en place dans le même lot de commandes ; annulation de l’entrée', async () => {
-    const { id: lotId } = await createLot('POULET_CHAIR', products.broiler);
+  it('AV-112 : réception et mise en place dans le même lot de commandes ; têtes restantes par lot fournisseur ; annulation', async () => {
+    const lotA = (await createLot('POULET_CHAIR', products.broiler)).id;
+    const lotB = (await createLot('POULET_CHAIR', products.broiler)).id;
     const receiptId = freshUuid();
+    const line = (quantity: number, ref: string) => ({
+      productId: products.boughtChick,
+      unitCode: 'TETE',
+      qtyDeliveredBase: quantity,
+      unitCostXaf: 450,
+      supplierLotRef: `${ref}-${receiptId.slice(-6)}`,
+    });
     const receipt = await run(
       farmManager,
       'procurement.receipt.record',
       'GOODS_RECEIPT',
       receiptId,
       at('09:00:00'),
-      {
-        supplierId,
-        locationId: farmStoreId,
-        lines: [
-          {
-            productId: products.boughtChick,
-            unitCode: 'TETE',
-            qtyDeliveredBase: 300,
-            unitCostXaf: 450,
-            supplierLotRef: `PC-${receiptId.slice(-6)}`,
-          },
-        ],
-      },
+      { supplierId, locationId: farmStoreId, lines: [line(200, 'PX'), line(100, 'PY')] },
       { attachmentIds: [freshUuid()] },
     );
     expect(receipt.status, JSON.stringify(receipt)).toBe('APPLIED');
@@ -592,37 +679,58 @@ describe('P7-05 : lots de production', () => {
       goodsReceiptId: receiptId,
       sourceProductId: products.boughtChick,
     };
-    expect(code((await entry(lotId, { ...purchase, quantity: 301 }, at('09:05:00'))).result)).toBe(
+    expect(code((await entry(lotA, { ...purchase, quantity: 301 }, at('09:05:00'))).result)).toBe(
       'PLACEMENT_EXCEEDS_RECEIPT',
     );
-    const placed = await entry(lotId, { ...purchase, quantity: 250 }, at('09:05:00'));
-    expect(placed.result.status, JSON.stringify(placed.result)).toBe('APPLIED');
-    const row = await entryRow(placed.id);
-    expect(row).toMatchObject({ source_kind: 'PURCHASE', value_xaf: 112_500, unit_cost_xaf: 450 });
-    expect(fromBin(row.goods_receipt_id!)).toBe(receiptId);
-    expect(row.source_stock_lot_id).not.toBeNull();
-    expect(await heads(lotId)).toBe(250);
-    expect((await lotCost(lotId)).netXaf).toBe(112_500);
+    const placedA = await entry(lotA, { ...purchase, quantity: 150 }, at('09:05:00'));
+    expect(placedA.result.status, JSON.stringify(placedA.result)).toBe('APPLIED');
+    const rowA = await entryRow(placedA.id);
+    expect(rowA).toMatchObject({ source_kind: 'PURCHASE', value_xaf: 67_500, unit_cost_xaf: 450 });
+    expect(fromBin(rowA.goods_receipt_id!)).toBe(receiptId);
+    expect(rowA.source_stock_lot_id).not.toBeNull();
 
-    // Annulation (Resp. production) : têtes rendues à la réception, coût contrepassé.
+    // Seconde mise en place depuis la même réception (revue P7) : les portions suivent le solde
+    // réel de chaque lot fournisseur, quel que soit l'ordre des lignes.
+    const placedB = await entry(lotB, { ...purchase, quantity: 120 }, at('09:10:00'));
+    expect(placedB.result.status, JSON.stringify(placedB.result)).toBe('APPLIED');
+    const inputsB = await db
+      .selectFrom('inventory_stock_moves')
+      .select(['quantity', 'value_xaf'])
+      .where('source_doc_type', '=', 'LOT_ENTRY')
+      .where('source_doc_id', '=', toBin(placedB.id))
+      .where('move_type', '=', 'PRODUCTION_INPUT')
+      .execute();
+    expect(inputsB.reduce((sum, move) => sum + Number(move.quantity), 0)).toBe(120);
+    expect(inputsB.reduce((sum, move) => sum + Number(move.value_xaf), 0)).toBe(54_000);
+    expect(code((await entry(lotB, { ...purchase, quantity: 31 }, at('09:15:00'))).result)).toBe(
+      'PLACEMENT_EXCEEDS_RECEIPT',
+    );
+    expect(await heads(lotA)).toBe(150);
+    expect((await lotCost(lotA)).netXaf).toBe(67_500);
+
+    // Annulation (Responsable production seul, AV-123) : têtes rendues, coût contrepassé.
     const cancelEntry = (entryId: string, actor: Actor = productionManager) =>
       run(actor, 'production.lot.cancel_entry', 'LOT_ENTRY', entryId, at('10:00:00'), {
         comment: 'Erreur de saisie',
       });
-    expect(code(await cancelEntry(placed.id, farmManager))).toBe('FORBIDDEN');
-    expect(code(await cancelEntry(placed.id))).toBe('APPLIED');
-    expect((await entryRow(placed.id)).status).toBe('CANCELLED');
-    expect(await heads(lotId)).toBe(0);
-    expect(await lotCost(lotId)).toMatchObject({
-      debitXaf: 112_500,
-      creditXaf: 112_500,
+    expect(code(await cancelEntry(placedA.id, farmManager))).toBe('FORBIDDEN');
+    expect(code(await cancelEntry(placedA.id))).toBe('APPLIED');
+    expect((await entryRow(placedA.id)).status).toBe('CANCELLED');
+    expect(await heads(lotA)).toBe(0);
+    expect(await lotCost(lotA)).toMatchObject({
+      debitXaf: 67_500,
+      creditXaf: 67_500,
       netXaf: 0,
     });
-    expect(Number((await lotRow(lotId)).initial_quantity)).toBe(0);
-    expect(code(await cancelEntry(placed.id))).toBe('APPLIED');
+    expect(Number((await lotRow(lotA)).initial_quantity)).toBe(0);
+    expect(code(await cancelEntry(placedA.id))).toBe('APPLIED');
   });
 
-  it('AV-111 : naissances au coût standard (crédit du lot de truies), sevrage au coût restant, annulations', async () => {
+  it('AV-111 : naissances au coût standard (crédit du lot de truies), sevrage au coût restant exact ; annulations', async () => {
+    const cancel = (entryId: string, time: string) =>
+      run(productionManager, 'production.lot.cancel_entry', 'LOT_ENTRY', entryId, at(time), {
+        comment: 'Correction',
+      });
     const sows = await createLot('PORC_NAISSAGE', products.sow);
     const sowsIn = await entry(
       sows.id,
@@ -666,9 +774,43 @@ describe('P7-05 : lots de production', () => {
       unit_cost_xaf: 15_000,
     });
     expect(fromBin((await entryRow(birth.id)).source_production_lot_id!)).toBe(sows.id);
-    expect((await lotCost(piglets.id)).netXaf).toBe(675_000);
     expect(await lotCost(sows.id)).toMatchObject({ creditXaf: 675_000, netXaf: 1_325_000 });
+
+    // Seconde portée annulée aussitôt : le crédit du lot de truies est contrepassé (revue P7).
+    const litter = await entry(
+      piglets.id,
+      { sourceKind: 'BIRTH', quantity: 5, toLocationId: penId },
+      at('12:10:00'),
+    );
+    expect(litter.result.status, JSON.stringify(litter.result)).toBe('APPLIED');
+    expect((await lotCost(sows.id)).netXaf).toBe(1_250_000);
+    expect(code(await cancel(litter.id, '12:15:00'))).toBe('APPLIED');
+    expect(await lotCost(sows.id)).toMatchObject({
+      debitXaf: 2_075_000,
+      creditXaf: 750_000,
+      netXaf: 1_325_000,
+    });
     expect(await heads(piglets.id, 'REARING')).toBe(45);
+
+    // Aliment : 10 001 XAF, soit un coût restant de 685 001 XAF, non multiple de 45 têtes.
+    await db.transaction().execute((trx) =>
+      recordCostEntry(
+        trx,
+        { idGenerator },
+        {
+          costObjectType: 'PRODUCTION_LOT',
+          costObjectId: piglets.id,
+          costType: 'ALIMENT',
+          amountXaf: 10_001,
+          direction: 'DEBIT',
+          sourceType: 'MANUAL',
+          sourceId: freshUuid(),
+          occurredAt: new Date(at('12:30:00')),
+          createdBy: productionManager.userId,
+        },
+      ),
+    );
+    expect(await remainingCost(piglets.id)).toBe(685_001);
 
     const fattening = await createLot('PORC_ENGRAISSEMENT', products.pig);
     expect(
@@ -687,39 +829,76 @@ describe('P7-05 : lots de production', () => {
         ).result,
       ),
     ).toBe('LOT_ENTRY_INVALID');
-    const weaning = await entry(
+    const wean = (time: string) =>
+      entry(
+        fattening.id,
+        {
+          sourceKind: 'WEANING',
+          sourceProductionLotId: piglets.id,
+          sourceLocationId: penId,
+          quantity: 45,
+        },
+        at(time),
+      );
+    const weaning = await wean('13:30:00');
+    expect(weaning.result.status, JSON.stringify(weaning.result)).toBe('APPLIED');
+    expect(await entryRow(weaning.id)).toMatchObject({
+      entry_type: 'TRANSFER_IN',
+      source_kind: 'WEANING',
+      value_xaf: 685_001,
+    });
+    expect(await heads(piglets.id)).toBe(0);
+    expect(await heads(fattening.id)).toBe(45);
+
+    // AV-120 : les porcelets de la naissance sont sortis → annulation refusée.
+    expect(code(await cancel(birth.id, '13:40:00'))).toBe('STOCK_UNAVAILABLE');
+    // Annulation du sevrage : porcelets rendus à leur valeur exacte (revue P7 : 685 001 XAF,
+    // pas 45 × 15 222 = 684 990).
+    expect(code(await cancel(weaning.id, '13:45:00'))).toBe('APPLIED');
+    expect(await heads(piglets.id)).toBe(45);
+    expect(await heads(fattening.id)).toBe(0);
+    expect((await lotCost(fattening.id)).netXaf).toBe(0);
+    expect(await remainingCost(piglets.id)).toBe(685_001);
+
+    // Sevrage définitif puis clôture du lot de porcelets : l'entrée ne s'annule plus, le coût
+    // du lot d'origine étant figé (revue P7).
+    const final = await wean('14:30:00');
+    expect(final.result.status, JSON.stringify(final.result)).toBe('APPLIED');
+    const closed = await run(
+      productionManager,
+      'production.lot.close',
+      'PRODUCTION_LOT',
+      piglets.id,
+      at('15:00:00'),
+      {},
+    );
+    expect(closed.status, JSON.stringify(closed)).toBe('APPLIED');
+    expect((await lotRow(piglets.id)).closing_summary).toMatchObject({ unrecoveredCostXaf: 0 });
+    expect(code(await cancel(final.id, '15:10:00'))).toBe('SOURCE_LOT_NOT_ACTIVE');
+
+    // Hors ligne, un sevrage depuis le lot de porcelets clos est appliqué, avec un conflit
+    // LOT_CLOSED sur ce lot d'origine (revue P7).
+    const late = await entry(
       fattening.id,
       {
         sourceKind: 'WEANING',
         sourceProductionLotId: piglets.id,
         sourceLocationId: penId,
-        quantity: 30,
+        quantity: 1,
       },
-      at('13:30:00'),
+      at('14:45:00'),
+      { offline: true },
     );
-    expect(weaning.result.status, JSON.stringify(weaning.result)).toBe('APPLIED');
-    expect(await entryRow(weaning.id)).toMatchObject({
-      entry_type: 'TRANSFER_IN',
-      source_kind: 'WEANING',
-      value_xaf: 450_000,
+    expect(late.result).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['LOT_CLOSED'],
     });
-    expect(await heads(piglets.id)).toBe(15);
-    expect(await heads(fattening.id)).toBe(30);
-    expect((await lotCost(fattening.id)).netXaf).toBe(450_000);
-
-    // AV-120 : les porcelets de la naissance sont en partie sortis → annulation refusée.
-    const cancel = (entryId: string) =>
-      run(productionManager, 'production.lot.cancel_entry', 'LOT_ENTRY', entryId, at('14:00:00'), {
-        comment: 'Correction',
-      });
-    expect(code(await cancel(birth.id))).toBe('STOCK_UNAVAILABLE');
-    // Annulation du sevrage : porcelets rendus au coût d'origine.
-    expect(code(await cancel(weaning.id))).toBe('APPLIED');
-    expect(await heads(piglets.id)).toBe(45);
-    expect(await heads(fattening.id)).toBe(0);
-    expect((await lotCost(fattening.id)).netXaf).toBe(0);
-    // Le coût restant du lot de porcelets revient à 675 000 XAF : 15 000 XAF la tête.
-    expect(await heads(sows.id)).toBe(10);
+    const conflicts = await db
+      .selectFrom('sync_sync_conflicts')
+      .select('conflict_type')
+      .where('entity_id', '=', toBin(piglets.id))
+      .execute();
+    expect(conflicts).toEqual([{ conflict_type: 'LOT_CLOSED' }]);
   });
 
   it('annulation d’un lot planifié ; entrée hors ligne sur un lot annulé (LOT_CLOSED) ; clôture', async () => {
@@ -763,6 +942,23 @@ describe('P7-05 : lots de production', () => {
       applied: 1,
     });
     expect((await lotRow(planned.id)).status).toBe('CANCELLED');
+    // Reçue hors ligne après l'annulation du lot, l'entrée s'annule, sinon ses animaux
+    // resteraient bloqués dans un lot clos (revue P7).
+    expect(
+      code(
+        await run(
+          productionManager,
+          'production.lot.cancel_entry',
+          'LOT_ENTRY',
+          late.id,
+          at('15:40:00'),
+          {
+            comment: 'Saisie tardive sur un lot annulé',
+          },
+        ),
+      ),
+    ).toBe('APPLIED');
+    expect(await heads(planned.id)).toBe(0);
 
     // Lot avec entrée : non annulable ; clôture refusée tant qu'il reste des animaux ou une
     // mortalité en attente de validation.
@@ -794,7 +990,7 @@ describe('P7-05 : lots de production', () => {
     );
     expect(mortality.status, JSON.stringify(mortality)).toBe('APPLIED');
     expect(await heads(lot.id)).toBe(0);
-    expect(code(await close())).toBe('LOT_HAS_PENDING_MORTALITY');
+    expect(code(await close())).toBe('LOT_HAS_PENDING_LOSS');
 
     // Lot vidé par une annulation d'entrée : clôture, résumé figé, lot de traçabilité clos.
     const empty = await createLot('POULET_CHAIR', products.broiler);
@@ -838,5 +1034,38 @@ describe('P7-05 : lots de production', () => {
       .executeTakeFirstOrThrow();
     expect(closedStockLot.status).toBe('CLOSED');
     expect(code(await closeEmpty())).toBe('APPLIED');
+  });
+
+  it('hors ligne : emplacement désactivé accepté ; date de démarrage = entrée la plus ancienne (revue P7)', async () => {
+    const { id: lotId } = await createLot('POULET_CHAIR', products.broiler);
+    const source = {
+      sourceKind: 'INTERNAL_STOCK',
+      sourceProductId: products.boughtChick,
+      sourceLocationId: farmStoreId,
+    };
+    const online = await entry(lotId, { ...source, quantity: 2 }, at('17:00:00'));
+    expect(online.result.status, JSON.stringify(online.result)).toBe('APPLIED');
+    expect(ymd((await lotRow(lotId)).start_date)).toBe(DAY);
+    await db
+      .updateTable('organization_locations')
+      .set({ status: 'INACTIVE' })
+      .where('id', '=', toBin(sparePenId))
+      .execute();
+    expect(
+      code(
+        (await entry(lotId, { ...source, quantity: 1, toLocationId: sparePenId }, at('17:10:00')))
+          .result,
+      ),
+    ).toBe('LOCATION_INVALID');
+    // La veille à 23:30 (heure de Douala), dans la case désactivée depuis.
+    const earlier = await entry(
+      lotId,
+      { ...source, quantity: 1, toLocationId: sparePenId },
+      '2026-10-19T22:30:00.000Z',
+      { offline: true },
+    );
+    expect(earlier.result.status, JSON.stringify(earlier.result)).toBe('APPLIED');
+    expect(ymd((await lotRow(lotId)).start_date)).toBe('2026-10-19');
+    expect(Number((await lotRow(lotId)).initial_quantity)).toBe(3);
   });
 });
