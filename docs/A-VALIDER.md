@@ -136,7 +136,9 @@ Classification (PM §45) :
 | AV-119 | Mortalité constatée hors élevage | SECONDAIRE | P7 | Toute mortalité suit la politique `MORTALITY` | OUVERT |
 | AV-120 | Annulations après consommation (collecte, mortalité approuvée) | SECONDAIRE | P7 | Refus en ligne (`STOCK_UNAVAILABLE`) ; correction compensatoire, en attendant la décision | OUVERT |
 | AV-121 | Seuils de l’alerte de mortalité élevée | SECONDAIRE | P7 | Seuils d’alerte propres (0,5 % ou 20 têtes/jour), paramétrés | OUVERT |
-| AV-122 | Durée de conservation des œufs collectés | SECONDAIRE | P7 | 28 jours après la collecte, paramétrée | OUVERT |
+| AV-122 | Durée de conservation des œufs collectés | SECONDAIRE | P7 | 28 jours après la collecte, paramétrée | **TRANCHÉ** (voir journal §3) |
+| AV-123 | Annulation d’une entrée de lot | SECONDAIRE | P7 | Responsable production seul | **TRANCHÉ** (voir journal §3) |
+| AV-124 | Production entrée sans coût standard défini | SECONDAIRE | P7 | Saisie acceptée à la valeur par défaut ; alerte à l’administrateur | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -739,12 +741,29 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Impact** : P9 (module `communication`) ; paramètres.
 
-### AV-122 — Durée de conservation des œufs collectés — SECONDAIRE
+### AV-122 — Durée de conservation des œufs collectés — SECONDAIRE — **TRANCHÉ**
 - **Question** : quelle date de péremption porte le lot de stock d'une collecte d'œufs ?
 - **Pourquoi** : AV-100 donne à chaque collecte un lot propre « avec date de péremption », mais le catalogue ne porte aucune durée de conservation par produit.
 - **Choix** : (a) durée unique pour les œufs, paramétrée (28 jours après la collecte) ; (b) durée par produit dans le catalogue ; (c) aucune date.
 - **Recommandation** : (a), en attendant une durée par produit si les calibres se conservent différemment.
 - **Impact** : paramètre `production.egg_shelf_life_days` ; ordre FEFO des ventes d'œufs (D06).
+- **Décision** (porteur du projet, 28/09/2026) : **28 jours paramétrés** (option a) : péremption = date de collecte + `production.egg_shelf_life_days`
+
+### AV-123 — Annulation d’une entrée de lot — SECONDAIRE — **TRANCHÉ**
+- **Question** : qui peut annuler une entrée de lot (mise en place, naissance, transfert, sevrage) saisie par erreur ?
+- **Pourquoi** : l'annulation contre-passe le stock des animaux et les coûts du lot (et le crédit du lot de truies pour une naissance) ; aucune règle ne désignait l'acteur.
+- **Choix** : (a) Responsable production seul ; (b) Responsable ferme aussi, sur sa ferme ; (c) Responsable ferme avec validation du Responsable production.
+- **Recommandation** : (a).
+- **Impact** : `production.lot.cancel_entry` sous `production.lot.manage`.
+- **Décision** (porteur du projet, 28/09/2026) : **Responsable production seul** (option a), comportement de P7-05 confirmé
+
+### AV-124 — Production entrée sans coût standard défini — SECONDAIRE — **TRANCHÉ**
+- **Question** : que faire quand des œufs sont collectés ou des porcelets naissent alors qu'aucun coût standard n'est fixé pour leur produit (AV-098) ?
+- **Pourquoi** : la valeur d'entrée en stock et le crédit du lot producteur reposent sur ce coût ; un produit nouvellement créé peut ne pas l'avoir.
+- **Choix** : (a) accepter à une valeur par défaut, sans alerte ; (b) accepter et alerter l'administrateur ; (c) refuser en ligne tant que le coût manque.
+- **Recommandation** : (b) : la ferme n'est jamais bloquée.
+- **Impact** : œufs au CMUP courant (0 sans stock antérieur), porcelets à 0 XAF, écart dans le résultat du lot producteur ; alerte `STANDARD_COST_MISSING` à l'administrateur (module `communication`, P9), déduite des entrées de production dont le produit n'a pas de coût standard à la date de l'entrée.
+- **Décision** (porteur du projet, 28/09/2026) : **accepter et alerter** (option b)
 
 ---
 
@@ -788,3 +807,6 @@ Politique par défaut, paramétrable :
 | 28/09/2026 | AV-111 | Lot truies + lot porcelets ; sevrage vers engraissement | Porteur du projet |
 | 28/09/2026 | AV-112 | Une seule opération (réception + entrée) | Porteur du projet |
 | 28/09/2026 | AV-113 | Mortalité rattachée au lot d’incubation | Porteur du projet |
+| 28/09/2026 | AV-122 | Péremption des œufs collectés : date de collecte + 28 jours, paramétrés | Porteur du projet |
+| 28/09/2026 | AV-123 | Annulation d’une entrée de lot réservée au Responsable production | Porteur du projet |
+| 28/09/2026 | AV-124 | Production sans coût standard : saisie acceptée à la valeur par défaut, alerte à l’administrateur (P9) | Porteur du projet |

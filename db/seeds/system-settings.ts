@@ -30,7 +30,7 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-046, AV-047',
   },
-  // AV-122 (défaut) : péremption du lot de stock d'une collecte = date de collecte + N jours.
+  // AV-122 (décision du 28/09/2026) : péremption du lot d'une collecte = date de collecte + N jours.
   {
     key: 'production.egg_shelf_life_days',
     value: 28,

@@ -14,7 +14,8 @@
  * - Lot de stock propre de la collecte (AV-100, origine `COLLECTION`, code = numéro `COL-…`),
  *   péremption = date de collecte + `production.egg_shelf_life_days` (AV-122).
  * - Valeur (AV-098, ADR-027) : `PRODUCTION_OUTPUT` au coût standard en vigueur de chaque produit
- *   (entrée valorisée, CMUP recalculé) — à défaut de coût standard, au CMUP courant ; le lot
+ *   (entrée valorisée, CMUP recalculé) — à défaut de coût standard, au CMUP courant, l'alerte à
+ *   l'administrateur étant déduite en P9 (AV-124) ; le lot
  *   producteur est crédité (`PRODUCTION_TRANSFEREE`) de la valeur totale.
  * - Annulation (BR-OEU-004) : mouvements inverses au coût d'origine, crédit contrepassé, lot de
  *   stock clôturé ; œufs déjà sortis : refus en ligne (`STOCK_UNAVAILABLE`, défaut AV-120),

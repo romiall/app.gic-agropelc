@@ -19,7 +19,7 @@
  *     entrée dans le lot de destination à cette valeur.
  *   Hors ligne, une entrée sur un lot clôturé ou annulé est appliquée (BR-SYN-007) avec le
  *   conflit informatif `LOT_CLOSED` (matrice des conflits, Resp. production).
- * - Annulation d'une entrée (ADR-006) : mouvements inverses au coût d'origine et écritures de
+ * - Annulation d'une entrée (ADR-006 ; Responsable production seul, AV-123) : mouvements inverses au coût d'origine et écritures de
  *   coût contrepassées ; refusée si les animaux sont déjà sortis (`STOCK_UNAVAILABLE`, AV-120).
  * - Clôture (BR-PRD-011) : effectif non vendu nul (`LOT_NOT_EMPTY`), aucune mortalité en attente
  *   de validation (`LOT_HAS_PENDING_MORTALITY`) ; indicateurs figés dans `closing_summary` ;
@@ -577,7 +577,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         });
       } else {
         // Naissance : coût standard du porcelet (AV-098) ; absent, entrée à 0 XAF (le coût
-        // réel reste au lot de truies).
+        // réel reste au lot de truies ; alerte à l'administrateur en P9, AV-124).
         if (!parent) return rejected('LOT_ENTRY_INVALID', 'Lot de truies introuvable.');
         if (!acceptsDailyEntries(parent.status) && !offline) {
           return rejected('SOURCE_LOT_NOT_ACTIVE', 'Le lot de truies n’est plus actif.');

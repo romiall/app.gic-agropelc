@@ -68,6 +68,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
 | `HIGH_LOSS` | Valeur des pertes d'un emplacement sur 1 jour ≥ 50 000 XAF ou ≥ 5 % des ventes du jour | Sur perte | CRITICAL | Responsable du site, DIRECTION | Manuelle |
 | `HIGH_MORTALITY` | Mortalité journalière > 0,5 % de l'effectif ou > 20 têtes | Sur mortalité | CRITICAL | RESP_PRODUCTION, DIRECTION | Manuelle |
 | `DAILY_ENTRY_MISSING` | Lot actif sans saisie du jour la veille | Planifiée (10:00) | WARNING | RESP_FERME, RESP_PRODUCTION | Auto |
+| `STANDARD_COST_MISSING` | Production entrée en stock (collecte, naissance) d'un produit sans coût standard à la date de l'entrée (AV-124) | Sur production | WARNING | ADMIN | Auto (coût standard défini) |
 | `RECEIPT_INCOMPLETE` | BR-APP-015 | Planifiée + sur réception | WARNING | RESP_ACHATS | Auto (reliquat nul ou clôturé) |
 | `INVENTORY_VARIANCE` | Inventaire avec écart en valeur ≥ seuil | Sur soumission | WARNING | Responsable du site, FINANCE | Manuelle (validation) |
 | `OVERDUE_RECEIVABLE` | Créance échue | Planifiée (07:00) | WARNING | Titulaire du client, RESP_COMMERCIAL, FINANCE | Auto |
