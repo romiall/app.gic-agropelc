@@ -118,7 +118,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 
 | Élément | Contenu |
 |---|---|
-| Commandes | `production.lot.create`, `.cancel`, `.set_status`, `.close` (en ligne), `.record_entry` (F) ; `production.mortality.record` (F), `production.input.record` (F), `production.weighing.record` (F), `production.observation.record` (F) ; `production.egg_collection.record` (F), `.cancel` ; `production.incubation.start` (F), `.record_candling` (F), `.transfer_to_hatcher` (F), `.record_hatch` (F), `.cancel` |
+| Commandes | `production.lot.create`, `.cancel`, `.set_status`, `.close` (en ligne), `.record_entry` (F), `.cancel_entry` ; `production.mortality.record` (F), `production.input.record` (F), `production.weighing.record` (F), `.cancel`, `production.observation.record` (F) ; `production.egg_collection.record` (F), `.cancel` ; `production.incubation.start` (F), `.record_candling` (F), `.transfer_to_hatcher` (F), `.record_hatch` (F), `.cancel` |
 | Requêtes | `GET /production/lots?site_id=&status=`, `/production/lots/{id}` (effectif, mortalité, consommations, pesées, coûts, ventes, marge), `/production/lots/{id}/daily?from=&to=`, `/production/incubations?status=` |
 | Événements | `ProductionLotCreated`, `LotEntryRecorded`, `MortalityRecorded`, `EggCollectionRecorded`, `HatchRecorded`, `ProductionLotClosed` |
 | Permissions | `production.*` |

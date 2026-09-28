@@ -481,7 +481,10 @@ export function checkWeighing(input: {
   }
 }
 
-/** Taux de mortalité cumulée = morts ÷ effectif initial (4 décimales). */
+/**
+ * Taux de mortalité cumulée = morts ÷ effectif initial (4 décimales). L'effectif initial d'un lot
+ * est le total des têtes entrées (P7-05), ce qui suit la recommandation AV-116 (initial + entrées).
+ */
 export function mortalityRate(deaths: number, initialHeadcount: number): number | null {
   return rate4(deaths, initialHeadcount);
 }

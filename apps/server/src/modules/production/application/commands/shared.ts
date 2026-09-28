@@ -8,12 +8,14 @@ import type { Transaction } from 'kysely';
 import {
   DomainError,
   businessDayOf,
+  type IdGenerator,
   type ProductionLotStatus,
   type ProductionLotType,
 } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import { InventoryMoveError } from '../../../inventory/application/public/index.js';
 
@@ -135,3 +137,32 @@ export function businessRejection(error: unknown): CommandHandlerOutcome {
 
 export const milli = (value: number): number => Math.round(value * 1000);
 export const fromMilli = (value: number): number => value / 1000;
+
+/**
+ * Saisie hors ligne sur un lot qui n'accepte plus de saisie (clôturé, annulé, ou pas encore
+ * démarré) : le fait est appliqué (BR-SYN-007) et un conflit informatif `LOT_CLOSED` est
+ * consigné pour le Responsable production (matrice des conflits, « perte déclarée sur un lot
+ * clôturé »).
+ */
+export async function recordLotClosedConflict(
+  uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly commandId: string;
+    readonly lot: LotRow;
+    readonly details: Record<string, unknown>;
+  },
+): Promise<CommandHandlerOutcome> {
+  await recordConflict(uow, {
+    id: deps.idGenerator.newId(),
+    commandId: input.commandId,
+    conflictType: 'LOT_CLOSED',
+    entityType: 'PRODUCTION_LOT',
+    entityId: input.lot.id,
+    siteId: input.lot.siteId,
+    ownerRole: 'RESP_PRODUCTION',
+    applied: true,
+    details: { ...input.details, lotStatus: input.lot.status },
+  });
+  return { status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] };
+}

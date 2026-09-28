@@ -1,6 +1,6 @@
 /**
  * Enregistrement des gestionnaires de commande `production` au démarrage (même précédent que
- * `ProcurementCommandsRegistrar`) : lots et entrées (P7-05). Injections explicites (`@Inject`) :
+ * `ProcurementCommandsRegistrar`) : lots et entrées (P7-05), saisie du jour (P7-06). Injections explicites (`@Inject`) :
  * vitest/esbuild n'émet pas de métadonnées de décorateur (P2-05).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
@@ -12,6 +12,7 @@ import {
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { registerLotCommands } from './lot-commands.js';
+import { registerDailyCommands } from './daily-commands.js';
 
 @Injectable()
 export class ProductionCommandsRegistrar implements OnModuleInit {
@@ -23,5 +24,6 @@ export class ProductionCommandsRegistrar implements OnModuleInit {
 
   onModuleInit(): void {
     registerLotCommands(this.registry, this.idGenerator, this.documentSequences);
+    registerDailyCommands(this.registry, this.idGenerator, this.documentSequences);
   }
 }

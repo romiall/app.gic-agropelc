@@ -48,7 +48,6 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
-import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import {
@@ -86,6 +85,7 @@ import {
   loadLocation,
   loadLot,
   milli,
+  recordLotClosedConflict,
   rejected,
   type LotRow,
   type Uow,
@@ -669,18 +669,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .execute();
 
     if (closedLot) {
-      await recordConflict(uow, {
-        id: idGenerator.newId(),
+      return recordLotClosedConflict(uow, deps, {
         commandId: envelope.command_id,
-        conflictType: 'LOT_CLOSED',
-        entityType: 'PRODUCTION_LOT',
-        entityId: lot.id,
-        siteId: lot.siteId,
-        ownerRole: 'RESP_PRODUCTION',
-        applied: true,
-        details: { entryId, entryType, quantity: p.quantity, lotStatus: lot.status },
+        lot,
+        details: { entryId, entryType, quantity: p.quantity },
       });
-      return { status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] };
     }
     // Première entrée : PLANNED → ACTIVE, date de démarrage. Effectif initial = total des têtes
     // entrées (mises en place, naissances, transferts ; base du taux de mortalité, AV-116).
