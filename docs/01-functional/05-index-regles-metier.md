@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **314**.
+Nombre total de règles : **315**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -241,6 +241,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-POR-003 | Déplacement entre cases : déplacement interne (BR-STK-022). | C (CM §19 « transfert ») |
 | BR-POR-004 | Vente : à la tête avec poids optionnel, ou au kilo vif selon le mode de tarification du produit (D04, BR-VEN-013). | AV-031 |
 | BR-POR-005 | L'identification individuelle n'est pas au MVP ; l'extension `production.animals` est décrite dans le modèle de données mais non créée. | C (CM §19 ; PM §10) |
+| BR-POR-006 | Les porcs d'engraissement et les reproducteurs de réforme (naissage) peuvent être abattus comme les volailles : transformation en découpes… | AV-115 |
 
 ## D08 — Approvisionnement : fournisseurs, achats, réceptions (APP)
 

@@ -178,7 +178,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `production.egg_shelf_life_days` | 28 | AV-100, AV-122 (péremption du lot d'une collecte : date de collecte + N jours ; 0 = sans date) |
 | `production.slaughter_shelf_life_days` | 5 | AV-100, AV-125 (péremption du lot d'un abattage : jour de l'abattage + N jours ; 0 = sans date) |
 | `production.incubation_durations` | `{"POULE": {"candlingDay": 7, "transferDay": 18, "hatchDay": 21}}` | AV-047, BR-INC-008 (échéancier par espèce, jours depuis la mise en incubateur ; ne bloque rien) |
-| `production.slaughterable_lot_types` | `["POULET_CHAIR"]` | AV-032, AV-115 (types de lots abattables) |
+| `production.slaughterable_lot_types` | `["POULET_CHAIR","PONDEUSE","REPRODUCTEUR_VOLAILLE","PORC_ENGRAISSEMENT","PORC_NAISSAGE"]` | AV-032, AV-115 (types de lots abattables : tous, décision du 28/09/2026) |
 | `production.high_mortality_alert_pct` | 0,5 | AV-121 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) |
 | `production.high_mortality_alert_heads` | 20 | AV-121 (seuil absolu de l'alerte `HIGH_MORTALITY`) |
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |

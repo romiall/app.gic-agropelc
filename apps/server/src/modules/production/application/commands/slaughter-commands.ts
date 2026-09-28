@@ -1,5 +1,5 @@
 /**
- * Abattage (P7-09 ; AV-032, AV-100, AV-101, AV-102 ; défauts AV-114, AV-115, AV-125) :
+ * Abattage (P7-09 ; AV-032, AV-100, AV-101, AV-102, AV-114, AV-115, AV-125) :
  * `production.slaughter.record` (saisie du jour, hors ligne possible) et `.cancel`.
  *
  * - À la ferme (AV-101) : emplacement `SLAUGHTERHOUSE` de la ferme du lot ; animaux pris sur un
@@ -15,11 +15,12 @@
  *   (`SLAUGHTER_INVALID`).
  * - Annulation (Responsable production, comme une entrée de lot, AV-123) : mouvements inverses
  *   au coût d'origine, animaux rendus au lot ; produits déjà sortis : `STOCK_UNAVAILABLE`
- *   (défaut AV-120) ; lot de stock de l'abattage clôturé.
+ *   (AV-120) ; lot de stock de l'abattage clôturé.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
 import {
+  PRODUCTION_LOT_TYPES,
   addBusinessDays,
   allocateByWeight,
   businessDayOf,
@@ -68,8 +69,8 @@ import {
 const MANAGE = 'production.lot.manage';
 const DAILY = 'production.daily.record';
 
-/** Défaut AV-115 : poulet de chair seul, si le paramètre est absent. */
-const DEFAULT_SLAUGHTERABLE = ['POULET_CHAIR'];
+/** AV-115 (décision du 28/09/2026) : tous les types de lots, si le paramètre est absent. */
+const DEFAULT_SLAUGHTERABLE: readonly string[] = PRODUCTION_LOT_TYPES;
 
 const recordPayloadSchema = z.object({
   productionLotId: z.string().uuid(),

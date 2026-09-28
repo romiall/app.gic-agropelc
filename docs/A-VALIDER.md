@@ -128,18 +128,18 @@ Classification (PM §45) :
 | AV-111 | Organisation du naissage porcin | IMPORTANTE | P7 | Lot truies + lot porcelets ; sevrage vers engraissement | **TRANCHÉ** (voir journal §3) |
 | AV-112 | Mise en place par achat direct | SECONDAIRE | P7 | Une seule opération (réception + entrée) | **TRANCHÉ** (voir journal §3) |
 | AV-113 | Mortalité des poussins avant mise en place | SECONDAIRE | P7 | Mortalité rattachée au lot d’incubation | **TRANCHÉ** (voir journal §3) |
-| AV-114 | Carcasses saisies et frais d'abattage | SECONDAIRE | P7 | Saisies sans produit (coût porté par les produits) ; frais = dépense directe du lot | OUVERT |
-| AV-115 | Abattage des réformes et des porcs | SECONDAIRE | P7 | Poulet de chair seul ; autres types activables par paramètre | OUVERT |
+| AV-114 | Carcasses saisies et frais d'abattage | SECONDAIRE | P7 | Saisies sans produit (coût porté par les produits) ; frais = dépense directe du lot | **TRANCHÉ** (voir journal §3) |
+| AV-115 | Abattage des réformes et des porcs | SECONDAIRE | P7 | Tous les types de lots abattables dès P7 (volailles et porcs), liste paramétrée | **TRANCHÉ** (voir journal §3) |
 | AV-116 | Définition des indicateurs zootechniques | SECONDAIRE | P7 | Formules de la recommandation, paramétrables | OUVERT |
 | AV-117 | Journée sans événement (« RAS ») | SECONDAIRE | P7 | Non construit en P7 (alertes en P9) ; observation « RAS » possible | OUVERT |
 | AV-118 | Reclassement d'œufs | SECONDAIRE | P7 | Non construit en P7 ; reclassement avec motif proposé | OUVERT |
 | AV-119 | Mortalité constatée hors élevage | SECONDAIRE | P7 | Toute mortalité suit la politique `MORTALITY` | OUVERT |
-| AV-120 | Annulations après consommation (collecte, mortalité approuvée) | SECONDAIRE | P7 | Refus en ligne (`STOCK_UNAVAILABLE`) ; correction compensatoire, en attendant la décision | OUVERT |
+| AV-120 | Annulations après consommation (collecte, mortalité approuvée) | SECONDAIRE | P7 | Refus en ligne (`STOCK_UNAVAILABLE`) ; correction compensatoire | **TRANCHÉ** (voir journal §3) |
 | AV-121 | Seuils de l’alerte de mortalité élevée | SECONDAIRE | P7 | Seuils d’alerte propres (0,5 % ou 20 têtes/jour), paramétrés | OUVERT |
 | AV-122 | Durée de conservation des œufs collectés | SECONDAIRE | P7 | 28 jours après la collecte, paramétrée | **TRANCHÉ** (voir journal §3) |
 | AV-123 | Annulation d’une entrée de lot | SECONDAIRE | P7 | Responsable production seul | **TRANCHÉ** (voir journal §3) |
 | AV-124 | Production entrée sans coût standard défini | SECONDAIRE | P7 | Saisie acceptée à la valeur par défaut ; alerte à l’administrateur | **TRANCHÉ** (voir journal §3) |
-| AV-125 | Durée de conservation des produits d’abattage | SECONDAIRE | P7 | 5 jours après l’abattage (frais réfrigéré), paramétrée | OUVERT |
+| AV-125 | Durée de conservation des produits d’abattage | SECONDAIRE | P7 | 5 jours après l’abattage (frais réfrigéré), paramétrée | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -686,19 +686,21 @@ Politique par défaut, paramétrable :
 - **Impact** : `inventory.loss_declarations` : mortalité rattachée à un lot de production ou d’incubation.
 - **Décision** (porteur du projet, 28/09/2026) : **mortalité du lot d'incubation** (option a), avec photo et validation comme toute mortalité
 
-### AV-114 — Carcasses saisies et frais d'abattage — SECONDAIRE
+### AV-114 — Carcasses saisies et frais d'abattage — SECONDAIRE — **TRANCHÉ**
 - **Question** : que deviennent les têtes saisies (condamnées) à l'abattage et les frais propres de l'abattage (sachets, main-d'œuvre) ?
 - **Pourquoi** : AV-032 ne les traite pas.
 - **Choix** : (a) saisies consommées sans produit, leur coût porté par les produits ; frais d'abattage = dépense directe du lot ; (b) saisies déclarées en perte ; (c) objet de coût d'abattage distinct.
 - **Recommandation** : (a).
 - **Impact** : indicateur de taux de saisie ; aucune perte de stock.
+- **Décision** (porteur du projet, 28/09/2026) : **coût porté par les produits** (option a) : têtes saisies comptées sans produit, frais d'abattage = dépense directe du lot
 
-### AV-115 — Abattage des réformes et des porcs — SECONDAIRE
+### AV-115 — Abattage des réformes et des porcs — SECONDAIRE — **TRANCHÉ**
 - **Question** : l'abattage s'étend-il aux poules de réforme, aux reproducteurs et aux porcs ?
 - **Pourquoi** : AV-032 vise le poulet de chair.
 - **Choix** : (a) hors P7, abattage activable par type de lot (paramètre) ; (b) dès P7.
 - **Recommandation** : (a).
 - **Impact** : paramètre des types de lot abattables.
+- **Décision** (porteur du projet, 28/09/2026) : **tous les types dès P7** : poulets de chair, pondeuses et reproducteurs de réforme, porcs d'engraissement et de naissage (réformes) ; la liste reste un paramètre (`production.slaughterable_lot_types`) ; les découpes porcines sont des produits du catalogue
 
 ### AV-116 — Définition des indicateurs zootechniques — SECONDAIRE
 - **Question** : quelles définitions exactes pour l'indice de consommation, le GMQ, le poids initial, le taux de ponte et le taux de mortalité (AV-049) ?
@@ -728,12 +730,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Impact** : `inventory.loss.declare` (catégorie `MORTALITE`).
 
-### AV-120 — Annulations après consommation (collecte, mortalité approuvée) — SECONDAIRE
+### AV-120 — Annulations après consommation (collecte, mortalité approuvée) — SECONDAIRE — **TRANCHÉ**
 - **Question** : comment annuler une collecte dont les œufs sont déjà consommés, ou corriger une mortalité déjà approuvée ?
 - **Pourquoi** : SM-EGG-COLLECTION prévoit « sinon validation » sans type d'opération ; `LOSS_CANCELLATION` est cité (D06) mais absent.
 - **Choix** : (a) annulation par contre-écriture soumise à la validation du Resp. production ; (b) refus, correction par document compensatoire.
 - **Recommandation** : (a).
 - **Impact** : types d’opération à ajouter si (a).
+- **Décision** (porteur du projet, 28/09/2026) : **refus et correction compensatoire** (option b) : une annulation dont les produits sont déjà sortis est refusée (`STOCK_UNAVAILABLE`) ; le responsable corrige par une opération compensatoire (inventaire, perte, nouvelle saisie)
 
 ### AV-121 — Seuils de l’alerte de mortalité élevée — SECONDAIRE
 - **Question** : l'alerte `HIGH_MORTALITY` garde-t-elle ses seuils (0,5 % de l'effectif ou 20 têtes par jour) maintenant que toute mortalité est validée ?
@@ -766,12 +769,13 @@ Politique par défaut, paramétrable :
 - **Impact** : œufs au CMUP courant (0 sans stock antérieur), porcelets à 0 XAF, écart dans le résultat du lot producteur ; alerte `STANDARD_COST_MISSING` à l'administrateur (module `communication`, P9), déduite des entrées de production dont le produit n'a pas de coût standard à la date de l'entrée.
 - **Décision** (porteur du projet, 28/09/2026) : **accepter et alerter** (option b)
 
-### AV-125 — Durée de conservation des produits d’abattage — SECONDAIRE
+### AV-125 — Durée de conservation des produits d’abattage — SECONDAIRE — **TRANCHÉ**
 - **Question** : quelle date de péremption porte le lot de stock d'un abattage (poulet entier, découpes, abats) ?
 - **Pourquoi** : AV-100 donne à chaque abattage un lot propre « avec date de péremption » ; le catalogue n'a pas de durée de conservation et la chaîne du froid (frais ou congelé) n'est pas décrite.
 - **Choix** : (a) durée unique paramétrée (5 jours, frais réfrigéré) ; (b) durée par produit dans le catalogue (entier, découpes, abats, congelé) ; (c) aucune date.
 - **Recommandation** : (a) pour P7, (b) si des produits congelés sont vendus.
 - **Impact** : paramètre `production.slaughter_shelf_life_days` ; ordre FEFO des ventes (D06).
+- **Décision** (porteur du projet, 28/09/2026) : **5 jours paramétrés** (option a)
 
 ---
 
@@ -818,3 +822,7 @@ Politique par défaut, paramétrable :
 | 28/09/2026 | AV-122 | Péremption des œufs collectés : date de collecte + 28 jours, paramétrés | Porteur du projet |
 | 28/09/2026 | AV-123 | Annulation d’une entrée de lot réservée au Responsable production | Porteur du projet |
 | 28/09/2026 | AV-124 | Production sans coût standard : saisie acceptée à la valeur par défaut, alerte à l’administrateur (P9) | Porteur du projet |
+| 28/09/2026 | AV-114 | Têtes saisies sans produit, coût porté par les produits ; frais d’abattage = dépense directe du lot | Porteur du projet |
+| 28/09/2026 | AV-115 | Tous les types de lots abattables dès P7 (volailles et porcs), liste paramétrée | Porteur du projet |
+| 28/09/2026 | AV-120 | Annulation refusée si les produits sont sortis ; correction compensatoire | Porteur du projet |
+| 28/09/2026 | AV-125 | Péremption des produits d’abattage : jour de l’abattage + 5 jours, paramétrés | Porteur du projet |

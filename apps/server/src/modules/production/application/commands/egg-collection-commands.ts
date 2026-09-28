@@ -18,7 +18,7 @@
  *   l'administrateur étant déduite en P9 (AV-124) ; le lot
  *   producteur est crédité (`PRODUCTION_TRANSFEREE`) de la valeur totale.
  * - Annulation (BR-OEU-004) : mouvements inverses au coût d'origine, crédit contrepassé, lot de
- *   stock clôturé ; œufs déjà sortis : refus en ligne (`STOCK_UNAVAILABLE`, défaut AV-120),
+ *   stock clôturé ; œufs déjà sortis : refus en ligne (`STOCK_UNAVAILABLE`, AV-120),
  *   appliquée hors ligne avec `STOCK_NEGATIVE` (SM-EGG-COLLECTION).
  */
 import { z } from 'zod';

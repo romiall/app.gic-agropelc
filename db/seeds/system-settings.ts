@@ -51,10 +51,16 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-047, BR-INC-008',
   },
-  // AV-115 (défaut) : types de lots abattables.
+  // AV-115 (décision du 28/09/2026) : tous les types de lots abattables, volailles et porcs.
   {
     key: 'production.slaughterable_lot_types',
-    value: ['POULET_CHAIR'],
+    value: [
+      'POULET_CHAIR',
+      'PONDEUSE',
+      'REPRODUCTEUR_VOLAILLE',
+      'PORC_ENGRAISSEMENT',
+      'PORC_NAISSAGE',
+    ],
     isClientVisible: true,
     ref: 'AV-032, AV-115',
   },

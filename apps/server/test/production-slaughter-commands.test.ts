@@ -4,7 +4,8 @@
  *   (kilo) ; valeur de 120 000 XAF répartie au prorata du poids, au franc près ; rendement ;
  *   lot de stock propre `TRANSFORMATION` avec péremption (AV-125) ; coût restant du lot ;
  * - le dernier abattage emporte le coût restant exact, puis le lot se clôture sans coût perdu ;
- * - refus : type de lot, abattoir, bilan de poids, produit, portée ;
+ * - refus : état du lot, abattoir, bilan de poids, produit, portée (tous les types de lots
+ *   sont abattables, AV-115) ;
  * - annulation par le Responsable production ; produits sortis → `STOCK_UNAVAILABLE`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -395,9 +396,11 @@ describe('P7-09 : abattage', () => {
     ).toBe(120_000);
   });
 
-  it('refus : type de lot, abattoir, bilan de poids, produit, portée', async () => {
+  it('refus : état du lot, abattoir, bilan de poids, produit, portée', async () => {
+    // AV-115 (28/09/2026) : tous les types de lots sont abattables ; un lot de pondeuses
+    // seulement planifié est refusé sur son état, pas sur son type.
     expect(code((await slaughter(slaughterPayload({ productionLotId: layerLotId }))).result)).toBe(
-      'LOT_NOT_SLAUGHTERABLE',
+      'LOT_NOT_ACTIVE',
     );
     expect(
       code((await slaughter(slaughterPayload({ slaughterhouseLocationId: buildingId }))).result),

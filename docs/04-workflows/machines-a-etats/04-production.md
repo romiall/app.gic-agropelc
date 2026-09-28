@@ -67,7 +67,7 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.egg_collection.record` | Lot `PONDEUSE` ou `REPRODUCTEUR_VOLAILLE` actif ; égalité BR-OEU-001 ; calibres paramétrés ; plusieurs collectes par jour (AV-110) | `RECORDED` | `EggCollectionRecorded`, `ProductionRecorded` | `PRODUCTION_OUTPUT` des œufs commercialisables (par calibre) et à couver, dans le lot de stock propre de la collecte (AV-100) | Coût standard ; crédit du lot producteur (BR-OEU-007, AV-098) | `production.daily.record` |
-| `RECORDED` | `production.egg_collection.cancel` | Commentaire ; les œufs de cette collecte sont encore disponibles, sinon refus en ligne (`STOCK_UNAVAILABLE`, défaut AV-120) | `CANCELLED` | `EggCollectionCancelled` | Mouvements inverses ; lot de stock de la collecte clôturé | Crédit du lot producteur contrepassé | `production.daily.record` |
+| `RECORDED` | `production.egg_collection.cancel` | Commentaire ; les œufs de cette collecte sont encore disponibles, sinon refus en ligne (`STOCK_UNAVAILABLE`, AV-120) | `CANCELLED` | `EggCollectionCancelled` | Mouvements inverses ; lot de stock de la collecte clôturé | Crédit du lot producteur contrepassé | `production.daily.record` |
 
 **Hors ligne** : les deux transitions sont possibles. Une annulation hors ligne dont le stock a déjà été consommé côté serveur est appliquée et produit `STOCK_NEGATIVE`.
 
@@ -84,6 +84,6 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.slaughter.record` | Lot abattable actif ; abattoir de la ferme ; bilan de poids (`SLAUGHTER_INVALID`) | `RECORDED` | Rendement ; têtes saisies comptées (AV-114) | `PRODUCTION_INPUT` des têtes abattues au coût par tête ; `PRODUCTION_OUTPUT` des produits sous le lot propre de l'abattage (AV-100) | Valeur répartie au prorata du poids (AV-032) | `production.daily.record` |
-| `RECORDED` | `production.slaughter.cancel` | Lot actif ou en vente ; produits encore en stock, sinon `STOCK_UNAVAILABLE` (défaut AV-120) | `CANCELLED` | Tracé | Mouvements inverses ; lot de stock de l'abattage clôturé | Coût rendu au lot | `production.lot.manage` |
+| `RECORDED` | `production.slaughter.cancel` | Lot actif ou en vente ; produits encore en stock, sinon `STOCK_UNAVAILABLE` (AV-120) | `CANCELLED` | Tracé | Mouvements inverses ; lot de stock de l'abattage clôturé | Coût rendu au lot | `production.lot.manage` |
 
 **Hors ligne** : l'abattage est possible (AV-101) ; sur un lot clôturé, il est appliqué avec le conflit `LOT_CLOSED`. L'annulation se fait en ligne (le stock des produits doit être disponible).
