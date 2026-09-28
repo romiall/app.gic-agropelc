@@ -206,9 +206,30 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests d'intégration | INV-PRD-01 à 03, INV-OEU-01, INV-INC-01 |
 | Tests E2E | Saisie du jour d'une semaine hors ligne |
 | Critères d'acceptation | AT-026 à 029, 052, 053 |
-| Prérequis | AV-004, AV-005, AV-032, AV-043 à AV-050 |
+| Prérequis | AV-004, AV-005, AV-032, AV-043 à AV-050 (tranchés le 27/09/2026) ; AV-097 à AV-113 (tranchés le 28/09/2026) ; AV-114 à AV-121 ouverts, défauts paramétrables |
 | Risques | RISK-24 |
-| DoD | Un lot pilote suivi de la mise en place à la clôture |
+| DoD | Un lot pilote suivi de la mise en place à la clôture (ventes : P4) |
+
+**Périmètre élargi le 27 et le 28/09/2026** (A-VALIDER §3, ADR-026, ADR-027) : cinq types de lots, un lot par produit (truies, verrats, porcelets ; poules, coqs), abattage multi-produits à la ferme, calibres à la collecte et plusieurs collectes par jour, naissage avec sevrage, toute mortalité validée avec photo, coût par tête sur le coût restant, productions au coût standard avec crédit du lot producteur, frais généraux séparés par espèce et répartis à la demande, résultat mensuel des lots permanents, indicateurs zootechniques (IC, GMQ, taux de ponte). Durée révisée : environ 6 à 7 semaines.
+
+**Backlog P7** (DÉDUIT de la cartographie du 28/09/2026 ; gabarit P6 ; chaque incrément commité avec ses tests et ses documents) :
+
+| Incrément | Contenu |
+|---|---|
+| P7-01 | `packages/domain` : bilans d'œufs (calibres) et d'incubation, validation de la mortalité, coût par tête, répartitions au franc (têtes × jours, poids), indicateurs — **fait** (27/09/2026), ajusté en P7-02 (coût restant, dénominateur de mortalité) |
+| P7-02 | `inventory`, prérequis : migrations (types de coût `FRAIS_GENERAUX`, sources de répartition et de production transférée, espèce des frais généraux, document d'abattage et de transfert entre lots, origine transformation, emplacement abattoir, mortalité d'un lot d'incubation) ; API publique : lots de stock, écritures de coût, déclaration de perte avec politique `MORTALITY` et pièces consultées à la décision (AV-107), consommation (valeur nulle sans écriture de coût), effectif d'un lot et têtes × jours ; gestionnaire de décision `MORTALITY` ; inventaires d'animaux validés par le Resp. production (AV-108) |
+| P7-03 | `inventory`, valorisation : sorties d'un lot biologique au coût par tête (coût restant, AV-097), coût déclaré des entrées de production, CMUP des productions commercialisables, contrôle du lot clôturé (INV-PRD-02) |
+| P7-04 | `db` : tables `production.*` (lots liés, entrées, pesées, observations, collectes et lignes par calibre, incubations et étapes, abattages et sorties, répartitions de frais généraux) ; paramètres, motifs de rendement, politique `MORTALITY` par défaut ; RBAC (frais généraux) |
+| P7-05 | Lots : création (lot de stock), annulation, statut, entrées (mise en place interne ou par achat direct en une opération, naissance, transfert et sevrage), clôture (effectif nul, aucune mortalité en attente, part estimée de frais généraux) |
+| P7-06 | Saisie du jour : mortalité (photo, validation `MORTALITY`), consommation d'intrants, pesée, observation |
+| P7-07 | Collectes d'œufs : calibres, plusieurs par jour, lot de stock propre, coût standard et crédit du lot producteur, annulation |
+| P7-08 | Incubation : démarrage (lot d'incubation), mirage, transfert, éclosion (coût des poussins), annulation ; mortalité des poussins (AV-113) |
+| P7-09 | Abattage : transformation multi-produits, poids et rendement, coût réparti au poids, lot de stock propre, annulation |
+| P7-10 | Frais généraux : saisie ventilée par espèce, répartition à la demande (têtes × jours), régularisation |
+| P7-11 | Lectures HTTP : lots (effectif, mortalité, coûts masqués RC-05, indicateurs, résultat mensuel), jour par jour, collectes, incubations, abattages, répartitions |
+| P7-12 | Jeu hors ligne `production` ; portée d'appareil du Resp. production (sites des fermes) |
+| P7-13 | Invariants (INV-PRD-01 à 03, INV-OEU-01, INV-INC-01, conservation des coûts), E2E « saisie du jour d'une semaine hors ligne », AT-026 à 029, 052, 053 (parts P7) |
+| P7-14 | Clôture : D07 (règles reportées), machines à états, dictionnaires, stratégies stock et finance, matrice §17.4, démonstration, plan, CLAUDE.md |
 
 ### P8 — Finance opérationnelle
 
