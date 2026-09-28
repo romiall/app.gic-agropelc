@@ -4698,6 +4698,1079 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `production_egg_collection_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_egg_collection_lines` (
+  `id` binary(16) NOT NULL,
+  `collection_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `quantity` int NOT NULL,
+  `unit_cost_xaf` bigint NOT NULL DEFAULT '0',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_egg_collection_lines_grade` (`collection_id`,`product_id`),
+  KEY `fk_production_egg_collection_lines_product` (`product_id`),
+  CONSTRAINT `fk_production_egg_collection_lines_collection` FOREIGN KEY (`collection_id`) REFERENCES `production_egg_collections` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collection_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_egg_collection_lines_qty` CHECK (((`quantity` > 0) and (`unit_cost_xaf` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_egg_collection_lines_no_update` BEFORE UPDATE ON `production_egg_collection_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_egg_collection_lines : ligne immuable.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_egg_collection_lines_no_delete` BEFORE DELETE ON `production_egg_collection_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_egg_collection_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_egg_collections`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_egg_collections` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `collection_date` date NOT NULL,
+  `storage_location_id` binary(16) NOT NULL,
+  `stock_lot_id` binary(16) NOT NULL,
+  `hatching_product_id` binary(16) DEFAULT NULL,
+  `collected_qty` int NOT NULL,
+  `broken_qty` int NOT NULL DEFAULT '0',
+  `nonconforming_qty` int NOT NULL DEFAULT '0',
+  `marketable_qty` int NOT NULL,
+  `hatching_qty` int NOT NULL DEFAULT '0',
+  `standard_value_xaf` bigint NOT NULL DEFAULT '0',
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_egg_collections_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_production_egg_collections_stock_lot` (`stock_lot_id`),
+  UNIQUE KEY `uq_production_egg_collections_command` (`command_id`),
+  KEY `ix_production_egg_collections_lot_date` (`production_lot_id`,`collection_date`),
+  KEY `ix_production_egg_collections_site_date` (`site_id`,`collection_date`),
+  KEY `fk_production_egg_collections_location` (`storage_location_id`),
+  KEY `fk_production_egg_collections_hatching_product` (`hatching_product_id`),
+  KEY `fk_production_egg_collections_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_egg_collections_device` (`created_device_id`),
+  KEY `fk_production_egg_collections_created_by` (`created_by`),
+  CONSTRAINT `fk_production_egg_collections_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_hatching_product` FOREIGN KEY (`hatching_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_location` FOREIGN KEY (`storage_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_egg_collections_stock_lot` FOREIGN KEY (`stock_lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_egg_collections_balance` CHECK (((`collected_qty` = (((`broken_qty` + `nonconforming_qty`) + `marketable_qty`) + `hatching_qty`)) and (`collected_qty` >= 0) and (`broken_qty` >= 0) and (`nonconforming_qty` >= 0) and (`marketable_qty` >= 0) and (`hatching_qty` >= 0))),
+  CONSTRAINT `ck_production_egg_collections_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_egg_collections_hatching` CHECK (((`hatching_qty` = 0) or (`hatching_product_id` is not null))),
+  CONSTRAINT `ck_production_egg_collections_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_egg_collections_update_guard` BEFORE UPDATE ON `production_egg_collections` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.production_lot_id <=> OLD.production_lot_id AND NEW.collection_date <=> OLD.collection_date AND
+    NEW.collected_qty <=> OLD.collected_qty AND NEW.broken_qty <=> OLD.broken_qty AND
+    NEW.nonconforming_qty <=> OLD.nonconforming_qty AND NEW.marketable_qty <=> OLD.marketable_qty AND
+    NEW.hatching_qty <=> OLD.hatching_qty AND NEW.standard_value_xaf <=> OLD.standard_value_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_egg_collections : collecte non modifiable ; annuler puis ressaisir (BR-OEU-004).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_egg_collections_no_delete` BEFORE DELETE ON `production_egg_collections` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_egg_collections : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_incubation_batches`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_incubation_batches` (
+  `id` binary(16) NOT NULL,
+  `batch_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `stock_lot_id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `species` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `egg_product_id` binary(16) NOT NULL,
+  `chick_product_id` binary(16) NOT NULL,
+  `incubator_location_id` binary(16) NOT NULL,
+  `hatcher_location_id` binary(16) DEFAULT NULL,
+  `egg_source` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `eggs_set_qty` int NOT NULL,
+  `set_at` datetime(6) NOT NULL,
+  `expected_candling_date` date DEFAULT NULL,
+  `expected_transfer_date` date DEFAULT NULL,
+  `expected_hatch_date` date DEFAULT NULL,
+  `infertile_qty` int NOT NULL DEFAULT '0',
+  `early_dead_qty` int NOT NULL DEFAULT '0',
+  `accidental_loss_qty` int NOT NULL DEFAULT '0',
+  `transferred_qty` int NOT NULL DEFAULT '0',
+  `hatched_viable_qty` int NOT NULL DEFAULT '0',
+  `hatched_nonviable_qty` int NOT NULL DEFAULT '0',
+  `unhatched_qty` int NOT NULL DEFAULT '0',
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'INCUBATING',
+  `hatch_rate` decimal(5,4) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_incubation_batches_code` (`batch_code`),
+  UNIQUE KEY `uq_production_incubation_batches_stock_lot` (`stock_lot_id`),
+  UNIQUE KEY `uq_production_incubation_batches_command` (`command_id`),
+  KEY `ix_production_incubation_batches_site_status` (`site_id`,`status`),
+  KEY `fk_production_incubation_batches_egg_product` (`egg_product_id`),
+  KEY `fk_production_incubation_batches_chick_product` (`chick_product_id`),
+  KEY `fk_production_incubation_batches_incubator` (`incubator_location_id`),
+  KEY `fk_production_incubation_batches_hatcher` (`hatcher_location_id`),
+  KEY `fk_production_incubation_batches_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_incubation_batches_device` (`created_device_id`),
+  KEY `fk_production_incubation_batches_created_by` (`created_by`),
+  CONSTRAINT `fk_production_incubation_batches_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_chick_product` FOREIGN KEY (`chick_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_egg_product` FOREIGN KEY (`egg_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_hatcher` FOREIGN KEY (`hatcher_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_incubator` FOREIGN KEY (`incubator_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_batches_stock_lot` FOREIGN KEY (`stock_lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_incubation_batches_balance` CHECK (((`status` <> _utf8mb4'CLOSED') or (`eggs_set_qty` = (((((`infertile_qty` + `early_dead_qty`) + `accidental_loss_qty`) + `unhatched_qty`) + `hatched_viable_qty`) + `hatched_nonviable_qty`)))),
+  CONSTRAINT `ck_production_incubation_batches_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_incubation_batches_counters` CHECK (((`eggs_set_qty` > 0) and (`infertile_qty` >= 0) and (`early_dead_qty` >= 0) and (`accidental_loss_qty` >= 0) and (`transferred_qty` >= 0) and (`hatched_viable_qty` >= 0) and (`hatched_nonviable_qty` >= 0) and (`unhatched_qty` >= 0))),
+  CONSTRAINT `ck_production_incubation_batches_source` CHECK ((`egg_source` in (_utf8mb4'INTERNAL',_utf8mb4'PURCHASED'))),
+  CONSTRAINT `ck_production_incubation_batches_status` CHECK ((`status` in (_utf8mb4'INCUBATING',_utf8mb4'IN_HATCHER',_utf8mb4'CLOSED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_incubation_batches_update_guard` BEFORE UPDATE ON `production_incubation_batches` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.batch_code <=> OLD.batch_code AND NEW.stock_lot_id <=> OLD.stock_lot_id AND NEW.site_id <=> OLD.site_id AND
+    NEW.eggs_set_qty <=> OLD.eggs_set_qty AND NEW.set_at <=> OLD.set_at AND
+    NEW.egg_product_id <=> OLD.egg_product_id AND NEW.chick_product_id <=> OLD.chick_product_id AND
+    NEW.command_id <=> OLD.command_id AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_incubation_batches : œufs incubés figés au démarrage (BR-INC-002).';
+  END IF;
+  IF OLD.status IN ('CLOSED', 'CANCELLED') AND NOT (NEW.status <=> OLD.status) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_incubation_batches : un lot d''incubation clos ne change plus de statut.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_incubation_batches_no_delete` BEFORE DELETE ON `production_incubation_batches` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_incubation_batches : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_incubation_events`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_incubation_events` (
+  `id` binary(16) NOT NULL,
+  `batch_id` binary(16) NOT NULL,
+  `event_type` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `qty_infertile` int DEFAULT NULL,
+  `qty_early_dead` int DEFAULT NULL,
+  `qty_transferred` int DEFAULT NULL,
+  `qty_hatched_viable` int DEFAULT NULL,
+  `qty_hatched_nonviable` int DEFAULT NULL,
+  `qty_unhatched` int DEFAULT NULL,
+  `output_location_id` binary(16) DEFAULT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `single_step_key` varchar(60) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`status` = _utf8mb4'RECORDED') and (`event_type` in (_utf8mb4'TRANSFER_TO_HATCHER',_utf8mb4'HATCH'))) then concat(hex(`batch_id`),_utf8mb4':',`event_type`) end)) STORED,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_incubation_events_command` (`command_id`),
+  UNIQUE KEY `uq_production_incubation_events_single_step` (`single_step_key`),
+  KEY `ix_production_incubation_events_batch` (`batch_id`,`occurred_at`),
+  KEY `fk_production_incubation_events_location` (`output_location_id`),
+  KEY `fk_production_incubation_events_device` (`created_device_id`),
+  KEY `fk_production_incubation_events_created_by` (`created_by`),
+  CONSTRAINT `fk_production_incubation_events_batch` FOREIGN KEY (`batch_id`) REFERENCES `production_incubation_batches` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_events_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_events_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_incubation_events_location` FOREIGN KEY (`output_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_incubation_events_qty` CHECK (((coalesce(`qty_infertile`,0) >= 0) and (coalesce(`qty_early_dead`,0) >= 0) and (coalesce(`qty_transferred`,0) >= 0) and (coalesce(`qty_hatched_viable`,0) >= 0) and (coalesce(`qty_hatched_nonviable`,0) >= 0) and (coalesce(`qty_unhatched`,0) >= 0))),
+  CONSTRAINT `ck_production_incubation_events_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_production_incubation_events_type` CHECK ((`event_type` in (_utf8mb4'SET',_utf8mb4'CANDLING',_utf8mb4'TRANSFER_TO_HATCHER',_utf8mb4'HATCH',_utf8mb4'CANCEL')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_incubation_events_update_guard` BEFORE UPDATE ON `production_incubation_events` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.batch_id <=> OLD.batch_id AND NEW.event_type <=> OLD.event_type AND
+    NEW.qty_infertile <=> OLD.qty_infertile AND NEW.qty_early_dead <=> OLD.qty_early_dead AND
+    NEW.qty_transferred <=> OLD.qty_transferred AND NEW.qty_hatched_viable <=> OLD.qty_hatched_viable AND
+    NEW.qty_hatched_nonviable <=> OLD.qty_hatched_nonviable AND NEW.qty_unhatched <=> OLD.qty_unhatched AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_incubation_events : étape non modifiable ; annuler.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_incubation_events_no_delete` BEFORE DELETE ON `production_incubation_events` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_incubation_events : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_lot_entries`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_lot_entries` (
+  `id` binary(16) NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `entry_type` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `to_location_id` binary(16) NOT NULL,
+  `source_kind` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `source_location_id` binary(16) DEFAULT NULL,
+  `source_product_id` binary(16) DEFAULT NULL,
+  `source_stock_lot_id` binary(16) DEFAULT NULL,
+  `source_production_lot_id` binary(16) DEFAULT NULL,
+  `goods_receipt_id` binary(16) DEFAULT NULL,
+  `stillborn_qty` int NOT NULL DEFAULT '0',
+  `avg_weight_g` decimal(10,1) DEFAULT NULL,
+  `unit_cost_xaf` bigint DEFAULT NULL,
+  `value_xaf` bigint NOT NULL DEFAULT '0',
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_lot_entries_command` (`command_id`),
+  KEY `ix_production_lot_entries_lot` (`production_lot_id`,`occurred_at`),
+  KEY `ix_production_lot_entries_source_lot` (`source_production_lot_id`),
+  KEY `fk_production_lot_entries_product` (`product_id`),
+  KEY `fk_production_lot_entries_to_location` (`to_location_id`),
+  KEY `fk_production_lot_entries_source_location` (`source_location_id`),
+  KEY `fk_production_lot_entries_source_product` (`source_product_id`),
+  KEY `fk_production_lot_entries_receipt` (`goods_receipt_id`),
+  KEY `fk_production_lot_entries_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_lot_entries_device` (`created_device_id`),
+  KEY `fk_production_lot_entries_created_by` (`created_by`),
+  CONSTRAINT `fk_production_lot_entries_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_receipt` FOREIGN KEY (`goods_receipt_id`) REFERENCES `procurement_goods_receipts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_source_location` FOREIGN KEY (`source_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_source_lot` FOREIGN KEY (`source_production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_source_product` FOREIGN KEY (`source_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_entries_to_location` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_lot_entries_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_lot_entries_qty` CHECK (((`quantity_base` > 0) and (`stillborn_qty` >= 0) and (`value_xaf` >= 0))),
+  CONSTRAINT `ck_production_lot_entries_source` CHECK ((`source_kind` in (_utf8mb4'PURCHASE',_utf8mb4'INTERNAL_STOCK',_utf8mb4'BIRTH',_utf8mb4'TRANSFER',_utf8mb4'WEANING'))),
+  CONSTRAINT `ck_production_lot_entries_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_production_lot_entries_type` CHECK ((`entry_type` in (_utf8mb4'PLACEMENT',_utf8mb4'BIRTH',_utf8mb4'TRANSFER_IN')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_entries_update_guard` BEFORE UPDATE ON `production_lot_entries` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.production_lot_id <=> OLD.production_lot_id AND NEW.entry_type <=> OLD.entry_type AND
+    NEW.product_id <=> OLD.product_id AND NEW.quantity_base <=> OLD.quantity_base AND
+    NEW.to_location_id <=> OLD.to_location_id AND NEW.value_xaf <=> OLD.value_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_entries : entrée non modifiable ; annuler puis ressaisir.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_entries_no_delete` BEFORE DELETE ON `production_lot_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_entries : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_lot_observations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_lot_observations` (
+  `id` binary(16) NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `observation_type` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `text` text COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `severity` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'INFO',
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_lot_observations_command` (`command_id`),
+  KEY `ix_production_lot_observations_lot` (`production_lot_id`,`occurred_at`),
+  KEY `fk_production_lot_observations_device` (`created_device_id`),
+  KEY `fk_production_lot_observations_created_by` (`created_by`),
+  CONSTRAINT `fk_production_lot_observations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_observations_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_observations_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_lot_observations_severity` CHECK ((`severity` in (_utf8mb4'INFO',_utf8mb4'WARNING',_utf8mb4'CRITICAL'))),
+  CONSTRAINT `ck_production_lot_observations_text` CHECK ((char_length(trim(`text`)) > 0)),
+  CONSTRAINT `ck_production_lot_observations_type` CHECK ((`observation_type` in (_utf8mb4'SANITAIRE',_utf8mb4'COMPORTEMENT',_utf8mb4'ENVIRONNEMENT',_utf8mb4'INCIDENT',_utf8mb4'AUTRE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_observations_no_update` BEFORE UPDATE ON `production_lot_observations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_observations : observation immuable ; ajouter une nouvelle observation.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_observations_no_delete` BEFORE DELETE ON `production_lot_observations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_observations : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_lot_weighings`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_lot_weighings` (
+  `id` binary(16) NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `location_id` binary(16) DEFAULT NULL,
+  `sample_size` int NOT NULL,
+  `avg_weight_g` decimal(10,1) NOT NULL,
+  `total_weight_kg` decimal(12,3) DEFAULT NULL,
+  `source` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'MANUAL',
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_lot_weighings_command` (`command_id`),
+  KEY `ix_production_lot_weighings_lot` (`production_lot_id`,`occurred_at`),
+  KEY `fk_production_lot_weighings_location` (`location_id`),
+  KEY `fk_production_lot_weighings_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_lot_weighings_device` (`created_device_id`),
+  KEY `fk_production_lot_weighings_created_by` (`created_by`),
+  CONSTRAINT `fk_production_lot_weighings_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_weighings_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_weighings_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_weighings_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_lot_weighings_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_lot_weighings_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_lot_weighings_source` CHECK ((`source` in (_utf8mb4'MANUAL',_utf8mb4'DEVICE'))),
+  CONSTRAINT `ck_production_lot_weighings_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_production_lot_weighings_values` CHECK (((`sample_size` > 0) and (`avg_weight_g` > 0) and ((`total_weight_kg` is null) or (`total_weight_kg` > 0))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_weighings_update_guard` BEFORE UPDATE ON `production_lot_weighings` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.production_lot_id <=> OLD.production_lot_id AND NEW.sample_size <=> OLD.sample_size AND
+    NEW.avg_weight_g <=> OLD.avg_weight_g AND NEW.total_weight_kg <=> OLD.total_weight_kg AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_weighings : pesée non modifiable ; annuler puis ressaisir.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_lot_weighings_no_delete` BEFORE DELETE ON `production_lot_weighings` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_lot_weighings : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_overhead_allocation_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_overhead_allocation_lines` (
+  `id` binary(16) NOT NULL,
+  `allocation_id` binary(16) NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `head_days` decimal(18,3) NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `cost_entry_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_overhead_allocation_lines_lot` (`allocation_id`,`production_lot_id`),
+  KEY `fk_production_overhead_allocation_lines_lot` (`production_lot_id`),
+  CONSTRAINT `fk_production_overhead_allocation_lines_allocation` FOREIGN KEY (`allocation_id`) REFERENCES `production_overhead_allocations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_overhead_allocation_lines_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_overhead_allocation_lines_values` CHECK (((`head_days` >= 0) and (`amount_xaf` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_overhead_allocation_lines_no_update` BEFORE UPDATE ON `production_overhead_allocation_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_overhead_allocation_lines : ligne immuable.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_overhead_allocation_lines_no_delete` BEFORE DELETE ON `production_overhead_allocation_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_overhead_allocation_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_overhead_allocations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_overhead_allocations` (
+  `id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `period` char(7) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `run_kind` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `sequence` int NOT NULL,
+  `pool_xaf` bigint NOT NULL,
+  `allocated_xaf` bigint NOT NULL,
+  `head_days_total` decimal(18,3) NOT NULL,
+  `production_lot_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_overhead_allocations_run` (`site_id`,`species_group`,`period`,`sequence`),
+  UNIQUE KEY `uq_production_overhead_allocations_command` (`command_id`),
+  KEY `ix_production_overhead_allocations_lot` (`production_lot_id`),
+  KEY `fk_production_overhead_allocations_created_by` (`created_by`),
+  CONSTRAINT `fk_production_overhead_allocations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_overhead_allocations_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_overhead_allocations_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_overhead_allocations_amounts` CHECK (((`pool_xaf` >= 0) and (`allocated_xaf` >= 0) and (`allocated_xaf` <= `pool_xaf`) and (`head_days_total` >= 0))),
+  CONSTRAINT `ck_production_overhead_allocations_estimate` CHECK (((`run_kind` = _utf8mb4'CLOSING_ESTIMATE') = (`production_lot_id` is not null))),
+  CONSTRAINT `ck_production_overhead_allocations_kind` CHECK ((`run_kind` in (_utf8mb4'INITIAL',_utf8mb4'REGULARIZATION',_utf8mb4'CLOSING_ESTIMATE'))),
+  CONSTRAINT `ck_production_overhead_allocations_period` CHECK (regexp_like(`period`,_utf8mb4'^[0-9]{4}-(0[1-9]|1[0-2])$')),
+  CONSTRAINT `ck_production_overhead_allocations_species` CHECK ((`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_overhead_allocations_no_update` BEFORE UPDATE ON `production_overhead_allocations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_overhead_allocations : répartition jamais réécrite (ADR-026) ; régulariser.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_overhead_allocations_no_delete` BEFORE DELETE ON `production_overhead_allocations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_overhead_allocations : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_production_lots`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_production_lots` (
+  `id` binary(16) NOT NULL,
+  `lot_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `lot_type` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `stock_lot_id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `main_location_id` binary(16) NOT NULL,
+  `parent_lot_id` binary(16) DEFAULT NULL,
+  `supplier_id` binary(16) DEFAULT NULL,
+  `strain` varchar(100) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `planned_start_date` date DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `initial_quantity` decimal(14,3) DEFAULT NULL,
+  `planned_end_date` date DEFAULT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PLANNED',
+  `closed_at` datetime(6) DEFAULT NULL,
+  `closing_summary` json DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_production_lots_code` (`lot_code`),
+  UNIQUE KEY `uq_production_production_lots_stock_lot` (`stock_lot_id`),
+  UNIQUE KEY `uq_production_production_lots_command` (`command_id`),
+  KEY `ix_production_production_lots_site_status` (`site_id`,`status`),
+  KEY `ix_production_production_lots_parent` (`parent_lot_id`),
+  KEY `fk_production_production_lots_product` (`product_id`),
+  KEY `fk_production_production_lots_location` (`main_location_id`),
+  KEY `fk_production_production_lots_supplier` (`supplier_id`),
+  KEY `fk_production_production_lots_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_production_lots_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_production_production_lots_device` (`created_device_id`),
+  KEY `fk_production_production_lots_created_by` (`created_by`),
+  KEY `fk_production_production_lots_updated_by` (`updated_by`),
+  CONSTRAINT `fk_production_production_lots_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_location` FOREIGN KEY (`main_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_parent` FOREIGN KEY (`parent_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_stock_lot` FOREIGN KEY (`stock_lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_production_lots_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_production_lots_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_production_lots_closed` CHECK (((`status` <> _utf8mb4'CLOSED') or (`closed_at` is not null))),
+  CONSTRAINT `ck_production_production_lots_initial` CHECK (((`initial_quantity` is null) or (`initial_quantity` >= 0))),
+  CONSTRAINT `ck_production_production_lots_parent` CHECK (((`parent_lot_id` is null) or (`parent_lot_id` <> `id`))),
+  CONSTRAINT `ck_production_production_lots_status` CHECK ((`status` in (_utf8mb4'PLANNED',_utf8mb4'ACTIVE',_utf8mb4'SELLING',_utf8mb4'CLOSED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_production_production_lots_type` CHECK ((`lot_type` in (_utf8mb4'POULET_CHAIR',_utf8mb4'PONDEUSE',_utf8mb4'PORC_ENGRAISSEMENT',_utf8mb4'REPRODUCTEUR_VOLAILLE',_utf8mb4'PORC_NAISSAGE')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_production_lots_update_guard` BEFORE UPDATE ON `production_production_lots` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.lot_code <=> OLD.lot_code AND NEW.lot_type <=> OLD.lot_type AND NEW.product_id <=> OLD.product_id AND
+    NEW.stock_lot_id <=> OLD.stock_lot_id AND NEW.site_id <=> OLD.site_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_production_lots : code, type, produit, lot de stock et ferme immuables.';
+  END IF;
+  IF OLD.status IN ('CLOSED', 'CANCELLED') AND NOT (NEW.status <=> OLD.status) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_production_lots : un lot clôturé ou annulé ne change plus de statut.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_production_lots_no_delete` BEFORE DELETE ON `production_production_lots` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_production_lots : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_slaughter_batches`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_slaughter_batches` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `production_lot_id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `source_location_id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `input_product_id` binary(16) NOT NULL,
+  `heads_qty` int NOT NULL,
+  `condemned_heads` int NOT NULL DEFAULT '0',
+  `live_weight_g` bigint NOT NULL,
+  `output_weight_g` bigint NOT NULL,
+  `total_input_value_xaf` bigint NOT NULL DEFAULT '0',
+  `yield_rate` decimal(5,4) DEFAULT NULL,
+  `stock_lot_id` binary(16) NOT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_slaughter_batches_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_production_slaughter_batches_stock_lot` (`stock_lot_id`),
+  UNIQUE KEY `uq_production_slaughter_batches_command` (`command_id`),
+  KEY `ix_production_slaughter_batches_lot` (`production_lot_id`,`occurred_at`),
+  KEY `fk_production_slaughter_batches_site` (`site_id`),
+  KEY `fk_production_slaughter_batches_source` (`source_location_id`),
+  KEY `fk_production_slaughter_batches_location` (`location_id`),
+  KEY `fk_production_slaughter_batches_product` (`input_product_id`),
+  KEY `fk_production_slaughter_batches_cancelled_by` (`cancelled_by`),
+  KEY `fk_production_slaughter_batches_device` (`created_device_id`),
+  KEY `fk_production_slaughter_batches_created_by` (`created_by`),
+  CONSTRAINT `fk_production_slaughter_batches_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_lot` FOREIGN KEY (`production_lot_id`) REFERENCES `production_production_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_product` FOREIGN KEY (`input_product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_source` FOREIGN KEY (`source_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_batches_stock_lot` FOREIGN KEY (`stock_lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_slaughter_batches_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_production_slaughter_batches_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_production_slaughter_batches_values` CHECK (((`heads_qty` > 0) and (`condemned_heads` >= 0) and (`condemned_heads` <= `heads_qty`) and (`live_weight_g` > 0) and (`output_weight_g` > 0) and (`output_weight_g` <= `live_weight_g`) and (`total_input_value_xaf` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_slaughter_batches_update_guard` BEFORE UPDATE ON `production_slaughter_batches` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND NEW.production_lot_id <=> OLD.production_lot_id AND
+    NEW.heads_qty <=> OLD.heads_qty AND NEW.condemned_heads <=> OLD.condemned_heads AND
+    NEW.live_weight_g <=> OLD.live_weight_g AND NEW.output_weight_g <=> OLD.output_weight_g AND
+    NEW.total_input_value_xaf <=> OLD.total_input_value_xaf AND NEW.stock_lot_id <=> OLD.stock_lot_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_slaughter_batches : abattage non modifiable ; annuler.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_slaughter_batches_no_delete` BEFORE DELETE ON `production_slaughter_batches` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_slaughter_batches : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `production_slaughter_outputs`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `production_slaughter_outputs` (
+  `id` binary(16) NOT NULL,
+  `slaughter_id` binary(16) NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `to_location_id` binary(16) NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `weight_g` bigint NOT NULL,
+  `allocated_value_xaf` bigint NOT NULL,
+  `unit_cost_xaf` bigint NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_production_slaughter_outputs_product` (`slaughter_id`,`product_id`),
+  KEY `fk_production_slaughter_outputs_product` (`product_id`),
+  KEY `fk_production_slaughter_outputs_location` (`to_location_id`),
+  CONSTRAINT `fk_production_slaughter_outputs_location` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_outputs_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_production_slaughter_outputs_slaughter` FOREIGN KEY (`slaughter_id`) REFERENCES `production_slaughter_batches` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_production_slaughter_outputs_values` CHECK (((`quantity_base` > 0) and (`weight_g` > 0) and (`allocated_value_xaf` >= 0) and (`unit_cost_xaf` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_slaughter_outputs_no_update` BEFORE UPDATE ON `production_slaughter_outputs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_slaughter_outputs : ligne immuable.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_production_slaughter_outputs_no_delete` BEFORE DELETE ON `production_slaughter_outputs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'production_slaughter_outputs : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `schema_migrations`
 --
 
@@ -5008,5 +6081,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260930090100'),
   ('20261001090000'),
   ('20261001090100'),
-  ('20261002090000');
+  ('20261002090000'),
+  ('20261002090100');
 UNLOCK TABLES;

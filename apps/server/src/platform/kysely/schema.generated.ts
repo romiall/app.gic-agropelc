@@ -1328,6 +1328,325 @@ export interface ProcurementSuppliers {
   version: Generated<number>;
 }
 
+export interface ProductionEggCollectionLines {
+  collection_id: Buffer;
+  created_at: Generated<Date>;
+  id: Buffer;
+  product_id: Buffer;
+  quantity: number;
+  unit_cost_xaf: Generated<number>;
+}
+
+export interface ProductionEggCollections {
+  backdated_reason: string | null;
+  broken_qty: Generated<number>;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  collected_qty: number;
+  collection_date: Date;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  hatching_product_id: Buffer | null;
+  hatching_qty: Generated<number>;
+  id: Buffer;
+  marketable_qty: number;
+  nonconforming_qty: Generated<number>;
+  occurred_at: Date;
+  production_lot_id: Buffer;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  standard_value_xaf: Generated<number>;
+  status: Generated<string>;
+  stock_lot_id: Buffer;
+  storage_location_id: Buffer;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProductionIncubationBatches {
+  accidental_loss_qty: Generated<number>;
+  backdated_reason: string | null;
+  batch_code: string;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  chick_product_id: Buffer;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  early_dead_qty: Generated<number>;
+  egg_product_id: Buffer;
+  egg_source: string;
+  eggs_set_qty: number;
+  expected_candling_date: Date | null;
+  expected_hatch_date: Date | null;
+  expected_transfer_date: Date | null;
+  hatch_rate: Decimal | null;
+  hatched_nonviable_qty: Generated<number>;
+  hatched_viable_qty: Generated<number>;
+  hatcher_location_id: Buffer | null;
+  id: Buffer;
+  incubator_location_id: Buffer;
+  infertile_qty: Generated<number>;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  set_at: Date;
+  site_id: Buffer;
+  species: string;
+  status: Generated<string>;
+  stock_lot_id: Buffer;
+  transferred_qty: Generated<number>;
+  unhatched_qty: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProductionIncubationEvents {
+  backdated_reason: string | null;
+  batch_id: Buffer;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  event_type: string;
+  id: Buffer;
+  occurred_at: Date;
+  output_location_id: Buffer | null;
+  qty_early_dead: number | null;
+  qty_hatched_nonviable: number | null;
+  qty_hatched_viable: number | null;
+  qty_infertile: number | null;
+  qty_transferred: number | null;
+  qty_unhatched: number | null;
+  received_at_server: Date | null;
+  single_step_key: string | null;
+  status: Generated<string>;
+}
+
+export interface ProductionLotEntries {
+  avg_weight_g: Decimal | null;
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  entry_type: string;
+  goods_receipt_id: Buffer | null;
+  id: Buffer;
+  occurred_at: Date;
+  product_id: Buffer;
+  production_lot_id: Buffer;
+  quantity_base: Decimal;
+  received_at_server: Date | null;
+  source_kind: string;
+  source_location_id: Buffer | null;
+  source_product_id: Buffer | null;
+  source_production_lot_id: Buffer | null;
+  source_stock_lot_id: Buffer | null;
+  status: Generated<string>;
+  stillborn_qty: Generated<number>;
+  to_location_id: Buffer;
+  unit_cost_xaf: number | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  value_xaf: Generated<number>;
+  version: Generated<number>;
+}
+
+export interface ProductionLotObservations {
+  backdated_reason: string | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  observation_type: string;
+  occurred_at: Date;
+  production_lot_id: Buffer;
+  received_at_server: Date | null;
+  severity: Generated<string>;
+  text: string;
+}
+
+export interface ProductionLotWeighings {
+  avg_weight_g: Decimal;
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  location_id: Buffer | null;
+  occurred_at: Date;
+  production_lot_id: Buffer;
+  received_at_server: Date | null;
+  sample_size: number;
+  source: Generated<string>;
+  status: Generated<string>;
+  total_weight_kg: Decimal | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProductionOverheadAllocationLines {
+  allocation_id: Buffer;
+  amount_xaf: number;
+  cost_entry_id: Buffer | null;
+  created_at: Generated<Date>;
+  head_days: Decimal;
+  id: Buffer;
+  production_lot_id: Buffer;
+}
+
+export interface ProductionOverheadAllocations {
+  allocated_xaf: number;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  head_days_total: Decimal;
+  id: Buffer;
+  occurred_at: Date;
+  period: string;
+  pool_xaf: number;
+  production_lot_id: Buffer | null;
+  run_kind: string;
+  sequence: number;
+  site_id: Buffer;
+  species_group: string;
+}
+
+export interface ProductionProductionLots {
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  closed_at: Date | null;
+  closing_summary: Json | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  initial_quantity: Decimal | null;
+  lot_code: string;
+  lot_type: string;
+  main_location_id: Buffer;
+  notes: string | null;
+  occurred_at: Date;
+  parent_lot_id: Buffer | null;
+  planned_end_date: Date | null;
+  planned_start_date: Date | null;
+  product_id: Buffer;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  start_date: Date | null;
+  status: Generated<string>;
+  stock_lot_id: Buffer;
+  strain: string | null;
+  supplier_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface ProductionSlaughterBatches {
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  condemned_heads: Generated<number>;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  heads_qty: number;
+  id: Buffer;
+  input_product_id: Buffer;
+  live_weight_g: number;
+  location_id: Buffer;
+  occurred_at: Date;
+  output_weight_g: number;
+  production_lot_id: Buffer;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  source_location_id: Buffer;
+  status: Generated<string>;
+  stock_lot_id: Buffer;
+  total_input_value_xaf: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+  yield_rate: Decimal | null;
+}
+
+export interface ProductionSlaughterOutputs {
+  allocated_value_xaf: number;
+  created_at: Generated<Date>;
+  id: Buffer;
+  product_id: Buffer;
+  quantity_base: Decimal;
+  slaughter_id: Buffer;
+  to_location_id: Buffer;
+  unit_cost_xaf: number;
+  weight_g: number;
+}
+
 export interface SchemaMigrations {
   version: string;
 }
@@ -1477,6 +1796,18 @@ export interface DB {
   procurement_purchase_request_lines: ProcurementPurchaseRequestLines;
   procurement_purchase_requests: ProcurementPurchaseRequests;
   procurement_suppliers: ProcurementSuppliers;
+  production_egg_collection_lines: ProductionEggCollectionLines;
+  production_egg_collections: ProductionEggCollections;
+  production_incubation_batches: ProductionIncubationBatches;
+  production_incubation_events: ProductionIncubationEvents;
+  production_lot_entries: ProductionLotEntries;
+  production_lot_observations: ProductionLotObservations;
+  production_lot_weighings: ProductionLotWeighings;
+  production_overhead_allocation_lines: ProductionOverheadAllocationLines;
+  production_overhead_allocations: ProductionOverheadAllocations;
+  production_production_lots: ProductionProductionLots;
+  production_slaughter_batches: ProductionSlaughterBatches;
+  production_slaughter_outputs: ProductionSlaughterOutputs;
   schema_migrations: SchemaMigrations;
   sync_change_feed: SyncChangeFeed;
   sync_command_inbox: SyncCommandInbox;

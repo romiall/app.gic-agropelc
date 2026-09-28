@@ -9,7 +9,7 @@
 export interface SystemSettingSeed {
   readonly key: string;
   /** Seuil numérique, code d'option, ou liste de codes (ex. rôles commerciaux, P3-04). */
-  readonly value: number | string | readonly string[];
+  readonly value: number | string | readonly string[] | Readonly<Record<string, unknown>>;
   readonly isClientVisible: boolean;
   /** Référence documentaire (AV/BR) pour la traçabilité de la valeur par défaut. */
   readonly ref: string;
@@ -20,6 +20,39 @@ export interface SystemSettingSeed {
 // visite), faux pour les seuils d'approbation et les paramètres purement serveur, jamais
 // interrogés par la PWA (dictionnaire : « Téléchargé sur les appareils »).
 export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
+  // P7-04 (production). AV-046 : liste ordonnée des produits « calibre » (codes catalogue) —
+  // vide tant que les produits GIC ne sont pas saisis (AV-072) ; une collecte ne peut ventiler
+  // que ces calibres. Produit des œufs à couver : code catalogue (vide = non paramétré).
+  { key: 'production.egg_grade_product_codes', value: [], isClientVisible: true, ref: 'AV-046' },
+  {
+    key: 'production.hatching_egg_product_code',
+    value: '',
+    isClientVisible: true,
+    ref: 'AV-046, AV-047',
+  },
+  // AV-047 : durées d'incubation par espèce, en jours depuis la mise en incubateur (WF-12).
+  {
+    key: 'production.incubation_durations',
+    value: { POULE: { candlingDay: 7, transferDay: 18, hatchDay: 21 } },
+    isClientVisible: true,
+    ref: 'AV-047, BR-INC-008',
+  },
+  // AV-115 (défaut) : types de lots abattables.
+  {
+    key: 'production.slaughterable_lot_types',
+    value: ['POULET_CHAIR'],
+    isClientVisible: true,
+    ref: 'AV-032, AV-115',
+  },
+  // AV-121 (défaut) : seuils de l'alerte de mortalité élevée (cumul du jour), découplés de la
+  // validation (toujours exigée, AV-048).
+  { key: 'production.high_mortality_alert_pct', value: 0.5, isClientVisible: false, ref: 'AV-121' },
+  {
+    key: 'production.high_mortality_alert_heads',
+    value: 20,
+    isClientVisible: false,
+    ref: 'AV-121',
+  },
   { key: 'fieldwork.geofence_radius_m', value: 500, isClientVisible: true, ref: 'CM §10, AV-022' },
   { key: 'fieldwork.max_gps_accuracy_m', value: 150, isClientVisible: true, ref: 'AV-022' },
   { key: 'fieldwork.override_min_attempts', value: 3, isClientVisible: true, ref: 'AV-021' },

@@ -173,6 +173,12 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `procurement.receipt_over_tolerance_pct` | 0 | AV-053 (acceptation au-delà du commandé, en % du commandé) |
 | `procurement.offline_over_receipt_mode` | `QUARANTINE` | AV-095 (réception hors ligne au-delà du reliquat : `QUARANTINE` ou `APPLY_WITH_REVIEW`) |
 | `procurement.receipt_photo_threshold_xaf` | 100 000 | BR-APP-014, AV-037 (photo du bon de livraison exigée à partir de cette valeur acceptée) |
+| `production.egg_grade_product_codes` | `[]` | AV-046 (codes produits des calibres d'œufs, liste ordonnée ; à paramétrer avec les produits GIC, AV-072) |
+| `production.hatching_egg_product_code` | `""` | AV-046, AV-047 (code produit des œufs à couver ; vide = non paramétré) |
+| `production.incubation_durations` | `{"POULE": {"candlingDay": 7, "transferDay": 18, "hatchDay": 21}}` | AV-047, BR-INC-008 (échéancier par espèce, jours depuis la mise en incubateur ; ne bloque rien) |
+| `production.slaughterable_lot_types` | `["POULET_CHAIR"]` | AV-032, AV-115 (types de lots abattables) |
+| `production.high_mortality_alert_pct` | 0,5 | AV-121 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) |
+| `production.high_mortality_alert_heads` | 20 | AV-121 (seuil absolu de l'alerte `HIGH_MORTALITY`) |
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |
