@@ -4,6 +4,7 @@ export {
   listUnits,
   listReasonCodes,
   findReasonCode,
+  findReasonCodeByCode,
   findProductForPricing,
   findProductLotTracking,
   findProduct,

@@ -63,6 +63,9 @@ export const WARNING_CODES = [
   // P6-05 : réception hors ligne appliquée au-delà du reliquat, excédent tracé en revue
   // (BR-APP-010, mode `APPLY_WITH_REVIEW` du paramètre procurement.offline_over_receipt_mode).
   'OVER_RECEIPT',
+  // P7-08 : éclosion saisie hors ligne avec moins d'issues que d'œufs restants — la différence
+  // est comptée en œufs non éclos (INV-INC-01), conflit informatif pour le Resp. production.
+  'INCUBATION_BALANCE_ADJUSTED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

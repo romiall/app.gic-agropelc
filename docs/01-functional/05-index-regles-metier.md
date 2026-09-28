@@ -227,7 +227,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-OEU-006 | Des catégories supplémentaires (calibres, œufs déclassés vendables) s'ajoutent comme nouveaux produits et nouveaux champs de collecte, sans… | C (CM §17 « d'autres classifications ») |
 | BR-OEU-007 | Coût des œufs produits : coût standard en vigueur de chaque produit ; le lot de pondeuses est crédité du même montant (`PRODUCTION_TRANSFER… | AV-042, AV-098 (ADR-027) |
 | BR-INC-001 | Un lot d'incubation est constitué d'œufs à couver issus du stock (production interne ou achat réceptionné) ; il crée son lot de traçabilité… | C (CM §18) / AV-047 |
-| BR-INC-002 | Démarrage : déplacement interne des œufs à couver du stockage vers l'emplacement `INCUBATOR` ; `eggs_set_qty` est figé. | C (CM §18) |
+| BR-INC-002 | Démarrage : les œufs à couver passent du stockage à l'emplacement `INCUBATOR`, sous le lot de traçabilité du lot d'incubation (reclassement… | C (CM §18) / D (ADR-027, P7-08) |
 | BR-INC-003 | Mirage : les infertiles et la mortalité embryonnaire sortent de l'incubateur vers `V_PRODUCTION` (`PRODUCTION_INPUT`, motifs `INFERTILE`, `… | C (CM §18) / D |
 | BR-INC-004 | Transfert vers l'éclosoir : déplacement interne incubateur → `HATCHER` des œufs restants. | C (CM §18) |
 | BR-INC-005 | Éclosion : les œufs restants sortent vers `V_PRODUCTION` (`PRODUCTION_INPUT`) ; les poussins viables entrent en stock (`PRODUCTION_OUTPUT`… | C (CM §18) |

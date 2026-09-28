@@ -100,6 +100,7 @@ export {
   LOSS_ATTACHMENT_OWNER_TYPE,
   declareLoss,
   lotMortalitySummary,
+  lotLossQuantity,
 } from './loss-declaration.js';
 export type {
   LossCategory,

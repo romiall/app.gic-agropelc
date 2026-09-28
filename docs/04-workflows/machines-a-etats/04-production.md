@@ -46,13 +46,13 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `production.incubation.start` | Œufs à couver disponibles ; incubateur actif | `INCUBATING` | `eggs_set_qty` figé ; lot de traçabilité ; échéancier (BR-INC-008) ; `IncubationBatchStarted` | `INTERNAL_MOVE` stockage → incubateur | Objet de coût créé ; coût des œufs porté | `production.incubation.record` |
-| `INCUBATING` | `production.incubation.record_candling` | Quantités ≤ œufs en incubateur | `INCUBATING` | Infertiles, mortalité embryonnaire ; `CandlingRecorded` | `PRODUCTION_INPUT` incubateur → `V_PRODUCTION` (motifs de rendement) | — | `production.incubation.record` |
-| `INCUBATING` | `production.incubation.transfer_to_hatcher` | Éclosoir actif | `IN_HATCHER` | `HatcherTransferRecorded` | `INTERNAL_MOVE` incubateur → éclosoir | — | `production.incubation.record` |
-| `IN_HATCHER` | `production.incubation.record_hatch` | Bilan BR-INC-006 | `CLOSED` | Taux d'éclosion ; `HatchRecorded`, `ProductionRecorded` | `PRODUCTION_INPUT` des œufs restants ; `PRODUCTION_OUTPUT` des poussins viables (vers l'éclosoir ou la poussinière) | Coût unitaire des poussins (BR-INC-009) | `production.incubation.record` |
-| `INCUBATING`, `IN_HATCHER` | `production.incubation.cancel` | Tous les œufs sortis (pertes déclarées) | `CANCELLED` | Tracé | — | Coût du lot d'incubation = perte | `production.incubation.record` |
+| `[*]` | `production.incubation.start` | Œufs à couver disponibles ; incubateur actif ; espèce paramétrée | `INCUBATING` | `eggs_set_qty` figé ; lot de traçabilité ; échéancier (BR-INC-008) ; `IncubationBatchStarted` | Reclassement : `PRODUCTION_INPUT` des œufs de leur lot, `PRODUCTION_OUTPUT` dans l'incubateur sous le lot d'incubation | Écriture `OEUFS` au lot d'incubation | `production.incubation.record` |
+| `INCUBATING` | `production.incubation.record_candling` | Quantités ≤ œufs restants (pertes accidentelles déduites) | `INCUBATING` | Infertiles, mortalité embryonnaire ; `CandlingRecorded` | `PRODUCTION_INPUT` incubateur → `V_PRODUCTION` au coût 0 (motifs de rendement) | Coût reporté sur les œufs restants | `production.incubation.record` |
+| `INCUBATING` | `production.incubation.transfer_to_hatcher` | Éclosoir actif de la ferme | `IN_HATCHER` | `HatcherTransferRecorded` | `INTERNAL_MOVE` des œufs restants incubateur → éclosoir | — | `production.incubation.record` |
+| `IN_HATCHER` | `production.incubation.record_hatch` | Bilan BR-INC-006 | `CLOSED` | Taux d'éclosion ; `HatchRecorded`, `ProductionRecorded` | `PRODUCTION_INPUT` des œufs restants au coût 0 ; `PRODUCTION_OUTPUT` des poussins viables sous le lot d'incubation (vers l'éclosoir ou la poussinière) | Coût du lot porté par les poussins viables (BR-INC-009) | `production.incubation.record` |
+| `INCUBATING`, `IN_HATCHER` | `production.incubation.cancel` | Tous les œufs sortis (pertes déclarées), sinon `INCUBATION_NOT_EMPTY` | `CANCELLED` | Tracé | Lot de stock clos | Coût du lot d'incubation = perte | `production.incubation.record` |
 
-**Hors ligne** : toutes les transitions sont possibles.
+**Hors ligne** : toutes les transitions sont possibles. Une étape reçue sur un lot déjà clos ou annulé est conservée en conflit `INCUBATION_CLOSED` sans effet ; une éclosion incomplète est complétée en œufs non éclos (`INCUBATION_BALANCE_ADJUSTED`, P7-08).
 
 ---
 

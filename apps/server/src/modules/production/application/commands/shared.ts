@@ -20,7 +20,12 @@ import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
-import { InventoryMoveError } from '../../../inventory/application/public/index.js';
+import {
+  InventoryMoveError,
+  recordStockMove,
+  virtualLocationId,
+  type RecordMoveInput,
+} from '../../../inventory/application/public/index.js';
 
 export type Uow = Transaction<DB>;
 
@@ -211,7 +216,7 @@ export async function dailyLot(
 /** Emplacement physique actif de la ferme du lot (`SITE_MISMATCH` sinon). */
 export async function farmLocation(
   uow: Uow,
-  lot: LotRow,
+  lot: { readonly siteId: string },
   locationId: string,
   options: { readonly rearingOnly?: boolean } = {},
 ): Promise<CommandHandlerOutcome | undefined> {
@@ -226,7 +231,7 @@ export async function farmLocation(
 }
 
 /** Paramètre système global en vigueur à `at` (règle 8 : aucun seuil codé en dur). */
-async function settingValue(uow: Uow, key: string, at: Date): Promise<unknown> {
+export async function settingValue(uow: Uow, key: string, at: Date): Promise<unknown> {
   return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
 }
 
@@ -253,4 +258,36 @@ export async function stringListSetting(
 ): Promise<readonly string[]> {
   const value = await settingValue(uow, key, at);
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+/**
+ * Sortie `PRODUCTION_INPUT` vers `V_PRODUCTION` (reclassement, mirage, éclosion) ; renvoie la
+ * valeur sortie. Sans lot désigné ni lot en solde à l'emplacement, l'inventaire répond
+ * `LOT_REQUIRED` : il n'y a en fait rien à prendre (`INSUFFICIENT_STOCK`).
+ */
+export async function recordProductionInput(
+  uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
+  input: Omit<RecordMoveInput, 'moveType' | 'toLocationId'>,
+): Promise<number> {
+  try {
+    const moves = await recordStockMove(uow, deps, {
+      ...input,
+      moveType: 'PRODUCTION_INPUT',
+      toLocationId: await virtualLocationId(uow, 'V_PRODUCTION'),
+    });
+    return moves.reduce((sum, move) => sum + move.valueXaf, 0);
+  } catch (error) {
+    if (
+      error instanceof InventoryMoveError &&
+      error.code === 'LOT_REQUIRED' &&
+      input.lotId === undefined
+    ) {
+      throw new InventoryMoveError(
+        'Aucun stock de ce produit à cet emplacement.',
+        'INSUFFICIENT_STOCK',
+      );
+    }
+    throw error;
+  }
 }

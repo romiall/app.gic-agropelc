@@ -33,3 +33,26 @@ export async function emitProductionLotChange(uow: UnitOfWork, lotId: string): P
     },
   ]);
 }
+
+/** Lots d'incubation servis hors ligne (D07 §12 : « lots d'incubation en cours »). */
+export const OPEN_INCUBATION_STATUSES: readonly string[] = ['INCUBATING', 'IN_HATCHER'];
+
+export async function emitIncubationBatchChange(uow: UnitOfWork, batchId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('production_incubation_batches')
+    .select(['site_id', 'status', 'version'])
+    .where('id', '=', toBin(batchId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: PRODUCTION_DATASET,
+      entityType: 'INCUBATION_BATCH',
+      entityId: batchId,
+      scopeType: 'SITE',
+      scopeId: fromBin(row.site_id),
+      changeType: OPEN_INCUBATION_STATUSES.includes(row.status) ? 'UPSERT' : 'SCOPE_EXIT',
+      rowVersion: row.version,
+    },
+  ]);
+}

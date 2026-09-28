@@ -32,8 +32,10 @@
 | Allocation | Dépassement du quota (appareil modifié) | 1 | 4 | Consommation > reste | **FAIT** + anomalie de fraude possible (WF-18) | Responsable + DIRECTION |
 | Transfert | Réception sans document, jamais rapprochée | 2 | 3 | Transit non rapproché > 48 h | Conflit `TRANSFER_UNMATCHED` ; rapprochement manuel ou création de l'expédition manquante | MAGASINIER |
 | Inventaire | Mouvements tardifs antérieurs au comptage | 3 | 3 | `occurred_at ≤ counted_at` après comptabilisation | **FUSION** automatique : ajustement compensatoire (BR-STK-044) | `system` |
-| Perte | Déclarée sur un lot clôturé | 1 | 2 | Statut du lot | **FAIT** + `LOT_CLOSED` ; réouverture ou correction par un responsable | RESP_PRODUCTION |
-| Collecte d'œufs | Même lot et même date saisis sur deux appareils | 1 | 3 | Unicité (lot, date) | Seconde collecte : **QUARANTAINE** `VERSION_CONFLICT` ; choix de la bonne collecte ou annulation de l'une | RESP_FERME |
+| Perte, saisie du jour, entrée de lot | Déclarée sur un lot clôturé ou annulé (mortalité, consommation, pesée, observation, collecte, entrée : P7-05 à P7-07) | 1 | 2 | Statut du lot | **FAIT** + `LOT_CLOSED` ; réouverture ou correction par un responsable | RESP_PRODUCTION |
+| Collecte d'œufs | Même ramassage saisi sur deux appareils | 1 | 3 | Aucune unicité (plusieurs collectes par jour, AV-110) ; production du jour anormale à la lecture du lot | **FAIT** : les deux collectes sont appliquées ; annulation de la collecte en double (BR-OEU-004) | RESP_FERME |
+| Lot d'incubation | Étape (mirage, transfert, éclosion) reçue après la clôture ou l'annulation du lot | 1 | 2 | Statut du lot | **QUARANTAINE** `INCUBATION_CLOSED` : conflit sans effet, arbitrage (P7-08) | RESP_PRODUCTION |
+| Lot d'incubation | Éclosion comptant moins d'issues que d'œufs restants | 1 | 3 | Bilan INV-INC-01 | **FAIT** : différence comptée en œufs non éclos + `INCUBATION_BALANCE_ADJUSTED` (P7-08) | RESP_PRODUCTION |
 | Session de caisse | Vente tardive sur une session validée | 2 | 3 | `occurred_at` dans une session `VALIDATED` | **FAIT** + réévaluation de la session (BR-DIS-008) | FINANCE |
 | Session de travail | Deux prises de service de deux appareils | 1 | 1 | Deux sessions ouvertes | **FUSION** : la plus récente clôt la précédente (`superseded`) | `system` |
 | Pointage | Accepté localement, refusé par le serveur (géorepère modifié) | 1 | 2 | Divergence de résultat | Dérogation automatique demandée (BR-TER-003) | RESP_COMMERCIAL |

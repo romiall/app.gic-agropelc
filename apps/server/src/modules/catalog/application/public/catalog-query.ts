@@ -206,6 +206,21 @@ export async function findReasonCode(
     : undefined;
 }
 
+/** Un code motif par catégorie et code (motifs de rendement de la production, P7-08). */
+export async function findReasonCodeByCode(
+  executor: Kysely<DB> | Transaction<DB>,
+  category: string,
+  code: string,
+): Promise<ReasonCodeSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_reason_codes')
+    .select('id')
+    .where('category', '=', category)
+    .where('code', '=', code)
+    .executeTakeFirst();
+  return row ? findReasonCode(executor, fromBin(row.id)) : undefined;
+}
+
 export async function listReasonCodes(
   executor: Kysely<DB> | Transaction<DB>,
   filter: { readonly category?: string } = {},
