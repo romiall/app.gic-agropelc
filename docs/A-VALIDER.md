@@ -111,6 +111,31 @@ Classification (PM §45) :
 | AV-094 | Permission de lecture des documents de stock (transferts, pertes, consommations, inventaires, seuils) | SECONDAIRE | P2 | Pertes : `inventory.loss.read`, encadrement dans son périmètre, déclarants de terrain limités à leurs propres pertes ; autres documents : `inventory.stock.read` | **TRANCHÉ** (voir journal §3) |
 | AV-095 | Réception hors ligne dépassant le reliquat d'un bon de commande : quarantaine ou application avec excédent en revue | SECONDAIRE | P6 | Quarantaine (défaut confirmé) | **TRANCHÉ** (voir journal §3) |
 | AV-096 | Dérogation d'emplacement de réception (réception d'un BC hors de son site de livraison) : qui l'accorde et comment | SECONDAIRE | P6 | Autorisée après validation du Resp. achats ; stock à la validation | **TRANCHÉ** (voir journal §3) |
+| AV-097 | Coût par tête d'un lot après les sorties | IMPORTANTE | P7 | Coût restant ÷ têtes restantes (ADR-027) | **TRANCHÉ** (voir journal §3) |
+| AV-098 | Valeur des productions des lots reproducteurs | IMPORTANTE | P7 | Coût standard ; crédit du lot producteur (ADR-027) | **TRANCHÉ** (voir journal §3) |
+| AV-099 | Lots à plusieurs produits (truies, verrats, porcelets ; poules et coqs) | IMPORTANTE | P7 | Un lot par produit, lots liés | **TRANCHÉ** (voir journal §3) |
+| AV-100 | Lot de stock des œufs collectés et des produits d’abattage | IMPORTANTE | P7 | Lot de stock propre par collecte et par abattage | **TRANCHÉ** (voir journal §3) |
+| AV-101 | Lieu et acteur de l'abattage | IMPORTANTE | P7 | À la ferme, emplacement abattoir, Resp. ferme | **TRANCHÉ** (voir journal §3) |
+| AV-102 | Unités et vente des produits d'abattage | IMPORTANTE | P7 | Entier à la pièce ; découpes et abats au kg | **TRANCHÉ** (voir journal §3) |
+| AV-103 | Saisie des frais généraux de ferme | IMPORTANTE | P7 | Finance (ALL), Resp. production (ALL), Resp. ferme (SITE) | **TRANCHÉ** (voir journal §3) |
+| AV-104 | Frais généraux séparés par espèce | IMPORTANTE | P7 | Volaille / porc séparés ; frais communs ventilés à la saisie | **TRANCHÉ** (voir journal §3) |
+| AV-105 | Lot clôturé en cours de mois | IMPORTANTE | P7 | Part estimée à la clôture sur les frais connus | **TRANCHÉ** (voir journal §3) |
+| AV-106 | Moment de la répartition et frais tardifs | SECONDAIRE | P7 | À la demande ; régularisation des frais tardifs | **TRANCHÉ** (voir journal §3) |
+| AV-107 | Mortalité reçue sans photo | IMPORTANTE | P7 | Enregistrée ; validation bloquée jusqu’à la photo | **TRANCHÉ** (voir journal §3) |
+| AV-108 | Écarts d’inventaire sur des animaux | IMPORTANTE | P7 | Validation Resp. production pour tout écart sur animaux | **TRANCHÉ** (voir journal §3) |
+| AV-109 | Lots permanents (pondeuses, reproducteurs, truies) | IMPORTANTE | P7 | Résultat mensuel ; vente par produit | **TRANCHÉ** (voir journal §3) |
+| AV-110 | Nombre de collectes d’œufs par jour | SECONDAIRE | P7 | Plusieurs collectes par jour | **TRANCHÉ** (voir journal §3) |
+| AV-111 | Organisation du naissage porcin | IMPORTANTE | P7 | Lot truies + lot porcelets ; sevrage vers engraissement | **TRANCHÉ** (voir journal §3) |
+| AV-112 | Mise en place par achat direct | SECONDAIRE | P7 | Une seule opération (réception + entrée) | **TRANCHÉ** (voir journal §3) |
+| AV-113 | Mortalité des poussins avant mise en place | SECONDAIRE | P7 | Mortalité rattachée au lot d’incubation | **TRANCHÉ** (voir journal §3) |
+| AV-114 | Carcasses saisies et frais d'abattage | SECONDAIRE | P7 | Saisies sans produit (coût porté par les produits) ; frais = dépense directe du lot | OUVERT |
+| AV-115 | Abattage des réformes et des porcs | SECONDAIRE | P7 | Poulet de chair seul ; autres types activables par paramètre | OUVERT |
+| AV-116 | Définition des indicateurs zootechniques | SECONDAIRE | P7 | Formules de la recommandation, paramétrables | OUVERT |
+| AV-117 | Journée sans événement (« RAS ») | SECONDAIRE | P7 | Non construit en P7 (alertes en P9) ; observation « RAS » possible | OUVERT |
+| AV-118 | Reclassement d'œufs | SECONDAIRE | P7 | Non construit en P7 ; reclassement avec motif proposé | OUVERT |
+| AV-119 | Mortalité constatée hors élevage | SECONDAIRE | P7 | Toute mortalité suit la politique `MORTALITY` | OUVERT |
+| AV-120 | Annulations après consommation (collecte, mortalité approuvée) | SECONDAIRE | P7 | Refus en ligne (`STOCK_UNAVAILABLE`) ; correction compensatoire, en attendant la décision | OUVERT |
+| AV-121 | Seuils de l’alerte de mortalité élevée | SECONDAIRE | P7 | Seuils d’alerte propres (0,5 % ou 20 têtes/jour), paramétrés | OUVERT |
 
 ---
 
@@ -538,6 +563,181 @@ Politique par défaut, paramétrable :
 - **Impact** : (b) ou (c) : une colonne et une règle dans `procurement.receipt.record` ; aucun effet sur le registre de stock.
 - **Décision** (porteur du projet, 27/09/2026) : Réception hors du site de livraison du BC **autorisée après validation** du responsable des achats (option c) : la réception attend la décision et le stock entre à la validation ; à construire en reprise de P6.
 
+### AV-097 — Coût par tête d'un lot après les sorties — IMPORTANTE — **TRANCHÉ**
+- **Question** : le coût par tête d'un lot se calcule-t-il sur le coût cumulé ou sur le coût restant après les sorties (ventes, abattage, sevrage) ?
+- **Pourquoi** : la formule écrite (BR-PRD-012, ADR-015, stratégies stock §9 et finance §6.1 : « coût cumulé ÷ effectif non vendu ») réimpute aux têtes restantes le coût des têtes déjà sorties : sur l'exemple de la stratégie finance, le coût des ventes dépasse le coût du lot de 43 %.
+- **Choix** : (a) coût restant (coût du lot moins la valeur déjà sortie) ÷ têtes restantes ; (b) moyenne figée ; (c) formule écrite.
+- **Impact** : ADR-027 ; BR-PRD-012 ; `inventory` (valorisation des sorties d'un lot biologique).
+- **Décision** (porteur du projet, 28/09/2026) : **coût restant** (option a) : coût par tête = (Σ écritures de coût du lot − Σ valeurs figées des sorties définitives) ÷ effectif non vendu ; la mortalité et les écarts d'inventaire ne réduisent pas le coût restant (ils le répartissent sur moins de têtes, BR-PRD-013) ; la dernière sortie emporte le coût restant exact
+
+### AV-098 — Valeur des productions des lots reproducteurs — IMPORTANTE — **TRANCHÉ**
+- **Question** : quelle valeur donner aux œufs des pondeuses et reproducteurs et aux porcelets nés du naissage ?
+- **Pourquoi** : les lots qui produisent n'avaient aucune règle de partage du coût entre les reproducteurs et leur production (BR-OEU-007 ne parlait que du coût standard des œufs).
+- **Choix** : (a) coût standard du produit, le lot producteur est crédité d'autant ; (b) coût réel du mois ÷ unités produites ; (c) porcelets porteurs des coûts d'exploitation.
+- **Impact** : ADR-027 ; écritures de coût (sens `CREDIT` de production transférée) ; coûts standard par produit (dont calibres).
+- **Décision** (porteur du projet, 28/09/2026) : **coût standard + crédit** (option a) : chaque œuf ou porcelet produit entre en stock au coût standard en vigueur de son produit ; le lot producteur reçoit un crédit du même montant ; l'écart entre coût réel et standard reste dans le résultat du lot producteur
+
+### AV-099 — Lots à plusieurs produits (truies, verrats, porcelets ; poules et coqs) — IMPORTANTE — **TRANCHÉ**
+- **Question** : comment gérer un lot qui contiendrait plusieurs produits biologiques ?
+- **Pourquoi** : BR-PRD-001 donne un seul produit à un lot, alors qu'un naissage réunit truies, verrats et porcelets et qu'un lot reproducteur réunit poules et coqs.
+- **Choix** : (a) produit principal + produits autorisés ; (b) un lot par produit, liés ; (c) produit mixte unique.
+- **Impact** : `production_lots` : lien facultatif vers un lot parent (bande) ; effectif et indicateurs par lot.
+- **Décision** (porteur du projet, 28/09/2026) : **un lot par produit** (option b) : chaque lot garde un seul produit biologique (BR-PRD-001 inchangée) ; les lots d'une même bande (truies, verrats, porcelets ; poules, coqs) sont liés entre eux
+
+### AV-100 — Lot de stock des œufs collectés et des produits d’abattage — IMPORTANTE — **TRANCHÉ**
+- **Question** : les œufs d'une collecte et les produits d'un abattage partagent-ils le lot de stock du lot de production ?
+- **Pourquoi** : si oui, la clôture du lot d'animaux rend ses œufs et découpes restants invendables (sélection FIFO limitée aux lots ouverts) et INV-PRD-02 interdit tout mouvement après la clôture.
+- **Choix** : (a) lot propre par collecte et par abattage, rattaché au lot de production ; (b) même lot.
+- **Impact** : `inventory.stock_lots` (origines), FEFO, attribution du CA au lot de production par l'origine.
+- **Décision** (porteur du projet, 28/09/2026) : **lot propre, rattaché** (option a) : chaque collecte crée un lot de stock d'origine `COLLECTION`, chaque abattage un lot d'origine transformation, avec date de péremption, rattachés au lot de production ; la clôture du lot d'animaux reste indépendante
+
+### AV-101 — Lieu et acteur de l'abattage — IMPORTANTE — **TRANCHÉ**
+- **Question** : où et par qui se fait l'abattage des poulets (AV-032) ?
+- **Pourquoi** : aucun type d'emplacement ni aucun acteur n'était défini pour l'abattage.
+- **Choix** : (a) à la ferme, emplacement « abattoir », Resp. ferme ; (b) abattoir prestataire ; (c) au point de vente.
+- **Impact** : type d'emplacement `SLAUGHTERHOUSE` ; commande d'abattage sous `production.daily.record`.
+- **Décision** (porteur du projet, 28/09/2026) : **à la ferme** (option a) : emplacement dédié de la ferme, saisie par le Responsable ferme (hors ligne possible), produits entrés au stock de la ferme
+
+### AV-102 — Unités et vente des produits d'abattage — IMPORTANTE — **TRANCHÉ**
+- **Question** : comment se comptent et se vendent le poulet abattu, les découpes et les abats ?
+- **Pourquoi** : l'abattage produit plusieurs produits ; leur unité de base conditionne la saisie et le prix (AV-031 ouvert pour le vif).
+- **Choix** : (a) entier à la pièce, découpes et abats au kilo ; (b) tout au kilo ; (c) tout à la pièce.
+- **Impact** : référentiel produits ; poids obligatoire à l’abattage (clé de répartition, AV-032).
+- **Décision** (porteur du projet, 28/09/2026) : **entier à la pièce** (poids enregistré à l'abattage), **découpes et abats au kilo** (option a)
+
+### AV-103 — Saisie des frais généraux de ferme — IMPORTANTE — **TRANCHÉ**
+- **Question** : qui enregistre les frais généraux d'une ferme en attendant le module finance ?
+- **Pourquoi** : seule la Finance détient `inventory.cost_entry.record`, sans commande construite.
+- **Choix** : (a) Finance + Resp. production ; (b) Finance seule ; (c) Finance, Resp. production et Resp. ferme pour sa ferme.
+- **Impact** : RBAC : `inventory.cost_entry.record` accordée à RESP_PRODUCTION (ALL) et RESP_FERME (SITE).
+- **Décision** (porteur du projet, 28/09/2026) : **Finance, Responsable production et Responsable ferme pour sa propre ferme** (option c), en ligne, tracés à l'audit
+
+### AV-104 — Frais généraux séparés par espèce — IMPORTANTE — **TRANCHÉ**
+- **Question** : la répartition têtes × jours mélange-t-elle les espèces (un poussin pesant autant qu'une truie) ?
+- **Pourquoi** : dans une ferme mixte, la volaille absorberait presque tous les frais.
+- **Choix** : coefficient par type, aucune pondération, poids vif ; puis niveau de séparation et traitement des frais communs.
+- **Impact** : ADR-026 amendé ; écritures de frais généraux portant une espèce.
+- **Décision** (porteur du projet, 28/09/2026) : réponse du porteur : « la répartition doit être spécifique à chaque espèce, il ne faut pas mélanger les coûts ». Précisions retenues : deux ensembles **volaille** (chair, pondeuses, reproducteurs) et **porc** (engraissement, naissage) ; chaque frais est rattaché à une espèce ; un frais commun est **ventilé à la saisie** par montant par espèce ; chaque ensemble est réparti entre les lots de son espèce au prorata têtes × jours
+
+### AV-105 — Lot clôturé en cours de mois — IMPORTANTE — **TRANCHÉ**
+- **Question** : un lot clôturé en cours de mois reçoit-il sa part des frais généraux de ce mois ?
+- **Pourquoi** : la répartition se fait après la fin du mois, alors que la clôture fige le résultat du lot.
+- **Choix** : (a) oui, après clôture ; (b) non, lots actifs seuls ; (c) part estimée à la clôture.
+- **Impact** : ADR-026 amendé ; clôture de lot.
+- **Décision** (porteur du projet, 28/09/2026) : **part estimée à la clôture** (option c) : à la clôture, le lot reçoit une part calculée sur les frais déjà connus du mois de son espèce et les têtes × jours écoulés ; la répartition du mois exclut ensuite ce lot et ce montant
+
+### AV-106 — Moment de la répartition et frais tardifs — SECONDAIRE — **TRANCHÉ**
+- **Question** : quand la répartition mensuelle est-elle faite, et que deviennent les frais saisis en retard ?
+- **Pourquoi** : ADR-026 renvoyait ces règles à un « D07 §15 » inexistant.
+- **Choix** : (a) le 8 du mois suivant, retard au mois suivant ; (b) le 1er, retard régularisé ; (c) à la demande.
+- **Impact** : commande `production.overhead.allocate` ; aucun ordonnanceur requis.
+- **Décision** (porteur du projet, 28/09/2026) : **à la demande** (option c) : la Finance ou le Responsable production lance la répartition d'un mois pour une ferme et une espèce ; un frais saisi après donne une **régularisation** du même mois (nouvelle exécution sur le montant non réparti), jamais une réécriture
+
+### AV-107 — Mortalité reçue sans photo — IMPORTANTE — **TRANCHÉ**
+- **Question** : une mortalité arrive sans photo alors que la photo est obligatoire (AV-048) : que faire ?
+- **Pourquoi** : hors ligne, un fait accompli n'est jamais rejeté (BR-SYN-007).
+- **Choix** : (a) enregistrée, validation bloquée jusqu'à la photo ; (b) commentaire si photo impossible ; (c) rejet.
+- **Impact** : pièces jointes de la déclaration consultées à la décision (et non figées dans la demande).
+- **Décision** (porteur du projet, 28/09/2026) : **enregistrée, validation bloquée** (option a) : la perte est enregistrée en attente ; aucune décision n'est possible tant qu'une photo n'est pas jointe après coup
+
+### AV-108 — Écarts d’inventaire sur des animaux — IMPORTANTE — **TRANCHÉ**
+- **Question** : un inventaire de bâtiment en baisse pourrait contourner la validation systématique des mortalités.
+- **Pourquoi** : les inventaires suivent aujourd'hui la politique `INVENTORY_ADJUSTMENT` (seuil, validation possible par le Resp. ferme).
+- **Choix** : (a) validation du Resp. production pour tout écart sur des produits biologiques ; (b) règles actuelles.
+- **Impact** : `inventory` : inventaires comportant des produits biologiques.
+- **Décision** (porteur du projet, 28/09/2026) : **validation du Responsable production** (option a) pour tout écart d'inventaire portant sur des produits biologiques
+
+### AV-109 — Lots permanents (pondeuses, reproducteurs, truies) — IMPORTANTE — **TRANCHÉ**
+- **Question** : comment suivre le résultat et les ventes des lots qui vivent des mois et vendent en continu ?
+- **Pourquoi** : BR-PRD-010 (vente directe seulement en statut `SELLING`) et un résultat unique à la clôture ne conviennent pas aux lots permanents.
+- **Choix** : (a) résultat mensuel, vente autorisée par produit ; (b) comme les autres lots.
+- **Impact** : lectures de lot (résultat par mois) ; P4 (règle de vente).
+- **Décision** (porteur du projet, 28/09/2026) : **résultat mensuel** (option a) en plus du résultat à la clôture ; la vente des productions (œufs, réformes, porcelets) est autorisée par produit, sans passer le lot en `SELLING`
+
+### AV-110 — Nombre de collectes d’œufs par jour — SECONDAIRE — **TRANCHÉ**
+- **Question** : une ou plusieurs collectes par jour et par lot ?
+- **Pourquoi** : BR-OEU-004 imposait une collecte consolidée par jour, en tension avec BR-SYN-007 (une seconde saisie hors ligne ne peut pas être rejetée).
+- **Choix** : (a) plusieurs collectes par jour, chacune équilibrée ; (b) une seule, doublon en quarantaine.
+- **Impact** : BR-OEU-004 remplacée ; pas d’unicité (lot, date).
+- **Décision** (porteur du projet, 28/09/2026) : **plusieurs collectes par jour** (option a), chacune équilibrée séparément ; aucune n'est rejetée comme doublon
+
+### AV-111 — Organisation du naissage porcin — IMPORTANTE — **TRANCHÉ**
+- **Question** : avec un lot par produit (AV-099), comment s'organise le naissage ?
+- **Pourquoi** : AV-045 place les naissances dans le lot de naissage puis un sevrage vers l'engraissement.
+- **Choix** : (a) lot truies (et lot verrats) + lot porcelets lié ; (b) naissances directement en engraissement.
+- **Impact** : types `PORC_NAISSAGE` (truies, porcelets) ; entrées `BIRTH` et transfert de sevrage.
+- **Décision** (porteur du projet, 28/09/2026) : **lot truies + lot porcelets** (option a) : les naissances entrent dans un lot « porcelets » lié au lot de truies, au coût standard du porcelet (crédit du lot truies, AV-098) ; au sevrage, les porcelets sont transférés vers un lot d'engraissement avec leur coût (coût restant, AV-097)
+
+### AV-112 — Mise en place par achat direct — SECONDAIRE — **TRANCHÉ**
+- **Question** : la mise en place d'animaux achetés se saisit-elle en une ou deux opérations ?
+- **Pourquoi** : BR-PRD-004 prévoit « réception et reclassement dans la même transaction », sans API de réception publique dans `procurement`.
+- **Choix** : (a) une seule opération ; (b) deux étapes.
+- **Impact** : API publique de réception à exposer par `procurement`.
+- **Décision** (porteur du projet, 28/09/2026) : **une seule opération** (option a) depuis l'écran de mise en place : réception du bon de commande et entrée dans le lot ensemble ; le BC doit être livré sur la ferme du lot
+
+### AV-113 — Mortalité des poussins avant mise en place — SECONDAIRE — **TRANCHÉ**
+- **Question** : des poussins éclos meurent à l'éclosoir avant toute mise en place : comment le déclarer ?
+- **Pourquoi** : la contrainte « `production_lot_id` requis si `MORTALITE` » empêchait une mortalité rattachée à un lot d'incubation.
+- **Choix** : (a) mortalité du lot d'incubation ; (b) perte simple.
+- **Impact** : `inventory.loss_declarations` : mortalité rattachée à un lot de production ou d’incubation.
+- **Décision** (porteur du projet, 28/09/2026) : **mortalité du lot d'incubation** (option a), avec photo et validation comme toute mortalité
+
+### AV-114 — Carcasses saisies et frais d'abattage — SECONDAIRE
+- **Question** : que deviennent les têtes saisies (condamnées) à l'abattage et les frais propres de l'abattage (sachets, main-d'œuvre) ?
+- **Pourquoi** : AV-032 ne les traite pas.
+- **Choix** : (a) saisies consommées sans produit, leur coût porté par les produits ; frais d'abattage = dépense directe du lot ; (b) saisies déclarées en perte ; (c) objet de coût d'abattage distinct.
+- **Recommandation** : (a).
+- **Impact** : indicateur de taux de saisie ; aucune perte de stock.
+
+### AV-115 — Abattage des réformes et des porcs — SECONDAIRE
+- **Question** : l'abattage s'étend-il aux poules de réforme, aux reproducteurs et aux porcs ?
+- **Pourquoi** : AV-032 vise le poulet de chair.
+- **Choix** : (a) hors P7, abattage activable par type de lot (paramètre) ; (b) dès P7.
+- **Recommandation** : (a).
+- **Impact** : paramètre des types de lot abattables.
+
+### AV-116 — Définition des indicateurs zootechniques — SECONDAIRE
+- **Question** : quelles définitions exactes pour l'indice de consommation, le GMQ, le poids initial, le taux de ponte et le taux de mortalité (AV-049) ?
+- **Pourquoi** : aucun document ne les définit (D11 §7.1 est muet).
+- **Choix** : variantes : IC économique (hors morts) ou technique ; poids initial pesé ou standard ; taux de ponte sur l'effectif du début de jour ou moyen ; mortalité ÷ effectif initial ou ÷ (initial + entrées).
+- **Recommandation** : IC hors morts (aliment en kg ÷ gain de poids vif) ; poids initial = pesée à la mise en place, sinon poids standard paramétré par produit ; taux de ponte ÷ effectif en élevage au début du jour ; mortalité cumulée ÷ (effectif initial + entrées) (KPI-PRD-03).
+- **Impact** : `packages/domain` ; lectures de lot.
+
+### AV-117 — Journée sans événement (« RAS ») — SECONDAIRE
+- **Question** : comment dire qu'une journée d'un lot s'est déroulée sans mortalité ni consommation ?
+- **Pourquoi** : l'alerte `DAILY_ENTRY_MISSING` (P9) se déclencherait à tort.
+- **Choix** : (a) observation « RAS » ; (b) commande dédiée ; (c) rien.
+- **Recommandation** : (a).
+- **Impact** : alertes P9.
+
+### AV-118 — Reclassement d'œufs — SECONDAIRE
+- **Question** : comment reclasser des œufs (à couver vers consommation, changement de calibre, œufs à couver trop vieux) ?
+- **Pourquoi** : aucune opération prévue.
+- **Choix** : (a) opération de reclassement (`PRODUCTION_INPUT` + `PRODUCTION_OUTPUT`) avec motif ; (b) perte puis nouvelle collecte.
+- **Recommandation** : (a).
+- **Impact** : nouvelle commande de production.
+
+### AV-119 — Mortalité constatée hors élevage — SECONDAIRE
+- **Question** : une mortalité déclarée depuis un point de vente, en transit ou sur un stock mobile suit-elle la politique `MORTALITY` ?
+- **Pourquoi** : AV-048 vise la mortalité des lots ; `inventory.loss.declare` accepte aussi la catégorie `MORTALITE`.
+- **Choix** : (a) toute mortalité suit `MORTALITY` (Resp. production) ; (b) hors élevage, politique des pertes ordinaires.
+- **Recommandation** : (a).
+- **Impact** : `inventory.loss.declare` (catégorie `MORTALITE`).
+
+### AV-120 — Annulations après consommation (collecte, mortalité approuvée) — SECONDAIRE
+- **Question** : comment annuler une collecte dont les œufs sont déjà consommés, ou corriger une mortalité déjà approuvée ?
+- **Pourquoi** : SM-EGG-COLLECTION prévoit « sinon validation » sans type d'opération ; `LOSS_CANCELLATION` est cité (D06) mais absent.
+- **Choix** : (a) annulation par contre-écriture soumise à la validation du Resp. production ; (b) refus, correction par document compensatoire.
+- **Recommandation** : (a).
+- **Impact** : types d’opération à ajouter si (a).
+
+### AV-121 — Seuils de l’alerte de mortalité élevée — SECONDAIRE
+- **Question** : l'alerte `HIGH_MORTALITY` garde-t-elle ses seuils (0,5 % de l'effectif ou 20 têtes par jour) maintenant que toute mortalité est validée ?
+- **Pourquoi** : les seuils de validation (AV-048) et d'alerte étaient les mêmes.
+- **Choix** : (a) seuils d'alerte propres, paramétrés (0,5 % ou 20 têtes par jour, cumul du jour) ; (b) alerte à chaque mortalité.
+- **Recommandation** : (a).
+- **Impact** : P9 (module `communication`) ; paramètres.
+
 ---
 
 ## 3. Journal des décisions
@@ -563,3 +763,20 @@ Politique par défaut, paramétrable :
 | 27/09/2026 | AV-050 | Consommations vétérinaires imputées ; pas de plan de prophylaxie | Porteur du projet |
 | 27/09/2026 | AV-095 | Quarantaine (défaut confirmé) | Porteur du projet |
 | 27/09/2026 | AV-096 | Autorisée après validation du Resp. achats ; stock à la validation | Porteur du projet |
+| 28/09/2026 | AV-097 | Coût restant ÷ têtes restantes (ADR-027) | Porteur du projet |
+| 28/09/2026 | AV-098 | Coût standard ; crédit du lot producteur (ADR-027) | Porteur du projet |
+| 28/09/2026 | AV-099 | Un lot par produit, lots liés | Porteur du projet |
+| 28/09/2026 | AV-100 | Lot de stock propre par collecte et par abattage | Porteur du projet |
+| 28/09/2026 | AV-101 | À la ferme, emplacement abattoir, Resp. ferme | Porteur du projet |
+| 28/09/2026 | AV-102 | Entier à la pièce ; découpes et abats au kg | Porteur du projet |
+| 28/09/2026 | AV-103 | Finance (ALL), Resp. production (ALL), Resp. ferme (SITE) | Porteur du projet |
+| 28/09/2026 | AV-104 | Volaille / porc séparés ; frais communs ventilés à la saisie | Porteur du projet |
+| 28/09/2026 | AV-105 | Part estimée à la clôture sur les frais connus | Porteur du projet |
+| 28/09/2026 | AV-106 | À la demande ; régularisation des frais tardifs | Porteur du projet |
+| 28/09/2026 | AV-107 | Enregistrée ; validation bloquée jusqu’à la photo | Porteur du projet |
+| 28/09/2026 | AV-108 | Validation Resp. production pour tout écart sur animaux | Porteur du projet |
+| 28/09/2026 | AV-109 | Résultat mensuel ; vente par produit | Porteur du projet |
+| 28/09/2026 | AV-110 | Plusieurs collectes par jour | Porteur du projet |
+| 28/09/2026 | AV-111 | Lot truies + lot porcelets ; sevrage vers engraissement | Porteur du projet |
+| 28/09/2026 | AV-112 | Une seule opération (réception + entrée) | Porteur du projet |
+| 28/09/2026 | AV-113 | Mortalité rattachée au lot d’incubation | Porteur du projet |
