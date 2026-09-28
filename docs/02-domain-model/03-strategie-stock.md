@@ -181,9 +181,10 @@ Choix automatique **FIFO** : pour une sortie sans lot désigné, le serveur cons
 | Réception | Prix du BC (ou prix déclaré sans BC) |
 | Ouverture | Coût déclaré à l'inventaire d'ouverture |
 | Sortie ou transfert d'un produit sans lot biologique | **CMUP** courant du produit (`product_valuations.avg_unit_cost_xaf`) |
-| Sortie ou transfert d'un produit biologique d'un lot de production | **Coût par tête du lot** au moment de l'application = coût cumulé du lot ÷ effectif non vendu |
-| Production interne sans lot valorisé (œufs, poussins avant rattachement) | **Coût standard** du produit (BR-CAT-011), ou coût calculé du lot d'incubation pour les poussins (BR-INC-009) |
-| Gain d'inventaire | CMUP courant (ou coût par tête du lot) |
+| Sortie ou transfert d'un produit biologique d'un lot de production | **Coût par tête du lot** au moment de l'application = **coût restant** du lot ÷ effectif non vendu (ADR-027, AV-097) ; coût restant = écritures de coût du lot − valeurs figées de ses sorties définitives (ventes, transformation, sevrage, retour fournisseur) ; la dernière sortie emporte exactement le coût restant ; jamais de CMUP pour ces lots |
+| Production interne sans lot valorisé (œufs, poussins avant rattachement) | **Coût standard** du produit (BR-CAT-011) avec crédit du lot producteur (AV-098, ADR-027), ou coût calculé du lot d'incubation pour les poussins (BR-INC-009) ; la production commercialisable entrée à coût déclaré recalcule le CMUP (œufs, découpes d'abattage) |
+| Sortie d'un emplacement intermédiaire (`V_TRANSIT`, `V_PENDING_LOSS`) | Valeur moyenne du solde de cet emplacement : la valeur entrée en ressort (P7-03) |
+| Gain d'inventaire | CMUP courant, ou coût par tête pour un lot d'animaux (sans recalcul du CMUP) |
 | Mouvement inverse | Coût du mouvement d'origine |
 
 Recalcul du CMUP à chaque entrée valorisée, dans l'ordre d'application serveur :

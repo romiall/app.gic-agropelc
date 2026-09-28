@@ -62,13 +62,17 @@ Les deux sont des **vues** (`sales.v_receivables`, `finance.v_payables`). Elles 
 ### 6.1 Coût d'un lot
 
 ```text
-coût_lot(t) = Σ cost_entries(lot, occurred_at ≤ t)
+coût_lot(t) = Σ cost_entries(lot, débits − crédits, occurred_at ≤ t)
   types : ANIMAUX (mise en place), ALIMENT, VETERINAIRE, AUTRE_INTRANT (consommations valorisées),
-          DEPENSE_DIRECTE (dépenses imputées), AJUSTEMENT (correction tracée)
-coût_par_tête(t) = coût_lot(t) / effectif_non_vendu(t)
+          DEPENSE_DIRECTE (dépenses imputées), FRAIS_GENERAUX (part répartie, ADR-026),
+          PRODUCTION_TRANSFEREE (crédit : œufs, porcelets au coût standard, ADR-027),
+          AJUSTEMENT (correction tracée)
+coût_restant(t) = coût_lot(t) − Σ valeurs figées des sorties définitives du lot (ventes,
+                  abattage, sevrage, transfert vers un autre lot)
+coût_par_tête(t) = coût_restant(t) / effectif_non_vendu(t)
 ```
 
-Seuls les coûts directs sont incorporés au MVP (AV-043).
+Coûts directs **et frais généraux** de la ferme, séparés par espèce et répartis au prorata têtes × jours (AV-043, AV-104, ADR-026 amendé). La formule initiale « coût cumulé ÷ effectif non vendu » réimputait aux têtes restantes le coût des têtes déjà vendues (+43 % sur l'exemple ci-dessous) : remplacée par le coût restant le 28/09/2026 (AV-097, ADR-027).
 
 ### 6.2 Exemple chiffré (lot de chair)
 
@@ -81,12 +85,12 @@ Seuls les coûts directs sont incorporés au MVP (AV-043).
 | **Coût total du lot** | **5 600 000** |
 | Mortalité cumulée | 90 têtes (3,75 %) |
 | Têtes vendues | 2 310 |
-| Coût par tête final | 5 600 000 / 2 310 ≈ 2 424 |
+| Coût par tête après la mortalité, et à chaque vente | 5 600 000 / 2 310 ≈ 2 424 (coût restant ÷ effectif, inchangé par les ventes) |
 | CA des ventes portant le lot : 2 310 × 4 650 (prix moyen) | 10 741 500 |
 | **Marge du lot** | **5 141 500** |
 | Valeur économique de la mortalité (indicateur) | 90 × coût par tête au moment de chaque mort (Σ) |
 
-Le coût figé sur chaque sortie est le coût par tête **au moment** de la sortie, et non le coût final. La marge de lot calculée par « CA − coût total » (lot clôturé) peut donc différer de « CA − coût des ventes figé ». Les deux indicateurs sont affichés et libellés :
+Exemple chiffré sans frais généraux (antérieur à ADR-026 ; avec eux, s'ajoute la part mensuelle de la ferme pour l'espèce volaille). Avec le coût restant, la somme des coûts figés des ventes égale exactement le coût du lot (test `inventory-biological-valuation.test.ts`). Le coût figé sur chaque sortie est le coût par tête **au moment** de la sortie, et non le coût final. La marge de lot calculée par « CA − coût total » (lot clôturé) peut donc différer de « CA − coût des ventes figé ». Les deux indicateurs sont affichés et libellés :
 
 - « marge de lot » (clôture) ;
 - « marge brute des ventes » (au fil de l'eau).

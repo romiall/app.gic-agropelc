@@ -56,7 +56,11 @@ import {
 } from '../../../approvals/application/public/index.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
+import {
+  biologicalLotUnitCostXaf,
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../public/record-move.js';
 import { inventoryCountChange } from '../sync-changes.js';
 import { loadCommandOrigin, loadLocationSite, virtualLocationId } from './shared.js';
 
@@ -136,7 +140,16 @@ async function computeTheoreticalQtyBase(
   return Number(inflow?.total ?? 0) - Number(outflow?.total ?? 0);
 }
 
-async function currentUnitCostXaf(uow: Transaction<DB>, productId: Buffer): Promise<number> {
+async function currentUnitCostXaf(
+  uow: Transaction<DB>,
+  productId: Buffer,
+  lotId: Buffer | null = null,
+): Promise<number> {
+  // P7-03 : un lot d'animaux se valorise au coût par tête (ADR-027), jamais au CMUP.
+  if (lotId !== null) {
+    const perHead = await biologicalLotUnitCostXaf(uow, fromBin(lotId));
+    if (perHead !== null) return perHead;
+  }
   const valuation = await uow
     .selectFrom('inventory_product_valuations')
     .select('avg_unit_cost_xaf')
@@ -183,7 +196,10 @@ async function applyLineAdjustment(
     // coût figé à la soumission. INVENTORY_LOSS n'en est pas une : le CMUP courant (au moment
     // où le mouvement est réellement appliqué, immédiat ou différé à la décision) s'applique
     // — écart de conception déjà présent dans record-move.ts, pas introduit ici.
-    ...(isGain ? { declaredUnitCostXaf: params.unitCostXaf } : {}),
+    // Lot d'animaux : jamais de coût déclaré, le coût par tête s'applique (P7-03, ADR-027).
+    ...(isGain && (lotId === null || (await biologicalLotUnitCostXaf(uow, lotId)) === null)
+      ? { declaredUnitCostXaf: params.unitCostXaf }
+      : {}),
     createdBy: params.decidedBy,
     capturedOffline: false,
     allowNegative: true,
@@ -325,7 +341,7 @@ function buildCountCommands(
         at: line.counted_at,
       });
       const variance = Number(line.counted_qty_base) - theoretical;
-      const unitCostXaf = await currentUnitCostXaf(uow, line.product_id);
+      const unitCostXaf = await currentUnitCostXaf(uow, line.product_id, line.lot_id);
       varianceValueXaf += variance * unitCostXaf;
       computed.push({ line, theoretical, variance, unitCostXaf });
 

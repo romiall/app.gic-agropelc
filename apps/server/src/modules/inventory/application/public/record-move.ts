@@ -6,22 +6,30 @@
  * avec mise à jour de la projection de solde (INV-STK-01) dans la même transaction, et, pour
  * une entrée valorisée, recalcul du CMUP (AV-042, ADR-015).
  *
- * Coût : uniquement le CMUP courant (`product_valuations`) en P2 — le coût par tête d'un lot
- * de production biologique (stratégie stock §9) exige `production` (P7, table des lots de
- * production) qui n'existe pas encore. Documenté, pas simulé : un produit de famille
- * `BIOLOGIQUE` avec un lot se valorise pour l'instant comme n'importe quel autre produit
- * (CMUP), à corriger quand `production` existe.
+ * Coût figé du mouvement (ADR-015, ADR-027 ; P7-03) :
+ * - inverse : coût du mouvement d'origine (BR-STK-052) ;
+ * - mouvement d'un **lot biologique** (lot de stock d'origine `PRODUCTION_LOT` ou
+ *   `INCUBATION_BATCH`) : coût déclaré s'il est fourni (entrée de production, rendement à 0),
+ *   sinon **coût par tête** = coût restant du lot ÷ effectif non vendu (AV-097) ; la dernière
+ *   sortie définitive emporte exactement le coût restant ; jamais de CMUP pour ces lots ;
+ * - sortie d'un emplacement virtuel intermédiaire (`V_TRANSIT`, `V_PENDING_LOSS`) : valeur
+ *   moyenne du solde de cet emplacement (la valeur entrée en ressort, rien ne dérive) ;
+ * - entrée valorisée (réception, ouverture, gain d'inventaire) ou sortie de production avec coût
+ *   déclaré (œufs au coût standard, découpes, AV-098, AV-032) : coût déclaré et recalcul du CMUP ;
+ * - sinon : CMUP courant.
  */
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { IdGenerator } from '@gic/domain';
 import {
+  costPerHeadXaf,
   lineAmountXaf,
   quantityFromDecimal,
   recalculateCmup,
   roundCmupToXaf,
   selectLotsFifo,
+  unitCostXaf as unitCostOfValue,
   xaf,
 } from '@gic/domain';
 import {
@@ -34,6 +42,7 @@ import { findProductLotTracking } from '../../../catalog/application/public/inde
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { stockBalanceChange } from '../sync-changes.js';
+import { lotHeadcount } from './lot-headcount.js';
 
 const LOT_KEY_NULL = Buffer.alloc(16);
 
@@ -70,6 +79,8 @@ export const SOURCE_DOC_TYPES = [
   'EGG_COLLECTION',
   'INCUBATION_EVENT',
   'LOT_ENTRY',
+  'SLAUGHTER',
+  'LOT_TRANSFER',
 ] as const;
 export type SourceDocType = (typeof SOURCE_DOC_TYPES)[number];
 
@@ -122,8 +133,13 @@ export interface RecordMoveInput {
   readonly toLocationId: string;
   readonly moveType: MoveType;
   readonly reasonCodeId?: string;
-  /** Requis pour une entrée valorisée (réception, ouverture, gain d'inventaire) ; ignoré sinon (CMUP courant utilisé). */
+  /** Requis pour une entrée valorisée (réception, ouverture, gain d'inventaire) ; accepté pour une
+   * sortie de production (`PRODUCTION_OUTPUT`) et pour tout mouvement d'un lot biologique
+   * (P7-03) ; ignoré sinon (CMUP courant utilisé). */
   readonly declaredUnitCostXaf?: number;
+  /** Valeur exacte du mouvement (répartition au franc d'un abattage, P7-03) : le coût unitaire
+   * figé en est déduit (arrondi), la valeur n'est pas recalculée. */
+  readonly declaredValueXaf?: number;
   readonly occurredAt: Date;
   readonly sourceDocType: SourceDocType;
   readonly sourceDocId: string;
@@ -358,6 +374,104 @@ async function checkReversal(
   return original.unit_cost_xaf;
 }
 
+/** Emplacements virtuels de sortie définitive d'un lot (vente, transformation, retour fournisseur). */
+const EXIT_LOCATION_TYPES = ['V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER'] as const;
+
+interface BiologicalLot {
+  readonly costObjectType: 'PRODUCTION_LOT' | 'INCUBATION_BATCH';
+  readonly costObjectId: string;
+  readonly status: string;
+}
+
+/** Lot de stock d'un lot de production ou d'incubation (ADR-027), sinon `null`. */
+async function biologicalLotOf(uow: Transaction<DB>, lotId: string): Promise<BiologicalLot | null> {
+  const lot = await uow
+    .selectFrom('inventory_stock_lots')
+    .select(['origin_type', 'origin_id', 'status'])
+    .where('id', '=', toBin(lotId))
+    .executeTakeFirst();
+  if (
+    !lot ||
+    lot.origin_id === null ||
+    (lot.origin_type !== 'PRODUCTION_LOT' && lot.origin_type !== 'INCUBATION_BATCH')
+  ) {
+    return null;
+  }
+  return {
+    costObjectType: lot.origin_type,
+    costObjectId: fromBin(lot.origin_id),
+    status: lot.status,
+  };
+}
+
+/**
+ * Coût restant d'un lot biologique (AV-097, ADR-027) : Σ écritures de coût du lot (débits −
+ * crédits) − Σ valeurs figées de ses sorties définitives (vers `V_CUSTOMER`, `V_PRODUCTION`,
+ * `V_SUPPLIER`, hors inverses) + Σ valeurs de leurs inverses. La mortalité et les écarts
+ * d'inventaire ne le réduisent pas (BR-PRD-013).
+ */
+async function lotRemainingCostXaf(
+  uow: Transaction<DB>,
+  lotId: string,
+  lot: BiologicalLot,
+): Promise<number> {
+  const costs = await uow
+    .selectFrom('inventory_cost_entries')
+    .select(
+      sql<string>`COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount_xaf ELSE -amount_xaf END), 0)`.as(
+        'net',
+      ),
+    )
+    .where('cost_object_type', '=', lot.costObjectType)
+    .where('cost_object_id', '=', toBin(lot.costObjectId))
+    .executeTakeFirstOrThrow();
+  const exits = await uow
+    .selectFrom('inventory_stock_moves as m')
+    .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')
+    .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
+    .select(
+      sql<string>`COALESCE(SUM(
+        CASE WHEN m.is_reversal = 0 AND tl.location_type IN ('V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER') THEN m.value_xaf
+             WHEN m.is_reversal = 1 AND fl.location_type IN ('V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER') THEN -m.value_xaf
+             ELSE 0 END), 0)`.as('value'),
+    )
+    .where('m.lot_id', '=', toBin(lotId))
+    .executeTakeFirstOrThrow();
+  return Number(costs.net) - Number(exits.value);
+}
+
+/**
+ * Coût par tête courant d'un lot biologique (ADR-027) : coût restant ÷ effectif non vendu,
+ * arrondi au franc ; `null` si le lot n'est pas un lot de production ou d'incubation (P7-03 :
+ * valorisation des écarts d'inventaire sur des animaux).
+ */
+export async function biologicalLotUnitCostXaf(
+  uow: Transaction<DB>,
+  lotId: string,
+): Promise<number | null> {
+  const lot = await biologicalLotOf(uow, lotId);
+  if (lot === null) return null;
+  const remaining = await lotRemainingCostXaf(uow, lotId, lot);
+  const headcount = await lotHeadcount(uow, { lotId, scope: 'UNSOLD' });
+  return costPerHeadXaf(Math.max(0, remaining), quantityFromDecimal(Math.max(0, headcount))) ?? 0;
+}
+
+/** Valeur moyenne d'un solde d'emplacement virtuel intermédiaire (qté > 0), sinon `null`. */
+async function virtualBalanceCost(
+  uow: Transaction<DB>,
+  key: { readonly locationId: string; readonly productId: string; readonly lotKey: Buffer },
+): Promise<{ readonly qty: number; readonly valueXaf: number } | null> {
+  const row = await uow
+    .selectFrom('inventory_stock_balances')
+    .select(['qty_on_hand', 'value_xaf'])
+    .where('location_id', '=', toBin(key.locationId))
+    .where('product_id', '=', toBin(key.productId))
+    .where('lot_key', '=', key.lotKey)
+    .executeTakeFirst();
+  if (!row || Number(row.qty_on_hand) <= 0) return null;
+  return { qty: Number(row.qty_on_hand), valueXaf: Number(row.value_xaf) };
+}
+
 /**
  * Enregistre un mouvement pour une quantité déjà résolue sur un lot précis (ou aucun lot).
  * Usage interne de `recordStockMove` (résolution FIFO) et direct quand l'appelant connaît
@@ -387,25 +501,80 @@ async function recordSingleMove(
   await checkLot(uow, input);
 
   const isReversal = input.reversesMoveId !== undefined;
-  const isValuationEntry = !isReversal && VALUATION_ENTRY_MOVE_TYPES.has(input.moveType);
+  const biological = input.lotId !== null ? await biologicalLotOf(uow, input.lotId) : null;
+  // INV-PRD-02 : aucun nouveau mouvement sur le lot d'un lot de production clôturé, sauf fait
+  // hors ligne tardif (appliqué ; le module appelant consigne le conflit `LOT_CLOSED`) et inverse.
+  if (biological?.status === 'CLOSED' && !isReversal && !input.allowNegative) {
+    throw new InventoryMoveError(
+      'Lot clôturé : aucun nouveau mouvement (INV-PRD-02).',
+      'LOT_CLOSED',
+    );
+  }
+  const isProductionOutputWithCost =
+    input.moveType === 'PRODUCTION_OUTPUT' &&
+    (input.declaredUnitCostXaf !== undefined || input.declaredValueXaf !== undefined);
+  // Entrée qui recalcule le CMUP : jamais pour un lot biologique (un CMUP par produit mélangerait
+  // les lots, ADR-027).
+  const isValuationEntry =
+    !isReversal &&
+    biological === null &&
+    (VALUATION_ENTRY_MOVE_TYPES.has(input.moveType) || isProductionOutputWithCost);
+  const quantity = quantityFromDecimal(input.quantityBase);
+  const lotKeyForCost = input.lotId ? toBin(input.lotId) : LOT_KEY_NULL;
   let unitCostXaf: number;
+  let valueOverrideXaf: number | null = null;
   if (isReversal) {
     unitCostXaf = await checkReversal(uow, input, input.reversesMoveId!);
-  } else if (isValuationEntry) {
-    if (input.declaredUnitCostXaf === undefined) {
-      throw new InventoryMoveError(
-        'Un coût unitaire déclaré est requis pour une entrée valorisée.',
-        'UNIT_COST_REQUIRED',
-      );
-    }
+  } else if (input.declaredValueXaf !== undefined) {
+    valueOverrideXaf = input.declaredValueXaf;
+    unitCostXaf = unitCostOfValue(input.declaredValueXaf, quantity);
+  } else if (
+    input.declaredUnitCostXaf !== undefined &&
+    (isValuationEntry || biological !== null || input.moveType === 'PRODUCTION_OUTPUT')
+  ) {
     unitCostXaf = input.declaredUnitCostXaf;
+  } else if (isValuationEntry) {
+    throw new InventoryMoveError(
+      'Un coût unitaire déclaré est requis pour une entrée valorisée.',
+      'UNIT_COST_REQUIRED',
+    );
+  } else if (
+    fromLocation.locationType === 'V_TRANSIT' ||
+    fromLocation.locationType === 'V_PENDING_LOSS'
+  ) {
+    // La valeur entrée dans l'emplacement intermédiaire en ressort (P7-03).
+    const pending = await virtualBalanceCost(uow, {
+      locationId: input.fromLocationId,
+      productId: input.productId,
+      lotKey: lotKeyForCost,
+    });
+    if (pending && Math.abs(pending.qty - input.quantityBase) < 0.0005) {
+      valueOverrideXaf = pending.valueXaf;
+      unitCostXaf = unitCostOfValue(Math.max(0, pending.valueXaf), quantity);
+    } else if (pending) {
+      unitCostXaf = roundCmupToXaf(Math.max(0, pending.valueXaf) / pending.qty);
+    } else {
+      unitCostXaf = roundCmupToXaf((await currentCmup(uow, input.productId)).avgUnitCostXaf);
+    }
+  } else if (biological !== null) {
+    // Coût par tête (AV-097) : coût restant ÷ effectif non vendu, avant ce mouvement.
+    const remaining = await lotRemainingCostXaf(uow, input.lotId!, biological);
+    const headcount = await lotHeadcount(uow, { lotId: input.lotId!, scope: 'UNSOLD' });
+    const isExit = (EXIT_LOCATION_TYPES as readonly string[]).includes(toLocation.locationType);
+    if (isExit && headcount > 0 && input.quantityBase >= headcount - 0.0005 && remaining > 0) {
+      // Dernière sortie définitive : elle emporte exactement le coût restant.
+      valueOverrideXaf = remaining;
+      unitCostXaf = unitCostOfValue(remaining, quantity);
+    } else {
+      unitCostXaf =
+        costPerHeadXaf(Math.max(0, remaining), quantityFromDecimal(Math.max(0, headcount))) ?? 0;
+    }
   } else {
     unitCostXaf = (await currentCmup(uow, input.productId)).avgUnitCostXaf;
     unitCostXaf = roundCmupToXaf(unitCostXaf);
   }
 
-  const quantity = quantityFromDecimal(input.quantityBase);
-  const valueXaf = lineAmountXaf(quantity, xaf(unitCostXaf));
+  const valueXaf = valueOverrideXaf ?? lineAmountXaf(quantity, xaf(unitCostXaf));
 
   const moveId = deps.idGenerator.newId();
   const lotKey = input.lotId ? toBin(input.lotId) : LOT_KEY_NULL;
@@ -478,7 +647,7 @@ async function recordSingleMove(
       before.qtyBasis,
       before.avgUnitCostXaf,
       input.quantityBase,
-      unitCostXaf,
+      valueOverrideXaf !== null ? valueOverrideXaf / input.quantityBase : unitCostXaf,
     );
     await uow
       .insertInto('inventory_product_valuations')
