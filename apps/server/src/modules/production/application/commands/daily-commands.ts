@@ -17,34 +17,29 @@
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
-import { acceptsDailyEntries, checkWeighing, type IdGenerator } from '@gic/domain';
+import { checkWeighing, type IdGenerator } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import type { CommandEnvelope } from '@gic/contracts';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { findProduct, findReasonCode } from '../../../catalog/application/public/index.js';
 import { declareLoss, recordConsumption } from '../../../inventory/application/public/index.js';
 import {
+  DAILY,
   FORBIDDEN_SCOPE,
-  REARING_LOCATION_TYPES,
+  LOT_NOT_FOUND as NOT_FOUND,
   businessRejection,
+  dailyLot,
+  farmLocation,
   isAllowed,
-  loadLocation,
   loadLot,
   recordLotClosedConflict,
   rejected,
-  type LotRow,
-  type Uow,
 } from './shared.js';
-
-const DAILY = 'production.daily.record';
-
-const NOT_FOUND = rejected('NOT_FOUND', 'Lot de production introuvable.');
 
 const mortalityPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
@@ -99,53 +94,6 @@ const observationPayloadSchema = z.object({
   text: z.string().trim().min(1).max(4000),
   severity: z.enum(['INFO', 'WARNING', 'CRITICAL']).optional(),
 });
-
-/** Lot de la saisie, portée et état ; `closed` : saisie hors ligne sur un lot sans saisie. */
-async function dailyLot(
-  uow: Uow,
-  envelope: CommandEnvelope<{ readonly productionLotId: string }>,
-): Promise<
-  | { readonly ok: true; readonly lot: LotRow; readonly closed: boolean }
-  | {
-      readonly ok: false;
-      readonly outcome: CommandHandlerOutcome;
-    }
-> {
-  const lot = await loadLot(uow, envelope.payload.productionLotId);
-  if (!lot) return { ok: false, outcome: NOT_FOUND };
-  const at = new Date(envelope.occurred_at);
-  if (!(await isAllowed(uow, envelope.author_user_id, DAILY, at, lot.siteId))) {
-    return { ok: false, outcome: FORBIDDEN_SCOPE };
-  }
-  const closed = !acceptsDailyEntries(lot.status);
-  if (closed && !envelope.captured_offline) {
-    return {
-      ok: false,
-      outcome: rejected(
-        'LOT_NOT_ACTIVE',
-        'Saisie du jour sur un lot actif ou en vente seulement (D07 §8).',
-      ),
-    };
-  }
-  return { ok: true, lot, closed };
-}
-
-/** Emplacement physique actif de la ferme du lot (`SITE_MISMATCH` sinon). */
-async function farmLocation(
-  uow: Uow,
-  lot: LotRow,
-  locationId: string,
-  options: { readonly rearingOnly?: boolean } = {},
-): Promise<CommandHandlerOutcome | undefined> {
-  const location = await loadLocation(uow, locationId);
-  if (!location || location.siteId !== lot.siteId) {
-    return rejected('SITE_MISMATCH', 'Emplacement inconnu ou hors de la ferme du lot.');
-  }
-  if (options.rearingOnly && !REARING_LOCATION_TYPES.includes(location.locationType)) {
-    return rejected('LOCATION_INVALID', 'Un bâtiment ou une case de la ferme du lot est attendu.');
-  }
-  return undefined;
-}
 
 function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequenceService) {
   const deps = { idGenerator };

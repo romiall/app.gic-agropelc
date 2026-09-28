@@ -220,12 +220,12 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-VOL-002 | La sortie vers commercialisation est un transfert du bâtiment vers un magasin, un PDV ou un stock mobile, qui porte le lot et le coût par t… | C (CM §15) |
 | BR-VOL-003 | Au MVP, le poulet est vendu vif ; l'abattage et la transformation ne sont pas modélisés. | AV-032 |
 | BR-OEU-001 | Une collecte d'œufs d'un lot `PONDEUSE` pour une date donne : collectés, cassés, non conformes, commercialisables, à couver. Invariant : co… | C (CM §17) |
-| BR-OEU-002 | Effets stock d'une collecte : `PRODUCTION_OUTPUT` de « Œuf de consommation » (quantité commercialisable) et de « Œuf à couver » (quantité à… | C (CM §17 « le stock d'œufs commercialisables doit résulter de ces événements ») / AV-046 |
+| BR-OEU-002 | Effets stock d'une collecte : `PRODUCTION_OUTPUT` des œufs commercialisables, par calibre (un produit par calibre, AV-046), et de « Œuf à c… | C (CM §17 « le stock d'œufs commercialisables doit résulter de ces événements ») / AV-046 |
 | BR-OEU-003 | Un œuf cassé après son entrée en stock (manutention, transport, PDV) est une perte de catégorie `CASSE` (D06). | C (CM §24) |
-| BR-OEU-004 | Une seule collecte par lot et par date (collecte journalière consolidée). Une correction passe par l'annulation de la collecte (mouvements… | D |
+| BR-OEU-004 | Plusieurs collectes par lot et par jour sont admises (AV-110 : une par ramassage). Une correction passe par l'annulation de la collecte (mo… | D / AV-110 |
 | BR-OEU-005 | Unité de base : l'œuf. Le plateau (30 œufs) est une unité de conditionnement pour la vente et le comptage. | AV-046, AV-080 |
 | BR-OEU-006 | Des catégories supplémentaires (calibres, œufs déclassés vendables) s'ajoutent comme nouveaux produits et nouveaux champs de collecte, sans… | C (CM §17 « d'autres classifications ») |
-| BR-OEU-007 | Coût des œufs produits : coût standard par produit au MVP. Le coût réel se lit au niveau du lot de pondeuses (coût du lot ÷ œufs produits). | AV-042 |
+| BR-OEU-007 | Coût des œufs produits : coût standard en vigueur de chaque produit ; le lot de pondeuses est crédité du même montant (`PRODUCTION_TRANSFER… | AV-042, AV-098 (ADR-027) |
 | BR-INC-001 | Un lot d'incubation est constitué d'œufs à couver issus du stock (production interne ou achat réceptionné) ; il crée son lot de traçabilité… | C (CM §18) / AV-047 |
 | BR-INC-002 | Démarrage : déplacement interne des œufs à couver du stockage vers l'emplacement `INCUBATOR` ; `eggs_set_qty` est figé. | C (CM §18) |
 | BR-INC-003 | Mirage : les infertiles et la mortalité embryonnaire sortent de l'incubateur vers `V_PRODUCTION` (`PRODUCTION_INPUT`, motifs `INFERTILE`, `… | C (CM §18) / D |

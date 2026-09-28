@@ -55,6 +55,7 @@ export {
   businessDayEndUtc,
   isWithinBusinessDay,
   nextBusinessDay,
+  addBusinessDays,
 } from './business-day.js';
 
 export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';

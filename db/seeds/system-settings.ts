@@ -30,6 +30,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-046, AV-047',
   },
+  // AV-122 (défaut) : péremption du lot de stock d'une collecte = date de collecte + N jours.
+  {
+    key: 'production.egg_shelf_life_days',
+    value: 28,
+    isClientVisible: true,
+    ref: 'AV-100, AV-122',
+  },
   // AV-047 : durées d'incubation par espèce, en jours depuis la mise en incubateur (WF-12).
   {
     key: 'production.incubation_durations',

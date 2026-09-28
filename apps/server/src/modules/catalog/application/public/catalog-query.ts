@@ -3,8 +3,9 @@
  * `/reason-codes`). API publique de `catalog`, consommée par `pricing` (dépendance
  * autorisée, 03-graphe-dependances.md) et par le contrôleur de lecture du même module.
  */
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely, Selectable, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
+import type { CatalogProducts } from '../../../../platform/kysely/schema.generated.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 export interface ProductSummary {
@@ -94,7 +95,23 @@ export async function findProduct(
     .selectAll()
     .where('id', '=', toBin(productId))
     .executeTakeFirst();
-  if (!row) return undefined;
+  return row ? toProductSummary(row) : undefined;
+}
+
+/** Fiche d'un produit par code (paramètres qui désignent un produit : œufs à couver, calibres). */
+export async function findProductByCode(
+  executor: Kysely<DB> | Transaction<DB>,
+  code: string,
+): Promise<ProductSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_products')
+    .selectAll()
+    .where('code', '=', code)
+    .executeTakeFirst();
+  return row ? toProductSummary(row) : undefined;
+}
+
+function toProductSummary(row: Selectable<CatalogProducts>): ProductSummary {
   return {
     id: fromBin(row.id),
     code: row.code,

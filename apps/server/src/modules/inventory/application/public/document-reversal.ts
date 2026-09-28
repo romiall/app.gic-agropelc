@@ -36,6 +36,8 @@ export interface ReversedMove {
   readonly originalMoveId: string;
   readonly reverseMoveId: string;
   readonly valueXaf: number;
+  /** Hors ligne : l'inverse a rendu négatif le solde d'un emplacement physique (`STOCK_NEGATIVE`). */
+  readonly negativeBalance: boolean;
 }
 
 export async function reverseDocumentMoves(
@@ -54,6 +56,7 @@ export async function reverseDocumentMoves(
   const moves = await uow
     .selectFrom('inventory_stock_moves as m')
     .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')
+    .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
     .select([
       'm.id',
       'm.product_id',
@@ -64,6 +67,7 @@ export async function reverseDocumentMoves(
       'm.to_location_id',
       'm.unit_cost_xaf',
       'fl.is_virtual as from_virtual',
+      'tl.is_virtual as to_virtual',
     ])
     .where('m.source_doc_type', '=', input.sourceDocType)
     .where('m.source_doc_id', '=', toBin(input.sourceDocId))
@@ -112,6 +116,7 @@ export async function reverseDocumentMoves(
       originalMoveId: fromBin(move.id),
       reverseMoveId: reverse!.moveId,
       valueXaf: reverse!.valueXaf,
+      negativeBalance: !move.to_virtual && reverse!.fromBalanceAfter < 0,
     });
   }
   await reverseCostEntries(uow, deps, {

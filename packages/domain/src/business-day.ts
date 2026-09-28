@@ -73,3 +73,14 @@ export function isWithinBusinessDay(instant: Date, businessDay: string): boolean
 export function nextBusinessDay(businessDay: string): string {
   return businessDayOf(businessDayEndUtc(businessDay));
 }
+
+/**
+ * Jour métier décalé de `days` jours (négatif possible) : péremption d'une collecte (AV-122),
+ * échéances d'incubation (BR-INC-008). Douala n'a pas d'heure d'été : un jour = 24 h.
+ */
+export function addBusinessDays(businessDay: string, days: number): string {
+  if (!Number.isInteger(days)) {
+    throw new DomainError(`Nombre de jours entier attendu : ${days}`, 'INVALID_BUSINESS_DAY');
+  }
+  return businessDayOf(new Date(businessDayStartUtc(businessDay).getTime() + days * 86_400_000));
+}

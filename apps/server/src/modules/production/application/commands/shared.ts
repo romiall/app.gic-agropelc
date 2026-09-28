@@ -5,8 +5,10 @@
  * précédent que `procurement/commands/shared.ts`).
  */
 import type { Transaction } from 'kysely';
+import type { CommandEnvelope } from '@gic/contracts';
 import {
   DomainError,
+  acceptsDailyEntries,
   businessDayOf,
   type IdGenerator,
   type ProductionLotStatus,
@@ -17,6 +19,7 @@ import type { CommandHandlerOutcome } from '../../../../platform/sync/command-ha
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
+import { currentSettingValue } from '../../../organization/application/public/index.js';
 import { InventoryMoveError } from '../../../inventory/application/public/index.js';
 
 export type Uow = Transaction<DB>;
@@ -165,4 +168,89 @@ export async function recordLotClosedConflict(
     details: { ...input.details, lotStatus: input.lot.status },
   });
   return { status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] };
+}
+
+export const DAILY = 'production.daily.record';
+
+export const LOT_NOT_FOUND = rejected('NOT_FOUND', 'Lot de production introuvable.');
+
+/** Lot de la saisie, portée et état ; `closed` : saisie hors ligne sur un lot sans saisie. */
+export async function dailyLot(
+  uow: Uow,
+  envelope: CommandEnvelope<{ readonly productionLotId: string }>,
+  /** Contrôle propre à la saisie (type de lot…), avant l'état du lot : erreur la plus parlante. */
+  precheck?: (lot: LotRow) => CommandHandlerOutcome | undefined,
+): Promise<
+  | { readonly ok: true; readonly lot: LotRow; readonly closed: boolean }
+  | {
+      readonly ok: false;
+      readonly outcome: CommandHandlerOutcome;
+    }
+> {
+  const lot = await loadLot(uow, envelope.payload.productionLotId);
+  if (!lot) return { ok: false, outcome: LOT_NOT_FOUND };
+  const at = new Date(envelope.occurred_at);
+  if (!(await isAllowed(uow, envelope.author_user_id, DAILY, at, lot.siteId))) {
+    return { ok: false, outcome: FORBIDDEN_SCOPE };
+  }
+  const refused = precheck?.(lot);
+  if (refused) return { ok: false, outcome: refused };
+  const closed = !acceptsDailyEntries(lot.status);
+  if (closed && !envelope.captured_offline) {
+    return {
+      ok: false,
+      outcome: rejected(
+        'LOT_NOT_ACTIVE',
+        'Saisie du jour sur un lot actif ou en vente seulement (D07 §8).',
+      ),
+    };
+  }
+  return { ok: true, lot, closed };
+}
+
+/** Emplacement physique actif de la ferme du lot (`SITE_MISMATCH` sinon). */
+export async function farmLocation(
+  uow: Uow,
+  lot: LotRow,
+  locationId: string,
+  options: { readonly rearingOnly?: boolean } = {},
+): Promise<CommandHandlerOutcome | undefined> {
+  const location = await loadLocation(uow, locationId);
+  if (!location || location.siteId !== lot.siteId) {
+    return rejected('SITE_MISMATCH', 'Emplacement inconnu ou hors de la ferme du lot.');
+  }
+  if (options.rearingOnly && !REARING_LOCATION_TYPES.includes(location.locationType)) {
+    return rejected('LOCATION_INVALID', 'Un bâtiment ou une case de la ferme du lot est attendu.');
+  }
+  return undefined;
+}
+
+/** Paramètre système global en vigueur à `at` (règle 8 : aucun seuil codé en dur). */
+async function settingValue(uow: Uow, key: string, at: Date): Promise<unknown> {
+  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
+}
+
+export async function numberSetting(
+  uow: Uow,
+  key: string,
+  at: Date,
+  fallback: number,
+): Promise<number> {
+  const value = await settingValue(uow, key, at);
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return value !== undefined && value !== null && Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export async function stringSetting(uow: Uow, key: string, at: Date): Promise<string> {
+  const value = await settingValue(uow, key, at);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export async function stringListSetting(
+  uow: Uow,
+  key: string,
+  at: Date,
+): Promise<readonly string[]> {
+  const value = await settingValue(uow, key, at);
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }

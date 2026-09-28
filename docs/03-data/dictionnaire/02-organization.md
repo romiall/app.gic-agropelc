@@ -175,6 +175,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `procurement.receipt_photo_threshold_xaf` | 100 000 | BR-APP-014, AV-037 (photo du bon de livraison exigée à partir de cette valeur acceptée) |
 | `production.egg_grade_product_codes` | `[]` | AV-046 (codes produits des calibres d'œufs, liste ordonnée ; à paramétrer avec les produits GIC, AV-072) |
 | `production.hatching_egg_product_code` | `""` | AV-046, AV-047 (code produit des œufs à couver ; vide = non paramétré) |
+| `production.egg_shelf_life_days` | 28 | AV-100, AV-122 (péremption du lot d'une collecte : date de collecte + N jours ; 0 = sans date) |
 | `production.incubation_durations` | `{"POULE": {"candlingDay": 7, "transferDay": 18, "hatchDay": 21}}` | AV-047, BR-INC-008 (échéancier par espèce, jours depuis la mise en incubateur ; ne bloque rien) |
 | `production.slaughterable_lot_types` | `["POULET_CHAIR"]` | AV-032, AV-115 (types de lots abattables) |
 | `production.high_mortality_alert_pct` | 0,5 | AV-121 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) |

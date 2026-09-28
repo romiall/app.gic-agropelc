@@ -66,7 +66,7 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `production.egg_collection.record` | Lot `PONDEUSE` actif ; égalité BR-OEU-001 ; pas d'autre collecte non annulée pour ce lot à cette date | `RECORDED` | `EggCollectionRecorded`, `ProductionRecorded` | `PRODUCTION_OUTPUT` des œufs commercialisables et à couver | Valorisation au coût standard (BR-OEU-007) | `production.daily.record` |
-| `RECORDED` | `production.egg_collection.cancel` | Motif ; les œufs de cette collecte sont encore disponibles, sinon validation | `CANCELLED` | `EggCollectionCancelled` | Mouvements inverses | — | `production.daily.record` (+ validation si stock consommé) |
+| `[*]` | `production.egg_collection.record` | Lot `PONDEUSE` ou `REPRODUCTEUR_VOLAILLE` actif ; égalité BR-OEU-001 ; calibres paramétrés ; plusieurs collectes par jour (AV-110) | `RECORDED` | `EggCollectionRecorded`, `ProductionRecorded` | `PRODUCTION_OUTPUT` des œufs commercialisables (par calibre) et à couver, dans le lot de stock propre de la collecte (AV-100) | Coût standard ; crédit du lot producteur (BR-OEU-007, AV-098) | `production.daily.record` |
+| `RECORDED` | `production.egg_collection.cancel` | Commentaire ; les œufs de cette collecte sont encore disponibles, sinon refus en ligne (`STOCK_UNAVAILABLE`, défaut AV-120) | `CANCELLED` | `EggCollectionCancelled` | Mouvements inverses ; lot de stock de la collecte clôturé | Crédit du lot producteur contrepassé | `production.daily.record` |
 
 **Hors ligne** : les deux transitions sont possibles. Une annulation hors ligne dont le stock a déjà été consommé côté serveur est appliquée et produit `STOCK_NEGATIVE`.

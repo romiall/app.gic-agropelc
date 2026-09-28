@@ -103,12 +103,12 @@ Effectifs, stock biologique et disponibilité à la vente, œufs commercialisabl
 | ID | Règle | Statut |
 |---|---|---|
 | BR-OEU-001 | Une collecte d'œufs d'un lot `PONDEUSE` pour une date donne : collectés, cassés, non conformes, commercialisables, à couver. Invariant : collectés = cassés + non conformes + commercialisables + à couver (INV-OEU-01). | C (CM §17) |
-| BR-OEU-002 | Effets stock d'une collecte : `PRODUCTION_OUTPUT` de « Œuf de consommation » (quantité commercialisable) et de « Œuf à couver » (quantité à couver) vers l'emplacement de stockage des œufs de la ferme, avec le lot de la pondeuse. Les œufs cassés et non conformes à la collecte **n'entrent pas en stock** : ce sont des indicateurs de production. | C (CM §17 « le stock d'œufs commercialisables doit résulter de ces événements ») / AV-046 |
+| BR-OEU-002 | Effets stock d'une collecte : `PRODUCTION_OUTPUT` des œufs commercialisables, **par calibre** (un produit par calibre, AV-046), et de « Œuf à couver » (quantité à couver) vers l'emplacement de stockage des œufs de la ferme, avec le **lot de stock propre de la collecte** (AV-100 : le lot de la pondeuse reste celui des animaux). Les œufs cassés et non conformes à la collecte **n'entrent pas en stock** : ce sont des indicateurs de production. | C (CM §17 « le stock d'œufs commercialisables doit résulter de ces événements ») / AV-046 |
 | BR-OEU-003 | Un œuf cassé **après** son entrée en stock (manutention, transport, PDV) est une perte de catégorie `CASSE` (D06). | C (CM §24) |
-| BR-OEU-004 | Une seule collecte par lot et par date (collecte journalière consolidée). Une correction passe par l'annulation de la collecte (mouvements inverses) puis une nouvelle saisie. | D |
+| BR-OEU-004 | Plusieurs collectes par lot et par jour sont admises (AV-110 : une par ramassage). Une correction passe par l'annulation de la collecte (mouvements inverses) puis une nouvelle saisie. | D / AV-110 |
 | BR-OEU-005 | Unité de base : l'œuf. Le plateau (30 œufs) est une unité de conditionnement pour la vente et le comptage. | AV-046, AV-080 |
 | BR-OEU-006 | Des catégories supplémentaires (calibres, œufs déclassés vendables) s'ajoutent comme nouveaux produits et nouveaux champs de collecte, sans modifier le modèle de mouvement. | C (CM §17 « d'autres classifications ») |
-| BR-OEU-007 | Coût des œufs produits : coût standard par produit au MVP. Le coût réel se lit au niveau du lot de pondeuses (coût du lot ÷ œufs produits). | AV-042 |
+| BR-OEU-007 | Coût des œufs produits : coût standard en vigueur de chaque produit ; le lot de pondeuses est crédité du même montant (`PRODUCTION_TRANSFEREE`) et l'écart entre coût réel et standard reste dans son résultat. | AV-042, AV-098 (ADR-027) |
 
 ### 7.4 Incubation (INC)
 
@@ -140,7 +140,7 @@ Effectifs, stock biologique et disponibilité à la vente, œufs commercialisabl
 |---|---|
 | Lot `ACTIVE` ou `SELLING` pour toute saisie quotidienne | `LOT_NOT_ACTIVE` |
 | Mortalité ≤ effectif en élevage à l'emplacement (en ligne) | `INSUFFICIENT_STOCK` (hors ligne : BR-STK-018) |
-| Collecte : égalité BR-OEU-001 ; quantités ≥ 0 ; pas de seconde collecte pour le même lot et la même date | `EGG_BALANCE_INVALID`, `EGG_COLLECTION_EXISTS` |
+| Collecte : égalité BR-OEU-001 ; quantités ≥ 0 ; calibres paramétrés (AV-046) ; lot pondeur (AV-044) | `EGG_BALANCE_INVALID`, `EGG_GRADE_INVALID`, `LOT_NOT_LAYING` |
 | Incubation : quantités de mirage ≤ œufs en incubateur ; bilan BR-INC-006 à l'éclosion | `INCUBATION_BALANCE_INVALID` |
 | Clôture : effectif non vendu nul | `LOT_NOT_EMPTY` |
 | Pesée : échantillon > 0 ; poids > 0 | `WEIGHING_INVALID` |
@@ -207,3 +207,6 @@ Précisions retenues par le module `production` et la bibliothèque partagée (`
 | Mortalité (P7-06) | `production.mortality.record` : déclaration `MORTALITE` sur le produit et le lot de traçabilité du lot, emplacement de la ferme (par défaut l'emplacement principal ; `SITE_MISMATCH`), cause facultative (motif `LOSS`), quantité en têtes entières ; photo et validation par la politique `MORTALITY` comme toute mortalité (même API que `inventory.loss.declare`). | BR-PRD-005, BR-PRD-006 ; AV-048, AV-107. |
 | Consommation d'un lot (P7-06) | `production.input.record` : intrant consommable, hors produit biologique (`PRODUCT_NOT_CONSUMABLE`), pris sur un emplacement de la ferme ; nature `ALIMENT`, `VETERINAIRE` ou `AUTRE_INTRANT` ; annulation par `inventory.consumption.cancel`. | BR-PRD-007 ; AV-049. |
 | Pesée et observation (P7-06) | Pesée sur un bâtiment ou une case de la ferme (facultatif), annulable par `production.weighing.cancel` (saisie du jour, commentaire obligatoire) ; observation immuable, typée (sanitaire, comportement, environnement, incident, autre), gravité par défaut `INFO` ; « RAS » = observation `AUTRE`. | BR-PRD-015 ; défaut AV-117. |
+| Collecte d'œufs (P7-07) | Lot pondeuse ou reproducteur (`LOT_NOT_LAYING`, contrôlé avant l'état du lot) ; emplacement de stockage de la ferme ; date de collecte ≤ jour de la saisie (`COLLECTION_DATE_INVALID`) ; calibres = produits dont le code est dans `production.egg_grade_product_codes` (en ligne ; hors ligne, tout produit non biologique connu, la liste ayant pu changer) ; œufs à couver = produit `production.hatching_egg_product_code` (`HATCHING_PRODUCT_MISSING`). Numéro `COL-…`, aussi code du lot de stock propre (produit porté s'il est unique), péremption = date de collecte + `production.egg_shelf_life_days`. | BR-OEU-001, 002 ; AV-046, AV-100, AV-110, défaut AV-122. |
+| Valeur d'une collecte (P7-07) | Chaque produit entre au coût standard en vigueur (entrée valorisée, CMUP recalculé) ; sans coût standard, au CMUP courant ; le lot producteur est crédité de la valeur totale (`PRODUCTION_TRANSFEREE`). | AV-098, ADR-027. |
+| Annulation d'une collecte (P7-07) | Saisie du jour (`production.daily.record`) : mouvements inverses, crédit contrepassé, lot de stock de la collecte clôturé. Œufs déjà sortis : refus en ligne (`STOCK_UNAVAILABLE`, défaut AV-120), application hors ligne avec `STOCK_NEGATIVE` ; lot producteur clôturé : refus en ligne (`LOT_NOT_ACTIVE`), conflit `LOT_CLOSED` hors ligne. | SM-EGG-COLLECTION ; ADR-006. |

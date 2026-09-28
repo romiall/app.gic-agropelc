@@ -4,6 +4,7 @@ import {
   businessDayEndUtc,
   businessDayOf,
   businessDayStartUtc,
+  addBusinessDays,
   isWithinBusinessDay,
   nextBusinessDay,
 } from './business-day.js';
@@ -77,5 +78,19 @@ describe('nextBusinessDay (BR-TER-008 : clôture automatique à 23:59, heure de 
 
   it('franchit correctement une fin de mois', () => {
     expect(nextBusinessDay('2026-09-30')).toBe('2026-10-01');
+  });
+});
+
+describe('addBusinessDays', () => {
+  it('décale un jour métier, à travers mois et années, dans les deux sens', () => {
+    expect(addBusinessDays('2026-10-21', 28)).toBe('2026-11-18');
+    expect(addBusinessDays('2026-12-20', 21)).toBe('2027-01-10');
+    expect(addBusinessDays('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addBusinessDays('2026-10-21', 0)).toBe('2026-10-21');
+  });
+
+  it('refuse un jour inexistant ou un décalage non entier', () => {
+    expect(() => addBusinessDays('2026-02-30', 1)).toThrow(/INVALID_BUSINESS_DAY|inexistante/);
+    expect(() => addBusinessDays('2026-10-21', 1.5)).toThrow(/entier/);
   });
 });

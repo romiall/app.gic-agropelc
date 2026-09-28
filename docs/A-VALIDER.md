@@ -136,6 +136,7 @@ Classification (PM §45) :
 | AV-119 | Mortalité constatée hors élevage | SECONDAIRE | P7 | Toute mortalité suit la politique `MORTALITY` | OUVERT |
 | AV-120 | Annulations après consommation (collecte, mortalité approuvée) | SECONDAIRE | P7 | Refus en ligne (`STOCK_UNAVAILABLE`) ; correction compensatoire, en attendant la décision | OUVERT |
 | AV-121 | Seuils de l’alerte de mortalité élevée | SECONDAIRE | P7 | Seuils d’alerte propres (0,5 % ou 20 têtes/jour), paramétrés | OUVERT |
+| AV-122 | Durée de conservation des œufs collectés | SECONDAIRE | P7 | 28 jours après la collecte, paramétrée | OUVERT |
 
 ---
 
@@ -737,6 +738,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) seuils d'alerte propres, paramétrés (0,5 % ou 20 têtes par jour, cumul du jour) ; (b) alerte à chaque mortalité.
 - **Recommandation** : (a).
 - **Impact** : P9 (module `communication`) ; paramètres.
+
+### AV-122 — Durée de conservation des œufs collectés — SECONDAIRE
+- **Question** : quelle date de péremption porte le lot de stock d'une collecte d'œufs ?
+- **Pourquoi** : AV-100 donne à chaque collecte un lot propre « avec date de péremption », mais le catalogue ne porte aucune durée de conservation par produit.
+- **Choix** : (a) durée unique pour les œufs, paramétrée (28 jours après la collecte) ; (b) durée par produit dans le catalogue ; (c) aucune date.
+- **Recommandation** : (a), en attendant une durée par produit si les calibres se conservent différemment.
+- **Impact** : paramètre `production.egg_shelf_life_days` ; ordre FEFO des ventes d'œufs (D06).
 
 ---
 
