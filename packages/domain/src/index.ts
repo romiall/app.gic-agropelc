@@ -162,6 +162,7 @@ export {
   allocateProRata,
   headDaysInPeriod,
   allocateByWeight,
+  checkSlaughter,
   unitCostXaf,
   checkWeighing,
   mortalityRate,

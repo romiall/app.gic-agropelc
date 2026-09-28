@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **313**.
+Nombre total de règles : **314**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -218,7 +218,8 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-015 | Une pesée enregistre la taille d'échantillon, le poids moyen (g) et, optionnellement, le poids total ; elle n'a aucun effet de stock. | C (CM §15, §19) |
 | BR-VOL-001 | Un lot `POULET_CHAIR` a pour produit « Poulet de chair vif », compté à la tête. Sa mise en place provient de « Poussin d'un jour (chair) »… | C (CM §15) / D |
 | BR-VOL-002 | La sortie vers commercialisation est un transfert du bâtiment vers un magasin, un PDV ou un stock mobile, qui porte le lot et le coût par t… | C (CM §15) |
-| BR-VOL-003 | Au MVP, le poulet est vendu vif ; l'abattage et la transformation ne sont pas modélisés. | AV-032 |
+| BR-VOL-003 | Le poulet est vendu vif ou abattu : l'abattage est une transformation (consommation des poulets vifs, production de plusieurs produits — po… | AV-032 (décision du 27/09/2026) |
+| BR-VOL-004 | L'abattage se fait à la ferme, dans un emplacement `SLAUGHTERHOUSE`, saisi par le Responsable ferme ; les produits entrent au stock de la f… | AV-100, AV-101, AV-102 |
 | BR-OEU-001 | Une collecte d'œufs d'un lot `PONDEUSE` pour une date donne : collectés, cassés, non conformes, commercialisables, à couver. Invariant : co… | C (CM §17) |
 | BR-OEU-002 | Effets stock d'une collecte : `PRODUCTION_OUTPUT` des œufs commercialisables, par calibre (un produit par calibre, AV-046), et de « Œuf à c… | C (CM §17 « le stock d'œufs commercialisables doit résulter de ces événements ») / AV-046 |
 | BR-OEU-003 | Un œuf cassé après son entrée en stock (manutention, transport, PDV) est une perte de catégorie `CASSE` (D06). | C (CM §24) |

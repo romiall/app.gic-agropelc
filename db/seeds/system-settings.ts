@@ -37,6 +37,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: true,
     ref: 'AV-100, AV-122',
   },
+  // AV-125 (défaut) : péremption du lot d'un abattage = jour de l'abattage + N jours (frais).
+  {
+    key: 'production.slaughter_shelf_life_days',
+    value: 5,
+    isClientVisible: true,
+    ref: 'AV-100, AV-125',
+  },
   // AV-047 : durées d'incubation par espèce, en jours depuis la mise en incubateur (WF-12).
   {
     key: 'production.incubation_durations',

@@ -447,6 +447,50 @@ export function allocateByWeight<K extends string>(
   );
 }
 
+/**
+ * Abattage (AV-032, AV-102, AV-114) : têtes > 0, saisies ≤ têtes, poids vif > 0, au moins un
+ * produit, produits distincts de poids entiers > 0, poids des produits ≤ poids vif
+ * (`SLAUGHTER_INVALID`). Renvoie le poids des produits et le rendement (4 décimales).
+ */
+export function checkSlaughter(input: {
+  readonly heads: number;
+  readonly condemnedHeads: number;
+  readonly liveWeightG: number;
+  readonly outputs: readonly { readonly key: string; readonly weightG: number }[];
+}): { readonly outputWeightG: number; readonly yieldRate: number | null } {
+  const invalid = (message: string) => new DomainError(message, 'SLAUGHTER_INVALID');
+  if (!Number.isInteger(input.heads) || input.heads <= 0) {
+    throw invalid('Abattage : nombre de têtes entier > 0 attendu.');
+  }
+  if (
+    !Number.isInteger(input.condemnedHeads) ||
+    input.condemnedHeads < 0 ||
+    input.condemnedHeads > input.heads
+  ) {
+    throw invalid('Abattage : têtes saisies entre 0 et le nombre de têtes abattues.');
+  }
+  if (!Number.isSafeInteger(input.liveWeightG) || input.liveWeightG <= 0) {
+    throw invalid('Abattage : poids vif (g) entier > 0 attendu.');
+  }
+  if (input.outputs.length === 0) throw invalid('Abattage : au moins un produit obtenu.');
+  const keys = new Set<string>();
+  let outputWeightG = 0;
+  for (const output of input.outputs) {
+    if (keys.has(output.key)) throw invalid(`Abattage : produit en double (${output.key}).`);
+    keys.add(output.key);
+    if (!Number.isSafeInteger(output.weightG) || output.weightG <= 0) {
+      throw invalid('Abattage : poids (g) entier > 0 attendu pour chaque produit.');
+    }
+    outputWeightG += output.weightG;
+  }
+  if (outputWeightG > input.liveWeightG) {
+    throw invalid(
+      `Abattage : ${outputWeightG} g de produits pour ${input.liveWeightG} g de poids vif.`,
+    );
+  }
+  return { outputWeightG, yieldRate: slaughterYield(outputWeightG, input.liveWeightG) };
+}
+
 /** Coût unitaire d'une sortie (valeur ÷ quantité), arrondi au franc demi supérieur. */
 export function unitCostXaf(valueXaf: number, quantity: Quantity): Xaf {
   assertSafeInteger(valueXaf, 'unitCostXaf (valeur)');

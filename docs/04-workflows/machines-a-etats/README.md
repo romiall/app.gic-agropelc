@@ -11,7 +11,7 @@ Convention : `[*]` = création. Une transition absente de la table est **interdi
 | [01-commercial.md](01-commercial.md) | SM-CUSTOMER, SM-WORK-SESSION, SM-VISIT |
 | [02-ventes-caisse.md](02-ventes-caisse.md) | SM-ORDER, SM-SALE, SM-CUSTOMER-PAYMENT, SM-CASH-SESSION, SM-CASH-TRANSFER |
 | [03-stock.md](03-stock.md) | SM-TRANSFER, SM-LOSS, SM-INVENTORY-COUNT, SM-ALLOCATION |
-| [04-production.md](04-production.md) | SM-PRODUCTION-LOT, SM-INCUBATION, SM-EGG-COLLECTION |
+| [04-production.md](04-production.md) | SM-PRODUCTION-LOT, SM-INCUBATION, SM-EGG-COLLECTION, SM-SLAUGHTER |
 | [05-achats-finance.md](05-achats-finance.md) | SM-PURCHASE-REQUEST, SM-PURCHASE-ORDER, SM-RECEIPT, SM-SUPPLIER-INVOICE, SM-SUPPLIER-PAYMENT, SM-EXPENSE |
 | [06-transverses.md](06-transverses.md) | SM-SYNC-COMMAND, SM-CONFLICT, SM-APPROVAL, SM-DEVICE, SM-USER, SM-ATTACHMENT, SM-ALERT, SM-PRICE-RULE, SM-INTEGRATION-MESSAGE |
 

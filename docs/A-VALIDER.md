@@ -139,6 +139,7 @@ Classification (PM §45) :
 | AV-122 | Durée de conservation des œufs collectés | SECONDAIRE | P7 | 28 jours après la collecte, paramétrée | **TRANCHÉ** (voir journal §3) |
 | AV-123 | Annulation d’une entrée de lot | SECONDAIRE | P7 | Responsable production seul | **TRANCHÉ** (voir journal §3) |
 | AV-124 | Production entrée sans coût standard défini | SECONDAIRE | P7 | Saisie acceptée à la valeur par défaut ; alerte à l’administrateur | **TRANCHÉ** (voir journal §3) |
+| AV-125 | Durée de conservation des produits d’abattage | SECONDAIRE | P7 | 5 jours après l’abattage (frais réfrigéré), paramétrée | OUVERT |
 
 ---
 
@@ -764,6 +765,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (b) : la ferme n'est jamais bloquée.
 - **Impact** : œufs au CMUP courant (0 sans stock antérieur), porcelets à 0 XAF, écart dans le résultat du lot producteur ; alerte `STANDARD_COST_MISSING` à l'administrateur (module `communication`, P9), déduite des entrées de production dont le produit n'a pas de coût standard à la date de l'entrée.
 - **Décision** (porteur du projet, 28/09/2026) : **accepter et alerter** (option b)
+
+### AV-125 — Durée de conservation des produits d’abattage — SECONDAIRE
+- **Question** : quelle date de péremption porte le lot de stock d'un abattage (poulet entier, découpes, abats) ?
+- **Pourquoi** : AV-100 donne à chaque abattage un lot propre « avec date de péremption » ; le catalogue n'a pas de durée de conservation et la chaîne du froid (frais ou congelé) n'est pas décrite.
+- **Choix** : (a) durée unique paramétrée (5 jours, frais réfrigéré) ; (b) durée par produit dans le catalogue (entier, découpes, abats, congelé) ; (c) aucune date.
+- **Recommandation** : (a) pour P7, (b) si des produits congelés sont vendus.
+- **Impact** : paramètre `production.slaughter_shelf_life_days` ; ordre FEFO des ventes (D06).
 
 ---
 

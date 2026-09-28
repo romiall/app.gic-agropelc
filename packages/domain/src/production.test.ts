@@ -10,6 +10,7 @@ import {
   checkCandling,
   checkHatch,
   checkLotEntry,
+  checkSlaughter,
   checkWeighing,
   costPerHeadXaf,
   eggCollectionBalance,
@@ -392,5 +393,39 @@ describe('entrées de lot (P7-05)', () => {
     for (const lotType of PRODUCTION_LOT_TYPES) {
       expect(() => checkLotEntry({ lotType, sourceKind: 'PURCHASE' })).not.toThrow();
     }
+  });
+});
+
+describe('abattage (P7-09)', () => {
+  it('poids des produits, rendement, et refus des saisies incohérentes', () => {
+    expect(
+      checkSlaughter({
+        heads: 100,
+        condemnedHeads: 2,
+        liveWeightG: 250_000,
+        outputs: [
+          { key: 'entier', weightG: 120_000 },
+          { key: 'cuisses', weightG: 40_000 },
+          { key: 'abats', weightG: 15_000 },
+        ],
+      }),
+    ).toEqual({ outputWeightG: 175_000, yieldRate: 0.7 });
+    const base = { heads: 10, condemnedHeads: 0, liveWeightG: 20_000 };
+    expect(() => checkSlaughter({ ...base, outputs: [] })).toThrow(/au moins un produit/);
+    expect(() =>
+      checkSlaughter({ ...base, condemnedHeads: 11, outputs: [{ key: 'a', weightG: 1 }] }),
+    ).toThrow(/saisies/);
+    expect(() => checkSlaughter({ ...base, outputs: [{ key: 'a', weightG: 20_001 }] })).toThrow(
+      /poids vif/,
+    );
+    expect(() =>
+      checkSlaughter({
+        ...base,
+        outputs: [
+          { key: 'a', weightG: 1 },
+          { key: 'a', weightG: 2 },
+        ],
+      }),
+    ).toThrow(/double/);
   });
 });
