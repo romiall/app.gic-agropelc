@@ -11,7 +11,7 @@
 | [STD-ID] | | | | |
 | `lot_code` | varchar(40) | Non | — | Code lisible (ex. `L-2026-014`, `INC-2026-007`, `F:ABC123`) |
 | `product_id` | uuid → catalog.products | Oui | — | Produit principal (nul si le lot couvre plusieurs produits : œufs et poules d'un lot de pondeuses) |
-| `origin_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SUPPLIER_LOT`,`COLLECTION`) | Non | — | |
+| `origin_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SUPPLIER_LOT`,`COLLECTION`,`TRANSFORMATION`) | Non | — | `TRANSFORMATION` ajouté en P7-02 : lot propre d'un abattage (AV-100) ; `COLLECTION` : lot propre d'une collecte d'œufs |
 | `origin_id` | uuid | Oui | — | Réf. sans FK (lot de production, lot d'incubation, ligne de réception) |
 | `supplier_id` | uuid | Oui | — | Réf. sans FK vers `procurement.suppliers` |
 | `supplier_lot_ref` | varchar(60) | Oui | — | Lot indiqué par le fournisseur (CM §28) |
@@ -42,7 +42,7 @@
 | `occurred_at` | ts | Non | — | Heure métier du document |
 | `business_date` | date | Non | généré | Jour métier (Douala) |
 | `recorded_at` | ts | Non | `now()` | Heure d'application |
-| `source_doc_type` | enum(`SALE`,`TRANSFER`,`LOSS`,`CONSUMPTION`,`INVENTORY_COUNT`,`GOODS_RECEIPT`,`EGG_COLLECTION`,`INCUBATION_EVENT`,`LOT_ENTRY`) | Non | — | |
+| `source_doc_type` | enum(`SALE`,`TRANSFER`,`LOSS`,`CONSUMPTION`,`INVENTORY_COUNT`,`GOODS_RECEIPT`,`EGG_COLLECTION`,`INCUBATION_EVENT`,`LOT_ENTRY`,`SLAUGHTER`,`LOT_TRANSFER`) | Non | — | `SLAUGHTER` (abattage, AV-032) et `LOT_TRANSFER` (sevrage et transfert entre lots, AV-111) ajoutés en P7-02 |
 | `source_doc_id` | uuid | Non | — | Document |
 | `source_line_id` | uuid | Oui | — | Ligne du document |
 | `allocation_id` | uuid → stock_allocations | Oui | — | Quota ou réservation consommé |
@@ -209,6 +209,7 @@
 | `product_id` | uuid → catalog.products | Non | — | Un seul produit (BR-STK-030) |
 | `lot_id` | uuid → stock_lots | Oui | — | |
 | `production_lot_id` | uuid | Oui | — | Réf. sans FK (mortalité d'un lot) |
+| `incubation_batch_id` | uuid | Oui | — | Réf. sans FK : mortalité de poussins d'un lot d'incubation avant mise en place (AV-113, P7-02) |
 | `quantity_base` | qty | Non | — | > 0 |
 | `unit_code`, `quantity` | code, qty | Non | — | Saisie |
 | `category` | enum(`MORTALITE`,`CASSE`,`DETERIORATION`,`IMPROPRE`,`DESTRUCTION`,`INEXPLIQUEE`,`VOL_SUSPECTE`,`ECART_TRANSFERT`) | Non | — | |
@@ -226,7 +227,8 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `doc_number`, `command_id`.
-- **CK** `quantity_base > 0` ; `comment` requis selon la catégorie ; `production_lot_id` requis si `MORTALITE`.
+- **CK** `quantity_base > 0` ; `comment` requis selon la catégorie ; `production_lot_id` ou `incubation_batch_id` requis si `MORTALITE` (P7-02, AV-113).
+- **Validation** (P7-02) : une perte `MORTALITE` suit la politique `MORTALITY` (AV-048, AV-119) ; son approbation exige une photo `AVAILABLE` rattachée à la déclaration (`attachments`, `owner_type = STOCK_LOSS`) quand la politique la demande (AV-107).
 - **IX** `(location_id, occurred_at)`, `(production_lot_id, occurred_at)`, `(category, business_date)`, `(status)` partiel en attente.
 - **Suppr.** `ANNULATION`. **Audit** Déclaration, décision, annulation. **Offline** DL (30 j du périmètre), CR. **Intégrité** INV-STK-14.
 
@@ -244,6 +246,7 @@
 | `unit_code`, `quantity` | | Non | — | |
 | `cost_object_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SITE`) | Non | — | |
 | `cost_object_id` | uuid | Non | — | Réf. sans FK |
+| `cost_type` | enum (comme `cost_entries`, hors `FRAIS_GENERAUX` et `PRODUCTION_TRANSFEREE`) | Oui | — | DÉDUIT (P7-02) : nature conservée même quand la consommation vaut 0 XAF (aucune écriture de coût) ; nulle pour les consommations antérieures |
 | `recorded_by` | uuid → identity.users | Non | — | |
 | `value_xaf` | money_xaf | Non | — | Figée |
 | `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
@@ -339,10 +342,11 @@
 | [STD-ID] | | | | |
 | `cost_object_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SITE`) | Non | — | |
 | `cost_object_id` | uuid | Non | — | |
-| `cost_type` | enum(`ANIMAUX`,`OEUFS`,`ALIMENT`,`VETERINAIRE`,`AUTRE_INTRANT`,`DEPENSE_DIRECTE`,`AJUSTEMENT`) | Non | — | |
-| `amount_xaf` | money_xaf | Non | — | > 0 |
-| `direction` | enum(`DEBIT`,`CREDIT`) | Non | `DEBIT` | `CREDIT` = correction |
-| `source_type` | enum(`STOCK_MOVE`,`EXPENSE`,`MANUAL`) | Non | — | |
+| `cost_type` | enum(`ANIMAUX`,`OEUFS`,`ALIMENT`,`VETERINAIRE`,`AUTRE_INTRANT`,`DEPENSE_DIRECTE`,`AJUSTEMENT`,`FRAIS_GENERAUX`,`PRODUCTION_TRANSFEREE`) | Non | — | P7-02 : `FRAIS_GENERAUX` (ADR-026), `PRODUCTION_TRANSFEREE` (crédit du lot producteur au coût standard, AV-098, ADR-027) |
+| `species_group` | enum(`VOLAILLE`,`PORC`) | Oui | — | P7-02 : espèce des frais généraux, obligatoire pour `FRAIS_GENERAUX` (AV-104 : jamais mélangées) |
+| `amount_xaf` | money_xaf | Non | — | > 0 (une écriture de 0 XAF n'est pas créée) |
+| `direction` | enum(`DEBIT`,`CREDIT`) | Non | `DEBIT` | `CREDIT` = correction, production transférée (AV-098) ou frais généraux répartis (ADR-026) |
+| `source_type` | enum(`STOCK_MOVE`,`EXPENSE`,`MANUAL`,`OVERHEAD_ENTRY`,`ALLOCATION`,`PRODUCTION`) | Non | — | P7-02 : saisie de frais généraux, répartition, production transférée |
 | `source_id` | uuid | Non | — | |
 | `reverses_entry_id` | uuid → cost_entries | Oui | — | |
 | `occurred_at` | ts | Non | — | |
@@ -351,4 +355,38 @@
 
 - **PK** `id`. **UQ** `(source_type, source_id, cost_object_id)` (idempotence) ; `reverses_entry_id`.
 - **IX** `(cost_object_type, cost_object_id, occurred_at)`.
+- **CK** `species_group` renseigné si `FRAIS_GENERAUX`.
 - **Suppr.** `IMMUABLE`. **Audit** Écritures manuelles. **Offline** SRV. **Intégrité** INV-FIN-08.
+
+## inventory.overhead_entries
+
+**Responsabilité** : saisie des frais généraux d'une ferme (P7-02 ; ADR-026 amendé, AV-103, AV-104) — une en-tête, une ligne par espèce.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | |
+| `site_id` | uuid → organization.sites | Non | — | Ferme (`site_type = FERME`) |
+| `label` | label | Non | — | Nature du frais (gardiennage, électricité…) |
+| `total_xaf` | money_xaf | Non | — | Σ des lignes, > 0 |
+| `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
+| `business_date` | date | Non | généré | Jour métier (Douala) de `occurred_at` : mois de la répartition |
+| [STD-CANCEL] | | | | |
+| [STD-ORIGIN] | | | | |
+| [STD-AUDIT] | | | | |
+
+- **PK** `id`. **UQ** `command_id`. **IX** `(site_id, business_date)`.
+- **Suppr.** `ANNULATION` (écritures inverses) ; refusée si le mois de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`). **Offline** SRV (en ligne).
+
+## inventory.overhead_entry_lines
+
+**Responsabilité** : ventilation d'une saisie de frais généraux par espèce (AV-104).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | |
+| `entry_id` | uuid → overhead_entries | Non | — | |
+| `species_group` | enum(`VOLAILLE`,`PORC`) | Non | — | |
+| `amount_xaf` | money_xaf | Non | — | > 0 |
+| `cost_entry_id` | uuid → cost_entries | Non | — | Écriture `SITE` `FRAIS_GENERAUX` (source `OVERHEAD_ENTRY`) |
+
+- **PK** `id`. **UQ** `(entry_id, species_group)`, `cost_entry_id`. **Suppr.** `IMMUABLE`.

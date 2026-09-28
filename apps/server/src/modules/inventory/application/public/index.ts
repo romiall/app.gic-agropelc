@@ -70,6 +70,30 @@ export type {
   CostEntry,
 } from './document-query.js';
 
-export { ensureSupplierLot } from './stock-lots.js';
-export type { SupplierLotInput } from './stock-lots.js';
+export { ensureSupplierLot, createStockLot, setStockLotStatus } from './stock-lots.js';
+export type { SupplierLotInput, StockLotInput, ProducedStockLotOrigin } from './stock-lots.js';
 export { virtualLocationId } from './virtual-locations.js';
+
+// P7-02 : API de la production (ADR-026, ADR-027 ; 02-modules.md §11).
+export {
+  COST_OBJECT_TYPES,
+  COST_TYPES,
+  COST_SOURCE_TYPES,
+  SPECIES_GROUPS,
+  recordCostEntry,
+  costObjectBalance,
+} from './cost-entries.js';
+export type {
+  CostObjectType,
+  CostType,
+  CostSourceType,
+  SpeciesGroup,
+  CostEntryInput,
+  CostObjectBalance,
+} from './cost-entries.js';
+export { lotHeadcount, lotHeadDays } from './lot-headcount.js';
+export type { HeadcountScope } from './lot-headcount.js';
+export { LOSS_CATEGORIES, LOSS_ATTACHMENT_OWNER_TYPE, declareLoss } from './loss-declaration.js';
+export type { LossCategory, DeclareLossInput, DeclareLossResult } from './loss-declaration.js';
+export { recordConsumption } from './consumption.js';
+export type { RecordConsumptionInput, RecordConsumptionResult } from './consumption.js';

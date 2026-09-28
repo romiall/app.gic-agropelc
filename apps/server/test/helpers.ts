@@ -313,6 +313,7 @@ export async function insertTestSite(
   trx: UnitOfWork,
   createdBy: string,
   zoneId: string,
+  options: { readonly siteType?: string } = {},
 ): Promise<string> {
   const id = freshUuid();
   const code = id.replace(/-/g, '').slice(-8).toUpperCase();
@@ -322,7 +323,7 @@ export async function insertTestSite(
       id: toBin(id),
       code,
       name: 'Site de test',
-      site_type: 'MAGASIN',
+      site_type: options.siteType ?? 'MAGASIN',
       zone_id: toBin(zoneId),
       created_by: toBin(createdBy),
     })
@@ -334,7 +335,7 @@ export async function insertTestLocation(
   trx: UnitOfWork,
   createdBy: string,
   siteId: string,
-  options: { readonly locationType?: string } = {},
+  options: { readonly locationType?: string; readonly parentLocationId?: string } = {},
 ): Promise<string> {
   const id = freshUuid();
   const code = id.replace(/-/g, '').slice(-8).toUpperCase();
@@ -346,6 +347,9 @@ export async function insertTestLocation(
       code,
       name: 'Emplacement de test',
       location_type: options.locationType ?? 'STORE',
+      ...(options.parentLocationId !== undefined
+        ? { parent_location_id: toBin(options.parentLocationId) }
+        : {}),
       created_by: toBin(createdBy),
     })
     .execute();

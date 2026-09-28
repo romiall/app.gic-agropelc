@@ -25,3 +25,25 @@ export async function areAttachmentsAvailable(
   if (rows.length !== attachmentIds.length) return false; // une pièce référencée est introuvable
   return rows.every((row) => row.upload_status === 'AVAILABLE');
 }
+
+/**
+ * Vrai si le document (`ownerType`, `ownerId`) possède au moins une pièce `AVAILABLE` (de la
+ * nature `kind` si elle est précisée). P7-02 (AV-107) : une mortalité enregistrée sans photo
+ * attend qu'une photo lui soit jointe après coup — la liste `required_attachment_ids` d'une
+ * demande de validation étant figée à sa création, l'approbation vérifie ici les pièces du
+ * document lui-même.
+ */
+export async function hasAvailableAttachment(
+  executor: Kysely<DB> | Transaction<DB>,
+  owner: { readonly ownerType: string; readonly ownerId: string; readonly kind?: string },
+): Promise<boolean> {
+  const row = await executor
+    .selectFrom('attachments_attachments')
+    .select('id')
+    .where('owner_type', '=', owner.ownerType)
+    .where('owner_id', '=', toBin(owner.ownerId))
+    .where('upload_status', '=', 'AVAILABLE')
+    .$if(owner.kind !== undefined, (qb) => qb.where('kind', '=', owner.kind!))
+    .executeTakeFirst();
+  return row !== undefined;
+}

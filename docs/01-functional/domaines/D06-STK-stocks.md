@@ -238,3 +238,18 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 | Perte déclarée sur un lot clôturé | Refusée (`LOT_CLOSED`) : un lot clôturé a un effectif nul. |
 | Inventaire comptabilisé puis ventes tardives antérieures | BR-STK-044 (rapprochement tardif). |
 | Emplacement désactivé avec des mouvements hors ligne en attente | Mouvements appliqués (fait physique), conflit `LOCATION_INACTIVE` pour revue. |
+
+## 15. Choix d'implémentation (P7-02, prérequis de la production)
+
+Précisions retenues par `inventory` pour la production (P7) ; toutes **DÉDUITES**, sauf mention d'une décision du porteur du projet.
+
+| Point | Choix | Justification |
+|---|---|---|
+| API publique pour la production | Déclaration de perte (`declareLoss`), consommation (`recordConsumption`), lots de stock (`createStockLot`, `setStockLotStatus`), écritures de coût (`recordCostEntry`, `costObjectBalance`), effectif d'un lot à un instant et têtes × jours (`lotHeadcount`, `lotHeadDays`) ; les commandes `inventory.*` s'appuient sur les mêmes fonctions. | Règle de frontière : seul `inventory` écrit ses tables (02-modules.md §11). |
+| Mortalité (AV-048, AV-119) | Toute perte `MORTALITE`, quel que soit le point d'entrée, suit la politique `MORTALITY` (validation par `production.mortality.approve`) ; politique obligatoire (`CONTROL_POLICY_MISSING` sinon) ; seuils lus dans sa `condition` (`relativePct`, `absoluteHeads`, 0 par défaut) et évalués sur l'effectif en élevage du lot à `occurred_at` par la règle partagée du domaine. | Décisions du 27/09/2026 ; BR-PRD-006. |
+| Photo de mortalité (AV-107) | Mortalité reçue sans photo : enregistrée en attente ; approbation refusée (`ATTACHMENT_MISSING`) tant qu'aucune pièce `AVAILABLE` n'est rattachée à la déclaration (`owner_type = STOCK_LOSS`) ; un rejet reste possible sans photo. | Décision du 28/09/2026 ; la liste de pièces d'une demande de validation est figée à sa création. |
+| Mortalité d'un lot d'incubation (AV-113) | Une perte `MORTALITE` porte un lot de production ou un lot d'incubation. | Décision du 28/09/2026. |
+| Écart d'inventaire sur des animaux (AV-108) | Tout écart non nul sur un produit `BIOLOGIQUE` exige la validation `ANIMAL_COUNT_ADJUSTMENT` (Responsable production), quel que soit le seuil en valeur ; même décision que `INVENTORY_ADJUSTMENT`. | Décision du 28/09/2026. |
+| Consommation de valeur nulle | Enregistrée sans écriture de coût (`amount_xaf > 0`), nature conservée sur la consommation ; l'annulation ne contrepasse que les écritures existantes. | BR-SYN-007 : un fait physique n'est pas rejeté. |
+| Frais généraux (AV-103, AV-104) | `inventory.overhead.record` : ferme seulement, portée du site, une ligne par espèce (volaille, porc), une écriture `SITE` `FRAIS_GENERAUX` par ligne ; `.cancel` par écritures inverses, refusée si le mois de l'espèce est déjà réparti. | Décisions du 28/09/2026 ; ADR-026 amendé. |
+| Politique en vigueur | Quand plusieurs politiques d'un même type sont actives, la plus récemment entrée en vigueur s'applique (`currentPolicies` ordonnée). | BR-ADM-016 ; ordre auparavant indéterminé. |

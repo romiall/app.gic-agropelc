@@ -826,8 +826,8 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
   {
     code: 'inventory.cost_entry.record',
     module: 'inventory',
-    description: 'Enregistrer une écriture de coût',
-    supportedScopes: ['ALL'],
+    description: 'Enregistrer une écriture de coût (dont les frais généraux d’une ferme, AV-103)',
+    supportedScopes: ['ALL', 'SITE'],
     isApproval: false,
     isSensitive: false,
   },
@@ -1467,7 +1467,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 44
+  // RESP_PRODUCTION — 45
   ...grants('RESP_PRODUCTION', [
     ['identity.user.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
@@ -1483,6 +1483,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['comm.note.read', 'ALL'],
     ['inventory.stock.read', 'ALL'],
     ['inventory.valuation.read', 'ALL'],
+    ['inventory.cost_entry.record', 'ALL'], // AV-103 (28/09/2026)
     ['inventory.ledger.read', 'ALL'],
     ['inventory.transfer.request', 'ALL'],
     ['inventory.transfer.dispatch', 'ALL'],
@@ -1516,7 +1517,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // RESP_FERME — 53
+  // RESP_FERME — 54
   ...grants('RESP_FERME', [
     ['identity.user.read', 'SITE'],
     ['identity.device.read', 'SITE'],
@@ -1553,6 +1554,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.allocation.manage', 'SITE'],
     ['inventory.loss.declare', 'SITE'],
     ['inventory.loss.approve', 'SITE'],
+    ['inventory.cost_entry.record', 'SITE'], // AV-103 (28/09/2026)
     ['inventory.loss.read', 'SITE'],
     ['inventory.count.perform', 'SITE'],
     ['inventory.count.approve', 'SITE'],

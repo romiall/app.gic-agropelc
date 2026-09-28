@@ -70,7 +70,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
        WHERE r.is_system = TRUE`,
     );
     expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
-    expect(ROLE_PERMISSIONS.length).toBe(491); // + 8 octrois inventory.loss.read (AV-094)
+    // + 8 octrois inventory.loss.read (AV-094) ; + 2 octrois inventory.cost_entry.record
+    // (Resp. production, Resp. ferme : frais généraux, AV-103, P7-02).
+    expect(ROLE_PERMISSIONS.length).toBe(493);
   });
 
   it('crée les 9 emplacements virtuels (BR-ADM-010)', async () => {

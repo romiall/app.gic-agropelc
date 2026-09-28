@@ -31,7 +31,8 @@ import {
   fromBinOrNull,
 } from '../../../../platform/kysely/uuid-columns.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
-import { loadCommandOrigin, virtualLocationId, tryRecordMove } from './shared.js';
+import { recordConsumption } from '../public/consumption.js';
+import { virtualLocationId, tryRecordMove } from './shared.js';
 
 const COST_OBJECT_TYPES = ['PRODUCTION_LOT', 'INCUBATION_BATCH', 'SITE'] as const;
 const COST_TYPES = [
@@ -83,91 +84,26 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
   const deps: RecordMoveDeps = { idGenerator };
 
   const record: CommandHandler<RecordPayload> = async (uow, envelope) => {
-    const {
-      locationId,
-      productId,
-      lotId,
-      quantityBase,
-      unitCode,
-      quantity,
-      costObjectType,
-      costObjectId,
-      costType,
-    } = envelope.payload;
-    const occurredAt = new Date(envelope.occurred_at);
-    const origin = await loadCommandOrigin(uow, envelope.command_id);
-    const consumptionId = envelope.aggregate_id;
-    const consumptionLocationId = await virtualLocationId(uow, 'V_CONSUMPTION');
-
-    const moveResult = await tryRecordMove(() =>
-      recordStockMove(uow, deps, {
-        productId,
-        ...(lotId !== undefined ? { lotId } : {}),
-        quantityBase,
-        fromLocationId: locationId,
-        toLocationId: consumptionLocationId,
-        moveType: 'CONSUMPTION',
-        occurredAt,
-        sourceDocType: 'CONSUMPTION',
-        sourceDocId: consumptionId,
-        costObjectType,
-        costObjectId,
-        createdBy: envelope.author_user_id,
-        ...(origin.deviceId !== null ? { createdDeviceId: origin.deviceId } : {}),
-        commandId: envelope.command_id,
-        capturedOffline: envelope.captured_offline,
-        allowNegative: envelope.captured_offline,
-      }),
-    );
-    if (!moveResult.ok) return moveResult.outcome;
-
-    const capturedLotId = moveResult.moves[0]?.lotId ?? null;
-    const totalValueXaf = moveResult.moves.reduce((sum, move) => sum + move.valueXaf, 0);
-
-    await uow
-      .insertInto('inventory_consumptions')
-      .values({
-        id: toBin(consumptionId),
-        location_id: toBin(locationId),
-        product_id: toBin(productId),
-        lot_id: toBinOrNull(capturedLotId),
-        quantity_base: String(quantityBase),
-        unit_code: unitCode,
-        quantity: String(quantity),
-        cost_object_type: costObjectType,
-        cost_object_id: toBin(costObjectId),
-        recorded_by: toBin(envelope.author_user_id),
-        value_xaf: totalValueXaf,
-        status: 'RECORDED',
-        occurred_at: occurredAt,
-        client_created_at: new Date(envelope.client_created_at),
-        command_id: toBin(envelope.command_id),
-        created_device_id: toBinOrNull(origin.deviceId),
-        captured_offline: envelope.captured_offline ? 1 : 0,
-        backdated_reason: envelope.backdated_reason,
-        created_by: toBin(envelope.author_user_id),
-      })
-      .execute();
-
-    for (const move of moveResult.moves) {
-      await uow
-        .insertInto('inventory_cost_entries')
-        .values({
-          id: toBin(idGenerator.newId()),
-          cost_object_type: costObjectType,
-          cost_object_id: toBin(costObjectId),
-          cost_type: costType,
-          amount_xaf: move.valueXaf,
-          direction: 'DEBIT',
-          source_type: 'STOCK_MOVE',
-          source_id: toBin(move.moveId),
-          occurred_at: occurredAt,
-          created_by: toBin(envelope.author_user_id),
-        })
-        .execute();
-    }
-
-    return { status: 'APPLIED' };
+    const p = envelope.payload;
+    const result = await recordConsumption(uow, deps, {
+      consumptionId: envelope.aggregate_id,
+      locationId: p.locationId,
+      productId: p.productId,
+      ...(p.lotId !== undefined ? { lotId: p.lotId } : {}),
+      quantityBase: p.quantityBase,
+      unitCode: p.unitCode,
+      quantity: p.quantity,
+      costObjectType: p.costObjectType,
+      costObjectId: p.costObjectId,
+      costType: p.costType,
+      occurredAt: new Date(envelope.occurred_at),
+      recordedBy: envelope.author_user_id,
+      commandId: envelope.command_id,
+      clientCreatedAt: new Date(envelope.client_created_at),
+      capturedOffline: envelope.captured_offline,
+      backdatedReason: envelope.backdated_reason,
+    });
+    return result.ok ? { status: 'APPLIED' } : result.outcome;
   };
 
   const cancel: CommandHandler<CancelPayload> = async (uow, envelope) => {
@@ -223,13 +159,15 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
       if (!reverseResult.ok) return reverseResult.outcome;
       const reverseMove = reverseResult.moves[0]!; // toujours 1 (reversal, jamais de FIFO — record-move.ts).
 
+      // Consommation valorisée à 0 XAF : aucune écriture d'origine, rien à contrepasser (P7-02).
       const originalCostEntry = await uow
         .selectFrom('inventory_cost_entries')
         .select(['id', 'cost_type'])
         .where('source_type', '=', 'STOCK_MOVE')
         .where('source_id', '=', move.id)
         .where('cost_object_id', '=', row.cost_object_id)
-        .executeTakeFirstOrThrow();
+        .executeTakeFirst();
+      if (!originalCostEntry || reverseMove.valueXaf === 0) continue;
 
       await uow
         .insertInto('inventory_cost_entries')

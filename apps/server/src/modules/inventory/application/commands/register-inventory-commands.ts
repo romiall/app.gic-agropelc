@@ -22,6 +22,7 @@ import { registerLossCommands } from './loss-commands.js';
 import { registerConsumptionCommands } from './consumption-commands.js';
 import { registerThresholdCommands } from './threshold-commands.js';
 import { registerCountCommands } from './count-commands.js';
+import { registerOverheadCommands } from './overhead-commands.js';
 
 @Injectable()
 export class InventoryCommandsRegistrar implements OnModuleInit {
@@ -52,6 +53,7 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
     );
     registerConsumptionCommands(this.registry, this.idGenerator);
     registerThresholdCommands(this.registry);
+    registerOverheadCommands(this.registry, this.idGenerator);
     registerCountCommands(
       this.registry,
       this.decisionRegistry,

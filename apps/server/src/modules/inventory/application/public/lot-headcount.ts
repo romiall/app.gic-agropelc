@@ -1,0 +1,90 @@
+/**
+ * Effectif d'un lot de stock (INV-PRD-01 : l'effectif d'un lot de production n'est jamais saisi,
+ * c'est la somme des soldes de son lot de traçabilité). Calculé à partir des mouvements, à un
+ * instant donné (`occurred_at` ≤ `at`), sans dépendre de `production` :
+ * - `REARING` (effectif en élevage, BR-PRD-003) : emplacements `BUILDING` et `PEN` — base du
+ *   seuil relatif de mortalité (BR-PRD-006) et des têtes × jours (ADR-026) ;
+ * - `UNSOLD` (effectif non vendu) : tous les emplacements physiques et le transit — base du coût
+ *   par tête (ADR-027). Une mortalité en attente de validation (`V_PENDING_LOSS`) n'y est plus.
+ *
+ * Un lot = un produit (AV-099) : l'effectif est celui du lot, tous produits confondus.
+ */
+import { sql, type Kysely, type Transaction } from 'kysely';
+import { headDaysInPeriod } from '@gic/domain';
+import type { DB } from '../../../../platform/kysely/database.js';
+import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+
+type Executor = Kysely<DB> | Transaction<DB>;
+
+export type HeadcountScope = 'REARING' | 'UNSOLD';
+
+function scopeCondition(scope: HeadcountScope, alias: 'fl' | 'tl') {
+  return scope === 'REARING'
+    ? sql<boolean>`${sql.ref(`${alias}.location_type`)} IN ('BUILDING', 'PEN')`
+    : sql<boolean>`(${sql.ref(`${alias}.is_virtual`)} = 0 OR ${sql.ref(`${alias}.location_type`)} = 'V_TRANSIT')`;
+}
+
+/** Effectif du lot à `at` (inclus), ou actuel si `at` est omis. */
+export async function lotHeadcount(
+  executor: Executor,
+  input: { readonly lotId: string; readonly scope: HeadcountScope; readonly at?: Date },
+): Promise<number> {
+  const at = input.at;
+  const row = await executor
+    .selectFrom('inventory_stock_moves as m')
+    .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')
+    .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
+    .select(
+      sql<string>`COALESCE(SUM(
+        (CASE WHEN ${scopeCondition(input.scope, 'tl')} THEN m.quantity ELSE 0 END)
+        - (CASE WHEN ${scopeCondition(input.scope, 'fl')} THEN m.quantity ELSE 0 END)
+      ), 0)`.as('qty'),
+    )
+    .where('m.lot_id', '=', toBin(input.lotId))
+    .$if(at !== undefined, (qb) => qb.where('m.occurred_at', '<=', at!))
+    .executeTakeFirstOrThrow();
+  return Math.round(Number(row.qty) * 1000) / 1000;
+}
+
+/**
+ * Têtes × jours du lot sur des jours métier consécutifs (ADR-026, AV-104) : effectif en fin de
+ * chaque jour (Africa/Douala), jamais négatif. `fromUtc` est le début (inclus) du premier jour,
+ * `toUtc` la fin (exclue) du dernier ; `days` la liste ordonnée des jours métier `AAAA-MM-JJ`.
+ */
+export async function lotHeadDays(
+  executor: Executor,
+  input: {
+    readonly lotId: string;
+    readonly scope: HeadcountScope;
+    readonly fromUtc: Date;
+    readonly toUtc: Date;
+    readonly days: readonly string[];
+  },
+): Promise<number> {
+  const opening = await lotHeadcount(executor, {
+    lotId: input.lotId,
+    scope: input.scope,
+    at: new Date(input.fromUtc.getTime() - 1),
+  });
+  const rows = await executor
+    .selectFrom('inventory_stock_moves as m')
+    .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')
+    .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
+    .select([
+      sql<string>`DATE_FORMAT(CONVERT_TZ(m.occurred_at, '+00:00', '+01:00'), '%Y-%m-%d')`.as('day'),
+      sql<string>`SUM(
+        (CASE WHEN ${scopeCondition(input.scope, 'tl')} THEN m.quantity ELSE 0 END)
+        - (CASE WHEN ${scopeCondition(input.scope, 'fl')} THEN m.quantity ELSE 0 END)
+      )`.as('delta'),
+    ])
+    .where('m.lot_id', '=', toBin(input.lotId))
+    .where('m.occurred_at', '>=', input.fromUtc)
+    .where('m.occurred_at', '<', input.toUtc)
+    .groupBy(sql`DATE_FORMAT(CONVERT_TZ(m.occurred_at, '+00:00', '+01:00'), '%Y-%m-%d')`)
+    .execute();
+  return headDaysInPeriod({
+    openingHeadcount: opening,
+    movements: rows.map((row) => ({ day: row.day, delta: Number(row.delta) })),
+    days: input.days,
+  });
+}

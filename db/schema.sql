@@ -150,7 +150,7 @@ CREATE TABLE `approvals_control_policies` (
   CONSTRAINT `fk_approvals_control_policies_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_approvals_control_policies_permission` FOREIGN KEY (`approver_permission`) REFERENCES `identity_permissions` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `ck_approvals_control_policies_approver_scope` CHECK (((`approver_scope` is null) or (`approver_scope` in (_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'TEAM',_utf8mb4'ALL')))),
-  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION'))),
+  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT'))),
   CONSTRAINT `ck_approvals_control_policies_requires_approval` CHECK (((`requires_approval` = false) or (`approver_permission` is not null))),
   CONSTRAINT `ck_approvals_control_policies_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -2180,6 +2180,7 @@ CREATE TABLE `inventory_consumptions` (
   `quantity` decimal(14,3) NOT NULL,
   `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `cost_object_id` binary(16) NOT NULL,
+  `cost_type` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `recorded_by` binary(16) NOT NULL,
   `value_xaf` bigint NOT NULL,
   `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
@@ -2227,6 +2228,7 @@ CREATE TABLE `inventory_consumptions` (
   CONSTRAINT `fk_inventory_consumptions_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_consumptions_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_inventory_consumptions_cost_object` CHECK ((`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE'))),
+  CONSTRAINT `ck_inventory_consumptions_cost_type` CHECK (((`cost_type` is null) or (`cost_type` in (_utf8mb4'ANIMAUX',_utf8mb4'OEUFS',_utf8mb4'ALIMENT',_utf8mb4'VETERINAIRE',_utf8mb4'AUTRE_INTRANT',_utf8mb4'DEPENSE_DIRECTE',_utf8mb4'AJUSTEMENT')))),
   CONSTRAINT `ck_inventory_consumptions_qty` CHECK (((`quantity_base` > 0) and (`quantity` > 0))),
   CONSTRAINT `ck_inventory_consumptions_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -2260,6 +2262,7 @@ CREATE TABLE `inventory_cost_entries` (
   `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `cost_object_id` binary(16) NOT NULL,
   `cost_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `amount_xaf` bigint NOT NULL,
   `direction` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DEBIT',
   `source_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
@@ -2278,9 +2281,11 @@ CREATE TABLE `inventory_cost_entries` (
   CONSTRAINT `fk_inventory_cost_entries_reverses` FOREIGN KEY (`reverses_entry_id`) REFERENCES `inventory_cost_entries` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_inventory_cost_entries_amount` CHECK ((`amount_xaf` > 0)),
   CONSTRAINT `ck_inventory_cost_entries_cost_object` CHECK ((`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE'))),
-  CONSTRAINT `ck_inventory_cost_entries_cost_type` CHECK ((`cost_type` in (_utf8mb4'ANIMAUX',_utf8mb4'OEUFS',_utf8mb4'ALIMENT',_utf8mb4'VETERINAIRE',_utf8mb4'AUTRE_INTRANT',_utf8mb4'DEPENSE_DIRECTE',_utf8mb4'AJUSTEMENT'))),
+  CONSTRAINT `ck_inventory_cost_entries_cost_type` CHECK ((`cost_type` in (_utf8mb4'ANIMAUX',_utf8mb4'OEUFS',_utf8mb4'ALIMENT',_utf8mb4'VETERINAIRE',_utf8mb4'AUTRE_INTRANT',_utf8mb4'DEPENSE_DIRECTE',_utf8mb4'AJUSTEMENT',_utf8mb4'FRAIS_GENERAUX',_utf8mb4'PRODUCTION_TRANSFEREE'))),
   CONSTRAINT `ck_inventory_cost_entries_direction` CHECK ((`direction` in (_utf8mb4'DEBIT',_utf8mb4'CREDIT'))),
-  CONSTRAINT `ck_inventory_cost_entries_source_type` CHECK ((`source_type` in (_utf8mb4'STOCK_MOVE',_utf8mb4'EXPENSE',_utf8mb4'MANUAL')))
+  CONSTRAINT `ck_inventory_cost_entries_overhead_species` CHECK (((`cost_type` <> _utf8mb4'FRAIS_GENERAUX') or (`species_group` is not null))),
+  CONSTRAINT `ck_inventory_cost_entries_source_type` CHECK ((`source_type` in (_utf8mb4'STOCK_MOVE',_utf8mb4'EXPENSE',_utf8mb4'MANUAL',_utf8mb4'OVERHEAD_ENTRY',_utf8mb4'ALLOCATION',_utf8mb4'PRODUCTION'))),
+  CONSTRAINT `ck_inventory_cost_entries_species` CHECK (((`species_group` is null) or (`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -2465,6 +2470,7 @@ CREATE TABLE `inventory_loss_declarations` (
   `product_id` binary(16) NOT NULL,
   `lot_id` binary(16) DEFAULT NULL,
   `production_lot_id` binary(16) DEFAULT NULL,
+  `incubation_batch_id` binary(16) DEFAULT NULL,
   `quantity_base` decimal(14,3) NOT NULL,
   `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `quantity` decimal(14,3) NOT NULL,
@@ -2522,6 +2528,7 @@ CREATE TABLE `inventory_loss_declarations` (
   KEY `fk_inventory_loss_declarations_cancel_approval` (`cancel_approval_request_id`),
   KEY `fk_inventory_loss_declarations_created_by` (`created_by`),
   KEY `fk_inventory_loss_declarations_updated_by` (`updated_by`),
+  KEY `ix_inventory_loss_declarations_incubation_batch` (`incubation_batch_id`,`occurred_at`),
   CONSTRAINT `fk_inventory_loss_declarations_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_loss_declarations_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_loss_declarations_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
@@ -2540,7 +2547,7 @@ CREATE TABLE `inventory_loss_declarations` (
   CONSTRAINT `fk_inventory_loss_declarations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_inventory_loss_declarations_category` CHECK ((`category` in (_utf8mb4'MORTALITE',_utf8mb4'CASSE',_utf8mb4'DETERIORATION',_utf8mb4'IMPROPRE',_utf8mb4'DESTRUCTION',_utf8mb4'INEXPLIQUEE',_utf8mb4'VOL_SUSPECTE',_utf8mb4'ECART_TRANSFERT'))),
   CONSTRAINT `ck_inventory_loss_declarations_comment` CHECK (((`category` not in (_utf8mb4'INEXPLIQUEE',_utf8mb4'VOL_SUSPECTE')) or ((`comment` is not null) and (`comment` <> _utf8mb4'')))),
-  CONSTRAINT `ck_inventory_loss_declarations_mortality` CHECK (((`category` <> _utf8mb4'MORTALITE') or (`production_lot_id` is not null))),
+  CONSTRAINT `ck_inventory_loss_declarations_mortality` CHECK (((`category` <> _utf8mb4'MORTALITE') or (`production_lot_id` is not null) or (`incubation_batch_id` is not null))),
   CONSTRAINT `ck_inventory_loss_declarations_qty` CHECK (((`quantity_base` > 0) and (`quantity` > 0))),
   CONSTRAINT `ck_inventory_loss_declarations_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'PENDING_APPROVAL',_utf8mb4'APPROVED',_utf8mb4'REJECTED_RETURNED',_utf8mb4'REJECTED_UNJUSTIFIED',_utf8mb4'CANCELLATION_PENDING',_utf8mb4'CANCELLED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -2556,6 +2563,152 @@ CREATE TABLE `inventory_loss_declarations` (
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_loss_declarations_no_delete` BEFORE DELETE ON `inventory_loss_declarations` FOR EACH ROW BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_loss_declarations : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_overhead_entries`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_overhead_entries` (
+  `id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `label` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `total_xaf` bigint NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_overhead_entries_command` (`command_id`),
+  KEY `ix_inventory_overhead_entries_site_date` (`site_id`,`business_date`),
+  KEY `fk_inventory_overhead_entries_cancelled_by` (`cancelled_by`),
+  KEY `fk_inventory_overhead_entries_created_device` (`created_device_id`),
+  KEY `fk_inventory_overhead_entries_created_by` (`created_by`),
+  KEY `fk_inventory_overhead_entries_updated_by` (`updated_by`),
+  CONSTRAINT `fk_inventory_overhead_entries_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_overhead_entries_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_overhead_entries_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_overhead_entries_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_overhead_entries_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_overhead_entries_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null)))),
+  CONSTRAINT `ck_inventory_overhead_entries_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_inventory_overhead_entries_total` CHECK ((`total_xaf` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_overhead_entries_update_guard` BEFORE UPDATE ON `inventory_overhead_entries` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.site_id <=> OLD.site_id AND NEW.label <=> OLD.label AND NEW.total_xaf <=> OLD.total_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_overhead_entries : saisie non modifiable ; annuler puis ressaisir.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_overhead_entries_no_delete` BEFORE DELETE ON `inventory_overhead_entries` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_overhead_entries : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_overhead_entry_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_overhead_entry_lines` (
+  `id` binary(16) NOT NULL,
+  `entry_id` binary(16) NOT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `cost_entry_id` binary(16) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_overhead_entry_lines_species` (`entry_id`,`species_group`),
+  UNIQUE KEY `uq_inventory_overhead_entry_lines_cost_entry` (`cost_entry_id`),
+  CONSTRAINT `fk_inventory_overhead_entry_lines_cost_entry` FOREIGN KEY (`cost_entry_id`) REFERENCES `inventory_cost_entries` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_overhead_entry_lines_entry` FOREIGN KEY (`entry_id`) REFERENCES `inventory_overhead_entries` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_overhead_entry_lines_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_inventory_overhead_entry_lines_species` CHECK ((`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_overhead_entry_lines_no_update` BEFORE UPDATE ON `inventory_overhead_entry_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_overhead_entry_lines : ligne immuable.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_overhead_entry_lines_no_delete` BEFORE DELETE ON `inventory_overhead_entry_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_overhead_entry_lines : suppression physique interdite (INV-GLO-03).';
 END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2768,7 +2921,7 @@ CREATE TABLE `inventory_stock_lots` (
   CONSTRAINT `fk_inventory_stock_lots_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_lots_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_lots_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_inventory_stock_lots_origin_type` CHECK ((`origin_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SUPPLIER_LOT',_utf8mb4'COLLECTION'))),
+  CONSTRAINT `ck_inventory_stock_lots_origin_type` CHECK ((`origin_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SUPPLIER_LOT',_utf8mb4'COLLECTION',_utf8mb4'TRANSFORMATION'))),
   CONSTRAINT `ck_inventory_stock_lots_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'CLOSED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2874,7 +3027,7 @@ CREATE TABLE `inventory_stock_moves` (
   CONSTRAINT `ck_inventory_stock_moves_move_type` CHECK ((`move_type` in (_utf8mb4'OPENING_BALANCE',_utf8mb4'PURCHASE_RECEIPT',_utf8mb4'SUPPLIER_RETURN',_utf8mb4'TRANSFER_DISPATCH',_utf8mb4'TRANSFER_RECEIPT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'INTERNAL_MOVE',_utf8mb4'SALE',_utf8mb4'CUSTOMER_RETURN',_utf8mb4'LOSS',_utf8mb4'LOSS_PENDING',_utf8mb4'LOSS_CONFIRMATION',_utf8mb4'LOSS_RELEASE',_utf8mb4'CONSUMPTION',_utf8mb4'CONSUMPTION_REVERSAL',_utf8mb4'PRODUCTION_OUTPUT',_utf8mb4'PRODUCTION_INPUT',_utf8mb4'INVENTORY_GAIN',_utf8mb4'INVENTORY_LOSS'))),
   CONSTRAINT `ck_inventory_stock_moves_quantity` CHECK ((`quantity` > 0)),
   CONSTRAINT `ck_inventory_stock_moves_reversal` CHECK ((((`is_reversal` = false) and (`reverses_move_id` is null)) or ((`is_reversal` = true) and (`reverses_move_id` is not null)))),
-  CONSTRAINT `ck_inventory_stock_moves_source_doc_type` CHECK ((`source_doc_type` in (_utf8mb4'SALE',_utf8mb4'TRANSFER',_utf8mb4'LOSS',_utf8mb4'CONSUMPTION',_utf8mb4'INVENTORY_COUNT',_utf8mb4'GOODS_RECEIPT',_utf8mb4'EGG_COLLECTION',_utf8mb4'INCUBATION_EVENT',_utf8mb4'LOT_ENTRY'))),
+  CONSTRAINT `ck_inventory_stock_moves_source_doc_type` CHECK ((`source_doc_type` in (_utf8mb4'SALE',_utf8mb4'TRANSFER',_utf8mb4'LOSS',_utf8mb4'CONSUMPTION',_utf8mb4'INVENTORY_COUNT',_utf8mb4'GOODS_RECEIPT',_utf8mb4'EGG_COLLECTION',_utf8mb4'INCUBATION_EVENT',_utf8mb4'LOT_ENTRY',_utf8mb4'SLAUGHTER',_utf8mb4'LOT_TRANSFER'))),
   CONSTRAINT `ck_inventory_stock_moves_unit_cost` CHECK ((`unit_cost_xaf` >= 0)),
   CONSTRAINT `ck_inventory_stock_moves_value` CHECK ((`value_xaf` >= 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -3151,7 +3304,7 @@ CREATE TABLE `organization_locations` (
   CONSTRAINT `ck_organization_locations_exclusive_device` CHECK (((`custody_mode` <> _utf8mb4'EXCLUSIVE_DEVICE') or (`designated_device_id` is not null))),
   CONSTRAINT `ck_organization_locations_mobile` CHECK (((`location_type` <> _utf8mb4'MOBILE') or ((`custodian_user_id` is not null) and (`custody_mode` = _utf8mb4'EXCLUSIVE_USER')))),
   CONSTRAINT `ck_organization_locations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'INACTIVE'))),
-  CONSTRAINT `ck_organization_locations_type` CHECK ((`location_type` in (_utf8mb4'STORE',_utf8mb4'POS',_utf8mb4'BUILDING',_utf8mb4'PEN',_utf8mb4'INCUBATOR',_utf8mb4'HATCHER',_utf8mb4'MOBILE',_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT'))),
+  CONSTRAINT `ck_organization_locations_type` CHECK ((`location_type` in (_utf8mb4'STORE',_utf8mb4'POS',_utf8mb4'BUILDING',_utf8mb4'PEN',_utf8mb4'INCUBATOR',_utf8mb4'HATCHER',_utf8mb4'MOBILE',_utf8mb4'SLAUGHTERHOUSE',_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT'))),
   CONSTRAINT `ck_organization_locations_virtual_site` CHECK ((((`is_virtual` = true) and (`site_id` is null)) or ((`is_virtual` = false) and (`site_id` is not null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4808,7 +4961,7 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Dumping routines for database 'gic_agropelc_test'
+-- Dumping routines for database 'gic_agropelc_dev'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -4854,5 +5007,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20260930090000'),
   ('20260930090100'),
   ('20261001090000'),
-  ('20261001090100');
+  ('20261001090100'),
+  ('20261002090000');
 UNLOCK TABLES;

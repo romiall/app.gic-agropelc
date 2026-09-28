@@ -35,6 +35,11 @@ export async function currentPolicies(
     .where('status', '=', 'ACTIVE')
     .where('valid_from', '<=', at)
     .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', at)]))
+    // Ordre déterministe (P7-02) : la politique entrée en vigueur le plus récemment d'abord —
+    // les appelants qui retiennent la première politique applicable prennent la plus récente.
+    .orderBy('valid_from', 'desc')
+    .orderBy('version', 'desc')
+    .orderBy('id', 'desc')
     .execute();
   return rows.map((row) => ({
     id: fromBin(row.id),

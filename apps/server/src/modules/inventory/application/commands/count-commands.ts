@@ -1,6 +1,8 @@
 /**
- * `inventory.count.{open,record_lines,submit,cancel}` (SM-INVENTORY-COUNT) + gestionnaire de
- * décision `INVENTORY_ADJUSTMENT`. Portée de P2-04 : natures `FULL`/`PARTIAL`/`SPOT`.
+ * `inventory.count.{open,record_lines,submit,cancel}` (SM-INVENTORY-COUNT) + gestionnaires de
+ * décision `INVENTORY_ADJUSTMENT` et `ANIMAL_COUNT_ADJUSTMENT` (P7-02, AV-108 : tout écart sur des
+ * animaux est validé par le Responsable production). Portée de P2-04 : natures
+ * `FULL`/`PARTIAL`/`SPOT`.
  *
  * Hors périmètre, documenté et non simulé : inventaire d'ouverture (`count_type = 'OPENING'`,
  * `inventory.opening.post`) — `OPENING_BALANCE` reste utilisable directement via
@@ -339,6 +341,10 @@ function buildCountCommands(
     }
 
     const absVarianceValueXaf = Math.abs(varianceValueXaf);
+    // AV-108 (28/09/2026) : tout écart sur des animaux (produits BIOLOGIQUE) exige la validation
+    // du Responsable production, quel que soit le seuil en valeur — un inventaire en baisse ne
+    // doit pas contourner la validation systématique des mortalités (AV-048).
+    const animalVariance = await hasBiologicalVariance(uow, computed);
     const thresholdSetting = await currentSettingValue(uow, {
       key: COUNT_APPROVAL_THRESHOLD_KEY,
       scopeType: 'GLOBAL',
@@ -349,7 +355,8 @@ function buildCountCommands(
       thresholdSetting !== undefined
         ? Number(thresholdSetting)
         : COUNT_APPROVAL_THRESHOLD_FALLBACK_XAF;
-    const requiresApproval = absVarianceValueXaf >= threshold;
+    const requiresApproval = animalVariance || absVarianceValueXaf >= threshold;
+    const operationType = animalVariance ? 'ANIMAL_COUNT_ADJUSTMENT' : 'INVENTORY_ADJUSTMENT';
 
     if (!requiresApproval) {
       for (const entry of computed) {
@@ -380,21 +387,20 @@ function buildCountCommands(
       return { status: 'APPLIED' };
     }
 
-    const policies = await currentPolicies(uow, 'INVENTORY_ADJUSTMENT', occurredAt);
+    const policies = await currentPolicies(uow, operationType, occurredAt);
     const policy = policies[0];
     if (!policy) {
       return {
         status: 'REJECTED',
         errorCode: 'CONTROL_POLICY_MISSING',
-        messageFr:
-          'Aucune politique de contrôle INVENTORY_ADJUSTMENT configurée (approvals.policy.set).',
+        messageFr: `Aucune politique de contrôle ${operationType} configurée (approvals.policy.set).`,
       };
     }
 
     const approvalRequestId = idGenerator.newId();
     await requestApproval(uow, {
       requestId: approvalRequestId,
-      operationType: 'INVENTORY_ADJUSTMENT',
+      operationType,
       subjectType: 'INVENTORY_COUNT',
       subjectId: envelope.payload.countId,
       subjectSummary: `Écart d'inventaire de ${absVarianceValueXaf} XAF`,
@@ -459,52 +465,75 @@ function registerInventoryAdjustmentDecisionHandler(
   idGenerator: IdGenerator,
 ): void {
   const deps: RecordMoveDeps = { idGenerator };
-  decisionRegistry.register('INVENTORY_ADJUSTMENT', async (uow, ctx) => {
-    const row = await uow
-      .selectFrom('inventory_inventory_counts')
-      .select(['id', 'location_id'])
-      .where('id', '=', toBin(ctx.subjectId))
-      .executeTakeFirstOrThrow();
+  // AV-108 : même décision pour un écart portant sur des animaux (validation du Resp. production).
+  for (const operationType of ['INVENTORY_ADJUSTMENT', 'ANIMAL_COUNT_ADJUSTMENT'] as const)
+    decisionRegistry.register(operationType, async (uow, ctx) => {
+      const row = await uow
+        .selectFrom('inventory_inventory_counts')
+        .select(['id', 'location_id'])
+        .where('id', '=', toBin(ctx.subjectId))
+        .executeTakeFirstOrThrow();
 
-    if (ctx.decision === 'APPROVED') {
-      const locationId = fromBin(row.location_id);
-      const lines = await uow
-        .selectFrom('inventory_inventory_count_lines')
-        .selectAll()
-        .where('count_id', '=', row.id)
-        .execute();
-      for (const line of lines) {
-        const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
-        await applyLineAdjustment(uow, deps, {
-          countId: ctx.subjectId,
-          locationId,
-          line,
-          variance,
-          unitCostXaf: line.unit_cost_xaf !== null ? Number(line.unit_cost_xaf) : 0,
-          decidedBy: ctx.decidedBy,
-        });
+      if (ctx.decision === 'APPROVED') {
+        const locationId = fromBin(row.location_id);
+        const lines = await uow
+          .selectFrom('inventory_inventory_count_lines')
+          .selectAll()
+          .where('count_id', '=', row.id)
+          .execute();
+        for (const line of lines) {
+          const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
+          await applyLineAdjustment(uow, deps, {
+            countId: ctx.subjectId,
+            locationId,
+            line,
+            variance,
+            unitCostXaf: line.unit_cost_xaf !== null ? Number(line.unit_cost_xaf) : 0,
+            decidedBy: ctx.decidedBy,
+          });
+        }
+        await uow
+          .updateTable('inventory_inventory_counts')
+          .set({
+            status: 'POSTED',
+            posted_at: ctx.decidedAt,
+            updated_by: toBin(ctx.decidedBy),
+            version: sql`version + 1`,
+          })
+          .where('id', '=', row.id)
+          .execute();
+        await recordCountChange(uow, row);
+        return;
       }
+
       await uow
         .updateTable('inventory_inventory_counts')
-        .set({
-          status: 'POSTED',
-          posted_at: ctx.decidedAt,
-          updated_by: toBin(ctx.decidedBy),
-          version: sql`version + 1`,
-        })
+        .set({ status: 'REJECTED', updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
         .where('id', '=', row.id)
         .execute();
       await recordCountChange(uow, row);
-      return;
-    }
+    });
+}
 
-    await uow
-      .updateTable('inventory_inventory_counts')
-      .set({ status: 'REJECTED', updated_by: toBin(ctx.decidedBy), version: sql`version + 1` })
-      .where('id', '=', row.id)
-      .execute();
-    await recordCountChange(uow, row);
-  });
+/** AV-108 : vrai si un écart non nul porte sur un produit de famille `BIOLOGIQUE`. */
+async function hasBiologicalVariance(
+  uow: UnitOfWork,
+  computed: readonly {
+    readonly line: { readonly product_id: Buffer };
+    readonly variance: number;
+  }[],
+): Promise<boolean> {
+  const productIds = computed
+    .filter((entry) => Math.abs(entry.variance) >= 0.0005)
+    .map((entry) => entry.line.product_id);
+  if (productIds.length === 0) return false;
+  const row = await uow
+    .selectFrom('catalog_products')
+    .select('id')
+    .where('id', 'in', productIds)
+    .where('stock_family', '=', 'BIOLOGIQUE')
+    .executeTakeFirst();
+  return row !== undefined;
 }
 
 /** Jeu `counts` (P2-06) : à chaque changement d'état ou de lignes de l'inventaire. */

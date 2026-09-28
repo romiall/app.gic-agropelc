@@ -1,1 +1,1 @@
-export { areAttachmentsAvailable } from './attachment-query.js';
+export { areAttachmentsAvailable, hasAvailableAttachment } from './attachment-query.js';

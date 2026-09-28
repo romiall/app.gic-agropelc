@@ -24,6 +24,8 @@ export const OPERATION_TYPES = [
   // réception comptabilisée (BR-APP-013) — D08 §11.
   'RECEIPT_QUARANTINE',
   'RECEIPT_CANCELLATION',
+  // P7-02 : écart d'inventaire portant sur des animaux, validé par le Resp. production (AV-108).
+  'ANIMAL_COUNT_ADJUSTMENT',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

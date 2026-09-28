@@ -621,6 +621,7 @@ export interface InventoryConsumptions {
   command_id: Buffer | null;
   cost_object_id: Buffer;
   cost_object_type: string;
+  cost_type: string | null;
   created_at: Generated<Date>;
   created_by: Buffer;
   created_device_id: Buffer | null;
@@ -655,6 +656,7 @@ export interface InventoryCostEntries {
   reverses_entry_id: Buffer | null;
   source_id: Buffer;
   source_type: string;
+  species_group: string | null;
 }
 
 export interface InventoryInventoryCountLines {
@@ -729,6 +731,7 @@ export interface InventoryLossDeclarations {
   declared_by: Buffer;
   doc_number: string;
   id: Buffer;
+  incubation_batch_id: Buffer | null;
   local_ref: string | null;
   location_id: Buffer;
   lot_id: Buffer | null;
@@ -752,6 +755,42 @@ export interface InventoryLossDeclarations {
   updated_by: Buffer | null;
   value_xaf: number;
   version: Generated<number>;
+}
+
+export interface InventoryOverheadEntries {
+  backdated_reason: string | null;
+  business_date: Date | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  id: Buffer;
+  label: string;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  total_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface InventoryOverheadEntryLines {
+  amount_xaf: number;
+  cost_entry_id: Buffer;
+  created_at: Generated<Date>;
+  entry_id: Buffer;
+  id: Buffer;
+  species_group: string;
 }
 
 export interface InventoryProductValuations {
@@ -1405,6 +1444,8 @@ export interface DB {
   inventory_inventory_count_lines: InventoryInventoryCountLines;
   inventory_inventory_counts: InventoryInventoryCounts;
   inventory_loss_declarations: InventoryLossDeclarations;
+  inventory_overhead_entries: InventoryOverheadEntries;
+  inventory_overhead_entry_lines: InventoryOverheadEntryLines;
   inventory_product_valuations: InventoryProductValuations;
   inventory_stock_allocation_entries: InventoryStockAllocationEntries;
   inventory_stock_allocations: InventoryStockAllocations;

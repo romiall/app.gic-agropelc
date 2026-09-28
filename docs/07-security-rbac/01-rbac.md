@@ -175,7 +175,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `inventory.consumption.record` | — | — | — | — | — | SITE | ALL | SITE | SITE | — | — |
 | `inventory.threshold.manage` | ALL | — | ZONE | — | — | — | ALL | SITE | SITE | — | — |
 | `inventory.opening.post` | — | ALL | — | — | — | — | — | — | SITE | — | ALL |
-| `inventory.cost_entry.record` | — | — | — | — | — | — | — | — | — | — | ALL |
+| `inventory.cost_entry.record` (frais généraux d'une ferme, AV-103) | — | — | — | — | — | — | ALL | SITE | — | — | ALL |
 | `production.lot.read` | ALL | — | — | — | — | — | ALL | SITE | — | ALL | ALL |
 | `production.lot.manage` | — | — | — | — | — | — | ALL | — | — | — | — |
 | `production.daily.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |

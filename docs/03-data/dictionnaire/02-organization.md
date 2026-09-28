@@ -90,7 +90,7 @@
 | `parent_location_id` | uuid → locations | Oui | — | Bâtiment d'une case |
 | `code` | code | Non | — | Unique par site |
 | `name` | label | Non | — | |
-| `location_type` | enum(`STORE`,`POS`,`BUILDING`,`PEN`,`INCUBATOR`,`HATCHER`,`MOBILE`,`V_OPENING`,`V_SUPPLIER`,`V_CUSTOMER`,`V_PRODUCTION`,`V_CONSUMPTION`,`V_LOSS`,`V_PENDING_LOSS`,`V_ADJUSTMENT`,`V_TRANSIT`) | Non | — | |
+| `location_type` | enum(`STORE`,`POS`,`BUILDING`,`PEN`,`INCUBATOR`,`HATCHER`,`MOBILE`,`SLAUGHTERHOUSE`,`V_OPENING`,`V_SUPPLIER`,`V_CUSTOMER`,`V_PRODUCTION`,`V_CONSUMPTION`,`V_LOSS`,`V_PENDING_LOSS`,`V_ADJUSTMENT`,`V_TRANSIT`) | Non | — | `SLAUGHTERHOUSE` (abattoir de la ferme, AV-101) ajouté en P7-02 |
 | `is_virtual` | boolean | Non | calculé | Vrai pour les types `V_*` |
 | `custody_mode` | enum(`EXCLUSIVE_USER`,`EXCLUSIVE_DEVICE`,`SHARED`) | Oui | — | Obligatoire pour les emplacements physiques (BR-STK-010) |
 | `custodian_user_id` | uuid → identity.users | Oui | — | Détenteur d'un emplacement `MOBILE` |

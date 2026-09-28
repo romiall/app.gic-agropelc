@@ -69,3 +69,62 @@ export async function ensureSupplierLot(
     .execute();
   return id;
 }
+
+/** Origines de lot de stock créées par la production (ADR-027, AV-100). */
+export type ProducedStockLotOrigin =
+  'PRODUCTION_LOT' | 'INCUBATION_BATCH' | 'COLLECTION' | 'TRANSFORMATION';
+
+export interface StockLotInput {
+  /** Identifiant fourni par l'appelant (idempotence), sinon généré. */
+  readonly lotId?: string;
+  readonly originType: ProducedStockLotOrigin;
+  /** Document d'origine (lot de production, lot d'incubation, collecte, abattage). */
+  readonly originId: string;
+  readonly lotCode: string;
+  /** Produit du lot (un lot par produit, AV-099) ; nul seulement pour un lot multi-produits. */
+  readonly productId: string | null;
+  readonly fifoRankAt: Date;
+  /** `AAAA-MM-JJ`. */
+  readonly expiryDate: string | null;
+  readonly createdBy: string;
+}
+
+/**
+ * Lot de stock d'un document de production (ADR-027) : lot de traçabilité d'un lot de
+ * production ou d'incubation, lot propre d'une collecte ou d'un abattage (AV-100). Le code est
+ * celui du document (unique) ; il n'est pas modifiable ensuite (déclencheur).
+ */
+export async function createStockLot(
+  uow: UnitOfWork,
+  deps: { readonly idGenerator: IdGenerator },
+  input: StockLotInput,
+): Promise<string> {
+  const id = input.lotId ?? deps.idGenerator.newId();
+  await uow
+    .insertInto('inventory_stock_lots')
+    .values({
+      id: toBin(id),
+      lot_code: input.lotCode.slice(0, 40),
+      product_id: input.productId === null ? null : toBin(input.productId),
+      origin_type: input.originType,
+      origin_id: toBin(input.originId),
+      expiry_date: input.expiryDate === null ? null : sql<Date>`${input.expiryDate}`,
+      fifo_rank_at: input.fifoRankAt,
+      created_by: toBin(input.createdBy),
+    })
+    .execute();
+  return id;
+}
+
+/** Clôture ou réouverture d'un lot de stock (seule colonne modifiable, INV-PRD-02). */
+export async function setStockLotStatus(
+  uow: UnitOfWork,
+  lotId: string,
+  status: 'OPEN' | 'CLOSED',
+): Promise<void> {
+  await uow
+    .updateTable('inventory_stock_lots')
+    .set({ status })
+    .where('id', '=', toBin(lotId))
+    .execute();
+}
