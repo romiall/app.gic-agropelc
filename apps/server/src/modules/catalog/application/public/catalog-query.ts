@@ -84,6 +84,55 @@ export async function findProductLotTracking(
   return row?.lot_tracking as 'NONE' | 'OPTIONAL' | 'REQUIRED' | undefined;
 }
 
+/** Fiche d'un produit par identifiant (`production` : produit d'un lot, espèce, famille). */
+export async function findProduct(
+  executor: Kysely<DB> | Transaction<DB>,
+  productId: string,
+): Promise<ProductSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_products')
+    .selectAll()
+    .where('id', '=', toBin(productId))
+    .executeTakeFirst();
+  if (!row) return undefined;
+  return {
+    id: fromBin(row.id),
+    code: row.code,
+    name: row.name,
+    categoryId: fromBin(row.category_id),
+    stockFamily: row.stock_family,
+    baseUnitCode: row.base_unit_code,
+    lotTracking: row.lot_tracking,
+    isSellable: Boolean(row.is_sellable),
+    isPurchasable: Boolean(row.is_purchasable),
+    isProducible: Boolean(row.is_producible),
+    isConsumable: Boolean(row.is_consumable),
+    pricingMode: row.pricing_mode,
+    species: row.species,
+    status: row.status,
+  };
+}
+
+/**
+ * Coût standard en vigueur d'un produit à `at` (BR-CAT-011 ; AV-098 : œufs et porcelets
+ * produits entrent en stock à ce coût) ; `undefined` si aucun coût standard n'est défini.
+ */
+export async function findStandardUnitCostXaf(
+  executor: Kysely<DB> | Transaction<DB>,
+  productId: string,
+  at: Date,
+): Promise<number | undefined> {
+  const row = await executor
+    .selectFrom('catalog_product_standard_costs')
+    .select('unit_cost_xaf')
+    .where('product_id', '=', toBin(productId))
+    .where('valid_from', '<=', at)
+    .orderBy('valid_from', 'desc')
+    .orderBy('id', 'desc')
+    .executeTakeFirst();
+  return row ? Number(row.unit_cost_xaf) : undefined;
+}
+
 export interface UnitSummary {
   readonly code: string;
   readonly name: string;

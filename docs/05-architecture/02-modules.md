@@ -143,7 +143,7 @@
 |---|---|
 | Responsabilité | Registre des mouvements, soldes, lots, transferts, allocations et réservations, pertes, consommations, inventaires, seuils, valorisation (CMUP, coût de lot), registre de coûts |
 | Tables | `stock_lots`, `stock_moves`, `stock_balances`, `stock_balance_snapshots`, `stock_transfers`, `stock_transfer_lines`, `stock_allocations`, `stock_allocation_entries`, `loss_declarations`, `consumptions`, `inventory_counts`, `inventory_count_lines`, `stock_thresholds`, `product_valuations`, `cost_entries` |
-| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `reserve`, `releaseReservation`, `transferReservation`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `onLateMove` (rapprochements) |
+| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `reserve`, `releaseReservation`, `transferReservation`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) |
 | Événements | `StockTransfer*`, `StockAllocation*`, `StockReservationChanged`, `StockLoss*`, `ConsumptionRecorded`, `InventoryCount*`, `InventoryAdjusted`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`, `CostEntryRecorded` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments` |
 | Interdites | `sales`, `procurement`, `production`, `finance`, `crm` (ils l'appellent ; il ne les appelle jamais) |
@@ -154,7 +154,7 @@
 |---|---|
 | Responsabilité | Fournisseurs, demandes d'achat, bons de commande, réceptions |
 | Tables | `suppliers`, `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `purchase_order_lines`, `goods_receipts`, `goods_receipt_lines` |
-| API | §4.8 ; interne : `procurement.supplier(id)`, `procurement.poLineMatching(poLine)`, `procurement.recordDirectReceipt(uow, …)` (mise en place directe) |
+| API | §4.8 ; interne : `procurement.supplier(id)`, `procurement.poLineMatching(poLine)`, `procurement.receiptForPlacement(receipt)` (mise en place directe : réception et entrée de lot dans le même lot de commandes, AV-112) |
 | Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory` |
 | Interdites | `finance`, `production`, `sales` |
@@ -163,8 +163,8 @@
 
 | Rubrique | Contenu |
 |---|---|
-| Responsabilité | Lots, entrées, saisies quotidiennes, collectes d'œufs, incubation |
-| Tables | `production_lots`, `lot_entries`, `lot_weighings`, `lot_observations`, `egg_collections`, `incubation_batches`, `incubation_events` |
+| Responsabilité | Lots, entrées, saisies quotidiennes, collectes d'œufs, incubation, abattage, répartition des frais généraux (ADR-026) |
+| Tables | `production_lots`, `lot_entries`, `lot_weighings`, `lot_observations`, `egg_collections` (+ lignes), `incubation_batches`, `incubation_events`, `slaughter_batches` (+ produits), `overhead_allocations` (+ lignes) |
 | API | §4.7 ; interne : `production.lot(id)`, `production.lotStatus(id)` |
 | Événements | `ProductionLot*`, `LotEntryRecorded`, `MortalityRecorded`, `LotInputConsumed`, `Lot*Recorded`, `EggCollection*`, `Incubation*`, `Candling*`, `Hatch*`, `ProductionRecorded`, `LotStatusChanged`, `HighMortalityDetected` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory`, `procurement` |

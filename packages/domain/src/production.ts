@@ -66,6 +66,91 @@ export function acceptsDailyEntries(status: ProductionLotStatus): boolean {
   return status === 'ACTIVE' || status === 'SELLING';
 }
 
+/** Espèces du catalogue (`catalog.products.species`) admises comme produit d'un type de lot. */
+const PRODUCT_SPECIES: Record<ProductionLotType, readonly string[]> = {
+  POULET_CHAIR: ['POULET_CHAIR'],
+  PONDEUSE: ['PONDEUSE'],
+  // Poules et coqs reproducteurs, de souche chair ou ponte (AV-044, AV-099 : un lot par produit).
+  REPRODUCTEUR_VOLAILLE: ['POULET_CHAIR', 'PONDEUSE'],
+  PORC_ENGRAISSEMENT: ['PORC'],
+  // Truies, verrats et porcelets, chacun dans son lot (AV-111).
+  PORC_NAISSAGE: ['PORC'],
+};
+
+/** BR-PRD-001 : le produit d'un lot est un produit biologique de l'espèce du type de lot. */
+export function lotAcceptsProductSpecies(
+  lotType: ProductionLotType,
+  productSpecies: string | null,
+): boolean {
+  return productSpecies !== null && (PRODUCT_SPECIES[lotType] ?? []).includes(productSpecies);
+}
+
+/** Espèce (volaille, porc) d'un produit biologique du catalogue ; `null` sinon. */
+export function speciesGroupOfProduct(productSpecies: string | null): 'VOLAILLE' | 'PORC' | null {
+  if (productSpecies === 'POULET_CHAIR' || productSpecies === 'PONDEUSE') return 'VOLAILLE';
+  if (productSpecies === 'PORC') return 'PORC';
+  return null;
+}
+
+/** Première entrée admise sur un lot planifié (`PLANNED` → `ACTIVE`), puis sur un lot actif. */
+export function acceptsLotEntries(status: ProductionLotStatus): boolean {
+  return status === 'PLANNED' || acceptsDailyEntries(status);
+}
+
+export type LotEntrySourceKind = 'PURCHASE' | 'INTERNAL_STOCK' | 'BIRTH' | 'TRANSFER' | 'WEANING';
+
+/**
+ * Entrée de lot admise (BR-PRD-004, BR-POR-002 ; AV-045, AV-111) — `LOT_ENTRY_INVALID` sinon :
+ * - mise en place (achat ou stock) : tout type de lot ;
+ * - naissance : lot de naissage (porcelets) rattaché à un lot de naissage parent (truies) ;
+ * - sevrage : d'un lot de naissage vers un lot d'engraissement ;
+ * - transfert : entre deux lots distincts de la même espèce.
+ */
+export function checkLotEntry(input: {
+  readonly lotType: ProductionLotType;
+  readonly sourceKind: LotEntrySourceKind;
+  readonly parentLotType?: ProductionLotType | null;
+  readonly sourceLotType?: ProductionLotType | null;
+  readonly sameLot?: boolean;
+}): void {
+  const invalid = (message: string) => new DomainError(message, 'LOT_ENTRY_INVALID');
+  const profile = lotTypeProfile(input.lotType);
+  switch (input.sourceKind) {
+    case 'PURCHASE':
+    case 'INTERNAL_STOCK':
+      return;
+    case 'BIRTH':
+      if (
+        !profile.farrows ||
+        !input.parentLotType ||
+        !lotTypeProfile(input.parentLotType).farrows
+      ) {
+        throw invalid(
+          'Une naissance entre dans un lot de naissage (porcelets) rattaché au lot de truies (AV-111).',
+        );
+      }
+      return;
+    case 'WEANING':
+      if (input.lotType !== 'PORC_ENGRAISSEMENT' || input.sourceLotType !== 'PORC_NAISSAGE') {
+        throw invalid(
+          'Le sevrage transfère des porcelets d’un lot de naissage vers un lot d’engraissement.',
+        );
+      }
+      return;
+    case 'TRANSFER':
+      if (
+        !input.sourceLotType ||
+        input.sameLot === true ||
+        lotTypeProfile(input.sourceLotType).species !== profile.species
+      ) {
+        throw invalid('Un transfert relie deux lots distincts de la même espèce.');
+      }
+      return;
+    default:
+      throw invalid(`Origine d’entrée inconnue : ${String(input.sourceKind)}.`);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Entiers et taux
 // ---------------------------------------------------------------------------------------------

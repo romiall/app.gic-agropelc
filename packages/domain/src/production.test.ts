@@ -3,11 +3,13 @@ import fc from 'fast-check';
 import {
   PRODUCTION_LOT_TYPES,
   acceptsDailyEntries,
+  acceptsLotEntries,
   allocateByWeight,
   allocateProRata,
   averageDailyGainG,
   checkCandling,
   checkHatch,
+  checkLotEntry,
   checkWeighing,
   costPerHeadXaf,
   eggCollectionBalance,
@@ -17,11 +19,13 @@ import {
   headDaysInPeriod,
   incubationBalanced,
   layingRate,
+  lotAcceptsProductSpecies,
   lotTypeProfile,
   mortalityRate,
   mortalityRequiresApproval,
   rate4,
   slaughterYield,
+  speciesGroupOfProduct,
   unitCostXaf,
   type IncubationCounters,
 } from './production.js';
@@ -305,5 +309,88 @@ describe('pesées et indicateurs (BR-PRD-015, AV-049)', () => {
     expect(layingRate(4_250, 5_000)).toBe(0.85);
     expect(rate4(1, 3)).toBe(0.3333);
     expect(rate4(2, 3)).toBe(0.6667);
+  });
+});
+
+describe('entrées de lot (P7-05)', () => {
+  it('BR-PRD-001 : produit biologique de l’espèce du type de lot', () => {
+    expect(lotAcceptsProductSpecies('POULET_CHAIR', 'POULET_CHAIR')).toBe(true);
+    expect(lotAcceptsProductSpecies('POULET_CHAIR', 'PONDEUSE')).toBe(false);
+    expect(lotAcceptsProductSpecies('REPRODUCTEUR_VOLAILLE', 'PONDEUSE')).toBe(true);
+    expect(lotAcceptsProductSpecies('REPRODUCTEUR_VOLAILLE', 'POULET_CHAIR')).toBe(true);
+    expect(lotAcceptsProductSpecies('PORC_NAISSAGE', 'PORC')).toBe(true);
+    expect(lotAcceptsProductSpecies('PORC_ENGRAISSEMENT', null)).toBe(false);
+    expect(speciesGroupOfProduct('PONDEUSE')).toBe('VOLAILLE');
+    expect(speciesGroupOfProduct('PORC')).toBe('PORC');
+    expect(speciesGroupOfProduct(null)).toBeNull();
+  });
+
+  it('première entrée sur un lot planifié ; plus aucune sur un lot clos ou annulé', () => {
+    expect(acceptsLotEntries('PLANNED')).toBe(true);
+    expect(acceptsLotEntries('SELLING')).toBe(true);
+    expect(acceptsLotEntries('CLOSED')).toBe(false);
+    expect(acceptsLotEntries('CANCELLED')).toBe(false);
+  });
+
+  it('AV-111 : naissance dans un lot de porcelets lié au lot de truies ; sevrage vers l’engraissement', () => {
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PORC_NAISSAGE',
+        sourceKind: 'BIRTH',
+        parentLotType: 'PORC_NAISSAGE',
+      }),
+    ).not.toThrow();
+    expect(() => checkLotEntry({ lotType: 'PORC_NAISSAGE', sourceKind: 'BIRTH' })).toThrow(
+      /lot de truies/,
+    );
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PORC_ENGRAISSEMENT',
+        sourceKind: 'BIRTH',
+        parentLotType: 'PORC_NAISSAGE',
+      }),
+    ).toThrow(/LOT_ENTRY_INVALID|lot de naissage/);
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PORC_ENGRAISSEMENT',
+        sourceKind: 'WEANING',
+        sourceLotType: 'PORC_NAISSAGE',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PORC_NAISSAGE',
+        sourceKind: 'WEANING',
+        sourceLotType: 'PORC_NAISSAGE',
+      }),
+    ).toThrow(/sevrage/);
+  });
+
+  it('transfert entre lots distincts de la même espèce ; mise en place toujours admise', () => {
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PONDEUSE',
+        sourceKind: 'TRANSFER',
+        sourceLotType: 'REPRODUCTEUR_VOLAILLE',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PONDEUSE',
+        sourceKind: 'TRANSFER',
+        sourceLotType: 'PORC_NAISSAGE',
+      }),
+    ).toThrow(/même espèce/);
+    expect(() =>
+      checkLotEntry({
+        lotType: 'PONDEUSE',
+        sourceKind: 'TRANSFER',
+        sourceLotType: 'PONDEUSE',
+        sameLot: true,
+      }),
+    ).toThrow(/distincts/);
+    for (const lotType of PRODUCTION_LOT_TYPES) {
+      expect(() => checkLotEntry({ lotType, sourceKind: 'PURCHASE' })).not.toThrow();
+    }
   });
 });

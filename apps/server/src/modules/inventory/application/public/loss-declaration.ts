@@ -19,7 +19,8 @@
  * refusée tant qu'aucune photo disponible n'est rattachée à la déclaration
  * (`owner_type = STOCK_LOSS`, AV-107 — gestionnaire de décision `MORTALITY`).
  */
-import { sql } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
+import type { DB } from '../../../../platform/kysely/database.js';
 import { mortalityRequiresApproval, type IdGenerator } from '@gic/domain';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
@@ -399,4 +400,68 @@ export function registerLossDecisionHandlers(
         .execute();
     });
   }
+}
+
+/** Mortalité comptée : sortie du stock, validée ou non contestée (hors attente, retour, annulation). */
+const COUNTED_LOSS_STATUSES = [
+  'RECORDED',
+  'APPROVED',
+  'REJECTED_UNJUSTIFIED',
+  'CANCELLATION_PENDING',
+];
+
+export interface LotMortalitySummary {
+  /** Déclarations en attente de validation (bloquent la clôture du lot, P7-05). */
+  readonly pendingCount: number;
+  readonly pendingQuantity: number;
+  /** Têtes mortes comptées (indicateurs du lot, BR-PRD-011). */
+  readonly countedQuantity: number;
+}
+
+/** Mortalités déclarées sur un lot de production ou d'incubation (AV-113). */
+export async function lotMortalitySummary(
+  executor: Kysely<DB> | Transaction<DB>,
+  target: { readonly productionLotId: string } | { readonly incubationBatchId: string },
+): Promise<LotMortalitySummary> {
+  const rows = await executor
+    .selectFrom('inventory_loss_declarations')
+    .select([
+      'status',
+      sql<string>`COUNT(*)`.as('n'),
+      sql<string>`COALESCE(SUM(quantity_base), 0)`.as('qty'),
+    ])
+    .where('category', '=', 'MORTALITE')
+    .$if('productionLotId' in target, (qb) =>
+      qb.where(
+        'production_lot_id',
+        '=',
+        toBin((target as { productionLotId: string }).productionLotId),
+      ),
+    )
+    .$if('incubationBatchId' in target, (qb) =>
+      qb.where(
+        'incubation_batch_id',
+        '=',
+        toBin((target as { incubationBatchId: string }).incubationBatchId),
+      ),
+    )
+    .groupBy('status')
+    .execute();
+  let pendingCount = 0;
+  let pendingQuantity = 0;
+  let countedQuantity = 0;
+  for (const row of rows) {
+    if (row.status === 'PENDING_APPROVAL') {
+      pendingCount += Number(row.n);
+      pendingQuantity += Number(row.qty);
+    } else if (COUNTED_LOSS_STATUSES.includes(row.status)) {
+      countedQuantity += Number(row.qty);
+    }
+  }
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  return {
+    pendingCount,
+    pendingQuantity: round(pendingQuantity),
+    countedQuantity: round(countedQuantity),
+  };
 }

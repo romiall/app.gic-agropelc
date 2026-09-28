@@ -139,11 +139,16 @@ export type {
   IncubationCounters,
   MortalityThresholds,
   ProRataShare,
+  LotEntrySourceKind,
 } from './production.js';
 export {
   PRODUCTION_LOT_TYPES,
   lotTypeProfile,
   acceptsDailyEntries,
+  acceptsLotEntries,
+  lotAcceptsProductSpecies,
+  speciesGroupOfProduct,
+  checkLotEntry,
   rate4,
   eggCollectionBalance,
   eggsRemaining,

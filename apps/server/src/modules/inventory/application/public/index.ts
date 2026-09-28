@@ -5,6 +5,7 @@
 export {
   recordStockMove,
   biologicalLotUnitCostXaf,
+  biologicalLotRemainingCostXaf,
   InventoryMoveError,
   MOVE_TYPES,
   SOURCE_DOC_TYPES,
@@ -94,7 +95,23 @@ export type {
 } from './cost-entries.js';
 export { lotHeadcount, lotHeadDays } from './lot-headcount.js';
 export type { HeadcountScope } from './lot-headcount.js';
-export { LOSS_CATEGORIES, LOSS_ATTACHMENT_OWNER_TYPE, declareLoss } from './loss-declaration.js';
-export type { LossCategory, DeclareLossInput, DeclareLossResult } from './loss-declaration.js';
+export {
+  LOSS_CATEGORIES,
+  LOSS_ATTACHMENT_OWNER_TYPE,
+  declareLoss,
+  lotMortalitySummary,
+} from './loss-declaration.js';
+export type {
+  LossCategory,
+  DeclareLossInput,
+  DeclareLossResult,
+  LotMortalitySummary,
+} from './loss-declaration.js';
 export { recordConsumption } from './consumption.js';
 export type { RecordConsumptionInput, RecordConsumptionResult } from './consumption.js';
+export {
+  reverseDocumentMoves,
+  reverseCostEntries,
+  documentMoveCount,
+} from './document-reversal.js';
+export type { ReversedMove } from './document-reversal.js';

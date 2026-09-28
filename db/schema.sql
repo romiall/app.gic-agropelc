@@ -2180,7 +2180,7 @@ CREATE TABLE `inventory_consumptions` (
   `quantity` decimal(14,3) NOT NULL,
   `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `cost_object_id` binary(16) NOT NULL,
-  `cost_type` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cost_type` varchar(25) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `recorded_by` binary(16) NOT NULL,
   `value_xaf` bigint NOT NULL,
   `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECORDED',
@@ -2261,7 +2261,7 @@ CREATE TABLE `inventory_cost_entries` (
   `id` binary(16) NOT NULL,
   `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `cost_object_id` binary(16) NOT NULL,
-  `cost_type` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `cost_type` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `amount_xaf` bigint NOT NULL,
   `direction` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DEBIT',
@@ -6082,5 +6082,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261001090000'),
   ('20261001090100'),
   ('20261002090000'),
-  ('20261002090100');
+  ('20261002090100'),
+  ('20261002090200');
 UNLOCK TABLES;

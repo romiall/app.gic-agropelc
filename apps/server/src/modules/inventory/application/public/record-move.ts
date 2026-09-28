@@ -456,6 +456,18 @@ export async function biologicalLotUnitCostXaf(
   return costPerHeadXaf(Math.max(0, remaining), quantityFromDecimal(Math.max(0, headcount))) ?? 0;
 }
 
+/**
+ * Coût restant d'un lot biologique (ADR-027) ; `null` pour un autre lot. À la clôture d'un lot
+ * (effectif nul), c'est le coût que ses sorties n'ont pas emporté (mortalité en fin de lot).
+ */
+export async function biologicalLotRemainingCostXaf(
+  uow: Transaction<DB>,
+  lotId: string,
+): Promise<number | null> {
+  const lot = await biologicalLotOf(uow, lotId);
+  return lot === null ? null : lotRemainingCostXaf(uow, lotId, lot);
+}
+
 /** Valeur moyenne d'un solde d'emplacement virtuel intermédiaire (qté > 0), sinon `null`. */
 async function virtualBalanceCost(
   uow: Transaction<DB>,

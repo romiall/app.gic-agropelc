@@ -19,14 +19,16 @@ stateDiagram-v2
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.lot.create` | Type, site et bâtiment principal valides | `PLANNED` | Lot de traçabilité créé ; `ProductionLotCreated` | — | Objet de coût créé | `production.lot.manage` |
 | `PLANNED` | `production.lot.record_entry` (`PLACEMENT`) | Quantité > 0 ; source disponible (poussins en stock) ou achat | `ACTIVE` | `effectif initial` = quantité de mise en place ; `LotEntryRecorded` | Reclassement : `PRODUCTION_INPUT` (poussins) + `PRODUCTION_OUTPUT` (produit du lot, vers le bâtiment) ; ou réception + reclassement | Écriture de coût `ANIMAUX` = valeur des animaux d'origine | `production.daily.record` |
-| `ACTIVE`, `SELLING` | `production.lot.record_entry` (`BIRTH`, `TRANSFER_IN`) | Quantité > 0 | inchangé | `LotEntryRecorded` | `PRODUCTION_OUTPUT` (naissance) ou réception de transfert | Coût des animaux entrants (transfert : coût porté) | `production.daily.record` |
+| `PLANNED`, `ACTIVE`, `SELLING` | `production.lot.record_entry` (`BIRTH`, `TRANSFER_IN`) | Quantité > 0 ; naissance : lot lié au lot de truies ; transfert ou sevrage : lot d'origine de la même espèce | `ACTIVE` (première entrée), sinon inchangé | `LotEntryRecorded` | `PRODUCTION_OUTPUT` (naissance) ou réception de transfert | Coût des animaux entrants (transfert : coût porté) | `production.daily.record` |
 | `PLANNED` | `production.lot.cancel` | Aucune entrée | `CANCELLED` | — | — | — | `production.lot.manage` |
 | `ACTIVE` | `production.lot.set_status` → `SELLING` | Effectif en élevage > 0 | `SELLING` | Vente directe depuis l'élevage autorisée (BR-PRD-010) ; `LotStatusChanged` | — | — | `production.lot.manage` |
 | `SELLING` | `production.lot.set_status` → `ACTIVE` | — | `ACTIVE` | `LotStatusChanged` | — | — | `production.lot.manage` |
 | `ACTIVE`, `SELLING` | Saisies quotidiennes (mortalité, consommation, pesée, observation, collecte) | Voir SM-LOSS et D07 | inchangé | Indicateurs mis à jour | Pertes et consommations | Coût du lot augmenté par les consommations | `production.daily.record` |
 | `ACTIVE`, `SELLING` | `production.lot.close` | Effectif non vendu = 0 (BR-PRD-011) | `CLOSED` | Indicateurs finaux figés ; `ProductionLotClosed` | — | Coût total et marge figés | `production.lot.manage` |
 
-**Hors ligne** : création, entrées, changement de statut et saisies quotidiennes sont possibles. La clôture exige l'état serveur (effectif exact) et se fait en ligne.
+| `ACTIVE`, `SELLING` | `production.lot.cancel_entry` | Animaux de l'entrée encore en stock (`STOCK_UNAVAILABLE` sinon, AV-120) | inchangé | Entrée `CANCELLED` ; effectif initial diminué | Mouvements inverses au coût d'origine | Écritures de coût contrepassées | `production.lot.manage` |
+
+**Hors ligne** : création, entrées, changement de statut et saisies quotidiennes sont possibles ; une entrée sur un lot clôturé ou annulé est appliquée avec le conflit `LOT_CLOSED` (P7-05). La clôture exige l'état serveur (effectif exact) et se fait en ligne.
 
 ---
 

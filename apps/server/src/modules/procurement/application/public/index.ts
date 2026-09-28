@@ -27,3 +27,7 @@ export type {
   GoodsReceiptSummary,
   GoodsReceiptFilter,
 } from './document-query.js';
+
+// P7-05 : mise en place directe depuis une réception (AV-112).
+export { PLACEABLE_RECEIPT_STATUSES, findReceiptForPlacement } from './receipt-placement.js';
+export type { ReceiptForPlacement } from './receipt-placement.js';

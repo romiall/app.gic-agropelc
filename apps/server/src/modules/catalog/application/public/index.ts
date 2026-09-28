@@ -6,5 +6,7 @@ export {
   findReasonCode,
   findProductForPricing,
   findProductLotTracking,
+  findProduct,
+  findStandardUnitCostXaf,
 } from './catalog-query.js';
 export type { ProductSummary, UnitSummary, ReasonCodeSummary } from './catalog-query.js';

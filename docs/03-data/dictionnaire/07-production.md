@@ -20,7 +20,7 @@
 | `strain` | label | Oui | — | Souche (CM §15) |
 | `planned_start_date` | date | Oui | — | |
 | `start_date` | date | Oui | — | Date de première entrée |
-| `initial_quantity` | qty | Oui | — | Σ entrées `PLACEMENT` (INV-PRD-01) |
+| `initial_quantity` | qty | Oui | — | Σ des têtes des entrées enregistrées, toutes origines (P7-05 ; taux de mortalité, AV-116) ; jamais l'effectif courant (INV-PRD-01) |
 | `planned_end_date` | date | Oui | — | |
 | `status` | enum(`PLANNED`,`ACTIVE`,`SELLING`,`CLOSED`,`CANCELLED`) | Non | `PLANNED` | |
 | `closed_at` | ts | Oui | — | |
