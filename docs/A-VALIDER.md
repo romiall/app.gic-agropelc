@@ -40,22 +40,22 @@ Classification (PM §45) :
 | AV-023 | Session de travail obligatoire pour visites et ventes terrain | IMPORTANTE | P3 | Rattachement automatique, pas de blocage | OUVERT |
 | AV-024 | Reconnaissance de la vente et sortie de stock pour les ventes sur commande | **BLOQUANTE** | P4 | Vente et CA à la confirmation ; marchandise en emplacement « à livrer » jusqu'à la livraison | **TRANCHÉ** (voir journal §3) |
 | AV-025 | Vente hors ligne au-delà de l'allocation | **BLOQUANTE** | P4/P5 | Bloquée sur l'appareil ; option « autorisée et signalée » activable par site, désactivée par défaut | **TRANCHÉ** (voir journal §3) |
-| AV-026 | Modification de prix / remise par le vendeur | IMPORTANTE | P4 | Interdite sauf permission, plafond et motif | OUVERT |
-| AV-027 | Ventes anonymes au point de vente | IMPORTANTE | P4 | Autorisées si payées comptant intégralement | OUVERT |
-| AV-028 | Politique de crédit client | IMPORTANTE | P4 | Clients autorisés, plafond, échéance 30 jours | OUVERT |
+| AV-026 | Modification de prix / remise par le vendeur | IMPORTANTE | P4 | Interdite sauf `sales.price.override` ; plafond par rôle (Vendeur 0 %, Commercial 5 %, Resp. commercial 15 %), motif, validation au-delà | **TRANCHÉ** (voir journal §3) |
+| AV-027 | Ventes anonymes au point de vente | IMPORTANTE | P4 | Autorisées si intégralement payées ; client obligatoire à crédit ou sur commande | **TRANCHÉ** (voir journal §3) |
+| AV-028 | Politique de crédit client | IMPORTANTE | P4 | Clients autorisés, plafond, 30 jours depuis la confirmation ; refus en ligne au-delà, validation a posteriori hors ligne | **TRANCHÉ** (voir journal §3) |
 | AV-029 | Retours clients | SECONDAIRE | Futur | Hors MVP ; annulation encadrée | OUVERT |
-| AV-030 | Conditions d'annulation d'une vente | IMPORTANTE | P4 | Validation requise sauf ≤ 15 min et caisse ouverte | OUVERT |
-| AV-031 | Vente au poids ou à l'unité selon les produits | IMPORTANTE | P1/P4 | Les deux supportés ; à l'unité par défaut | OUVERT |
+| AV-030 | Conditions d'annulation d'une vente | IMPORTANTE | P4 | Vendeur seul ≤ 15 min (caisse ouverte dès P5), sinon validation ; contre-écriture | **TRANCHÉ** (voir journal §3) |
+| AV-031 | Vente au poids ou à l'unité selon les produits | IMPORTANTE | P1/P4 | Les deux par produit dès P4 (`pricing_mode`) ; poids facultatif à l'unité | **TRANCHÉ** (voir journal §3) |
 | AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P7 | Vif et abattu dès P7 : transformation multi-produits (entier, découpes, abats), coût réparti au prorata du poids | **TRANCHÉ** (voir journal §3) |
 | AV-033 | Acomptes sur commande | SECONDAIRE | P4 | Autorisés, affectés à la commande | OUVERT |
-| AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Portée par la vente sur commande | OUVERT |
+| AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Bon de livraison distinct (livreur, heure, quantités, preuve) ; plusieurs livraisons partielles | **TRANCHÉ** (voir journal §3) |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
 | AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
 | AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) | OUVERT |
 | AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée au déclarant ; rejet sans motif = erreur de déclaration | **TRANCHÉ** (voir journal §3) |
 | AV-039 | Fréquence et procédure d'inventaire | SECONDAIRE | P2/P5 | Mensuel complet recommandé + ponctuel | OUVERT |
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
-| AV-041 | TVA et taxes | IMPORTANTE | P4/P8 | Prix TTC, pas de ventilation fiscale | OUVERT |
+| AV-041 | TVA et taxes | IMPORTANTE | P4/P8 | Prix TTC, reçu simple ; taxes à 0 | **TRANCHÉ** (voir journal §3) |
 | AV-042 | Méthode de valorisation du stock | IMPORTANTE | P2/P8 | CMUP perpétuel ; coût de lot pour le biologique | OUVERT |
 | AV-043 | Coûts incorporés au coût d'un lot | IMPORTANTE | P7/P8 | Coûts directs + frais généraux du site, répartis chaque mois au prorata têtes × jours | **TRANCHÉ** (voir journal §3) |
 | AV-044 | Types de lots exploités | IMPORTANTE | P7 | Cinq types actifs dès P7 ; reproducteur volaille suivi comme une pondeuse | **TRANCHÉ** (voir journal §3) |
@@ -70,14 +70,14 @@ Classification (PM §45) :
 | AV-053 | Tolérances de rapprochement commande / réception / facture | SECONDAIRE | P6/P8 | Tolérance nulle ; écart signalé | OUVERT |
 | AV-054 | Traitement des quantités rejetées à réception | SECONDAIRE | P6 | Hors stock ; avoir sur facture | OUVERT |
 | AV-055 | Règles de paiement fournisseur | SECONDAIRE | P8 | Finance enregistre ; Direction approuve > seuil | OUVERT |
-| AV-056 | Moyens de paiement et vérification mobile money | IMPORTANTE | P4 | Liste configurable ; référence saisie manuellement | OUVERT |
+| AV-056 | Moyens de paiement et vérification mobile money | IMPORTANTE | P4 | Espèces, Orange Money, MTN MoMo, virement, chèque ; référence saisie, unique par moyen ; doublon mis de côté | **TRANCHÉ** (voir journal §3) |
 | AV-057 | Procédure de caisse du point de vente | IMPORTANTE | P5 | Session quotidienne ; clôture comptée ; écart validé | OUVERT |
 | AV-058 | Catégories de dépenses et justificatifs | SECONDAIRE | P8 | Liste initiale ; photo > 10 000 XAF ; validation > 50 000 XAF | OUVERT |
 | AV-059 | Export / intégration comptable | SECONDAIRE | Futur | Exports CSV structurés | OUVERT |
 | AV-060 | Arrondis monétaires | SECONDAIRE | P4 | Arrondi au franc par ligne (demi supérieur) | OUVERT |
 | AV-061 | Dimensions tarifaires utilisées au lancement | SECONDAIRE | P1 | Toutes supportées ; grille zone + PDV | OUVERT |
 | AV-062 | Validation / activation des règles tarifaires | IMPORTANTE | P1 | Création Resp. commercial ; activation Direction | OUVERT |
-| AV-063 | Vente hors ligne à un prix devenu obsolète | IMPORTANTE | P4 | Acceptée au prix figé ; anomalie signalée | OUVERT |
+| AV-063 | Vente hors ligne à un prix devenu obsolète | IMPORTANTE | P4 | Acceptée au prix figé ; anomalie `PRICE_MISMATCH` | **TRANCHÉ** (voir journal §3) |
 | AV-064 | Canaux de notification | SECONDAIRE | P9 | In-app + Web Push | OUVERT |
 | AV-065 | Alertes initiales et seuils | SECONDAIRE | P9 | Liste CM §54 ; seuils configurables | OUVERT |
 | AV-066 | Accusé de lecture des notes de direction | SECONDAIRE | P9 | Optionnel par note | OUVERT |
@@ -140,6 +140,13 @@ Classification (PM §45) :
 | AV-123 | Annulation d’une entrée de lot | SECONDAIRE | P7 | Responsable production seul | **TRANCHÉ** (voir journal §3) |
 | AV-124 | Production entrée sans coût standard défini | SECONDAIRE | P7 | Saisie acceptée à la valeur par défaut ; alerte à l’administrateur | **TRANCHÉ** (voir journal §3) |
 | AV-125 | Durée de conservation des produits d’abattage | SECONDAIRE | P7 | 5 jours après l’abattage (frais réfrigéré), paramétrée | **TRANCHÉ** (voir journal §3) |
+| AV-126 | Commande saisie hors ligne sur un stock non alloué | IMPORTANTE | P4 | Intention confirmée par le serveur à la synchronisation | **TRANCHÉ** (voir journal §3) |
+| AV-127 | Stock insuffisant à la confirmation d'une commande | IMPORTANTE | P4 | Vente du disponible ; le reste demeure une commande en attente | **TRANCHÉ** (voir journal §3) |
+| AV-128 | Annulation du reste non livré d'une commande confirmée | IMPORTANTE | P4 | Auteur ou Resp. commercial, sans validation, par contre-écriture | **TRANCHÉ** (voir journal §3) |
+| AV-129 | Point de départ de l'échéance d'une vente sur commande | SECONDAIRE | P4 | Depuis la confirmation (date de la vente) | **TRANCHÉ** (voir journal §3) |
+| AV-130 | Modification d'une commande confirmée | IMPORTANTE | P4 | Ajustement automatique : contre-écriture et nouvelle vente pour la différence | **TRANCHÉ** (voir journal §3) |
+| AV-131 | Perte d'une marchandise vendue avant sa livraison | SECONDAIRE | P4 | Annulation partielle de la vente, puis perte déclarée | OUVERT |
+| AV-132 | Délai d'alerte d'une vente confirmée non livrée | SECONDAIRE | P4/P9 | 7 jours, paramétré | OUVERT |
 
 ---
 
@@ -284,24 +291,29 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 - **Références** : CM §39 ; PM §6 ; C-08 ; ADR-004.
 - **Décision** (porteur du projet, 27/09/2026) : Vente hors ligne au-delà de l'allocation **bloquée sur l'appareil** (option a) ; l'option « autorisée et signalée » reste activable par site, désactivée par défaut.
 
-### AV-026 — Modification de prix par le vendeur — IMPORTANTE
+### AV-026 — Modification de prix par le vendeur — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : interdite par défaut. Avec la permission `sales.price.override`, une remise est possible dans un plafond paramétré par rôle (Vendeur 0 %, Commercial 5 %, Resp. commercial 15 %), avec un motif obligatoire. Au-delà du plafond, une validation est requise.
 - **Références** : CM §29, §30 ; PM §37.
+- **Décision** (porteur du projet, 30/09/2026) : **plafond par rôle** (recommandation) : remise interdite sans `sales.price.override` ; plafonds paramétrés (Vendeur 0 %, Commercial 5 %, Resp. commercial 15 %) ; motif obligatoire ; au-delà du plafond, ligne enregistrée et validation `PRICE_OVERRIDE`
 
-### AV-027 — Ventes anonymes — IMPORTANTE
+### AV-027 — Ventes anonymes — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : autorisées au point de vente et en vente directe si la vente est **intégralement payée** au moment de la vente. Un client identifié est obligatoire pour une vente à crédit ou sur commande.
+- **Décision** (porteur du projet, 30/09/2026) : **autorisées si la vente est intégralement payée** au moment de la vente (recommandation) ; client identifié obligatoire pour une vente à crédit ou sur commande
 
-### AV-028 — Crédit client — IMPORTANTE
+### AV-028 — Crédit client — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : vente à crédit seulement pour les clients avec `credit_allowed = true`, dans la limite de `credit_limit_xaf`. L'échéance par défaut est de 30 jours. Hors ligne, le contrôle porte sur l'encours connu localement. Un dépassement nécessite une validation.
+- **Décision** (porteur du projet, 30/09/2026) : **clients autorisés dans leur plafond** (recommandation) : `credit_allowed`, `credit_limit_xaf`, échéance par défaut 30 jours ; **au-delà du plafond, confirmation refusée en ligne** ; hors ligne, la vente est enregistrée (fait accompli) et une validation `CREDIT_LIMIT_EXCEEDED` est ouverte ; contrôle local sur l'encours connu de l'appareil. Échéance d'une vente sur commande : voir AV-129
 
 ### AV-029 — Retours clients — SECONDAIRE
 - **Recommandation** : hors MVP. Les erreurs se corrigent par annulation encadrée (AV-030). Le modèle `sales_returns` est prévu pour une phase ultérieure.
 
-### AV-030 — Annulation d'une vente — IMPORTANTE
+### AV-030 — Annulation d'une vente — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : le vendeur peut annuler sa propre vente sans validation si elle date de moins de 15 minutes et que la session de caisse est encore ouverte. Sinon, il faut une demande d'annulation approuvée par le responsable du point de vente ou le Resp. commercial. Dans tous les cas, l'annulation produit une contre-écriture.
+- **Décision** (porteur du projet, 30/09/2026) : **15 minutes, sinon validation** (recommandation) : le vendeur annule seul sa vente de moins de 15 minutes (paramètre `sales.direct_cancel_minutes`) si sa caisse est ouverte, sinon demande validée (`SALE_CANCELLATION`) ; toujours par contre-écriture. **Jusqu'à P5** (sessions de caisse), la condition de caisse est réputée remplie
 
-### AV-031 — Poids ou unité — IMPORTANTE
+### AV-031 — Poids ou unité — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : le modèle supporte les deux par produit (`pricing_mode`). Au lancement, tout se vend à l'unité, avec une saisie de poids optionnelle.
+- **Décision** (porteur du projet, 30/09/2026) : **les deux modes par produit dès P4** : `PER_WEIGHT` (découpes, abats, porc au kilo vif s'il est paramétré ainsi, AV-102) et `PER_UNIT` avec poids facultatif
 
 ### AV-032 — Vif ou abattu — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : vif uniquement au MVP. L'abattage ou la transformation sera modélisé comme une opération de transformation (consommation → production), sans changer le registre de stock.
@@ -310,8 +322,9 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 ### AV-033 — Acomptes — SECONDAIRE
 - **Recommandation** : autorisés. L'encaissement est affecté à la commande, puis réaffecté à la vente à la livraison.
 
-### AV-034 — Livraison — IMPORTANTE
+### AV-034 — Livraison — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : pas d'entité « livraison » distincte au MVP. La vente de type `ORDER_FULFILMENT` porte le livreur, l'heure de remise et une preuve éventuelle. Une livraison partielle donne une vente partielle.
+- **Décision** (porteur du projet, 30/09/2026) : **bon de livraison distinct** (option reformulée après ADR-025) : chaque livraison, même partielle, est un document (livreur, heure de remise, réceptionnaire, quantités par ligne, preuve éventuelle) ; plusieurs livraisons par commande ; ADR-028
 
 ### AV-035 — Politique d'allocation — IMPORTANTE
 - **Recommandation** : l'allocation est accordée explicitement par le magasinier ou le responsable du point de vente. Le stock d'un emplacement **exclusif** (stock mobile d'un commercial) est entièrement alloué à son titulaire. La libération d'un quota est confirmée par l'appareil à la synchronisation ; la révocation forcée est auditée.
@@ -339,9 +352,10 @@ Politique par défaut, paramétrable :
 ### AV-040 — Seuils de réapprovisionnement — SECONDAIRE
 - **Recommandation** : un couple (minimum, cible) par emplacement × produit. Aucune valeur par défaut.
 
-### AV-041 — TVA et taxes — IMPORTANTE
+### AV-041 — TVA et taxes — IMPORTANTE — **TRANCHÉ**
 - **Question** : les prix sont-ils TTC ? Certains produits sont-ils exonérés ? Des factures fiscales normalisées sont-elles nécessaires ?
 - **Recommandation** : prix saisis et affichés TTC. Pas de ventilation fiscale au MVP. Les colonnes `tax_rate` et `tax_amount_xaf` sont prévues à 0 dans les lignes de vente et d'achat pour permettre l'évolution.
+- **Décision** (porteur du projet, 30/09/2026) : **prix TTC, reçu numérique simple** (recommandation) : pas de ventilation fiscale ni de facture normalisée ; colonnes `tax_rate` et `tax_amount_xaf` à 0
 
 ### AV-042 — Valorisation du stock — IMPORTANTE
 - **Choix** : CMUP, FIFO, coût standard.
@@ -394,8 +408,9 @@ Politique par défaut, paramétrable :
 ### AV-055 — Paiements fournisseurs — SECONDAIRE
 - **Recommandation** : la Finance enregistre. La Direction approuve au-delà de 500 000 XAF. Les avances sont autorisées sous forme de paiement non affecté.
 
-### AV-056 — Moyens de paiement — IMPORTANTE
+### AV-056 — Moyens de paiement — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : référentiel `ESPECES`, `MOBILE_MONEY_ORANGE`, `MOBILE_MONEY_MTN`, `VIREMENT`, `CHEQUE`. La référence de transaction mobile money est saisie manuellement et unique par moyen. Pas d'intégration API opérateur au MVP.
+- **Décision** (porteur du projet, 30/09/2026) : **cinq moyens, référence saisie** (recommandation) : `ESPECES`, `MOBILE_MONEY_ORANGE`, `MOBILE_MONEY_MTN`, `VIREMENT`, `CHEQUE` (liste modifiable) ; référence mobile money saisie à la main, unique par moyen ; un doublon passe en `SUSPECT_DUPLICATE` sans effet de trésorerie ; pas d'API opérateur
 
 ### AV-057 — Procédure de caisse — IMPORTANTE
 - **Recommandation** :
@@ -420,8 +435,9 @@ Politique par défaut, paramétrable :
 ### AV-062 — Activation des tarifs — IMPORTANTE
 - **Recommandation** : une règle est créée en brouillon par le Responsable commercial ou la Direction. Seule la Direction l'active (permission `pricing.rule.activate`).
 
-### AV-063 — Prix obsolète hors ligne — IMPORTANTE
+### AV-063 — Prix obsolète hors ligne — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : la vente est acceptée au prix figé sur l'appareil. L'anomalie `PRICE_MISMATCH` est créée pour revue. Aucune correction automatique du montant client.
+- **Décision** (porteur du projet, 30/09/2026) : **acceptée au prix figé sur l'appareil** (recommandation) ; anomalie `PRICE_MISMATCH` pour revue, sans correction du montant client
 
 ### AV-064 — Notifications — SECONDAIRE
 - **Recommandation** : notifications in-app et Web Push. SMS et WhatsApp (via Kommo) seront envisagés plus tard.
@@ -777,6 +793,60 @@ Politique par défaut, paramétrable :
 - **Impact** : paramètre `production.slaughter_shelf_life_days` ; ordre FEFO des ventes (D06).
 - **Décision** (porteur du projet, 28/09/2026) : **5 jours paramétrés** (option a)
 
+### AV-126 — Commande saisie hors ligne sur un stock non alloué — IMPORTANTE — **TRANCHÉ**
+- **Question** : Un commercial prend une commande sans connexion pour de la marchandise du magasin (pas dans son stock mobile) : ADR-025 soumettait toute confirmation hors ligne au blocage au-delà de l'allocation (AV-025), ce qui rendait la commande hors ligne impossible (UC-VEN-02).
+- **Pourquoi** : Le commercial n'a pas d'allocation sur le magasin central ; BR-SYN-007 protège les faits, pas les intentions (ADR-007).
+- **Choix** : (a) la commande hors ligne est une intention : le serveur la confirme à la synchronisation (vente datée de l'heure de saisie) ; (b) bloquée hors ligne ; (c) acceptée et signalée.
+- **Recommandation** : (a).
+- **Impact** : Commande `sales.order.place` hors ligne ; ADR-028.
+- **Décision** (porteur du projet, 30/09/2026) : **confirmée par le serveur à la synchronisation** (option a) : la commande saisie hors ligne est une intention ; à son application, le serveur la confirme (vente du disponible, AV-127), avec l'heure métier de la saisie
+
+### AV-127 — Stock insuffisant à la confirmation d'une commande — IMPORTANTE — **TRANCHÉ**
+- **Question** : À la confirmation, le stock de l'emplacement de préparation ne couvre pas toute la commande.
+- **Pourquoi** : BR-VEN-004 (une commande n'est jamais refusée pour manque de stock) contre ADR-025 (la confirmation déplace le stock) et INV-STK-06 (aucun négatif en ligne).
+- **Choix** : (a) vendre le disponible, le reste demeure une commande en attente confirmée plus tard ; (b) refuser la confirmation ; (c) tout vendre, le manque sans mouvement.
+- **Recommandation** : (a).
+- **Impact** : Quantités vendue et en attente par ligne de commande ; commande de confirmation du reliquat ; alerte au magasinier (P9) ; ADR-028.
+- **Décision** (porteur du projet, 30/09/2026) : **vente du disponible** (option a) : la partie en stock devient une vente mise de côté « à livrer » ; le reste demeure une commande en attente, confirmée quand le stock arrive ; le magasinier est alerté (P9)
+
+### AV-128 — Annulation du reste non livré d'une commande confirmée — IMPORTANTE — **TRANCHÉ**
+- **Question** : Une commande confirmée (donc vendue) n'est pas livrée en tout ou en partie : qui annule ce reste, et avec quelle validation ?
+- **Pourquoi** : Avant ADR-025, l'annulation d'une commande non livrée ne demandait pas de validation ; c'est désormais l'annulation (partielle) d'une vente, que AV-030 encadre.
+- **Choix** : (a) auteur de la commande ou Resp. commercial, sans validation ; (b) règle d'AV-030 (15 minutes, sinon validation) ; (c) toujours une validation.
+- **Recommandation** : (a) : la marchandise n'a jamais quitté le site.
+- **Impact** : Annulation partielle d'une vente par contre-écriture (retour de « à livrer » vers le stock, CA négatif daté) ; ADR-028.
+- **Décision** (porteur du projet, 30/09/2026) : **auteur ou Resp. commercial, sans validation** (option a) : la marchandise revient au stock et le chiffre d'affaires diminue, par contre-écriture datée de l'annulation
+
+### AV-129 — Point de départ de l'échéance d'une vente sur commande — SECONDAIRE — **TRANCHÉ**
+- **Question** : À partir de quand court le délai de paiement d'une vente sur commande à crédit ?
+- **Pourquoi** : Avec ADR-025, la vente naît à la confirmation, parfois bien avant la livraison.
+- **Choix** : (a) depuis la confirmation ; (b) depuis la dernière livraison.
+- **Recommandation** : (b), pour ne pas afficher de retard avant la remise.
+- **Impact** : Calcul de `due_date` ; créances en retard (BR-FIN-007).
+- **Décision** (porteur du projet, 30/09/2026) : **depuis la confirmation** (option a) : échéance = heure métier de la vente + délai de paiement du client
+
+### AV-130 — Modification d'une commande confirmée — IMPORTANTE — **TRANCHÉ**
+- **Question** : Peut-on modifier une commande confirmée (quantités, produits) avant sa livraison, alors que la vente est immuable (BR-VEN-012) ?
+- **Pourquoi** : BR-VEN-005 permettait la modification tant qu'aucune livraison n'avait eu lieu ; ADR-025 en fait une vente.
+- **Choix** : (a) non : annuler le non-livré et passer une nouvelle commande ; (b) oui : la modification produit automatiquement une contre-écriture et une nouvelle vente pour la différence.
+- **Recommandation** : (a).
+- **Impact** : Commande `sales.order.update` sur une commande confirmée ; annulation partielle et vente complémentaire ; ADR-028.
+- **Décision** (porteur du projet, 30/09/2026) : **ajustement automatique** (option b) : une baisse annule par contre-écriture la part non livrée concernée, une hausse ou un nouveau produit crée une vente complémentaire (vente du disponible, AV-127) ; les ventes restent immuables
+
+### AV-131 — Perte d'une marchandise vendue avant sa livraison — SECONDAIRE
+- **Question** : Une marchandise vendue et mise de côté « à livrer » meurt ou se perd avant la remise au client.
+- **Pourquoi** : Le CA est déjà reconnu ; la perte a lieu chez l'entreprise ; aucune règle.
+- **Choix** : (a) perte ordinaire (D06), la vente est maintenue ; (b) annulation partielle de la vente, puis perte.
+- **Recommandation** : (b) : on ne peut livrer ce qui est perdu ; la vente est corrigée et la perte déclarée.
+- **Impact** : Déclaration de perte sur l'emplacement « à livrer ».
+
+### AV-132 — Délai d'alerte d'une vente confirmée non livrée — SECONDAIRE
+- **Question** : Au bout de combien de jours signaler une vente confirmée non encore livrée (ADR-025, risques) ?
+- **Pourquoi** : ADR-025 demande un indicateur au-delà d'un délai paramétré, sans valeur par défaut.
+- **Choix** : Paramètre `sales.undelivered_alert_days`.
+- **Recommandation** : 7 jours.
+- **Impact** : Indicateur des ventes non livrées ; alerte P9.
+
 ---
 
 ## 3. Journal des décisions
@@ -826,3 +896,17 @@ Politique par défaut, paramétrable :
 | 28/09/2026 | AV-115 | Tous les types de lots abattables dès P7 (volailles et porcs), liste paramétrée | Porteur du projet |
 | 28/09/2026 | AV-120 | Annulation refusée si les produits sont sortis ; correction compensatoire | Porteur du projet |
 | 28/09/2026 | AV-125 | Péremption des produits d’abattage : jour de l’abattage + 5 jours, paramétrés | Porteur du projet |
+| 30/09/2026 | AV-026 | Remise interdite sans `sales.price.override` ; plafond par rôle (0 / 5 / 15 %), motif, validation au-delà | Porteur du projet |
+| 30/09/2026 | AV-027 | Vente anonyme si intégralement payée | Porteur du projet |
+| 30/09/2026 | AV-028 | Crédit aux clients autorisés dans leur plafond ; refus en ligne au-delà, validation a posteriori hors ligne | Porteur du projet |
+| 30/09/2026 | AV-030 | Annulation seule ≤ 15 min, sinon validation ; caisse réputée ouverte jusqu'à P5 | Porteur du projet |
+| 30/09/2026 | AV-031 | Vente au poids ou à l'unité par produit dès P4 | Porteur du projet |
+| 30/09/2026 | AV-034 | Bon de livraison distinct, plusieurs livraisons partielles (ADR-028) | Porteur du projet |
+| 30/09/2026 | AV-041 | Prix TTC, reçu simple, taxes à 0 | Porteur du projet |
+| 30/09/2026 | AV-056 | Cinq moyens de paiement ; référence mobile money saisie, unique ; doublon mis de côté | Porteur du projet |
+| 30/09/2026 | AV-063 | Vente hors ligne au prix figé ; anomalie `PRICE_MISMATCH` | Porteur du projet |
+| 30/09/2026 | AV-126 | Commande hors ligne confirmée par le serveur à la synchronisation | Porteur du projet |
+| 30/09/2026 | AV-127 | Stock insuffisant : vente du disponible, reste en commande en attente | Porteur du projet |
+| 30/09/2026 | AV-128 | Reste non livré annulé par l'auteur ou le Resp. commercial, sans validation | Porteur du projet |
+| 30/09/2026 | AV-129 | Échéance d'une vente sur commande depuis la confirmation | Porteur du projet |
+| 30/09/2026 | AV-130 | Commande confirmée modifiable : contre-écriture et vente complémentaire automatiques | Porteur du projet |

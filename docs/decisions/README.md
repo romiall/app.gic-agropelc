@@ -32,5 +32,6 @@
 | [ADR-025](ADR-025-vente-a-la-confirmation.md) | Vente reconnue à la confirmation, marchandise « à livrer » (remplace en partie ADR-014) | ACCEPTÉ | — |
 | [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) | Coût de lot : frais généraux de ferme et coproduits d'abattage (complète ADR-015 ; amendé le 28/09/2026) | ACCEPTÉ | — |
 | [ADR-027](ADR-027-valorisation-lots-biologiques.md) | Valorisation des lots biologiques : coût restant, productions au coût standard, lots de stock propres | ACCEPTÉ | — |
+| [ADR-028](ADR-028-commande-vente-livraison-p4.md) | Commandes, ventes et livraisons après ADR-025 : emplacement « à livrer » virtuel par site, vente du disponible, bon de livraison, contre-écritures partielles | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

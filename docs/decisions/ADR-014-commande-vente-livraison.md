@@ -1,6 +1,6 @@
 # ADR-014 — Commande, vente et livraison
 
-- **Statut** : **REMPLACÉ** pour la naissance de la vente et la sortie de stock par [ADR-025](ADR-025-vente-a-la-confirmation.md) (AV-024 tranchée le 27/09/2026 : vente à la confirmation) ; le reste (pas d'entité « livraison » distincte au MVP, acomptes) demeure, sous réserve d'AV-034
+- **Statut** : **REMPLACÉ** en totalité : pour la naissance de la vente et la sortie de stock par [ADR-025](ADR-025-vente-a-la-confirmation.md) (AV-024 tranchée le 27/09/2026 : vente à la confirmation) ; pour la livraison (bon de livraison distinct, AV-034) et les acomptes par [ADR-028](ADR-028-commande-vente-livraison-p4.md) (30/09/2026)
 - **Date** : 24/09/2026
 
 ## Contexte

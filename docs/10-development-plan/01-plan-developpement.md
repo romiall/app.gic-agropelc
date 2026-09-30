@@ -148,9 +148,30 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Tests d'intégration | INV-VEN-01 à 10, INV-FIN-01 à 04, 09, 10, INV-STK-16 |
 | Tests E2E | WF-01 (commercial), WF-02, annulations, doublon de paiement |
 | Critères d'acceptation | AT-001, 002, 005, 007 à 011, 018, 030, 032, 033 |
-| Prérequis | AV-024 et AV-025 (bloquantes, **tranchées le 27/09/2026** : vente à la confirmation avec emplacement « à livrer », vente hors ligne bloquée au-delà de l'allocation), AV-026 à AV-031, AV-033, AV-034, AV-041, AV-056, AV-060, AV-063, AV-083, AV-085, AV-087 |
+| Prérequis | AV-024 et AV-025 (bloquantes, **tranchées le 27/09/2026** : vente à la confirmation avec emplacement « à livrer », vente hors ligne bloquée au-delà de l'allocation) ; AV-026 à AV-028, AV-030, AV-031, AV-034, AV-041, AV-056, AV-063 et AV-126 à AV-130 (**tranchées le 30/09/2026**, ADR-028) ; AV-029, AV-033, AV-060, AV-083, AV-085, AV-087, AV-131, AV-132 ouverts, défauts paramétrables |
 | Risques | RISK-02, RISK-06, RISK-17 |
 | DoD | Journée de vente pilote rapprochée (stock, caisse, CA) à zéro écart |
+
+**Conception arrêtée le 30/09/2026** (A-VALIDER §3, [ADR-028](../decisions/ADR-028-commande-vente-livraison-p4.md)) : la confirmation d'une commande est une vente du disponible, mise de côté dans un emplacement virtuel « à livrer » du site, le reste demeurant en attente ; la livraison est un bon de livraison distinct (livraisons partielles) ; toute annulation, totale ou partielle, est une contre-écriture ; une commande confirmée se modifie par ajustement automatique ; une commande hors ligne est confirmée par le serveur à la synchronisation ; remises plafonnées par rôle, vente anonyme payée comptant, crédit dans le plafond (refus en ligne au-delà), vente au poids par produit, prix TTC, cinq moyens de paiement. Les quotas d'appareil sur stock partagé (AV-025, `DEVICE_QUOTA`) et les sessions de caisse restent en P5 : en P4, la vente hors ligne se fait depuis un stock exclusif (stock mobile) et l'annulation directe ne dépend que du délai.
+
+**Backlog P4** (DÉDUIT de la cartographie du 30/09/2026 ; gabarit P7 ; chaque incrément commité avec ses tests et ses documents) :
+
+| Incrément | Contenu |
+|---|---|
+| P4-01 | `packages/domain` : montant de ligne (quantité de tarification, poids), remise et plafond par rôle, contrôle de crédit, vente anonyme payée, statut de paiement, répartition d'un encaissement, délai d'annulation, échéance, quantités d'une ligne de commande (commandé, vendu, livré, annulé, en attente) et statut dérivé |
+| P4-02 | `db` : tables `finance` (moyens de paiement, comptes de trésorerie, mouvements) et `sales` (commandes, ventes, annulations, livraisons, encaissements, affectations, et leurs lignes) ; emplacement virtuel « à livrer » par site, mouvement `DELIVERY` ; types de validation des paiements ; paramètres, moyens de paiement, politiques par défaut, RBAC |
+| P4-03 | Prérequis `organization`, `inventory`, `finance` : emplacement « à livrer » du site, vente vers « à livrer » (sortie définitive d'un lot biologique), livraison, inverse `SALE → CUSTOMER_RETURN`, lot vendable depuis l'élevage (BR-PRD-010) ; module `finance` (comptes de trésorerie, mouvements, solde, réconciliation) |
+| P4-04 | Ventes directes : `sales.sale.record` (hors ligne) — prix et prix obsolète, remise, poids, lot FIFO et coût, attribution, session de travail, conversion du prospect, vente anonyme, crédit, encaissements joints, produit désactivé, stock négatif hors ligne |
+| P4-05 | Annulations de ventes : `sales.sale.cancel` (délai), `.request_cancellation` et décision `SALE_CANCELLATION` ; document d'annulation, contre-écriture de stock, CA négatif, affectations, remboursement ou crédit client, conversion annulée |
+| P4-06 | Commandes : `sales.order.save_draft`, `.place` (vente du disponible, reste en attente, hors ligne), `.confirm_remaining`, `.update` (ajustement automatique), `.cancel_remaining`, `.close` ; acomptes |
+| P4-07 | Livraisons : `sales.delivery.record` (hors ligne), bon de livraison, livraisons partielles, dépassement |
+| P4-08 | Encaissements : `sales.payment.record` (hors ligne), doublon mis de côté, affectation, crédit client, `.reallocate`, annulation (`PAYMENT_CANCELLATION`), remboursement ; trésorerie |
+| P4-09 | Créances et chiffre d'affaires : échéance, créances par ancienneté, encours client, tâche des retards, CA et marge des lots de production, réalisé des objectifs commerciaux |
+| P4-10 | Lectures HTTP : `/orders`, `/sales`, `/sales/{id}`, `/sales/{id}/receipt`, `/deliveries`, `/payments`, `/receivables`, `/cash-accounts`, fiche client |
+| P4-11 | Jeux hors ligne `orders`, `sales_recent`, `cash` ; encours client dans `customers` ; moyens de paiement dans `catalog` ; portée d'appareil |
+| P4-12 | Revue adverse et correctifs |
+| P4-13 | Invariants (INV-VEN-01 à 10, INV-FIN-01 à 04, 09, 10, INV-STK-16), E2E (WF-01 commercial, WF-02, annulations, doublon de paiement), AT-001, 002, 005, 007 à 011, 018, 030, 032, 033 |
+| P4-14 | Clôture : D04, D09, machines à états, dictionnaires, stratégies stock et finance, matrice §17.5, démonstration, plan, CLAUDE.md |
 
 ### P5 — Distribution et points de vente
 

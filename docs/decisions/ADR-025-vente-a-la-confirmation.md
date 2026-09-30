@@ -16,7 +16,7 @@ Le porteur du projet a tranché AV-024 le 27/09/2026 : **la vente et le chiffre 
    - à la confirmation, la marchandise vendue quitte le stock disponible de l'emplacement de préparation pour un emplacement « vendu, à livrer » du même site ;
    - à la livraison (remise physique, partielle ou totale), elle quitte cet emplacement vers le client (`V_CUSTOMER`).
 3. **Vente directe** (PDV, terrain, ferme) : vente et remise dans la même opération, sans passage par l'emplacement « à livrer » (inchangé).
-4. DÉDUIT, à préciser au démarrage de P4 (documentation de D04, SM-ORDER, SM-SALE et du dictionnaire `sales`) :
+4. DÉDUIT, à préciser au démarrage de P4 (documentation de D04, SM-ORDER, SM-SALE et du dictionnaire `sales`) — **précisé par [ADR-028](ADR-028-commande-vente-livraison-p4.md) le 30/09/2026** (emplacement virtuel `V_TO_DELIVER` par site, mouvements `SALE` et `DELIVERY`, vente du disponible, annulation partielle par contre-écriture, commande hors ligne confirmée à la synchronisation) :
    - nature de l'emplacement « à livrer » (virtuel par site, ou physique réservé à la préparation) et types de mouvements des deux temps ;
    - annulation d'une vente confirmée non livrée (retour de l'emplacement « à livrer » vers le stock, par contre-écriture) ;
    - livraison partielle, reliquat non livré et clôture du reste ;
