@@ -201,7 +201,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 
 | ID | Règle (résumé) | Statut |
 |---|---|---|
-| BR-PRD-001 | Un lot a un type (`POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`, options activables `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE`), un produi… | C (CM §15, §19) / AV-044 |
+| BR-PRD-001 | Un lot a un type (`POULET_CHAIR`, `PONDEUSE`, `PORC_ENGRAISSEMENT`, `REPRODUCTEUR_VOLAILLE`, `PORC_NAISSAGE` — les cinq dès P7, AV-044, AV-… | C (CM §15, §19) / AV-044, AV-045, AV-099 |
 | BR-PRD-002 | La création d'un lot crée son lot de traçabilité (`inventory.stock_lots`, origine `PRODUCTION_LOT`). Tous les mouvements des animaux du lot… | D (CM §58) |
 | BR-PRD-003 | L'effectif d'un lot n'est jamais saisi : c'est la somme des soldes de son lot de traçabilité. On distingue l'effectif en élevage (emplaceme… | C (CM §15 ; REQ-029) |
 | BR-PRD-004 | Une entrée de lot est une mise en place (`PLACEMENT`), une naissance (`BIRTH`) ou un transfert entrant (`TRANSFER_IN`). Mise en place à par… | C (CM §15) / D / AV-112 |
@@ -212,7 +212,7 @@ Fichier : [`domaines/D07-PRD-production.md`](domaines/D07-PRD-production.md)
 | BR-PRD-009 | Les statuts d'un lot sont `PLANNED` → `ACTIVE` (première entrée) → `SELLING` (animaux déclarés prêts ou disponibles à la vente) → `CLOSED`.… | D (SM-PRODUCTION-LOT) |
 | BR-PRD-010 | Seuls les animaux d'un lot `SELLING` peuvent être vendus directement depuis un emplacement d'élevage. Les transferts vers un emplacement co… | C (CM §15, §2 « prêts à la vente ») / D |
 | BR-PRD-011 | Un lot ne peut être clôturé qu'avec un effectif non vendu nul. La clôture fige les indicateurs finaux (mortalité cumulée, coût total, CA at… | D |
-| BR-PRD-012 | Le coût du lot = Σ `inventory.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées. Coût par… | C (CM §15, §33) / AV-042, AV-043 |
+| BR-PRD-012 | Le coût du lot = Σ `inventory.cost_entries` de l'objet lot : animaux d'origine, intrants consommés, dépenses directement imputées, part des… | C (CM §15, §33) / AV-042, AV-043, AV-097 |
 | BR-PRD-013 | La mortalité ne réduit pas le coût du lot : elle le répartit sur un effectif plus faible (hausse du coût par tête). Sa « valeur économique… | C (CM §16) |
 | BR-PRD-014 | Marge d'un lot = CA des ventes portant le lot − coût du lot imputable aux têtes vendues. Pour un lot clôturé : CA total − coût total. | C (CM §33) / D |
 | BR-PRD-015 | Une pesée enregistre la taille d'échantillon, le poids moyen (g) et, optionnellement, le poids total ; elle n'a aucun effet de stock. | C (CM §15, §19) |

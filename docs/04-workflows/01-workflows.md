@@ -231,7 +231,7 @@ Distinction assurée : commandé 100 ≠ livré 98 ≠ accepté 95 ≠ facturé 
 |---|---|---|---|
 | Création L-2026-014 (2 400 prévus) | `production.lot.create` | — | Objet de coût |
 | Mise en place (achat direct de 2 400 poussins à 450 XAF) | `production.lot.record_entry` + réception | `PURCHASE_RECEIPT` poussins → B2 ; `PRODUCTION_INPUT` poussins ; `PRODUCTION_OUTPUT` « Poulet de chair vif » → B2 (lot L-2026-014) | `ANIMAUX` 1 080 000 |
-| Saisies du jour (42 jours) | `production.mortality.record`, `production.input.record`, `production.weighing.record` | Mortalités B2 → `V_LOSS` (90 têtes cumulées) ; aliment magasin de ferme → `V_CONSUMPTION` | `ALIMENT` au CMUP ; coût par tête = coût cumulé ÷ effectif |
+| Saisies du jour (42 jours) | `production.mortality.record`, `production.input.record`, `production.weighing.record` | Mortalités B2 → `V_LOSS` (90 têtes cumulées) ; aliment magasin de ferme → `V_CONSUMPTION` | `ALIMENT` au CMUP ; coût par tête = coût restant ÷ effectif non vendu (ADR-027) |
 | Prêt à la vente | `production.lot.set_status SELLING` | — | — |
 | Sortie vers commercialisation (1 000 → PDV) | `inventory.transfer.dispatch` / `receive` | B2 → `V_TRANSIT` → PDV (lot conservé, coût par tête figé) | — |
 | Ventes au PDV et à la ferme | `sales.sale.record` | → `V_CUSTOMER` (lot par FIFO) | CA attribué au lot ; coût des ventes |

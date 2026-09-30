@@ -257,3 +257,21 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-066 (part P6) | `procurement-receipt-commands.test.ts` (annulation validée par mouvements inverses au coût d'origine, refus si le stock est consommé), `procurement-invariants.test.ts` | Vérifié pour les réceptions ; retour fournisseur (extension) non construit |
 | REQ-067 (part P6) | `procurement-receipt-commands.test.ts` (photo exigée sans BC et au-delà du seuil, pièce reçue avant la décision — BR-APP-014, BR-ADM-020) | Vérifié |
 | REQ-077 (part P6) | — | Non commencé : alerte `RECEIPT_INCOMPLETE` (BR-APP-015) avec le module `communication`, P9 |
+
+### 17.4 Phase P7 (30/09/2026) — [`12-demonstration-p7.md`](12-demonstration-p7.md)
+
+| REQ | Vérifié par | État à la fin de P7 |
+|---|---|---|
+| REQ-027 | `production-lot-commands.test.ts` (cinq types, profil de chaque type), `production-egg-collection-commands.test.ts`, `production-incubation-commands.test.ts`, `production-read.e2e.test.ts` (`/production/lots`, `/egg-collections`, `/incubations`) | Vérifié |
+| REQ-028 | `production-lot-commands.test.ts` (création, mise en place interne ou par achat direct, date de démarrage, souche, fournisseur), `production-slaughter-commands.test.ts`, `production-acceptance.test.ts` (AT-026) | Vérifié ; écrans ECR-PRD-03, 04 non construits |
+| REQ-029 | `production-invariants.test.ts` (INV-PRD-01 : aucune colonne d'effectif, effectif initial = Σ des entrées), `production-lot-commands.test.ts` | Vérifié |
+| REQ-030 | `production-daily-commands.test.ts` (mortalité, politique `MORTALITY`, photo), `inventory-production-support.test.ts`, `production-acceptance.test.ts` (AT-027), `production-farm-week.e2e.test.ts` | Vérifié ; alerte `HIGH_MORTALITY` en P9 |
+| REQ-031 | `production-egg-collection-commands.test.ts` (AT-028), `production-invariants.test.ts` (INV-OEU-01) | Vérifié |
+| REQ-032 | `production-acceptance.test.ts` (AT-053 : calibre ajouté en ligne par l'administrateur) | Vérifié ; écran ECR-PRX-01 non construit |
+| REQ-033 | `production-incubation-commands.test.ts` (AT-029), `production-invariants.test.ts` (INV-INC-01) | Vérifié |
+| REQ-034 | `production-acceptance.test.ts` (AT-052 : cases, déplacement, pesée), `production-daily-commands.test.ts` (pesée) | Partiel : vente à la tête ou au kilo vif en P4 |
+| REQ-052 (part P7) | `inventory-biological-valuation.test.ts` (coût restant, Σ des sorties = coût du lot), `production-invariants.test.ts` (conservation des coûts), `production-overhead-allocation.test.ts` | Vérifié pour les lots biologiques et les productions ; dépenses directes en P8 |
+| REQ-053 (part P7) | `production-acceptance.test.ts` (AT-026 : coût 5 600 000, coût par tête 2 424, clôture), `production-read.e2e.test.ts` (coûts par nature, résultat mensuel) | Partiel : CA et marge du lot en P4 et P8 |
+| REQ-058 (part P7) | `production-read.e2e.test.ts` (`/production/lots`, vue jour par jour, indicateurs) | Partiel : tableau ECR-ANA-04 et écran ECR-PRD-01 non construits (P9, écrans) |
+| REQ-062 (part P7) | `production-farm-week.e2e.test.ts` (semaine de saisies hors ligne), `production-sync-projections.test.ts` (jeu `production`) | Vérifié pour la production |
+| REQ-081 (part P7) | `production-acceptance.test.ts` (AT-026 : lot → mortalité → coût → abattage → produits en stock) | Partiel : vente, paiement et marge en P4 et P8 |
