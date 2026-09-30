@@ -18,7 +18,7 @@
  *   déclaré (œufs au coût standard, découpes, AV-098, AV-032) : coût déclaré et recalcul du CMUP ;
  * - sinon : CMUP courant.
  */
-import type { Transaction } from 'kysely';
+import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import type { IdGenerator } from '@gic/domain';
@@ -388,7 +388,10 @@ interface BiologicalLot {
 }
 
 /** Lot de stock d'un lot de production ou d'incubation (ADR-027), sinon `null`. */
-async function biologicalLotOf(uow: Transaction<DB>, lotId: string): Promise<BiologicalLot | null> {
+async function biologicalLotOf(
+  uow: Kysely<DB> | Transaction<DB>,
+  lotId: string,
+): Promise<BiologicalLot | null> {
   const lot = await uow
     .selectFrom('inventory_stock_lots')
     .select(['origin_type', 'origin_id', 'status'])
@@ -416,7 +419,7 @@ async function biologicalLotOf(uow: Transaction<DB>, lotId: string): Promise<Bio
  * d'inventaire ne le réduisent pas (BR-PRD-013).
  */
 async function lotRemainingCostXaf(
-  uow: Transaction<DB>,
+  uow: Kysely<DB> | Transaction<DB>,
   lotId: string,
   lot: BiologicalLot,
 ): Promise<number> {
@@ -469,7 +472,7 @@ export async function biologicalLotUnitCostXaf(
  * (effectif nul), c'est le coût que ses sorties n'ont pas emporté (mortalité en fin de lot).
  */
 export async function biologicalLotRemainingCostXaf(
-  uow: Transaction<DB>,
+  uow: Kysely<DB> | Transaction<DB>,
   lotId: string,
 ): Promise<number | null> {
   const lot = await biologicalLotOf(uow, lotId);

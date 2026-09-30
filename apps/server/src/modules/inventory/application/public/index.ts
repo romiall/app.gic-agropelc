@@ -127,3 +127,19 @@ export {
   documentMoveCount,
 } from './document-reversal.js';
 export type { ReversedMove } from './document-reversal.js';
+
+// P7-11 : agrégats pour les lectures de la production.
+export {
+  costObjectBreakdown,
+  costObjectMonthly,
+  costObjectConsumptionsByDay,
+  costObjectConsumptionTotals,
+  productionLotMortalityByDay,
+} from './production-aggregates.js';
+export type {
+  CostBreakdownLine,
+  MonthlyCostLine,
+  ConsumptionLine,
+  ConsumptionDayLine,
+  MortalityDayLine,
+} from './production-aggregates.js';

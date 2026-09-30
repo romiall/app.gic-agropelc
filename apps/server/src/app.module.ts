@@ -23,6 +23,7 @@ import { AttachmentsApiModule } from './attachments-api/attachments-api.module.j
 import { CatalogApiModule } from './catalog-api/catalog-api.module.js';
 import { PricingApiModule } from './pricing-api/pricing-api.module.js';
 import { ProcurementApiModule } from './procurement-api/procurement-api.module.js';
+import { ProductionApiModule } from './production-api/production-api.module.js';
 import { InventoryApiModule } from './inventory-api/inventory-api.module.js';
 import { CrmApiModule } from './crm-api/crm-api.module.js';
 import { FieldworkApiModule } from './fieldwork-api/fieldwork-api.module.js';
@@ -53,6 +54,7 @@ import { HealthController } from './health/health.controller.js';
     CatalogApiModule,
     PricingApiModule,
     ProcurementApiModule,
+    ProductionApiModule,
     InventoryApiModule,
     CrmApiModule,
     FieldworkApiModule,

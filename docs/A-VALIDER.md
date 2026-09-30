@@ -707,7 +707,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : aucun document ne les définit (D11 §7.1 est muet).
 - **Choix** : variantes : IC économique (hors morts) ou technique ; poids initial pesé ou standard ; taux de ponte sur l'effectif du début de jour ou moyen ; mortalité ÷ effectif initial ou ÷ (initial + entrées).
 - **Recommandation** : IC hors morts (aliment en kg ÷ gain de poids vif) ; poids initial = pesée à la mise en place, sinon poids standard paramétré par produit ; taux de ponte ÷ effectif en élevage au début du jour ; mortalité cumulée ÷ (effectif initial + entrées) (KPI-PRD-03).
-- **Impact** : `packages/domain` ; lectures de lot.
+- **Impact** : `packages/domain` ; lectures de lot. Défaut en place depuis P7-11 (fiche d'un lot, D07 §15) : IC hors morts et GMQ entre la première et la dernière pesée, taux de ponte ÷ effectif en élevage au début du jour, mortalité comptée ÷ effectif initial (qui cumule déjà toutes les entrées) ; le poids standard par produit n'est pas encore paramétré (sans deux pesées, ni GMQ ni IC).
 
 ### AV-117 — Journée sans événement (« RAS ») — SECONDAIRE
 - **Question** : comment dire qu'une journée d'un lot s'est déroulée sans mortalité ni consommation ?
