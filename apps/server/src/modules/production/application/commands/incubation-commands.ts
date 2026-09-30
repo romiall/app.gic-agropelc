@@ -1,33 +1,38 @@
 /**
- * Incubation (D07-PRD §7.4 ; SM-INCUBATION ; P7-08) : `production.incubation.start`,
- * `.record_candling`, `.transfer_to_hatcher`, `.record_hatch`, `.cancel`, sous
- * `production.incubation.record`, hors ligne possible.
+ * Incubation (D07-PRD §7.4 ; SM-INCUBATION ; P7-08, corrigée après revue) :
+ * `production.incubation.start`, `.record_candling`, `.cancel_candling`, `.transfer_to_hatcher`,
+ * `.record_hatch`, `.cancel`, sous `production.incubation.record` (annulation d'un mirage :
+ * `production.lot.manage`, comme l'annulation d'une entrée, AV-123), hors ligne possible.
  *
- * - Démarrage (BR-INC-001, BR-INC-002) : œufs à couver internes ou achetés (AV-047), sortis de
- *   leur lot (`PRODUCTION_INPUT`, valeur = CMUP ou coût du lot) et entrés dans l'incubateur sous
- *   le **lot de stock propre** du lot d'incubation (origine `INCUBATION_BATCH`, code `INC-…`) à la
- *   même valeur ; écriture de coût `OEUFS` au lot d'incubation (ADR-027). Échéancier = jour du
- *   démarrage + durées `production.incubation_durations` de l'espèce (BR-INC-008).
- * - Mirage (BR-INC-003) : infertiles et mortalité embryonnaire sortent vers `V_PRODUCTION` au
- *   coût 0 avec leurs motifs de rendement — le coût reste porté par les œufs restants.
- * - Transfert (BR-INC-004) : déplacement interne des œufs restants vers l'éclosoir.
- * - Éclosion (BR-INC-005, 006, 009) : les œufs restants sortent au coût 0 (non éclos, non
- *   viables, éclos) ; les poussins viables entrent sous le même lot au coût restant du lot
- *   d'incubation — coût d'un poussin = coût du lot ÷ poussins viables ; taux d'éclosion figé
- *   (BR-INC-007) ; lot clôturé (INV-INC-01 vérifié en base).
- * - Pertes accidentelles : déclarations de perte d'inventaire sur le lot de stock (D06) ; le
- *   compteur `accidental_loss_qty` les reprend à chaque étape.
- * - Annulation (perte totale) : plus aucun œuf du lot en stock (`INCUBATION_NOT_EMPTY`).
+ * - Démarrage (BR-INC-001, BR-INC-002) : œufs à couver internes ou achetés (AV-047), pris sur un
+ *   emplacement de stockage (jamais un incubateur ni un éclosoir, ni le lot d'un autre lot
+ *   d'incubation ou de production : `EGG_SOURCE_INVALID`), sortis de leur lot et entrés dans
+ *   l'incubateur sous le **lot de stock propre** du lot d'incubation (`INC-…`) à la même valeur ;
+ *   écriture `OEUFS` ; origine interne ou achetée déduite du lot pris ; en ligne, le produit est
+ *   celui des œufs à couver paramétré ; échéancier par espèce (BR-INC-008).
+ * - Mirage (BR-INC-003) : sorties au coût 0 avec motifs de rendement ; un mirage saisi en double
+ *   s'annule (`.cancel_candling`, mouvements inverses, compteurs repris).
+ * - Transfert (BR-INC-004) : tous les œufs du lot présents à l'incubateur, vers un éclosoir.
+ * - Éclosion (BR-INC-005, 006, 009) : œufs restants sortis (pris à l'éclosoir puis à
+ *   l'incubateur), à la valeur de leur solde quand ils le vident ; ces sorties internes ne
+ *   diminuent pas le coût du lot (inventory) ; poussins viables entrés au coût restant du lot ;
+ *   taux d'éclosion figé ; lot clôturé (INV-INC-01 en base).
+ * - Pertes accidentelles : pertes d'inventaire sur le lot de stock, comptées sur les mouvements ;
+ *   éclosion et annulation refusées en ligne tant qu'une perte attend sa validation
+ *   (`INCUBATION_HAS_PENDING_LOSS`).
+ * - Annulation (perte totale) : plus aucun œuf en stock (`INCUBATION_NOT_EMPTY`).
  *
- * États : en ligne, chaque étape exige son état (`INCUBATION_STATUS_INVALID`) ; hors ligne, une
- * étape arrivée après une autre saisie sur un autre appareil s'applique là où sont les œufs, une
- * éclosion incomplète est complétée en non éclos (`INCUBATION_BALANCE_ADJUSTED`), et une étape
- * sur un lot déjà clos est conservée en conflit `INCUBATION_CLOSED` sans effet (BR-SYN-007 : le
- * fait n'est pas perdu, un responsable l'arbitre).
+ * Hors ligne (BR-SYN-007) : une étape arrivée après une autre s'applique là où sont les œufs ; une
+ * éclosion incomplète est complétée en non éclos (`INCUBATION_BALANCE_ADJUSTED`) ; une étape
+ * incohérente avec l'état serveur (plus d'issues que d'œufs restants, mirage excessif, second
+ * transfert vers un autre éclosoir, étape sur un lot clos, perte en attente à l'annulation) est
+ * **mise en quarantaine** : conflit sans effet (`CONFLICT`), le fait est conservé pour
+ * l'arbitrage du Responsable production.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
 import {
+  DomainError,
   addBusinessDays,
   businessDayOf,
   checkCandling,
@@ -61,11 +66,14 @@ import {
 import {
   biologicalLotRemainingCostXaf,
   createStockLot,
+  findStockLot,
   lotHeadcount,
-  lotLossQuantity,
+  lotLostQuantity,
   recordCostEntry,
   recordStockMove,
+  reverseDocumentMoves,
   setStockLotStatus,
+  stockLotBalance,
   virtualLocationId,
 } from '../../../inventory/application/public/index.js';
 import {
@@ -75,16 +83,21 @@ import {
   farmLocation,
   isAllowed,
   loadLocation,
-  recordProductionInput,
+  recordProductionInputMoves,
   rejected,
   settingValue,
+  stringSetting,
   type Uow,
 } from './shared.js';
 import { emitIncubationBatchChange } from '../sync-changes.js';
 
 const INCUBATION = 'production.incubation.record';
+const MANAGE = 'production.lot.manage';
 
 const NOT_FOUND = rejected('NOT_FOUND', 'Lot d’incubation introuvable.');
+
+/** Emplacements d'où des œufs à couver ne se prennent pas (ils y sont déjà en incubation). */
+const INCUBATION_LOCATION_TYPES: readonly string[] = ['INCUBATOR', 'HATCHER'];
 
 const startPayloadSchema = z.object({
   /** Espèce : clé des durées `production.incubation_durations` (AV-047). */
@@ -92,6 +105,7 @@ const startPayloadSchema = z.object({
   eggProductId: z.string().uuid(),
   chickProductId: z.string().uuid(),
   incubatorLocationId: z.string().uuid(),
+  /** Déclaré par l'appareil ; remplacé par l'origine du lot pris quand elle est connue. */
   eggSource: z.enum(['INTERNAL', 'PURCHASED']),
   eggsSet: z.number().int().positive(),
   /** Emplacement de stockage des œufs à couver. */
@@ -104,6 +118,11 @@ const candlingPayloadSchema = z.object({
   batchId: z.string().uuid(),
   infertile: z.number().int().nonnegative(),
   earlyDead: z.number().int().nonnegative(),
+});
+
+const cancelCandlingPayloadSchema = z.object({
+  comment: z.string().trim().min(1).max(2000),
+  reasonCodeId: z.string().uuid().optional(),
 });
 
 const transferPayloadSchema = z.object({
@@ -125,6 +144,8 @@ const cancelPayloadSchema = z.object({
   comment: z.string().trim().min(1).max(2000),
   reasonCodeId: z.string().uuid().optional(),
 });
+
+type EventType = 'SET' | 'CANDLING' | 'TRANSFER_TO_HATCHER' | 'HATCH' | 'CANCEL';
 
 interface BatchRow {
   readonly id: string;
@@ -169,19 +190,27 @@ async function loadBatch(uow: Uow, batchId: string): Promise<BatchRow | undefine
   };
 }
 
-/** Compteurs avec les pertes accidentelles déclarées à ce jour sur le lot de stock. */
+/** Compteurs avec les pertes accidentelles du lot de stock (mouvements, attente comprise). */
 async function currentCounters(uow: Uow, batch: BatchRow): Promise<IncubationCounters> {
   const accidentalLoss = Math.round(
-    await lotLossQuantity(uow, { lotId: batch.stockLotId, productId: batch.eggProductId }),
+    await lotLostQuantity(uow, { lotId: batch.stockLotId, productId: batch.eggProductId }),
   );
   return { ...batch.counters, accidentalLoss };
 }
 
-/** Emplacement où se trouvent les œufs du lot selon son état. */
-function eggLocationOf(batch: BatchRow): string {
-  return batch.status === 'IN_HATCHER' && batch.hatcherLocationId
-    ? batch.hatcherLocationId
-    : batch.incubatorLocationId;
+/** Œufs du lot en attente de validation d'une perte (peuvent revenir au lot). */
+function pendingLoss(uow: Uow, batch: BatchRow): Promise<number> {
+  return lotHeadcount(uow, { lotId: batch.stockLotId, scope: 'PENDING_LOSS' });
+}
+
+/** Emplacements des œufs, le principal d'abord (éclosoir une fois transférés). */
+function eggLocationsOf(batch: BatchRow): readonly string[] {
+  if (batch.status === 'IN_HATCHER' && batch.hatcherLocationId) {
+    return [batch.hatcherLocationId, batch.incubatorLocationId];
+  }
+  return batch.hatcherLocationId
+    ? [batch.incubatorLocationId, batch.hatcherLocationId]
+    : [batch.incubatorLocationId];
 }
 
 async function yieldReason(uow: Uow, code: string): Promise<string | undefined> {
@@ -214,7 +243,35 @@ async function durationsOf(
 function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequenceService) {
   const deps = { idGenerator };
 
-  /** Lot d'incubation de l'étape : portée, puis état (en ligne) ou conflit (hors ligne). */
+  /** Quarantaine d'une étape hors ligne incohérente : conflit sans effet, fait conservé. */
+  async function quarantine(
+    uow: Uow,
+    envelope: CommandEnvelope<unknown>,
+    batch: BatchRow,
+    conflictType: string,
+    details: Record<string, unknown> = {},
+  ): Promise<CommandHandlerOutcome> {
+    const conflictId = idGenerator.newId();
+    await recordConflict(uow, {
+      id: conflictId,
+      commandId: envelope.command_id,
+      conflictType,
+      entityType: 'INCUBATION_BATCH',
+      entityId: batch.id,
+      siteId: batch.siteId,
+      ownerRole: 'RESP_PRODUCTION',
+      applied: false,
+      details: {
+        ...details,
+        commandType: envelope.command_type,
+        payload: envelope.payload,
+        batchStatus: batch.status,
+      },
+    });
+    return { status: 'CONFLICT', conflictId };
+  }
+
+  /** Lot d'incubation de l'étape : portée, puis état (en ligne) ou quarantaine (hors ligne). */
   async function stepBatch(
     uow: Uow,
     envelope: CommandEnvelope<{ readonly batchId: string }>,
@@ -232,23 +289,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (allowed.includes(batch.status)) return { ok: true, batch };
     const closed = batch.status === 'CLOSED' || batch.status === 'CANCELLED';
     if (envelope.captured_offline && closed) {
-      const conflictId = idGenerator.newId();
-      await recordConflict(uow, {
-        id: conflictId,
-        commandId: envelope.command_id,
-        conflictType: 'INCUBATION_CLOSED',
-        entityType: 'INCUBATION_BATCH',
-        entityId: batch.id,
-        siteId: batch.siteId,
-        ownerRole: 'RESP_PRODUCTION',
-        applied: false,
-        details: {
-          commandType: envelope.command_type,
-          payload: envelope.payload,
-          batchStatus: batch.status,
-        },
-      });
-      return { ok: false, outcome: { status: 'CONFLICT', conflictId } };
+      return { ok: false, outcome: await quarantine(uow, envelope, batch, 'INCUBATION_CLOSED') };
     }
     if (envelope.captured_offline) return { ok: true, batch };
     return {
@@ -266,7 +307,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     event: {
       readonly id: string;
       readonly batchId: string;
-      readonly type: 'SET' | 'CANDLING' | 'TRANSFER_TO_HATCHER' | 'HATCH' | 'CANCEL';
+      readonly type: EventType;
       readonly infertile?: number;
       readonly earlyDead?: number;
       readonly transferred?: number;
@@ -303,13 +344,86 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .execute();
   }
 
-  async function eventReplay(uow: Uow, eventId: string): Promise<boolean> {
+  /**
+   * Rejeu d'une étape : l'agrégat d'une commande d'étape est l'**étape elle-même**
+   * (`INCUBATION_EVENT`, identifiant de l'événement). Un identifiant déjà pris par une autre
+   * étape ou un autre lot est refusé (`AGGREGATE_ID_REUSED`) au lieu d'être tenu pour appliqué.
+   */
+  async function eventReplay(
+    uow: Uow,
+    eventId: string,
+    expected: { readonly batchId: string; readonly type: EventType },
+  ): Promise<CommandHandlerOutcome | undefined> {
     const row = await uow
       .selectFrom('production_incubation_events')
-      .select('id')
+      .select(['batch_id', 'event_type'])
       .where('id', '=', toBin(eventId))
       .executeTakeFirst();
-    return row !== undefined;
+    if (!row) return undefined;
+    if (fromBin(row.batch_id) === expected.batchId && row.event_type === expected.type) {
+      return { status: 'APPLIED' };
+    }
+    return rejected(
+      'AGGREGATE_ID_REUSED',
+      'Identifiant d’étape déjà utilisé par une autre étape ou un autre lot d’incubation.',
+    );
+  }
+
+  /**
+   * Sorties `PRODUCTION_INPUT` d'œufs du lot, prises emplacement par emplacement (principal
+   * d'abord) dans la limite des soldes ; hors ligne, un reste est pris au principal en négatif.
+   */
+  async function takeEggs(
+    uow: Uow,
+    envelope: CommandEnvelope<unknown>,
+    batch: BatchRow,
+    portion: {
+      readonly quantity: number;
+      readonly reasonCode: string | null;
+      readonly declaredUnitCostXaf?: number;
+    },
+  ): Promise<void> {
+    if (portion.quantity <= 0) return;
+    const locations = eggLocationsOf(batch);
+    const reasonCodeId = portion.reasonCode
+      ? await yieldReason(uow, portion.reasonCode)
+      : undefined;
+    const take = (locationId: string, quantity: number) =>
+      recordProductionInputMoves(uow, deps, {
+        productId: batch.eggProductId,
+        lotId: batch.stockLotId,
+        quantityBase: quantity,
+        fromLocationId: locationId,
+        ...(reasonCodeId !== undefined ? { reasonCodeId } : {}),
+        ...(portion.declaredUnitCostXaf !== undefined
+          ? { declaredUnitCostXaf: portion.declaredUnitCostXaf }
+          : {}),
+        occurredAt: new Date(envelope.occurred_at),
+        sourceDocType: 'INCUBATION_EVENT',
+        sourceDocId: envelope.aggregate_id,
+        costObjectType: 'INCUBATION_BATCH',
+        costObjectId: batch.id,
+        createdBy: envelope.author_user_id,
+        commandId: envelope.command_id,
+        capturedOffline: envelope.captured_offline,
+        allowNegative: envelope.captured_offline,
+      });
+    let left = portion.quantity;
+    for (const locationId of locations) {
+      if (left <= 0) break;
+      const balance = await stockLotBalance(uow, {
+        locationId,
+        productId: batch.eggProductId,
+        lotId: batch.stockLotId,
+      });
+      const quantity = Math.min(left, Math.max(0, Math.floor(balance)));
+      if (quantity <= 0) continue;
+      await take(locationId, quantity);
+      left -= quantity;
+    }
+    // Reste introuvable en stock : en ligne, refus (`INSUFFICIENT_STOCK`, le compte du lot et le
+    // stock divergent) ; hors ligne, le fait physique est pris à l'emplacement principal.
+    if (left > 0) await take(locations[0]!, left);
   }
 
   const start: CommandHandler<z.infer<typeof startPayloadSchema>> = async (uow, envelope) => {
@@ -343,12 +457,27 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!source || source.siteId !== incubator.siteId) {
       return rejected('SITE_MISMATCH', 'Les œufs à couver sont sur la ferme de l’incubateur.');
     }
+    if (INCUBATION_LOCATION_TYPES.includes(source.locationType)) {
+      return rejected(
+        'EGG_SOURCE_INVALID',
+        'Les œufs à couver se prennent sur un emplacement de stockage, pas dans un incubateur ou un éclosoir.',
+      );
+    }
     const [eggProduct, chickProduct] = await Promise.all([
       findProduct(uow, p.eggProductId),
       findProduct(uow, p.chickProductId),
     ]);
     if (!eggProduct || eggProduct.stockFamily === 'BIOLOGIQUE') {
       return rejected('EGG_PRODUCT_INVALID', 'Produit d’œuf à couver inconnu ou biologique.');
+    }
+    if (!offline) {
+      const hatchingCode = await stringSetting(uow, 'production.hatching_egg_product_code', at);
+      if (hatchingCode && eggProduct.code !== hatchingCode) {
+        return rejected(
+          'EGG_PRODUCT_INVALID',
+          'Seul le produit des œufs à couver paramétré s’incube (production.hatching_egg_product_code).',
+        );
+      }
     }
     if (
       !chickProduct ||
@@ -360,6 +489,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         'CHICK_PRODUCT_INVALID',
         'Le poussin produit est un produit biologique de volaille suivi par lot.',
       );
+    }
+    if (p.sourceStockLotId !== undefined) {
+      const sourceLot = await findStockLot(uow, p.sourceStockLotId);
+      if (!sourceLot) return rejected('REFERENCE_INVALID', 'Lot de stock des œufs inconnu.');
+      if (
+        sourceLot.originType === 'INCUBATION_BATCH' ||
+        sourceLot.originType === 'PRODUCTION_LOT'
+      ) {
+        return rejected(
+          'EGG_SOURCE_INVALID',
+          'Ces œufs appartiennent déjà à un lot d’incubation ou de production.',
+        );
+      }
     }
     const durations = await durationsOf(uow, p.species, at);
     if (!durations && !offline) {
@@ -386,8 +528,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     });
     const setEventId = idGenerator.newId();
     let valueXaf: number;
+    let eggSource: 'INTERNAL' | 'PURCHASED' = p.eggSource;
     try {
-      valueXaf = await recordProductionInput(uow, deps, {
+      const inputs = await recordProductionInputMoves(uow, deps, {
         productId: p.eggProductId,
         ...(p.sourceStockLotId !== undefined ? { lotId: p.sourceStockLotId } : {}),
         quantityBase: p.eggsSet,
@@ -402,6 +545,21 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         capturedOffline: offline,
         allowNegative: offline,
       });
+      valueXaf = inputs.reduce((sum, move) => sum + move.valueXaf, 0);
+      // Lots réellement pris (FIFO compris) : jamais ceux d'un lot d'incubation ou de
+      // production ; l'origine du premier fixe « interne » ou « acheté » (AV-047).
+      for (const [index, move] of inputs.entries()) {
+        if (move.lotId === null) continue;
+        const lot = await findStockLot(uow, move.lotId);
+        if (lot?.originType === 'INCUBATION_BATCH' || lot?.originType === 'PRODUCTION_LOT') {
+          throw new DomainError(
+            'Ces œufs appartiennent déjà à un lot d’incubation ou de production.',
+            'EGG_SOURCE_INVALID',
+          );
+        }
+        if (index === 0 && lot?.originType === 'COLLECTION') eggSource = 'INTERNAL';
+        if (index === 0 && lot?.originType === 'SUPPLIER_LOT') eggSource = 'PURCHASED';
+      }
       const [output] = await recordStockMove(uow, deps, {
         productId: p.eggProductId,
         lotId: stockLotId,
@@ -448,7 +606,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         egg_product_id: toBin(p.eggProductId),
         chick_product_id: toBin(p.chickProductId),
         incubator_location_id: toBin(p.incubatorLocationId),
-        egg_source: p.eggSource,
+        egg_source: eggSource,
         eggs_set_qty: p.eggsSet,
         set_at: at,
         expected_candling_date: durations
@@ -482,39 +640,37 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
   };
 
   const candling: CommandHandler<z.infer<typeof candlingPayloadSchema>> = async (uow, envelope) => {
-    if (await eventReplay(uow, envelope.aggregate_id)) return { status: 'APPLIED' };
+    const p = envelope.payload;
+    const replay = await eventReplay(uow, envelope.aggregate_id, {
+      batchId: p.batchId,
+      type: 'CANDLING',
+    });
+    if (replay) return replay;
     const guard = await stepBatch(uow, envelope, ['INCUBATING']);
     if (!guard.ok) return guard.outcome;
     const { batch } = guard;
-    const p = envelope.payload;
-    const at = new Date(envelope.occurred_at);
     const counters = await currentCounters(uow, batch);
     try {
       checkCandling(counters, { infertile: p.infertile, earlyDead: p.earlyDead });
-      for (const [quantity, reason] of [
-        [p.infertile, 'INFERTILE'],
-        [p.earlyDead, 'MORTALITE_EMBRYONNAIRE'],
-      ] as const) {
-        if (quantity === 0) continue;
-        const reasonCodeId = await yieldReason(uow, reason);
-        await recordProductionInput(uow, deps, {
-          productId: batch.eggProductId,
-          lotId: batch.stockLotId,
-          quantityBase: quantity,
-          fromLocationId: eggLocationOf(batch),
-          ...(reasonCodeId !== undefined ? { reasonCodeId } : {}),
-          declaredUnitCostXaf: 0,
-          occurredAt: at,
-          sourceDocType: 'INCUBATION_EVENT',
-          sourceDocId: envelope.aggregate_id,
-          costObjectType: 'INCUBATION_BATCH',
-          costObjectId: batch.id,
-          createdBy: envelope.author_user_id,
-          commandId: envelope.command_id,
-          capturedOffline: envelope.captured_offline,
-          allowNegative: envelope.captured_offline,
+    } catch (error) {
+      if (envelope.captured_offline && error instanceof DomainError) {
+        return quarantine(uow, envelope, batch, 'INCUBATION_BALANCE', {
+          remaining: eggsRemaining(counters),
         });
       }
+      return businessRejection(error);
+    }
+    try {
+      await takeEggs(uow, envelope, batch, {
+        quantity: p.infertile,
+        reasonCode: 'INFERTILE',
+        declaredUnitCostXaf: 0,
+      });
+      await takeEggs(uow, envelope, batch, {
+        quantity: p.earlyDead,
+        reasonCode: 'MORTALITE_EMBRYONNAIRE',
+        declaredUnitCostXaf: 0,
+      });
     } catch (error) {
       return businessRejection(error);
     }
@@ -540,16 +696,99 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { status: 'APPLIED' };
   };
 
+  /** Mirage saisi en double ou erroné : mouvements inverses, compteurs repris (revue P7). */
+  const cancelCandling: CommandHandler<z.infer<typeof cancelCandlingPayloadSchema>> = async (
+    uow,
+    envelope,
+  ) => {
+    const eventId = envelope.aggregate_id;
+    const event = await uow
+      .selectFrom('production_incubation_events')
+      .select(['id', 'batch_id', 'event_type', 'status', 'qty_infertile', 'qty_early_dead'])
+      .where('id', '=', toBin(eventId))
+      .forUpdate()
+      .executeTakeFirst();
+    if (!event || event.event_type !== 'CANDLING') {
+      return rejected('NOT_FOUND', 'Mirage introuvable.');
+    }
+    const batch = await loadBatch(uow, fromBin(event.batch_id));
+    if (!batch) return NOT_FOUND;
+    const at = new Date(envelope.occurred_at);
+    const author = envelope.author_user_id;
+    if (!(await isAllowed(uow, author, MANAGE, at, batch.siteId))) return FORBIDDEN_SCOPE;
+    if (event.status === 'CANCELLED') return { status: 'APPLIED' };
+    if (batch.status === 'CLOSED' || batch.status === 'CANCELLED') {
+      return rejected(
+        'INCUBATION_STATUS_INVALID',
+        'Lot d’incubation clos : ses étapes ne s’annulent plus.',
+      );
+    }
+    if (envelope.payload.reasonCodeId !== undefined) {
+      const reason = await findReasonCode(uow, envelope.payload.reasonCodeId);
+      if (!reason || reason.category !== 'CANCELLATION') {
+        return rejected(
+          'REFERENCE_INVALID',
+          'Motif d’annulation inconnu (catégorie CANCELLATION).',
+        );
+      }
+    }
+    try {
+      await reverseDocumentMoves(uow, deps, {
+        sourceDocType: 'INCUBATION_EVENT',
+        sourceDocId: eventId,
+        occurredAt: at,
+        createdBy: author,
+        commandId: envelope.command_id,
+        capturedOffline: envelope.captured_offline,
+        allowNegative: false,
+      });
+    } catch (error) {
+      return businessRejection(error);
+    }
+    await uow
+      .updateTable('production_incubation_events')
+      .set({
+        status: 'CANCELLED',
+        cancelled_at: at,
+        cancelled_by: toBin(author),
+        cancel_reason_code_id: toBinOrNull(envelope.payload.reasonCodeId ?? null),
+        cancel_comment: envelope.payload.comment,
+      })
+      .where('id', '=', event.id)
+      .execute();
+    await uow
+      .updateTable('production_incubation_batches')
+      .set({
+        infertile_qty: Math.max(0, batch.counters.infertile - (event.qty_infertile ?? 0)),
+        early_dead_qty: Math.max(0, batch.counters.earlyDead - (event.qty_early_dead ?? 0)),
+        updated_by: toBin(author),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', toBin(batch.id))
+      .execute();
+    await emitIncubationBatchChange(uow, batch.id);
+    return { status: 'APPLIED' };
+  };
+
   const transfer: CommandHandler<z.infer<typeof transferPayloadSchema>> = async (uow, envelope) => {
-    if (await eventReplay(uow, envelope.aggregate_id)) return { status: 'APPLIED' };
+    const p = envelope.payload;
+    const replay = await eventReplay(uow, envelope.aggregate_id, {
+      batchId: p.batchId,
+      type: 'TRANSFER_TO_HATCHER',
+    });
+    if (replay) return replay;
     const guard = await stepBatch(uow, envelope, ['INCUBATING']);
     if (!guard.ok) return guard.outcome;
     const { batch } = guard;
-    const p = envelope.payload;
     const at = new Date(envelope.occurred_at);
     if (batch.status === 'IN_HATCHER') {
       // Hors ligne : transfert déjà enregistré par un autre appareil (une seule fois par lot).
-      return { status: 'APPLIED' };
+      // Vers le même éclosoir : doublon sans effet ; vers un autre : quarantaine.
+      return batch.hatcherLocationId === p.hatcherLocationId
+        ? { status: 'APPLIED' }
+        : quarantine(uow, envelope, batch, 'INCUBATION_DUPLICATE_STEP', {
+            hatcherLocationId: batch.hatcherLocationId,
+          });
     }
     const hatcher = await loadLocation(uow, p.hatcherLocationId);
     if (
@@ -561,7 +800,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       return rejected('LOCATION_INVALID', 'Un éclosoir actif de la ferme du lot est attendu.');
     }
     const counters = await currentCounters(uow, batch);
-    const quantity = Math.max(0, eggsRemaining(counters));
+    // Tous les œufs du lot présents à l'incubateur ; hors ligne sans stock visible, le compte
+    // du lot (fait physique, solde négatif).
+    const inIncubator = await stockLotBalance(uow, {
+      locationId: batch.incubatorLocationId,
+      productId: batch.eggProductId,
+      lotId: batch.stockLotId,
+    });
+    const quantity =
+      inIncubator > 0
+        ? Math.floor(inIncubator)
+        : envelope.captured_offline
+          ? Math.max(0, eggsRemaining(counters))
+          : 0;
     try {
       if (quantity > 0) {
         await recordStockMove(uow, deps, {
@@ -607,11 +858,15 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
   };
 
   const hatch: CommandHandler<z.infer<typeof hatchPayloadSchema>> = async (uow, envelope) => {
-    if (await eventReplay(uow, envelope.aggregate_id)) return { status: 'APPLIED' };
+    const p = envelope.payload;
+    const replay = await eventReplay(uow, envelope.aggregate_id, {
+      batchId: p.batchId,
+      type: 'HATCH',
+    });
+    if (replay) return replay;
     const guard = await stepBatch(uow, envelope, ['IN_HATCHER']);
     if (!guard.ok) return guard.outcome;
     const { batch } = guard;
-    const p = envelope.payload;
     const at = new Date(envelope.occurred_at);
     const author = envelope.author_user_id;
     const offline = envelope.captured_offline;
@@ -619,48 +874,48 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       p.outputLocationId ?? batch.hatcherLocationId ?? batch.incubatorLocationId;
     const invalidLocation = await farmLocation(uow, batch, outputLocationId);
     if (invalidLocation) return invalidLocation;
+    // Œufs en attente de validation d'une perte : un rejet les rendrait au lot après
+    // l'éclosion (revue P7). En ligne : refus ; hors ligne : quarantaine.
+    const pending = await pendingLoss(uow, batch);
+    if (pending > 0) {
+      return offline
+        ? quarantine(uow, envelope, batch, 'INCUBATION_PENDING_LOSS', { pending })
+        : rejected(
+            'INCUBATION_HAS_PENDING_LOSS',
+            `${pending} œufs attendent la validation d’une perte : la traiter avant l’éclosion.`,
+          );
+    }
     const counters = await currentCounters(uow, batch);
     const remaining = eggsRemaining(counters);
     const outcomeCount = p.unhatched + p.hatchedViable + p.hatchedNonviable;
+    if (offline && outcomeCount > remaining) {
+      // Plus d'issues que d'œufs restants côté serveur (mirage en double, perte contestée…) :
+      // quarantaine, le comptage de l'appareil est conservé pour arbitrage.
+      return quarantine(uow, envelope, batch, 'INCUBATION_BALANCE', {
+        declared: outcomeCount,
+        remaining,
+      });
+    }
     let unhatched = p.unhatched;
-    let adjusted = false;
+    const adjusted = offline && outcomeCount < remaining;
+    if (adjusted) {
+      // Hors ligne : les œufs non comptés sont des œufs non éclos (INV-INC-01 tenu).
+      unhatched += remaining - outcomeCount;
+    }
     try {
-      if (offline && outcomeCount < remaining) {
-        // Hors ligne : les œufs non comptés sont des œufs non éclos (INV-INC-01 tenu).
-        unhatched += remaining - outcomeCount;
-        adjusted = true;
-      }
       checkHatch(counters, {
         unhatched,
         hatchedViable: p.hatchedViable,
         hatchedNonviable: p.hatchedNonviable,
       });
-      const from = eggLocationOf(batch);
-      for (const [quantity, reason] of [
-        [unhatched, 'NON_ECLOS'],
-        [p.hatchedNonviable, 'POUSSIN_NON_VIABLE'],
-        [p.hatchedViable, null],
-      ] as const) {
-        if (quantity === 0) continue;
-        const reasonCodeId = reason ? await yieldReason(uow, reason) : undefined;
-        await recordProductionInput(uow, deps, {
-          productId: batch.eggProductId,
-          lotId: batch.stockLotId,
-          quantityBase: quantity,
-          fromLocationId: from,
-          ...(reasonCodeId !== undefined ? { reasonCodeId } : {}),
-          declaredUnitCostXaf: 0,
-          occurredAt: at,
-          sourceDocType: 'INCUBATION_EVENT',
-          sourceDocId: envelope.aggregate_id,
-          costObjectType: 'INCUBATION_BATCH',
-          costObjectId: batch.id,
-          createdBy: author,
-          commandId: envelope.command_id,
-          capturedOffline: offline,
-          allowNegative: offline,
-        });
-      }
+      // Œufs sortis sans coût déclaré : la dernière sortie d'un emplacement emporte la valeur de
+      // son solde ; ces sorties internes ne diminuent pas le coût du lot (inventory).
+      await takeEggs(uow, envelope, batch, { quantity: unhatched, reasonCode: 'NON_ECLOS' });
+      await takeEggs(uow, envelope, batch, {
+        quantity: p.hatchedNonviable,
+        reasonCode: 'POUSSIN_NON_VIABLE',
+      });
+      await takeEggs(uow, envelope, batch, { quantity: p.hatchedViable, reasonCode: null });
       if (p.hatchedViable > 0) {
         // BR-INC-009 : les poussins viables emportent tout le coût du lot d'incubation.
         const remainingCost = (await biologicalLotRemainingCostXaf(uow, batch.stockLotId)) ?? 0;
@@ -744,10 +999,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!batch) return NOT_FOUND;
     const at = new Date(envelope.occurred_at);
     const author = envelope.author_user_id;
+    const offline = envelope.captured_offline;
     if (!(await isAllowed(uow, author, INCUBATION, at, batch.siteId))) return FORBIDDEN_SCOPE;
     if (batch.status === 'CANCELLED') return { status: 'APPLIED' };
     if (batch.status === 'CLOSED') {
-      return rejected('INCUBATION_STATUS_INVALID', 'Lot d’incubation déjà éclos : non annulable.');
+      // Hors ligne (SM-INCUBATION : toutes les transitions) : quarantaine, sinon refus.
+      return offline
+        ? quarantine(uow, envelope, batch, 'INCUBATION_CLOSED')
+        : rejected('INCUBATION_STATUS_INVALID', 'Lot d’incubation déjà éclos : non annulable.');
     }
     if (envelope.payload.reasonCodeId !== undefined) {
       const reason = await findReasonCode(uow, envelope.payload.reasonCodeId);
@@ -758,12 +1017,23 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         );
       }
     }
+    const pending = await pendingLoss(uow, batch);
+    if (pending > 0) {
+      return offline
+        ? quarantine(uow, envelope, batch, 'INCUBATION_PENDING_LOSS', { pending })
+        : rejected(
+            'INCUBATION_HAS_PENDING_LOSS',
+            `${pending} œufs attendent la validation d’une perte : la traiter avant l’annulation.`,
+          );
+    }
     const inStock = await lotHeadcount(uow, { lotId: batch.stockLotId, scope: 'UNSOLD' });
     if (inStock > 0) {
-      return rejected(
-        'INCUBATION_NOT_EMPTY',
-        `${inStock} œufs du lot sont encore en stock : déclarer leur perte avant l’annulation.`,
-      );
+      return offline
+        ? quarantine(uow, envelope, batch, 'INCUBATION_NOT_EMPTY', { inStock })
+        : rejected(
+            'INCUBATION_NOT_EMPTY',
+            `${inStock} œufs du lot sont encore en stock : déclarer leur perte avant l’annulation.`,
+          );
     }
     const counters = await currentCounters(uow, batch);
     await uow
@@ -790,7 +1060,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { status: 'APPLIED' };
   };
 
-  return { start, candling, transfer, hatch, cancel };
+  return { start, candling, cancelCandling, transfer, hatch, cancel };
 }
 
 export function registerIncubationCommands(
@@ -812,6 +1082,13 @@ export function registerIncubationCommands(
     payloadSchema: candlingPayloadSchema,
     permissionCode: INCUBATION,
     handler: handlers.candling,
+  });
+  registry.register({
+    commandType: 'production.incubation.cancel_candling',
+    version: 1,
+    payloadSchema: cancelCandlingPayloadSchema,
+    permissionCode: MANAGE,
+    handler: handlers.cancelCandling,
   });
   registry.register({
     commandType: 'production.incubation.transfer_to_hatcher',

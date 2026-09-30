@@ -160,7 +160,7 @@
 | `chick_product_id` | uuid → catalog.products | Non | — | Poussin produit (chair ou ponte) |
 | `incubator_location_id` | uuid → organization.locations | Non | — | `INCUBATOR` |
 | `hatcher_location_id` | uuid → organization.locations | Oui | — | `HATCHER` |
-| `egg_source` | enum(`INTERNAL`,`PURCHASED`) | Non | — | AV-047 |
+| `egg_source` | enum(`INTERNAL`,`PURCHASED`) | Non | — | AV-047 ; déduite de l'origine du lot pris (collecte ou lot fournisseur), à défaut déclarée |
 | `eggs_set_qty` | int | Non | — | Figé au démarrage |
 | `set_at` | ts | Non | — | |
 | `expected_candling_date`, `expected_transfer_date`, `expected_hatch_date` | date | Oui | — | Échéancier (BR-INC-008) |
@@ -186,7 +186,7 @@
 | `batch_id` | uuid → incubation_batches | Non | — | |
 | `event_type` | enum(`SET`,`CANDLING`,`TRANSFER_TO_HATCHER`,`HATCH`,`CANCEL`) | Non | — | |
 | `qty_infertile`, `qty_early_dead`, `qty_transferred`, `qty_hatched_viable`, `qty_hatched_nonviable`, `qty_unhatched` | int | Oui | — | Selon le type, ≥ 0 |
-| `output_location_id` | uuid → organization.locations | Oui | — | Destination des poussins (`HATCH`) |
+| `output_location_id` | uuid → organization.locations | Oui | — | Selon l'étape : incubateur (`SET`), éclosoir (`TRANSFER_TO_HATCHER`), destination des poussins (`HATCH`) ; nul pour un mirage ou une annulation |
 | `status` | enum(`RECORDED`,`CANCELLED`) | Non | `RECORDED` | |
 | `single_step_key` | varchar(60) | Oui | généré | Donnée technique : unicité du transfert et de l'éclosion enregistrés |
 | [STD-CANCEL] | | | | |
@@ -209,7 +209,7 @@
 | `location_id` | uuid → organization.locations | Non | — | Abattoir de la ferme (`SLAUGHTERHOUSE`) |
 | `input_product_id` | uuid → catalog.products | Non | — | Produit vif |
 | `heads_qty` | int | Non | — | Têtes abattues (> 0) |
-| `condemned_heads` | int | Non | 0 | Têtes saisies, sans produit (AV-114) |
+| `condemned_heads` | int | Non | 0 | Têtes saisies, sans produit (AV-114) : sortie distincte, motif `SAISIE_SANITAIRE` ; inférieur au nombre de têtes (toutes saisies = une perte) |
 | `live_weight_g` | bigint | Non | — | Poids vif total (> 0) |
 | `output_weight_g` | bigint | Non | — | Σ poids des produits, ≤ poids vif |
 | `total_input_value_xaf` | money_xaf | Non | 0 | Valeur figée des têtes sorties du lot (coût restant, ADR-027) |
@@ -221,6 +221,7 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `doc_number`, `stock_lot_id`, `command_id`. **CK** quantités et poids positifs ; saisies ≤ têtes ; poids des produits ≤ poids vif.
+- **Déclencheurs** : abattage non modifiable (têtes, poids, valeur, lot de stock figés ; seuls le statut et les colonnes d'annulation changent) ; aucune suppression.
 - **Suppr.** `ANNULATION` (inverses). **Offline** DL (30 j), CR.
 
 ## production.slaughter_outputs

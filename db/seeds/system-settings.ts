@@ -167,3 +167,32 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).
 ] as const;
+
+/**
+ * Révisions d'une valeur par défaut décidée après le premier seed (BR-ADM-015 : jamais de
+ * réécriture, une nouvelle version datée). Le seed insère une version `valid_from = maintenant`
+ * seulement si la valeur en vigueur diffère **et** si cette révision n'a jamais été appliquée
+ * (repère `revision` dans `reason`) : une valeur changée ensuite par un administrateur n'est pas
+ * écrasée par une ré-exécution.
+ */
+export interface SystemSettingRevision {
+  readonly revision: string;
+  readonly key: string;
+  readonly value: SystemSettingSeed['value'];
+  readonly isClientVisible: boolean;
+}
+
+export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
+  {
+    revision: 'AV-115 (28/09/2026)',
+    key: 'production.slaughterable_lot_types',
+    value: [
+      'POULET_CHAIR',
+      'PONDEUSE',
+      'REPRODUCTEUR_VOLAILLE',
+      'PORC_ENGRAISSEMENT',
+      'PORC_NAISSAGE',
+    ],
+    isClientVisible: true,
+  },
+];

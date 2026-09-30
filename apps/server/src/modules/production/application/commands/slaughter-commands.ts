@@ -36,10 +36,12 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
+import { hasConflict, recordConflict } from '../../../../platform/sync/conflicts.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import {
   findProduct,
   findReasonCode,
+  findReasonCodeByCode,
   type ProductSummary,
 } from '../../../catalog/application/public/index.js';
 import {
@@ -127,7 +129,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       ? configured.filter((v): v is string => typeof v === 'string')
       : DEFAULT_SLAUGHTERABLE;
     const guard = await dailyLot(uow, envelope, (lot) =>
-      slaughterable.includes(lot.lotType)
+      slaughterable.includes(lot.lotType) || offline
         ? undefined
         : rejected(
             'LOT_NOT_SLAUGHTERABLE',
@@ -175,6 +177,17 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       }
       const invalidTarget = await farmLocation(uow, lot, output.toLocationId);
       if (invalidTarget) return invalidTarget;
+      // Produit au kilo (découpes, abats, AV-102) : la quantité entrée en stock est le poids
+      // pesé ; un écart fausserait le coût unitaire et le CMUP (revue P7).
+      if (
+        product.baseUnitCode === 'KG' &&
+        Math.abs(Math.round(output.quantityBase * 1000) - output.weightG) > 1
+      ) {
+        return rejected(
+          'SLAUGHTER_INVALID',
+          'Produit vendu au kilo : la quantité doit égaler le poids pesé (en kg).',
+        );
+      }
       products.set(output.productId, product);
     }
 
@@ -209,21 +222,35 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     let inputValue: number;
     try {
       // Les têtes abattues (saisies comprises) sortent du lot au coût par tête (ADR-027).
-      inputValue = await recordProductionInput(uow, deps, {
-        productId: lot.productId,
-        lotId: lot.stockLotId,
-        quantityBase: p.heads,
-        fromLocationId: p.sourceLocationId,
-        occurredAt: at,
-        sourceDocType: 'SLAUGHTER',
-        sourceDocId: slaughterId,
-        costObjectType: 'PRODUCTION_LOT',
-        costObjectId: lot.id,
-        createdBy: author,
-        commandId: envelope.command_id,
-        capturedOffline: offline,
-        allowNegative: offline,
-      });
+      // Têtes saines puis têtes saisies (motif SAISIE_SANITAIRE, AV-114 : sans produit, leur
+      // coût porté par les produits) ; la dernière sortie emporte le coût restant exact.
+      const condemnedReason =
+        p.condemnedHeads > 0
+          ? (await findReasonCodeByCode(uow, 'PRODUCTION_YIELD', 'SAISIE_SANITAIRE'))?.id
+          : undefined;
+      inputValue = 0;
+      for (const [quantity, reasonCodeId] of [
+        [p.heads - p.condemnedHeads, undefined],
+        [p.condemnedHeads, condemnedReason],
+      ] as const) {
+        if (quantity <= 0) continue;
+        inputValue += await recordProductionInput(uow, deps, {
+          productId: lot.productId,
+          lotId: lot.stockLotId,
+          quantityBase: quantity,
+          fromLocationId: p.sourceLocationId,
+          ...(reasonCodeId !== undefined ? { reasonCodeId } : {}),
+          occurredAt: at,
+          sourceDocType: 'SLAUGHTER',
+          sourceDocId: slaughterId,
+          costObjectType: 'PRODUCTION_LOT',
+          costObjectId: lot.id,
+          createdBy: author,
+          commandId: envelope.command_id,
+          capturedOffline: offline,
+          allowNegative: offline,
+        });
+      }
       const shares = allocateByWeight(
         inputValue,
         p.outputs.map((output) => ({ key: output.productId, weightG: output.weightG })),
@@ -312,6 +339,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       )
       .execute();
     const serverRefs = { docNumber, stockLotId };
+    if (!slaughterable.includes(lot.lotType)) {
+      await recordConflict(uow, {
+        id: idGenerator.newId(),
+        commandId: envelope.command_id,
+        conflictType: 'LOT_NOT_SLAUGHTERABLE',
+        entityType: 'PRODUCTION_LOT',
+        entityId: lot.id,
+        siteId: lot.siteId,
+        ownerRole: 'RESP_PRODUCTION',
+        applied: true,
+        details: { slaughterId, docNumber, lotType: lot.lotType },
+      });
+    }
     if (closed) {
       const outcome = await recordLotClosedConflict(uow, deps, {
         commandId: envelope.command_id,
@@ -327,7 +367,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const slaughterId = envelope.aggregate_id;
     const row = await uow
       .selectFrom('production_slaughter_batches')
-      .select(['id', 'production_lot_id', 'stock_lot_id', 'status'])
+      .select(['id', 'production_lot_id', 'stock_lot_id', 'status', 'command_id'])
       .where('id', '=', toBin(slaughterId))
       .forUpdate()
       .executeTakeFirst();
@@ -338,11 +378,23 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const author = envelope.author_user_id;
     if (!(await isAllowed(uow, author, MANAGE, at, lot.siteId))) return FORBIDDEN_SCOPE;
     if (row.status === 'CANCELLED') return { status: 'APPLIED' };
-    if (lot.status === 'CLOSED' || lot.status === 'CANCELLED') {
-      return rejected(
-        'LOT_NOT_ACTIVE',
-        'Lot clôturé : son coût est figé, l’abattage ne s’annule plus.',
-      );
+    if (lot.status !== 'ACTIVE' && lot.status !== 'SELLING') {
+      // Seule exception (comme l'annulation d'une entrée) : un abattage appliqué hors ligne
+      // après la fermeture du lot (conflit LOT_CLOSED) s'annule, sinon ses produits et le solde
+      // négatif du lot ne pourraient plus être corrigés (revue P7).
+      const afterClosure =
+        row.command_id !== null &&
+        (await hasConflict(uow, {
+          commandId: fromBin(row.command_id),
+          conflictType: 'LOT_CLOSED',
+          entityId: lot.id,
+        }));
+      if (!afterClosure) {
+        return rejected(
+          'LOT_NOT_ACTIVE',
+          'Lot non actif : son coût est figé, l’abattage ne s’annule plus.',
+        );
+      }
     }
     if (envelope.payload.reasonCodeId !== undefined) {
       const reason = await findReasonCode(uow, envelope.payload.reasonCodeId);

@@ -6,7 +6,9 @@
  * - le dernier abattage emporte le coût restant exact, puis le lot se clôture sans coût perdu ;
  * - refus : état du lot, abattoir, bilan de poids, produit, portée (tous les types de lots
  *   sont abattables, AV-115) ;
- * - annulation par le Responsable production ; produits sortis → `STOCK_UNAVAILABLE`.
+ * - annulation par le Responsable production ; produits sortis → `STOCK_UNAVAILABLE` ;
+ * - revue P7 : têtes saisies sorties à part (motif `SAISIE_SANITAIRE`), abattage entièrement
+ *   saisi et quantité au kilo ≠ poids refusés, abattage hors ligne sur un lot clos annulable.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -16,6 +18,7 @@ import { DocumentSequenceService } from '../src/platform/document-sequences/docu
 import { registerLotCommands } from '../src/modules/production/application/commands/lot-commands.js';
 import { registerSlaughterCommands } from '../src/modules/production/application/commands/slaughter-commands.js';
 import {
+  biologicalLotRemainingCostXaf,
   costObjectBalance,
   ensureSupplierLot,
   lotHeadcount,
@@ -75,6 +78,7 @@ describe('P7-09 : abattage', () => {
     aggregateId: string,
     occurredAt: string,
     payload: unknown,
+    options: { readonly offline?: boolean } = {},
   ): Promise<Result> {
     return pipeline.handle(
       {
@@ -89,7 +93,7 @@ describe('P7-09 : abattage', () => {
         depends_on: [],
         occurred_at: occurredAt,
         client_created_at: occurredAt,
-        captured_offline: false,
+        captured_offline: options.offline ?? false,
         backdated_reason: null,
         attachment_ids: [],
         payload,
@@ -97,7 +101,7 @@ describe('P7-09 : abattage', () => {
       {
         authenticatedUserId: actor.userId,
         authenticatedDeviceId: actor.deviceId,
-        transport: 'ONLINE_API',
+        transport: options.offline ? 'SYNC_PUSH' : 'ONLINE_API',
       },
     );
   }
@@ -125,6 +129,17 @@ describe('P7-09 : abattage', () => {
     const id = freshUuid();
     const result = await run(actor, 'production.slaughter.record', 'SLAUGHTER', id, time, payload);
     return { id, result };
+  }
+
+  async function remainingCost(id: string): Promise<number | null> {
+    const lot = await db
+      .selectFrom('production_production_lots')
+      .select('stock_lot_id')
+      .where('id', '=', toBin(id))
+      .executeTakeFirstOrThrow();
+    return db
+      .transaction()
+      .execute((trx) => biologicalLotRemainingCostXaf(trx, fromBin(lot.stock_lot_id)));
   }
 
   const lotNet = async (id: string) =>
@@ -389,6 +404,9 @@ describe('P7-09 : abattage', () => {
       .where('source_doc_type', '=', 'SLAUGHTER')
       .where('source_doc_id', '=', toBin(id))
       .execute();
+    const inputs = moves.filter((m) => m.move_type === 'PRODUCTION_INPUT');
+    expect(inputs).toHaveLength(2);
+    expect(inputs.reduce((sum, m) => sum + Number(m.value_xaf), 0)).toBe(120_000);
     expect(
       moves
         .filter((m) => m.move_type === 'PRODUCTION_OUTPUT')
@@ -408,6 +426,35 @@ describe('P7-09 : abattage', () => {
     expect(code((await slaughter(slaughterPayload({ liveWeightG: 100_000 }))).result)).toBe(
       'SLAUGHTER_INVALID',
     );
+    // Toutes les têtes saisies : c'est une perte, pas un abattage (revue P7).
+    expect(
+      code((await slaughter(slaughterPayload({ heads: 60, condemnedHeads: 60 }))).result),
+    ).toBe('SLAUGHTER_INVALID');
+    // Produit au kilo : la quantité est le poids pesé (12 kg ≠ 12 000 g annoncés à 1,2 kg).
+    expect(
+      code(
+        (
+          await slaughter(
+            slaughterPayload({
+              outputs: [
+                {
+                  productId: wholeId,
+                  toLocationId: coldStoreId,
+                  quantityBase: 50,
+                  weightG: 90_000,
+                },
+                {
+                  productId: thighId,
+                  toLocationId: coldStoreId,
+                  quantityBase: 1.2,
+                  weightG: 12_000,
+                },
+              ],
+            }),
+          )
+        ).result,
+      ),
+    ).toBe('SLAUGHTER_INVALID');
     expect(
       code(
         (
@@ -444,7 +491,7 @@ describe('P7-09 : abattage', () => {
     expect(code(await cancel(cancelled.id, farmManager))).toBe('FORBIDDEN');
     expect(code(await cancel(cancelled.id))).toBe('APPLIED');
     expect(await heads(lotId)).toBe(40);
-    expect(await lotNet(lotId)).toBe(200_000);
+    expect(await remainingCost(lotId)).toBe(80_000);
     const closedLot = await db
       .selectFrom('production_slaughter_batches as s')
       .innerJoin('inventory_stock_lots as l', 'l.id', 's.stock_lot_id')
@@ -512,5 +559,28 @@ describe('P7-09 : abattage', () => {
       .where('id', '=', toBin(lotId))
       .executeTakeFirstOrThrow();
     expect(summary.closing_summary).toMatchObject({ costNetXaf: 200_000, unrecoveredCostXaf: 0 });
+
+    // Abattage saisi hors ligne avant la clôture, reçu après : appliqué avec LOT_CLOSED, puis
+    // annulable par le Responsable production (revue P7).
+    const late = freshUuid();
+    const lateResult = await run(
+      farmManager,
+      'production.slaughter.record',
+      'SLAUGHTER',
+      late,
+      at('17:30:00'),
+      slaughterPayload({
+        heads: 5,
+        condemnedHeads: 0,
+        liveWeightG: 12_500,
+        outputs: [
+          { productId: wholeId, toLocationId: coldStoreId, quantityBase: 5, weightG: 9_000 },
+        ],
+      }),
+      { offline: true },
+    );
+    expect(lateResult).toMatchObject({ status: 'APPLIED_WITH_WARNINGS', warnings: ['LOT_CLOSED'] });
+    expect(code(await cancel(late))).toBe('APPLIED');
+    expect(await heads(lotId)).toBe(0);
   });
 });

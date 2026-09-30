@@ -36,9 +36,9 @@ describe('lots de production', () => {
   it('AV-044 : cinq types actifs ; reproducteur suivi comme une pondeuse ; naissage et abattage', () => {
     expect(PRODUCTION_LOT_TYPES).toHaveLength(5);
     expect(lotTypeProfile('REPRODUCTEUR_VOLAILLE')).toMatchObject({ laysEggs: true });
-    expect(lotTypeProfile('PONDEUSE')).toMatchObject({ laysEggs: true, slaughterable: false });
+    expect(lotTypeProfile('PONDEUSE')).toMatchObject({ laysEggs: true, farrows: false });
     expect(lotTypeProfile('PORC_NAISSAGE')).toMatchObject({ farrows: true, species: 'PORC' });
-    expect(lotTypeProfile('POULET_CHAIR')).toMatchObject({ slaughterable: true, laysEggs: false });
+    expect(lotTypeProfile('POULET_CHAIR')).toMatchObject({ laysEggs: false, species: 'VOLAILLE' });
     expect(() => lotTypeProfile('AUTRE' as never)).toThrow(/Type de lot inconnu/);
   });
 
@@ -415,6 +415,9 @@ describe('abattage (P7-09)', () => {
     expect(() =>
       checkSlaughter({ ...base, condemnedHeads: 11, outputs: [{ key: 'a', weightG: 1 }] }),
     ).toThrow(/saisies/);
+    expect(() =>
+      checkSlaughter({ ...base, condemnedHeads: 10, outputs: [{ key: 'a', weightG: 1 }] }),
+    ).toThrow(/déclarer une perte/);
     expect(() => checkSlaughter({ ...base, outputs: [{ key: 'a', weightG: 20_001 }] })).toThrow(
       /poids vif/,
     );

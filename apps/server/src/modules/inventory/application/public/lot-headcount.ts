@@ -97,3 +97,29 @@ export async function lotHeadDays(
     days: input.days,
   });
 }
+
+/**
+ * Quantité d'un produit d'un lot sortie en perte, calculée sur les mouvements (et non sur les
+ * déclarations, qui ne retiennent qu'un lot quand le FIFO en touche plusieurs) : entrées dans
+ * `V_LOSS` ou `V_PENDING_LOSS` depuis un emplacement physique, moins les retours (perte rejetée
+ * ou annulée) ; la confirmation d'une perte en attente ne compte pas deux fois (revue P7).
+ */
+export async function lotLostQuantity(
+  executor: Executor,
+  input: { readonly lotId: string; readonly productId: string },
+): Promise<number> {
+  const row = await executor
+    .selectFrom('inventory_stock_moves as m')
+    .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')
+    .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
+    .select(
+      sql<string>`COALESCE(SUM(
+        (CASE WHEN fl.is_virtual = 0 AND tl.location_type IN ('V_LOSS', 'V_PENDING_LOSS') THEN m.quantity ELSE 0 END)
+        - (CASE WHEN fl.location_type IN ('V_LOSS', 'V_PENDING_LOSS') AND tl.is_virtual = 0 THEN m.quantity ELSE 0 END)
+      ), 0)`.as('qty'),
+    )
+    .where('m.lot_id', '=', toBin(input.lotId))
+    .where('m.product_id', '=', toBin(input.productId))
+    .executeTakeFirstOrThrow();
+  return Math.round(Number(row.qty) * 1000) / 1000;
+}

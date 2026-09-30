@@ -104,14 +104,13 @@ export type {
   CostEntryInput,
   CostObjectBalance,
 } from './cost-entries.js';
-export { lotHeadcount, lotHeadDays } from './lot-headcount.js';
+export { lotHeadcount, lotHeadDays, lotLostQuantity } from './lot-headcount.js';
 export type { HeadcountScope } from './lot-headcount.js';
 export {
   LOSS_CATEGORIES,
   LOSS_ATTACHMENT_OWNER_TYPE,
   declareLoss,
   lotMortalitySummary,
-  lotLossQuantity,
   findLossDeclaration,
 } from './loss-declaration.js';
 export type {

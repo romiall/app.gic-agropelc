@@ -11,7 +11,7 @@
  */
 import mysql from 'mysql2/promise';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
-import { SYSTEM_SETTINGS } from './system-settings.js';
+import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
@@ -188,6 +188,38 @@ async function seedSystemSettings(conn: mysql.Connection, systemUserId: Buffer):
   }
   console.log(
     `  + organization_system_settings (${inserted} nouvelles clés sur ${allSettings.length})`,
+  );
+  let revised = 0;
+  for (const revision of SYSTEM_SETTING_REVISIONS) {
+    const reason = `Révision ${revision.revision}`;
+    const [applied] = await conn.query<mysql.RowDataPacket[]>(
+      "SELECT id FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL AND reason = ?",
+      [revision.key, reason],
+    );
+    if (applied.length > 0) continue;
+    const [current] = await conn.query<mysql.RowDataPacket[]>(
+      "SELECT JSON_EXTRACT(value, '$') AS value FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
+      [revision.key],
+    );
+    const currentValue = current[0]?.value;
+    const parsed = typeof currentValue === 'string' ? JSON.parse(currentValue) : currentValue;
+    if (JSON.stringify(parsed) === JSON.stringify(revision.value)) continue;
+    await conn.query(
+      `INSERT INTO organization_system_settings (id, \`key\`, value, scope_type, valid_from, is_client_visible, created_by, reason)
+       VALUES (?, ?, CAST(? AS JSON), 'GLOBAL', UTC_TIMESTAMP(6), ?, ?, ?)`,
+      [
+        randomId(),
+        revision.key,
+        JSON.stringify(revision.value),
+        revision.isClientVisible,
+        systemUserId,
+        reason,
+      ],
+    );
+    revised++;
+  }
+  console.log(
+    `  + organization_system_settings révisées (${revised} sur ${SYSTEM_SETTING_REVISIONS.length})`,
   );
 }
 

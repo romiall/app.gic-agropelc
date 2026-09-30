@@ -411,7 +411,8 @@ async function biologicalLotOf(uow: Transaction<DB>, lotId: string): Promise<Bio
 /**
  * Coût restant d'un lot biologique (AV-097, ADR-027) : Σ écritures de coût du lot (débits −
  * crédits) − Σ valeurs figées de ses sorties définitives (vers `V_CUSTOMER`, `V_PRODUCTION`,
- * `V_SUPPLIER`, hors inverses) + Σ valeurs de leurs inverses. La mortalité et les écarts
+ * `V_SUPPLIER`, hors inverses) + Σ valeurs de leurs inverses ; les sorties internes d'un lot
+ * d'incubation (œufs du mirage et de l'éclosion, document `INCUBATION_EVENT`) n'en sont pas. La mortalité et les écarts
  * d'inventaire ne le réduisent pas (BR-PRD-013).
  */
 async function lotRemainingCostXaf(
@@ -440,6 +441,9 @@ async function lotRemainingCostXaf(
              ELSE 0 END), 0)`.as('value'),
     )
     .where('m.lot_id', '=', toBin(lotId))
+    // Œufs d'un lot d'incubation devenus poussins du même lot (mirage, éclosion) : transformation
+    // interne, pas une sortie du coût du lot (BR-INC-009, revue P7).
+    .where('m.source_doc_type', '<>', 'INCUBATION_EVENT')
     .executeTakeFirstOrThrow();
   return Number(costs.net) - Number(exits.value);
 }
@@ -472,7 +476,7 @@ export async function biologicalLotRemainingCostXaf(
   return lot === null ? null : lotRemainingCostXaf(uow, lotId, lot);
 }
 
-/** Valeur moyenne d'un solde d'emplacement virtuel intermédiaire (qté > 0), sinon `null`. */
+/** Quantité et valeur d'un solde (emplacement, produit, lot) si la quantité est > 0, sinon `null`. */
 async function virtualBalanceCost(
   uow: Transaction<DB>,
   key: { readonly locationId: string; readonly productId: string; readonly lotKey: Buffer },
@@ -579,7 +583,27 @@ async function recordSingleMove(
     const remaining = await lotRemainingCostXaf(uow, input.lotId!, biological);
     const headcount = await lotHeadcount(uow, { lotId: input.lotId!, scope: 'UNSOLD' });
     const isExit = (EXIT_LOCATION_TYPES as readonly string[]).includes(toLocation.locationType);
-    if (isExit && headcount > 0 && input.quantityBase >= headcount - 0.0005 && remaining > 0) {
+    // Transformation interne d'un lot d'incubation (œufs → poussins du même lot) ou mouvement
+    // sans sortie définitive : s'il vide le solde de l'emplacement, il en emporte la valeur exacte
+    // (aucun reliquat de valeur sur une quantité nulle, revue P7).
+    const internal = !isExit || input.sourceDocType === 'INCUBATION_EVENT';
+    const fromBalance =
+      internal && !fromLocation.isVirtual
+        ? await virtualBalanceCost(uow, {
+            locationId: input.fromLocationId,
+            productId: input.productId,
+            lotKey: lotKeyForCost,
+          })
+        : null;
+    if (fromBalance && input.quantityBase >= fromBalance.qty - 0.0005) {
+      valueOverrideXaf = Math.max(0, fromBalance.valueXaf);
+      unitCostXaf = unitCostOfValue(valueOverrideXaf, quantity);
+    } else if (
+      isExit &&
+      headcount > 0 &&
+      input.quantityBase >= headcount - 0.0005 &&
+      remaining > 0
+    ) {
       // Dernière sortie définitive : elle emporte exactement le coût restant.
       valueOverrideXaf = remaining;
       unitCostXaf = unitCostOfValue(remaining, quantity);

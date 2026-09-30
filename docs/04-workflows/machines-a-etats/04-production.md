@@ -24,9 +24,8 @@ stateDiagram-v2
 | `ACTIVE` | `production.lot.set_status` → `SELLING` | Effectif en élevage > 0 | `SELLING` | Vente directe depuis l'élevage autorisée (BR-PRD-010) ; `LotStatusChanged` | — | — | `production.lot.manage` |
 | `SELLING` | `production.lot.set_status` → `ACTIVE` | — | `ACTIVE` | `LotStatusChanged` | — | — | `production.lot.manage` |
 | `ACTIVE`, `SELLING` | Saisies quotidiennes (mortalité, consommation, pesée, observation, collecte) | Voir SM-LOSS et D07 | inchangé | Indicateurs mis à jour | Pertes et consommations | Coût du lot augmenté par les consommations | `production.daily.record` |
-| `ACTIVE`, `SELLING` | `production.lot.close` | Effectif non vendu = 0 (BR-PRD-011) | `CLOSED` | Indicateurs finaux figés ; `ProductionLotClosed` | — | Coût total et marge figés | `production.lot.manage` |
-
-| `ACTIVE`, `SELLING` | `production.lot.cancel_entry` | Animaux de l'entrée encore en stock (`STOCK_UNAVAILABLE` sinon, AV-120) | inchangé | Entrée `CANCELLED` ; effectif initial diminué | Mouvements inverses au coût d'origine | Écritures de coût contrepassées | `production.lot.manage` |
+| `ACTIVE`, `SELLING` | `production.lot.close` | Effectif non vendu = 0 (BR-PRD-011) ; aucune tête en attente de validation d'une perte (`LOT_HAS_PENDING_LOSS`) | `CLOSED` | Indicateurs finaux figés ; `ProductionLotClosed` | — | Coût total et marge figés | `production.lot.manage` |
+| `ACTIVE`, `SELLING` (ou tout état pour une entrée appliquée hors ligne après la fermeture, conflit `LOT_CLOSED`) | `production.lot.cancel_entry` | Animaux de l'entrée encore en stock (`STOCK_UNAVAILABLE` sinon, AV-120) ; lot d'origine ou de truies actif (`SOURCE_LOT_NOT_ACTIVE`) | inchangé | Entrée `CANCELLED` ; effectif initial diminué | Mouvements inverses au coût d'origine | Écritures de coût contrepassées | `production.lot.manage` |
 
 **Hors ligne** : création, entrées, changement de statut et saisies quotidiennes sont possibles ; une entrée sur un lot clôturé ou annulé est appliquée avec le conflit `LOT_CLOSED` (P7-05). La clôture exige l'état serveur (effectif exact) et se fait en ligne.
 
@@ -48,11 +47,12 @@ stateDiagram-v2
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.incubation.start` | Œufs à couver disponibles ; incubateur actif ; espèce paramétrée | `INCUBATING` | `eggs_set_qty` figé ; lot de traçabilité ; échéancier (BR-INC-008) ; `IncubationBatchStarted` | Reclassement : `PRODUCTION_INPUT` des œufs de leur lot, `PRODUCTION_OUTPUT` dans l'incubateur sous le lot d'incubation | Écriture `OEUFS` au lot d'incubation | `production.incubation.record` |
 | `INCUBATING` | `production.incubation.record_candling` | Quantités ≤ œufs restants (pertes accidentelles déduites) | `INCUBATING` | Infertiles, mortalité embryonnaire ; `CandlingRecorded` | `PRODUCTION_INPUT` incubateur → `V_PRODUCTION` au coût 0 (motifs de rendement) | Coût reporté sur les œufs restants | `production.incubation.record` |
+| `INCUBATING`, `IN_HATCHER` | `production.incubation.cancel_candling` | Mirage enregistré ; lot non clos | inchangé | Compteurs de mirage repris | Mouvements inverses (œufs rendus) | — | `production.lot.manage` |
 | `INCUBATING` | `production.incubation.transfer_to_hatcher` | Éclosoir actif de la ferme | `IN_HATCHER` | `HatcherTransferRecorded` | `INTERNAL_MOVE` des œufs restants incubateur → éclosoir | — | `production.incubation.record` |
-| `IN_HATCHER` | `production.incubation.record_hatch` | Bilan BR-INC-006 | `CLOSED` | Taux d'éclosion ; `HatchRecorded`, `ProductionRecorded` | `PRODUCTION_INPUT` des œufs restants au coût 0 ; `PRODUCTION_OUTPUT` des poussins viables sous le lot d'incubation (vers l'éclosoir ou la poussinière) | Coût du lot porté par les poussins viables (BR-INC-009) | `production.incubation.record` |
-| `INCUBATING`, `IN_HATCHER` | `production.incubation.cancel` | Tous les œufs sortis (pertes déclarées), sinon `INCUBATION_NOT_EMPTY` | `CANCELLED` | Tracé | Lot de stock clos | Coût du lot d'incubation = perte | `production.incubation.record` |
+| `IN_HATCHER` | `production.incubation.record_hatch` | Bilan BR-INC-006 ; aucune perte d'œufs en attente de validation (`INCUBATION_HAS_PENDING_LOSS`) | `CLOSED` | Taux d'éclosion ; `HatchRecorded`, `ProductionRecorded` | `PRODUCTION_INPUT` des œufs restants au coût 0 ; `PRODUCTION_OUTPUT` des poussins viables sous le lot d'incubation (vers l'éclosoir ou la poussinière) | Coût du lot porté par les poussins viables (BR-INC-009) | `production.incubation.record` |
+| `INCUBATING`, `IN_HATCHER` | `production.incubation.cancel` | Tous les œufs sortis (pertes déclarées et validées), sinon `INCUBATION_NOT_EMPTY` ou `INCUBATION_HAS_PENDING_LOSS` | `CANCELLED` | Tracé | Lot de stock clos | Coût du lot d'incubation = perte | `production.incubation.record` |
 
-**Hors ligne** : toutes les transitions sont possibles. Une étape reçue sur un lot déjà clos ou annulé est conservée en conflit `INCUBATION_CLOSED` sans effet ; une éclosion incomplète est complétée en œufs non éclos (`INCUBATION_BALANCE_ADJUSTED`, P7-08).
+**Hors ligne** : toutes les transitions sont possibles. Une éclosion incomplète est complétée en œufs non éclos (`INCUBATION_BALANCE_ADJUSTED`). Une étape incohérente avec l'état serveur est mise en quarantaine (statut `CONFLICT`, sans effet, fait conservé pour arbitrage) : lot clos ou annulé (`INCUBATION_CLOSED`), plus d'issues que d'œufs restants ou mirage excessif (`INCUBATION_BALANCE`), perte en attente (`INCUBATION_PENDING_LOSS`), second transfert vers un autre éclosoir (`INCUBATION_DUPLICATE_STEP`), annulation avec des œufs en stock (`INCUBATION_NOT_EMPTY`).
 
 ---
 
@@ -84,6 +84,6 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | `production.slaughter.record` | Lot abattable actif ; abattoir de la ferme ; bilan de poids (`SLAUGHTER_INVALID`) | `RECORDED` | Rendement ; têtes saisies comptées (AV-114) | `PRODUCTION_INPUT` des têtes abattues au coût par tête ; `PRODUCTION_OUTPUT` des produits sous le lot propre de l'abattage (AV-100) | Valeur répartie au prorata du poids (AV-032) | `production.daily.record` |
-| `RECORDED` | `production.slaughter.cancel` | Lot actif ou en vente ; produits encore en stock, sinon `STOCK_UNAVAILABLE` (AV-120) | `CANCELLED` | Tracé | Mouvements inverses ; lot de stock de l'abattage clôturé | Coût rendu au lot | `production.lot.manage` |
+| `RECORDED` | `production.slaughter.cancel` | Lot actif ou en vente, ou abattage appliqué hors ligne après la fermeture du lot (conflit `LOT_CLOSED`) ; produits encore en stock, sinon `STOCK_UNAVAILABLE` (AV-120) | `CANCELLED` | Tracé | Mouvements inverses ; lot de stock de l'abattage clôturé | Coût rendu au lot | `production.lot.manage` |
 
-**Hors ligne** : l'abattage est possible (AV-101) ; sur un lot clôturé, il est appliqué avec le conflit `LOT_CLOSED`. L'annulation se fait en ligne (le stock des produits doit être disponible).
+**Hors ligne** : l'abattage est possible (AV-101) ; sur un lot clôturé, il est appliqué avec le conflit `LOT_CLOSED` et reste annulable ; d'un type de lot non listé comme abattable, il est appliqué avec le conflit informatif `LOT_NOT_SLAUGHTERABLE`. L'annulation se fait en ligne (le stock des produits doit être disponible).

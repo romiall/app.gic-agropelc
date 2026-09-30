@@ -34,23 +34,20 @@ export interface LotTypeProfile {
   readonly laysEggs: boolean;
   /** Naissances (`BIRTH`) et sevrage vers un lot d'engraissement (AV-045). */
   readonly farrows: boolean;
-  /** Abattage (transformation multi-produits, AV-032). */
-  readonly slaughterable: boolean;
   /** Volaille ou porc (paramètres par espèce, BR-INC-008). */
   readonly species: 'VOLAILLE' | 'PORC';
 }
 
 const PROFILES: Record<ProductionLotType, LotTypeProfile> = {
-  POULET_CHAIR: { laysEggs: false, farrows: false, slaughterable: true, species: 'VOLAILLE' },
-  PONDEUSE: { laysEggs: true, farrows: false, slaughterable: false, species: 'VOLAILLE' },
-  PORC_ENGRAISSEMENT: { laysEggs: false, farrows: false, slaughterable: false, species: 'PORC' },
+  POULET_CHAIR: { laysEggs: false, farrows: false, species: 'VOLAILLE' },
+  PONDEUSE: { laysEggs: true, farrows: false, species: 'VOLAILLE' },
+  PORC_ENGRAISSEMENT: { laysEggs: false, farrows: false, species: 'PORC' },
   REPRODUCTEUR_VOLAILLE: {
     laysEggs: true,
     farrows: false,
-    slaughterable: false,
     species: 'VOLAILLE',
   },
-  PORC_NAISSAGE: { laysEggs: false, farrows: true, slaughterable: false, species: 'PORC' },
+  PORC_NAISSAGE: { laysEggs: false, farrows: true, species: 'PORC' },
 };
 
 export function lotTypeProfile(lotType: ProductionLotType): LotTypeProfile {
@@ -473,6 +470,12 @@ export function checkSlaughter(input: {
     throw invalid('Abattage : poids vif (g) entier > 0 attendu.');
   }
   if (input.outputs.length === 0) throw invalid('Abattage : au moins un produit obtenu.');
+  if (input.condemnedHeads === input.heads) {
+    // Toutes les têtes saisies : pas de produit ; c'est une perte à déclarer (revue P7).
+    throw invalid(
+      'Abattage : toutes les têtes sont saisies, déclarer une perte plutôt qu’un abattage.',
+    );
+  }
   const keys = new Set<string>();
   let outputWeightG = 0;
   for (const output of input.outputs) {

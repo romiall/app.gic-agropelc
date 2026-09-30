@@ -63,7 +63,7 @@ import {
   InventoryMoveError,
   costObjectBalance,
   findStockLot,
-  lotLossQuantity,
+  lotLostQuantity,
   stockLotBalance,
   createStockLot,
   lotHeadcount,
@@ -415,7 +415,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       readonly locationId: string;
       readonly portions: readonly { readonly lotId: string | null; readonly quantity: number }[];
       readonly docType: 'LOT_ENTRY' | 'LOT_TRANSFER';
-      readonly refuseProductionLots: boolean;
+      /** Origines de lot de stock refusées (lots d'animaux ou d'incubation, revue P7). */
+      readonly refusedOrigins: readonly string[];
     },
   ): Promise<number> {
     const productionLocation = await virtualLocationId(uow, 'V_PRODUCTION');
@@ -456,15 +457,16 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         throw error;
       }
       value += moves.reduce((sum, move) => sum + move.valueXaf, 0);
-      if (source.refuseProductionLots) {
-        for (const move of moves) {
-          const stockLot = move.lotId === null ? undefined : await findStockLot(uow, move.lotId);
-          if (stockLot?.originType === 'PRODUCTION_LOT') {
-            throw new DomainError(
-              'Ces animaux appartiennent à un lot de production : les faire entrer par un transfert.',
-              'LOT_ENTRY_INVALID',
-            );
-          }
+      for (const move of moves) {
+        if (source.refusedOrigins.length === 0 || move.lotId === null) continue;
+        const stockLot = await findStockLot(uow, move.lotId);
+        if (stockLot && source.refusedOrigins.includes(stockLot.originType)) {
+          throw new DomainError(
+            stockLot.originType === 'PRODUCTION_LOT'
+              ? 'Ces animaux appartiennent à un lot de production : les faire entrer par un transfert.'
+              : 'Une mise en place par achat ne prend que les animaux de la réception, pas ceux d’un lot d’incubation.',
+            'LOT_ENTRY_INVALID',
+          );
         }
       }
     }
@@ -630,7 +632,10 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           locationId: sourceLocationId,
           portions,
           docType: 'LOT_ENTRY',
-          refuseProductionLots: true,
+          refusedOrigins:
+            p.sourceKind === 'PURCHASE'
+              ? ['PRODUCTION_LOT', 'INCUBATION_BATCH']
+              : ['PRODUCTION_LOT'],
         });
       } else if (p.sourceKind === 'TRANSFER' || p.sourceKind === 'WEANING') {
         if (!sourceLot || !p.sourceLocationId) {
@@ -654,7 +659,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           locationId: location.id,
           portions: [{ lotId: sourceLot.stockLotId, quantity: p.quantity }],
           docType: 'LOT_TRANSFER',
-          refuseProductionLots: false,
+          refusedOrigins: [],
         });
       } else {
         // Naissance : coût standard du porcelet (AV-098) ; absent, entrée à 0 XAF (le coût
@@ -880,20 +885,24 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', entry.id)
       .execute();
-    await uow
-      .updateTable('production_production_lots')
-      .set({
-        initial_quantity: String(
-          Math.max(
-            0,
-            fromMilli(milli(lot.initialQuantity ?? 0) - milli(Number(entry.quantity_base))),
+    // Une entrée appliquée après la fermeture du lot n'a jamais été comptée dans l'effectif
+    // initial : l'annuler ne le diminue pas (INV-PRD-01, revue P7).
+    if (acceptsDailyEntries(lot.status)) {
+      await uow
+        .updateTable('production_production_lots')
+        .set({
+          initial_quantity: String(
+            Math.max(
+              0,
+              fromMilli(milli(lot.initialQuantity ?? 0) - milli(Number(entry.quantity_base))),
+            ),
           ),
-        ),
-        updated_by: toBin(author),
-        version: sql`version + 1`,
-      })
-      .where('id', '=', toBin(lot.id))
-      .execute();
+          updated_by: toBin(author),
+          version: sql`version + 1`,
+        })
+        .where('id', '=', toBin(lot.id))
+        .execute();
+    }
     await emitProductionLotChange(uow, lot.id);
     return { status: 'APPLIED' };
   };
@@ -927,7 +936,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const mortality = await lotMortalitySummary(uow, { productionLotId: lot.id });
     // Toutes les pertes du lot (mortalité comprise) ; une mortalité rejetée « non justifiée »
     // n'est plus une mortalité mais reste une perte (catégorie INEXPLIQUEE).
-    const lostQuantity = await lotLossQuantity(uow, {
+    const lostQuantity = await lotLostQuantity(uow, {
       lotId: lot.stockLotId,
       productId: lot.productId,
     });

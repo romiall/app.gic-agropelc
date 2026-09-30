@@ -121,7 +121,7 @@ Règles :
 | `DEPENDENCY_PENDING` | RETRY_LATER | Oui | Dépendance non reçue |
 | `DEPENDENCY_REJECTED` | REJECTED | Non | Dépendance rejetée |
 | `SERVER_BUSY` | RETRY_LATER | Oui | Erreur transitoire |
-| Avertissements | APPLIED_WITH_WARNINGS | — | `STOCK_NEGATIVE`, `PRICE_MISMATCH`, `DUPLICATE_CUSTOMER`, `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ALLOCATION_REVOKED_CONSUMED`, `ORDER_OVER_FULFILMENT`, `CANCEL_WINDOW_EXCEEDED`, `CLOCK_SUSPECT`, `RECEIPT_QUARANTINED`, `PAYMENT_SUSPECT_DUPLICATE`, `LOT_CLOSED`, `TRANSFER_UNMATCHED`, `VERSION_CONFLICT` (collision de champs d'un compte client, fusionnée automatiquement ; conflit informatif — matrice des conflits) |
+| Avertissements | APPLIED_WITH_WARNINGS | — | `STOCK_NEGATIVE`, `PRICE_MISMATCH`, `DUPLICATE_CUSTOMER`, `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ALLOCATION_REVOKED_CONSUMED`, `ORDER_OVER_FULFILMENT`, `CANCEL_WINDOW_EXCEEDED`, `CLOCK_SUSPECT`, `RECEIPT_QUARANTINED`, `PAYMENT_SUSPECT_DUPLICATE`, `LOT_CLOSED`, `TRANSFER_UNMATCHED`, `VERSION_CONFLICT` (collision de champs d'un compte client, fusionnée automatiquement ; conflit informatif — matrice des conflits), `OVER_RECEIPT` (réception hors ligne au-delà du reliquat, P6-05), `INCUBATION_BALANCE_ADJUSTED` (éclosion hors ligne complétée en œufs non éclos, P7-08) |
 
 ## 4. Reprise et attente progressive (appareil)
 

@@ -25,6 +25,7 @@ import {
   recordStockMove,
   virtualLocationId,
   type RecordMoveInput,
+  type RecordedMove,
 } from '../../../inventory/application/public/index.js';
 
 export type Uow = Transaction<DB>;
@@ -261,22 +262,21 @@ export async function stringListSetting(
 }
 
 /**
- * Sortie `PRODUCTION_INPUT` vers `V_PRODUCTION` (reclassement, mirage, éclosion) ; renvoie la
- * valeur sortie. Sans lot désigné ni lot en solde à l'emplacement, l'inventaire répond
- * `LOT_REQUIRED` : il n'y a en fait rien à prendre (`INSUFFICIENT_STOCK`).
+ * Sortie `PRODUCTION_INPUT` vers `V_PRODUCTION` (reclassement, mirage, éclosion) ; renvoie les
+ * mouvements (plusieurs lots en FIFO). Sans lot désigné ni lot en solde à l'emplacement,
+ * l'inventaire répond `LOT_REQUIRED` : il n'y a en fait rien à prendre (`INSUFFICIENT_STOCK`).
  */
-export async function recordProductionInput(
+export async function recordProductionInputMoves(
   uow: Uow,
   deps: { readonly idGenerator: IdGenerator },
   input: Omit<RecordMoveInput, 'moveType' | 'toLocationId'>,
-): Promise<number> {
+): Promise<readonly RecordedMove[]> {
   try {
-    const moves = await recordStockMove(uow, deps, {
+    return await recordStockMove(uow, deps, {
       ...input,
       moveType: 'PRODUCTION_INPUT',
       toLocationId: await virtualLocationId(uow, 'V_PRODUCTION'),
     });
-    return moves.reduce((sum, move) => sum + move.valueXaf, 0);
   } catch (error) {
     if (
       error instanceof InventoryMoveError &&
@@ -290,4 +290,14 @@ export async function recordProductionInput(
     }
     throw error;
   }
+}
+
+/** Comme `recordProductionInputMoves`, en renvoyant la valeur totale sortie. */
+export async function recordProductionInput(
+  uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
+  input: Omit<RecordMoveInput, 'moveType' | 'toLocationId'>,
+): Promise<number> {
+  const moves = await recordProductionInputMoves(uow, deps, input);
+  return moves.reduce((sum, move) => sum + move.valueXaf, 0);
 }

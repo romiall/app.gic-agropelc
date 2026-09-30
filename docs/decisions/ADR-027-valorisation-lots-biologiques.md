@@ -36,3 +36,9 @@ Choix du porteur du projet (28/09/2026), recommandations de l'analyse de P7 rete
 ## Risques
 
 RISK-24 : erreurs de coût par tête. Mitigation : invariant de conservation (Σ coûts des sorties + coût restant = coût du lot) vérifié par test sur toute la base.
+
+## Précisions de la revue P7 (30/09/2026, DÉDUIT)
+
+- Un inverse reprend la valeur figée exacte du mouvement d'origine (et non quantité × coût arrondi).
+- Un mouvement d'un lot biologique qui vide le solde d'un emplacement, hors sortie définitive, en emporte la valeur exacte : aucun reliquat de valeur sur une quantité nulle.
+- Les sorties d'œufs d'un lot d'incubation au mirage et à l'éclosion (document `INCUBATION_EVENT`) sont une transformation interne du lot : elles ne diminuent pas son coût restant, que les poussins viables emportent en entier (BR-INC-009).

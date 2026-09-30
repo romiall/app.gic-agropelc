@@ -466,25 +466,6 @@ export async function lotMortalitySummary(
   };
 }
 
-/**
- * Quantité d'un produit sortie d'un lot de stock par des déclarations de perte comptées ou en
- * attente (casse d'œufs en incubateur, P7-08 : pertes accidentelles d'un lot d'incubation,
- * BR-INC-003) ; retours et annulations exclus.
- */
-export async function lotLossQuantity(
-  executor: Kysely<DB> | Transaction<DB>,
-  filter: { readonly lotId: string; readonly productId: string },
-): Promise<number> {
-  const row = await executor
-    .selectFrom('inventory_loss_declarations')
-    .select(sql<string>`COALESCE(SUM(quantity_base), 0)`.as('qty'))
-    .where('lot_id', '=', toBin(filter.lotId))
-    .where('product_id', '=', toBin(filter.productId))
-    .where('status', 'in', [...COUNTED_LOSS_STATUSES, 'PENDING_APPROVAL'])
-    .executeTakeFirstOrThrow();
-  return Math.round(Number(row.qty) * 1000) / 1000;
-}
-
 /** Déclaration de perte par identifiant : rejeu d'une commande qui la crée (revue P7). */
 export async function findLossDeclaration(
   executor: Kysely<DB> | Transaction<DB>,

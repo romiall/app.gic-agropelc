@@ -7,7 +7,14 @@
  * - refus : incubateur, espèce, produit, portée, bilan de mirage et d'éclosion, état ;
  * - pertes accidentelles (casse) reprises dans le bilan ; éclosion incomplète hors ligne
  *   complétée en non éclos (`INCUBATION_BALANCE_ADJUSTED`) ; étape hors ligne sur un lot clos
- *   conservée en conflit ; annulation après perte totale.
+ *   conservée en conflit ; annulation après perte totale ;
+ * - revue P7 : valeur des œufs soldée à l'éclosion (aucun reliquat), mirage en double annulé,
+ *   éclosion hors ligne au-delà des œufs restants mise en quarantaine, perte en attente
+ *   bloquante, rejeu d'une étape sous un autre identifiant, origine des œufs contrôlée.
+ *
+ * Produit des œufs à couver à code stable (`TEST-OEUF-INCUB`, toujours entré à 150 XAF) et
+ * paramètre `production.hatching_egg_product_code` posé par ce fichier : aucune dépendance aux
+ * autres jeux de tests de la base partagée.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -15,6 +22,7 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
+import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { registerLossCommands } from '../src/modules/inventory/application/commands/loss-commands.js';
 import { registerLotCommands } from '../src/modules/production/application/commands/lot-commands.js';
@@ -32,14 +40,17 @@ import {
   closeTestDb,
   db,
   freshUuid,
+  grantTestPermission,
   insertTestDevice,
   insertTestLocation,
+  insertTestRole,
   insertTestSite,
   insertTestUser,
   insertTestZone,
 } from './helpers.js';
 
 const DAY = '2026-10-23';
+const EGG_CODE = 'TEST-OEUF-INCUB';
 const at = (hhmmss: string) => `${DAY}T${hhmmss}.000Z`;
 const NOW = at('20:00:00');
 let deviceSeq = 0;
@@ -52,6 +63,7 @@ interface Actor {
 describe('P7-08 : incubation', () => {
   let idGenerator: IdGenerator;
   let pipeline: CommandPipelineService;
+  let admin: Actor;
   let farmManager: Actor;
   let otherFarmManager: Actor;
   let productionManager: Actor;
@@ -155,6 +167,17 @@ describe('P7-08 : incubation', () => {
       .executeTakeFirstOrThrow();
   }
 
+  async function valueOf(locationId: string, productId: string, lotId: Buffer): Promise<number> {
+    const row = await db
+      .selectFrom('inventory_stock_balances')
+      .select('value_xaf')
+      .where('location_id', '=', toBin(locationId))
+      .where('product_id', '=', toBin(productId))
+      .where('lot_key', '=', lotId)
+      .executeTakeFirst();
+    return row ? Number(row.value_xaf) : 0;
+  }
+
   async function balance(locationId: string, productId: string, lotId: Buffer): Promise<number> {
     const row = await db
       .selectFrom('inventory_stock_balances')
@@ -190,11 +213,16 @@ describe('P7-08 : incubation', () => {
     registerIncubationCommands(registry, idGenerator, sequences);
     registerLossCommands(registry, decisions, idGenerator, sequences);
     registerRequestCommands(registry, decisions);
+    registerPolicyCommands(registry);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     const roles = { rfe: await roleId('RESP_FERME'), rpr: await roleId('RESP_PRODUCTION') };
     await db.transaction().execute(async (trx) => {
       const adminId = await insertTestUser(trx);
+      admin = { userId: adminId, deviceId: await insertTestDevice(trx, adminId) };
+      const adminRole = await insertTestRole(trx, adminId);
+      await grantTestPermission(trx, adminRole, 'approvals.policy.manage', adminId);
+      await assignTestRole(trx, adminId, adminRole, adminId);
       const zoneId = await insertTestZone(trx, adminId);
       const farmId = await insertTestSite(trx, adminId, zoneId, { siteType: 'FERME' });
       const otherFarmId = await insertTestSite(trx, adminId, zoneId, { siteType: 'FERME' });
@@ -237,7 +265,12 @@ describe('P7-08 : incubation', () => {
           created_by: toBin(adminId),
         })
         .execute();
-      eggId = freshUuid();
+      const existingEgg = await trx
+        .selectFrom('catalog_products')
+        .select('id')
+        .where('code', '=', EGG_CODE)
+        .executeTakeFirst();
+      eggId = existingEgg ? fromBin(existingEgg.id) : freshUuid();
       chickId = freshUuid();
       broilerId = freshUuid();
       const base = {
@@ -248,14 +281,6 @@ describe('P7-08 : incubation', () => {
       await trx
         .insertInto('catalog_products')
         .values([
-          {
-            ...base,
-            id: toBin(eggId),
-            code: `OAC-${eggId.slice(-8)}`,
-            name: 'Œuf à couver',
-            stock_family: 'PRODUCTION_COMMERCIALISABLE',
-            base_unit_code: 'OEUF',
-          },
           {
             ...base,
             id: toBin(chickId),
@@ -275,6 +300,32 @@ describe('P7-08 : incubation', () => {
             base_unit_code: 'TETE',
           },
         ])
+        .execute();
+      if (!existingEgg) {
+        await trx
+          .insertInto('catalog_products')
+          .values({
+            ...base,
+            id: toBin(eggId),
+            code: EGG_CODE,
+            name: 'Œuf à couver (test incubation)',
+            stock_family: 'PRODUCTION_COMMERCIALISABLE',
+            base_unit_code: 'OEUF',
+          })
+          .execute();
+      }
+      await trx
+        .insertInto('organization_system_settings')
+        .values({
+          id: toBin(freshUuid()),
+          key: 'production.hatching_egg_product_code',
+          value: JSON.stringify(EGG_CODE),
+          scope_type: 'GLOBAL',
+          valid_from: new Date(at('00:00:00')),
+          is_client_visible: 1,
+          reason: 'Test P7-08',
+          created_by: toBin(adminId),
+        })
         .execute();
       const supplierId = freshUuid();
       await trx
@@ -308,7 +359,7 @@ describe('P7-08 : incubation', () => {
         {
           productId: eggId,
           lotId: eggLotId,
-          quantityBase: 800,
+          quantityBase: 1000,
           fromLocationId: await virtualLocationId(trx, 'V_OPENING'),
           toLocationId: eggStoreId,
           moveType: 'OPENING_BALANCE',
@@ -321,6 +372,25 @@ describe('P7-08 : incubation', () => {
         },
       );
     });
+  });
+
+  beforeAll(async () => {
+    const policyId = freshUuid();
+    const policy = await run(
+      admin,
+      'approvals.policy.set',
+      'CONTROL_POLICY',
+      policyId,
+      at('00:00:00'),
+      {
+        code: `LOSS_DECLARATION_${policyId.slice(-8)}`,
+        operationType: 'LOSS_DECLARATION',
+        validFrom: at('00:00:00'),
+        validTo: at('23:59:59'),
+        requiresApproval: false,
+      },
+    );
+    expect(policy.status, JSON.stringify(policy)).toBe('APPLIED');
   });
 
   afterAll(async () => {
@@ -423,6 +493,11 @@ describe('P7-08 : incubation', () => {
     });
     expect(await balance(hatcherId, eggId, batch.stock_lot_id)).toBe(0);
     expect(await balance(hatcherId, chickId, batch.stock_lot_id)).toBe(498);
+    // Revue P7 : les œufs sortent à la valeur de leur solde, aucun reliquat sur une quantité
+    // nulle ; les poussins portent le coût du lot.
+    expect(await valueOf(hatcherId, eggId, batch.stock_lot_id)).toBe(0);
+    expect(await valueOf(incubatorId, eggId, batch.stock_lot_id)).toBe(0);
+    expect(await valueOf(hatcherId, chickId, batch.stock_lot_id)).toBe(90_000);
     // BR-INC-009 : 90 000 XAF ÷ 498 poussins viables ≈ 181 XAF.
     expect(
       await db
@@ -478,6 +553,9 @@ describe('P7-08 : incubation', () => {
     expect(code((await start(10, { species: 'AUTRUCHE' })).result)).toBe('SPECIES_UNKNOWN');
     expect(code((await start(10, { chickProductId: eggId })).result)).toBe('CHICK_PRODUCT_INVALID');
     expect(code((await start(10, { eggProductId: chickId })).result)).toBe('EGG_PRODUCT_INVALID');
+    expect(code((await start(10, { sourceLocationId: incubatorId })).result)).toBe(
+      'EGG_SOURCE_INVALID',
+    );
     expect(code((await start(10, {}, otherFarmManager)).result)).toBe('FORBIDDEN_SCOPE');
     const { id } = await start(10);
     expect(
@@ -591,5 +669,136 @@ describe('P7-08 : incubation', () => {
       accidental_loss_qty: 20,
       lot_status: 'CLOSED',
     });
+  });
+
+  it('revue P7 : mirage en double annulé ; éclosion hors ligne excédentaire en quarantaine ; rejeu contrôlé', async () => {
+    const { id } = await start(100);
+    const first = freshUuid();
+    const candle = (eventId: string, time: string) =>
+      run(
+        farmManager,
+        'production.incubation.record_candling',
+        'INCUBATION_EVENT',
+        eventId,
+        at(time),
+        { batchId: id, infertile: 10, earlyDead: 0 },
+      );
+    expect(code(await candle(first, '08:00:00'))).toBe('APPLIED');
+    const duplicate = freshUuid();
+    expect(code(await candle(duplicate, '08:05:00'))).toBe('APPLIED');
+    expect((await batchRow(id)).infertile_qty).toBe(20);
+    // Rejeu du même identifiant : appliqué ; sous une autre étape : refusé.
+    expect(code(await candle(first, '08:00:00'))).toBe('APPLIED');
+    expect(
+      code(
+        await run(
+          farmManager,
+          'production.incubation.transfer_to_hatcher',
+          'INCUBATION_EVENT',
+          first,
+          at('08:10:00'),
+          { batchId: id, hatcherLocationId: hatcherId },
+        ),
+      ),
+    ).toBe('AGGREGATE_ID_REUSED');
+    // Mirage saisi deux fois : annulé par le Responsable production.
+    const cancelCandling = (actor: Actor) =>
+      run(
+        actor,
+        'production.incubation.cancel_candling',
+        'INCUBATION_EVENT',
+        duplicate,
+        at('08:20:00'),
+        {
+          comment: 'Mirage saisi deux fois',
+        },
+      );
+    expect(code(await cancelCandling(farmManager))).toBe('FORBIDDEN');
+    expect(code(await cancelCandling(productionManager))).toBe('APPLIED');
+    const batch = await batchRow(id);
+    expect(batch.infertile_qty).toBe(10);
+    expect(await balance(incubatorId, eggId, batch.stock_lot_id)).toBe(90);
+
+    expect(
+      code(
+        await step(
+          'transfer_to_hatcher',
+          { batchId: id, hatcherLocationId: hatcherId },
+          at('09:00:00'),
+        ),
+      ),
+    ).toBe('APPLIED');
+    // Hors ligne, 95 issues pour 90 œufs restants : quarantaine, rien n'est appliqué.
+    const excess = await step(
+      'record_hatch',
+      { batchId: id, unhatched: 5, hatchedViable: 88, hatchedNonviable: 2 },
+      at('10:00:00'),
+      { offline: true },
+    );
+    expect(excess.status).toBe('CONFLICT');
+    expect((await batchRow(id)).status).toBe('IN_HATCHER');
+    expect(await balance(hatcherId, eggId, batch.stock_lot_id)).toBe(90);
+    const conflict = await db
+      .selectFrom('sync_sync_conflicts')
+      .select(['conflict_type', 'applied'])
+      .where('entity_id', '=', toBin(id))
+      .executeTakeFirstOrThrow();
+    expect(conflict).toEqual({ conflict_type: 'INCUBATION_BALANCE', applied: 0 });
+  });
+
+  it('revue P7 : une perte d’œufs en attente de validation bloque l’éclosion et l’annulation', async () => {
+    const { id } = await start(30);
+    const batch = await batchRow(id);
+    const pendingLoss = await db.transaction().execute(async (trx) => {
+      const [move] = await recordStockMove(
+        trx,
+        { idGenerator },
+        {
+          productId: eggId,
+          lotId: fromBin(batch.stock_lot_id),
+          quantityBase: 5,
+          fromLocationId: incubatorId,
+          toLocationId: await virtualLocationId(trx, 'V_PENDING_LOSS'),
+          moveType: 'LOSS_PENDING',
+          occurredAt: new Date(at('08:00:00')),
+          sourceDocType: 'LOSS',
+          sourceDocId: freshUuid(),
+          createdBy: farmManager.userId,
+          allowNegative: false,
+        },
+      );
+      return move!;
+    });
+    expect(pendingLoss.quantity).toBe(5);
+    expect(code(await step('cancel', { batchId: id, comment: 'Essai' }, at('09:00:00')))).toBe(
+      'INCUBATION_HAS_PENDING_LOSS',
+    );
+    expect(
+      code(
+        await step(
+          'transfer_to_hatcher',
+          { batchId: id, hatcherLocationId: hatcherId },
+          at('09:10:00'),
+        ),
+      ),
+    ).toBe('APPLIED');
+    expect((await batchRow(id)).transferred_qty).toBe(25);
+    expect(
+      code(
+        await step(
+          'record_hatch',
+          { batchId: id, unhatched: 1, hatchedViable: 24, hatchedNonviable: 0 },
+          at('10:00:00'),
+        ),
+      ),
+    ).toBe('INCUBATION_HAS_PENDING_LOSS');
+    const offline = await step(
+      'record_hatch',
+      { batchId: id, unhatched: 1, hatchedViable: 24, hatchedNonviable: 0 },
+      at('10:00:00'),
+      { offline: true },
+    );
+    expect(offline.status).toBe('CONFLICT');
+    expect((await batchRow(id)).status).toBe('IN_HATCHER');
   });
 });
