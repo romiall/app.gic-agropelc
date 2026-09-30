@@ -168,3 +168,21 @@ Sources : CM §4, §7, §11, §13, §30, §32, §38, §39, §41 ; PM §9, §24.
 | Paiement mobile money en double (même référence) | Second encaissement mis en `SUSPECT_DUPLICATE`, non affecté ; la vente reste avec un reste dû ; validation Finance (D09). |
 | Session de caisse fermée entre la vente et la synchronisation | La vente est rattachée à la session couvrant `occurred_at`. Si cette session est déjà validée, un écart de caisse complémentaire est ouvert (D05). |
 | Vendeur désactivé | BR-ADM-002. |
+
+## 15. Choix d'implémentation (P4)
+
+Précisions retenues par le module `sales` et la bibliothèque partagée (`packages/domain/src/sales.ts`) là où les règles laissent un choix ; toutes **DÉDUITES**, sans effet sur les règles confirmées ni sur les décisions du porteur du projet du 30/09/2026 (A-VALIDER §3, [ADR-028](../../decisions/ADR-028-commande-vente-livraison-p4.md)).
+
+| Point | Choix | Justification |
+|---|---|---|
+| Quantité de tarification (P4-01) | À l'unité : la quantité en unité de base (poids facultatif, informatif) ; au poids : le poids pesé en kg, obligatoire (`WEIGHT_REQUIRED`). | BR-VEN-013, BR-CAT-009 ; décision AV-031. |
+| Remise en pourcentage (P4-01) | Convertie en XAF sur le montant de la ligne, arrondie au franc (demi supérieur) ; deux décimales au plus. | AV-060 ne couvre que le montant de ligne. |
+| Mesure d'une dérogation (P4-01) | Toute ligne dont le montant diffère du montant au prix catalogue est une dérogation (`sales.price.override` exigée). La remise se mesure sur le montant au prix catalogue, en points de base arrondis au supérieur (5,001 % dépasse 5 %) ; un prix supérieur au catalogue est une dérogation sans remise ; sans prix catalogue (`PRICE_NOT_FOUND`), la dérogation part en validation `PRICE_OVERRIDE`. | BR-VEN-015, BR-PRX-009 ; décision AV-026. |
+| Plafond d'un utilisateur à plusieurs rôles (P4-01) | Le plus élevé des plafonds des rôles qui accordent `sales.price.override` ; un rôle qui l'accorde sans plafond compte pour 0 %. | RC-06 ; point relevé par la cartographie de P4 (deux sources de plafond). |
+| Crédit sans plafond défini (P4-01) | Un client autorisé au crédit mais sans plafond renseigné : tout crédit dépasse (validation). | Prudence ; AV-028. |
+| Référence de paiement (P4-01) | Unicité (moyen, référence) sur la forme normalisée : espaces retirés, majuscules. | INV-FIN-03 ; décision AV-056. |
+| Doublon probable sans référence (P4-01) | Même client, même montant, écart au plus égal au paramètre `sales.duplicate_payment_window_minutes` (10 min par défaut). | Matrice des conflits ; règle 8 (seuil paramétré). |
+| Annulation partielle (P4-01) | Montant annulé d'une ligne au prorata de la quantité en unité de base, arrondi au franc (demi supérieur) ; la dernière annulation de la ligne emporte le reste exact. | ADR-028 §5 ; somme des annulations = montant de la ligne. |
+| Ancienneté d'une créance (P4-01) | Jours de retard = jours après l'échéance (0 avant) ; tranches 0-30, 31-60, 61-90, > 90 sur les jours de retard. | BR-FIN-007 ; dictionnaire `sales.v_receivables`. |
+| Baisse d'une commande confirmée (P4-01) | La baisse retire d'abord la part en attente (aucun mouvement), puis annule par contre-écriture la part vendue non livrée ; jamais sous le livré (`ORDER_QUANTITY_BELOW_DELIVERED`). | Décision AV-130 ; moins de contre-écritures. |
+| Statut d'une commande (P4-01) | Dérivé des lignes : `CONFIRMED` ou `PARTIALLY_FULFILLED` tant qu'il reste de l'attente ou du non-livré ; ensuite `CANCELLED` si rien n'a été livré, `CLOSED` si le reste a été annulé, sinon `FULFILLED`. | SM-ORDER réécrite par ADR-028. |
