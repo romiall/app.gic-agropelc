@@ -21,9 +21,10 @@
  *   conflit informatif `LOT_CLOSED` (matrice des conflits, Resp. production).
  * - Annulation d'une entrée (ADR-006 ; Responsable production seul, AV-123) : mouvements inverses au coût d'origine et écritures de
  *   coût contrepassées ; refusée si les animaux sont déjà sortis (`STOCK_UNAVAILABLE`, AV-120).
- * - Clôture (BR-PRD-011) : effectif non vendu nul (`LOT_NOT_EMPTY`), aucune mortalité en attente
- *   de validation (`LOT_HAS_PENDING_MORTALITY`) ; indicateurs figés dans `closing_summary` ;
- *   lot de traçabilité clôturé (INV-PRD-02).
+ * - Clôture (BR-PRD-011) : effectif non vendu nul (`LOT_NOT_EMPTY`), aucune tête en attente de
+ *   validation d'une perte (`LOT_HAS_PENDING_LOSS`) ; part estimée des frais généraux de chaque
+ *   mois non encore réparti (AV-105, ADR-026) ; indicateurs figés dans `closing_summary` ; lot
+ *   de traçabilité clôturé (INV-PRD-02).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -96,6 +97,7 @@ import {
   type Uow,
 } from './shared.js';
 import { emitProductionLotChange } from '../sync-changes.js';
+import { allocateOverheads } from '../overhead-allocation.js';
 
 const MANAGE = 'production.lot.manage';
 const DAILY = 'production.daily.record';
@@ -180,6 +182,27 @@ async function rearingLocation(
     location.siteId === siteId &&
     REARING_LOCATION_TYPES.includes(location.locationType)
   );
+}
+
+/** Mois métier `AAAA-MM` de la vie d'un lot, du démarrage au jour de l'opération. */
+function lotPeriods(startDate: Date | null, at: Date): readonly string[] {
+  const last = businessDayOf(at).slice(0, 7);
+  if (startDate === null) return [last];
+  // Colonne `DATE` lue par mysql2 : minuit local.
+  let year = startDate.getFullYear();
+  let month = startDate.getMonth() + 1;
+  const periods: string[] = [];
+  for (;;) {
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+    if (period > last) break;
+    periods.push(period);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return periods.length > 0 ? periods : [last];
 }
 
 function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequenceService) {
@@ -918,9 +941,32 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .where('status', '=', 'RECORDED')
       .executeTakeFirstOrThrow();
     const entered = Number(entries.qty);
+    // Part estimée des frais généraux (AV-105) : pour chaque mois de la vie du lot dont une
+    // partie reste non répartie, sa part sur les frais déjà connus (têtes × jours écoulés) ;
+    // les exécutions suivantes de ces mois l'excluent. Aucun frais : aucune écriture.
+    let overheadEstimateXaf = 0;
+    const speciesGroup = lotTypeProfile(lot.lotType).species;
+    for (const period of lotPeriods(lot.startDate, at)) {
+      const estimate = await allocateOverheads(uow, deps, {
+        runId: idGenerator.newId(),
+        siteId: lot.siteId,
+        speciesGroup,
+        period,
+        closingLotId: lot.id,
+        occurredAt: at,
+        createdBy: author,
+        commandId: null,
+      });
+      if (estimate.ok) overheadEstimateXaf += estimate.allocatedXaf;
+    }
     const cost = await costObjectBalance(uow, {
       costObjectType: 'PRODUCTION_LOT',
       costObjectId: lot.id,
+    });
+    const overheads = await costObjectBalance(uow, {
+      costObjectType: 'PRODUCTION_LOT',
+      costObjectId: lot.id,
+      costTypes: ['FRAIS_GENERAUX'],
     });
     const remaining = (await biologicalLotRemainingCostXaf(uow, lot.stockLotId)) ?? 0;
     const summary = {
@@ -937,7 +983,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       costDebitXaf: cost.debitXaf,
       costCreditXaf: cost.creditXaf,
       costNetXaf: cost.netXaf,
-      // Coût que les sorties n'ont pas emporté (mortalité en fin de lot, ADR-027).
+      // Frais généraux du lot (ADR-026), dont la part estimée à la clôture (AV-105).
+      overheadXaf: overheads.netXaf,
+      overheadEstimateXaf,
+      // Coût que les sorties n'ont pas emporté (mortalité en fin de lot, part estimée des frais
+      // généraux, ADR-027).
       unrecoveredCostXaf: remaining,
     };
     await uow

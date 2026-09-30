@@ -84,3 +84,30 @@ export function addBusinessDays(businessDay: string, days: number): string {
   }
   return businessDayOf(new Date(businessDayStartUtc(businessDay).getTime() + days * 86_400_000));
 }
+
+const PERIOD_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/**
+ * Jours métier d'un mois `AAAA-MM` (répartition des frais généraux, ADR-026), jusqu'à `untilDay`
+ * inclus s'il tombe dans le mois (mois en cours : jours écoulés seulement). Vide si `untilDay`
+ * précède le mois.
+ */
+export function businessMonthDays(period: string, untilDay?: string): readonly string[] {
+  const match = PERIOD_RE.exec(period);
+  if (!match) {
+    throw new DomainError(`Période invalide (attendu AAAA-MM) : ${period}`, 'PERIOD_INVALID');
+  }
+  const days: string[] = [];
+  let day = `${period}-01`;
+  while (day.startsWith(period) && (untilDay === undefined || day <= untilDay)) {
+    days.push(day);
+    day = nextBusinessDay(day);
+  }
+  return days;
+}
+
+/** Mois métier `AAAA-MM` d'un jour métier. */
+export function periodOfBusinessDay(businessDay: string): string {
+  parseBusinessDay(businessDay);
+  return businessDay.slice(0, 7);
+}

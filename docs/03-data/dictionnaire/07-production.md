@@ -252,12 +252,12 @@
 | `period` | char(7) | Non | — | Mois métier `AAAA-MM` |
 | `run_kind` | enum(`INITIAL`,`REGULARIZATION`,`CLOSING_ESTIMATE`) | Non | — | Première répartition, régularisation (frais tardifs), part estimée à la clôture d'un lot (AV-105) |
 | `sequence` | int | Non | — | Rang de l'exécution dans (ferme, espèce, mois) |
-| `pool_xaf` | money_xaf | Non | — | Masse à répartir (frais non encore répartis) |
-| `allocated_xaf` | money_xaf | Non | — | Répartie (≤ masse ; nulle si aucun lot) |
-| `head_days_total` | DECIMAL(18,3) | Non | — | Σ têtes × jours |
+| `pool_xaf` | money_xaf | Non | — | Masse non encore répartie au moment de l'exécution (solde `FRAIS_GENERAUX` du site pour l'espèce et le mois) |
+| `allocated_xaf` | money_xaf | Non | — | Répartie : toute la masse (`INITIAL`, `REGULARIZATION`) ou la part du lot (`CLOSING_ESTIMATE`) ; sans lot candidat, aucune exécution n'est enregistrée |
+| `head_days_total` | DECIMAL(18,3) | Non | — | Σ têtes × jours des lots candidats (jours écoulés du mois) |
 | `production_lot_id` | uuid → production_lots | Oui | — | Lot de la part estimée (⇔ `CLOSING_ESTIMATE`) |
 | `occurred_at` | ts | Non | — | |
-| `command_id` | uuid | Oui | — | Commande `production.overhead.allocate` |
+| `command_id` | uuid | Oui | — | Commande `production.overhead.allocate` ; nulle pour une part estimée (écrite par la clôture du lot) |
 | `created_at`, `created_by` | | | | |
 
 - **PK** `id`. **UQ** `(site_id, species_group, period, sequence)`, `command_id`. **Suppr.** `IMMUABLE` (jamais réécrite, ADR-026).

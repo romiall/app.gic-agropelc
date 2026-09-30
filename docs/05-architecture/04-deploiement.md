@@ -97,7 +97,7 @@ sauvegarde diffère (export de l'offre managée au lieu d'un `mysqldump` local).
 (13 fichiers, `pnpm run db:migrate`) puis seed P0-05 sur une base neuve ; `mysqldump` (196 Ko) ;
 restauration sur une seconde base neuve (1,2 s) ; les 47 tests d'intégration de `db/tests`
 (contraintes, déclencheurs, idempotence du seed) verts sur la copie restaurée, décomptes
-identiques à la source (11 rôles, 118 permissions, 483 octrois, 24 paramètres). Ce test valide
+identiques à la source (11 rôles, 120 permissions, 495 octrois et les paramètres du seed, à la date de P7-10). Ce test valide
 la **procédure**, pas le NFR-21 (RTO ≤ 4 h) lui-même : le jeu synthétique local (quelques
 centaines de lignes) restaure en secondes, sans rapport avec un volume de production — à
 remesurer, avec la vraie volumétrie, une fois `staging` déployé (AV-090). Reste donc ouvert

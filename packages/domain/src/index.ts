@@ -56,6 +56,8 @@ export {
   isWithinBusinessDay,
   nextBusinessDay,
   addBusinessDays,
+  businessMonthDays,
+  periodOfBusinessDay,
 } from './business-day.js';
 
 export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';

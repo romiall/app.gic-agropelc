@@ -181,6 +181,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `production.daily.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
 | `production.mortality.approve` | A·ALL | — | — | — | — | — | A·ALL | — | — | — | — |
 | `production.incubation.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
+| `production.overhead.allocate` (répartition des frais généraux d'une ferme, AV-106) | — | — | — | — | — | — | ALL | — | — | — | ALL |
 
 ### 5.5 Approvisionnement, finance, analytics
 

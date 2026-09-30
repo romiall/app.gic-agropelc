@@ -832,7 +832,7 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
 
-  // production (5)
+  // production (6)
   {
     code: 'production.lot.read',
     module: 'production',
@@ -869,6 +869,15 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     code: 'production.incubation.record',
     module: 'production',
     description: "Enregistrer une étape d'incubation",
+    supportedScopes: ['ALL', 'SITE'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
+    code: 'production.overhead.allocate',
+    module: 'production',
+    description:
+      'Répartir les frais généraux d’une ferme entre les lots d’une espèce (ADR-026, AV-106)',
     supportedScopes: ['ALL', 'SITE'],
     isApproval: false,
     isSensitive: false,
@@ -1467,7 +1476,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 45
+  // RESP_PRODUCTION — 46
   ...grants('RESP_PRODUCTION', [
     ['identity.user.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
@@ -1483,6 +1492,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['comm.note.read', 'ALL'],
     ['inventory.stock.read', 'ALL'],
     ['inventory.valuation.read', 'ALL'],
+    ['production.overhead.allocate', 'ALL'], // AV-106 (28/09/2026)
     ['inventory.cost_entry.record', 'ALL'], // AV-103 (28/09/2026)
     ['inventory.ledger.read', 'ALL'],
     ['inventory.transfer.request', 'ALL'],
@@ -1644,7 +1654,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // FINANCE — 54
+  // FINANCE — 55
   ...grants('FINANCE', [
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
@@ -1674,6 +1684,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.count.perform', 'ALL'],
     ['inventory.count.approve', 'ALL'],
     ['inventory.opening.post', 'ALL'],
+    ['production.overhead.allocate', 'ALL'], // AV-106 (28/09/2026)
     ['inventory.cost_entry.record', 'ALL'],
     ['production.lot.read', 'ALL'],
     ['procurement.supplier.read', 'ALL'],

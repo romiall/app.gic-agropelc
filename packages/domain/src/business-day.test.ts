@@ -5,6 +5,8 @@ import {
   businessDayOf,
   businessDayStartUtc,
   addBusinessDays,
+  businessMonthDays,
+  periodOfBusinessDay,
   isWithinBusinessDay,
   nextBusinessDay,
 } from './business-day.js';
@@ -92,5 +94,21 @@ describe('addBusinessDays', () => {
   it('refuse un jour inexistant ou un décalage non entier', () => {
     expect(() => addBusinessDays('2026-02-30', 1)).toThrow(/INVALID_BUSINESS_DAY|inexistante/);
     expect(() => addBusinessDays('2026-10-21', 1.5)).toThrow(/entier/);
+  });
+});
+
+describe('businessMonthDays', () => {
+  it('jours d’un mois, bornés au jour donné, années bissextiles comprises', () => {
+    expect(businessMonthDays('2026-02')).toHaveLength(28);
+    expect(businessMonthDays('2028-02')).toHaveLength(29);
+    expect(businessMonthDays('2026-10', '2026-10-03')).toEqual([
+      '2026-10-01',
+      '2026-10-02',
+      '2026-10-03',
+    ]);
+    expect(businessMonthDays('2026-10', '2026-09-30')).toEqual([]);
+    expect(businessMonthDays('2026-10', '2026-11-15')).toHaveLength(31);
+    expect(periodOfBusinessDay('2026-10-21')).toBe('2026-10');
+    expect(() => businessMonthDays('2026-13')).toThrow(/PERIOD_INVALID|invalide/);
   });
 });
