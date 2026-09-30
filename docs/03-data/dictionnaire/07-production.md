@@ -33,7 +33,7 @@
 - **PK** `id`. **UQ** `lot_code`, `stock_lot_id`, `command_id`. **IX** `(site_id, status)`, `(parent_lot_id)`.
 - **CK** `CLOSED` ⇒ `closed_at` non nul ; colonnes d'annulation ⇔ `CANCELLED` ; `parent_lot_id` ≠ `id`.
 - **Déclencheurs** : code, type, produit, lot de stock et ferme immuables ; un lot `CLOSED` ou `CANCELLED` ne change plus de statut ; aucune suppression.
-- **Suppr.** `ANNULATION` (`CANCELLED` sans entrée) ; sinon clôture. **Audit** Création, statuts, clôture. **Offline** DL (lots actifs du site), CR.
+- **Suppr.** `ANNULATION` (`CANCELLED` sans entrée) ; sinon clôture. **Audit** Création, statuts, clôture. **Offline** DL (lots planifiés, actifs ou en vente du site, sans coût ni synthèse de clôture ; `SCOPE_EXIT` à la clôture ou à l'annulation), CR.
 - **Remarque** : **aucune** colonne d'effectif (INV-PRD-01) ; l'effectif se lit dans le registre de stock (`inventory.lotHeadcount`).
 
 ## production.lot_entries

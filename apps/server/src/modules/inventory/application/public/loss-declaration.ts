@@ -31,6 +31,7 @@ import {
   toBin,
   toBinOrNull,
 } from '../../../../platform/kysely/uuid-columns.js';
+import { emitLotLossChange } from '../sync-changes.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import {
@@ -262,6 +263,7 @@ export async function declareLoss(
       created_by: toBin(input.declaredBy),
     })
     .execute();
+  await emitLotLossChange(uow, input.lossId);
 
   return {
     ok: true,
@@ -349,6 +351,7 @@ export function registerLossDecisionHandlers(
           })
           .where('id', '=', row.id)
           .execute();
+        await emitLotLossChange(uow, fromBin(row.id));
         return;
       }
 
@@ -380,6 +383,7 @@ export function registerLossDecisionHandlers(
           })
           .where('id', '=', row.id)
           .execute();
+        await emitLotLossChange(uow, fromBin(row.id));
         return;
       }
 
@@ -398,6 +402,7 @@ export function registerLossDecisionHandlers(
         })
         .where('id', '=', row.id)
         .execute();
+      await emitLotLossChange(uow, fromBin(row.id));
     });
   }
 }

@@ -147,7 +147,7 @@ Chaque écriture serveur ajoute des lignes à `sync.change_feed` (dans la même 
 
 `GET /api/v1/sync/pull?dataset=stock&cursor=123456&limit=500`
 
-Le serveur calcule les périmètres de l'appareil : utilisateur, appareil, sites, zones, équipe, emplacements (depuis les affectations de rôle actives). Il renvoie les changements `seq > cursor` dont `(scope_type, scope_id)` ∈ périmètres. Pour chaque `UPSERT`, il lit **l'état courant** de l'entité (projection de synchronisation, colonnes utiles seulement). Le flux ne stocke pas de copie des données.
+Le serveur calcule les périmètres de l'appareil : utilisateur, appareil, sites, zones, équipe, emplacements (depuis les affectations de rôle actives). Il renvoie les changements `seq > cursor` dont `(scope_type, scope_id)` ∈ périmètres. Pour le jeu `production` (P7-12), les sites du périmètre sont les **fermes** qu'atteint `production.lot.read` : toutes pour une portée `ALL` ou une affectation globale (Responsable production), la ferme ou les fermes de la zone sinon ; le site d'une affectation sans ce droit (magasinier d'une ferme) n'y donne pas accès. Pour chaque `UPSERT`, il lit **l'état courant** de l'entité (projection de synchronisation, colonnes utiles seulement). Le flux ne stocke pas de copie des données.
 
 Réponse : `changes[]` (entité, type de changement, `row_version`, données), `next_cursor`, `has_more`.
 

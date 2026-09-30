@@ -30,6 +30,7 @@ import {
   fromBin,
   fromBinOrNull,
 } from '../../../../platform/kysely/uuid-columns.js';
+import { emitLotConsumptionChange } from '../sync-changes.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
 import { recordConsumption } from '../public/consumption.js';
 import { virtualLocationId, tryRecordMove } from './shared.js';
@@ -200,6 +201,7 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
       })
       .where('id', '=', row.id)
       .execute();
+    await emitLotConsumptionChange(uow, fromBin(row.id));
 
     return { status: 'APPLIED' };
   };

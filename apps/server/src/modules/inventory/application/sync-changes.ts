@@ -6,8 +6,15 @@
  *
  * Un emplacement virtuel (`V_TRANSIT`, `V_LOSS`…) n'est jamais un périmètre d'appareil : aucun
  * solde virtuel n'est émis (`recordStockMove` filtre avant d'appeler `stockBalanceChange`).
+ *
+ * Jeu `production` (P7-12 ; §3.1 : « saisies des 30 derniers jours », filtre `SITE`) : les pertes
+ * (dont la mortalité) et les consommations imputées à un lot de production sont des documents
+ * d'inventaire ; inventory, propriétaire de leurs tables, émet leurs changements vers la ferme du
+ * lot, à la saisie comme à chaque changement de statut (décision, retrait, annulation).
  */
-import type { ChangeFeedEntry } from '../../../platform/sync/change-feed.js';
+import { recordChanges, type ChangeFeedEntry } from '../../../platform/sync/change-feed.js';
+import type { UnitOfWork } from '../../../platform/unit-of-work.js';
+import { fromBin, toBin } from '../../../platform/kysely/uuid-columns.js';
 
 export const STOCK_DATASET = 'stock';
 export const TRANSFERS_DATASET = 'transfers';
@@ -60,4 +67,54 @@ export function inventoryCountChange(countId: string, locationId: string): Chang
     scopeType: 'LOCATION',
     scopeId: locationId,
   };
+}
+
+export const PRODUCTION_DATASET = 'production';
+
+/** Perte d'un lot de production (mortalité ou autre catégorie) : `LOT_LOSS`, site de la perte. */
+export async function emitLotLossChange(uow: UnitOfWork, lossId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('inventory_loss_declarations')
+    .select(['site_id', 'production_lot_id', 'version'])
+    .where('id', '=', toBin(lossId))
+    .executeTakeFirst();
+  if (!row || row.production_lot_id === null) return;
+  await recordChanges(uow, [
+    {
+      dataset: PRODUCTION_DATASET,
+      entityType: 'LOT_LOSS',
+      entityId: lossId,
+      scopeType: 'SITE',
+      scopeId: fromBin(row.site_id),
+      rowVersion: row.version,
+    },
+  ]);
+}
+
+/** Consommation imputée à un lot de production : `LOT_CONSUMPTION`, site de l'emplacement. */
+export async function emitLotConsumptionChange(
+  uow: UnitOfWork,
+  consumptionId: string,
+): Promise<void> {
+  const row = await uow
+    .selectFrom('inventory_consumptions as c')
+    .innerJoin('organization_locations as l', 'l.id', 'c.location_id')
+    .select([
+      'l.site_id as site_id',
+      'c.cost_object_type as cost_object_type',
+      'c.version as version',
+    ])
+    .where('c.id', '=', toBin(consumptionId))
+    .executeTakeFirst();
+  if (!row || row.cost_object_type !== 'PRODUCTION_LOT' || row.site_id === null) return;
+  await recordChanges(uow, [
+    {
+      dataset: PRODUCTION_DATASET,
+      entityType: 'LOT_CONSUMPTION',
+      entityId: consumptionId,
+      scopeType: 'SITE',
+      scopeId: fromBin(row.site_id),
+      rowVersion: row.version,
+    },
+  ]);
 }

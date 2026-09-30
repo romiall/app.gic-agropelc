@@ -45,6 +45,7 @@ import {
   recordLotClosedConflict,
   rejected,
 } from './shared.js';
+import { emitProductionRecordChange } from '../sync-changes.js';
 
 const mortalityPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
@@ -259,6 +260,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         created_by: toBin(envelope.author_user_id),
       })
       .execute();
+    await emitProductionRecordChange(uow, 'LOT_WEIGHING', weighingId);
     if (closed) {
       return recordLotClosedConflict(uow, deps, {
         commandId: envelope.command_id,
@@ -309,6 +311,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', row.id)
       .execute();
+    await emitProductionRecordChange(uow, 'LOT_WEIGHING', fromBin(row.id));
     return { status: 'APPLIED' };
   };
 
@@ -347,6 +350,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         created_by: toBin(envelope.author_user_id),
       })
       .execute();
+    await emitProductionRecordChange(uow, 'LOT_OBSERVATION', observationId);
     if (closed) {
       return recordLotClosedConflict(uow, deps, {
         commandId: envelope.command_id,

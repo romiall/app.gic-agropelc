@@ -513,7 +513,7 @@ describe('Lectures HTTP de la production (P7-11)', () => {
       },
     );
 
-    // Incubation de 100 œufs achetés (150 F l'œuf).
+    // Incubation de 100 œufs achetés.
     incubationId = freshUuid();
     await command(
       rfeA,
@@ -739,9 +739,10 @@ describe('Lectures HTTP de la production (P7-11)', () => {
         eggSource: 'PURCHASED',
         status: 'INCUBATING',
         hatchRate: null,
-        costXaf: 15_000,
       }),
     ]);
+    // Coût = valeur de sortie des œufs au CMUP du produit (partagé d'une exécution à l'autre).
+    expect(valued.json().incubations[0].costXaf).toBeGreaterThan(0);
     const detail = await get(rfeA, `/api/v1/production/incubations/${incubationId}`);
     expect(detail.statusCode, detail.body).toBe(200);
     expect(detail.json().incubation).toMatchObject({ id: incubationId, costXaf: null });

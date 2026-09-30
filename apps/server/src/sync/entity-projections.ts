@@ -4,7 +4,7 @@
  * `UPSERT` de `sync_change_feed` est résolu ici, au moment du téléchargement). Un lecteur par
  * `entity_type` réellement produit par un gestionnaire de commande à ce jour (identity,
  * organization, approvals, attachments ; catalog, pricing, procurement en P1-06 ; inventory en
- * P2-06 ; crm et fieldwork en P3-07 ; documents d'achat en P6-07, via
+ * P2-06 ; crm et fieldwork en P3-07 ; documents d'achat en P6-07 ; production en P7-12, via
  * `platform/sync/change-feed.ts`) — table fixe, tous définis dans ce seul fichier
  * (contrairement à `CommandHandlerRegistry`, alimenté par plusieurs modules indépendants,
  * une simple table couvre ce besoin sans registre mutable).
@@ -51,6 +51,32 @@ function crmScopeOf(
     return { type: context.scopeType, id: context.scopeId };
   }
   return undefined;
+}
+
+/** Ferme portée par une ligne `SITE` (jeu `production`, P7-12) ; `undefined` pour toute autre
+ * portée — dont le repli générique `GLOBAL` du pipeline, qui ne sert jamais une donnée de ferme. */
+function siteScopeOf(context: EntityProjectionContext): string | undefined {
+  return context.scopeType === 'SITE' && context.scopeId !== null ? context.scopeId : undefined;
+}
+
+/** Fenêtre des saisies de la ferme servies hors ligne (dictionnaire 07-production : « DL (30 j) »),
+ * évaluée par la base au moment du téléchargement (comme les réceptions, P6-07). */
+const RECENT_30_DAYS = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)`;
+
+const qtyOf = (value: string | number | null): number | null =>
+  value === null ? null : Math.round(Number(value) * 1000) / 1000;
+
+/** Ferme d'un lot de production. */
+async function productionLotSite(
+  executor: Kysely<DB> | Transaction<DB>,
+  lotId: Buffer,
+): Promise<string | undefined> {
+  const lot = await executor
+    .selectFrom('production_production_lots')
+    .select('site_id')
+    .where('id', '=', lotId)
+    .executeTakeFirst();
+  return lot ? fromBin(lot.site_id) : undefined;
 }
 
 /** L'un des utilisateurs est membre de l'équipe maintenant (appartenance courante). */
@@ -1267,6 +1293,464 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         supplier_lot_ref: line.supplier_lot_ref,
         expiry_date: dateOnly(line.expiry_date),
         stock_lot_id: fromBinOrNull(line.stock_lot_id),
+      })),
+    };
+  },
+
+  // P7-12 — jeu `production` (01-architecture-offline.md §3.1 : « lots actifs du site, lots
+  // d'incubation en cours, saisies des 30 derniers jours », filtre `SITE`), émis par
+  // `production` et, pour les pertes et consommations d'un lot, par `inventory`
+  // (sync-changes.ts). Aucun coût ni valeur (RC-05 ; D07 §12 : « les coûts ne sont pas calculés
+  // sur l'appareil ») : le responsable de ferme n'est pas titulaire de
+  // `inventory.valuation.read`. L'effectif courant d'un lot n'est pas copié ici (INV-PRD-01) :
+  // l'appareil le lit dans les soldes du lot de traçabilité (`stock_lot_id`, jeu `stock`).
+
+  // Lot planifié, actif ou en vente de la ferme ; sorti du jeu par `SCOPE_EXIT` ensuite.
+  PRODUCTION_LOT: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_production_lots')
+      .select([
+        'id',
+        'lot_code',
+        'lot_type',
+        'product_id',
+        'stock_lot_id',
+        'site_id',
+        'main_location_id',
+        'parent_lot_id',
+        'supplier_id',
+        'strain',
+        'status',
+        'planned_start_date',
+        'start_date',
+        'planned_end_date',
+        'initial_quantity',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (
+      !row ||
+      fromBin(row.site_id) !== siteId ||
+      !['PLANNED', 'ACTIVE', 'SELLING'].includes(row.status)
+    ) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      lot_code: row.lot_code,
+      lot_type: row.lot_type,
+      product_id: fromBin(row.product_id),
+      stock_lot_id: fromBin(row.stock_lot_id),
+      site_id: fromBin(row.site_id),
+      main_location_id: fromBin(row.main_location_id),
+      parent_lot_id: fromBinOrNull(row.parent_lot_id),
+      supplier_id: fromBinOrNull(row.supplier_id),
+      strain: row.strain,
+      status: row.status,
+      planned_start_date: dateOnly(row.planned_start_date),
+      start_date: dateOnly(row.start_date),
+      planned_end_date: dateOnly(row.planned_end_date),
+      initial_quantity: qtyOf(row.initial_quantity),
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  // Lot d'incubation en cours (en incubateur ou en éclosoir) de la ferme, avec ses compteurs et
+  // ses dates prévues ; sorti du jeu à l'éclosion ou à l'annulation.
+  INCUBATION_BATCH: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_incubation_batches')
+      .select([
+        'id',
+        'batch_code',
+        'stock_lot_id',
+        'site_id',
+        'species',
+        'egg_product_id',
+        'chick_product_id',
+        'incubator_location_id',
+        'hatcher_location_id',
+        'egg_source',
+        'eggs_set_qty',
+        'set_at',
+        'expected_candling_date',
+        'expected_transfer_date',
+        'expected_hatch_date',
+        'infertile_qty',
+        'early_dead_qty',
+        'accidental_loss_qty',
+        'transferred_qty',
+        'status',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (
+      !row ||
+      fromBin(row.site_id) !== siteId ||
+      !['INCUBATING', 'IN_HATCHER'].includes(row.status)
+    ) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      batch_code: row.batch_code,
+      stock_lot_id: fromBin(row.stock_lot_id),
+      site_id: fromBin(row.site_id),
+      species: row.species,
+      egg_product_id: fromBin(row.egg_product_id),
+      chick_product_id: fromBin(row.chick_product_id),
+      incubator_location_id: fromBin(row.incubator_location_id),
+      hatcher_location_id: fromBinOrNull(row.hatcher_location_id),
+      egg_source: row.egg_source,
+      eggs_set_qty: row.eggs_set_qty,
+      set_at: row.set_at,
+      expected_candling_date: dateOnly(row.expected_candling_date),
+      expected_transfer_date: dateOnly(row.expected_transfer_date),
+      expected_hatch_date: dateOnly(row.expected_hatch_date),
+      infertile_qty: row.infertile_qty,
+      early_dead_qty: row.early_dead_qty,
+      accidental_loss_qty: row.accidental_loss_qty,
+      transferred_qty: row.transferred_qty,
+      status: row.status,
+      version: row.version,
+    };
+  },
+
+  // Saisies des 30 derniers jours de la ferme, tous statuts (une annulation est renvoyée).
+  LOT_ENTRY: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_lot_entries')
+      .select([
+        'id',
+        'production_lot_id',
+        'entry_type',
+        'product_id',
+        'quantity_base',
+        'to_location_id',
+        'source_kind',
+        'source_location_id',
+        'source_product_id',
+        'source_stock_lot_id',
+        'source_production_lot_id',
+        'goods_receipt_id',
+        'stillborn_qty',
+        'avg_weight_g',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || (await productionLotSite(executor, row.production_lot_id)) !== siteId) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      production_lot_id: fromBin(row.production_lot_id),
+      entry_type: row.entry_type,
+      product_id: fromBin(row.product_id),
+      quantity_base: qtyOf(row.quantity_base),
+      to_location_id: fromBin(row.to_location_id),
+      source_kind: row.source_kind,
+      source_location_id: fromBinOrNull(row.source_location_id),
+      source_product_id: fromBinOrNull(row.source_product_id),
+      source_stock_lot_id: fromBinOrNull(row.source_stock_lot_id),
+      source_production_lot_id: fromBinOrNull(row.source_production_lot_id),
+      goods_receipt_id: fromBinOrNull(row.goods_receipt_id),
+      stillborn_qty: row.stillborn_qty,
+      avg_weight_g: row.avg_weight_g === null ? null : Number(row.avg_weight_g),
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  LOT_WEIGHING: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_lot_weighings')
+      .select([
+        'id',
+        'production_lot_id',
+        'location_id',
+        'sample_size',
+        'avg_weight_g',
+        'total_weight_kg',
+        'source',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || (await productionLotSite(executor, row.production_lot_id)) !== siteId) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      production_lot_id: fromBin(row.production_lot_id),
+      location_id: fromBinOrNull(row.location_id),
+      sample_size: row.sample_size,
+      avg_weight_g: Number(row.avg_weight_g),
+      total_weight_kg: row.total_weight_kg === null ? null : Number(row.total_weight_kg),
+      source: row.source,
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  LOT_OBSERVATION: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_lot_observations')
+      .select(['id', 'production_lot_id', 'observation_type', 'text', 'severity', 'occurred_at'])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || (await productionLotSite(executor, row.production_lot_id)) !== siteId) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      production_lot_id: fromBin(row.production_lot_id),
+      observation_type: row.observation_type,
+      text: row.text,
+      severity: row.severity,
+      occurred_at: row.occurred_at,
+    };
+  },
+
+  // Perte (dont la mortalité) d'un lot de production, émise par `inventory` : statut courant
+  // (en attente de validation, validée, rejetée, retirée), sans valeur.
+  LOT_LOSS: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('inventory_loss_declarations')
+      .select([
+        'id',
+        'doc_number',
+        'site_id',
+        'location_id',
+        'product_id',
+        'lot_id',
+        'production_lot_id',
+        'quantity_base',
+        'category',
+        'reason_code_id',
+        'comment',
+        'declared_by',
+        'requires_approval',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || row.production_lot_id === null || fromBin(row.site_id) !== siteId) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      site_id: fromBin(row.site_id),
+      location_id: fromBin(row.location_id),
+      product_id: fromBin(row.product_id),
+      lot_id: fromBinOrNull(row.lot_id),
+      production_lot_id: fromBin(row.production_lot_id),
+      quantity_base: qtyOf(row.quantity_base),
+      category: row.category,
+      reason_code_id: fromBinOrNull(row.reason_code_id),
+      comment: row.comment,
+      declared_by: fromBin(row.declared_by),
+      requires_approval: row.requires_approval === 1,
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  // Consommation imputée à un lot de production, émise par `inventory`, sans valeur.
+  LOT_CONSUMPTION: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('inventory_consumptions as c')
+      .innerJoin('organization_locations as l', 'l.id', 'c.location_id')
+      .select([
+        'c.id as id',
+        'l.site_id as site_id',
+        'c.location_id as location_id',
+        'c.product_id as product_id',
+        'c.lot_id as lot_id',
+        'c.quantity_base as quantity_base',
+        'c.unit_code as unit_code',
+        'c.quantity as quantity',
+        'c.cost_object_type as cost_object_type',
+        'c.cost_object_id as cost_object_id',
+        'c.cost_type as cost_type',
+        'c.recorded_by as recorded_by',
+        'c.status as status',
+        'c.occurred_at as occurred_at',
+        'c.version as version',
+      ])
+      .where('c.id', '=', toBin(entityId))
+      .where(sql<boolean>`c.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)`)
+      .executeTakeFirst();
+    if (
+      !row ||
+      row.cost_object_type !== 'PRODUCTION_LOT' ||
+      row.site_id === null ||
+      fromBin(row.site_id) !== siteId
+    ) {
+      return undefined;
+    }
+    return {
+      id: fromBin(row.id),
+      site_id: fromBin(row.site_id),
+      location_id: fromBin(row.location_id),
+      product_id: fromBin(row.product_id),
+      lot_id: fromBinOrNull(row.lot_id),
+      production_lot_id: fromBin(row.cost_object_id),
+      quantity_base: qtyOf(row.quantity_base),
+      unit_code: row.unit_code,
+      quantity: qtyOf(row.quantity),
+      cost_type: row.cost_type,
+      recorded_by: fromBin(row.recorded_by),
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+    };
+  },
+
+  EGG_COLLECTION: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_egg_collections')
+      .select([
+        'id',
+        'doc_number',
+        'production_lot_id',
+        'site_id',
+        'collection_date',
+        'storage_location_id',
+        'stock_lot_id',
+        'hatching_product_id',
+        'collected_qty',
+        'broken_qty',
+        'nonconforming_qty',
+        'marketable_qty',
+        'hatching_qty',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || fromBin(row.site_id) !== siteId) return undefined;
+    const grades = await executor
+      .selectFrom('production_egg_collection_lines')
+      .select(['product_id', 'quantity'])
+      .where('collection_id', '=', row.id)
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      production_lot_id: fromBin(row.production_lot_id),
+      site_id: fromBin(row.site_id),
+      collection_date: dateOnly(row.collection_date),
+      storage_location_id: fromBin(row.storage_location_id),
+      stock_lot_id: fromBin(row.stock_lot_id),
+      hatching_product_id: fromBinOrNull(row.hatching_product_id),
+      collected_qty: row.collected_qty,
+      broken_qty: row.broken_qty,
+      nonconforming_qty: row.nonconforming_qty,
+      marketable_qty: row.marketable_qty,
+      hatching_qty: row.hatching_qty,
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+      grades: grades.map((line) => ({
+        product_id: fromBin(line.product_id),
+        quantity: line.quantity,
+      })),
+    };
+  },
+
+  SLAUGHTER: async (executor, entityId, context) => {
+    const siteId = siteScopeOf(context);
+    if (siteId === undefined) return undefined;
+    const row = await executor
+      .selectFrom('production_slaughter_batches')
+      .select([
+        'id',
+        'doc_number',
+        'production_lot_id',
+        'site_id',
+        'source_location_id',
+        'location_id',
+        'input_product_id',
+        'heads_qty',
+        'condemned_heads',
+        'live_weight_g',
+        'output_weight_g',
+        'yield_rate',
+        'stock_lot_id',
+        'status',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_30_DAYS)
+      .executeTakeFirst();
+    if (!row || fromBin(row.site_id) !== siteId) return undefined;
+    const outputs = await executor
+      .selectFrom('production_slaughter_outputs')
+      .select(['product_id', 'to_location_id', 'quantity_base', 'weight_g'])
+      .where('slaughter_id', '=', row.id)
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      production_lot_id: fromBin(row.production_lot_id),
+      site_id: fromBin(row.site_id),
+      source_location_id: fromBin(row.source_location_id),
+      location_id: fromBin(row.location_id),
+      input_product_id: fromBin(row.input_product_id),
+      heads_qty: row.heads_qty,
+      condemned_heads: row.condemned_heads,
+      live_weight_g: Number(row.live_weight_g),
+      output_weight_g: Number(row.output_weight_g),
+      yield_rate: row.yield_rate === null ? null : Number(row.yield_rate),
+      stock_lot_id: fromBin(row.stock_lot_id),
+      status: row.status,
+      occurred_at: row.occurred_at,
+      version: row.version,
+      outputs: outputs.map((output) => ({
+        product_id: fromBin(output.product_id),
+        to_location_id: fromBin(output.to_location_id),
+        quantity_base: qtyOf(output.quantity_base),
+        weight_g: Number(output.weight_g),
       })),
     };
   },

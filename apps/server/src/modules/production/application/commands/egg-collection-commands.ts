@@ -72,6 +72,7 @@ import {
   stringListSetting,
   stringSetting,
 } from './shared.js';
+import { emitProductionRecordChange } from '../sync-changes.js';
 
 const recordPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
@@ -308,6 +309,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       createdBy: envelope.author_user_id,
       comment: `Collecte ${docNumber}`,
     });
+    await emitProductionRecordChange(uow, 'EGG_COLLECTION', collectionId);
     const serverRefs = { docNumber, stockLotId };
     if (closed) {
       const outcome = await recordLotClosedConflict(uow, deps, {
@@ -394,6 +396,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', row.id)
       .execute();
+    await emitProductionRecordChange(uow, 'EGG_COLLECTION', fromBin(row.id));
     await setStockLotStatus(uow, fromBin(row.stock_lot_id), 'CLOSED');
     if (closedLot) {
       const outcome = await recordLotClosedConflict(uow, deps, {

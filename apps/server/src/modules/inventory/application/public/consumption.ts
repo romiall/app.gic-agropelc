@@ -14,6 +14,7 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import { emitLotConsumptionChange } from '../sync-changes.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { recordStockMove } from './record-move.js';
 import { recordCostEntry, type CostObjectType, type CostType } from './cost-entries.js';
@@ -101,6 +102,7 @@ export async function recordConsumption(
       created_by: toBin(input.recordedBy),
     })
     .execute();
+  await emitLotConsumptionChange(uow, input.consumptionId);
 
   for (const move of moveResult.moves) {
     await recordCostEntry(uow, deps, {

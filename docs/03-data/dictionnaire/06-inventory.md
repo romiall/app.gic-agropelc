@@ -230,7 +230,7 @@
 - **CK** `quantity_base > 0` ; `comment` requis selon la catégorie ; `production_lot_id` ou `incubation_batch_id` requis si `MORTALITE` (P7-02, AV-113).
 - **Validation** (P7-02) : une perte `MORTALITE` suit la politique `MORTALITY` (AV-048, AV-119) ; son approbation exige une photo `AVAILABLE` rattachée à la déclaration (`attachments`, `owner_type = STOCK_LOSS`) quand la politique la demande (AV-107).
 - **IX** `(location_id, occurred_at)`, `(production_lot_id, occurred_at)`, `(category, business_date)`, `(status)` partiel en attente.
-- **Suppr.** `ANNULATION`. **Audit** Déclaration, décision, annulation. **Offline** DL (30 j du périmètre), CR. **Intégrité** INV-STK-14.
+- **Suppr.** `ANNULATION`. **Audit** Déclaration, décision, annulation. **Offline** DL (30 j du périmètre), CR ; la perte d'un lot de production (`production_lot_id` renseigné) est servie dans le jeu `production` (`LOT_LOSS`, sans valeur), renvoyée à chaque décision ou retrait (P7-12). **Intégrité** INV-STK-14.
 
 ## inventory.consumptions
 
@@ -255,7 +255,7 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `command_id`. **IX** `(cost_object_type, cost_object_id, occurred_at)`.
-- **Suppr.** `ANNULATION` (mouvement inverse + écriture de coût inverse). **Offline** DL (30 j), CR.
+- **Suppr.** `ANNULATION` (mouvement inverse + écriture de coût inverse). **Offline** DL (30 j), CR ; la consommation d'un lot de production (`cost_object_type = PRODUCTION_LOT`) est servie dans le jeu `production` (`LOT_CONSUMPTION`, sans valeur, P7-12).
 
 ## inventory.inventory_counts
 

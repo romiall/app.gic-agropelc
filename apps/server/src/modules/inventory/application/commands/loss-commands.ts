@@ -26,6 +26,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { IdGenerator } from '@gic/domain';
 import { toBin, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import { emitLotLossChange } from '../sync-changes.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import {
   cancelApprovalRequest,
@@ -191,6 +192,7 @@ function buildLossCommands(
       })
       .where('id', '=', row.id)
       .execute();
+    await emitLotLossChange(uow, envelope.payload.lossId);
     return { status: 'APPLIED' };
   };
 

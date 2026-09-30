@@ -38,6 +38,7 @@ export class SyncPullService {
       ctx.authenticatedUserId,
       ctx.authenticatedDeviceId,
       ctx.now,
+      request.dataset,
     );
 
     const rows = await this.db

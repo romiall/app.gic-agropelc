@@ -16,6 +16,12 @@
  * `ALL` → tous les emplacements physiques ; `SITE`/`ZONE` → ceux du site ou des sites de la zone
  * (et sous-zones) de l'affectation, tous pour une affectation `GLOBAL` ; `OWN` → les emplacements
  * `MOBILE` dont l'utilisateur est le détenteur (01-rbac.md §3), dans ce même périmètre.
+ *
+ * Fermes (P7-12, jeu `production` filtré par `SITE`) : pour ce jeu, les lignes `SITE` ne vont
+ * qu'aux fermes qu'atteint `production.lot.read`, avec la même intersection — `ALL` ou
+ * affectation `GLOBAL` → toutes les fermes (le Responsable production, affecté globalement,
+ * reçoit ainsi les lots de chaque ferme), `SITE`/`ZONE` → la ferme ou les fermes de la zone. Les
+ * sites des autres affectations (un magasinier affecté à une ferme) n'y donnent pas accès.
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
@@ -29,6 +35,11 @@ export interface DeviceScopeEntry {
 }
 
 const STOCK_READ_PERMISSION = 'inventory.stock.read';
+
+/** Jeux dont les lignes `SITE` sont réservées aux fermes qu'atteint une permission de lecture. */
+const FARM_DATASET_PERMISSIONS: Readonly<Record<string, string>> = {
+  production: 'production.lot.read',
+};
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -46,6 +57,7 @@ export async function computeDeviceScope(
   userId: string,
   deviceId: string,
   at: Date,
+  dataset?: string,
 ): Promise<readonly DeviceScopeEntry[]> {
   const entries: DeviceScopeEntry[] = [
     { scopeType: 'USER', scopeId: userId },
@@ -92,15 +104,19 @@ export async function computeDeviceScope(
   for (const locationId of await stockLocationsInScope(executor, userId, at)) {
     entries.push({ scopeType: 'LOCATION', scopeId: locationId });
   }
-  return entries;
+
+  const farmPermission = dataset === undefined ? undefined : FARM_DATASET_PERMISSIONS[dataset];
+  if (farmPermission === undefined) return entries;
+  const scoped: DeviceScopeEntry[] = entries.filter((entry) => entry.scopeType !== 'SITE');
+  for (const siteId of await farmSitesInScope(executor, userId, farmPermission, at)) {
+    scoped.push({ scopeType: 'SITE', scopeId: siteId });
+  }
+  return scoped;
 }
 
-async function stockLocationsInScope(
-  executor: Executor,
-  userId: string,
-  at: Date,
-): Promise<ReadonlySet<string>> {
-  const grants = (
+/** Affectations actives de l'utilisateur dont le rôle porte `permission`, avec sa portée maximale. */
+async function activeGrants(executor: Executor, userId: string, permission: string, at: Date) {
+  return (
     await executor
       .selectFrom('identity_user_role_assignments as ura')
       .innerJoin('identity_role_permissions as rp', 'rp.role_id', 'ura.role_id')
@@ -113,10 +129,56 @@ async function stockLocationsInScope(
         'ura.revoked_at as revoked_at',
       ])
       .where('ura.user_id', '=', toBin(userId))
-      .where('rp.permission_code', '=', STOCK_READ_PERMISSION)
+      .where('rp.permission_code', '=', permission)
       .where('ura.valid_from', '<=', at)
       .execute()
   ).filter((grant) => isActiveAt(grant, at));
+}
+
+/** Fermes (`site_type = FERME`) qu'atteint `permission` (P7-12). */
+async function farmSitesInScope(
+  executor: Executor,
+  userId: string,
+  permission: string,
+  at: Date,
+): Promise<ReadonlySet<string>> {
+  const sites = new Set<string>();
+  for (const grant of await activeGrants(executor, userId, permission, at)) {
+    // `OWN`, `TEAM` : aucune ferme n'est rattachée à un utilisateur ni à une équipe.
+    if (grant.max_scope === 'OWN' || grant.max_scope === 'TEAM') continue;
+    const everywhere = grant.max_scope === 'ALL' || grant.scope_type === 'GLOBAL';
+    if (!everywhere && grant.scope_type === 'TEAM') continue;
+    const rows = await executor
+      .selectFrom('organization_sites')
+      .select('id')
+      .where('site_type', '=', 'FERME')
+      .$if(!everywhere && grant.scope_type === 'SITE', (qb) =>
+        qb.where('id', '=', grant.scope_site_id ?? Buffer.alloc(16)),
+      )
+      .$if(!everywhere && grant.scope_type === 'ZONE', (qb) =>
+        qb.where((eb) =>
+          eb(
+            'zone_id',
+            'in',
+            eb
+              .selectFrom('organization_zone_ancestors')
+              .select('zone_id')
+              .where('ancestor_id', '=', grant.scope_zone_id ?? Buffer.alloc(16)),
+          ),
+        ),
+      )
+      .execute();
+    for (const row of rows) sites.add(fromBin(row.id));
+  }
+  return sites;
+}
+
+async function stockLocationsInScope(
+  executor: Executor,
+  userId: string,
+  at: Date,
+): Promise<ReadonlySet<string>> {
+  const grants = await activeGrants(executor, userId, STOCK_READ_PERMISSION, at);
 
   const locations = new Set<string>();
   for (const grant of grants) {

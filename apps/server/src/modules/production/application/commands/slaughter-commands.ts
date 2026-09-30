@@ -67,6 +67,7 @@ import {
   rejected,
   settingValue,
 } from './shared.js';
+import { emitProductionRecordChange } from '../sync-changes.js';
 
 const MANAGE = 'production.lot.manage';
 const DAILY = 'production.daily.record';
@@ -338,6 +339,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         })),
       )
       .execute();
+    await emitProductionRecordChange(uow, 'SLAUGHTER', slaughterId);
     const serverRefs = { docNumber, stockLotId };
     if (!slaughterable.includes(lot.lotType)) {
       await recordConflict(uow, {
@@ -438,6 +440,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', row.id)
       .execute();
+    await emitProductionRecordChange(uow, 'SLAUGHTER', fromBin(row.id));
     await setStockLotStatus(uow, fromBin(row.stock_lot_id), 'CLOSED');
     return { status: 'APPLIED' };
   };

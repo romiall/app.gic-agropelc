@@ -96,7 +96,7 @@ import {
   type LotRow,
   type Uow,
 } from './shared.js';
-import { emitProductionLotChange } from '../sync-changes.js';
+import { emitProductionLotChange, emitProductionRecordChange } from '../sync-changes.js';
 import { allocateOverheads } from '../overhead-allocation.js';
 
 const MANAGE = 'production.lot.manage';
@@ -753,6 +753,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         created_by: toBin(author),
       })
       .execute();
+    await emitProductionRecordChange(uow, 'LOT_ENTRY', entryId);
 
     // Hors ligne, le lot d'origine (transfert, sevrage) ou de truies (naissance) a pu être clos
     // entre-temps : le fait est appliqué, et chaque lot clos touché reçoit un conflit LOT_CLOSED.
@@ -885,6 +886,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', entry.id)
       .execute();
+    await emitProductionRecordChange(uow, 'LOT_ENTRY', fromBin(entry.id));
     // Une entrée appliquée après la fermeture du lot n'a jamais été comptée dans l'effectif
     // initial : l'annuler ne le diminue pas (INV-PRD-01, revue P7).
     if (acceptsDailyEntries(lot.status)) {
