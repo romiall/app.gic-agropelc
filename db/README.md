@@ -6,6 +6,26 @@ l'identique en local, en CI et en production. Source de vérité du schéma :
 entre une migration et le dictionnaire est un bug — corriger le dictionnaire d'abord si le
 besoin a changé, puis la migration, dans le même commit (règle R8, `CLAUDE.md`).
 
+## 0. Quel serveur MySQL
+
+| Environnement | Serveur | Port |
+|---|---|---|
+| Production | MySQL managé chez Hostinger (ADR-023, ADR-024) | fourni par l'hébergeur |
+| CI (GitHub Actions) | Conteneur MySQL officiel (`.github/workflows/ci.yml`) | 3306 |
+| Poste de développement Windows | **MySQL Community Server 8.4** installé à part (`C:\Program Files\MySQL\MySQL Server 8.4`, configuration `my.ini` hors dépôt) | **3307** |
+
+Le projet **n'utilise pas le MySQL de XAMPP** : c'est un MariaDB 10.4, incompatible avec le
+schéma (collation `utf8mb4_0900_as_cs`, contraintes `CHECK` appliquées, colonnes générées,
+`SKIP LOCKED`). Le dépôt se trouve sous `C:\xampp\htdocs` pour des raisons d'emplacement
+seulement ; XAMPP n'intervient ni dans l'exécution ni dans les tests. Comme le MariaDB de XAMPP
+occupe le port 3306 sur ce poste, le MySQL 8.4 écoute sur 3307 : remplacer `3306` par `3307`
+dans les URL ci-dessous et dans `apps/server/.env`. Démarrage, dans une fenêtre laissée
+ouverte :
+
+```powershell
+& "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe" --defaults-file="<chemin du my.ini>" --console
+```
+
 ## 1. Deux utilisateurs MySQL
 
 | Utilisateur | Rôle | Utilisé par |
