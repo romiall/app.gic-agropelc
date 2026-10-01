@@ -15,6 +15,7 @@ import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js'
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
+import { PAYMENT_METHODS } from './finance-references.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -301,6 +302,25 @@ async function seedProductionReferences(
   );
 }
 
+/** Trésorerie (P4-02) : moyens de paiement (AV-056), codes absents seulement. */
+async function seedFinanceReferences(conn: mysql.Connection): Promise<void> {
+  let inserted = 0;
+  for (const method of PAYMENT_METHODS) {
+    const [existing] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT code FROM finance_payment_methods WHERE code = ?',
+      [method.code],
+    );
+    if (existing.length > 0) continue;
+    await conn.query(
+      `INSERT INTO finance_payment_methods (code, label, requires_reference, default_account_type)
+       VALUES (?, ?, ?, ?)`,
+      [method.code, method.label, method.requiresReference, method.defaultAccountType],
+    );
+    inserted++;
+  }
+  console.log(`  + finance_payment_methods (${inserted} nouveau(x) sur ${PAYMENT_METHODS.length})`);
+}
+
 async function main(): Promise<void> {
   const conn = await mysql.createConnection(DATABASE_URL!);
   try {
@@ -313,6 +333,7 @@ async function main(): Promise<void> {
     await seedSystemSettings(conn, systemUserId);
     await seedCrmReferences(conn, systemUserId);
     await seedProductionReferences(conn, systemUserId);
+    await seedFinanceReferences(conn);
     console.log('Terminé.');
   } finally {
     await conn.end();

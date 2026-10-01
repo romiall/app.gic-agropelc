@@ -15,6 +15,7 @@
 | `is_active` | boolean | Non | true | |
 
 - **PK** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL.
+- **Implémentation** (P4-02, migration `20261003090000_create_finance_core.sql`) : colonnes `created_at`, `updated_at`, `version` ; `CHECK` sur `default_account_type` ; suppression refusée par déclencheur. Données initiales : les cinq moyens d'AV-056 (seed).
 
 ## finance.cash_accounts
 
@@ -36,6 +37,7 @@
 
 - **PK** `id`. **UQ** `code` ; une `CAISSE_PDV` active par site ; une `CAISSE_UTILISATEUR` active par utilisateur.
 - **Suppr.** `DESACTIVATION` (solde nul). **Offline** DL (comptes de l'utilisateur, avec solde au téléchargement).
+- **Implémentation** (P4-02) : unicités « une active par… » portées par les colonnes générées `active_pos_site` et `active_user_holder` (index uniques, conventions §4 MySQL) ; `CHECK` site requis pour `CAISSE_PDV` et détenteur requis pour `CAISSE_UTILISATEUR` ; pas de `CHECK balance_xaf ≥ 0` (solde négatif admis hors ligne, `CASH_NEGATIVE`, BR-FIN-012) ; suppression refusée par déclencheur.
 
 ## finance.cash_sessions
 
@@ -89,6 +91,7 @@
 - **PK** `id`. **UQ** `reverses_movement_id`. **CK** `amount_xaf > 0`.
 - **IX** `(cash_account_id, occurred_at)`, `(source_doc_type, source_doc_id)`, `(cash_session_id)`.
 - **Suppr.** `IMMUABLE`. **Offline** SRV (le solde du compte est téléchargé). **Intégrité** INV-FIN-01, INV-FIN-02.
+- **Implémentation** (P4-02) : `CHECK is_reversal ⇔ reverses_movement_id` non nul ; modification et suppression refusées par déclencheurs ; droits `SELECT`, `INSERT` seulement ; `cash_session_id` sans clé étrangère jusqu'à la création de `cash_sessions` (P5).
 
 ## finance.cash_transfers
 

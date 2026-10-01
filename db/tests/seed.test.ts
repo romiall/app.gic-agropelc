@@ -23,6 +23,7 @@ import {
 import { VIRTUAL_LOCATIONS } from '../seeds/virtual-locations.js';
 import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from '../seeds/crm-references.js';
+import { PAYMENT_METHODS } from '../seeds/finance-references.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -97,6 +98,17 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     );
     expect(sources).toHaveLength(LEAD_SOURCES.length);
     expect(sources.find((s) => s.code === 'KOMMO')?.is_system).toBe(1);
+  });
+
+  it('crée les cinq moyens de paiement (AV-056), référence exigée hors espèces', async () => {
+    const [methods] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT code, requires_reference FROM finance_payment_methods WHERE code IN (?) AND is_active = TRUE',
+      [PAYMENT_METHODS.map((m) => m.code)],
+    );
+    expect(methods).toHaveLength(5);
+    expect(methods.filter((m) => m.requires_reference === 0).map((m) => m.code)).toEqual([
+      'ESPECES',
+    ]);
   });
 
   it('crée au moins les paramètres système par défaut documentés', async () => {
