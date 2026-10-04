@@ -147,6 +147,8 @@ Classification (PM §45) :
 | AV-130 | Modification d'une commande confirmée | IMPORTANTE | P4 | Ajustement automatique : contre-écriture et nouvelle vente pour la différence | **TRANCHÉ** (voir journal §3) |
 | AV-131 | Perte d'une marchandise vendue avant sa livraison | SECONDAIRE | P4 | Annulation partielle de la vente, puis perte déclarée | OUVERT |
 | AV-132 | Délai d'alerte d'une vente confirmée non livrée | SECONDAIRE | P4/P9 | 7 jours, paramétré | OUVERT |
+| AV-133 | Livraison faite hors ligne qui arrive après l'annulation du reste de la commande | SECONDAIRE | P4 | Vente directe de régularisation de la quantité en trop et conflit pour revue | OUVERT |
+| AV-134 | Correction d'un bon de livraison saisi avec une mauvaise quantité | SECONDAIRE | P4 | Non en V1 : seul le non-livré s'annule (retour de marchandise livrée hors MVP, AV-029) | OUVERT |
 
 ---
 
@@ -839,6 +841,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) perte ordinaire (D06), la vente est maintenue ; (b) annulation partielle de la vente, puis perte.
 - **Recommandation** : (b) : on ne peut livrer ce qui est perdu ; la vente est corrigée et la perte déclarée.
 - **Impact** : Déclaration de perte sur l'emplacement « à livrer ».
+- **Précision technique** (ADR-029, 04/10/2026) : seule l'option (b) est exprimable par le registre de stock, une perte partant d'un emplacement physique ; l'option (a) demanderait une perte prise sur l'emplacement « à livrer », non prévue.
 
 ### AV-132 — Délai d'alerte d'une vente confirmée non livrée — SECONDAIRE
 - **Question** : Au bout de combien de jours signaler une vente confirmée non encore livrée (ADR-025, risques) ?
@@ -846,6 +849,20 @@ Politique par défaut, paramétrable :
 - **Choix** : Paramètre `sales.undelivered_alert_days`.
 - **Recommandation** : 7 jours.
 - **Impact** : Indicateur des ventes non livrées ; alerte P9.
+
+### AV-133 — Livraison faite hors ligne qui arrive après l'annulation du reste de la commande — SECONDAIRE
+- **Question** : Un livreur remet 6 pièces hors ligne à 9 h 30. À 10 h, le commercial annule, en ligne, tout le reste non livré de la commande (la marchandise retourne au stock). À 11 h, l'appareil du livreur se synchronise : la livraison dépasse ce qui restait à livrer. Que fait-on ?
+- **Pourquoi** : une livraison est un fait physique accompli, jamais refusé (BR-SYN-007, INV-SYN-06), alors que le stock rendu au magasin n'est plus à livrer ; ADR-029 plafonne les livraisons en base. D04 §14 traite déjà deux livraisons concurrentes de la même commande.
+- **Choix** : (a) la quantité en trop est enregistrée comme une vente directe de régularisation, avec un conflit `ORDER_OVER_FULFILMENT` pour revue du Resp. commercial ; (b) la commande annulée est rouverte pour cette quantité ; (c) la livraison est refusée (la marchandise est pourtant chez le client).
+- **Recommandation** : (a), comme D04 §14.
+- **Impact** : Commande `sales.order.fulfil` hors ligne ; conflits ; ADR-029 §10. Défaut implémenté en attendant la décision : (a).
+
+### AV-134 — Correction d'un bon de livraison saisi avec une mauvaise quantité — SECONDAIRE
+- **Question** : Un bon de livraison est saisi avec 5 pièces au lieu de 3. Peut-on le corriger ?
+- **Pourquoi** : la quantité livrée est plafonnée en base et ne se défait pas (ADR-029) ; le retour de marchandise déjà livrée est hors MVP (AV-029).
+- **Choix** : (a) non en V1 : on ne corrige que le non-livré, et un retour de marchandise livrée est un autre sujet (AV-029) ; (b) oui, par une reprise de livraison réservée au Resp. commercial, qui remet la quantité « à livrer ».
+- **Recommandation** : (a).
+- **Impact** : Bon de livraison (ADR-028 §7) ; plafond de livraison ; AV-029. Défaut implémenté : (a).
 
 ---
 

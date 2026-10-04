@@ -53,6 +53,8 @@
 | INV-STK-14 | Le solde de `V_PENDING_LOSS` imputable à une déclaration de perte est > 0 seulement si la déclaration est `PENDING_APPROVAL`. Il est nul après toute décision. | Pertes bloquées indéfiniment | TX + JOB | I |
 | INV-STK-15 | Tout mouvement d'un produit valorisé porte un `unit_cost_xaf` non nul et ≥ 0, déterminé par le serveur. | Pertes et marges non valorisables (CM §32) | DB (`CHECK`) + TX | I |
 | INV-STK-16 | Pour une vente annulée, Σ net des mouvements `SALE` et de leurs inverses = 0 par ligne. | Annulation qui ne corrige pas le stock (PM §28) | TX | I, S |
+| INV-STK-17 | Un mouvement `CUSTOMER_RETURN` ou `DELIVERY` consomme une part d'un mouvement `SALE` d'origine (`origin_move_id`, `origin_seq` 1, 2, 3 sans trou) : même produit et même lot, départ = arrivée de l'origine, jamais un inverse. Pour une origine, Σ quantités rattachées ≤ quantité de l'origine, Σ valeurs ≤ valeur de l'origine, et quand la quantité est soldée Σ valeurs = valeur de l'origine exactement (ADR-029, BR-STK-056). | Sur-annulation ; livrer puis annuler deux fois la même quantité ; dérive d'un franc | DB (déclencheur `trg_inventory_stock_moves_settlement_guard`, `UNIQUE (origin_move_id, origin_seq)`, `CHECK`) + TX | I, P |
+| INV-STK-18 | Le solde de l'emplacement « à livrer » (`V_TO_DELIVER`) d'un site, par produit et lot, est ≥ 0 en quantité et en valeur : Σ (`SALE` vers `V_TO_DELIVER` − mouvements rattachés). Corollaire d'INV-STK-17. | Solde virtuel négatif en silence (aucun contrôle de négatif sur un emplacement virtuel) | JOB (balayage et réconciliation) | I |
 
 ## 4. Ventes et commandes (VEN)
 

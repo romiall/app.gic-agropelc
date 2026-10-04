@@ -33,5 +33,6 @@
 | [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) | Coût de lot : frais généraux de ferme et coproduits d'abattage (complète ADR-015 ; amendé le 28/09/2026) | ACCEPTÉ | — |
 | [ADR-027](ADR-027-valorisation-lots-biologiques.md) | Valorisation des lots biologiques : coût restant, productions au coût standard, lots de stock propres | ACCEPTÉ | — |
 | [ADR-028](ADR-028-commande-vente-livraison-p4.md) | Commandes, ventes et livraisons après ADR-025 : emplacement « à livrer » virtuel par site, vente du disponible, bon de livraison, contre-écritures partielles | ACCEPTÉ | — |
+| [ADR-029](ADR-029-contre-ecriture-partielle-du-stock.md) | Contre-écriture partielle et livraison du stock vendu : mouvements rattachés à une origine (`origin_move_id`), plafond et valeur exacte garantis en base | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

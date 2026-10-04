@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **315**.
+Nombre total de règles : **318**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -194,6 +194,9 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur au moment de son application : CMUP courant du produit ; ou coût du lot par tête pour un p… | AV-042 |
 | BR-STK-053 | Le CMUP d'un produit est recalculé à chaque entrée valorisée (réception, ouverture, gain d'inventaire valorisé), selon l'ordre d'applicatio… | AV-042 |
 | BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.valuation… | C (CM §48 « magasinier sans finance ») |
+| BR-STK-055 | Une vente (`SALE`) et une livraison (`DELIVERY`) ne s'inversent pas. Annuler en tout ou partie une vente crée des mouvements `CUSTOMER_RETU… | D (ADR-029) |
+| BR-STK-056 | Valeur d'un mouvement rattaché : F(cumul après) − F(cumul avant), avec F(c) = V si c = Q, sinon ⌊(2·V·c + Q) / (2·Q)⌋, V et Q étant la vale… | D (ADR-029) |
+| BR-STK-057 | Choix des origines pour une ligne de vente répartie sur plusieurs lots : livraison dans l'ordre FIFO (lot le plus ancien d'abord), annulati… | D (ADR-029) |
 
 ## D07 — Production (PRD) : tronc commun, volaille (VOL), œufs (OEU), incubation (INC), porcs (POR)
 
