@@ -42,7 +42,7 @@ Le fonctionnement hors ligne impose de **créer une entité sans demander d'iden
 | **Séquence d'audit** (`audit_log.seq`) | Serveur | `BIGINT UNSIGNED AUTO_INCREMENT` | Ordre et chaînage |
 | **Codes de référentiel** (`code`) | Humain (Admin) | `UPPER_SNAKE_CASE` ou code court, unique | Produits, sites, zones, motifs |
 
-Préfixes `{TYPE}` : `VTE` vente, `CMD` commande client, `TRF` transfert, `PRT` perte, `INV` inventaire, `DA` demande d'achat, `BC` bon de commande, `REC` réception, `ENC` encaissement, `DEP` dépense, `FF` facture fournisseur, `PF` paiement fournisseur, `RMF` remise de fonds, `LOT` lot de production, `INC` lot d'incubation.
+Préfixes `{TYPE}` : `VTE` vente, `CMD` commande client, `TRF` transfert, `PRT` perte, `INV` inventaire, `DA` demande d'achat, `BC` bon de commande, `REC` réception, `ENC` encaissement, `DEP` dépense, `FF` facture fournisseur, `PF` paiement fournisseur, `RMF` remise de fonds, `LOT` lot de production, `INC` lot d'incubation, `LIV` bon de livraison, `ANV` annulation de vente.
 
 ## 2. Types logiques
 
@@ -92,8 +92,8 @@ Le dictionnaire référence ces blocs au lieu de les répéter. Un bloc s'appliq
 |---|---|---:|---|---|
 | `occurred_at` | ts | Non | — | **Heure métier réelle** (CM §38) |
 | `client_created_at` | ts | Oui | — | Horloge de l'appareil à la saisie |
-| `received_at` | ts | Oui | — | Réception de la commande par le serveur |
-| `command_id` | uuid | Oui | — | Commande de synchronisation d'origine (idempotence, audit) ; unique sur les tables racines |
+| `received_at` | ts | Oui | — | Réception de la commande par le serveur (colonne nommée `received_at_server` dans les migrations) |
+| `command_id` | uuid | Oui | — | Commande de synchronisation d'origine (idempotence, audit) ; unique sur les tables racines, sauf exceptions documentées dans le dictionnaire (annulations de vente : unique par vente ; encaissements et affectations : un par moyen de paiement, INV-SYN-01) |
 | `created_device_id` | uuid → `identity.devices` | Oui | — | Appareil d'origine (nul pour les opérations serveur) |
 | `captured_offline` | boolean | Non | false | Saisie sans réseau |
 | `clock_suspect` | boolean | Non | false | Écart d'horloge au-delà du seuil (BR-SYN-011) |

@@ -35,34 +35,55 @@
 | `quantity` | qty | Non | — | > 0, unité de base |
 | `from_location_id` | uuid → organization.locations | Non | — | Source |
 | `to_location_id` | uuid → organization.locations | Non | — | Destination |
-| `move_type` | enum (D06 §7.7) | Non | — | Cause |
+| `move_type` | enum (D06 §7.7) | Non | — | Cause. P4-02 : `DELIVERY` ajouté (livraison du stock vendu, ADR-028 §2, ADR-029 §7), soit 20 valeurs. Pour une vente, `CUSTOMER_RETURN` n'est plus un inverse mais un mouvement **rattaché** au `SALE` d'origine (`origin_move_id`, ADR-029 §1) |
 | `reason_code_id` | uuid → catalog.reason_codes | Oui | — | Motif (pertes, ajustements, rendements) |
-| `unit_cost_xaf` | money_xaf | Non | — | Coût unitaire figé (INV-STK-15) ; 0 autorisé pour un service ou une production sans coût |
-| `value_xaf` | money_xaf | Non | calculé | `round(quantity × unit_cost_xaf)` |
+| `unit_cost_xaf` | money_xaf | Non | — | Coût unitaire figé (INV-STK-15) ; 0 autorisé pour un service ou une production sans coût. Pour un mouvement rattaché : sa valeur ÷ sa quantité, arrondie (ADR-029 §5), donnée à titre d'information |
+| `value_xaf` | money_xaf | Non | calculé | `round(quantity × unit_cost_xaf)`, renseignée par le serveur (colonne ordinaire, non générée). Pour un mouvement rattaché : part de la valeur figée du `SALE` d'origine, F(cumul après) − F(cumul avant) (BR-STK-056 ; fonction pure `settlementValueXaf` de `packages/domain` prévue par ADR-029 §5, pas encore écrite) ; la somme des mouvements rattachés d'une origine soldée égale exactement sa valeur |
 | `occurred_at` | ts | Non | — | Heure métier du document |
 | `business_date` | date | Non | généré | Jour métier (Douala) |
 | `recorded_at` | ts | Non | `now()` | Heure d'application |
-| `source_doc_type` | enum(`SALE`,`TRANSFER`,`LOSS`,`CONSUMPTION`,`INVENTORY_COUNT`,`GOODS_RECEIPT`,`EGG_COLLECTION`,`INCUBATION_EVENT`,`LOT_ENTRY`,`SLAUGHTER`,`LOT_TRANSFER`) | Non | — | `SLAUGHTER` (abattage, AV-032) et `LOT_TRANSFER` (sevrage et transfert entre lots, AV-111) ajoutés en P7-02 |
+| `source_doc_type` | enum(`SALE`,`TRANSFER`,`LOSS`,`CONSUMPTION`,`INVENTORY_COUNT`,`GOODS_RECEIPT`,`EGG_COLLECTION`,`INCUBATION_EVENT`,`LOT_ENTRY`,`SLAUGHTER`,`LOT_TRANSFER`,`SALE_CANCELLATION`,`DELIVERY`) | Non | — | `SLAUGHTER` (abattage, AV-032) et `LOT_TRANSFER` (sevrage et transfert entre lots, AV-111) ajoutés en P7-02 ; `SALE_CANCELLATION` (document d'annulation de vente) et `DELIVERY` (bon de livraison) ajoutés en P4-02 (ADR-029 §7), soit 13 valeurs ; `SALE_CANCELLATION` compte 17 caractères, dans la limite de la colonne (`varchar(20)`). DÉDUIT : un `CUSTOMER_RETURN` de vente porte `SALE_CANCELLATION` et un `DELIVERY` porte `DELIVERY` (`source_doc_id` = `sales.sale_cancellations` ou `sales.delivery_notes`) ; la base ne l'impose pas, le code des ventes (P4-03 et suivants) le fait |
 | `source_doc_id` | uuid | Non | — | Document |
 | `source_line_id` | uuid | Oui | — | Ligne du document |
 | `allocation_id` | uuid → stock_allocations | Oui | — | Quota ou réservation consommé |
 | `cost_object_type`, `cost_object_id` | enum, uuid | Oui | — | Pour `CONSUMPTION` : objet de coût |
 | `is_reversal` | boolean | Non | false | |
-| `reverses_move_id` | uuid → stock_moves | Oui | — | INV-STK-04 |
+| `reverses_move_id` | uuid → stock_moves | Oui | — | INV-STK-04. Jamais le mouvement d'un `SALE` ni d'un `DELIVERY`, qui ne s'inversent pas (BR-STK-055, garde en base) |
+| `origin_move_id` | uuid → stock_moves | Oui | — | P4-02 (ADR-029 §1). Mouvement `SALE` dont ce mouvement consomme une part. Requis pour `CUSTOMER_RETURN` et `DELIVERY`, nul pour tout autre type et pour un inverse |
+| `origin_seq` | int | Oui | — | P4-02. Rang du mouvement parmi ceux qui consomment la même origine : 1, 2, 3, sans trou ; ≥ 1 ; nul si et seulement si `origin_move_id` est nul |
 | `created_by` | uuid → identity.users | Non | — | Auteur du document |
 | `created_device_id` | uuid → identity.devices | Oui | — | |
 | `command_id` | uuid | Oui | — | |
 | `captured_offline` | boolean | Non | false | |
 
 - **PK** `id`.
-- **UQ** `reverses_move_id` (un seul inverse).
-- **CK** `quantity > 0` ; `from_location_id <> to_location_id` ; `is_reversal` ⇔ `reverses_move_id` non nul ; `value_xaf ≥ 0`.
-- **IX** `(from_location_id, product_id, occurred_at)`, `(to_location_id, product_id, occurred_at)`, `(source_doc_type, source_doc_id)`, `(lot_id)`, `(business_date, move_type)`, `(command_id)`.
+- **UQ** `reverses_move_id` (un seul inverse, INV-STK-04 ; inchangé) ; `(origin_move_id, origin_seq)` (P4-02, `uq_inventory_stock_moves_origin_seq`) : deux mouvements ne prennent pas le même rang sur une origine. Cette unicité sert aussi d'index à la clé étrangère `origin_move_id` ; les `NULL` multiples sont admis, comme pour `reverses_move_id`.
+- **FK** (P4-02) `origin_move_id` → `stock_moves` (`fk_inventory_stock_moves_origin`, `ON DELETE RESTRICT`).
+- **CK** `quantity > 0` ; `from_location_id <> to_location_id` ; `is_reversal` ⇔ `reverses_move_id` non nul ; `value_xaf ≥ 0`. P4-02 :
+  - `ck_inventory_stock_moves_origin` : `origin_move_id` et `origin_seq` sont tous deux nuls, ou tous deux renseignés avec `origin_seq ≥ 1`, `is_reversal` faux et `move_type` parmi `CUSTOMER_RETURN` et `DELIVERY` : les colonnes d'origine sont réservées à ces deux types et jamais portées par un inverse ;
+  - `ck_inventory_stock_moves_settlement` : un `CUSTOMER_RETURN` ou un `DELIVERY` a une origine (`origin_move_id` non nul) ;
+  - `ck_inventory_stock_moves_move_type` (20 types) et `ck_inventory_stock_moves_source_doc_type` (13 types) sont remplacées par les listes actualisées d'après le schéma courant.
+- **IX** `(from_location_id, product_id, occurred_at)`, `(to_location_id, product_id, occurred_at)`, `(source_doc_type, source_doc_id)`, `(lot_id)`, `(business_date, move_type)`, `(command_id)` ; `(origin_move_id, origin_seq)` (unicité ci-dessus, P4-02).
 - **Partitionnement** Mensuel par `recorded_at` au-delà de 20 millions de lignes (stratégie stock §10).
-- **Suppr.** `IMMUABLE` (déclencheur `BEFORE UPDATE OR DELETE` qui lève une erreur).
+- **Suppr.** `IMMUABLE` (déclencheurs `trg_inventory_stock_moves_no_update` et `trg_inventory_stock_moves_no_delete`, qui lèvent une erreur).
+- **Déclencheur de garde** (P4-02, ADR-029 §3, INV-STK-17) : `trg_inventory_stock_moves_settlement_guard`, `BEFORE INSERT`, en plus des deux précédents. Chaque refus lève `SQLSTATE '45000'` avec un message de 128 caractères au plus. Contrôles, dans cet ordre (le 1 vaut pour un inverse, les 2 à 10 seulement quand `origin_move_id` est renseigné) :
+  1. si `reverses_move_id` est renseigné, le mouvement visé n'est ni un `SALE` ni un `DELIVERY` (BR-STK-055) ;
+  2. l'origine existe, est de type `SALE` et n'est pas un inverse ;
+  3. même produit et même lot que l'origine (comparaison qui tient compte du `NULL` : un mouvement sans lot ne se rattache qu'à une origine sans lot) ;
+  4. `from_location_id` est égal à l'arrivée (`to_location_id`) de l'origine ;
+  5. `CUSTOMER_RETURN` : `to_location_id` est égal au départ (`from_location_id`) de l'origine ;
+  6. `DELIVERY` : l'arrivée de l'origine est un emplacement de type `V_TO_DELIVER` et la destination un emplacement de type `V_CUSTOMER` (types décrits dans [`02-organization.md`](02-organization.md), `organization.locations`) ;
+  7. `origin_seq` est égal au nombre de mouvements déjà rattachés à l'origine, plus 1 ;
+  8. Σ quantités rattachées (le nouveau mouvement compris) ≤ quantité de l'origine ;
+  9. Σ valeurs rattachées (le nouveau mouvement compris) ≤ valeur de l'origine ;
+  10. si la Σ des quantités atteint exactement la quantité de l'origine, la Σ des valeurs égale exactement la valeur de l'origine : le dernier mouvement solde le franc (BR-STK-056).
+
+  Le déclencheur ne garantit que les **bornes** de la valeur (9 et 10) : la formule du prorata cumulatif relève de `packages/domain` (ADR-021, ADR-029 §5). Il ne contrôle pas non plus que le `V_TO_DELIVER` de destination d'un `SALE` est celui du site de l'emplacement source (contrôle prévu dans le code, `loadLocation`, ADR-029 Conséquences) ni le choix des origines d'une ligne répartie sur plusieurs lots (BR-STK-057, code prévu).
+- **Concurrence et droits** (DÉDUIT, ADR-029 §3 et §4). Le `GRANT` du registre est **inchangé** : `SELECT, INSERT` pour le compte applicatif (`20260927090000_create_inventory_core.sql`), sans `UPDATE` ni `DELETE`. Le déclencheur ne pose **aucune lecture verrouillante** (`FOR UPDATE`, `FOR SHARE`) sur `inventory_stock_moves`, et le code à venir n'en posera pas : MySQL exige le privilège `UPDATE` en plus de `SELECT` pour une lecture verrouillante (précédent : `20260924110000_grant_audit_log_lock.sql`), et ADR-029 §4 refuse de l'accorder pour que le registre reste en ajout seul **aussi au niveau des privilèges** (INV-STK-04, INV-GLO-03), le déclencheur d'immuabilité n'étant pas la seule barrière. La garde reste sûre sans verrou : sous isolation répétable, un mouvement concurrent qui lit un compteur périmé calcule un `origin_seq` déjà pris, et l'unicité `(origin_move_id, origin_seq)` fait échouer son insertion ; un dépassement n'est donc jamais accepté, seule la vivacité baisse. Côté application, un doublon de séquence ou un interblocage est **réessayable** ; un `SIGNAL` du déclencheur est un rejet définitif (ADR-029 §4). La sérialisation courante est confiée au module `sales` (ADR-029 §4 ; module pas encore écrit, P4-03 et suivants) : il verrouillera d'abord la ligne de vente qu'il possède (`sales_sale_lines`) avant d'appeler `inventory` ; le déclencheur et l'unicité ne sont que le filet.
+- **Implémentation** (P4-02 2/2) : table physique `inventory_stock_moves` ; migrations `20261003090100_alter_inventory_stock_moves_for_sales.sql` (colonnes, unicité, clé étrangère, contraintes d'appariement, listes de types) `20261003090200_create_inventory_settlement_guard.sql` (déclencheur) et `20261003090800_harden_inventory_settlement.sql` (un retour ne s'inverse pas, « à livrer » du site de la source, `DELIVERY` ⇔ document `DELIVERY`, `SALE_CANCELLATION` ⇒ `CUSTOMER_RETURN`). Le retour arrière de `090100` restaure d'abord les listes de types en un seul `ALTER` : il échoue sans effet de bord s'il existe un mouvement `DELIVERY` ou un document source `SALE_CANCELLATION` ou `DELIVERY` ; ne pas le défaire sur une base qui contient des retours ou des livraisons rattachés (le registre est en ajout seul). Preuve : `db/tests/inventory-settlement.test.ts` (insertions directes qui contournent l'application, une par refus).
 - **Audit** L'audit porte sur le **document** source ; le mouvement est lui-même un registre.
 - **Offline** SRV : les appareils ne reçoivent que des soldes. Les mouvements sont créés **uniquement** par le serveur.
-- **Intégrité** INV-STK-01 à INV-STK-04, INV-STK-12, INV-STK-15, INV-STK-16.
+- **Intégrité** INV-STK-01 à INV-STK-04, INV-STK-12, INV-STK-15, INV-STK-16 (le net d'une vente se lit par mouvements rattachés, via la lecture `soldGoodsPosition` prévue par ADR-029 §7, et non plus par « `SALE` moins inverses »), INV-STK-17 (garde en base ci-dessus), INV-STK-18 (solde de `V_TO_DELIVER` ≥ 0 par site, produit et lot : balayage et réconciliation prévus dans `ledger-reconciliation.ts`, corollaire d'INV-STK-17 ; aucun test de négatif en ligne ne vise un emplacement virtuel). Pas de recalcul du CMUP pour un mouvement rattaché : ni un retour ni une livraison n'est une entrée valorisée (ADR-029 §5).
 
 ## inventory.stock_balances
 

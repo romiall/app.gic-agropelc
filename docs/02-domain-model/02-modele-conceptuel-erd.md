@@ -35,7 +35,7 @@
 | R3 | Utilisateur — Appareil | Un appareil est enregistré par 1 utilisateur ; il est utilisé par 1..N utilisateurs via les sessions | Appareils partagés (AV-007) |
 | R4 | Zone — Zone (parent) | 0..1 parent : 0..N enfants | Arbre sans cycle |
 | R5 | Site — Zone | N : 1 | Chaque site est dans une zone |
-| R6 | Site — Emplacement | 1 : 1..N (physiques) ; virtuels sans site | BR-ADM-009 |
+| R6 | Site — Emplacement | 1 : 1..N (physiques) ; virtuels sans site, sauf l'emplacement « à livrer » (`V_TO_DELIVER`), un par site | BR-ADM-009, BR-ADM-010 |
 | R7 | Emplacement `MOBILE` — Utilisateur (détenteur) | 0..1 : 1 | INV-ADM-05 |
 | R8 | Site `POINT_DE_VENTE` — Point de vente | 1 : 1 | Extension de site |
 | R9 | Compte client — Affectation de titulaire — Utilisateur | 1 compte : 0..N affectations (≤ 1 active) | INV-CRM-02 |

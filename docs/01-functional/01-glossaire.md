@@ -26,7 +26,7 @@
 | **Bâtiment** | Emplacement physique d'élevage d'une ferme. | Bâtiment B2 (poulets de chair) | `organization.locations` (type `BUILDING`) | C (CM §15, §57) |
 | **Case** | Subdivision d'un bâtiment porcin. | Case P-04 | `organization.locations` (type `PEN`, parent = bâtiment) | C (CM §19) |
 | **Stock mobile** | Emplacement de type `MOBILE` rattaché à un utilisateur (commercial, vendeur, livreur), qui détient physiquement la marchandise et en est responsable. | « Stock de Paul » : 50 poulets | `organization.locations` (type `MOBILE`, `custodian_user_id`) | D (CM §23) |
-| **Emplacement virtuel** | Emplacement non physique qui matérialise l'origine ou la destination externe d'un mouvement : `V_SUPPLIER`, `V_CUSTOMER`, `V_PRODUCTION`, `V_CONSUMPTION`, `V_LOSS`, `V_PENDING_LOSS`, `V_ADJUSTMENT`, `V_TRANSIT`, `V_OPENING`. | Une vente déplace de « PDV » vers `V_CUSTOMER` | `organization.locations` (`is_virtual = true`) | D (ADR-003) |
+| **Emplacement virtuel** | Emplacement non physique qui matérialise l'origine ou la destination externe d'un mouvement : `V_SUPPLIER`, `V_CUSTOMER`, `V_PRODUCTION`, `V_CONSUMPTION`, `V_LOSS`, `V_PENDING_LOSS`, `V_ADJUSTMENT`, `V_TRANSIT`, `V_OPENING` ; plus l'emplacement « à livrer » `V_TO_DELIVER`, virtuel mais rattaché à un site (un par site, ADR-028 §1). | Une vente déplace de « PDV » vers `V_CUSTOMER` | `organization.locations` (`is_virtual = true`) | D (ADR-003) |
 | **Zone** | Découpage géographique ou commercial hiérarchique (ville, marché, quartier, secteur), utilisé pour la tarification, le portefeuille, l'analyse et le pointage. | Douala > Akwa > Marché Sandaga | `organization.zones` | C (CM §9, §10, §29) / AV-003 (niveaux) |
 | **Géorepère** (zone de pointage) | Cercle (point de référence + rayon) attaché à une zone ou à un site, dans lequel la prise de service est acceptée. | Centre Marché Sandaga, rayon 500 m | `organization.zones.geofence_*` | C (CM §10, 500 m) / AV-003, AV-022 |
 | **Paramètre système** | Valeur de configuration historisée (seuils, délais, rayons). | Rayon de pointage par défaut = 500 m | `organization.system_settings` | D |
@@ -174,7 +174,7 @@
 |---|---|---|---|---|
 | **Encaissement** | Somme reçue d'un client, par un moyen de paiement, à un instant réel, affectée à une ou plusieurs ventes ou commandes. | 13 500 XAF en espèces | `sales.customer_payments` | C (CM §31) |
 | **Affectation de paiement** | Répartition d'un encaissement sur une vente (règlement) ou une commande (acompte). | — | `sales.payment_allocations` | D |
-| **Créance** | Montant restant dû par un client sur ses ventes confirmées = montant des ventes − affectations actives. **Calculée.** | — | vue `sales.v_receivables` | C (CM §13, §31) |
+| **Créance** | Montant restant dû par un client sur ses ventes confirmées = montant des ventes − affectations actives. **Calculée.** | — | requête sur `sales.sales` (pas de vue, P4-09) | C (CM §13, §31) |
 | **Créance en retard** | Créance dont l'échéance est dépassée. | — | calcul sur `sales.sales.due_date` | C (CM §54) |
 | **Moyen de paiement** | Mode de règlement (référentiel). | `ESPECES`, `MOBILE_MONEY_MTN` | `finance.payment_methods` | AV-056 |
 | **Compte de trésorerie** | Réceptacle d'argent suivi par le système : caisse d'un PDV, caisse centrale, compte mobile money, compte bancaire. | Caisse PDV Mboppi | `finance.cash_accounts` | C (CM §12 « caisse », §31 « caisses ») / D (généralisation) |

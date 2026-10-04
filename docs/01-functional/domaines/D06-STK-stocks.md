@@ -78,7 +78,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | ID | Règle | Statut |
 |---|---|---|
 | BR-STK-001 | Toute variation de stock est un **mouvement** : produit, quantité strictement positive en unité de base, emplacement source, emplacement destination, lot éventuel, type de mouvement (cause), document source, heure métier, auteur, appareil, coût unitaire. Aucune autre écriture ne modifie un stock. | C (CM §21 ; PM §6) |
-| BR-STK-002 | Un mouvement est **immuable**. Pour le corriger, on crée un mouvement inverse (`is_reversal = true`, `reverses_move_id`), toujours issu d'un document (annulation, rejet, régularisation). | C (CM §41 ; PM §8) |
+| BR-STK-002 | Un mouvement est **immuable**. Pour le corriger, on crée un mouvement inverse (`is_reversal = true`, `reverses_move_id`), toujours issu d'un document (annulation, rejet, régularisation). Exception (ADR-029) : une vente (`SALE`), une livraison (`DELIVERY`) et un retour ne s'inversent pas ; une vente se contre-passe, en tout ou partie, par des mouvements rattachés à elle (BR-STK-055). | C (CM §41 ; PM §8) |
 | BR-STK-003 | Les origines et destinations externes sont des **emplacements virtuels** : `V_SUPPLIER`, `V_CUSTOMER`, `V_PRODUCTION`, `V_CONSUMPTION`, `V_LOSS`, `V_PENDING_LOSS`, `V_ADJUSTMENT`, `V_TRANSIT`, `V_OPENING`. Ainsi, la somme des quantités d'un produit sur tous les emplacements est constante (conservation). | D (ADR-003) |
 | BR-STK-004 | Le solde d'un emplacement × produit × lot = Σ quantités entrantes − Σ quantités sortantes. `stock_balances` est une projection mise à jour **dans la même transaction** que le mouvement, et reconstructible à tout moment depuis le registre. | C (PM §6) |
 | BR-STK-005 | Le solde peut être calculé **à une date métier** (Σ des mouvements de `occurred_at` ≤ date). C'est la base des inventaires et des analyses historiques. | D (CM §38) |
@@ -140,7 +140,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 |---|---|---|
 | BR-STK-050 | Pour un produit à suivi par lot `REQUIRED`, tout mouvement porte un lot. Pour `OPTIONAL`, le lot est porté s'il est connu. Pour `NONE`, jamais. Le lot est choisi automatiquement en FIFO (lot le plus ancien en solde positif) lors d'une sortie sans lot indiqué. | AV-036 |
 | BR-STK-051 | Un seuil (minimum, cible) par emplacement × produit déclenche `STOCK_LOW` si disponible < minimum, et `STOCK_OUT` si disponible ≤ 0. La quantité suggérée de réapprovisionnement = cible − disponible − transit entrant. | C (CM §12, §54) / AV-040 |
-| BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur **au moment de son application** : CMUP courant du produit ; ou coût du lot par tête pour un produit biologique de lot ; ou coût standard pour une production interne sans lot ; ou coût d'achat pour une réception. Un mouvement inverse reprend le coût du mouvement d'origine. | AV-042 |
+| BR-STK-052 | Tout mouvement porte le coût unitaire en vigueur **au moment de son application** : CMUP courant du produit ; ou coût du lot par tête pour un produit biologique de lot ; ou coût standard pour une production interne sans lot ; ou coût d'achat pour une réception. Un mouvement inverse reprend le coût du mouvement d'origine ; un mouvement rattaché à un `SALE` (`CUSTOMER_RETURN`, `DELIVERY`) reprend la valeur de l'origine au prorata cumulatif (BR-STK-056). | AV-042 |
 | BR-STK-053 | Le CMUP d'un produit est recalculé à chaque entrée valorisée (réception, ouverture, gain d'inventaire valorisé), selon l'**ordre d'application serveur**. | AV-042 |
 | BR-STK-054 | La valeur d'un stock = Σ (solde × coût unitaire courant), par produit ou par produit × lot. Elle n'est visible qu'avec `inventory.valuation.read`. | C (CM §48 « magasinier sans finance ») |
 | BR-STK-055 | Une vente (`SALE`) et une livraison (`DELIVERY`) ne s'inversent pas. Annuler en tout ou partie une vente crée des mouvements `CUSTOMER_RETURN`, livrer crée des mouvements `DELIVERY` ; chacun cite le `SALE` d'origine (`origin_move_id`). Plusieurs mouvements peuvent consommer une même origine tant que Σ quantités ≤ quantité de l'origine (INV-STK-17). | D (ADR-029) |
@@ -158,8 +158,9 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | `TRANSFER_RECEIPT` | `V_TRANSIT` → emplacement | Transfert | C (CM §22) |
 | `TRANSFER_DISCREPANCY` | `V_TRANSIT` → `V_PENDING_LOSS` | Transfert | C (CM §22) |
 | `INTERNAL_MOVE` | emplacement → emplacement (même site) | Transfert `INTERNAL` | D |
-| `SALE` | emplacement → `V_CUSTOMER` | Vente | C (CM §13) |
-| `CUSTOMER_RETURN` | `V_CUSTOMER` → emplacement | Retour client (extension, AV-029) | D |
+| `SALE` | emplacement → `V_CUSTOMER` (vente directe) ou emplacement de préparation → `V_TO_DELIVER` du même site (confirmation d'une commande, sortie définitive d'un lot biologique) | Vente | C (CM §13) ; D (ADR-028 §2) |
+| `DELIVERY` | `V_TO_DELIVER` → `V_CUSTOMER` | Livraison d'une commande ; rattachée à son `SALE` (`origin_move_id`), à la valeur figée | D (ADR-028 §2, ADR-029) |
+| `CUSTOMER_RETURN` | `V_CUSTOMER` ou `V_TO_DELIVER` → emplacement de départ du `SALE` d'origine | Annulation, totale ou partielle, d'une vente non livrée ; rattaché à son `SALE` (`origin_move_id`). Le retour de marchandise déjà livrée reste hors MVP (AV-029) | D (ADR-028 §5, ADR-029) |
 | `LOSS` | emplacement → `V_LOSS` | Perte `RECORDED` | C (CM §24) |
 | `LOSS_PENDING` | emplacement → `V_PENDING_LOSS` | Perte `PENDING_APPROVAL` | D |
 | `LOSS_CONFIRMATION` | `V_PENDING_LOSS` → `V_LOSS` | Perte approuvée ou rejet `PERTE_NON_JUSTIFIEE` | D |
@@ -171,7 +172,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | `INVENTORY_GAIN` | `V_ADJUSTMENT` → emplacement | Inventaire | C (CM §25) |
 | `INVENTORY_LOSS` | emplacement → `V_ADJUSTMENT` | Inventaire | C (CM §25) |
 
-Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`), qui échange source et destination et reprend le produit, le lot, la quantité et le coût unitaire du mouvement d'origine (INV-STK-04, BR-STK-052). Le contrôle des couples (BR-STK-006) restant strict **par type**, un inverse porte un type dont le couple est l'inverse de celui d'origine : en P2, seule l'annulation d'une consommation est construite, avec le type dédié `CONSUMPTION_REVERSAL` (D, P2-04) — il distingue aussi, dans le registre, la seule entrée légitime depuis `V_CONSUMPTION`. Les inverses des autres types (vente, réception…) suivront le même principe avec les documents qui les annulent.
+Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`), qui échange source et destination et reprend le produit, le lot, la quantité et le coût unitaire du mouvement d'origine (INV-STK-04, BR-STK-052). Le contrôle des couples (BR-STK-006) restant strict **par type**, un inverse porte un type dont le couple est l'inverse de celui d'origine : en P2, seule l'annulation d'une consommation est construite, avec le type dédié `CONSUMPTION_REVERSAL` (D, P2-04) — il distingue aussi, dans le registre, la seule entrée légitime depuis `V_CONSUMPTION`. Une vente, une livraison et un retour ne s'inversent pas (BR-STK-055) : une vente se contre-passe par des mouvements `CUSTOMER_RETURN` rattachés à elle ; les inverses des autres types (réception…) suivent le même principe que la consommation avec les documents qui les annulent.
 
 ## 8. Validations
 

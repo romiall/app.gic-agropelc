@@ -43,7 +43,7 @@ L'option retenue est la seule **additive** : aucun invariant existant n'est affa
 
 ## Risques
 
-- Le déclencheur utilise une lecture verrouillante de sa propre table ; si MySQL la refuse, elle est retirée et la garde reste sûre (échec en cas de lecture périmée, jamais de dépassement), seule la vivacité sous concurrence baisse.
+- Le déclencheur ne pose aucune lecture verrouillante (précédent `20260924110000_grant_audit_log_lock.sql`) : la garde est sûre (échec sur une lecture périmée, jamais de dépassement), seule la vivacité sous concurrence baisse ; le verrou de la ligne de vente côté `sales` la rétablit en pratique. Durcissements de la relecture adverse (migration `20261003090800`) : un retour ne s'inverse pas non plus, l'emplacement « à livrer » est celui du site de la source, le type de mouvement et le document source sont liés.
 - Deux règles d'arrondi coexistent : stock (cumulative) et chiffre d'affaires (reste à la dernière annulation, `lineCancellationAmountXaf`) ; elles sont exactes à la clôture d'une ligne, une étape intermédiaire peut différer d'un franc. Alignement facultatif.
 - La répartition de valeur entre deux annulations suit l'ordre d'arrivée au serveur (hors ligne tardif), pas `occurred_at` : écart d'au plus un franc par tranche, somme exacte.
 - Le retour réintègre au stock la valeur de la vente, pas le CMUP du jour (comme les inverses actuels) : écart de valorisation marginal sans effet sur le coût des ventes ni sur les lots biologiques.

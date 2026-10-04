@@ -9,7 +9,7 @@ Le MVP vise une comptabilité opérationnelle fiable, pas un logiciel comptable 
 ## Décision
 - **Documents financiers** typés et immuables : vente, encaissement, dépense, facture fournisseur, paiement fournisseur, remise de fonds.
 - **Trois registres** en ajout seul : trésorerie (`finance.cash_movements`), coûts (`inventory.cost_entries`), stock valorisé (coût figé sur `stock_moves`).
-- **Vues calculées** : créances (`sales.v_receivables`), dettes (`finance.v_payables`), marges, valeur des pertes.
+- **Vues calculées** : créances (requête sur `sales.sales`, sans vue SQL depuis P4-02), dettes (`finance.v_payables`), marges, valeur des pertes.
 - **Datation** : une annulation est une contre-écriture datée de sa propre heure métier.
 - Répartition par modules pour éviter les cycles : encaissements et créances dans `sales`, coûts et valorisation dans `inventory`, trésorerie, dépenses et dettes dans `finance`.
 

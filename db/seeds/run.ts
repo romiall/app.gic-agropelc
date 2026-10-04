@@ -16,6 +16,7 @@ import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
 import { PAYMENT_METHODS } from './finance-references.js';
+import { SALES_CONTROL_POLICIES } from './sales-references.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -249,13 +250,17 @@ async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): 
   }
 }
 
-/** Production (P7-04) : politiques de contrôle par défaut et motifs de rendement absents. */
+/**
+ * Production (P7-04) et ventes (P4-02) : politiques de contrôle par défaut et motifs de rendement
+ * absents.
+ */
 async function seedProductionReferences(
   conn: mysql.Connection,
   systemUserId: Buffer,
 ): Promise<void> {
   let policies = 0;
-  for (const policy of CONTROL_POLICIES) {
+  const allPolicies = [...CONTROL_POLICIES, ...SALES_CONTROL_POLICIES];
+  for (const policy of allPolicies) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(
       'SELECT id FROM approvals_control_policies WHERE code = ?',
       [policy.code],
@@ -280,9 +285,7 @@ async function seedProductionReferences(
     );
     policies++;
   }
-  console.log(
-    `  + approvals_control_policies (${policies} nouvelle(s) sur ${CONTROL_POLICIES.length})`,
-  );
+  console.log(`  + approvals_control_policies (${policies} nouvelle(s) sur ${allPolicies.length})`);
   let reasons = 0;
   for (const reason of PRODUCTION_REASON_CODES) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(

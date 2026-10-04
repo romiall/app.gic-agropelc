@@ -9,7 +9,7 @@
 export interface SystemSettingSeed {
   readonly key: string;
   /** Seuil numérique, code d'option, ou liste de codes (ex. rôles commerciaux, P3-04). */
-  readonly value: number | string | readonly string[] | Readonly<Record<string, unknown>>;
+  readonly value: number | string | boolean | readonly string[] | Readonly<Record<string, unknown>>;
   readonly isClientVisible: boolean;
   /** Référence documentaire (AV/BR) pour la traçabilité de la valeur par défaut. */
   readonly ref: string;
@@ -111,6 +111,24 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'sales.direct_cancel_minutes', value: 15, isClientVisible: true, ref: 'AV-030' },
   { key: 'sales.default_payment_terms_days', value: 30, isClientVisible: false, ref: 'AV-028' },
+  // AV-056 (P4-02) : fenêtre de détection d'un doublon d'encaissement sans référence (même
+  // client, même montant) — visible de l'appareil, qui contrôle aussi localement.
+  {
+    key: 'sales.duplicate_payment_window_minutes',
+    value: 10,
+    isClientVisible: true,
+    ref: 'AV-056',
+  },
+  // AV-025 (P4-02) : une vente hors ligne peut-elle dépasser l'allocation d'appareil ? Non par
+  // défaut (réglable par site) ; lu par l'appareil hors ligne.
+  {
+    key: 'sales.offline_over_allocation_allowed',
+    value: false,
+    isClientVisible: true,
+    ref: 'AV-025',
+  },
+  // AV-132 (P4-02) : jours au-delà desquels une vente confirmée non livrée est signalée (alerte P9).
+  { key: 'sales.undelivered_alert_days', value: 7, isClientVisible: false, ref: 'AV-132' },
   { key: 'pricing.stale_rules_hours', value: 24, isClientVisible: false, ref: 'AV-063' },
   { key: 'finance.cash_holding_max_xaf', value: 200_000, isClientVisible: false, ref: 'D09 §14' },
   {

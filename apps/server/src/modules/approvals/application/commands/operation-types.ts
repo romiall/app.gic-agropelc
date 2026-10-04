@@ -26,6 +26,10 @@ export const OPERATION_TYPES = [
   'RECEIPT_CANCELLATION',
   // P7-02 : écart d'inventaire portant sur des animaux, validé par le Resp. production (AV-108).
   'ANIMAL_COUNT_ADJUSTMENT',
+  // P4-02 : annulation d'un encaissement client, et décision de la Finance sur un encaissement
+  // suspect de doublon `SUSPECT_DUPLICATE` (AV-056).
+  'PAYMENT_CANCELLATION',
+  'PAYMENT_DUPLICATE',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

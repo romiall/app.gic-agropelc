@@ -9,7 +9,7 @@
 | [STD-ID] | | | | |
 | `code` | code | Non | — | Lignée de la politique |
 | `version` | int | Non | 1 | |
-| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 |
+| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
 | `condition` | json | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
 | `requires_photo` | boolean | Non | false | |
 | `requires_comment` | boolean | Non | false | |
@@ -22,10 +22,19 @@
 | `created_at`, `created_by` | | | | |
 
 - **PK** `id`. **UQ** `(code, version)`.
-- **CK** `requires_approval` ⇒ `approver_permission` non nul.
+- **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois en P4-02 pour `PAYMENT_CANCELLATION` et `PAYMENT_DUPLICATE`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
 - **Suppr.** `VERSIONNEMENT` (INV : la version en vigueur à `occurred_at` est figée sur l'opération, BR-ADM-016).
 - **Audit** Chaque version. **Offline** DL (politiques actives, pour l'évaluation indicative sur l'appareil).
 - Le schéma de `condition` est validé par l'application (JSON Schema versionné) ; il n'est **jamais** interrogé comme donnée métier.
+- **Politiques par défaut des ventes** (P4-02, seed `db/seeds/sales-references.ts`). Le seed n'insère que les codes absents et ne réécrit jamais une politique modifiée depuis (versionnement, BR-ADM-016). Sans politique, l'opération est refusée (`CONTROL_POLICY_MISSING`). Toutes ont `condition = {}`, `requires_photo = false`, `requires_approval = true` et `approver_scope = ALL` : chaque opération de ces types est soumise à validation, les seuils éventuels se règlent ensuite dans la politique (DÉDUIT).
+
+  | Code | `operation_type` | Permission d'approbation | Réf. |
+  |---|---|---|---|
+  | `PRICE_OVERRIDE_DEFAULT` | `PRICE_OVERRIDE` | `sales.price_override.approve` | AV-026, BR-VEN-015 |
+  | `SALE_CANCELLATION_DEFAULT` | `SALE_CANCELLATION` | `sales.sale_cancel.approve` | AV-030, BR-VEN-028 |
+  | `CREDIT_LIMIT_EXCEEDED_DEFAULT` | `CREDIT_LIMIT_EXCEEDED` | `sales.credit_limit_exceed.approve` | AV-028, BR-VEN-025 |
+  | `PAYMENT_CANCELLATION_DEFAULT` | `PAYMENT_CANCELLATION` | `sales.payment.cancel` | AV-056, SM-CUSTOMER-PAYMENT |
+  | `PAYMENT_DUPLICATE_DEFAULT` | `PAYMENT_DUPLICATE` | `sales.payment.cancel` | AV-056, BR-FIN-005 |
 
 ## approvals.approval_requests
 
@@ -34,7 +43,7 @@
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
-| `operation_type` | enum (comme ci-dessus) | Non | — | |
+| `operation_type` | varchar(30) (mêmes valeurs que `control_policies.operation_type`) | Non | — | **Sans `CHECK` en base** (voir ci-dessous) |
 | `subject_type` | code | Non | — | Type de document (polymorphe) |
 | `subject_id` | uuid | Non | — | |
 | `subject_summary` | text | Non | — | Résumé affiché (« Perte 40 sacs d'aliment, 600 000 XAF ») |
@@ -56,6 +65,7 @@
 
 - **PK** `id`. **UQ** une demande `PENDING` par (`subject_type`, `subject_id`, `operation_type`).
 - **CK** `decided_*` renseignés si et seulement si `APPROVED` ou `REJECTED` ; `decided_by <> requested_by` sauf `self_approved` (INV-ADM-02).
+- **`operation_type` sans `CHECK`** : contrairement à `control_policies`, la colonne est un `VARCHAR(30)` libre en base ; aucun `CHECK` n'en limite les valeurs (migration `20260924100500_create_approvals.sql`). Ajouter un type d'opération (ex. `PAYMENT_CANCELLATION`, `PAYMENT_DUPLICATE` en P4-02) ne demande donc une migration que sur `control_policies`. Le catalogue fermé n'est tenu que côté application (`OPERATION_TYPES` et type `OperationType`, module `approvals`), sans garde-fou en base sur cette table.
 - **IX** `(status, site_id)`, `(status, operation_type)`, `(requested_by)`.
 - **Suppr.** `IMMUABLE` après décision. **Audit** Création, décision. **Offline** DL (celles de l'utilisateur, en lecture seule).
 

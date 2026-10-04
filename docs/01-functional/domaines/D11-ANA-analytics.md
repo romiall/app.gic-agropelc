@@ -98,8 +98,8 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-PRD-09 | Coût par tête | BR-PRD-012 | `f_costs` | C (CM §33) |
 | KPI-PRD-10 | Marge du lot | BR-PRD-014 | `f_costs`, `f_sales_line` | C (CM §33) |
 | KPI-FIN-01 | Encaissé | Σ encaissements confirmés dans P − annulations dans P | `f_payments` | C (CM §31) |
-| KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | `sales.v_receivables` | C (CM §31) |
-| KPI-FIN-03 | Créances en retard | Créances dont l'échéance est dépassée | `sales.v_receivables` | C (CM §54) |
+| KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | requête sur `sales.sales` (`balance_due_xaf`, `due_date`) | C (CM §31) |
+| KPI-FIN-03 | Créances en retard | Créances dont l'échéance est dépassée | requête sur `sales.sales` (`balance_due_xaf`, `due_date`) | C (CM §54) |
 | KPI-FIN-04 | Dépenses | Σ dépenses approuvées ou payées dans P, par catégorie et objet de coût | `f_expenses` | C (CM §31) |
 | KPI-FIN-05 | Dettes fournisseurs | BR-FIN-032 | `finance.v_payables` | C (CM §31) |
 | KPI-FIN-06 | Trésorerie | Solde par compte de trésorerie | `f_cash` | C (CM §31) |

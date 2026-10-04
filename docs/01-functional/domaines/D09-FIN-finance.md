@@ -42,7 +42,7 @@ Tout cela doit rester **cohérent avec le stock** (CM §32).
 | Facture fournisseur et lignes | `finance.supplier_invoices`, `finance.supplier_invoice_lines` | Dette fournisseur |
 | Paiement fournisseur et affectations | `finance.supplier_payments`, `finance.supplier_payment_allocations` | Règlement des dettes |
 | Écriture de coût | `inventory.cost_entries` | Registre de coûts par objet de coût |
-| Créances, dettes (vues) | `sales.v_receivables`, `finance.v_payables` | Calculées, jamais saisies |
+| Créances, dettes | requête sur `sales.sales` (créances, P4-09), vue `finance.v_payables` | Calculées, jamais saisies |
 
 ## 4. Cas d'usage
 
@@ -79,12 +79,12 @@ Soldes de trésorerie par compte et par responsable, créances par client, par c
 |---|---|---|
 | BR-FIN-001 | Un encaissement porte : montant > 0 (XAF entiers), moyen de paiement, `occurred_at`, utilisateur qui reçoit, compte de trésorerie crédité, référence externe (obligatoire pour le mobile money et le virement), client (obligatoire hors vente anonyme). | C (CM §31) / D |
 | BR-FIN-002 | Le compte crédité est déduit du contexte : caisse du PDV (espèces au PDV), caisse de l'utilisateur (espèces reçues par un commercial terrain), compte mobile money de l'entreprise, compte bancaire. | D |
-| BR-FIN-003 | Σ affectations actives d'un encaissement ≤ son montant ; Σ affectations actives sur une vente ≤ son total. La part non affectée d'un encaissement est un **crédit client** disponible. | D |
+| BR-FIN-003 | Σ affectations actives d'un encaissement ≤ son montant ; Σ affectations actives sur une vente ≤ son net (total − annulé). La part non affectée d'un encaissement est un **crédit client** disponible. | D |
 | BR-FIN-004 | Un règlement saisi sans vente précise s'affecte automatiquement aux ventes impayées du client, de la plus ancienne échéance à la plus récente, sauf choix explicite. | D |
 | BR-FIN-005 | Le couple (moyen de paiement, référence externe) est unique. Un doublon reçu est mis en `SUSPECT_DUPLICATE`, **sans** mouvement de trésorerie ni affectation, jusqu'à la décision de la Finance. | D (PM §30 « paiement en double ») / AV-056 |
 | BR-FIN-006 | Un encaissement n'est jamais supprimé. Son annulation (validation requise) crée le mouvement de trésorerie inverse et désactive ses affectations, ce qui rouvre les créances. | C (CM §41) |
 | BR-FIN-007 | Créance d'une vente = total − Σ affectations actives. Échéance = `due_date` de la vente. Une créance est **en retard** si la date du jour dépasse l'échéance et que le solde est > 0 ; l'alerte `OVERDUE_RECEIVABLE` est levée chaque jour à 07:00. | C (CM §13, §54) / AV-028 |
-| BR-FIN-008 | Un acompte est un encaissement affecté à une commande. À la livraison, son affectation est transférée vers la vente créée : affectation commande désactivée, affectation vente créée. | AV-033 |
+| BR-FIN-008 | Un acompte est un encaissement affecté à une commande. À la confirmation de la commande (la vente naît à la confirmation, ADR-025, ADR-028 §8), son affectation est transférée vers la vente créée : affectation commande renversée (`ORDER_CONFIRMED`), affectation vente créée ; une commande annulée ou clôturée sans vente libère l'acompte (`ORDER_CANCELLED`, `ORDER_CLOSED`). | AV-033 (défaut) |
 
 ### 7.2 Trésorerie
 

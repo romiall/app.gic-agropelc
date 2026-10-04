@@ -487,6 +487,57 @@ export interface FieldworkWorkSessions {
   version: Generated<number>;
 }
 
+export interface FinanceCashAccounts {
+  account_type: string;
+  active_pos_site: Buffer | null;
+  active_user_holder: Buffer | null;
+  balance_xaf: Generated<number>;
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  external_ref: string | null;
+  holder_user_id: Buffer | null;
+  id: Buffer;
+  name: string;
+  responsible_user_id: Buffer;
+  site_id: Buffer | null;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface FinanceCashMovements {
+  amount_xaf: number;
+  business_date: Date | null;
+  captured_offline: Generated<number>;
+  cash_account_id: Buffer;
+  cash_session_id: Buffer | null;
+  command_id: Buffer | null;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  direction: string;
+  id: Buffer;
+  is_reversal: Generated<number>;
+  movement_type: string;
+  occurred_at: Date;
+  recorded_at: Generated<Date>;
+  reverses_movement_id: Buffer | null;
+  source_doc_id: Buffer;
+  source_doc_type: string;
+}
+
+export interface FinancePaymentMethods {
+  code: string;
+  created_at: Generated<Date>;
+  default_account_type: string;
+  is_active: Generated<number>;
+  label: string;
+  requires_reference: Generated<number>;
+  updated_at: Generated<Date>;
+  version: Generated<number>;
+}
+
 export interface IdentityAuthSessions {
   created_at: Generated<Date>;
   device_id: Buffer;
@@ -880,6 +931,8 @@ export interface InventoryStockMoves {
   lot_id: Buffer | null;
   move_type: string;
   occurred_at: Date;
+  origin_move_id: Buffer | null;
+  origin_seq: number | null;
   product_id: Buffer;
   quantity: Decimal;
   reason_code_id: Buffer | null;
@@ -960,6 +1013,7 @@ export interface InventoryStockTransfers {
 
 export interface OrganizationLocations {
   active_mobile_custodian: Buffer | null;
+  active_to_deliver_site: Buffer | null;
   active_virtual_type: string | null;
   capacity: number | null;
   code: string;
@@ -1647,6 +1701,281 @@ export interface ProductionSlaughterOutputs {
   weight_g: number;
 }
 
+export interface SalesCustomerPayments {
+  amount_xaf: number;
+  backdated_reason: string | null;
+  business_date: Date | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  cash_account_id: Buffer;
+  cash_movement_id: Buffer | null;
+  cash_session_id: Buffer | null;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  customer_id: Buffer | null;
+  doc_number: string;
+  duplicate_of_payment_id: Buffer | null;
+  external_reference: string | null;
+  id: Buffer;
+  intended_order_id: Buffer | null;
+  intended_sale_id: Buffer | null;
+  local_ref: string | null;
+  occurred_at: Date;
+  payment_method_code: string;
+  received_at_server: Date | null;
+  received_by_user_id: Buffer;
+  reference_key: string | null;
+  reference_normalized: string | null;
+  refunded_xaf: Generated<number>;
+  site_id: Buffer;
+  status: string;
+  unallocated_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface SalesDeliveryNoteLines {
+  created_at: Generated<Date>;
+  delivery_note_id: Buffer;
+  id: Buffer;
+  order_line_id: Buffer;
+  quantity_base: Decimal;
+  sale_line_id: Buffer;
+}
+
+export interface SalesDeliveryNotes {
+  backdated_reason: string | null;
+  business_date: Date | null;
+  captured_offline: Generated<number>;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  delivered_by_user_id: Buffer;
+  doc_number: string;
+  id: Buffer;
+  local_ref: string | null;
+  notes: string | null;
+  occurred_at: Date;
+  order_id: Buffer;
+  proof_attachment_id: Buffer | null;
+  received_at_server: Date | null;
+  recipient_name: string | null;
+  site_id: Buffer;
+}
+
+export interface SalesPaymentAllocations {
+  allocated_at: Date;
+  amount_xaf: number;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  order_id: Buffer | null;
+  payment_id: Buffer;
+  reversal_cause: string | null;
+  reversed_at: Date | null;
+  sale_id: Buffer | null;
+  status: Generated<string>;
+}
+
+export interface SalesSaleCancellationLines {
+  amount_xaf: number;
+  cancellation_id: Buffer;
+  created_at: Generated<Date>;
+  id: Buffer;
+  quantity_base: Decimal;
+  sale_line_id: Buffer;
+}
+
+export interface SalesSaleCancellations {
+  applied_at: Date | null;
+  applied_business_date: Date | null;
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  cancelled_total_xaf: number;
+  captured_offline: Generated<number>;
+  cause: string;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  comment: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  doc_number: string;
+  id: Buffer;
+  local_ref: string | null;
+  occurred_at: Date;
+  order_id: Buffer | null;
+  reason_code_id: Buffer | null;
+  received_at_server: Date | null;
+  released_payment_treatment: string | null;
+  requested_by: Buffer;
+  sale_id: Buffer;
+  site_id: Buffer;
+  status: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface SalesSaleLines {
+  allocation_id: Buffer | null;
+  cancelled_quantity_base: Generated<Decimal>;
+  cancelled_xaf: Generated<number>;
+  client_lot_hint: Buffer | null;
+  cost_xaf: number | null;
+  created_at: Generated<Date>;
+  delivered_quantity_base: Generated<Decimal>;
+  discount_xaf: Generated<number>;
+  id: Buffer;
+  line_no: number;
+  line_total_xaf: number;
+  list_unit_price_xaf: number | null;
+  order_line_id: Buffer | null;
+  override_approval_request_id: Buffer | null;
+  override_reason_code_id: Buffer | null;
+  price_rule_id: Buffer | null;
+  price_rule_version: number | null;
+  price_source: string;
+  price_specificity: number | null;
+  pricing_quantity: Decimal;
+  pricing_unit_code: string;
+  product_id: Buffer;
+  product_name_snapshot: string;
+  quantity: Decimal;
+  quantity_base: Decimal;
+  sale_id: Buffer;
+  tax_rate: Generated<Decimal>;
+  unit_code: string;
+  unit_cost_xaf: number | null;
+  unit_price_xaf: number;
+}
+
+export interface SalesSales {
+  accuracy_m: Decimal | null;
+  amount_paid_xaf: Generated<number>;
+  backdated_reason: string | null;
+  balance_due_xaf: number | null;
+  business_date: Date | null;
+  cancelled_xaf: Generated<number>;
+  captured_offline: Generated<number>;
+  cash_session_id: Buffer | null;
+  channel_code: string;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  commercial_user_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  customer_category_id_snapshot: Buffer | null;
+  customer_id: Buffer | null;
+  discount_total_xaf: Generated<number>;
+  doc_number: string;
+  due_date: Date | null;
+  flags: Generated<Json>;
+  from_location_id: Buffer;
+  id: Buffer;
+  lat: Decimal | null;
+  lng: Decimal | null;
+  local_ref: string | null;
+  net_total_xaf: number | null;
+  occurred_at: Date;
+  order_id: Buffer | null;
+  payment_status: string | null;
+  received_at_server: Date | null;
+  sale_type: string;
+  seller_user_id: Buffer;
+  site_id: Buffer;
+  status: Generated<string>;
+  subtotal_xaf: number;
+  tax_total_xaf: Generated<number>;
+  to_deliver_location_id: Buffer | null;
+  total_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+  work_session_id: Buffer | null;
+  zone_id: Buffer;
+}
+
+export interface SalesSalesOrderLines {
+  created_at: Generated<Date>;
+  delivered_quantity_base: Generated<Decimal>;
+  id: Buffer;
+  line_no: number;
+  line_total_xaf: number;
+  list_unit_price_xaf: number | null;
+  order_id: Buffer;
+  override_approval_request_id: Buffer | null;
+  override_reason_code_id: Buffer | null;
+  price_rule_id: Buffer | null;
+  price_rule_version: number | null;
+  price_source: Generated<string>;
+  product_id: Buffer;
+  product_name_snapshot: string;
+  quantity: Decimal;
+  quantity_base: Decimal;
+  quoted_unit_price_xaf: number;
+  sold_quantity_base: Generated<Decimal>;
+  unit_code: string;
+  updated_at: Generated<Date>;
+  withdrawn_quantity_base: Generated<Decimal>;
+}
+
+export interface SalesSalesOrders {
+  advance_paid_xaf: Generated<number>;
+  backdated_reason: string | null;
+  cancel_approval_request_id: Buffer | null;
+  cancel_comment: string | null;
+  cancel_reason_code_id: Buffer | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  channel_code: string;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  closed_at: Date | null;
+  closed_by: Buffer | null;
+  closed_reason: string | null;
+  command_id: Buffer | null;
+  commercial_user_id: Buffer;
+  confirmed_at: Date | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  customer_id: Buffer;
+  delivery_address: string | null;
+  doc_number: string;
+  external_origin: Generated<string>;
+  fulfilment_location_id: Buffer;
+  id: Buffer;
+  local_ref: string | null;
+  occurred_at: Date;
+  received_at_server: Date | null;
+  released_payment_treatment: string | null;
+  requested_delivery_date: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  total_estimated_xaf: Generated<number>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface SchemaMigrations {
   version: string;
 }
@@ -1750,6 +2079,9 @@ export interface DB {
   crm_visits: CrmVisits;
   fieldwork_geo_checkins: FieldworkGeoCheckins;
   fieldwork_work_sessions: FieldworkWorkSessions;
+  finance_cash_accounts: FinanceCashAccounts;
+  finance_cash_movements: FinanceCashMovements;
+  finance_payment_methods: FinancePaymentMethods;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
@@ -1808,6 +2140,16 @@ export interface DB {
   production_production_lots: ProductionProductionLots;
   production_slaughter_batches: ProductionSlaughterBatches;
   production_slaughter_outputs: ProductionSlaughterOutputs;
+  sales_customer_payments: SalesCustomerPayments;
+  sales_delivery_note_lines: SalesDeliveryNoteLines;
+  sales_delivery_notes: SalesDeliveryNotes;
+  sales_payment_allocations: SalesPaymentAllocations;
+  sales_sale_cancellation_lines: SalesSaleCancellationLines;
+  sales_sale_cancellations: SalesSaleCancellations;
+  sales_sale_lines: SalesSaleLines;
+  sales_sales: SalesSales;
+  sales_sales_order_lines: SalesSalesOrderLines;
+  sales_sales_orders: SalesSalesOrders;
   schema_migrations: SchemaMigrations;
   sync_change_feed: SyncChangeFeed;
   sync_command_inbox: SyncCommandInbox;

@@ -48,7 +48,7 @@ créance(client) = Σ créances de ses ventes CONFIRMED − crédit client non a
 dette(facture) = montant − Σ affectations de paiements fournisseurs
 ```
 
-Les deux sont des **vues** (`sales.v_receivables`, `finance.v_payables`). Elles ne sont jamais stockées comme soldes saisis.
+Les dettes sont une **vue** (`finance.v_payables`) ; les créances sont une **requête** sur `sales.sales` (`balance_due_xaf`, `due_date`), sans vue SQL (P4-02 2/2). Elles ne sont jamais stockées comme soldes saisis.
 
 ## 5. Trésorerie
 

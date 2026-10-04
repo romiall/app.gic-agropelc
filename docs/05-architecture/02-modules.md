@@ -186,7 +186,7 @@
 | Rubrique | Contenu |
 |---|---|
 | Responsabilité | Commandes, ventes, encaissements clients, affectations, créances |
-| Tables | `sales_orders`, `sales_order_lines`, `sales`, `sale_lines`, `customer_payments`, `payment_allocations` (+ vue `v_receivables`) |
+| Tables | `sales_orders`, `sales_order_lines`, `sales`, `sale_lines`, `sale_cancellations`, `sale_cancellation_lines`, `delivery_notes`, `delivery_note_lines`, `customer_payments`, `payment_allocations` (créances en requête, sans vue) |
 | API | §4.5 ; interne : `sales.receivables(customer)` |
 | Événements | `Order*`, `Sale*`, `PriceOverrideApplied`, `PriceMismatchDetected`, `CreditLimitExceeded`, `Payment*`, `ReceivableOverdue` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `crm`, `fieldwork`, `pricing`, `inventory`, `finance` |

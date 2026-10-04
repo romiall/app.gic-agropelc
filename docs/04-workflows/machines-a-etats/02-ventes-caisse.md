@@ -93,7 +93,7 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> RECORDED : référence unique
   [*] --> SUSPECT_DUPLICATE : référence déjà connue
-  SUSPECT_DUPLICATE --> RECORDED : validation (référence corrigée)
+  SUSPECT_DUPLICATE --> RECORDED : validation (référence corrigée, AV-135)
   SUSPECT_DUPLICATE --> REJECTED : doublon confirmé
   RECORDED --> CANCELLATION_REQUESTED : demande d'annulation
   CANCELLATION_REQUESTED --> CANCELLED : validation
@@ -104,7 +104,7 @@ stateDiagram-v2
 |---|---|---|---|---|---|---|---|
 | `[*]` | `sales.payment.record` (ou inclus dans la vente) | BR-FIN-001 ; (moyen, référence) unique | `RECORDED` | `PaymentReceived`, `PaymentAllocated` | — | Mouvement de trésorerie `IN` ; affectations (vente, commande, ou automatiques BR-FIN-004) ; créances recalculées | `sales.payment.record` |
 | `[*]` | idem | Référence déjà connue (BR-FIN-005) | `SUSPECT_DUPLICATE` | `PaymentFlaggedDuplicate` ; demande de validation | — | **Aucun** mouvement ni affectation | `sales.payment.record` |
-| `SUSPECT_DUPLICATE` | `approvals.request.approve` | Référence corrigée fournie | `RECORDED` | Tracé | — | Mouvement de trésorerie et affectations appliqués | `sales.payment.cancel` (FINANCE) |
+| `SUSPECT_DUPLICATE` | `approvals.request.approve` | Référence corrigée fournie (AV-135 : seule exception à la référence figée) | `RECORDED` | Tracé | — | Mouvement de trésorerie et affectations appliqués | `sales.payment.cancel` (FINANCE) |
 | `SUSPECT_DUPLICATE` | `approvals.request.reject` | — | `REJECTED` | Tracé | — | Aucun | `sales.payment.cancel` |
 | `RECORDED` | `sales.payment.request_cancellation` | Motif | `CANCELLATION_REQUESTED` | Demande `PAYMENT_CANCELLATION` | — | — | `sales.payment.record` |
 | `CANCELLATION_REQUESTED` | `approvals.request.approve` | — | `CANCELLED` | `PaymentCancelled` | — | Mouvement de trésorerie inverse ; affectations désactivées ; créances rouvertes | `sales.payment.cancel` |

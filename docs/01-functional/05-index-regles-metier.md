@@ -20,7 +20,7 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-007 | Chaque appareil reçoit un code court unique (4 caractères alphanumériques), utilisé dans les références locales des documents. | D (ADR-002) |
 | BR-ADM-008 | Un site a un type parmi `FERME`, `MAGASIN`, `POINT_DE_VENTE`, `BUREAU`. Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations ; s… | C (CM §12, §22) / D |
 | BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) |
-| BR-ADM-010 | Les emplacements virtuels (`V_*`) sont créés par le système au démarrage, uniques par type, et ne peuvent être ni modifiés ni désactivés. | D (ADR-003) |
+| BR-ADM-010 | Les emplacements virtuels (`V_*`) sont créés par le système, uniques par type, et ne peuvent être ni modifiés ni désactivés. Les neuf types… | D (ADR-003 ; ADR-028 §1) |
 | BR-ADM-011 | Un emplacement ne peut être désactivé que si tous ses soldes sont nuls et qu'aucun transfert, réservation ou allocation n'y est en cours. | D (INV-STK-07) |
 | BR-ADM-012 | Les zones forment un arbre sans cycle. Un géorepère est optionnel : point de référence + rayon, 500 m par défaut. | C (CM §10) / AV-003 |
 | BR-ADM-013 | Modifier un géorepère n'affecte que les pointages futurs ; chaque tentative de pointage fige le géorepère utilisé. | C (PM §7) |
@@ -277,12 +277,12 @@ Fichier : [`domaines/D09-FIN-finance.md`](domaines/D09-FIN-finance.md)
 |---|---|---|
 | BR-FIN-001 | Un encaissement porte : montant > 0 (XAF entiers), moyen de paiement, `occurred_at`, utilisateur qui reçoit, compte de trésorerie crédité,… | C (CM §31) / D |
 | BR-FIN-002 | Le compte crédité est déduit du contexte : caisse du PDV (espèces au PDV), caisse de l'utilisateur (espèces reçues par un commercial terrai… | D |
-| BR-FIN-003 | Σ affectations actives d'un encaissement ≤ son montant ; Σ affectations actives sur une vente ≤ son total. La part non affectée d'un encais… | D |
+| BR-FIN-003 | Σ affectations actives d'un encaissement ≤ son montant ; Σ affectations actives sur une vente ≤ son net (total − annulé). La part non affec… | D |
 | BR-FIN-004 | Un règlement saisi sans vente précise s'affecte automatiquement aux ventes impayées du client, de la plus ancienne échéance à la plus récen… | D |
 | BR-FIN-005 | Le couple (moyen de paiement, référence externe) est unique. Un doublon reçu est mis en `SUSPECT_DUPLICATE`, sans mouvement de trésorerie n… | D (PM §30 « paiement en double ») / AV-056 |
 | BR-FIN-006 | Un encaissement n'est jamais supprimé. Son annulation (validation requise) crée le mouvement de trésorerie inverse et désactive ses affecta… | C (CM §41) |
 | BR-FIN-007 | Créance d'une vente = total − Σ affectations actives. Échéance = `due_date` de la vente. Une créance est en retard si la date du jour dépas… | C (CM §13, §54) / AV-028 |
-| BR-FIN-008 | Un acompte est un encaissement affecté à une commande. À la livraison, son affectation est transférée vers la vente créée : affectation com… | AV-033 |
+| BR-FIN-008 | Un acompte est un encaissement affecté à une commande. À la confirmation de la commande (la vente naît à la confirmation, ADR-025, ADR-028… | AV-033 (défaut) |
 | BR-FIN-010 | Types de compte de trésorerie : `CAISSE_PDV`, `CAISSE_UTILISATEUR`, `CAISSE_CENTRALE`, `MOBILE_MONEY`, `BANQUE`. Chaque compte a un respons… | C (CM §12, §31) / D |
 | BR-FIN-011 | Tout flux d'argent est un mouvement de trésorerie en ajout seul : compte, sens (`IN` / `OUT`), montant > 0, type (`CUSTOMER_PAYMENT`, `REFU… | D (CM §31, §41) |
 | BR-FIN-012 | En ligne, une sortie ne peut rendre négatif le solde d'une caisse physique (`CAISSE_*`). Hors ligne, elle est appliquée et produit l'anomal… | D |

@@ -26,7 +26,7 @@
 
 | ID | Invariant | Problème empêché | Application | Tests |
 |---|---|---|---|---|
-| INV-SYN-01 | Un `command_id` est appliqué **au plus une fois**. Toute ligne créée par une commande porte ce `command_id`, unique sur la table du document créé. | Vente ou paiement synchronisés deux fois (PM §28) | DB (`command_inbox.command_id` PK ; `UNIQUE (command_id)` sur les documents racines) | S, P |
+| INV-SYN-01 | Un `command_id` est appliqué **au plus une fois**. Toute ligne créée par une commande porte ce `command_id`, unique sur la table du document créé, sauf les documents qu'une même commande crée en plusieurs exemplaires : `sales_sale_cancellations` (un par vente, `UNIQUE (command_id, sale_id)`), `sales_customer_payments` et `sales_payment_allocations` (index simple ; un encaissement par moyen de paiement, BR-VEN-023). | Vente ou paiement synchronisés deux fois (PM §28) | DB (`command_inbox.command_id` PK ; `UNIQUE (command_id)` sur les documents racines à un exemplaire par commande) | S, P |
 | INV-SYN-02 | Un même `command_id` porte toujours la même empreinte de contenu. | Rejeu altéré ou falsifié | TX | S |
 | INV-SYN-03 | (`device_id`, `device_seq`) est unique. | Rejeu déguisé ; perte de détection de trous | DB (`UNIQUE`) | S |
 | INV-SYN-04 | Les commandes d'un même appareil sont appliquées dans l'ordre croissant de `device_seq`. | Effets dans le désordre (livraison avant commande) | TX (verrou par appareil) | S |
@@ -40,7 +40,7 @@
 | INV-STK-01 | Pour tout (emplacement, produit, lot) : `stock_balances.qty_on_hand` = Σ quantités entrantes − Σ quantités sortantes de `stock_moves`. | Stock modifié sans mouvement (CM §21) | TX (mise à jour atomique) + JOB (réconciliation quotidienne, alerte `LEDGER_MISMATCH`) | P, I |
 | INV-STK-02 | Chaque mouvement a une quantité > 0, une source ≠ destination, et un couple (source, destination) conforme à son type (BR-STK-006). | Mouvements absurdes ou sans cause (PM §28 « un mouvement doit avoir une cause ») | DB (`CHECK`) + TX | U, I |
 | INV-STK-03 | **Conservation** : pour tout produit, Σ soldes sur tous les emplacements (physiques et virtuels, les virtuels sources étant négatifs) = 0. | Création ou disparition de quantités | CODE (partie double) + JOB | P |
-| INV-STK-04 | Un mouvement est immuable. Il ne peut être inversé qu'une seule fois, par un mouvement portant `reverses_move_id` (unique). Un inverse porte le même produit, le même lot, la même quantité et le même coût unitaire. | Double correction ; réécriture | DB (`UNIQUE (reverses_move_id)`, déclencheur d'immuabilité) | I, P |
+| INV-STK-04 | Un mouvement est immuable. Il ne peut être inversé qu'une seule fois, par un mouvement portant `reverses_move_id` (unique). Un inverse porte le même produit, le même lot, la même quantité et le même coût unitaire. Un mouvement `SALE`, `DELIVERY` ou `CUSTOMER_RETURN` ne s'inverse jamais : une vente se contre-passe, en tout ou partie, par des mouvements rattachés à elle (INV-STK-17, ADR-029). | Double correction ; réécriture | DB (`UNIQUE (reverses_move_id)`, déclencheur d'immuabilité) | I, P |
 | INV-STK-05 | Une opération hors ligne attestant un fait physique n'est jamais rejetée pour stock insuffisant. Si elle rend un solde physique négatif, un conflit `STOCK_NEGATIVE` **ouvert** existe pour ce couple (emplacement, produit) tant que le solde reste négatif. | Vente réelle perdue ; négatif ignoré (C-08) | TX + JOB | S |
 | INV-STK-06 | Une opération **en ligne** ne rend jamais négatif le disponible d'un emplacement physique. | Survente en ligne (PM §6) | TX (verrou sur la ligne de solde) | I, S |
 | INV-STK-07 | Un emplacement `INACTIVE` n'a, au moment de sa désactivation, aucun solde non nul, aucune allocation ou réservation active, aucun transfert ouvert. | Stock « orphelin » | TX | I |
@@ -52,7 +52,7 @@
 | INV-STK-13 | Un produit à suivi par lot `REQUIRED` n'a aucun mouvement sans lot. | Perte de traçabilité de lot | TX | I |
 | INV-STK-14 | Le solde de `V_PENDING_LOSS` imputable à une déclaration de perte est > 0 seulement si la déclaration est `PENDING_APPROVAL`. Il est nul après toute décision. | Pertes bloquées indéfiniment | TX + JOB | I |
 | INV-STK-15 | Tout mouvement d'un produit valorisé porte un `unit_cost_xaf` non nul et ≥ 0, déterminé par le serveur. | Pertes et marges non valorisables (CM §32) | DB (`CHECK`) + TX | I |
-| INV-STK-16 | Pour une vente annulée, Σ net des mouvements `SALE` et de leurs inverses = 0 par ligne. | Annulation qui ne corrige pas le stock (PM §28) | TX | I, S |
+| INV-STK-16 | Pour chaque ligne de vente non `SERVICE`, Σ quantités des mouvements `SALE` − Σ quantités des mouvements `CUSTOMER_RETURN` rattachés (`origin_move_id`) = quantité nette vendue (quantité de la ligne − Σ des lignes d'annulation appliquées) ; la même égalité vaut en valeur. Une ligne entièrement annulée a un net nul en quantité et en valeur. | Annulation qui ne corrige pas le stock (PM §28) | TX | I, S |
 | INV-STK-17 | Un mouvement `CUSTOMER_RETURN` ou `DELIVERY` consomme une part d'un mouvement `SALE` d'origine (`origin_move_id`, `origin_seq` 1, 2, 3 sans trou) : même produit et même lot, départ = arrivée de l'origine, jamais un inverse. Pour une origine, Σ quantités rattachées ≤ quantité de l'origine, Σ valeurs ≤ valeur de l'origine, et quand la quantité est soldée Σ valeurs = valeur de l'origine exactement (ADR-029, BR-STK-056). | Sur-annulation ; livrer puis annuler deux fois la même quantité ; dérive d'un franc | DB (déclencheur `trg_inventory_stock_moves_settlement_guard`, `UNIQUE (origin_move_id, origin_seq)`, `CHECK`) + TX | I, P |
 | INV-STK-18 | Le solde de l'emplacement « à livrer » (`V_TO_DELIVER`) d'un site, par produit et lot, est ≥ 0 en quantité et en valeur : Σ (`SALE` vers `V_TO_DELIVER` − mouvements rattachés). Corollaire d'INV-STK-17. | Solde virtuel négatif en silence (aucun contrôle de négatif sur un emplacement virtuel) | JOB (balayage et réconciliation) | I |
 
@@ -61,14 +61,14 @@
 | ID | Invariant | Problème empêché | Application | Tests |
 |---|---|---|---|---|
 | INV-VEN-01 | Une vente synchronisée n'est créée qu'une fois (INV-SYN-01 appliqué à `sales`). | Double vente (PM §28) | DB | S |
-| INV-VEN-02 | Une vente `CONFIRMED` est immuable, à l'exception de `status` (annulation), des champs dérivés de paiement et du numéro officiel. | Réécriture de l'histoire | DB (déclencheur par liste blanche de colonnes) | I |
+| INV-VEN-02 | Une vente `CONFIRMED` est immuable, à l'exception de `status` (annulation), du montant annulé `cancelled_xaf` (jamais décroissant), de `amount_paid_xaf` (dérivé des affectations), de `flags` et du rattachement tardif à une session de caisse. Ses lignes ne changent que par les compteurs d'annulation et de livraison (jamais décroissants) et le coût (renseigné une fois). | Réécriture de l'histoire | DB (déclencheur par liste blanche de colonnes) | I |
 | INV-VEN-03 | Montant de ligne = arrondi(quantité de tarification × prix appliqué) − remise ; total = Σ lignes. | Montants incohérents | TX + DB (`CHECK` sur la ligne) | U, P |
-| INV-VEN-04 | Pour chaque ligne de commande : quantité livrée cumulée ≤ quantité commandée. | Livraison au-delà de l'engagement | TX | I, S |
+| INV-VEN-04 | Pour chaque ligne de commande : 0 ≤ quantité livrée ≤ quantité vendue nette ≤ quantité commandée en vigueur (ADR-028). | Livraison au-delà de l'engagement | TX | I, S |
 | INV-VEN-05 | Chaque ligne de vente conserve prix catalogue, prix appliqué, règle, version et source. Une modification tarifaire ne modifie aucune vente existante. | Réécriture de prix (CM §30, PM §28) | DB (`NOT NULL` + immuabilité) | I |
-| INV-VEN-06 | Σ affectations actives sur une vente ≤ total ; `payment_status` = f(Σ affectations actives, total). | Surpaiement non détecté ; statut faux | TX + JOB | P |
+| INV-VEN-06 | Σ affectations actives sur une vente ≤ total ; `payment_status` = f(Σ affectations actives, net). Précision (P4-02) : Σ affectations actives ≤ net = total − annulé (`ck_sales_sales_paid`). | Surpaiement non détecté ; statut faux | TX + JOB | P |
 | INV-VEN-07 | Une vente sans client est `PAID` à l'enregistrement. | Créance sans débiteur | TX | U |
 | INV-VEN-08 | Pour une vente `CONFIRMED`, par ligne non `SERVICE` : Σ mouvements `SALE` = quantité en unité de base. | Vente sans sortie de stock (CM §13) | TX + JOB | I |
-| INV-VEN-09 | Une vente `CANCELLED` n'a plus d'effet net : mouvements neutralisés (INV-STK-16), aucune affectation active. | Annulation partielle | TX | I |
+| INV-VEN-09 | Une vente `CANCELLED` n'a plus d'effet net : toutes ses lignes annulées (net nul en quantité et en valeur, INV-STK-16), `cancelled_xaf` = total, aucune affectation active. Une vente partiellement annulée reste `CONFIRMED`. | Annulation partielle | TX | I |
 | INV-VEN-10 | L'attribution (vendeur, commercial, canal, zone) est figée à la création et n'est jamais recalculée. | Performances réécrites par une réaffectation (CM §8) | DB (immuabilité) | I |
 
 ## 5. Finance (FIN)
@@ -77,7 +77,7 @@
 |---|---|---|---|---|
 | INV-FIN-01 | Une transaction financière (encaissement, paiement, dépense, mouvement de trésorerie, facture, écriture de coût) ne disparaît jamais : annulation par contre-écriture uniquement. | Disparition d'argent (PM §28) | DB (INV-GLO-03) | I |
 | INV-FIN-02 | Solde d'un compte de trésorerie = Σ `IN` − Σ `OUT` de `cash_movements` ; la projection est exacte. | Caisse modifiée sans trace | TX + JOB | P, I |
-| INV-FIN-03 | (moyen de paiement, référence externe) est unique parmi les encaissements `RECORDED`. | Double paiement (PM §30) | DB (index unique partiel) | I, S |
+| INV-FIN-03 | (moyen de paiement, référence externe) est unique parmi les encaissements `RECORDED`. Précision (P4-02) : l'unicité porte sur les statuts `RECORDED` et `CANCELLATION_REQUESTED`, pas sur `SUSPECT_DUPLICATE`, `REJECTED` ni `CANCELLED`, et sur la référence normalisée (D04 §15). | Double paiement (PM §30) | DB (index unique partiel) | I, S |
 | INV-FIN-04 | Σ affectations actives d'un encaissement ≤ son montant. | Affectation d'argent inexistant | TX | P |
 | INV-FIN-05 | Une session de caisse `VALIDATED` ne change plus, hors mouvements compensatoires rattachés et tracés. | Réécriture d'une caisse validée | DB + TX | I |
 | INV-FIN-06 | Au plus une session `OPEN` par compte de caisse. | Double caisse | DB (index unique partiel) | I |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PoolConnection } from 'mysql2/promise';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { randomId, withRollback } from './helpers.js';
 
 async function insertAdmin(conn: PoolConnection): Promise<Buffer> {
@@ -120,6 +120,55 @@ describe('organization_locations', () => {
           `INSERT INTO organization_locations (id, site_id, code, name, location_type, status, created_by)
            VALUES (?, ?, 'P1', 'Pertes', 'V_LOSS', 'ACTIVE', ?)`,
           [randomId(), siteId, admin],
+        ),
+      ).rejects.toThrow(/ck_organization_locations_virtual_site/);
+    });
+  });
+
+  it('emplacement « à livrer » (ADR-028) : virtuel mais rattaché à un site, un seul actif par site', async () => {
+    await withRollback(async (conn) => {
+      const admin = await insertAdmin(conn);
+      const { siteId } = await insertZoneAndSite(conn, admin);
+      const other = await insertZoneAndSite(conn, admin);
+      // Sans site : refusé (comme tout virtuel mal rattaché, mais dans l'autre sens).
+      await expect(
+        conn.query(
+          `INSERT INTO organization_locations (id, code, name, location_type, status, created_by)
+           VALUES (?, 'TD0', 'À livrer', 'V_TO_DELIVER', 'ACTIVE', ?)`,
+          [randomId(), admin],
+        ),
+      ).rejects.toThrow(/ck_organization_locations_virtual_site/);
+      const id = randomId();
+      await conn.query(
+        `INSERT INTO organization_locations (id, site_id, code, name, location_type, status, created_by)
+         VALUES (?, ?, 'TD1', 'À livrer', 'V_TO_DELIVER', 'ACTIVE', ?)`,
+        [id, siteId, admin],
+      );
+      const [rows] = await conn.query<RowDataPacket[]>(
+        'SELECT is_virtual, active_virtual_type, active_to_deliver_site FROM organization_locations WHERE id = ?',
+        [id],
+      );
+      expect(rows[0]!.is_virtual).toBe(1);
+      expect(rows[0]!.active_virtual_type).toBeNull();
+      // Un second « à livrer » actif sur le même site : refusé ; sur un autre site : accepté.
+      await expect(
+        conn.query(
+          `INSERT INTO organization_locations (id, site_id, code, name, location_type, status, created_by)
+           VALUES (?, ?, 'TD2', 'À livrer bis', 'V_TO_DELIVER', 'ACTIVE', ?)`,
+          [randomId(), siteId, admin],
+        ),
+      ).rejects.toThrow(/uq_organization_locations_active_to_deliver_site/);
+      await conn.query(
+        `INSERT INTO organization_locations (id, site_id, code, name, location_type, status, created_by)
+         VALUES (?, ?, 'TD3', 'À livrer 2', 'V_TO_DELIVER', 'ACTIVE', ?)`,
+        [randomId(), other.siteId, admin],
+      );
+      // Un emplacement physique ne peut pas être « virtuel sans site » : règle inchangée.
+      await expect(
+        conn.query(
+          `INSERT INTO organization_locations (id, code, name, location_type, status, created_by)
+           VALUES (?, 'S0', 'Magasin sans site', 'STORE', 'ACTIVE', ?)`,
+          [randomId(), admin],
         ),
       ).rejects.toThrow(/ck_organization_locations_virtual_site/);
     });

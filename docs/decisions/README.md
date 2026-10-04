@@ -18,7 +18,7 @@
 | [ADR-011](ADR-011-architecture-backend.md) | Architecture backend | ACCEPTÉ | Oui |
 | [ADR-012](ADR-012-pieces-jointes-offline.md) | Pièces jointes offline | ACCEPTÉ | Oui |
 | [ADR-013](ADR-013-monnaie-quantites.md) | Monnaie, montants, quantités | ACCEPTÉ | — |
-| [ADR-014](ADR-014-commande-vente-livraison.md) | Commande, vente, livraison | REMPLACÉ pour la naissance de la vente (par ADR-025) | — |
+| [ADR-014](ADR-014-commande-vente-livraison.md) | Commande, vente, livraison | REMPLACÉ en totalité (par ADR-025 et ADR-028) | — |
 | [ADR-015](ADR-015-valorisation.md) | Valorisation et coûts de production | À VALIDER (AV-042) ; complété par ADR-026 (AV-043) | — |
 | [ADR-016](ADR-016-temps-metier.md) | Temps métier et horloges | ACCEPTÉ | — |
 | [ADR-017](ADR-017-compte-client-unique.md) | Compte client unique | ACCEPTÉ (AV-012) | — |

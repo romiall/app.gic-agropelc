@@ -77,9 +77,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect(ROLE_PERMISSIONS.length).toBe(495);
   });
 
-  it('crée les 9 emplacements virtuels (BR-ADM-010)', async () => {
+  it('crée les 9 emplacements virtuels globaux (BR-ADM-010 ; « à livrer » est par site, ADR-028)', async () => {
     const [[locations]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE',
+      'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL',
     );
     expect((locations as unknown as { c: number }).c).toBe(VIRTUAL_LOCATIONS.length);
     expect(VIRTUAL_LOCATIONS.length).toBe(9);
@@ -189,7 +189,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect((users as unknown as { c: number }).c).toBe(1);
 
     const [[locations]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE',
+      'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL',
     );
     expect((locations as unknown as { c: number }).c).toBe(VIRTUAL_LOCATIONS.length);
   });

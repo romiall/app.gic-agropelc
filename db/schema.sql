@@ -150,7 +150,7 @@ CREATE TABLE `approvals_control_policies` (
   CONSTRAINT `fk_approvals_control_policies_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_approvals_control_policies_permission` FOREIGN KEY (`approver_permission`) REFERENCES `identity_permissions` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `ck_approvals_control_policies_approver_scope` CHECK (((`approver_scope` is null) or (`approver_scope` in (_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'TEAM',_utf8mb4'ALL')))),
-  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT'))),
+  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT',_utf8mb4'PAYMENT_CANCELLATION',_utf8mb4'PAYMENT_DUPLICATE'))),
   CONSTRAINT `ck_approvals_control_policies_requires_approval` CHECK (((`requires_approval` = false) or (`approver_permission` is not null))),
   CONSTRAINT `ck_approvals_control_policies_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -3173,12 +3173,15 @@ CREATE TABLE `inventory_stock_moves` (
   `cost_object_id` binary(16) DEFAULT NULL,
   `is_reversal` tinyint(1) NOT NULL DEFAULT '0',
   `reverses_move_id` binary(16) DEFAULT NULL,
+  `origin_move_id` binary(16) DEFAULT NULL,
+  `origin_seq` int unsigned DEFAULT NULL,
   `created_by` binary(16) NOT NULL,
   `created_device_id` binary(16) DEFAULT NULL,
   `command_id` binary(16) DEFAULT NULL,
   `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_inventory_stock_moves_reverses` (`reverses_move_id`),
+  UNIQUE KEY `uq_inventory_stock_moves_origin_seq` (`origin_move_id`,`origin_seq`),
   KEY `ix_inventory_stock_moves_from` (`from_location_id`,`product_id`,`occurred_at`),
   KEY `ix_inventory_stock_moves_to` (`to_location_id`,`product_id`,`occurred_at`),
   KEY `ix_inventory_stock_moves_source_doc` (`source_doc_type`,`source_doc_id`),
@@ -3195,20 +3198,115 @@ CREATE TABLE `inventory_stock_moves` (
   CONSTRAINT `fk_inventory_stock_moves_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_from` FOREIGN KEY (`from_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_moves_origin` FOREIGN KEY (`origin_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_reason` FOREIGN KEY (`reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_reverses` FOREIGN KEY (`reverses_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_moves_to` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_inventory_stock_moves_cancellation_doc` CHECK (((`source_doc_type` <> _utf8mb4'SALE_CANCELLATION') or (`move_type` = _utf8mb4'CUSTOMER_RETURN'))),
   CONSTRAINT `ck_inventory_stock_moves_cost_object` CHECK (((`cost_object_type` is null) or (`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE')))),
+  CONSTRAINT `ck_inventory_stock_moves_delivery_doc` CHECK (((`move_type` = _utf8mb4'DELIVERY') = (`source_doc_type` = _utf8mb4'DELIVERY'))),
   CONSTRAINT `ck_inventory_stock_moves_locations` CHECK ((`from_location_id` <> `to_location_id`)),
-  CONSTRAINT `ck_inventory_stock_moves_move_type` CHECK ((`move_type` in (_utf8mb4'OPENING_BALANCE',_utf8mb4'PURCHASE_RECEIPT',_utf8mb4'SUPPLIER_RETURN',_utf8mb4'TRANSFER_DISPATCH',_utf8mb4'TRANSFER_RECEIPT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'INTERNAL_MOVE',_utf8mb4'SALE',_utf8mb4'CUSTOMER_RETURN',_utf8mb4'LOSS',_utf8mb4'LOSS_PENDING',_utf8mb4'LOSS_CONFIRMATION',_utf8mb4'LOSS_RELEASE',_utf8mb4'CONSUMPTION',_utf8mb4'CONSUMPTION_REVERSAL',_utf8mb4'PRODUCTION_OUTPUT',_utf8mb4'PRODUCTION_INPUT',_utf8mb4'INVENTORY_GAIN',_utf8mb4'INVENTORY_LOSS'))),
+  CONSTRAINT `ck_inventory_stock_moves_move_type` CHECK ((`move_type` in (_utf8mb4'OPENING_BALANCE',_utf8mb4'PURCHASE_RECEIPT',_utf8mb4'SUPPLIER_RETURN',_utf8mb4'TRANSFER_DISPATCH',_utf8mb4'TRANSFER_RECEIPT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'INTERNAL_MOVE',_utf8mb4'SALE',_utf8mb4'CUSTOMER_RETURN',_utf8mb4'DELIVERY',_utf8mb4'LOSS',_utf8mb4'LOSS_PENDING',_utf8mb4'LOSS_CONFIRMATION',_utf8mb4'LOSS_RELEASE',_utf8mb4'CONSUMPTION',_utf8mb4'CONSUMPTION_REVERSAL',_utf8mb4'PRODUCTION_OUTPUT',_utf8mb4'PRODUCTION_INPUT',_utf8mb4'INVENTORY_GAIN',_utf8mb4'INVENTORY_LOSS'))),
+  CONSTRAINT `ck_inventory_stock_moves_origin` CHECK ((((`origin_move_id` is null) and (`origin_seq` is null)) or ((`origin_move_id` is not null) and (`origin_seq` is not null) and (`origin_seq` >= 1) and (`is_reversal` = false) and (`move_type` in (_utf8mb4'CUSTOMER_RETURN',_utf8mb4'DELIVERY'))))),
   CONSTRAINT `ck_inventory_stock_moves_quantity` CHECK ((`quantity` > 0)),
   CONSTRAINT `ck_inventory_stock_moves_reversal` CHECK ((((`is_reversal` = false) and (`reverses_move_id` is null)) or ((`is_reversal` = true) and (`reverses_move_id` is not null)))),
-  CONSTRAINT `ck_inventory_stock_moves_source_doc_type` CHECK ((`source_doc_type` in (_utf8mb4'SALE',_utf8mb4'TRANSFER',_utf8mb4'LOSS',_utf8mb4'CONSUMPTION',_utf8mb4'INVENTORY_COUNT',_utf8mb4'GOODS_RECEIPT',_utf8mb4'EGG_COLLECTION',_utf8mb4'INCUBATION_EVENT',_utf8mb4'LOT_ENTRY',_utf8mb4'SLAUGHTER',_utf8mb4'LOT_TRANSFER'))),
+  CONSTRAINT `ck_inventory_stock_moves_settlement` CHECK (((`move_type` not in (_utf8mb4'CUSTOMER_RETURN',_utf8mb4'DELIVERY')) or (`origin_move_id` is not null))),
+  CONSTRAINT `ck_inventory_stock_moves_source_doc_type` CHECK ((`source_doc_type` in (_utf8mb4'SALE',_utf8mb4'TRANSFER',_utf8mb4'LOSS',_utf8mb4'CONSUMPTION',_utf8mb4'INVENTORY_COUNT',_utf8mb4'GOODS_RECEIPT',_utf8mb4'EGG_COLLECTION',_utf8mb4'INCUBATION_EVENT',_utf8mb4'LOT_ENTRY',_utf8mb4'SLAUGHTER',_utf8mb4'LOT_TRANSFER',_utf8mb4'SALE_CANCELLATION',_utf8mb4'DELIVERY'))),
   CONSTRAINT `ck_inventory_stock_moves_unit_cost` CHECK ((`unit_cost_xaf` >= 0)),
   CONSTRAINT `ck_inventory_stock_moves_value` CHECK ((`value_xaf` >= 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_moves_settlement_guard` BEFORE INSERT ON `inventory_stock_moves` FOR EACH ROW BEGIN
+  DECLARE r_type VARCHAR(30);
+  DECLARE o_product BINARY(16);
+  DECLARE o_lot BINARY(16);
+  DECLARE o_type VARCHAR(30);
+  DECLARE o_qty DECIMAL(14,3);
+  DECLARE o_value BIGINT;
+  DECLARE o_from BINARY(16);
+  DECLARE o_to BINARY(16);
+  DECLARE o_reversal TINYINT(1);
+  DECLARE o_to_type VARCHAR(20);
+  DECLARE n_to_type VARCHAR(20);
+  DECLARE n_to_site BINARY(16);
+  DECLARE n_from_site BINARY(16);
+  DECLARE n_done BIGINT;
+  DECLARE q_done DECIMAL(14,3);
+  DECLARE v_done DECIMAL(30,0);
+
+  IF NEW.reverses_move_id IS NOT NULL THEN
+    SELECT move_type INTO r_type FROM inventory_stock_moves WHERE id = NEW.reverses_move_id;
+    IF r_type IN ('SALE', 'DELIVERY', 'CUSTOMER_RETURN') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : une vente, une livraison ou un retour ne s''inverse pas (INV-STK-17, ADR-029).';
+    END IF;
+  END IF;
+
+  -- Une vente vers « à livrer » cible l'emplacement « à livrer » du site de sa source (INV-STK-18).
+  IF NEW.origin_move_id IS NULL AND NEW.move_type = 'SALE' THEN
+    SELECT location_type, site_id INTO n_to_type, n_to_site FROM organization_locations WHERE id = NEW.to_location_id;
+    IF n_to_type = 'V_TO_DELIVER' THEN
+      SELECT site_id INTO n_from_site FROM organization_locations WHERE id = NEW.from_location_id;
+      IF n_from_site IS NULL OR n_from_site <> n_to_site THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : « à livrer » doit être celui du site de la source (INV-STK-18).';
+      END IF;
+    END IF;
+  END IF;
+
+  IF NEW.origin_move_id IS NOT NULL THEN
+    SELECT product_id, lot_id, move_type, quantity, value_xaf, from_location_id, to_location_id, is_reversal
+      INTO o_product, o_lot, o_type, o_qty, o_value, o_from, o_to, o_reversal
+      FROM inventory_stock_moves WHERE id = NEW.origin_move_id;
+    IF o_type IS NULL OR o_type <> 'SALE' OR o_reversal = 1 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : l''origine doit être un mouvement SALE non inverse (INV-STK-17).';
+    END IF;
+    IF NEW.product_id <> o_product OR NOT (NEW.lot_id <=> o_lot) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : produit ou lot différent de l''origine (INV-STK-17).';
+    END IF;
+    IF NEW.from_location_id <> o_to THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : départ différent de l''arrivée de l''origine (INV-STK-17).';
+    END IF;
+    IF NEW.move_type = 'CUSTOMER_RETURN' AND NEW.to_location_id <> o_from THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : un retour revient au départ de l''origine (INV-STK-17).';
+    END IF;
+    IF NEW.move_type = 'DELIVERY' THEN
+      SELECT location_type INTO o_to_type FROM organization_locations WHERE id = o_to;
+      SELECT location_type INTO n_to_type FROM organization_locations WHERE id = NEW.to_location_id;
+      IF o_to_type IS NULL OR o_to_type <> 'V_TO_DELIVER' OR n_to_type IS NULL OR n_to_type <> 'V_CUSTOMER' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : une livraison va de V_TO_DELIVER vers V_CUSTOMER (INV-STK-17).';
+      END IF;
+    END IF;
+    SELECT COUNT(*), COALESCE(SUM(quantity), 0), COALESCE(SUM(value_xaf), 0)
+      INTO n_done, q_done, v_done
+      FROM inventory_stock_moves WHERE origin_move_id = NEW.origin_move_id;
+    IF NEW.origin_seq IS NULL OR NEW.origin_seq <> n_done + 1 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : séquence de rattachement invalide (INV-STK-17).';
+    END IF;
+    IF q_done + NEW.quantity > o_qty THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : quantité au-delà de l''origine (INV-STK-17).';
+    END IF;
+    IF v_done + NEW.value_xaf > o_value THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : valeur au-delà de l''origine (INV-STK-17).';
+    END IF;
+    IF q_done + NEW.quantity = o_qty AND v_done + NEW.value_xaf <> o_value THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_moves : le dernier mouvement doit solder la valeur exacte (INV-STK-17).';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
 /*!50003 SET @saved_col_connection = @@collation_connection */ ;
@@ -3458,13 +3556,15 @@ CREATE TABLE `organization_locations` (
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `updated_by` binary(16) DEFAULT NULL,
   `version` int NOT NULL DEFAULT '1',
-  `is_virtual` tinyint(1) GENERATED ALWAYS AS ((`location_type` in (_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT'))) STORED,
+  `is_virtual` tinyint(1) GENERATED ALWAYS AS ((`location_type` in (_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT',_utf8mb4'V_TO_DELIVER'))) STORED,
   `active_virtual_type` varchar(20) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS (if(((`location_type` in (_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT')) and (`status` = _utf8mb4'ACTIVE')),`location_type`,NULL)) STORED,
   `active_mobile_custodian` binary(16) GENERATED ALWAYS AS (if(((`location_type` = _utf8mb4'MOBILE') and (`status` = _utf8mb4'ACTIVE')),`custodian_user_id`,NULL)) STORED,
+  `active_to_deliver_site` binary(16) GENERATED ALWAYS AS (if(((`location_type` = _utf8mb4'V_TO_DELIVER') and (`status` = _utf8mb4'ACTIVE')),`site_id`,NULL)) STORED,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_organization_locations_site_code` (`site_id`,`code`),
   UNIQUE KEY `uq_organization_locations_active_virtual_type` (`active_virtual_type`),
   UNIQUE KEY `uq_organization_locations_active_mobile_custodian` (`active_mobile_custodian`),
+  UNIQUE KEY `uq_organization_locations_active_to_deliver_site` (`active_to_deliver_site`),
   KEY `ix_organization_locations_site_type` (`site_id`,`location_type`),
   KEY `ix_organization_locations_custodian` (`custodian_user_id`),
   KEY `fk_organization_locations_parent` (`parent_location_id`),
@@ -3481,8 +3581,8 @@ CREATE TABLE `organization_locations` (
   CONSTRAINT `ck_organization_locations_exclusive_device` CHECK (((`custody_mode` <> _utf8mb4'EXCLUSIVE_DEVICE') or (`designated_device_id` is not null))),
   CONSTRAINT `ck_organization_locations_mobile` CHECK (((`location_type` <> _utf8mb4'MOBILE') or ((`custodian_user_id` is not null) and (`custody_mode` = _utf8mb4'EXCLUSIVE_USER')))),
   CONSTRAINT `ck_organization_locations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'INACTIVE'))),
-  CONSTRAINT `ck_organization_locations_type` CHECK ((`location_type` in (_utf8mb4'STORE',_utf8mb4'POS',_utf8mb4'BUILDING',_utf8mb4'PEN',_utf8mb4'INCUBATOR',_utf8mb4'HATCHER',_utf8mb4'MOBILE',_utf8mb4'SLAUGHTERHOUSE',_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT'))),
-  CONSTRAINT `ck_organization_locations_virtual_site` CHECK ((((`is_virtual` = true) and (`site_id` is null)) or ((`is_virtual` = false) and (`site_id` is not null))))
+  CONSTRAINT `ck_organization_locations_type` CHECK ((`location_type` in (_utf8mb4'STORE',_utf8mb4'POS',_utf8mb4'BUILDING',_utf8mb4'PEN',_utf8mb4'INCUBATOR',_utf8mb4'HATCHER',_utf8mb4'MOBILE',_utf8mb4'SLAUGHTERHOUSE',_utf8mb4'V_OPENING',_utf8mb4'V_SUPPLIER',_utf8mb4'V_CUSTOMER',_utf8mb4'V_PRODUCTION',_utf8mb4'V_CONSUMPTION',_utf8mb4'V_LOSS',_utf8mb4'V_PENDING_LOSS',_utf8mb4'V_ADJUSTMENT',_utf8mb4'V_TRANSIT',_utf8mb4'V_TO_DELIVER'))),
+  CONSTRAINT `ck_organization_locations_virtual_site` CHECK ((((`is_virtual` = true) and (`site_id` is null) and (`location_type` <> _utf8mb4'V_TO_DELIVER')) or ((`is_virtual` = false) and (`site_id` is not null)) or ((`location_type` = _utf8mb4'V_TO_DELIVER') and (`site_id` is not null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -5948,6 +6048,1281 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `sales_customer_payments`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_customer_payments` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `customer_id` binary(16) DEFAULT NULL,
+  `payment_method_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `external_reference` varchar(80) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `reference_normalized` varchar(80) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `reference_key` varchar(121) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when ((`reference_normalized` is not null) and (`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLATION_REQUESTED'))) then concat(`payment_method_code`,_utf8mb4':',`reference_normalized`) end)) STORED,
+  `received_by_user_id` binary(16) NOT NULL,
+  `cash_account_id` binary(16) NOT NULL,
+  `cash_session_id` binary(16) DEFAULT NULL,
+  `cash_movement_id` binary(16) DEFAULT NULL,
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `duplicate_of_payment_id` binary(16) DEFAULT NULL,
+  `intended_sale_id` binary(16) DEFAULT NULL,
+  `intended_order_id` binary(16) DEFAULT NULL,
+  `unallocated_xaf` bigint NOT NULL,
+  `refunded_xaf` bigint NOT NULL DEFAULT '0',
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_customer_payments_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_sales_customer_payments_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_sales_customer_payments_reference` (`reference_key`),
+  UNIQUE KEY `uq_sales_customer_payments_movement` (`cash_movement_id`),
+  KEY `ix_sales_customer_payments_customer` (`customer_id`,`occurred_at`),
+  KEY `ix_sales_customer_payments_session` (`cash_session_id`),
+  KEY `ix_sales_customer_payments_business_date` (`site_id`,`business_date`),
+  KEY `ix_sales_customer_payments_status` (`status`,`occurred_at`),
+  KEY `ix_sales_customer_payments_command` (`command_id`),
+  KEY `fk_sales_customer_payments_method` (`payment_method_code`),
+  KEY `fk_sales_customer_payments_received_by` (`received_by_user_id`),
+  KEY `fk_sales_customer_payments_cash_account` (`cash_account_id`),
+  KEY `fk_sales_customer_payments_duplicate_of` (`duplicate_of_payment_id`),
+  KEY `fk_sales_customer_payments_cancelled_by` (`cancelled_by`),
+  KEY `fk_sales_customer_payments_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_sales_customer_payments_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_sales_customer_payments_created_by` (`created_by`),
+  KEY `fk_sales_customer_payments_updated_by` (`updated_by`),
+  KEY `fk_sales_customer_payments_intended_sale` (`intended_sale_id`),
+  KEY `fk_sales_customer_payments_intended_order` (`intended_order_id`),
+  CONSTRAINT `fk_sales_customer_payments_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_cash_account` FOREIGN KEY (`cash_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_cash_movement` FOREIGN KEY (`cash_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_duplicate_of` FOREIGN KEY (`duplicate_of_payment_id`) REFERENCES `sales_customer_payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_intended_order` FOREIGN KEY (`intended_order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_intended_sale` FOREIGN KEY (`intended_sale_id`) REFERENCES `sales_sales` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_method` FOREIGN KEY (`payment_method_code`) REFERENCES `finance_payment_methods` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_received_by` FOREIGN KEY (`received_by_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_customer_payments_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_sales_customer_payments_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null)))),
+  CONSTRAINT `ck_sales_customer_payments_cancel_request` CHECK (((`status` in (_utf8mb4'CANCELLATION_REQUESTED',_utf8mb4'CANCELLED')) or ((`cancel_reason_code_id` is null) and (`cancel_comment` is null) and (`cancel_approval_request_id` is null)))),
+  CONSTRAINT `ck_sales_customer_payments_credit` CHECK (((`unallocated_xaf` = 0) or ((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLATION_REQUESTED')) and (`customer_id` is not null)))),
+  CONSTRAINT `ck_sales_customer_payments_intended` CHECK (((`intended_sale_id` is null) or (`intended_order_id` is null))),
+  CONSTRAINT `ck_sales_customer_payments_movement` CHECK ((((`status` in (_utf8mb4'RECORDED',_utf8mb4'CANCELLATION_REQUESTED',_utf8mb4'CANCELLED')) and (`cash_movement_id` is not null)) or ((`status` in (_utf8mb4'SUSPECT_DUPLICATE',_utf8mb4'REJECTED')) and (`cash_movement_id` is null)))),
+  CONSTRAINT `ck_sales_customer_payments_reference` CHECK (((`reference_normalized` is null) or ((`reference_normalized` = upper(`reference_normalized`)) and (not(regexp_like(`reference_normalized`,_utf8mb4'[[:space:]]')))))),
+  CONSTRAINT `ck_sales_customer_payments_reference_pair` CHECK (((`external_reference` is null) or (`reference_normalized` is not null))),
+  CONSTRAINT `ck_sales_customer_payments_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'SUSPECT_DUPLICATE',_utf8mb4'REJECTED',_utf8mb4'CANCELLATION_REQUESTED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_sales_customer_payments_unallocated` CHECK (((`unallocated_xaf` >= 0) and (`refunded_xaf` >= 0) and ((`unallocated_xaf` + `refunded_xaf`) <= `amount_xaf`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_customer_payments_update_guard` BEFORE UPDATE ON `sales_customer_payments` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.payment_method_code <=> OLD.payment_method_code AND
+    NEW.amount_xaf <=> OLD.amount_xaf AND
+    NEW.received_by_user_id <=> OLD.received_by_user_id AND
+    NEW.cash_account_id <=> OLD.cash_account_id AND
+    NEW.duplicate_of_payment_id <=> OLD.duplicate_of_payment_id AND
+    NEW.intended_sale_id <=> OLD.intended_sale_id AND
+    NEW.intended_order_id <=> OLD.intended_order_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : encaissement immuable ; seuls statut, part non affectée et annulation évoluent.';
+  END IF;
+  -- La référence ne se corrige qu'à la décision de la Finance sur un doublon suspect (AV-135).
+  IF NOT (NEW.external_reference <=> OLD.external_reference AND NEW.reference_normalized <=> OLD.reference_normalized)
+     AND NOT (OLD.status = 'SUSPECT_DUPLICATE' AND NEW.status = 'RECORDED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : référence figée, corrigeable seulement à la décision sur un doublon suspect.';
+  END IF;
+  IF OLD.status IN ('REJECTED', 'CANCELLED') AND NEW.status <> OLD.status THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : encaissement rejeté ou annulé, son statut ne change plus.';
+  END IF;
+  IF OLD.status IN ('REJECTED', 'CANCELLED') AND NOT (
+    NEW.unallocated_xaf <=> OLD.unallocated_xaf AND
+    NEW.refunded_xaf <=> OLD.refunded_xaf AND
+    NEW.cancelled_at <=> OLD.cancelled_at AND
+    NEW.cancelled_by <=> OLD.cancelled_by AND
+    NEW.cancel_reason_code_id <=> OLD.cancel_reason_code_id AND
+    NEW.cancel_comment <=> OLD.cancel_comment AND
+    NEW.cancel_approval_request_id <=> OLD.cancel_approval_request_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : encaissement terminé, ses montants et son annulation sont figés.';
+  END IF;
+  IF NEW.refunded_xaf < OLD.refunded_xaf THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : la part remboursée ne diminue jamais.';
+  END IF;
+  IF OLD.cash_movement_id IS NOT NULL AND NOT (NEW.cash_movement_id <=> OLD.cash_movement_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : le mouvement de trésorerie ne change plus (INV-FIN-01).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_customer_payments_no_delete` BEFORE DELETE ON `sales_customer_payments` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_customer_payments : suppression physique interdite (INV-GLO-03) ; annuler par contre-écriture.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_delivery_note_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_delivery_note_lines` (
+  `id` binary(16) NOT NULL,
+  `delivery_note_id` binary(16) NOT NULL,
+  `order_line_id` binary(16) NOT NULL,
+  `sale_line_id` binary(16) NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_delivery_note_lines_sale_line` (`delivery_note_id`,`sale_line_id`),
+  KEY `ix_sales_delivery_note_lines_order_line` (`order_line_id`),
+  KEY `ix_sales_delivery_note_lines_sale_line` (`sale_line_id`),
+  CONSTRAINT `fk_sales_delivery_note_lines_note` FOREIGN KEY (`delivery_note_id`) REFERENCES `sales_delivery_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_note_lines_order_line` FOREIGN KEY (`order_line_id`) REFERENCES `sales_sales_order_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_note_lines_sale_line` FOREIGN KEY (`sale_line_id`) REFERENCES `sales_sale_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_delivery_note_lines_quantity` CHECK ((`quantity_base` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_delivery_note_lines_insert_guard` BEFORE INSERT ON `sales_delivery_note_lines` FOR EACH ROW BEGIN
+  DECLARE sl_order_line BINARY(16);
+  DECLARE ol_order BINARY(16);
+  DECLARE note_order BINARY(16);
+  SELECT order_line_id INTO sl_order_line FROM sales_sale_lines WHERE id = NEW.sale_line_id;
+  SELECT order_id INTO ol_order FROM sales_sales_order_lines WHERE id = NEW.order_line_id;
+  SELECT order_id INTO note_order FROM sales_delivery_notes WHERE id = NEW.delivery_note_id;
+  IF sl_order_line IS NULL OR sl_order_line <> NEW.order_line_id OR ol_order IS NULL OR note_order IS NULL
+     OR ol_order <> note_order THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_delivery_note_lines : ligne de vente, ligne de commande et commande du bon doivent concorder.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_delivery_note_lines_no_update` BEFORE UPDATE ON `sales_delivery_note_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_delivery_note_lines : ligne de livraison immuable (ADR-028 §7).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_delivery_note_lines_no_delete` BEFORE DELETE ON `sales_delivery_note_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_delivery_note_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_delivery_notes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_delivery_notes` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `order_id` binary(16) NOT NULL,
+  `delivered_by_user_id` binary(16) NOT NULL,
+  `recipient_name` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `proof_attachment_id` binary(16) DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_0900_as_cs,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_delivery_notes_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_sales_delivery_notes_command` (`command_id`),
+  UNIQUE KEY `uq_sales_delivery_notes_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_sales_delivery_notes_order` (`order_id`,`occurred_at`),
+  KEY `ix_sales_delivery_notes_business_date` (`site_id`,`business_date`),
+  KEY `ix_sales_delivery_notes_deliverer` (`delivered_by_user_id`,`business_date`),
+  KEY `fk_sales_delivery_notes_proof` (`proof_attachment_id`),
+  KEY `fk_sales_delivery_notes_created_by` (`created_by`),
+  CONSTRAINT `fk_sales_delivery_notes_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_notes_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_notes_deliverer` FOREIGN KEY (`delivered_by_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_notes_order` FOREIGN KEY (`order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_notes_proof` FOREIGN KEY (`proof_attachment_id`) REFERENCES `attachments_attachments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_delivery_notes_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_delivery_notes_no_update` BEFORE UPDATE ON `sales_delivery_notes` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_delivery_notes : bon de livraison immuable (ADR-028 §7).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_delivery_notes_no_delete` BEFORE DELETE ON `sales_delivery_notes` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_delivery_notes : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_payment_allocations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_payment_allocations` (
+  `id` binary(16) NOT NULL,
+  `payment_id` binary(16) NOT NULL,
+  `sale_id` binary(16) DEFAULT NULL,
+  `order_id` binary(16) DEFAULT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `allocated_at` datetime(6) NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
+  `reversed_at` datetime(6) DEFAULT NULL,
+  `reversal_cause` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_sales_payment_allocations_payment` (`payment_id`),
+  KEY `ix_sales_payment_allocations_sale` (`sale_id`,`status`),
+  KEY `ix_sales_payment_allocations_order` (`order_id`,`status`),
+  KEY `ix_sales_payment_allocations_command` (`command_id`),
+  KEY `fk_sales_payment_allocations_created_by` (`created_by`),
+  CONSTRAINT `fk_sales_payment_allocations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_payment_allocations_order` FOREIGN KEY (`order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_payment_allocations_payment` FOREIGN KEY (`payment_id`) REFERENCES `sales_customer_payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_payment_allocations_sale` FOREIGN KEY (`sale_id`) REFERENCES `sales_sales` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_payment_allocations_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_sales_payment_allocations_cause` CHECK (((`reversal_cause` is null) or (`reversal_cause` in (_utf8mb4'PAYMENT_CANCELLED',_utf8mb4'SALE_CANCELLED',_utf8mb4'REALLOCATED',_utf8mb4'ORDER_CONFIRMED')))),
+  CONSTRAINT `ck_sales_payment_allocations_reversal` CHECK ((((`status` = _utf8mb4'ACTIVE') and (`reversed_at` is null) and (`reversal_cause` is null)) or ((`status` = _utf8mb4'REVERSED') and (`reversed_at` is not null) and (`reversal_cause` is not null)))),
+  CONSTRAINT `ck_sales_payment_allocations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'REVERSED'))),
+  CONSTRAINT `ck_sales_payment_allocations_target` CHECK (((`sale_id` is null) <> (`order_id` is null)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_payment_allocations_insert_guard` BEFORE INSERT ON `sales_payment_allocations` FOR EACH ROW BEGIN
+  DECLARE p_status VARCHAR(25);
+  DECLARE t_status VARCHAR(25);
+  -- INV-FIN-09, INV-FIN-10 : on n'affecte qu'un encaissement enregistré, à une cible non annulée.
+  IF NEW.status = 'ACTIVE' THEN
+    SELECT status INTO p_status FROM sales_customer_payments WHERE id = NEW.payment_id;
+    IF p_status IS NULL OR p_status <> 'RECORDED' THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : seul un encaissement enregistré (RECORDED) s''affecte (INV-FIN-09).';
+    END IF;
+    IF NEW.sale_id IS NOT NULL THEN
+      SELECT status INTO t_status FROM sales_sales WHERE id = NEW.sale_id;
+    ELSEIF NEW.order_id IS NOT NULL THEN
+      SELECT status INTO t_status FROM sales_sales_orders WHERE id = NEW.order_id;
+    END IF;
+    -- Sans cible (ou avec deux), le CHECK ck_sales_payment_allocations_target tranche.
+    IF (NEW.sale_id IS NOT NULL OR NEW.order_id IS NOT NULL) AND (t_status IS NULL OR t_status = 'CANCELLED') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : pas d''affectation à une vente ou une commande annulée (INV-FIN-10).';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_payment_allocations_update_guard` BEFORE UPDATE ON `sales_payment_allocations` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.payment_id <=> OLD.payment_id AND
+    NEW.sale_id <=> OLD.sale_id AND
+    NEW.order_id <=> OLD.order_id AND
+    NEW.amount_xaf <=> OLD.amount_xaf AND
+    NEW.allocated_at <=> OLD.allocated_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : affectation immuable ; seul le renversement (REVERSED) est permis.';
+  END IF;
+  IF OLD.status = 'REVERSED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : affectation déjà renversée.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_payment_allocations_no_delete` BEFORE DELETE ON `sales_payment_allocations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sale_cancellation_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sale_cancellation_lines` (
+  `id` binary(16) NOT NULL,
+  `cancellation_id` binary(16) NOT NULL,
+  `sale_line_id` binary(16) NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sale_cancellation_lines_line` (`cancellation_id`,`sale_line_id`),
+  KEY `ix_sales_sale_cancellation_lines_sale_line` (`sale_line_id`),
+  CONSTRAINT `fk_sales_sale_cancellation_lines_cancellation` FOREIGN KEY (`cancellation_id`) REFERENCES `sales_sale_cancellations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellation_lines_sale_line` FOREIGN KEY (`sale_line_id`) REFERENCES `sales_sale_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sale_cancellation_lines_amounts` CHECK (((`quantity_base` > 0) and (`amount_xaf` >= 0)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_cancellation_lines_insert_guard` BEFORE INSERT ON `sales_sale_cancellation_lines` FOR EACH ROW BEGIN
+  DECLARE line_sale BINARY(16);
+  DECLARE doc_sale BINARY(16);
+  SELECT sale_id INTO line_sale FROM sales_sale_lines WHERE id = NEW.sale_line_id;
+  SELECT sale_id INTO doc_sale FROM sales_sale_cancellations WHERE id = NEW.cancellation_id;
+  IF line_sale IS NULL OR doc_sale IS NULL OR line_sale <> doc_sale THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellation_lines : la ligne annulée doit appartenir à la vente du document.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_cancellation_lines_no_update` BEFORE UPDATE ON `sales_sale_cancellation_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellation_lines : ligne d''annulation immuable (contre-écriture).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_cancellation_lines_no_delete` BEFORE DELETE ON `sales_sale_cancellation_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellation_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sale_cancellations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sale_cancellations` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `sale_id` binary(16) NOT NULL,
+  `order_id` binary(16) DEFAULT NULL,
+  `cause` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `reason_code_id` binary(16) DEFAULT NULL,
+  `comment` text COLLATE utf8mb4_0900_as_cs,
+  `requested_by` binary(16) NOT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `cancelled_total_xaf` bigint NOT NULL,
+  `released_payment_treatment` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `applied_at` datetime(6) DEFAULT NULL,
+  `applied_business_date` date GENERATED ALWAYS AS (cast(convert_tz(`applied_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sale_cancellations_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_sales_sale_cancellations_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_sales_sale_cancellations_command_sale` (`command_id`,`sale_id`),
+  KEY `ix_sales_sale_cancellations_sale` (`sale_id`,`status`),
+  KEY `ix_sales_sale_cancellations_order` (`order_id`),
+  KEY `ix_sales_sale_cancellations_applied` (`applied_at`),
+  KEY `fk_sales_sale_cancellations_reason` (`reason_code_id`),
+  KEY `fk_sales_sale_cancellations_requested_by` (`requested_by`),
+  KEY `fk_sales_sale_cancellations_approval` (`approval_request_id`),
+  KEY `fk_sales_sale_cancellations_created_by` (`created_by`),
+  KEY `fk_sales_sale_cancellations_updated_by` (`updated_by`),
+  KEY `ix_sales_sale_cancellations_applied_date` (`site_id`,`applied_business_date`),
+  CONSTRAINT `fk_sales_sale_cancellations_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_order` FOREIGN KEY (`order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_reason` FOREIGN KEY (`reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_sale` FOREIGN KEY (`sale_id`) REFERENCES `sales_sales` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_cancellations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sale_cancellations_applied` CHECK (((`status` = _utf8mb4'APPLIED') = (`applied_at` is not null))),
+  CONSTRAINT `ck_sales_sale_cancellations_cause` CHECK ((`cause` in (_utf8mb4'SALE_CANCELLATION',_utf8mb4'ORDER_CANCELLATION',_utf8mb4'ORDER_CLOSURE',_utf8mb4'ORDER_ADJUSTMENT'))),
+  CONSTRAINT `ck_sales_sale_cancellations_order_cause` CHECK (((`cause` = _utf8mb4'SALE_CANCELLATION') or (`order_id` is not null))),
+  CONSTRAINT `ck_sales_sale_cancellations_status` CHECK ((`status` in (_utf8mb4'REQUESTED',_utf8mb4'APPLIED',_utf8mb4'REJECTED'))),
+  CONSTRAINT `ck_sales_sale_cancellations_total` CHECK ((`cancelled_total_xaf` >= 0)),
+  CONSTRAINT `ck_sales_sale_cancellations_treatment` CHECK (((`released_payment_treatment` is null) or (`released_payment_treatment` in (_utf8mb4'CUSTOMER_CREDIT',_utf8mb4'REFUND'))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_cancellations_update_guard` BEFORE UPDATE ON `sales_sale_cancellations` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.sale_id <=> OLD.sale_id AND
+    NEW.order_id <=> OLD.order_id AND
+    NEW.cause <=> OLD.cause AND
+    NEW.reason_code_id <=> OLD.reason_code_id AND
+    NEW.comment <=> OLD.comment AND
+    NEW.requested_by <=> OLD.requested_by AND
+    NEW.cancelled_total_xaf <=> OLD.cancelled_total_xaf AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellations : document d''annulation immuable ; seuls statut et sort des paiements évoluent.';
+  END IF;
+  -- La date d'effet porte la diminution du chiffre d'affaires (BR-FIN-042) : elle ne se réécrit pas.
+  IF OLD.status <> 'REQUESTED' AND (
+    NEW.status <> OLD.status OR NOT (NEW.applied_at <=> OLD.applied_at)
+    OR NOT (NEW.approval_request_id <=> OLD.approval_request_id)
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellations : une annulation appliquée ou rejetée ne change plus de statut ni de date d''effet.';
+  END IF;
+  IF OLD.released_payment_treatment IS NOT NULL AND NOT (NEW.released_payment_treatment <=> OLD.released_payment_treatment) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellations : le sort du paiement libéré s''écrit une seule fois.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_cancellations_no_delete` BEFORE DELETE ON `sales_sale_cancellations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_cancellations : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sale_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sale_lines` (
+  `id` binary(16) NOT NULL,
+  `sale_id` binary(16) NOT NULL,
+  `line_no` smallint NOT NULL,
+  `order_line_id` binary(16) DEFAULT NULL,
+  `product_id` binary(16) NOT NULL,
+  `product_name_snapshot` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `pricing_quantity` decimal(14,3) NOT NULL,
+  `pricing_unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `list_unit_price_xaf` bigint DEFAULT NULL,
+  `unit_price_xaf` bigint NOT NULL,
+  `price_rule_id` binary(16) DEFAULT NULL,
+  `price_rule_version` int DEFAULT NULL,
+  `price_specificity` smallint DEFAULT NULL,
+  `price_source` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `override_reason_code_id` binary(16) DEFAULT NULL,
+  `override_approval_request_id` binary(16) DEFAULT NULL,
+  `discount_xaf` bigint NOT NULL DEFAULT '0',
+  `tax_rate` decimal(7,4) NOT NULL DEFAULT '0.0000',
+  `line_total_xaf` bigint NOT NULL,
+  `cancelled_quantity_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `cancelled_xaf` bigint NOT NULL DEFAULT '0',
+  `delivered_quantity_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `unit_cost_xaf` bigint DEFAULT NULL,
+  `cost_xaf` bigint DEFAULT NULL,
+  `allocation_id` binary(16) DEFAULT NULL,
+  `client_lot_hint` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sale_lines_line_no` (`sale_id`,`line_no`),
+  KEY `ix_sales_sale_lines_product` (`product_id`),
+  KEY `ix_sales_sale_lines_order_line` (`order_line_id`),
+  KEY `ix_sales_sale_lines_price_rule` (`price_rule_id`),
+  KEY `fk_sales_sale_lines_unit` (`unit_code`),
+  KEY `fk_sales_sale_lines_pricing_unit` (`pricing_unit_code`),
+  KEY `fk_sales_sale_lines_override_reason` (`override_reason_code_id`),
+  KEY `fk_sales_sale_lines_override_approval` (`override_approval_request_id`),
+  KEY `fk_sales_sale_lines_allocation` (`allocation_id`),
+  CONSTRAINT `fk_sales_sale_lines_allocation` FOREIGN KEY (`allocation_id`) REFERENCES `inventory_stock_allocations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_order_line` FOREIGN KEY (`order_line_id`) REFERENCES `sales_sales_order_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_override_approval` FOREIGN KEY (`override_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_override_reason` FOREIGN KEY (`override_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_price_rule` FOREIGN KEY (`price_rule_id`) REFERENCES `pricing_price_rules` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_pricing_unit` FOREIGN KEY (`pricing_unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_sale` FOREIGN KEY (`sale_id`) REFERENCES `sales_sales` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sale_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sale_lines_cancelled` CHECK (((`cancelled_quantity_base` >= 0) and (`cancelled_quantity_base` <= `quantity_base`) and (`cancelled_xaf` >= 0) and (`cancelled_xaf` <= `line_total_xaf`) and ((`cancelled_quantity_base` < `quantity_base`) or (`cancelled_xaf` = `line_total_xaf`)))),
+  CONSTRAINT `ck_sales_sale_lines_cancelled_amount` CHECK (((`cancelled_quantity_base` > 0) or (`cancelled_xaf` = 0))),
+  CONSTRAINT `ck_sales_sale_lines_cost` CHECK ((((`unit_cost_xaf` is null) or (`unit_cost_xaf` >= 0)) and ((`cost_xaf` is null) or (`cost_xaf` >= 0)))),
+  CONSTRAINT `ck_sales_sale_lines_delivered` CHECK (((`delivered_quantity_base` >= 0) and (`delivered_quantity_base` <= (`quantity_base` - `cancelled_quantity_base`)))),
+  CONSTRAINT `ck_sales_sale_lines_override` CHECK (((`price_source` <> _utf8mb4'MANUAL_OVERRIDE') or (`override_reason_code_id` is not null))),
+  CONSTRAINT `ck_sales_sale_lines_price_source` CHECK ((`price_source` in (_utf8mb4'RULE',_utf8mb4'ORDER_QUOTE',_utf8mb4'MANUAL_OVERRIDE'))),
+  CONSTRAINT `ck_sales_sale_lines_prices` CHECK (((`unit_price_xaf` >= 0) and (`discount_xaf` >= 0) and (`tax_rate` >= 0) and (`tax_rate` <= 1) and ((`list_unit_price_xaf` is null) or (`list_unit_price_xaf` >= 0)))),
+  CONSTRAINT `ck_sales_sale_lines_quantities` CHECK (((`quantity` > 0) and (`quantity_base` > 0) and (`pricing_quantity` > 0))),
+  CONSTRAINT `ck_sales_sale_lines_quote` CHECK (((`price_source` <> _utf8mb4'ORDER_QUOTE') or (`order_line_id` is not null))),
+  CONSTRAINT `ck_sales_sale_lines_rule` CHECK (((`price_source` <> _utf8mb4'RULE') or ((`price_rule_id` is not null) and (`price_rule_version` is not null) and (`list_unit_price_xaf` is not null)))),
+  CONSTRAINT `ck_sales_sale_lines_total` CHECK (((`line_total_xaf` >= 0) and (`line_total_xaf` = (round((`pricing_quantity` * `unit_price_xaf`),0) - `discount_xaf`))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_lines_update_guard` BEFORE UPDATE ON `sales_sale_lines` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.sale_id <=> OLD.sale_id AND
+    NEW.line_no <=> OLD.line_no AND
+    NEW.order_line_id <=> OLD.order_line_id AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.product_name_snapshot <=> OLD.product_name_snapshot AND
+    NEW.quantity <=> OLD.quantity AND
+    NEW.unit_code <=> OLD.unit_code AND
+    NEW.quantity_base <=> OLD.quantity_base AND
+    NEW.pricing_quantity <=> OLD.pricing_quantity AND
+    NEW.pricing_unit_code <=> OLD.pricing_unit_code AND
+    NEW.list_unit_price_xaf <=> OLD.list_unit_price_xaf AND
+    NEW.unit_price_xaf <=> OLD.unit_price_xaf AND
+    NEW.price_rule_id <=> OLD.price_rule_id AND
+    NEW.price_rule_version <=> OLD.price_rule_version AND
+    NEW.price_specificity <=> OLD.price_specificity AND
+    NEW.price_source <=> OLD.price_source AND
+    NEW.override_reason_code_id <=> OLD.override_reason_code_id AND
+    NEW.override_approval_request_id <=> OLD.override_approval_request_id AND
+    NEW.discount_xaf <=> OLD.discount_xaf AND
+    NEW.tax_rate <=> OLD.tax_rate AND
+    NEW.line_total_xaf <=> OLD.line_total_xaf AND
+    NEW.allocation_id <=> OLD.allocation_id AND
+    NEW.client_lot_hint <=> OLD.client_lot_hint AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_lines : ligne de vente immuable (INV-VEN-02) ; seuls annulé, livré et coût évoluent.';
+  END IF;
+  IF NEW.cancelled_quantity_base < OLD.cancelled_quantity_base OR NEW.cancelled_xaf < OLD.cancelled_xaf
+     OR NEW.delivered_quantity_base < OLD.delivered_quantity_base THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_lines : les quantités annulée et livrée ne diminuent jamais.';
+  END IF;
+  IF (OLD.cost_xaf IS NOT NULL AND NOT (NEW.cost_xaf <=> OLD.cost_xaf))
+     OR (OLD.unit_cost_xaf IS NOT NULL AND NOT (NEW.unit_cost_xaf <=> OLD.unit_cost_xaf)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_lines : le coût figé de la ligne ne change plus (ADR-025 §4).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sale_lines_no_delete` BEFORE DELETE ON `sales_sale_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sale_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sales`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sales` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `sale_type` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `order_id` binary(16) DEFAULT NULL,
+  `customer_id` binary(16) DEFAULT NULL,
+  `customer_category_id_snapshot` binary(16) DEFAULT NULL,
+  `channel_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `from_location_id` binary(16) NOT NULL,
+  `to_deliver_location_id` binary(16) DEFAULT NULL,
+  `zone_id` binary(16) NOT NULL,
+  `seller_user_id` binary(16) NOT NULL,
+  `commercial_user_id` binary(16) DEFAULT NULL,
+  `work_session_id` binary(16) DEFAULT NULL,
+  `cash_session_id` binary(16) DEFAULT NULL,
+  `lat` decimal(9,6) DEFAULT NULL,
+  `lng` decimal(9,6) DEFAULT NULL,
+  `accuracy_m` decimal(8,1) DEFAULT NULL,
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'CONFIRMED',
+  `subtotal_xaf` bigint NOT NULL,
+  `discount_total_xaf` bigint NOT NULL DEFAULT '0',
+  `tax_total_xaf` bigint NOT NULL DEFAULT '0',
+  `total_xaf` bigint NOT NULL,
+  `cancelled_xaf` bigint NOT NULL DEFAULT '0',
+  `amount_paid_xaf` bigint NOT NULL DEFAULT '0',
+  `net_total_xaf` bigint GENERATED ALWAYS AS ((`total_xaf` - `cancelled_xaf`)) STORED,
+  `balance_due_xaf` bigint GENERATED ALWAYS AS (((`total_xaf` - `cancelled_xaf`) - `amount_paid_xaf`)) STORED,
+  `payment_status` varchar(15) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when (((`total_xaf` - `cancelled_xaf`) - `amount_paid_xaf`) = 0) then _utf8mb4'PAID' when (`amount_paid_xaf` = 0) then _utf8mb4'UNPAID' else _utf8mb4'PARTIALLY_PAID' end)) STORED,
+  `due_date` date DEFAULT NULL,
+  `flags` json NOT NULL DEFAULT (json_array()),
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sales_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_sales_sales_command` (`command_id`),
+  UNIQUE KEY `uq_sales_sales_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_sales_sales_occurred_at` (`occurred_at`),
+  KEY `ix_sales_sales_business_date` (`business_date`,`from_location_id`),
+  KEY `ix_sales_sales_site_date` (`site_id`,`business_date`),
+  KEY `ix_sales_sales_customer` (`customer_id`,`occurred_at`),
+  KEY `ix_sales_sales_commercial` (`commercial_user_id`,`business_date`),
+  KEY `ix_sales_sales_seller` (`seller_user_id`,`business_date`),
+  KEY `ix_sales_sales_order` (`order_id`),
+  KEY `ix_sales_sales_payment_status` (`payment_status`,`due_date`),
+  KEY `fk_sales_sales_channel` (`channel_code`),
+  KEY `fk_sales_sales_from_location` (`from_location_id`),
+  KEY `fk_sales_sales_to_deliver_location` (`to_deliver_location_id`),
+  KEY `fk_sales_sales_zone` (`zone_id`),
+  KEY `fk_sales_sales_work_session` (`work_session_id`),
+  KEY `fk_sales_sales_created_by` (`created_by`),
+  KEY `fk_sales_sales_updated_by` (`updated_by`),
+  KEY `ix_sales_sales_cash_session` (`cash_session_id`),
+  CONSTRAINT `fk_sales_sales_channel` FOREIGN KEY (`channel_code`) REFERENCES `catalog_sales_channels` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_commercial` FOREIGN KEY (`commercial_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_from_location` FOREIGN KEY (`from_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order` FOREIGN KEY (`order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_seller` FOREIGN KEY (`seller_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_to_deliver_location` FOREIGN KEY (`to_deliver_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_work_session` FOREIGN KEY (`work_session_id`) REFERENCES `fieldwork_work_sessions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_zone` FOREIGN KEY (`zone_id`) REFERENCES `organization_zones` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sales_amounts` CHECK (((`subtotal_xaf` >= 0) and (`discount_total_xaf` >= 0) and (`tax_total_xaf` >= 0) and (`total_xaf` >= 0))),
+  CONSTRAINT `ck_sales_sales_cancelled` CHECK (((`cancelled_xaf` >= 0) and (`cancelled_xaf` <= `total_xaf`))),
+  CONSTRAINT `ck_sales_sales_cancelled_status` CHECK (((`status` <> _utf8mb4'CANCELLED') or (`cancelled_xaf` = `total_xaf`))),
+  CONSTRAINT `ck_sales_sales_order_customer` CHECK (((`sale_type` <> _utf8mb4'ORDER') or (`customer_id` is not null))),
+  CONSTRAINT `ck_sales_sales_order_link` CHECK ((((`sale_type` = _utf8mb4'ORDER') and (`order_id` is not null) and (`to_deliver_location_id` is not null)) or ((`sale_type` = _utf8mb4'DIRECT') and (`order_id` is null) and (`to_deliver_location_id` is null)))),
+  CONSTRAINT `ck_sales_sales_paid` CHECK (((`amount_paid_xaf` >= 0) and (`amount_paid_xaf` <= (`total_xaf` - `cancelled_xaf`)))),
+  CONSTRAINT `ck_sales_sales_status` CHECK ((`status` in (_utf8mb4'CONFIRMED',_utf8mb4'CANCELLATION_REQUESTED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_sales_sales_total` CHECK ((`total_xaf` = ((`subtotal_xaf` - `discount_total_xaf`) + `tax_total_xaf`))),
+  CONSTRAINT `ck_sales_sales_type` CHECK ((`sale_type` in (_utf8mb4'DIRECT',_utf8mb4'ORDER')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_insert_guard` BEFORE INSERT ON `sales_sales` FOR EACH ROW BEGIN
+  DECLARE td_type VARCHAR(20);
+  DECLARE td_site BINARY(16);
+  DECLARE from_site BINARY(16);
+  -- ADR-028 §1 : l'emplacement « à livrer » d'une vente sur commande est celui du site de la préparation.
+  IF NEW.to_deliver_location_id IS NOT NULL THEN
+    SELECT location_type, site_id INTO td_type, td_site FROM organization_locations WHERE id = NEW.to_deliver_location_id;
+    SELECT site_id INTO from_site FROM organization_locations WHERE id = NEW.from_location_id;
+    IF td_type IS NULL OR td_type <> 'V_TO_DELIVER' OR from_site IS NULL OR td_site <> from_site THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales : « à livrer » doit être celui du site de l''emplacement de préparation (ADR-028 §1).';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_update_guard` BEFORE UPDATE ON `sales_sales` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.sale_type <=> OLD.sale_type AND
+    NEW.order_id <=> OLD.order_id AND
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.customer_category_id_snapshot <=> OLD.customer_category_id_snapshot AND
+    NEW.channel_code <=> OLD.channel_code AND
+    NEW.from_location_id <=> OLD.from_location_id AND
+    NEW.to_deliver_location_id <=> OLD.to_deliver_location_id AND
+    NEW.zone_id <=> OLD.zone_id AND
+    NEW.seller_user_id <=> OLD.seller_user_id AND
+    NEW.commercial_user_id <=> OLD.commercial_user_id AND
+    NEW.work_session_id <=> OLD.work_session_id AND
+    NEW.lat <=> OLD.lat AND
+    NEW.lng <=> OLD.lng AND
+    NEW.accuracy_m <=> OLD.accuracy_m AND
+    NEW.subtotal_xaf <=> OLD.subtotal_xaf AND
+    NEW.discount_total_xaf <=> OLD.discount_total_xaf AND
+    NEW.tax_total_xaf <=> OLD.tax_total_xaf AND
+    NEW.total_xaf <=> OLD.total_xaf AND
+    NEW.due_date <=> OLD.due_date AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales : vente immuable (INV-VEN-02) ; corriger par un document d''annulation.';
+  END IF;
+  IF NEW.cancelled_xaf < OLD.cancelled_xaf THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales : le montant annulé ne diminue jamais (contre-écriture, ADR-028 §5).';
+  END IF;
+  IF OLD.status = 'CANCELLED' AND NEW.status <> 'CANCELLED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales : une vente annulée ne revient pas à CONFIRMED (SM-SALE).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_no_delete` BEFORE DELETE ON `sales_sales` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales : suppression physique interdite (INV-GLO-03) ; annuler par contre-écriture.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sales_order_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sales_order_lines` (
+  `id` binary(16) NOT NULL,
+  `order_id` binary(16) NOT NULL,
+  `line_no` smallint NOT NULL,
+  `product_id` binary(16) NOT NULL,
+  `product_name_snapshot` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity` decimal(14,3) NOT NULL,
+  `unit_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity_base` decimal(14,3) NOT NULL,
+  `withdrawn_quantity_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `sold_quantity_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `delivered_quantity_base` decimal(14,3) NOT NULL DEFAULT '0.000',
+  `quoted_unit_price_xaf` bigint NOT NULL,
+  `list_unit_price_xaf` bigint DEFAULT NULL,
+  `price_rule_id` binary(16) DEFAULT NULL,
+  `price_rule_version` int DEFAULT NULL,
+  `price_source` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RULE',
+  `override_reason_code_id` binary(16) DEFAULT NULL,
+  `override_approval_request_id` binary(16) DEFAULT NULL,
+  `line_total_xaf` bigint NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sales_order_lines_line_no` (`order_id`,`line_no`),
+  KEY `ix_sales_sales_order_lines_product` (`product_id`),
+  KEY `fk_sales_sales_order_lines_unit` (`unit_code`),
+  KEY `fk_sales_sales_order_lines_price_rule` (`price_rule_id`),
+  KEY `fk_sales_sales_order_lines_override_reason` (`override_reason_code_id`),
+  KEY `fk_sales_sales_order_lines_override_approval` (`override_approval_request_id`),
+  CONSTRAINT `fk_sales_sales_order_lines_order` FOREIGN KEY (`order_id`) REFERENCES `sales_sales_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order_lines_override_approval` FOREIGN KEY (`override_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order_lines_override_reason` FOREIGN KEY (`override_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order_lines_price_rule` FOREIGN KEY (`price_rule_id`) REFERENCES `pricing_price_rules` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_order_lines_unit` FOREIGN KEY (`unit_code`) REFERENCES `catalog_units` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sales_order_lines_amounts` CHECK (((`quoted_unit_price_xaf` >= 0) and (`line_total_xaf` >= 0))),
+  CONSTRAINT `ck_sales_sales_order_lines_list_price` CHECK (((`list_unit_price_xaf` is null) or (`list_unit_price_xaf` >= 0))),
+  CONSTRAINT `ck_sales_sales_order_lines_override` CHECK (((`price_source` <> _utf8mb4'MANUAL_OVERRIDE') or (`override_reason_code_id` is not null))),
+  CONSTRAINT `ck_sales_sales_order_lines_price_source` CHECK ((`price_source` in (_utf8mb4'RULE',_utf8mb4'MANUAL_OVERRIDE'))),
+  CONSTRAINT `ck_sales_sales_order_lines_quantities` CHECK (((`quantity` >= 0) and (`quantity_base` >= 0) and (`withdrawn_quantity_base` >= 0) and (`delivered_quantity_base` >= 0) and (`delivered_quantity_base` <= `sold_quantity_base`) and (`sold_quantity_base` <= `quantity_base`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_order_lines_update_guard` BEFORE UPDATE ON `sales_sales_order_lines` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.order_id <=> OLD.order_id AND
+    NEW.line_no <=> OLD.line_no AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.product_name_snapshot <=> OLD.product_name_snapshot AND
+    NEW.unit_code <=> OLD.unit_code AND
+    NEW.quoted_unit_price_xaf <=> OLD.quoted_unit_price_xaf AND
+    NEW.list_unit_price_xaf <=> OLD.list_unit_price_xaf AND
+    NEW.price_rule_id <=> OLD.price_rule_id AND
+    NEW.price_rule_version <=> OLD.price_rule_version AND
+    NEW.price_source <=> OLD.price_source AND
+    NEW.override_reason_code_id <=> OLD.override_reason_code_id AND
+    NEW.override_approval_request_id <=> OLD.override_approval_request_id AND
+    NEW.created_at <=> OLD.created_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_order_lines : produit, unité et prix convenu immuables ; seules les quantités évoluent.';
+  END IF;
+  -- Le vendu net baisse à une annulation, le commandé à un retrait : seuls le livré (un fait) et
+  -- le cumul retiré sont monotones.
+  IF NEW.delivered_quantity_base < OLD.delivered_quantity_base THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_order_lines : la quantité livrée ne diminue jamais (INV-VEN-04).';
+  END IF;
+  IF NEW.withdrawn_quantity_base < OLD.withdrawn_quantity_base THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_order_lines : la quantité retirée ne diminue jamais (traçabilité).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_order_lines_no_delete` BEFORE DELETE ON `sales_sales_order_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_order_lines : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `sales_sales_orders`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sales_sales_orders` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `customer_id` binary(16) NOT NULL,
+  `commercial_user_id` binary(16) NOT NULL,
+  `channel_code` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `fulfilment_location_id` binary(16) NOT NULL,
+  `requested_delivery_date` date DEFAULT NULL,
+  `delivery_address` text COLLATE utf8mb4_0900_as_cs,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'CONFIRMED',
+  `total_estimated_xaf` bigint NOT NULL DEFAULT '0',
+  `advance_paid_xaf` bigint NOT NULL DEFAULT '0',
+  `external_origin` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'NONE',
+  `confirmed_at` datetime(6) DEFAULT NULL,
+  `closed_at` datetime(6) DEFAULT NULL,
+  `closed_by` binary(16) DEFAULT NULL,
+  `closed_reason` text COLLATE utf8mb4_0900_as_cs,
+  `released_payment_treatment` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancel_reason_code_id` binary(16) DEFAULT NULL,
+  `cancel_comment` text COLLATE utf8mb4_0900_as_cs,
+  `cancel_approval_request_id` binary(16) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sales_sales_orders_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_sales_sales_orders_command` (`command_id`),
+  UNIQUE KEY `uq_sales_sales_orders_device_ref` (`created_device_id`,`local_ref`),
+  KEY `ix_sales_sales_orders_customer` (`customer_id`,`occurred_at`),
+  KEY `ix_sales_sales_orders_commercial` (`commercial_user_id`,`occurred_at`),
+  KEY `ix_sales_sales_orders_location_status` (`fulfilment_location_id`,`status`),
+  KEY `ix_sales_sales_orders_status` (`status`,`site_id`),
+  KEY `fk_sales_sales_orders_site` (`site_id`),
+  KEY `fk_sales_sales_orders_channel` (`channel_code`),
+  KEY `fk_sales_sales_orders_closed_by` (`closed_by`),
+  KEY `fk_sales_sales_orders_cancelled_by` (`cancelled_by`),
+  KEY `fk_sales_sales_orders_cancel_reason` (`cancel_reason_code_id`),
+  KEY `fk_sales_sales_orders_cancel_approval` (`cancel_approval_request_id`),
+  KEY `fk_sales_sales_orders_created_by` (`created_by`),
+  KEY `fk_sales_sales_orders_updated_by` (`updated_by`),
+  CONSTRAINT `fk_sales_sales_orders_cancel_approval` FOREIGN KEY (`cancel_approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_cancel_reason` FOREIGN KEY (`cancel_reason_code_id`) REFERENCES `catalog_reason_codes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_channel` FOREIGN KEY (`channel_code`) REFERENCES `catalog_sales_channels` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_commercial` FOREIGN KEY (`commercial_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_location` FOREIGN KEY (`fulfilment_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_sales_orders_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_sales_sales_orders_amounts` CHECK (((`total_estimated_xaf` >= 0) and (`advance_paid_xaf` >= 0))),
+  CONSTRAINT `ck_sales_sales_orders_cancel` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason_code_id` is null) and (`cancel_comment` is null) and (`cancel_approval_request_id` is null)))),
+  CONSTRAINT `ck_sales_sales_orders_closed` CHECK ((((`status` = _utf8mb4'CLOSED') and (`closed_at` is not null) and (`closed_by` is not null)) or ((`status` <> _utf8mb4'CLOSED') and (`closed_at` is null) and (`closed_by` is null)))),
+  CONSTRAINT `ck_sales_sales_orders_confirmed` CHECK (((`status` in (_utf8mb4'DRAFT',_utf8mb4'CANCELLED')) or (`confirmed_at` is not null))),
+  CONSTRAINT `ck_sales_sales_orders_origin` CHECK ((`external_origin` in (_utf8mb4'NONE',_utf8mb4'KOMMO'))),
+  CONSTRAINT `ck_sales_sales_orders_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'CONFIRMED',_utf8mb4'PARTIALLY_FULFILLED',_utf8mb4'FULFILLED',_utf8mb4'CLOSED',_utf8mb4'CANCELLED'))),
+  CONSTRAINT `ck_sales_sales_orders_treatment` CHECK (((`released_payment_treatment` is null) or (`released_payment_treatment` in (_utf8mb4'CUSTOMER_CREDIT',_utf8mb4'REFUND'))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_orders_update_guard` BEFORE UPDATE ON `sales_sales_orders` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.customer_id <=> OLD.customer_id AND
+    NEW.commercial_user_id <=> OLD.commercial_user_id AND
+    NEW.channel_code <=> OLD.channel_code AND
+    NEW.external_origin <=> OLD.external_origin AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : identité de la commande immuable ; seuls lieu, dates, totaux, statut et clôture évoluent.';
+  END IF;
+  IF OLD.status IN ('FULFILLED', 'CLOSED', 'CANCELLED') AND NEW.status <> OLD.status THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : commande terminée, son statut ne change plus (SM-ORDER).';
+  END IF;
+  IF OLD.status <> 'DRAFT' AND NEW.status = 'DRAFT' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : une commande confirmée ne redevient pas brouillon (SM-ORDER).';
+  END IF;
+  IF OLD.status IN ('FULFILLED', 'CLOSED', 'CANCELLED') AND NOT (
+    NEW.closed_at <=> OLD.closed_at AND
+    NEW.closed_by <=> OLD.closed_by AND
+    NEW.closed_reason <=> OLD.closed_reason AND
+    NEW.cancelled_at <=> OLD.cancelled_at AND
+    NEW.cancelled_by <=> OLD.cancelled_by AND
+    NEW.cancel_reason_code_id <=> OLD.cancel_reason_code_id AND
+    NEW.cancel_comment <=> OLD.cancel_comment AND
+    NEW.cancel_approval_request_id <=> OLD.cancel_approval_request_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : clôture et annulation figées une fois la commande terminée.';
+  END IF;
+  IF OLD.released_payment_treatment IS NOT NULL AND NOT (NEW.released_payment_treatment <=> OLD.released_payment_treatment) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : le sort du paiement libéré s''écrit une seule fois.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_sales_orders_no_delete` BEFORE DELETE ON `sales_sales_orders` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_sales_orders : suppression physique interdite (INV-GLO-03) ; utiliser CANCELLED.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `schema_migrations`
 --
 
@@ -6261,5 +7636,15 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261002090000'),
   ('20261002090100'),
   ('20261002090200'),
-  ('20261003090000');
+  ('20261003090000'),
+  ('20261003090100'),
+  ('20261003090200'),
+  ('20261003090300'),
+  ('20261003090400'),
+  ('20261003090500'),
+  ('20261003090600'),
+  ('20261003090700'),
+  ('20261003090800'),
+  ('20261003090900'),
+  ('20261003091000');
 UNLOCK TABLES;

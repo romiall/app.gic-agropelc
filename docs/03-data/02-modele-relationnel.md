@@ -102,8 +102,13 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `sales.sales` | TX | Ventes | customers, orders, users, sites, locations, zones, work_sessions, cash_sessions (finance) | DL (7 j), CR | idem |
 | `sales.sale_lines` | TX | Lignes de vente | sales, products, stock_lots (inventory), price_rules, reason_codes, stock_allocations | DL (7 j), CR | idem |
 | `sales.customer_payments` | TX | Encaissements clients | customers, payment_methods (finance), cash_accounts (finance), users | DL (7 j), CR | idem |
+| `sales.sale_cancellations` | TX | Documents d'annulation de vente (contre-écritures, ADR-028 §5) | sales, sales_orders, users, reason_codes | CR | idem |
+| `sales.sale_cancellation_lines` | LEDGER | Lignes d'annulation (quantité et montant annulés) | sale_cancellations, sale_lines | suit le document | idem |
+| `sales.delivery_notes` | LEDGER | Bons de livraison, en ajout seul (ADR-028 §7) | sales_orders, users, sites, attachments | CR | idem |
+| `sales.delivery_note_lines` | LEDGER | Quantités livrées par ligne de vente | delivery_notes, sales_order_lines, sale_lines | suit le document | idem |
 | `sales.payment_allocations` | LEDGER | Affectations d'encaissements (vente ou commande) | customer_payments, sales, sales_orders | DL, CR | idem |
-| `sales.v_receivables` (vue) | PROJ | Créances par vente et par client | sales, payment_allocations | DL (encours du périmètre, sous forme matérialisée) | idem |
+
+Pas de vue `sales.v_receivables` : les créances se calculent en requête sur `sales.sales` (P4-09, dictionnaire `sales`).
 
 ### 2.8 `inventory`
 
@@ -203,7 +208,7 @@ Colonnes : schéma.table | catégorie | responsabilité métier | principales r�
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **111 objets** : 109 tables et 2 vues (`sales.v_receivables`, `finance.v_payables`). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08 ; `identity.login_attempts` (verrouillage progressif de connexion) en P0-09 — aucune n'était prévue au décompte initial (seuls les mécanismes étaient documentés, pas les schémas).
+Total : **114 objets** : 113 tables et 1 vue (`finance.v_payables`) ; `sales.v_receivables` est remplacée par une requête (P4-02 2/2) et quatre tables de `sales` s'ajoutent (annulations et leurs lignes, bons de livraison et leurs lignes). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08 ; `identity.login_attempts` (verrouillage progressif de connexion) en P0-09 — aucune n'était prévue au décompte initial (seuls les mécanismes étaient documentés, pas les schémas).
 
 ## 3. Références inter-schémas autorisées
 

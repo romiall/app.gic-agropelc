@@ -81,17 +81,17 @@
 
 ## organization.locations
 
-**Responsabilité** : emplacement où un stock peut exister, physique ou virtuel (glossaire §1, ADR-003).
+**Responsabilité** : emplacement où un stock peut exister, physique ou virtuel (glossaire §1, ADR-003, ADR-028 §1).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
-| `site_id` | uuid → sites | Oui | — | Nul pour un emplacement virtuel |
+| `site_id` | uuid → sites | Oui | — | Nul pour un emplacement virtuel global (les neuf types `V_*` sauf `V_TO_DELIVER`) ; renseigné pour un emplacement physique **et** pour l'emplacement « à livrer » `V_TO_DELIVER` (P4-02, ADR-028 §1) |
 | `parent_location_id` | uuid → locations | Oui | — | Bâtiment d'une case |
 | `code` | code | Non | — | Unique par site |
 | `name` | label | Non | — | |
-| `location_type` | enum(`STORE`,`POS`,`BUILDING`,`PEN`,`INCUBATOR`,`HATCHER`,`MOBILE`,`SLAUGHTERHOUSE`,`V_OPENING`,`V_SUPPLIER`,`V_CUSTOMER`,`V_PRODUCTION`,`V_CONSUMPTION`,`V_LOSS`,`V_PENDING_LOSS`,`V_ADJUSTMENT`,`V_TRANSIT`) | Non | — | `SLAUGHTERHOUSE` (abattoir de la ferme, AV-101) ajouté en P7-02 |
-| `is_virtual` | boolean | Non | calculé | Vrai pour les types `V_*` |
+| `location_type` | enum(`STORE`,`POS`,`BUILDING`,`PEN`,`INCUBATOR`,`HATCHER`,`MOBILE`,`SLAUGHTERHOUSE`,`V_OPENING`,`V_SUPPLIER`,`V_CUSTOMER`,`V_PRODUCTION`,`V_CONSUMPTION`,`V_LOSS`,`V_PENDING_LOSS`,`V_ADJUSTMENT`,`V_TRANSIT`,`V_TO_DELIVER`) | Non | — | `SLAUGHTERHOUSE` (abattoir de la ferme, AV-101) ajouté en P7-02 ; `V_TO_DELIVER` (« vendu, à livrer », un par site) ajouté en P4-02 (ADR-028 §1) |
+| `is_virtual` | boolean | Non | calculé | Vrai pour les types `V_*`, y compris `V_TO_DELIVER` (colonne générée stockée, étendue en P4-02) |
 | `custody_mode` | enum(`EXCLUSIVE_USER`,`EXCLUSIVE_DEVICE`,`SHARED`) | Oui | — | Obligatoire pour les emplacements physiques (BR-STK-010) |
 | `custodian_user_id` | uuid → identity.users | Oui | — | Détenteur d'un emplacement `MOBILE` |
 | `designated_device_id` | uuid → identity.devices | Oui | — | Appareil désigné en `EXCLUSIVE_DEVICE` |
@@ -99,11 +99,17 @@
 | `status` | enum(`ACTIVE`,`INACTIVE`) | Non | `ACTIVE` | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `(site_id, code)` ; un seul emplacement actif par type virtuel ; un seul `MOBILE` actif par `custodian_user_id` (INV-ADM-05).
-- **CK** Virtuel ⇔ `site_id` nul ; `MOBILE` ⇒ `custodian_user_id` non nul et `custody_mode = EXCLUSIVE_USER` ; `EXCLUSIVE_DEVICE` ⇒ `designated_device_id` non nul ; `PEN` ⇒ parent de type `BUILDING`.
+- **PK** `id`. **UQ** `(site_id, code)` ; un seul emplacement actif par type virtuel **global** (colonne générée `active_virtual_type`, inchangée : elle ne porte que les neuf types `V_OPENING`, `V_SUPPLIER`, `V_CUSTOMER`, `V_PRODUCTION`, `V_CONSUMPTION`, `V_LOSS`, `V_PENDING_LOSS`, `V_ADJUSTMENT`, `V_TRANSIT` ; elle est nulle pour `V_TO_DELIVER`) ; **un seul `V_TO_DELIVER` actif par site** (colonne générée stockée `active_to_deliver_site` = `site_id` si `location_type = V_TO_DELIVER` et `status = ACTIVE`, nulle sinon, avec un `UNIQUE` : index unique partiel émulé, ADR-023, P4-02) ; un seul `MOBILE` actif par `custodian_user_id` (INV-ADM-05).
+- **CK** Un emplacement virtuel global (`is_virtual` et type différent de `V_TO_DELIVER`) a un `site_id` nul ; un emplacement physique a un `site_id` non nul ; `V_TO_DELIVER` exige un `site_id` non nul. Le `CHECK` `ck_organization_locations_virtual_site` a été modifié en P4-02 pour cette exception à l'ancienne règle « virtuel ⇔ `site_id` nul » (nom conservé, BR-ADM-010 amendée). `MOBILE` ⇒ `custodian_user_id` non nul et `custody_mode = EXCLUSIVE_USER` ; `EXCLUSIVE_DEVICE` ⇒ `designated_device_id` non nul ; `PEN` ⇒ parent de type `BUILDING`. Le `CHECK` de liste `ck_organization_locations_type` porte les dix-huit types, dont `V_TO_DELIVER`.
 - **IX** `(site_id, location_type)`, `(custodian_user_id)`.
-- **Suppr.** `DESACTIVATION` sous condition (BR-ADM-011, INV-STK-07). Les virtuels ne sont jamais désactivés.
-- **Audit** Création, modification, désactivation, changement de détenteur ou d'appareil. **Offline** DL (emplacements du périmètre et virtuels).
+- **Suppr.** `DESACTIVATION` sous condition (BR-ADM-011, INV-STK-07). Les virtuels, `V_TO_DELIVER` compris, ne sont jamais désactivés.
+- **Audit** Création, modification, désactivation, changement de détenteur ou d'appareil. **Offline** DL (emplacements du périmètre et virtuels globaux ; l'emplacement « à livrer » suit son site, DÉDUIT de son rattachement à un site).
+- **Emplacement « à livrer » `V_TO_DELIVER`** (P4-02, ADR-028 §1, ADR-029) :
+  - *Rôle* (ADR-028 §1, DÉDUIT dans l'ADR) : un emplacement virtuel **par site**, où la marchandise d'une commande confirmée attend sa livraison. Virtuel, il n'est ni vendable, ni compté dans le disponible, ni dans l'effectif non vendu d'un lot, ni dans un inventaire du magasin.
+  - *Création* (ADR-028 §1) : par le système, à la première confirmation sur le site. Elle ne vient ni du seed de démarrage, qui ne porte que les neuf types globaux (BR-ADM-010), ni de `organization.location.create`, qui ne crée que des types physiques.
+  - *Immuabilité* (DÉDUIT) : `is_virtual` étant vrai, les commandes `organization.location.update` et `.deactivate` le refusent (`LOCATION_VIRTUAL_IMMUTABLE`), comme tout virtuel.
+  - *Mode de garde* (DÉDUIT) : `custody_mode` reste nul (obligatoire pour les seuls emplacements physiques, BR-STK-010 ; aucun `CHECK` ne l'impose pour un virtuel, ni avant ni après P4-02).
+  - *Solde* : jamais négatif, par site, produit et lot, en quantité et en valeur (INV-STK-18) ; les mouvements qui le soldent sont plafonnés en base par leur origine (INV-STK-17, ADR-029).
 
 ## organization.teams
 
@@ -184,6 +190,9 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |
+| `sales.duplicate_payment_window_minutes` | 10 | AV-056 (minutes ; fenêtre de détection d'un doublon d'encaissement sans référence : même client, même montant ; client visible, l'appareil contrôle aussi localement) |
+| `sales.offline_over_allocation_allowed` | `false` | AV-025 (booléen JSON ; vente hors ligne au-delà de l'allocation, autorisée et signalée si vrai ; client visible, lu par l'appareil hors ligne ; réglable par site, `scope_type = SITE`) |
+| `sales.undelivered_alert_days` | 7 | AV-132 (jours ; ancienneté au-delà de laquelle une vente confirmée non livrée est signalée, alerte en P9 ; serveur, non client visible) |
 | `pricing.max_discount_pct.<ROLE>` | 0 / 5 / 15 | AV-026 |
 | `pricing.stale_rules_hours` | 24 | AV-063 |
 | `finance.cash_holding_max_xaf` | 200 000 | D09 §14 |

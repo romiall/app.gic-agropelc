@@ -47,7 +47,7 @@ Classification (PM §45) :
 | AV-030 | Conditions d'annulation d'une vente | IMPORTANTE | P4 | Vendeur seul ≤ 15 min (caisse ouverte dès P5), sinon validation ; contre-écriture | **TRANCHÉ** (voir journal §3) |
 | AV-031 | Vente au poids ou à l'unité selon les produits | IMPORTANTE | P1/P4 | Les deux par produit dès P4 (`pricing_mode`) ; poids facultatif à l'unité | **TRANCHÉ** (voir journal §3) |
 | AV-032 | Poulets vendus vifs et/ou abattus (transformation) | IMPORTANTE | P7 | Vif et abattu dès P7 : transformation multi-produits (entier, découpes, abats), coût réparti au prorata du poids | **TRANCHÉ** (voir journal §3) |
-| AV-033 | Acomptes sur commande | SECONDAIRE | P4 | Autorisés, affectés à la commande | OUVERT |
+| AV-033 | Acomptes sur commande | SECONDAIRE | P4 | Autorisés, affectés à la commande puis passés à la vente à sa confirmation (ADR-028 §8) | OUVERT |
 | AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Bon de livraison distinct (livreur, heure, quantités, preuve) ; plusieurs livraisons partielles | **TRANCHÉ** (voir journal §3) |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
 | AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
@@ -149,6 +149,9 @@ Classification (PM §45) :
 | AV-132 | Délai d'alerte d'une vente confirmée non livrée | SECONDAIRE | P4/P9 | 7 jours, paramétré | OUVERT |
 | AV-133 | Livraison faite hors ligne qui arrive après l'annulation du reste de la commande | SECONDAIRE | P4 | Vente directe de régularisation de la quantité en trop et conflit pour revue | OUVERT |
 | AV-134 | Correction d'un bon de livraison saisi avec une mauvaise quantité | SECONDAIRE | P4 | Non en V1 : seul le non-livré s'annule (retour de marchandise livrée hors MVP, AV-029) | OUVERT |
+| AV-135 | Décision de la Finance sur un encaissement suspect de doublon : correction de la référence | IMPORTANTE | P4 | La Finance peut corriger la référence en décidant ; la vente ou la commande visées sont mémorisées | OUVERT |
+| AV-136 | Commande d'un produit vendu au poids | IMPORTANTE | P4 | Non en P4 : seuls les produits à l'unité se commandent ; le poids se vend en vente directe | OUVERT |
+| AV-137 | Vente anonyme saisie hors ligne et non intégralement payée | SECONDAIRE | P4 | Enregistrée (fait accompli), drapeau et conflit pour la Finance | OUVERT |
 
 ---
 
@@ -323,6 +326,7 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 
 ### AV-033 — Acomptes — SECONDAIRE
 - **Recommandation** : autorisés. L'encaissement est affecté à la commande, puis réaffecté à la vente à la livraison.
+- **Défaut implémenté** (ADR-028 §8, depuis que la vente naît à la confirmation) : l'acompte est affecté à la commande, puis passé à la vente **à sa confirmation** (cause de renversement `ORDER_CONFIRMED`) ; la question reste ouverte.
 
 ### AV-034 — Livraison — IMPORTANTE — **TRANCHÉ**
 - **Recommandation** : pas d'entité « livraison » distincte au MVP. La vente de type `ORDER_FULFILMENT` porte le livreur, l'heure de remise et une preuve éventuelle. Une livraison partielle donne une vente partielle.
@@ -849,6 +853,7 @@ Politique par défaut, paramétrable :
 - **Choix** : Paramètre `sales.undelivered_alert_days`.
 - **Recommandation** : 7 jours.
 - **Impact** : Indicateur des ventes non livrées ; alerte P9.
+- **Défaut posé par le seed** (P4-02) : `sales.undelivered_alert_days` = 7, en attendant la décision.
 
 ### AV-133 — Livraison faite hors ligne qui arrive après l'annulation du reste de la commande — SECONDAIRE
 - **Question** : Un livreur remet 6 pièces hors ligne à 9 h 30. À 10 h, le commercial annule, en ligne, tout le reste non livré de la commande (la marchandise retourne au stock). À 11 h, l'appareil du livreur se synchronise : la livraison dépasse ce qui restait à livrer. Que fait-on ?
@@ -863,6 +868,27 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) non en V1 : on ne corrige que le non-livré, et un retour de marchandise livrée est un autre sujet (AV-029) ; (b) oui, par une reprise de livraison réservée au Resp. commercial, qui remet la quantité « à livrer ».
 - **Recommandation** : (a).
 - **Impact** : Bon de livraison (ADR-028 §7) ; plafond de livraison ; AV-029. Défaut implémenté : (a).
+
+### AV-135 — Décision de la Finance sur un encaissement suspect de doublon : correction de la référence — IMPORTANTE
+- **Question** : Un vendeur saisit, pour un second paiement mobile money réel, la référence d'un paiement déjà enregistré : l'encaissement est mis de côté comme doublon suspect (AV-056). Quand la Finance décide, peut-elle corriger la référence (paiement réel mal saisi) ou seulement approuver ou rejeter tel quel ?
+- **Pourquoi** : sans correction, approuver un doublon de même référence est impossible (la référence est unique parmi les paiements enregistrés) et le seul recours est de rejeter, alors que l'argent est peut-être arrivé sur le compte. SM-CUSTOMER-PAYMENT prévoit une « référence corrigée » ; le schéma de P4-02 la rend possible à la décision seulement.
+- **Choix** : (a) la Finance peut corriger la référence en approuvant ; (b) approuver ou rejeter sans correction (rejet obligatoire si la référence est déjà prise).
+- **Recommandation** : (a). L'encaissement suspect mémorise la vente ou la commande visée (`intended_sale_id`, `intended_order_id`), affectée à la décision.
+- **Impact** : `sales_customer_payments` (déclencheur de mise à jour, colonnes `intended_*`) ; décision `PAYMENT_DUPLICATE` ; SM-CUSTOMER-PAYMENT. Défaut implémenté en attendant : (a).
+
+### AV-136 — Commande d'un produit vendu au poids — IMPORTANTE
+- **Question** : Un restaurateur commande 12 kg de découpes ou deux porcs vendus au kilo vif. Le poids exact n'est connu qu'à la pesée, mais la vente naît à la confirmation de la commande (AV-024). Comment vendre ?
+- **Pourquoi** : la ligne de commande n'a ni quantité ni unité de tarification ; la ligne de vente exige un poids de tarification pesé, qui ne peut plus changer (la vente est immuable).
+- **Choix** : (a) en P4 seuls les produits à l'unité se commandent ; un produit au poids se vend en vente directe, au poids pesé ; (b) la commande porte un poids estimé, la vente est faite sur l'estimation et un ajustement corrige l'écart à la pesée ; (c) le produit au poids est facturé à la livraison, sur le poids livré.
+- **Recommandation** : (a) pour P4, (c) à étudier ensuite.
+- **Impact** : `sales.order.place`, lignes de commande et de bon de livraison, AV-031. Défaut implémenté en attendant : (a).
+
+### AV-137 — Vente anonyme saisie hors ligne et non intégralement payée — SECONDAIRE
+- **Question** : Une vente sans client doit être intégralement payée (AV-027). Hors ligne, le paiement saisi peut se révéler un doublon (mis de côté) ou être annulé : la vente anonyme se retrouve avec un reste dû et personne à qui le réclamer. Que fait-on ?
+- **Pourquoi** : la vente est un fait accompli (marchandise remise) qui n'est jamais rejeté ; la règle « payée intégralement » ne peut pas s'appliquer à ce fait.
+- **Choix** : (a) la vente est enregistrée, le drapeau `ANONYMOUS_UNPAID` est posé et un conflit est ouvert pour la Finance ; (b) la vente est rejetée (marchandise remise sans trace).
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record` hors ligne, conflits, `sales_sales.flags` ; INV-VEN-07 vérifiée en transaction à l'enregistrement en ligne. Défaut implémenté : (a).
 
 ---
 
