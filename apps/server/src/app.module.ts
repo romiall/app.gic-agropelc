@@ -12,6 +12,8 @@ import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { InventoryJobsModule } from './modules/inventory/inventory-jobs.module.js';
 import { ProcurementModule } from './modules/procurement/procurement.module.js';
 import { ProductionModule } from './modules/production/production.module.js';
+import { FinanceModule } from './modules/finance/finance.module.js';
+import { FinanceJobsModule } from './modules/finance/finance-jobs.module.js';
 import { FieldworkModule } from './modules/fieldwork/fieldwork.module.js';
 import { FieldworkJobsModule } from './modules/fieldwork/fieldwork-jobs.module.js';
 import { CrmModule } from './modules/crm/crm.module.js';
@@ -43,6 +45,8 @@ import { HealthController } from './health/health.controller.js';
     InventoryJobsModule,
     ProcurementModule,
     ProductionModule,
+    FinanceModule,
+    FinanceJobsModule,
     FieldworkModule,
     FieldworkJobsModule,
     CrmModule,

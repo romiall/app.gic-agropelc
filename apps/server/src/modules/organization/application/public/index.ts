@@ -8,3 +8,7 @@
 export { listSettingHistory, currentSettingValue } from './setting-query.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
 export { listTeamMembersAt, listManagedTeamMembersAt, listTeamsOfUserAt } from './team-query.js';
+
+// P4-03 : emplacement « à livrer » d'un site (ADR-028 §1).
+export { ensureToDeliverLocation, ToDeliverLocationError } from './to-deliver-location.js';
+export type { ToDeliverLocation } from './to-deliver-location.js';

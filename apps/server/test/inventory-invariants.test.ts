@@ -568,4 +568,31 @@ describe('invariants du stock (P2-07)', () => {
     expect((await verify()).ok).toBe(true);
     await db.transaction().execute((trx) => reconcile(trx, {}));
   });
+
+  it('INV-STK-17 / INV-STK-18 (ADR-029) : aucune origine dépassée, aucun solde « à livrer » négatif, aucun inverse de vente sur toute la base', async () => {
+    const verification = await db.transaction().execute((trx) => verifyStockLedger(trx));
+    expect(verification.settlementBreaches).toEqual([]);
+    expect(verification.toDeliverBreaches).toEqual([]);
+    // INV-STK-04 étendu : un inverse ne vise jamais une vente, une livraison ou un retour.
+    const reversedSales = await db
+      .selectFrom('inventory_stock_moves as r')
+      .innerJoin('inventory_stock_moves as o', 'o.id', 'r.reverses_move_id')
+      .select(sql<string>`COUNT(*)`.as('n'))
+      .where('o.move_type', 'in', ['SALE', 'DELIVERY', 'CUSTOMER_RETURN'])
+      .executeTakeFirstOrThrow();
+    expect(Number(reversedSales.n)).toBe(0);
+    // Un mouvement rattaché n'est ni un inverse ni d'un autre type que retour ou livraison.
+    const misplaced = await db
+      .selectFrom('inventory_stock_moves')
+      .select(sql<string>`COUNT(*)`.as('n'))
+      .where('origin_move_id', 'is not', null)
+      .where((eb) =>
+        eb.or([
+          eb('is_reversal', '=', 1),
+          eb('move_type', 'not in', ['CUSTOMER_RETURN', 'DELIVERY']),
+        ]),
+      )
+      .executeTakeFirstOrThrow();
+    expect(Number(misplaced.n)).toBe(0);
+  });
 });

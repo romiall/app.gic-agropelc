@@ -20,8 +20,11 @@ type Executor = Kysely<DB> | Transaction<DB>;
  * `PENDING_LOSS` : têtes du lot en attente de validation d'une perte (`V_PENDING_LOSS`, toutes
  * catégories) — elles peuvent revenir au lot si la déclaration est rejetée ; la clôture les
  * refuse (revue P7).
+ * `TO_DELIVER` : têtes vendues, mises de côté dans l'emplacement « à livrer » (`V_TO_DELIVER`,
+ * ADR-028) en attendant leur remise ; une annulation les rendrait au lot, la clôture les refuse
+ * (ADR-029 §9).
  */
-export type HeadcountScope = 'REARING' | 'UNSOLD' | 'PENDING_LOSS';
+export type HeadcountScope = 'REARING' | 'UNSOLD' | 'PENDING_LOSS' | 'TO_DELIVER';
 
 function scopeCondition(scope: HeadcountScope, alias: 'fl' | 'tl') {
   if (scope === 'REARING') {
@@ -29,6 +32,9 @@ function scopeCondition(scope: HeadcountScope, alias: 'fl' | 'tl') {
   }
   if (scope === 'PENDING_LOSS') {
     return sql<boolean>`${sql.ref(`${alias}.location_type`)} = 'V_PENDING_LOSS'`;
+  }
+  if (scope === 'TO_DELIVER') {
+    return sql<boolean>`${sql.ref(`${alias}.location_type`)} = 'V_TO_DELIVER'`;
   }
   return sql<boolean>`(${sql.ref(`${alias}.is_virtual`)} = 0 OR ${sql.ref(`${alias}.location_type`)} = 'V_TRANSIT')`;
 }

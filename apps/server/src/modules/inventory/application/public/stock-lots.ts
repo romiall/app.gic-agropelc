@@ -136,6 +136,8 @@ export interface StockLotSummary {
   readonly originId: string | null;
   readonly productId: string | null;
   readonly status: string;
+  /** Animaux vendables directement depuis un emplacement d'élevage (BR-PRD-010, lot `SELLING`). */
+  readonly sellableFromRearing: boolean;
 }
 
 /** Lot de stock par identifiant (origine : `production` refuse un lot d'animaux comme simple stock). */
@@ -145,7 +147,7 @@ export async function findStockLot(
 ): Promise<StockLotSummary | undefined> {
   const row = await executor
     .selectFrom('inventory_stock_lots')
-    .select(['id', 'origin_type', 'origin_id', 'product_id', 'status'])
+    .select(['id', 'origin_type', 'origin_id', 'product_id', 'status', 'sellable_from_rearing'])
     .where('id', '=', toBin(lotId))
     .executeTakeFirst();
   return row
@@ -155,8 +157,28 @@ export async function findStockLot(
         originId: fromBinOrNull(row.origin_id),
         productId: fromBinOrNull(row.product_id),
         status: row.status,
+        sellableFromRearing: Boolean(row.sellable_from_rearing),
       }
     : undefined;
+}
+
+/**
+ * BR-PRD-010 : les animaux d'un lot de production `SELLING` se vendent directement depuis un
+ * emplacement d'élevage. `sales` ne peut pas importer `production` : l'état est porté par le lot de
+ * stock de traçabilité, tenu par `production` à chaque passage `ACTIVE` ↔ `SELLING`. La commande de
+ * vente lit `findStockLot(...).sellableFromRearing` et refuse sinon (`LOT_NOT_SELLABLE`) ; hors
+ * ligne, le fait accompli est appliqué avec un conflit (BR-SYN-007).
+ */
+export async function setStockLotSellableFromRearing(
+  uow: UnitOfWork,
+  lotId: string,
+  sellable: boolean,
+): Promise<void> {
+  await uow
+    .updateTable('inventory_stock_lots')
+    .set({ sellable_from_rearing: sellable ? 1 : 0 })
+    .where('id', '=', toBin(lotId))
+    .execute();
 }
 
 /** Solde d'un produit d'un lot à un emplacement (mise en place par achat bornée au solde réel). */

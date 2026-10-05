@@ -90,6 +90,7 @@ export {
   recalculateCmup,
   roundCmupToXaf,
   stockValueXaf,
+  settlementValueXaf,
   evaluateStockThreshold,
 } from './stock-engine.js';
 

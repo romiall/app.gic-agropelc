@@ -152,6 +152,7 @@ Classification (PM §45) :
 | AV-135 | Décision de la Finance sur un encaissement suspect de doublon : correction de la référence | IMPORTANTE | P4 | La Finance peut corriger la référence en décidant ; la vente ou la commande visées sont mémorisées | OUVERT |
 | AV-136 | Commande d'un produit vendu au poids | IMPORTANTE | P4 | Non en P4 : seuls les produits à l'unité se commandent ; le poids se vend en vente directe | OUVERT |
 | AV-137 | Vente anonyme saisie hors ligne et non intégralement payée | SECONDAIRE | P4 | Enregistrée (fait accompli), drapeau et conflit pour la Finance | OUVERT |
+| AV-138 | Annulation d'une vente d'animaux après la clôture de leur lot | SECONDAIRE | P4 | Appliquée (une correction n'est jamais refusée), lot laissé clos, conflit informatif pour le Resp. production | OUVERT |
 
 ---
 
@@ -889,6 +890,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) la vente est enregistrée, le drapeau `ANONYMOUS_UNPAID` est posé et un conflit est ouvert pour la Finance ; (b) la vente est rejetée (marchandise remise sans trace).
 - **Recommandation** : (a).
 - **Impact** : `sales.sale.record` hors ligne, conflits, `sales_sales.flags` ; INV-VEN-07 vérifiée en transaction à l'enregistrement en ligne. Défaut implémenté : (a).
+
+### AV-138 — Annulation d'une vente d'animaux après la clôture de leur lot — SECONDAIRE
+- **Question** : Un lot de porcs est clôturé après que tous ses animaux ont été vendus. Un mois plus tard, le client rend les animaux et la vente est annulée : les animaux reviennent dans un lot déjà clôturé, dont le résumé de clôture (coût, résultat) est figé. Que fait-on ?
+- **Pourquoi** : une correction ne se refuse pas (ADR-006), mais l'effectif et le coût restant du lot ne correspondent plus à son résumé. Une vente sur commande est protégée : la clôture est refusée tant qu'il reste des têtes vendues non livrées (ADR-029 §9) ; une vente directe, déjà livrée, ne l'est pas.
+- **Choix** : (a) l'annulation est appliquée, le lot reste clos et un conflit informatif `LOT_CLOSED` est ouvert pour le Resp. production (comme une saisie tardive hors ligne) ; (b) l'annulation est refusée tant que le lot est clos ; (c) l'annulation rouvre le lot.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.cancel` / `.request_cancellation` (P4-05), `returnSoldGoods` (exemptée de `LOT_CLOSED`), conflits. Défaut implémenté : (a).
 
 ---
 

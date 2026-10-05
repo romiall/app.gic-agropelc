@@ -8,6 +8,9 @@
  *
  * Coût figé du mouvement (ADR-015, ADR-027 ; P7-03) :
  * - inverse : coût du mouvement d'origine (BR-STK-052) ;
+ * - mouvement rattaché à un `SALE` (`CUSTOMER_RETURN`, `DELIVERY`, ADR-029) : valeur de l'origine
+ *   au prorata cumulatif, dernière opération = reliquat exact (BR-STK-056) ; jamais revalorisé,
+ *   jamais une seconde sortie d'un lot biologique ;
  * - mouvement d'un **lot biologique** (lot de stock d'origine `PRODUCTION_LOT` ou
  *   `INCUBATION_BATCH`) : coût déclaré s'il est fourni (entrée de production, rendement à 0),
  *   sinon **coût par tête** = coût restant du lot ÷ effectif non vendu (AV-097) ; la dernière
@@ -26,9 +29,11 @@ import {
   costPerHeadXaf,
   lineAmountXaf,
   quantityFromDecimal,
+  quantityMilliUnits,
   recalculateCmup,
   roundCmupToXaf,
   selectLotsFifo,
+  settlementValueXaf,
   unitCostXaf as unitCostOfValue,
   xaf,
 } from '@gic/domain';
@@ -56,6 +61,7 @@ export const MOVE_TYPES = [
   'INTERNAL_MOVE',
   'SALE',
   'CUSTOMER_RETURN',
+  'DELIVERY',
   'LOSS',
   'LOSS_PENDING',
   'LOSS_CONFIRMATION',
@@ -81,31 +87,48 @@ export const SOURCE_DOC_TYPES = [
   'LOT_ENTRY',
   'SLAUGHTER',
   'LOT_TRANSFER',
+  'SALE_CANCELLATION',
+  'DELIVERY',
 ] as const;
 export type SourceDocType = (typeof SOURCE_DOC_TYPES)[number];
 
-/** D06 §7.7 : couple (source, destination) autorisé pour chaque type de mouvement. */
-const MOVE_TYPE_ENDPOINTS: Record<MoveType, { from: string; to: string }> = {
-  OPENING_BALANCE: { from: 'V_OPENING', to: 'PHYSICAL' },
-  PURCHASE_RECEIPT: { from: 'V_SUPPLIER', to: 'PHYSICAL' },
-  SUPPLIER_RETURN: { from: 'PHYSICAL', to: 'V_SUPPLIER' },
-  TRANSFER_DISPATCH: { from: 'PHYSICAL', to: 'V_TRANSIT' },
-  TRANSFER_RECEIPT: { from: 'V_TRANSIT', to: 'PHYSICAL' },
-  TRANSFER_DISCREPANCY: { from: 'V_TRANSIT', to: 'V_PENDING_LOSS' },
-  INTERNAL_MOVE: { from: 'PHYSICAL', to: 'PHYSICAL' },
-  SALE: { from: 'PHYSICAL', to: 'V_CUSTOMER' },
-  CUSTOMER_RETURN: { from: 'V_CUSTOMER', to: 'PHYSICAL' },
-  LOSS: { from: 'PHYSICAL', to: 'V_LOSS' },
-  LOSS_PENDING: { from: 'PHYSICAL', to: 'V_PENDING_LOSS' },
-  LOSS_CONFIRMATION: { from: 'V_PENDING_LOSS', to: 'V_LOSS' },
-  LOSS_RELEASE: { from: 'V_PENDING_LOSS', to: 'PHYSICAL' },
-  CONSUMPTION: { from: 'PHYSICAL', to: 'V_CONSUMPTION' },
-  CONSUMPTION_REVERSAL: { from: 'V_CONSUMPTION', to: 'PHYSICAL' },
-  PRODUCTION_OUTPUT: { from: 'V_PRODUCTION', to: 'PHYSICAL' },
-  PRODUCTION_INPUT: { from: 'PHYSICAL', to: 'V_PRODUCTION' },
-  INVENTORY_GAIN: { from: 'V_ADJUSTMENT', to: 'PHYSICAL' },
-  INVENTORY_LOSS: { from: 'PHYSICAL', to: 'V_ADJUSTMENT' },
+/**
+ * D06 §7.7 : extrémités autorisées pour chaque type de mouvement (`PHYSICAL` = tout emplacement
+ * non virtuel, sinon un type d'emplacement). Un type peut admettre plusieurs extrémités : la vente
+ * va vers `V_CUSTOMER` (vente directe) ou `V_TO_DELIVER` (confirmation d'une commande, ADR-028
+ * §2) ; un retour part de l'un ou de l'autre selon l'origine (ADR-029).
+ */
+const MOVE_TYPE_ENDPOINTS: Record<
+  MoveType,
+  { readonly from: readonly string[]; readonly to: readonly string[] }
+> = {
+  OPENING_BALANCE: { from: ['V_OPENING'], to: ['PHYSICAL'] },
+  PURCHASE_RECEIPT: { from: ['V_SUPPLIER'], to: ['PHYSICAL'] },
+  SUPPLIER_RETURN: { from: ['PHYSICAL'], to: ['V_SUPPLIER'] },
+  TRANSFER_DISPATCH: { from: ['PHYSICAL'], to: ['V_TRANSIT'] },
+  TRANSFER_RECEIPT: { from: ['V_TRANSIT'], to: ['PHYSICAL'] },
+  TRANSFER_DISCREPANCY: { from: ['V_TRANSIT'], to: ['V_PENDING_LOSS'] },
+  INTERNAL_MOVE: { from: ['PHYSICAL'], to: ['PHYSICAL'] },
+  SALE: { from: ['PHYSICAL'], to: ['V_CUSTOMER', 'V_TO_DELIVER'] },
+  CUSTOMER_RETURN: { from: ['V_CUSTOMER', 'V_TO_DELIVER'], to: ['PHYSICAL'] },
+  DELIVERY: { from: ['V_TO_DELIVER'], to: ['V_CUSTOMER'] },
+  LOSS: { from: ['PHYSICAL'], to: ['V_LOSS'] },
+  LOSS_PENDING: { from: ['PHYSICAL'], to: ['V_PENDING_LOSS'] },
+  LOSS_CONFIRMATION: { from: ['V_PENDING_LOSS'], to: ['V_LOSS'] },
+  LOSS_RELEASE: { from: ['V_PENDING_LOSS'], to: ['PHYSICAL'] },
+  CONSUMPTION: { from: ['PHYSICAL'], to: ['V_CONSUMPTION'] },
+  CONSUMPTION_REVERSAL: { from: ['V_CONSUMPTION'], to: ['PHYSICAL'] },
+  PRODUCTION_OUTPUT: { from: ['V_PRODUCTION'], to: ['PHYSICAL'] },
+  PRODUCTION_INPUT: { from: ['PHYSICAL'], to: ['V_PRODUCTION'] },
+  INVENTORY_GAIN: { from: ['V_ADJUSTMENT'], to: ['PHYSICAL'] },
+  INVENTORY_LOSS: { from: ['PHYSICAL'], to: ['V_ADJUSTMENT'] },
 };
+
+/** Types dont chaque mouvement consomme une part d'un `SALE` d'origine (ADR-029). */
+const SETTLEMENT_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>([
+  'CUSTOMER_RETURN',
+  'DELIVERY',
+]);
 
 /** Stratégie stock §9 : entrées qui recalculent le CMUP (coût déclaré par l'appelant). */
 const VALUATION_ENTRY_MOVE_TYPES = new Set<MoveType>([
@@ -161,6 +184,13 @@ export interface RecordMoveInput {
   readonly reversesMoveId?: string;
   /** Facultatif : s'il est fourni, doit égaler le coût du mouvement d'origine. */
   readonly reversedUnitCostXaf?: number;
+  /**
+   * Mouvement `SALE` dont celui-ci consomme une part (ADR-029) : exigé pour `CUSTOMER_RETURN` et
+   * `DELIVERY`, interdit pour tout autre type et avec `reversesMoveId` (une vente, une livraison
+   * et un retour ne s'inversent pas). La valeur est celle de l'origine au prorata cumulatif
+   * (BR-STK-056) ; le lot est celui de l'origine.
+   */
+  readonly originMoveId?: string;
 }
 
 export interface RecordedMove {
@@ -177,39 +207,45 @@ export interface RecordMoveDeps {
   readonly idGenerator: IdGenerator;
 }
 
-async function loadLocation(
-  uow: Transaction<DB>,
-  locationId: string,
-): Promise<{ readonly isVirtual: boolean; readonly locationType: string }> {
+interface LocationInfo {
+  readonly isVirtual: boolean;
+  readonly locationType: string;
+  /** Nul pour un emplacement virtuel global ; renseigné pour `V_TO_DELIVER` (par site). */
+  readonly siteId: string | null;
+}
+
+async function loadLocation(uow: Transaction<DB>, locationId: string): Promise<LocationInfo> {
   const row = await uow
     .selectFrom('organization_locations')
-    .select(['is_virtual', 'location_type'])
+    .select(['is_virtual', 'location_type', 'site_id'])
     .where('id', '=', toBin(locationId))
     .executeTakeFirst();
   if (!row) throw new InventoryMoveError('Emplacement introuvable.', 'LOCATION_INVALID');
-  return { isVirtual: Boolean(row.is_virtual), locationType: row.location_type };
+  return {
+    isVirtual: Boolean(row.is_virtual),
+    locationType: row.location_type,
+    siteId: fromBinOrNull(row.site_id),
+  };
 }
 
+/** L'emplacement satisfait au moins une des extrémités attendues (`PHYSICAL` ou un type). */
 function checkEndpoint(
   side: 'from' | 'to',
-  expected: string,
-  location: { readonly isVirtual: boolean; readonly locationType: string },
+  expected: readonly string[],
+  location: LocationInfo,
 ): void {
-  if (expected === 'PHYSICAL') {
-    if (location.isVirtual) {
-      throw new InventoryMoveError(
-        `Emplacement ${side === 'from' ? 'source' : 'destination'} : un emplacement physique était attendu.`,
-        'MOVE_TYPE_INVALID',
-      );
-    }
-    return;
-  }
-  if (location.locationType !== expected) {
-    throw new InventoryMoveError(
-      `Emplacement ${side === 'from' ? 'source' : 'destination'} : ${expected} attendu.`,
-      'MOVE_TYPE_INVALID',
-    );
-  }
+  const satisfied = expected.some((endpoint) =>
+    endpoint === 'PHYSICAL' ? !location.isVirtual : location.locationType === endpoint,
+  );
+  if (satisfied) return;
+  const label = side === 'from' ? 'source' : 'destination';
+  const wanted = expected.map((endpoint) =>
+    endpoint === 'PHYSICAL' ? 'un emplacement physique' : endpoint,
+  );
+  throw new InventoryMoveError(
+    `Emplacement ${label} : ${wanted.join(' ou ')} attendu.`,
+    'MOVE_TYPE_INVALID',
+  );
 }
 
 async function currentCmup(
@@ -283,13 +319,18 @@ async function upsertBalance(
  * lot en solde — est appliqué sans lot plutôt que rejeté (BR-SYN-007, INV-STK-05 priment : le
  * fait physique existe) ; la traçabilité de ce mouvement reste alors statistique.
  */
-async function checkLot(uow: Transaction<DB>, input: SingleMoveInput): Promise<void> {
+async function checkLot(
+  uow: Transaction<DB>,
+  input: SingleMoveInput,
+  isSettlement: boolean,
+): Promise<void> {
   const tracking = await findProductLotTracking(uow, input.productId);
   if (tracking === undefined) {
     throw new InventoryMoveError('Produit introuvable.', 'PRODUCT_INVALID');
   }
   if (input.lotId === null) {
-    if (tracking === 'REQUIRED' && !input.allowNegative) {
+    // Un mouvement rattaché porte le lot de son origine (nul pour un repli hors ligne, BR-STK-018).
+    if (tracking === 'REQUIRED' && !input.allowNegative && !isSettlement) {
       throw new InventoryMoveError(
         'Ce produit est suivi par lot : le lot est obligatoire (BR-STK-050).',
         'LOT_REQUIRED',
@@ -334,6 +375,7 @@ async function checkReversal(
       'product_id',
       'lot_id',
       'quantity',
+      'move_type',
       'from_location_id',
       'to_location_id',
       'unit_cost_xaf',
@@ -343,6 +385,12 @@ async function checkReversal(
     .executeTakeFirst();
   if (!original) {
     throw new InventoryMoveError('Mouvement d’origine introuvable.', 'REVERSAL_INVALID');
+  }
+  if (original.move_type === 'SALE' || SETTLEMENT_MOVE_TYPES.has(original.move_type as MoveType)) {
+    throw new InventoryMoveError(
+      'Une vente, une livraison ou un retour ne s’inverse pas : une vente se contre-passe par des mouvements rattachés (ADR-029).',
+      'REVERSAL_INVALID',
+    );
   }
   const sameLot = (fromBinOrNull(original.lot_id) ?? null) === (input.lotId ?? null);
   const sameQuantity = Math.abs(Number(original.quantity) - input.quantityBase) < 0.0005;
@@ -378,8 +426,103 @@ async function checkReversal(
   return { unitCostXaf: original.unit_cost_xaf, valueXaf: Number(original.value_xaf) };
 }
 
-/** Emplacements virtuels de sortie définitive d'un lot (vente, transformation, retour fournisseur). */
-const EXIT_LOCATION_TYPES = ['V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER'] as const;
+/**
+ * ADR-029, INV-STK-17 : un retour client ou une livraison consomme une part d'un mouvement `SALE`
+ * d'origine. Contrôles métier **définitifs** (`InventoryMoveError`) faits ici avec une lecture
+ * simple, sans verrou (le compte applicatif n'a pas `UPDATE` sur le registre) : même produit et
+ * même lot que l'origine, départ = arrivée de l'origine, un retour revient au départ de l'origine,
+ * quantité dans la limite du reste. Le déclencheur `trg_inventory_stock_moves_settlement_guard`
+ * est le filet en base (une lecture périmée y devient un doublon de séquence, jamais un
+ * dépassement). Renvoie la valeur figée au prorata cumulatif (BR-STK-056), le coût unitaire
+ * correspondant et le rang du mouvement parmi ceux de l'origine.
+ */
+async function checkSettlement(
+  uow: Transaction<DB>,
+  input: SingleMoveInput,
+  originMoveId: string,
+): Promise<{ readonly unitCostXaf: number; readonly valueXaf: number; readonly seq: number }> {
+  const origin = await uow
+    .selectFrom('inventory_stock_moves')
+    .select([
+      'product_id',
+      'lot_id',
+      'quantity',
+      'move_type',
+      'is_reversal',
+      'from_location_id',
+      'to_location_id',
+      'value_xaf',
+    ])
+    .where('id', '=', toBin(originMoveId))
+    .executeTakeFirst();
+  if (!origin) {
+    throw new InventoryMoveError('Mouvement d’origine introuvable.', 'ORIGIN_INVALID');
+  }
+  if (origin.move_type !== 'SALE' || Boolean(origin.is_reversal)) {
+    throw new InventoryMoveError(
+      'L’origine d’un retour ou d’une livraison est un mouvement SALE non inverse (ADR-029).',
+      'ORIGIN_INVALID',
+    );
+  }
+  const sameLot = (fromBinOrNull(origin.lot_id) ?? null) === (input.lotId ?? null);
+  if (fromBin(origin.product_id) !== input.productId || !sameLot) {
+    throw new InventoryMoveError(
+      'Un mouvement rattaché porte le produit et le lot de son origine (INV-STK-17).',
+      'ORIGIN_INVALID',
+    );
+  }
+  if (fromBin(origin.to_location_id) !== input.fromLocationId) {
+    throw new InventoryMoveError(
+      'Un mouvement rattaché part de l’emplacement d’arrivée de son origine (INV-STK-17).',
+      'ORIGIN_INVALID',
+    );
+  }
+  if (
+    input.moveType === 'CUSTOMER_RETURN' &&
+    fromBin(origin.from_location_id) !== input.toLocationId
+  ) {
+    throw new InventoryMoveError(
+      'Un retour revient à l’emplacement de départ de son origine (INV-STK-17).',
+      'ORIGIN_INVALID',
+    );
+  }
+  const settled = await uow
+    .selectFrom('inventory_stock_moves')
+    .select([sql<string>`COUNT(*)`.as('n'), sql<string>`COALESCE(SUM(quantity), 0)`.as('quantity')])
+    .where('origin_move_id', '=', toBin(originMoveId))
+    .executeTakeFirstOrThrow();
+  const originQuantity = quantityFromDecimal(Number(origin.quantity));
+  const settledQuantity = quantityFromDecimal(Number(settled.quantity));
+  const quantity = quantityFromDecimal(input.quantityBase);
+  if (
+    quantityMilliUnits(settledQuantity) + quantityMilliUnits(quantity) >
+    quantityMilliUnits(originQuantity)
+  ) {
+    throw new InventoryMoveError(
+      'La quantité dépasse le reste du mouvement d’origine (INV-STK-17).',
+      'SETTLEMENT_EXCEEDS_REMAINING',
+    );
+  }
+  const valueXaf = settlementValueXaf({
+    originQuantity,
+    originValueXaf: xaf(Number(origin.value_xaf)),
+    settledQuantity,
+    quantity,
+  });
+  return {
+    unitCostXaf: unitCostOfValue(valueXaf, quantity),
+    valueXaf,
+    seq: Number(settled.n) + 1,
+  };
+}
+
+/**
+ * Emplacements virtuels de sortie définitive d'un lot : vente directe (`V_CUSTOMER`), vente d'une
+ * commande confirmée (`V_TO_DELIVER`, ADR-028 §3 : le coût part à la confirmation, la livraison
+ * n'est pas une seconde sortie), transformation (`V_PRODUCTION`), retour fournisseur
+ * (`V_SUPPLIER`). Liste **unique** : elle alimente aussi la requête SQL du coût restant.
+ */
+const EXIT_LOCATION_TYPES = ['V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER', 'V_TO_DELIVER'] as const;
 
 interface BiologicalLot {
   readonly costObjectType: 'PRODUCTION_LOT' | 'INCUBATION_BATCH';
@@ -413,10 +556,12 @@ async function biologicalLotOf(
 
 /**
  * Coût restant d'un lot biologique (AV-097, ADR-027) : Σ écritures de coût du lot (débits −
- * crédits) − Σ valeurs figées de ses sorties définitives (vers `V_CUSTOMER`, `V_PRODUCTION`,
- * `V_SUPPLIER`, hors inverses) + Σ valeurs de leurs inverses ; les sorties internes d'un lot
- * d'incubation (œufs du mirage et de l'éclosion, document `INCUBATION_EVENT`) n'en sont pas. La mortalité et les écarts
- * d'inventaire ne le réduisent pas (BR-PRD-013).
+ * crédits) − Σ valeurs figées de ses sorties définitives (vers `EXIT_LOCATION_TYPES`, hors
+ * inverses) + Σ valeurs de leurs inverses ; les sorties internes d'un lot d'incubation (œufs du
+ * mirage et de l'éclosion, document `INCUBATION_EVENT`) n'en sont pas. La mortalité et les écarts
+ * d'inventaire ne le réduisent pas (BR-PRD-013). Mouvements rattachés à un `SALE` (ADR-029) : un
+ * retour (`CUSTOMER_RETURN`) retranche sa valeur de la sortie, une livraison (`DELIVERY`) ne compte
+ * pas (la sortie a eu lieu à la confirmation, ADR-028 §3).
  */
 async function lotRemainingCostXaf(
   uow: Kysely<DB> | Transaction<DB>,
@@ -439,8 +584,10 @@ async function lotRemainingCostXaf(
     .innerJoin('organization_locations as tl', 'tl.id', 'm.to_location_id')
     .select(
       sql<string>`COALESCE(SUM(
-        CASE WHEN m.is_reversal = 0 AND tl.location_type IN ('V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER') THEN m.value_xaf
-             WHEN m.is_reversal = 1 AND fl.location_type IN ('V_CUSTOMER', 'V_PRODUCTION', 'V_SUPPLIER') THEN -m.value_xaf
+        CASE WHEN m.origin_move_id IS NOT NULL THEN
+               (CASE WHEN m.move_type = 'CUSTOMER_RETURN' THEN -m.value_xaf ELSE 0 END)
+             WHEN m.is_reversal = 0 AND tl.location_type IN (${sql.join(EXIT_LOCATION_TYPES)}) THEN m.value_xaf
+             WHEN m.is_reversal = 1 AND fl.location_type IN (${sql.join(EXIT_LOCATION_TYPES)}) THEN -m.value_xaf
              ELSE 0 END), 0)`.as('value'),
     )
     .where('m.lot_id', '=', toBin(lotId))
@@ -496,6 +643,22 @@ async function virtualBalanceCost(
 }
 
 /**
+ * Erreur du déclencheur `trg_inventory_stock_moves_settlement_guard` (`SIGNAL` 45000, erreur MySQL
+ * 1644) traduite en rejet **définitif** : sinon le pipeline la rejouerait à l'infini
+ * (`RETRY_LATER`). Un doublon de séquence (1062 sur `uq_inventory_stock_moves_origin_seq`, lecture
+ * périmée ou concurrence) reste une erreur brute : réessayable, l'opération rejouée voit l'état
+ * à jour et échoue alors proprement.
+ */
+function settlementGuardError(error: unknown): InventoryMoveError | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const { errno, sqlMessage } = error as { errno?: number; sqlMessage?: string };
+  if (errno === 1644 && sqlMessage?.startsWith('inventory_stock_moves :')) {
+    return new InventoryMoveError(sqlMessage, 'SETTLEMENT_GUARD');
+  }
+  return null;
+}
+
+/**
  * Enregistre un mouvement pour une quantité déjà résolue sur un lot précis (ou aucun lot).
  * Usage interne de `recordStockMove` (résolution FIFO) et direct quand l'appelant connaît
  * déjà le lot exact (ex. réception avec lot fournisseur).
@@ -515,19 +678,47 @@ async function recordSingleMove(
   checkEndpoint('from', endpoints.from, fromLocation);
   checkEndpoint('to', endpoints.to, toLocation);
 
+  const isSettlement = input.originMoveId !== undefined;
+  if (SETTLEMENT_MOVE_TYPES.has(input.moveType) !== isSettlement) {
+    throw new InventoryMoveError(
+      isSettlement
+        ? 'Seuls un retour client ou une livraison se rattachent à un mouvement d’origine.'
+        : 'Un retour client ou une livraison cite le mouvement SALE dont il consomme une part.',
+      isSettlement ? 'ORIGIN_INVALID' : 'ORIGIN_REQUIRED',
+    );
+  }
+  if (isSettlement && input.reversesMoveId !== undefined) {
+    throw new InventoryMoveError(
+      'Un mouvement rattaché n’est pas un inverse (ADR-029).',
+      'ORIGIN_INVALID',
+    );
+  }
+  // ADR-028 §1 : la vente d'une commande va vers l'emplacement « à livrer » du SITE de sa source.
+  if (
+    input.moveType === 'SALE' &&
+    toLocation.locationType === 'V_TO_DELIVER' &&
+    (fromLocation.siteId === null || fromLocation.siteId !== toLocation.siteId)
+  ) {
+    throw new InventoryMoveError(
+      'L’emplacement « à livrer » est celui du site de l’emplacement source (INV-STK-18).',
+      'LOCATION_INVALID',
+    );
+  }
+
   if (input.quantityBase <= 0) {
     throw new InventoryMoveError('La quantité doit être positive.', 'QUANTITY_INVALID');
   }
   if (input.fromLocationId === input.toLocationId) {
     throw new InventoryMoveError('Source et destination doivent différer.', 'LOCATION_INVALID');
   }
-  await checkLot(uow, input);
+  await checkLot(uow, input, isSettlement);
 
   const isReversal = input.reversesMoveId !== undefined;
   const biological = input.lotId !== null ? await biologicalLotOf(uow, input.lotId) : null;
   // INV-PRD-02 : aucun nouveau mouvement sur le lot d'un lot de production clôturé, sauf fait
   // hors ligne tardif (appliqué ; le module appelant consigne le conflit `LOT_CLOSED`) et inverse.
-  if (biological?.status === 'CLOSED' && !isReversal && !input.allowNegative) {
+  // Un retour ou une livraison rattaché à une vente antérieure est exempté comme un inverse.
+  if (biological?.status === 'CLOSED' && !isReversal && !isSettlement && !input.allowNegative) {
     throw new InventoryMoveError(
       'Lot clôturé : aucun nouveau mouvement (INV-PRD-02).',
       'LOT_CLOSED',
@@ -546,10 +737,17 @@ async function recordSingleMove(
   const lotKeyForCost = input.lotId ? toBin(input.lotId) : LOT_KEY_NULL;
   let unitCostXaf: number;
   let valueOverrideXaf: number | null = null;
+  let originSeq: number | null = null;
   if (isReversal) {
     const original = await checkReversal(uow, input, input.reversesMoveId!);
     unitCostXaf = original.unitCostXaf;
     valueOverrideXaf = original.valueXaf;
+  } else if (isSettlement) {
+    // Avant le coût par tête : une livraison n'est jamais une seconde sortie ni revalorisée.
+    const settlement = await checkSettlement(uow, input, input.originMoveId!);
+    unitCostXaf = settlement.unitCostXaf;
+    valueOverrideXaf = settlement.valueXaf;
+    originSeq = settlement.seq;
   } else if (input.declaredValueXaf !== undefined) {
     valueOverrideXaf = input.declaredValueXaf;
     unitCostXaf = unitCostOfValue(input.declaredValueXaf, quantity);
@@ -645,12 +843,17 @@ async function recordSingleMove(
       cost_object_id: toBinOrNull(input.costObjectId ?? null),
       is_reversal: toDbBool(isReversal),
       reverses_move_id: toBinOrNull(input.reversesMoveId ?? null),
+      origin_move_id: toBinOrNull(input.originMoveId ?? null),
+      origin_seq: originSeq,
       created_by: toBin(input.createdBy),
       created_device_id: toBinOrNull(input.createdDeviceId ?? null),
       command_id: toBinOrNull(input.commandId ?? null),
       captured_offline: toDbBool(input.capturedOffline ?? false),
     })
-    .execute();
+    .execute()
+    .catch((error: unknown) => {
+      throw settlementGuardError(error) ?? error;
+    });
 
   const fromBalanceAfter = await upsertBalance(
     uow,
@@ -736,7 +939,7 @@ export async function recordStockMove(
   }
 
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
-  const fromIsPhysicalOutflow = endpoints.from === 'PHYSICAL';
+  const fromIsPhysicalOutflow = endpoints.from.length === 1 && endpoints.from[0] === 'PHYSICAL';
   if (!fromIsPhysicalOutflow) {
     // Entrée depuis un emplacement virtuel : pas de sélection FIFO à faire ici (le lot, s'il
     // existe, est déjà connu de l'appelant — ex. réception avec lot fournisseur explicite).

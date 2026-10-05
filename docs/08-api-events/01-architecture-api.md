@@ -136,7 +136,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 
 | Élément | Contenu |
 |---|---|
-| Commandes | `finance.cash_session.open` (F), `.close` (F), `.force_close`, `.validate` ; `finance.cash_transfer.send` (F), `.receive` (F), `.cancel` ; `finance.expense.record` (F), `.pay`, `.cancel` ; `finance.supplier_invoice.record`, `.dispute`, `.approve`, `.cancel` ; `finance.supplier_payment.record`, `.cancel` ; `finance.cash_account.create`, `.update` |
+| Commandes | `finance.cash_session.open` (F), `.close` (F), `.force_close`, `.validate` ; `finance.cash_transfer.send` (F), `.receive` (F), `.cancel` ; `finance.expense.record` (F), `.pay`, `.cancel` ; `finance.supplier_invoice.record`, `.dispute`, `.approve`, `.cancel` ; `finance.supplier_payment.record`, `.cancel` ; `finance.cash_account.create`, `.update`, `.deactivate` |
 | Requêtes | `GET /cash-accounts` (soldes), `/cash-accounts/{id}/movements`, `/cash-sessions?status=`, `/expenses?from=&to=`, `/payables?supplier_id=`, `/margins?group_by=` (délégué à analytics) |
 | Événements | `CashSessionClosed`, `CashVarianceDetected`, `ExpenseRecorded`, `SupplierInvoiceMismatchDetected`, `SupplierPaymentRecorded` |
 | Permissions | `finance.*` |

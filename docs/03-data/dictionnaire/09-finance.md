@@ -37,6 +37,7 @@
 
 - **PK** `id`. **UQ** `code` ; une `CAISSE_PDV` active par site ; une `CAISSE_UTILISATEUR` active par utilisateur.
 - **Suppr.** `DESACTIVATION` (solde nul). **Offline** DL (comptes de l'utilisateur, avec solde au téléchargement).
+- **Commandes** (P4-03, permission `finance.cash_account.manage`) : `finance.cash_account.create` (site requis pour une caisse de PDV, détenteur pour une caisse d'utilisateur, responsable actif ; unicité « une active par site / par détenteur » contrôlée avant l'insertion, `CASH_ACCOUNT_DUPLICATE`), `.update` (nom, responsable, référence externe), `.deactivate` (refusée tant que le solde n'est pas nul, `CASH_ACCOUNT_NOT_EMPTY`). Réconciliation quotidienne `finance.cash.reconcile_daily` (solde projeté = Σ entrées − Σ sorties du registre) ; `rebuildCashBalances` est une procédure de maintenance.
 - **Implémentation** (P4-02) : unicités « une active par… » portées par les colonnes générées `active_pos_site` et `active_user_holder` (index uniques, conventions §4 MySQL) ; `CHECK` site requis pour `CAISSE_PDV` et détenteur requis pour `CAISSE_UTILISATEUR` ; pas de `CHECK balance_xaf ≥ 0` (solde négatif admis hors ligne, `CASH_NEGATIVE`, BR-FIN-012) ; suppression refusée par déclencheur.
 
 ## finance.cash_sessions
@@ -91,6 +92,7 @@
 - **PK** `id`. **UQ** `reverses_movement_id`. **CK** `amount_xaf > 0`.
 - **IX** `(cash_account_id, occurred_at)`, `(source_doc_type, source_doc_id)`, `(cash_session_id)`.
 - **Suppr.** `IMMUABLE`. **Offline** SRV (le solde du compte est téléchargé). **Intégrité** INV-FIN-01, INV-FIN-02.
+- **Écriture** (P4-03) : seul `recordCashMovement` (module `finance`) écrit ce registre, dans la transaction du document appelant ; il verrouille la ligne du compte, insère le mouvement et met à jour `balance_xaf` (INV-FIN-02). Sens et document source suivent le type (`CUSTOMER_PAYMENT` : entrée, `CUSTOMER_PAYMENT` ; `REFUND` : sortie, `SALE_REFUND` ; `SUPPLIER_PAYMENT`, `EXPENSE` : sorties ; `TRANSFER_OUT`/`TRANSFER_IN` : `CASH_TRANSFER` ; `SESSION_VARIANCE` : `CASH_SESSION`, dans les deux sens ; `OPENING_BALANCE` : entrée citant `CASH_SESSION`, **DÉDUIT** faute de document propre). Un inverse reprend compte, montant, type et document de l'original en sens opposé, une seule fois ; un remboursement partiel n'est pas un inverse mais un mouvement `REFUND`. BR-FIN-012 : en ligne, une sortie ne rend pas négatif le solde d'une caisse physique (`CASH_INSUFFICIENT`) ; hors ligne elle est appliquée et signalée (`negativeBalance`, anomalie `CASH_NEGATIVE` à ouvrir par l'appelant). Un compte inactif refuse un mouvement en ligne, l'accepte hors ligne (fait accompli).
 - **Implémentation** (P4-02) : `CHECK is_reversal ⇔ reverses_movement_id` non nul ; modification et suppression refusées par déclencheurs ; droits `SELECT`, `INSERT` seulement ; `cash_session_id` sans clé étrangère jusqu'à la création de `cash_sessions` (P5).
 
 ## finance.cash_transfers

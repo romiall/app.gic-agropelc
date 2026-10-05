@@ -5,8 +5,8 @@
  * base : l'appelant fournit l'état déjà lu (soldes, lots).
  */
 import { DomainError, assertSafeInteger } from './errors.js';
-import { xaf } from './money.js';
-import { quantityFromDecimal } from './quantity.js';
+import { xaf, type Xaf } from './money.js';
+import { quantityFromDecimal, quantityMilliUnits, type Quantity } from './quantity.js';
 import { lineAmountXaf } from './rounding.js';
 
 /** §3.3 : disponible sur un emplacement à garde exclusive (`EXCLUSIVE_USER`/`EXCLUSIVE_DEVICE`). */
@@ -136,4 +136,40 @@ export function evaluateStockThreshold(input: {
     input.available <= 0 ? 'STOCK_OUT' : input.available < input.minQty ? 'STOCK_LOW' : 'OK';
   const suggested = input.targetQty - input.available - input.inTransitIn;
   return { state, suggestedQty: Math.max(0, Math.round(suggested * 1000) / 1000) };
+}
+
+/**
+ * BR-STK-056, ADR-029 §5 : valeur d'un mouvement **rattaché** à un `SALE` d'origine (retour client
+ * ou livraison). Avec V et Q la valeur figée et la quantité de l'origine (en millièmes entiers),
+ * F(c) = V si c = Q, sinon ⌊(2·V·c + Q) / (2·Q)⌋ (demi supérieur) ; la valeur du mouvement est
+ * F(cumul après) − F(cumul avant), les livraisons et les retours comptant dans le même cumul.
+ * Jamais « quantité × coût unitaire arrondi » : la dernière opération emporte exactement le
+ * reliquat, la somme des mouvements rattachés d'une origine soldée vaut V au franc près quel que
+ * soit le découpage et l'ordre (V = 100, Q = 3 : 33, 34, 33 ; V = 1 001, Q = 10 en 2 puis 8 :
+ * 200 puis 801). Calcul en `BigInt` (un lot de plusieurs centaines de milliers d'œufs approche
+ * 2⁵³ en `Number`). F est croissante et F(c) ≤ V : la valeur d'un mouvement est ≥ 0.
+ */
+export function settlementValueXaf(input: {
+  readonly originQuantity: Quantity;
+  readonly originValueXaf: Xaf;
+  /** Quantité déjà rattachée à l'origine (livraisons et retours confondus). */
+  readonly settledQuantity: Quantity;
+  /** Quantité du mouvement à valoriser. */
+  readonly quantity: Quantity;
+}): Xaf {
+  assertSafeInteger(input.originValueXaf, 'settlementValueXaf (valeur d’origine)');
+  const total = BigInt(quantityMilliUnits(input.originQuantity));
+  const before = BigInt(quantityMilliUnits(input.settledQuantity));
+  const step = BigInt(quantityMilliUnits(input.quantity));
+  const after = before + step;
+  if (total <= 0n || before < 0n || step <= 0n || after > total) {
+    throw new DomainError(
+      'Rattachement invalide : quantité strictement positive, dans la limite du reste de l’origine.',
+      'SETTLEMENT_INVALID',
+    );
+  }
+  const value = BigInt(input.originValueXaf);
+  const cumulative = (milli: bigint): bigint =>
+    milli === total ? value : (2n * value * milli + total) / (2n * total);
+  return xaf(Number(cumulative(after) - cumulative(before)));
 }

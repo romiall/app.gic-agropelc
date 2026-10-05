@@ -3086,6 +3086,7 @@ CREATE TABLE `inventory_stock_lots` (
   `expiry_date` date DEFAULT NULL,
   `fifo_rank_at` datetime(6) NOT NULL,
   `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `sellable_from_rearing` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `created_by` binary(16) NOT NULL,
   PRIMARY KEY (`id`),
@@ -7646,5 +7647,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090700'),
   ('20261003090800'),
   ('20261003090900'),
-  ('20261003091000');
+  ('20261003091000'),
+  ('20261005090000');
 UNLOCK TABLES;

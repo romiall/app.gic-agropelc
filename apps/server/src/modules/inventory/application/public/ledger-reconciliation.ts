@@ -19,6 +19,11 @@
  *   la reconstruction, au lieu d'être écrasé par un registre lu trop tôt. `qty_reserved`/
  *   `qty_allocated` ne viennent pas du registre (réservations, allocations : P5), non touchés.
  *
+ * `verifyStockLedger` contrôle aussi les mouvements rattachés à une vente (ADR-029) : INV-STK-17
+ *   (Σ quantités et valeurs des retours et livraisons d'une origine ≤ celles de l'origine, valeur
+ *   exacte quand la quantité est soldée, rangs sans trou) et INV-STK-18 (solde de chaque emplacement
+ *   « à livrer » ≥ 0 en quantité et en valeur).
+ *
  * Les deux acceptent une portée facultative par produits (`productIds`) : réparation ciblée
  * après analyse d'un écart, sans verrouiller toute la projection.
  */
@@ -50,11 +55,32 @@ export interface ConservationBreach {
   readonly totalQty: number;
 }
 
+/** INV-STK-18 : solde d'un emplacement « à livrer » négatif (quantité ou valeur). */
+export interface ToDeliverBreach {
+  readonly locationId: string;
+  readonly productId: string;
+  readonly lotId: string | null;
+  readonly qty: number;
+  readonly valueXaf: number;
+}
+
+/** INV-STK-17 : une origine dépassée, valeur inexacte à la dernière opération, ou rang à trou. */
+export interface SettlementBreach {
+  readonly originMoveId: string;
+  readonly reason: 'QUANTITY_EXCEEDED' | 'VALUE_EXCEEDED' | 'VALUE_NOT_SETTLED' | 'SEQ_GAP';
+  readonly originQuantity: number;
+  readonly settledQuantity: number;
+  readonly originValueXaf: number;
+  readonly settledValueXaf: number;
+}
+
 export interface LedgerVerification {
   readonly ok: boolean;
   readonly balancesChecked: number;
   readonly mismatches: readonly LedgerMismatch[];
   readonly conservationBreaches: readonly ConservationBreach[];
+  readonly toDeliverBreaches: readonly ToDeliverBreach[];
+  readonly settlementBreaches: readonly SettlementBreach[];
 }
 
 interface LedgerRow {
@@ -180,12 +206,112 @@ export async function verifyStockLedger(
     .filter(({ total }) => Math.abs(total) > QTY_EPSILON)
     .map(({ productId, total }) => ({ productId: fromBin(productId), totalQty: total }));
 
+  const toDeliverBreaches = await findToDeliverBreaches(trx, [...ledger.values()]);
+  const settlementBreaches = await findSettlementBreaches(trx, scope);
+
   return {
-    ok: mismatches.length === 0 && conservationBreaches.length === 0,
+    ok:
+      mismatches.length === 0 &&
+      conservationBreaches.length === 0 &&
+      toDeliverBreaches.length === 0 &&
+      settlementBreaches.length === 0,
     balancesChecked: balances.length,
     mismatches,
     conservationBreaches,
+    toDeliverBreaches,
+    settlementBreaches,
   };
+}
+
+/** INV-STK-18 : aucun solde négatif (quantité ou valeur) dans un emplacement « à livrer ». */
+async function findToDeliverBreaches(
+  trx: Transaction<DB>,
+  ledger: readonly LedgerRow[],
+): Promise<readonly ToDeliverBreach[]> {
+  const toDeliver = new Set(
+    (
+      await trx
+        .selectFrom('organization_locations')
+        .select('id')
+        .where('location_type', '=', 'V_TO_DELIVER')
+        .execute()
+    ).map((row) => row.id.toString('hex')),
+  );
+  if (toDeliver.size === 0) return [];
+  return ledger
+    .filter((row) => toDeliver.has(row.location_id.toString('hex')))
+    .filter((row) => Number(row.qty) < -QTY_EPSILON || Number(row.value_xaf) < 0)
+    .map((row) => ({
+      locationId: fromBin(row.location_id),
+      productId: fromBin(row.product_id),
+      lotId: row.lot_key.equals(LOT_KEY_NULL) ? null : fromBin(row.lot_key),
+      qty: Number(row.qty),
+      valueXaf: Number(row.value_xaf),
+    }));
+}
+
+/**
+ * INV-STK-17 : pour chaque `SALE` d'origine, Σ quantités et Σ valeurs de ses mouvements rattachés
+ * ne dépassent pas les siennes, la valeur est exacte dès que la quantité est soldée, et les rangs
+ * vont de 1 à n sans trou. Le déclencheur du registre l'impose déjà ; ce balayage détecte une
+ * ligne qui l'aurait contourné (restauration, déclencheur absent).
+ */
+async function findSettlementBreaches(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+): Promise<readonly SettlementBreach[]> {
+  const filter =
+    scope.productIds === undefined
+      ? sql``
+      : scope.productIds.length === 0
+        ? sql`AND FALSE`
+        : sql`AND o.product_id IN (${sql.join(scope.productIds.map((id) => toBin(id)))})`;
+  const result = await sql<{
+    origin_id: Buffer;
+    oq: string;
+    ov: string;
+    cq: string;
+    cv: string;
+    n: string;
+    max_seq: string;
+  }>`
+    SELECT o.id AS origin_id, o.quantity AS oq, o.value_xaf AS ov,
+           SUM(c.quantity) AS cq, SUM(c.value_xaf) AS cv,
+           COUNT(*) AS n, MAX(c.origin_seq) AS max_seq
+    FROM inventory_stock_moves c
+    JOIN inventory_stock_moves o ON o.id = c.origin_move_id
+    WHERE TRUE ${filter}
+    GROUP BY o.id, o.quantity, o.value_xaf
+  `.execute(trx);
+  const breaches: SettlementBreach[] = [];
+  for (const row of result.rows) {
+    const originQuantity = Number(row.oq);
+    const settledQuantity = Number(row.cq);
+    const originValueXaf = Number(row.ov);
+    const settledValueXaf = Number(row.cv);
+    const settled = Math.abs(settledQuantity - originQuantity) <= QTY_EPSILON;
+    const reason =
+      settledQuantity > originQuantity + QTY_EPSILON
+        ? 'QUANTITY_EXCEEDED'
+        : settledValueXaf > originValueXaf
+          ? 'VALUE_EXCEEDED'
+          : settled && settledValueXaf !== originValueXaf
+            ? 'VALUE_NOT_SETTLED'
+            : Number(row.max_seq) !== Number(row.n)
+              ? 'SEQ_GAP'
+              : null;
+    if (reason !== null) {
+      breaches.push({
+        originMoveId: fromBin(row.origin_id),
+        reason,
+        originQuantity,
+        settledQuantity,
+        originValueXaf,
+        settledValueXaf,
+      });
+    }
+  }
+  return breaches;
 }
 
 function mismatchOf(

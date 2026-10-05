@@ -32,12 +32,15 @@ import {
   biologicalLotRemainingCostXaf,
   costObjectBalance,
   createStockLot,
+  deliverSoldGoods,
   ensureSupplierLot,
+  findStockLot,
   lotHeadcount,
   recordCostEntry,
   recordStockMove,
   virtualLocationId,
 } from '../src/modules/inventory/application/public/index.js';
+import { ensureToDeliverLocation } from '../src/modules/organization/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -633,9 +636,15 @@ describe('P7-05 : lots de production', () => {
       run(productionManager, 'production.lot.set_status', 'PRODUCTION_LOT', lotId, at('08:00:00'), {
         status: s,
       });
+    // BR-PRD-010 : l'état « en vente » est porté par le lot de stock, lu par `sales`.
+    const sellable = async () =>
+      (await findStockLot(db, fromBin((await lotRow(lotId)).stock_lot_id)))?.sellableFromRearing;
+    expect(await sellable()).toBe(false);
     expect(code(await status('SELLING'))).toBe('APPLIED');
     expect((await lotRow(lotId)).status).toBe('SELLING');
+    expect(await sellable()).toBe(true);
     expect(code(await status('ACTIVE'))).toBe('APPLIED');
+    expect(await sellable()).toBe(false);
     const planned = await createLot('POULET_CHAIR', products.broiler);
     expect(
       code(
@@ -1034,6 +1043,69 @@ describe('P7-05 : lots de production', () => {
       .executeTakeFirstOrThrow();
     expect(closedStockLot.status).toBe('CLOSED');
     expect(code(await closeEmpty())).toBe('APPLIED');
+  });
+
+  it('clôture : refusée tant que des têtes sont vendues non livrées (LOT_HAS_UNDELIVERED, ADR-029 §9)', async () => {
+    const lot = await createLot('POULET_CHAIR', products.broiler);
+    const source = {
+      sourceKind: 'INTERNAL_STOCK',
+      sourceProductId: products.boughtChick,
+      sourceLocationId: farmStoreId,
+    };
+    const placed = await entry(lot.id, { ...source, quantity: 3 }, at('16:00:00'));
+    expect(placed.result.status, JSON.stringify(placed.result)).toBe('APPLIED');
+    const stockLotId = fromBin((await lotRow(lot.id)).stock_lot_id);
+    const close = () =>
+      run(productionManager, 'production.lot.close', 'PRODUCTION_LOT', lot.id, at('19:00:00'), {});
+
+    // Les trois têtes sont vendues sur commande : mises de côté « à livrer », hors de l'effectif.
+    const saleId = freshUuid();
+    const saleLineId = freshUuid();
+    await db.transaction().execute(async (trx) => {
+      const toDeliver = await ensureToDeliverLocation(
+        trx,
+        { idGenerator },
+        { siteId: farmId, createdBy: admin.userId },
+      );
+      await recordStockMove(
+        trx,
+        { idGenerator },
+        {
+          productId: products.broiler,
+          lotId: stockLotId,
+          quantityBase: 3,
+          fromLocationId: buildingId,
+          toLocationId: toDeliver.locationId,
+          moveType: 'SALE',
+          occurredAt: new Date(at('17:00:00')),
+          sourceDocType: 'SALE',
+          sourceDocId: saleId,
+          sourceLineId: saleLineId,
+          createdBy: admin.userId,
+          allowNegative: false,
+        },
+      );
+    });
+    expect(await heads(lot.id)).toBe(0);
+    expect(code(await close())).toBe('LOT_HAS_UNDELIVERED');
+
+    // Une fois livrées, la clôture est possible ; le lot n'est pas rouvert par la livraison.
+    await db.transaction().execute((trx) =>
+      deliverSoldGoods(
+        trx,
+        { idGenerator },
+        {
+          saleId,
+          saleLineId,
+          quantityBase: 3,
+          sourceDocId: freshUuid(),
+          occurredAt: new Date(at('17:30:00')),
+          createdBy: admin.userId,
+        },
+      ),
+    );
+    expect(code(await close())).toBe('APPLIED');
+    expect((await lotRow(lot.id)).status).toBe('CLOSED');
   });
 
   it('hors ligne : emplacement désactivé accepté ; date de démarrage = entrée la plus ancienne (revue P7)', async () => {

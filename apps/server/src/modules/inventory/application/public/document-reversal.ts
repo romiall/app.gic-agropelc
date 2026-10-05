@@ -53,6 +53,18 @@ export async function reverseDocumentMoves(
     readonly allowNegative: boolean;
   },
 ): Promise<readonly ReversedMove[]> {
+  // Une vente, une livraison et un retour ne s'inversent pas : une vente se contre-passe par des
+  // mouvements rattachés à elle (`returnSoldGoods`, ADR-029).
+  if (
+    input.sourceDocType === 'SALE' ||
+    input.sourceDocType === 'DELIVERY' ||
+    input.sourceDocType === 'SALE_CANCELLATION'
+  ) {
+    throw new InventoryMoveError(
+      'Une vente se contre-passe par returnSoldGoods, jamais par inversion (ADR-029).',
+      'MOVE_TYPE_INVALID',
+    );
+  }
   const moves = await uow
     .selectFrom('inventory_stock_moves as m')
     .innerJoin('organization_locations as fl', 'fl.id', 'm.from_location_id')

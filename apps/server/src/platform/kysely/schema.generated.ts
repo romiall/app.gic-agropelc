@@ -911,6 +911,7 @@ export interface InventoryStockLots {
   origin_id: Buffer | null;
   origin_type: string;
   product_id: Buffer | null;
+  sellable_from_rearing: Generated<number>;
   status: Generated<string>;
   supplier_id: Buffer | null;
   supplier_lot_ref: string | null;

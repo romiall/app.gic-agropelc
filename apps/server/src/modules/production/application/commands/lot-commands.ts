@@ -22,7 +22,9 @@
  * - Annulation d'une entrée (ADR-006 ; Responsable production seul, AV-123) : mouvements inverses au coût d'origine et écritures de
  *   coût contrepassées ; refusée si les animaux sont déjà sortis (`STOCK_UNAVAILABLE`, AV-120).
  * - Clôture (BR-PRD-011) : effectif non vendu nul (`LOT_NOT_EMPTY`), aucune tête en attente de
- *   validation d'une perte (`LOT_HAS_PENDING_LOSS`) ; part estimée des frais généraux de chaque
+ *   validation d'une perte (`LOT_HAS_PENDING_LOSS`), aucune tête vendue non livrée
+ *   (`LOT_HAS_UNDELIVERED`, ADR-029 §9 : une annulation ou une livraison la rendrait au lot ou la
+ *   sortirait d'un lot clôturé) ; part estimée des frais généraux de chaque
  *   mois non encore réparti (AV-105, ADR-026) ; indicateurs figés dans `closing_summary` ; lot
  *   de traçabilité clôturé (INV-PRD-02).
  */
@@ -72,6 +74,7 @@ import {
   recordStockMove,
   reverseCostEntries,
   reverseDocumentMoves,
+  setStockLotSellableFromRearing,
   setStockLotStatus,
   virtualLocationId,
   type RecordedMove,
@@ -396,6 +399,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       })
       .where('id', '=', toBin(lot.id))
       .execute();
+    // BR-PRD-010 : l'état « en vente » est porté par le lot de stock pour que `sales` le lise
+    // sans importer `production`.
+    await setStockLotSellableFromRearing(uow, lot.stockLotId, target === 'SELLING');
     await emitProductionLotChange(uow, lot.id);
     return { status: 'APPLIED' };
   };
@@ -933,6 +939,15 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       return rejected(
         'LOT_HAS_PENDING_LOSS',
         `${pendingLoss} têtes attendent la validation d’une mortalité ou d’une perte : la traiter avant de clôturer.`,
+      );
+    }
+    // Têtes vendues sur commande et mises de côté « à livrer » : le lot ne se clôt pas avant leur
+    // remise (ou l'annulation de la vente, qui les rendrait à un lot déjà clôturé).
+    const toDeliver = await lotHeadcount(uow, { lotId: lot.stockLotId, scope: 'TO_DELIVER' });
+    if (toDeliver > 0) {
+      return rejected(
+        'LOT_HAS_UNDELIVERED',
+        `${toDeliver} têtes sont vendues et attendent leur livraison : les livrer ou annuler la vente avant de clôturer.`,
       );
     }
     const mortality = await lotMortalitySummary(uow, { productionLotId: lot.id });

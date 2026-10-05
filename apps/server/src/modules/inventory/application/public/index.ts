@@ -45,6 +45,8 @@ export type {
   LedgerVerification,
   LedgerMismatch,
   ConservationBreach,
+  ToDeliverBreach,
+  SettlementBreach,
 } from './ledger-reconciliation.js';
 
 export {
@@ -76,6 +78,7 @@ export {
   ensureSupplierLot,
   createStockLot,
   setStockLotStatus,
+  setStockLotSellableFromRearing,
   findStockLot,
   stockLotBalance,
 } from './stock-lots.js';
@@ -86,6 +89,16 @@ export type {
   StockLotSummary,
 } from './stock-lots.js';
 export { virtualLocationId } from './virtual-locations.js';
+
+// P4-03 : règlement de la marchandise vendue (ADR-029).
+export { returnSoldGoods, deliverSoldGoods, soldGoodsPosition } from './sale-settlement.js';
+export type {
+  SoldGoodsLine,
+  SettleSoldGoodsInput,
+  SettledMove,
+  SoldGoodsPosition,
+  SoldGoodsOriginPosition,
+} from './sale-settlement.js';
 
 // P7-02 : API de la production (ADR-026, ADR-027 ; 02-modules.md §11).
 export {

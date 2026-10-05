@@ -350,6 +350,9 @@ export interface StockMoveEntry {
   readonly sourceLineId: string | null;
   readonly isReversal: boolean;
   readonly reversesMoveId: string | null;
+  /** Retour ou livraison : mouvement `SALE` dont il consomme une part, et son rang (ADR-029). */
+  readonly originMoveId: string | null;
+  readonly originSeq: number | null;
   readonly createdBy: string;
   /** AT-043 : remonter jusqu'aux auteurs **et appareils** (nul pour un mouvement serveur). */
   readonly createdDeviceId: string | null;
@@ -446,6 +449,8 @@ export async function listStockMoves(
       sourceLineId: fromBinOrNull(row.source_line_id),
       isReversal: Boolean(row.is_reversal),
       reversesMoveId: fromBinOrNull(row.reverses_move_id),
+      originMoveId: fromBinOrNull(row.origin_move_id),
+      originSeq: row.origin_seq,
       createdBy: fromBin(row.created_by),
       createdDeviceId: fromBinOrNull(row.created_device_id),
       commandId: fromBinOrNull(row.command_id),

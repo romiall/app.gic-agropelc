@@ -176,7 +176,7 @@
 |---|---|
 | Responsabilité | Comptes et registre de trésorerie, sessions de caisse, remises de fonds, moyens de paiement, dépenses, factures et paiements fournisseurs, dettes |
 | Tables | `payment_methods`, `cash_accounts`, `cash_sessions`, `cash_movements`, `cash_transfers`, `expense_categories`, `expenses`, `supplier_invoices`, `supplier_invoice_lines`, `supplier_payments`, `supplier_payment_allocations` (+ vue `v_payables`) |
-| API | §4.9 ; interne : `finance.recordCashMovement(uow, …)`, `finance.openSessionFor(account, at)`, `finance.cashAccountFor(context)`, `finance.paymentMethod(code)` |
+| API | §4.9 ; interne : `finance.recordCashMovement(uow, …)`, `finance.openSessionFor(account, at)`, `finance.cashAccountFor(context)`, `finance.paymentMethod(code)`. **Livré en P4-03** : `recordCashMovement` (registre en ajout seul, inverse, caisse physique jamais négative en ligne), `findCashAccount`, `cashAccountBalance`, `verifyCashLedger`, `rebuildCashBalances`, commandes `finance.cash_account.create`/`update`/`deactivate`, tâche `finance.cash.reconcile_daily` ; `cashAccountFor` et `paymentMethod` suivront avec les encaissements (P4-08), `openSessionFor` avec les sessions de caisse (P5) |
 | Événements | `CashSession*`, `CashVarianceDetected`, `CashTransfer*`, `Expense*`, `SupplierInvoice*`, `SupplierPaymentRecorded` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory` (`recordCost` pour les dépenses imputées), `procurement` (lecture pour le rapprochement) |
 | Interdites | `sales`, `crm`, `production` |

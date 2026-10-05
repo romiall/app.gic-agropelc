@@ -7,8 +7,11 @@ import {
   roundCmupToXaf,
   selectLotsFifo,
   stockValueXaf,
+  settlementValueXaf,
   evaluateStockThreshold,
 } from './stock-engine.js';
+import { quantityFromMilli, quantityMilliUnits, ZERO_QUANTITY, type Quantity } from './quantity.js';
+import { xaf } from './money.js';
 
 function domainErrorCode(fn: () => unknown): string {
   try {
@@ -148,5 +151,109 @@ describe('evaluateStockThreshold — BR-STK-051', () => {
       evaluateStockThreshold({ available: 20, minQty: 10, targetQty: 30, inTransitIn: 25 })
         .suggestedQty,
     ).toBe(0);
+  });
+});
+
+describe('settlementValueXaf (BR-STK-056, ADR-029 §5)', () => {
+  const q = (units: number): Quantity => quantityFromMilli(units * 1000);
+
+  /** Valeurs successives de rattachements de quantités données (en unités), dans l'ordre. */
+  function sequence(originQty: number, originValue: number, steps: readonly number[]): number[] {
+    let settled: Quantity = ZERO_QUANTITY;
+    return steps.map((step) => {
+      const value = settlementValueXaf({
+        originQuantity: q(originQty),
+        originValueXaf: xaf(originValue),
+        settledQuantity: settled,
+        quantity: q(step),
+      });
+      settled = quantityFromMilli(quantityMilliUnits(settled) + step * 1000);
+      return value;
+    });
+  }
+
+  it('répartit une valeur qui ne tombe pas juste sans perdre un franc (reliquat à la dernière)', () => {
+    expect(sequence(3, 100, [1, 1, 1])).toEqual([33, 34, 33]);
+    expect(sequence(3, 101, [1, 1, 1])).toEqual([34, 33, 34]);
+    expect(sequence(10, 1001, [2, 8])).toEqual([200, 801]);
+    expect(sequence(10, 2400, [4, 6])).toEqual([960, 1440]);
+  });
+
+  it("emporte toute la valeur d'un seul coup quand la quantité est soldée en une fois", () => {
+    expect(sequence(7, 12_345, [7])).toEqual([12_345]);
+    expect(sequence(3, 0, [1, 2])).toEqual([0, 0]);
+  });
+
+  it('accepte des quantités décimales (millièmes) et de très grandes valeurs sans dépassement', () => {
+    const originQuantity = quantityFromMilli(20_000_000_000);
+    const first = settlementValueXaf({
+      originQuantity,
+      originValueXaf: xaf(5_000_000_000),
+      settledQuantity: ZERO_QUANTITY,
+      quantity: quantityFromMilli(7_000_000_001),
+    });
+    const second = settlementValueXaf({
+      originQuantity,
+      originValueXaf: xaf(5_000_000_000),
+      settledQuantity: quantityFromMilli(7_000_000_001),
+      quantity: quantityFromMilli(12_999_999_999),
+    });
+    expect(first + second).toBe(5_000_000_000);
+    expect(first).toBeGreaterThan(0);
+  });
+
+  it("propriété : toute partition de la quantité, dans tout ordre, somme exactement la valeur d'origine", () => {
+    // Générateur pseudo-aléatoire à graine fixe (déterministe).
+    let seed = 20_261_004;
+    const next = (): number => {
+      seed = (seed * 1_664_525 + 1_013_904_223) % 4_294_967_296;
+      return seed / 4_294_967_296;
+    };
+    for (let round = 0; round < 300; round++) {
+      const totalMilli = 1 + Math.floor(next() * 50_000);
+      const value = Math.floor(next() * 2_000_000);
+      const cuts = new Set<number>();
+      const parts = 1 + Math.floor(next() * 6);
+      while (cuts.size < parts - 1 && cuts.size < totalMilli - 1) {
+        cuts.add(1 + Math.floor(next() * (totalMilli - 1)));
+      }
+      const bounds = [0, ...[...cuts].sort((a, b) => a - b), totalMilli];
+      const steps = bounds.slice(1).map((bound, i) => bound - bounds[i]!);
+      for (let i = steps.length - 1; i > 0; i--) {
+        const j = Math.floor(next() * (i + 1));
+        [steps[i], steps[j]] = [steps[j]!, steps[i]!];
+      }
+      let settled = 0;
+      let sum = 0;
+      for (const step of steps) {
+        const part = settlementValueXaf({
+          originQuantity: quantityFromMilli(totalMilli),
+          originValueXaf: xaf(value),
+          settledQuantity: quantityFromMilli(settled),
+          quantity: quantityFromMilli(step),
+        });
+        expect(part).toBeGreaterThanOrEqual(0);
+        expect(part).toBeLessThanOrEqual(value);
+        sum += part;
+        expect(sum).toBeLessThanOrEqual(value);
+        settled += step;
+      }
+      expect(sum).toBe(value);
+    }
+  });
+
+  it('refuse un rattachement impossible (SETTLEMENT_INVALID)', () => {
+    const base = { originQuantity: q(10), originValueXaf: xaf(1000), settledQuantity: q(8) };
+    expect(domainErrorCode(() => settlementValueXaf({ ...base, quantity: q(3) }))).toBe(
+      'SETTLEMENT_INVALID',
+    );
+    expect(domainErrorCode(() => settlementValueXaf({ ...base, quantity: ZERO_QUANTITY }))).toBe(
+      'SETTLEMENT_INVALID',
+    );
+    expect(
+      domainErrorCode(() =>
+        settlementValueXaf({ ...base, originQuantity: ZERO_QUANTITY, quantity: q(1) }),
+      ),
+    ).toBe('SETTLEMENT_INVALID');
   });
 });

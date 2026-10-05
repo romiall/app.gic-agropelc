@@ -18,9 +18,11 @@
 | `expiry_date` | date | Oui | — | Péremption (FEFO) |
 | `fifo_rank_at` | ts | Non | — | Date de référence FIFO (création ou mise en place) |
 | `status` | enum(`OPEN`,`CLOSED`) | Non | `OPEN` | Fermé quand le lot de production est clôturé |
+| `sellable_from_rearing` | boolean | Non | false | DÉDUIT (P4-03) : animaux vendables directement depuis un emplacement d'élevage (BR-PRD-010, lot de production `SELLING`) ; tenu par `production` à chaque passage `ACTIVE` ↔ `SELLING`, lu par `sales` (qui ne peut pas importer `production`) ; modifiable comme `status` |
 | `created_at`, `created_by` | | | | |
 
 - **PK** `id`. **UQ** `lot_code`. **IX** `(origin_type, origin_id)`, `(expiry_date)`.
+- **Implémentation** (P4-03, migration `20261005090000_alter_stock_lots_sellable_from_rearing.sql`) : colonne ajoutée avec rattrapage des lots de production déjà `SELLING` ; le déclencheur d'immuabilité ne la fige pas. API : `setStockLotSellableFromRearing`, `findStockLot(...).sellableFromRearing`.
 - **Suppr.** `IMMUABLE` (statut seulement). **Offline** DL (lots en solde dans le périmètre).
 
 ## inventory.stock_moves
