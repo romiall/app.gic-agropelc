@@ -6,6 +6,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AuthLayout } from './AuthLayout.js';
 import { useAuth } from './AuthContext.js';
 
 export function PinUnlockScreen() {
@@ -28,11 +29,9 @@ export function PinUnlockScreen() {
   };
 
   return (
-    <section>
-      <h1>{t('auth.unlock_title')}</h1>
-      <p>{t('auth.unlock_help')}</p>
-      <form onSubmit={(event) => void onSubmit(event)}>
-        <div className="form-field">
+    <AuthLayout title={t('auth.unlock_title')} subtitle={t('auth.unlock_help')}>
+      <form className="auth-form" onSubmit={(event) => void onSubmit(event)}>
+        <div className="field">
           <label htmlFor="pin">{t('auth.pin_label')}</label>
           <input
             id="pin"
@@ -48,15 +47,19 @@ export function PinUnlockScreen() {
           />
         </div>
         {pinError && pinError !== 'WIPED' && (
-          <p className="error-message">
+          <p className="alert alert-error" role="alert">
             {t('auth.pin_error_attempts', { count: pinError.attemptsLeft })}
           </p>
         )}
-        {pinError === 'WIPED' && <p className="error-message">{t('auth.pin_wiped')}</p>}
-        <button type="submit" disabled={submitting}>
+        {pinError === 'WIPED' && (
+          <p className="alert alert-error" role="alert">
+            {t('auth.pin_wiped')}
+          </p>
+        )}
+        <button type="submit" className="btn-block" disabled={submitting}>
           {t('auth.unlock_submit')}
         </button>
       </form>
-    </section>
+    </AuthLayout>
   );
 }

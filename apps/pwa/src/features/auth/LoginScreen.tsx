@@ -4,6 +4,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AuthLayout } from './AuthLayout.js';
 import { useAuth } from './AuthContext.js';
 
 export function LoginScreen() {
@@ -11,6 +12,7 @@ export function LoginScreen() {
   const { state, loginWithPassword } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const error = state.status === 'login_required' ? state.error : undefined;
@@ -26,36 +28,52 @@ export function LoginScreen() {
   };
 
   return (
-    <section>
-      <h1>{t('auth.login_title')}</h1>
-      <form onSubmit={(event) => void onSubmit(event)}>
-        <div className="form-field">
+    <AuthLayout title={t('auth.login_title')} subtitle={t('auth.login_subtitle')}>
+      <form className="auth-form" onSubmit={(event) => void onSubmit(event)}>
+        <div className="field">
           <label htmlFor="phone">{t('auth.phone_label')}</label>
           <input
             id="phone"
             type="tel"
+            inputMode="tel"
             autoComplete="tel"
+            placeholder={t('auth.phone_placeholder')}
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             required
+            autoFocus
           />
         </div>
-        <div className="form-field">
+        <div className="field">
           <label htmlFor="password">{t('auth.password_label')}</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
+          <div className="input-with-action">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+            <button
+              type="button"
+              className="input-action"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((visible) => !visible)}
+            >
+              {showPassword ? t('auth.hide_password') : t('auth.show_password')}
+            </button>
+          </div>
         </div>
-        {error && <p className="error-message">{t(`auth.error_${error.toLowerCase()}`)}</p>}
-        <button type="submit" disabled={submitting}>
+        {error && (
+          <p className="alert alert-error" role="alert">
+            {t(`auth.error_${error.toLowerCase()}`)}
+          </p>
+        )}
+        <button type="submit" className="btn-block" disabled={submitting}>
           {submitting ? t('auth.submitting') : t('auth.submit')}
         </button>
       </form>
-    </section>
+    </AuthLayout>
   );
 }

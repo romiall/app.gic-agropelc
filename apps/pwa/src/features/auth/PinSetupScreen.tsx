@@ -6,6 +6,7 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isValidPin } from '../../storage/crypto.js';
+import { AuthLayout } from './AuthLayout.js';
 import { useAuth } from './AuthContext.js';
 
 export function PinSetupScreen() {
@@ -36,11 +37,9 @@ export function PinSetupScreen() {
   };
 
   return (
-    <section>
-      <h1>{t('auth.pin_setup_title')}</h1>
-      <p>{t('auth.pin_setup_help')}</p>
-      <form onSubmit={(event) => void onSubmit(event)}>
-        <div className="form-field">
+    <AuthLayout title={t('auth.pin_setup_title')} subtitle={t('auth.pin_setup_help')}>
+      <form className="auth-form" onSubmit={(event) => void onSubmit(event)}>
+        <div className="field">
           <label htmlFor="pin">{t('auth.pin_label')}</label>
           <input
             id="pin"
@@ -54,7 +53,7 @@ export function PinSetupScreen() {
             required
           />
         </div>
-        <div className="form-field">
+        <div className="field">
           <label htmlFor="pin-confirm">{t('auth.pin_confirm_label')}</label>
           <input
             id="pin-confirm"
@@ -68,11 +67,15 @@ export function PinSetupScreen() {
             required
           />
         </div>
-        {error && <p className="error-message">{error}</p>}
-        <button type="submit" disabled={submitting}>
+        {error && (
+          <p className="alert alert-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="submit" className="btn-block" disabled={submitting}>
           {t('auth.pin_submit')}
         </button>
       </form>
-    </section>
+    </AuthLayout>
   );
 }

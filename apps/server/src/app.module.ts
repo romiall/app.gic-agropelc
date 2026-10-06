@@ -31,6 +31,7 @@ import { CrmApiModule } from './crm-api/crm-api.module.js';
 import { FieldworkApiModule } from './fieldwork-api/fieldwork-api.module.js';
 import { SyncModule } from './sync/sync.module.js';
 import { HealthController } from './health/health.controller.js';
+import { RootController } from './health/root.controller.js';
 
 @Module({
   imports: [
@@ -64,7 +65,7 @@ import { HealthController } from './health/health.controller.js';
     FieldworkApiModule,
     SyncModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, RootController],
   providers: [{ provide: APP_FILTER, useClass: ApiErrorFilter }],
 })
 export class AppModule {}

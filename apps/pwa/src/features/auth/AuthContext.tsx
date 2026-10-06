@@ -36,7 +36,7 @@ export type AuthState =
   | { readonly status: 'loading' }
   | {
       readonly status: 'login_required';
-      readonly error?: 'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED';
+      readonly error?: 'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED' | 'SERVER_ERROR';
     }
   | { readonly status: 'pin_setup_required' }
   | { readonly status: 'locked'; readonly pinError?: { readonly attemptsLeft: number } | 'WIPED' }
@@ -82,7 +82,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       if (!deviceId) return;
       const result = await loginRequest({ phone, password, deviceId });
       if (!result.ok) {
-        const error = result.reason === 'UNKNOWN' ? 'OFFLINE' : result.reason;
+        // Une réponse HTTP inattendue (500, 503…) n'est pas une absence de réseau : message distinct.
+        const error = result.reason === 'UNKNOWN' ? 'SERVER_ERROR' : result.reason;
         setState({ status: 'login_required', error });
         return;
       }

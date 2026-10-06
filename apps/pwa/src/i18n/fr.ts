@@ -6,16 +6,23 @@
 export const fr = {
   app: {
     name: 'GIC AGROPELC',
+    tagline: 'Gestion intégrée du groupement',
+    footer: 'Application professionnelle · utilisable hors ligne',
   },
   auth: {
     login_title: 'Connexion',
+    login_subtitle: 'Identifiez-vous pour accéder à votre espace.',
     phone_label: 'Téléphone',
+    phone_placeholder: '+237 6XX XX XX XX',
     password_label: 'Mot de passe',
+    show_password: 'Afficher',
+    hide_password: 'Masquer',
     submit: 'Se connecter',
     submitting: 'Connexion…',
     error_invalid_credentials: 'Identifiants invalides.',
     error_offline: 'Pas de réseau : la première connexion doit se faire en ligne.',
     error_locked: 'Trop de tentatives : réessayez plus tard.',
+    error_server_error: 'Le service est momentanément indisponible. Réessayez dans un instant.',
     pin_setup_title: 'Choisir un code PIN',
     pin_setup_help: 'Ce code à 6 chiffres déverrouillera l’application hors ligne.',
     pin_confirm_title: 'Confirmer le code PIN',
