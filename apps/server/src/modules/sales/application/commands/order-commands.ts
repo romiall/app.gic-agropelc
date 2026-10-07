@@ -98,6 +98,7 @@ import {
 } from './order-adjust.js';
 import type { PaymentTreatment } from './sale-cancellation.js';
 import { withSalesChanges } from '../sync-changes.js';
+import { standalonePaymentRecorder } from './payment-commands.js';
 
 const ORDER_LOCATION_TYPES: readonly string[] = ['STORE', 'POS', 'MOBILE', 'BUILDING', 'PEN'];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -174,6 +175,7 @@ async function keptCustomerOf(
 
 function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequenceService) {
   const deps = { idGenerator, documentSequences };
+  const keepAdvance = standalonePaymentRecorder(idGenerator, documentSequences);
 
   /** Contrôles communs : client, emplacement de préparation, portée, canal. */
   async function loadContext(
@@ -707,7 +709,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { ok: true as const, locked, site };
   }
 
-  const place: CommandHandler<PlacePayload> = async (uow, envelope) => {
+  const placeOrder: CommandHandler<PlacePayload> = async (uow, envelope) => {
     const orderId = envelope.aggregate_id;
     const existing = await uow
       .selectFrom('sales_sales_orders')
@@ -791,6 +793,75 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     } catch (error) {
       return businessRejection(error);
     }
+  };
+
+  /**
+   * AV-150 : hors ligne, la commande est une intention (AV-126) mais l'acompte encaissé est un fait
+   * (BR-SYN-007). Si le serveur refuse la commande, ses écritures sont défaites (point de
+   * sauvegarde) et chaque acompte est enregistré seul, en crédit client non affecté, avec un conflit
+   * pour la Finance ; la commande répond `CONFLICT`. Un acompte qui ne peut pas être gardé (client
+   * inconnu : le crédit exige un client) laisse le refus d'origine.
+   */
+  const place: CommandHandler<PlacePayload> = async (uow, envelope) => {
+    const advances = envelope.payload.advancePayments ?? [];
+    if (!envelope.captured_offline || advances.length === 0) return placeOrder(uow, envelope);
+    await sql`SAVEPOINT order_place`.execute(uow);
+    const outcome = await placeOrder(uow, envelope);
+    if (outcome.status !== 'REJECTED') return outcome;
+    await sql`ROLLBACK TO SAVEPOINT order_place`.execute(uow);
+    const p = envelope.payload;
+    const location = await findStockLocation(uow, p.fulfilmentLocationId);
+    const paymentIds: string[] = [];
+    let keptXaf = 0;
+    try {
+      for (const advance of advances) {
+        const paymentId = idGenerator.newId();
+        const kept = await keepAdvance(uow, {
+          ...envelope,
+          aggregate_type: 'CUSTOMER_PAYMENT',
+          aggregate_id: paymentId,
+          payload: {
+            customerId: p.customerId,
+            ...(location?.siteId ? { siteId: location.siteId } : {}),
+            methodCode: advance.methodCode,
+            amountXaf: advance.amountXaf,
+            ...(advance.reference !== undefined ? { reference: advance.reference } : {}),
+            ...(advance.cashAccountId !== undefined
+              ? { cashAccountId: advance.cashAccountId }
+              : {}),
+          },
+        });
+        if (kept.status === 'REJECTED' || kept.status === 'CONFLICT') {
+          await sql`ROLLBACK TO SAVEPOINT order_place`.execute(uow);
+          return outcome;
+        }
+        paymentIds.push(paymentId);
+        keptXaf += advance.amountXaf;
+      }
+    } catch (error) {
+      const rejection = businessRejection(error);
+      if (rejection.status !== 'REJECTED') throw error;
+      await sql`ROLLBACK TO SAVEPOINT order_place`.execute(uow);
+      return outcome;
+    }
+    const conflictId = idGenerator.newId();
+    await recordConflict(uow, {
+      id: conflictId,
+      commandId: envelope.command_id,
+      conflictType: 'ORDER_REFUSED_PAYMENT_KEPT',
+      entityType: 'SALES_ORDER',
+      entityId: envelope.aggregate_id,
+      siteId: location?.siteId ?? null,
+      ownerRole: 'FINANCE',
+      applied: true,
+      details: {
+        orderRefusal: { code: outcome.errorCode, message: outcome.messageFr },
+        customerId: p.customerId,
+        paymentIds,
+        keptXaf,
+      },
+    });
+    return { status: 'CONFLICT', conflictId };
   };
 
   const confirmRemaining: CommandHandler<z.infer<typeof emptySchema>> = async (uow, envelope) => {

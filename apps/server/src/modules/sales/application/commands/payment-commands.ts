@@ -120,7 +120,7 @@ const recordSchema = z.object({
   /** Affectations explicites ; absentes : affectation automatique (BR-FIN-004). */
   allocations: z.array(targetSchema).min(1).max(50).optional(),
 });
-type RecordPayload = z.infer<typeof recordSchema>;
+export type RecordPayload = z.infer<typeof recordSchema>;
 
 const reallocateSchema = z.object({
   release: z.array(targetSchema).max(50).optional(),
@@ -237,6 +237,10 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
   async function recordPayment(
     uow: Uow,
     envelope: Envelope<RecordPayload>,
+    options: {
+      /** AV-150 : acompte d'une commande refusée hors ligne, gardé en crédit sans affectation. */
+      readonly keepUnallocated?: boolean;
+    } = {},
   ): Promise<CommandHandlerOutcome> {
     const p = envelope.payload;
     const paymentId = envelope.aggregate_id;
@@ -267,7 +271,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (hasDuplicateTarget(explicit)) {
       return rejected('ALLOCATION_INVALID', 'Une même cible est citée deux fois.');
     }
-    const auto = explicit.length === 0;
+    const auto = explicit.length === 0 && options.keepUnallocated !== true;
     const candidateSaleIds = auto && accounts ? await openSaleIdsOf(uow, accounts.accountIds) : [];
     const locked = await lockTargets(
       uow,
@@ -943,7 +947,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { status: 'APPLIED', serverRefs: { docNumber: payment.doc_number } };
   };
 
-  return { record, reallocate, refund, requestCancellation, checkTargets };
+  return { record, recordPayment, reallocate, refund, requestCancellation, checkTargets };
+}
+
+/**
+ * AV-150 : enregistre un encaissement seul, en crédit client non affecté (l'acompte d'une commande
+ * que le serveur refuse hors ligne : l'argent est dans la caisse, il ne disparaît jamais).
+ */
+export function standalonePaymentRecorder(
+  idGenerator: IdGenerator,
+  documentSequences: DocumentSequenceService,
+): (uow: Uow, envelope: Envelope<RecordPayload>) => Promise<CommandHandlerOutcome> {
+  const { recordPayment } = buildHandlers(idGenerator, documentSequences);
+  return (uow, envelope) => recordPayment(uow, envelope, { keepUnallocated: true });
 }
 
 // --- Décisions de la Finance -------------------------------------------------------------------------

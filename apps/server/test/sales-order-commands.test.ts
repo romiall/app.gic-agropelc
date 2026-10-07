@@ -865,6 +865,96 @@ describe('sales.order.* — confirmation (P4-06)', () => {
     expect(payments).toHaveLength(0);
   });
 
+  it('AV-150 : commande hors ligne refusée — l’acompte est gardé en crédit client, conflit pour la Finance', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 10, 300);
+    const customer = await newCustomer({ credit: true });
+    const balance = async () =>
+      Number(
+        (
+          await db
+            .selectFrom('finance_cash_accounts')
+            .select('balance_xaf')
+            .where('id', '=', toBin(cashAccountId))
+            .executeTakeFirstOrThrow()
+        ).balance_xaf,
+      );
+    const paymentsOf = () =>
+      db
+        .selectFrom('sales_customer_payments')
+        .selectAll()
+        .where('customer_id', '=', toBin(customer))
+        .execute();
+    const before = await balance();
+    const advance = [{ methodCode: 'ESPECES', amountXaf: 700, cashAccountId }];
+
+    // En ligne : le refus reste un refus, rien n'est encaissé.
+    const online = await place(
+      {
+        customerId: customer,
+        channelCode: 'CANAL_INCONNU',
+        lines: [line(product, 2)],
+        advancePayments: advance,
+      },
+      at('11:00:00'),
+    );
+    expect(code(online.result)).toBe('CHANNEL_UNKNOWN');
+    expect(await paymentsOf()).toHaveLength(0);
+
+    // Hors ligne : la commande est refusée, l'argent reçu est gardé en crédit non affecté.
+    const offline = await place(
+      {
+        customerId: customer,
+        channelCode: 'CANAL_INCONNU',
+        lines: [line(product, 2)],
+        advancePayments: advance,
+      },
+      at('11:05:00'),
+      { offline: true },
+    );
+    expect(offline.result.status, JSON.stringify(offline.result)).toBe('CONFLICT');
+    await expect(orderRow(offline.id)).rejects.toThrow();
+    expect(await onHandAt(product.id, storeId)).toBe(10);
+    const [payment] = await paymentsOf();
+    expect(payment).toMatchObject({
+      status: 'RECORDED',
+      amount_xaf: 700,
+      unallocated_xaf: 700,
+      intended_order_id: null,
+      captured_offline: 1,
+    });
+    expect(payment!.doc_number).toMatch(/^ENC-/);
+    const allocations = await db
+      .selectFrom('sales_payment_allocations')
+      .select('id')
+      .where('payment_id', '=', payment!.id)
+      .execute();
+    expect(allocations).toHaveLength(0);
+    expect(await balance()).toBe(before + 700);
+    const conflict = await db
+      .selectFrom('sync_sync_conflicts')
+      .selectAll()
+      .where('entity_id', '=', toBin(offline.id))
+      .where('conflict_type', '=', 'ORDER_REFUSED_PAYMENT_KEPT')
+      .executeTakeFirstOrThrow();
+    expect(conflict).toMatchObject({ owner_role: 'FINANCE', applied: 1, status: 'OPEN' });
+    expect(conflict.details).toMatchObject({
+      orderRefusal: { code: 'CHANNEL_UNKNOWN' },
+      customerId: customer,
+      paymentIds: [fromBin(payment!.id)],
+      keptXaf: 700,
+    });
+
+    // Client inconnu : le crédit exige un client, le refus d'origine demeure.
+    const unknown = await place(
+      { customerId: freshUuid(), lines: [line(product, 1)], advancePayments: advance },
+      at('11:10:00'),
+      { offline: true },
+    );
+    expect(code(unknown.result)).toBe('CUSTOMER_UNKNOWN');
+    expect(await balance()).toBe(before + 700);
+  });
+
   it('brouillon saisi hors ligne : ONLINE_REQUIRED', async () => {
     const product = await sellable(1000);
     const customer = await newCustomer({ credit: true });
