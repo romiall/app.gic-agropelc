@@ -24,6 +24,7 @@ import { z } from 'zod';
 import {
   DomainError,
   businessDayEndUtc,
+  businessDayOf,
   businessDayStartUtc,
   normalizePhone,
   type Clock,
@@ -47,7 +48,15 @@ import {
   listManagedTeamMembersAt,
 } from '../modules/organization/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { periodProductQuantity, periodRevenue } from '../modules/sales/application/public/index.js';
+import {
+  SALES_LIST_MAX_LIMIT,
+  listOrders,
+  listReceivables,
+  listSales,
+  periodProductQuantity,
+  periodRevenue,
+  summarizeReceivables,
+} from '../modules/sales/application/public/index.js';
 import {
   CRM_LIST_DEFAULT_LIMIT,
   CRM_LIST_MAX_LIMIT,
@@ -339,6 +348,81 @@ export class CrmReadController {
         interactions.items,
         (i) => activityScope(i.userId),
       ),
+      sales: await this.customerSales(request, now, customerResourceOf(customer), customerIds),
+    };
+  }
+
+  /**
+   * P4-10 : volet ventes de la fiche client (D02 « fiche client » ; BR-CRM-007 : comptes absorbés
+   * compris). Encours et créances par ancienneté : fait du compte, évalué sur la portée du client
+   * (`sales.receivable.read`). Dernières commandes et ventes (`sales.order.read`,
+   * `sales.sale.read`) : chaque document sur sa propre portée (RC-04), comme les listes de
+   * `sales-api/`. `null` : droit absent sur ce client.
+   */
+  private async customerSales(
+    request: AuthenticatedRequest,
+    now: Date,
+    resource: ResourceLocator,
+    customerIds: readonly string[],
+  ) {
+    const RECENT = 10;
+    const today = businessDayOf(now);
+    const visible = async <T extends { readonly resource: ResourceLocator }>(
+      permission: string,
+      items: readonly T[],
+    ): Promise<T[]> => {
+      const kept: T[] = [];
+      for (const item of items) {
+        if (kept.length === RECENT) break;
+        if (await this.allowed(request, now, permission, item.resource)) kept.push(item);
+      }
+      return kept;
+    };
+    const newestFirst = <T extends { readonly occurredAt: string }>(items: readonly T[]) =>
+      [...items].sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+    const holds = async (permission: string) =>
+      hasPermissionAt(this.db, toBin(request.auth!.sub), permission, now);
+
+    const receivables = (await this.allowed(request, now, 'sales.receivable.read', resource))
+      ? summarizeReceivables(await listReceivables(this.db, { today, customerIds }))
+      : null;
+    const recentOrders = (await holds('sales.order.read'))
+      ? (
+          await visible(
+            'sales.order.read',
+            newestFirst(
+              (
+                await Promise.all(
+                  customerIds.map((customerId) =>
+                    listOrders(this.db, { customerId, limit: SALES_LIST_MAX_LIMIT }),
+                  ),
+                )
+              ).flatMap((page) => page.items),
+            ),
+          )
+        ).slice(0, RECENT)
+      : null;
+    const recentSales = (await holds('sales.sale.read'))
+      ? (
+          await visible(
+            'sales.sale.read',
+            newestFirst(
+              (
+                await Promise.all(
+                  customerIds.map((customerId) =>
+                    listSales(this.db, { customerId, limit: SALES_LIST_MAX_LIMIT }),
+                  ),
+                )
+              ).flatMap((page) => page.items),
+            ),
+          )
+        ).slice(0, RECENT)
+      : null;
+    return {
+      outstandingXaf: receivables?.totalXaf ?? null,
+      receivables,
+      recent_orders: recentOrders,
+      recent_sales: recentSales,
     };
   }
 

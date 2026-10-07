@@ -9,6 +9,7 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import { receivableAging, type AgingBucket } from '@gic/domain';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { absorbedCustomerIds } from '../../../crm/application/public/index.js';
+import type { ListScope } from './sales-query.js';
 
 export async function customerOutstandingXaf(
   executor: Kysely<DB> | Transaction<DB>,
@@ -38,6 +39,8 @@ export interface ReceivableLine {
   readonly customerId: string | null;
   readonly siteId: string;
   readonly commercialUserId: string | null;
+  readonly sellerUserId: string;
+  readonly zoneId: string;
   readonly occurredAt: Date;
   /** Échéance `AAAA-MM-JJ` (AV-129). */
   readonly dueDate: string;
@@ -54,6 +57,8 @@ export interface ReceivableFilter {
   readonly today: string;
   readonly customerIds?: readonly string[];
   readonly siteIds?: readonly string[];
+  /** Périmètre d'une liste (sites OU titulaires : commercial attributaire, à défaut vendeur). */
+  readonly anyOf?: ListScope;
   readonly commercialUserId?: string;
   /** Seulement les créances échues (échéance antérieure au jour). */
   readonly overdueOnly?: boolean;
@@ -68,6 +73,9 @@ export async function listReceivables(
   executor: Kysely<DB> | Transaction<DB>,
   filter: ReceivableFilter,
 ): Promise<readonly ReceivableLine[]> {
+  if (filter.customerIds?.length === 0 || filter.siteIds?.length === 0) return [];
+  const scope = filter.anyOf;
+  if (scope && scope.siteIds.length === 0 && scope.ownerUserIds.length === 0) return [];
   const rows = await executor
     .selectFrom('sales_sales')
     .select([
@@ -76,6 +84,8 @@ export async function listReceivables(
       'customer_id',
       'site_id',
       'commercial_user_id',
+      'seller_user_id',
+      'zone_id',
       'occurred_at',
       'net_total_xaf',
       'amount_paid_xaf',
@@ -103,6 +113,30 @@ export async function listReceivables(
     .$if(filter.commercialUserId !== undefined, (qb) =>
       qb.where('commercial_user_id', '=', toBin(filter.commercialUserId!)),
     )
+    .$if(scope !== undefined, (qb) =>
+      qb.where((eb) =>
+        eb.or([
+          ...(scope!.siteIds.length > 0
+            ? [
+                eb(
+                  'site_id',
+                  'in',
+                  scope!.siteIds.map((id) => toBin(id)),
+                ),
+              ]
+            : []),
+          ...(scope!.ownerUserIds.length > 0
+            ? [
+                eb(
+                  eb.fn.coalesce('commercial_user_id', 'seller_user_id'),
+                  'in',
+                  scope!.ownerUserIds.map((id) => toBin(id)),
+                ),
+              ]
+            : []),
+        ]),
+      ),
+    )
     .orderBy('due_date', 'asc')
     .orderBy('occurred_at', 'asc')
     .orderBy('id', 'asc')
@@ -116,6 +150,8 @@ export async function listReceivables(
       customerId: fromBinOrNull(row.customer_id),
       siteId: fromBin(row.site_id),
       commercialUserId: fromBinOrNull(row.commercial_user_id),
+      sellerUserId: fromBin(row.seller_user_id),
+      zoneId: fromBin(row.zone_id),
       occurredAt: row.occurred_at,
       dueDate: row.due!,
       netTotalXaf: Number(row.net_total_xaf),

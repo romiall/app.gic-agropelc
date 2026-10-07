@@ -70,6 +70,8 @@ Une permission avec la portée maximale `SITE`, attribuée par une affectation `
 | RC-09 | Les exports et la lecture du journal d'audit sont eux-mêmes audités | BR-ANA-008, BR-AUD-009 |
 | RC-10 | Un appareil partagé n'étend pas les droits : chaque commande est évaluée avec les droits de **son auteur** | BR-SYN-014 |
 
+**Lecture d'une liste** (DÉDUIT, P4-10) : chaque élément est évalué sur sa propre ressource (titulaire, site, zone), comme une fiche. Pour qu'une page ne soit pas vide de documents hors portée, la requête est d'abord restreinte, sauf portée `ALL`, aux sites et titulaires admissibles (`listConfinementAt` d'`identity`) : l'utilisateur lui-même pour `OWN`, lui et les membres de ses équipes pour `TEAM`, le site d'une affectation `SITE` pour `SITE` ou `ZONE`. Ce pré-filtre est un sur-ensemble ; sans restriction possible (portée `SITE` ou `ZONE` sous une affectation globale ou de zone), la liste est filtrée élément par élément.
+
 ## 5. Matrice des permissions
 
 Colonnes : **DIR** Direction · **ADM** Administrateur · **RCO** Resp. commercial · **CTE** Commercial terrain · **CSE** Commercial sédentaire · **VEN** Vendeur PDV · **RPR** Resp. production · **RFE** Resp. ferme · **MAG** Magasinier · **ACH** Resp. achats · **FIN** Comptabilité / Finance.

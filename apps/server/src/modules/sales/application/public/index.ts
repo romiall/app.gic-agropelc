@@ -22,3 +22,31 @@ export type {
 // P4-09 : chiffre d'affaires, coût des ventes et marges (BR-FIN-042, 043).
 export { lotRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
 export type { LotRevenue, LotRevenueMonth, PeriodRevenue, RevenueFilter } from './revenue.js';
+// P4-10 : lectures des commandes, ventes, livraisons et encaissements.
+export {
+  SALES_LIST_DEFAULT_LIMIT,
+  SALES_LIST_MAX_LIMIT,
+  getOrder,
+  getPayment,
+  getSale,
+  listDeliveryNotes,
+  listOrders,
+  listPayments,
+  listSales,
+} from './sales-query.js';
+export type {
+  DeliveryNoteSummary,
+  OrderDetail,
+  OrderLineView,
+  OrderSummary,
+  PaymentDetail,
+  PaymentSummary,
+  SaleCancellationView,
+  SaleDetail,
+  SaleLineView,
+  SalePaymentView,
+  SaleSummary,
+  SalesPage,
+  ListScope,
+  SalesResource,
+} from './sales-query.js';

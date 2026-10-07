@@ -166,3 +166,37 @@ export async function resourceInGrantScope(
       return isWithinTeamScope(executor, grant, resource, granteeUserId, occurredAt);
   }
 }
+
+/**
+ * Titulaires admissibles d'un octroi de portée maximale `TEAM` (§2 ligne TEAM, même règle que
+ * `isWithinTeamScope`) : l'utilisateur, les membres des équipes qu'il dirige, et ceux de l'équipe de
+ * l'affectation `TEAM`. Sert au pré-filtre d'une liste (`listConfinementAt`).
+ */
+export async function teamScopeOwners(
+  executor: Executor,
+  grant: CachedGrant,
+  granteeUserId: string,
+  occurredAt: Date,
+): Promise<readonly string[]> {
+  const owners = new Set<string>([granteeUserId]);
+  const managed = await executor
+    .selectFrom('organization_team_memberships as tm')
+    .innerJoin('organization_teams as t', 't.id', 'tm.team_id')
+    .select('tm.user_id')
+    .where('t.manager_user_id', '=', toBin(granteeUserId))
+    .where('tm.valid_from', '<=', occurredAt)
+    .where((eb) => eb.or([eb('tm.valid_to', 'is', null), eb('tm.valid_to', '>', occurredAt)]))
+    .execute();
+  for (const row of managed) owners.add(fromBin(row.user_id));
+  if (grant.scopeType === 'TEAM' && grant.scopeTeamId !== null) {
+    const members = await executor
+      .selectFrom('organization_team_memberships')
+      .select('user_id')
+      .where('team_id', '=', toBin(grant.scopeTeamId))
+      .where('valid_from', '<=', occurredAt)
+      .where((eb) => eb.or([eb('valid_to', 'is', null), eb('valid_to', '>', occurredAt)]))
+      .execute();
+    for (const row of members) owners.add(fromBin(row.user_id));
+  }
+  return [...owners];
+}

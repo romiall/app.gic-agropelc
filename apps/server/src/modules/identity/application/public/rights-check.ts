@@ -27,7 +27,11 @@ import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { getUserGrants, isGrantActiveAt } from '../rbac/rbac-cache.js';
-import { resourceInGrantScope, type ResourceLocator } from '../rbac/scope-evaluation.js';
+import {
+  resourceInGrantScope,
+  teamScopeOwners,
+  type ResourceLocator,
+} from '../rbac/scope-evaluation.js';
 
 export type { ResourceLocator } from '../rbac/scope-evaluation.js';
 
@@ -74,6 +78,53 @@ export async function evaluateAccess(
     }
   }
   return { allowed: false, reason: 'OUT_OF_SCOPE' };
+}
+
+/**
+ * Périmètre d'une liste : une ressource visible par au moins un octroi actif de la permission porte
+ * l'un de ces sites **ou** l'un de ces titulaires. Pré-filtre sûr (un sur-ensemble) avant
+ * l'évaluation élément par élément (`evaluateAccess`), pour qu'une page ne soit pas vide de
+ * documents hors portée.
+ *
+ * Par octroi : `OWN` ⇒ l'utilisateur comme titulaire ; `TEAM` ⇒ lui-même et les membres de ses
+ * équipes (`teamScopeOwners`) ; `SITE` ou `ZONE` sous une affectation `SITE` ⇒ ce site. `null` :
+ * aucun pré-filtre possible (portée `ALL`, ou `SITE`/`ZONE` sous une affectation globale, de zone ou
+ * d'équipe). Listes vides : aucun octroi actif.
+ */
+export interface ListConfinement {
+  readonly siteIds: readonly string[];
+  readonly ownerUserIds: readonly string[];
+}
+
+export async function listConfinementAt(
+  executor: Kysely<DB> | Transaction<DB>,
+  userId: string,
+  permissionCode: string,
+  occurredAt: Date,
+): Promise<ListConfinement | null> {
+  const sites = new Set<string>();
+  const owners = new Set<string>();
+  for (const grant of await getUserGrants(executor, userId)) {
+    if (grant.permissionCode !== permissionCode || !isGrantActiveAt(grant, occurredAt)) continue;
+    switch (grant.maxScope) {
+      case 'ALL':
+        return null;
+      case 'OWN':
+        owners.add(userId);
+        break;
+      case 'TEAM':
+        for (const owner of await teamScopeOwners(executor, grant, userId, occurredAt)) {
+          owners.add(owner);
+        }
+        break;
+      case 'SITE':
+      case 'ZONE':
+        if (grant.scopeType !== 'SITE' || grant.scopeSiteId === null) return null;
+        sites.add(grant.scopeSiteId);
+        break;
+    }
+  }
+  return { siteIds: [...sites], ownerUserIds: [...owners] };
 }
 
 /**

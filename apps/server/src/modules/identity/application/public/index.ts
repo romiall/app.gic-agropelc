@@ -21,7 +21,12 @@ export type { DeviceCheckResult } from './device-check.js';
 export { checkUserActive } from './user-check.js';
 export type { UserCheckResult } from './user-check.js';
 
-export { hasPermissionAt, evaluateAccess, evaluateAccessLimits } from './rights-check.js';
+export {
+  hasPermissionAt,
+  evaluateAccess,
+  evaluateAccessLimits,
+  listConfinementAt,
+} from './rights-check.js';
 export {
   activeZoneAssignmentsAt,
   activeSiteAssignmentsAt,
@@ -29,7 +34,12 @@ export {
   activeRoleAssignmentsAt,
 } from './assignment-query.js';
 export type { ActiveAssignment } from './assignment-query.js';
-export type { AccessResult, EvaluateAccessInput, ResourceLocator } from './rights-check.js';
+export type {
+  AccessResult,
+  EvaluateAccessInput,
+  ListConfinement,
+  ResourceLocator,
+} from './rights-check.js';
 
 export { deviceUserCounts, userFullName, userFullNames } from './user-summary.js';
 export type { DeviceUserCounts } from './user-summary.js';

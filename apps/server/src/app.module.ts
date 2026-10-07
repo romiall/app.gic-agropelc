@@ -28,6 +28,8 @@ import { CatalogApiModule } from './catalog-api/catalog-api.module.js';
 import { PricingApiModule } from './pricing-api/pricing-api.module.js';
 import { ProcurementApiModule } from './procurement-api/procurement-api.module.js';
 import { ProductionApiModule } from './production-api/production-api.module.js';
+import { SalesApiModule } from './sales-api/sales-api.module.js';
+import { FinanceApiModule } from './finance-api/finance-api.module.js';
 import { HomeApiModule } from './home-api/home-api.module.js';
 import { InventoryApiModule } from './inventory-api/inventory-api.module.js';
 import { CrmApiModule } from './crm-api/crm-api.module.js';
@@ -65,6 +67,8 @@ import { RootController } from './health/root.controller.js';
     PricingApiModule,
     ProcurementApiModule,
     ProductionApiModule,
+    SalesApiModule,
+    FinanceApiModule,
     HomeApiModule,
     InventoryApiModule,
     CrmApiModule,

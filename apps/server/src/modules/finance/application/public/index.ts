@@ -39,3 +39,13 @@ export type {
   CashAccountResolution,
   PaymentMethodSummary,
 } from './cash-account-resolution.js';
+
+// P4-10 : lectures des comptes de trésorerie.
+export {
+  CASH_LIST_DEFAULT_LIMIT,
+  CASH_LIST_MAX_LIMIT,
+  cashAccountResourceOf,
+  listCashAccounts,
+  listCashMovements,
+} from './cash-account-query.js';
+export type { CashMovementLine } from './cash-account-query.js';

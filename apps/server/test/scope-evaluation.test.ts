@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   evaluateAccess,
+  listConfinementAt,
   type ResourceLocator,
 } from '../src/modules/identity/application/public/index.js';
 import {
@@ -414,6 +415,68 @@ describe('evaluateAccess — intersection portée maximale ∩ affectation (P0-1
         resource: {},
       });
       expect(result).toEqual({ allowed: false, reason: 'NO_PERMISSION' });
+    });
+  });
+});
+
+describe('listConfinementAt — pré-filtre d’une liste : sites OU titulaires (P4-10)', () => {
+  it('OWN ⇒ soi-même ; SITE sous affectation SITE ⇒ ce site ; les octrois se cumulent', async () => {
+    await withTestUow(async (trx) => {
+      await insertTestPermission(trx, PERMISSION);
+      const grantee = await insertTestUser(trx);
+      const zone = await insertTestZone(trx, grantee);
+      const site = await insertTestSite(trx, grantee, zone);
+      const ownRole = await insertTestRole(trx, grantee);
+      await grantTestPermission(trx, ownRole, PERMISSION, grantee, { maxScope: 'OWN' });
+      await assignTestRole(trx, grantee, ownRole, grantee);
+      expect(await listConfinementAt(trx, grantee, PERMISSION, OCCURRED_AT)).toEqual({
+        siteIds: [],
+        ownerUserIds: [grantee],
+      });
+
+      const siteRole = await insertTestRole(trx, grantee, { allowedScopeTypes: ['SITE'] });
+      await grantTestPermission(trx, siteRole, PERMISSION, grantee, { maxScope: 'SITE' });
+      const other = await insertTestUser(trx);
+      await assignTestRole(trx, other, ownRole, grantee);
+      await assignTestRole(trx, other, siteRole, grantee, { scopeType: 'SITE', scopeSiteId: site });
+      expect(await listConfinementAt(trx, other, PERMISSION, OCCURRED_AT)).toEqual({
+        siteIds: [site],
+        ownerUserIds: [other],
+      });
+    });
+  });
+
+  it('TEAM ⇒ soi-même et les membres des équipes dirigées ; ALL ou SITE global ⇒ aucun pré-filtre', async () => {
+    await withTestUow(async (trx) => {
+      await insertTestPermission(trx, PERMISSION);
+      const manager = await insertTestUser(trx);
+      const member = await insertTestUser(trx);
+      const team = await insertTestTeam(trx, manager, manager);
+      await insertTestTeamMembership(trx, team, member, manager);
+      const teamRole = await insertTestRole(trx, manager);
+      await grantTestPermission(trx, teamRole, PERMISSION, manager, { maxScope: 'TEAM' });
+      await assignTestRole(trx, manager, teamRole, manager);
+      const confinement = await listConfinementAt(trx, manager, PERMISSION, OCCURRED_AT);
+      expect(confinement?.siteIds).toEqual([]);
+      expect([...(confinement?.ownerUserIds ?? [])].sort()).toEqual([manager, member].sort());
+
+      const globalSite = await insertTestUser(trx);
+      const siteRole = await insertTestRole(trx, globalSite);
+      await grantTestPermission(trx, siteRole, PERMISSION, globalSite, { maxScope: 'SITE' });
+      await assignTestRole(trx, globalSite, siteRole, globalSite);
+      expect(await listConfinementAt(trx, globalSite, PERMISSION, OCCURRED_AT)).toBeNull();
+
+      const everything = await insertTestUser(trx);
+      const allRole = await insertTestRole(trx, everything);
+      await grantTestPermission(trx, allRole, PERMISSION, everything, { maxScope: 'ALL' });
+      await assignTestRole(trx, everything, allRole, everything);
+      expect(await listConfinementAt(trx, everything, PERMISSION, OCCURRED_AT)).toBeNull();
+
+      const nobody = await insertTestUser(trx);
+      expect(await listConfinementAt(trx, nobody, PERMISSION, OCCURRED_AT)).toEqual({
+        siteIds: [],
+        ownerUserIds: [],
+      });
     });
   });
 });
