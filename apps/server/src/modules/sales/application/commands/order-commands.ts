@@ -97,6 +97,7 @@ import {
   type LineRetirement,
 } from './order-adjust.js';
 import type { PaymentTreatment } from './sale-cancellation.js';
+import { withSalesChanges } from '../sync-changes.js';
 
 const ORDER_LOCATION_TYPES: readonly string[] = ['STORE', 'POS', 'MOBILE', 'BUILDING', 'PEN'];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1303,10 +1304,12 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
 }
 
 export function registerOrderCommands(
-  registry: CommandHandlerRegistry,
+  baseRegistry: CommandHandlerRegistry,
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
 ): void {
+  // P4-11 : chaque commande publie ses changements (jeux `orders`, `sales_recent`, `customers`).
+  const registry = withSalesChanges(baseRegistry);
   const handlers = buildHandlers(idGenerator, documentSequences);
   registry.register({
     commandType: 'sales.order.save_draft',

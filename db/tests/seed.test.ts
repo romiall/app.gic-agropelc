@@ -24,6 +24,7 @@ import { VIRTUAL_LOCATIONS } from '../seeds/virtual-locations.js';
 import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from '../seeds/crm-references.js';
 import { PAYMENT_METHODS } from '../seeds/finance-references.js';
+import { codeEntityId } from '../seeds/code-entity-id.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -162,6 +163,20 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       ['identity.device.approve'],
     );
     expect(rows[0]?.is_approval).toBe(1);
+  });
+
+  it('publie chaque moyen de paiement dans le flux, sous sa clé dérivée (P4-11, ADR-031)', async () => {
+    // Valeur épinglée aussi par apps/server/test (code-entity-id) : les deux calculs concordent.
+    expect(codeEntityId('PAYMENT_METHOD', 'ESPECES')).toBe('a54b88b0-36c9-59e3-8d51-3464ef06b112');
+    for (const method of PAYMENT_METHODS) {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS c FROM sync_change_feed
+          WHERE dataset = 'catalog' AND entity_type = 'PAYMENT_METHOD' AND scope_type = 'GLOBAL'
+            AND entity_id = UNHEX(REPLACE(?, '-', ''))`,
+        [codeEntityId('PAYMENT_METHOD', method.code)],
+      );
+      expect((rows[0] as { c: number }).c).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it('est idempotent : une seconde exécution ne modifie aucun décompte', async () => {

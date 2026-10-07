@@ -50,6 +50,11 @@ import {
   type PaymentTreatment,
 } from './sale-cancellation.js';
 import { lockOrderOfSale, syncOrderAfterSaleCancellation } from './order-adjust.js';
+import {
+  withSalesChanges,
+  withSalesDecisionChanges,
+  type SalesDecisionRegistry,
+} from '../sync-changes.js';
 
 const cancelPayloadSchema = z.object({
   saleId: z.string().uuid(),
@@ -265,10 +270,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
 }
 
 /** Décision de la validation `SALE_CANCELLATION` : application de l'annulation, ou rejet. */
-function registerDecision(
-  decisionRegistry: ApprovalDecisionHandlerRegistry,
-  idGenerator: IdGenerator,
-): void {
+function registerDecision(decisionRegistry: SalesDecisionRegistry, idGenerator: IdGenerator): void {
   const deps = { idGenerator };
   decisionRegistry.register('SALE_CANCELLATION', async (uow, ctx) => {
     const doc = await uow
@@ -368,11 +370,14 @@ function registerDecision(
 }
 
 export function registerCancelCommands(
-  registry: CommandHandlerRegistry,
-  decisionRegistry: ApprovalDecisionHandlerRegistry,
+  baseRegistry: CommandHandlerRegistry,
+  baseDecisionRegistry: ApprovalDecisionHandlerRegistry,
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
 ): void {
+  // P4-11 : chaque commande publie ses changements (jeux `orders`, `sales_recent`, `customers`).
+  const registry = withSalesChanges(baseRegistry);
+  const decisionRegistry = withSalesDecisionChanges(baseDecisionRegistry);
   const handlers = buildHandlers(idGenerator, documentSequences);
   registry.register({
     commandType: 'sales.sale.cancel',

@@ -16,6 +16,7 @@
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
+import { codeEntityId } from '../platform/sync/code-entity-id.js';
 
 /** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
  * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
@@ -109,6 +110,38 @@ function dateOnly(value: Date | null): string | null {
   const day = String(value.getDate()).padStart(2, '0');
   return `${value.getFullYear()}-${month}-${day}`;
 }
+
+/** Statuts d'une commande servie par le jeu `orders` (P4-11). */
+const OPEN_ORDER_STATUSES: readonly string[] = ['DRAFT', 'CONFIRMED', 'PARTIALLY_FULFILLED'];
+
+/** Périmètres du jeu `orders` (P4-11) : titulaire, équipe, emplacement de préparation. */
+function orderScopeOf(
+  context: EntityProjectionContext,
+): { readonly type: 'USER' | 'TEAM' | 'LOCATION'; readonly id: string } | undefined {
+  if (context.scopeId === null) return undefined;
+  if (
+    context.scopeType === 'USER' ||
+    context.scopeType === 'TEAM' ||
+    context.scopeType === 'LOCATION'
+  ) {
+    return { type: context.scopeType, id: context.scopeId };
+  }
+  return undefined;
+}
+
+/** Périmètres des jeux `sales_recent` et `cash` (P4-11) : utilisateur, site — jamais `GLOBAL`. */
+function recentScopeOf(
+  context: EntityProjectionContext,
+): { readonly type: 'USER' | 'SITE'; readonly id: string } | undefined {
+  if (context.scopeId === null) return undefined;
+  if (context.scopeType === 'USER' || context.scopeType === 'SITE') {
+    return { type: context.scopeType, id: context.scopeId };
+  }
+  return undefined;
+}
+
+/** Fenêtre du jeu `sales_recent` (01-architecture-offline.md §3.1 : « des 7 derniers jours »). */
+const RECENT_7_DAYS = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 7 DAY)`;
 
 /** Fenêtre du jeu `crm_activity` (01-architecture-offline.md §3.1 : « des 90 derniers jours »). */
 const ACTIVITY_WINDOW = sql<boolean>`a.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 90 DAY)`;
@@ -914,6 +947,23 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
           ? fromBinOrNull(row.home_site_id) === scope.id
           : await anyTeamMemberNow(executor, scope.id, [row.owner_user_id]);
     if (!inScope) return undefined;
+    // P4-11 : encours (BR-VEN-025) — soldes dus des ventes non annulées du compte et des comptes
+    // qu'il a absorbés (BR-CRM-007), pour le contrôle de crédit hors ligne.
+    const outstanding = await executor
+      .selectFrom('sales_sales')
+      .select(sql<string>`COALESCE(SUM(balance_due_xaf), 0)`.as('xaf'))
+      .where('status', '<>', 'CANCELLED')
+      .where((eb) =>
+        eb.or([
+          eb('customer_id', '=', row.id),
+          eb(
+            'customer_id',
+            'in',
+            eb.selectFrom('crm_customers').select('id').where('merged_into_id', '=', row.id),
+          ),
+        ]),
+      )
+      .executeTakeFirst();
     return {
       id: fromBin(row.id),
       stage: row.stage,
@@ -944,6 +994,7 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       credit_limit_xaf: row.credit_limit_xaf === null ? null : Number(row.credit_limit_xaf),
       payment_terms_days: row.payment_terms_days,
       last_sale_at: row.last_sale_at,
+      outstanding_xaf: Number(outstanding?.xaf ?? 0),
       version: row.version,
     };
   },
@@ -1752,6 +1803,355 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         quantity_base: qtyOf(output.quantity_base),
         weight_g: Number(output.weight_g),
       })),
+    };
+  },
+
+  // --- P4-11 : jeux `orders`, `sales_recent`, `cash`, `catalog` (moyens de paiement) ----------------
+
+  // Commande ouverte (brouillon pour son titulaire ; confirmée ou partiellement livrée), pour son
+  // titulaire, ses équipes et l'emplacement de préparation ; prix devisés, sans coût (RC-05).
+  SALES_ORDER: async (executor, entityId, context) => {
+    const scope = orderScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('sales_sales_orders')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'status',
+        'site_id',
+        'customer_id',
+        'commercial_user_id',
+        'created_by',
+        'channel_code',
+        'fulfilment_location_id',
+        'requested_delivery_date',
+        'delivery_address',
+        'total_estimated_xaf',
+        'advance_paid_xaf',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || !OPEN_ORDER_STATUSES.includes(row.status)) return undefined;
+    const owner = row.commercial_user_id ?? row.created_by;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(owner) === scope.id
+        : scope.type === 'TEAM'
+          ? await anyTeamMemberNow(executor, scope.id, [owner])
+          : row.status !== 'DRAFT' && fromBin(row.fulfilment_location_id) === scope.id;
+    if (!inScope) return undefined;
+    const lines = await executor
+      .selectFrom('sales_sales_order_lines')
+      .select([
+        'id',
+        'line_no',
+        'product_id',
+        'product_name_snapshot',
+        'quantity',
+        'unit_code',
+        'quantity_base',
+        'withdrawn_quantity_base',
+        'sold_quantity_base',
+        'delivered_quantity_base',
+        'quoted_unit_price_xaf',
+        'line_total_xaf',
+      ])
+      .where('order_id', '=', row.id)
+      .orderBy('line_no', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      status: row.status,
+      site_id: fromBin(row.site_id),
+      customer_id: fromBin(row.customer_id),
+      commercial_user_id: fromBinOrNull(row.commercial_user_id),
+      created_by: fromBin(row.created_by),
+      channel_code: row.channel_code,
+      fulfilment_location_id: fromBin(row.fulfilment_location_id),
+      requested_delivery_date: dateOnly(row.requested_delivery_date),
+      delivery_address: row.delivery_address,
+      total_estimated_xaf: Number(row.total_estimated_xaf),
+      advance_paid_xaf: Number(row.advance_paid_xaf),
+      occurred_at: row.occurred_at,
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        line_no: line.line_no,
+        product_id: fromBin(line.product_id),
+        product_name: line.product_name_snapshot,
+        quantity: qtyOf(line.quantity),
+        unit_code: line.unit_code,
+        quantity_base: qtyOf(line.quantity_base),
+        withdrawn_quantity_base: qtyOf(line.withdrawn_quantity_base),
+        sold_quantity_base: qtyOf(line.sold_quantity_base),
+        delivered_quantity_base: qtyOf(line.delivered_quantity_base),
+        quoted_unit_price_xaf: Number(line.quoted_unit_price_xaf),
+        line_total_xaf: Number(line.line_total_xaf),
+      })),
+    };
+  },
+
+  // Vente des 7 derniers jours, pour son vendeur, son commercial attributaire et son site ; lignes
+  // au prix appliqué, sans coût figé (RC-05) ; encaissements affectés.
+  SALE: async (executor, entityId, context) => {
+    const scope = recentScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('sales_sales')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'sale_type',
+        'order_id',
+        'status',
+        'payment_status',
+        'customer_id',
+        'site_id',
+        'from_location_id',
+        'channel_code',
+        'seller_user_id',
+        'commercial_user_id',
+        'total_xaf',
+        'discount_total_xaf',
+        'cancelled_xaf',
+        'net_total_xaf',
+        'amount_paid_xaf',
+        'balance_due_xaf',
+        'due_date',
+        'flags',
+        'captured_offline',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_7_DAYS)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(row.seller_user_id) === scope.id ||
+          fromBinOrNull(row.commercial_user_id) === scope.id
+        : fromBin(row.site_id) === scope.id;
+    if (!inScope) return undefined;
+    const lines = await executor
+      .selectFrom('sales_sale_lines')
+      .select([
+        'id',
+        'line_no',
+        'order_line_id',
+        'product_id',
+        'product_name_snapshot',
+        'quantity',
+        'unit_code',
+        'quantity_base',
+        'unit_price_xaf',
+        'discount_xaf',
+        'line_total_xaf',
+        'cancelled_quantity_base',
+        'cancelled_xaf',
+        'delivered_quantity_base',
+      ])
+      .where('sale_id', '=', row.id)
+      .orderBy('line_no', 'asc')
+      .execute();
+    const allocations = await executor
+      .selectFrom('sales_payment_allocations')
+      .select(['id', 'payment_id', 'amount_xaf', 'status'])
+      .where('sale_id', '=', row.id)
+      .orderBy('allocated_at', 'asc')
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      sale_type: row.sale_type,
+      order_id: fromBinOrNull(row.order_id),
+      status: row.status,
+      payment_status: row.payment_status,
+      customer_id: fromBinOrNull(row.customer_id),
+      site_id: fromBin(row.site_id),
+      from_location_id: fromBin(row.from_location_id),
+      channel_code: row.channel_code,
+      seller_user_id: fromBin(row.seller_user_id),
+      commercial_user_id: fromBinOrNull(row.commercial_user_id),
+      total_xaf: Number(row.total_xaf),
+      discount_total_xaf: Number(row.discount_total_xaf),
+      cancelled_xaf: Number(row.cancelled_xaf),
+      net_total_xaf: Number(row.net_total_xaf),
+      amount_paid_xaf: Number(row.amount_paid_xaf),
+      balance_due_xaf: Number(row.balance_due_xaf),
+      due_date: dateOnly(row.due_date),
+      flags: flagsOf(row.flags),
+      captured_offline: Boolean(row.captured_offline),
+      occurred_at: row.occurred_at,
+      version: row.version,
+      lines: lines.map((line) => ({
+        id: fromBin(line.id),
+        line_no: line.line_no,
+        order_line_id: fromBinOrNull(line.order_line_id),
+        product_id: fromBin(line.product_id),
+        product_name: line.product_name_snapshot,
+        quantity: qtyOf(line.quantity),
+        unit_code: line.unit_code,
+        quantity_base: qtyOf(line.quantity_base),
+        unit_price_xaf: Number(line.unit_price_xaf),
+        discount_xaf: Number(line.discount_xaf),
+        line_total_xaf: Number(line.line_total_xaf),
+        cancelled_quantity_base: qtyOf(line.cancelled_quantity_base),
+        cancelled_xaf: Number(line.cancelled_xaf),
+        delivered_quantity_base: qtyOf(line.delivered_quantity_base),
+      })),
+      payments: allocations.map((allocation) => ({
+        allocation_id: fromBin(allocation.id),
+        payment_id: fromBin(allocation.payment_id),
+        amount_xaf: Number(allocation.amount_xaf),
+        status: allocation.status,
+      })),
+    };
+  },
+
+  // Encaissement des 7 derniers jours, pour son receveur et son site ; affectations.
+  CUSTOMER_PAYMENT: async (executor, entityId, context) => {
+    const scope = recentScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('sales_customer_payments')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'status',
+        'customer_id',
+        'site_id',
+        'payment_method_code',
+        'amount_xaf',
+        'external_reference',
+        'cash_account_id',
+        'received_by_user_id',
+        'unallocated_xaf',
+        'refunded_xaf',
+        'duplicate_of_payment_id',
+        'captured_offline',
+        'occurred_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(RECENT_7_DAYS)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(row.received_by_user_id) === scope.id
+        : fromBin(row.site_id) === scope.id;
+    if (!inScope) return undefined;
+    const allocations = await executor
+      .selectFrom('sales_payment_allocations')
+      .select(['id', 'sale_id', 'order_id', 'amount_xaf', 'status'])
+      .where('payment_id', '=', row.id)
+      .orderBy('allocated_at', 'asc')
+      .orderBy('id', 'asc')
+      .execute();
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      status: row.status,
+      customer_id: fromBinOrNull(row.customer_id),
+      site_id: fromBin(row.site_id),
+      payment_method_code: row.payment_method_code,
+      amount_xaf: Number(row.amount_xaf),
+      external_reference: row.external_reference,
+      cash_account_id: fromBin(row.cash_account_id),
+      received_by_user_id: fromBin(row.received_by_user_id),
+      unallocated_xaf: Number(row.unallocated_xaf),
+      refunded_xaf: Number(row.refunded_xaf),
+      duplicate_of_payment_id: fromBinOrNull(row.duplicate_of_payment_id),
+      captured_offline: Boolean(row.captured_offline),
+      occurred_at: row.occurred_at,
+      version: row.version,
+      allocations: allocations.map((allocation) => ({
+        id: fromBin(allocation.id),
+        sale_id: fromBinOrNull(allocation.sale_id),
+        order_id: fromBinOrNull(allocation.order_id),
+        amount_xaf: Number(allocation.amount_xaf),
+        status: allocation.status,
+      })),
+    };
+  },
+
+  // Compte de trésorerie actif, pour son détenteur (à défaut son responsable) et son site, avec son
+  // solde projeté ; la session de caisse ouverte viendra avec les sessions (P5).
+  CASH_ACCOUNT: async (executor, entityId, context) => {
+    const scope = recentScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('finance_cash_accounts')
+      .select([
+        'id',
+        'code',
+        'name',
+        'account_type',
+        'site_id',
+        'holder_user_id',
+        'responsible_user_id',
+        'balance_xaf',
+        'status',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE') return undefined;
+    const inScope =
+      scope.type === 'USER'
+        ? fromBin(row.holder_user_id ?? row.responsible_user_id) === scope.id
+        : fromBinOrNull(row.site_id) === scope.id;
+    if (!inScope) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      name: row.name,
+      account_type: row.account_type,
+      site_id: fromBinOrNull(row.site_id),
+      holder_user_id: fromBinOrNull(row.holder_user_id),
+      responsible_user_id: fromBin(row.responsible_user_id),
+      balance_xaf: Number(row.balance_xaf),
+      status: row.status,
+      version: row.version,
+    };
+  },
+
+  // Moyen de paiement (jeu `catalog`, ligne `GLOBAL`) : clé dérivée de son code (ADR-031).
+  PAYMENT_METHOD: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const methods = await executor
+      .selectFrom('finance_payment_methods')
+      .select([
+        'code',
+        'label',
+        'requires_reference',
+        'default_account_type',
+        'is_active',
+        'version',
+      ])
+      .execute();
+    const row = methods.find((method) => codeEntityId('PAYMENT_METHOD', method.code) === entityId);
+    if (!row) return undefined;
+    return {
+      id: entityId,
+      code: row.code,
+      label: row.label,
+      requires_reference: Boolean(row.requires_reference),
+      default_account_type: row.default_account_type,
+      is_active: Boolean(row.is_active),
+      version: row.version,
     };
   },
 };

@@ -23,6 +23,7 @@ import type { IdGenerator } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
+import { emitCashAccountChange } from '../sync-changes.js';
 
 export const CASH_MOVEMENT_TYPES = [
   'CUSTOMER_PAYMENT',
@@ -235,6 +236,7 @@ export async function recordCashMovement(
     .set({ balance_xaf: sql`balance_xaf + ${delta}`, version: sql`version + 1` })
     .where('id', '=', toBin(input.cashAccountId))
     .execute();
+  await emitCashAccountChange(uow, input.cashAccountId);
 
   return {
     movementId,

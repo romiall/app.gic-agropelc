@@ -34,5 +34,6 @@
 | [ADR-027](ADR-027-valorisation-lots-biologiques.md) | Valorisation des lots biologiques : coût restant, productions au coût standard, lots de stock propres | ACCEPTÉ | — |
 | [ADR-028](ADR-028-commande-vente-livraison-p4.md) | Commandes, ventes et livraisons après ADR-025 : emplacement « à livrer » virtuel par site, vente du disponible, bon de livraison, contre-écritures partielles | ACCEPTÉ | — |
 | [ADR-029](ADR-029-contre-ecriture-partielle-du-stock.md) | Contre-écriture partielle et livraison du stock vendu : mouvements rattachés à une origine (`origin_move_id`), plafond et valeur exacte garantis en base | ACCEPTÉ | — |
+| [ADR-031](ADR-031-cle-de-synchronisation-des-referentiels-a-code.md) | Clé de synchronisation des référentiels dont la clé primaire est un code (UUID version 5 dérivé du code) | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

@@ -81,6 +81,11 @@ import {
   type PlannedAllocation,
   type SaleForPayment,
 } from './payment-allocation.js';
+import {
+  withSalesChanges,
+  withSalesDecisionChanges,
+  type SalesDecisionRegistry,
+} from '../sync-changes.js';
 
 const uuid = z.string().uuid();
 const xafPositive = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -966,7 +971,7 @@ function refuse(outcome: CommandHandlerOutcome): never {
 }
 
 function registerDecisions(
-  decisionRegistry: ApprovalDecisionHandlerRegistry,
+  decisionRegistry: SalesDecisionRegistry,
   idGenerator: IdGenerator,
   handlers: ReturnType<typeof buildHandlers>,
 ): void {
@@ -1221,11 +1226,14 @@ function registerDecisions(
 }
 
 export function registerPaymentCommands(
-  registry: CommandHandlerRegistry,
-  decisionRegistry: ApprovalDecisionHandlerRegistry,
+  baseRegistry: CommandHandlerRegistry,
+  baseDecisionRegistry: ApprovalDecisionHandlerRegistry,
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
 ): void {
+  // P4-11 : chaque commande publie ses changements (jeux `orders`, `sales_recent`, `customers`).
+  const registry = withSalesChanges(baseRegistry);
+  const decisionRegistry = withSalesDecisionChanges(baseDecisionRegistry);
   const handlers = buildHandlers(idGenerator, documentSequences);
   registry.register({
     commandType: 'sales.payment.record',

@@ -15,6 +15,7 @@
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { emitCashAccountChange } from '../sync-changes.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -180,6 +181,7 @@ export async function rebuildCashBalances(
       .set({ balance_xaf: ledgerXaf, version: sql`version + 1` })
       .where('id', '=', toBin(account.id))
       .execute();
+    await emitCashAccountChange(uow, account.id);
     corrected++;
   }
   return corrected;

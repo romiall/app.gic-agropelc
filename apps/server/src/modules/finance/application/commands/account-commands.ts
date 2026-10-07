@@ -16,8 +16,14 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  fromBin,
+  fromBinOrNull,
+  toBin,
+  toBinOrNull,
+} from '../../../../platform/kysely/uuid-columns.js';
 import { CASH_ACCOUNT_TYPES } from '../public/cash-accounts.js';
+import { emitCashAccountChange } from '../sync-changes.js';
 
 const PERMISSION = 'finance.cash_account.manage';
 
@@ -137,6 +143,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+  await emitCashAccountChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -144,7 +151,7 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
   const accountId = toBin(envelope.aggregate_id);
   const account = await uow
     .selectFrom('finance_cash_accounts')
-    .select('id')
+    .select(['holder_user_id', 'responsible_user_id'])
     .where('id', '=', accountId)
     .executeTakeFirst();
   if (!account) return rejected('NOT_FOUND', 'Compte de trésorerie introuvable.');
@@ -163,6 +170,9 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
     })
     .where('id', '=', accountId)
     .execute();
+  await emitCashAccountChange(uow, envelope.aggregate_id, {
+    previousOwnerId: fromBinOrNull(account.holder_user_id) ?? fromBin(account.responsible_user_id),
+  });
   return { status: 'APPLIED' };
 };
 
@@ -191,6 +201,7 @@ const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) 
     })
     .where('id', '=', accountId)
     .execute();
+  await emitCashAccountChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

@@ -40,3 +40,5 @@ export type {
   TargetSummary,
   VisitSummary,
 } from './activity-query.js';
+/** P4-11 : l'encours d'un compte change avec ses ventes et encaissements (jeu `customers`). */
+export { emitCustomerChange } from '../sync-changes.js';

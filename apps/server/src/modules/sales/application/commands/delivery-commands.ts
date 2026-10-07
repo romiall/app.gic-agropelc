@@ -65,6 +65,7 @@ import {
   type SiteRef,
   type Uow,
 } from './shared.js';
+import { withSalesChanges } from '../sync-changes.js';
 
 /** Borne de `numeric(14,3)` (voir `sale-payload.ts`). */
 const MAX_QUANTITY = 99_999_999_999.999;
@@ -587,10 +588,12 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
 }
 
 export function registerDeliveryCommands(
-  registry: CommandHandlerRegistry,
+  baseRegistry: CommandHandlerRegistry,
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
 ): void {
+  // P4-11 : chaque commande publie ses changements (jeux `orders`, `sales_recent`, `customers`).
+  const registry = withSalesChanges(baseRegistry);
   const handlers = buildHandlers(idGenerator, documentSequences);
   registry.register({
     commandType: 'sales.order.fulfil',

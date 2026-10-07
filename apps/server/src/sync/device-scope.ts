@@ -22,6 +22,11 @@
  * affectation `GLOBAL` → toutes les fermes (le Responsable production, affecté globalement,
  * reçoit ainsi les lots de chaque ferme), `SITE`/`ZONE` → la ferme ou les fermes de la zone. Les
  * sites des autres affectations (un magasinier affecté à une ferme) n'y donnent pas accès.
+ *
+ * Ventes et caisses (P4-11) : même règle pour les lignes `SITE` des jeux `sales_recent`
+ * (`sales.sale.read`) et `cash` (`finance.cash.read`), tous types de site ; les lignes `LOCATION` du
+ * jeu `orders` (commandes à préparer) ne vont qu'aux emplacements des sites qu'atteint
+ * `sales.order.read` (portée `SITE`, `ZONE` ou `ALL` : magasinier, vendeur du PDV).
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
@@ -36,9 +41,28 @@ export interface DeviceScopeEntry {
 
 const STOCK_READ_PERMISSION = 'inventory.stock.read';
 
-/** Jeux dont les lignes `SITE` sont réservées aux fermes qu'atteint une permission de lecture. */
-const FARM_DATASET_PERMISSIONS: Readonly<Record<string, string>> = {
-  production: 'production.lot.read',
+/**
+ * Jeux dont les lignes `SITE` sont réservées aux sites qu'atteint une permission de lecture
+ * (P7-12 : fermes du jeu `production` ; P4-11 : sites de vente de `sales_recent`, caisses de PDV de
+ * `cash`) — le site d'une affectation sans ce droit (magasinier) n'y donne pas accès.
+ */
+const SITE_DATASET_PERMISSIONS: Readonly<
+  Record<string, { readonly permission: string; readonly siteType?: string }>
+> = {
+  production: { permission: 'production.lot.read', siteType: 'FERME' },
+  sales_recent: { permission: 'sales.sale.read' },
+  cash: { permission: 'finance.cash.read' },
+};
+
+/**
+ * Jeux dont les lignes `LOCATION` sont réservées aux emplacements des sites qu'atteint une
+ * permission de lecture (P4-11 : commandes à préparer, pour le magasinier ou le vendeur du site) —
+ * un commercial à portée `OWN` ou un responsable `TEAM`, dont le droit de lecture du stock est
+ * large, reçoit ses commandes par ses lignes `USER` et `TEAM`, jamais celles des autres par
+ * l'emplacement.
+ */
+const LOCATION_DATASET_PERMISSIONS: Readonly<Record<string, string>> = {
+  orders: 'sales.order.read',
 };
 
 type Executor = Kysely<DB> | Transaction<DB>;
@@ -101,14 +125,31 @@ export async function computeDeviceScope(
     }
   }
 
-  for (const locationId of await stockLocationsInScope(executor, userId, at)) {
+  const locationPermission =
+    dataset === undefined ? undefined : LOCATION_DATASET_PERMISSIONS[dataset];
+  const stockLocations = await stockLocationsInScope(executor, userId, at);
+  const locations =
+    locationPermission === undefined
+      ? stockLocations
+      : await locationsOfSites(
+          executor,
+          stockLocations,
+          await sitesInScope(executor, userId, locationPermission, undefined, at),
+        );
+  for (const locationId of locations) {
     entries.push({ scopeType: 'LOCATION', scopeId: locationId });
   }
 
-  const farmPermission = dataset === undefined ? undefined : FARM_DATASET_PERMISSIONS[dataset];
-  if (farmPermission === undefined) return entries;
+  const siteRule = dataset === undefined ? undefined : SITE_DATASET_PERMISSIONS[dataset];
+  if (siteRule === undefined) return entries;
   const scoped: DeviceScopeEntry[] = entries.filter((entry) => entry.scopeType !== 'SITE');
-  for (const siteId of await farmSitesInScope(executor, userId, farmPermission, at)) {
+  for (const siteId of await sitesInScope(
+    executor,
+    userId,
+    siteRule.permission,
+    siteRule.siteType,
+    at,
+  )) {
     scoped.push({ scopeType: 'SITE', scopeId: siteId });
   }
   return scoped;
@@ -135,23 +176,49 @@ async function activeGrants(executor: Executor, userId: string, permission: stri
   ).filter((grant) => isActiveAt(grant, at));
 }
 
-/** Fermes (`site_type = FERME`) qu'atteint `permission` (P7-12). */
-async function farmSitesInScope(
+/** Emplacements de la liste situés sur l'un des sites. */
+async function locationsOfSites(
+  executor: Executor,
+  locationIds: ReadonlySet<string>,
+  siteIds: ReadonlySet<string>,
+): Promise<ReadonlySet<string>> {
+  if (locationIds.size === 0 || siteIds.size === 0) return new Set();
+  const rows = await executor
+    .selectFrom('organization_locations')
+    .select('id')
+    .where(
+      'id',
+      'in',
+      [...locationIds].map((id) => toBin(id)),
+    )
+    .where(
+      'site_id',
+      'in',
+      [...siteIds].map((id) => toBin(id)),
+    )
+    .execute();
+  return new Set(rows.map((row) => fromBin(row.id)));
+}
+
+/** Sites (d'un type donné : fermes, P7-12) qu'atteint `permission`. */
+async function sitesInScope(
   executor: Executor,
   userId: string,
   permission: string,
+  siteType: string | undefined,
   at: Date,
 ): Promise<ReadonlySet<string>> {
   const sites = new Set<string>();
   for (const grant of await activeGrants(executor, userId, permission, at)) {
-    // `OWN`, `TEAM` : aucune ferme n'est rattachée à un utilisateur ni à une équipe.
+    // `OWN`, `TEAM` : la ressource est rattachée à un utilisateur ou une équipe (lignes `USER`,
+    // `TEAM`), jamais à un site par ce droit.
     if (grant.max_scope === 'OWN' || grant.max_scope === 'TEAM') continue;
     const everywhere = grant.max_scope === 'ALL' || grant.scope_type === 'GLOBAL';
     if (!everywhere && grant.scope_type === 'TEAM') continue;
     const rows = await executor
       .selectFrom('organization_sites')
       .select('id')
-      .where('site_type', '=', 'FERME')
+      .$if(siteType !== undefined, (qb) => qb.where('site_type', '=', siteType!))
       .$if(!everywhere && grant.scope_type === 'SITE', (qb) =>
         qb.where('id', '=', grant.scope_site_id ?? Buffer.alloc(16)),
       )

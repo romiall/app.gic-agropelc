@@ -215,7 +215,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 - **CK** `cause` et `status` dans leurs listes ; `(status = 'APPLIED') = (applied_at IS NOT NULL)` ; `cancelled_total_xaf ≥ 0` ; `released_payment_treatment` nul ou dans `CUSTOMER_CREDIT`, `REFUND` ; une cause de commande (`ORDER_*`) porte `order_id`.
 - **IX** `(sale_id, status)`, `(order_id)`, `(applied_at)`, `(site_id, applied_business_date)`.
 - **Garde** `trg_sales_sale_cancellations_update_guard` : figés le numéro, le site, la vente, la commande, la cause, le motif, le commentaire, le demandeur, le total annulé, l'heure métier, la commande de synchronisation, les traces d'origine (horloge, hors ligne) et la création ; le statut ne change que depuis `REQUESTED` (une annulation appliquée ou rejetée est terminale) ; après décision, `applied_at` (qui porte la diminution du chiffre d'affaires) et `approval_request_id` sont figés, et `released_payment_treatment` s'écrit une seule fois. Restent modifiables `status`, `approval_request_id` (avant décision), `released_payment_treatment`, `applied_at` (à la décision) et les colonnes d'audit. `trg_sales_sale_cancellations_no_delete`.
-- **Suppr.** `IMMUABLE` (contre-écriture). **Droits** `SELECT`, `INSERT`, `UPDATE`. **Audit** Demande, décision, application. **Offline** CR (annulation possible hors ligne, D04 §12) ; DL à fixer avec les jeux de P4-11 (DÉDUIT).
+- **Suppr.** `IMMUABLE` (contre-écriture). **Droits** `SELECT`, `INSERT`, `UPDATE`. **Audit** Demande, décision, application. **Offline** CR (annulation possible hors ligne, D04 §12) ; pas de DL propre (DÉDUIT, P4-11) : montants et quantités annulés sont portés par la vente du jeu `sales_recent`.
 
 ## sales_sale_cancellation_lines
 
@@ -257,7 +257,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 - **Garde** `trg_sales_delivery_notes_no_update` et `trg_sales_delivery_notes_no_delete`.
 - **Intégrité** INV-VEN-04 : une livraison ne dépasse pas le vendu non livré. Le plafond est tenu par les compteurs des lignes de vente et de commande et par le mouvement `DELIVERY` rattaché au mouvement `SALE` (INV-STK-17, ADR-029). Une livraison déjà faite n'est jamais rejetée (BR-SYN-007) ; le cas d'une livraison arrivant après l'annulation du reste est AV-133 (défaut : vente directe de régularisation et conflit).
 - **Écrit par** `sales.order.fulfil` (P4-07, D04 §15) : un bon par commande de synchronisation, seulement si une part se rattache à la commande ; le surplus d'une livraison hors ligne est une vente directe de régularisation, sans bon (AV-133).
-- **Suppr.** `IMMUABLE`. **Droits** `SELECT`, `INSERT`. **Audit** Enregistrement du bon. **Offline** CR (livraison possible hors ligne, D04 §12) ; DL à fixer avec les jeux de P4-11 (DÉDUIT).
+- **Suppr.** `IMMUABLE`. **Droits** `SELECT`, `INSERT`. **Audit** Enregistrement du bon. **Offline** CR (livraison possible hors ligne, D04 §12) ; pas de DL propre (DÉDUIT, P4-11) : les quantités livrées sont portées par la commande (`orders`) et par la vente (`sales_recent`).
 
 ## sales_delivery_note_lines
 
@@ -312,7 +312,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 - **IX** `(customer_id, occurred_at)`, `(cash_session_id)`, `(site_id, business_date)`, `(status, occurred_at)`, `(command_id)`.
 - **Garde** `trg_sales_customer_payments_update_guard` : figés le numéro, le site, le client, le moyen, le montant, le receveur, le compte, le doublon et la cible visés, `[STD-ORIGIN]` et la création ; les références ne se corrigent qu'à la décision de la Finance sur un doublon suspect (`SUSPECT_DUPLICATE` vers `RECORDED`, AV-135) ; un encaissement `REJECTED` ou `CANCELLED` ne change plus de statut, de montants ni d'annulation ; la part remboursée ne diminue jamais ; `cash_movement_id` ne change plus une fois renseigné. `trg_sales_customer_payments_no_delete`.
 - **Écrit par** les encaissements joints (`sales.sale.record`, `sales.order.place`) et, hors vente, `sales.payment.record`, `.reallocate`, `.refund`, `.request_cancellation` et les décisions `PAYMENT_DUPLICATE` et `PAYMENT_CANCELLATION` (P4-08, D09 §15). Au rejet d'une demande d'annulation, motif et demande sont effacés (CHECK), la trace restant sur la demande de validation.
-- **Suppr.** `ANNULATION` (contre-écriture de trésorerie). **Intégrité** INV-FIN-01, INV-FIN-03, INV-FIN-04, INV-FIN-09. **Droits** `SELECT`, `INSERT`, `UPDATE`. **Audit** Toute action. **Offline** DL (7 jours), CR ; jeu à fixer en P4-11.
+- **Suppr.** `ANNULATION` (contre-écriture de trésorerie). **Intégrité** INV-FIN-01, INV-FIN-03, INV-FIN-04, INV-FIN-09. **Droits** `SELECT`, `INSERT`, `UPDATE`. **Audit** Toute action. **Offline** DL (7 jours du receveur ou du site, jeu `sales_recent`, P4-11), CR.
 
 ## sales_payment_allocations
 

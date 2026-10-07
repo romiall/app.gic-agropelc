@@ -75,6 +75,7 @@ import { discountCeilingPct } from './sale-pricing.js';
 import { resolveSaleLines } from './sale-lines.js';
 import { planPayments, writePayments } from './sale-payments.js';
 import { moveSoldStock } from './sale-stock.js';
+import { withSalesChanges } from '../sync-changes.js';
 
 /** Types d'emplacement depuis lesquels une vente directe est possible (BR-VEN-017). */
 const SALE_LOCATION_TYPES: readonly string[] = ['POS', 'MOBILE', 'BUILDING', 'PEN'];
@@ -633,10 +634,12 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
 }
 
 export function registerSaleCommands(
-  registry: CommandHandlerRegistry,
+  baseRegistry: CommandHandlerRegistry,
   idGenerator: IdGenerator,
   documentSequences: DocumentSequenceService,
 ): void {
+  // P4-11 : chaque commande publie ses changements (jeux `orders`, `sales_recent`, `customers`).
+  const registry = withSalesChanges(baseRegistry);
   const handlers = buildHandlers(idGenerator, documentSequences);
   registry.register({
     commandType: 'sales.sale.record',

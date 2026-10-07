@@ -14,7 +14,7 @@
 | `default_account_type` | enum(types de compte) | Non | — | Compte crédité par défaut |
 | `is_active` | boolean | Non | true | |
 
-- **PK** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL.
+- **PK** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL (jeu `catalog`, type `PAYMENT_METHOD`, clé dérivée du code, ADR-031 ; publié par le seed, une ligne par `version`, P4-11).
 - **Implémentation** (P4-02, migration `20261003090000_create_finance_core.sql`) : colonnes `created_at`, `updated_at`, `version` ; `CHECK` sur `default_account_type` ; suppression refusée par déclencheur. Données initiales : les cinq moyens d'AV-056 (seed).
 
 ## finance.cash_accounts
@@ -36,7 +36,7 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `code` ; une `CAISSE_PDV` active par site ; une `CAISSE_UTILISATEUR` active par utilisateur.
-- **Suppr.** `DESACTIVATION` (solde nul). **Offline** DL (comptes de l'utilisateur, avec solde au téléchargement).
+- **Suppr.** `DESACTIVATION` (solde nul). **Offline** DL (comptes de l'utilisateur, avec solde au téléchargement) — jeu `cash` (P4-11) : comptes actifs du détenteur, à défaut du responsable, et caisse du PDV de son site ; republié à chaque mouvement ; un compte désactivé sort du jeu.
 - **Commandes** (P4-03, permission `finance.cash_account.manage`) : `finance.cash_account.create` (site requis pour une caisse de PDV, détenteur pour une caisse d'utilisateur, responsable actif ; unicité « une active par site / par détenteur » contrôlée avant l'insertion, `CASH_ACCOUNT_DUPLICATE`), `.update` (nom, responsable, référence externe), `.deactivate` (refusée tant que le solde n'est pas nul, `CASH_ACCOUNT_NOT_EMPTY`). Réconciliation quotidienne `finance.cash.reconcile_daily` (solde projeté = Σ entrées − Σ sorties du registre) ; `rebuildCashBalances` est une procédure de maintenance.
 - **Implémentation** (P4-02) : unicités « une active par… » portées par les colonnes générées `active_pos_site` et `active_user_holder` (index uniques, conventions §4 MySQL) ; `CHECK` site requis pour `CAISSE_PDV` et détenteur requis pour `CAISSE_UTILISATEUR` ; pas de `CHECK balance_xaf ≥ 0` (solde négatif admis hors ligne, `CASH_NEGATIVE`, BR-FIN-012) ; suppression refusée par déclencheur.
 

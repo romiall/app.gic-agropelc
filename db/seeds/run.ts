@@ -17,6 +17,7 @@ import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
 import { PAYMENT_METHODS } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
+import { codeEntityId } from './code-entity-id.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -322,6 +323,33 @@ async function seedFinanceReferences(conn: mysql.Connection): Promise<void> {
     inserted++;
   }
   console.log(`  + finance_payment_methods (${inserted} nouveau(x) sur ${PAYMENT_METHODS.length})`);
+
+  // P4-11 (ADR-031) : chaque moyen de paiement, dans sa version courante, est publié une fois dans le
+  // flux de synchronisation (jeu `catalog`, ligne `GLOBAL`) pour être téléchargé par les appareils.
+  const [methods] = await conn.query<mysql.RowDataPacket[]>(
+    'SELECT code, version FROM finance_payment_methods',
+  );
+  let published = 0;
+  for (const method of methods) {
+    const entityId = Buffer.from(
+      codeEntityId('PAYMENT_METHOD', method.code as string).replace(/-/g, ''),
+      'hex',
+    );
+    const [existing] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT seq FROM sync_change_feed
+        WHERE dataset = 'catalog' AND entity_type = 'PAYMENT_METHOD' AND entity_id = ?
+          AND row_version = ? LIMIT 1`,
+      [entityId, method.version],
+    );
+    if (existing.length > 0) continue;
+    await conn.query(
+      `INSERT INTO sync_change_feed (dataset, entity_type, entity_id, change_type, scope_type, scope_id, row_version)
+       VALUES ('catalog', 'PAYMENT_METHOD', ?, 'UPSERT', 'GLOBAL', NULL, ?)`,
+      [entityId, method.version],
+    );
+    published++;
+  }
+  console.log(`  + sync_change_feed catalog/PAYMENT_METHOD (${published} publication(s))`);
 }
 
 async function main(): Promise<void> {
