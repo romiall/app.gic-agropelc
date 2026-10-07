@@ -99,6 +99,11 @@ jobs:
       - name: Migrations (base de test)
         run: pnpm run db:migrate:test
 
+      # Référentiels semés (rôles, permissions, politiques, paramètres, emplacements virtuels) dont
+      # dépendent les tests de base et de serveur à partir de P1 ; rejouables sans effet destructif.
+      - name: Seeds (base de test)
+        run: pnpm run db:seed
+
       - name: Tests (unitaires, propriétés, intégration, RBAC généré)
         run: pnpm run test:coverage
 
