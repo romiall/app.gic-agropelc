@@ -292,16 +292,19 @@ describe('invariants du stock (P2-07)', () => {
       declaredUnitCostXaf: 500,
     });
 
+    // Compte applicatif : refusé par ses droits (SELECT, INSERT seulement) ou, s'il en avait
+    // davantage (poste de développement), par les déclencheurs ; ceux-ci sont aussi vérifiés
+    // sous le compte administrateur dans db/tests/inventory-settlement.test.ts.
     await expect(
       db
         .updateTable('inventory_stock_moves')
         .set({ quantity: '99' })
         .where('id', '=', toBin(recorded!.moveId))
         .execute(),
-    ).rejects.toThrow(/registre immuable/);
+    ).rejects.toThrow(/UPDATE command denied|registre immuable/);
     await expect(
       db.deleteFrom('inventory_stock_moves').where('id', '=', toBin(recorded!.moveId)).execute(),
-    ).rejects.toThrow(/suppression physique interdite/);
+    ).rejects.toThrow(/DELETE command denied|suppression physique interdite/);
     expect(await balanceOf(productId, storeA)).toBe(10);
   });
 

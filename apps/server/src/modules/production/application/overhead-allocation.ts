@@ -115,7 +115,11 @@ export async function allocateOverheads(
     .where('site_id', '=', toBin(input.siteId))
     .where('species_group', '=', input.speciesGroup)
     .where('period', '=', input.period)
-    .forUpdate()
+    // Verrou partagé, pas `FOR UPDATE` : la table est en ajout seul (`gic_app` n'a que
+    // SELECT et INSERT, et MySQL ≥ 8.0.22 exige UPDATE, DELETE ou LOCK TABLES pour
+    // `FOR UPDATE`). Les verrous de plage partagés bloquent l'insertion d'une répartition
+    // concurrente de la même période : l'une des deux échoue (interblocage) et se rejoue.
+    .forShare()
     .execute();
   const estimated = new Set(
     previous

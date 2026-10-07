@@ -569,4 +569,19 @@ describe('inventory_stock_moves : mouvements rattachés (INV-STK-17, ADR-029)', 
       ).rejects.toThrow(/ck_inventory_stock_moves_cancellation_doc/);
     });
   });
+
+  it('INV-STK-04 : un mouvement est immuable même pour un compte qui aurait le droit UPDATE ou DELETE', async () => {
+    // Les déclencheurs sont la seconde barrière : le compte applicatif `gic_app` n'a déjà que
+    // SELECT et INSERT sur le registre (vérifié côté serveur, inventory-invariants.test.ts).
+    await withRollback(async (conn) => {
+      const refs = await setup(conn);
+      const sale = await directSale(conn, refs, 10, 1000);
+      await expect(
+        conn.query('UPDATE inventory_stock_moves SET quantity = 99 WHERE id = ?', [sale]),
+      ).rejects.toThrow(/registre immuable/);
+      await expect(
+        conn.query('DELETE FROM inventory_stock_moves WHERE id = ?', [sale]),
+      ).rejects.toThrow(/suppression physique interdite/);
+    });
+  });
 });
