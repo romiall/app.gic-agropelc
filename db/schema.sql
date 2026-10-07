@@ -6419,7 +6419,7 @@ CREATE TABLE `sales_payment_allocations` (
   CONSTRAINT `fk_sales_payment_allocations_payment` FOREIGN KEY (`payment_id`) REFERENCES `sales_customer_payments` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_payment_allocations_sale` FOREIGN KEY (`sale_id`) REFERENCES `sales_sales` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_sales_payment_allocations_amount` CHECK ((`amount_xaf` > 0)),
-  CONSTRAINT `ck_sales_payment_allocations_cause` CHECK (((`reversal_cause` is null) or (`reversal_cause` in (_utf8mb4'PAYMENT_CANCELLED',_utf8mb4'SALE_CANCELLED',_utf8mb4'REALLOCATED',_utf8mb4'ORDER_CONFIRMED')))),
+  CONSTRAINT `ck_sales_payment_allocations_cause` CHECK (((`reversal_cause` is null) or (`reversal_cause` in (_utf8mb4'PAYMENT_CANCELLED',_utf8mb4'SALE_CANCELLED',_utf8mb4'REALLOCATED',_utf8mb4'ORDER_CONFIRMED',_utf8mb4'ORDER_CANCELLED',_utf8mb4'ORDER_CLOSED')))),
   CONSTRAINT `ck_sales_payment_allocations_reversal` CHECK ((((`status` = _utf8mb4'ACTIVE') and (`reversed_at` is null) and (`reversal_cause` is null)) or ((`status` = _utf8mb4'REVERSED') and (`reversed_at` is not null) and (`reversal_cause` is not null)))),
   CONSTRAINT `ck_sales_payment_allocations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'REVERSED'))),
   CONSTRAINT `ck_sales_payment_allocations_target` CHECK (((`sale_id` is null) <> (`order_id` is null)))
