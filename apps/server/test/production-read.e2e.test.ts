@@ -602,9 +602,12 @@ describe('Lectures HTTP de la production (P7-11)', () => {
     );
     expect(lot.costs.remainingXaf).toBeGreaterThan(0);
     expect(lot.costs.costPerHeadXaf).toBeGreaterThan(0);
+    // P4-09 : CA du mois composé avec les ventes du lot (aucune vente ici : 0).
     expect(lot.costs.monthly).toEqual([
-      expect.objectContaining({ period: DAY.slice(0, 7), revenueXaf: null }),
+      expect.objectContaining({ period: DAY.slice(0, 7), revenueXaf: 0 }),
     ]);
+    expect(lot.sales).toMatchObject({ netRevenueXaf: 0, costOfSalesXaf: 0, soldQuantity: 0 });
+    expect(lot.sales.lotMarginXaf).toBe(-lot.costs.netXaf);
     // GMQ : (290 − 45) g en 7 jours.
     expect(lot.indicators.averageDailyGainG).toBeCloseTo(35, 1);
     expect(lot.indicators.feedConversionRatio).toBeGreaterThan(0);
@@ -613,6 +616,7 @@ describe('Lectures HTTP de la production (P7-11)', () => {
     const masked = (await get(rfeA, `/api/v1/production/lots/${lotA}`)).json().lot;
     expect(masked.entries[0]).toMatchObject({ quantity: 400, valueXaf: null, unitCostXaf: null });
     expect(masked.costs).toMatchObject({ netXaf: null, remainingXaf: null, costPerHeadXaf: null });
+    expect(masked.sales).toMatchObject({ netRevenueXaf: null, lotMarginXaf: null });
     expect(masked.costs.breakdown[0]).toMatchObject({ debitXaf: null, netXaf: null });
     expect(masked.headcount).toEqual(lot.headcount);
     expect(masked.indicators).toEqual(lot.indicators);

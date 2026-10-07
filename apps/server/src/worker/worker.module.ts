@@ -7,7 +7,8 @@
  * (P0-07) n'a que `platform` comme dépendance (`audit --> platform`, N1) : c'est bien ce
  * processus qui réclame et exécute réellement `audit.chain.verify_daily`. Même raisonnement
  * pour `InventoryJobsModule` (P2-07, `inventory.ledger.reconcile_daily`), `FinanceJobsModule`
- * (P4-03, `finance.cash.reconcile_daily`) et `FieldworkJobsModule` (P3-03,
+ * (P4-03, `finance.cash.reconcile_daily`), `SalesJobsModule` (P4-09,
+ * `sales.receivables.overdue_daily`) et `FieldworkJobsModule` (P3-03,
  * `fieldwork.session.auto_close`).
  */
 import { Module } from '@nestjs/common';
@@ -15,6 +16,7 @@ import { PlatformModule } from '../platform/platform.module.js';
 import { ChainVerificationModule } from '../audit/chain-verification.module.js';
 import { InventoryJobsModule } from '../modules/inventory/inventory-jobs.module.js';
 import { FinanceJobsModule } from '../modules/finance/finance-jobs.module.js';
+import { SalesJobsModule } from '../modules/sales/sales-jobs.module.js';
 import { FieldworkJobsModule } from '../modules/fieldwork/fieldwork-jobs.module.js';
 import { WorkerService } from './worker.service.js';
 
@@ -24,6 +26,7 @@ import { WorkerService } from './worker.service.js';
     ChainVerificationModule,
     InventoryJobsModule,
     FinanceJobsModule,
+    SalesJobsModule,
     FieldworkJobsModule,
   ],
   providers: [WorkerService],

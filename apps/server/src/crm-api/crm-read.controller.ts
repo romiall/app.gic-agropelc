@@ -47,6 +47,7 @@ import {
   listManagedTeamMembersAt,
 } from '../modules/organization/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { periodProductQuantity, periodRevenue } from '../modules/sales/application/public/index.js';
 import {
   CRM_LIST_DEFAULT_LIMIT,
   CRM_LIST_MAX_LIMIT,
@@ -117,7 +118,7 @@ function parseOrThrow<T>(schema: z.ZodType<T>, raw: unknown): T {
   return parsed.data;
 }
 
-/** Métriques d'objectif dont la valeur réalisée est calculable en P3 (ventes : P4). */
+/** Métriques d'objectif d'effort (P3) ; `CA` et `QTE_PRODUIT` viennent des ventes (P4-09). */
 const REALIZED_METRICS = {
   VISITES: 'visits',
   PROSPECTS_CREES: 'prospectsCreated',
@@ -483,15 +484,31 @@ export class CrmReadController {
     const targets = (await listTargets(this.db, { userId })).filter(
       (t) => t.periodStart <= query.to && t.periodEnd >= query.from,
     );
+    const period = {
+      fromUtc: businessDayStartUtc(query.from),
+      toUtc: businessDayEndUtc(query.to),
+      commercialUserId: userId,
+    };
+    // Ventes attribuées au commercial (BR-VEN-020), nettes des annulations de la période (BR-FIN-042).
+    const revenue = targets.some((t) => t.metric === 'CA')
+      ? (await periodRevenue(this.db, period)).netRevenueXaf
+      : null;
+    const realizedOf = async (t: (typeof targets)[number]): Promise<number | null> => {
+      if (t.metric === 'CA') return revenue;
+      if (t.metric === 'QTE_PRODUIT' && t.productId !== null) {
+        return periodProductQuantity(this.db, { ...period, productId: t.productId });
+      }
+      const key = REALIZED_METRICS[t.metric as keyof typeof REALIZED_METRICS];
+      return key !== undefined ? effort[key] : null;
+    };
     return {
       user_id: userId,
       from: query.from,
       to: query.to,
       effort,
-      targets: targets.map((t) => {
-        const key = REALIZED_METRICS[t.metric as keyof typeof REALIZED_METRICS];
-        return { ...t, realized: key !== undefined ? effort[key] : null };
-      }),
+      targets: await Promise.all(
+        targets.map(async (t) => ({ ...t, realized: await realizedOf(t) })),
+      ),
     };
   }
 }

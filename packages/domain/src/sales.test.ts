@@ -18,6 +18,7 @@ import {
   salesOrderLineProgress,
   salesOrderStatusFromLines,
   deliveryAllocation,
+  splitAmountXaf,
   priceOverrideCheck,
   pricingQuantity,
   receivableAging,
@@ -521,5 +522,20 @@ describe('deliveryAllocation (ADR-028 §7, INV-VEN-04)', () => {
 
   it('refuse une quantité nulle', () => {
     expect(() => deliveryAllocation(lines, ZERO_QUANTITY)).toThrow(DomainError);
+  });
+});
+
+describe('splitAmountXaf (CA d’un lot, stratégie finance §6.2)', () => {
+  it('répartit au prorata sans dérive : la somme des parts égale le montant', () => {
+    expect(splitAmountXaf(xaf(1000), [q(1), q(1), q(1)])).toEqual([333, 334, 333]);
+    expect(splitAmountXaf(xaf(10_741_500), [q(1155), q(1155)])).toEqual([5_370_750, 5_370_750]);
+    const parts = splitAmountXaf(xaf(7), [q(0.333), q(0.333), q(0.334)]);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(7);
+    expect(splitAmountXaf(xaf(500), [ZERO_QUANTITY, q(2)])).toEqual([0, 500]);
+  });
+
+  it('refuse des quantités toutes nulles ou négatives', () => {
+    expect(() => splitAmountXaf(xaf(10), [ZERO_QUANTITY])).toThrow(DomainError);
+    expect(() => splitAmountXaf(xaf(10), [])).toThrow(DomainError);
   });
 });

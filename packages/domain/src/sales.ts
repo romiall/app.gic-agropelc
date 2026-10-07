@@ -579,3 +579,34 @@ export function deliveryAllocation(
   }
   return { allocations, excess: quantityFromMilli(remaining) };
 }
+
+/**
+ * Répartit un montant XAF entier au prorata de quantités (unité de base), au franc près et **sans
+ * dérive** : la part `i` est l'arrondi (demi supérieur) du cumul jusqu'à `i` moins l'arrondi du cumul
+ * jusqu'à `i − 1`, si bien que la somme des parts égale exactement le montant. Sert à attribuer le
+ * chiffre d'affaires d'une ligne de vente aux lots de ses mouvements (CA d'un lot, stratégie finance
+ * §6.2) et le montant d'une annulation à ses retours. Quantités positives ou nulles, total > 0.
+ */
+export function splitAmountXaf(totalXaf: Xaf, quantities: readonly Quantity[]): readonly Xaf[] {
+  const parts = quantities.map((quantity) => quantityMilliUnits(quantity));
+  const sum = parts.reduce((acc, part) => acc + part, 0);
+  if (parts.some((part) => part < 0) || sum <= 0) {
+    throw new DomainError(
+      'Quantités positives, de somme non nulle, attendues.',
+      'QUANTITY_INVALID',
+    );
+  }
+  const total = xaf(totalXaf);
+  const shares: Xaf[] = [];
+  let cumulative = 0;
+  let previous = 0;
+  for (const part of parts) {
+    cumulative += part;
+    const numerator = total * cumulative;
+    assertSafeInteger(numerator, 'splitAmountXaf (produit intermédiaire)');
+    const rounded = Math.floor((2 * numerator + sum) / (2 * sum));
+    shares.push(xaf(rounded - previous));
+    previous = rounded;
+  }
+  return shares;
+}

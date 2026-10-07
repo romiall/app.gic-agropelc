@@ -240,6 +240,7 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-014 (part P3) | `crm-read.e2e.test.ts` (titulaire de chaque compte, filtres) | Partiel : clients à fort CA et inactifs en P4 et P9 |
 | REQ-015 (part P3) | `crm-read.e2e.test.ts` (AT-015 : jour, semaine, plage libre), `crm-field-day.e2e.test.ts` | Partiel : effort commercial seulement ; ventes en P4, instantanés analytiques en P9 |
 | REQ-016 (part P3) | `crm-activity-commands.test.ts` (objectifs), `crm-read.e2e.test.ts` (`/targets`, réalisé des métriques d'effort) | Partiel : réalisé des métriques de vente (`CA`, `QTE_PRODUIT`) en P4 |
+| REQ-016 (part P4) | `sales-revenue-receivables.test.ts` (`periodRevenue` par commercial, `periodProductQuantity`) ; `crm-read.e2e.test.ts` inchangé pour l'effort | Réalisé `CA` et `QTE_PRODUIT` calculé par `/performance/commercial` ; test HTTP du réalisé de vente en P4-13 |
 | REQ-018 | `fieldwork-checkin-commands.test.ts` (AT-014, remplacement, 23:59), `crm-read.e2e.test.ts` (`/work-sessions`) | Vérifié |
 | REQ-019 | `fieldwork-checkin-commands.test.ts` (recalcul serveur, divergence), `packages/domain` (`evaluateCheckin`), `organization-commands.test.ts` (géorepère, rayon paramétré) | Vérifié ; historique des géorepères non construit (démonstration §4) |
 | REQ-020 | `fieldwork-checkin-commands.test.ts` (refus conservés, dérogation validée ou rejetée), `crm-fieldwork-invariants.test.ts` (INV-TER-02) | Vérifié ; alerte `CHECKIN_SUSPICIOUS` en P9 |

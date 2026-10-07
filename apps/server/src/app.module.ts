@@ -15,6 +15,7 @@ import { SalesModule } from './modules/sales/sales.module.js';
 import { ProductionModule } from './modules/production/production.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { FinanceJobsModule } from './modules/finance/finance-jobs.module.js';
+import { SalesJobsModule } from './modules/sales/sales-jobs.module.js';
 import { FieldworkModule } from './modules/fieldwork/fieldwork.module.js';
 import { FieldworkJobsModule } from './modules/fieldwork/fieldwork-jobs.module.js';
 import { CrmModule } from './modules/crm/crm.module.js';
@@ -51,6 +52,7 @@ import { RootController } from './health/root.controller.js';
     ProductionModule,
     FinanceModule,
     FinanceJobsModule,
+    SalesJobsModule,
     FieldworkModule,
     FieldworkJobsModule,
     CrmModule,

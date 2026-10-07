@@ -174,7 +174,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `SupplierInvoiceRecorded`, `SupplierInvoiceApproved` | APP (quantités facturées), ANA | `invoice_id` | — |
 | `SupplierInvoiceMismatchDetected` | NOT | `invoice_id`, écarts | Validation |
 | `SupplierPaymentRecorded` | ANA | `payment_id` | Dettes |
-| `ReceivableOverdue` | NOT | `sale_id`, retard | Alerte `OVERDUE_RECEIVABLE` (produit par la tâche quotidienne du module `sales`) |
+| `ReceivableOverdue` | NOT | `sale_id`, `doc_number`, `customer_id`, `commercial_user_id`, `site_id`, `due_date`, `days_overdue`, `bucket`, `balance_due_xaf`, `business_day` | Alerte `OVERDUE_RECEIVABLE` (produit par la tâche quotidienne `sales.receivables.overdue_daily`, P4-09 : un événement par vente échue et par jour métier) |
 
 ### 2.9 Transverses
 

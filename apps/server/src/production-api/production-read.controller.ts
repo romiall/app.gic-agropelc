@@ -39,6 +39,7 @@ import {
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { lotRevenue } from '../modules/sales/application/public/index.js';
 import {
   PRODUCTION_DAILY_MAX_DAYS,
   PRODUCTION_LIST_DEFAULT_LIMIT,
@@ -299,7 +300,40 @@ export class ProductionReadController {
       entity,
       await getProductionLot(this.db, id),
     );
-    return { lot: await this.valued<ProductionLotDetail>(request, now, lot) };
+    return { lot: await this.valued(request, now, await this.withSales(lot)) };
+  }
+
+  /**
+   * P4-09 : chiffre d'affaires et marges du lot (stratégie finance §6.2-6.3), composés ici à partir
+   * de l'API publique de `sales` (le module `production` ne peut pas l'importer) : CA mensuel du
+   * résultat (AV-109), « marge de lot » (CA net − coût du lot) et « marge brute des ventes »
+   * (CA net − coût figé des ventes), masqués comme tout montant sans droit de valorisation.
+   */
+  private async withSales(lot: ProductionLotDetail) {
+    const revenue = (await lotRevenue(this.db, [lot.stockLotId])).get(lot.stockLotId)!;
+    const byPeriod = new Map(revenue.months.map((month) => [month.period, month]));
+    const periods = new Set([
+      ...lot.costs.monthly.map((line) => line.period),
+      ...revenue.months.map((month) => month.period),
+    ]);
+    const costByPeriod = new Map(lot.costs.monthly.map((line) => [line.period, line]));
+    const monthly = [...periods].sort().map((period) => ({
+      ...(costByPeriod.get(period) ?? { period, debitXaf: 0, creditXaf: 0, netXaf: 0 }),
+      revenueXaf: byPeriod.get(period)?.revenueXaf ?? 0,
+    }));
+    return {
+      ...lot,
+      costs: { ...lot.costs, monthly },
+      sales: {
+        grossRevenueXaf: revenue.grossRevenueXaf,
+        cancelledXaf: revenue.cancelledXaf,
+        netRevenueXaf: revenue.netRevenueXaf,
+        costOfSalesXaf: revenue.costOfSalesXaf,
+        soldQuantity: revenue.soldQuantity,
+        lotMarginXaf: revenue.netRevenueXaf - lot.costs.netXaf,
+        grossMarginXaf: revenue.netRevenueXaf - revenue.costOfSalesXaf,
+      },
+    };
   }
 
   @Get('lots/:id/daily')

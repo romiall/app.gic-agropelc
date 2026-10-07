@@ -215,4 +215,5 @@ export {
   salesOrderLineAdjustment,
   salesOrderStatusFromLines,
   deliveryAllocation,
+  splitAmountXaf,
 } from './sales.js';

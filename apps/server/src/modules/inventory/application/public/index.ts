@@ -93,6 +93,15 @@ export type {
 } from './stock-lots.js';
 export { virtualLocationId } from './virtual-locations.js';
 
+// P4-09 : mouvements de vente d'un ensemble de lots (CA et marge d'un lot).
+export { saleMovesOfLots, saleCostsInPeriod } from './sale-moves-query.js';
+export type {
+  SaleLineMove,
+  SaleReturnMove,
+  LotSaleMoves,
+  SaleCostOfPeriod,
+} from './sale-moves-query.js';
+
 // P4-03 : règlement de la marchandise vendue (ADR-029).
 export { returnSoldGoods, deliverSoldGoods, soldGoodsPosition } from './sale-settlement.js';
 export type {
