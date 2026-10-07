@@ -66,6 +66,12 @@ export const WARNING_CODES = [
   // P7-08 : éclosion saisie hors ligne avec moins d'issues que d'œufs restants — la différence
   // est comptée en œufs non éclos (INV-INC-01), conflit informatif pour le Resp. production.
   'INCUBATION_BALANCE_ADJUSTED',
+  // P4-04 : vente directe hors ligne appliquée malgré une anomalie à traiter (BR-SYN-007) —
+  // vente anonyme non payée (AV-137), animaux d'un lot qui n'était pas « en vente » (BR-PRD-010),
+  // dérogation de prix au-delà du plafond ou sans prix catalogue (validation `PRICE_OVERRIDE`).
+  'ANONYMOUS_UNPAID',
+  'LOT_NOT_SELLABLE',
+  'PRICE_OVERRIDE_EXCEEDS_LIMIT',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

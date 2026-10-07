@@ -31,3 +31,6 @@ export type {
 // P7-05 : mise en place directe depuis une réception (AV-112).
 export { PLACEABLE_RECEIPT_STATUSES, findReceiptForPlacement } from './receipt-placement.js';
 export type { ReceiptForPlacement } from './receipt-placement.js';
+
+export { procurementOverview } from './home-metrics.js';
+export type { ProcurementOverview } from './home-metrics.js';

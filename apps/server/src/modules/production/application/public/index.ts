@@ -33,3 +33,6 @@ export type {
   OverheadAllocationSummary,
   OverheadAllocationFilter,
 } from './production-query.js';
+
+export { productionOverview } from './home-metrics.js';
+export type { ProductionOverview } from './home-metrics.js';

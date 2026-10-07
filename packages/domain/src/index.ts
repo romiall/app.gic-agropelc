@@ -35,6 +35,7 @@ export {
 
 export type { Quantity } from './quantity.js';
 export {
+  convertToBaseQuantity,
   quantityFromDecimal,
   quantityFromMilli,
   ZERO_QUANTITY,

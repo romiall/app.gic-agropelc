@@ -54,3 +54,29 @@ export type {
   Change,
   PullResponse,
 } from './sync-protocol.js';
+
+export {
+  HOME_TONES,
+  HOME_UNITS,
+  HOME_SEVERITIES,
+  homeToneSchema,
+  homeUnitSchema,
+  homeKpiSchema,
+  homeSeveritySchema,
+  homeActionSchema,
+  homeSignalSchema,
+  homeActivitySchema,
+  homeSectionSchema,
+  homeResponseSchema,
+} from './home.js';
+export type {
+  HomeTone,
+  HomeUnit,
+  HomeKpi,
+  HomeSeverity,
+  HomeAction,
+  HomeSignal,
+  HomeActivity,
+  HomeSection,
+  HomeResponse,
+} from './home.js';

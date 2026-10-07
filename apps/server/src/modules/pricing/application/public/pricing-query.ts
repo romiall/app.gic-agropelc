@@ -92,6 +92,23 @@ export async function listPriceRules(
   return rows.map(toView);
 }
 
+/**
+ * Une règle par identifiant, avec sa version (BR-VEN-013 : la ligne de vente fige règle et version ;
+ * `resolvePriceForContext` renvoie la règle du moteur partagé, qui ne porte pas la version).
+ * Les règles sont immuables : une règle périmée reste lisible (vente hors ligne à l'ancien prix).
+ */
+export async function findPriceRule(
+  executor: Kysely<DB> | Transaction<DB>,
+  ruleId: string,
+): Promise<PriceRuleView | undefined> {
+  const row = await executor
+    .selectFrom('pricing_price_rules')
+    .selectAll()
+    .where('id', '=', toBin(ruleId))
+    .executeTakeFirst();
+  return row ? toView(row) : undefined;
+}
+
 export interface CampaignView {
   readonly id: string;
   readonly code: string;

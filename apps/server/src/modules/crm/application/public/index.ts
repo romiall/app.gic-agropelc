@@ -25,6 +25,13 @@ export type {
   Page,
   StageChange,
 } from './customer-query.js';
+export {
+  hasCommercialRoleAt,
+  lockCustomerAccount,
+  ownerOfCustomerAt,
+} from './customer-attribution.js';
+export { portfolioHealth } from './home-metrics.js';
+export type { PortfolioHealth } from './home-metrics.js';
 export { commercialEffort, listInteractions, listTargets, listVisits } from './activity-query.js';
 export type {
   ActivityFilter,

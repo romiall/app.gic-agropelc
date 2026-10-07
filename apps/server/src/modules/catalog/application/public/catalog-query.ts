@@ -173,6 +173,93 @@ export async function listUnits(
   }));
 }
 
+/** Une unité par code (`undefined` si inconnue) : `isCount` impose une quantité entière (BR-CAT-003). */
+export async function findUnit(
+  executor: Kysely<DB> | Transaction<DB>,
+  code: string,
+): Promise<UnitSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_units')
+    .selectAll()
+    .where('code', '=', code)
+    .executeTakeFirst();
+  return row
+    ? {
+        code: row.code,
+        name: row.name,
+        isCount: Boolean(row.is_count),
+        isActive: Boolean(row.is_active),
+      }
+    : undefined;
+}
+
+export interface ProductUnitSummary {
+  /** Quantité d'unité de base pour une unité du conditionnement, en chaîne (`DECIMAL(14,6)`). */
+  readonly factorToBase: string;
+  readonly isSalesUnit: boolean;
+  readonly isCountUnit: boolean;
+  readonly isActive: boolean;
+}
+
+/**
+ * Unité d'un produit : l'unité de base (facteur 1, toujours vendable) ou un conditionnement actif
+ * déclaré (`catalog_product_units`). `undefined` si l'unité n'est pas une unité du produit.
+ */
+export async function findProductUnit(
+  executor: Kysely<DB> | Transaction<DB>,
+  productId: string,
+  unitCode: string,
+): Promise<ProductUnitSummary | undefined> {
+  const product = await executor
+    .selectFrom('catalog_products')
+    .select('base_unit_code')
+    .where('id', '=', toBin(productId))
+    .executeTakeFirst();
+  if (!product) return undefined;
+  if (product.base_unit_code === unitCode) {
+    const unit = await findUnit(executor, unitCode);
+    return {
+      factorToBase: '1',
+      isSalesUnit: true,
+      isCountUnit: unit?.isCount ?? false,
+      isActive: unit?.isActive ?? true,
+    };
+  }
+  const row = await executor
+    .selectFrom('catalog_product_units')
+    .select(['factor_to_base', 'is_sales_unit', 'is_count_unit', 'is_active'])
+    .where('product_id', '=', toBin(productId))
+    .where('unit_code', '=', unitCode)
+    .executeTakeFirst();
+  return row
+    ? {
+        factorToBase: String(row.factor_to_base),
+        isSalesUnit: Boolean(row.is_sales_unit),
+        isCountUnit: Boolean(row.is_count_unit),
+        isActive: Boolean(row.is_active),
+      }
+    : undefined;
+}
+
+export interface SalesChannelSummary {
+  readonly code: string;
+  readonly name: string;
+  readonly isActive: boolean;
+}
+
+/** Un canal de vente par code (BR-VEN-021) ; `undefined` si le référentiel ne le contient pas. */
+export async function findSalesChannel(
+  executor: Kysely<DB> | Transaction<DB>,
+  code: string,
+): Promise<SalesChannelSummary | undefined> {
+  const row = await executor
+    .selectFrom('catalog_sales_channels')
+    .select(['code', 'name', 'is_active'])
+    .where('code', '=', code)
+    .executeTakeFirst();
+  return row ? { code: row.code, name: row.name, isActive: Boolean(row.is_active) } : undefined;
+}
+
 export interface ReasonCodeSummary {
   readonly id: string;
   readonly category: string;

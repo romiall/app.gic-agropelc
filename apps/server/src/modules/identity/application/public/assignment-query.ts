@@ -12,7 +12,7 @@ import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
-interface ActiveAssignment {
+export interface ActiveAssignment {
   readonly roleCode: string;
   readonly scopeType: string;
   readonly scopeSiteId: string | null;
@@ -45,6 +45,15 @@ async function activeAssignmentsAt(
       scopeSiteId: row.scope_site_id ? fromBin(row.scope_site_id) : null,
       scopeZoneId: row.scope_zone_id ? fromBin(row.scope_zone_id) : null,
     }));
+}
+
+/** Affectations de rôle actives à `at` avec leur périmètre (accueil par rôle : périmètre de chaque rôle). */
+export async function activeRoleAssignmentsAt(
+  executor: Executor,
+  userId: string,
+  at: Date,
+): Promise<readonly ActiveAssignment[]> {
+  return activeAssignmentsAt(executor, userId, at);
 }
 
 /** Zones des affectations de portée `ZONE` actives à `at` (sans doublon). */

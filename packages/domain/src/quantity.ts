@@ -76,6 +76,31 @@ export function isWholeQuantity(q: Quantity): boolean {
   return (q as number) % MILLI === 0;
 }
 
+/**
+ * BR-CAT-003 : quantité en unité de base d'une quantité saisie dans un conditionnement,
+ * `quantité × facteur` (le facteur est `factor_to_base`, `DECIMAL(14,6)` lu en chaîne), arrondie
+ * au millième demi supérieur. Calcul en `BigInt` : aucun flottant. Facteur strictement positif
+ * (`FACTOR_INVALID`) ; quantité positive (`QUANTITY_INVALID`).
+ */
+export function convertToBaseQuantity(quantity: Quantity, factorToBase: string): Quantity {
+  const match = /^(\d{1,8})(?:\.(\d{1,6}))?$/.exec(factorToBase.trim());
+  if (!match) {
+    throw new DomainError(
+      `Facteur de conversion invalide : « ${factorToBase} ».`,
+      'FACTOR_INVALID',
+    );
+  }
+  const scaled = BigInt(match[1]! + (match[2] ?? '').padEnd(6, '0'));
+  if (scaled <= 0n) {
+    throw new DomainError('Facteur de conversion strictement positif attendu.', 'FACTOR_INVALID');
+  }
+  const milli = BigInt(quantity as number);
+  if (milli <= 0n) {
+    throw new DomainError('Quantité strictement positive attendue.', 'QUANTITY_INVALID');
+  }
+  return quantityFromMilli(Number((milli * scaled + 500_000n) / 1_000_000n));
+}
+
 export function compareQuantity(a: Quantity, b: Quantity): -1 | 0 | 1 {
   return a === b ? 0 : (a as number) < (b as number) ? -1 : 1;
 }

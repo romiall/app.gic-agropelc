@@ -9,6 +9,9 @@ export type { RequestApprovalInput } from './request-approval.js';
 export { cancelApprovalRequest } from './cancel-approval-request.js';
 export type { CancelApprovalRequestInput } from './cancel-approval-request.js';
 
+export { pendingApprovalsFor } from './pending-approvals.js';
+export type { PendingApproval } from './pending-approvals.js';
+
 export { currentPolicies } from './policy-query.js';
 export type { ActiveControlPolicy } from './policy-query.js';
 

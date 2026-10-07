@@ -11,6 +11,7 @@ import { PricingModule } from './modules/pricing/pricing.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { InventoryJobsModule } from './modules/inventory/inventory-jobs.module.js';
 import { ProcurementModule } from './modules/procurement/procurement.module.js';
+import { SalesModule } from './modules/sales/sales.module.js';
 import { ProductionModule } from './modules/production/production.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { FinanceJobsModule } from './modules/finance/finance-jobs.module.js';
@@ -26,6 +27,7 @@ import { CatalogApiModule } from './catalog-api/catalog-api.module.js';
 import { PricingApiModule } from './pricing-api/pricing-api.module.js';
 import { ProcurementApiModule } from './procurement-api/procurement-api.module.js';
 import { ProductionApiModule } from './production-api/production-api.module.js';
+import { HomeApiModule } from './home-api/home-api.module.js';
 import { InventoryApiModule } from './inventory-api/inventory-api.module.js';
 import { CrmApiModule } from './crm-api/crm-api.module.js';
 import { FieldworkApiModule } from './fieldwork-api/fieldwork-api.module.js';
@@ -45,6 +47,7 @@ import { RootController } from './health/root.controller.js';
     InventoryModule,
     InventoryJobsModule,
     ProcurementModule,
+    SalesModule,
     ProductionModule,
     FinanceModule,
     FinanceJobsModule,
@@ -60,6 +63,7 @@ import { RootController } from './health/root.controller.js';
     PricingApiModule,
     ProcurementApiModule,
     ProductionApiModule,
+    HomeApiModule,
     InventoryApiModule,
     CrmApiModule,
     FieldworkApiModule,

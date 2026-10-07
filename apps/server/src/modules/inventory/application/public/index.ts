@@ -80,6 +80,7 @@ export {
   setStockLotStatus,
   setStockLotSellableFromRearing,
   findStockLot,
+  listLotBalances,
   stockLotBalance,
 } from './stock-lots.js';
 export type {
@@ -87,6 +88,7 @@ export type {
   StockLotInput,
   ProducedStockLotOrigin,
   StockLotSummary,
+  LotBalanceLine,
 } from './stock-lots.js';
 export { virtualLocationId } from './virtual-locations.js';
 
@@ -156,3 +158,7 @@ export type {
   ConsumptionDayLine,
   MortalityDayLine,
 } from './production-aggregates.js';
+
+// Accueil par rôle (ADR-030).
+export { stockHealth, recentLosses } from './home-metrics.js';
+export type { StockHealth, RecentLosses } from './home-metrics.js';

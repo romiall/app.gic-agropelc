@@ -77,6 +77,34 @@ describe('selectLotsFifo — BR-STK-050', () => {
   it('quantité demandée non positive -> DomainError', () => {
     expect(domainErrorCode(() => selectLotsFifo(lots, 0))).toBe('QUANTITY_INVALID');
   });
+
+  it('décimales : aucun reliquat flottant sur un stock exactement suffisant (P4-04)', () => {
+    const decimals = (...quantities: number[]) =>
+      quantities.map((qtyAvailable, index) => ({
+        lotId: `D${index}`,
+        qtyAvailable,
+        rankAt: new Date(2026, 0, index + 1),
+      }));
+    // En flottant : 0,8 − 0,7 − 0,1 = 8·10⁻¹⁷, 0,9 − 0,3 × 3 = 1,1·10⁻¹⁶, 1,3 − 0,6 − 0,7 = 1,1·10⁻¹⁶.
+    for (const [quantities, requested] of [
+      [[0.7, 0.1], 0.8],
+      [[0.3, 0.3, 0.3], 0.9],
+      [[0.6, 0.7], 1.3],
+    ] as const) {
+      const result = selectLotsFifo(decimals(...quantities), requested);
+      expect(result.shortfall).toBe(0);
+      expect(result.allocations.map((a) => a.quantity)).toEqual([...quantities]);
+    }
+  });
+
+  it('décimales : un vrai manque reste exact au millième', () => {
+    const result = selectLotsFifo(
+      [{ lotId: 'D0', qtyAvailable: 0.7, rankAt: new Date('2026-01-01') }],
+      0.8,
+    );
+    expect(result.allocations).toEqual([{ lotId: 'D0', quantity: 0.7 }]);
+    expect(result.shortfall).toBe(0.1);
+  });
 });
 
 describe('recalculateCmup — AV-042, stratégie stock §9', () => {

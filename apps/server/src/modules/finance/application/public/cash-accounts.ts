@@ -184,3 +184,29 @@ export async function rebuildCashBalances(
   }
   return corrected;
 }
+
+export interface CashPosition {
+  /** Σ des soldes projetés des comptes actifs (KPI-FIN-06). */
+  readonly totalXaf: number;
+  readonly activeAccounts: number;
+  /** Comptes dont le solde est négatif (anomalie `CASH_NEGATIVE`, BR-FIN-012). */
+  readonly negativeAccounts: number;
+}
+
+/** Position de trésorerie de l'entreprise (accueil par rôle, ADR-030). Lecture seule. */
+export async function cashPosition(executor: Executor): Promise<CashPosition> {
+  const row = await executor
+    .selectFrom('finance_cash_accounts')
+    .select([
+      sql<string>`COALESCE(SUM(balance_xaf), 0)`.as('total'),
+      sql<string>`COUNT(*)`.as('count'),
+      sql<string>`COALESCE(SUM(balance_xaf < 0), 0)`.as('negative'),
+    ])
+    .where('status', '=', 'ACTIVE')
+    .executeTakeFirstOrThrow();
+  return {
+    totalXaf: Number(row.total),
+    activeAccounts: Number(row.count),
+    negativeAccounts: Number(row.negative),
+  };
+}

@@ -298,6 +298,8 @@ describe('paiements — BR-VEN-026, BR-FIN-003 à 005, INV-VEN-06, INV-FIN-03, I
   it('référence normalisée ; doublon probable sans référence', () => {
     expect(normalizePaymentReference(' mp 2309.123 ')).toBe('MP2309.123');
     expect(normalizePaymentReference('   ')).toBeNull();
+    // Parité avec le CHECK MySQL `[[:space:]]` : U+0085 (NEL) et U+00A0 sont des espaces.
+    expect(normalizePaymentReference('mp12\u008534 5')).toBe('MP12345');
     expect(normalizePaymentReference(null)).toBeNull();
     const base = {
       customerId: 'c1',

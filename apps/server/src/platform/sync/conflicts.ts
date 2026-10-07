@@ -5,6 +5,8 @@
  * dans la transaction de la commande. Un conflit **informatif** (`applied = true`) accompagne un
  * fait appliqué (`APPLIED_WITH_WARNINGS`) et reste ouvert pour revue par `owner_role`.
  */
+import { sql, type Kysely, type Transaction } from 'kysely';
+import type { DB } from '../kysely/database.js';
 import type { UnitOfWork } from '../unit-of-work.js';
 import { jsonValue } from '../kysely/json-value.js';
 import { toBin, toBinOrNull } from '../kysely/uuid-columns.js';
@@ -96,4 +98,47 @@ export async function hasConflict(
     .where('entity_id', '=', toBin(input.entityId))
     .executeTakeFirst();
   return row !== undefined;
+}
+
+export interface OpenConflictSummary {
+  readonly total: number;
+  /** Conflits d'impact fort : stock négatif, doublon de paiement, vente anonyme non payée… */
+  readonly byType: Readonly<Record<string, number>>;
+}
+
+/**
+ * Conflits ouverts (KPI-OPS-02), filtrés par rôle propriétaire et/ou par site. Un conflit sans site
+ * ne se rattache qu'à une lecture sans filtre de site. Lecture seule : la résolution relève de
+ * `sync.conflict.resolve`.
+ */
+export async function openConflictSummary(
+  executor: Kysely<DB> | Transaction<DB>,
+  filter: { readonly ownerRoles?: readonly string[]; readonly siteIds?: readonly string[] } = {},
+): Promise<OpenConflictSummary> {
+  if (filter.ownerRoles?.length === 0 || filter.siteIds?.length === 0) {
+    return { total: 0, byType: {} };
+  }
+  const rows = await executor
+    .selectFrom('sync_sync_conflicts')
+    .select(['conflict_type', sql<string>`COUNT(*)`.as('count')])
+    .where('status', '=', 'OPEN')
+    .$if(filter.ownerRoles !== undefined, (qb) =>
+      qb.where('owner_role', 'in', [...filter.ownerRoles!]),
+    )
+    .$if(filter.siteIds !== undefined, (qb) =>
+      qb.where(
+        'site_id',
+        'in',
+        filter.siteIds!.map((id) => toBin(id)),
+      ),
+    )
+    .groupBy('conflict_type')
+    .execute();
+  const byType: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    byType[row.conflict_type] = Number(row.count);
+    total += Number(row.count);
+  }
+  return { total, byType };
 }

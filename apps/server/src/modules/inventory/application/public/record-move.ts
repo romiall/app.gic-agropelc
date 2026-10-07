@@ -963,6 +963,9 @@ export async function recordStockMove(
     .where('inventory_stock_balances.qty_on_hand', '>', '0')
     .where('inventory_stock_lots.status', '=', 'OPEN')
     .orderBy('inventory_stock_lots.fifo_rank_at', 'asc')
+    // Lecture verrouillante : une lecture simple verrait l'instantané de la transaction (isolation
+    // répétable) et non le solde laissé par une vente concurrente validée entre-temps.
+    .forUpdate()
     .execute();
 
   if (lotRows.length === 0) {

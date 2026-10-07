@@ -20,13 +20,22 @@ export {
   CASH_ACCOUNT_TYPES,
   findCashAccount,
   cashAccountBalance,
+  cashPosition,
   verifyCashLedger,
   rebuildCashBalances,
 } from './cash-accounts.js';
 export type {
   CashAccountType,
   CashAccountSummary,
+  CashPosition,
   CashLedgerScope,
   CashLedgerMismatch,
   CashLedgerVerification,
 } from './cash-accounts.js';
+
+export { cashAccountFor, findPaymentMethod } from './cash-account-resolution.js';
+export type {
+  CashAccountContext,
+  CashAccountResolution,
+  PaymentMethodSummary,
+} from './cash-account-resolution.js';

@@ -153,6 +153,14 @@ Classification (PM §45) :
 | AV-136 | Commande d'un produit vendu au poids | IMPORTANTE | P4 | Non en P4 : seuls les produits à l'unité se commandent ; le poids se vend en vente directe | OUVERT |
 | AV-137 | Vente anonyme saisie hors ligne et non intégralement payée | SECONDAIRE | P4 | Enregistrée (fait accompli), drapeau et conflit pour la Finance | OUVERT |
 | AV-138 | Annulation d'une vente d'animaux après la clôture de leur lot | SECONDAIRE | P4 | Appliquée (une correction n'est jamais refusée), lot laissé clos, conflit informatif pour le Resp. production | OUVERT |
+| AV-139 | Compte de trésorerie crédité par un mobile money, un virement ou un chèque quand l'entreprise a plusieurs comptes | SECONDAIRE | P4 | L'appareil désigne le compte ; à défaut, le seul compte actif du type ; sinon refus | OUVERT |
+| AV-140 | Canal d'une vente quand le vendeur n'en choisit pas, et canaux de vente à créer | SECONDAIRE | P4 | Déduit du lieu de la vente ; canaux créés par l'administrateur | OUVERT |
+| AV-141 | Vente en ligne avec un prix catalogue différent de celui du serveur | SECONDAIRE | P4 | Refusée : l'appareil doit actualiser son catalogue | OUVERT |
+| AV-142 | Qui traite le stock négatif d'une vente hors ligne | SECONDAIRE | P4 | Responsable du site selon son type (magasinier, responsable de ferme, responsable commercial) | OUVERT |
+| AV-143 | Vente à crédit hors ligne à un client non autorisé au crédit | SECONDAIRE | P4 | Appliquée, validation a posteriori du dépassement | OUVERT |
+| AV-144 | Vente directe depuis un magasin (et non un point de vente) | SECONDAIRE | P4 | Refusée | OUVERT |
+| AV-145 | Vente en ligne à un client dont le compte a été fusionné | SECONDAIRE | P4 | Refusée : vendre au compte conservé | OUVERT |
+| AV-146 | Sort de l'argent payé d'une vente annulée : remboursement ou crédit client | SECONDAIRE | P4 | Choisi par l'annulateur (annulation directe) ou l'approbateur ; remboursement forcé sans client | OUVERT |
 
 ---
 
@@ -897,6 +905,62 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) l'annulation est appliquée, le lot reste clos et un conflit informatif `LOT_CLOSED` est ouvert pour le Resp. production (comme une saisie tardive hors ligne) ; (b) l'annulation est refusée tant que le lot est clos ; (c) l'annulation rouvre le lot.
 - **Recommandation** : (a).
 - **Impact** : `sales.sale.cancel` / `.request_cancellation` (P4-05), `returnSoldGoods` (exemptée de `LOT_CLOSED`), conflits. Défaut implémenté : (a).
+
+### AV-139 — Compte de trésorerie crédité par un encaissement — SECONDAIRE
+- **Question** : Quand un client paie une vente en mobile money, par virement ou par chèque, sur quel compte de l'entreprise l'argent est-il compté, si l'entreprise a plusieurs comptes (par exemple un compte Orange Money et un compte MTN MoMo) ?
+- **Pourquoi** : le moyen de paiement donne un type de compte, pas un compte (deux comptes mobile money ne se distinguent par aucune donnée). Les espèces, elles, se déduisent du lieu : caisse du point de vente, ou caisse de la personne qui encaisse (D09, BR-FIN-002).
+- **Choix** : (a) l'appareil désigne le compte à l'encaissement (liste de ses comptes) et le serveur vérifie qu'il convient ; à défaut, le seul compte actif du bon type, sinon la vente est refusée tant que le compte n'est pas désigné ; (b) un compte est rattaché à chaque moyen de paiement (nouvelle information à saisir) ; (c) un paramètre associe chaque moyen à un compte.
+- **Recommandation** : (a), sans nouvelle donnée à saisir ; (b) si l'entreprise veut que le compte ne dépende jamais de l'appareil.
+- **Impact** : `finance.cashAccountFor`, `sales.sale.record` (puis `sales.payment.record`, P4-08), jeu hors ligne `cash` (P4-11). Défaut implémenté : (a).
+
+### AV-140 — Canal d'une vente et canaux à créer — SECONDAIRE
+- **Question** : Quand le vendeur ne choisit pas le canal d'une vente (point de vente, terrain, sédentaire, direct…), comment est-il fixé ? Et qui crée la liste des canaux ?
+- **Pourquoi** : BR-VEN-021 cite le point de vente, le commercial terrain en session, le commercial sédentaire et Kommo, mais pas la vente à la ferme, ni un commercial terrain sans session. La liste des canaux (AV-018) n'est pas encore créée : une vente exige un canal existant.
+- **Choix** : (a) point de vente → `POINT_DE_VENTE` ; stock mobile ou session de travail ouverte → `TERRAIN` ; commercial sédentaire → `SEDENTAIRE` ; sinon (vente à la ferme) → `DIRECT` ; le vendeur peut toujours choisir un autre canal actif ; les canaux sont créés par l'administrateur (`catalog.sales_channel.create`) ; (b) un canal par rôle de vendeur ; (c) canal toujours saisi.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record`, données initiales (AV-072 : créer `POINT_DE_VENTE`, `TERRAIN`, `SEDENTAIRE`, `DIRECT`, `KOMMO` avant la première vente). Défaut implémenté : (a).
+
+### AV-141 — Vente en ligne avec un prix catalogue obsolète — SECONDAIRE
+- **Question** : Un vendeur connecté enregistre une vente avec un prix catalogue différent de celui que le serveur connaît (son catalogue n'est pas à jour). Que fait-on ?
+- **Pourquoi** : hors ligne, la vente est un fait déjà conclu au prix affiché (AV-063 : acceptée, anomalie `PRICE_MISMATCH`). En ligne, rien n'oblige à vendre à un prix périmé, et une remise calculée sur un ancien prix pourrait dépasser le plafond sans que le vendeur le sache.
+- **Choix** : (a) la vente est refusée avec le message « actualiser le catalogue » (`PRICE_OUTDATED`) ; (b) elle est acceptée avec l'anomalie `PRICE_MISMATCH` comme hors ligne ; (c) l'écart est traité comme une dérogation.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record` en ligne. Défaut implémenté : (a).
+
+### AV-142 — Qui traite le stock négatif d'une vente hors ligne — SECONDAIRE
+- **Question** : Une vente hors ligne rend le stock négatif (le stock réel était plus faible que prévu). Qui reçoit l'anomalie `STOCK_NEGATIVE` à résoudre ?
+- **Pourquoi** : la matrice des conflits dit « le responsable du site » mais le rôle « responsable PDV » n'existe pas dans les rôles du projet.
+- **Choix** : (a) le magasinier pour un magasin ou un point de vente, le responsable de ferme pour une ferme, le responsable commercial pour un stock mobile ; (b) toujours la Direction ; (c) le responsable commercial dans tous les cas.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record` (propriétaire du conflit `STOCK_NEGATIVE`). Défaut implémenté : (a).
+
+### AV-143 — Vente à crédit hors ligne à un client non autorisé au crédit — SECONDAIRE
+- **Question** : Un commercial, sans réseau, vend à crédit à un client qui n'a pas (ou plus) l'autorisation de crédit. La vente est déjà conclue : que fait-on ?
+- **Pourquoi** : D04 traite le dépassement du plafond (vente appliquée, validation a posteriori), pas le client sans autorisation de crédit. En ligne, la vente est refusée (`CREDIT_NOT_ALLOWED`).
+- **Choix** : (a) la vente est appliquée et traitée comme un dépassement : validation a posteriori `CREDIT_LIMIT_EXCEEDED` ; (b) la vente est refusée à la synchronisation.
+- **Recommandation** : (a) : le fait physique existe, comme pour toute vente hors ligne.
+- **Impact** : `sales.sale.record` hors ligne. Défaut implémenté : (a).
+
+### AV-144 — Vente directe depuis un magasin — SECONDAIRE
+- **Question** : Un magasinier peut-il vendre directement depuis un magasin (emplacement de stockage), ou seulement depuis un point de vente, un stock mobile ou une ferme ?
+- **Pourquoi** : BR-VEN-017 liste le point de vente, le stock mobile et la ferme ; le magasin sert à stocker et à préparer les commandes.
+- **Choix** : (a) refusée (`LOCATION_NOT_SELLABLE`) ; (b) autorisée, au même titre qu'un point de vente.
+- **Recommandation** : (a) ; (b) si un magasin vend au comptoir.
+- **Impact** : `sales.sale.record`. Défaut implémenté : (a).
+
+### AV-146 — Sort de l'argent payé d'une vente annulée — SECONDAIRE
+- **Question** : Quand une vente déjà payée est annulée, l'argent est-il rendu au client (remboursement) ou gardé à son nom pour un prochain achat (crédit client) ? Qui choisit ?
+- **Pourquoi** : BR-VEN-027 laisse le choix « à l'approbateur » sans défaut ; une annulation directe (dans les 15 minutes) n'a pas d'approbateur ; une vente sans client ne peut pas porter de crédit.
+- **Choix** : (a) le choix est fait par celui qui annule (annulation directe) ou par l'approbateur (demande) et il est obligatoire ; sans client, remboursement ; (b) toujours remboursement ; (c) toujours crédit client quand il y a un client.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.cancel`, `.request_cancellation`, décision `SALE_CANCELLATION`, trésorerie (`REFUND`). Défaut implémenté : (a).
+
+### AV-145 — Vente en ligne à un client dont le compte a été fusionné — SECONDAIRE
+- **Question** : Un vendeur connecté choisit un client dont le compte a été fusionné dans un autre (doublon). Que fait-on ?
+- **Pourquoi** : D04 §14 ne traite que la saisie hors ligne (vendue sur le compte d'origine, les lectures suivent la fusion). Le CRM refuse déjà d'agir sur un compte fusionné.
+- **Choix** : (a) la vente est refusée : vendre au compte conservé (`CUSTOMER_MERGED`) ; (b) elle est acceptée et rattachée au compte conservé.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record` en ligne. Défaut implémenté : (a).
 
 ---
 

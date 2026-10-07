@@ -326,7 +326,8 @@ export function allocatePayment(
  */
 export function normalizePaymentReference(reference: string | null | undefined): string | null {
   if (reference === null || reference === undefined) return null;
-  const normalized = reference.replace(/\s+/g, '').toUpperCase();
+  // U+0085 (NEL) n'est pas dans `\s` mais l'est dans `[[:space:]]` de MySQL (CHECK de la base).
+  const normalized = reference.replace(/[\s\u0085]+/g, '').toUpperCase();
   return normalized === '' ? null : normalized;
 }
 

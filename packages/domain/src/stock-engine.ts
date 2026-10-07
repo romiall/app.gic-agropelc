@@ -56,16 +56,19 @@ export function selectLotsFifo(
   if (requestedQty <= 0) {
     throw new DomainError('La quantité demandée doit être positive.', 'QUANTITY_INVALID');
   }
+  // Calcul en millièmes entiers (ADR-013) : en flottant, 0,8 − 0,7 − 0,1 laisse un reliquat de
+  // 8·10⁻¹⁷ qui ferait un faux manque (et un mouvement parasite) sur un stock suffisant.
   const allocations: LotAllocation[] = [];
-  let remaining = requestedQty;
+  let remaining = Math.round(requestedQty * 1000);
   for (const lot of lots) {
     if (remaining <= 0) break;
-    if (lot.qtyAvailable <= 0) continue;
-    const consumed = Math.min(remaining, lot.qtyAvailable);
-    allocations.push({ lotId: lot.lotId, quantity: consumed });
+    const available = Math.round(lot.qtyAvailable * 1000);
+    if (available <= 0) continue;
+    const consumed = Math.min(remaining, available);
+    allocations.push({ lotId: lot.lotId, quantity: consumed / 1000 });
     remaining -= consumed;
   }
-  return { allocations, shortfall: Math.max(remaining, 0) };
+  return { allocations, shortfall: Math.max(remaining, 0) / 1000 };
 }
 
 /**

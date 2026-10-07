@@ -2,6 +2,9 @@
 export {
   listProducts,
   listUnits,
+  findUnit,
+  findProductUnit,
+  findSalesChannel,
   listReasonCodes,
   findReasonCode,
   findReasonCodeByCode,
@@ -11,4 +14,10 @@ export {
   findProductByCode,
   findStandardUnitCostXaf,
 } from './catalog-query.js';
-export type { ProductSummary, UnitSummary, ReasonCodeSummary } from './catalog-query.js';
+export type {
+  ProductSummary,
+  ProductUnitSummary,
+  UnitSummary,
+  ReasonCodeSummary,
+  SalesChannelSummary,
+} from './catalog-query.js';

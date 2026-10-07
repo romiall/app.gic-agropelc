@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import {
   addQuantity,
   compareQuantity,
+  convertToBaseQuantity,
   formatQuantity,
   isPositiveQuantity,
   isWholeQuantity,
@@ -97,5 +98,56 @@ describe('formatQuantity', () => {
   it("affiche jusqu'à 3 décimales sans zéros superflus", () => {
     expect(formatQuantity(quantityFromDecimal(3))).toBe('3');
     expect(formatQuantity(quantityFromDecimal(3.5))).toBe('3,5');
+  });
+});
+
+describe('convertToBaseQuantity — conditionnement vers unité de base (BR-CAT-003)', () => {
+  const convert = (quantity: number, factor: string) =>
+    quantityToDecimal(convertToBaseQuantity(quantityFromDecimal(quantity), factor));
+
+  it('multiplie par le facteur, sans flottant', () => {
+    expect(convert(2, '12.000000')).toBe(24);
+    expect(convert(3, '0.5')).toBe(1.5);
+    expect(convert(0.001, '1')).toBe(0.001);
+    // 0,1 × 3 en flottant donne 0,30000000000000004.
+    expect(convert(0.1, '3')).toBe(0.3);
+  });
+
+  it('arrondit au millième, demi supérieur', () => {
+    expect(convert(1, '0.0005')).toBe(0.001);
+    expect(convert(1, '0.000499')).toBe(0);
+    expect(convert(3, '0.333333')).toBe(1);
+  });
+
+  it('refuse un facteur invalide ou nul et une quantité non positive', () => {
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (error) {
+        return (error as DomainError).code;
+      }
+      return 'OK';
+    };
+    expect(code(() => convertToBaseQuantity(quantityFromDecimal(1), '0'))).toBe('FACTOR_INVALID');
+    expect(code(() => convertToBaseQuantity(quantityFromDecimal(1), '-2'))).toBe('FACTOR_INVALID');
+    expect(code(() => convertToBaseQuantity(quantityFromDecimal(1), '1,5'))).toBe('FACTOR_INVALID');
+    expect(code(() => convertToBaseQuantity(quantityFromDecimal(1), '1.1234567'))).toBe(
+      'FACTOR_INVALID',
+    );
+    expect(code(() => convertToBaseQuantity(ZERO_QUANTITY, '2'))).toBe('QUANTITY_INVALID');
+  });
+
+  it('propriété : facteur entier = multiplication exacte des millièmes', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.integer({ min: 1, max: 1000 }),
+        (milli, factor) => {
+          expect(
+            quantityMilliUnits(convertToBaseQuantity(quantityFromMilli(milli), String(factor))),
+          ).toBe(milli * factor);
+        },
+      ),
+    );
   });
 });

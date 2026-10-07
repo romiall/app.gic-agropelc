@@ -75,3 +75,32 @@ export async function evaluateAccess(
   }
   return { allowed: false, reason: 'OUT_OF_SCOPE' };
 }
+
+/**
+ * RC-06 : `limits` de **tous** les octrois actifs à `occurredAt` dont la portée couvre la
+ * ressource (`evaluateAccess` ne renvoie que ceux du premier, sans ordre garanti). Un
+ * utilisateur à plusieurs rôles combine alors leurs plafonds (ex. le plus élevé des
+ * `max_discount_pct`, `maxDiscountPctOf` du domaine). Tableau vide : aucun droit (permission
+ * absente ou ressource hors portée) ; un octroi sans limites compte pour `null`.
+ */
+export async function evaluateAccessLimits(
+  executor: Kysely<DB> | Transaction<DB>,
+  input: EvaluateAccessInput,
+): Promise<readonly (Record<string, unknown> | null)[]> {
+  const grants = await getUserGrants(executor, input.userId);
+  const limits: (Record<string, unknown> | null)[] = [];
+  for (const grant of grants) {
+    if (
+      grant.permissionCode !== input.permissionCode ||
+      !isGrantActiveAt(grant, input.occurredAt)
+    ) {
+      continue;
+    }
+    if (
+      await resourceInGrantScope(executor, grant, input.resource, input.userId, input.occurredAt)
+    ) {
+      limits.push(grant.limits);
+    }
+  }
+  return limits;
+}

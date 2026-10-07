@@ -16,6 +16,8 @@ export interface WorkSessionRef {
   readonly overrideStatus: string;
   readonly startedAt: Date;
   readonly endedAt: Date | null;
+  /** Zone déclarée à l'ouverture (BR-VEN-022 : repli de la zone d'une vente sans PDV ni client). */
+  readonly declaredZoneId: string;
 }
 
 function toRef(row: {
@@ -25,6 +27,7 @@ function toRef(row: {
   readonly override_status: string;
   readonly started_at: Date;
   readonly ended_at: Date | null;
+  readonly declared_zone_id: Buffer;
 }): WorkSessionRef {
   return {
     id: fromBin(row.id),
@@ -33,10 +36,19 @@ function toRef(row: {
     overrideStatus: row.override_status,
     startedAt: row.started_at,
     endedAt: row.ended_at,
+    declaredZoneId: fromBin(row.declared_zone_id),
   };
 }
 
-const COLUMNS = ['id', 'user_id', 'status', 'override_status', 'started_at', 'ended_at'] as const;
+const COLUMNS = [
+  'id',
+  'user_id',
+  'status',
+  'override_status',
+  'started_at',
+  'ended_at',
+  'declared_zone_id',
+] as const;
 
 export async function findWorkSession(
   executor: Executor,

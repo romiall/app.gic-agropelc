@@ -195,3 +195,61 @@ export async function stockLotBalance(
     .executeTakeFirst();
   return row ? Number(row.qty_on_hand) : 0;
 }
+
+export interface LotBalanceLine {
+  readonly lotId: string;
+  readonly lotCode: string;
+  readonly originType: string;
+  readonly status: string;
+  /** Animaux vendables depuis l'élevage (BR-PRD-010). */
+  readonly sellableFromRearing: boolean;
+  readonly qtyOnHand: number;
+  readonly fifoRankAt: Date;
+}
+
+/**
+ * Lots ouverts en solde positif d'un produit à un emplacement, dans l'ordre FIFO (`fifo_rank_at`,
+ * puis identifiant : ordre total). Même lecture que la sélection automatique de `recordStockMove`,
+ * avec le statut du lot et l'indicateur de vente depuis l'élevage : la vente à la ferme choisit
+ * elle-même ses lots (BR-VEN-017 : seuls les lots `SELLING` se vendent), puis appelle
+ * `recordStockMove` avec un lot explicite par part.
+ */
+export async function listLotBalances(
+  executor: Kysely<DB> | Transaction<DB>,
+  params: { readonly locationId: string; readonly productId: string },
+): Promise<readonly LotBalanceLine[]> {
+  const rows = await executor
+    .selectFrom('inventory_stock_balances')
+    .innerJoin(
+      'inventory_stock_lots',
+      'inventory_stock_lots.id',
+      'inventory_stock_balances.lot_key',
+    )
+    .select([
+      'inventory_stock_lots.id as lot_id',
+      'inventory_stock_lots.lot_code as lot_code',
+      'inventory_stock_lots.origin_type as origin_type',
+      'inventory_stock_lots.status as status',
+      'inventory_stock_lots.sellable_from_rearing as sellable_from_rearing',
+      'inventory_stock_lots.fifo_rank_at as fifo_rank_at',
+      'inventory_stock_balances.qty_on_hand as qty_on_hand',
+    ])
+    .where('inventory_stock_balances.location_id', '=', toBin(params.locationId))
+    .where('inventory_stock_balances.product_id', '=', toBin(params.productId))
+    .where('inventory_stock_balances.qty_on_hand', '>', '0')
+    .where('inventory_stock_lots.status', '=', 'OPEN')
+    .orderBy('inventory_stock_lots.fifo_rank_at', 'asc')
+    .orderBy('inventory_stock_lots.id', 'asc')
+    // Même raison que la sélection FIFO de `recordStockMove` : état courant, pas l'instantané.
+    .forUpdate()
+    .execute();
+  return rows.map((row) => ({
+    lotId: fromBin(row.lot_id),
+    lotCode: row.lot_code,
+    originType: row.origin_type,
+    status: row.status,
+    sellableFromRearing: Boolean(row.sellable_from_rearing),
+    qtyOnHand: Number(row.qty_on_hand),
+    fifoRankAt: row.fifo_rank_at,
+  }));
+}
