@@ -95,7 +95,10 @@ export async function checkLineQuantity(
     };
   }
   const declaredBase = quantityFromDecimal(input.quantityBase);
-  const computedBase = convertToBaseQuantity(quantityFromDecimal(input.quantity), unit.factorToBase);
+  const computedBase = convertToBaseQuantity(
+    quantityFromDecimal(input.quantity),
+    unit.factorToBase,
+  );
   if (Math.abs(quantityMilliUnits(declaredBase) - quantityMilliUnits(computedBase)) > 1) {
     return {
       ok: false,

@@ -541,3 +541,41 @@ export function salesOrderStatusFromLines(
   if (delivered === 0) return 'CANCELLED';
   return options.remainderCancelled ? 'CLOSED' : 'FULFILLED';
 }
+
+export interface DeliverableSaleLine {
+  /** Ligne de vente (vente sur commande) portant la ligne de commande livrée. */
+  readonly id: string;
+  /** Vendu non livré de la ligne : quantité − annulé − livré. */
+  readonly undelivered: Quantity;
+}
+
+export interface DeliveryAllocation {
+  readonly allocations: readonly { readonly id: string; readonly quantity: Quantity }[];
+  /** Part au-delà du vendu non livré (`ORDER_OVER_FULFILMENT`, D04 §14, AV-133). */
+  readonly excess: Quantity;
+}
+
+/**
+ * ADR-028 §7, INV-VEN-04 : une quantité livrée sur une ligne de commande se répartit sur les lignes
+ * de vente qui la portent, dans l'ordre donné (vente la plus ancienne d'abord, comme le FIFO des
+ * mouvements de livraison), chacune dans la limite de son vendu non livré. Le surplus n'est jamais
+ * rattaché à la commande : il revient à l'appelant (refus en ligne, régularisation hors ligne).
+ */
+export function deliveryAllocation(
+  lines: readonly DeliverableSaleLine[],
+  requested: Quantity,
+): DeliveryAllocation {
+  let remaining = quantityMilliUnits(requested);
+  if (remaining <= 0) {
+    throw new DomainError('Quantité livrée strictement positive attendue.', 'QUANTITY_INVALID');
+  }
+  const allocations: { id: string; quantity: Quantity }[] = [];
+  for (const line of lines) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, Math.max(0, quantityMilliUnits(line.undelivered)));
+    if (take <= 0) continue;
+    allocations.push({ id: line.id, quantity: quantityFromMilli(take) });
+    remaining -= take;
+  }
+  return { allocations, excess: quantityFromMilli(remaining) };
+}

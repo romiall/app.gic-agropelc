@@ -188,6 +188,8 @@ export type {
   AgingBucket,
   SalesOrderLineQuantities,
   SalesOrderLineAdjustment,
+  DeliverableSaleLine,
+  DeliveryAllocation,
   SalesOrderStatus,
 } from './sales.js';
 export {
@@ -212,4 +214,5 @@ export {
   confirmableQuantity,
   salesOrderLineAdjustment,
   salesOrderStatusFromLines,
+  deliveryAllocation,
 } from './sales.js';

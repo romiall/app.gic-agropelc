@@ -24,6 +24,7 @@ export {
   COMMERCIAL_LOCATION_TYPES,
   findStockLocation,
   listStockBalances,
+  lockSellableQuantity,
   stockBalanceAt,
   listAvailabilityInZone,
   listStockMoves,

@@ -811,4 +811,114 @@ describe('sales.order.* — confirmation (P4-06)', () => {
       unit_price_xaf: 800,
     });
   });
+
+  // --- Revue adverse de P4-06 ------------------------------------------------------------------------
+
+  it('place sur une commande annulée ou déjà confirmée : rejet, aucun acompte encaissé', async () => {
+    const product = await sellable(1000);
+    const customer = await newCustomer({ credit: true });
+    const { id } = await place({ customerId: customer, lines: [line(product, 2)] }, at('09:00:00'));
+    const again = await place(
+      {
+        customerId: customer,
+        lines: [line(product, 2)],
+        advancePayments: [{ methodCode: 'ESPECES', amountXaf: 500, cashAccountId }],
+      },
+      at('09:05:00'),
+      { id },
+    );
+    expect(code(again.result)).toBe('ORDER_STATUS_INVALID');
+    // Sans acompte, la même intention reste sans effet (idempotence par identifiant).
+    expect(
+      (await place({ customerId: customer, lines: [line(product, 2)] }, at('09:06:00'), { id }))
+        .result.status,
+    ).toBe('APPLIED');
+
+    const draftId = freshUuid();
+    expect(
+      (
+        await run(commercial, 'sales.order.save_draft', draftId, at('09:10:00'), {
+          customerId: customer,
+          fulfilmentLocationId: storeId,
+          lines: [line(product, 1)],
+        })
+      ).status,
+    ).toBe('APPLIED');
+    const cancelled = await run(commercial, 'sales.order.cancel', draftId, at('09:11:00'), {
+      comment: 'Plus besoin',
+    });
+    expect(cancelled.status, JSON.stringify(cancelled)).toBe('APPLIED');
+    const replaced = await place(
+      {
+        customerId: customer,
+        advancePayments: [{ methodCode: 'ESPECES', amountXaf: 500, cashAccountId }],
+      },
+      at('09:12:00'),
+      { id: draftId },
+    );
+    expect(code(replaced.result)).toBe('ORDER_ALREADY_CANCELLED');
+    const payments = await db
+      .selectFrom('sales_customer_payments')
+      .select('id')
+      .where('intended_order_id', 'in', [toBin(id), toBin(draftId)])
+      .execute();
+    expect(payments).toHaveLength(0);
+  });
+
+  it('brouillon saisi hors ligne : ONLINE_REQUIRED', async () => {
+    const product = await sellable(1000);
+    const customer = await newCustomer({ credit: true });
+    const result = await run(
+      commercial,
+      'sales.order.save_draft',
+      freshUuid(),
+      at('09:20:00'),
+      { customerId: customer, fulfilmentLocationId: storeId, lines: [line(product, 1)] },
+      { offline: true },
+    );
+    expect(code(result)).toBe('ONLINE_REQUIRED');
+  });
+
+  it('stock mobile d’un autre détenteur : FORBIDDEN_SCOPE, aucun stock déplacé', async () => {
+    const product = await sellable(1000);
+    const customer = await newCustomer({ credit: true });
+    const mobileId = freshUuid();
+    await db
+      .insertInto('organization_locations')
+      .values({
+        id: toBin(mobileId),
+        site_id: toBin(siteId),
+        code: mobileId.replace(/-/g, '').slice(-8).toUpperCase(),
+        name: 'Stock mobile d’un autre commercial',
+        location_type: 'MOBILE',
+        custody_mode: 'EXCLUSIVE_USER',
+        custodian_user_id: toBin(admin.userId),
+        created_by: toBin(admin.userId),
+      })
+      .execute();
+    const refused = await place(
+      { customerId: customer, fulfilmentLocationId: mobileId, lines: [line(product, 1)] },
+      at('09:30:00'),
+    );
+    expect(code(refused.result)).toBe('FORBIDDEN_SCOPE');
+  });
+
+  it('deux confirmations simultanées sur le même stock : toutes deux appliquées, le disponible n’est vendu qu’une fois', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 10, 300);
+    const customers = [await newCustomer({ credit: true }), await newCustomer({ credit: true })];
+    const results = await Promise.all(
+      customers.map((customer) =>
+        place({ customerId: customer, lines: [line(product, 10)] }, at('09:40:00')),
+      ),
+    );
+    for (const { result } of results) {
+      expect(result.status, JSON.stringify(result)).toMatch(/^APPLIED/);
+    }
+    const sold = (await Promise.all(results.map(({ id }) => orderLines(id)))).map((lines) =>
+      Number(lines[0]!.sold_quantity_base),
+    );
+    expect(sold.reduce((sum, value) => sum + value, 0)).toBe(10);
+    expect(sold.sort()).toEqual([0, 10]);
+  });
 });

@@ -34,6 +34,7 @@ import type { CommandHandlerOutcome } from '../../../../platform/sync/command-ha
 import type { CommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { documentYear, rejected, type SiteRef, type Uow } from './shared.js';
+import { findReasonCode } from '../../../catalog/application/public/index.js';
 import {
   applyCancellation,
   cancellableMilli,
@@ -72,7 +73,10 @@ export function retirementToTarget(
   line: OrderLineRow,
   newOrderedMilli: number,
 ): { readonly retirement: LineRetirement; readonly addMilli: number } {
-  const adjustment = salesOrderLineAdjustment(lineQuantities(line), quantityFromMilli(newOrderedMilli));
+  const adjustment = salesOrderLineAdjustment(
+    lineQuantities(line),
+    quantityFromMilli(newOrderedMilli),
+  );
   return {
     retirement: {
       line,
@@ -167,7 +171,9 @@ export async function cancelOrderUndelivered(
     const candidates = locked
       .flatMap((sale) =>
         sale.lines
-          .filter((line) => line.order_line_id !== null && fromBin(line.order_line_id) === orderLineId)
+          .filter(
+            (line) => line.order_line_id !== null && fromBin(line.order_line_id) === orderLineId,
+          )
           .map((line) => ({ sale, line })),
       )
       .sort(
@@ -214,6 +220,14 @@ export async function cancelOrderUndelivered(
     const plan = planPartialCancellation(deps.idGenerator, sale, wanted);
     if (!plan.ok) return plan;
     const cancellationId = deps.idGenerator.newId();
+    // Numéro pris avant les effets, comme `sales.sale.cancel` : même ordre de verrous (compteur
+    // `ANV`, puis stock et journal) entre une annulation de commande et celle de sa vente.
+    const docNumber = await deps.documentSequences.next(uow, {
+      docType: 'ANV',
+      siteId: input.site.id,
+      codeSite: input.site.code,
+      year: documentYear(input.appliedAt),
+    });
     const applied = await applyCancellation(uow, deps, {
       cancellationId,
       locked: sale,
@@ -227,12 +241,6 @@ export async function cancelOrderUndelivered(
       siteId: input.site.id,
     });
     if (!applied.ok) return applied;
-    const docNumber = await deps.documentSequences.next(uow, {
-      docType: 'ANV',
-      siteId: input.site.id,
-      codeSite: input.site.code,
-      year: documentYear(input.appliedAt),
-    });
     await writeCancellationDocument(uow, {
       id: cancellationId,
       docNumber,
@@ -382,7 +390,8 @@ export async function releaseOrderAdvance(
     readonly at: Date;
     readonly actorUserId: string;
     readonly deviceId: string | null;
-    readonly commandId: string;
+    /** `null` : décision d'une validation (aucune commande de synchronisation). */
+    readonly commandId: string | null;
     readonly offline: boolean;
   },
 ): Promise<AdvanceReleaseResult> {
@@ -449,17 +458,14 @@ export async function lockOrderOfSale(uow: Uow, saleId: string): Promise<void> {
 /** Applique `withdrawOrderAfterSaleCancellation` aux lignes d'un document d'annulation de vente. */
 export async function syncOrderAfterSaleCancellation(
   uow: Uow,
-  input: {
+  deps: { readonly idGenerator: IdGenerator },
+  input: SaleCancellationContext & {
     readonly locked: LockedSale;
     readonly lines: readonly CancellationLine[];
-    readonly at: Date;
-    readonly actorUserId: string;
-    readonly reasonCodeId: string | null;
-    readonly comment: string | null;
   },
-): Promise<void> {
+): Promise<AdvanceReleaseResult> {
   const { sale, lines: saleLines } = input.locked;
-  if (!sale.order_id) return;
+  if (!sale.order_id) return { ok: true, releasedXaf: 0, treatment: null };
   const byId = new Map(saleLines.map((line) => [fromBin(line.id), line]));
   const cancelled = input.lines.flatMap((line) => {
     const saleLine = byId.get(line.saleLineId);
@@ -472,15 +478,25 @@ export async function syncOrderAfterSaleCancellation(
         ]
       : [];
   });
-  await withdrawOrderAfterSaleCancellation(uow, {
+  return withdrawOrderAfterSaleCancellation(uow, deps, {
+    ...input,
     saleDocNumber: sale.doc_number,
     orderId: fromBin(sale.order_id),
     cancelled,
-    at: input.at,
-    actorUserId: input.actorUserId,
-    reasonCodeId: input.reasonCodeId,
-    comment: input.comment,
   });
+}
+
+/** Contexte de l'annulation d'une vente, repris pour la commande et son acompte. */
+export interface SaleCancellationContext {
+  readonly at: Date;
+  readonly actorUserId: string;
+  readonly reasonCodeId: string | null;
+  readonly comment: string | null;
+  /** Sort de l'argent libéré choisi pour la vente ; vaut aussi pour l'acompte de la commande. */
+  readonly treatment: PaymentTreatment | null;
+  readonly deviceId: string | null;
+  readonly commandId: string | null;
+  readonly offline: boolean;
 }
 
 /**
@@ -491,18 +507,16 @@ export async function syncOrderAfterSaleCancellation(
  */
 export async function withdrawOrderAfterSaleCancellation(
   uow: Uow,
-  input: {
+  deps: { readonly idGenerator: IdGenerator },
+  input: SaleCancellationContext & {
     readonly saleDocNumber: string;
     readonly orderId: string;
     readonly cancelled: readonly { readonly orderLineId: string; readonly quantityMilli: number }[];
-    readonly at: Date;
-    readonly actorUserId: string;
-    readonly reasonCodeId: string | null;
-    readonly comment: string | null;
   },
-): Promise<void> {
+): Promise<AdvanceReleaseResult> {
+  const nothing: AdvanceReleaseResult = { ok: true, releasedXaf: 0, treatment: null };
   const locked = await lockOrder(uow, input.orderId);
-  if (!locked) return;
+  if (!locked) return nothing;
   const byLine = new Map<string, number>();
   for (const entry of input.cancelled) {
     byLine.set(entry.orderLineId, (byLine.get(entry.orderLineId) ?? 0) + entry.quantityMilli);
@@ -514,13 +528,35 @@ export async function withdrawOrderAfterSaleCancellation(
       retirements.push({ line, cancelPendingMilli: 0, cancelUndeliveredMilli: quantityMilli });
     }
   }
-  if (retirements.length === 0) return;
+  if (retirements.length === 0) return nothing;
   await retireOrderLines(uow, retirements);
   const refreshed = await refreshOrderStatus(uow, input.orderId, { remainderCancelled: true });
   const total = refreshed.lines.reduce((sum, line) => sum + Number(line.line_total_xaf), 0);
-  const reason = input.comment ?? `Annulation de la vente ${input.saleDocNumber}`;
+  const reasonLabel =
+    input.reasonCodeId !== null
+      ? (await findReasonCode(uow, input.reasonCodeId))?.label
+      : undefined;
+  const reason = input.comment ?? reasonLabel ?? `Annulation de la vente ${input.saleDocNumber}`;
   const closing = refreshed.status === 'CLOSED';
   const cancelling = refreshed.status === 'CANCELLED';
+  // Commande terminée : l'acompte qui lui reste affecté est libéré avec le sort choisi pour la
+  // vente (BR-VEN-009) ; sans sort, `PAYMENT_TREATMENT_REQUIRED` (rien n'est écrit).
+  let advance: AdvanceReleaseResult = nothing;
+  if (closing || cancelling) {
+    advance = await releaseOrderAdvance(uow, deps, {
+      orderId: input.orderId,
+      cause: cancelling ? 'ORDER_CANCELLED' : 'ORDER_CLOSED',
+      treatment: input.treatment,
+      at: input.at,
+      actorUserId: input.actorUserId,
+      deviceId: input.deviceId,
+      commandId: input.commandId,
+      offline: input.offline,
+    });
+    if (!advance.ok) return advance;
+  }
+  const released = advance.ok ? advance.releasedXaf : 0;
+  const releasedTreatment = advance.ok ? advance.treatment : null;
   await uow
     .updateTable('sales_sales_orders')
     .set((eb) => ({
@@ -528,6 +564,8 @@ export async function withdrawOrderAfterSaleCancellation(
       total_estimated_xaf: total,
       updated_by: toBin(input.actorUserId),
       version: eb('version', '+', 1),
+      ...(released > 0 ? { advance_paid_xaf: eb('advance_paid_xaf', '-', released) } : {}),
+      ...(releasedTreatment !== null ? { released_payment_treatment: releasedTreatment } : {}),
       ...(closing
         ? { closed_at: input.at, closed_by: toBin(input.actorUserId), closed_reason: reason }
         : {}),
@@ -542,4 +580,5 @@ export async function withdrawOrderAfterSaleCancellation(
     }))
     .where('id', '=', toBin(input.orderId))
     .execute();
+  return advance;
 }

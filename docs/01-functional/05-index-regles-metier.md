@@ -98,11 +98,11 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-003 | Chaque ligne de commande fige un prix convenu (`quoted_unit_price_xaf`) résolu par le moteur de tarification à l'heure de la saisie (`occur… | C (CM §30) / D ; AV-147, AV-148 (ouverts, défauts implémentés) |
 | BR-VEN-004 | La confirmation est une vente du disponible : le serveur vend, ligne par ligne, la quantité que couvre le stock de l'emplacement de prépara… | C (PM §6 : jamais refusée pour manque de stock) ; AV-126, AV-127 (tranchés 30/09/2026) ; ADR-028 §4 |
 | BR-VEN-005 | Une commande est modifiable (quantités, produits ajoutés ou retirés, lieu de préparation du même site, date et adresse de livraison) tant q… | AV-130 (tranché 30/09/2026) ; D (PM §30 « commande modifiée ») |
-| BR-VEN-006 | Livrer une commande crée une vente de type `ORDER_FULFILMENT` portant la référence de la commande, le livreur, l'heure réelle de remise et… | AV-024, AV-034 |
-| BR-VEN-007 | À la livraison, le prix appliqué est le prix convenu de la ligne de commande (`price_source = ORDER_QUOTE`). | AV-087 |
-| BR-VEN-008 | La quantité livrée cumulée d'une ligne ne peut pas dépasser la quantité commandée. Une remise supplémentaire est une vente directe distinct… | D (INV-VEN-04) |
+| BR-VEN-006 | Livrer une commande (`sales.order.fulfil`) enregistre un bon de livraison (`LIV`) : livreur, heure réelle de remise, réceptionnaire, preuve… | AV-024 (ADR-025), AV-034 (tranchés) ; AV-134 (ouvert, défaut implémenté) ; ADR-028 §7 |
+| BR-VEN-007 | Le prix convenu de la ligne de commande s'applique dès la vente (confirmation, `price_source = ORDER_QUOTE`) : la livraison ne porte aucun… | AV-087 (ouvert, défaut implémenté) ; ADR-028 |
+| BR-VEN-008 | Une livraison ne dépasse pas le vendu non livré (INV-VEN-04) : la quantité livrée d'une ligne de commande se répartit sur les lignes de ven… | D (INV-VEN-04) ; AV-133 (ouvert, défaut (a) implémenté) |
 | BR-VEN-009 | L'annulation d'une commande (`DRAFT` ou `CONFIRMED`, avant toute livraison) et la clôture de son reliquat (`PARTIALLY_FULFILLED`) retirent… | AV-128, AV-130 (tranchés 30/09/2026) ; AV-033, AV-146 (ouverts, défauts implémentés) |
-| BR-VEN-010 | Un transfert préparé pour une commande (ex. vers le stock mobile du livreur) référence la commande ; son expédition transfère la réservatio… | D (ADR-004) |
+| BR-VEN-010 | Jusqu'à sa livraison, la marchandise vendue reste dans l'emplacement virtuel « à livrer » du site : aucune réservation ni aucun transfert n… | D (ADR-028 §1 et §4, qui remplace la réservation d'ADR-004 pour les commandes) |
 | BR-VEN-011 | Une vente naît à l'état `CONFIRMED` : elle représente un fait accompli (produits remis). Aucune vente « brouillon » n'est synchronisée ; un… | D (C-05) |
 | BR-VEN-012 | Une vente confirmée est immuable. Toute correction passe par une annulation (contre-écriture), suivie si besoin d'une nouvelle vente. | C (CM §41 ; PM §8) |
 | BR-VEN-013 | Chaque ligne de vente fige : produit (et son libellé), lot, quantité en unité de saisie et en unité de base, quantité de tarification (poid… | C (CM §30 ; PM §9) |

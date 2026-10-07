@@ -464,3 +464,68 @@ export async function listStockMoves(
       : null;
   return { moves, nextCursor };
 }
+
+/**
+ * Quantité qu'une sortie **stricte** (sans solde négatif) peut prendre maintenant à un emplacement :
+ * la même sélection que le FIFO de `recordStockMove` — les lots `OPEN` en solde positif s'il y en a,
+ * sinon le solde sans lot — chacun dans la limite de son disponible (réservations et allocations
+ * déduites). Lecture **verrouillante** des soldes : deux confirmations concurrentes se sérialisent
+ * et la seconde voit le solde laissé par la première (BR-VEN-004 : une commande n'est jamais
+ * refusée pour manque de stock, elle vend ce qui reste).
+ */
+export async function lockSellableQuantity(
+  uow: Transaction<DB>,
+  params: {
+    readonly locationId: string;
+    readonly custodyMode: string | null;
+    readonly productId: string;
+  },
+): Promise<number> {
+  const rows = await uow
+    .selectFrom('inventory_stock_balances')
+    .select(['lot_key', 'qty_on_hand', 'qty_reserved', 'qty_allocated'])
+    .where('location_id', '=', toBin(params.locationId))
+    .where('product_id', '=', toBin(params.productId))
+    .orderBy('lot_key', 'asc')
+    .forUpdate()
+    .execute();
+  const lotIds = rows.flatMap((row) => {
+    const lotId = lotIdOfKey(row.lot_key);
+    return lotId !== null && Number(row.qty_on_hand) > 0 ? [lotId] : [];
+  });
+  const openLots = new Set(
+    lotIds.length === 0
+      ? []
+      : (
+          await uow
+            .selectFrom('inventory_stock_lots')
+            .select('id')
+            .where(
+              'id',
+              'in',
+              lotIds.map((id) => toBin(id)),
+            )
+            .where('status', '=', 'OPEN')
+            .execute()
+        ).map((lot) => fromBin(lot.id)),
+  );
+  const available = (row: (typeof rows)[number]) =>
+    Math.max(
+      0,
+      availableQty(
+        params.custodyMode,
+        Number(row.qty_on_hand),
+        Number(row.qty_reserved),
+        Number(row.qty_allocated),
+      ),
+    );
+  const lotted = rows.filter((row) => {
+    const lotId = lotIdOfKey(row.lot_key);
+    return lotId !== null && openLots.has(lotId);
+  });
+  if (lotted.length > 0) {
+    return lotted.reduce((sum, row) => sum + Math.min(available(row), Number(row.qty_on_hand)), 0);
+  }
+  const unlotted = rows.find((row) => lotIdOfKey(row.lot_key) === null);
+  return unlotted ? available(unlotted) : 0;
+}

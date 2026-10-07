@@ -17,6 +17,7 @@ import {
   salesOrderLineAdjustment,
   salesOrderLineProgress,
   salesOrderStatusFromLines,
+  deliveryAllocation,
   priceOverrideCheck,
   pricingQuantity,
   receivableAging,
@@ -492,5 +493,33 @@ describe('commandes — ADR-028, AV-127, AV-128, AV-130, INV-VEN-04', () => {
     expect(salesOrderStatusFromLines([{ ordered: q(0), sold: q(0), delivered: q(0) }])).toBe(
       'CANCELLED',
     );
+  });
+});
+
+describe('deliveryAllocation (ADR-028 §7, INV-VEN-04)', () => {
+  const lines = [
+    { id: 'ancienne', undelivered: q(3) },
+    { id: 'vide', undelivered: ZERO_QUANTITY },
+    { id: 'récente', undelivered: q(5) },
+  ];
+
+  it('sert les lignes dans l’ordre donné, chacune dans la limite de son non-livré', () => {
+    const result = deliveryAllocation(lines, q(4.5));
+    expect(result.allocations.map((a) => [a.id, quantityToDecimal(a.quantity)])).toEqual([
+      ['ancienne', 3],
+      ['récente', 1.5],
+    ]);
+    expect(quantityToDecimal(result.excess)).toBe(0);
+  });
+
+  it('rend le surplus au-delà du vendu non livré, jamais rattaché', () => {
+    const result = deliveryAllocation(lines, q(10));
+    expect(result.allocations.map((a) => quantityToDecimal(a.quantity))).toEqual([3, 5]);
+    expect(quantityToDecimal(result.excess)).toBe(2);
+    expect(quantityToDecimal(deliveryAllocation([], q(1)).excess)).toBe(1);
+  });
+
+  it('refuse une quantité nulle', () => {
+    expect(() => deliveryAllocation(lines, ZERO_QUANTITY)).toThrow(DomainError);
   });
 });

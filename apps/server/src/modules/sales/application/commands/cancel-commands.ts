@@ -145,6 +145,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       doc_number: docNumber,
       site_id: toBin(site.id),
       sale_id: sale.id,
+      // Commande de la vente, dénormalisée ; nulle pour une vente directe (dictionnaire 05-sales).
+      order_id: sale.order_id,
       cause: 'SALE_CANCELLATION',
       reason_code_id: toBinOrNull(p.reasonCodeId ?? null),
       comment: p.comment ?? null,
@@ -199,14 +201,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         })
         .execute();
       await insertLines(plan.lines);
-      await syncOrderAfterSaleCancellation(uow, {
+      const order = await syncOrderAfterSaleCancellation(uow, deps, {
         locked,
         lines: plan.lines,
         at,
         actorUserId: author,
         reasonCodeId: p.reasonCodeId ?? null,
         comment: p.comment ?? null,
+        treatment: applied.treatment ?? p.paymentTreatment ?? null,
+        deviceId: origin.deviceId,
+        commandId: envelope.command_id,
+        offline,
       });
+      if (!order.ok) return order.outcome;
       return { status: 'APPLIED', serverRefs: { docNumber } };
     }
 
@@ -338,14 +345,25 @@ function registerDecision(
       })
       .where('id', '=', doc.id)
       .execute();
-    await syncOrderAfterSaleCancellation(uow, {
+    const order = await syncOrderAfterSaleCancellation(uow, deps, {
       locked,
       lines,
       at: ctx.decidedAt,
       actorUserId: ctx.decidedBy,
       reasonCodeId: doc.reason_code_id ? fromBin(doc.reason_code_id) : null,
       comment: doc.comment,
+      treatment: result.treatment ?? option ?? null,
+      deviceId: null,
+      commandId: null,
+      offline: false,
     });
+    if (!order.ok) {
+      const refusal = order.outcome.status === 'REJECTED' ? order.outcome : undefined;
+      throw new ApprovalDecisionRefused(
+        refusal?.errorCode ?? 'CANCELLATION_REFUSED',
+        refusal?.messageFr ?? 'Annulation impossible.',
+      );
+    }
   });
 }
 

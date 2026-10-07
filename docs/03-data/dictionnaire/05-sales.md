@@ -132,7 +132,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `balance_due_xaf` | money_xaf | Non | généré | `total_xaf − cancelled_xaf − amount_paid_xaf` (colonne générée stockée) |
 | `payment_status` | enum(`UNPAID`,`PARTIALLY_PAID`,`PAID`) | Non | généré | Dérivé, jamais saisi (BR-VEN-026) : `PAID` si le solde dû est nul (donc aussi pour un net nul, y compris une vente entièrement annulée), sinon `UNPAID` si rien n'est payé, sinon `PARTIALLY_PAID` (colonne générée stockée, `varchar(15)`) |
 | `due_date` | date | Oui | — | DÉDUIT : échéance de toute vente à un client identifié, même soldée (jour métier de la vente + délai de paiement du client, AV-028, AV-129), pour qu'une créance rouverte (annulation d'un encaissement) ait une échéance ; figée |
-| `flags` | json | Non | `[]` | Tableau de codes d'anomalie (conventions §2 : `text[]` stocké en JSON) ; codes écrits par `sales.sale.record` (P4-04) : `PRICE_MISMATCH`, `STOCK_NEGATIVE` (le dictionnaire d'origine disait `STOCK_CONFLICT` : aligné sur le conflit et l'avertissement), `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ANONYMOUS_UNPAID`, `LOT_NOT_SELLABLE`, `PAYMENT_SUSPECT_DUPLICATE`, `OUT_OF_SESSION`, `SESSION_REJECTED` ; `ORDER_OVER_FULFILMENT` suivra avec les livraisons (P4-07) ; ajout possible après la création (`JSON_ARRAY_APPEND`) ; contenu non contraint par la base |
+| `flags` | json | Non | `[]` | Tableau de codes d'anomalie (conventions §2 : `text[]` stocké en JSON) ; codes écrits par `sales.sale.record` (P4-04) : `PRICE_MISMATCH`, `STOCK_NEGATIVE` (le dictionnaire d'origine disait `STOCK_CONFLICT` : aligné sur le conflit et l'avertissement), `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ANONYMOUS_UNPAID`, `LOT_NOT_SELLABLE`, `PAYMENT_SUSPECT_DUPLICATE`, `OUT_OF_SESSION`, `SESSION_REJECTED` ; `ORDER_OVER_FULFILMENT` suivra avec les livraisons (P4-07) ; ajout possible après la création (`JSON_ARRAY_APPEND`) ; contenu non contraint par la base ; `ORDER_OVER_FULFILMENT` (vente de régularisation d'une livraison hors ligne, P4-07) |
 | [STD-ORIGIN] | | | | |
 | `business_date` | date | Non | généré | Jour métier de `occurred_at` (voir Lecture) |
 | [STD-AUDIT] | | | | |
@@ -156,7 +156,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `order_line_id` | uuid → sales_sales_order_lines | Oui | — | Ligne de commande d'origine (vente `ORDER`) |
 | `product_id` | uuid → catalog.products | Non | — | |
 | `product_name_snapshot` | label | Non | — | Libellé figé |
-| `quantity` | qty | Non | — | Unité de saisie ; > 0 |
+| `quantity` | qty | Non | — | Unité de saisie ; > 0. Vente sur commande : dans l'unité de la ligne de commande si le vendu en fait un nombre exact au millième, sinon en unité de base (`unit_code` = unité de base) |
 | `unit_code` | code → catalog.units | Non | — | `varchar(20)` |
 | `quantity_base` | qty | Non | — | Unité de base ; > 0 |
 | `pricing_quantity` | qty | Non | — | Quantité de tarification : la quantité en unité de base, ou le poids pesé en kg si `PER_WEIGHT` (AV-031) ; > 0 |
@@ -256,6 +256,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 - **IX** `(order_id, occurred_at)`, `(site_id, business_date)`, `(delivered_by_user_id, business_date)`.
 - **Garde** `trg_sales_delivery_notes_no_update` et `trg_sales_delivery_notes_no_delete`.
 - **Intégrité** INV-VEN-04 : une livraison ne dépasse pas le vendu non livré. Le plafond est tenu par les compteurs des lignes de vente et de commande et par le mouvement `DELIVERY` rattaché au mouvement `SALE` (INV-STK-17, ADR-029). Une livraison déjà faite n'est jamais rejetée (BR-SYN-007) ; le cas d'une livraison arrivant après l'annulation du reste est AV-133 (défaut : vente directe de régularisation et conflit).
+- **Écrit par** `sales.order.fulfil` (P4-07, D04 §15) : un bon par commande de synchronisation, seulement si une part se rattache à la commande ; le surplus d'une livraison hors ligne est une vente directe de régularisation, sans bon (AV-133).
 - **Suppr.** `IMMUABLE`. **Droits** `SELECT`, `INSERT`. **Audit** Enregistrement du bon. **Offline** CR (livraison possible hors ligne, D04 §12) ; DL à fixer avec les jeux de P4-11 (DÉDUIT).
 
 ## sales_delivery_note_lines

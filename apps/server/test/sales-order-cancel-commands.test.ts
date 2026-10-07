@@ -1997,9 +1997,12 @@ describe('sales.order.cancel / close_remaining (P4-06)', () => {
   });
 
   it('concurrence : annulation de la commande et annulation de sa vente lancées en même temps — un seul effet, aucun interblocage', async () => {
-    const pairs = await Promise.all(
-      [0, 1, 2].map(() => soldOrder({ quantity: 4, stockQuantity: 6, unitCost: 500 })),
-    );
+    // Préparation séquentielle : seules les annulations ci-dessous sont concurrentes (des stocks
+    // d'ouverture créés en parallèle s'interbloquent sur les soldes, sans rapport avec le test).
+    const pairs = [];
+    for (let index = 0; index < 3; index += 1) {
+      pairs.push(await soldOrder({ quantity: 4, stockQuantity: 6, unitCost: 500 }));
+    }
     const results = await Promise.all(
       pairs.flatMap((pair, index) => {
         const hh = `09:${String(10 + index).padStart(2, '0')}:00`;
@@ -2198,5 +2201,50 @@ describe('sales.order.cancel / close_remaining (P4-06)', () => {
     expect(await onHandAt(product.id, await customerLocationOf())).toBe(3);
     expect(await onHandAt(product.id, storeId)).toBe(4);
     expect(await verifyStockLedger(db, {})).toMatchObject({ ok: true });
+  });
+
+  // --- Revue adverse de P4-06 ------------------------------------------------------------------------
+
+  it('annulation de la dernière vente ouverte : l’acompte resté sur la commande est libéré avec le même sort', async () => {
+    // 10 commandés, 3 en stock : la vente de 3 000 est payée par l'acompte, 7 000 restent affectés
+    // à la commande ; la ligne ramenée à 3, l'annulation de la vente termine la commande.
+    const { id, saleId } = await soldOrder({ quantity: 10, stockQuantity: 3, advanceXaf: 10_000 });
+    expect((await orderRow(id)).advance_paid_xaf).toBe(7000);
+    const orderLineId = fromBin((await orderLines(id))[0]!.id);
+    const lowered = await updateOrder(id, at('09:10:00'), {
+      lines: [{ orderLineId, quantity: 3, quantityBase: 3 }],
+    });
+    expect(lowered.status, JSON.stringify(lowered)).toBe('APPLIED');
+
+    const missing = await cancelSale(saleId, at('09:12:00'), { comment: 'Erreur' });
+    expect(code(missing.result)).toBe('PAYMENT_TREATMENT_REQUIRED');
+
+    const { result } = await cancelSale(saleId, at('09:15:00'), {
+      comment: 'Le client renonce',
+      paymentTreatment: 'CUSTOMER_CREDIT',
+    });
+    expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+    const order = await orderRow(id);
+    expect(order).toMatchObject({
+      status: 'CANCELLED',
+      advance_paid_xaf: 0,
+      released_payment_treatment: 'CUSTOMER_CREDIT',
+    });
+    const [payment] = await paymentsOfOrder(id);
+    expect(payment).toMatchObject({ unallocated_xaf: 10_000, refunded_xaf: 0 });
+    const allocations = await allocationsOf(id, [toBin(saleId)]);
+    expect(allocations.every((allocation) => allocation.status === 'REVERSED')).toBe(true);
+    expect(await verifyCashLedger(db)).toMatchObject({ ok: true });
+  });
+
+  it('motif codé sans commentaire : la commande terminée par l’annulation de sa vente porte le libellé du motif', async () => {
+    const { id, saleId } = await soldOrder({ quantity: 2 });
+    const reason = await reasonCode('Client parti');
+    const { result } = await cancelSale(saleId, at('09:05:00'), { reasonCodeId: reason.id });
+    expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+    expect(await orderRow(id)).toMatchObject({
+      status: 'CANCELLED',
+      cancel_comment: 'Client parti',
+    });
   });
 });

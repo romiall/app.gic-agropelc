@@ -1,6 +1,6 @@
 /**
  * Enregistrement des gestionnaires de commande `sales` au démarrage (même précédent que
- * `ProcurementCommandsRegistrar`) : ventes directes (P4-04), annulations de ventes (P4-05), commandes (P4-06).
+ * `ProcurementCommandsRegistrar`) : ventes directes (P4-04), annulations de ventes (P4-05), commandes (P4-06), livraisons (P4-07).
  * Injections explicites (`@Inject`) : vitest/esbuild n'émet pas de métadonnées de décorateur (P2-05).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
@@ -18,6 +18,7 @@ import {
 import { registerSaleCommands } from './sale-commands.js';
 import { registerCancelCommands } from './cancel-commands.js';
 import { registerOrderCommands } from './order-commands.js';
+import { registerDeliveryCommands } from './delivery-commands.js';
 
 @Injectable()
 export class SalesCommandsRegistrar implements OnModuleInit {
@@ -38,5 +39,6 @@ export class SalesCommandsRegistrar implements OnModuleInit {
       this.documentSequences,
     );
     registerOrderCommands(this.registry, this.idGenerator, this.documentSequences);
+    registerDeliveryCommands(this.registry, this.idGenerator, this.documentSequences);
   }
 }

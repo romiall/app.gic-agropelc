@@ -214,6 +214,10 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         outcome: rejected('LOCATION_NOT_SELLABLE', 'Emplacement de préparation non autorisé.'),
       };
     }
+    // Stock mobile à garde exclusive : seul son détenteur en prépare une commande (RBAC §3, OWN).
+    if (location.custodyMode === 'EXCLUSIVE_USER' && location.custodianUserId !== input.author) {
+      return { ok: false as const, outcome: FORBIDDEN_SCOPE };
+    }
     const site = await loadSite(uow, location.siteId);
     if (!site)
       return { ok: false as const, outcome: rejected('REFERENCE_INVALID', 'Site inconnu.') };
@@ -496,10 +500,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (await hasCommercialRoleAt(uow, author, at)) commercialUserId = author;
     commercialUserId =
       commercialUserId ?? (await ownerOfCustomerAt(uow, customer.id, at)) ?? author;
-    const totalEstimated = prepared.lines.reduce(
-      (sum, line) => sum + line.priced.lineTotalXaf,
-      0,
-    );
+    const totalEstimated = prepared.lines.reduce((sum, line) => sum + line.priced.lineTotalXaf, 0);
     await uow
       .insertInto('sales_sales_orders')
       .values({
@@ -546,6 +547,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .where('id', '=', toBin(envelope.aggregate_id))
       .executeTakeFirst();
     if (existing) return { status: 'APPLIED', serverRefs: { docNumber: existing.doc_number } };
+    // Brouillon de bureau, en ligne seulement (D04 UC-VEN-02, SM-ORDER) : hors ligne, `place`.
+    if (envelope.captured_offline) {
+      return rejected(
+        'ONLINE_REQUIRED',
+        'Un brouillon de commande se prépare en ligne ; hors ligne, confirmer la commande.',
+      );
+    }
     try {
       const created = await createOrder(uow, envelope, envelope.payload, { status: 'DRAFT' });
       if (!created.ok) return created.outcome;
@@ -706,6 +714,17 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .where('id', '=', toBin(orderId))
       .executeTakeFirst();
     if (existing && existing.status !== 'DRAFT') {
+      // Déjà confirmée sous cet identifiant : la même intention n'a plus d'effet ; des acomptes
+      // joints ne seraient ni encaissés ni affectés, et une commande annulée ne se reconfirme pas.
+      if (existing.status === 'CANCELLED') {
+        return rejected('ORDER_ALREADY_CANCELLED', 'Cette commande est annulée.');
+      }
+      if ((envelope.payload.advancePayments ?? []).length > 0) {
+        return rejected(
+          'ORDER_STATUS_INVALID',
+          'Commande déjà confirmée : enregistrer l’acompte comme un encaissement.',
+        );
+      }
       return { status: 'APPLIED', serverRefs: { docNumber: existing.doc_number } };
     }
     try {
@@ -723,13 +742,21 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           permissionCode: 'sales.order.create',
         });
         if (!ctx.ok) return ctx.outcome;
+        // Statut relu sous verrou : une annulation ou une autre confirmation a pu passer entre-temps.
+        if (ctx.locked.order.status === 'CANCELLED') {
+          return rejected('ORDER_ALREADY_CANCELLED', 'Cette commande est annulée.');
+        }
+        if (ctx.locked.order.status !== 'DRAFT') {
+          return rejected('ORDER_STATUS_INVALID', 'Ce brouillon a déjà été confirmé.');
+        }
         const found = await getCustomer(uow, fromBin(ctx.locked.order.customer_id));
         if (!found) return rejected('CUSTOMER_UNKNOWN', 'Client inconnu.');
         const kept = await keptCustomerOf(uow, found);
         if (!kept) return rejected('CUSTOMER_UNKNOWN', 'Compte conservé du client introuvable.');
         customer = kept;
         docNumber = existing.doc_number;
-        for (const id of [...new Set([found.id, kept.id])].sort()) await lockCustomerAccount(uow, id);
+        for (const id of [...new Set([found.id, kept.id])].sort())
+          await lockCustomerAccount(uow, id);
       } else {
         if (p.lines === undefined) {
           return rejected('LINE_INVALID', 'Une commande comporte au moins une ligne.');
@@ -879,13 +906,27 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         if (!ORDER_LOCATION_TYPES.includes(location.locationType)) {
           return rejected('LOCATION_NOT_SELLABLE', 'Emplacement de préparation non autorisé.');
         }
+        if (location.custodyMode === 'EXCLUSIVE_USER' && location.custodianUserId !== author) {
+          return FORBIDDEN_SCOPE;
+        }
         patch.fulfilment_location_id = toBin(location.id);
       }
-      if (p.requestedDeliveryDate !== undefined) {
+      // Une valeur identique à l'existant n'est pas une modification (NOTHING_TO_UPDATE).
+      const current = await uow
+        .selectFrom('sales_sales_orders')
+        .select([
+          sql<string | null>`DATE_FORMAT(requested_delivery_date, '%Y-%m-%d')`.as('date'),
+          'delivery_address',
+        ])
+        .where('id', '=', order.id)
+        .executeTakeFirstOrThrow();
+      if (p.requestedDeliveryDate !== undefined && p.requestedDeliveryDate !== current.date) {
         patch.requested_delivery_date =
           p.requestedDeliveryDate === null ? null : sql<Date>`${p.requestedDeliveryDate}`;
       }
-      if (p.deliveryAddress !== undefined) patch.delivery_address = p.deliveryAddress;
+      if (p.deliveryAddress !== undefined && p.deliveryAddress !== current.delivery_address) {
+        patch.delivery_address = p.deliveryAddress;
+      }
 
       // --- Quantités des lignes existantes (AV-130) ------------------------------------------------------
       const byId = new Map(lines.map((line) => [fromBin(line.id), line]));
@@ -905,15 +946,25 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         const targetMilli = quantityMilliUnits(quantityFromDecimal(entry.quantityBase));
         const currentMilli = milliOf(line.quantity_base);
         if (targetMilli === currentMilli) continue;
-        const checked = await checkLineQuantity(uow, {
-          productId: fromBin(line.product_id),
-          unitCode: line.unit_code,
-          quantity: entry.quantity,
-          quantityBase: entry.quantityBase,
-          offline,
-          requireSellable: targetMilli > currentMilli,
-        });
-        if (!checked.ok) return checked.outcome;
+        if (targetMilli === 0) {
+          // 0 retire la ligne (D04 §15) : aucune conversion d'unité à contrôler.
+          if (entry.quantity !== 0) {
+            return rejected(
+              'QUANTITY_BASE_MISMATCH',
+              'Quantité en unité de base incohérente avec la quantité saisie.',
+            );
+          }
+        } else {
+          const checked = await checkLineQuantity(uow, {
+            productId: fromBin(line.product_id),
+            unitCode: line.unit_code,
+            quantity: entry.quantity,
+            quantityBase: entry.quantityBase,
+            offline,
+            requireSellable: targetMilli > currentMilli,
+          });
+          if (!checked.ok) return checked.outcome;
+        }
         const { retirement, addMilli } = retirementToTarget(line, targetMilli);
         newOrderedMilli.set(entry.orderLineId, targetMilli);
         if (addMilli > 0) {
@@ -949,8 +1000,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         added = prepared.lines;
       }
 
-      const contentChanged =
-        retirements.length > 0 || increases.length > 0 || added.length > 0;
+      const contentChanged = retirements.length > 0 || increases.length > 0 || added.length > 0;
       if (!contentChanged && Object.keys(patch).length === 0) {
         return rejected('NOTHING_TO_UPDATE', 'Aucune modification à appliquer.');
       }
@@ -1029,7 +1079,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         ...added.map((line) => line.id),
       ]);
       if (toSell.size > 0) {
-        for (const id of [...new Set([found.id, kept.id])].sort()) await lockCustomerAccount(uow, id);
+        for (const id of [...new Set([found.id, kept.id])].sort())
+          await lockCustomerAccount(uow, id);
         const fresh = await lockOrder(uow, orderId);
         const location = await findStockLocation(
           uow,
@@ -1090,7 +1141,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
             orderLineId: fromBin(line.id),
             quantityBase: Number(line.quantity_base),
           })),
-          fulfilmentLocationId: fromBin(patch.fulfilment_location_id ?? order.fulfilment_location_id),
+          fulfilmentLocationId: fromBin(
+            patch.fulfilment_location_id ?? order.fulfilment_location_id,
+          ),
           version: order.version + 1,
         },
       };

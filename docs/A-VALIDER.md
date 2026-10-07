@@ -164,6 +164,7 @@ Classification (PM §45) :
 | AV-147 | Remise sur une ligne de commande | SECONDAIRE | P4 | Pas de remise sur une ligne de commande : la dérogation se saisit par le prix convenu (plafond et validation `PRICE_OVERRIDE`) | OUVERT |
 | AV-148 | Confirmation d'un brouillon de commande : prix de la saisie ou prix du jour | SECONDAIRE | P4 | Lignes et prix figés à la saisie du brouillon | OUVERT |
 | AV-149 | Annulation d'une vente sur commande : la commande garde-t-elle la quantité ? | IMPORTANTE | P4 | Quantité retirée de la commande, qui ne la revendra pas | OUVERT |
+| AV-150 | Encaissement saisi hors ligne avec une commande que le serveur refuse ; acompte supérieur au total de la commande | IMPORTANTE | P4 | Encaissement conservé en crédit client non affecté, avec un conflit pour la Finance ; acompte borné au total en ligne | OUVERT |
 
 ---
 
@@ -985,6 +986,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) la quantité annulée est retirée de la commande (commandé et vendu baissent), qui ne la revendra pas ; la commande devient `CANCELLED` ou `CLOSED` quand plus rien n'est ouvert ; (b) la quantité annulée revient « en attente » sur la commande, qui la revendra à la prochaine confirmation du reste ; (c) une vente sur commande ne s'annule que par les commandes de la commande (`sales.order.cancel`, `.close_remaining`, `.update`) : `sales.sale.cancel` la refuse.
 - **Recommandation** : (a) : annuler une vente est un renoncement ; (b) rouvrirait aussitôt une vente que l'on vient d'annuler. (c) si l'on veut qu'une commande ne soit modifiée que par ses propres commandes.
 - **Impact** : `sales.sale.cancel`, `.request_cancellation` et décision `SALE_CANCELLATION` sur une vente de type `ORDER` ; version et statut de la commande ; SM-ORDER, SM-SALE. Défaut implémenté : (a).
+
+### AV-150 — Encaissement saisi hors ligne avec une commande que le serveur refuse ; acompte supérieur au total — IMPORTANTE
+- **Question** : Un commercial, hors ligne, prend une commande et encaisse un acompte en espèces. À la synchronisation, le serveur refuse la commande (client sans crédit pour le reste, compte fusionné, canal inconnu…) : la commande est une intention (AV-126). Que devient l'argent, qui est bel et bien dans la caisse du commercial ? Et un acompte peut-il dépasser le total de la commande ?
+- **Pourquoi** : aujourd'hui le rejet de la commande annule tout, encaissement compris : la caisse physique et la trésorerie divergent sans trace. L'encaissement est un fait accompli (BR-SYN-007), la commande non. Sans plafond, l'excédent d'un acompte reste affecté à la commande jusqu'à sa clôture (revue adverse de P4-06).
+- **Choix** : (a) l'encaissement est enregistré seul, en crédit client non affecté (ou, sans client identifiable, en encaissement à rembourser), avec un conflit pour la Finance, même si la commande est refusée ; un acompte en ligne est borné au total estimé de la commande (`PAYMENT_EXCEEDS_TOTAL`) ; (b) la commande est rejetée avec son encaissement (état actuel) et le commercial ressaisit l'argent comme un encaissement ; (c) l'acompte n'est accepté qu'en ligne.
+- **Recommandation** : (a) : l'argent reçu ne doit jamais disparaître du système.
+- **Impact** : `sales.order.place` hors ligne ; `sales.payment.record` (P4-08), qui porte l'encaissement seul et le crédit client non affecté ; conflits ; trésorerie. **Défaut à implémenter en P4-08** avec les encaissements seuls (aujourd'hui : comportement (b), signalé ici pour ne pas combler le trou en silence).
 
 ---
 

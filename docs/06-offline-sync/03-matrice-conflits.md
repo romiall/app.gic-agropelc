@@ -27,7 +27,7 @@
 | Entité | Conflit possible | Prob. | Grav. | Détection | Résolution | Responsable |
 |---|---|---:|---:|---|---|---|
 | Compte client | Même prospect créé par deux commerciaux hors ligne | 2 | 2 | Unicité du téléphone à l'application | **FAIT** (les deux comptes existent) + `DUPLICATE_CUSTOMER` ; fusion par un responsable, avec l'acquéreur le plus ancien retenu (BR-CRM-007) | RESP_COMMERCIAL |
-| Commande client | Livrée deux fois hors ligne | 1 | 3 | Livré cumulé > commandé | **FAIT** : l'excédent devient une vente directe + `ORDER_OVER_FULFILMENT` | RESP_COMMERCIAL |
+| Commande client | Livrée deux fois hors ligne, ou livrée hors ligne après l'annulation, la clôture ou la baisse de son reste (AV-133) | 1 | 3 | Livré > vendu non livré | **FAIT** : la part rattachable l'est ; l'excédent devient une vente directe de régularisation + `ORDER_OVER_FULFILMENT` (P4-07) ; la commande n'est pas rouverte | RESP_COMMERCIAL |
 | Allocation | Consommée après révocation forcée | 1 | 3 | Consommation imputée à un quota `REVOKED` | **FAIT** + `ALLOCATION_REVOKED_CONSUMED` ; contrôle du solde | Responsable PDV |
 | Allocation | Dépassement du quota (appareil modifié) | 1 | 4 | Consommation > reste | **FAIT** + anomalie de fraude possible (WF-18) | Responsable + DIRECTION |
 | Transfert | Réception sans document, jamais rapprochée | 2 | 3 | Transit non rapproché > 48 h | Conflit `TRANSFER_UNMATCHED` ; rapprochement manuel ou création de l'expédition manquante | MAGASINIER |

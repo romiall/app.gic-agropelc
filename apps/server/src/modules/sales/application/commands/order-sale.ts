@@ -48,7 +48,7 @@ import {
 import { findWorkSessionAt } from '../../../fieldwork/application/public/index.js';
 import {
   listLotBalances,
-  listStockBalances,
+  lockSellableQuantity,
   type StockLocationRef,
 } from '../../../inventory/application/public/index.js';
 import { ensureToDeliverLocation } from '../../../organization/application/public/index.js';
@@ -64,6 +64,32 @@ const milli = (value: string | number): number =>
   quantityMilliUnits(quantityFromDecimal(Number(value)));
 
 /** Commande et lignes verrouillées pour la durée de la transaction (ordre constant). */
+
+/**
+ * Quantité vendue dans l'unité de saisie de la ligne de commande (dictionnaire 05-sales : `quantity`
+ * est dans `unit_code`) : 12 pièces d'une ligne en cartons de 6 donnent 2 cartons. Une vente partielle
+ * qui ne tombe pas sur un nombre exact (au millième) de cette unité est exprimée en unité de base.
+ */
+function enteredQuantity(
+  line: {
+    readonly quantity: string | number;
+    readonly quantity_base: string | number;
+    readonly unit_code: string;
+  },
+  soldBaseMilli: number,
+  baseUnitCode: string,
+): { readonly quantity: string; readonly unitCode: string } {
+  const lineMilli = quantityMilliUnits(quantityFromDecimal(Number(line.quantity)));
+  const lineBaseMilli = quantityMilliUnits(quantityFromDecimal(Number(line.quantity_base)));
+  if (lineMilli > 0 && lineBaseMilli > 0) {
+    const numerator = soldBaseMilli * lineMilli;
+    if (numerator % lineBaseMilli === 0) {
+      return { quantity: String(numerator / lineBaseMilli / 1000), unitCode: line.unit_code };
+    }
+  }
+  return { quantity: String(soldBaseMilli / 1000), unitCode: baseUnitCode };
+}
+
 export async function lockOrder(
   uow: Uow,
   orderId: string,
@@ -100,12 +126,12 @@ export async function availableForSale(
       .filter((lot) => lot.sellableFromRearing)
       .reduce((sum, lot) => sum + lot.qtyOnHand, 0);
   }
-  const balances = await listStockBalances(uow, {
+  // Même sélection que la sortie stricte, en lecture verrouillante (revue P4-06).
+  return lockSellableQuantity(uow, {
     locationId: location.id,
     custodyMode: location.custodyMode,
     productId,
   });
-  return balances.reduce((sum, balance) => sum + Math.max(0, balance.qtyAvailable), 0);
 }
 
 export interface OrderConfirmationInput {
@@ -160,6 +186,7 @@ export async function confirmOrderPending(
     quantityMilli: number;
     isService: boolean;
     productName: string;
+    baseUnitCode: string;
   }[] = [];
   for (const line of input.orderLines) {
     if (input.onlyOrderLineIds && !input.onlyOrderLineIds.has(fromBin(line.id))) continue;
@@ -187,7 +214,13 @@ export async function confirmOrderPending(
     const quantityMilli = quantityMilliUnits(confirmable);
     if (quantityMilli <= 0) continue;
     consumed.set(productId, (consumed.get(productId) ?? 0) + quantityMilli / 1000);
-    plan.push({ line, quantityMilli, isService, productName: product.name });
+    plan.push({
+      line,
+      quantityMilli,
+      isService,
+      productName: product.name,
+      baseUnitCode: product.baseUnitCode,
+    });
   }
   if (plan.length === 0) return { ok: true, sale: null, soldByOrderLine: new Map() };
 
@@ -322,6 +355,7 @@ export async function confirmOrderPending(
   for (const [index, entry] of plan.entries()) {
     const line = entry.line;
     const cost = costs.get(index);
+    const entered = enteredQuantity(line, entry.quantityMilli, entry.baseUnitCode);
     await uow
       .insertInto('sales_sale_lines')
       .values({
@@ -331,11 +365,12 @@ export async function confirmOrderPending(
         order_line_id: line.id,
         product_id: line.product_id,
         product_name_snapshot: line.product_name_snapshot,
-        quantity: String(entry.quantityMilli / 1000),
-        unit_code: line.unit_code,
+        quantity: entered.quantity,
+        unit_code: entered.unitCode,
         quantity_base: String(entry.quantityMilli / 1000),
+        // Prix convenu par unité de base : la quantité de tarification est le vendu en unité de base.
         pricing_quantity: String(entry.quantityMilli / 1000),
-        pricing_unit_code: line.unit_code,
+        pricing_unit_code: entry.baseUnitCode,
         list_unit_price_xaf: line.list_unit_price_xaf,
         unit_price_xaf: Number(line.quoted_unit_price_xaf),
         price_rule_id: line.price_rule_id,
@@ -480,11 +515,14 @@ export async function refreshOrderStatus(
   orderId: string,
   options: { readonly remainderCancelled?: boolean } = {},
 ): Promise<{ readonly status: string; readonly lines: readonly OrderLineRow[] }> {
+  // Lecture verrouillante (la commande l'est déjà) : l'état le plus récent des lignes, pas
+  // l'instantané de la transaction pris avant le verrou (annulation de vente concurrente).
   const lines = await uow
     .selectFrom('sales_sales_order_lines')
     .selectAll()
     .where('order_id', '=', toBin(orderId))
     .orderBy('line_no', 'asc')
+    .forUpdate()
     .execute();
   const status = salesOrderStatusFromLines(
     lines.map((line) => ({
