@@ -166,6 +166,7 @@ Classification (PM §45) :
 | AV-149 | Annulation d'une vente sur commande : la commande garde-t-elle la quantité ? | IMPORTANTE | P4 | Quantité retirée de la commande, qui ne la revendra pas | OUVERT |
 | AV-150 | Encaissement saisi hors ligne avec une commande que le serveur refuse ; acompte supérieur au total de la commande | IMPORTANTE | P4 | Encaissement conservé en crédit client non affecté, avec un conflit pour la Finance ; acompte borné au total en ligne | OUVERT |
 | AV-151 | Annulation d'un encaissement dont une part a déjà été remboursée au client | SECONDAIRE | P4 | Refusée ; la Finance corrige par une réaffectation ou une régularisation | OUVERT |
+| AV-152 | Mort d'animaux vivants hors d'un lot de production (stock mobile, marchandise vivante achetée) | SECONDAIRE | P4 | Mortalité du lot quand les animaux en viennent ; sinon perte simple `DETERIORATION` | OUVERT |
 
 ---
 
@@ -1001,6 +1002,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) refus (`PAYMENT_PARTIALLY_REFUNDED`) : la Finance corrige autrement (réaffectation, écriture de régularisation) ; (b) annulation de la seule part non remboursée ; (c) annulation totale avec une entrée de régularisation du remboursement.
 - **Recommandation** : (a) en V1, le cas est rare et la Finance garde la main.
 - **Impact** : `sales.payment.request_cancellation` ; SM-CUSTOMER-PAYMENT. Défaut implémenté : (a).
+
+### AV-152 — Mort d'animaux vivants hors d'un lot de production — SECONDAIRE
+- **Question** : WF-06 fait déclarer par le commercial une perte `MORTALITE` pour deux poulets morts sur son stock mobile. Or une perte `MORTALITE` exige un lot de production ou d'incubation (P7-02, AV-113). Que déclarer quand les animaux morts ne viennent pas d'un lot suivi (marchandise vivante achetée, stock mobile sans lot) ?
+- **Pourquoi** : la catégorie compte dans la mortalité du lot (taux, validation, photo) ; sans lot, elle ne peut pas être rattachée, et une autre catégorie fausse le libellé de la perte.
+- **Choix** : (a) animaux issus d'un lot : `MORTALITE` rattachée au lot ; sinon perte simple `DETERIORATION`, motif en commentaire ; (b) autoriser `MORTALITE` sans lot pour la marchandise vivante (contrainte relâchée, hors des indicateurs de lot) ; (c) une catégorie dédiée « mort d'animal hors lot ».
+- **Recommandation** : (a) : les poulets vendus en tournée viennent des lots de la ferme ; la marchandise vivante achetée est rare.
+- **Impact** : `inventory.loss.declare` ; WF-06 ; dictionnaire `06-inventory` (`category`). Défaut implémenté : (a), sans changement de code (test d'acceptation AT-018 : perte `DETERIORATION` de marchandise sans lot).
 
 ---
 

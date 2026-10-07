@@ -148,7 +148,7 @@ sequenceDiagram
 1. Le magasinier TRANSFÈRE 50 poulets vers le stock mobile de Paul (CM §23).
 2. Paul RECOIT : il en devient responsable.
 3. Paul prend service, puis vend 44 poulets en journée, hors ligne, depuis son stock exclusif.
-4. 2 poulets meurent : il DÉCLARE UNE PERTE (`MORTALITE`, photo si la politique l'exige).
+4. 2 poulets meurent : il DÉCLARE UNE PERTE (`MORTALITE` rattachée au lot de production d'où viennent les poulets, photo si la politique l'exige ; poulets hors d'un lot suivi : perte `DETERIORATION`, AV-152).
 5. Le soir, il RETOURNE 4 poulets au magasin et REMET les espèces.
 
 | Effet | Détail |

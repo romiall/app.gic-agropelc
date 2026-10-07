@@ -5,13 +5,15 @@
  *   mise en place 2 400 × 450, aliment 280 sacs × 15 000, vétérinaire 180 000, litière 140 000
  *   (la « dépense directe » de l'exemple ; en P8, une dépense imputée au lot), 90 morts (3,75 %),
  *   coût 5 600 000, coût par tête 5 600 000 / 2 310 ≈ 2 424 ; sortie des 2 310 têtes par
- *   abattage au coût restant exact, clôture sans coût non emporté. Le CA et la marge du lot
- *   arrivent avec les ventes (P4) ;
+ *   abattage au coût restant exact, clôture sans coût non emporté. Part P4 (P4-13) : un lot
+ *   identique dont les 2 310 têtes sont vendues vivantes à 4 650 — CA 10 741 500, coût des ventes
+ *   5 600 000, marge du lot 5 141 500 ;
  * - AT-027 : 30 morts sur un lot de 2 000 → validation requise (paramètres AV-048 : seuils à 0,
  *   photo) ; les têtes attendent la décision, comptées à part. L'alerte `HIGH_MORTALITY` est en P9 ;
  * - AT-052 : 40 porcs sur 2 cases ; 5 têtes déplacées d'une case à l'autre ; pesée d'échantillon ;
  *   effectif par case = solde de l'emplacement, effectif du groupe inchangé, aucun identifiant
- *   individuel. La vente de 3 têtes arrive avec P4 ;
+ *   individuel. Part P4 (P4-13) : 3 têtes vendues à la tête (prix par tête) et 3 au kilo vif
+ *   (270 kg, AV-031) ;
  * - AT-053 : l'administrateur ajoute un calibre d'œufs (produit + paramètre) : utilisable aussitôt
  *   par la collecte, sans changer le modèle de mouvement ; les collectes antérieures sont
  *   inchangées.
@@ -37,6 +39,8 @@ import { registerLotCommands } from '../src/modules/production/application/comma
 import { registerDailyCommands } from '../src/modules/production/application/commands/daily-commands.js';
 import { registerEggCollectionCommands } from '../src/modules/production/application/commands/egg-collection-commands.js';
 import { registerSlaughterCommands } from '../src/modules/production/application/commands/slaughter-commands.js';
+import { registerSaleCommands } from '../src/modules/sales/application/commands/sale-commands.js';
+import { lotRevenue } from '../src/modules/sales/application/public/index.js';
 import {
   ensureSupplierLot,
   lotHeadcount,
@@ -73,7 +77,7 @@ interface Actor {
   readonly deviceId: string;
 }
 
-describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
+describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P4)', () => {
   let idGenerator: IdGenerator;
   let pipeline: CommandPipelineService;
   let policyAdmin: Actor;
@@ -102,6 +106,10 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
   let chickLot2: string;
   let pigletLot: string;
   let pulletLot: string;
+  let saleBuilding: string;
+  let pigKgId: string;
+  let farmCash: string;
+  let supplierId: string;
 
   type Result = Awaited<ReturnType<CommandPipelineService['handle']>>;
   const code = (r: Result) => (r.status === 'REJECTED' ? r.error.code : r.status);
@@ -234,6 +242,7 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
     registerDailyCommands(registry, idGenerator, sequences);
     registerEggCollectionCommands(registry, idGenerator, sequences);
     registerSlaughterCommands(registry, idGenerator, sequences);
+    registerSaleCommands(registry, idGenerator, sequences);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     const roles = {
@@ -261,6 +270,7 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
       });
       storeId = await insertTestLocation(trx, rootId, farmId);
       houseId = await insertTestLocation(trx, rootId, farmId, { locationType: 'SLAUGHTERHOUSE' });
+      saleBuilding = await insertTestLocation(trx, rootId, farmId, { locationType: 'BUILDING' });
       const actor = async (role: string, options: Parameters<typeof assignTestRole>[4] = {}) => {
         const userId = await insertTestUser(trx);
         const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
@@ -278,6 +288,7 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
         ['BALLE', 'Balle', 1],
         ['PIECE', 'Pièce', 1],
         ['OEUF', 'Œuf', 1],
+        ['KG', 'Kilogramme', 0],
       ] as const) {
         if (
           !(await trx
@@ -389,7 +400,7 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
         })
         .execute();
 
-      const supplierId = freshUuid();
+      supplierId = freshUuid();
       await trx
         .insertInto('procurement_suppliers')
         .values({
@@ -449,6 +460,80 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
           },
         );
       }
+
+      // Parts P4 d'AT-026 et d'AT-052 : porc vendu au kilo vif (AV-031), prix, canaux, caisse.
+      pigKgId = freshUuid();
+      await trx
+        .insertInto('catalog_products')
+        .values({
+          id: toBin(pigKgId),
+          code: `P-${pigKgId.slice(-10)}`,
+          name: 'Porc charcutier au kilo vif',
+          category_id: toBin(categoryId),
+          stock_family: 'BIOLOGIQUE',
+          species: 'PORC',
+          base_unit_code: 'TETE',
+          pricing_mode: 'PER_WEIGHT',
+          lot_tracking: 'REQUIRED',
+          is_sellable: 1,
+          created_by: toBin(rootId),
+        })
+        .execute();
+      await trx
+        .updateTable('catalog_products')
+        .set({ is_sellable: 1 })
+        .where('id', 'in', [toBin(broilerId), toBin(pigId)])
+        .execute();
+      for (const [productId, price, unit] of [
+        [broilerId, 4650, 'TETE'],
+        [pigId, 150_000, 'TETE'],
+        [pigKgId, 1800, 'KG'],
+      ] as const) {
+        const ruleId = freshUuid();
+        await trx
+          .insertInto('pricing_price_rules')
+          .values({
+            id: toBin(ruleId),
+            code: `PR-${ruleId.slice(-12)}`,
+            version: 1,
+            product_id: toBin(productId),
+            unit_price_xaf: price,
+            pricing_unit_code: unit,
+            status: 'ACTIVE',
+            valid_from: new Date('2026-01-01T00:00:00.000Z'),
+            approved_by: toBin(rootId),
+            approved_at: new Date('2026-01-01T00:00:00.000Z'),
+            created_by: toBin(rootId),
+          })
+          .execute();
+      }
+      for (const channel of ['DIRECT', 'SEDENTAIRE', 'TERRAIN']) {
+        if (
+          !(await trx
+            .selectFrom('catalog_sales_channels')
+            .select('code')
+            .where('code', '=', channel)
+            .executeTakeFirst())
+        ) {
+          await trx
+            .insertInto('catalog_sales_channels')
+            .values({ code: channel, name: channel })
+            .execute();
+        }
+      }
+      farmCash = freshUuid();
+      await trx
+        .insertInto('finance_cash_accounts')
+        .values({
+          id: toBin(farmCash),
+          code: `CPT-${farmCash.slice(-10)}`,
+          name: 'Caisse du responsable de ferme',
+          account_type: 'CAISSE_UTILISATEUR',
+          holder_user_id: toBin(farmManager.userId),
+          responsible_user_id: toBin(rootId),
+          created_by: toBin(rootId),
+        })
+        .execute();
     });
   });
 
@@ -656,6 +741,224 @@ describe('P7-13 : tests d’acceptation de la production (parts P7)', () => {
       .where('table_name' as never, '=', 'production_animals' as never)
       .execute();
     expect(animals).toEqual([]);
+  });
+
+  /** Stock d'ouverture d'un lot de fournisseur neuf (et d'intrants), au magasin de la ferme. */
+  async function openingStock(
+    lines: readonly {
+      readonly productId: string;
+      readonly ref?: string;
+      readonly quantity: number;
+      readonly cost: number;
+    }[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const lots = new Map<string, string>();
+    await db.transaction().execute(async (trx) => {
+      const opening = await virtualLocationId(trx, 'V_OPENING');
+      for (const line of lines) {
+        const lotId =
+          line.ref === undefined
+            ? undefined
+            : await ensureSupplierLot(
+                trx,
+                { idGenerator },
+                {
+                  productId: line.productId,
+                  supplierId,
+                  supplierLotRef: `${line.ref}-${freshUuid().slice(-8)}`,
+                  fallbackCode: `F:${line.ref}-${freshUuid().slice(-8)}`,
+                  expiryDate: null,
+                  originId: freshUuid(),
+                  fifoRankAt: new Date('2026-09-01T00:00:00.000Z'),
+                  createdBy: admin.userId,
+                },
+              );
+        if (lotId !== undefined && line.ref !== undefined) lots.set(line.ref, lotId);
+        await recordStockMove(
+          trx,
+          { idGenerator },
+          {
+            productId: line.productId,
+            ...(lotId !== undefined ? { lotId } : {}),
+            quantityBase: line.quantity,
+            fromLocationId: opening,
+            toLocationId: storeId,
+            moveType: 'OPENING_BALANCE',
+            declaredUnitCostXaf: line.cost,
+            occurredAt: new Date('2026-09-01T05:00:00.000Z'),
+            sourceDocType: 'INVENTORY_COUNT',
+            sourceDocId: freshUuid(),
+            createdBy: admin.userId,
+            allowNegative: false,
+          },
+        );
+      }
+    });
+    return lots;
+  }
+
+  it('AT-026 (part P4) : les 2 310 têtes vendues vivantes à 4 650 — CA 10 741 500, marge du lot 5 141 500', async () => {
+    const lots = await openingStock([
+      { productId: chickId, ref: 'PC4', quantity: 2400, cost: 450 },
+      { productId: feedId, quantity: 280, cost: 15_000 },
+      { productId: vaccineId, quantity: 36, cost: 5_000 },
+      { productId: litterId, quantity: 140, cost: 1_000 },
+    ]);
+    const lotId = await lotWithEntries(
+      'POULET_CHAIR',
+      broilerId,
+      saleBuilding,
+      at('06:00:00', '2026-09-15'),
+      [{ productId: chickId, lotId: lots.get('PC4')!, quantity: 2400, toLocationId: saleBuilding }],
+    );
+    const consume = (productId: string, quantity: number, costType: string, day: string) =>
+      ok(farmManager, 'production.input.record', 'CONSUMPTION', freshUuid(), at('09:00:00', day), {
+        productionLotId: lotId,
+        locationId: storeId,
+        productId,
+        quantityBase: quantity,
+        unitCode: productId === feedId ? 'SAC' : productId === vaccineId ? 'FLACON' : 'BALLE',
+        quantity,
+        costType,
+      });
+    await consume(litterId, 140, 'AUTRE_INTRANT', '2026-09-15');
+    await consume(feedId, 280, 'ALIMENT', '2026-09-20');
+    await consume(vaccineId, 36, 'VETERINAIRE', '2026-09-25');
+    await mortalityPolicy('2026-09-17', { requiresApproval: false, requiresPhoto: false });
+    await ok(
+      farmManager,
+      'production.mortality.record',
+      'STOCK_LOSS',
+      freshUuid(),
+      at('08:00:00', '2026-09-17'),
+      { productionLotId: lotId, quantity: 90 },
+    );
+    const before = (await getProductionLot(db, lotId))!;
+    expect(before.costs.netXaf).toBe(5_600_000);
+    expect(before.costs.costPerHeadXaf).toBe(2424);
+
+    // Lot mis en vente (BR-PRD-010), puis vente des 2 310 têtes depuis l'élevage, au prix moyen de
+    // l'exemple.
+    await ok(
+      productionManager,
+      'production.lot.set_status',
+      'PRODUCTION_LOT',
+      lotId,
+      at('06:00:00', '2026-10-27'),
+      { status: 'SELLING' },
+    );
+    await ok(farmManager, 'sales.sale.record', 'SALE', freshUuid(), at('10:00:00', '2026-10-27'), {
+      fromLocationId: saleBuilding,
+      lines: [
+        {
+          productId: broilerId,
+          quantity: 2310,
+          unitCode: 'TETE',
+          quantityBase: 2310,
+          listUnitPriceXaf: 4650,
+          unitPriceXaf: 4650,
+        },
+      ],
+      payments: [{ methodCode: 'ESPECES', amountXaf: 10_741_500, cashAccountId: farmCash }],
+    });
+    const lot = (await getProductionLot(db, lotId))!;
+    expect(lot.headcount.unsold).toBe(0);
+    const revenue = (await lotRevenue(db, [lot.stockLotId])).get(lot.stockLotId)!;
+    expect(revenue).toMatchObject({
+      grossRevenueXaf: 10_741_500,
+      netRevenueXaf: 10_741_500,
+      soldQuantity: 2310,
+      // Coût restant emporté par la vente : la somme des coûts figés égale le coût du lot.
+      costOfSalesXaf: 5_600_000,
+    });
+    // Marge du lot (stratégie finance §6.2) = CA − coût total du lot.
+    expect(revenue.netRevenueXaf - lot.costs.netXaf).toBe(5_141_500);
+  });
+
+  it('AT-052 (part P4) : vente de 3 porcs à la tête ou au kilo vif selon le mode de tarification (AV-031)', async () => {
+    const lots = await openingStock([
+      { productId: pigletId, ref: 'PGL2', quantity: 10, cost: 25_000 },
+    ]);
+    const byHead = await lotWithEntries('PORC_ENGRAISSEMENT', pigId, pen1, at('07:00:00'), [
+      { productId: pigletId, lotId: lots.get('PGL2')!, quantity: 5, toLocationId: pen1 },
+    ]);
+    const byWeight = await lotWithEntries('PORC_ENGRAISSEMENT', pigKgId, pen2, at('07:00:00'), [
+      { productId: pigletId, lotId: lots.get('PGL2')!, quantity: 5, toLocationId: pen2 },
+    ]);
+    for (const lotId of [byHead, byWeight]) {
+      await ok(
+        productionManager,
+        'production.lot.set_status',
+        'PRODUCTION_LOT',
+        lotId,
+        at('08:00:00'),
+        {
+          status: 'SELLING',
+        },
+      );
+    }
+    const headSale = freshUuid();
+    await ok(farmManager, 'sales.sale.record', 'SALE', headSale, at('11:00:00'), {
+      fromLocationId: pen1,
+      lines: [
+        {
+          productId: pigId,
+          quantity: 3,
+          unitCode: 'TETE',
+          quantityBase: 3,
+          listUnitPriceXaf: 150_000,
+          unitPriceXaf: 150_000,
+        },
+      ],
+      payments: [{ methodCode: 'ESPECES', amountXaf: 450_000, cashAccountId: farmCash }],
+    });
+    const weightSale = freshUuid();
+    await ok(farmManager, 'sales.sale.record', 'SALE', weightSale, at('11:30:00'), {
+      fromLocationId: pen2,
+      lines: [
+        {
+          productId: pigKgId,
+          quantity: 3,
+          unitCode: 'TETE',
+          quantityBase: 3,
+          weightKg: 270,
+          listUnitPriceXaf: 1800,
+          unitPriceXaf: 1800,
+        },
+      ],
+      payments: [{ methodCode: 'ESPECES', amountXaf: 486_000, cashAccountId: farmCash }],
+    });
+    const lines = await db
+      .selectFrom('sales_sale_lines')
+      .select([
+        'sale_id',
+        'quantity_base',
+        'pricing_quantity',
+        'pricing_unit_code',
+        'line_total_xaf',
+      ])
+      .where('sale_id', 'in', [toBin(headSale), toBin(weightSale)])
+      .execute();
+    const bySale = new Map(lines.map((l) => [fromBin(l.sale_id), l]));
+    expect(bySale.get(headSale)).toMatchObject({
+      pricing_unit_code: 'TETE',
+      line_total_xaf: 450_000,
+    });
+    expect(Number(bySale.get(headSale)!.pricing_quantity)).toBe(3);
+    expect(bySale.get(weightSale)).toMatchObject({
+      pricing_unit_code: 'KG',
+      line_total_xaf: 486_000,
+    });
+    expect(Number(bySale.get(weightSale)!.pricing_quantity)).toBe(270);
+    // Trois têtes sorties de chaque groupe, sans identifiant individuel.
+    for (const [lotId, pen] of [
+      [byHead, pen1],
+      [byWeight, pen2],
+    ] as const) {
+      const lot = (await getProductionLot(db, lotId))!;
+      expect(lot.headcount.unsold).toBe(2);
+      expect(await balanceAt(pen, lot.productId, lot.stockLotId)).toBe(2);
+    }
   });
 
   it('AT-053 : un calibre ajouté par l’administrateur est aussitôt utilisable ; collectes antérieures inchangées', async () => {

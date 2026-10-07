@@ -7,7 +7,8 @@
  * d'un point de vente), ALL (Finance) ; refus (403 sans droit, 404 hors portée, audité) ; coût figé
  * des lignes masqué sans `inventory.valuation.read` (RC-05) ; reçu (BR-VEN-024) ; créances et leur
  * synthèse (BR-FIN-007) ; comptes de trésorerie et leurs mouvements ; volet ventes de la fiche
- * client (encours, dernières commandes et ventes, chacune sur sa propre portée).
+ * client (encours, dernières commandes et ventes, chacune sur sa propre portée) ; réalisé `CA` des
+ * objectifs (P4-13). AT-033 (part P4) : un commercial ne lit pas la vente d'un autre (404 audité).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
@@ -507,7 +508,7 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     });
   });
 
-  it('GET /sales/{id} hors portée ⇒ 404 audité ; sans droit ⇒ 403', async () => {
+  it('AT-033 (part P4) — GET /sales/{id} hors portée ⇒ 404 audité ; sans droit ⇒ 403', async () => {
     const outside = await get(comA, `/api/v1/sales/${saleB}`);
     expect(outside.statusCode).toBe(404);
     const denied = await db
@@ -682,6 +683,29 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
     expect(response.json().next_cursor).toBeNull();
     expect((await get(comA, `/api/v1/cash-accounts/${cashB}/movements`)).statusCode).toBe(404);
     expect((await get(fin, `/api/v1/cash-accounts/${cashA}/movements`)).statusCode).toBe(200);
+  });
+
+  // --- Réalisé des objectifs ---------------------------------------------------------------------
+
+  it('GET /performance/commercial : réalisé CA = ventes nettes attribuées au commercial (P4-09)', async () => {
+    await db
+      .insertInto('crm_sales_targets')
+      .values({
+        id: toBin(freshUuid()),
+        target_type: 'USER',
+        user_id: toBin(comA.userId),
+        metric: 'CA',
+        period_start: new Date(`${DAY}T00:00:00.000Z`),
+        period_end: new Date(`${DAY}T00:00:00.000Z`),
+        target_value: 10_000,
+        created_by: toBin(comA.userId),
+      })
+      .execute();
+    const response = await get(comA, `/api/v1/performance/commercial?from=${DAY}&to=${DAY}`);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().targets).toEqual([
+      expect.objectContaining({ metric: 'CA', realized: 3 * PRICE }),
+    ]);
   });
 
   // --- Fiche client -----------------------------------------------------------------------------
