@@ -38,7 +38,13 @@ export interface SoldStockInput {
   readonly createdBy: string;
   readonly createdDeviceId: string | null;
   readonly commandId: string;
+  /** Saisie hors ligne : trace d'origine ; sauf `strict`, elle autorise aussi le fait accompli. */
   readonly offline: boolean;
+  /**
+   * Ne jamais dépasser le stock réel, même saisie hors ligne : la confirmation d'une commande est une
+   * intention confirmée par le serveur (AV-126), non un fait accompli (vente du disponible, AV-127).
+   */
+  readonly strict?: boolean;
 }
 
 export type SoldStockResult =
@@ -57,6 +63,7 @@ export async function moveSoldStock(
   deps: { readonly idGenerator: IdGenerator },
   input: SoldStockInput,
 ): Promise<SoldStockResult> {
+  const lenient = input.offline && input.strict !== true;
   const base = {
     productId: input.productId,
     fromLocationId: input.fromLocationId,
@@ -70,7 +77,7 @@ export async function moveSoldStock(
     ...(input.createdDeviceId !== null ? { createdDeviceId: input.createdDeviceId } : {}),
     commandId: input.commandId,
     capturedOffline: input.offline,
-    allowNegative: input.offline,
+    allowNegative: lenient,
   } satisfies Omit<RecordMoveInput, 'quantityBase' | 'lotId'>;
 
   if (!REARING_LOCATION_TYPES.includes(input.locationType)) {
@@ -102,7 +109,7 @@ export async function moveSoldStock(
   let shortfall = first.shortfall;
   if (shortfall > 0) {
     const others = balances.filter((line) => !line.sellableFromRearing);
-    if (!input.offline) {
+    if (!lenient) {
       return {
         ok: false,
         outcome:

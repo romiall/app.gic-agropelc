@@ -2,22 +2,30 @@
 
 ## SM-ORDER — Commande client
 
-Deux dimensions : le cycle de vie (`status`) et l'état de réservation (`reservation_status` : `NONE`, `PARTIAL`, `FULL`, `RELEASED`), recalculé par `inventory`.
+Une seule dimension : le cycle de vie (`status`). Le statut est **dérivé des lignes** (`salesOrderStatusFromLines`, `packages/domain`), sauf `DRAFT` ; il n'y a ni réservation ni état de réservation (ADR-028 §4). Chaque ligne porte quatre quantités en unité de base — commandé en vigueur, vendu net des annulations, livré, retiré — d'où se dérivent « en attente » (commandé − vendu) et « à livrer » (vendu − livré), avec 0 ≤ livré ≤ vendu ≤ commandé (INV-VEN-04). Règles : [D04](../../01-functional/domaines/D04-VEN-commandes-ventes.md) §7.1 et §15.
+
+| Statut | Dérivation |
+|---|---|
+| `DRAFT` | Brouillon de bureau (`save_draft`) : aucun effet de stock ni de chiffre d'affaires |
+| `CONFIRMED` | Une quantité reste en attente ou à livrer, et rien n'a été livré |
+| `PARTIALLY_FULFILLED` | Une quantité reste en attente ou à livrer, et une livraison a eu lieu |
+| `FULFILLED` | Plus rien en attente ni à livrer ; une livraison a eu lieu |
+| `CLOSED` | Plus rien en attente ni à livrer parce que le reste a été annulé (`close_remaining`, ou annulation de la dernière vente non livrée) ; une part a été livrée |
+| `CANCELLED` | Plus rien en attente ni à livrer, et rien n'a été livré (annulation, ou annulation de la dernière vente ouverte) |
 
 ```mermaid
 stateDiagram-v2
   [*] --> DRAFT : sales.order.save_draft (bureau)
   [*] --> CONFIRMED : sales.order.place
-  DRAFT --> CONFIRMED : sales.order.place
+  DRAFT --> CONFIRMED : sales.order.place (même identifiant)
   DRAFT --> CANCELLED : sales.order.cancel
-  CONFIRMED --> CONFIRMED : sales.order.update
-  CONFIRMED --> PARTIALLY_FULFILLED : livraison partielle
-  CONFIRMED --> FULFILLED : livraison complète
-  PARTIALLY_FULFILLED --> FULFILLED : livraison du reliquat
-  PARTIALLY_FULFILLED --> CLOSED : clôture du reliquat
-  CONFIRMED --> CANCELLED : sales.order.cancel
-  FULFILLED --> PARTIALLY_FULFILLED : vente de livraison annulée
-  PARTIALLY_FULFILLED --> CONFIRMED : unique vente de livraison annulée
+  CONFIRMED --> CONFIRMED : confirm_remaining, update
+  PARTIALLY_FULFILLED --> PARTIALLY_FULFILLED : confirm_remaining
+  CONFIRMED --> CANCELLED : sales.order.cancel, ou annulation de la dernière vente ouverte
+  CONFIRMED --> PARTIALLY_FULFILLED : livraison partielle (P4-07)
+  CONFIRMED --> FULFILLED : livraison complète (P4-07)
+  PARTIALLY_FULFILLED --> FULFILLED : livraison du reste (P4-07)
+  PARTIALLY_FULFILLED --> CLOSED : sales.order.close_remaining, ou annulation de la dernière vente non livrée
   FULFILLED --> [*]
   CLOSED --> [*]
   CANCELLED --> [*]
@@ -25,16 +33,16 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `sales.order.save_draft` | Client identifié | `DRAFT` | `OrderDrafted` | — | — | `sales.order.create` |
-| `[*]`, `DRAFT` | `sales.order.place` | Client identifié (BR-VEN-001) ; ≥ 1 ligne ; prix résolus (BR-VEN-003) | `CONFIRMED` | Prix convenus figés ; numéro officiel ; `OrderConfirmed` | Réservation tentée sur l'emplacement de préparation (BR-VEN-004) | — | `sales.order.create` |
-| `CONFIRMED` | `sales.order.update` | Aucune livraison ; `base_version` à jour (sinon conflit) | `CONFIRMED` | Nouvelle version ; `OrderUpdated` | Réservation recalculée | — | `sales.order.create` (auteur) / portée `TEAM` |
-| `CONFIRMED`, `PARTIALLY_FULFILLED` | `sales.order.fulfil` (partiel) | Quantités ≤ reliquat (BR-VEN-008) | `PARTIALLY_FULFILLED` | Vente `ORDER_FULFILMENT` créée (SM-SALE) ; `OrderPartiallyFulfilled` | Réservation consommée ; mouvements `SALE` | CA, créance ; acomptes transférés à la vente (BR-FIN-008) | `sales.order.fulfil` |
-| `CONFIRMED`, `PARTIALLY_FULFILLED` | `sales.order.fulfil` (solde) | Reliquat nul après livraison | `FULFILLED` | `OrderFulfilled` | Idem | Idem | `sales.order.fulfil` |
-| `PARTIALLY_FULFILLED` | `sales.order.close_remaining` | Motif | `CLOSED` | `OrderClosed` | Réservation du reliquat libérée | Acomptes excédentaires → crédit client | `sales.order.cancel` |
-| `DRAFT`, `CONFIRMED` | `sales.order.cancel` | Aucune livraison ; motif | `CANCELLED` | `OrderCancelled` | Réservation libérée | Acomptes → crédit client ou remboursement (BR-VEN-009) | `sales.order.cancel` |
-| `FULFILLED`, `PARTIALLY_FULFILLED` | Réaction à `SaleCancelled` d'une vente de livraison | — | Recalculé depuis la quantité livrée | Quantités livrées recalculées | Réservation **non** recréée automatiquement (le stock est revenu à l'emplacement d'origine de la vente) | — | `system` |
+| `[*]` | `sales.order.save_draft` | En ligne ; client identifié ; ≥ 1 ligne ; prix résolus et figés à la saisie (BR-VEN-003, AV-148) | `DRAFT` | Numéro `CMD` ; `OrderDrafted` | — | — | `sales.order.create` |
+| `[*]`, `DRAFT` | `sales.order.place` | Client identifié (BR-VEN-001) ; ≥ 1 ligne (celles du brouillon s'il existe) ; ni remise ni produit vendu au poids ; prix résolus (BR-VEN-003) ; crédit si reste dû (BR-VEN-025) | `CONFIRMED` | Numéro `CMD` (commande neuve) ; prix convenus figés ; brouillon confirmé : version +1 ; `OrderConfirmed` ; **vente du disponible** (BR-VEN-004), la commande n'est jamais refusée pour manque de stock | Pour le disponible : `SALE` de l'emplacement de préparation vers « à livrer », coût figé (SM-SALE) ; le reste demeure en attente, sans réservation | Acomptes joints encaissés et affectés à la commande, puis passés à la vente créée (`ORDER_CONFIRMED`) ; CA à `occurred_at` ; créance du reste dû, échéance depuis la confirmation | `sales.order.create` |
+| `CONFIRMED`, `PARTIALLY_FULFILLED` | `sales.order.confirm_remaining` | Quantité en attente > 0 (sinon aucune vente) ; crédit si reste dû | inchangé (statut recalculé) | Nouvelle vente `ORDER` du disponible, au prix convenu ; `SaleConfirmed` ; la version ne bouge pas | `SALE` vers « à livrer » pour ce qui est devenu disponible | CA, créance ; l'acompte encore affecté à la commande passe à la nouvelle vente | `sales.order.create` |
+| `CONFIRMED` | `sales.order.update` | Aucune livraison (sinon rejet `ORDER_NOT_MODIFIABLE`) ; `base_version` à jour (sinon quarantaine `VERSION_CONFLICT`) ; ≥ 1 changement ; commande jamais vidée (`ORDER_EMPTY`) | `CONFIRMED` | Version +1 ; audit avant / après ; `OrderUpdated` | Baisse : retrait de l'attente, puis `CUSTOMER_RETURN` de « à livrer » vers l'emplacement de préparation pour le vendu non livré ; hausse ou ligne ajoutée : `SALE` du disponible | Baisse : document `ANV` (cause `ORDER_ADJUSTMENT`) par vente touchée, CA négatif, argent payé libéré en crédit client ou remboursement ; hausse : vente complémentaire au prix convenu, CA, créance | `sales.order.create` (auteur ; portée `TEAM`) |
+| `DRAFT`, `CONFIRMED` | `sales.order.cancel` | Aucune livraison (sinon `CANCELLATION_EXCEEDS_UNDELIVERED` : clôturer le reste) ; motif (`REASON_REQUIRED`) ; sans validation (AV-128) | `CANCELLED` | Version +1 ; `cancelled_at`, `cancelled_by`, motif ; `OrderCancelled` | Retour de tout le vendu : « à livrer » vers l'emplacement de préparation | Documents `ANV` (cause `ORDER_CANCELLATION`), CA négatif ; acompte et part payée libérés en crédit client ou remboursement (BR-VEN-009), sort consigné sur la commande | `sales.order.cancel` (auteur, Resp. commercial) |
+| `PARTIALLY_FULFILLED` | `sales.order.close_remaining` | Motif (`REASON_REQUIRED`) ; hors de ce statut : `ORDER_STATUS_INVALID` ; sans validation (AV-128) | `CLOSED` | Version +1 ; `closed_at`, `closed_by`, `closed_reason` ; commandé de chaque ligne = livré ; `OrderClosed` | Retour du vendu non livré | Documents `ANV` (cause `ORDER_CLOSURE`), CA négatif ; acompte restant et part payée libérés (BR-VEN-009) | `sales.order.cancel` |
+| `CONFIRMED`, `PARTIALLY_FULFILLED` | Livraison (bon de livraison `LIV`) — **P4-07, à venir** | Quantité ≤ vendu non livré (ADR-028 §7) ; règles à détailler avec P4-07 | `PARTIALLY_FULFILLED` ou `FULFILLED` | À décrire avec P4-07 (`OrderPartiallyFulfilled`, `OrderFulfilled`) | `DELIVERY` : « à livrer » → `V_CUSTOMER`, à la valeur figée de la vente | Aucun effet sur le CA (déjà reconnu à la confirmation, ADR-025) | `sales.order.fulfil` (nom de la commande à confirmer en P4-07) |
+| `CONFIRMED`, `PARTIALLY_FULFILLED` | Réaction à l'annulation d'une vente sur commande (`sales.sale.cancel`, `.request_cancellation` une fois appliquée, décision `SALE_CANCELLATION`) | Le non-livré seulement (ADR-029 §10) | Inchangé, ou `CANCELLED` (rien livré) / `CLOSED` (une part livrée) quand plus rien n'est ouvert | Quantités annulées retirées de la commande : commandé et vendu net baissent, cumul retiré monte ; version +1 (AV-149) | Effets de SM-SALE | Effets de SM-SALE | `system` (suite de `sales.sale.cancel`) |
 
-**Hors ligne** : `place`, `update`, `cancel` et `fulfil` (depuis un stock exclusif ou dans la limite de la réservation téléchargée) sont possibles. Une modification concurrente est détectée par `base_version`. Une livraison concurrente au-delà du reliquat devient une vente directe (D04 §14).
+**Hors ligne** : `place` est une intention que le serveur confirme à la synchronisation, avec l'heure métier de la saisie (AV-126) : la vente du disponible, l'affectation des acomptes et le chiffre d'affaires n'existent qu'à ce moment. `update`, `cancel` et `close_remaining` sont possibles hors ligne comme intentions sur l'état partagé : une `base_version` périmée met la modification en quarantaine (`VERSION_CONFLICT`, commande inchangée) ; une commande devenue livrée, terminée ou annulée côté serveur rejette la modification (`ORDER_NOT_MODIFIABLE`) ; une annulation devenue impossible est rejetée (`CANCELLATION_EXCEEDS_UNDELIVERED` après une livraison, `ORDER_ALREADY_CANCELLED`). La livraison hors ligne, y compris au-delà du vendu non livré (D04 §14, AV-133), relève de P4-07 et n'est pas décrite ici.
 
 ---
 
@@ -52,7 +60,7 @@ Cycle de vie (`status`) et statut de paiement **dérivé** (`payment_status`) so
 
 ```mermaid
 stateDiagram-v2
-  [*] --> CONFIRMED : sales.sale.record / sales.order.fulfil
+  [*] --> CONFIRMED : sales.sale.record / sales.order.place, .confirm_remaining, .update (vente sur commande)
   CONFIRMED --> CANCELLED : annulation directe (≤ 15 min, caisse ouverte)
   CONFIRMED --> CANCELLATION_REQUESTED : demande d'annulation
   CANCELLATION_REQUESTED --> CANCELLED : validation
@@ -76,7 +84,7 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | `sales.sale.record` | Validations D04 §8 ; disponibilité (en ligne) ou allocation (hors ligne) ; plafond de dérogation | `CONFIRMED` | Prix figés ; attribution (BR-VEN-020) ; canal, zone ; numéro officiel ; conversion éventuelle du prospect ; `SaleConfirmed` | Un mouvement `SALE` (source → `V_CUSTOMER`) par ligne × lot ; consommation d'allocation ; coût unitaire figé | CA à `occurred_at` ; encaissements et affectations ; mouvements de trésorerie ; créance du reste, avec échéance | `sales.sale.record` (+ `sales.credit_sale.record` si reste dû ; + `sales.price.override` si dérogation) |
-| `[*]` | `sales.order.fulfil` | SM-ORDER | `CONFIRMED` (`ORDER_FULFILMENT`) | Idem, prix = prix convenu | Idem + consommation de la réservation | Idem + transfert des acomptes | `sales.order.fulfil` |
+| `[*]` | `sales.order.place`, `sales.order.confirm_remaining`, `sales.order.update` (hausse ou ligne ajoutée) | SM-ORDER ; une quantité en attente et du stock disponible ; crédit si reste dû (BR-VEN-025) | `CONFIRMED` (type `ORDER`, une vente par confirmation) | Prix = prix convenu de la ligne de commande (`ORDER_QUOTE`, sans remise) ; commercial et canal de la commande ; échéance depuis la confirmation (AV-129) ; conversion éventuelle du prospect ; `SaleConfirmed` | Un mouvement `SALE` par ligne × lot, de l'emplacement de préparation vers « à livrer » (jamais de solde négatif), coût figé ; aucune réservation | CA à `occurred_at` ; l'acompte de la commande s'affecte à la vente (`ORDER_CONFIRMED`) ; créance du reste, avec échéance | `sales.order.create` |
 | `CONFIRMED` | `sales.sale.cancel` (direct) | BR-VEN-028 : auteur, ≤ 15 min, session de caisse ouverte | `CANCELLED` | Motif ; `SaleCancelled` ; commande recalculée | Mouvements inverses `V_CUSTOMER` → emplacement d'origine (même lot, même coût) ; allocation restituée si active | CA négatif daté de l'annulation ; affectations désactivées ; remboursement (`REFUND`) ou crédit client | `sales.sale.cancel` |
 | `CONFIRMED` | `sales.sale.request_cancellation` | Hors du délai direct ; motif | `CANCELLATION_REQUESTED` | Demande `SALE_CANCELLATION` ; `SaleCancellationRequested` | — | — | `sales.sale.cancel` |
 | `CANCELLATION_REQUESTED` | `approvals.request.approve` | Approbateur ≠ demandeur | `CANCELLED` | Comme l'annulation directe ; décision tracée | Comme l'annulation directe | Comme l'annulation directe ; remboursement ou crédit au choix de l'approbateur | `sales.sale_cancel.approve` |

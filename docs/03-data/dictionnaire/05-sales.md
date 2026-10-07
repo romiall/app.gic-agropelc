@@ -50,11 +50,11 @@
 | `confirmed_at` | ts | Oui | — | Requis dès que le statut n'est plus `DRAFT` |
 | `closed_at` | ts | Oui | — | Clôture du reliquat d'une commande partiellement livrée (AV-128) |
 | `closed_by` | uuid → identity.users | Oui | — | Idem |
-| `closed_reason` | text | Oui | — | Motif de clôture |
-| `released_payment_treatment` | enum(`CUSTOMER_CREDIT`,`REFUND`) | Oui | — | DÉDUIT : sort de l'acompte libéré par une commande annulée ou clôturée sans vente (BR-VEN-009, AV-033) ; s'écrit une seule fois |
-| [STD-CANCEL] | | | | Annulation avant toute livraison |
+| `closed_reason` | text | Oui | — | Motif de clôture : le commentaire saisi, à défaut le libellé du code motif ; pour une commande clôturée par l'annulation de sa dernière vente non livrée, « Annulation de la vente » suivi du numéro (AV-149) |
+| `released_payment_treatment` | enum(`CUSTOMER_CREDIT`,`REFUND`) | Oui | — | DÉDUIT : sort de l'acompte encore affecté à la commande, libéré par son annulation ou la clôture de son reste, qu'elle ait ou non des ventes (BR-VEN-009, AV-033) ; nul si aucun acompte n'a été libéré ; s'écrit une seule fois. Le sort de la part payée des ventes annulées est porté par leurs documents d'annulation |
+| [STD-CANCEL] | | | | Annulation avant toute livraison (`cancel_comment` : commentaire saisi ; pour l'annulation de la dernière vente ouverte, « Annulation de la vente » suivi du numéro) |
 | [STD-ORIGIN] | | | | `occurred_at` : heure de la commande |
-| [STD-AUDIT] | | | | `version` : concurrence optimiste (BR-VEN-005) |
+| [STD-AUDIT] | | | | `version` : concurrence optimiste (BR-VEN-005), 1 à la création ; incrémentée par une modification du contenu ou du statut (confirmation d'un brouillon, `sales.order.update`, `.cancel`, `.close_remaining`, annulation d'une vente de la commande), non par la progression des ventes (`.confirm_remaining`) |
 
 - **PK** `id`. **UQ** `doc_number` ; `command_id` ; `(created_device_id, local_ref)`.
 - **CK** `status` dans la liste ; `external_origin` dans `NONE`, `KOMMO` ; `total_estimated_xaf ≥ 0` et `advance_paid_xaf ≥ 0` ; `confirmed_at` non nul hors `DRAFT` et `CANCELLED` (un brouillon jamais confirmé peut être annulé) ; `released_payment_treatment` nul ou dans `CUSTOMER_CREDIT`, `REFUND` ; `closed_at` et `closed_by` renseignés si et seulement si `CLOSED` ; colonnes d'annulation renseignées si et seulement si `CANCELLED`.
@@ -204,7 +204,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `requested_by` | uuid → identity.users | Non | — | Demandeur |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Validation `SALE_CANCELLATION` (hors délai direct) |
 | `cancelled_total_xaf` | money_xaf | Non | — | Total annulé ; DÉDUIT : égal à Σ des montants des lignes d'annulation (contrôle du code, non de la base) |
-| `released_payment_treatment` | enum(`CUSTOMER_CREDIT`,`REFUND`) | Oui | — | DÉDUIT : sort de la part de paiement libérée, crédit client non affecté ou remboursement, au choix de l'approbateur (BR-VEN-027, ADR-028 §8) ; nul tant que non décidé ou sans objet |
+| `released_payment_treatment` | enum(`CUSTOMER_CREDIT`,`REFUND`) | Oui | — | DÉDUIT : sort de la part de paiement libérée, crédit client non affecté ou remboursement, au choix de l'approbateur, de l'annulateur direct, ou de l'auteur de la commande ou du Resp. commercial pour une cause `ORDER_*` (BR-VEN-027, BR-VEN-009, ADR-028 §8, AV-146) ; nul tant que non décidé ou sans objet |
 | `applied_at` | ts | Oui | — | Heure métier de l'effet sur le chiffre d'affaires et sur le stock ; renseignée si et seulement si `APPLIED` ; figée après décision |
 | `applied_business_date` | date | Oui | généré | Jour métier de `applied_at` (colonne générée stockée) : chiffre d'affaires par jour (BR-FIN-042) |
 | [STD-ORIGIN] | | | | `occurred_at` : heure de la demande ou de la saisie |

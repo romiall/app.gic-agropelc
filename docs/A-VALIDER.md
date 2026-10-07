@@ -161,6 +161,9 @@ Classification (PM §45) :
 | AV-144 | Vente directe depuis un magasin (et non un point de vente) | SECONDAIRE | P4 | Refusée | OUVERT |
 | AV-145 | Vente en ligne à un client dont le compte a été fusionné | SECONDAIRE | P4 | Refusée : vendre au compte conservé | OUVERT |
 | AV-146 | Sort de l'argent payé d'une vente annulée : remboursement ou crédit client | SECONDAIRE | P4 | Choisi par l'annulateur (annulation directe) ou l'approbateur ; remboursement forcé sans client | OUVERT |
+| AV-147 | Remise sur une ligne de commande | SECONDAIRE | P4 | Pas de remise sur une ligne de commande : la dérogation se saisit par le prix convenu (plafond et validation `PRICE_OVERRIDE`) | OUVERT |
+| AV-148 | Confirmation d'un brouillon de commande : prix de la saisie ou prix du jour | SECONDAIRE | P4 | Lignes et prix figés à la saisie du brouillon | OUVERT |
+| AV-149 | Annulation d'une vente sur commande : la commande garde-t-elle la quantité ? | IMPORTANTE | P4 | Quantité retirée de la commande, qui ne la revendra pas | OUVERT |
 
 ---
 
@@ -953,7 +956,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : BR-VEN-027 laisse le choix « à l'approbateur » sans défaut ; une annulation directe (dans les 15 minutes) n'a pas d'approbateur ; une vente sans client ne peut pas porter de crédit.
 - **Choix** : (a) le choix est fait par celui qui annule (annulation directe) ou par l'approbateur (demande) et il est obligatoire ; sans client, remboursement ; (b) toujours remboursement ; (c) toujours crédit client quand il y a un client.
 - **Recommandation** : (a).
-- **Impact** : `sales.sale.cancel`, `.request_cancellation`, décision `SALE_CANCELLATION`, trésorerie (`REFUND`). Défaut implémenté : (a).
+- **Impact** : `sales.sale.cancel`, `.request_cancellation`, décision `SALE_CANCELLATION`, trésorerie (`REFUND`). Le même défaut vaut pour l'annulation d'une commande, la clôture de son reste et la baisse d'une commande (`sales.order.cancel`, `.close_remaining`, `.update`, P4-06) : l'auteur de la commande ou le Resp. commercial choisit (`paymentTreatment`, un seul choix pour toute la part libérée, acompte compris) ; sans choix, `PAYMENT_TREATMENT_REQUIRED`. Défaut implémenté : (a).
 
 ### AV-145 — Vente en ligne à un client dont le compte a été fusionné — SECONDAIRE
 - **Question** : Un vendeur connecté choisit un client dont le compte a été fusionné dans un autre (doublon). Que fait-on ?
@@ -961,6 +964,27 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) la vente est refusée : vendre au compte conservé (`CUSTOMER_MERGED`) ; (b) elle est acceptée et rattachée au compte conservé.
 - **Recommandation** : (a).
 - **Impact** : `sales.sale.record` en ligne. Défaut implémenté : (a).
+
+### AV-147 — Remise sur une ligne de commande — SECONDAIRE
+- **Question** : Une ligne de vente directe peut porter une remise en XAF (BR-VEN-015, AV-026). Une ligne de commande peut-elle en porter une aussi, que la vente reprendrait à chaque confirmation ?
+- **Pourquoi** : la ligne de commande fige un prix convenu (BR-VEN-003) mais n'a ni remise ni montant remisé ; la vente créée à la confirmation reprend ce prix sans remise (`ORDER_QUOTE`, AV-087). Un rabais négocié avec le client doit donc se traduire par un prix unitaire convenu plus bas.
+- **Choix** : (a) pas de remise sur une ligne de commande : la dérogation se saisit par le prix convenu (prix unitaire), soumise au plafond du rôle et à la validation `PRICE_OVERRIDE` comme une dérogation de vente ; (b) remise en XAF sur la ligne de commande, reprise par chaque ligne de vente créée (avec ses règles de plafond et de validation).
+- **Recommandation** : (a) : un prix convenu unique évite de répartir une remise sur les ventes partielles successives d'une même ligne (arrondis au franc, annulations partielles).
+- **Impact** : `sales.order.save_draft`, `.place` et `.update` (ligne ajoutée) refusent une remise (`DISCOUNT_NOT_SUPPORTED_ON_ORDER`) ; schéma de `sales_sales_order_lines` (option b : colonne de remise). Défaut implémenté : (a).
+
+### AV-148 — Confirmation d'un brouillon : prix de la saisie ou prix du jour — SECONDAIRE
+- **Question** : Un brouillon préparé au bureau (`sales.order.save_draft`) est confirmé plus tard (`sales.order.place`, même identifiant) : la commande garde-t-elle les lignes et les prix résolus à la saisie du brouillon, ou les prix sont-ils recalculés à la confirmation ?
+- **Pourquoi** : BR-VEN-003 fixait le prix « au moment de la confirmation » ; un brouillon a déjà des prix résolus et enregistrés à sa saisie. Entre les deux, une règle tarifaire a pu changer, et le client a peut-être reçu un prix pendant la préparation.
+- **Choix** : (a) lignes et prix figés à la saisie du brouillon : la confirmation ne change ni lignes ni prix, et la vente créée reprend ces prix ; (b) prix recalculés à la confirmation par le moteur de tarification, à l'heure de la confirmation (le brouillon n'est alors qu'une liste de produits et de quantités).
+- **Recommandation** : (a) : le prix convenu avec le client est celui qui lui a été proposé ; le brouillon prépare la commande, il ne la renégocie pas.
+- **Impact** : `sales.order.place` sur un brouillon existant (charge utile sans `lines`), `sales.order.save_draft`, BR-VEN-003. Défaut implémenté : (a).
+
+### AV-149 — Annulation d'une vente sur commande : la commande garde-t-elle la quantité ? — IMPORTANTE
+- **Question** : Une vente créée par la confirmation d'une commande est annulée, en tout ou en partie (`sales.sale.cancel`, `.request_cancellation`, décision `SALE_CANCELLATION`), pour sa part non livrée. Que devient la quantité annulée sur la commande ?
+- **Pourquoi** : SM-SALE dit seulement « commande recalculée ». ADR-028 §5 donne à la commande ses propres annulations (`sales.order.cancel`, `.close_remaining`, `.update`), mais une vente sur commande reste annulable directement (ADR-029 §10). Selon le cas, l'annulation corrige une erreur de la vente (le client attend toujours sa marchandise) ou renonce à la livraison.
+- **Choix** : (a) la quantité annulée est retirée de la commande (commandé et vendu baissent), qui ne la revendra pas ; la commande devient `CANCELLED` ou `CLOSED` quand plus rien n'est ouvert ; (b) la quantité annulée revient « en attente » sur la commande, qui la revendra à la prochaine confirmation du reste ; (c) une vente sur commande ne s'annule que par les commandes de la commande (`sales.order.cancel`, `.close_remaining`, `.update`) : `sales.sale.cancel` la refuse.
+- **Recommandation** : (a) : annuler une vente est un renoncement ; (b) rouvrirait aussitôt une vente que l'on vient d'annuler. (c) si l'on veut qu'une commande ne soit modifiée que par ses propres commandes.
+- **Impact** : `sales.sale.cancel`, `.request_cancellation` et décision `SALE_CANCELLATION` sur une vente de type `ORDER` ; version et statut de la commande ; SM-ORDER, SM-SALE. Défaut implémenté : (a).
 
 ---
 

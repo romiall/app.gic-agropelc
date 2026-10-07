@@ -49,6 +49,7 @@ import {
   type CancellationLine,
   type PaymentTreatment,
 } from './sale-cancellation.js';
+import { lockOrderOfSale, syncOrderAfterSaleCancellation } from './order-adjust.js';
 
 const cancelPayloadSchema = z.object({
   saleId: z.string().uuid(),
@@ -94,6 +95,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const offline = envelope.captured_offline;
     const origin = await loadCommandOrigin(uow, envelope.command_id);
 
+    // Ordre de verrous commun : la commande d'une vente sur commande avant la vente (order-adjust.ts).
+    await lockOrderOfSale(uow, p.saleId);
     const locked = await lockSale(uow, p.saleId);
     if (!locked) return NOT_FOUND;
     const { sale } = locked;
@@ -196,6 +199,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         })
         .execute();
       await insertLines(plan.lines);
+      await syncOrderAfterSaleCancellation(uow, {
+        locked,
+        lines: plan.lines,
+        at,
+        actorUserId: author,
+        reasonCodeId: p.reasonCodeId ?? null,
+        comment: p.comment ?? null,
+      });
       return { status: 'APPLIED', serverRefs: { docNumber } };
     }
 
@@ -266,6 +277,7 @@ function registerDecision(
         'Cette annulation a déjà été décidée.',
       );
     }
+    await lockOrderOfSale(uow, fromBin(doc.sale_id));
     const locked = await lockSale(uow, fromBin(doc.sale_id));
     if (!locked) throw new ApprovalDecisionRefused('NOT_FOUND', 'Vente introuvable.');
 
@@ -326,6 +338,14 @@ function registerDecision(
       })
       .where('id', '=', doc.id)
       .execute();
+    await syncOrderAfterSaleCancellation(uow, {
+      locked,
+      lines,
+      at: ctx.decidedAt,
+      actorUserId: ctx.decidedBy,
+      reasonCodeId: doc.reason_code_id ? fromBin(doc.reason_code_id) : null,
+      comment: doc.comment,
+    });
   });
 }
 

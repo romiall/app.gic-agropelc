@@ -85,7 +85,7 @@ export type CancellationPlan =
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome };
 
 /** Quantité annulable d'une ligne : tout le non-annulé, et le non-livré d'une vente sur commande. */
-function cancellableMilli(sale: SaleRow, line: LineRow): number {
+export function cancellableMilli(sale: SaleRow, line: LineRow): number {
   const delivered = sale.sale_type === 'ORDER' ? Number(line.delivered_quantity_base) : 0;
   return (
     quantityMilliUnits(quantityFromDecimal(Number(line.quantity_base))) -
@@ -118,6 +118,54 @@ export function planFullCancellation(
       id: idGenerator.newId(),
       saleLineId: fromBin(line.id),
       quantityBase: remaining / 1000,
+      amountXaf,
+    });
+    totalXaf += amountXaf;
+  }
+  if (lines.length === 0) {
+    return {
+      ok: false,
+      outcome: rejected('NOTHING_TO_CANCEL', 'Plus rien à annuler sur cette vente.'),
+    };
+  }
+  return { ok: true, lines, totalXaf };
+}
+
+/**
+ * Annulation **partielle** : `wanted` donne, par ligne de vente, la quantité à annuler (millièmes
+ * d'unité de base). Les montants se calculent au prorata (`lineCancellationAmountXaf`) ; une quantité
+ * au-delà de l'annulable est refusée (`CANCELLATION_EXCEEDS_UNDELIVERED`, ADR-029 §10).
+ */
+export function planPartialCancellation(
+  idGenerator: IdGenerator,
+  locked: LockedSale,
+  wanted: ReadonlyMap<string, number>,
+): CancellationPlan {
+  const lines: CancellationLine[] = [];
+  let totalXaf = 0;
+  for (const line of locked.lines) {
+    const quantityMilli = wanted.get(fromBin(line.id)) ?? 0;
+    if (quantityMilli <= 0) continue;
+    if (quantityMilli > cancellableMilli(locked.sale, line)) {
+      return {
+        ok: false,
+        outcome: rejected(
+          'CANCELLATION_EXCEEDS_UNDELIVERED',
+          'La quantité à annuler dépasse ce qui reste annulable (non annulé, non livré).',
+        ),
+      };
+    }
+    const amountXaf = lineCancellationAmountXaf({
+      lineTotalXaf: xaf(Number(line.line_total_xaf)),
+      quantity: quantityFromDecimal(Number(line.quantity_base)),
+      alreadyCancelledQuantity: quantityFromDecimal(Number(line.cancelled_quantity_base)),
+      alreadyCancelledXaf: xaf(Number(line.cancelled_xaf)),
+      cancelQuantity: quantityFromDecimal(quantityMilli / 1000),
+    });
+    lines.push({
+      id: idGenerator.newId(),
+      saleLineId: fromBin(line.id),
+      quantityBase: quantityMilli / 1000,
       amountXaf,
     });
     totalXaf += amountXaf;
@@ -401,10 +449,53 @@ async function releasePayments(
     remaining -= take;
   }
 
-  // Un encaissement sans client ne peut pas devenir du crédit : il se rembourse (AV-146). Le choix
-  // n'est exigé que s'il existe au moins un encaissement identifié parmi ceux dont une part est libérée.
-  const identified = payments.some(
-    (payment) => payment.customer_id !== null && (takenByPayment.get(fromBin(payment.id)) ?? 0) > 0,
+  return settleReleasedPayments(uow, deps, {
+    payments,
+    takenByPayment,
+    treatment: input.treatment,
+    sourceDocId: input.cancellationId,
+    appliedAt: input.appliedAt,
+    actorUserId: input.actorUserId,
+    deviceId: input.deviceId,
+    commandId: input.commandId,
+    offline: input.offline,
+  });
+}
+
+/**
+ * Sort de l'argent libéré d'un ou plusieurs encaissements (BR-VEN-027, BR-VEN-009 ; AV-146) :
+ * **crédit client** (`unallocated_xaf`) ou **remboursement** (`refunded_xaf` + mouvement de
+ * trésorerie `REFUND`, `SALE_REFUND` pour pièce source). Un encaissement sans client ne peut que se
+ * rembourser ; le choix n'est exigé que si une part d'un encaissement identifié est libérée.
+ * Les encaissements arrivent dans l'ordre de leur identifiant : comptes de trésorerie verrouillés
+ * dans un ordre constant. Les affectations sont déjà renversées par l'appelant.
+ */
+export async function settleReleasedPayments(
+  uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly payments: readonly {
+      readonly id: Buffer;
+      readonly customer_id: Buffer | null;
+      readonly cash_account_id: Buffer;
+    }[];
+    readonly takenByPayment: ReadonlyMap<string, number>;
+    readonly treatment: PaymentTreatment | null;
+    /** Document source du mouvement de remboursement : annulation de vente ou commande. */
+    readonly sourceDocId: string;
+    readonly appliedAt: Date;
+    readonly actorUserId: string;
+    readonly deviceId: string | null;
+    readonly commandId: string | null;
+    readonly offline: boolean;
+  },
+): Promise<
+  | { readonly ok: true; readonly treatment: PaymentTreatment }
+  | { readonly ok: false; readonly outcome: CommandHandlerOutcome }
+> {
+  const identified = input.payments.some(
+    (payment) =>
+      payment.customer_id !== null && (input.takenByPayment.get(fromBin(payment.id)) ?? 0) > 0,
   );
   if (identified && input.treatment === null) {
     return {
@@ -415,10 +506,9 @@ async function releasePayments(
       ),
     };
   }
-  // Encaissements dans l'ordre de leur identifiant : comptes de trésorerie verrouillés dans un ordre constant.
-  for (const payment of payments) {
+  for (const payment of input.payments) {
     const id = fromBin(payment.id);
-    const taken = takenByPayment.get(id) ?? 0;
+    const taken = input.takenByPayment.get(id) ?? 0;
     if (taken === 0) continue;
     const treatment: PaymentTreatment = payment.customer_id === null ? 'REFUND' : input.treatment!;
     if (treatment === 'REFUND') {
@@ -428,7 +518,7 @@ async function releasePayments(
         amountXaf: taken,
         movementType: 'REFUND',
         sourceDocType: 'SALE_REFUND',
-        sourceDocId: input.cancellationId,
+        sourceDocId: input.sourceDocId,
         occurredAt: input.appliedAt,
         createdBy: input.actorUserId,
         ...(input.deviceId !== null ? { createdDeviceId: input.deviceId } : {}),

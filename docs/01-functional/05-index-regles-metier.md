@@ -94,14 +94,14 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | ID | Règle (résumé) | Statut |
 |---|---|---|
 | BR-VEN-001 | Une commande client exige un client identifié (pas de commande anonyme). | D (CM §7 « commandes » liées au prospect ou client) |
-| BR-VEN-002 | Une commande passe à `CONFIRMED` par `sales.order.place` (engagement du client). L'état `DRAFT` n'existe côté serveur que pour une préparat… | D |
-| BR-VEN-003 | Chaque ligne de commande fige un prix convenu (`quoted_unit_price_xaf`) résolu par le moteur de tarification au moment de la confirmation,… | C (CM §30) / D |
-| BR-VEN-004 | À la confirmation, le serveur tente de réserver la quantité sur l'emplacement de préparation (`fulfilment_location_id`). Si le disponible e… | C (PM §6) / D |
-| BR-VEN-005 | Une commande n'est modifiable (quantités, produits, date, lieu) que tant qu'aucune livraison n'a eu lieu. Toute modification contrôle la ve… | D (PM §30 « commande modifiée ») |
+| BR-VEN-002 | Une commande est confirmée par `sales.order.place` (engagement du client, avec d'éventuels acomptes joints) : elle naît `CONFIRMED`, ou `DR… | D ; AV-126 (tranché 30/09/2026) |
+| BR-VEN-003 | Chaque ligne de commande fige un prix convenu (`quoted_unit_price_xaf`) résolu par le moteur de tarification à l'heure de la saisie (`occur… | C (CM §30) / D ; AV-147, AV-148 (ouverts, défauts implémentés) |
+| BR-VEN-004 | La confirmation est une vente du disponible : le serveur vend, ligne par ligne, la quantité que couvre le stock de l'emplacement de prépara… | C (PM §6 : jamais refusée pour manque de stock) ; AV-126, AV-127 (tranchés 30/09/2026) ; ADR-028 §4 |
+| BR-VEN-005 | Une commande est modifiable (quantités, produits ajoutés ou retirés, lieu de préparation du même site, date et adresse de livraison) tant q… | AV-130 (tranché 30/09/2026) ; D (PM §30 « commande modifiée ») |
 | BR-VEN-006 | Livrer une commande crée une vente de type `ORDER_FULFILMENT` portant la référence de la commande, le livreur, l'heure réelle de remise et… | AV-024, AV-034 |
 | BR-VEN-007 | À la livraison, le prix appliqué est le prix convenu de la ligne de commande (`price_source = ORDER_QUOTE`). | AV-087 |
 | BR-VEN-008 | La quantité livrée cumulée d'une ligne ne peut pas dépasser la quantité commandée. Une remise supplémentaire est une vente directe distinct… | D (INV-VEN-04) |
-| BR-VEN-009 | L'annulation d'une commande (avant toute livraison) ou la clôture de son reliquat libère les réservations correspondantes. Les acomptes dev… | D / AV-033 |
+| BR-VEN-009 | L'annulation d'une commande (`DRAFT` ou `CONFIRMED`, avant toute livraison) et la clôture de son reliquat (`PARTIALLY_FULFILLED`) retirent… | AV-128, AV-130 (tranchés 30/09/2026) ; AV-033, AV-146 (ouverts, défauts implémentés) |
 | BR-VEN-010 | Un transfert préparé pour une commande (ex. vers le stock mobile du livreur) référence la commande ; son expédition transfère la réservatio… | D (ADR-004) |
 | BR-VEN-011 | Une vente naît à l'état `CONFIRMED` : elle représente un fait accompli (produits remis). Aucune vente « brouillon » n'est synchronisée ; un… | D (C-05) |
 | BR-VEN-012 | Une vente confirmée est immuable. Toute correction passe par une annulation (contre-écriture), suivie si besoin d'une nouvelle vente. | C (CM §41 ; PM §8) |

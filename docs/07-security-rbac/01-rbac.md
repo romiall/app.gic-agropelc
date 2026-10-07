@@ -45,7 +45,7 @@ Une permission avec la portée maximale `SITE`, attribuée par une affectation `
 |---|---|
 | Compte client | Titulaire courant (`owner_user_id`), ou acquéreur tant qu'il n'y a pas d'autre titulaire |
 | Visite, interaction | Auteur |
-| Commande client | `commercial_user_id` |
+| Commande client | Auteur de la commande (`created_by`) pour `sales.order.create` et `sales.order.cancel` (AV-128, ADR-028 §5 ; P4-06) ; `commercial_user_id` (commercial attributaire, qui peut différer de l'auteur) reste la référence de l'attribution commerciale et des lectures (P4-10, à préciser) |
 | Vente | `seller_user_id` ou `commercial_user_id` |
 | Encaissement | `received_by_user_id` |
 | Emplacement `MOBILE` et son stock | `custodian_user_id` |

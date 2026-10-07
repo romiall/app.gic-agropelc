@@ -19,20 +19,13 @@
 import { sql } from 'kysely';
 import {
   checkSaleCustomer,
-  convertToBaseQuantity,
   creditCheck,
   dueDateOf,
-  isWholeQuantity,
-  pricingQuantity,
-  quantityFromDecimal,
-  quantityMilliUnits,
   quantityToDecimal,
   saleTotals,
   unitCostXaf,
   xaf,
   type IdGenerator,
-  type PricingMode,
-  type Quantity,
 } from '@gic/domain';
 import type { WarningCode } from '@gic/contracts';
 import type {
@@ -45,12 +38,7 @@ import type { DocumentSequenceService } from '../../../../platform/document-sequ
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { requestApproval } from '../../../approvals/application/public/index.js';
-import {
-  findProduct,
-  findProductUnit,
-  findSalesChannel,
-  findUnit,
-} from '../../../catalog/application/public/index.js';
+import { findSalesChannel } from '../../../catalog/application/public/index.js';
 import {
   convertOnConfirmedSale,
   getCustomer,
@@ -82,33 +70,14 @@ import {
   rejected,
   type Uow,
 } from './shared.js';
-import {
-  recordSalePayloadSchema,
-  type RecordSalePayload,
-  type SaleLineInput,
-} from './sale-payload.js';
-import { discountCeilingPct, priceLine, type PricedLine } from './sale-pricing.js';
+import { recordSalePayloadSchema, type RecordSalePayload } from './sale-payload.js';
+import { discountCeilingPct } from './sale-pricing.js';
+import { resolveSaleLines } from './sale-lines.js';
 import { planPayments, writePayments } from './sale-payments.js';
 import { moveSoldStock } from './sale-stock.js';
 
 /** Types d'emplacement depuis lesquels une vente directe est possible (BR-VEN-017). */
 const SALE_LOCATION_TYPES: readonly string[] = ['POS', 'MOBILE', 'BUILDING', 'PEN'];
-/** Unité de tarification d'un produit vendu au poids (kg ; AV-031). */
-const WEIGHT_UNIT_CODE = 'KG';
-
-interface ResolvedLine {
-  readonly id: string;
-  readonly lineNo: number;
-  readonly input: SaleLineInput;
-  readonly productId: string;
-  readonly productName: string;
-  readonly isService: boolean;
-  readonly productInactive: boolean;
-  readonly quantityBase: Quantity;
-  readonly pricingQuantity: Quantity;
-  readonly pricingUnitCode: string;
-  readonly priced: PricedLine;
-}
 
 /** Rôle responsable du stock d'un emplacement, qui résout `STOCK_NEGATIVE` (AV-142, DÉDUIT). */
 function stockOwnerRole(locationType: string, siteType: string): string {
@@ -265,68 +234,15 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       customerCategoryId: kept?.categoryId ?? null,
       channelCode,
     };
-    const lines: ResolvedLine[] = [];
-    for (const [index, line] of p.lines.entries()) {
-      const product = await findProduct(uow, line.productId);
-      if (!product) return rejected('PRODUCT_UNKNOWN', 'Produit inconnu.');
-      const sellable = product.status === 'ACTIVE' && product.isSellable;
-      if (!sellable && !offline) {
-        return rejected('PRODUCT_NOT_SELLABLE', `Produit non vendable : ${product.name}.`);
-      }
-      const unit = await findProductUnit(uow, product.id, line.unitCode);
-      if (!unit || (!offline && !(unit.isActive && unit.isSalesUnit))) {
-        return rejected('UNIT_INVALID', `Unité de vente invalide pour ${product.name}.`);
-      }
-      const declaredBase = quantityFromDecimal(line.quantityBase);
-      const computedBase = convertToBaseQuantity(
-        quantityFromDecimal(line.quantity),
-        unit.factorToBase,
-      );
-      if (Math.abs(quantityMilliUnits(declaredBase) - quantityMilliUnits(computedBase)) > 1) {
-        return rejected(
-          'QUANTITY_BASE_MISMATCH',
-          `Quantité en unité de base incohérente avec ${line.unitCode} pour ${product.name}.`,
-        );
-      }
-      const baseUnit = await findUnit(uow, product.baseUnitCode);
-      if (baseUnit?.isCount && !isWholeQuantity(declaredBase)) {
-        return rejected('LINE_INVALID', `Quantité entière attendue pour ${product.name}.`);
-      }
-      const pricingMode = product.pricingMode as PricingMode;
-      const weight = line.weightKg === undefined ? null : quantityFromDecimal(line.weightKg);
-      const priced = pricingQuantity({
-        pricingMode,
-        quantityBase: declaredBase,
-        ...(weight !== null ? { weightKg: weight } : {}),
-      });
-      const pricingUnitCode =
-        pricingMode === 'PER_WEIGHT' ? WEIGHT_UNIT_CODE : product.baseUnitCode;
-      if (pricingUnitCode !== product.baseUnitCode && !(await findUnit(uow, pricingUnitCode))) {
-        return rejected('UNIT_INVALID', `Unité de tarification inconnue : ${pricingUnitCode}.`);
-      }
-      const price = await priceLine(uow, pricingContext, {
-        productId: product.id,
-        pricingQuantity: priced,
-        line,
-        maxDiscountPct,
-      });
-      if (!price.ok) return price.outcome;
-      if (price.priced.priceMismatch) flags.add('PRICE_MISMATCH');
-      if (!sellable) flags.add('PRODUCT_INACTIVE');
-      lines.push({
-        id: idGenerator.newId(),
-        lineNo: index + 1,
-        input: line,
-        productId: product.id,
-        productName: product.name,
-        isService: product.stockFamily === 'SERVICE',
-        productInactive: !sellable,
-        quantityBase: declaredBase,
-        pricingQuantity: priced,
-        pricingUnitCode,
-        priced: price.priced,
-      });
-    }
+    const resolved = await resolveSaleLines(uow, idGenerator, {
+      lines: p.lines,
+      offline,
+      pricing: pricingContext,
+      maxDiscountPct,
+      flags,
+    });
+    if (!resolved.ok) return resolved.outcome;
+    const lines = resolved.lines;
     const totals = saleTotals(
       lines.map((line) => ({
         grossXaf: xaf(line.priced.grossXaf),
