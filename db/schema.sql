@@ -6437,11 +6437,12 @@ DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_sales_payment_allocations_insert_guard` BEFORE INSERT ON `sales_payment_allocations` FOR EACH ROW BEGIN
   DECLARE p_status VARCHAR(25);
   DECLARE t_status VARCHAR(25);
-  -- INV-FIN-09, INV-FIN-10 : on n'affecte qu'un encaissement enregistré, à une cible non annulée.
+  -- INV-FIN-09, INV-FIN-10 : on n'affecte qu'un encaissement enregistré (ou dont l'annulation est
+  -- seulement demandée), à une cible non annulée.
   IF NEW.status = 'ACTIVE' THEN
     SELECT status INTO p_status FROM sales_customer_payments WHERE id = NEW.payment_id;
-    IF p_status IS NULL OR p_status <> 'RECORDED' THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : seul un encaissement enregistré (RECORDED) s''affecte (INV-FIN-09).';
+    IF p_status IS NULL OR p_status NOT IN ('RECORDED', 'CANCELLATION_REQUESTED') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'sales_payment_allocations : seul un encaissement enregistré (RECORDED, ou annulation demandée) s''affecte (INV-FIN-09).';
     END IF;
     IF NEW.sale_id IS NOT NULL THEN
       SELECT status INTO t_status FROM sales_sales WHERE id = NEW.sale_id;
@@ -7648,5 +7649,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090800'),
   ('20261003090900'),
   ('20261003091000'),
-  ('20261005090000');
+  ('20261005090000'),
+  ('20261007090000');
 UNLOCK TABLES;

@@ -676,6 +676,24 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
   {
+    // P4-08 : UC-FIN-03 (D09 §4), réservé à la Finance.
+    code: 'sales.payment.reallocate',
+    module: 'sales',
+    description: 'Réaffecter un encaissement client',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: true,
+  },
+  {
+    // P4-08 : remboursement d'un crédit client non affecté (BR-FIN-003), sortie de caisse.
+    code: 'sales.payment.refund',
+    module: 'sales',
+    description: 'Rembourser un crédit client',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: true,
+  },
+  {
     code: 'sales.receivable.read',
     module: 'sales',
     description: 'Consulter les créances clients',
@@ -1654,7 +1672,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // FINANCE — 55
+  // FINANCE — 57
   ...grants('FINANCE', [
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
@@ -1676,6 +1694,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['sales.payment.record', 'ALL'],
     ['sales.payment.read', 'ALL'],
     ['sales.payment.cancel', 'ALL'],
+    ['sales.payment.reallocate', 'ALL'],
+    ['sales.payment.refund', 'ALL'],
     ['sales.receivable.read', 'ALL'],
     ['inventory.stock.read', 'ALL'],
     ['inventory.valuation.read', 'ALL'],

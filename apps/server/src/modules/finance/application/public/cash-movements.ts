@@ -101,6 +101,11 @@ export interface RecordCashMovementInput {
   readonly allowNegative: boolean;
   /** Mouvement corrigé : fait de celui-ci un inverse (sens opposé, même montant). */
   readonly reversesMovementId?: string;
+  /**
+   * Fait passé constaté après coup (ex. encaissement suspect validé par la Finance) : appliqué même
+   * si le compte a été désactivé depuis, comme un fait accompli hors ligne.
+   */
+  readonly pastFact?: boolean;
 }
 
 export interface RecordedCashMovement {
@@ -135,8 +140,14 @@ export async function recordCashMovement(
   if (!account) {
     throw new CashMovementError('Compte de trésorerie introuvable.', 'CASH_ACCOUNT_INVALID');
   }
-  // Un fait accompli hors ligne sur un compte désactivé depuis est appliqué (BR-SYN-007).
-  if (account.status !== 'ACTIVE' && !input.capturedOffline) {
+  // Un fait accompli hors ligne, un fait passé constaté après coup ou la correction d'un mouvement
+  // existant, sur un compte désactivé depuis, est appliqué (BR-SYN-007 ; on corrige le passé).
+  if (
+    account.status !== 'ACTIVE' &&
+    !input.capturedOffline &&
+    input.pastFact !== true &&
+    input.reversesMovementId === undefined
+  ) {
     throw new CashMovementError('Compte de trésorerie inactif.', 'CASH_ACCOUNT_INACTIVE');
   }
 

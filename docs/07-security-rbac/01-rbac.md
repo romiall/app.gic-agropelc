@@ -152,6 +152,8 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `sales.payment.record` | — | — | TEAM | OWN | OWN | SITE | — | SITE | — | — | ALL |
 | `sales.payment.read` | ALL | — | TEAM | OWN | OWN | SITE | — | SITE | — | — | ALL |
 | `sales.payment.cancel` | A·ALL | — | — | — | — | — | — | — | — | — | A·ALL |
+| `sales.payment.reallocate` (P4-08) | — | — | — | — | — | — | — | — | — | — | ALL |
+| `sales.payment.refund` (P4-08) | — | — | — | — | — | — | — | — | — | — | ALL |
 | `sales.receivable.read` | ALL | — | TEAM | OWN | OWN | SITE | — | SITE | — | — | ALL |
 
 ### 5.4 Stock, distribution, production

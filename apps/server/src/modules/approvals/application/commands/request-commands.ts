@@ -47,6 +47,15 @@ const decisionBasePayloadSchema = z.object({
 });
 const approvePayloadSchema = decisionBasePayloadSchema.extend({
   comment: z.string().max(2000).optional(),
+  /**
+   * Données propres au type d'opération, remises telles quelles au gestionnaire du module
+   * propriétaire (ex. référence corrigée d'un encaissement suspect de doublon, AV-135) ; tracées
+   * par l'inbox et l'audit de la commande, non stockées sur la demande.
+   */
+  decisionData: z
+    .record(z.string().min(1).max(200))
+    .refine((data) => Object.keys(data).length <= 10, 'Dix données au plus.')
+    .optional(),
 });
 const rejectPayloadSchema = decisionBasePayloadSchema.extend({
   // decision_comment "Obligatoire en cas de rejet" (dictionnaire, approvals.approval_requests).
@@ -164,6 +173,9 @@ function buildDecisionCommandHandler(
           decision,
           ...(envelope.payload.decisionOption !== undefined
             ? { decisionOption: envelope.payload.decisionOption }
+            : {}),
+          ...('decisionData' in envelope.payload && envelope.payload.decisionData !== undefined
+            ? { decisionData: envelope.payload.decisionData }
             : {}),
           decidedBy: envelope.author_user_id,
           decidedAt: occurredAt,

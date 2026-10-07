@@ -72,6 +72,10 @@ export const WARNING_CODES = [
   'ANONYMOUS_UNPAID',
   'LOT_NOT_SELLABLE',
   'PRICE_OVERRIDE_EXCEEDS_LIMIT',
+  // P4-08 : encaissement saisi hors ligne dont une part n'a pu être affectée à la vente ou à la
+  // commande visée (soldée, annulée, livrée entre-temps) : elle reste en crédit client, conflit pour
+  // la Finance (AV-150, BR-SYN-007).
+  'PAYMENT_UNALLOCATED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

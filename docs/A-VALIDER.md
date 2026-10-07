@@ -165,6 +165,7 @@ Classification (PM §45) :
 | AV-148 | Confirmation d'un brouillon de commande : prix de la saisie ou prix du jour | SECONDAIRE | P4 | Lignes et prix figés à la saisie du brouillon | OUVERT |
 | AV-149 | Annulation d'une vente sur commande : la commande garde-t-elle la quantité ? | IMPORTANTE | P4 | Quantité retirée de la commande, qui ne la revendra pas | OUVERT |
 | AV-150 | Encaissement saisi hors ligne avec une commande que le serveur refuse ; acompte supérieur au total de la commande | IMPORTANTE | P4 | Encaissement conservé en crédit client non affecté, avec un conflit pour la Finance ; acompte borné au total en ligne | OUVERT |
+| AV-151 | Annulation d'un encaissement dont une part a déjà été remboursée au client | SECONDAIRE | P4 | Refusée ; la Finance corrige par une réaffectation ou une régularisation | OUVERT |
 
 ---
 
@@ -992,7 +993,14 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : aujourd'hui le rejet de la commande annule tout, encaissement compris : la caisse physique et la trésorerie divergent sans trace. L'encaissement est un fait accompli (BR-SYN-007), la commande non. Sans plafond, l'excédent d'un acompte reste affecté à la commande jusqu'à sa clôture (revue adverse de P4-06).
 - **Choix** : (a) l'encaissement est enregistré seul, en crédit client non affecté (ou, sans client identifiable, en encaissement à rembourser), avec un conflit pour la Finance, même si la commande est refusée ; un acompte en ligne est borné au total estimé de la commande (`PAYMENT_EXCEEDS_TOTAL`) ; (b) la commande est rejetée avec son encaissement (état actuel) et le commercial ressaisit l'argent comme un encaissement ; (c) l'acompte n'est accepté qu'en ligne.
 - **Recommandation** : (a) : l'argent reçu ne doit jamais disparaître du système.
-- **Impact** : `sales.order.place` hors ligne ; `sales.payment.record` (P4-08), qui porte l'encaissement seul et le crédit client non affecté ; conflits ; trésorerie. **Défaut à implémenter en P4-08** avec les encaissements seuls (aujourd'hui : comportement (b), signalé ici pour ne pas combler le trou en silence).
+- **Impact** : `sales.order.place` hors ligne ; `sales.payment.record` (P4-08), qui porte l'encaissement seul et le crédit client non affecté ; conflits ; trésorerie. **État (P4-08)** : le plafond de l'acompte est implémenté (`sales.payment.record` : reste à vendre de la commande, refus en ligne, surplus en crédit hors ligne avec l'avertissement `PAYMENT_UNALLOCATED` et un conflit pour la Finance) ; l'encaissement anonyme hors ligne dont la vente est soldée entre-temps est encore refusé (le crédit exige un client) ; la conservation de l'encaissement joint à une commande refusée hors ligne reste au comportement (b), à reprendre avec les jeux hors ligne de P4-11.
+
+### AV-151 — Annulation d'un encaissement en partie remboursé — SECONDAIRE
+- **Question** : Un client paie 5 000 XAF ; 2 000 restent en crédit et la Finance lui en rembourse 1 500. On découvre ensuite que l'encaissement était erroné. Peut-on l'annuler ?
+- **Pourquoi** : l'annulation inverse le mouvement de trésorerie d'origine (5 000) ; le remboursement (1 500) est déjà sorti de caisse. Annuler les deux exige de défaire aussi le remboursement, qui est un fait physique (argent remis).
+- **Choix** : (a) refus (`PAYMENT_PARTIALLY_REFUNDED`) : la Finance corrige autrement (réaffectation, écriture de régularisation) ; (b) annulation de la seule part non remboursée ; (c) annulation totale avec une entrée de régularisation du remboursement.
+- **Recommandation** : (a) en V1, le cas est rare et la Finance garde la main.
+- **Impact** : `sales.payment.request_cancellation` ; SM-CUSTOMER-PAYMENT. Défaut implémenté : (a).
 
 ---
 

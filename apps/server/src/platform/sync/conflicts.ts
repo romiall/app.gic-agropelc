@@ -142,3 +142,18 @@ export async function openConflictSummary(
   }
   return { total, byType };
 }
+
+/** Détails consignés par le conflit le plus récent d'un type sur une entité (`null` : aucun). */
+export async function latestConflictDetails(
+  uow: UnitOfWork,
+  input: { readonly conflictType: string; readonly entityId: string },
+): Promise<unknown> {
+  const row = await uow
+    .selectFrom('sync_sync_conflicts')
+    .select('details')
+    .where('conflict_type', '=', input.conflictType)
+    .where('entity_id', '=', toBin(input.entityId))
+    .orderBy('created_at', 'desc')
+    .executeTakeFirst();
+  return row?.details ?? null;
+}

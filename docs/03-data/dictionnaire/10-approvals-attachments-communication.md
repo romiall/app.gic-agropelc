@@ -55,7 +55,7 @@
 | `policy_id`, `policy_version` | uuid, int | Oui | — | Politique figée |
 | `required_attachment_ids` | uuid[] | Non | `{}` | Pièces attendues |
 | `status` | enum(`PENDING`,`APPROVED`,`REJECTED`,`CANCELLED`) | Non | `PENDING` | |
-| `decision_option` | code | Oui | — | Issue choisie (ex. `ERREUR_DECLARATION`, `PERTE_NON_JUSTIFIEE`, `REFUND`, `KEEP_CREDIT`) |
+| `decision_option` | code | Oui | — | Issue choisie (ex. `ERREUR_DECLARATION`, `PERTE_NON_JUSTIFIEE`, `REFUND`, `KEEP_CREDIT`). Des données propres au type d'opération (`decisionData` de `approvals.request.approve`, dix au plus, ex. `correctedReference` d'un encaissement suspect, AV-135, P4-08) sont remises au gestionnaire du module propriétaire sans être stockées ici : l'inbox et l'audit de la commande les tracent |
 | `decided_by` | uuid → identity.users | Oui | — | |
 | `decided_at` | ts | Oui | — | |
 | `decision_comment` | text | Oui | — | Obligatoire en cas de rejet |

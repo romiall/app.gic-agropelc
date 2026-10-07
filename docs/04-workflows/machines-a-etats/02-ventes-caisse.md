@@ -114,11 +114,13 @@ stateDiagram-v2
 |---|---|---|---|---|---|---|---|
 | `[*]` | `sales.payment.record` (ou inclus dans la vente) | BR-FIN-001 ; (moyen, référence) unique | `RECORDED` | `PaymentReceived`, `PaymentAllocated` | — | Mouvement de trésorerie `IN` ; affectations (vente, commande, ou automatiques BR-FIN-004) ; créances recalculées | `sales.payment.record` |
 | `[*]` | idem | Référence déjà connue (BR-FIN-005) | `SUSPECT_DUPLICATE` | `PaymentFlaggedDuplicate` ; demande de validation | — | **Aucun** mouvement ni affectation | `sales.payment.record` |
-| `SUSPECT_DUPLICATE` | `approvals.request.approve` | Référence corrigée fournie (AV-135 : seule exception à la référence figée) | `RECORDED` | Tracé | — | Mouvement de trésorerie et affectations appliqués | `sales.payment.cancel` (FINANCE) |
+| `SUSPECT_DUPLICATE` | `approvals.request.approve` | Référence corrigée fournie (`decisionData.correctedReference`, AV-135 : seule exception à la référence figée), ou référence redevenue libre ; sinon refus `PAYMENT_REFERENCE_DUPLICATE` | `RECORDED` | Tracé | — | Mouvement de trésorerie et affectations appliqués | `sales.payment.cancel` (FINANCE) |
 | `SUSPECT_DUPLICATE` | `approvals.request.reject` | — | `REJECTED` | Tracé | — | Aucun | `sales.payment.cancel` |
 | `RECORDED` | `sales.payment.request_cancellation` | Motif | `CANCELLATION_REQUESTED` | Demande `PAYMENT_CANCELLATION` | — | — | `sales.payment.record` |
 | `CANCELLATION_REQUESTED` | `approvals.request.approve` | — | `CANCELLED` | `PaymentCancelled` | — | Mouvement de trésorerie inverse ; affectations désactivées ; créances rouvertes | `sales.payment.cancel` |
-| `CANCELLATION_REQUESTED` | `approvals.request.reject` | — | `RECORDED` | Tracé | — | — | `sales.payment.cancel` |
+| `CANCELLATION_REQUESTED` | `approvals.request.reject` | — | `RECORDED` | Tracé ; motif et demande effacés de l'encaissement (conservés sur la demande) | — | — | `sales.payment.cancel` |
+| `RECORDED` | `sales.payment.reallocate` (P4-08) | En ligne ; cibles du client, payables ; Σ ≤ crédit après libération | inchangé | Affectations libérées (`REALLOCATED`) et nouvelles | — | Créances recalculées ; crédit client réécrit | `sales.payment.reallocate` (FINANCE) |
+| `RECORDED` | `sales.payment.refund` (P4-08) | En ligne ; montant ≤ crédit non affecté | inchangé | Part remboursée tracée (`refunded_xaf`) ; l'encaissement ne s'annule plus (AV-151) | — | Mouvement `REFUND` (sortie, jamais en négatif pour une caisse) | `sales.payment.refund` (FINANCE) |
 
 **Hors ligne** : l'enregistrement est possible. Le contrôle d'unicité local porte seulement sur les références connues de l'appareil ; le contrôle serveur fait foi.
 

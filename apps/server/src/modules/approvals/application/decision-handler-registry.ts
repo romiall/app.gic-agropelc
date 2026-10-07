@@ -22,6 +22,8 @@ export interface ApprovalDecisionContext {
   readonly subjectId: string;
   readonly decision: ApprovalDecisionType;
   readonly decisionOption?: string;
+  /** Données propres au type d'opération, saisies avec une approbation (`decisionData`). */
+  readonly decisionData?: Readonly<Record<string, string>>;
   readonly decidedBy: string;
   readonly decidedAt: Date;
   /** Auteur de la demande (ex. auteur d'une demande d'annulation, `[STD-CANCEL]`). */
