@@ -276,3 +276,25 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-058 (part P7) | `production-read.e2e.test.ts` (`/production/lots`, vue jour par jour, indicateurs) | Partiel : tableau ECR-ANA-04 et écran ECR-PRD-01 non construits (P9, écrans) |
 | REQ-062 (part P7) | `production-farm-week.e2e.test.ts` (semaine de saisies hors ligne), `production-sync-projections.test.ts` (jeu `production`) | Vérifié pour la production |
 | REQ-081 (part P7) | `production-acceptance.test.ts` (AT-026 : lot → mortalité → coût → abattage → produits en stock) | Partiel : vente, paiement et marge en P4 et P8 |
+
+### 17.5 Phase P4 (07/10/2026) — [`13-demonstration-p4.md`](13-demonstration-p4.md)
+
+| REQ | Vérifié par | État à la fin de P4 |
+|---|---|---|
+| REQ-002 (part P4) | `sales-read.e2e.test.ts` (`/sales`, `/payments`, `/deliveries`, `/cash-accounts/{id}/movements` : qui, quand, où) | Vérifié pour les ventes et encaissements ; analyse en P9 |
+| REQ-004 (part P4) | `sales-finance-invariants.test.ts` (stock, trésorerie et affectations de chaque vente), `sales-revenue-receivables.test.ts` (CA, coût des ventes, marge) | Vérifié ; tableaux en P9 |
+| REQ-010 (part P4) | `sales-acceptance.test.ts` (AT-011 : conversion à la première vente ; AT-008 : commande jusqu'au solde), `sales-order-*-commands.test.ts` | Vérifié ; écrans ECR-VEN-02 à 04 non construits |
+| REQ-016 (part P4) | `sales-read.e2e.test.ts` (réalisé `CA` de `/performance/commercial`), `sales-revenue-receivables.test.ts` (`QTE_PRODUIT`) | Vérifié |
+| REQ-022 (part P4) | `sales-sale-commands.test.ts` (canal choisi ou déduit du lieu, AV-140) | Vérifié ; analyse multicanale en P9 |
+| REQ-025 | `sales-sale-commands.test.ts` (vendeur, commercial, client, PDV, canal, zone figés), `sales-finance-invariants.test.ts` (INV-VEN-10) | Vérifié |
+| REQ-026 | `sales-acceptance.test.ts` (AT-008, AT-009), `sales-finance-invariants.test.ts` (INV-VEN-08, INV-STK-16, INV-FIN-02), `sales-revenue-receivables.test.ts` | Vérifié |
+| REQ-034 (part P4) | `production-acceptance.test.ts` (AT-052 : 3 porcs à la tête, 3 au kilo vif) | Vérifié |
+| REQ-040 | `sales-acceptance.test.ts` (AT-018 : stock mobile reçu, ventes, perte, retour, solde nul), `inventory-transfer-commands.test.ts` | Vérifié ; perte hors lot : AV-152 |
+| REQ-050 (part P4) | `sales-sale-commands.test.ts` (AT-007 : la vente garde prix, règle et version), `sales-finance-invariants.test.ts` (INV-VEN-05) | Vérifié |
+| REQ-051 (part P4) | `sales-payment-commands.test.ts`, `sales-acceptance.test.ts` (AT-030, AT-032), `sales-read.e2e.test.ts` (`/receivables`, `/cash-accounts`) | Partiel : dépenses, achats et dettes en P8 |
+| REQ-053 (part P4) | `production-acceptance.test.ts` (AT-026 : CA 10 741 500, marge du lot 5 141 500), `sales-revenue-receivables.test.ts` (`lotRevenue`) | Vérifié pour le CA et la marge des lots ; dépenses directes en P8 |
+| REQ-062 (part P4) | `sales-sale-commands.test.ts` (AT-001), `sales-sync-projections.test.ts` (jeux `orders`, `sales_recent`, `cash`, encours, moyens de paiement), `sales-order-commands.test.ts` (AV-150) | Vérifié côté serveur ; application des jeux par la PWA avec les écrans |
+| REQ-064 (part P4) | `sales-sale-commands.test.ts` (stock mobile exclusif : seul le détenteur vend) | Partiel : quotas d'appareil et blocage sur l'appareil en P5 |
+| REQ-066 (part P4) | `sales-cancel-commands.test.ts`, `sales-order-cancel-commands.test.ts`, `sales-payment-commands.test.ts`, `sales-finance-invariants.test.ts` (INV-VEN-09, INV-FIN-01) | Vérifié |
+| REQ-073 (part P4) | `sales-read.e2e.test.ts` (AT-033 : 404 audité, 403, coût masqué), `scope-evaluation.test.ts` (`listConfinementAt`), `sales-sync-projections.test.ts` (portée d'appareil) | Vérifié |
+| REQ-081 (part P4) | `production-acceptance.test.ts` (AT-026 : lot → coût → vente → marge) | Partiel : paiement fournisseur et dépenses en P8 |
