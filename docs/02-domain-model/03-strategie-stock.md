@@ -124,17 +124,17 @@ Question CM §62 : « Combien de poulets réellement disponibles pouvons-nous ve
 ### 5.2 Allocation (quota hors ligne)
 
 - Accordée **en ligne** par un responsable à un couple (utilisateur, appareil), pour (emplacement, produit[, lot]), avec une quantité et une validité (`valid_until`).
-- À l'octroi, le serveur garantit Σ restes + réservations ≤ solde (INV-STK-10).
+- À l'octroi, le serveur garantit Σ restes des quotas actifs ≤ Σ soldes du produit à l'emplacement (INV-STK-10, INV-STK-19).
 - L'appareil télécharge son quota et le décrémente localement à chaque sortie. Il refuse de dépasser (AV-025).
-- Registre de quota `stock_allocation_entries` : `GRANT`, `INCREASE`, `CONSUME`, `RELEASE`, `REVOKE`, `TRANSFER`. Reste = Σ entrées signées.
+- Registre de quota `stock_allocation_entries` : `GRANT`, `INCREASE`, `CONSUME`, `RELEASE`, `REVOKE`, `ADJUST`, `RESTORE` (restitution à l'annulation d'une vente). Reste = Σ entrées signées, jamais négatif (INV-STK-20).
 - Libération : **confirmée par l'appareil** (il envoie son reste à la synchronisation). Tant que l'appareil ne l'a pas confirmée, le serveur considère le reste comme toujours détenu, ce qui empêche une double attribution.
 - Révocation forcée (appareil perdu, vendeur absent) : auditée ; toute consommation ultérieure imputée à ce quota ouvre `ALLOCATION_REVOKED_CONSUMED`.
 
 Pourquoi ce choix plutôt qu'un stock négatif toléré (PM §6) ? Parce que la double consommation est **empêchée à la source**, au lieu d'être découverte a posteriori. Le coût opérationnel (octroyer des quotas) n'existe qu'en mode `SHARED`. Le mode `EXCLUSIVE_DEVICE`, recommandé par défaut pour les PDV, le supprime pour le cas courant.
 
-### 5.3 Réservation de commande
+### 5.3 Réservation de commande — retirée
 
-Même table (`allocation_type = ORDER_RESERVATION`), portée par la ligne de commande et non par un appareil. Elle est consommée par la livraison, libérée par l'annulation, **transférée** par un transfert préparé pour la commande.
+**Retirée** par ADR-028 §4 : confirmer une commande vend le disponible vers l'emplacement « à livrer » du site ; la part en attente n'a pas de stock ; aucun transfert n'est préparé « pour une commande ». Le quota d'appareil est le seul objet de la table des allocations (ADR-033).
 
 ### 5.4 Quand la prévention échoue
 

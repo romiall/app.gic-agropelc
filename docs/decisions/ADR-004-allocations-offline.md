@@ -1,6 +1,6 @@
 # ADR-004 — Prévention de la double consommation hors ligne : garde exclusive, quotas et réservations
 
-- **Statut** : ACCEPTÉ ; politique par défaut À VALIDER (AV-025, AV-035)
+- **Statut** : ACCEPTÉ ; politique par défaut À VALIDER (AV-025, AV-035). **Note du 08/10/2026** : la décision 3 (réservation de commande) est **REMPLACÉE** par [ADR-028](ADR-028-commande-vente-livraison-p4.md) §4 ; les autres décisions sont précisées par [ADR-033](ADR-033-quotas-d-appareil-apres-adr-028.md)
 - **Date** : 24/09/2026
 
 ## Contexte

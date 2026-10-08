@@ -12,7 +12,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 2. Lis ensuite, dans cet ordre : la démonstration de sortie de P4 ([`docs/10-development-plan/13-demonstration-p4.md`](docs/10-development-plan/13-demonstration-p4.md)) ; [`docs/03-data/01-identifiants-et-conventions.md`](docs/03-data/01-identifiants-et-conventions.md) (blocs `[STD-*]`, types logiques → MySQL, unicités partielles par colonne générée, préfixes de numéros, nommage) ; puis, pour la phase retenue à l'étape 1 (§5), sa fiche et son backlog dans [`docs/10-development-plan/01-plan-developpement.md`](docs/10-development-plan/01-plan-developpement.md) §4 et les documents qu'elle cite (CLAUDE.md §4).
 3. **Règles de collaboration avec le porteur du projet** (non négociables) :
    - répondre **en français**, avec des points d'avancement **fréquents et brefs** ; il demande souvent le « taux d'avancement » : répondre par un petit tableau ;
-   - toute question métier non couverte : la poser avec un **choix multiple**, option recommandée en premier, en langage simple (reformuler s'il ne comprend pas) ; en attendant, implémenter la valeur par défaut **paramétrable** et tracer un `AV-nnn` (prochain identifiant libre : **AV-153** ; prochain ADR : **ADR-032** ; ADR-030, accueil par rôle, est rédigé depuis le 08/10/2026) ;
+   - toute question métier non couverte : la poser avec un **choix multiple**, option recommandée en premier, en langage simple (reformuler s'il ne comprend pas) ; en attendant, implémenter la valeur par défaut **paramétrable** et tracer un `AV-nnn` (prochain identifiant libre : celui qui suit **AV-165** ; prochain ADR : celui qui suit **ADR-033** ; ADR-030 (accueil par rôle), ADR-032 et ADR-033 (P5) sont rédigés) ;
    - **ne jamais faire `git push`** ni toucher à un dépôt distant **sans une demande explicite et nouvelle du porteur dans la session**. Le 07/10/2026, le porteur a demandé de pousser son dossier local vers GitHub puis de développer et pousser sur la branche `claude/brave-pasteur-c7q4y7` : cette autorisation valait pour cette session ; ne jamais créer de pull request sans demande ;
    - messages de commit en français, préfixés par la portée (`feat(sales): …`, `docs(p4): …`, `test(…)`, `fix(…)`) ;
    - **ne jamais committer** `quickstart.sh` (seul son mode d'exécution a été perdu sous Windows, contenu inchangé) ni le fichier `historique conversation` à la racine (fichier personnel du porteur) : ajouter les fichiers **nommément**, jamais `git add -A`.
@@ -58,7 +58,8 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 | **P4 Ventes** | **Code terminé** (P4-01 à P4-14) | `13-demonstration-p4.md` |
 | P6 Approvisionnement | Code terminé ; reprise prévue pour AV-096 (réception hors site après validation) | `11-demonstration-p6.md` |
 | P7 Production | Code terminé (CA et marge des lots livrés en P4) | `12-demonstration-p7.md` |
-| P5, P8, P9, P10 | Non commencées | plan §4 |
+| **P5 Distribution et PDV** | **En cours** : P5-01 fait (conception : ADR-032, ADR-033, AV-153 à AV-165, backlog de 24 incréments) ; **prochaine étape P5-02** | plan §4 (P5) |
+| P8, P9, P10 | Non commencées | plan §4 |
 
 - Tests au 07/10 : domaine **216** (17 fichiers, couverture ≥ 90 %), contrats **165**, base **117** (12 fichiers), PWA **58**, serveur **656** (85 fichiers) ; typage, lint, frontières, formatage et références verts ; **CI GitHub verte** sur la branche.
 - Git : `main` sur GitHub contient le travail local poussé le 07/10 (jusqu'à P4-06, commit `417c791`) ; la branche **`claude/brave-pasteur-c7q4y7`** porte en plus les correctifs de CI, P4-06 (revue), P4-07 à P4-14 et AV-150. Sa fusion dans `main` (pull request) est à la main du porteur.
@@ -84,8 +85,8 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 
 **Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **656**, base **117**, domaine **216**, contrats **165**, PWA **58**) avant toute modification ; en cas d'échec, le signaler au porteur.
 
-**Étape 1 — choisir la suite avec le porteur** (choix multiple, recommandation en premier) :
-1. **P5 Distribution et points de vente** (recommandé : P4 en dépend pour la caisse) — sessions de caisse (ouverture, clôture, écart, validation), quotas d'appareil (`DEVICE_QUOTA`) et blocage de la vente hors ligne au-delà de l'allocation (AV-025), caisse du PDV dans le jeu `cash`, remises de fonds ;
+**Étape 1 — la suite** : **P5 est engagée** (le porteur l'a demandée le 08/10/2026 avec les valeurs par défaut) : reprendre au premier incrément non fait du backlog de P5 (plan §4, **P5-02**). Les autres choix restent ouverts si le porteur change de direction (choix multiple, recommandation en premier) :
+1. **P5 Distribution et points de vente** (en cours ; P4 en dépend pour la caisse) — sessions de caisse (ouverture, clôture, écart, validation), quotas d'appareil (`DEVICE_QUOTA`) et blocage de la vente hors ligne au-delà de l'allocation (AV-025), caisse du PDV dans le jeu `cash`, remises de fonds ;
 2. **Reprise de P6 pour AV-096** (réception hors site après validation), courte ;
 3. **P8 Finance opérationnelle** — dépenses, factures et paiements fournisseurs, rapprochement, dettes ;
 4. **Écrans PWA** des phases terminées (ventes ECR-VEN-01 à 06 en premier) et application des jeux hors ligne sur l'appareil.

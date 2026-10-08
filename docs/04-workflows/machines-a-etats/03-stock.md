@@ -105,13 +105,16 @@ Inventaire d'ouverture (`count_type = OPENING`) : même machine ; théorique nul
 
 ---
 
-## SM-ALLOCATION — Allocation (quota) et réservation
+## SM-ALLOCATION — Allocation (quota d'appareil)
+
+> Réduite au quota d'appareil par ADR-028 §4 et ADR-033 : la réservation de commande n'existe plus (la confirmation vend le disponible vers l'emplacement « à livrer »).
 
 ```mermaid
 stateDiagram-v2
-  [*] --> ACTIVE : octroi (quota) / confirmation de commande (réservation)
-  ACTIVE --> ACTIVE : augmentation / consommation / réduction
-  ACTIVE --> CLOSED : libération par l'appareil / livraison complète / annulation / transfert
+  [*] --> ACTIVE : octroi
+  ACTIVE --> ACTIVE : augmentation / consommation / restitution
+  ACTIVE --> ACTIVE : appareil bloqué ou perdu (revocation_pending)
+  ACTIVE --> CLOSED : libération par l'appareil
   ACTIVE --> REVOKED : révocation forcée
   CLOSED --> [*]
   REVOKED --> [*]
@@ -119,13 +122,12 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `inventory.allocation.grant` (`DEVICE_QUOTA`) | Emplacement `SHARED` ; appareil actif de l'utilisateur ; Σ allocations + réservations ≤ solde | `ACTIVE` | `StockAllocated` ; téléchargée par l'appareil détenteur | Aucun mouvement ; disponible des autres réduit | — | `inventory.allocation.manage` |
-| `[*]` | Confirmation de commande (`ORDER_RESERVATION`) | BR-VEN-004 | `ACTIVE` | `StockReservationChanged` | Aucun mouvement ; disponible réduit | — | `system` (via `sales.order.place`) |
-| `ACTIVE` | Consommation (vente, perte, transfert sortant, consommation) | Détenteur ; reste ≥ quantité (hors ligne) | `ACTIVE` | Entrée `CONSUME` | Le mouvement métier (`SALE`…) porte `allocation_id` | — | (permission de l'opération) |
-| `ACTIVE` | `inventory.allocation.grant` (augmentation) | Disponible suffisant | `ACTIVE` | Entrée `INCREASE` | — | — | `inventory.allocation.manage` |
-| `ACTIVE` | `inventory.allocation.release` | Commande émise par l'appareil détenteur (confirme le reste) | `CLOSED` | Entrée `RELEASE` du reste ; `StockAllocationReleased` | Disponible des autres augmenté | — | détenteur (implicite) |
-| `ACTIVE` | Livraison complète, annulation ou clôture de commande | — | `CLOSED` | Entrées `CONSUME` / `RELEASE` | — | — | `system` |
-| `ACTIVE` | Expédition d'un transfert pour commande | BR-VEN-010 | `CLOSED` (source) + nouvelle `ACTIVE` (destination) | Entrée `TRANSFER` | — | — | `system` |
-| `ACTIVE` | `inventory.allocation.revoke` | Motif ; responsable | `REVOKED` | `StockAllocationRevoked` ; toute consommation ultérieure imputée ouvre `ALLOCATION_REVOKED_CONSUMED` | Disponible des autres augmenté | — | `inventory.allocation.manage` |
+| `[*]` | `inventory.allocation.grant` (`DEVICE_QUOTA`) | Emplacement `SHARED` ; appareil actif de l'utilisateur ; Σ restes des quotas actifs ≤ Σ soldes du produit (INV-STK-19) | `ACTIVE` | `StockAllocated` ; téléchargée par l'appareil détenteur | Aucun mouvement ; disponible des autres réduit | — | `inventory.allocation.manage` |
+| `ACTIVE` | Consommation (vente, perte, transfert sortant, consommation) | Couple (utilisateur, appareil) du quota (INV-STK-11) ; en ligne reste ≥ quantité, sinon refus ; hors ligne l'excédent est pris sur le stock commun (AV-161) | `ACTIVE` | Entrée `CONSUME` ; reste jamais négatif | Le mouvement métier (`SALE`…) porte `allocation_id` | — | (permission de l'opération) |
+| `ACTIVE` | Annulation d'une vente qui a consommé le quota | Quota encore actif ; quantité plafonnée à la consommation d'origine | `ACTIVE` | Entrée `RESTORE` | Le mouvement de retour (`CUSTOMER_RETURN`) rattaché ; sinon retour au stock commun | — | (permission de l'annulation) |
+| `ACTIVE` | `inventory.allocation.grant` (augmentation) | Σ restes ≤ Σ soldes | `ACTIVE` | Entrée `INCREASE` | — | — | `inventory.allocation.manage` |
+| `ACTIVE` | `inventory.allocation.release` | Commande émise par l'appareil détenteur (déclare le reste ; un écart avec le serveur ouvre un conflit) | `CLOSED` | Entrée `RELEASE` du reste ; `StockAllocationReleased` | Disponible des autres augmenté | — | `inventory.allocation.release` (portée propre, AV-162) |
+| `ACTIVE` | Appareil bloqué ou déclaré perdu | — | `ACTIVE`, `revocation_pending` | Alerte au responsable ; aucun mouvement automatique | — | — | `system` |
+| `ACTIVE` | `inventory.allocation.revoke` | Motif ; responsable | `REVOKED` | `StockAllocationRevoked` ; consommation ultérieure imputée (selon `occurred_at`) : `ALLOCATION_REVOKED_CONSUMED` | Disponible des autres augmenté | — | `inventory.allocation.manage` |
 
-**Hors ligne** : seules la consommation (locale) et la demande de libération (commande en file) sont possibles hors ligne. Octroi, augmentation et révocation sont en ligne. Un quota atteint sa date `valid_until` : l'appareil cesse de l'utiliser localement et émet la libération à la synchronisation suivante.
+**Hors ligne** : seules la consommation (locale) et la libération (commande en file) sont possibles hors ligne. Octroi, augmentation et révocation sont en ligne. Un quota atteint sa date `valid_until` : l'appareil cesse de l'utiliser localement et émet la libération à la synchronisation suivante ; le serveur ne libère jamais seul (alerte au responsable).

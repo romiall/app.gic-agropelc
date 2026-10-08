@@ -167,6 +167,19 @@ Classification (PM §45) :
 | AV-150 | Encaissement saisi hors ligne avec une commande que le serveur refuse ; acompte supérieur au total de la commande | IMPORTANTE | P4 | Encaissement conservé en crédit client non affecté, avec un conflit pour la Finance ; acompte borné au total en ligne | OUVERT |
 | AV-151 | Annulation d'un encaissement dont une part a déjà été remboursée au client | SECONDAIRE | P4 | Refusée ; la Finance corrige par une réaffectation ou une régularisation | OUVERT |
 | AV-152 | Mort d'animaux vivants hors d'un lot de production (stock mobile, marchandise vivante achetée) | SECONDAIRE | P4 | Mortalité du lot quand les animaux en viennent ; sinon perte simple `DETERIORATION` | OUVERT |
+| AV-153 | Écart d'une remise de fonds : imputation et excédent | IMPORTANTE | P5 | Aucun second mouvement ; imputation choisie par la Finance ; excédent admis | OUVERT |
+| AV-154 | Cycle quotidien de la session de caisse (seconde session, ouverture concurrente, veille non clôturée) | IMPORTANTE | P5 | Une session par jour (paramètre) ; ouvertures concurrentes fusionnées ; clôture forcée par la Finance | OUVERT |
+| AV-155 | Responsabilité d'un écart de caisse avec plusieurs vendeurs et identité du valideur | IMPORTANTE | P5 | Écart imputé à celui qui clôture, sous-totaux par vendeur ; valideur différent de l'ouvreur et du clôtureur | OUVERT |
+| AV-156 | Fonds de caisse initial et écart d'ouverture | SECONDAIRE | P5 | Écart d'ouverture posé et validé par la Finance, motif « fonds initial » admis | OUVERT |
+| AV-157 | Mouvements d'espèces hors session ou décidés après coup (encaissement, remboursement, inverse) | IMPORTANTE | P5 | Appliqué avec avertissement hors ligne ; rattaché à la session couvrant sa date ; l'inverse hérite de la session d'origine | OUVERT |
+| AV-158 | Remises de fonds : comptes admis, récepteur, alerte de remise non reçue | SECONDAIRE | P5 | Récepteur différent de l'expéditeur ; alerte à 48 h ; porteur = utilisateur ou nom libre | OUVERT |
+| AV-159 | Refus, recomptage et correction d'un écart de caisse | SECONDAIRE | P5 | Acceptation seule ; une erreur de comptage se corrige par un ajustement validé | OUVERT |
+| AV-160 | Quotas d'appareil : granularité et validité par défaut | IMPORTANTE | P5 | Quota par produit (lot indicatif) ; valide jusqu'à la fin du jour métier de l'octroi | OUVERT |
+| AV-161 | Quotas d'appareil : dépassement hors ligne, quota révoqué ou échu | IMPORTANTE | P5 | Fait appliqué, excédent au stock commun, reste jamais négatif, conflit signalé | OUVERT |
+| AV-162 | Qui accorde les quotas (« responsable du PDV ») et permission de libération | IMPORTANTE | P5 | Magasinier du site, Resp. commercial de la zone, Direction ; libération par l'appareil détenteur (portée propre) | OUVERT |
+| AV-163 | Garde d'appareil : mode par défaut des emplacements et appareil non désigné | IMPORTANTE | P5 | Mode obligatoire avec défaut par type ; appareil non désigné : fait appliqué et conflit | OUVERT |
+| AV-164 | Tableau de distribution : définitions de « vendu » et « perdu », périmètre, route | SECONDAIRE | P5 | Vendu net des contre-écritures (à livrer à part) ; perdu = pertes reconnues + écarts ; route d'analytique livrée en P5 | OUVERT |
+| AV-165 | Sessions de caisse hors PDV et PDV à plusieurs appareils | SECONDAIRE | P5 | Pas de session pour une caisse utilisateur ; validation sans attendre toutes les synchronisations | OUVERT |
 
 ---
 
@@ -372,6 +385,7 @@ Politique par défaut, paramétrable :
 
 ### AV-040 — Seuils de réapprovisionnement — SECONDAIRE
 - **Recommandation** : un couple (minimum, cible) par emplacement × produit. Aucune valeur par défaut.
+- **Précision** (P5, 08/10/2026, ADR-033) : pour un emplacement `SHARED`, le seuil et la suggestion s'évaluent sur le **solde physique** (quotas compris) ; le disponible net des quotas ne sert qu'à la vente en ligne, sinon un octroi de quota ferait apparaître une rupture sans aucune sortie.
 
 ### AV-041 — TVA et taxes — IMPORTANTE — **TRANCHÉ**
 - **Question** : les prix sont-ils TTC ? Certains produits sont-ils exonérés ? Des factures fiscales normalisées sont-elles nécessaires ?
@@ -1009,6 +1023,97 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) animaux issus d'un lot : `MORTALITE` rattachée au lot ; sinon perte simple `DETERIORATION`, motif en commentaire ; (b) autoriser `MORTALITE` sans lot pour la marchandise vivante (contrainte relâchée, hors des indicateurs de lot) ; (c) une catégorie dédiée « mort d'animal hors lot ».
 - **Recommandation** : (a) : les poulets vendus en tournée viennent des lots de la ferme ; la marchandise vivante achetée est rare.
 - **Impact** : `inventory.loss.declare` ; WF-06 ; dictionnaire `06-inventory` (`category`). Défaut implémenté : (a), sans changement de code (test d'acceptation AT-018 : perte `DETERIORATION` de marchandise sans lot).
+
+### AV-153 — Écart d'une remise de fonds : imputation et excédent — IMPORTANTE
+- **Question** : Un vendeur envoie 173 000 XAF à la caisse centrale, la Finance en reçoit 170 000. Qui supporte les 3 000 manquants, et que fait-on si elle reçoit **plus** que prévu ?
+- **Pourquoi** : SM-CASH-TRANSFER écrit déjà la sortie du montant envoyé et l'entrée du montant reçu : la perte est dans les livres. Les sources ajoutent pourtant un second mouvement d'écart (double comptage, ADR-032) et ne disent ni qui est imputé ni ce qu'est un excédent.
+- **Choix** : (a) aucun second mouvement ; la Finance choisit l'imputation à la clôture (expéditeur, porteur, récepteur, entreprise), l'excédent est admis comme un écart de signe contraire ; (b) imputation automatique à l'expéditeur ; (c) écart d'office à la charge de l'entreprise.
+- **Recommandation** : (a) : la retenue éventuelle sur la personne relève d'une dépense ou créance dédiée (P8).
+- **Impact** : `finance.cash_transfer.receive`, décision `CASH_TRANSFER_DISCREPANCY`, `finance_cash_transfers` (écart signé, imputation, motif) ; ADR-032. Défaut implémenté : (a).
+
+### AV-154 — Cycle quotidien de la session de caisse — IMPORTANTE
+- **Question** : AV-057 retient une session par PDV et par jour. Que fait-on d'une seconde session le même jour (relève d'équipe, ouverture par erreur), d'une ouverture saisie hors ligne alors que la session de la veille n'est pas clôturée, et de deux tablettes qui ouvrent chacune « la » session hors ligne ?
+- **Pourquoi** : BR-DIS-006 interdit seulement deux sessions ouvertes ; D05 §14 interdit d'ouvrir avant la clôture de la précédente, mais la clôture forcée exige la Finance en ligne : un PDV hors ligne pourrait être bloqué. Une ouverture est un comptage physique, un fait accompli qui ne se rejette pas (BR-SYN-007).
+- **Choix** : (a) une session par PDV et par jour (paramètre `finance.cash_sessions_per_day_max`, défaut 1) ; en ligne, refus `CASH_SESSION_ALREADY_OPEN` ; hors ligne, la seconde ouverture est fusionnée dans la session la plus ancienne (comptage conservé, conflit informatif `CASH_SESSION_CONCURRENT_OPEN`) ; la Finance force la clôture d'une session de plus de 24 h ; (b) plusieurs sessions par jour sans limite ; (c) ouverture refusée tant que la précédente n'est pas close, même hors ligne.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_session.open` ; INV-FIN-06 ; matrice des conflits. Défaut implémenté : (a).
+
+### AV-155 — Responsabilité d'un écart de caisse avec plusieurs vendeurs, et valideur — IMPORTANTE
+- **Question** : Une tablette de PDV est partagée (AV-007) mais le PDV n'a qu'une caisse et une session par jour. À qui impute-t-on l'écart, et que signifie « le valideur n'est pas le vendeur » quand plusieurs vendeurs ont encaissé ?
+- **Pourquoi** : la session ne porte qu'un ouvreur et un clôtureur ; D05 §14 parle d'un historique d'écarts « par vendeur ».
+- **Choix** : (a) l'écart est imputé à celui qui clôture, journalisé, avec un sous-total des encaissements espèces par vendeur (`received_by_user_id`) pour l'enquête ; le valideur n'est ni l'ouvreur, ni le clôtureur, ni l'auteur d'une clôture forcée ; (b) répartition de l'écart au prorata des encaissements ; (c) une caisse par vendeur.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_session.validate` ; lecture d'une session ; ECR-FIN-05. Défaut implémenté : (a).
+
+### AV-156 — Fonds de caisse initial et écart d'ouverture — SECONDAIRE
+- **Question** : La première session d'une caisse neuve s'ouvre avec 20 000 XAF comptés pour un solde de 0 : est-ce un écart ? Et à qui revient l'écart d'ouverture des sessions suivantes ?
+- **Pourquoi** : BR-FIN-014 écrit un écart à l'ouverture quand le fonds diffère du solde ; le fonds de départ n'est pas une erreur de comptage. Le solde d'ouverture est par ailleurs un mouvement `OPENING_BALANCE` selon le dictionnaire des comptes.
+- **Choix** : (a) un écart d'ouverture est toujours posé (`SESSION_VARIANCE`) et validé par la Finance, qui peut le motiver « fonds initial » ; il appartient à la période précédente et n'entre pas dans l'attendu (ADR-032) ; (b) la Finance alimente d'abord la caisse par une remise de fonds ou un solde d'ouverture ; (c) un fonds initial n'est jamais un écart.
+- **Recommandation** : (a), simple et traçable ; (b) reste possible.
+- **Impact** : `finance.cash_session.open` ; ADR-032. Défaut implémenté : (a).
+
+### AV-157 — Mouvements d'espèces hors session ou décidés après coup — IMPORTANTE
+- **Question** : Un encaissement en espèces est saisi hors ligne sans session ouverte ; un remboursement est décidé en ligne par la Finance après la clôture ; un encaissement est annulé le lendemain. Dans quelle session tombent ces mouvements, et sont-ils refusés ?
+- **Pourquoi** : D05 §8 rejette (`CASH_SESSION_REQUIRED`) une vente en espèces sans session ; BR-SYN-007 interdit de rejeter un fait accompli. Le registre est immuable : un mouvement ne se rattache pas après coup (ADR-032).
+- **Choix** : (a) en ligne, refus `CASH_SESSION_REQUIRED` ; hors ligne, fait appliqué avec avertissement et conflit informatif `CASH_SESSION_MISSING` (propriétaire Finance), sans session si aucune ne couvre sa date ; un remboursement et une remise annulée se rattachent à la session couvrant **leur propre date** ; l'inverse d'un encaissement hérite de la session de l'original et déclenche une réévaluation ; (b) toute vente en espèces hors ligne sans session est bloquée par l'appareil ; (c) rattachement systématique à la session suivante.
+- **Recommandation** : (a).
+- **Impact** : `sales.sale.record`, `sales.payment.record`, `sales.payment.refund` ; matrice des conflits ; ADR-032. Défaut implémenté : (a).
+
+### AV-158 — Remises de fonds : comptes admis, récepteur, alerte — SECONDAIRE
+- **Question** : Entre quels types de comptes une remise est-elle permise, qui la réceptionne, et au bout de combien de temps une remise envoyée et non reçue est-elle signalée ?
+- **Pourquoi** : les sources ne fixent ni les paires de comptes, ni la séparation des tâches entre expéditeur et récepteur, ni de délai d'alerte pour l'argent (48 h existent pour les transferts de stock).
+- **Choix** : (a) toute caisse de PDV ou d'utilisateur vers la caisse centrale ou la banque (et la caisse centrale vers un PDV pour son fonds) ; récepteur = responsable du compte destinataire, différent de l'expéditeur ; alerte à 48 h (`finance.cash_transfer_unreceived_hours`) ; porteur = utilisateur ou nom libre ; une seule permission `finance.cash_transfer.record` contrôlée par la portée du compte concerné ; (b) permission de réception distincte ; (c) paires libres.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_transfer.*` ; RBAC. Défaut implémenté : (a).
+
+### AV-159 — Refus, recomptage et correction d'un écart de caisse — SECONDAIRE
+- **Question** : La Finance peut-elle refuser un comptage manifestement faux, ordonner un recomptage, ou corriger un écart déjà validé ?
+- **Pourquoi** : SM-CASH-SESSION ne connaît que l'acceptation (`VALIDATED`).
+- **Choix** : (a) acceptation seule ; une erreur de comptage se corrige par un **ajustement** (réévaluation) lui-même validé, jamais par une réécriture ; (b) refus avec retour à la clôture ; (c) recomptage obligatoire au-delà d'un seuil.
+- **Recommandation** : (a) : un refus rouvrirait une session dont des mouvements ont déjà été rattachés.
+- **Impact** : `finance_cash_session_adjustments` ; SM-CASH-SESSION. Défaut implémenté : (a).
+
+### AV-160 — Quotas d'appareil : granularité et validité par défaut — IMPORTANTE
+- **Question** : Un quota porte-t-il sur un produit ou sur un lot précis, et jusqu'à quand est-il valable quand on n'indique rien ?
+- **Pourquoi** : le lot d'une sortie est choisi par le FIFO du serveur ; l'appareil ne le connaît pas. ADR-004 prévoit une validité (`valid_until`) sans valeur par défaut.
+- **Choix** : (a) quota par (emplacement, produit), le lot éventuel est indicatif et ne change pas le disponible ; valide jusqu'à la fin du jour métier (Africa/Douala) de l'octroi, durée modifiable à l'octroi ; (b) quota par lot ; (c) quota sans échéance.
+- **Recommandation** : (a).
+- **Impact** : `inventory.allocation.grant` ; disponible d'un consommateur ; ADR-033. Défaut implémenté : (a).
+
+### AV-161 — Quotas d'appareil : dépassement, quota révoqué ou échu — IMPORTANTE
+- **Question** : Une vente saisie hors ligne dépasse le quota de l'appareil (appareil modifié), ou arrive après la révocation ou l'échéance du quota. Que fait le serveur ?
+- **Pourquoi** : BR-SYN-007 interdit de la rejeter ; les sources parlent d'un reste « positif » (WF-18) et d'un reste négatif « sauf conflit tracé » (dictionnaire).
+- **Choix** : (a) le fait est appliqué, le quota ramené à 0, l'excédent pris sur le stock commun ; conflit `ALLOCATION_EXCEEDED` (gravité réduite si l'option « autorisée et signalée » du site est active) ; consommation après révocation : appliquée au stock commun, `ALLOCATION_REVOKED_CONSUMED` seulement si l'`occurred_at` suit la révocation ; (b) reste de quota négatif tracé ; (c) rejet.
+- **Recommandation** : (a) : le reste ne devient jamais négatif, INV-STK-10 reste vérifiable.
+- **Impact** : `recordStockMove` ; matrice des conflits ; ADR-033. Défaut implémenté : (a).
+
+### AV-162 — Qui accorde les quotas, et permission de libération — IMPORTANTE
+- **Question** : AV-035 confie l'octroi au « responsable du PDV », qui n'est pas un rôle du projet (AV-142). Qui l'exerce, et sous quelle permission l'appareil détenteur libère-t-il son quota ?
+- **Pourquoi** : `inventory.allocation.manage` n'est donnée qu'à Direction, Resp. commercial (zone), Resp. ferme (site) et magasinier (site), pas au vendeur de PDV ; le registre de commandes exige une permission pour chaque commande.
+- **Choix** : (a) le magasinier affecté au site du PDV, le Resp. commercial de la zone ou la Direction accordent, augmentent et révoquent ; la libération par le détenteur relève d'une permission dédiée `inventory.allocation.release` de portée propre ; aucun rôle créé ; (b) donner `allocation.manage` à un vendeur senior ; (c) créer un rôle de responsable de PDV.
+- **Recommandation** : (a).
+- **Impact** : RBAC et seed ; `inventory.allocation.*`. Défaut implémenté : (a). Les affectations de rôle de démonstration couvrent le magasinier (site ou zone) et le Resp. commercial (zone).
+
+### AV-163 — Garde d'appareil : mode par défaut et appareil non désigné — IMPORTANTE
+- **Question** : Quel mode de garde reçoit un emplacement créé sans le préciser, et que fait le serveur d'une vente hors ligne venue d'un appareil qui n'est pas celui désigné pour le PDV (ou pas l'appareil principal du détenteur d'un stock mobile) ?
+- **Pourquoi** : BR-STK-010 impose un mode à chaque emplacement physique, mais la colonne est facultative et le code traite l'absence comme `SHARED` ; BR-ADM-009 dit « `SHARED` hors stock mobile ». Une tablette de secours légitime existe.
+- **Choix** : (a) mode obligatoire, défaut par type (magasin, bâtiment, enclos : `SHARED` ; stock mobile : `EXCLUSIVE_USER` ; PDV : issu de sa configuration) ; une tablette unique partagée est `EXCLUSIVE_DEVICE` sans quota ; un appareil non désigné vend hors ligne : fait appliqué, conflit `CUSTODY_DEVICE_MISMATCH` (propriétaire : magasinier du site), l'écran le bloque ; le stock est servi à toutes les tablettes ; (b) refuser côté serveur ; (c) ne servir le stock qu'à l'appareil désigné.
+- **Recommandation** : (a).
+- **Impact** : `organization.pos.configure`, `location.create`, `sales.sale.record` ; BR-ADM-009 réécrite ; ADR-033. Défaut implémenté : (a).
+
+### AV-164 — Tableau de distribution : définitions et périmètre — SECONDAIRE
+- **Question** : Comment compte-t-on « vendu » (vente à la confirmation, contre-écritures) et « perdu » (écarts de transfert, pertes en attente), qui voit le tableau, et sous quelle adresse est-il servi avant le module d'analyse (P9) ?
+- **Pourquoi** : BR-DIS-010 date les ventes sans traiter les ventes sur commande ni les contre-écritures partielles (ADR-028, ADR-029) ; le magasinier n'a ni droit de lecture des ventes ni de la caisse ; REQ-024 cite une route d'analyse de P9.
+- **Choix** : (a) vendu = ventes moins retours rattachés à la date de chaque mouvement, avec la colonne « vendu à livrer » ; perdu = pertes reconnues + écarts d'inventaire négatifs + écarts de transfert confirmés (pertes en attente à part) ; la permission du tableau suffit aux agrégats, le détail par document exige le droit du domaine ; route `GET /api/v1/analytics/dashboards/distribution` livrée en P5 par la couche de transport, reprise sans changement par P9 ; (b) route propre ; (c) droits de lecture du domaine exigés.
+- **Recommandation** : (a).
+- **Impact** : `distribution-api/` ; BR-DIS-010 ; ECR-DIS-04 ; ADR-030. Défaut implémenté : (a).
+
+### AV-165 — Sessions de caisse hors PDV et PDV à plusieurs appareils — SECONDAIRE
+- **Question** : Une caisse utilisateur de commercial de terrain ouvre-t-elle des sessions ? La Finance attend-elle la synchronisation de toutes les tablettes d'un PDV `SHARED` avant de valider ?
+- **Pourquoi** : BR-FIN-014 est générique alors que le dictionnaire et D05 parlent de PDV ; une tablette ne voit que ses propres ventes (D05 §12).
+- **Choix** : (a) seules les caisses de PDV ont des sessions (une caisse utilisateur se vide par remise de fonds, alerte `CASH_HOLDING_HIGH`) ; la validation n'attend personne, la fraîcheur de synchronisation de chaque appareil du PDV est affichée à la Finance ; (b) sessions pour toutes les caisses ; (c) validation bloquée tant qu'un appareil n'a pas synchronisé.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_session.open` (refus d'un compte autre que `CAISSE_PDV`) ; tableau de distribution. Défaut implémenté : (a).
 
 ---
 

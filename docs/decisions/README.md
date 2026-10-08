@@ -8,7 +8,7 @@
 | [ADR-001](ADR-001-offline-first.md) | Offline-first : PWA, base locale, commandes, serveur autoritaire | ACCEPTÉ | Oui |
 | [ADR-002](ADR-002-identifiants.md) | Stratégie d'identifiants | ACCEPTÉ | Oui |
 | [ADR-003](ADR-003-registre-stock.md) | Registre de stock en partie double | ACCEPTÉ | Oui |
-| [ADR-004](ADR-004-allocations-offline.md) | Garde exclusive, quotas et réservations | ACCEPTÉ (politique AV-025, AV-035) | Oui |
+| [ADR-004](ADR-004-allocations-offline.md) | Garde exclusive, quotas et réservations | ACCEPTÉ (politique AV-025, AV-035) ; décision 3 (réservations) remplacée par ADR-028 §4, précisé par ADR-033 | Oui |
 | [ADR-005](ADR-005-historisation-prix.md) | Historisation des prix | ACCEPTÉ | Oui |
 | [ADR-006](ADR-006-annulation-vs-suppression.md) | Annulation vs suppression | ACCEPTÉ | Oui |
 | [ADR-007](ADR-007-synchronisation.md) | Stratégie de synchronisation | ACCEPTÉ | Oui |
@@ -36,5 +36,7 @@
 | [ADR-029](ADR-029-contre-ecriture-partielle-du-stock.md) | Contre-écriture partielle et livraison du stock vendu : mouvements rattachés à une origine (`origin_move_id`), plafond et valeur exacte garantis en base | ACCEPTÉ | — |
 | [ADR-030](ADR-030-accueil-par-role.md) | Accueil par rôle : une page de référence calculée à la demande, composée dans la couche de transport (`home-api/`), périmètre par rôle | ACCEPTÉ | — |
 | [ADR-031](ADR-031-cle-de-synchronisation-des-referentiels-a-code.md) | Clé de synchronisation des référentiels dont la clé primaire est un code (UUID version 5 dérivé du code) | ACCEPTÉ | — |
+| [ADR-032](ADR-032-sessions-de-caisse-et-remises-de-fonds.md) | Sessions de caisse et remises de fonds : un écart n'est compté qu'une fois (attendu tiré du registre, rattachement à l'insertion, réévaluation par delta, remise sans second mouvement) | ACCEPTÉ | — |
+| [ADR-033](ADR-033-quotas-d-appareil-apres-adr-028.md) | Quotas d'appareil après ADR-028 : consommation dans `inventory`, disponible par consommateur, source unique de la garde, restitution à l'annulation | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

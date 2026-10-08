@@ -54,7 +54,7 @@
 | R22 | Lot d'incubation — Lot de traçabilité | 1 : 1 | BR-INC-001 |
 | R23 | Transfert — Ligne de transfert | 1 : 1..N | — |
 | R24 | Allocation — Entrée d'allocation | 1 : 1..N | Registre de quota |
-| R25 | Allocation (réservation) — Ligne de commande | N : 1 | — |
+| R25 | *(retirée : plus de réservation de commande, ADR-028 §4)* | — | — |
 | R26 | Encaissement — Affectation — Vente ou Commande | 1 encaissement : 0..N affectations ; 1 vente : 0..N | INV-FIN-04, INV-VEN-06 |
 | R27 | Compte de trésorerie — Mouvement de trésorerie | 1 : 0..N | INV-FIN-02 |
 | R28 | Session de caisse — Compte de trésorerie | N : 1 (≤ 1 ouverte) | INV-FIN-06 |

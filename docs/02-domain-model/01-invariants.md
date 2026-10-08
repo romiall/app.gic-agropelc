@@ -43,10 +43,10 @@
 | INV-STK-04 | Un mouvement est immuable. Il ne peut être inversé qu'une seule fois, par un mouvement portant `reverses_move_id` (unique). Un inverse porte le même produit, le même lot, la même quantité et le même coût unitaire. Un mouvement `SALE`, `DELIVERY` ou `CUSTOMER_RETURN` ne s'inverse jamais : une vente se contre-passe, en tout ou partie, par des mouvements rattachés à elle (INV-STK-17, ADR-029). | Double correction ; réécriture | DB (`UNIQUE (reverses_move_id)`, déclencheur d'immuabilité) | I, P |
 | INV-STK-05 | Une opération hors ligne attestant un fait physique n'est jamais rejetée pour stock insuffisant. Si elle rend un solde physique négatif, un conflit `STOCK_NEGATIVE` **ouvert** existe pour ce couple (emplacement, produit) tant que le solde reste négatif. | Vente réelle perdue ; négatif ignoré (C-08) | TX + JOB | S |
 | INV-STK-06 | Une opération **en ligne** ne rend jamais négatif le disponible d'un emplacement physique. | Survente en ligne (PM §6) | TX (verrou sur la ligne de solde) | I, S |
-| INV-STK-07 | Un emplacement `INACTIVE` n'a, au moment de sa désactivation, aucun solde non nul, aucune allocation ou réservation active, aucun transfert ouvert. | Stock « orphelin » | TX | I |
+| INV-STK-07 | Un emplacement `INACTIVE` n'a, au moment de sa désactivation, aucun solde non nul, aucune allocation active, aucun transfert ouvert. | Stock « orphelin » | TX | I |
 | INV-STK-08 | Pour un transfert clôturé : Σ expédié = Σ reçu + Σ écart + Σ retourné, par ligne. Le transit du transfert est nul. | Marchandise perdue en route sans trace (CM §22) | TX + JOB | I, P |
 | INV-STK-09 | Pour un inventaire `POSTED` : solde de chaque ligne à `counted_at` = quantité comptée, après les rapprochements tardifs. | Écart d'inventaire faussé par les synchronisations tardives | TX (rapprochement BR-STK-044) + JOB | S |
-| INV-STK-10 | À l'octroi : Σ restes d'allocations actives + réservations actives ≤ solde de l'emplacement. Le reste d'une allocation ne devient jamais négatif par une consommation **en ligne**. | Double consommation hors ligne (PM §28, CM §39) | TX | S, P |
+| INV-STK-10 | À l'octroi : Σ restes des allocations actives ≤ solde de l'emplacement (les réservations de commande n'existent plus, ADR-028 §4). Le reste d'une allocation ne devient jamais négatif : en ligne la consommation est refusée, hors ligne l'excédent est pris sur le stock commun et signalé (AV-161, ADR-033). | Double consommation hors ligne (PM §28, CM §39) | TX | S, P |
 | INV-STK-11 | Une allocation `DEVICE_QUOTA` n'est consommée que par des opérations de son couple (utilisateur, appareil). | Consommation du quota d'autrui | TX | S |
 | INV-STK-12 | Σ mouvements `PURCHASE_RECEIPT` d'une ligne de réception = `qty_accepted`. | Stock gonflé par des quantités non acceptées (CM §28, PM §28) | TX | I |
 | INV-STK-13 | Un produit à suivi par lot `REQUIRED` n'a aucun mouvement sans lot. | Perte de traçabilité de lot | TX | I |
@@ -55,6 +55,8 @@
 | INV-STK-16 | Pour chaque ligne de vente non `SERVICE`, Σ quantités des mouvements `SALE` − Σ quantités des mouvements `CUSTOMER_RETURN` rattachés (`origin_move_id`) = quantité nette vendue (quantité de la ligne − Σ des lignes d'annulation appliquées) ; la même égalité vaut en valeur. Une ligne entièrement annulée a un net nul en quantité et en valeur. | Annulation qui ne corrige pas le stock (PM §28) | TX | I, S |
 | INV-STK-17 | Un mouvement `CUSTOMER_RETURN` ou `DELIVERY` consomme une part d'un mouvement `SALE` d'origine (`origin_move_id`, `origin_seq` 1, 2, 3 sans trou) : même produit et même lot, départ = arrivée de l'origine, jamais un inverse. Pour une origine, Σ quantités rattachées ≤ quantité de l'origine, Σ valeurs ≤ valeur de l'origine, et quand la quantité est soldée Σ valeurs = valeur de l'origine exactement (ADR-029, BR-STK-056). | Sur-annulation ; livrer puis annuler deux fois la même quantité ; dérive d'un franc | DB (déclencheur `trg_inventory_stock_moves_settlement_guard`, `UNIQUE (origin_move_id, origin_seq)`, `CHECK`) + TX | I, P |
 | INV-STK-18 | Le solde de l'emplacement « à livrer » (`V_TO_DELIVER`) d'un site, par produit et lot, est ≥ 0 en quantité et en valeur : Σ (`SALE` vers `V_TO_DELIVER` − mouvements rattachés). Corollaire d'INV-STK-17. | Solde virtuel négatif en silence (aucun contrôle de négatif sur un emplacement virtuel) | JOB (balayage et réconciliation) | I |
+| INV-STK-19 | À l'octroi ou à l'augmentation d'un quota, Σ des restes des quotas `ACTIVE` d'un (emplacement, produit) ≤ Σ des soldes du produit à l'emplacement (ADR-033). Un dépassement postérieur (perte, inventaire) ouvre le conflit informatif `ALLOCATION_OVERCOMMITTED`, jamais corrigé en silence. | Quotas promettant plus de stock qu'il n'en existe | TX, JOB | I, S |
+| INV-STK-20 | Le reste d'un quota = Σ des entrées signées de son registre, et reste ≥ 0 ; un quota fermé a un reste nul ; Σ des entrées `CONSUME` − Σ des entrées `RESTORE` = Σ des quantités des mouvements portant son `allocation_id`. | Reste de quota faux ou négatif ; consommation sans trace | TX, JOB | I |
 
 ## 4. Ventes et commandes (VEN)
 
@@ -85,6 +87,13 @@
 | INV-FIN-08 | Le registre de coûts est en ajout seul ; coût d'un objet = Σ de ses écritures. | Coût de lot modifié arbitrairement | DB | I |
 | INV-FIN-09 | Un encaissement `SUSPECT_DUPLICATE` ou `REJECTED` n'a aucun mouvement de trésorerie ni affectation active. | Doublon comptabilisé | TX | S |
 | INV-FIN-10 | Toute affectation active porte sur une vente non annulée ou une commande non annulée. | Argent affecté à une vente annulée | TX | I |
+| INV-FIN-11 | Pour toute session de caisse, Σ signée des `SESSION_VARIANCE` de clôture et d'ajustement de la fenêtre de la session = compté − attendu courant (attendu calculé par fenêtre de temps) ; l'écart d'ouverture, posé à la période précédente, est exclu de l'attendu (ADR-032). | Écart de caisse compté deux fois ou jamais | TX, JOB | I |
+
+## 5 bis. Distribution et points de vente (DIS)
+
+| ID | Invariant | Problème empêché | Application | Tests |
+|---|---|---|---|---|
+| INV-DIS-01 | Le mode de garde et l'appareil désigné de l'emplacement de vente d'un PDV sont ceux de sa configuration (`points_of_sale`) ; tout emplacement physique porte un mode de garde (ADR-033). | Deux sources de vérité de la garde, mode absent traité en silence comme partagé | TX, JOB | I |
 
 ## 6. CRM et pointage (CRM, TER)
 

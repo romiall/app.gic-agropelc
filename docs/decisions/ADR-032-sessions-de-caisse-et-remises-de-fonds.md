@@ -1,0 +1,43 @@
+# ADR-032 — Sessions de caisse et remises de fonds : un écart n'est compté qu'une fois
+
+- **Statut** : ACCEPTÉ (DÉDUIT, technique ; aucune décision métier nouvelle : les points métier sont les AV-153 à AV-159 et AV-165, à défaut paramétrable)
+- **Date** : 08/10/2026
+
+## Contexte
+
+P5 livre les sessions de caisse (BR-FIN-014, BR-DIS-005 à 008, SM-CASH-SESSION, WF-15, AV-057) et les remises de fonds (BR-FIN-013, BR-DIS-009, SM-CASH-TRANSFER). La lecture des sources avant le code a relevé que leurs règles, prises à la lettre, **comptent plusieurs fois le même écart** et se contredisent sur trois points :
+
+1. **Remise de fonds** : à la réception d'un montant différent, SM-CASH-TRANSFER écrit déjà un `TRANSFER_IN` du montant *reçu* après un `TRANSFER_OUT` du montant *envoyé* — la différence a donc déjà quitté les livres — puis ajoute « écart tracé comme `SESSION_VARIANCE` du compte source ». Pour 173 000 envoyés et 170 000 reçus, le compte source serait débité de 176 000.
+2. **Ouverture et clôture** : BR-FIN-014 écrit un `SESSION_VARIANCE` à l'ouverture (fonds compté − solde du compte), tandis que BR-DIS-007 calcule l'attendu de clôture à partir du fonds d'ouverture. Selon le point de départ choisi, l'écart d'ouverture est compté aussi à la clôture.
+3. **Réévaluation** : le dictionnaire recalcule `variance_xaf` et `closing_expected_xaf`, BR-DIS-008 ouvre un « écart complémentaire », SM-CASH-SESSION un « mouvement compensatoire » : recalculer et compenser du montant entier compte deux fois l'écart déjà posé.
+
+S'y ajoutent : un registre de trésorerie **immuable** (aucun rattachement tardif d'un mouvement à une session, alors que le dictionnaire des ventes le suppose), un inverse d'encaissement (BR-FIN-006) daté de sa décision qui retombe dans la session du jour et débite deux fois, le rejet `CASH_SESSION_REQUIRED` d'une vente en espèces alors qu'un fait accompli hors ligne ne se rejette pas (BR-SYN-007), et un « encaissé » d'un PDV (AT-042) que la matrice tire du registre, où il se mêlerait aux écarts.
+
+## Décision
+
+1. **Le registre fait foi.** Tout effet d'argent d'une session ou d'une remise est un mouvement écrit par `recordCashMovement`, seul écrivain de `finance_cash_movements` (ADR-010), dans la transaction du document. Aucun événement de vente ne sert à calculer une caisse.
+2. **La session d'un mouvement est celle dont la fenêtre le couvre.** Un mouvement d'une `CAISSE_PDV` appartient à la session du compte dont la fenêtre `[opened_at, closed_at[` couvre son `occurred_at`, **déterminée par le temps**, jamais par un pointeur écrit à l'insertion : une ouverture saisie hors ligne et appliquée après les ventes d'une autre tablette doit compter ces ventes. `cash_session_id` n'est qu'un **index dénormalisé**, posé à l'insertion quand la session est déjà connue (lectures rapides, jamais source de l'attendu), et jamais réécrit (registre immuable). Les fenêtres d'un compte ne se chevauchent pas : le **code** l'assure (une ouverture ou une clôture qui chevaucherait est appliquée en fusion, avec conflit, AV-154) ; le déclencheur de base n'est qu'un filet que le code ne doit jamais déclencher, car une exception SQL sur un fait accompli serait rejouée sans fin. Un **inverse** corrige un fait passé : il porte l'`occurred_at` de l'original et retombe donc dans sa session ; un **fait physique nouveau** (remboursement, remise annulée) tombe dans la session couvrant sa propre date.
+3. **Solde attendu** = fonds compté à l'ouverture + Σ entrées − Σ sorties des mouvements du compte **dont l'`occurred_at` est dans la fenêtre de la session**, **hors** `SESSION_VARIANCE` et `OPENING_BALANCE`. **Écart** = compté − attendu (`differenceXaf`, `splitSignedXaf`). Le serveur calcule seul l'attendu et l'écart ; la commande ne porte que le montant compté (l'écart de l'appareil est indicatif).
+4. **Écart d'ouverture** = fonds compté − solde du compte à `opened_at` (somme du registre ordonnée par `occurred_at`, jamais la projection courante). Il appartient à la période précédente : un mouvement `SESSION_VARIANCE` posé à l'ouverture, **exclu** de l'attendu de la session ouverte.
+5. **Clôture et validation.** Écart nul : `VALIDATED` d'office ; sinon un `SESSION_VARIANCE` du signe de l'écart et l'état `PENDING_VALIDATION`, que la Finance accepte par une demande `CASH_VARIANCE` (commande `finance.cash_session.validate` en façade de la décision ; le valideur n'est ni l'ouvreur, ni le clôtureur, ni l'auteur de la clôture forcée).
+6. **Réévaluation par le delta.** Une session `VALIDATED` est figée. Une opération tardive dont l'`occurred_at` tombe dans la fenêtre d'une session **close** (`PENDING_VALIDATION` ou `VALIDATED`) recalcule l'écart courant ; le mouvement compensatoire vaut **nouvel écart − Σ des `SESSION_VARIANCE` déjà posés** de clôture et d'ajustement. Chaque ajustement est une ligne de `finance_cash_session_adjustments` (append-only) : sur une session `PENDING_VALIDATION`, il est *inclus* dans la validation de la session (aucune demande propre) ; sur une session `VALIDATED`, il porte **sa propre demande `CASH_VARIANCE`** (sujet : l'ajustement ; la contrainte d'une seule demande en attente par sujet interdit de réutiliser celle de la session), décidée par la même façade `finance.cash_session.validate`. Il ouvre le conflit `CASH_SESSION_REEVALUATED` (appliqué, propriétaire Finance). Invariant INV-FIN-11 : Σ signée des `SESSION_VARIANCE` de clôture et d'ajustement de la fenêtre = compté − attendu courant.
+7. **Remise de fonds sans second mouvement.** `TRANSFER_OUT` du montant envoyé, `TRANSFER_IN` du montant reçu ; la différence est déjà dans les livres. La clôture d'un écart de remise (`DISCREPANCY_PENDING` → `CLOSED`, validée par un nouveau type `CASH_TRANSFER_DISCREPANCY`) enregistre l'imputation (expéditeur, porteur, récepteur, entreprise), le motif et le valideur **comme données de la remise**, sans écriture de trésorerie. L'éventuelle retenue sur la personne responsable relève de P8 (dépense ou créance dédiée).
+8. **Faits accomplis.** `CASH_SESSION_REQUIRED` et `CASH_SESSION_ALREADY_OPEN` ne rejettent qu'**en ligne** ; hors ligne, le fait est appliqué avec avertissement et conflit informatif (`CASH_SESSION_MISSING`, `CASH_SESSION_CONCURRENT_OPEN`). Il en va de même des **courses hors ligne** : une clôture comptée sur une session déjà close (ou forcée), une réception de remise après son annulation, une libération de quota révoqué sont des constats physiques déjà accomplis : le comptage ou le montant est conservé comme observation rattachée au document existant, le conflit informatif est ouvert, aucune commande n'est rejetée pour un état métier (BR-SYN-007). Seuls la validité, l'authenticité et l'autorisation rejettent.
+9. **« Encaissé » d'un PDV** (KPI-DIS-06, AT-042) = Σ des encaissements `RECORDED` du site par jour métier, net des annulations ; les soldes et écarts de caisse se lisent sur le registre, sous un autre libellé.
+10. **Ordre des verrous** : commandes, ventes, encaissements, **compte de trésorerie**, **session**, compteur de numéros.
+
+## Alternatives
+
+Calculer l'attendu depuis les événements de vente (`SaleConfirmed`, `PaymentReceived`) : faux dès qu'une vente naît à la confirmation, se paie à crédit ou se contre-passe en partie (ADR-025, ADR-029). Rattacher les mouvements à une session par mise à jour tardive : contraire à l'immuabilité du registre (INV-FIN-02). Un second mouvement `SESSION_VARIANCE` pour l'écart de remise : double débit. Une session par appareil : un PDV a une seule caisse (`active_pos_site`).
+
+## Justification
+
+Un registre immuable et un seul calcul de l'attendu garantissent qu'un écart a exactement une écriture ; le delta rend la réévaluation additive et vérifiable (INV-FIN-11) ; la fenêtre de temps résout le rattachement sans réécrire le passé et reste correcte pour une saisie hors ligne appliquée plus tard.
+
+## Conséquences
+
+BR-DIS-007 (attendu) est reformulé sur le registre ; D05 §11 et D09 §11 cessent de consommer des événements de vente pour la caisse ; SM-CASH-SESSION et SM-CASH-TRANSFER sont corrigées (ligne « écart tracé comme `SESSION_VARIANCE` » retirée) ; la matrice de traçabilité cite le registre pour la caisse et `sales_customer_payments` pour l'encaissé ; la lecture d'une session expose des sous-totaux par vendeur (`received_by_user_id`).
+
+## Risques
+
+Une opération tardive sur une session déjà validée génère une demande de validation de plus : surveillée par l'alerte de la Finance (P9). Un attendu calculé sur une fenêtre dépend des horloges d'appareil : `occurred_at` suspect (BR-SYN-009) reste signalé. Les dépenses payées par la caisse (BR-DIS-013) arrivent avec P8 : leur terme reste nul tant qu'aucune n'est enregistrée, sans changement de formule.

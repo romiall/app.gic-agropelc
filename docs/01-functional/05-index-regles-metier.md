@@ -159,12 +159,12 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-004 | Le solde d'un emplacement × produit × lot = Σ quantités entrantes − Σ quantités sortantes. `stock_balances` est une projection mise à jour… | C (PM §6) |
 | BR-STK-005 | Le solde peut être calculé à une date métier (Σ des mouvements de `occurred_at` ≤ date). C'est la base des inventaires et des analyses hist… | D (CM §38) |
 | BR-STK-006 | Types de mouvement autorisés, avec leur couple (source → destination) : voir la table §7.7. Tout autre couple est refusé. | D |
-| BR-STK-010 | Chaque emplacement physique a un mode de garde : `EXCLUSIVE_USER` (stock mobile, utilisable hors ligne par son détenteur sur son appareil p… | D (CM §39 ; ADR-004) |
-| BR-STK-011 | Disponible pour un consommateur C sur un emplacement `SHARED` = solde − réservations actives − allocations actives restantes des autres dét… | D |
-| BR-STK-012 | Une allocation (`DEVICE_QUOTA`) est accordée en ligne à un couple (utilisateur, appareil) sur un emplacement `SHARED`, pour un produit et é… | C (CM §39) / AV-035 |
+| BR-STK-010 | Chaque emplacement physique a un mode de garde, obligatoire (défaut par type, AV-163 ; source unique : `organization.locations`, ADR-033) :… | D (CM §39 ; ADR-004) |
+| BR-STK-011 | Disponible pour un consommateur C : sur un emplacement exclusif, le solde ; sur un emplacement `SHARED`, Σ des soldes du produit à l'emplac… | D (ADR-033) |
+| BR-STK-012 | Une allocation (`DEVICE_QUOTA`) est accordée en ligne à un couple (utilisateur, appareil) sur un emplacement `SHARED`, pour un produit (le… | C (CM §39) / AV-035 |
 | BR-STK-013 | Toute opération qui réduit le stock (vente, perte, transfert sortant, consommation) faite par le détenteur d'une allocation sur l'emplaceme… | AV-025 |
 | BR-STK-014 | Une allocation est libérée par l'appareil détenteur (libération confirmée à la synchronisation) ou révoquée par un responsable. Une révocat… | AV-035 |
-| BR-STK-015 | Une réservation (`ORDER_RESERVATION`) est créée par la confirmation d'une commande. Elle est consommée par la livraison et libérée par l'an… | C (PM §6) / D |
+| BR-STK-015 | RETIRÉE (ADR-028 §4, ADR-033) : la confirmation d'une commande est une vente du disponible vers l'emplacement « à livrer » ; la part en att… | C (PM §6) / D |
 | BR-STK-016 | Le stock d'un emplacement `EXCLUSIVE_USER` n'est utilisable hors ligne que sur l'appareil principal du détenteur. Le changement d'appareil… | D (ADR-004) |
 | BR-STK-017 | En ligne, aucune opération ne peut rendre négatif le disponible d'un emplacement physique (`INSUFFICIENT_STOCK`). | C (PM §6) |
 | BR-STK-018 | Une opération hors ligne constatant un fait physique (vente, perte, consommation, transfert sortant) est appliquée même si le solde serveur… | D (C-08) |
