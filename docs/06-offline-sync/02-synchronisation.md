@@ -72,7 +72,8 @@ Règles :
 | Élément | Règle |
 |---|---|
 | Lot | ≤ 50 commandes et ≤ 256 Ko compressés (gzip) ; les commandes d'un même auteur sont groupées (session de l'auteur, BR-SYN-014) |
-| Ordre | Croissant de `device_seq` ; le serveur traite **séquentiellement** les commandes d'un appareil, sous verrou consultatif par appareil (INV-SYN-04) |
+| Ordre | Croissant de `device_seq` ; le serveur traite **séquentiellement** les commandes d'un lot, trié par `device_seq`. Un lot n'a qu'un auteur, celui de la session qui l'envoie (une commande d'un autre auteur est rejetée `FORBIDDEN`, sans effet sur les autres, INV-SYN-05). Sur une tablette partagée le compteur est commun à l'appareil : les lots de deux auteurs s'entrecroisent, l'ordre garanti est celui de chaque couple (appareil, auteur) (INV-SYN-04 reformulé) et rien ne doit dépendre de l'ordre d'arrivée entre auteurs |
+| Opérations en attente | `pending_by_author` (facultatif) : ce qui reste dans la file de l'appareil **après** le lot, par auteur. Le serveur en tire le total (ligne `_device` de `sync.device_sync_state`) et une ligne par auteur ; absent, rien n'est supposé (BR-DIS-014 n'y lit pas « tout est synchronisé ») |
 | Dépendances | Une commande dont une dépendance n'est pas encore connue du serveur reçoit `RETRY_LATER` (`DEPENDENCY_PENDING`) ; si la dépendance est rejetée, elle reçoit `REJECTED` (`DEPENDENCY_REJECTED`) |
 | Arrêt du lot | Aucune : chaque commande a son propre résultat ; un rejet n'arrête que les commandes qui en dépendent |
 | Réponse | `results[]` : `command_id`, `status` (`APPLIED`, `APPLIED_WITH_WARNINGS`, `CONFLICT`, `REJECTED`, `RETRY_LATER`), `server_refs` (numéros, identifiants), `warnings[]`, `error{code, message_fr}`, `conflict_id` ; `server_time` ; `clock_skew_ms` |

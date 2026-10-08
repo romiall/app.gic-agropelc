@@ -75,6 +75,29 @@ export async function pendingOutbox(db: GicDatabase, limit = 50): Promise<Outbox
     .then((rows) => rows.slice(0, limit));
 }
 
+/**
+ * Ce qui restera à envoyer **après** un lot, par auteur (tablette partagée, AV-007) : le serveur
+ * en tire « cet appareil a tout synchronisé » (BR-DIS-014). Tout auteur présent dans la file ou
+ * dans le lot figure dans le résultat, à zéro s'il ne lui reste rien.
+ */
+export async function pendingAfterBatch(
+  db: GicDatabase,
+  batch: readonly OutboxCommand[],
+): Promise<Record<string, number>> {
+  const inBatch = new Set(batch.map((c) => c.command_id));
+  const remaining: Record<string, number> = {};
+  for (const command of batch) remaining[command.author_user_id] = 0;
+  const waiting = await db.outbox
+    .where('status')
+    .anyOf(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING'])
+    .toArray();
+  for (const command of waiting) {
+    if (inBatch.has(command.command_id)) continue;
+    remaining[command.author_user_id] = (remaining[command.author_user_id] ?? 0) + 1;
+  }
+  return remaining;
+}
+
 export async function countPending(db: GicDatabase): Promise<number> {
   return db.outbox.where('status').anyOf(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']).count();
 }

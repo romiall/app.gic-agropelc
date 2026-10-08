@@ -61,6 +61,7 @@ describe('sales.sale.record (P4-04)', () => {
   let admin: Actor;
   let seller: Actor;
   let otherSeller: Actor;
+  let secondSeller: Actor;
   let terrain: Actor;
   let farmer: Actor;
   let zoneId: string;
@@ -552,6 +553,7 @@ describe('sales.sale.record (P4-04)', () => {
       };
       seller = await actor(roles.seller, { scopeType: 'SITE', scopeSiteId: pdvSiteId });
       otherSeller = await actor(roles.seller, { scopeType: 'SITE', scopeSiteId: otherSiteId });
+      secondSeller = await actor(roles.seller, { scopeType: 'SITE', scopeSiteId: pdvSiteId });
       terrain = await actor(roles.terrain, { scopeType: 'ZONE', scopeZoneId: zoneId });
       farmer = await actor(roles.farmer, { scopeType: 'SITE', scopeSiteId: farmSiteId });
 
@@ -920,6 +922,42 @@ describe('sales.sale.record (P4-04)', () => {
     expect(flagsOf(await saleRow(id))).toContain('STOCK_NEGATIVE');
     expect(await onHand(product.id)).toBe(-2);
     expect((await saleRow(id))?.captured_offline).toBe(1);
+  });
+
+  it('P5-07 : la référence locale est unique par appareil, quel que soit l’auteur — refusée en ligne, tolérée hors ligne (BR-SYN-007)', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 20, 100);
+    const localRef = `TAB-${freshUuid().slice(-6)}`;
+    const body = {
+      lines: [line(product, 1)],
+      payments: [{ methodCode: 'ESPECES', amountXaf: 1000 }],
+      localRef,
+    };
+    // Deux vendeurs, une même tablette (AV-007) : le compteur de références est celui de l'appareil.
+    const onSharedTablet = { ...secondSeller, deviceId: seller.deviceId };
+
+    const first = await sell(seller, body, at('11:00:00'));
+    expect(first.result.status, JSON.stringify(first.result)).toBe('APPLIED');
+    expect((await saleRow(first.id))?.local_ref).toBe(localRef);
+
+    // En ligne : la référence déjà prise est refusée, aucune vente.
+    const refused = await sell(onSharedTablet, body, at('11:01:00'));
+    expect(code(refused.result)).toBe('LOCAL_REF_DUPLICATE');
+    expect(await saleRow(refused.id)).toBeUndefined();
+
+    // Hors ligne : le fait accompli est appliqué, sans sa référence locale, avec l'avertissement.
+    const kept = await sell(onSharedTablet, body, at('11:02:00'), { offline: true });
+    expect(kept.result.status, JSON.stringify(kept.result)).toBe('APPLIED_WITH_WARNINGS');
+    expect(warningsOf(kept.result)).toContain('LOCAL_REF_DUPLICATE');
+    const row = await saleRow(kept.id);
+    expect(row?.local_ref).toBeNull();
+    expect(await saleMoves(kept.id)).toHaveLength(1);
+    expect(await onHand(product.id)).toBe(18);
+
+    // Un autre appareil peut reprendre la même référence : l'unicité est par appareil.
+    const elsewhere = await sell(secondSeller, body, at('11:03:00'));
+    expect(elsewhere.result.status, JSON.stringify(elsewhere.result)).toBe('APPLIED');
+    expect((await saleRow(elsewhere.id))?.local_ref).toBe(localRef);
   });
 
   // --- Prix ---------------------------------------------------------------------------------------

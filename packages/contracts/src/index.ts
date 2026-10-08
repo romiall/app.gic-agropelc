@@ -26,6 +26,7 @@ export type { RegisteredCommandType, ParsedCommand } from './command-registry.js
 export {
   rawCommandEnvelopeSchema,
   pushRequestSchema,
+  MAX_PENDING_AUTHORS,
   SYNC_RESULT_STATUSES,
   syncResultStatusSchema,
   commandResultSchema,

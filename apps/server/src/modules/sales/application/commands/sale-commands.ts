@@ -161,15 +161,28 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       resource,
     });
     if (!access.allowed) return FORBIDDEN_SCOPE;
-    if (p.localRef !== undefined && origin.deviceId !== null) {
+    // La référence locale est unique par **appareil** (index `created_device_id`, `local_ref`), quel
+    // que soit l'auteur : sur une tablette partagée le compteur est celui de l'appareil. Une
+    // référence déjà prise est refusée en ligne ; hors ligne la vente est un fait accompli (BR-SYN-007,
+    // P5-07) : elle est appliquée sans sa référence locale, avec l'avertissement `LOCAL_REF_DUPLICATE`.
+    let localRef = p.localRef ?? null;
+    let localRefReused = false;
+    if (localRef !== null && origin.deviceId !== null) {
       const sameRef = await uow
         .selectFrom('sales_sales')
         .select('id')
         .where('created_device_id', '=', toBin(origin.deviceId))
-        .where('local_ref', '=', p.localRef)
+        .where('local_ref', '=', localRef)
         .executeTakeFirst();
       if (sameRef) {
-        return rejected('LOCAL_REF_DUPLICATE', 'Référence locale déjà utilisée par cet appareil.');
+        if (!offline) {
+          return rejected(
+            'LOCAL_REF_DUPLICATE',
+            'Référence locale déjà utilisée par cet appareil.',
+          );
+        }
+        localRef = null;
+        localRefReused = true;
       }
     }
 
@@ -202,6 +215,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const session = await findWorkSessionAt(uow, author, at);
     const flags = new Set<string>();
     const warnings = new Set<WarningCode>();
+    if (localRefReused) warnings.add('LOCAL_REF_DUPLICATE');
     if (session?.overrideStatus === 'REJECTED') flags.add('SESSION_REJECTED');
     if (!session && (await hasPermissionAt(uow, toBin(author), 'fieldwork.checkin.perform', at))) {
       flags.add('OUT_OF_SESSION');
@@ -475,7 +489,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .values({
         id: toBin(saleId),
         doc_number: docNumber,
-        local_ref: p.localRef ?? null,
+        local_ref: localRef,
         site_id: toBin(site.id),
         sale_type: 'DIRECT',
         customer_id: toBinOrNull(customer?.id ?? null),

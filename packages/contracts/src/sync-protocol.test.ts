@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import {
   rawCommandEnvelopeSchema,
   pushRequestSchema,
+  MAX_PENDING_AUTHORS,
   SYNC_RESULT_STATUSES,
   syncResultStatusSchema,
   commandResultSchema,
@@ -63,6 +64,41 @@ describe('pushRequestSchema', () => {
     expect(pushRequestSchema.safeParse(validRequest({ device_id: 'pas-un-uuid' })).success).toBe(
       false,
     );
+  });
+
+  describe('pending_by_author (tablette partagée, AV-007)', () => {
+    it('est facultatif : absent, rien n’est déclaré', () => {
+      const parsed = pushRequestSchema.safeParse(validRequest());
+      expect(parsed.success && parsed.data.pending_by_author).toBeUndefined();
+    });
+
+    it('accepte des restes par auteur, zéro compris', () => {
+      const pending = { [fixtureUuid()]: 0, [fixtureUuid()]: 7 };
+      expect(
+        pushRequestSchema.safeParse(validRequest({ pending_by_author: pending })).success,
+      ).toBe(true);
+    });
+
+    it('rejette un reste négatif ou non entier, ou une clé qui n’est pas un UUIDv7', () => {
+      for (const pending of [
+        { [fixtureUuid()]: -1 },
+        { [fixtureUuid()]: 1.5 },
+        { 'pas-un-uuid': 1 },
+      ]) {
+        expect(
+          pushRequestSchema.safeParse(validRequest({ pending_by_author: pending })).success,
+        ).toBe(false);
+      }
+    });
+
+    it(`rejette plus de ${MAX_PENDING_AUTHORS} auteurs`, () => {
+      const pending = Object.fromEntries(
+        Array.from({ length: MAX_PENDING_AUTHORS + 1 }, () => [fixtureUuid(), 1]),
+      );
+      expect(
+        pushRequestSchema.safeParse(validRequest({ pending_by_author: pending })).success,
+      ).toBe(false);
+    });
   });
 });
 

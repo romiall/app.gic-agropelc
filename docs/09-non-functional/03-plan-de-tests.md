@@ -32,6 +32,7 @@
 Un harnais crée N appareils virtuels (clients de la bibliothèque de synchronisation réelle, stockage en mémoire) contre un serveur de test. Il pilote :
 
 - la coupure réseau par appareil ;
+- la **tablette partagée** (AV-007) : un compteur de séquence commun à l'appareil, plusieurs auteurs qui poussent chacun leur part avec leur session, restes déclarés par auteur (`apps/server/test/device-harness.ts`, `OfflineDevice`, P5-07) ;
 - la perte de réponse (la commande est appliquée mais la réponse est perdue, ce qui teste l'idempotence) ;
 - le rejeu d'un lot ;
 - l'inversion d'ordre de lots ;

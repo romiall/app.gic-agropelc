@@ -95,6 +95,22 @@ describe('sync/push (runPushCycle)', () => {
     expect(meta?.clock_skew_ms).toBe(1234);
   });
 
+  it('déclare au serveur ce qui reste dans la file après le lot, par auteur (BR-DIS-014)', async () => {
+    const command = await enqueueOne(db, 'un');
+    const response: PushResponse = {
+      results: [{ command_id: command.command_id, status: 'APPLIED' }],
+      server_time: clock.now().toISOString(),
+      clock_skew_ms: 0,
+    };
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    const init = fetchSpy.mock.calls[0] as unknown as [string, { body: string }];
+    const body = JSON.parse(init[1].body) as { pending_by_author?: Record<string, number> };
+    expect(body.pending_by_author).toEqual({ 'user-1': 0 });
+  });
+
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {
     const command = await enqueueOne(db, 'refusée');
     const response: PushResponse = {

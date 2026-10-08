@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
-import { countAttention, countPending, enqueueCommand, pendingOutbox } from './outbox.js';
+import {
+  countAttention,
+  countPending,
+  enqueueCommand,
+  pendingAfterBatch,
+  pendingOutbox,
+} from './outbox.js';
 
 describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
   let db: GicDatabase;
@@ -90,6 +96,32 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
 
     const pending = await pendingOutbox(db);
     expect(pending.map((c) => c.command_id)).toEqual([b.command_id]);
+  });
+
+  it('pendingAfterBatch : ce qui reste après le lot, par auteur, zéro compris (tablette partagée)', async () => {
+    const enqueueFor = (author: string) =>
+      enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId: author,
+          commandType: 'test.a',
+          commandVersion: 1,
+          aggregateType: 'TEST',
+          payload: {},
+          capturedOffline: true,
+        },
+      );
+    const a1 = await enqueueFor('user-a');
+    const a2 = await enqueueFor('user-a');
+    await enqueueFor('user-b');
+    const synced = await enqueueFor('user-c');
+    await db.outbox.update(synced.command_id, { status: 'SYNCED' });
+
+    // Lot d'A (deux commandes) : il ne lui reste rien, B en a une ; C n'a rien d'en attente.
+    expect(await pendingAfterBatch(db, [a1, a2])).toEqual({ 'user-a': 0, 'user-b': 1 });
+    // Lot d'une seule commande d'A : il lui en reste une.
+    expect(await pendingAfterBatch(db, [a1])).toEqual({ 'user-a': 1, 'user-b': 1 });
   });
 
   it('countPending inclut SYNCING, countAttention inclut CONFLICT et REJECTED', async () => {

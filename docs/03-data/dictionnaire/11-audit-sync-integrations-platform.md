@@ -145,7 +145,7 @@
 | `bootstrapped_at` | ts | Oui | — | |
 | `needs_rebootstrap` | boolean | Non | false | |
 
-Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]`), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations en attente déclaré par l'appareil), `app_version`.
+Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]`), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations restant à envoyer **après** le dernier lot, déclaré par l'appareil dans `pending_by_author` ; nul si non déclaré), `app_version`. `last_device_seq` est le plus grand `device_seq` reçu (P5-07). Sur un appareil partagé (AV-007), une ligne supplémentaire par auteur, `dataset = '_a:<utilisateur>'` (32 caractères hexadécimaux), porte son dernier envoi, son plus grand `device_seq` et ses opérations restantes.
 
 - **PK** `(device_id, dataset)`. **Suppr.** Technique (suit l'appareil). **Offline** SRV.
 

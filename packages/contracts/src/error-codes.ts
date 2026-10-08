@@ -76,6 +76,10 @@ export const WARNING_CODES = [
   // commande visée (soldée, annulée, livrée entre-temps) : elle reste en crédit client, conflit pour
   // la Finance (AV-150, BR-SYN-007).
   'PAYMENT_UNALLOCATED',
+  // P5-07 : vente saisie hors ligne avec une référence locale déjà utilisée par le même appareil
+  // (compteur partagé entre vendeurs d'une tablette, AV-007) : le fait est appliqué, la référence
+  // locale n'est pas conservée (BR-SYN-007).
+  'LOCAL_REF_DUPLICATE',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

@@ -7,7 +7,7 @@ import type { PushRequest, PushResponse, RawCommandEnvelope } from '@gic/contrac
 import { deviceStateAfterResult } from '@gic/contracts';
 import type { Clock, IdGenerator } from '@gic/domain';
 import type { GicDatabase, OutboxCommand } from '../storage/db.js';
-import { pendingOutbox } from './outbox.js';
+import { pendingAfterBatch, pendingOutbox } from './outbox.js';
 import { authorizedRequest } from './api-client.js';
 
 export type PushCycleResult =
@@ -53,6 +53,7 @@ export async function runPushCycle(
     batch_id: deps.idGenerator.newId(),
     device_sent_at: deps.clock.now().toISOString(),
     commands: batch.map(toEnvelope),
+    pending_by_author: await pendingAfterBatch(db, batch),
   };
 
   const result = await authorizedRequest<PushResponse>(db, '/api/v1/sync/push', {

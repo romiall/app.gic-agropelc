@@ -19,6 +19,9 @@ export const rawCommandEnvelopeSchema = commandEnvelopeBaseSchema.extend({
 });
 export type RawCommandEnvelope = z.infer<typeof rawCommandEnvelopeSchema>;
 
+/** Nombre maximal d'auteurs distincts déclarés dans une même file (tablette partagée, AV-007). */
+export const MAX_PENDING_AUTHORS = 20;
+
 export const pushRequestSchema = z.object({
   device_id: uuidv7Schema,
   batch_id: uuidv7Schema,
@@ -26,6 +29,16 @@ export const pushRequestSchema = z.object({
   // Lot ≤ 50 commandes (§3.1) ; la limite de 256 Ko compressés est une contrainte de
   // transport (gzip), vérifiée par le serveur HTTP, pas par ce schéma.
   commands: z.array(rawCommandEnvelopeSchema).min(1).max(50),
+  // Opérations qui restent dans la file de l'appareil **après** ce lot, par auteur (tablette
+  // partagée, AV-007, BR-SYN-014) : l'appareil déclare ce qu'il lui reste à envoyer, tous auteurs
+  // confondus, pour que le serveur sache quand un appareil a « tout synchronisé » (BR-DIS-014).
+  // Absent = non déclaré (le serveur ne suppose rien). Clés : identifiants d'utilisateur.
+  pending_by_author: z
+    .record(uuidv7Schema, z.number().int().min(0))
+    .refine((value) => Object.keys(value).length <= MAX_PENDING_AUTHORS, {
+      message: `Au plus ${MAX_PENDING_AUTHORS} auteurs déclarés.`,
+    })
+    .optional(),
 });
 export type PushRequest = z.infer<typeof pushRequestSchema>;
 
