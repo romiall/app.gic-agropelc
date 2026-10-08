@@ -10,6 +10,7 @@
  */
 import mysql from 'mysql2/promise';
 import { hash } from '@node-rs/argon2';
+import { newUuidv7Bytes as newId } from './uuidv7.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -25,12 +26,6 @@ const ARGON2ID_OPTIONS = { algorithm: ARGON2ID, memoryCost: 19_456, timeCost: 2,
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const phone = args[0] ?? '+237600000001';
 const password = args[1] ?? 'ChangeMe123!';
-
-function randomId(): Buffer {
-  const bytes = Buffer.alloc(16);
-  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-  return bytes;
-}
 
 async function main(): Promise<void> {
   const conn = await mysql.createConnection(DATABASE_URL!);
@@ -51,7 +46,7 @@ async function main(): Promise<void> {
       ]);
       console.log(`  ~ identity_users : mot de passe mis à jour pour ${phone}`);
     } else {
-      userId = randomId();
+      userId = newId();
       await conn.query(
         `INSERT INTO identity_users (id, full_name, phone, password_hash, status, locale, created_by)
          VALUES (?, 'Administrateur local', ?, ?, 'ACTIVE', 'fr-CM', ?)`,
@@ -78,7 +73,7 @@ async function main(): Promise<void> {
         `INSERT INTO identity_user_role_assignments
            (id, user_id, role_id, scope_type, valid_from, created_by)
          VALUES (?, ?, ?, 'GLOBAL', '2020-01-01 00:00:00', ?)`,
-        [randomId(), userId, role.id, userId],
+        [newId(), userId, role.id, userId],
       );
       console.log('  + identity_user_role_assignments : ADMIN (GLOBAL) affecté');
     }

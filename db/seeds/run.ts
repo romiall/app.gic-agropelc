@@ -19,15 +19,11 @@ import { PAYMENT_METHODS } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
 import { codeEntityId } from './code-entity-id.js';
 
+import { newUuidv7Bytes as newId } from './uuidv7.js';
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   throw new Error('DATABASE_URL non définie (voir db/README.md).');
-}
-
-function randomId(): Buffer {
-  const bytes = Buffer.alloc(16);
-  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-  return bytes;
 }
 
 async function ensureSystemUser(conn: mysql.Connection): Promise<Buffer> {
@@ -36,7 +32,7 @@ async function ensureSystemUser(conn: mysql.Connection): Promise<Buffer> {
   );
   if (rows.length > 0) return rows[0]!.id as Buffer;
 
-  const id = randomId();
+  const id = newId();
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, is_system, locale, created_by)
      VALUES (?, 'Système', '+237600000000', '', 'ACTIVE', TRUE, 'fr-CM', ?)`,
@@ -58,7 +54,7 @@ async function seedRoles(
        ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description),
          allowed_scope_types = VALUES(allowed_scope_types), updated_by = VALUES(created_by)`,
       [
-        randomId(),
+        newId(),
         role.code,
         role.name,
         role.description,
@@ -146,7 +142,7 @@ async function seedVirtualLocations(conn: mysql.Connection, systemUserId: Buffer
     await conn.query(
       `INSERT INTO organization_locations (id, code, name, location_type, status, created_by)
        VALUES (?, ?, ?, ?, 'ACTIVE', ?)`,
-      [randomId(), location.code, location.name, location.locationType, systemUserId],
+      [newId(), location.code, location.name, location.locationType, systemUserId],
     );
   }
   console.log(
@@ -179,7 +175,7 @@ async function seedSystemSettings(conn: mysql.Connection, systemUserId: Buffer):
       `INSERT INTO organization_system_settings (id, \`key\`, value, scope_type, is_client_visible, created_by, reason)
        VALUES (?, ?, CAST(? AS JSON), 'GLOBAL', ?, ?, ?)`,
       [
-        randomId(),
+        newId(),
         setting.key,
         JSON.stringify(setting.value),
         setting.isClientVisible,
@@ -211,7 +207,7 @@ async function seedSystemSettings(conn: mysql.Connection, systemUserId: Buffer):
       `INSERT INTO organization_system_settings (id, \`key\`, value, scope_type, valid_from, is_client_visible, created_by, reason)
        VALUES (?, ?, CAST(? AS JSON), 'GLOBAL', UTC_TIMESTAMP(6), ?, ?, ?)`,
       [
-        randomId(),
+        newId(),
         revision.key,
         JSON.stringify(revision.value),
         revision.isClientVisible,
@@ -243,7 +239,7 @@ async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): 
       await conn.query(
         `INSERT INTO ${table} (id, code, label, sort_order, is_active, is_system, created_by)
          VALUES (?, ?, ?, ?, TRUE, ?, ?)`,
-        [randomId(), row.code, row.label, row.sortOrder, row.isSystem, systemUserId],
+        [newId(), row.code, row.label, row.sortOrder, row.isSystem, systemUserId],
       );
       inserted++;
     }
@@ -273,7 +269,7 @@ async function seedProductionReferences(
          valid_from, status, created_by)
        VALUES (?, ?, 1, ?, CAST(? AS JSON), ?, FALSE, ?, ?, ?, '2020-01-01 00:00:00', 'ACTIVE', ?)`,
       [
-        randomId(),
+        newId(),
         policy.code,
         policy.operationType,
         JSON.stringify(policy.condition),
@@ -297,7 +293,7 @@ async function seedProductionReferences(
     await conn.query(
       `INSERT INTO catalog_reason_codes (id, category, code, label, created_by)
        VALUES (?, ?, ?, ?, ?)`,
-      [randomId(), reason.category, reason.code, reason.label, systemUserId],
+      [newId(), reason.category, reason.code, reason.label, systemUserId],
     );
     reasons++;
   }
