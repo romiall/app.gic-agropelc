@@ -992,8 +992,12 @@ export interface InventoryStockAllocations {
   product_id: Buffer;
   quantity_granted: Decimal;
   quantity_remaining: Decimal;
+  release_declared_remaining: Decimal | null;
+  released_at: Date | null;
   revocation_pending: Generated<number>;
-  sales_order_line_id: Buffer | null;
+  revoke_reason: string | null;
+  revoked_at: Date | null;
+  revoked_by: Buffer | null;
   status: Generated<string>;
   updated_at: Generated<Date>;
   updated_by: Buffer | null;

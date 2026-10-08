@@ -3421,13 +3421,16 @@ CREATE TABLE `inventory_stock_allocation_entries` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `created_by` binary(16) NOT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_stock_allocation_entries_move_type` (`stock_move_id`,`entry_type`),
   KEY `ix_inventory_stock_allocation_entries_allocation` (`allocation_id`),
-  KEY `fk_inventory_stock_allocation_entries_move` (`stock_move_id`),
   KEY `fk_inventory_stock_allocation_entries_created_by` (`created_by`),
+  KEY `ix_inventory_stock_allocation_entries_time` (`allocation_id`,`occurred_at`),
   CONSTRAINT `fk_inventory_stock_allocation_entries_allocation` FOREIGN KEY (`allocation_id`) REFERENCES `inventory_stock_allocations` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocation_entries_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocation_entries_move` FOREIGN KEY (`stock_move_id`) REFERENCES `inventory_stock_moves` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_inventory_stock_allocation_entries_type` CHECK ((`entry_type` in (_utf8mb4'GRANT',_utf8mb4'INCREASE',_utf8mb4'CONSUME',_utf8mb4'RELEASE',_utf8mb4'REVOKE',_utf8mb4'TRANSFER',_utf8mb4'ADJUST')))
+  CONSTRAINT `ck_inventory_stock_allocation_entries_move` CHECK (((`entry_type` not in (_utf8mb4'CONSUME',_utf8mb4'RESTORE')) or (`stock_move_id` is not null))),
+  CONSTRAINT `ck_inventory_stock_allocation_entries_sign` CHECK ((((`entry_type` in (_utf8mb4'GRANT',_utf8mb4'INCREASE',_utf8mb4'RESTORE')) and (`quantity` > 0)) or ((`entry_type` in (_utf8mb4'CONSUME',_utf8mb4'RELEASE',_utf8mb4'REVOKE')) and (`quantity` < 0)) or ((`entry_type` = _utf8mb4'ADJUST') and (`quantity` <> 0)))),
+  CONSTRAINT `ck_inventory_stock_allocation_entries_type` CHECK ((`entry_type` in (_utf8mb4'GRANT',_utf8mb4'INCREASE',_utf8mb4'CONSUME',_utf8mb4'RELEASE',_utf8mb4'REVOKE',_utf8mb4'ADJUST',_utf8mb4'RESTORE')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -3479,13 +3482,17 @@ CREATE TABLE `inventory_stock_allocations` (
   `lot_id` binary(16) DEFAULT NULL,
   `holder_user_id` binary(16) DEFAULT NULL,
   `holder_device_id` binary(16) DEFAULT NULL,
-  `sales_order_line_id` binary(16) DEFAULT NULL,
   `quantity_granted` decimal(14,3) NOT NULL,
   `quantity_remaining` decimal(14,3) NOT NULL,
   `valid_until` datetime(6) DEFAULT NULL,
   `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'ACTIVE',
   `close_cause` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `revocation_pending` tinyint(1) NOT NULL DEFAULT '0',
+  `revoked_at` datetime(6) DEFAULT NULL,
+  `revoked_by` binary(16) DEFAULT NULL,
+  `revoke_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `released_at` datetime(6) DEFAULT NULL,
+  `release_declared_remaining` decimal(14,3) DEFAULT NULL,
   `granted_by` binary(16) NOT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `created_by` binary(16) NOT NULL,
@@ -3503,6 +3510,7 @@ CREATE TABLE `inventory_stock_allocations` (
   KEY `fk_inventory_stock_allocations_granted_by` (`granted_by`),
   KEY `fk_inventory_stock_allocations_created_by` (`created_by`),
   KEY `fk_inventory_stock_allocations_updated_by` (`updated_by`),
+  KEY `fk_inventory_stock_allocations_revoked_by` (`revoked_by`),
   CONSTRAINT `fk_inventory_stock_allocations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocations_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocations_holder_device` FOREIGN KEY (`holder_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
@@ -3510,13 +3518,65 @@ CREATE TABLE `inventory_stock_allocations` (
   CONSTRAINT `fk_inventory_stock_allocations_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocations_lot` FOREIGN KEY (`lot_id`) REFERENCES `inventory_stock_lots` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocations_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_allocations_revoked_by` FOREIGN KEY (`revoked_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_allocations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_inventory_stock_allocations_close_cause` CHECK (((`close_cause` is null) or (`close_cause` in (_utf8mb4'RELEASED',_utf8mb4'CONSUMED',_utf8mb4'CANCELLED',_utf8mb4'TRANSFERRED',_utf8mb4'EXPIRED_RELEASED')))),
-  CONSTRAINT `ck_inventory_stock_allocations_holder` CHECK ((((`allocation_type` = _utf8mb4'DEVICE_QUOTA') and (`holder_user_id` is not null) and (`holder_device_id` is not null) and (`sales_order_line_id` is null)) or ((`allocation_type` = _utf8mb4'ORDER_RESERVATION') and (`sales_order_line_id` is not null) and (`holder_user_id` is null) and (`holder_device_id` is null)))),
+  CONSTRAINT `ck_inventory_stock_allocations_close_cause` CHECK (((`close_cause` is null) or (`close_cause` in (_utf8mb4'RELEASED',_utf8mb4'CONSUMED',_utf8mb4'EXPIRED_RELEASED')))),
+  CONSTRAINT `ck_inventory_stock_allocations_holder` CHECK (((`holder_user_id` is not null) and (`holder_device_id` is not null))),
+  CONSTRAINT `ck_inventory_stock_allocations_pending` CHECK (((`revocation_pending` = false) or (`status` = _utf8mb4'ACTIVE'))),
+  CONSTRAINT `ck_inventory_stock_allocations_quantities` CHECK (((`quantity_granted` > 0) and (`quantity_remaining` >= 0) and (`quantity_remaining` <= `quantity_granted`))),
+  CONSTRAINT `ck_inventory_stock_allocations_state` CHECK ((((`status` = _utf8mb4'ACTIVE') and (`close_cause` is null) and (`released_at` is null) and (`revoked_at` is null)) or ((`status` = _utf8mb4'CLOSED') and (`close_cause` is not null) and (`quantity_remaining` = 0) and (`revoked_at` is null) and ((`close_cause` = _utf8mb4'CONSUMED') or (`released_at` is not null))) or ((`status` = _utf8mb4'REVOKED') and (`close_cause` is null) and (`quantity_remaining` = 0) and (`revoked_at` is not null) and (`revoked_by` is not null) and (`revoke_reason` is not null)))),
   CONSTRAINT `ck_inventory_stock_allocations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'CLOSED',_utf8mb4'REVOKED'))),
-  CONSTRAINT `ck_inventory_stock_allocations_type` CHECK ((`allocation_type` in (_utf8mb4'DEVICE_QUOTA',_utf8mb4'ORDER_RESERVATION')))
+  CONSTRAINT `ck_inventory_stock_allocations_type` CHECK ((`allocation_type` = _utf8mb4'DEVICE_QUOTA'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_inventory_stock_allocations_update_guard` BEFORE UPDATE ON `inventory_stock_allocations` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.allocation_type <=> OLD.allocation_type AND
+    NEW.location_id <=> OLD.location_id AND
+    NEW.product_id <=> OLD.product_id AND
+    NEW.lot_id <=> OLD.lot_id AND
+    NEW.holder_user_id <=> OLD.holder_user_id AND
+    NEW.holder_device_id <=> OLD.holder_device_id AND
+    NEW.granted_by <=> OLD.granted_by AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocations : identité du quota immuable (détenteur, emplacement, produit).';
+  END IF;
+  IF NEW.quantity_granted < OLD.quantity_granted THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocations : la quantité accordée ne diminue jamais (augmentation par entrée).';
+  END IF;
+  IF OLD.status <> 'ACTIVE' AND NEW.status <> OLD.status THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocations : quota fermé ou révoqué, état terminal (SM-ALLOCATION).';
+  END IF;
+  IF OLD.status <> 'ACTIVE' AND NOT (
+    NEW.quantity_granted <=> OLD.quantity_granted AND
+    NEW.quantity_remaining <=> OLD.quantity_remaining AND
+    NEW.valid_until <=> OLD.valid_until AND
+    NEW.close_cause <=> OLD.close_cause AND
+    NEW.revoked_at <=> OLD.revoked_at AND
+    NEW.revoked_by <=> OLD.revoked_by AND
+    NEW.revoke_reason <=> OLD.revoke_reason AND
+    NEW.released_at <=> OLD.released_at AND
+    NEW.release_declared_remaining <=> OLD.release_declared_remaining
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory_stock_allocations : quota terminé, ses données ne changent plus.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
 /*!50003 SET @saved_col_connection = @@collation_connection */ ;
@@ -8145,6 +8205,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090900'),
   ('20261003091000'),
   ('20261005090000'),
+  ('20261008090100');
   ('20261008090000');
   ('20261007090000');
 UNLOCK TABLES;

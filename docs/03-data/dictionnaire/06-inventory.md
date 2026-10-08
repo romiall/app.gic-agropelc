@@ -177,31 +177,32 @@
 
 ## inventory.stock_allocations
 
-**Responsabilité** : quota hors ligne d'un appareil ou réservation d'une commande (ADR-004 ; SM-ALLOCATION).
+**Responsabilité** : quota d'un appareil sur un emplacement `SHARED` (ADR-004 ; ADR-033 ; SM-ALLOCATION). **Quota d'appareil seul** depuis P5-04 : la réservation de commande (`ORDER_RESERVATION`, `sales_order_line_id`) est retirée (ADR-028 §4).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
-| `allocation_type` | enum(`DEVICE_QUOTA`,`ORDER_RESERVATION`) | Non | — | |
+| `allocation_type` | enum(`DEVICE_QUOTA`) | Non | `DEVICE_QUOTA` | Valeur unique (`CHECK`) |
 | `location_id` | uuid → organization.locations | Non | — | |
-| `product_id` | uuid → catalog.products | Non | — | |
-| `lot_id` | uuid → stock_lots | Oui | — | |
-| `holder_user_id` | uuid → identity.users | Oui | — | Requis si `DEVICE_QUOTA` |
-| `holder_device_id` | uuid → identity.devices | Oui | — | Requis si `DEVICE_QUOTA` |
-| `sales_order_line_id` | uuid | Oui | — | Réf. sans FK ; requis si `ORDER_RESERVATION` |
-| `quantity_granted` | qty | Non | — | Cumul des octrois (information) |
-| `quantity_remaining` | qty | Non | — | Σ entrées signées (dénormalisé) |
-| `valid_until` | ts | Oui | — | Fin d'usage local (quota) |
+| `product_id` | uuid → catalog.products | Non | — | Grain du quota : (emplacement, produit) |
+| `lot_id` | uuid → stock_lots | Oui | — | Indicatif, sans effet sur le disponible (AV-160) |
+| `holder_user_id` | uuid → identity.users | Non | — | Couple détenteur (INV-STK-11) |
+| `holder_device_id` | uuid → identity.devices | Non | — | |
+| `quantity_granted` | qty | Non | — | Cumul des octrois et augmentations ; jamais en baisse ; > 0 |
+| `quantity_remaining` | qty | Non | — | Σ entrées signées (INV-STK-20) ; ≥ 0 et ≤ accordé ; **jamais négatif** (AV-161) |
+| `valid_until` | ts | Oui | — | Fin d'usage local ; par défaut fin du jour métier (AV-160) |
 | `status` | enum(`ACTIVE`,`CLOSED`,`REVOKED`) | Non | `ACTIVE` | |
-| `close_cause` | enum(`RELEASED`,`CONSUMED`,`CANCELLED`,`TRANSFERRED`,`EXPIRED_RELEASED`) | Oui | — | |
-| `revocation_pending` | boolean | Non | false | Appareil bloqué ou perdu |
+| `close_cause` | enum(`RELEASED`,`CONSUMED`,`EXPIRED_RELEASED`) | Oui | — | Renseignée si `CLOSED` |
+| `revocation_pending` | boolean | Non | false | Appareil bloqué ou perdu : décision d'un responsable ; seulement si `ACTIVE` |
+| `revoked_at`, `revoked_by`, `revoke_reason` | ts, uuid, varchar(500) | Oui | — | Révocation forcée ; la date qualifie `ALLOCATION_REVOKED_CONSUMED` (selon `occurred_at`) |
+| `released_at`, `release_declared_remaining` | ts, qty | Oui | — | Libération par l'appareil : le reste déclaré ; un écart avec le serveur ouvre un conflit |
 | `granted_by` | uuid → identity.users | Non | — | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **CK** colonnes du détenteur cohérentes avec le type ; `quantity_remaining ≥ 0` (sauf conflit tracé).
+- **PK** `id`. **CK** `allocation_type = DEVICE_QUOTA` ; détenteur complet ; quantités (`> 0`, `0 ≤ reste ≤ accordé`) ; **état cohérent avec ses données** (`ACTIVE` : aucune donnée de fermeture ; `CLOSED` : cause, reste nul, date de libération sauf `CONSUMED` ; `REVOKED` : date, auteur, motif, reste nul) ; `revocation_pending` seulement si `ACTIVE`.
 - **UQ** un quota `ACTIVE` par (holder_user_id, holder_device_id, location_id, product_id, lot) ; les augmentations passent par des entrées.
 - **IX** `(location_id, product_id, status)`, `(holder_device_id, status)`.
-- **Suppr.** `IMMUABLE` sauf transitions. **Audit** Octroi, augmentation, libération, révocation. **Offline** DL (les quotas de l'appareil).
+- **Déclencheurs** : `update_guard` (identité immuable, accordé jamais en baisse, `CLOSED` et `REVOKED` terminaux et figés) ; `no_delete`. **Suppr.** `IMMUABLE` sauf transitions. **Audit** Octroi, augmentation, libération, révocation. **Offline** DL (les quotas de l'appareil, jeu `allocations`, P5-18).
 
 ## inventory.stock_allocation_entries
 
@@ -211,14 +212,14 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `allocation_id` | uuid → stock_allocations | Non | — | |
-| `entry_type` | enum(`GRANT`,`INCREASE`,`CONSUME`,`RELEASE`,`REVOKE`,`TRANSFER`,`ADJUST`) | Non | — | |
-| `quantity` | qty (signé) | Non | — | Positif pour `GRANT`/`INCREASE`, négatif sinon |
-| `stock_move_id` | uuid → stock_moves | Oui | — | Pour `CONSUME` |
+| `entry_type` | enum(`GRANT`,`INCREASE`,`CONSUME`,`RELEASE`,`REVOKE`,`ADJUST`,`RESTORE`) | Non | — | `TRANSFER` retiré (plus de réservation transférable) ; `RESTORE` : restitution à l'annulation d'une vente (ADR-033 §8) |
+| `quantity` | qty (signé) | Non | — | Positif pour `GRANT`/`INCREASE`/`RESTORE`, négatif pour `CONSUME`/`RELEASE`/`REVOKE`, non nul pour `ADJUST` (`CHECK`) |
+| `stock_move_id` | uuid → stock_moves | Oui | — | Obligatoire pour `CONSUME` et `RESTORE` ; **une seule entrée par mouvement et par type** (UQ) |
 | `occurred_at` | ts | Non | — | |
 | `command_id` | uuid | Oui | — | |
 | `created_at`, `created_by` | | | | |
 
-- **PK** `id`. **Suppr.** `IMMUABLE`. **Intégrité** INV-STK-10, INV-STK-11.
+- **PK** `id`. **UQ** `(stock_move_id, entry_type)`. **IX** `(allocation_id)`, `(allocation_id, occurred_at)`. **Suppr.** `IMMUABLE` (déclencheurs). **Intégrité** INV-STK-10, INV-STK-11, INV-STK-20 : Σ `CONSUME` − Σ `RESTORE` = Σ des quantités des mouvements portant `allocation_id`.
 
 ## inventory.loss_declarations
 
