@@ -42,6 +42,9 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
   - tests à date fixe et tests relatifs à l'heure réelle cohabitent : les fenêtres hors ligne (30 jours, 7 jours) sont évaluées par la base à l'heure réelle ;
   - pour les éditions complexes, écrire un script dans un fichier temporaire plutôt qu'un heredoc (les accents graves et `${}` tronquent les heredocs) ;
   - avertissements Git « LF will be replaced by CRLF » : sans conséquence.
+  - **identifiants d'amorçage** : tout `id` créé par `db/seeds/*.ts` est un UUIDv7 (`db/seeds/uuidv7.ts`) ; le serveur refuse les jetons dont `sub`, `device_id` ou `session_id` ne l'est pas (`MALFORMED_CLAIMS`). Une base de développement créée avant le 08/10/2026 peut contenir un administrateur local à identifiant non conforme : le désactiver (`UPDATE identity_users SET status='DEACTIVATED', status_reason=…, phone=…`) puis relancer `create-local-admin` ;
+  - **renouvellement de session côté PWA** : `ensureAccessToken` ne lance qu'un renouvellement à la fois (le jeton de rafraîchissement tourne à chaque appel et sa réutilisation est refusée) ; tout nouvel écran qui appelle l'API passe par `authorizedRequest`, jamais par `fetch` direct ;
+  - une migration **modifiée sur place** après avoir été appliquée n'est pas rejouée par dbmate : comparer une base reconstruite depuis les migrations à la base de test en cas d'échec inexpliqué d'une contrainte (`SHOW CREATE TABLE`).
 
 ## 2. État du projet (vérifié le 07/10/2026)
 
@@ -59,7 +62,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 
 - Tests au 07/10 : domaine **216** (17 fichiers, couverture ≥ 90 %), contrats **165**, base **117** (12 fichiers), PWA **58**, serveur **656** (85 fichiers) ; typage, lint, frontières, formatage et références verts ; **CI GitHub verte** sur la branche.
 - Git : `main` sur GitHub contient le travail local poussé le 07/10 (jusqu'à P4-06, commit `417c791`) ; la branche **`claude/brave-pasteur-c7q4y7`** porte en plus les correctifs de CI, P4-06 (revue), P4-07 à P4-14 et AV-150. Sa fusion dans `main` (pull request) est à la main du porteur.
-- Écrans PWA : **aucun écran métier** construit ; l'appareil n'applique encore que les jeux hors ligne de P0 (`apps/pwa/src/sync/pull.ts`) ; les API, les jeux hors ligne côté serveur et la logique partagée sont prêts. Aucun déploiement.
+- Écrans PWA : **un seul écran métier**, l'accueil par rôle (ECR-ADM-03, 08/10/2026 : signaux, actions du jour, indicateurs, activité, état hors ligne), plus la connexion, le PIN et la synchronisation ; l'appareil n'applique encore que les jeux hors ligne de P0 (`apps/pwa/src/sync/pull.ts`) ; les API, les jeux hors ligne côté serveur et la logique partagée sont prêts. Aucun déploiement.
 - Avancement estimé : code serveur ≈ 72 %, projet complet ≈ 48 % (les écrans PWA, P5, P8, P9, P10 et le déploiement restent).
 
 ## 3. Ce qu'a fait la session du 07/10/2026 (environnement distant, MySQL 8.0)
