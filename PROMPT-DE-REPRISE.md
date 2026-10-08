@@ -58,7 +58,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 | **P4 Ventes** | **Code terminé** (P4-01 à P4-14) | `13-demonstration-p4.md` |
 | P6 Approvisionnement | Code terminé ; reprise prévue pour AV-096 (réception hors site après validation) | `11-demonstration-p6.md` |
 | P7 Production | Code terminé (CA et marge des lots livrés en P4) | `12-demonstration-p7.md` |
-| **P5 Distribution et PDV** | **En cours** : P5-01 fait (conception : ADR-032, ADR-033, AV-153 à AV-165, backlog de 24 incréments) ; **prochaine étape P5-02** | plan §4 (P5) |
+| **P5 Distribution et PDV** | **En cours** : P5-01 (conception : ADR-032, ADR-033, AV-153 à AV-165, backlog de 24 incréments) et P5-02 (logique partagée) faits ; **prochaine étape P5-03** | plan §4 (P5) |
 | P8, P9, P10 | Non commencées | plan §4 |
 
 - Tests au 07/10 : domaine **216** (17 fichiers, couverture ≥ 90 %), contrats **165**, base **117** (12 fichiers), PWA **58**, serveur **656** (85 fichiers) ; typage, lint, frontières, formatage et références verts ; **CI GitHub verte** sur la branche.
@@ -85,7 +85,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 
 **Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **656**, base **117**, domaine **216**, contrats **165**, PWA **58**) avant toute modification ; en cas d'échec, le signaler au porteur.
 
-**Étape 1 — la suite** : **P5 est engagée** (le porteur l'a demandée le 08/10/2026 avec les valeurs par défaut) : reprendre au premier incrément non fait du backlog de P5 (plan §4, **P5-02**). Les autres choix restent ouverts si le porteur change de direction (choix multiple, recommandation en premier) :
+**Étape 1 — la suite** : **P5 est engagée** (le porteur l'a demandée le 08/10/2026 avec les valeurs par défaut) : reprendre au premier incrément non fait du backlog de P5 (plan §4, **P5-03**). Les autres choix restent ouverts si le porteur change de direction (choix multiple, recommandation en premier) :
 1. **P5 Distribution et points de vente** (en cours ; P4 en dépend pour la caisse) — sessions de caisse (ouverture, clôture, écart, validation), quotas d'appareil (`DEVICE_QUOTA`) et blocage de la vente hors ligne au-delà de l'allocation (AV-025), caisse du PDV dans le jeu `cash`, remises de fonds ;
 2. **Reprise de P6 pour AV-096** (réception hors site après validation), courte ;
 3. **P8 Finance opérationnelle** — dépenses, factures et paiements fournisseurs, rapprochement, dettes ;

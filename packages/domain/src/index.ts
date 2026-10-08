@@ -217,3 +217,54 @@ export {
   deliveryAllocation,
   splitAmountXaf,
 } from './sales.js';
+
+// Quotas d'appareil, sessions de caisse, remises de fonds, distribution (P5 ; ADR-032, ADR-033).
+export {
+  ALLOCATION_ENTRY_TYPES,
+  allocationEntrySign,
+  signedAllocationEntry,
+  allocationRemaining,
+  availableForConsumer,
+  planQuotaConsumption,
+  decideLocalConsumption,
+  restorableQuantity,
+  checkGrantCapacity,
+  allocationValidUntil,
+  isAllocationExpired,
+  isConsumedAfterRevocation,
+} from './allocations.js';
+export type {
+  AllocationEntryType,
+  CustodyMode,
+  LocalConsumptionBlock,
+  LocalConsumptionDecision,
+  QuotaConsumptionPlan,
+} from './allocations.js';
+export {
+  CASH_SESSION_STATUSES,
+  CASH_EXPECTED_EXCLUDED_TYPES,
+  CASH_TRANSFER_IMPUTATIONS,
+  isInCashSessionWindow,
+  cashSessionWindowsOverlap,
+  expectedCashXaf,
+  cashVarianceXaf,
+  openingVarianceXaf,
+  reevaluationDeltaXaf,
+  varianceMovement,
+  statusAfterClose,
+  varianceSeverity,
+  adjustmentTreatment,
+  isAllowedCashValidator,
+  transferDiscrepancyXaf,
+  transferStatusAfterReceive,
+  cashInTransitXaf,
+} from './cash-session.js';
+export type {
+  AdjustmentTreatment,
+  CashMovementAmount,
+  CashSessionStatus,
+  CashSessionWindow,
+  CashTransferImputation,
+} from './cash-session.js';
+export { distributionResidual, isDistributionReconciled } from './distribution.js';
+export type { DistributionFlows } from './distribution.js';

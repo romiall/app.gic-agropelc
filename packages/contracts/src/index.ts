@@ -80,3 +80,31 @@ export type {
   HomeSection,
   HomeResponse,
 } from './home.js';
+
+// Commandes de la distribution (P5 ; ADR-021, ADR-032, ADR-033).
+export {
+  cashSessionOpenPayloadSchema,
+  cashSessionClosePayloadSchema,
+  cashSessionForceClosePayloadSchema,
+  cashSessionValidatePayloadSchema,
+  cashTransferSendPayloadSchema,
+  cashTransferReceivePayloadSchema,
+  cashTransferCancelPayloadSchema,
+  allocationGrantPayloadSchema,
+  allocationIncreasePayloadSchema,
+  allocationRevokePayloadSchema,
+  allocationReleasePayloadSchema,
+} from './distribution-commands.js';
+export type {
+  CashSessionOpenPayload,
+  CashSessionClosePayload,
+  CashSessionForceClosePayload,
+  CashSessionValidatePayload,
+  CashTransferSendPayload,
+  CashTransferReceivePayload,
+  CashTransferCancelPayload,
+  AllocationGrantPayload,
+  AllocationIncreasePayload,
+  AllocationRevokePayload,
+  AllocationReleasePayload,
+} from './distribution-commands.js';
