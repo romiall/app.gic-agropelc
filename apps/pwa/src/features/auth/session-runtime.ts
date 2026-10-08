@@ -39,6 +39,10 @@ export type AccessTokenResult =
   | { readonly ok: true; readonly accessToken: string }
   | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' };
 
+/** Renouvellement en cours, rattaché à la session qui l'a lancé (une autre session en lance un nouveau). */
+let refreshInFlight:
+  { readonly session: SessionRuntime; readonly promise: Promise<AccessTokenResult> } | undefined;
+
 /**
  * Jeton d'accès valide, en le rafraîchissant si nécessaire. Hors ligne, échoue proprement
  * (`OFFLINE`) : appelant (push/pull) reporte au prochain cycle, sans vider la session locale
@@ -58,6 +62,23 @@ export async function ensureAccessToken(db: GicDatabase): Promise<AccessTokenRes
     return { ok: true, accessToken: session.accessToken };
   }
 
+  // Un seul renouvellement à la fois : le serveur fait tourner le jeton de rafraîchissement à
+  // chaque appel et refuse sa réutilisation (rotation, `rotateSession`). Plusieurs écrans et le
+  // moteur de synchronisation demandent un jeton en même temps à l'ouverture : sans partage, le
+  // deuxième appel présente un jeton déjà tourné, essuie un refus et vide la session (reconnexion).
+  if (refreshInFlight && refreshInFlight.session === session) return refreshInFlight.promise;
+  const promise = refreshAccessToken(db, session, now).finally(() => {
+    if (refreshInFlight?.promise === promise) refreshInFlight = undefined;
+  });
+  refreshInFlight = { session, promise };
+  return promise;
+}
+
+async function refreshAccessToken(
+  db: GicDatabase,
+  session: SessionRuntime,
+  now: number,
+): Promise<AccessTokenResult> {
   let response: Response;
   try {
     response = await fetch(apiUrl('/api/v1/auth/refresh'), {
