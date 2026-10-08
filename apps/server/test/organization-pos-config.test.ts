@@ -545,10 +545,11 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
       const device = await newDevice();
       const holder = await db.transaction().execute((trx) => insertTestUser(trx));
       const productId = await db.transaction().execute((trx) => insertTestProduct(trx, admin));
+      const quotaId = freshUuid();
       await db
         .insertInto('inventory_stock_allocations')
         .values({
-          id: toBin(freshUuid()),
+          id: toBin(quotaId),
           allocation_type: 'DEVICE_QUOTA',
           location_id: toBin(store),
           product_id: toBin(productId),
@@ -565,6 +566,19 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
         status: 'REJECTED',
         error: { code: 'LOCATION_HAS_ALLOCATIONS' },
       });
+      // Le quota de ce montage n'a ni stock ni registre : il est révoqué pour que la réconciliation de
+      // toute la base (INV-STK-19, INV-STK-20) ne le voie pas comme une anomalie.
+      await db
+        .updateTable('inventory_stock_allocations')
+        .set({
+          status: 'REVOKED',
+          quantity_remaining: '0',
+          revoked_at: new Date(OCCURRED_AT),
+          revoked_by: toBin(admin),
+          revoke_reason: 'Montage de test',
+        })
+        .where('id', '=', toBin(quotaId))
+        .execute();
     });
 
     it('refuse un emplacement partie à un transfert ouvert (LOCATION_HAS_OPEN_TRANSFER)', async () => {

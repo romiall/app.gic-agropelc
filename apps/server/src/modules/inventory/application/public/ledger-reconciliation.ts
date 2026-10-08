@@ -24,6 +24,12 @@
  *   exacte quand la quantité est soldée, rangs sans trou) et INV-STK-18 (solde de chaque emplacement
  *   « à livrer » ≥ 0 en quantité et en valeur).
  *
+ * Quotas d'appareil (P5-10 ; ADR-033, INV-STK-19, INV-STK-20) : `verifyStockLedger` contrôle aussi, pour
+ *   chaque quota, que le reste est la somme signée de son registre d'entrées, jamais négatif ni au-delà
+ *   de l'accordé, nul pour un quota fermé, que la consommation nette des entrées (`CONSUME` −
+ *   `RESTORE`) est celle des mouvements qui portent son identifiant, et, par (emplacement, produit),
+ *   que Σ des restes actifs ≤ Σ des soldes **ou** qu'un conflit `ALLOCATION_OVERCOMMITTED` est ouvert.
+ *
  * Les deux acceptent une portée facultative par produits (`productIds`) : réparation ciblée
  * après analyse d'un écart, sans verrouiller toute la projection.
  */
@@ -74,6 +80,31 @@ export interface SettlementBreach {
   readonly settledValueXaf: number;
 }
 
+/** INV-STK-20 : un quota dont le reste ne correspond pas à son registre, ou dont la consommation diverge des mouvements. */
+export interface AllocationBreach {
+  readonly allocationId: string;
+  readonly reason:
+    | 'REMAINING_NEGATIVE'
+    | 'REMAINING_ABOVE_GRANTED'
+    | 'REMAINING_NOT_LEDGER_SUM'
+    | 'CLOSED_NOT_EMPTY'
+    | 'CONSUMPTION_NOT_MATCHING_MOVES';
+  readonly remaining: number;
+  /** Σ signée des entrées du registre d'entrées du quota. */
+  readonly ledgerRemaining: number;
+  /** Consommation nette du registre (`CONSUME` − `RESTORE`) et celle des mouvements portant le quota. */
+  readonly ledgerNetConsumed: number;
+  readonly movesNetConsumed: number;
+}
+
+/** INV-STK-19 : Σ restes des quotas actifs > Σ soldes sans conflit `ALLOCATION_OVERCOMMITTED` ouvert. */
+export interface OvercommitBreach {
+  readonly locationId: string;
+  readonly productId: string;
+  readonly stockOnHand: number;
+  readonly allocatedRemaining: number;
+}
+
 export interface LedgerVerification {
   readonly ok: boolean;
   readonly balancesChecked: number;
@@ -81,6 +112,8 @@ export interface LedgerVerification {
   readonly conservationBreaches: readonly ConservationBreach[];
   readonly toDeliverBreaches: readonly ToDeliverBreach[];
   readonly settlementBreaches: readonly SettlementBreach[];
+  readonly allocationBreaches: readonly AllocationBreach[];
+  readonly overcommitBreaches: readonly OvercommitBreach[];
 }
 
 interface LedgerRow {
@@ -208,19 +241,152 @@ export async function verifyStockLedger(
 
   const toDeliverBreaches = await findToDeliverBreaches(trx, [...ledger.values()]);
   const settlementBreaches = await findSettlementBreaches(trx, scope);
+  const allocationBreaches = await findAllocationBreaches(trx, scope);
+  const overcommitBreaches = await findOvercommitBreaches(trx, scope);
 
   return {
     ok:
       mismatches.length === 0 &&
       conservationBreaches.length === 0 &&
       toDeliverBreaches.length === 0 &&
-      settlementBreaches.length === 0,
+      settlementBreaches.length === 0 &&
+      allocationBreaches.length === 0 &&
+      overcommitBreaches.length === 0,
     balancesChecked: balances.length,
     mismatches,
     conservationBreaches,
     toDeliverBreaches,
     settlementBreaches,
+    allocationBreaches,
+    overcommitBreaches,
   };
+}
+
+function allocationFilter(scope: LedgerScope, column: string): RawBuilder<unknown> {
+  if (scope.productIds === undefined) return sql``;
+  if (scope.productIds.length === 0) return sql`AND FALSE`;
+  return sql`AND ${sql.raw(column)} IN (${sql.join(scope.productIds.map((id) => toBin(id)))})`;
+}
+
+/**
+ * INV-STK-20 : reste d'un quota = Σ signée de son registre, `0 ≤ reste ≤ accordé`, nul si le quota
+ * est fermé ou révoqué ; consommation nette du registre (`CONSUME` − `RESTORE`) = Σ des mouvements
+ * qui portent le quota, ceux qui en sortent de son emplacement moins ceux qui y reviennent.
+ */
+async function findAllocationBreaches(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+): Promise<readonly AllocationBreach[]> {
+  const result = await sql<{
+    id: Buffer;
+    status: string;
+    granted: string;
+    remaining: string;
+    ledger: string;
+    consumed: string;
+    restored: string;
+    moved: string;
+  }>`
+    SELECT a.id, a.status, a.quantity_granted AS granted, a.quantity_remaining AS remaining,
+           COALESCE(e.ledger, 0) AS ledger, COALESCE(e.consumed, 0) AS consumed,
+           COALESCE(e.restored, 0) AS restored, COALESCE(m.moved, 0) AS moved
+    FROM inventory_stock_allocations a
+    LEFT JOIN (
+      SELECT allocation_id, SUM(quantity) AS ledger,
+             SUM(CASE WHEN entry_type = 'CONSUME' THEN -quantity ELSE 0 END) AS consumed,
+             SUM(CASE WHEN entry_type = 'RESTORE' THEN quantity ELSE 0 END) AS restored
+      FROM inventory_stock_allocation_entries GROUP BY allocation_id
+    ) e ON e.allocation_id = a.id
+    LEFT JOIN (
+      SELECT mv.allocation_id,
+             SUM(CASE WHEN mv.from_location_id = al.location_id THEN mv.quantity ELSE -mv.quantity END) AS moved
+      FROM inventory_stock_moves mv
+      JOIN inventory_stock_allocations al ON al.id = mv.allocation_id
+      GROUP BY mv.allocation_id
+    ) m ON m.allocation_id = a.id
+    WHERE TRUE ${allocationFilter(scope, 'a.product_id')}
+  `.execute(trx);
+  const breaches: AllocationBreach[] = [];
+  for (const row of result.rows) {
+    const remaining = Number(row.remaining);
+    const granted = Number(row.granted);
+    const ledgerRemaining = Number(row.ledger);
+    const ledgerNetConsumed = Number(row.consumed) - Number(row.restored);
+    const movesNetConsumed = Number(row.moved);
+    const reason =
+      remaining < -QTY_EPSILON
+        ? 'REMAINING_NEGATIVE'
+        : remaining > granted + QTY_EPSILON
+          ? 'REMAINING_ABOVE_GRANTED'
+          : Math.abs(remaining - ledgerRemaining) > QTY_EPSILON
+            ? 'REMAINING_NOT_LEDGER_SUM'
+            : row.status !== 'ACTIVE' && remaining > QTY_EPSILON
+              ? 'CLOSED_NOT_EMPTY'
+              : Math.abs(ledgerNetConsumed - movesNetConsumed) > QTY_EPSILON
+                ? 'CONSUMPTION_NOT_MATCHING_MOVES'
+                : null;
+    if (reason !== null) {
+      breaches.push({
+        allocationId: fromBin(row.id),
+        reason,
+        remaining,
+        ledgerRemaining,
+        ledgerNetConsumed,
+        movesNetConsumed,
+      });
+    }
+  }
+  return breaches;
+}
+
+/**
+ * INV-STK-19 : Σ restes des quotas actifs d'un (emplacement, produit) ≤ Σ soldes, **ou** un conflit
+ * `ALLOCATION_OVERCOMMITTED` ouvert dit pourquoi (perte, inventaire, sortie d'un autre utilisateur).
+ */
+async function findOvercommitBreaches(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+): Promise<readonly OvercommitBreach[]> {
+  const result = await sql<{
+    location_id: Buffer;
+    product_id: Buffer;
+    allocated: string;
+    on_hand: string;
+  }>`
+    SELECT q.location_id, q.product_id, q.allocated,
+           COALESCE((SELECT SUM(b.qty_on_hand) FROM inventory_stock_balances b
+                     WHERE b.location_id = q.location_id AND b.product_id = q.product_id), 0) AS on_hand
+    FROM (
+      SELECT location_id, product_id, SUM(quantity_remaining) AS allocated
+      FROM inventory_stock_allocations
+      WHERE status = 'ACTIVE' ${allocationFilter(scope, 'product_id')}
+      GROUP BY location_id, product_id
+    ) q
+  `.execute(trx);
+  const over = result.rows.filter(
+    (row) => Number(row.allocated) > 0 && Number(row.allocated) > Number(row.on_hand) + QTY_EPSILON,
+  );
+  if (over.length === 0) return [];
+  const open = await trx
+    .selectFrom('sync_sync_conflicts')
+    .select(['entity_id', 'details'])
+    .where('conflict_type', '=', 'ALLOCATION_OVERCOMMITTED')
+    .where('status', '=', 'OPEN')
+    .execute();
+  const explained = new Set(
+    open.map(
+      (row) =>
+        `${fromBin(row.entity_id)}|${String((row.details as Record<string, unknown>)['productId'])}`,
+    ),
+  );
+  return over
+    .filter((row) => !explained.has(`${fromBin(row.location_id)}|${fromBin(row.product_id)}`))
+    .map((row) => ({
+      locationId: fromBin(row.location_id),
+      productId: fromBin(row.product_id),
+      stockOnHand: Number(row.on_hand),
+      allocatedRemaining: Number(row.allocated),
+    }));
 }
 
 /** INV-STK-18 : aucun solde négatif (quantité ou valeur) dans un emplacement « à livrer ». */

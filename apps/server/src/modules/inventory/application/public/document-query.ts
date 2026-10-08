@@ -13,7 +13,7 @@ import { sql, type Kysely, type Selectable, type Transaction } from 'kysely';
 import { evaluateStockThreshold, type StockThresholdState } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
-import { availableQty, formatDateColumn } from './stock-query.js';
+import { formatDateColumn } from './stock-query.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -520,12 +520,10 @@ export async function listStockThresholds(
   return thresholds.map((threshold) => {
     const productId = fromBin(threshold.product_id);
     const balance = balanceByProduct.get(productId);
-    const qtyAvailable = availableQty(
-      params.custodyMode,
-      Number(balance?.qty_on_hand ?? 0),
-      Number(balance?.qty_reserved ?? 0),
-      Number(balance?.qty_allocated ?? 0),
-    );
+    // AV-040, ADR-033 §10 : le seuil d'un emplacement `SHARED` se lit sur le solde **physique**
+    // (quotas compris) — un quota promis à un appareil ne vide pas le magasin. Le disponible net des
+    // quotas ne sert qu'à la vente en ligne.
+    const qtyAvailable = Number(balance?.qty_on_hand ?? 0);
     const qtyInTransitIn = transitByProduct.get(productId) ?? 0;
     const minQtyBase = Number(threshold.min_qty_base);
     const targetQtyBase = Number(threshold.target_qty_base);

@@ -62,6 +62,7 @@ import {
   type RecordMoveDeps,
 } from '../public/record-move.js';
 import { inventoryCountChange } from '../sync-changes.js';
+import { closeStockNegativeConflicts } from '../stock-negative-conflicts.js';
 import { loadCommandOrigin, loadLocationSite, virtualLocationId } from './shared.js';
 
 const COUNT_APPROVAL_THRESHOLD_KEY = 'inventory.count_approval_threshold_xaf';
@@ -175,6 +176,8 @@ async function applyLineAdjustment(
     readonly variance: number;
     readonly unitCostXaf: number;
     readonly decidedBy: string;
+    /** Instant de la comptabilisation (soumission ou décision) : date de clôture des conflits. */
+    readonly postedAt: Date;
   },
 ): Promise<void> {
   if (params.variance === 0) return;
@@ -203,6 +206,14 @@ async function applyLineAdjustment(
     createdBy: params.decidedBy,
     capturedOffline: false,
     allowNegative: true,
+  });
+  // AT-049 : l'inventaire régularise un solde négatif né d'un fait hors ligne (INV-STK-05).
+  await closeStockNegativeConflicts(uow, {
+    locationId: params.locationId,
+    productId: fromBin(params.line.product_id),
+    resolvedBy: params.decidedBy,
+    resolvedAt: params.postedAt,
+    countId: params.countId,
   });
 }
 
@@ -383,6 +394,7 @@ function buildCountCommands(
           variance: entry.variance,
           unitCostXaf: entry.unitCostXaf,
           decidedBy: envelope.author_user_id,
+          postedAt: occurredAt,
         });
       }
       await uow
@@ -506,6 +518,7 @@ function registerInventoryAdjustmentDecisionHandler(
             variance,
             unitCostXaf: line.unit_cost_xaf !== null ? Number(line.unit_cost_xaf) : 0,
             decidedBy: ctx.decidedBy,
+            postedAt: ctx.decidedAt,
           });
         }
         await uow

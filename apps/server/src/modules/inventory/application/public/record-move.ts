@@ -59,15 +59,18 @@ import { lotHeadcount } from './lot-headcount.js';
 import {
   consumeFromAllocation,
   quantityToMilli,
+  restoreToAllocation,
   type AllocationState,
 } from '../allocation-ledger.js';
 import {
   AllocationRefusal,
   checkOvercommitted,
   prepareQuotaConsumption,
+  prepareQuotaRestoration,
   type AllocationWarning,
   type ConsumptionLocation,
   type QuotaConsumption,
+  type QuotaRestoration,
 } from '../allocation-consumption.js';
 
 const LOT_KEY_NULL = Buffer.alloc(16);
@@ -742,8 +745,8 @@ async function recordSingleMove(
   uow: Transaction<DB>,
   deps: RecordMoveDeps,
   input: SingleMoveInput,
-  /** Quota que ce mouvement consomme en entier (part imputée au quota par `recordStockMove`). */
-  allocation?: AllocationState,
+  /** Quota que ce mouvement consomme ou restitue en entier (part imputée par `recordStockMove`). */
+  quota?: { readonly allocation: AllocationState; readonly kind: 'CONSUME' | 'RESTORE' },
 ): Promise<RecordedMove> {
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
   const [fromLocation, toLocation] = await Promise.all([
@@ -918,7 +921,7 @@ async function recordSingleMove(
       cost_object_id: toBinOrNull(input.costObjectId ?? null),
       is_reversal: toDbBool(isReversal),
       reverses_move_id: toBinOrNull(input.reversesMoveId ?? null),
-      allocation_id: toBinOrNull(allocation?.id ?? null),
+      allocation_id: toBinOrNull(quota?.allocation.id ?? null),
       origin_move_id: toBinOrNull(input.originMoveId ?? null),
       origin_seq: originSeq,
       created_by: toBin(input.createdBy),
@@ -931,15 +934,17 @@ async function recordSingleMove(
       throw settlementGuardError(error) ?? error;
     });
 
-  if (allocation !== undefined) {
-    await consumeFromAllocation(uow, deps, {
-      allocation,
+  if (quota !== undefined) {
+    const entry = {
+      allocation: quota.allocation,
       quantityMilli: quantityToMilli(input.quantityBase),
       stockMoveId: moveId,
       occurredAt: input.occurredAt,
       createdBy: input.createdBy,
       commandId: input.commandId ?? null,
-    });
+    };
+    if (quota.kind === 'CONSUME') await consumeFromAllocation(uow, deps, entry);
+    else await restoreToAllocation(uow, deps, entry);
   }
 
   const fromBalanceAfter = await upsertBalance(
@@ -1008,7 +1013,7 @@ async function recordSingleMove(
     valueXaf,
     fromBalanceAfter,
     toBalanceAfter,
-    ...(allocation !== undefined ? { allocationId: allocation.id } : {}),
+    ...(quota !== undefined ? { allocationId: quota.allocation.id } : {}),
   };
 }
 
@@ -1024,7 +1029,9 @@ export async function recordStockMove(
 ): Promise<readonly RecordedMove[]> {
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
   const fromIsPhysicalOutflow = endpoints.from.length === 1 && endpoints.from[0] === 'PHYSICAL';
-  if (input.lotId === undefined && !fromIsPhysicalOutflow) {
+  // Retour, inverse ou libération d'une perte : rend d'abord un quota encore actif (ADR-033 §8).
+  const restoration = await prepareRestoration(uow, input);
+  if (input.lotId === undefined && !fromIsPhysicalOutflow && restoration === null) {
     // Entrée depuis un emplacement virtuel : pas de sélection FIFO à faire ici (le lot, s'il
     // existe, est déjà connu de l'appelant — ex. réception avec lot fournisseur explicite).
     return [await recordSingleMove(uow, deps, { ...input, lotId: null })];
@@ -1040,7 +1047,7 @@ export async function recordStockMove(
   const pieces = await pieceList(uow, input, fromIsPhysicalOutflow);
   const results: RecordedMove[] = [];
   for (const piece of pieces) {
-    results.push(...(await recordPiece(uow, deps, input, piece, quota)));
+    results.push(...(await recordPiece(uow, deps, input, piece, quota, restoration)));
   }
 
   const warnings = new Set<AllocationWarning>(quota?.warnings ?? []);
@@ -1168,20 +1175,63 @@ async function prepareConsumption(
   }
 }
 
-/** Enregistre un morceau ; la part imputée au quota est un mouvement à part, avec `allocation_id`. */
+/**
+ * Prépare la restitution d'un quota pour un mouvement qui rend du stock (`null` : rien à restituer).
+ * Ne concerne que le retour d'une vente, l'inverse d'un mouvement et la libération d'une perte.
+ */
+async function prepareRestoration(
+  uow: Transaction<DB>,
+  input: RecordMoveInput,
+): Promise<QuotaRestoration | null> {
+  if (
+    input.originMoveId === undefined &&
+    input.reversesMoveId === undefined &&
+    input.moveType !== 'LOSS_RELEASE'
+  ) {
+    return null;
+  }
+  // Une livraison consomme une part d'une vente sans rendre de stock : aucun quota concerné.
+  if (input.moveType === 'DELIVERY') return null;
+  return prepareQuotaRestoration(uow, {
+    moveType: input.moveType,
+    toLocationId: input.toLocationId,
+    productId: input.productId,
+    quantityMilli: quantityToMilli(input.quantityBase),
+    ...(input.originMoveId !== undefined ? { originMoveId: input.originMoveId } : {}),
+    ...(input.reversesMoveId !== undefined ? { reversesMoveId: input.reversesMoveId } : {}),
+    sourceDocType: input.sourceDocType,
+    sourceDocId: input.sourceDocId,
+  });
+}
+
+/**
+ * Enregistre un morceau ; la part imputée à un quota (consommée ou restituée) est un mouvement à
+ * part, avec `allocation_id`.
+ */
 async function recordPiece(
   uow: Transaction<DB>,
   deps: RecordMoveDeps,
   input: RecordMoveInput,
   piece: Piece,
-  quota: QuotaConsumption | null,
+  consumption: QuotaConsumption | null,
+  restoration: QuotaRestoration | null,
 ): Promise<readonly RecordedMove[]> {
-  const single = (quantityBase: number, allocation?: AllocationState) =>
-    recordSingleMove(uow, deps, { ...input, lotId: piece.lotId, quantityBase }, allocation);
+  const single = (
+    quantityBase: number,
+    quota?: { allocation: AllocationState; kind: 'CONSUME' | 'RESTORE' },
+  ) => recordSingleMove(uow, deps, { ...input, lotId: piece.lotId, quantityBase }, quota);
   const pieceMilli = quantityToMilli(piece.quantityBase);
-  const fromQuota = quota?.allocation !== undefined ? quota.take(pieceMilli) : 0;
-  if (fromQuota === 0) return [await single(piece.quantityBase)];
-  const moves = [await single(fromQuota / 1000, quota!.allocation)];
-  if (pieceMilli - fromQuota > 0) moves.push(await single((pieceMilli - fromQuota) / 1000));
+  let toQuota = 0;
+  let quota: { allocation: AllocationState; kind: 'CONSUME' | 'RESTORE' } | undefined;
+  if (restoration !== null) {
+    toQuota = restoration.take(pieceMilli);
+    quota = { allocation: restoration.allocation, kind: 'RESTORE' };
+  } else if (consumption?.allocation !== undefined) {
+    toQuota = consumption.take(pieceMilli);
+    quota = { allocation: consumption.allocation, kind: 'CONSUME' };
+  }
+  if (toQuota === 0 || quota === undefined) return [await single(piece.quantityBase)];
+  const moves = [await single(toQuota / 1000, quota)];
+  if (pieceMilli - toQuota > 0) moves.push(await single((pieceMilli - toQuota) / 1000));
   return moves;
 }

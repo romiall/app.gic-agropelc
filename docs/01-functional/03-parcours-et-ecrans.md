@@ -165,7 +165,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 
 | ID | Écran | Rôles | Hors ligne | Phase |
 |---|---|---|---|---|
-| ECR-STK-01 | Stock par emplacement (soldes, disponible, alloué, réservé) | MAGASINIER, VENDEUR_PDV, responsables | Oui (périmètre) | P2 |
+| ECR-STK-01 | Stock par emplacement (soldes, disponible net des quotas des autres appareils, alloué ; plus de réservé : ADR-028 §4) | MAGASINIER, VENDEUR_PDV, responsables | Oui (périmètre) | P2 |
 | ECR-STK-02 | TRANSFÉRER (expédier), y compris affectation à un commercial | MAGASINIER, RESP_FERME | Oui | P2 |
 | ECR-STK-03 | RECEVOIR un transfert | Destinataires | Oui | P2 |
 | ECR-STK-04 | DÉCLARER UNE PERTE | Tous les détenteurs de stock | Oui | P2 |

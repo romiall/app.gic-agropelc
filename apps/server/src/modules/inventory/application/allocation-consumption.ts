@@ -21,14 +21,16 @@ import {
   isAllocationExpired,
   isConsumedAfterRevocation,
   planQuotaConsumption,
+  restorableQuantity,
   type IdGenerator,
 } from '@gic/domain';
 import type { DB } from '../../../platform/kysely/database.js';
 import { recordConflict } from '../../../platform/sync/conflicts.js';
-import { fromBinOrNull, toBin } from '../../../platform/kysely/uuid-columns.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../platform/kysely/uuid-columns.js';
 import { currentSettingValue } from '../../organization/application/public/index.js';
 import {
   activeRemainingMilli,
+  loadAllocation,
   loadConsumerAllocations,
   milliToText,
   quantityToMilli,
@@ -372,4 +374,108 @@ export async function checkOvercommitted(
     });
   }
   return true;
+}
+
+/** Part d'un retour qui est rendue à un quota encore actif (ADR-033 §8). */
+export class QuotaRestoration {
+  private left: number;
+
+  constructor(
+    readonly allocation: AllocationState,
+    restoreMilli: number,
+  ) {
+    this.left = restoreMilli;
+  }
+
+  /** Part du morceau (en millièmes) qui est rendue au quota. */
+  take(pieceMilli: number): number {
+    const part = Math.min(pieceMilli, this.left);
+    this.left -= part;
+    return part;
+  }
+}
+
+export interface RestorationRequest {
+  readonly moveType: string;
+  readonly toLocationId: string;
+  readonly productId: string;
+  readonly quantityMilli: number;
+  /** Retour client : le mouvement `SALE` dont il consomme une part (ADR-029). */
+  readonly originMoveId?: string;
+  /** Inverse : le mouvement corrigé. */
+  readonly reversesMoveId?: string;
+  readonly sourceDocType: string;
+  readonly sourceDocId: string;
+}
+
+/**
+ * ADR-033 §8 : un mouvement qui rend du stock à l'emplacement d'où un fait de l'appareil l'avait pris
+ * — retour d'une vente, inverse d'un mouvement, libération d'une perte en attente — rend d'abord
+ * la quantité au quota que ce fait avait consommé, **si ce quota est encore actif** et dans la limite
+ * de ce qu'il y avait consommé, déduction faite de ce qui lui a déjà été restitué. Sinon (quota
+ * libéré, révoqué, ou rien consommé) elle retourne au stock commun. `null` : rien à restituer.
+ */
+export async function prepareQuotaRestoration(
+  uow: Transaction<DB>,
+  request: RestorationRequest,
+): Promise<QuotaRestoration | null> {
+  let allocationId: string | null = null;
+  let consumedMilli = 0;
+  let restoredMilli = 0;
+
+  if (request.originMoveId !== undefined || request.reversesMoveId !== undefined) {
+    const sourceMoveId = (request.originMoveId ?? request.reversesMoveId)!;
+    const move = await uow
+      .selectFrom('inventory_stock_moves')
+      .select(['allocation_id', 'quantity'])
+      .where('id', '=', toBin(sourceMoveId))
+      .executeTakeFirst();
+    if (!move?.allocation_id) return null;
+    allocationId = fromBin(move.allocation_id);
+    consumedMilli = quantityToMilli(move.quantity);
+    if (request.originMoveId !== undefined) {
+      const done = await uow
+        .selectFrom('inventory_stock_moves')
+        .select(sql<string>`COALESCE(SUM(quantity), 0)`.as('quantity'))
+        .where('origin_move_id', '=', toBin(request.originMoveId))
+        .where('allocation_id', '=', move.allocation_id)
+        .executeTakeFirstOrThrow();
+      restoredMilli = quantityToMilli(done.quantity);
+    }
+  } else if (request.moveType === 'LOSS_RELEASE') {
+    // Une perte en attente avait consommé le quota (`LOSS_PENDING`) ; son retrait ou son rejet le rend.
+    const rows = await uow
+      .selectFrom('inventory_stock_moves')
+      .select(['move_type', 'allocation_id', sql<string>`SUM(quantity)`.as('quantity')])
+      .where('source_doc_type', '=', request.sourceDocType as 'LOSS')
+      .where('source_doc_id', '=', toBin(request.sourceDocId))
+      .where('move_type', 'in', ['LOSS_PENDING', 'LOSS_RELEASE'])
+      .where('allocation_id', 'is not', null)
+      .groupBy(['move_type', 'allocation_id'])
+      .execute();
+    const pending = rows.find((row) => row.move_type === 'LOSS_PENDING');
+    if (!pending?.allocation_id) return null;
+    allocationId = fromBin(pending.allocation_id);
+    consumedMilli = quantityToMilli(pending.quantity);
+    const released = rows.find(
+      (row) =>
+        row.move_type === 'LOSS_RELEASE' && row.allocation_id?.equals(pending.allocation_id!),
+    );
+    restoredMilli = released ? quantityToMilli(released.quantity) : 0;
+  } else {
+    return null;
+  }
+
+  // Soldes d'abord (destination du retour), puis le quota : l'ordre de verrouillage d'`inventory`.
+  await stockOnHandMilli(uow, request.toLocationId, request.productId, { lock: true });
+  const allocation = await loadAllocation(uow, allocationId, { lock: true });
+  if (!allocation || allocation.status !== 'ACTIVE') return null;
+  const restore = quantityToMilli(
+    restorableQuantity({
+      consumed: consumedMilli / 1000,
+      alreadyRestored: restoredMilli / 1000,
+      requested: request.quantityMilli / 1000,
+    }),
+  );
+  return restore > 0 ? new QuotaRestoration(allocation, restore) : null;
 }

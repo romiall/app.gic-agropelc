@@ -81,6 +81,46 @@ export async function resolveOpenConflicts(
   return Number(result.numUpdatedRows);
 }
 
+/**
+ * Clôt les conflits ouverts d'un type dont les `details` portent exactement les valeurs données
+ * (ex. `STOCK_NEGATIVE` d'un (emplacement, produit) résolu par un inventaire, AT-049). Les conflits
+ * sans ces clés dans leurs `details` ne sont jamais touchés. Renvoie le nombre de conflits résolus.
+ */
+export async function resolveOpenConflictsByDetails(
+  uow: UnitOfWork,
+  input: {
+    readonly conflictType: string;
+    readonly details: Readonly<Record<string, string>>;
+    readonly resolution: 'ACCEPT_CLIENT' | 'KEEP_SERVER' | 'MERGE' | 'COMPENSATE';
+    readonly resolvedBy: string;
+    readonly resolvedAt: Date;
+    readonly comment?: string | null;
+    readonly refs?: readonly string[];
+  },
+): Promise<number> {
+  const keys = Object.entries(input.details);
+  if (keys.length === 0) return 0;
+  let query = uow
+    .updateTable('sync_sync_conflicts')
+    .set({
+      status: 'RESOLVED',
+      resolution: input.resolution,
+      resolution_refs: jsonValue(input.refs ?? []),
+      resolved_by: toBin(input.resolvedBy),
+      resolved_at: input.resolvedAt,
+      resolution_comment: input.comment ?? null,
+    })
+    .where('status', '=', 'OPEN')
+    .where('conflict_type', '=', input.conflictType);
+  for (const [key, value] of keys) {
+    query = query.where(
+      sql<boolean>`JSON_UNQUOTE(JSON_EXTRACT(details, ${`$.${key}`})) = ${value}`,
+    );
+  }
+  const result = await query.executeTakeFirst();
+  return Number(result.numUpdatedRows);
+}
+
 /** Une commande a-t-elle consigné ce type de conflit sur cette entité (correction d'un fait) ? */
 export async function hasConflict(
   uow: UnitOfWork,

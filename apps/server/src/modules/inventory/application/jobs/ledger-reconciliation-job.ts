@@ -41,7 +41,9 @@ export class LedgerReconciliationJob implements OnModuleInit {
           `LEDGER_MISMATCH : ${result.mismatches.length} solde(s) en écart, ` +
             `${result.conservationBreaches.length} produit(s) hors conservation, ` +
             `${result.toDeliverBreaches.length} solde(s) « à livrer » négatif(s), ` +
-            `${result.settlementBreaches.length} vente(s) au règlement incohérent` +
+            `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
+            `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
+            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit` +
             (details ? ` — ${details}` : '') +
             '.',
         );

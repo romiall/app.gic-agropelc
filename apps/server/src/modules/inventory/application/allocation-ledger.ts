@@ -251,3 +251,48 @@ export async function consumeFromAllocation(
     allocationChange(input.allocation.id, input.allocation.holderDeviceId, row.version),
   ]);
 }
+
+/**
+ * Restitution d'une quantité à un quota encore actif (ADR-033 §8) : entrée `RESTORE` rattachée au
+ * mouvement de retour et reste augmenté dans la même transaction. L'appelant a plafonné la quantité
+ * à ce que le mouvement d'origine y avait consommé (`restorableQuantity`).
+ */
+export async function restoreToAllocation(
+  uow: UnitOfWork,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly allocation: AllocationState;
+    readonly quantityMilli: number;
+    readonly stockMoveId: string;
+    readonly occurredAt: Date;
+    readonly createdBy: string;
+    readonly commandId?: string | null;
+  },
+): Promise<void> {
+  await writeAllocationEntry(uow, deps, {
+    allocationId: input.allocation.id,
+    entryType: 'RESTORE',
+    magnitudeMilli: input.quantityMilli,
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    commandId: input.commandId ?? null,
+    stockMoveId: input.stockMoveId,
+  });
+  await uow
+    .updateTable('inventory_stock_allocations')
+    .set({
+      quantity_remaining: sql`quantity_remaining + ${milliToText(input.quantityMilli)}`,
+      updated_by: toBin(input.createdBy),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(input.allocation.id))
+    .execute();
+  const row = await uow
+    .selectFrom('inventory_stock_allocations')
+    .select('version')
+    .where('id', '=', toBin(input.allocation.id))
+    .executeTakeFirstOrThrow();
+  await recordChanges(uow, [
+    allocationChange(input.allocation.id, input.allocation.holderDeviceId, row.version),
+  ]);
+}
