@@ -17,6 +17,11 @@ import {
   APPROVAL_DECISION_HANDLER_REGISTRY,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
+import {
+  LOCATION_DEACTIVATION_GUARD_REGISTRY,
+  type LocationDeactivationGuardRegistry,
+} from '../../../organization/application/public/index.js';
+import { inventoryLocationDeactivationGuard } from '../location-deactivation-guard.js';
 import { registerTransferCommands } from './transfer-commands.js';
 import { registerLossCommands } from './loss-commands.js';
 import { registerConsumptionCommands } from './consumption-commands.js';
@@ -30,6 +35,8 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
     @Inject(COMMAND_HANDLER_REGISTRY) private readonly registry: CommandHandlerRegistry,
     @Inject(APPROVAL_DECISION_HANDLER_REGISTRY)
     private readonly decisionRegistry: ApprovalDecisionHandlerRegistry,
+    @Inject(LOCATION_DEACTIVATION_GUARD_REGISTRY)
+    private readonly deactivationGuards: LocationDeactivationGuardRegistry,
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
     // `@Inject` explicite (comme sync.controller.ts) : sous vitest (esbuild), aucune
     // métadonnée de décorateur n'est émise — une injection par le seul type laissait
@@ -39,6 +46,7 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    this.deactivationGuards.register('inventory', inventoryLocationDeactivationGuard);
     registerTransferCommands(
       this.registry,
       this.decisionRegistry,

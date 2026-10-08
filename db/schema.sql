@@ -4131,6 +4131,7 @@ CREATE TABLE `organization_locations` (
   CONSTRAINT `fk_organization_locations_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_organization_locations_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_organization_locations_custody_mode` CHECK (((`custody_mode` is null) or (`custody_mode` in (_utf8mb4'EXCLUSIVE_USER',_utf8mb4'EXCLUSIVE_DEVICE',_utf8mb4'SHARED')))),
+  CONSTRAINT `ck_organization_locations_custody_required` CHECK (((`is_virtual` = true) or (`custody_mode` is not null))),
   CONSTRAINT `ck_organization_locations_exclusive_device` CHECK (((`custody_mode` <> _utf8mb4'EXCLUSIVE_DEVICE') or (`designated_device_id` is not null))),
   CONSTRAINT `ck_organization_locations_mobile` CHECK (((`location_type` <> _utf8mb4'MOBILE') or ((`custodian_user_id` is not null) and (`custody_mode` = _utf8mb4'EXCLUSIVE_USER')))),
   CONSTRAINT `ck_organization_locations_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'INACTIVE'))),
@@ -4157,6 +4158,25 @@ DELIMITER ;;
     IF parent_type IS NULL OR parent_type <> 'BUILDING' THEN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'organization_locations : le parent d''une case (PEN) doit être un bâtiment (BUILDING).';
     END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_organization_locations_custody_default` BEFORE INSERT ON `organization_locations` FOR EACH ROW BEGIN
+  IF NEW.custody_mode IS NULL AND LEFT(NEW.location_type, 2) <> 'V_' THEN
+    SET NEW.custody_mode = IF(NEW.location_type = 'MOBILE', 'EXCLUSIVE_USER', 'SHARED');
   END IF;
 END */;;
 DELIMITER ;
@@ -8205,6 +8225,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090900'),
   ('20261003091000'),
   ('20261005090000'),
+  ('20261008090200');
   ('20261008090100');
   ('20261008090000');
   ('20261007090000');

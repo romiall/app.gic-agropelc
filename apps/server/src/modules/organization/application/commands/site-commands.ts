@@ -3,6 +3,10 @@
  * Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations mais reste consultable —
  * `close` est donc une fermeture définitive (pas de réouverture dans la matrice de
  * transitions documentée ; aucune commande `reopen` n'existe).
+ *
+ * La fermeture d'un site consulte, pour chacun de ses emplacements (virtuel « à livrer » compris),
+ * le registre de gardes de désactivation (P5-05, INV-STK-07, BR-ADM-011) : un site qui porte du
+ * stock, un quota actif, un transfert ouvert ou une session de caisse ouverte ne se ferme pas.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -12,7 +16,8 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { LocationDeactivationGuardRegistry } from '../deactivation-guard-registry.js';
 
 const siteTypeSchema = z.enum(['FERME', 'MAGASIN', 'POINT_DE_VENTE', 'BUREAU']);
 
@@ -102,32 +107,52 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
-const close: CommandHandler<ClosePayload> = async (uow, envelope) => {
-  const siteId = toBin(envelope.aggregate_id);
-  const site = await uow
-    .selectFrom('organization_sites')
-    .select('status')
-    .where('id', '=', siteId)
-    .executeTakeFirst();
-  if (!site) return notFound('Site introuvable.');
-  if (site.status === 'CLOSED') return { status: 'APPLIED' }; // rejeu idempotent
+function closeHandler(guards: LocationDeactivationGuardRegistry): CommandHandler<ClosePayload> {
+  return async (uow, envelope) => {
+    const siteId = toBin(envelope.aggregate_id);
+    const site = await uow
+      .selectFrom('organization_sites')
+      .select('status')
+      .where('id', '=', siteId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!site) return notFound('Site introuvable.');
+    if (site.status === 'CLOSED') return { status: 'APPLIED' }; // rejeu idempotent
 
-  const occurredAt = new Date(envelope.occurred_at);
-  const closedOn = businessDayStartUtc(businessDayOf(occurredAt));
-  await uow
-    .updateTable('organization_sites')
-    .set({
-      status: 'CLOSED',
-      closed_on: closedOn,
-      updated_by: toBin(envelope.author_user_id),
-      version: sql`version + 1`,
-    })
-    .where('id', '=', siteId)
-    .execute();
-  return { status: 'APPLIED' };
-};
+    // INV-STK-07 / BR-ADM-011 : chaque emplacement du site doit pouvoir être déposé.
+    const locations = await uow
+      .selectFrom('organization_locations')
+      .select('id')
+      .where('site_id', '=', siteId)
+      .where('status', '=', 'ACTIVE')
+      .execute();
+    for (const location of locations) {
+      const block = await guards.firstBlock(uow, fromBin(location.id));
+      if (block !== null) {
+        return { status: 'REJECTED', errorCode: block.code, messageFr: block.messageFr };
+      }
+    }
 
-export function registerSiteCommands(registry: CommandHandlerRegistry): void {
+    const occurredAt = new Date(envelope.occurred_at);
+    const closedOn = businessDayStartUtc(businessDayOf(occurredAt));
+    await uow
+      .updateTable('organization_sites')
+      .set({
+        status: 'CLOSED',
+        closed_on: closedOn,
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', siteId)
+      .execute();
+    return { status: 'APPLIED' };
+  };
+}
+
+export function registerSiteCommands(
+  registry: CommandHandlerRegistry,
+  guards: LocationDeactivationGuardRegistry = new LocationDeactivationGuardRegistry(),
+): void {
   registry.register({
     commandType: 'organization.site.create',
     version: 1,
@@ -147,6 +172,6 @@ export function registerSiteCommands(registry: CommandHandlerRegistry): void {
     version: 1,
     payloadSchema: z.object({}),
     permissionCode: 'org.structure.manage',
-    handler: close,
+    handler: closeHandler(guards),
   });
 }

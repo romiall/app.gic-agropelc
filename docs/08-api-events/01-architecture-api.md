@@ -61,7 +61,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 |---|---|
 | Responsabilités | Authentification, sessions, enrôlement et cycle de vie des appareils, utilisateurs, rôles, affectations |
 | Endpoints hors commandes | `POST /auth/login` (téléphone, mot de passe, empreinte d'appareil) → jetons + statut d'appareil ; `POST /auth/refresh` ; `POST /auth/logout` |
-| Commandes (I) | `identity.user.create`, `.update`, `.suspend`, `.deactivate`, `.reactivate` ; `identity.role.set_permissions` ; `identity.role_assignment.grant`, `.revoke` ; `identity.device.approve`, `.block`, `.unblock`, `.declare_lost`, `.retire` ; `identity.session.revoke` |
+| Commandes (I) | `identity.user.create`, `.update`, `.suspend`, `.deactivate`, `.reactivate` ; `identity.role.set_permissions` ; `identity.role_assignment.grant`, `.revoke` ; `identity.device.approve`, `.designate` (appareil partagé, site de rattachement, BR-DIS-003), `.block`, `.unblock`, `.declare_lost`, `.retire` ; `identity.session.revoke` |
 | Requêtes | `GET /users`, `/users/{id}`, `/me` (profil, droits effectifs), `/devices`, `/roles`, `/permissions` |
 | Événements | `UserCreated`, `UserDeactivated`, `RoleAssigned`, `DeviceApproved`, `DeviceBlocked`… |
 | Idempotence | `command_id` ; `/auth/login` n'est pas idempotent (rate limit) |

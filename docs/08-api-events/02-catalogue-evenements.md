@@ -19,6 +19,7 @@ Principes :
 2. Les **effets indispensables à la cohérence** (stock, trésorerie, réservation, conversion du prospect) sont faits **de manière synchrone**, dans la transaction, via l'API interne du module propriétaire. Les événements portent les effets **secondaires** tolérant un délai de quelques secondes : alertes, notifications, Kommo, projections analytiques, écritures de coût issues d'une dépense approuvée.
 3. Chaque événement a une version (`event_version`) ; un consommateur ignore une version inconnue et lève une alerte technique.
 4. Données minimum : identifiants et valeurs utiles aux consommateurs. Pas de données personnelles inutiles.
+5. **Nom stocké et nom logique** (DÉDUIT du pipeline, P5-06) : pour un événement produit par une commande, le pipeline écrit `event_type` = type de la commande (`identity.device.block`) et `aggregate_id` = son agrégat ; le nom du catalogue (`DeviceBlocked`) est le nom logique du même fait. Un consommateur filtre sur le `event_type` stocké. Correspondances d'`identity` : `DeviceBlocked` = `identity.device.block`, `DeviceDeclaredLost` = `identity.device.declare_lost`, `UserDeactivated` = `identity.user.deactivate`.
 
 Enveloppe commune (toujours présente, non répétée ci-dessous) : `event_id`, `event_type`, `event_version`, `producer_module`, `aggregate_type`, `aggregate_id`, `occurred_at`, `recorded_at`, `actor_user_id`, `device_id`, `site_id`, `command_id`, `correlation_id`.
 

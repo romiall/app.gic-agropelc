@@ -321,3 +321,51 @@ describe('organization_system_settings', () => {
     });
   });
 });
+
+describe('organization_locations — mode de garde obligatoire (P5-05, AV-163, BR-STK-010)', () => {
+  it('un emplacement physique inséré sans mode reçoit le défaut de son type (déclencheur)', async () => {
+    await withRollback(async (conn) => {
+      const admin = await insertAdmin(conn);
+      const holder = await insertAdmin(conn);
+      const { siteId } = await insertZoneAndSite(conn, admin);
+      const insert = async (code: string, type: string, custodian: Buffer | null) => {
+        const id = randomId();
+        await conn.query(
+          `INSERT INTO organization_locations (id, site_id, code, name, location_type, custody_mode, custodian_user_id, created_by)
+           VALUES (?, ?, ?, 'Sans mode', ?, ?, ?, ?)`,
+          [id, siteId, code, type, type === 'MOBILE' ? 'EXCLUSIVE_USER' : null, custodian, admin],
+        );
+        const [rows] = await conn.query<RowDataPacket[]>(
+          'SELECT custody_mode FROM organization_locations WHERE id = ?',
+          [id],
+        );
+        return rows[0]?.custody_mode as string;
+      };
+      expect(await insert('STO', 'STORE', null)).toBe('SHARED');
+      expect(await insert('BAT', 'BUILDING', null)).toBe('SHARED');
+      expect(await insert('CAI', 'POS', null)).toBe('SHARED');
+      expect(await insert('MOB', 'MOBILE', holder)).toBe('EXCLUSIVE_USER');
+    });
+  });
+
+  it('retirer le mode d’un emplacement physique est refusé, et aucun n’en est dépourvu', async () => {
+    await withRollback(async (conn) => {
+      const admin = await insertAdmin(conn);
+      const { siteId } = await insertZoneAndSite(conn, admin);
+      const id = randomId();
+      await conn.query(
+        `INSERT INTO organization_locations (id, site_id, code, name, location_type, created_by)
+         VALUES (?, ?, 'STO', 'Magasin', 'STORE', ?)`,
+        [id, siteId, admin],
+      );
+      await expect(
+        conn.query('UPDATE organization_locations SET custody_mode = NULL WHERE id = ?', [id]),
+      ).rejects.toThrow(/ck_organization_locations_custody_required/);
+
+      const [rows] = await conn.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS n FROM organization_locations WHERE is_virtual = FALSE AND custody_mode IS NULL`,
+      );
+      expect(rows[0]?.n).toBe(0);
+    });
+  });
+});

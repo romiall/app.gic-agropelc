@@ -5,12 +5,15 @@
  * physiques, `locationType` exclut volontairement les types `V_*` (le schéma Zod ne les
  * liste même pas).
  *
- * `deactivate` (BR-ADM-011, « soldes nuls, aucun transfert/réservation/allocation en cours »)
- * : condition non vérifiable en P0 — le module `inventory` (mouvements, soldes) n'existe pas
- * encore. Seule la partie structurelle (jamais un emplacement virtuel, toujours vrai ici
- * puisque cette commande n'en crée aucun) est appliquée ; la condition de solde sera
- * ajoutée par `inventory` quand il existera (règle CLAUDE.md #2 : paramétrable, pas ignorée
- * en silence — documentée ici).
+ * `deactivate` (BR-ADM-011, INV-STK-07 : « aucun solde non nul, aucune allocation active, aucun
+ * transfert ouvert ») : `organization` ne connaît pas ces données ; il consulte le registre de
+ * gardes où chaque module propriétaire (`inventory`) enregistre la sienne (P5-05, inversion de
+ * dépendance comme les décisions d'approbation). Jamais un emplacement virtuel, ni l'emplacement de
+ * vente d'un PDV configuré (BR-DIS-001).
+ *
+ * `create` écrit toujours un **mode de garde explicite** (BR-STK-010, ADR-033 §2, AV-163) : celui
+ * demandé, à défaut le défaut de son type (stock mobile : `EXCLUSIVE_USER` ; tout autre emplacement
+ * physique : `SHARED`). La base le garantit aussi (déclencheur et `CHECK`).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -20,6 +23,7 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import { LocationDeactivationGuardRegistry } from '../deactivation-guard-registry.js';
 
 const physicalLocationTypeSchema = z.enum([
   'STORE',
@@ -31,6 +35,13 @@ const physicalLocationTypeSchema = z.enum([
   'MOBILE',
 ]);
 const custodyModeSchema = z.enum(['EXCLUSIVE_USER', 'EXCLUSIVE_DEVICE', 'SHARED']);
+
+/** AV-163 : mode de garde d'un emplacement créé sans le préciser (le déclencheur de base applique le même). */
+export function defaultCustodyMode(
+  locationType: z.infer<typeof physicalLocationTypeSchema>,
+): 'EXCLUSIVE_USER' | 'SHARED' {
+  return locationType === 'MOBILE' ? 'EXCLUSIVE_USER' : 'SHARED';
+}
 
 const createPayloadSchema = z
   .object({
@@ -141,7 +152,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       code,
       name,
       location_type: locationType,
-      custody_mode: custodyMode ?? null,
+      custody_mode: custodyMode ?? defaultCustodyMode(locationType),
       custodian_user_id: toBinOrNull(custodianUserId ?? null),
       designated_device_id: toBinOrNull(designatedDeviceId ?? null),
       capacity: capacity ?? null,
@@ -180,35 +191,58 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
-const deactivate: CommandHandler<DeactivatePayload> = async (uow, envelope) => {
-  const locationId = toBin(envelope.aggregate_id);
-  const location = await uow
-    .selectFrom('organization_locations')
-    .select(['status', 'is_virtual'])
-    .where('id', '=', locationId)
-    .executeTakeFirst();
-  if (!location) return notFound('Emplacement introuvable.');
-  if (location.status === 'INACTIVE') return { status: 'APPLIED' }; // rejeu idempotent
-  if (location.is_virtual) {
-    return invalid(
-      'LOCATION_VIRTUAL_IMMUTABLE',
-      'Un emplacement virtuel ne peut pas être désactivé (BR-ADM-010).',
-    );
-  }
+function deactivateHandler(
+  guards: LocationDeactivationGuardRegistry,
+): CommandHandler<DeactivatePayload> {
+  return async (uow, envelope) => {
+    const locationId = toBin(envelope.aggregate_id);
+    const location = await uow
+      .selectFrom('organization_locations')
+      .select(['status', 'is_virtual'])
+      .where('id', '=', locationId)
+      .executeTakeFirst();
+    if (!location) return notFound('Emplacement introuvable.');
+    if (location.status === 'INACTIVE') return { status: 'APPLIED' }; // rejeu idempotent
+    if (location.is_virtual) {
+      return invalid(
+        'LOCATION_VIRTUAL_IMMUTABLE',
+        'Un emplacement virtuel ne peut pas être désactivé (BR-ADM-010).',
+      );
+    }
 
-  await uow
-    .updateTable('organization_locations')
-    .set({
-      status: 'INACTIVE',
-      updated_by: toBin(envelope.author_user_id),
-      version: sql`version + 1`,
-    })
-    .where('id', '=', locationId)
-    .execute();
-  return { status: 'APPLIED' };
-};
+    // BR-DIS-001 : un PDV configuré a exactement un emplacement de vente, qui ne se désactive pas seul.
+    const salesLocationOf = await uow
+      .selectFrom('organization_points_of_sale')
+      .select('site_id')
+      .where('sales_location_id', '=', locationId)
+      .executeTakeFirst();
+    if (salesLocationOf) {
+      return invalid(
+        'LOCATION_IS_POS_SALES_LOCATION',
+        'Cet emplacement est l’emplacement de vente d’un point de vente configuré.',
+      );
+    }
+    // INV-STK-07 : solde, allocation, transfert ouvert… vérifiés par les modules propriétaires.
+    const block = await guards.firstBlock(uow, envelope.aggregate_id);
+    if (block !== null) return invalid(block.code, block.messageFr);
 
-export function registerLocationCommands(registry: CommandHandlerRegistry): void {
+    await uow
+      .updateTable('organization_locations')
+      .set({
+        status: 'INACTIVE',
+        updated_by: toBin(envelope.author_user_id),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', locationId)
+      .execute();
+    return { status: 'APPLIED' };
+  };
+}
+
+export function registerLocationCommands(
+  registry: CommandHandlerRegistry,
+  guards: LocationDeactivationGuardRegistry = new LocationDeactivationGuardRegistry(),
+): void {
   registry.register({
     commandType: 'organization.location.create',
     version: 1,
@@ -228,6 +262,6 @@ export function registerLocationCommands(registry: CommandHandlerRegistry): void
     version: 1,
     payloadSchema: z.object({}),
     permissionCode: 'org.structure.manage',
-    handler: deactivate,
+    handler: deactivateHandler(guards),
   });
 }

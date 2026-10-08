@@ -63,7 +63,7 @@ Tableau de distribution par PDV et période, suggestions de réapprovisionnement
 
 | ID | Règle | Statut |
 |---|---|---|
-| BR-DIS-001 | Un PDV est un site de type `POINT_DE_VENTE`. Il a exactement un emplacement de vente par défaut (type `POS`) et un compte de caisse de type `CAISSE_PDV`. | C (CM §12) / D |
+| BR-DIS-001 | Un PDV est un site de type `POINT_DE_VENTE`. Il a exactement un emplacement de vente par défaut (type `POS`, qui ne se désactive pas seul : `LOCATION_IS_POS_SALES_LOCATION`) et un compte de caisse de type `CAISSE_PDV`. | C (CM §12) / D |
 | BR-DIS-002 | Mode de garde de l'emplacement de vente (BR-STK-010) : `EXCLUSIVE_DEVICE` si le PDV fonctionne avec un seul appareil désigné (recommandé par défaut) ; `SHARED` si plusieurs appareils vendent simultanément, auquel cas des allocations sont nécessaires pour vendre hors ligne. | D (CM §39) / AV-035 |
 | BR-DIS-003 | Les vendeurs d'un PDV sont les utilisateurs qui ont le rôle `VENDEUR_PDV` avec une portée `SITE` sur ce PDV. Un vendeur ne vend que dans le PDV auquel son appareil est rattaché pour la session en cours. | C (CM §12) / D |
 | BR-DIS-004 | Les prix du PDV sont résolus par le moteur de tarification avec le contexte du PDV : PDV > zone du PDV > zones parentes > global (D10). | C (CM §12, §29) |

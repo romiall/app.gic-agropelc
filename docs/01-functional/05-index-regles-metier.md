@@ -19,7 +19,7 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-006 | Un appareil `BLOCKED` ou `LOST` voit toutes ses sessions révoquées. Les commandes reçues de cet appareil après la date de blocage sont mise… | D (PM §37) |
 | BR-ADM-007 | Chaque appareil reçoit un code court unique (4 caractères alphanumériques), utilisé dans les références locales des documents. | D (ADR-002) |
 | BR-ADM-008 | Un site a un type parmi `FERME`, `MAGASIN`, `POINT_DE_VENTE`, `BUREAU`. Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations ; s… | C (CM §12, §22) / D |
-| BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) |
+| BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) ; AV-163 |
 | BR-ADM-010 | Les emplacements virtuels (`V_*`) sont créés par le système, uniques par type, et ne peuvent être ni modifiés ni désactivés. Les neuf types… | D (ADR-003 ; ADR-028 §1) |
 | BR-ADM-011 | Un emplacement ne peut être désactivé que si tous ses soldes sont nuls et qu'aucun transfert, réservation ou allocation n'y est en cours. | D (INV-STK-07) |
 | BR-ADM-012 | Les zones forment un arbre sans cycle. Un géorepère est optionnel : point de référence + rayon, 500 m par défaut. | C (CM §10) / AV-003 |
@@ -132,7 +132,7 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 
 | ID | Règle (résumé) | Statut |
 |---|---|---|
-| BR-DIS-001 | Un PDV est un site de type `POINT_DE_VENTE`. Il a exactement un emplacement de vente par défaut (type `POS`) et un compte de caisse de type… | C (CM §12) / D |
+| BR-DIS-001 | Un PDV est un site de type `POINT_DE_VENTE`. Il a exactement un emplacement de vente par défaut (type `POS`, qui ne se désactive pas seul :… | C (CM §12) / D |
 | BR-DIS-002 | Mode de garde de l'emplacement de vente (BR-STK-010) : `EXCLUSIVE_DEVICE` si le PDV fonctionne avec un seul appareil désigné (recommandé pa… | D (CM §39) / AV-035 |
 | BR-DIS-003 | Les vendeurs d'un PDV sont les utilisateurs qui ont le rôle `VENDEUR_PDV` avec une portée `SITE` sur ce PDV. Un vendeur ne vend que dans le… | C (CM §12) / D |
 | BR-DIS-004 | Les prix du PDV sont résolus par le moteur de tarification avec le contexte du PDV : PDV > zone du PDV > zones parentes > global (D10). | C (CM §12, §29) |

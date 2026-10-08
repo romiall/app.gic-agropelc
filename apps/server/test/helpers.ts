@@ -416,3 +416,50 @@ export function monthEndOf(day: string): string {
 export function recentBusinessDay(daysAgo: number): string {
   return businessDayOf(new Date(Date.now() - daysAgo * 86_400_000));
 }
+
+/**
+ * Produit de marchandise comptée à la tête (`TETE`), sans suivi de lot, avec sa catégorie : la base
+ * minimale des tests de stock (mouvements, quotas, transferts). `lotTracking` : `NONE` (défaut).
+ */
+export async function insertTestProduct(
+  trx: UnitOfWork,
+  createdBy: string,
+  options: { readonly lotTracking?: string } = {},
+): Promise<string> {
+  const categoryId = freshUuid();
+  await trx
+    .insertInto('catalog_product_categories')
+    .values({
+      id: toBin(categoryId),
+      code: `CAT-${categoryId.slice(-8)}`,
+      name: 'Test',
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  const unit = await trx
+    .selectFrom('catalog_units')
+    .select('code')
+    .where('code', '=', 'TETE')
+    .executeTakeFirst();
+  if (!unit) {
+    await trx
+      .insertInto('catalog_units')
+      .values({ code: 'TETE', name: 'Tête', is_count: 1 })
+      .execute();
+  }
+  const productId = freshUuid();
+  await trx
+    .insertInto('catalog_products')
+    .values({
+      id: toBin(productId),
+      code: `PRD-${productId.slice(-8)}`,
+      name: 'Produit de test',
+      category_id: toBin(categoryId),
+      stock_family: 'MARCHANDISE',
+      base_unit_code: 'TETE',
+      lot_tracking: options.lotTracking ?? 'NONE',
+      created_by: toBin(createdBy),
+    })
+    .execute();
+  return productId;
+}

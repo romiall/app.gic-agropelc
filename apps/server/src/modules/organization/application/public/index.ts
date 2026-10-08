@@ -8,7 +8,21 @@
 export { listSettingHistory, currentSettingValue } from './setting-query.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
 export { listSiteIdsInZones } from './site-query.js';
+export {
+  findPosConfigBySite,
+  findPosConfigBySalesLocation,
+  findPosConfigByDesignatedDevice,
+} from './pos-query.js';
+export type { PosConfig } from './pos-query.js';
 export { listTeamMembersAt, listManagedTeamMembersAt, listTeamsOfUserAt } from './team-query.js';
+
+// P5-05 : gardes de désactivation d'un emplacement (INV-STK-07), inversion de dépendance.
+export { LOCATION_DEACTIVATION_GUARD_REGISTRY } from '../deactivation-guard-registry.provider.js';
+export { LocationDeactivationGuardRegistry } from '../deactivation-guard-registry.js';
+export type {
+  LocationDeactivationBlock,
+  LocationDeactivationGuard,
+} from '../deactivation-guard-registry.js';
 
 // P4-03 : emplacement « à livrer » d'un site (ADR-028 §1).
 export { ensureToDeliverLocation, ToDeliverLocationError } from './to-deliver-location.js';

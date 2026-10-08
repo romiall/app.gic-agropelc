@@ -5,6 +5,10 @@
  * quand l'état courant est déjà l'état cible, traité comme un rejeu sans effet (BR-SYN-007,
  * « aucun fait accompli n'est rejeté pour une raison d'état »), pas comme une erreur.
  *
+ * `designate` (P5-06, BR-DIS-003, AV-007) ne change pas l'état : il fixe le rattachement de l'appareil
+ * (appareil partagé entre plusieurs utilisateurs, site de rattachement). C'est une commande en ligne
+ * d'administration qui écrit l'état final demandé ; la rejouer est sans effet.
+ *
  * `status_changed_at` est fixé à `occurred_at` (pas l'heure de traitement) : c'est exactement
  * ce que compare `identity/application/public/device-check.ts` (RC-02) pour tolérer une
  * commande différée dont l'appareil n'était pas encore bloqué à `occurred_at`.
@@ -16,16 +20,22 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { findPosConfigByDesignatedDevice } from '../../../organization/application/public/index.js';
 import { revokeDeviceSessions } from './revoke-sessions.js';
 
 const emptyPayloadSchema = z.object({});
 const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
 const reasonOptionalSchema = z.object({ reason: z.string().min(1).max(500).optional() });
+const designatePayloadSchema = z.object({
+  isShared: z.boolean(),
+  designatedSiteId: z.string().uuid().nullable(),
+});
 
 type EmptyPayload = z.infer<typeof emptyPayloadSchema>;
 type ReasonRequiredPayload = z.infer<typeof reasonRequiredSchema>;
 type ReasonOptionalPayload = z.infer<typeof reasonOptionalSchema>;
+type DesignatePayload = z.infer<typeof designatePayloadSchema>;
 
 function invalidTransition(currentStatus: string): CommandHandlerOutcome {
   return {
@@ -179,6 +189,65 @@ const retire: CommandHandler<ReasonOptionalPayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
+/** États dans lesquels un appareil n'a plus de rattachement à fixer : perdu ou retiré. */
+const NOT_DESIGNABLE_STATUSES = ['LOST', 'RETIRED'];
+
+function designationInvalid(messageFr: string): CommandHandlerOutcome {
+  return { status: 'REJECTED', errorCode: 'DEVICE_DESIGNATION_INVALID', messageFr };
+}
+
+const designate: CommandHandler<DesignatePayload> = async (uow, envelope) => {
+  const deviceId = toBin(envelope.aggregate_id);
+  const device = await uow
+    .selectFrom('identity_devices')
+    .select(['status', 'is_shared', 'designated_site_id'])
+    .where('id', '=', deviceId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!device) return notFound();
+  if (NOT_DESIGNABLE_STATUSES.includes(device.status)) {
+    return designationInvalid(`Un appareil à l’état ${device.status} ne peut plus être rattaché.`);
+  }
+
+  const { isShared, designatedSiteId } = envelope.payload;
+  if (designatedSiteId !== null) {
+    const site = await uow
+      .selectFrom('organization_sites')
+      .select('status')
+      .where('id', '=', toBin(designatedSiteId))
+      .executeTakeFirst();
+    if (!site) {
+      return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr: 'Site introuvable.' };
+    }
+    if (site.status !== 'ACTIVE') return designationInvalid('Ce site est fermé.');
+  }
+
+  // BR-DIS-003 : l'appareil désigné d'un PDV ne se rattache pas à un autre site (ni n'en est détaché).
+  const pos = await findPosConfigByDesignatedDevice(uow, envelope.aggregate_id);
+  if (pos !== null && designatedSiteId !== pos.siteId) {
+    return designationInvalid(
+      'Cet appareil est l’appareil désigné d’un point de vente : changer d’abord la configuration de ce PDV.',
+    );
+  }
+
+  const unchanged =
+    (device.is_shared === 1) === isShared &&
+    fromBinOrNull(device.designated_site_id) === designatedSiteId;
+  if (unchanged) return { status: 'APPLIED' };
+
+  await uow
+    .updateTable('identity_devices')
+    .set({
+      is_shared: isShared ? 1 : 0,
+      designated_site_id: designatedSiteId === null ? null : toBin(designatedSiteId),
+      updated_by: toBin(envelope.author_user_id),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', deviceId)
+    .execute();
+  return { status: 'APPLIED' };
+};
+
 export function registerDeviceCommands(registry: CommandHandlerRegistry): void {
   registry.register({
     commandType: 'identity.device.approve',
@@ -186,6 +255,13 @@ export function registerDeviceCommands(registry: CommandHandlerRegistry): void {
     payloadSchema: emptyPayloadSchema,
     permissionCode: 'identity.device.approve',
     handler: approve,
+  });
+  registry.register({
+    commandType: 'identity.device.designate',
+    version: 1,
+    payloadSchema: designatePayloadSchema,
+    permissionCode: 'identity.device.approve',
+    handler: designate,
   });
   registry.register({
     commandType: 'identity.device.block',

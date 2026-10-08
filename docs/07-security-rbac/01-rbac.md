@@ -171,6 +171,7 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `inventory.transfer.cancel` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
 | `inventory.transfer_discrepancy.approve` | A·ALL | — | — | — | — | — | A·ALL | A·SITE | A·SITE | — | — |
 | `inventory.allocation.manage` | ALL | — | ZONE | — | — | — | — | SITE | SITE | — | — |
+| `inventory.allocation.release` (AV-162) | — | — | — | OWN | — | OWN | — | — | — | — | — |
 | `inventory.loss.declare` | — | — | — | OWN | — | SITE | ALL | SITE | SITE | — | — |
 | `inventory.loss.approve` | A·ALL | — | A·ZONE (PDV) | — | — | — | A·ALL (fermes) | A·SITE | — | — | — |
 | `inventory.loss.read` (AV-094) | ALL | — | ZONE | OWN | — | OWN | ALL | SITE | SITE | — | ALL |

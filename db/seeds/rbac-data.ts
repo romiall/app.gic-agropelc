@@ -776,6 +776,14 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isSensitive: false,
   },
   {
+    code: 'inventory.allocation.release',
+    module: 'inventory',
+    description: 'Libérer un quota de stock détenu par son propre appareil (AV-162, ADR-033)',
+    supportedScopes: ['OWN'],
+    isApproval: false,
+    isSensitive: false,
+  },
+  {
     code: 'inventory.loss.declare',
     module: 'inventory',
     description: 'Déclarer une perte de stock',
@@ -1368,7 +1376,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'TEAM'],
   ]),
 
-  // COMMERCIAL_TERRAIN — 44
+  // COMMERCIAL_TERRAIN — 45
   ...grants('COMMERCIAL_TERRAIN', [
     ['org.structure.read', 'ZONE'],
     ['approvals.request.read', 'OWN'],
@@ -1408,6 +1416,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer.cancel', 'OWN'],
     ['inventory.loss.declare', 'OWN'],
     ['inventory.loss.read', 'OWN'],
+    ['inventory.allocation.release', 'OWN'],
     ['inventory.count.perform', 'OWN'],
     ['finance.cash.read', 'OWN'],
     ['finance.cash_transfer.record', 'OWN'],
@@ -1453,7 +1462,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.commercial', 'OWN'],
   ]),
 
-  // VENDEUR_PDV — 37 (sales.price.override délibérément absent : plafond 0 %, AV-026)
+  // VENDEUR_PDV — 38 (sales.price.override délibérément absent : plafond 0 %, AV-026)
   ...grants('VENDEUR_PDV', [
     ['org.structure.read', 'SITE'],
     ['approvals.request.read', 'OWN'],
@@ -1484,6 +1493,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.transfer.cancel', 'SITE'],
     ['inventory.loss.declare', 'SITE'],
     ['inventory.loss.read', 'OWN'],
+    ['inventory.allocation.release', 'OWN'],
     ['inventory.count.perform', 'SITE'],
     ['inventory.consumption.record', 'SITE'],
     ['finance.cash.read', 'SITE'],
