@@ -83,6 +83,14 @@ export const WARNING_CODES = [
   // P5-08 : libération d'un quota où le reste déclaré par l'appareil diffère du reste du serveur ;
   // le quota est fermé sur le reste du serveur, l'écart est signalé (ADR-033 §9).
   'ALLOCATION_RELEASE_MISMATCH',
+  // P5-09 (ADR-033 §6, AV-161) : sortie d'un emplacement partagé saisie hors ligne au-delà du quota
+  // de l'appareil (l'excédent est pris sur le stock commun, conflit informatif) ; solde physique
+  // tombé sous la somme des restes des quotas actifs, après une perte ou un inventaire (conflit
+  // informatif, jamais corrigé en silence) ; fait saisi hors ligne par un appareil qui n'est pas
+  // celui de la garde de l'emplacement (appareil non désigné, non principal, d'un autre site).
+  'ALLOCATION_EXCEEDED',
+  'ALLOCATION_OVERCOMMITTED',
+  'CUSTODY_DEVICE_MISMATCH',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

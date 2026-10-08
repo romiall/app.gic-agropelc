@@ -20,6 +20,14 @@
  * - entrée valorisée (réception, ouverture, gain d'inventaire) ou sortie de production avec coût
  *   déclaré (œufs au coût standard, découpes, AV-098, AV-032) : coût déclaré et recalcul du CMUP ;
  * - sinon : CMUP courant.
+ *
+ * Quotas d'appareil (P5-09 ; ADR-033 §5 à §7) : un appelant qui porte un **fait de l'appareil** (vente,
+ * perte, transfert sortant, consommation) passe `consumesAllocation` ; la sortie consomme alors d'abord
+ * le quota du couple (utilisateur, appareil) sur un emplacement `SHARED` — mouvement scindé en une
+ * part imputée au quota (`allocation_id`, entrée `CONSUME`) et une part prise sur le stock commun. Une
+ * opération du serveur (confirmation d'une commande, livraison, régularisation, annulation) ne le
+ * passe pas : elle ne consomme aucun quota. Dans tous les cas, une sortie physique qui laisse le
+ * solde sous la somme des restes des quotas actifs ouvre `ALLOCATION_OVERCOMMITTED`.
  */
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -48,6 +56,19 @@ import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { stockBalanceChange } from '../sync-changes.js';
 import { lotHeadcount } from './lot-headcount.js';
+import {
+  consumeFromAllocation,
+  quantityToMilli,
+  type AllocationState,
+} from '../allocation-ledger.js';
+import {
+  AllocationRefusal,
+  checkOvercommitted,
+  prepareQuotaConsumption,
+  type AllocationWarning,
+  type ConsumptionLocation,
+  type QuotaConsumption,
+} from '../allocation-consumption.js';
 
 const LOT_KEY_NULL = Buffer.alloc(16);
 
@@ -124,6 +145,18 @@ const MOVE_TYPE_ENDPOINTS: Record<
   INVENTORY_LOSS: { from: ['PHYSICAL'], to: ['V_ADJUSTMENT'] },
 };
 
+/**
+ * Faits d'un appareil qui réduisent le stock et consomment donc un quota (BR-STK-013) : vente, perte
+ * (déclarée ou en attente de validation), transfert sortant, consommation.
+ */
+const QUOTA_CONSUMING_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>([
+  'SALE',
+  'LOSS',
+  'LOSS_PENDING',
+  'TRANSFER_DISPATCH',
+  'CONSUMPTION',
+]);
+
 /** Types dont chaque mouvement consomme une part d'un `SALE` d'origine (ADR-029). */
 const SETTLEMENT_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>([
   'CUSTOMER_RETURN',
@@ -191,6 +224,13 @@ export interface RecordMoveInput {
    * (BR-STK-056) ; le lot est celui de l'origine.
    */
   readonly originMoveId?: string;
+  /**
+   * Le mouvement est un **fait de l'appareil** qui a émis la commande : il consomme d'abord le quota
+   * de cet appareil (`createdDeviceId`, lu dans l'inbox par l'appelant, jamais dans le contenu de la
+   * commande) et de `createdBy` (ADR-033 §5). Sans effet hors des types `SALE`, `LOSS`, `LOSS_PENDING`,
+   * `TRANSFER_DISPATCH` et `CONSUMPTION`, et sans appareil connu.
+   */
+  readonly consumesAllocation?: boolean;
 }
 
 export interface RecordedMove {
@@ -201,6 +241,10 @@ export interface RecordedMove {
   readonly valueXaf: number;
   readonly fromBalanceAfter: number;
   readonly toBalanceAfter: number;
+  /** Quota consommé par ce mouvement (part imputée au quota, ADR-033 §5) ; absent sinon. */
+  readonly allocationId?: string;
+  /** Anomalies de quota et de garde consignées pour ce mouvement (conflits informatifs). */
+  readonly warnings?: readonly AllocationWarning[];
 }
 
 export interface RecordMoveDeps {
@@ -212,19 +256,48 @@ interface LocationInfo {
   readonly locationType: string;
   /** Nul pour un emplacement virtuel global ; renseigné pour `V_TO_DELIVER` (par site). */
   readonly siteId: string | null;
+  readonly siteType: string | null;
+  readonly custodyMode: string | null;
+  readonly designatedDeviceId: string | null;
+  readonly custodianUserId: string | null;
 }
 
 async function loadLocation(uow: Transaction<DB>, locationId: string): Promise<LocationInfo> {
   const row = await uow
-    .selectFrom('organization_locations')
-    .select(['is_virtual', 'location_type', 'site_id'])
-    .where('id', '=', toBin(locationId))
+    .selectFrom('organization_locations as l')
+    .leftJoin('organization_sites as s', 's.id', 'l.site_id')
+    .select([
+      'l.is_virtual as is_virtual',
+      'l.location_type as location_type',
+      'l.site_id as site_id',
+      's.site_type as site_type',
+      'l.custody_mode as custody_mode',
+      'l.designated_device_id as designated_device_id',
+      'l.custodian_user_id as custodian_user_id',
+    ])
+    .where('l.id', '=', toBin(locationId))
     .executeTakeFirst();
   if (!row) throw new InventoryMoveError('Emplacement introuvable.', 'LOCATION_INVALID');
   return {
     isVirtual: Boolean(row.is_virtual),
     locationType: row.location_type,
     siteId: fromBinOrNull(row.site_id),
+    siteType: row.site_type,
+    custodyMode: row.custody_mode,
+    designatedDeviceId: fromBinOrNull(row.designated_device_id),
+    custodianUserId: fromBinOrNull(row.custodian_user_id),
+  };
+}
+
+function consumptionLocation(locationId: string, location: LocationInfo): ConsumptionLocation {
+  return {
+    id: locationId,
+    siteId: location.siteId,
+    siteType: location.siteType,
+    locationType: location.locationType,
+    custodyMode: location.custodyMode,
+    designatedDeviceId: location.designatedDeviceId,
+    custodianUserId: location.custodianUserId,
   };
 }
 
@@ -669,6 +742,8 @@ async function recordSingleMove(
   uow: Transaction<DB>,
   deps: RecordMoveDeps,
   input: SingleMoveInput,
+  /** Quota que ce mouvement consomme en entier (part imputée au quota par `recordStockMove`). */
+  allocation?: AllocationState,
 ): Promise<RecordedMove> {
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
   const [fromLocation, toLocation] = await Promise.all([
@@ -843,6 +918,7 @@ async function recordSingleMove(
       cost_object_id: toBinOrNull(input.costObjectId ?? null),
       is_reversal: toDbBool(isReversal),
       reverses_move_id: toBinOrNull(input.reversesMoveId ?? null),
+      allocation_id: toBinOrNull(allocation?.id ?? null),
       origin_move_id: toBinOrNull(input.originMoveId ?? null),
       origin_seq: originSeq,
       created_by: toBin(input.createdBy),
@@ -854,6 +930,17 @@ async function recordSingleMove(
     .catch((error: unknown) => {
       throw settlementGuardError(error) ?? error;
     });
+
+  if (allocation !== undefined) {
+    await consumeFromAllocation(uow, deps, {
+      allocation,
+      quantityMilli: quantityToMilli(input.quantityBase),
+      stockMoveId: moveId,
+      occurredAt: input.occurredAt,
+      createdBy: input.createdBy,
+      commandId: input.commandId ?? null,
+    });
+  }
 
   const fromBalanceAfter = await upsertBalance(
     uow,
@@ -921,6 +1008,7 @@ async function recordSingleMove(
     valueXaf,
     fromBalanceAfter,
     toBalanceAfter,
+    ...(allocation !== undefined ? { allocationId: allocation.id } : {}),
   };
 }
 
@@ -934,17 +1022,62 @@ export async function recordStockMove(
   deps: RecordMoveDeps,
   input: RecordMoveInput,
 ): Promise<readonly RecordedMove[]> {
-  if (input.lotId !== undefined) {
-    return [await recordSingleMove(uow, deps, { ...input, lotId: input.lotId })];
-  }
-
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
   const fromIsPhysicalOutflow = endpoints.from.length === 1 && endpoints.from[0] === 'PHYSICAL';
-  if (!fromIsPhysicalOutflow) {
+  if (input.lotId === undefined && !fromIsPhysicalOutflow) {
     // Entrée depuis un emplacement virtuel : pas de sélection FIFO à faire ici (le lot, s'il
     // existe, est déjà connu de l'appelant — ex. réception avec lot fournisseur explicite).
     return [await recordSingleMove(uow, deps, { ...input, lotId: null })];
   }
+
+  // Sortie physique : quotas (ADR-033) puis, le cas échéant, sélection FIFO. Un emplacement
+  // introuvable ou mal typé laisse `recordSingleMove` produire l'erreur habituelle.
+  const source = fromIsPhysicalOutflow
+    ? await loadLocation(uow, input.fromLocationId).catch(() => null)
+    : null;
+  const quota = await prepareConsumption(uow, deps, input, source);
+
+  const pieces = await pieceList(uow, input, fromIsPhysicalOutflow);
+  const results: RecordedMove[] = [];
+  for (const piece of pieces) {
+    results.push(...(await recordPiece(uow, deps, input, piece, quota)));
+  }
+
+  const warnings = new Set<AllocationWarning>(quota?.warnings ?? []);
+  if (source !== null && !source.isVirtual) {
+    const overcommitted = await checkOvercommitted(uow, deps, {
+      location: consumptionLocation(input.fromLocationId, source),
+      productId: input.productId,
+      commandId: input.commandId ?? null,
+      occurredAt: input.occurredAt,
+      sourceDocType: input.sourceDocType,
+      sourceDocId: input.sourceDocId,
+    });
+    if (overcommitted) warnings.add('ALLOCATION_OVERCOMMITTED');
+  }
+  if (warnings.size === 0 || results.length === 0) return results;
+  const [first, ...others] = results;
+  return [{ ...first!, warnings: [...warnings] }, ...others];
+}
+
+/** Un morceau d'une sortie : un lot (ou aucun) et la quantité qui en vient. */
+interface Piece {
+  readonly lotId: string | null;
+  readonly quantityBase: number;
+}
+
+/**
+ * Découpe une sortie en morceaux par lot : le lot désigné par l'appelant, sinon la sélection FIFO du
+ * serveur (BR-STK-050) — un morceau par lot traversé, le manque éventuel imputé au dernier lot
+ * consulté (BR-STK-018 : le fait physique est appliqué malgré tout ; traçabilité statistique).
+ */
+async function pieceList(
+  uow: Transaction<DB>,
+  input: RecordMoveInput,
+  fromIsPhysicalOutflow: boolean,
+): Promise<readonly Piece[]> {
+  if (input.lotId !== undefined) return [{ lotId: input.lotId, quantityBase: input.quantityBase }];
+  if (!fromIsPhysicalOutflow) return [{ lotId: null, quantityBase: input.quantityBase }];
 
   const lotRows = await uow
     .selectFrom('inventory_stock_balances')
@@ -971,7 +1104,7 @@ export async function recordStockMove(
   if (lotRows.length === 0) {
     // Produit sans lot en solde ici (soit non suivi par lot, soit rupture totale) : un seul
     // mouvement sans lot ; BR-STK-018/017 tranchent la négativité selon allowNegative.
-    return [await recordSingleMove(uow, deps, { ...input, lotId: null })];
+    return [{ lotId: null, quantityBase: input.quantityBase }];
   }
 
   const selection = selectLotsFifo(
@@ -982,28 +1115,73 @@ export async function recordStockMove(
     })),
     input.quantityBase,
   );
-
-  const results: RecordedMove[] = [];
-  for (const allocation of selection.allocations) {
-    results.push(
-      await recordSingleMove(uow, deps, {
-        ...input,
-        lotId: allocation.lotId,
-        quantityBase: allocation.quantity,
-      }),
-    );
-  }
+  const pieces: Piece[] = selection.allocations.map((allocation) => ({
+    lotId: allocation.lotId,
+    quantityBase: allocation.quantity,
+  }));
   if (selection.shortfall > 0) {
-    // BR-STK-018 : le fait physique est appliqué malgré tout, imputé au dernier lot consulté
-    // (ou sans lot si aucun lot n'existait) — traçabilité statistique, pas exacte (D06 §7, L-07).
-    const lastLotId = lotRows.length > 0 ? fromBin(lotRows[lotRows.length - 1]!.lot_id) : null;
-    results.push(
-      await recordSingleMove(uow, deps, {
-        ...input,
-        lotId: lastLotId,
-        quantityBase: selection.shortfall,
-      }),
-    );
+    const lastLotId = fromBin(lotRows[lotRows.length - 1]!.lot_id);
+    pieces.push({ lotId: lastLotId, quantityBase: selection.shortfall });
   }
-  return results;
+  return pieces;
+}
+
+/**
+ * Prépare la consommation d'un quota pour une sortie qui est un fait de l'appareil (ADR-033 §5) ;
+ * `null` quand rien n'est à consommer ni à contrôler. Un refus en ligne devient une
+ * `InventoryMoveError` (`ALLOCATION_EXCEEDED` ou `INSUFFICIENT_STOCK`).
+ */
+async function prepareConsumption(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+  source: LocationInfo | null,
+): Promise<QuotaConsumption | null> {
+  if (
+    input.consumesAllocation !== true ||
+    !QUOTA_CONSUMING_MOVE_TYPES.has(input.moveType) ||
+    input.createdDeviceId === undefined ||
+    source === null ||
+    source.isVirtual ||
+    input.reversesMoveId !== undefined ||
+    input.originMoveId !== undefined
+  ) {
+    return null;
+  }
+  try {
+    return await prepareQuotaConsumption(uow, deps, {
+      location: consumptionLocation(input.fromLocationId, source),
+      productId: input.productId,
+      quantityMilli: quantityToMilli(input.quantityBase),
+      userId: input.createdBy,
+      deviceId: input.createdDeviceId,
+      occurredAt: input.occurredAt,
+      capturedOffline: input.capturedOffline ?? false,
+      allowNegative: input.allowNegative,
+      commandId: input.commandId ?? null,
+      sourceDocType: input.sourceDocType,
+      sourceDocId: input.sourceDocId,
+    });
+  } catch (error) {
+    if (error instanceof AllocationRefusal) throw new InventoryMoveError(error.message, error.code);
+    throw error;
+  }
+}
+
+/** Enregistre un morceau ; la part imputée au quota est un mouvement à part, avec `allocation_id`. */
+async function recordPiece(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+  piece: Piece,
+  quota: QuotaConsumption | null,
+): Promise<readonly RecordedMove[]> {
+  const single = (quantityBase: number, allocation?: AllocationState) =>
+    recordSingleMove(uow, deps, { ...input, lotId: piece.lotId, quantityBase }, allocation);
+  const pieceMilli = quantityToMilli(piece.quantityBase);
+  const fromQuota = quota?.allocation !== undefined ? quota.take(pieceMilli) : 0;
+  if (fromQuota === 0) return [await single(piece.quantityBase)];
+  const moves = [await single(fromQuota / 1000, quota!.allocation)];
+  if (pieceMilli - fromQuota > 0) moves.push(await single((pieceMilli - fromQuota) / 1000));
+  return moves;
 }

@@ -7,6 +7,7 @@
 import type { Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { toBin, fromBin } from '../../../../platform/kysely/uuid-columns.js';
+import type { WarningCode } from '@gic/contracts';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import { InventoryMoveError, type RecordedMove } from '../public/record-move.js';
 
@@ -55,6 +56,14 @@ export async function virtualLocationId(
 export type MoveOutcome =
   | { readonly ok: true; readonly moves: readonly RecordedMove[] }
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome };
+
+/**
+ * Avertissements de quota et de garde (P5-09) portés par les mouvements d'une opération : de quoi
+ * répondre `APPLIED_WITH_WARNINGS`. Vide quand aucun quota n'est en jeu.
+ */
+export function allocationWarnings(moves: readonly RecordedMove[]): readonly WarningCode[] {
+  return [...new Set(moves.flatMap((move) => move.warnings ?? []))];
+}
 
 /** Traduit une `InventoryMoveError` (P2-03) en `CommandHandlerOutcome` REJECTED, pour que
  * chaque gestionnaire de commande n'ait pas à répéter ce mappage. */

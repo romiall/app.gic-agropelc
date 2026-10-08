@@ -22,6 +22,7 @@
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { mortalityRequiresApproval, type IdGenerator, businessDayOf } from '@gic/domain';
+import type { WarningCode } from '@gic/contracts';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
@@ -44,7 +45,12 @@ import {
 import { hasAvailableAttachment } from '../../../attachments/application/public/index.js';
 import { recordStockMove } from './record-move.js';
 import { lotHeadcount } from './lot-headcount.js';
-import { loadLocationSite, tryRecordMove, virtualLocationId } from '../commands/shared.js';
+import {
+  allocationWarnings,
+  loadLocationSite,
+  tryRecordMove,
+  virtualLocationId,
+} from '../commands/shared.js';
 
 /** `ECART_TRANSFERT` exclu : réservé au mécanisme automatique des transferts. */
 export const LOSS_CATEGORIES = [
@@ -95,6 +101,8 @@ export type DeclareLossResult =
       readonly lotId: string | null;
       readonly unitCostXaf: number;
       readonly valueXaf: number;
+      /** Anomalies de quota et de garde consignées par la sortie (P5-09). */
+      readonly warnings: readonly WarningCode[];
     }
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome };
 
@@ -196,6 +204,7 @@ export async function declareLoss(
         commandId: input.commandId,
         capturedOffline: input.capturedOffline,
         allowNegative: input.capturedOffline,
+        consumesAllocation: true,
       },
     ),
   );
@@ -273,6 +282,7 @@ export async function declareLoss(
     lotId: capturedLotId,
     unitCostXaf,
     valueXaf,
+    warnings: allocationWarnings(moveResult.moves),
   };
 }
 

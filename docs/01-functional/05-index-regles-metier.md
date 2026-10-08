@@ -162,7 +162,7 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-010 | Chaque emplacement physique a un mode de garde, obligatoire (défaut par type, AV-163 ; source unique : `organization.locations`, ADR-033) :… | D (CM §39 ; ADR-004) |
 | BR-STK-011 | Disponible pour un consommateur C : sur un emplacement exclusif, le solde ; sur un emplacement `SHARED`, Σ des soldes du produit à l'emplac… | D (ADR-033) |
 | BR-STK-012 | Une allocation (`DEVICE_QUOTA`) est accordée en ligne à un couple (utilisateur, appareil) sur un emplacement `SHARED`, pour un produit (le… | C (CM §39) / AV-035 |
-| BR-STK-013 | Toute opération qui réduit le stock (vente, perte, transfert sortant, consommation) faite par le détenteur d'une allocation sur l'emplaceme… | AV-025 |
+| BR-STK-013 | Toute opération qui réduit le stock (vente, perte, transfert sortant, consommation) faite par le détenteur d'une allocation sur l'emplaceme… | AV-025 ; ADR-033 §5 à §7 |
 | BR-STK-014 | Une allocation est libérée par l'appareil détenteur (libération confirmée à la synchronisation) ou révoquée par un responsable. Une révocat… | AV-035 |
 | BR-STK-015 | RETIRÉE (ADR-028 §4, ADR-033) : la confirmation d'une commande est une vente du disponible vers l'emplacement « à livrer » ; la part en att… | C (PM §6) / D |
 | BR-STK-016 | Le stock d'un emplacement `EXCLUSIVE_USER` n'est utilisable hors ligne que sur l'appareil principal du détenteur. Le changement d'appareil… | D (ADR-004) |

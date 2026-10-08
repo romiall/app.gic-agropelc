@@ -104,7 +104,10 @@ function buildConsumptionCommands(idGenerator: IdGenerator): {
       capturedOffline: envelope.captured_offline,
       backdatedReason: envelope.backdated_reason,
     });
-    return result.ok ? { status: 'APPLIED' } : result.outcome;
+    if (!result.ok) return result.outcome;
+    return result.warnings.length > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: result.warnings }
+      : { status: 'APPLIED' };
   };
 
   const cancel: CommandHandler<CancelPayload> = async (uow, envelope) => {

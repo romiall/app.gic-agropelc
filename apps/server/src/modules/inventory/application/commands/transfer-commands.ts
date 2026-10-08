@@ -29,11 +29,18 @@ import {
   currentPolicies,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
+import type { WarningCode } from '@gic/contracts';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
 import { transferChanges } from '../sync-changes.js';
-import { loadCommandOrigin, loadLocationSite, virtualLocationId, tryRecordMove } from './shared.js';
+import {
+  allocationWarnings,
+  loadCommandOrigin,
+  loadLocationSite,
+  virtualLocationId,
+  tryRecordMove,
+} from './shared.js';
 
 const lineInputSchema = z.object({
   productId: z.string().uuid(),
@@ -337,6 +344,7 @@ function buildTransferCommands(
     }
 
     const transitLocationId = await virtualLocationId(uow, 'V_TRANSIT');
+    const dispatchWarnings = new Set<WarningCode>();
     for (const line of lines) {
       const moveResult = await tryRecordMove(() =>
         recordStockMove(uow, deps, {
@@ -354,9 +362,11 @@ function buildTransferCommands(
           commandId: envelope.command_id,
           capturedOffline: envelope.captured_offline,
           allowNegative: envelope.captured_offline,
+          consumesAllocation: true,
         }),
       );
       if (!moveResult.ok) return moveResult.outcome;
+      for (const warning of allocationWarnings(moveResult.moves)) dispatchWarnings.add(warning);
       const dispatchedLotId = moveResult.moves[0]?.lotId ?? null;
 
       if (transferId !== undefined && line.transferLineId !== undefined) {
@@ -394,7 +404,9 @@ function buildTransferCommands(
     }
 
     await recordTransferChanges(uow, transfer);
-    return { status: 'APPLIED' };
+    return dispatchWarnings.size > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: [...dispatchWarnings] }
+      : { status: 'APPLIED' };
   };
 
   const receive: CommandHandler<ReceivePayload> = async (uow, envelope) => {

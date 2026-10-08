@@ -11,6 +11,7 @@
 import type { Kysely, Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
+import type { WarningCode } from '@gic/contracts';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
@@ -18,7 +19,7 @@ import { emitLotConsumptionChange } from '../sync-changes.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { recordStockMove } from './record-move.js';
 import { recordCostEntry, type CostObjectType, type CostType } from './cost-entries.js';
-import { tryRecordMove, virtualLocationId } from '../commands/shared.js';
+import { allocationWarnings, tryRecordMove, virtualLocationId } from '../commands/shared.js';
 
 export interface RecordConsumptionInput {
   readonly consumptionId: string;
@@ -40,7 +41,7 @@ export interface RecordConsumptionInput {
 }
 
 export type RecordConsumptionResult =
-  | { readonly ok: true; readonly valueXaf: number }
+  | { readonly ok: true; readonly valueXaf: number; readonly warnings: readonly WarningCode[] }
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome };
 
 export async function recordConsumption(
@@ -68,6 +69,7 @@ export async function recordConsumption(
       commandId: input.commandId,
       capturedOffline: input.capturedOffline,
       allowNegative: input.capturedOffline,
+      consumesAllocation: true,
     }),
   );
   if (!moveResult.ok) return { ok: false, outcome: moveResult.outcome };
@@ -117,7 +119,7 @@ export async function recordConsumption(
       createdBy: input.recordedBy,
     });
   }
-  return { ok: true, valueXaf };
+  return { ok: true, valueXaf, warnings: allocationWarnings(moveResult.moves) };
 }
 
 /** Consommation déjà enregistrée : rejeu d'une commande qui la crée (revue P7). */

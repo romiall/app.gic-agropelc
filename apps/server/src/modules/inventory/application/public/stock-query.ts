@@ -20,6 +20,7 @@ import {
 } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { activeRemainingMilli, milliToText, quantityToMilli } from '../allocation-ledger.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -469,7 +470,9 @@ export async function listStockMoves(
  * Quantité qu'une sortie **stricte** (sans solde négatif) peut prendre maintenant à un emplacement :
  * la même sélection que le FIFO de `recordStockMove` — les lots `OPEN` en solde positif s'il y en a,
  * sinon le solde sans lot — chacun dans la limite de son disponible (réservations et allocations
- * déduites). Lecture **verrouillante** des soldes : deux confirmations concurrentes se sérialisent
+ * déduites). Sur un emplacement `SHARED`, la quantité est en outre plafonnée au **stock libre** :
+ * Σ des soldes du produit − Σ des restes des quotas actifs (ADR-033 §4 : l'opération du serveur n'a
+ * pas de quota, elle ne prend rien de ce qui est promis à un appareil). Lecture **verrouillante** des soldes : deux confirmations concurrentes se sérialisent
  * et la seconde voit le solde laissé par la première (BR-VEN-004 : une commande n'est jamais
  * refusée pour manque de stock, elle vend ce qui reste).
  */
@@ -523,9 +526,24 @@ export async function lockSellableQuantity(
     const lotId = lotIdOfKey(row.lot_key);
     return lotId !== null && openLots.has(lotId);
   });
+  let sellable: number;
   if (lotted.length > 0) {
-    return lotted.reduce((sum, row) => sum + Math.min(available(row), Number(row.qty_on_hand)), 0);
+    sellable = lotted.reduce(
+      (sum, row) => sum + Math.min(available(row), Number(row.qty_on_hand)),
+      0,
+    );
+  } else {
+    const unlotted = rows.find((row) => lotIdOfKey(row.lot_key) === null);
+    sellable = unlotted ? available(unlotted) : 0;
   }
-  const unlotted = rows.find((row) => lotIdOfKey(row.lot_key) === null);
-  return unlotted ? available(unlotted) : 0;
+  if (params.custodyMode === 'EXCLUSIVE_USER' || params.custodyMode === 'EXCLUSIVE_DEVICE') {
+    return sellable;
+  }
+  // Soldes verrouillés ci-dessus, puis quotas : l'ordre de verrouillage d'`inventory`.
+  const quotas = await activeRemainingMilli(uow, params.locationId, params.productId, {
+    lock: true,
+  });
+  if (quotas === 0) return sellable;
+  const onHand = rows.reduce((sum, row) => sum + quantityToMilli(row.qty_on_hand), 0);
+  return Math.min(sellable, roundQty(Number(milliToText(Math.max(0, onHand - quotas)))));
 }

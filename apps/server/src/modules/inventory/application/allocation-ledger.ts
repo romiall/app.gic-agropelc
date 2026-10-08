@@ -8,9 +8,12 @@
  * opération qui touche les deux ne lit jamais un quota avant d'avoir verrouillé les soldes du couple
  * (emplacement, produit) ; c'est ce qui rend l'octroi et une sortie concurrente sérialisables.
  */
+import { sql } from 'kysely';
 import { signedAllocationEntry, quantityFromDecimal, quantityMilliUnits } from '@gic/domain';
 import type { AllocationEntryType, IdGenerator } from '@gic/domain';
 import type { UnitOfWork } from '../../../platform/unit-of-work.js';
+import { recordChanges } from '../../../platform/sync/change-feed.js';
+import { allocationChange } from './sync-changes.js';
 import {
   fromBin,
   fromBinOrNull,
@@ -41,6 +44,7 @@ export interface AllocationState {
   readonly grantedMilli: number;
   readonly remainingMilli: number;
   readonly validUntil: Date | null;
+  readonly revokedAt: Date | null;
   readonly revocationPending: boolean;
   readonly version: number;
 }
@@ -64,6 +68,7 @@ export async function loadAllocation(
       'quantity_granted',
       'quantity_remaining',
       'valid_until',
+      'revoked_at',
       'revocation_pending',
       'version',
     ])
@@ -82,6 +87,7 @@ export async function loadAllocation(
     grantedMilli: quantityToMilli(row.quantity_granted),
     remainingMilli: quantityToMilli(row.quantity_remaining),
     validUntil: row.valid_until,
+    revokedAt: row.revoked_at,
     revocationPending: row.revocation_pending === 1,
     version: row.version,
   };
@@ -160,4 +166,88 @@ export async function writeAllocationEntry(
       created_by: toBin(input.createdBy),
     })
     .execute();
+}
+
+/**
+ * Quotas d'un couple (utilisateur, appareil) sur un couple (emplacement, produit) : le quota actif
+ * s'il existe, sinon le dernier révoqué (pour qualifier `ALLOCATION_REVOKED_CONSUMED`, ADR-033 §6).
+ * `lock` verrouille le quota actif — à faire après les soldes du couple (ordre de verrouillage).
+ */
+export async function loadConsumerAllocations(
+  uow: UnitOfWork,
+  input: {
+    readonly locationId: string;
+    readonly productId: string;
+    readonly userId: string;
+    readonly deviceId: string;
+  },
+  options: { readonly lock?: boolean } = {},
+): Promise<{
+  readonly active: AllocationState | undefined;
+  readonly lastRevoked: AllocationState | undefined;
+}> {
+  const base = () =>
+    uow
+      .selectFrom('inventory_stock_allocations')
+      .select('id')
+      .where('location_id', '=', toBin(input.locationId))
+      .where('product_id', '=', toBin(input.productId))
+      .where('holder_user_id', '=', toBin(input.userId))
+      .where('holder_device_id', '=', toBin(input.deviceId));
+  let activeQuery = base().where('status', '=', 'ACTIVE');
+  if (options.lock) activeQuery = activeQuery.forUpdate();
+  const activeRow = await activeQuery.executeTakeFirst();
+  const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id)) : undefined;
+  if (active) return { active, lastRevoked: undefined };
+  const revokedRow = await base()
+    .where('status', '=', 'REVOKED')
+    .orderBy('revoked_at', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+  const lastRevoked = revokedRow ? await loadAllocation(uow, fromBin(revokedRow.id)) : undefined;
+  return { active: undefined, lastRevoked };
+}
+
+/**
+ * Consommation d'un quota par un mouvement (ADR-033 §5) : entrée `CONSUME` rattachée au mouvement et
+ * reste diminué dans la même transaction. L'appelant a plafonné la quantité au reste (jamais négatif).
+ */
+export async function consumeFromAllocation(
+  uow: UnitOfWork,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly allocation: AllocationState;
+    readonly quantityMilli: number;
+    readonly stockMoveId: string;
+    readonly occurredAt: Date;
+    readonly createdBy: string;
+    readonly commandId?: string | null;
+  },
+): Promise<void> {
+  await writeAllocationEntry(uow, deps, {
+    allocationId: input.allocation.id,
+    entryType: 'CONSUME',
+    magnitudeMilli: input.quantityMilli,
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    commandId: input.commandId ?? null,
+    stockMoveId: input.stockMoveId,
+  });
+  await uow
+    .updateTable('inventory_stock_allocations')
+    .set({
+      quantity_remaining: sql`quantity_remaining - ${milliToText(input.quantityMilli)}`,
+      updated_by: toBin(input.createdBy),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(input.allocation.id))
+    .execute();
+  const row = await uow
+    .selectFrom('inventory_stock_allocations')
+    .select('version')
+    .where('id', '=', toBin(input.allocation.id))
+    .executeTakeFirstOrThrow();
+  await recordChanges(uow, [
+    allocationChange(input.allocation.id, input.allocation.holderDeviceId, row.version),
+  ]);
 }

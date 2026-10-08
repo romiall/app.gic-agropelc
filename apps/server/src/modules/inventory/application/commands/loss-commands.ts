@@ -127,7 +127,10 @@ function buildLossCommands(
       },
     );
     if (!result.ok) return result.outcome;
-    return { status: 'APPLIED', serverRefs: { docNumber: result.docNumber } };
+    const serverRefs = { docNumber: result.docNumber };
+    return result.warnings.length > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: result.warnings, serverRefs }
+      : { status: 'APPLIED', serverRefs };
   };
 
   const withdraw: CommandHandler<WithdrawPayload> = async (uow, envelope) => {
