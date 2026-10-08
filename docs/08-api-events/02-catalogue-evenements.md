@@ -19,7 +19,7 @@ Principes :
 2. Les **effets indispensables à la cohérence** (stock, trésorerie, réservation, conversion du prospect) sont faits **de manière synchrone**, dans la transaction, via l'API interne du module propriétaire. Les événements portent les effets **secondaires** tolérant un délai de quelques secondes : alertes, notifications, Kommo, projections analytiques, écritures de coût issues d'une dépense approuvée.
 3. Chaque événement a une version (`event_version`) ; un consommateur ignore une version inconnue et lève une alerte technique.
 4. Données minimum : identifiants et valeurs utiles aux consommateurs. Pas de données personnelles inutiles.
-5. **Nom stocké et nom logique** (DÉDUIT du pipeline, P5-06) : pour un événement produit par une commande, le pipeline écrit `event_type` = type de la commande (`identity.device.block`) et `aggregate_id` = son agrégat ; le nom du catalogue (`DeviceBlocked`) est le nom logique du même fait. Un consommateur filtre sur le `event_type` stocké. Correspondances d'`identity` : `DeviceBlocked` = `identity.device.block`, `DeviceDeclaredLost` = `identity.device.declare_lost`, `UserDeactivated` = `identity.user.deactivate`.
+5. **Nom stocké et nom logique** (DÉDUIT du pipeline, P5-06) : pour un événement produit par une commande, le pipeline écrit `event_type` = type de la commande (`identity.device.block`) et `aggregate_id` = son agrégat ; le nom du catalogue (`DeviceBlocked`) est le nom logique du même fait. Un consommateur filtre sur le `event_type` stocké. Correspondances d'`identity` : `DeviceBlocked` = `identity.device.block`, `DeviceDeclaredLost` = `identity.device.declare_lost`, `UserDeactivated` = `identity.user.deactivate`, `UserReactivated` = `identity.user.reactivate`, `DeviceUnblocked` = `identity.device.unblock`. Correspondances d'`inventory` (P5-08) : `StockAllocated` = `inventory.allocation.grant`, `StockAllocationIncreased` = `inventory.allocation.increase`, `StockAllocationReleased` = `inventory.allocation.release`, `StockAllocationRevoked` = `inventory.allocation.revoke`.
 
 Enveloppe commune (toujours présente, non répétée ci-dessous) : `event_id`, `event_type`, `event_version`, `producer_module`, `aggregate_type`, `aggregate_id`, `occurred_at`, `recorded_at`, `actor_user_id`, `device_id`, `site_id`, `command_id`, `correlation_id`.
 
@@ -33,12 +33,13 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|---|
 | `UserCreated`, `UserUpdated` | identity | KOM (correspondance), ANA | `user_id`, rôles | Référentiel à jour |
 | `UserDeactivated` | identity | NOT, STK, CRM, FIN | `user_id`, `effective_at` | Alertes : portefeuille, stock mobile et caisse à régulariser ; sessions révoquées |
-| `UserReactivated` | identity | — | `user_id` | — |
+| `UserReactivated` | identity | STK | `user_id` | Lève le signal `revocation_pending` des quotas de l'utilisateur si l'appareil est en service (P5-08) |
 | `RoleAssigned`, `RoleAssignmentRevoked` | identity | SYN (périmètres), NOT | `user_id`, `role_code`, `scope` | Recalcul des périmètres de synchronisation (`SCOPE_EXIT` éventuels) |
 | `RolePermissionsChanged` | identity | SYN | `role_id` | Invalidation du cache des droits |
 | `DeviceEnrollmentRequested` | identity | NOT | `device_id`, `user_id` | Notification aux approbateurs |
 | `DeviceApproved` | identity | NOT | `device_id` | L'utilisateur peut synchroniser |
-| `DeviceBlocked`, `DeviceDeclaredLost` | identity | STK, SYN, NOT | `device_id`, `effective_at` | Allocations `REVOCATION_PENDING` ; quarantaine des commandes postérieures |
+| `DeviceBlocked`, `DeviceDeclaredLost` | identity | STK, SYN, NOT | `device_id`, `effective_at` | Quotas actifs de l'appareil en `revocation_pending` (consommateur `inventory.allocation_revocation`, P5-08) ; quarantaine des commandes postérieures |
+| `DeviceUnblocked` | identity | STK | `device_id` | Lève le signal `revocation_pending` des quotas de l'appareil si l'utilisateur est en service (P5-08) |
 | `SessionRevoked` | identity | — | `session_id`, raison | — |
 | `SiteCreated`, `SiteUpdated`, `SiteClosed` | organization | ANA, SYN | `site_id` | Référentiels |
 | `LocationCreated`, `LocationUpdated`, `LocationDeactivated` | organization | SYN, STK | `location_id` | — |
@@ -116,8 +117,9 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `StockTransferDiscrepancyResolved` | ANA | `transfer_id`, décision | — |
 | `StockTransferCancelled` | NOT | `transfer_id` | — |
 | `StockTransferUnmatched` | NOT | `transfer_id` (réception sans document) | Alerte `TRANSFER_UNMATCHED` |
-| `StockAllocated`, `StockAllocationReleased`, `StockAllocationRevoked` | SYN, NOT | `allocation_id`, détenteur | Téléchargement du quota |
-| `StockReservationChanged` | VEN | `order_line_id`, réservé | Statut de réservation de la commande |
+| `StockAllocated`, `StockAllocationIncreased`, `StockAllocationReleased`, `StockAllocationRevoked` | SYN, NOT | `allocation_id`, détenteur | Téléchargement du quota |
+| `AllocationRevocationPending` (P5-08) | NOT (alerte : P9), SYN | `allocation_id`, `reason` (`DEVICE_BLOCKED`, `DEVICE_LOST`, `USER_DEACTIVATED`), détenteur, appareil, produit, reste, `site_id` | Alerte au responsable ; aucun mouvement automatique, la décision (révocation) est la sienne (ADR-033 §9). Publié une fois par quota signalé |
+| `AllocationExpired` (P5-08) | NOT (alerte : P9) | `allocation_id`, détenteur, appareil, produit, reste, `valid_until`, `site_id`, `business_day` | Alerte « quota échu à libérer » ; produit par la tâche `inventory.allocations.expiry_daily`, au plus un par quota et par jour métier ; le serveur ne libère jamais seul |
 | `StockLossDeclared` | NOT (`HIGH_LOSS`), ANA | `loss_id`, catégorie, produit, lot, quantité, valeur, emplacement, statut | Alerte immédiate si anormal ; KPI pertes |
 | `StockLossApproved`, `StockLossRejected` | PRD (indicateurs du lot), ANA, NOT | `loss_id`, décision | — |
 | `ConsumptionRecorded` | ANA | `consumption_id`, objet de coût, valeur | Le coût est écrit de façon synchrone au registre ; l'événement sert aux projections |

@@ -143,8 +143,8 @@
 |---|---|
 | Responsabilité | Registre des mouvements, soldes, lots, transferts, allocations et réservations, pertes, consommations, inventaires, seuils, valorisation (CMUP, coût de lot), registre de coûts |
 | Tables | `stock_lots`, `stock_moves`, `stock_balances`, `stock_balance_snapshots`, `stock_transfers`, `stock_transfer_lines`, `stock_allocations`, `stock_allocation_entries`, `loss_declarations`, `consumptions`, `inventory_counts`, `inventory_count_lines`, `stock_thresholds`, `product_valuations`, `cost_entries` |
-| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `reserve`, `releaseReservation`, `transferReservation`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) |
-| Événements | `StockTransfer*`, `StockAllocation*`, `StockReservationChanged`, `StockLoss*`, `ConsumptionRecorded`, `InventoryCount*`, `InventoryAdjusted`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`, `CostEntryRecorded` |
+| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) |
+| Événements | `StockTransfer*`, `StockAllocation*`, `AllocationRevocationPending`, `AllocationExpired`, `StockLoss*`, `ConsumptionRecorded`, `InventoryCount*`, `InventoryAdjusted`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`, `CostEntryRecorded` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments` |
 | Interdites | `sales`, `procurement`, `production`, `finance`, `crm` (ils l'appellent ; il ne les appelle jamais) |
 

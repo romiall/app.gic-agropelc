@@ -80,6 +80,9 @@ export const WARNING_CODES = [
   // (compteur partagé entre vendeurs d'une tablette, AV-007) : le fait est appliqué, la référence
   // locale n'est pas conservée (BR-SYN-007).
   'LOCAL_REF_DUPLICATE',
+  // P5-08 : libération d'un quota où le reste déclaré par l'appareil diffère du reste du serveur ;
+  // le quota est fermé sur le reste du serveur, l'écart est signalé (ADR-033 §9).
+  'ALLOCATION_RELEASE_MISMATCH',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

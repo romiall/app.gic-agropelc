@@ -19,6 +19,7 @@ import { fromBin, toBin } from '../../../platform/kysely/uuid-columns.js';
 export const STOCK_DATASET = 'stock';
 export const TRANSFERS_DATASET = 'transfers';
 export const COUNTS_DATASET = 'counts';
+export const ALLOCATIONS_DATASET = 'allocations';
 
 /** Solde d'un produit dans un emplacement, tous lots confondus : l'entité est le produit, le
  * périmètre l'emplacement (la clé réelle de `stock_balances` est composite — `entity_id` ne
@@ -57,6 +58,27 @@ export function transferChanges(
     scopeType: 'LOCATION' as const,
     scopeId: locationId,
   }));
+}
+
+/**
+ * Quota d'appareil (P5-08 ; ADR-033, jeu `allocations`) : une ligne par quota, au périmètre de
+ * l'**appareil détenteur** (`DEVICE`) — seule la tablette concernée le télécharge. La projection
+ * (jeu et type d'entité) est ajoutée avec les jeux hors ligne de P5 (P5-18) ; les lignes émises dès
+ * maintenant lui servent d'historique.
+ */
+export function allocationChange(
+  allocationId: string,
+  holderDeviceId: string,
+  rowVersion: number,
+): ChangeFeedEntry {
+  return {
+    dataset: ALLOCATIONS_DATASET,
+    entityType: 'STOCK_ALLOCATION',
+    entityId: allocationId,
+    scopeType: 'DEVICE',
+    scopeId: holderDeviceId,
+    rowVersion,
+  };
 }
 
 export function inventoryCountChange(countId: string, locationId: string): ChangeFeedEntry {

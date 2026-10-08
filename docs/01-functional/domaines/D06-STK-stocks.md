@@ -200,11 +200,11 @@ Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`),
 
 - **Dépend de** : ADM (emplacements, RBAC, validations, pièces), CAT (produits, unités, suivi par lot), aucune dépendance vers FIN : le registre de coûts et la valorisation appartiennent à `inventory` ; `finance` appelle `inventory` pour imputer une dépense à un objet de coût.
 - **Utilisé par** : VEN, APP, PRD, DIS, FIN (valorisation, coût des ventes), ANA, NOT.
-- **Règle de frontière** : seul `inventory` écrit dans ses tables. Les autres modules appellent son API interne (`recordMoves`, `reserve`, `consumeAllocation`…), dans la **même transaction** que leur propre document (ADR-011).
+- **Règle de frontière** : seul `inventory` écrit dans ses tables. Les autres modules appellent son API interne (`recordMoves`, `consumeAllocation`…), dans la **même transaction** que leur propre document (ADR-011).
 
 ## 10. Événements produits
 
-`StockTransferRequested`, `StockTransferDispatched`, `StockTransferReceived`, `StockTransferDiscrepancyDetected`, `StockTransferDiscrepancyResolved`, `StockTransferCancelled`, `StockTransferUnmatched`, `StockAllocated`, `StockAllocationReleased`, `StockAllocationRevoked`, `StockReservationChanged`, `StockLossDeclared`, `StockLossApproved`, `StockLossRejected`, `ConsumptionRecorded`, `InventoryCountOpened`, `InventoryCountSubmitted`, `InventoryAdjusted`, `InventoryCountReconciled`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`.
+`StockTransferRequested`, `StockTransferDispatched`, `StockTransferReceived`, `StockTransferDiscrepancyDetected`, `StockTransferDiscrepancyResolved`, `StockTransferCancelled`, `StockTransferUnmatched`, `StockAllocated`, `StockAllocationIncreased`, `StockAllocationReleased`, `StockAllocationRevoked`, `AllocationRevocationPending`, `AllocationExpired`, `StockLossDeclared`, `StockLossApproved`, `StockLossRejected`, `ConsumptionRecorded`, `InventoryCountOpened`, `InventoryCountSubmitted`, `InventoryAdjusted`, `InventoryCountReconciled`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`.
 
 Les mouvements eux-mêmes ne sont pas publiés un par un comme événements métier : le registre **est** la source. Les projections se mettent à jour dans la transaction.
 
@@ -213,9 +213,9 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 | Événement | Producteur | Réaction |
 |---|---|---|
 | `ApprovalGranted` / `ApprovalRejected` (types `LOSS_DECLARATION`, `MORTALITY`, `INVENTORY_ADJUSTMENT`, `TRANSFER_DISCREPANCY`, `LOSS_CANCELLATION`) | ADM | Mouvements de confirmation, de libération ou d'ajustement |
-| `OrderConfirmed`, `OrderUpdated`, `OrderCancelled`, `OrderClosed` | VEN | Appels synchrones à l'API de réservation dans la transaction de VEN ; aucune réaction asynchrone |
-| `UserDeactivated` | ADM | Alerte : stock mobile et allocations de l'utilisateur à régulariser (pas de mouvement automatique) |
-| `DeviceBlocked`, `DeviceDeclaredLost` | ADM | Allocations de l'appareil marquées `REVOCATION_PENDING` ; décision du responsable |
+| `OrderConfirmed`, `OrderUpdated`, `OrderCancelled`, `OrderClosed` | VEN | Aucune : plus de réservation de commande (ADR-028 §4) ; la confirmation vend le disponible par l'API de mouvements, dans la transaction de VEN |
+| `UserDeactivated` | ADM | Consommateur `inventory.allocation_revocation` (P5-08) : quotas actifs de l'utilisateur en `revocation_pending`, événement `AllocationRevocationPending` (alerte : P9) ; stock mobile à régulariser (pas de mouvement automatique) ; `UserReactivated` lève le signal |
+| `DeviceBlocked`, `DeviceDeclaredLost` | ADM | Consommateur `inventory.allocation_revocation` (P5-08) : quotas actifs de l'appareil en `revocation_pending` ; décision du responsable (`inventory.allocation.revoke`) ; `DeviceUnblocked` lève le signal si l'utilisateur est lui aussi en service |
 
 ## 12. Fonctionnement hors ligne
 

@@ -150,7 +150,7 @@ Sources : CM §4, §7, §11, §13, §30, §32, §38, §39, §41 ; PM §9, §24.
 |---|---|---|
 | `PaymentAllocated`, `PaymentCancelled` | FIN | Recalcul de `payment_status`, `amount_paid_xaf`, `balance_due_xaf` |
 | `ApprovalGranted` / `ApprovalRejected` (types `SALE_CANCELLATION`, `PRICE_OVERRIDE`, `CREDIT_LIMIT_EXCEEDED`) | ADM | Exécution de l'annulation, ou clôture de l'anomalie |
-| `StockReservationChanged` | STK | Ne concerne plus les commandes : elles n'ont ni réservation ni statut de réservation (ADR-028 §4) ; la réservation reste celle des quotas d'appareil (P5) |
+| `StockReservationChanged` | STK | **Retiré** (P5-08) : aucune réservation n'existe plus, ni pour les commandes (ADR-028 §4) ni pour les quotas d'appareil (ADR-033) |
 | `CustomerMerged` | CRM | Les lectures suivent la chaîne de fusion ; aucune réécriture |
 
 ## 12. Fonctionnement hors ligne
