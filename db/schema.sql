@@ -150,7 +150,7 @@ CREATE TABLE `approvals_control_policies` (
   CONSTRAINT `fk_approvals_control_policies_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_approvals_control_policies_permission` FOREIGN KEY (`approver_permission`) REFERENCES `identity_permissions` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `ck_approvals_control_policies_approver_scope` CHECK (((`approver_scope` is null) or (`approver_scope` in (_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'TEAM',_utf8mb4'ALL')))),
-  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT',_utf8mb4'PAYMENT_CANCELLATION',_utf8mb4'PAYMENT_DUPLICATE'))),
+  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT',_utf8mb4'PAYMENT_CANCELLATION',_utf8mb4'PAYMENT_DUPLICATE',_utf8mb4'CASH_TRANSFER_DISCREPANCY'))),
   CONSTRAINT `ck_approvals_control_policies_requires_approval` CHECK (((`requires_approval` = false) or (`approver_permission` is not null))),
   CONSTRAINT `ck_approvals_control_policies_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -1877,6 +1877,7 @@ CREATE TABLE `finance_cash_movements` (
   CONSTRAINT `fk_finance_cash_movements_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_finance_cash_movements_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_finance_cash_movements_reverses` FOREIGN KEY (`reverses_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_movements_session` FOREIGN KEY (`cash_session_id`) REFERENCES `finance_cash_sessions` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_finance_cash_movements_amount` CHECK ((`amount_xaf` > 0)),
   CONSTRAINT `ck_finance_cash_movements_direction` CHECK ((`direction` in (_utf8mb4'IN',_utf8mb4'OUT'))),
   CONSTRAINT `ck_finance_cash_movements_reversal` CHECK ((((`is_reversal` = false) and (`reverses_movement_id` is null)) or ((`is_reversal` = true) and (`reverses_movement_id` is not null)))),
@@ -1912,6 +1913,497 @@ DELIMITER ;
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_movements_no_delete` BEFORE DELETE ON `finance_cash_movements` FOR EACH ROW BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_movements : suppression interdite (INV-FIN-01).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_cash_session_adjustments`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_cash_session_adjustments` (
+  `id` binary(16) NOT NULL,
+  `session_id` binary(16) NOT NULL,
+  `movement_id` binary(16) NOT NULL,
+  `trigger_movement_id` binary(16) DEFAULT NULL,
+  `cause` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `variance_before_xaf` bigint NOT NULL,
+  `variance_after_xaf` bigint NOT NULL,
+  `delta_xaf` bigint NOT NULL,
+  `expected_after_xaf` bigint NOT NULL,
+  `treatment` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'PENDING',
+  `applied_at` datetime(6) NOT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `validated_by` binary(16) DEFAULT NULL,
+  `validated_at` datetime(6) DEFAULT NULL,
+  `variance_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_cash_session_adjustments_movement` (`movement_id`),
+  KEY `ix_finance_cash_session_adjustments_session` (`session_id`,`applied_at`),
+  KEY `ix_finance_cash_session_adjustments_status` (`status`,`applied_at`),
+  KEY `fk_finance_cash_session_adjustments_trigger` (`trigger_movement_id`),
+  KEY `fk_finance_cash_session_adjustments_approval` (`approval_request_id`),
+  KEY `fk_finance_cash_session_adjustments_validated_by` (`validated_by`),
+  KEY `fk_finance_cash_session_adjustments_created_by` (`created_by`),
+  KEY `fk_finance_cash_session_adjustments_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_cash_session_adjustments_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_movement` FOREIGN KEY (`movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_session` FOREIGN KEY (`session_id`) REFERENCES `finance_cash_sessions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_trigger` FOREIGN KEY (`trigger_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_session_adjustments_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_cash_session_adjustments_cause` CHECK ((`cause` in (_utf8mb4'LATE_OPERATION',_utf8mb4'REVERSAL'))),
+  CONSTRAINT `ck_finance_cash_session_adjustments_delta` CHECK (((`delta_xaf` <> 0) and (`delta_xaf` = (`variance_after_xaf` - `variance_before_xaf`)))),
+  CONSTRAINT `ck_finance_cash_session_adjustments_status` CHECK ((`status` in (_utf8mb4'PENDING',_utf8mb4'VALIDATED'))),
+  CONSTRAINT `ck_finance_cash_session_adjustments_treatment` CHECK ((`treatment` in (_utf8mb4'INCLUDED_IN_VALIDATION',_utf8mb4'OWN_APPROVAL'))),
+  CONSTRAINT `ck_finance_cash_session_adjustments_validation` CHECK (((`status` <> _utf8mb4'VALIDATED') or ((`validated_at` is not null) and (`validated_by` is not null))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_session_adjustments_update_guard` BEFORE UPDATE ON `finance_cash_session_adjustments` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.session_id <=> OLD.session_id AND
+    NEW.movement_id <=> OLD.movement_id AND
+    NEW.trigger_movement_id <=> OLD.trigger_movement_id AND
+    NEW.cause <=> OLD.cause AND
+    NEW.variance_before_xaf <=> OLD.variance_before_xaf AND
+    NEW.variance_after_xaf <=> OLD.variance_after_xaf AND
+    NEW.delta_xaf <=> OLD.delta_xaf AND
+    NEW.expected_after_xaf <=> OLD.expected_after_xaf AND
+    NEW.treatment <=> OLD.treatment AND
+    NEW.applied_at <=> OLD.applied_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_session_adjustments : ajustement immuable, seule sa validation évolue.';
+  END IF;
+  IF OLD.status = 'VALIDATED' AND NOT (
+    NEW.status <=> OLD.status AND
+    NEW.validated_by <=> OLD.validated_by AND
+    NEW.validated_at <=> OLD.validated_at AND
+    NEW.approval_request_id <=> OLD.approval_request_id AND
+    NEW.variance_reason <=> OLD.variance_reason
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_session_adjustments : ajustement validé figé.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_session_adjustments_no_delete` BEFORE DELETE ON `finance_cash_session_adjustments` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_session_adjustments : suppression interdite (ADR-006).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_cash_sessions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_cash_sessions` (
+  `id` binary(16) NOT NULL,
+  `cash_account_id` binary(16) NOT NULL,
+  `site_id` binary(16) NOT NULL,
+  `opened_by` binary(16) NOT NULL,
+  `opened_device_id` binary(16) DEFAULT NULL,
+  `opened_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`opened_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `opening_counted_xaf` bigint NOT NULL,
+  `opening_expected_xaf` bigint NOT NULL,
+  `opening_variance_xaf` bigint NOT NULL,
+  `closed_by` binary(16) DEFAULT NULL,
+  `closed_device_id` binary(16) DEFAULT NULL,
+  `closed_at` datetime(6) DEFAULT NULL,
+  `closing_counted_xaf` bigint DEFAULT NULL,
+  `closing_expected_xaf` bigint DEFAULT NULL,
+  `variance_xaf` bigint DEFAULT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `force_closed` tinyint(1) NOT NULL DEFAULT '0',
+  `forced_by` binary(16) DEFAULT NULL,
+  `auto_validated` tinyint(1) NOT NULL DEFAULT '0',
+  `validated_by` binary(16) DEFAULT NULL,
+  `validated_at` datetime(6) DEFAULT NULL,
+  `variance_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `open_account` binary(16) GENERATED ALWAYS AS (if((`status` = _utf8mb4'OPEN'),`cash_account_id`,NULL)) STORED,
+  `command_id` binary(16) DEFAULT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `close_command_id` binary(16) DEFAULT NULL,
+  `close_captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_cash_sessions_open_account` (`open_account`),
+  UNIQUE KEY `uq_finance_cash_sessions_command` (`command_id`),
+  UNIQUE KEY `uq_finance_cash_sessions_close_command` (`close_command_id`),
+  KEY `ix_finance_cash_sessions_account` (`cash_account_id`,`opened_at`),
+  KEY `ix_finance_cash_sessions_site_day` (`site_id`,`business_date`),
+  KEY `ix_finance_cash_sessions_status` (`status`,`opened_at`),
+  KEY `fk_finance_cash_sessions_opened_by` (`opened_by`),
+  KEY `fk_finance_cash_sessions_opened_device` (`opened_device_id`),
+  KEY `fk_finance_cash_sessions_closed_by` (`closed_by`),
+  KEY `fk_finance_cash_sessions_closed_device` (`closed_device_id`),
+  KEY `fk_finance_cash_sessions_forced_by` (`forced_by`),
+  KEY `fk_finance_cash_sessions_validated_by` (`validated_by`),
+  KEY `fk_finance_cash_sessions_approval` (`approval_request_id`),
+  KEY `fk_finance_cash_sessions_created_by` (`created_by`),
+  KEY `fk_finance_cash_sessions_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_cash_sessions_account` FOREIGN KEY (`cash_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_closed_device` FOREIGN KEY (`closed_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_forced_by` FOREIGN KEY (`forced_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_opened_by` FOREIGN KEY (`opened_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_opened_device` FOREIGN KEY (`opened_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_sessions_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_cash_sessions_closing` CHECK ((((`status` = _utf8mb4'OPEN') and (`closed_at` is null) and (`closed_by` is null) and (`closing_counted_xaf` is null) and (`closing_expected_xaf` is null) and (`variance_xaf` is null)) or ((`status` <> _utf8mb4'OPEN') and (`closed_at` is not null) and (`closed_by` is not null) and (`closing_counted_xaf` is not null) and (`closing_expected_xaf` is not null) and (`variance_xaf` is not null) and (`closing_counted_xaf` >= 0) and (`closed_at` >= `opened_at`) and (`variance_xaf` = (`closing_counted_xaf` - `closing_expected_xaf`))))),
+  CONSTRAINT `ck_finance_cash_sessions_forced` CHECK (((`force_closed` = false) or ((`forced_by` is not null) and (`status` <> _utf8mb4'OPEN')))),
+  CONSTRAINT `ck_finance_cash_sessions_opening` CHECK (((`opening_counted_xaf` >= 0) and (`opening_variance_xaf` = (`opening_counted_xaf` - `opening_expected_xaf`)))),
+  CONSTRAINT `ck_finance_cash_sessions_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'PENDING_VALIDATION',_utf8mb4'VALIDATED'))),
+  CONSTRAINT `ck_finance_cash_sessions_validation` CHECK (((`status` <> _utf8mb4'VALIDATED') or ((`validated_at` is not null) and ((`validated_by` is not null) or (`auto_validated` = true)))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_sessions_insert_guard` BEFORE INSERT ON `finance_cash_sessions` FOR EACH ROW BEGIN
+  IF EXISTS (
+    SELECT 1 FROM finance_cash_sessions s
+    WHERE s.cash_account_id = NEW.cash_account_id
+      AND s.opened_at < COALESCE(NEW.closed_at, '9999-12-31 23:59:59.999999')
+      AND NEW.opened_at < COALESCE(s.closed_at, '9999-12-31 23:59:59.999999')
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : les fenêtres de session d''un même compte ne se chevauchent pas (ADR-032 §2).';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_sessions_update_guard` BEFORE UPDATE ON `finance_cash_sessions` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.cash_account_id <=> OLD.cash_account_id AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.opened_by <=> OLD.opened_by AND
+    NEW.opened_device_id <=> OLD.opened_device_id AND
+    NEW.opened_at <=> OLD.opened_at AND
+    NEW.opening_counted_xaf <=> OLD.opening_counted_xaf AND
+    NEW.opening_expected_xaf <=> OLD.opening_expected_xaf AND
+    NEW.opening_variance_xaf <=> OLD.opening_variance_xaf AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : identité et ouverture de la session immuables.';
+  END IF;
+  -- Une session close ne se rouvre pas ; une session figée (INV-FIN-05) ne change plus.
+  IF OLD.status <> 'OPEN' AND NEW.status = 'OPEN' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : une session close ne se rouvre pas.';
+  END IF;
+  IF OLD.status = 'VALIDATED' AND NEW.status <> 'VALIDATED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : session VALIDATED figée (INV-FIN-05).';
+  END IF;
+  IF OLD.status <> 'OPEN' AND NOT (
+    NEW.closed_by <=> OLD.closed_by AND
+    NEW.closed_device_id <=> OLD.closed_device_id AND
+    NEW.closed_at <=> OLD.closed_at AND
+    NEW.closing_counted_xaf <=> OLD.closing_counted_xaf AND
+    NEW.closing_expected_xaf <=> OLD.closing_expected_xaf AND
+    NEW.variance_xaf <=> OLD.variance_xaf AND
+    NEW.force_closed <=> OLD.force_closed AND
+    NEW.forced_by <=> OLD.forced_by AND
+    NEW.close_command_id <=> OLD.close_command_id AND
+    NEW.close_captured_offline <=> OLD.close_captured_offline
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : la clôture est figée ; une réévaluation passe par un ajustement (ADR-032 §6).';
+  END IF;
+  IF OLD.status = 'VALIDATED' AND NOT (
+    NEW.auto_validated <=> OLD.auto_validated AND
+    NEW.validated_by <=> OLD.validated_by AND
+    NEW.validated_at <=> OLD.validated_at AND
+    NEW.variance_reason <=> OLD.variance_reason AND
+    NEW.approval_request_id <=> OLD.approval_request_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : session VALIDATED figée (INV-FIN-05).';
+  END IF;
+  -- Filet de non-chevauchement à la clôture (la fin de fenêtre ne doit pas mordre sur la session suivante).
+  IF NEW.closed_at IS NOT NULL AND NOT (NEW.closed_at <=> OLD.closed_at) THEN
+    IF EXISTS (
+      SELECT 1 FROM finance_cash_sessions s
+      WHERE s.cash_account_id = NEW.cash_account_id
+        AND s.id <> NEW.id
+        AND s.opened_at < NEW.closed_at
+        AND NEW.opened_at < COALESCE(s.closed_at, '9999-12-31 23:59:59.999999')
+    ) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : la clôture chevaucherait la session suivante du compte (ADR-032 §2).';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_sessions_no_delete` BEFORE DELETE ON `finance_cash_sessions` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_sessions : suppression interdite ; corriger par ajustement (ADR-006).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_cash_transfers`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_cash_transfers` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `from_account_id` binary(16) NOT NULL,
+  `to_account_id` binary(16) NOT NULL,
+  `amount_sent_xaf` bigint NOT NULL,
+  `amount_received_xaf` bigint DEFAULT NULL,
+  `discrepancy_xaf` bigint DEFAULT NULL,
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'SENT',
+  `sent_by` binary(16) NOT NULL,
+  `sent_device_id` binary(16) DEFAULT NULL,
+  `sent_at` datetime(6) NOT NULL,
+  `carrier_user_id` binary(16) DEFAULT NULL,
+  `carrier_name` varchar(120) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `received_by` binary(16) DEFAULT NULL,
+  `received_device_id` binary(16) DEFAULT NULL,
+  `received_at` datetime(6) DEFAULT NULL,
+  `out_movement_id` binary(16) NOT NULL,
+  `in_movement_id` binary(16) DEFAULT NULL,
+  `cancel_movement_id` binary(16) DEFAULT NULL,
+  `imputation` varchar(10) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `closing_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `closed_by` binary(16) DEFAULT NULL,
+  `closed_at` datetime(6) DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `cancel_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `receive_command_id` binary(16) DEFAULT NULL,
+  `cancel_command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_cash_transfers_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_finance_cash_transfers_out_movement` (`out_movement_id`),
+  UNIQUE KEY `uq_finance_cash_transfers_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_finance_cash_transfers_command` (`command_id`),
+  UNIQUE KEY `uq_finance_cash_transfers_receive_command` (`receive_command_id`),
+  UNIQUE KEY `uq_finance_cash_transfers_cancel_command` (`cancel_command_id`),
+  KEY `ix_finance_cash_transfers_from` (`from_account_id`,`status`),
+  KEY `ix_finance_cash_transfers_to` (`to_account_id`,`status`),
+  KEY `ix_finance_cash_transfers_status` (`status`,`sent_at`),
+  KEY `fk_finance_cash_transfers_site` (`site_id`),
+  KEY `fk_finance_cash_transfers_sent_by` (`sent_by`),
+  KEY `fk_finance_cash_transfers_sent_device` (`sent_device_id`),
+  KEY `fk_finance_cash_transfers_carrier` (`carrier_user_id`),
+  KEY `fk_finance_cash_transfers_received_by` (`received_by`),
+  KEY `fk_finance_cash_transfers_received_device` (`received_device_id`),
+  KEY `fk_finance_cash_transfers_in_movement` (`in_movement_id`),
+  KEY `fk_finance_cash_transfers_cancel_movement` (`cancel_movement_id`),
+  KEY `fk_finance_cash_transfers_closed_by` (`closed_by`),
+  KEY `fk_finance_cash_transfers_cancelled_by` (`cancelled_by`),
+  KEY `fk_finance_cash_transfers_approval` (`approval_request_id`),
+  KEY `fk_finance_cash_transfers_created_by` (`created_by`),
+  KEY `fk_finance_cash_transfers_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_cash_transfers_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_cancel_movement` FOREIGN KEY (`cancel_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_carrier` FOREIGN KEY (`carrier_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_from` FOREIGN KEY (`from_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_in_movement` FOREIGN KEY (`in_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_out_movement` FOREIGN KEY (`out_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_received_by` FOREIGN KEY (`received_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_received_device` FOREIGN KEY (`received_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_sent_by` FOREIGN KEY (`sent_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_sent_device` FOREIGN KEY (`sent_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_to` FOREIGN KEY (`to_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_cash_transfers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_cash_transfers_accounts` CHECK ((`from_account_id` <> `to_account_id`)),
+  CONSTRAINT `ck_finance_cash_transfers_amounts` CHECK (((`amount_sent_xaf` > 0) and ((`amount_received_xaf` is null) or (`amount_received_xaf` >= 0)))),
+  CONSTRAINT `ck_finance_cash_transfers_discrepancy` CHECK ((`discrepancy_xaf` <=> (`amount_received_xaf` - `amount_sent_xaf`))),
+  CONSTRAINT `ck_finance_cash_transfers_imputation` CHECK (((`imputation` is null) or (`imputation` in (_utf8mb4'SENDER',_utf8mb4'CARRIER',_utf8mb4'RECEIVER',_utf8mb4'COMPANY')))),
+  CONSTRAINT `ck_finance_cash_transfers_received_pair` CHECK ((((`received_at` is null) and (`amount_received_xaf` is null) and (`received_by` is null)) or ((`received_at` is not null) and (`amount_received_xaf` is not null) and (`received_by` is not null)))),
+  CONSTRAINT `ck_finance_cash_transfers_state` CHECK ((((`status` = _utf8mb4'SENT') and (`received_at` is null) and (`cancelled_at` is null) and (`closed_at` is null)) or ((`status` = _utf8mb4'RECEIVED') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` = 0)) or ((`status` = _utf8mb4'DISCREPANCY_PENDING') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` <> 0) and (`closed_at` is null)) or ((`status` = _utf8mb4'CLOSED') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` <> 0) and (`imputation` is not null) and (`closed_at` is not null) and (`closed_by` is not null)) or ((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_movement_id` is not null) and (`received_at` is null)))),
+  CONSTRAINT `ck_finance_cash_transfers_status` CHECK ((`status` in (_utf8mb4'SENT',_utf8mb4'RECEIVED',_utf8mb4'DISCREPANCY_PENDING',_utf8mb4'CLOSED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_transfers_update_guard` BEFORE UPDATE ON `finance_cash_transfers` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.from_account_id <=> OLD.from_account_id AND
+    NEW.to_account_id <=> OLD.to_account_id AND
+    NEW.amount_sent_xaf <=> OLD.amount_sent_xaf AND
+    NEW.sent_by <=> OLD.sent_by AND
+    NEW.sent_device_id <=> OLD.sent_device_id AND
+    NEW.sent_at <=> OLD.sent_at AND
+    NEW.carrier_user_id <=> OLD.carrier_user_id AND
+    NEW.carrier_name <=> OLD.carrier_name AND
+    NEW.out_movement_id <=> OLD.out_movement_id AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_transfers : envoi immuable ; seuls réception, clôture et annulation évoluent.';
+  END IF;
+  IF OLD.status IN ('RECEIVED', 'CLOSED', 'CANCELLED') AND NOT (
+    NEW.status <=> OLD.status AND
+    NEW.amount_received_xaf <=> OLD.amount_received_xaf AND
+    NEW.discrepancy_xaf <=> OLD.discrepancy_xaf AND
+    NEW.received_by <=> OLD.received_by AND
+    NEW.received_at <=> OLD.received_at AND
+    NEW.in_movement_id <=> OLD.in_movement_id AND
+    NEW.cancel_movement_id <=> OLD.cancel_movement_id AND
+    NEW.imputation <=> OLD.imputation AND
+    NEW.closing_reason <=> OLD.closing_reason AND
+    NEW.closed_by <=> OLD.closed_by AND
+    NEW.closed_at <=> OLD.closed_at AND
+    NEW.cancelled_by <=> OLD.cancelled_by AND
+    NEW.cancelled_at <=> OLD.cancelled_at
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_transfers : remise terminée, ses données ne changent plus.';
+  END IF;
+  IF OLD.status IN ('CLOSED', 'CANCELLED') AND NEW.status <> OLD.status THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_transfers : état terminal.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_cash_transfers_no_delete` BEFORE DELETE ON `finance_cash_transfers` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_cash_transfers : suppression interdite ; annuler la remise (ADR-006).';
 END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -6120,6 +6612,7 @@ CREATE TABLE `sales_customer_payments` (
   CONSTRAINT `fk_sales_customer_payments_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_customer_payments_cash_account` FOREIGN KEY (`cash_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_customer_payments_cash_movement` FOREIGN KEY (`cash_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sales_customer_payments_cash_session` FOREIGN KEY (`cash_session_id`) REFERENCES `finance_cash_sessions` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_customer_payments_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_customer_payments_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_customer_payments_customer` FOREIGN KEY (`customer_id`) REFERENCES `crm_customers` (`id`) ON DELETE RESTRICT,
@@ -6933,6 +7426,7 @@ CREATE TABLE `sales_sales` (
   KEY `fk_sales_sales_created_by` (`created_by`),
   KEY `fk_sales_sales_updated_by` (`updated_by`),
   KEY `ix_sales_sales_cash_session` (`cash_session_id`),
+  CONSTRAINT `fk_sales_sales_cash_session` FOREIGN KEY (`cash_session_id`) REFERENCES `finance_cash_sessions` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_sales_channel` FOREIGN KEY (`channel_code`) REFERENCES `catalog_sales_channels` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_sales_commercial` FOREIGN KEY (`commercial_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_sales_sales_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
@@ -7590,6 +8084,7 @@ DELIMITER ;
 --
 -- Dumping routines for database 'gic_agropelc_dev'
 --
+
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -7650,5 +8145,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090900'),
   ('20261003091000'),
   ('20261005090000'),
+  ('20261008090000');
   ('20261007090000');
 UNLOCK TABLES;

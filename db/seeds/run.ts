@@ -15,7 +15,7 @@ import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js'
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
-import { PAYMENT_METHODS } from './finance-references.js';
+import { FINANCE_CONTROL_POLICIES, PAYMENT_METHODS } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
 import { codeEntityId } from './code-entity-id.js';
 
@@ -256,7 +256,7 @@ async function seedProductionReferences(
   systemUserId: Buffer,
 ): Promise<void> {
   let policies = 0;
-  const allPolicies = [...CONTROL_POLICIES, ...SALES_CONTROL_POLICIES];
+  const allPolicies = [...CONTROL_POLICIES, ...SALES_CONTROL_POLICIES, ...FINANCE_CONTROL_POLICIES];
   for (const policy of allPolicies) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(
       'SELECT id FROM approvals_control_policies WHERE code = ?',

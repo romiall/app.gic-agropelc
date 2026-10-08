@@ -527,6 +527,119 @@ export interface FinanceCashMovements {
   source_doc_type: string;
 }
 
+export interface FinanceCashSessionAdjustments {
+  applied_at: Date;
+  approval_request_id: Buffer | null;
+  cause: string;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  delta_xaf: number;
+  expected_after_xaf: number;
+  id: Buffer;
+  movement_id: Buffer;
+  session_id: Buffer;
+  status: Generated<string>;
+  treatment: string;
+  trigger_movement_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  validated_at: Date | null;
+  validated_by: Buffer | null;
+  variance_after_xaf: number;
+  variance_before_xaf: number;
+  variance_reason: string | null;
+  version: Generated<number>;
+}
+
+export interface FinanceCashSessions {
+  approval_request_id: Buffer | null;
+  auto_validated: Generated<number>;
+  backdated_reason: string | null;
+  business_date: Date | null;
+  captured_offline: Generated<number>;
+  cash_account_id: Buffer;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  close_captured_offline: Generated<number>;
+  close_command_id: Buffer | null;
+  closed_at: Date | null;
+  closed_by: Buffer | null;
+  closed_device_id: Buffer | null;
+  closing_counted_xaf: number | null;
+  closing_expected_xaf: number | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  force_closed: Generated<number>;
+  forced_by: Buffer | null;
+  id: Buffer;
+  open_account: Buffer | null;
+  opened_at: Date;
+  opened_by: Buffer;
+  opened_device_id: Buffer | null;
+  opening_counted_xaf: number;
+  opening_expected_xaf: number;
+  opening_variance_xaf: number;
+  received_at_server: Date | null;
+  site_id: Buffer;
+  status: Generated<string>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  validated_at: Date | null;
+  validated_by: Buffer | null;
+  variance_reason: string | null;
+  variance_xaf: number | null;
+  version: Generated<number>;
+}
+
+export interface FinanceCashTransfers {
+  amount_received_xaf: number | null;
+  amount_sent_xaf: number;
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  cancel_command_id: Buffer | null;
+  cancel_movement_id: Buffer | null;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  carrier_name: string | null;
+  carrier_user_id: Buffer | null;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  closed_at: Date | null;
+  closed_by: Buffer | null;
+  closing_reason: string | null;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  discrepancy_xaf: number | null;
+  doc_number: string;
+  from_account_id: Buffer;
+  id: Buffer;
+  imputation: string | null;
+  in_movement_id: Buffer | null;
+  local_ref: string | null;
+  occurred_at: Date;
+  out_movement_id: Buffer;
+  receive_command_id: Buffer | null;
+  received_at: Date | null;
+  received_at_server: Date | null;
+  received_by: Buffer | null;
+  received_device_id: Buffer | null;
+  sent_at: Date;
+  sent_by: Buffer;
+  sent_device_id: Buffer | null;
+  site_id: Buffer | null;
+  status: Generated<string>;
+  to_account_id: Buffer;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface FinancePaymentMethods {
   code: string;
   created_at: Generated<Date>;
@@ -2082,6 +2195,9 @@ export interface DB {
   fieldwork_work_sessions: FieldworkWorkSessions;
   finance_cash_accounts: FinanceCashAccounts;
   finance_cash_movements: FinanceCashMovements;
+  finance_cash_session_adjustments: FinanceCashSessionAdjustments;
+  finance_cash_sessions: FinanceCashSessions;
+  finance_cash_transfers: FinanceCashTransfers;
   finance_payment_methods: FinancePaymentMethods;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;

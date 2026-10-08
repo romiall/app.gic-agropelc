@@ -30,6 +30,9 @@ export const OPERATION_TYPES = [
   // suspect de doublon `SUSPECT_DUPLICATE` (AV-056).
   'PAYMENT_CANCELLATION',
   'PAYMENT_DUPLICATE',
+  // P5-03 : écart d'une remise de fonds (reçu ≠ envoyé), validé par la Finance ; l'imputation et le
+  // motif sont des données de la remise, sans second mouvement de trésorerie (ADR-032 §7, AV-153).
+  'CASH_TRANSFER_DISCREPANCY',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

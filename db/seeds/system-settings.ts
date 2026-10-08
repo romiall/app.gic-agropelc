@@ -131,6 +131,34 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'sales.undelivered_alert_days', value: 7, isClientVisible: false, ref: 'AV-132' },
   { key: 'pricing.stale_rules_hours', value: 24, isClientVisible: false, ref: 'AV-063' },
   { key: 'finance.cash_holding_max_xaf', value: 200_000, isClientVisible: false, ref: 'D09 §14' },
+  // P5-03 (ADR-032, AV-057, AV-153, AV-154, AV-158) : sessions de caisse et remises de fonds.
+  // Nombre de sessions par PDV et par jour métier (AV-154) ; lu par l'appareil à l'ouverture.
+  { key: 'finance.cash_sessions_per_day_max', value: 1, isClientVisible: true, ref: 'AV-154' },
+  // Au-delà de ces heures, une session ouverte est signalée et la Finance peut la clôturer d'office.
+  {
+    key: 'finance.cash_session_force_close_hours',
+    value: 24,
+    isClientVisible: false,
+    ref: 'D05 §14',
+  },
+  // Gravité critique de l'alerte d'écart de caisse (D13) ; en dessous, simple avertissement.
+  {
+    key: 'finance.cash_variance_critical_xaf',
+    value: 10_000,
+    isClientVisible: false,
+    ref: 'D13-NOT',
+  },
+  // Tolérance d'écart validée d'office (AV-057 : tout écart est validé, donc 0).
+  { key: 'finance.cash_variance_tolerance_xaf', value: 0, isClientVisible: false, ref: 'AV-057' },
+  // Délai avant d'alerter sur une remise de fonds envoyée et jamais reçue (AV-158).
+  {
+    key: 'finance.cash_transfer_unreceived_hours',
+    value: 48,
+    isClientVisible: false,
+    ref: 'AV-158',
+  },
+  // Jours d'encaisse sans remise avant l'alerte CASH_HOLDING_HIGH (D09 §14).
+  { key: 'finance.cash_holding_max_days', value: 3, isClientVisible: false, ref: 'D09 §14' },
   {
     key: 'finance.supplier_payment_approval_xaf',
     value: 500_000,

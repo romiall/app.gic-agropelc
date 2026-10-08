@@ -128,25 +128,28 @@ stateDiagram-v2
 
 ## SM-CASH-SESSION — Session de caisse
 
+> Corrigée par ADR-032 (08/10/2026) : l'écart n'est compté qu'une fois. L'attendu se tire du registre par **fenêtre de temps** (`[ouverture, clôture[` du compte) ; l'écart d'ouverture appartient à la période précédente et n'entre pas dans l'attendu ; une réévaluation pose le **delta** ; la session `VALIDATED` est figée, l'ajustement tardif est une ligne de `finance_cash_session_adjustments`.
+
 ```mermaid
 stateDiagram-v2
   [*] --> OPEN : finance.cash_session.open
-  OPEN --> VALIDATED : clôture, écart = 0 (auto)
+  OPEN --> VALIDATED : clôture, écart = 0 ou dans la tolérance (auto)
   OPEN --> PENDING_VALIDATION : clôture, écart ≠ 0
   OPEN --> PENDING_VALIDATION : clôture forcée par un responsable
   PENDING_VALIDATION --> VALIDATED : validation Finance
-  VALIDATED --> VALIDATED : réévaluation (vente tardive)
+  PENDING_VALIDATION --> PENDING_VALIDATION : opération tardive (ajustement inclus)
+  VALIDATED --> VALIDATED : opération tardive (ajustement validé à part)
 ```
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `finance.cash_session.open` | Aucune session ouverte sur la caisse ; fonds compté ≥ 0 | `OPEN` | `CashSessionOpened` | — | Si fonds compté ≠ solde du compte : mouvement `SESSION_VARIANCE` et validation requise (BR-FIN-014) | `finance.cash_session.operate` |
-| `OPEN` | `finance.cash_session.close` | Comptage saisi | `VALIDATED` si écart = 0, sinon `PENDING_VALIDATION` | Solde attendu calculé (BR-DIS-007) ; `CashSessionClosed` ; `CashVarianceDetected` si écart | — | Mouvement `SESSION_VARIANCE` de l'écart | `finance.cash_session.operate` |
-| `OPEN` | `finance.cash_session.force_close` | Session ouverte depuis plus de 24 h ; comptage déclaré | `PENDING_VALIDATION` | Tracé | — | Idem | `finance.cash_session.validate` |
-| `PENDING_VALIDATION` | `finance.cash_session.validate` | Motif si écart ; valideur ≠ vendeur | `VALIDATED` | `CashSessionValidated` | — | — | `finance.cash_session.validate` |
-| `VALIDATED` | Réaction : opération tardive de `occurred_at` dans la session | — | `VALIDATED` | Solde attendu recalculé ; alerte à la Finance | — | Mouvement `SESSION_VARIANCE` compensatoire (BR-DIS-008) | `system` |
+| `[*]` | `finance.cash_session.open` | Caisse de PDV (AV-165) ; en ligne, aucune session ouverte (`CASH_SESSION_ALREADY_OPEN`) ; hors ligne, ouverture concurrente fusionnée avec conflit (AV-154) ; fonds compté ≥ 0 | `OPEN` | `CashSessionOpened` | — | Écart d'ouverture = fonds compté − solde du registre à l'ouverture : mouvement `SESSION_VARIANCE` posé à l'ouverture, **hors** de l'attendu de la session, validé avec elle (BR-FIN-014, AV-156) | `finance.cash_session.operate` |
+| `OPEN` | `finance.cash_session.close` | Comptage saisi (le payload ne porte jamais l'écart) | `VALIDATED` si l'écart (ouverture et clôture) est nul ou toléré, sinon `PENDING_VALIDATION` | Attendu par fenêtre (ADR-032 §3) ; `CashSessionClosed` ; `CashVarianceDetected` si écart ; sur une session déjà close hors ligne : comptage conservé, conflit informatif | — | Mouvement `SESSION_VARIANCE` de l'écart de clôture | `finance.cash_session.operate` |
+| `OPEN` | `finance.cash_session.force_close` | Session ouverte depuis plus de 24 h (paramètre) ; comptage déclaré | `PENDING_VALIDATION` | Tracé ; `force_closed` ; l'auteur ne peut pas valider | — | Idem | `finance.cash_session.validate` |
+| `PENDING_VALIDATION` | `finance.cash_session.validate` | Motif si écart ; valideur ≠ ouvreur, clôtureur, auteur de la clôture forcée (AV-155) | `VALIDATED` | `CashSessionValidated` ; les ajustements inclus sont validés avec elle | — | — | `finance.cash_session.validate` |
+| `PENDING_VALIDATION`, `VALIDATED` | Réaction : opération tardive de `occurred_at` dans la fenêtre | — | inchangé | Attendu recalculé ; ligne d'ajustement ; alerte à la Finance ; conflit `CASH_SESSION_REEVALUATED` ; sur `VALIDATED`, demande `CASH_VARIANCE` propre | — | Mouvement `SESSION_VARIANCE` du **delta** (nouvel écart − Σ des écarts déjà posés), BR-DIS-008 | `system` |
 
-**Hors ligne** : ouverture et clôture sont possibles ; la validation est en ligne.
+**Hors ligne** : ouverture et clôture sont possibles (faits accomplis, jamais rejetés pour un état métier : BR-SYN-007) ; la validation est en ligne. Le refus ou le recomptage d'un écart n'existe pas : une erreur de comptage se corrige par un ajustement validé (AV-159).
 
 ---
 
@@ -165,8 +168,8 @@ stateDiagram-v2
 |---|---|---|---|---|---|---|---|
 | `[*]` | `finance.cash_transfer.send` | Solde du compte source suffisant (en ligne) | `SENT` | `CashTransferSent` | — | `TRANSFER_OUT` sur le compte source | `finance.cash_transfer.record` |
 | `SENT` | `finance.cash_transfer.receive` | Montant reçu = envoyé | `RECEIVED` | `CashTransferReceived` | — | `TRANSFER_IN` sur le compte destination | `finance.cash_transfer.record` |
-| `SENT` | `finance.cash_transfer.receive` | Montant reçu ≠ envoyé | `DISCREPANCY_PENDING` | `CashTransferDiscrepancyDetected` ; validation | — | `TRANSFER_IN` du montant reçu | `finance.cash_transfer.record` |
-| `DISCREPANCY_PENDING` | `approvals.request.approve` | Motif | `CLOSED` | Écart imputé (expéditeur ou transporteur) | — | Écart tracé comme `SESSION_VARIANCE` du compte source | `finance.cash_session.validate` |
+| `SENT` | `finance.cash_transfer.receive` | Montant reçu ≠ envoyé (manque ou excédent) | `DISCREPANCY_PENDING` | `CashTransferDiscrepancyDetected` ; écart signé = reçu − envoyé ; validation | — | `TRANSFER_IN` du montant reçu | `finance.cash_transfer.record` |
+| `DISCREPANCY_PENDING` | `approvals.request.approve` (type `CASH_TRANSFER_DISCREPANCY`) | Motif ; imputation choisie : expéditeur, porteur, récepteur ou entreprise (AV-153) | `CLOSED` | Écart, imputation et motif enregistrés **sur la remise** | — | **Aucun second mouvement** : la différence est déjà sortie des livres (`TRANSFER_OUT` du montant envoyé, `TRANSFER_IN` du montant reçu ; ADR-032 §7) | `finance.cash_session.validate` |
 | `SENT` | `finance.cash_transfer.cancel` | Pas de réception | `CANCELLED` | Tracé | — | Mouvement inverse sur le compte source | `finance.cash_transfer.record` (expéditeur) |
 
 **Hors ligne** : envoi et annulation sont possibles hors ligne ; la réception se fait en général en ligne (Finance), mais reste possible hors ligne.

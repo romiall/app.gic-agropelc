@@ -42,31 +42,61 @@
 
 ## finance.cash_sessions
 
-**Responsabilité** : session de caisse d'un PDV (SM-CASH-SESSION ; BR-DIS-005 à 008).
+**Responsabilité** : session de caisse d'un PDV (SM-CASH-SESSION ; BR-DIS-005 à 008 ; ADR-032). Implémentée en P5-03 ; commandes en P5-12 et P5-13.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
-| `cash_account_id` | uuid → cash_accounts | Non | — | |
-| `opened_by` | uuid → identity.users | Non | — | |
-| `opened_at` | ts | Non | — | Heure métier |
+| `cash_account_id` | uuid → cash_accounts | Non | — | Caisse de PDV |
+| `site_id` | uuid → organization.sites | Non | — | Site de la caisse, copié à l'ouverture |
+| `opened_by`, `opened_device_id` | uuid → identity | Non, Oui | — | Ouvreur et appareil |
+| `opened_at` | ts | Non | — | Heure métier ; début de la **fenêtre** |
+| `business_date` | date | Non | généré | Jour métier de l'ouverture (Africa/Douala) |
 | `opening_counted_xaf` | money_xaf | Non | — | Fonds compté |
-| `opening_expected_xaf` | bigint | Non | — | Solde du compte à l'ouverture |
-| `closed_by` | uuid → identity.users | Oui | — | |
-| `closed_at` | ts | Oui | — | |
+| `opening_expected_xaf` | bigint | Non | — | Solde du registre à l'ouverture (somme ordonnée par `occurred_at`), signé |
+| `opening_variance_xaf` | bigint | Non | — | Écart d'ouverture = compté − attendu ; période précédente, **exclu** de l'attendu |
+| `closed_by`, `closed_device_id` | uuid → identity | Oui | — | |
+| `closed_at` | ts | Oui | — | Fin de la fenêtre |
 | `closing_counted_xaf` | money_xaf | Oui | — | |
-| `closing_expected_xaf` | bigint | Oui | — | Recalculé lors d'une réévaluation |
-| `variance_xaf` | bigint | Oui | — | Compté − attendu |
+| `closing_expected_xaf` | bigint | Oui | — | Attendu par fenêtre à la clôture (ADR-032 §3) ; valeur de clôture, jamais réécrite |
+| `variance_xaf` | bigint | Oui | — | Compté − attendu à la clôture (exact, `CHECK`) |
 | `status` | enum(`OPEN`,`PENDING_VALIDATION`,`VALIDATED`) | Non | `OPEN` | |
-| `force_closed` | boolean | Non | false | |
+| `force_closed`, `forced_by` | boolean, uuid | Non, Oui | false | Clôture forcée par un responsable (AV-155) |
+| `auto_validated` | boolean | Non | false | Écart nul ou toléré : validé d'office, sans valideur |
 | `validated_by`, `validated_at` | uuid, ts | Oui | — | |
-| `variance_reason` | text | Oui | — | |
-| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
-| [STD-ORIGIN] | | | | |
+| `variance_reason` | varchar(500) | Oui | — | |
+| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande `CASH_VARIANCE` |
+| `open_account` | uuid | Oui | généré | `cash_account_id` si `OPEN` : index unique (INV-FIN-06) |
+| `command_id`, `client_created_at`, `received_at_server`, `captured_offline`, `clock_suspect`, `backdated_reason` | | | | Origine de l'ouverture |
+| `close_command_id`, `close_captured_offline` | uuid, boolean | Oui, Non | | Origine de la clôture |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** une session `OPEN` par `cash_account_id` (INV-FIN-06) ; `command_id`.
-- **Suppr.** `IMMUABLE` après `VALIDATED` (INV-FIN-05). **Audit** Ouverture, clôture, validation, réévaluation. **Offline** DL (session ouverte), CR.
+- **PK** `id`. **UQ** `open_account` (une session `OPEN` par compte, INV-FIN-06), `command_id`, `close_command_id`. **IX** `(cash_account_id, opened_at)`, `(site_id, business_date)`, `(status, opened_at)`.
+- **CK** `ck_finance_cash_sessions_opening` (écart d'ouverture = compté − attendu), `_closing` (ouverte ⇒ aucune donnée de clôture ; close ⇒ toutes, écart exact), `_validation` (`VALIDATED` ⇒ date et valideur ou validation d'office), `_forced`.
+- **Déclencheurs** : `insert_guard` et `update_guard` (non-chevauchement des fenêtres d'un compte, **filet** : le code l'assure, ADR-032 §2) ; `update_guard` : identité et ouverture immuables, session close ne se rouvre pas, **session `VALIDATED` figée** (INV-FIN-05) ; `no_delete`.
+- **Suppr.** `IMMUABLE` après `VALIDATED` ; correction par ajustement (ADR-006). **Audit** Ouverture, clôture, validation, réévaluation. **Offline** DL (session ouverte du PDV, jeu `cash`, P5-18), CR. **Remarque** : aucune clé étrangère de la session vers le registre (le mouvement d'écart cite la session, pas l'inverse).
+
+## finance.cash_session_adjustments
+
+**Responsabilité** : réévaluation d'une session close après une opération tardive (ADR-032 §6 ; BR-DIS-008). Implémentée en P5-03 ; écrite en P5-13.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | |
+| `session_id` | uuid → cash_sessions | Non | — | |
+| `movement_id` | uuid → cash_movements | Non | — | Mouvement compensatoire `SESSION_VARIANCE` (unique) |
+| `trigger_movement_id` | uuid → cash_movements | Oui | — | Mouvement tardif déclencheur |
+| `cause` | enum(`LATE_OPERATION`,`REVERSAL`) | Non | — | |
+| `variance_before_xaf`, `variance_after_xaf`, `delta_xaf` | bigint | Non | — | Σ des écarts posés avant, écart courant après ; `delta = après − avant ≠ 0` (INV-FIN-11) |
+| `expected_after_xaf` | bigint | Non | — | Attendu recalculé |
+| `treatment` | enum(`INCLUDED_IN_VALIDATION`,`OWN_APPROVAL`) | Non | — | Session `PENDING_VALIDATION` : validé avec elle ; `VALIDATED` : demande propre |
+| `status` | enum(`PENDING`,`VALIDATED`) | Non | `PENDING` | |
+| `applied_at` | ts | Non | — | |
+| `approval_request_id`, `validated_by`, `validated_at`, `variance_reason` | | Oui | — | Validation |
+| `command_id` | uuid | Oui | — | |
+| [STD-AUDIT] | | | | |
+
+- **PK** `id`. **UQ** `movement_id`. **IX** `(session_id, applied_at)`, `(status, applied_at)`. **Déclencheurs** : ajustement immuable hors validation, figé une fois `VALIDATED`, jamais supprimé.
 
 ## finance.cash_movements
 
@@ -93,28 +123,35 @@
 - **IX** `(cash_account_id, occurred_at)`, `(source_doc_type, source_doc_id)`, `(cash_session_id)`.
 - **Suppr.** `IMMUABLE`. **Offline** SRV (le solde du compte est téléchargé). **Intégrité** INV-FIN-01, INV-FIN-02.
 - **Écriture** (P4-03) : seul `recordCashMovement` (module `finance`) écrit ce registre, dans la transaction du document appelant ; il verrouille la ligne du compte, insère le mouvement et met à jour `balance_xaf` (INV-FIN-02). Sens et document source suivent le type (`CUSTOMER_PAYMENT` : entrée, `CUSTOMER_PAYMENT` ; `REFUND` : sortie, `SALE_REFUND` ; `SUPPLIER_PAYMENT`, `EXPENSE` : sorties ; `TRANSFER_OUT`/`TRANSFER_IN` : `CASH_TRANSFER` ; `SESSION_VARIANCE` : `CASH_SESSION`, dans les deux sens ; `OPENING_BALANCE` : entrée citant `CASH_SESSION`, **DÉDUIT** faute de document propre). Un inverse reprend compte, montant, type et document de l'original en sens opposé, une seule fois ; un remboursement partiel n'est pas un inverse mais un mouvement `REFUND`. BR-FIN-012 : en ligne, une sortie ne rend pas négatif le solde d'une caisse physique (`CASH_INSUFFICIENT`) ; hors ligne elle est appliquée et signalée (`negativeBalance`, anomalie `CASH_NEGATIVE` à ouvrir par l'appelant). Un compte inactif refuse un mouvement en ligne, l'accepte hors ligne (fait accompli).
-- **Implémentation** (P4-02) : `CHECK is_reversal ⇔ reverses_movement_id` non nul ; modification et suppression refusées par déclencheurs ; droits `SELECT`, `INSERT` seulement ; `cash_session_id` sans clé étrangère jusqu'à la création de `cash_sessions` (P5).
+- **Implémentation** (P4-02) : `CHECK is_reversal ⇔ reverses_movement_id` non nul ; modification et suppression refusées par déclencheurs ; droits `SELECT`, `INSERT` seulement ; `cash_session_id` est un **index dénormalisé** de la session de la fenêtre (clé étrangère depuis P5-03) : l'attendu et INV-FIN-11 se calculent par fenêtre de temps, jamais par ce pointeur (ADR-032 §2).
 
 ## finance.cash_transfers
 
-**Responsabilité** : remise de fonds entre comptes (SM-CASH-TRANSFER).
+**Responsabilité** : remise de fonds entre comptes (SM-CASH-TRANSFER ; ADR-032 §7). Implémentée en P5-03 ; commandes en P5-15.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
-| [STD-DOC] | | | | Type `RMF` |
-| `from_account_id`, `to_account_id` | uuid → cash_accounts | Non | — | Distincts |
-| `amount_sent_xaf` | money_xaf | Non | — | |
-| `amount_received_xaf` | money_xaf | Oui | — | |
-| `sent_by`, `sent_at` | uuid, ts | Non | — | |
-| `received_by`, `received_at` | uuid, ts | Oui | — | |
-| `carrier_name` | label | Oui | — | Porteur |
-| `status` | enum(`SENT`,`RECEIVED`,`DISCREPANCY_PENDING`,`CLOSED`,`CANCELLED`) | Non | `SENT` | |
-| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
-| [STD-ORIGIN] | | | | |
+| [STD-DOC] | | | | Type `RMF` ; `site_id` de numérotation facultatif (le compte source n'a pas toujours de site) |
+| `from_account_id`, `to_account_id` | uuid → cash_accounts | Non | — | Distincts (`CHECK`) |
+| `amount_sent_xaf` | money_xaf | Non | — | > 0 |
+| `amount_received_xaf` | money_xaf | Oui | — | ≥ 0 |
+| `discrepancy_xaf` | bigint | Oui | — | Reçu − envoyé (comparaison null-safe) : négatif = manque, positif = excédent |
+| `status` | enum(`SENT`,`RECEIVED`,`DISCREPANCY_PENDING`,`CLOSED`,`CANCELLED`) | Non | `SENT` | Cohérence état/données par `CHECK` |
+| `sent_by`, `sent_device_id`, `sent_at` | uuid, uuid, ts | Non, Oui, Non | — | |
+| `carrier_user_id`, `carrier_name` | uuid, label | Oui | — | Porteur : utilisateur connu ou nom libre (AV-158) |
+| `received_by`, `received_device_id`, `received_at` | | Oui | — | Réception (`received_at`, `received_by` et montant reçu vont ensemble) |
+| `out_movement_id` | uuid → cash_movements | Non | — | `TRANSFER_OUT` (unique) |
+| `in_movement_id` | uuid → cash_movements | Oui | — | `TRANSFER_IN` du montant reçu |
+| `cancel_movement_id` | uuid → cash_movements | Oui | — | Inverse de l'annulation |
+| `imputation` | enum(`SENDER`,`CARRIER`,`RECEIVER`,`COMPANY`) | Oui | — | Imputation d'un écart clos (AV-153), **sans écriture de trésorerie** |
+| `closing_reason`, `closed_by`, `closed_at`, `approval_request_id` | | Oui | — | Clôture de l'écart (type `CASH_TRANSFER_DISCREPANCY`) |
+| `cancel_reason`, `cancelled_by`, `cancelled_at` | | Oui | — | |
+| `occurred_at`, `command_id`, `receive_command_id`, `cancel_command_id`, [STD-ORIGIN] | | | | Origine de chaque étape |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `doc_number`, `command_id`. **CK** `from_account_id <> to_account_id`. **Suppr.** `ANNULATION`. **Offline** DL (en cours), CR.
+- **PK** `id`. **UQ** `doc_number`, `(created_device_id, local_ref)`, `command_id`, `receive_command_id`, `cancel_command_id`, `out_movement_id`. **IX** `(from_account_id, status)`, `(to_account_id, status)`, `(status, sent_at)`.
+- **Déclencheurs** : l'envoi est immuable ; une remise `RECEIVED`, `CLOSED` ou `CANCELLED` ne change plus ; `CLOSED` et `CANCELLED` sont terminaux ; `no_delete`. **Suppr.** `ANNULATION`. **Offline** DL (en cours, jeu `cash`, P5-18), CR.
 
 ## finance.expense_categories
 

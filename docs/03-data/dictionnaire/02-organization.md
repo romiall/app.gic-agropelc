@@ -196,6 +196,12 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `pricing.max_discount_pct.<ROLE>` | 0 / 5 / 15 | AV-026 |
 | `pricing.stale_rules_hours` | 24 | AV-063 |
 | `finance.cash_holding_max_xaf` | 200 000 | D09 §14 |
+| `finance.cash_sessions_per_day_max` | 1 (visible de l'appareil) | AV-154 : sessions de caisse par PDV et par jour métier |
+| `finance.cash_session_force_close_hours` | 24 | D05 §14 : au-delà, session signalée et clôture d'office possible |
+| `finance.cash_variance_critical_xaf` | 10 000 | D13 : gravité critique de l'alerte d'écart de caisse |
+| `finance.cash_variance_tolerance_xaf` | 0 | AV-057 : tout écart est validé ; un écart dans la tolérance est validé d'office |
+| `finance.cash_transfer_unreceived_hours` | 48 | AV-158 : alerte sur une remise de fonds envoyée et jamais reçue |
+| `finance.cash_holding_max_days` | 3 | D09 §14 : jours d'encaisse sans remise avant l'alerte `CASH_HOLDING_HIGH` |
 | `finance.supplier_payment_approval_xaf` | 500 000 | AV-055 |
 | `procurement.po_approval_threshold_xaf` | 500 000 | AV-051 |
 | `inventory.count_approval_threshold_xaf` | 25 000 | AV-039 |
