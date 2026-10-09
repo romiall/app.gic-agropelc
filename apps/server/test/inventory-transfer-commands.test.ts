@@ -31,6 +31,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const OCCURRED_AT = '2026-09-28T09:00:00.000Z';
@@ -654,46 +655,29 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
     // jamais de rollback — même convention que pricing-commands.test.ts/
     // approval-commands.test.ts) resteraient donc actives et fausseraient ce test si l'on
     // ne retirait que la politique du `beforeAll`. On retire donc ici toutes les politiques
-    // actives de ce type, puis on restaure exactement celles qui l'étaient.
-    const activeDiscrepancyPolicies = await db
-      .selectFrom('approvals_control_policies')
-      .select('id')
-      .where('operation_type', '=', 'TRANSFER_DISCREPANCY')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    await db
-      .updateTable('approvals_control_policies')
-      .set({ status: 'RETIRED', valid_to: new Date(OCCURRED_AT) })
-      .where('operation_type', '=', 'TRANSFER_DISCREPANCY')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    try {
-      const receiveResult = await isolatedPipeline.handle(
-        buildEnvelope(admin, {
-          command_type: 'inventory.transfer.receive',
-          aggregate_type: 'STOCK_TRANSFER',
-          aggregate_id: transferId,
-          payload: {
-            transferId,
-            lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: 7 }],
-          },
-        }),
-        adminCtx(),
-      );
-      expect(receiveResult.status).toBe('REJECTED');
-      expect(receiveResult.status === 'REJECTED' && receiveResult.error.code).toBe(
-        'CONTROL_POLICY_MISSING',
-      );
-    } finally {
-      // Réactive exactement les politiques qui l'étaient avant ce test (jamais toutes les
-      // lignes RETIRED du type : certaines l'étaient déjà légitimement avant ce test).
-      for (const row of activeDiscrepancyPolicies) {
-        await db
-          .updateTable('approvals_control_policies')
-          .set({ status: 'ACTIVE', valid_to: null })
-          .where('id', '=', row.id)
-          .execute();
-      }
-    }
+    // actives de ce type, puis on restaure exactement celles qui l'étaient (statut et
+    // `valid_to` ; jamais toutes les lignes RETIRED du type : certaines l'étaient déjà
+    // légitimement avant ce test).
+    const receiveResult = await withoutActivePolicies(
+      'TRANSFER_DISCREPANCY',
+      new Date(OCCURRED_AT),
+      () =>
+        isolatedPipeline.handle(
+          buildEnvelope(admin, {
+            command_type: 'inventory.transfer.receive',
+            aggregate_type: 'STOCK_TRANSFER',
+            aggregate_id: transferId,
+            payload: {
+              transferId,
+              lines: [{ transferLineId: fromBin(line.id), receivedQtyBase: 7 }],
+            },
+          }),
+          adminCtx(),
+        ),
+    );
+    expect(receiveResult.status).toBe('REJECTED');
+    expect(receiveResult.status === 'REJECTED' && receiveResult.error.code).toBe(
+      'CONTROL_POLICY_MISSING',
+    );
   });
 });

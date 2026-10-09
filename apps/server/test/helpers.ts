@@ -11,6 +11,7 @@ import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
 import { createDatabase } from '../src/platform/kysely/database.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import type { OperationType } from '../src/modules/approvals/application/commands/operation-types.js';
 
 const SERVER_DATABASE_URL = process.env.SERVER_DATABASE_URL;
 if (!SERVER_DATABASE_URL) {
@@ -393,6 +394,80 @@ export async function insertTestTeamMembership(
       valid_to: options.validTo ?? null,
       created_by: toBin(createdBy),
     })
+    .execute();
+}
+
+/**
+ * Politiques de contrôle et base partagée persistante : `currentPolicies` renvoie TOUTE politique
+ * ACTIVE applicable à l'instant de l'opération, la plus récemment entrée en vigueur d'abord, quel
+ * que soit son `code` ou le test qui l'a créée. Deux utilitaires pour qu'un test ne dépende pas des
+ * politiques laissées par les autres (ces tests commitent réellement, jamais de rollback).
+ *
+ * Retire les politiques ACTIVES de `operationType` et renvoie la fonction qui les restaure **telles
+ * qu'elles étaient** : `status` ET `valid_to`. Remettre `valid_to` à `null` ferait d'une politique
+ * bornée à sa journée de test une politique sans fin, qui finirait par s'imposer aux tests
+ * dépendant de l'heure réelle (échec de production-sync-projections le 08/10/2026).
+ */
+export async function retireActivePolicies(
+  operationType: OperationType,
+  retiredAt: Date,
+): Promise<() => Promise<void>> {
+  const active = await db
+    .selectFrom('approvals_control_policies')
+    .select(['id', 'valid_to'])
+    .where('operation_type', '=', operationType)
+    .where('status', '=', 'ACTIVE')
+    .execute();
+  await db
+    .updateTable('approvals_control_policies')
+    .set({ status: 'RETIRED', valid_to: retiredAt })
+    .where('operation_type', '=', operationType)
+    .where('status', '=', 'ACTIVE')
+    .execute();
+  // Une requête par `valid_to` distinct plutôt que par ligne : la base partagée accumule des
+  // centaines de politiques d'un même type, et chaque exécution en ajoute.
+  const byValidTo = new Map<number | null, { validTo: Date | null; ids: Buffer[] }>();
+  for (const row of active) {
+    const key = row.valid_to === null ? null : row.valid_to.getTime();
+    const group = byValidTo.get(key) ?? { validTo: row.valid_to, ids: [] };
+    group.ids.push(row.id);
+    byValidTo.set(key, group);
+  }
+  return async () => {
+    for (const { validTo, ids } of byValidTo.values()) {
+      await db
+        .updateTable('approvals_control_policies')
+        .set({ status: 'ACTIVE', valid_to: validTo })
+        .where('id', 'in', ids)
+        .execute();
+    }
+  };
+}
+
+/** Exécute `fn` sans aucune politique ACTIVE de `operationType`, puis restaure exactement l'existant. */
+export async function withoutActivePolicies<T>(
+  operationType: OperationType,
+  retiredAt: Date,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const restore = await retireActivePolicies(operationType, retiredAt);
+  try {
+    return await fn();
+  } finally {
+    await restore();
+  }
+}
+
+/**
+ * Rend une politique créée par un test inoffensive pour les suivants : retirée, avec une fenêtre de
+ * validité vide (`valid_to` = `valid_from`). À appeler en `afterAll` par les tests dont la
+ * politique couvre l'heure réelle, qui sinon resterait applicable aux tests datés du même jour.
+ */
+export async function neutralizePolicy(policyId: string): Promise<void> {
+  await db
+    .updateTable('approvals_control_policies')
+    .set((eb) => ({ status: 'RETIRED', valid_to: eb.ref('valid_from') }))
+    .where('id', '=', toBin(policyId))
     .execute();
 }
 

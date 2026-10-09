@@ -55,12 +55,18 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  neutralizePolicy,
 } from './helpers.js';
 
 const NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
 /** Heure métier `minutes` avant maintenant (ISO). */
 const ago = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000).toISOString();
 const DAY_MINUTES = 24 * 60;
+/** Mortalité du test : la seule opération qui consulte une politique de contrôle (`MORTALITY`). */
+const MORTALITY_AT = ago(180);
+/** Collecte d'œufs (lit les calibres) et mise en incubation (lit l'œuf à couver et les durées). */
+const COLLECTION_AT = ago(160);
+const INCUBATION_AT = ago(140);
 let deviceSeq = 0;
 
 const GRADE_CODE = 'TEST-OEUF-E2E-GROS';
@@ -77,6 +83,7 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
   let pipeline: CommandPipelineService;
   let pullService: SyncPullService;
   let cursor0: number;
+  let policyId: string | undefined;
   let admin: Actor;
   let rfeA: Actor;
   let rfeB: Actor;
@@ -370,12 +377,18 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
         family: 'PRODUCTION_COMMERCIALISABLE',
         unit: 'PIECE',
       });
-      for (const [key, value] of [
-        ['production.egg_grade_product_codes', [GRADE_CODE]],
-        ['production.hatching_egg_product_code', HATCHING_CODE],
+      // Paramètres versionnés, sans date de fin : la version dont le `valid_from` est le plus
+      // récent avant l'opération l'emporte, quel que soit le test qui l'a écrite (des tests
+      // datent les leurs d'un jour fixe, p. ex. les calibres au 22/10 et au 28/10). Chacun est
+      // donc daté une seconde avant l'unique opération qui le lit (comme production-farm-week
+      // pour les calibres), après les versions du seed, datées de son exécution.
+      for (const [key, value, usedAt] of [
+        ['production.egg_grade_product_codes', [GRADE_CODE], COLLECTION_AT],
+        ['production.hatching_egg_product_code', HATCHING_CODE, INCUBATION_AT],
         [
           'production.incubation_durations',
           { POULE: { candlingDay: 7, transferDay: 18, hatchDay: 21 } },
+          INCUBATION_AT,
         ],
       ] as const) {
         await trx
@@ -385,8 +398,7 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
             key,
             value: JSON.stringify(value),
             scope_type: 'GLOBAL',
-            // Plus récent que les versions du seed, datées du jour de son exécution.
-            valid_from: new Date(ago(400)),
+            valid_from: new Date(Date.parse(usedAt) - 1000),
             is_client_visible: 1,
             reason: 'Test P7-12',
             created_by: toBin(adminId),
@@ -455,11 +467,17 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
     });
 
     // Toute mortalité de la fenêtre du test part en validation (seuils à 0, sans photo).
-    const policyId = freshUuid();
+    // Base partagée et persistante : `currentPolicies` retient la politique entrée en vigueur le
+    // plus récemment parmi TOUTES les politiques MORTALITY actives, y compris celles que les
+    // autres tests datent d'un jour fixe (une politique sans fin laissée un 08/10 devançait
+    // celle-ci de 3 h à 6 h 40 après son entrée en vigueur). Celle-ci entre donc en vigueur à
+    // l'instant même de la seule déclaration qui la consulte : aucune autre ne peut la précéder,
+    // et à égalité de `valid_from` et de version le `id` (UUIDv7) le plus récent, le sien, l'emporte.
+    policyId = freshUuid();
     await run(admin, 'approvals.policy.set', 'CONTROL_POLICY', policyId, ago(400), {
       code: `MORTALITY_${policyId.slice(-8)}`,
       operationType: 'MORTALITY',
-      validFrom: ago(400),
+      validFrom: MORTALITY_AT,
       validTo: new Date(NOW.getTime() + 10 * 60_000).toISOString(),
       requiresApproval: true,
       requiresPhoto: false,
@@ -528,7 +546,7 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
       text: 'RAS',
     });
     mortalityId = freshUuid();
-    await run(rfeA, 'production.mortality.record', 'STOCK_LOSS', mortalityId, ago(180), {
+    await run(rfeA, 'production.mortality.record', 'STOCK_LOSS', mortalityId, MORTALITY_AT, {
       productionLotId: lotA,
       quantity: 2,
     });
@@ -543,15 +561,22 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
       costType: 'ALIMENT',
     });
     collectionId = freshUuid();
-    await run(rfeA, 'production.egg_collection.record', 'EGG_COLLECTION', collectionId, ago(160), {
-      productionLotId: layerLot,
-      storageLocationId: storeA,
-      collected: 190,
-      broken: 5,
-      nonconforming: 5,
-      hatching: 0,
-      grades: [{ productId: gradeId, quantity: 180 }],
-    });
+    await run(
+      rfeA,
+      'production.egg_collection.record',
+      'EGG_COLLECTION',
+      collectionId,
+      COLLECTION_AT,
+      {
+        productionLotId: layerLot,
+        storageLocationId: storeA,
+        collected: 190,
+        broken: 5,
+        nonconforming: 5,
+        hatching: 0,
+        grades: [{ productId: gradeId, quantity: 180 }],
+      },
+    );
     slaughterId = freshUuid();
     await run(rfeA, 'production.slaughter.record', 'SLAUGHTER', slaughterId, ago(150), {
       productionLotId: lotA,
@@ -563,19 +588,29 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
       outputs: [{ productId: wholeId, toLocationId: storeA, quantityBase: 10, weightG: 14_000 }],
     });
     incubationId = freshUuid();
-    await run(rfeA, 'production.incubation.start', 'INCUBATION_BATCH', incubationId, ago(140), {
-      species: 'POULE',
-      eggProductId: hatchingEggId,
-      chickProductId: chickId,
-      incubatorLocationId: incubatorA,
-      eggSource: 'PURCHASED',
-      eggsSet: 100,
-      sourceLocationId: storeA,
-      sourceStockLotId: eggLot,
-    });
+    await run(
+      rfeA,
+      'production.incubation.start',
+      'INCUBATION_BATCH',
+      incubationId,
+      INCUBATION_AT,
+      {
+        species: 'POULE',
+        eggProductId: hatchingEggId,
+        chickProductId: chickId,
+        incubatorLocationId: incubatorA,
+        eggSource: 'PURCHASED',
+        eggsSet: 100,
+        sourceLocationId: storeA,
+        sourceStockLotId: eggLot,
+      },
+    );
   });
 
   afterAll(async () => {
+    // Sa fenêtre (jusqu'à 10 minutes après le test) couvre l'heure réelle : la rendre vide pour
+    // qu'elle ne devance pas, le même jour, la politique d'un test daté de ce jour.
+    if (policyId !== undefined) await neutralizePolicy(policyId);
     await closeTestDb();
   });
 

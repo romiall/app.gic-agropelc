@@ -31,6 +31,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const OCCURRED_AT = '2026-09-29T09:00:00.000Z';
@@ -243,31 +244,8 @@ describe('inventory.loss.* (P2-04, SM-LOSS)', () => {
    * inventory-transfer-commands.test.ts : `approvals.policy.set` ne retire que la version
    * précédente du même code, jamais les autres codes actifs du même operationType, et ces
    * tests commitent réellement — pas de rollback). */
-  async function withoutActiveLossPolicy<T>(fn: () => Promise<T>): Promise<T> {
-    const active = await db
-      .selectFrom('approvals_control_policies')
-      .select('id')
-      .where('operation_type', '=', 'LOSS_DECLARATION')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    await db
-      .updateTable('approvals_control_policies')
-      .set({ status: 'RETIRED', valid_to: new Date(OCCURRED_AT) })
-      .where('operation_type', '=', 'LOSS_DECLARATION')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    try {
-      return await fn();
-    } finally {
-      for (const row of active) {
-        await db
-          .updateTable('approvals_control_policies')
-          .set({ status: 'ACTIVE', valid_to: null })
-          .where('id', '=', row.id)
-          .execute();
-      }
-    }
-  }
+  const withoutActiveLossPolicy = <T>(fn: () => Promise<T>): Promise<T> =>
+    withoutActivePolicies('LOSS_DECLARATION', new Date(OCCURRED_AT), fn);
 
   async function setLossPolicy(requiresApproval: boolean): Promise<void> {
     const policyId = freshUuid();

@@ -25,6 +25,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const NOW = '2026-10-06T18:00:00.000Z';
@@ -144,31 +145,8 @@ describe('procurement.request.* (P6-03)', () => {
 
   /** Retire les politiques PURCHASE_REQUEST actives le temps de `fn`, puis les restaure (base
    * persistante, même précaution qu'inventory-loss-commands.test.ts). */
-  async function withoutActivePolicy<T>(fn: () => Promise<T>): Promise<T> {
-    const active = await db
-      .selectFrom('approvals_control_policies')
-      .select('id')
-      .where('operation_type', '=', 'PURCHASE_REQUEST')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    await db
-      .updateTable('approvals_control_policies')
-      .set({ status: 'RETIRED', valid_to: new Date(at('00:00:00')) })
-      .where('operation_type', '=', 'PURCHASE_REQUEST')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    try {
-      return await fn();
-    } finally {
-      for (const row of active) {
-        await db
-          .updateTable('approvals_control_policies')
-          .set({ status: 'ACTIVE', valid_to: null })
-          .where('id', '=', row.id)
-          .execute();
-      }
-    }
-  }
+  const withoutActivePolicy = <T>(fn: () => Promise<T>): Promise<T> =>
+    withoutActivePolicies('PURCHASE_REQUEST', new Date(at('00:00:00')), fn);
 
   async function roleId(roleCode: string): Promise<string> {
     const row = await db
