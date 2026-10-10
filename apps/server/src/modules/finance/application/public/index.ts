@@ -52,6 +52,9 @@ export type { CashMovementLine } from './cash-account-query.js';
 
 // P5-12 : sessions de caisse — session couvrant un instant (index `cash_session_id`, ADR-032 §2).
 export { findCashSessionCovering } from './cash-sessions.js';
+// P5-14 : lectures d'une session pour la couche de transport (sous-totaux par vendeur).
+export { cashSessionWindowFlows, findCashSessionSummary } from './cash-session-query.js';
+export type { CashSessionSummary, CashSessionWindowFlows } from './cash-session-query.js';
 export type { CoveringCashSession } from './cash-sessions.js';
 // P5-15 : remises de fonds — résumé, indicateur « en transit », cohérence avec le registre.
 export {

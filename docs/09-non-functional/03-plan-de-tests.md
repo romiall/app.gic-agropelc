@@ -109,7 +109,7 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-028 | Collecte : 1 850 = 25 + 15 + 1 690 + 120 | Seuls 1 690 et 120 entrent en stock ; déséquilibre refusé | REQ-031, INV-OEU-01 |
 | AT-029 | Incubation de 600 œufs | Bilan juste ; taux d'éclosion 83 % | WF-12, REQ-033 |
 | AT-030 | Même référence mobile money saisie deux fois | Second encaissement `SUSPECT_DUPLICATE`, sans effet de trésorerie | INV-FIN-03 |
-| AT-031 | Clôture de caisse avec un écart de −500, puis vente tardive | Écart validé ; réévaluation de la session | WF-15, SM-CASH-SESSION |
+| AT-031 | Clôture de caisse avec un écart de −500, puis vente tardive | Écart validé ; réévaluation de la session (vente hors ligne d'un second vendeur, datée dans la fenêtre : ajustement du delta à demande propre, session validée figée, INV-FIN-11 ; sous-totaux par vendeur) — automatisé en P5-14 (`sales-cash-session.test.ts`) | WF-15, SM-CASH-SESSION |
 | AT-032 | Créance échue | Alerte `OVERDUE_RECEIVABLE` ; règlement affecté aux plus anciennes | BR-FIN-004, BR-FIN-007 |
 | AT-033 | Commercial A qui tente de lire un client de B ; magasinier sur un écran de stock | 404 ; valeurs masquées pour le magasinier | REQ-073, RC-05 |
 | AT-034 | Utilisateur désactivé avec des commandes hors ligne avant et après la désactivation | Avant : appliquées ; après : quarantaine | BR-ADM-002 |

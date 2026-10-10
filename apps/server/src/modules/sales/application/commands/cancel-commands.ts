@@ -2,10 +2,13 @@
  * Annulation d'une vente (D04 UC-VEN-07, UC-VEN-08 ; BR-VEN-027, BR-VEN-028 ; AV-030 ; SM-SALE) :
  *
  * - `sales.sale.cancel` : annulation **directe** par le vendeur de la vente, au plus
- *   `sales.direct_cancel_minutes` (15) après l'heure de la vente (la condition « caisse ouverte »
- *   est réputée remplie jusqu'aux sessions de caisse, P5). Hors délai ou par une autre personne
- *   autorisée, elle est **transformée en demande** (avertissement `CANCEL_WINDOW_EXCEEDED`, matrice
- *   des conflits) ;
+ *   `sales.direct_cancel_minutes` (15) après l'heure de la vente, la **session de caisse de la vente
+ *   encore ouverte** à l'heure de l'annulation (P5-14, BR-VEN-028, AV-185 : chaque encaissement en
+ *   espèces au PDV de la vente doit appartenir à une session — par la fenêtre de temps — qui n'est pas
+ *   close à l'`occurred_at` de l'annulation ; une vente sans espèces au PDV remplit la condition).
+ *   Hors délai ou par une autre personne autorisée, elle est **transformée en demande**
+ *   (avertissement `CANCEL_WINDOW_EXCEEDED`) ; session close ou absente : transformée en demande
+ *   (avertissement `CANCEL_SESSION_CLOSED`, matrice des conflits) ;
  * - `sales.sale.request_cancellation` : demande soumise à validation `SALE_CANCELLATION`
  *   (la vente passe `CANCELLATION_REQUESTED`) ; l'approbateur choisit le sort de l'argent payé
  *   (`decisionOption` : `REFUND` ou `CUSTOMER_CREDIT`, AV-146) ; un rejet remet la vente `CONFIRMED`.
@@ -28,6 +31,10 @@ import {
   requestApproval,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
+import {
+  findCashAccount,
+  findCashSessionCovering,
+} from '../../../finance/application/public/index.js';
 import { findReasonCode } from '../../../catalog/application/public/index.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import {
@@ -88,6 +95,39 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       }
     };
 
+  /**
+   * BR-VEN-028 (P5-14, AV-185) : la session de caisse de la vente est-elle encore ouverte à `at` ? Pour
+   * chaque encaissement en espèces au PDV affecté à la vente — `RECORDED`, ou `CANCELLATION_REQUESTED`
+   * (son argent est encore au registre et l'annulation de la vente le rembourserait) —, la session dont
+   * la fenêtre couvre son heure (ADR-032 §2 : par le temps, jamais par l'index) doit **aussi** couvrir
+   * `at` : ouverte au plus tard à `at`, pas encore close à `at`. Un encaissement que **aucune** session
+   * ne couvre (saisi hors ligne, `CASH_SESSION_MISSING`) ne remplit pas la condition ; une session
+   * ouverte après `at` non plus (remboursement daté de `at`, dans la fenêtre d'une autre session ou hors
+   * session). Une vente sans espèces au PDV (crédit, mobile money, caisse personnelle) la remplit.
+   * Lecture sans verrou (limite connue, AV-185) : une clôture concurrente validée pendant l'annulation
+   * n'est pas vue ; le verrouillage, sans inverser l'ordre des verrous de D04 §15, relève de P5-22.
+   */
+  async function saleCashSessionOpenAt(uow: Uow, saleId: Buffer, at: Date): Promise<boolean> {
+    const payments = await uow
+      .selectFrom('sales_payment_allocations as a')
+      .innerJoin('sales_customer_payments as p', 'p.id', 'a.payment_id')
+      .select(['p.cash_account_id', 'p.occurred_at'])
+      .where('a.sale_id', '=', saleId)
+      .where('a.status', '=', 'ACTIVE')
+      .where('p.status', 'in', ['RECORDED', 'CANCELLATION_REQUESTED'])
+      .execute();
+    for (const payment of payments) {
+      const accountId = fromBin(payment.cash_account_id);
+      const account = await findCashAccount(uow, accountId);
+      if (account?.accountType !== 'CAISSE_PDV') continue;
+      const session = await findCashSessionCovering(uow, accountId, payment.occurred_at);
+      if (!session) return false;
+      if (session.openedAt.getTime() > at.getTime()) return false;
+      if (session.closedAt !== null && session.closedAt.getTime() <= at.getTime()) return false;
+    }
+    return true;
+  }
+
   async function startCancellation(
     uow: Uow,
     envelope: Parameters<CommandHandler<CancelPayload>>[1],
@@ -134,10 +174,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     if (!plan.ok) return plan.outcome;
     const saleOccurredAt = sale.occurred_at;
     const windowMinutes = await numberSetting(uow, 'sales.direct_cancel_minutes', at, 15);
-    const direct =
+    const sellerInWindow =
       directAllowed &&
       author === sellerId &&
       withinCancellationWindow({ saleOccurredAt, cancelAt: at, windowMinutes });
+    // BR-VEN-028 : évaluée à l'`occurred_at` de l'annulation (un rejeu hors ligne reste juste).
+    const sessionOpen = sellerInWindow ? await saleCashSessionOpenAt(uow, sale.id, at) : false;
+    const direct = sellerInWindow && sessionOpen;
 
     const docNumber = await documentSequences.next(uow, {
       docType: 'ANV',
@@ -260,7 +303,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return directAllowed
       ? {
           status: 'APPLIED_WITH_WARNINGS',
-          warnings: ['CANCEL_WINDOW_EXCEEDED'],
+          // Vendeur dans le délai mais session close ou absente : motif propre (AV-185).
+          warnings: [sellerInWindow ? 'CANCEL_SESSION_CLOSED' : 'CANCEL_WINDOW_EXCEEDED'],
           serverRefs: { docNumber },
         }
       : { status: 'APPLIED', serverRefs: { docNumber } };

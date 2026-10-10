@@ -10,6 +10,12 @@
  *   la Finance (validation `PAYMENT_DUPLICATE`) ; la vente reste enregistrée avec un reste dû.
  * - Doublon probable sans référence (même client, même montant, fenêtre paramétrée) : c'est un
  *   fait, l'encaissement est enregistré, une anomalie informative est ouverte pour la Finance.
+ * - **Session de caisse** (P5-14 ; BR-DIS-005, ADR-032 §8, AV-184) : un encaissement en espèces sur
+ *   une caisse de PDV exige, **en ligne**, une session ouverte couvrant son heure (refus sans effet
+ *   `CASH_SESSION_REQUIRED`) ; **hors ligne**, le fait est appliqué : sans session couvrant sa date,
+ *   avertissement et conflit `CASH_SESSION_MISSING` (Finance) ; couvert par une session close depuis,
+ *   il est réévalué par `finance` (P5-13). L'index `cash_session_id` de l'encaissement est celui que
+ *   `recordCashMovement` a posé sur le mouvement, sous le verrou du compte.
  */
 import { isProbableDuplicatePayment, normalizePaymentReference, xaf } from '@gic/domain';
 import type { IdGenerator } from '@gic/domain';
@@ -22,6 +28,7 @@ import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-co
 import { requestApproval } from '../../../approvals/application/public/index.js';
 import {
   cashAccountFor,
+  findCashSessionCovering,
   findPaymentMethod,
   recordCashMovement,
 } from '../../../finance/application/public/index.js';
@@ -36,12 +43,17 @@ import {
 } from './shared.js';
 import type { SalePaymentInput } from './sale-payload.js';
 
+/** Avertissements que l'écriture des encaissements peut remonter à la commande. */
+export type PaymentWarning = 'PAYMENT_SUSPECT_DUPLICATE' | 'CASH_SESSION_MISSING';
+
 export interface PlannedPayment {
   readonly index: number;
   readonly id: string;
   readonly input: SalePaymentInput;
   readonly referenceNormalized: string | null;
   readonly accountId: string;
+  /** Type du compte crédité ; `CAISSE_PDV` : espèces au point de vente, sous session (P5-14). */
+  readonly accountType: string;
   readonly status: 'RECORDED' | 'SUSPECT_DUPLICATE';
   /** Encaissement déjà enregistré portant la même référence (doublon). */
   readonly duplicateOfPaymentId: string | null;
@@ -158,13 +170,38 @@ export async function planPayments(
       );
       if (probable) probableDuplicateOf = fromBin(probable.id);
     }
+    const status = duplicateOf !== null ? 'SUSPECT_DUPLICATE' : 'RECORDED';
+    // P5-14, BR-DIS-005 : en ligne, des espèces au PDV exigent une session ouverte qui couvre l'heure de
+    // l'encaissement. Refus précoce sur une lecture simple ; le contrôle est repris sous le verrou du
+    // compte après l'écriture du mouvement (`cashSessionLostOnline`). Une lecture verrouillante ici,
+    // avant le verrou du compte, inverserait l'ordre compte puis session de la clôture (ADR-032 §10).
+    // Hors ligne, rien n'est refusé : l'absence de session se constate à l'écriture.
+    if (
+      status === 'RECORDED' &&
+      resolution.account.accountType === 'CAISSE_PDV' &&
+      !context.offline
+    ) {
+      const covering = await findCashSessionCovering(uow, resolution.account.id, context.at);
+      if (covering?.status !== 'OPEN') {
+        return {
+          ok: false,
+          outcome: rejected(
+            'CASH_SESSION_REQUIRED',
+            covering
+              ? 'La session de caisse qui couvre cette heure est close : ouvrir la caisse avant d’encaisser en espèces.'
+              : 'Aucune session de caisse ouverte sur ce point de vente : ouvrir la caisse avant d’encaisser en espèces (BR-DIS-005).',
+          ),
+        };
+      }
+    }
     planned.push({
       index,
       id: deps.idGenerator.newId(),
       input,
       referenceNormalized,
       accountId: resolution.account.id,
-      status: duplicateOf !== null ? 'SUSPECT_DUPLICATE' : 'RECORDED',
+      accountType: resolution.account.accountType,
+      status,
       duplicateOfPaymentId: duplicateOf,
       probableDuplicateOfPaymentId: probableDuplicateOf,
     });
@@ -188,8 +225,79 @@ export interface PaymentWriteResult {
   /** Σ des encaissements affectés à la vente (RECORDED). */
   readonly paidXaf: number;
   readonly docNumbers: ReadonlyMap<number, string>;
-  readonly warnings: readonly 'PAYMENT_SUSPECT_DUPLICATE'[];
+  readonly warnings: readonly PaymentWarning[];
+  /** Session de caisse du premier encaissement en espèces au PDV (index de la vente, P5-14). */
+  readonly cashSessionId: string | null;
+  /** Un encaissement en espèces au PDV, saisi hors ligne, n'est couvert par aucune session. */
+  readonly cashSessionMissing: boolean;
   readonly rejection?: CommandHandlerOutcome;
+}
+
+/**
+ * P5-14 (BR-DIS-005, AV-184, revue adverse) : contrôle en ligne repris **sous le verrou du compte**,
+ * après `recordCashMovement`. La planification lit la session sans verrou (instantané de la
+ * transaction) : une clôture validée entre-temps peut laisser l'encaissement hors de toute session
+ * (index nul). Aucun ordre sériel ne produit ce résultat (la clôture aurait refusé un mouvement
+ * postérieur, AV-171 ; l'encaissement aurait été refusé après la clôture) : refus, la transaction est
+ * annulée. Une clôture datée **après** l'heure de l'encaissement le laisse dans cette session, qui est
+ * réévaluée (ordre « encaissement puis clôture », P5-13) : accepté. Hors ligne, jamais de refus.
+ */
+export function cashSessionLostOnline(input: {
+  readonly offline: boolean;
+  readonly accountType: string;
+  readonly cashSessionId: string | null;
+}): CommandHandlerOutcome | null {
+  if (input.offline || input.accountType !== 'CAISSE_PDV' || input.cashSessionId !== null) {
+    return null;
+  }
+  return rejected(
+    'CASH_SESSION_REQUIRED',
+    'La session de caisse a été close pendant l’encaissement : ouvrir la caisse avant d’encaisser en espèces (BR-DIS-005).',
+  );
+}
+
+/**
+ * P5-14 (AV-184) : un encaissement en espèces au PDV saisi **hors ligne** sans session couvrant sa date
+ * (index nul posé par `recordCashMovement`) ouvre le conflit informatif `CASH_SESSION_MISSING`
+ * (Finance), résolu si une ouverture appliquée après coup couvre sa date (`finance.cash_session.open`).
+ * En ligne, ce cas est refusé (`cashSessionLostOnline`) : les appelants n'appellent cette fonction que
+ * hors ligne. Renvoie vrai si le conflit est ouvert.
+ */
+export async function flagCashSessionMissing(
+  uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly accountType: string;
+    readonly cashSessionId: string | null;
+    readonly paymentId: string;
+    readonly cashAccountId: string;
+    readonly amountXaf: number;
+    readonly occurredAt: Date;
+    readonly commandId: string;
+    readonly siteId: string;
+    readonly deviceId: string | null;
+    readonly documentRef: Record<string, string>;
+  },
+): Promise<boolean> {
+  if (input.accountType !== 'CAISSE_PDV' || input.cashSessionId !== null) return false;
+  await recordConflict(uow, {
+    id: deps.idGenerator.newId(),
+    commandId: input.commandId,
+    conflictType: 'CASH_SESSION_MISSING',
+    entityType: 'CUSTOMER_PAYMENT',
+    entityId: input.paymentId,
+    siteId: input.siteId,
+    ownerRole: 'FINANCE',
+    applied: true,
+    details: {
+      cashAccountId: input.cashAccountId,
+      amountXaf: input.amountXaf,
+      occurredAt: input.occurredAt.toISOString(),
+      deviceId: input.deviceId,
+      ...input.documentRef,
+    },
+  });
+  return true;
 }
 
 /** Écrit les encaissements planifiés ; la vente existe déjà (affectation, mise de côté). */
@@ -200,8 +308,10 @@ export async function writePayments(
   planned: readonly PlannedPayment[],
 ): Promise<PaymentWriteResult> {
   const docNumbers = new Map<number, string>();
-  const warnings = new Set<'PAYMENT_SUSPECT_DUPLICATE'>();
+  const warnings = new Set<PaymentWarning>();
   let paidXaf = 0;
+  let cashSessionId: string | null = null;
+  let cashSessionMissing = false;
   const { envelope, origin, at } = context;
   const base = (payment: PlannedPayment) => ({
     occurred_at: at,
@@ -238,7 +348,10 @@ export async function writePayments(
     .sort((a, b) => a.accountId.localeCompare(b.accountId) || a.index - b.index);
   // Passe 1 : tous les mouvements de trésorerie, comptes dans l'ordre de leur identifiant ; passe 2 :
   // numéros et documents. Aucun verrou de compteur n'est pris entre deux verrous de compte.
-  const movements = new Map<number, string>();
+  const movements = new Map<
+    number,
+    { readonly id: string; readonly cashSessionId: string | null }
+  >();
   for (const payment of recorded) {
     const movement = await recordCashMovement(uow, deps, {
       cashAccountId: payment.accountId,
@@ -254,10 +367,28 @@ export async function writePayments(
       capturedOffline: context.offline,
       allowNegative: context.offline,
     });
-    movements.set(payment.index, movement.movementId);
+    const lost = cashSessionLostOnline({
+      offline: context.offline,
+      accountType: payment.accountType,
+      cashSessionId: movement.cashSessionId,
+    });
+    if (lost) {
+      return {
+        paidXaf: 0,
+        docNumbers,
+        warnings: [],
+        cashSessionId: null,
+        cashSessionMissing: false,
+        rejection: lost,
+      };
+    }
+    movements.set(payment.index, {
+      id: movement.movementId,
+      cashSessionId: movement.cashSessionId,
+    });
   }
   for (const payment of recorded) {
-    const movementId = movements.get(payment.index)!;
+    const movement = movements.get(payment.index)!;
     const docNumber = await nextNumber();
     docNumbers.set(payment.index, docNumber);
     await uow
@@ -265,10 +396,32 @@ export async function writePayments(
       .values({
         ...base(payment),
         doc_number: docNumber,
-        cash_movement_id: toBin(movementId),
+        cash_movement_id: toBin(movement.id),
+        cash_session_id: toBinOrNull(movement.cashSessionId),
         status: 'RECORDED',
       })
       .execute();
+    if (payment.accountType === 'CAISSE_PDV' && cashSessionId === null) {
+      cashSessionId = movement.cashSessionId;
+    }
+    if (
+      context.offline &&
+      (await flagCashSessionMissing(uow, deps, {
+        accountType: payment.accountType,
+        cashSessionId: movement.cashSessionId,
+        paymentId: payment.id,
+        cashAccountId: payment.accountId,
+        amountXaf: payment.input.amountXaf,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        siteId: context.site.id,
+        deviceId: origin.deviceId,
+        documentRef: { saleId: context.saleId },
+      }))
+    ) {
+      cashSessionMissing = true;
+      warnings.add('CASH_SESSION_MISSING');
+    }
     await uow
       .insertInto('sales_payment_allocations')
       .values({
@@ -314,6 +467,8 @@ export async function writePayments(
         paidXaf,
         docNumbers,
         warnings: [],
+        cashSessionId,
+        cashSessionMissing,
         rejection: CONTROL_POLICY_MISSING('PAYMENT_DUPLICATE'),
       };
     const docNumber = await nextNumber();
@@ -362,5 +517,5 @@ export async function writePayments(
     });
     warnings.add('PAYMENT_SUSPECT_DUPLICATE');
   }
-  return { paidXaf, docNumbers, warnings: [...warnings] };
+  return { paidXaf, docNumbers, warnings: [...warnings], cashSessionId, cashSessionMissing };
 }

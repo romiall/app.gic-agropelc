@@ -38,6 +38,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  openTestCashSession,
 } from './helpers.js';
 
 const NOW = '2026-10-07T18:00:00.000Z';
@@ -433,6 +434,13 @@ describe('sales.sale.cancel / request_cancellation (P4-05)', () => {
           created_by: toBin(adminId),
         })
         .execute();
+      // P5-14 (BR-DIS-005) : un encaissement en espèces au PDV exige une session de caisse ouverte.
+      await openTestCashSession(trx, {
+        cashAccountId: pdvCashId,
+        siteId: pdvSiteId,
+        openedBy: adminId,
+        openedAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
     });
 
     for (const [operationType, approverPermission] of [

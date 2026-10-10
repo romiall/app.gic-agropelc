@@ -7,8 +7,9 @@
  * avoir capturé le résultat ou l'erreur réels de `fn`, pour un rollback garanti quel que soit
  * l'issue testée (comme `withRollback`, dont c'est l'équivalent).
  */
+import { sql, type Kysely } from 'kysely';
 import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
-import { createDatabase } from '../src/platform/kysely/database.js';
+import { createDatabase, type DB } from '../src/platform/kysely/database.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import type { OperationType } from '../src/modules/approvals/application/commands/operation-types.js';
@@ -469,6 +470,52 @@ export async function neutralizePolicy(policyId: string): Promise<void> {
     .set((eb) => ({ status: 'RETIRED', valid_to: eb.ref('valid_from') }))
     .where('id', '=', toBin(policyId))
     .execute();
+}
+
+/**
+ * P5-14 : ouvre une session de caisse sur une caisse de PDV, directement en base, pour les tests qui
+ * encaissent des espèces au point de vente sans tester les sessions elles-mêmes (BR-DIS-005 : un
+ * encaissement en ligne exige une session ouverte). Fonds d'ouverture = solde du registre avant
+ * `openedAt` : aucun écart d'ouverture, donc aucun mouvement `SESSION_VARIANCE` qui fausserait un solde
+ * attendu par le test. La session reste ouverte et couvre toutes les dates postérieures à `openedAt`.
+ */
+export async function openTestCashSession(
+  executor: Kysely<DB> | UnitOfWork,
+  input: {
+    readonly cashAccountId: string;
+    readonly siteId: string;
+    readonly openedBy: string;
+    readonly openedAt: Date;
+  },
+): Promise<string> {
+  const row = await executor
+    .selectFrom('finance_cash_movements')
+    .select(
+      sql<string>`COALESCE(SUM(CASE WHEN direction = 'IN' THEN amount_xaf ELSE -amount_xaf END), 0)`.as(
+        'balance',
+      ),
+    )
+    .where('cash_account_id', '=', toBin(input.cashAccountId))
+    .where('occurred_at', '<', input.openedAt)
+    .executeTakeFirstOrThrow();
+  const balance = Number(row.balance);
+  const sessionId = freshUuid();
+  await executor
+    .insertInto('finance_cash_sessions')
+    .values({
+      id: toBin(sessionId),
+      cash_account_id: toBin(input.cashAccountId),
+      site_id: toBin(input.siteId),
+      opened_by: toBin(input.openedBy),
+      opened_at: input.openedAt,
+      opening_counted_xaf: balance,
+      opening_expected_xaf: balance,
+      opening_variance_xaf: 0,
+      status: 'OPEN',
+      created_by: toBin(input.openedBy),
+    })
+    .execute();
+  return sessionId;
 }
 
 /** Jour métier `AAAA-MM-JJ` décalé de `days` jours (arithmétique sur la date seule). */

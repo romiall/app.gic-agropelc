@@ -9,6 +9,7 @@ import {
   isInCashSessionWindow,
   openingVarianceXaf,
   reevaluationDeltaXaf,
+  sellerCashSubtotals,
   statusAfterClose,
   transferDiscrepancyXaf,
   transferStatusAfterReceive,
@@ -150,6 +151,43 @@ describe('réévaluation par le delta (ADR-032 §6, AT-031, INV-FIN-11)', () => 
       });
     }
     expect(posted).toBe(cashVarianceXaf(193_000, 193_900));
+  });
+});
+
+describe('sous-totaux par vendeur (P5-14, AV-155, AV-187)', () => {
+  it('rapporte chaque encaissement, net de son inverse, à celui qui l’a reçu ; tri par montant', () => {
+    const receivers: Record<string, string> = { p1: 'ana', p2: 'ben', p3: 'ana', p4: 'ben' };
+    const result = sellerCashSubtotals(
+      [
+        { paymentId: 'p1', signedXaf: 5_000 },
+        { paymentId: 'p2', signedXaf: 2_000 },
+        { paymentId: 'p3', signedXaf: 0 }, // encaissement annulé : encaissé puis inverse
+        { paymentId: 'p4', signedXaf: 4_000 },
+        { paymentId: 'inconnu', signedXaf: 700 },
+      ],
+      (id) => receivers[id] ?? null,
+    );
+    expect(result.sellers).toEqual([
+      { userId: 'ben', receivedXaf: 6_000, paymentsCount: 2 },
+      { userId: 'ana', receivedXaf: 5_000, paymentsCount: 2 },
+    ]);
+    expect(result.unattributedReceivedXaf).toBe(700);
+  });
+
+  it('égalité de montant : ordre stable par identifiant ; aucun encaissement : listes vides', () => {
+    const result = sellerCashSubtotals(
+      [
+        { paymentId: 'b', signedXaf: 1_000 },
+        { paymentId: 'a', signedXaf: 1_000 },
+      ],
+      (id) => (id === 'a' ? 'zoe' : 'yan'),
+    );
+    expect(result.sellers.map((seller) => seller.userId)).toEqual(['yan', 'zoe']);
+    expect(sellerCashSubtotals([], () => null)).toEqual({
+      sellers: [],
+      unattributedReceivedXaf: 0,
+    });
+    expect(() => sellerCashSubtotals([{ paymentId: 'x', signedXaf: 0.5 }], () => 'u')).toThrow();
   });
 });
 

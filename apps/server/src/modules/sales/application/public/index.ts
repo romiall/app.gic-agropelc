@@ -3,6 +3,8 @@
  * autorisé depuis un autre module ou depuis le transport de lecture (P4-10). P4-04 : encours client.
  */
 export { customerOutstandingXaf, listReceivables, summarizeReceivables } from './receivables.js';
+// P5-14 : vendeur de chaque encaissement (sous-totaux par vendeur d'une session de caisse).
+export { paymentReceivers } from './payment-receivers.js';
 export type { ReceivableLine, ReceivableFilter, ReceivableAgingSummary } from './receivables.js';
 export {
   cashedSummary,

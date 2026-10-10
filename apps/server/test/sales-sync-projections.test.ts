@@ -43,6 +43,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  openTestCashSession,
 } from './helpers.js';
 
 const NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
@@ -425,6 +426,13 @@ describe('projections /sync/pull des jeux orders, sales_recent, cash (P4-11)', (
       };
       cashA = await account({ type: 'CAISSE_UTILISATEUR', holder: comA });
       posA = await account({ type: 'CAISSE_PDV', siteId: siteA });
+      // P5-14 (BR-DIS-005) : session ouverte avant la plus ancienne vente du test (relatif à l'heure réelle).
+      await openTestCashSession(trx, {
+        cashAccountId: posA,
+        siteId: siteA,
+        openedBy: adminId,
+        openedAt: new Date(NOW.getTime() - 40 * DAY_MINUTES * 60_000),
+      });
     });
 
     // Vente directe du PDV il y a 10 jours, payée comptant : hors de la fenêtre de 7 jours.

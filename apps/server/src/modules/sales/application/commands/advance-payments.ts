@@ -23,7 +23,12 @@ import {
   type SiteRef,
   type Uow,
 } from './shared.js';
-import type { PlannedPayment } from './sale-payments.js';
+import {
+  cashSessionLostOnline,
+  flagCashSessionMissing,
+  type PaymentWarning,
+  type PlannedPayment,
+} from './sale-payments.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 
 export interface AdvanceWriteContext {
@@ -42,7 +47,7 @@ export interface AdvanceWriteResult {
   /** Σ des acomptes affectés à la commande (RECORDED). */
   readonly advanceXaf: number;
   readonly docNumbers: ReadonlyMap<number, string>;
-  readonly warnings: readonly 'PAYMENT_SUSPECT_DUPLICATE'[];
+  readonly warnings: readonly PaymentWarning[];
   readonly rejection?: CommandHandlerOutcome;
 }
 
@@ -54,7 +59,7 @@ export async function writeAdvancePayments(
 ): Promise<AdvanceWriteResult> {
   const { envelope, origin, at } = context;
   const docNumbers = new Map<number, string>();
-  const warnings = new Set<'PAYMENT_SUSPECT_DUPLICATE'>();
+  const warnings = new Set<PaymentWarning>();
   let advanceXaf = 0;
   const base = (payment: PlannedPayment) => ({
     occurred_at: at,
@@ -88,7 +93,10 @@ export async function writeAdvancePayments(
   const recorded = planned
     .filter((payment) => payment.status === 'RECORDED')
     .sort((a, b) => a.accountId.localeCompare(b.accountId) || a.index - b.index);
-  const movements = new Map<number, string>();
+  const movements = new Map<
+    number,
+    { readonly id: string; readonly cashSessionId: string | null }
+  >();
   for (const payment of recorded) {
     const movement = await recordCashMovement(uow, deps, {
       cashAccountId: payment.accountId,
@@ -104,9 +112,20 @@ export async function writeAdvancePayments(
       capturedOffline: context.offline,
       allowNegative: context.offline,
     });
-    movements.set(payment.index, movement.movementId);
+    // P5-14 (BR-DIS-005, revue adverse) : contrôle en ligne repris sous le verrou du compte.
+    const lost = cashSessionLostOnline({
+      offline: context.offline,
+      accountType: payment.accountType,
+      cashSessionId: movement.cashSessionId,
+    });
+    if (lost) return { advanceXaf: 0, docNumbers, warnings: [], rejection: lost };
+    movements.set(payment.index, {
+      id: movement.movementId,
+      cashSessionId: movement.cashSessionId,
+    });
   }
   for (const payment of recorded) {
+    const movement = movements.get(payment.index)!;
     const docNumber = await nextNumber();
     docNumbers.set(payment.index, docNumber);
     await uow
@@ -114,10 +133,29 @@ export async function writeAdvancePayments(
       .values({
         ...base(payment),
         doc_number: docNumber,
-        cash_movement_id: toBin(movements.get(payment.index)!),
+        cash_movement_id: toBin(movement.id),
+        cash_session_id: toBinOrNull(movement.cashSessionId),
         status: 'RECORDED',
       })
       .execute();
+    // P5-14 (AV-184) : acompte en espèces au PDV saisi hors ligne sans session couvrant sa date.
+    if (
+      context.offline &&
+      (await flagCashSessionMissing(uow, deps, {
+        accountType: payment.accountType,
+        cashSessionId: movement.cashSessionId,
+        paymentId: payment.id,
+        cashAccountId: payment.accountId,
+        amountXaf: payment.input.amountXaf,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        siteId: context.site.id,
+        deviceId: origin.deviceId,
+        documentRef: { orderId: context.orderId },
+      }))
+    ) {
+      warnings.add('CASH_SESSION_MISSING');
+    }
     await uow
       .insertInto('sales_payment_allocations')
       .values({

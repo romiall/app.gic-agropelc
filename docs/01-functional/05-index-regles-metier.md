@@ -120,7 +120,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-025 | Une vente à crédit exige un client autorisé au crédit, avec un encours après vente ≤ plafond. Hors ligne, le contrôle porte sur l'encours c… | AV-028 |
 | BR-VEN-026 | Le statut de paiement (`UNPAID`, `PARTIALLY_PAID`, `PAID`) est dérivé des affectations actives de paiement et n'est jamais saisi. | D (C-05) |
 | BR-VEN-027 | Annuler une vente, en tout ou en partie, est un document d'annulation (`ANV`) ; la vente reste immuable. Ses effets, à l'heure de l'annulat… | C (CM §41) / D (ADR-028 §5, ADR-029, ADR-033 §8) / AV-146, AV-149 |
-| BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at`, et si la session d… | AV-030 |
+| BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at` (`sales.direct_canc… | AV-030, AV-185 |
 | BR-VEN-029 | Pour une vente hors ligne, si le prix figé diffère du prix que le serveur aurait résolu à `occurred_at` avec les règles alors actives, la v… | AV-063 |
 | BR-VEN-030 | Une vente d'un produit désactivé est acceptée si elle a été capturée hors ligne avant la réception de la désactivation, avec une anomalie ;… | AV-083 |
 | BR-VEN-031 | Une ligne de produit de type `SERVICE` (ex. frais de livraison) n'a aucun effet de stock. | AV-085 |

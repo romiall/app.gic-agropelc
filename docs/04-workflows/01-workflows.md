@@ -120,7 +120,7 @@ Réécrit en P5-11 (ADR-028 §5, ADR-029, ADR-033 §8 ; AT-009) : une annulation
 | Au-delà du délai, ou par une autre personne autorisée | `sales.sale.cancel` transformée en demande (`CANCEL_WINDOW_EXCEEDED`), ou `sales.sale.request_cancellation` → validation `SALE_CANCELLATION` | Idem, **à la décision** (`applied_at`) ; quota restitué s'il est encore actif à ce moment | Idem ; sort de la part payée choisi par l'approbateur (`decisionOption`) | Demande + décision |
 | Vente sur commande | Idem | Limitée au **non-livré** (ADR-029 §10) : retour de « à livrer » vers la préparation ; aucune restitution de quota (la confirmation n'en consomme aucun) ; les quantités annulées sont retirées de la commande (AV-149) | Idem ; la part payée suit le même choix | Idem |
 
-CA : contre-écriture datée de `applied_at` (BR-FIN-042). Condition « session de caisse de la vente encore ouverte » (BR-VEN-028) : P5-14. Sync : annulation directe possible hors ligne dans le délai, au-delà transformée en demande ; la décision est en ligne.
+CA : contre-écriture datée de `applied_at` (BR-FIN-042). Condition « session de caisse de la vente encore ouverte » (BR-VEN-028, P5-14) : chaque encaissement (`RECORDED` ou `CANCELLATION_REQUESTED`) de la vente sur la caisse du PDV appartient à une session qui couvre l'heure de l'encaissement et l'heure de l'annulation ; sinon, demande (`CANCEL_SESSION_CLOSED`, AV-185). Sync : annulation directe possible hors ligne dans le délai, au-delà transformée en demande ; la décision est en ligne.
 
 ---
 
@@ -305,7 +305,7 @@ Toutes ces étapes fonctionnent hors ligne ; la conversion est déterminée par 
 6. **Audit** : chaque étape.
 7. **Sync** : ouverture, clôture et envoi possibles hors ligne ; validation en ligne. La remise peut être envoyée hors ligne et reçue en ligne par la Finance.
 
-**Vecteur automatisé** (P5-15, `apps/server/test/finance-wf15-cash-day.test.ts`) pour le **volet remise** : fonds de 20 000 envoyé par une vraie remise de la caisse centrale et reçu avant l'ouverture (écart d'ouverture nul), ventes et remboursement par les vraies commandes de vente, remise de 173 000 envoyée hors ligne puis reçue en ligne ; sont **injectés** en attendant leur incrément : la dépense de 2 000 (P8), l'écart de clôture de −500 (`SESSION_VARIANCE`, à remplacer par `finance.cash_session.open` et `.close` à l'intégration de P5-12) ; l'alerte et la validation de la session relèvent de P5-13 et P9.
+**Vecteur automatisé** (P5-15, `apps/server/test/finance-wf15-cash-day.test.ts`) pour le **volet remise** : fonds de 20 000 envoyé par une vraie remise de la caisse centrale et reçu avant l'ouverture (écart d'ouverture nul), ventes et remboursement par les vraies commandes de vente, remise de 173 000 envoyée hors ligne puis reçue en ligne ; seule la dépense de 2 000 est encore **injectée** (P8). Depuis P5-14, la session est la vraie : ouverture (`finance.cash_session.open`), clôture (`.close` : attendu 193 500 calculé par le serveur, écart −500, `PENDING_VALIDATION`), validation par la Finance (`.validate`, motif) ; l'alerte relève de P9. La suite d'AT-031 (vente tardive dans la session validée) est dans `apps/server/test/sales-cash-session.test.ts`.
 
 ---
 

@@ -120,6 +120,12 @@ export const WARNING_CODES = [
   // rapprochée, ou réception avec document saisie hors ligne) ; l'excédent est reçu, le conflit
   // informatif `TRANSFER_OVER_RECEIVED` le signale au magasinier du site expéditeur.
   'TRANSFER_OVER_RECEIVED',
+  // P5-14 (BR-DIS-005, ADR-032 §8, AV-184) : encaissement en espèces au PDV saisi hors ligne sans
+  // session de caisse couvrant sa date (fait appliqué, conflit informatif pour la Finance) ; annulation
+  // directe d'une vente dont la session de caisse est close (BR-VEN-028, AV-185) : transformée en
+  // demande soumise à validation.
+  'CASH_SESSION_MISSING',
+  'CANCEL_SESSION_CLOSED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

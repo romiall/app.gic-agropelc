@@ -263,6 +263,7 @@ export {
   varianceSeverity,
   adjustmentTreatment,
   isAllowedCashValidator,
+  sellerCashSubtotals,
   transferDiscrepancyXaf,
   transferStatusAfterReceive,
   cashInTransitXaf,
@@ -273,6 +274,7 @@ export type {
   CashSessionStatus,
   CashSessionWindow,
   CashTransferImputation,
+  SellerCashSubtotal,
 } from './cash-session.js';
 // P5-12 : cycle de vie d'une session de caisse (ouverture, clôture, statut, imputation).
 export {
