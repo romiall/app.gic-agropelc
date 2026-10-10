@@ -67,6 +67,28 @@ export const fr = {
     soon: 'Bientôt',
     spark_label: 'Évolution sur {{count}} jours',
   },
+  nav: {
+    menu: 'Menu',
+    menu_title: 'Menu',
+    no_navigation:
+      'Vos actions apparaîtront ici après une première ouverture de l’accueil avec du réseau.',
+    actions_title: 'Actions du jour',
+    offline_ok: 'Hors ligne',
+    open_menu: 'Ouvrir le menu',
+    offline_menu_hint: 'Vos actions restent accessibles hors ligne depuis le menu.',
+    groups: {
+      general: 'Général',
+      sales: 'Ventes',
+      stock: 'Stock',
+      crm: 'Clients',
+      procurement: 'Achats',
+      production: 'Production',
+    },
+    screens: {
+      home: 'Accueil',
+      sync: 'Synchronisation',
+    },
+  },
   sync: {
     screen_title: 'Synchronisation',
     force_sync: 'Forcer la synchronisation',

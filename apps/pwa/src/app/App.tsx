@@ -11,11 +11,13 @@ import { LoginScreen } from '../features/auth/LoginScreen.js';
 import { PinSetupScreen } from '../features/auth/PinSetupScreen.js';
 import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
+import { MenuScreen } from '../features/navigation/MenuScreen.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
 import { countPending } from '../sync/outbox.js';
 import { getDb } from '../storage/db.js';
+import { ROUTES } from './screens.js';
 
 function AppShell() {
   const { t } = useTranslation();
@@ -46,17 +48,18 @@ function AppShell() {
         <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 700 }}>
           {t('app.name')}
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <nav className="app-header-nav" aria-label={t('nav.menu')}>
           <SyncBadge />
-          <button type="button" className="secondary" onClick={() => void onLogout()}>
-            {t('auth.logout')}
-          </button>
-        </div>
+          <Link to={ROUTES.menu} className="app-header-link">
+            {t('nav.menu')}
+          </Link>
+        </nav>
       </header>
       <main className="app-main">
         <Routes>
-          <Route path="/" element={<HomeScreen />} />
-          <Route path="/synchronisation" element={<SyncScreen />} />
+          <Route path={ROUTES.home} element={<HomeScreen />} />
+          <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
+          <Route path={ROUTES.sync} element={<SyncScreen />} />
         </Routes>
       </main>
     </div>

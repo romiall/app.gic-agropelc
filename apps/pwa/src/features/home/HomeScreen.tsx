@@ -25,6 +25,7 @@ import {
   sparklinePoints,
 } from './format-home.js';
 import { useHome } from './useHome.js';
+import { ROUTES, routeOfAction } from '../../app/screens.js';
 
 const SPARK_WIDTH = 100;
 const SPARK_HEIGHT = 28;
@@ -73,15 +74,16 @@ function KpiCard({ kpi }: { readonly kpi: HomeKpi }) {
 function ActionButton({ action }: { readonly action: HomeAction }) {
   const { t } = useTranslation();
   const className = `action${action.primary ? ' action-primary' : ''}`;
+  const route = routeOfAction(action);
   const body = (
     <>
       <span className="action-label">{action.label}</span>
       {action.hint ? <span className="action-hint">{action.hint}</span> : null}
     </>
   );
-  if (action.route) {
+  if (route) {
     return (
-      <Link to={action.route} className={className}>
+      <Link to={route} className={className}>
         {body}
       </Link>
     );
@@ -218,9 +220,15 @@ export function HomeScreen() {
         <div role="alert" className="alert alert-error">
           {t(`home.error_${(error ?? 'SERVER_ERROR').toLowerCase()}`)}
         </div>
-        <button type="button" onClick={refresh}>
-          {t('home.retry')}
-        </button>
+        <div className="home-error-actions">
+          <button type="button" onClick={refresh}>
+            {t('home.retry')}
+          </button>
+          <Link to={ROUTES.menu} className="action">
+            <span className="action-label">{t('nav.open_menu')}</span>
+            <span className="action-hint">{t('nav.offline_menu_hint')}</span>
+          </Link>
+        </div>
       </section>
     );
   }

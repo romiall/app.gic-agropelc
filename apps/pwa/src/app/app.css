@@ -698,3 +698,80 @@ ul.outbox-list li {
     grid-column: 2;
   }
 }
+
+/* --- Navigation par rôle (ECR-ADM-03 ; ADR-050) -------------------------------------------- */
+
+.app-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-header-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 65%);
+  border-radius: 8px;
+  color: var(--color-primary-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.menu h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.menu h2 {
+  margin: 20px 0 8px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-grey);
+}
+
+.menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.menu-list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.menu-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.menu-offline {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e3efe5;
+  color: var(--color-green);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.menu-logout {
+  width: 100%;
+  margin-top: 28px;
+}
+
+.home-error-actions {
+  display: grid;
+  gap: 12px;
+}

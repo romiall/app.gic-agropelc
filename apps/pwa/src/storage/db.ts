@@ -102,6 +102,28 @@ export interface PinLock {
   failed_attempts: number;
 }
 
+/**
+ * Navigation mémorisée par utilisateur (ADR-050) : rôles et actions du jour de la dernière réponse
+ * de l'accueil, pour proposer le menu par rôle sans réseau. Aucun indicateur ni montant : seul ce
+ * qui sert à naviguer est conservé.
+ */
+export interface NavigationRecord {
+  readonly user_id: string; // clé primaire
+  readonly roles: readonly string[];
+  readonly sections: readonly {
+    readonly role: string;
+    readonly roleLabel: string;
+    readonly actions: readonly {
+      readonly code: string;
+      readonly label: string;
+      readonly hint: string | null;
+      readonly route: string | null;
+      readonly primary: boolean;
+    }[];
+  }[];
+  readonly saved_at: string;
+}
+
 export class GicDatabase extends Dexie {
   outbox!: EntityTable<OutboxCommand, 'command_id'>;
   projections!: EntityTable<Projection, 'key'>;
@@ -109,6 +131,7 @@ export class GicDatabase extends Dexie {
   syncMeta!: EntityTable<SyncMeta, 'key'>;
   session!: EntityTable<SessionRecord, 'key'>;
   pinLocks!: EntityTable<PinLock, 'user_id'>;
+  navigation!: EntityTable<NavigationRecord, 'user_id'>;
 
   constructor(name = 'gic-agropelc') {
     super(name);
@@ -120,6 +143,8 @@ export class GicDatabase extends Dexie {
       session: 'key',
       pinLocks: 'user_id',
     });
+    // Version 2 (fork « Écrans PWA ») : navigation par rôle mémorisée (ADR-050).
+    this.version(2).stores({ navigation: 'user_id' });
   }
 }
 

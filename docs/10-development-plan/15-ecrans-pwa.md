@@ -10,7 +10,8 @@
 
 | # | Incrément | Commit | Contenu |
 |---|---|---|---|
-| F-01 | Socle de l'appareil : jeux publiés depuis P1 | _à venir_ | `KNOWN_DATASETS` étendu aux 22 jeux publiés depuis P1 (34 en tout) (catalogue, prix, stock, quotas, CRM, achats, production, commandes, ventes récentes, caisses, communications) ; `SCOPE_EXIT` retiré par périmètre (une entité tenue par plusieurs périmètres reste tant qu'il en reste un) ; lecture typée des projections (`storage/projections.ts`, crochet `useProjected`) |
+| F-01 | Socle de l'appareil : jeux publiés depuis P1 | `215aedb` | `KNOWN_DATASETS` étendu aux 22 jeux publiés depuis P1 (34 en tout) (catalogue, prix, stock, quotas, CRM, achats, production, commandes, ventes récentes, caisses, communications) ; `SCOPE_EXIT` retiré par périmètre (une entité tenue par plusieurs périmètres reste tant qu'il en reste un) ; lecture typée des projections (`storage/projections.ts`, crochet `useProjected`) |
+| F-02 | Navigation par rôle ([ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md)) | _à venir_ | Registre des écrans livrés (`app/screens.ts`) ; route d'une action de l'accueil complétée par l'appareil quand le serveur renvoie `route: null` ; navigation mémorisée par utilisateur (store `navigation`, version 2 de la base locale) ; menu par rôle `/menu`, utilisable hors ligne, lien depuis l'en-tête et depuis l'accueil en erreur ; déconnexion déplacée dans le menu |
 
 ## 2. Écrans
 
@@ -18,12 +19,14 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 
 | Écran | Route PWA | Statut | Hors ligne | Notes |
 |---|---|---|---|---|
+| ECR-ADM-03 | `/` et `/menu` | Enrichi (F-02) | Menu : oui ; accueil : non | Actions routées par le registre de l'appareil (ADR-050) |
 
 ## 3. Vérifications
 
 | Incrément | Tests PWA (vitest) | Typecheck | ESLint | Prettier | Navigateur |
 |---|---|---|---|---|---|
 | F-01 | 96 verts (15 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
+| F-02 | 105 verts (17 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 ## 4. Besoins côté serveur et contrats
 
@@ -34,6 +37,7 @@ Constats faits en construisant les écrans, sans modification du serveur ni des 
 | S-01 | Jeux `catalog` et `pricing` de l'architecture cible (01-architecture-offline.md §3.1) : le serveur publie les produits, unités, catégories, motifs, règles de prix, campagnes et fournisseurs par le repli générique du pipeline, un jeu par type d'agrégat (`product`, `price_rule`…), portée `GLOBAL` | Le nom du jeu dépend de l'`aggregate_type` choisi par l'appareil émetteur ; le filtre « produits vendables × zones × sites du périmètre » de `pricing` n'existe pas | La PWA tire chaque jeu par type d'agrégat (`pull.ts`) |
 | S-02 | Projection `PRODUCT_STANDARD_COST` servie à tout appareil qui tire le jeu `product_standard_cost` | RC-05 : aucun coût sur l'appareil | La PWA ne tire pas ce jeu |
 | S-03 | Tirage de plusieurs jeux par appel (`GET /sync/pull?datasets=…`) | 34 jeux = 34 appels par cycle de synchronisation (toutes les 30 s) | Appels successifs, un par jeu |
+| S-04 | Renseigner dans `apps/server/src/home-api/role-catalog.ts` la route des actions dont l'écran est livré par le fork (ADR-030 §8) : voir le registre `apps/pwa/src/app/screens.ts` (`actionCodes`) | Sans route du serveur, l'appareil complète seul ; une route du serveur l'emporte | Registre des écrans de l'appareil (ADR-050) |
 
 ## 5. AV proposés
 
@@ -50,6 +54,7 @@ Plage réservée au fork : ADR numérotés de 050 à 059.
 
 | ADR | Décision |
 |---|---|
+| [ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md) | Navigation par rôle sur l'appareil : registre des écrans de la PWA, route complétée par l'appareil, navigation mémorisée hors ligne (store `navigation`), menu `/menu`. Ligne d'index à ajouter dans `docs/decisions/README.md` à la fusion |
 
 ## 7. Environnement du fork
 
