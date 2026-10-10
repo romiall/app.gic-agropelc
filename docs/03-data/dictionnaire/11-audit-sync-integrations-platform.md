@@ -297,6 +297,26 @@ worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de mess
   concurrence optimiste — le verrou de ligne/`SKIP LOCKED` la remplace) ni `[STD-ORIGIN]`
   (aucun lien à un appareil), à la différence des tables des modules métier.
 
+## platform.job_schedules
+
+**Responsabilité** : ordonnanceur des tâches récurrentes (P5-16 ; 05-architecture/05-stack.md K5 « tâches planifiées par verrou de ligne dédié », ADR-011, ADR-023). Une ligne par type de tâche récurrente, déclaré par les modules au démarrage (`RecurringJobRegistry.register({ jobType, schedule })`) ; la boucle du worker (`JobScheduler.enqueueDue`) dépose au plus une tâche dans `platform.jobs` par créneau.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `job_type` | varchar(80) | Non | — | PK ; type de la tâche déposée dans `platform.jobs` |
+| `schedule_kind` | varchar(10) | Non | — | `INTERVAL` (intervalle fixe) ou `DAILY` (heure locale quotidienne) |
+| `interval_seconds` | int | Oui | — | `INTERVAL` : secondes (> 0), créneaux alignés sur l'origine des temps |
+| `local_time` | char(5) | Oui | — | `DAILY` : `HH:MM` en Africa/Douala (UTC+1, sans heure d'été) |
+| `next_run_at` | ts | Non | — | Prochain créneau : la tâche est due dès que `next_run_at ≤ maintenant` |
+| `last_enqueued_at` | ts | Oui | — | Dernier dépôt |
+| `last_job_id` | uuid | Oui | — | Dernière tâche déposée ; sans FK (`platform.jobs` est purgeable) |
+| `created_at`, `updated_at` | ts | Non | `now()` | |
+
+- **PK** `job_type`. **CK** `INTERVAL` ⇒ `interval_seconds > 0` et `local_time` nul ; `DAILY` ⇒ `local_time` au format `HH:MM` et `interval_seconds` nul.
+- **Sémantique** : à chaque tour, une transaction par type verrouille la ligne due (`FOR UPDATE SKIP LOCKED` : plusieurs workers ne déposent jamais deux fois un créneau), dépose la tâche, puis avance `next_run_at` au créneau **suivant l'instant présent** dans la même transaction. Aucun rattrapage en rafale après un arrêt (une seule occurrence puis le créneau à venir) ; aucun empilement tant que la tâche précédente est `PENDING` ; une ligne sans récurrence inscrite dans le processus est ignorée. La forme de la récurrence modifiée dans le code met la ligne à jour sans réinitialiser `next_run_at`.
+- **Droits** `SELECT`, `INSERT`, `UPDATE` pour le compte applicatif (pas de `DELETE`). **Suppr.** Aucune (table technique). Pas de `[STD-AUDIT]` ni `[STD-ORIGIN]` (créée par du code système).
+- **Implémentation** : migration `20261010093100_create_platform_job_schedules.sql`.
+
 ## platform.event_consumer_marks
 
 **Responsabilité** : marque de traitement idempotent par consommateur (P0-08 ;

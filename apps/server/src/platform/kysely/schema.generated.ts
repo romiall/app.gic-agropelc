@@ -1111,6 +1111,7 @@ export interface InventoryStockTransfers {
   from_location_id: Buffer;
   id: Buffer;
   local_ref: string | null;
+  matched_at: Date | null;
   matched_transfer_id: Buffer | null;
   notes: string | null;
   occurred_at: Date;
@@ -1119,14 +1120,24 @@ export interface InventoryStockTransfers {
   received_by: Buffer | null;
   requested_at: Date | null;
   requested_by: Buffer | null;
+  return_reason: string | null;
+  returned_at: Date | null;
+  returned_by: Buffer | null;
   sales_order_id: Buffer | null;
   site_id: Buffer;
   status: string;
   to_location_id: Buffer;
   transfer_kind: Generated<string>;
+  unmatched_signalled_at: Date | null;
   updated_at: Generated<Date>;
   updated_by: Buffer | null;
   version: Generated<number>;
+}
+
+export interface InventoryTransferPairLocks {
+  created_at: Generated<Date>;
+  from_location_id: Buffer;
+  to_location_id: Buffer;
 }
 
 export interface OrganizationLocations {
@@ -1296,6 +1307,18 @@ export interface PlatformJobs {
   payload: Json;
   run_at: Date;
   status: Generated<string>;
+}
+
+export interface PlatformJobSchedules {
+  created_at: Generated<Date>;
+  interval_seconds: number | null;
+  job_type: string;
+  last_enqueued_at: Date | null;
+  last_job_id: Buffer | null;
+  local_time: string | null;
+  next_run_at: Date;
+  schedule_kind: string;
+  updated_at: Generated<Date>;
 }
 
 export interface PricingCommercialCampaigns {
@@ -2227,6 +2250,7 @@ export interface DB {
   inventory_stock_thresholds: InventoryStockThresholds;
   inventory_stock_transfer_lines: InventoryStockTransferLines;
   inventory_stock_transfers: InventoryStockTransfers;
+  inventory_transfer_pair_locks: InventoryTransferPairLocks;
   organization_locations: OrganizationLocations;
   organization_points_of_sale: OrganizationPointsOfSale;
   organization_sites: OrganizationSites;
@@ -2239,6 +2263,7 @@ export interface DB {
   platform_domain_events: PlatformDomainEvents;
   platform_event_consumer_marks: PlatformEventConsumerMarks;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
+  platform_job_schedules: PlatformJobSchedules;
   platform_jobs: PlatformJobs;
   pricing_commercial_campaigns: PricingCommercialCampaigns;
   pricing_price_rules: PricingPriceRules;

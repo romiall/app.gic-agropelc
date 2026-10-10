@@ -112,11 +112,11 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|
 | `StockTransferRequested` | NOT | `transfer_id`, source, destination | Notification à l'expéditeur |
 | `StockTransferDispatched` | NOT, ANA | `transfer_id`, lignes | Notification au destinataire ; KPI « envoyé » |
-| `StockTransferReceived` | ANA | `transfer_id`, reçu | KPI « reçu » |
+| `StockTransferReceived` | ANA | `transfer_id`, reçu | KPI « reçu ». P5-16 : publié aussi par la tâche `inventory.transfers.unmatched_sweep` pour un rapprochement qu'elle fait (`blind_receipt_id`, `matched_by`) ; la réception « reçue » exclut les retours à la source (inverses de l'expédition) |
 | `StockTransferDiscrepancyDetected` | NOT | `transfer_id`, écart, valeur | Validation ; alerte |
 | `StockTransferDiscrepancyResolved` | ANA | `transfer_id`, décision | — |
 | `StockTransferCancelled` | NOT | `transfer_id` | — |
-| `StockTransferUnmatched` | NOT | `transfer_id` (réception sans document) | Alerte `TRANSFER_UNMATCHED` |
+| `StockTransferUnmatched` | NOT | `transfer_id` (réception sans document), `from_location_id`, `to_location_id`, `site_id` (site source), `destination_site_id`, `occurred_at`, `hours`, `lines` (P5-16) | Alerte `TRANSFER_UNMATCHED` (P9) ; produit par la tâche `inventory.transfers.unmatched_sweep`, au plus un par réception sans document encore `UNMATCHED` au délai de `inventory.transfer_unmatched_hours` |
 | `StockAllocated`, `StockAllocationIncreased`, `StockAllocationReleased`, `StockAllocationRevoked` | SYN, NOT | `allocation_id`, détenteur | Téléchargement du quota |
 | `AllocationRevocationPending` (P5-08) | NOT (alerte : P9), SYN | `allocation_id`, `reason` (`DEVICE_BLOCKED`, `DEVICE_LOST`, `USER_DEACTIVATED`), détenteur, appareil, produit, reste, `site_id` | Alerte au responsable ; aucun mouvement automatique, la décision (révocation) est la sienne (ADR-033 §9). Publié une fois par quota signalé |
 | `AllocationExpired` (P5-08) | NOT (alerte : P9) | `allocation_id`, détenteur, appareil, produit, reste, `valid_until`, `site_id`, `business_day` | Alerte « quota échu à libérer » ; produit par la tâche `inventory.allocations.expiry_daily`, au plus un par quota et par jour métier ; le serveur ne libère jamais seul |

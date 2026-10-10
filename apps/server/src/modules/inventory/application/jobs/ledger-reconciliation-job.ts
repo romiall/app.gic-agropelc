@@ -13,6 +13,7 @@ import {
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
 import { verifyStockLedger } from '../public/ledger-reconciliation.js';
+import { verifyTransferTransit } from '../public/transfer-transit.js';
 
 export const LEDGER_RECONCILIATION_JOB_TYPE = 'inventory.ledger.reconcile_daily';
 
@@ -28,7 +29,9 @@ export class LedgerReconciliationJob implements OnModuleInit {
   onModuleInit(): void {
     this.registry.register(LEDGER_RECONCILIATION_JOB_TYPE, async (uow) => {
       const result = await verifyStockLedger(uow);
-      if (!result.ok) {
+      // INV-STK-08 (P5-16) : transit soldé des transferts clos, réception sans document comprise.
+      const transit = await verifyTransferTransit(uow);
+      if (!result.ok || !transit.ok) {
         const details = result.mismatches
           .slice(0, DETAILED_MISMATCHES)
           .map(
@@ -43,13 +46,15 @@ export class LedgerReconciliationJob implements OnModuleInit {
             `${result.toDeliverBreaches.length} solde(s) « à livrer » négatif(s), ` +
             `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
             `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
-            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit` +
+            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit, ` +
+            `${transit.breaches.length} transfert(s) clos au transit non soldé` +
             (details ? ` — ${details}` : '') +
             '.',
         );
       }
       this.logger.log(
-        `Registre de stock réconcilié : ${result.balancesChecked} solde(s), aucun écart.`,
+        `Registre de stock réconcilié : ${result.balancesChecked} solde(s), ` +
+          `${transit.transfersChecked} transfert(s) clos, aucun écart.`,
       );
     });
   }

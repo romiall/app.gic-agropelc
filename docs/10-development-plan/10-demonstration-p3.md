@@ -100,7 +100,7 @@ Correctif transverse découvert en P3-04 : quand un gestionnaire concluait au re
 | Consultation et résolution générique des conflits de synchronisation | `DUPLICATE_CUSTOMER` et `VERSION_CONFLICT` sont consignés ; seule la fusion clôt `DUPLICATE_CUSTOMER` | Écran de revue des conflits (P4 : premiers conflits de vente) |
 | Fenêtre de saisie rétroactive (AV-078 : `BACKDATE_EXCEEDED`, `JUSTIFICATION_REQUIRED`) | Le pipeline ne contrôle que la date future (`OCCURRED_AT_FUTURE`) depuis P0 | Avant la mise en production de R1 |
 | Portefeuilles clients initiaux, objectifs initiaux (checklist P3) | Données GIC (AV-072) | Réception des données |
-| Ordonnancement récurrent de `fieldwork.session.auto_close` | Même limite que P0-07 et P2-07 : aucun ordonnanceur récurrent | Déploiement (AV-090) |
+| Ordonnancement récurrent de `fieldwork.session.auto_close` | L'ordonnanceur existe depuis P5-16 (`recurringJobs.register`, 02-modules.md §1) ; l'inscription de cette tâche (une ligne, dans `fieldwork`) reste à faire | Intégration de P5 ou déploiement (AV-090) |
 | DoD « deux commerciaux pilotes l'utilisent une semaine sans retour au papier » | Exige les écrans et un déploiement | Déploiement |
 
 ## 5. Prochaine étape

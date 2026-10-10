@@ -139,7 +139,7 @@ sequenceDiagram
 | Stock | `TRANSFER_DISPATCH` 1 740 œufs magasin → `V_TRANSIT` ; `TRANSFER_RECEIPT` 1 710 → PDV ; `TRANSFER_DISCREPANCY` 30 → `V_PENDING_LOSS` ; `LOSS_CONFIRMATION` 30 → `V_LOSS`. Conservation vérifiée : 1 740 = 1 710 + 30. |
 | Finance | Valeur de la perte = 30 × coût figé ; tableau de distribution : envoyé 58, reçu 57, perdu 1. |
 | Audit | Expédition, réception, décision. |
-| Sync | Tout hors ligne sauf la décision. Si le PDV reçoit avant d'avoir téléchargé le transfert : réception sans document (BR-STK-024), rapprochée à la synchronisation. |
+| Sync | Tout hors ligne sauf la décision. Si le PDV reçoit avant d'avoir téléchargé le transfert : réception sans document (BR-STK-024), rapprochée automatiquement — à l'application de la réception si l'expédition est déjà connue, à l'application de l'expédition si elle arrive après, ou par la tâche horaire `inventory.transfers.unmatched_sweep` — ; conflit `TRANSFER_UNMATCHED` si l'expédition n'arrive pas dans le délai (48 h). |
 
 ---
 

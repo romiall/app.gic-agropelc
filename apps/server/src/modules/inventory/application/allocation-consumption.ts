@@ -144,17 +144,23 @@ async function openConflict(
   });
 }
 
-type CustodyReason = 'DEVICE_NOT_DESIGNATED' | 'DEVICE_NOT_PRIMARY' | 'DEVICE_OTHER_SITE';
+/**
+ * Raison d'un conflit `CUSTODY_DEVICE_MISMATCH` : appareil hors garde (P5-09) ou, pour une réception
+ * sans document (P5-16, AV-181), emplacement de destination qui n'est pas exclusif.
+ */
+export type CustodyReason =
+  'DEVICE_NOT_DESIGNATED' | 'DEVICE_NOT_PRIMARY' | 'DEVICE_OTHER_SITE' | 'LOCATION_NOT_EXCLUSIVE';
 
 /**
  * Garde d'appareil (BR-STK-016, ADR-033 §2) : un fait **hors ligne** n'est légitime que sur l'appareil
  * désigné d'un emplacement `EXCLUSIVE_DEVICE`, sur l'appareil principal du détenteur d'un
  * `EXCLUSIVE_USER`, et sur un appareil non rattaché à un autre site. Sinon le fait est appliqué et le
- * conflit `CUSTODY_DEVICE_MISMATCH` porte la raison.
+ * conflit `CUSTODY_DEVICE_MISMATCH` porte la raison. Exportée pour la réception sans document
+ * (P5-16), qui l'évalue sur l'emplacement de destination.
  */
-async function custodyMismatch(
+export async function custodyMismatch(
   uow: Transaction<DB>,
-  request: ConsumptionRequest,
+  request: Pick<ConsumptionRequest, 'location' | 'deviceId'>,
 ): Promise<CustodyReason | null> {
   const { location, deviceId } = request;
   if (location.custodyMode === 'EXCLUSIVE_DEVICE') {

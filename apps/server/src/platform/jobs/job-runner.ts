@@ -8,8 +8,14 @@
  * Échec : jusqu'à `max_attempts` tentatives avec attente progressive (2^tentatives secondes),
  * puis `FAILED` et `last_error` rempli (08-api-events/02-catalogue-evenements.md §3 « 5
  * essais avec attente progressive »).
+ *
+ * Atomicité du gestionnaire (P5-16) : il s'exécute sous un point de sauvegarde ; s'il lève, ses
+ * écritures sont annulées (`ROLLBACK TO SAVEPOINT`) **avant** que l'échec soit consigné et la
+ * transaction validée. Sans cela, une tâche qui échoue au milieu laisserait un effet partiel validé,
+ * puis le referait à la reprise (doublons).
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { Clock } from '@gic/domain';
 import { CLOCK } from '../clock.provider.js';
 import { DATABASE, type Database } from '../kysely/database.provider.js';
@@ -73,6 +79,7 @@ export class JobRunner {
         };
       }
 
+      await sql`SAVEPOINT job_handler`.execute(trx);
       try {
         await handler(trx, job.payload);
         await trx
@@ -82,6 +89,13 @@ export class JobRunner {
           .execute();
         return { claimed: true, jobId, result: 'DONE' };
       } catch (error) {
+        try {
+          await sql`ROLLBACK TO SAVEPOINT job_handler`.execute(trx);
+        } catch {
+          // Transaction déjà annulée par MySQL (interblocage) : la tâche reste due, sans tentative
+          // consommée ; l'erreur d'origine annule le reste.
+          throw error;
+        }
         await this.recordFailure(trx, job, error);
         return {
           claimed: true,

@@ -41,6 +41,13 @@ export type {
 } from './stock-query.js';
 
 export { verifyStockLedger, rebuildStockBalances } from './ledger-reconciliation.js';
+// P5-16 : transit des transferts par document et par paire, INV-STK-08 (réception sans document).
+export { transferTransit, pairTransit, verifyTransferTransit } from './transfer-transit.js';
+export type {
+  TransitLine,
+  TransferTransitBreach,
+  TransferTransitVerification,
+} from './transfer-transit.js';
 export type {
   LedgerScope,
   LedgerVerification,

@@ -185,8 +185,12 @@ export class InventoryMoveError extends Error {
 
 export interface RecordMoveInput {
   readonly productId: string;
-  /** Omis pour une sortie sans lot désigné sur un produit à suivi par lot : FIFO serveur (BR-STK-050). */
-  readonly lotId?: string;
+  /**
+   * Omis pour une sortie sans lot désigné sur un produit à suivi par lot : FIFO serveur (BR-STK-050).
+   * `null` explicite : mouvement **sans lot**, jamais résolu par le FIFO (inverse exact d'un
+   * mouvement sans lot, P5-16) ; contrôlé comme tout mouvement sans lot (BR-STK-050, INV-STK-13).
+   */
+  readonly lotId?: string | null;
   readonly quantityBase: number;
   readonly fromLocationId: string;
   readonly toLocationId: string;

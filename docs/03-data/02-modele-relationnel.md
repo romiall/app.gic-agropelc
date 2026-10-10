@@ -120,6 +120,7 @@ Pas de vue `sales.v_receivables` : les créances se calculent en requête sur `s
 | `inventory.stock_balance_snapshots` | PROJ | Instantanés quotidiens optionnels | idem | SRV | idem |
 | `inventory.stock_transfers` | TX | Transferts | locations ×2, users, sales_order_id (réf. sans FK) | DL (ouverts du périmètre), CR | idem |
 | `inventory.stock_transfer_lines` | TX | Lignes de transfert | transfers, products, stock_lots, reason_codes | DL, CR | idem |
+| `inventory.transfer_pair_locks` | PLAT | Ligne-verrou par paire (source, destination) de transfert (P5-16) | — (sans FK) | SRV | idem |
 | `inventory.stock_allocations` | TX | Quotas et réservations | locations, products, stock_lots, users, devices, sales_order_line_id (réf. sans FK) | DL (les siennes) | idem |
 | `inventory.stock_allocation_entries` | LEDGER | Registre des quotas | stock_allocations | SRV (le reste est recalculé et téléchargé) | idem |
 | `inventory.loss_declarations` | TX | Pertes, y compris mortalité | locations, products, stock_lots, production_lot_id (réf. sans FK), reason_codes, approval_requests | DL (30 j), CR | idem |
@@ -203,12 +204,13 @@ Pas de vue `sales.v_receivables` : les créances se calculent en requête sur `s
 | `platform.event_consumer_offsets` | PLAT | Position de chaque consommateur | — | SRV | idem |
 | `platform.document_sequences` | PLAT | Compteurs de numérotation | sites | SRV | idem |
 | `platform.jobs` | PLAT | File de tâches maison (P0-08) | — | SRV | idem |
+| `platform.job_schedules` | PLAT | Ordonnanceur : prochaine échéance de chaque tâche récurrente (P5-16) | — (sans FK) | SRV | idem |
 | `platform.event_consumer_marks` | PLAT | Marque de traitement idempotent par consommateur (P0-08) | — | SRV | idem |
 | `analytics.saved_views` | TX | Vues sauvegardées | users | SRV | [dict](dictionnaire/12-analytics.md) |
 | `analytics.export_jobs` | TECH | Exports | users, attachments | SRV | idem |
 | `analytics.kpi_snapshots` | PROJ | Instantanés d'indicateurs personnels | users | DL (les siens) | idem |
 
-Total : **114 objets** : 113 tables et 1 vue (`finance.v_payables`) ; `sales.v_receivables` est remplacée par une requête (P4-02 2/2) et quatre tables de `sales` s'ajoutent (annulations et leurs lignes, bons de livraison et leurs lignes). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08 ; `identity.login_attempts` (verrouillage progressif de connexion) en P0-09 — aucune n'était prévue au décompte initial (seuls les mécanismes étaient documentés, pas les schémas).
+Total : **114 objets** : 113 tables et 1 vue (`finance.v_payables`) ; `sales.v_receivables` est remplacée par une requête (P4-02 2/2) et quatre tables de `sales` s'ajoutent (annulations et leurs lignes, bons de livraison et leurs lignes). Les jeux de faits analytiques (`analytics.f_*`) sont des vues de lecture, décrites dans le dictionnaire analytics. La table `organization.zone_ancestors` (fermeture transitive) a été ajoutée lors du recadrage base de données (ADR-023), en remplacement de la colonne `path` + index GIN de la version PostgreSQL. `platform.jobs` et `platform.event_consumer_marks` (file de tâches maison et marque d'idempotence des consommateurs) ont été ajoutées en P0-08 ; `identity.login_attempts` (verrouillage progressif de connexion) en P0-09 — aucune n'était prévue au décompte initial (seuls les mécanismes étaient documentés, pas les schémas). P5-16 ajoute deux tables techniques, `platform.job_schedules` (ordonnanceur des tâches récurrentes) et `inventory.transfer_pair_locks` (ligne-verrou de paire de transfert), également absentes du décompte.
 
 ## 3. Références inter-schémas autorisées
 

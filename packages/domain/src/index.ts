@@ -268,3 +268,32 @@ export type {
 } from './cash-session.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
+
+// Réception sans document, rapprochement et répartition d'une réception (P5-16 ; BR-STK-024, AV-180).
+export {
+  DEFAULT_TRANSFER_UNMATCHED_HOURS,
+  DEFAULT_BLIND_RECEIPT_MATCH_MODE,
+  unmatchedHoursOrDefault,
+  isUnmatchedOverdue,
+  blindReceiptMatchModeOrDefault,
+  blindReceiptMatch,
+  chooseDispatchForBlindReceipt,
+  chooseBlindReceiptForDispatch,
+  planTransferReceipt,
+  allocateReceivedToLines,
+} from './stock-transfers.js';
+export type {
+  BlindReceiptMatchMode,
+  BlindReceiptMatchKind,
+  ProductQuantityMilli,
+  MatchCandidate,
+  ChosenMatch,
+  DispatchPiece,
+  TransferReceiptLine,
+  PlannedTransferMove,
+  DispatchedLine,
+} from './stock-transfers.js';
+
+// Récurrence des tâches planifiées, heure locale de Douala (P5-16).
+export { nextRecurringRun, assertRecurringSchedule, localTimeMinutes } from './recurrence.js';
+export type { RecurringSchedule } from './recurrence.js';

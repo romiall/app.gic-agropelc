@@ -95,7 +95,7 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-014 | Prise de service à 180 m (acceptée), à 1,8 km (refusée), puis dérogation | Résultats corrects ; tentative refusée conservée ; session avec dérogation validée | REQ-018 à 020 |
 | AT-015 | Performance d'un commercial : aujourd'hui, semaine, plage libre | Chiffres égaux aux opérations sous-jacentes | REQ-015 à 017 |
 | AT-016 | Transfert de 58 plateaux, 57 reçus | Écart en perte en transit validée ; conservation respectée | WF-05, REQ-039 |
-| AT-017 | Réception sans document au PDV hors ligne, puis arrivée de l'expédition | Rapprochement automatique ; transit à zéro | BR-STK-024 |
+| AT-017 | Réception sans document au PDV hors ligne, puis arrivée de l'expédition | Rapprochement automatique (à l'application de la réception ou de l'expédition, dans les deux ordres de synchronisation, PDV `EXCLUSIVE_DEVICE`) ; transit de la paire à zéro, en quantité, par lot et en valeur ; aucun conflit `TRANSFER_UNMATCHED` | BR-STK-024 |
 | AT-018 | 50 poulets affectés à un commercial ; ventes, perte, retour | Solde mobile nul ; responsabilité soldée | WF-06, REQ-040 |
 | AT-019 | Perte de 600 000 XAF | `V_PENDING_LOSS` (indisponible) ; photo exigée avant approbation ; validation | WF-07, REQ-042 |
 | AT-020 | Rejet d'une perte pour erreur de déclaration | Retour de la quantité en stock | SM-LOSS, AV-038 |

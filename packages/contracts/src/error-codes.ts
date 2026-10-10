@@ -91,6 +91,10 @@ export const WARNING_CODES = [
   'ALLOCATION_EXCEEDED',
   'ALLOCATION_OVERCOMMITTED',
   'CUSTODY_DEVICE_MISMATCH',
+  // P5-16 (BR-STK-021, AV-180) : réception au-delà de l'expédié, appliquée (réception sans document
+  // rapprochée, ou réception avec document saisie hors ligne) ; l'excédent est reçu, le conflit
+  // informatif `TRANSFER_OVER_RECEIVED` le signale au magasinier du site expéditeur.
+  'TRANSFER_OVER_RECEIVED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

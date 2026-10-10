@@ -1,5 +1,7 @@
 /**
- * Boucle du worker (P0-08) : à chaque tour, un lot par consommateur d'événements enregistré
+ * Boucle du worker (P0-08) : à chaque tour, d'abord le dépôt des tâches récurrentes dues
+ * (`JobScheduler.enqueueDue`, P5-16 : au plus une par créneau, sans rattrapage en rafale ni
+ * empilement), puis un lot par consommateur d'événements enregistré
  * (`EventConsumerRunner.processOnce`), puis des tâches (`platform_jobs`) réclamées et
  * traitées une à une jusqu'à épuisement (`JobRunner.claimAndProcessOne`), puis une pause
  * avant de recommencer. `start()` ne rend la main qu'après `stop()` (SIGTERM/SIGINT dans
@@ -10,6 +12,7 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JobRunner } from '../platform/jobs/job-runner.js';
+import { JobScheduler } from '../platform/jobs/job-scheduler.js';
 import { EventConsumerRunner } from '../platform/events/event-consumer-runner.js';
 import {
   EVENT_CONSUMER_REGISTRY,
@@ -29,6 +32,7 @@ export class WorkerService {
 
   constructor(
     @Inject(JobRunner) private readonly jobRunner: JobRunner,
+    @Inject(JobScheduler) private readonly scheduler: JobScheduler,
     @Inject(EventConsumerRunner) private readonly eventRunner: EventConsumerRunner,
     @Inject(EVENT_CONSUMER_REGISTRY) private readonly consumers: EventConsumerRegistry,
   ) {}
@@ -54,8 +58,9 @@ export class WorkerService {
     this.stopping = true;
   }
 
-  /** Un tour complet (tous les consommateurs, puis toutes les tâches dues) — utilisé en test. */
+  /** Un tour complet (récurrences dues, tous les consommateurs, puis toutes les tâches dues). */
   async runOnce(): Promise<void> {
+    await this.scheduler.enqueueDue();
     for (const consumerName of this.consumers.names()) {
       await this.eventRunner.processOnce(consumerName);
     }

@@ -117,6 +117,52 @@ describe('JobRunner.claimAndProcessOne (P0-08)', () => {
     expect(row.last_error).toBe('échec simulé');
   });
 
+  it('atomicité (P5-16) : un gestionnaire qui écrit puis lève ne laisse aucune écriture validée', async () => {
+    const registry = new JobHandlerRegistry();
+    const jobType = `test.job.partial.${freshUuid().slice(-12)}`;
+    const eventId = freshUuid();
+    registry.register(jobType, async (trx) => {
+      await trx
+        .insertInto('platform_domain_events')
+        .values({
+          event_id: toBin(eventId),
+          event_type: 'TestPartialWrite',
+          producer_module: 'test',
+          aggregate_type: 'TEST',
+          aggregate_id: toBin(eventId),
+          occurred_at: NOW,
+          payload: jsonValue({}),
+          command_id: null,
+        })
+        .execute();
+      throw new Error('échec après écriture');
+    });
+    const runner = new JobRunner(db, registry, new FixedClock(NOW));
+    const jobId = await db
+      .transaction()
+      .execute((trx) => buildJobsService().enqueue(trx, { jobType, payload: {} }));
+
+    const outcome = await runner.claimAndProcessOne({ jobTypes: [jobType] });
+    expect(outcome).toEqual({ claimed: true, jobId, result: 'RETRY' });
+    const written = await db
+      .selectFrom('platform_domain_events')
+      .select('seq')
+      .where('event_id', '=', toBin(eventId))
+      .executeTakeFirst();
+    expect(written).toBeUndefined();
+    const row = await db
+      .selectFrom('platform_jobs')
+      .select(['status', 'attempts', 'last_error'])
+      .where('id', '=', toBin(jobId))
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({
+      status: 'PENDING',
+      attempts: 1,
+      last_error: 'échec après écriture',
+    });
+    await db.deleteFrom('platform_jobs').where('id', '=', toBin(jobId)).execute();
+  });
+
   it('SKIP LOCKED : deux tâches, deux réclamations concurrentes → chacune la sienne, en parallèle', async () => {
     const registry = new JobHandlerRegistry();
     let concurrent = 0;

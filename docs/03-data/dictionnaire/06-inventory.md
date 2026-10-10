@@ -132,7 +132,7 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | [STD-DOC] | | | | Type `TRF` ; `site_id` = site source |
-| `transfer_kind` | enum(`STANDARD`,`INTERNAL`,`BLIND_RECEIPT`) | Non | `STANDARD` | |
+| `transfer_kind` | enum(`STANDARD`,`INTERNAL`,`BLIND_RECEIPT`) | Non | `STANDARD` | `varchar(20)` (P5-16 : `BLIND_RECEIPT` fait 13 caractères) |
 | `from_location_id` | uuid → organization.locations | Non | — | |
 | `to_location_id` | uuid → organization.locations | Non | — | |
 | `status` | enum(`REQUESTED`,`DECLINED`,`CANCELLED`,`DISPATCHED`,`RECEIVED`,`DISCREPANCY_PENDING`,`CLOSED`,`RETURNED`,`COMPLETED`,`UNMATCHED`,`MATCHED`) | Non | — | |
@@ -141,7 +141,10 @@
 | `carrier_user_id` | uuid → identity.users | Oui | — | Transporteur (CM §22 « par qui ») |
 | `carrier_name` | label | Oui | — | Transporteur externe |
 | `received_by`, `received_at` | uuid, ts | Oui | — | Heure métier de réception |
-| `matched_transfer_id` | uuid → stock_transfers | Oui | — | `BLIND_RECEIPT` rapproché |
+| `matched_transfer_id` | uuid → stock_transfers | Oui | — | `BLIND_RECEIPT` rapproché : le transfert `STANDARD` expédié qu'elle a reçu (un transfert n'est rapproché que d'une seule réception) |
+| `matched_at` | ts | Oui | — | Instant serveur du rapprochement (`MATCHED` seulement) |
+| `unmatched_signalled_at` | ts | Oui | — | `BLIND_RECEIPT` : instant où le conflit de délai `TRANSFER_UNMATCHED` a été ouvert (au plus une fois, AV-184) |
+| `returned_by`, `returned_at`, `return_reason` | uuid, ts, varchar(500) | Oui | — | Retour à la source (`RETURNED` seulement ; BR-STK-025) |
 | `sales_order_id` | uuid | Oui | — | Réf. sans FK : transfert préparé pour une commande (BR-VEN-010) |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Écart |
 | `notes` | text | Oui | — | |
@@ -149,10 +152,12 @@
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `doc_number`, `command_id`.
-- **CK** `from_location_id <> to_location_id` ; `INTERNAL` ⇒ même site ; horodatages cohérents avec le statut.
-- **IX** `(to_location_id, status)` partiel ouverts, `(from_location_id, status)`, `(dispatched_at)`.
+- **CK** `from_location_id <> to_location_id` ; `INTERNAL` ⇒ même site ; horodatages cohérents avec le statut. P5-16 : nature et statut cohérents (`BLIND_RECEIPT` ∈ {`UNMATCHED`, `MATCHED`}, `STANDARD` ∈ {`REQUESTED`…`RETURNED`}, `INTERNAL` = `COMPLETED`) ; `MATCHED` ⇔ `matched_transfer_id` et `matched_at` renseignés ; `RETURNED` ⇔ `returned_by`, `returned_at`, `return_reason` renseignés ; `unmatched_signalled_at` réservé à `BLIND_RECEIPT`.
+- **UQ** (P5-16) `matched_transfer_id` (filet de concurrence d'INV-STK-08).
+- **IX** `(to_location_id, status)` partiel ouverts, `(from_location_id, status)`, `(dispatched_at)` ; P5-16 : `(to_location_id, from_location_id, transfer_kind, status)` (paire — lectures verrouillantes des candidats au rapprochement, désigné explicitement), `(transfer_kind, status, occurred_at)` (énumération non verrouillante du balayage).
 - **Suppr.** `ANNULATION` (avant expédition) / transfert retour. **Audit** Chaque transition. **Offline** DL (ouverts du périmètre), CR.
 - **Intégrité** INV-STK-08.
+- **Implémentation** (P5-16, migration `20261010093000_alter_inventory_transfers_blind_receipt_return.sql`) : `transfer_kind` passe de `varchar(10)` à `varchar(20)` (la valeur `BLIND_RECEIPT`, admise par le CHECK, ne pouvait pas être écrite) ; colonnes, contraintes et index ci-dessus ; clé étrangère `returned_by` vers `identity.users` (`RESTRICT`) ; le retrait de l'index de la clé étrangère `matched_transfer_id` est fait par MySQL (l'unique le remplace). Une réception sans document a un numéro `TRF` du site source, `received_by`/`received_at` = auteur et `occurred_at` ; ses lignes ne portent que `received_qty_base`.
 
 ## inventory.stock_transfer_lines
 
@@ -172,8 +177,20 @@
 | `discrepancy_reason_code_id` | uuid → catalog.reason_codes | Oui | — | |
 | `returned_qty_base` | qty | Non | 0 | |
 
-- **PK** `id`. **CK** quantités ≥ 0 ; `received ≤ dispatched` en ligne (TX).
+- **PK** `id`. **CK** quantités ≥ 0 ; `received ≤ dispatched` en ligne (TX) ; hors ligne, un excédent est reçu et signalé (`TRANSFER_OVER_RECEIVED`, BR-STK-021).
 - **Suppr.** Suit le transfert.
+- **Réception sans document** (P5-16) : les lignes du document `BLIND_RECEIPT` ne portent que `product_id`, `unit_code`, `received_qty_base` et un `lot_id` indicatif ; `dispatched_qty_base` reste nul. Au rapprochement, les quantités reçues sont reportées sur les lignes du transfert `STANDARD` (les lignes d'un produit se remplissent dans l'ordre jusqu'à l'expédié, la dernière prend l'excédent ; une ligne dont le produit n'est pas déclaré est reçue à 0). Au retour à la source, `returned_qty_base` = `dispatched_qty_base`.
+
+## inventory.transfer_pair_locks
+
+**Responsabilité** : ligne-verrou par paire (source, destination) de transfert (P5-16), prise **en premier** par toute opération qui expédie, reçoit, rapproche ou retourne un transfert de la paire (expédition, réceptions avec et sans document, retour, balayage). Elle sérialise les écritures qui font naître, changent ou consomment un candidat au rapprochement, sans verrou d'intervalle sur toutes les expéditions vers une destination. Même motif que `platform.document_sequences` (upsert sans effet puis lecture verrouillante). Table technique : ordre de verrouillage dans `transfer-matching.ts` et D06 §15.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `from_location_id`, `to_location_id` | uuid | Non | — | Réf. sans FK : l'existence des emplacements est contrôlée par le gestionnaire après le verrou, et un refus annule l'insertion |
+| `created_at` | ts | Non | `now()` | |
+
+- **PK** `(from_location_id, to_location_id)`. **Droits** `SELECT`, `INSERT`, `UPDATE` pour le compte applicatif (pas de `DELETE`). **Suppr.** Aucune (une ligne-verrou ne disparaît jamais). **Offline** SRV.
 
 ## inventory.stock_allocations
 
