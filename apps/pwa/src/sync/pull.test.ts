@@ -64,7 +64,7 @@ describe('sync/pull (runPullCycle)', () => {
       vi.fn(async () => {
         call += 1;
         // Seul le premier jeu de données ('user', KNOWN_DATASETS[0]) reçoit des changements
-        // dans ce test, pour ne pas dupliquer les mêmes assertions sur les 12 jeux.
+        // dans ce test, pour ne pas dupliquer les mêmes assertions sur chaque jeu.
         const body: PullResponse =
           call === 1
             ? {

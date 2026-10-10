@@ -58,8 +58,17 @@ export interface Projection {
   readonly dataset: string;
   readonly entity_type: string;
   readonly entity_id: string;
+  /** Périmètre de la dernière ligne reçue (conservé pour compatibilité ; voir `scopes`). */
   readonly scope_type: string;
   readonly scope_id: string | null;
+  /**
+   * Périmètres par lesquels l'appareil détient l'entité (`SCOPE_TYPE:scope_id`, `GLOBAL:` pour la
+   * portée globale) : une même commande arrive par son titulaire, son équipe et son emplacement de
+   * préparation (jeu `orders`). Un `SCOPE_EXIT` ne retire que son périmètre ; l'entité ne quitte
+   * l'appareil que lorsqu'il n'en reste aucun (02-synchronisation.md §5.3). Absent sur une ligne
+   * écrite avant ce champ : `scope_type`/`scope_id` en tiennent lieu.
+   */
+  readonly scopes?: readonly string[];
   readonly row_version: number;
   readonly data: Record<string, unknown>;
   readonly seq: number;
