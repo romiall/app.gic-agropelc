@@ -241,6 +241,14 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'BR-STK-024',
   },
+  // P5-16 : règle de rapprochement d'une réception sans document (SUBSET : produits reçus inclus
+  // dans les produits expédiés, écart à valider, excédent signalé ; EXACT : identité seule).
+  {
+    key: 'inventory.blind_receipt_match_mode',
+    value: 'SUBSET',
+    isClientVisible: false,
+    ref: 'AV-177',
+  },
   { key: 'analytics.freshness_warning_hours', value: 2, isClientVisible: false, ref: 'BR-ANA-005' },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que

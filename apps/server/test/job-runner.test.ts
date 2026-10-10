@@ -8,6 +8,7 @@
  * métier : chaque test utilise un `job_type` distinctif, comme partout ailleurs ici).
  */
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
+import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
 import { JobRunner } from '../src/platform/jobs/job-runner.js';
@@ -115,6 +116,81 @@ describe('JobRunner.claimAndProcessOne (P0-08)', () => {
     expect(row.status).toBe('FAILED');
     expect(row.attempts).toBe(1);
     expect(row.last_error).toBe('échec simulé');
+  });
+
+  it('atomicité (P5-16) : un gestionnaire qui écrit puis lève ne laisse aucune écriture validée', async () => {
+    const registry = new JobHandlerRegistry();
+    const jobType = `test.job.partial.${freshUuid().slice(-12)}`;
+    const eventId = freshUuid();
+    registry.register(jobType, async (trx) => {
+      await trx
+        .insertInto('platform_domain_events')
+        .values({
+          event_id: toBin(eventId),
+          event_type: 'TestPartialWrite',
+          producer_module: 'test',
+          aggregate_type: 'TEST',
+          aggregate_id: toBin(eventId),
+          occurred_at: NOW,
+          payload: jsonValue({}),
+          command_id: null,
+        })
+        .execute();
+      throw new Error('échec après écriture');
+    });
+    const runner = new JobRunner(db, registry, new FixedClock(NOW));
+    const jobId = await db
+      .transaction()
+      .execute((trx) => buildJobsService().enqueue(trx, { jobType, payload: {} }));
+
+    const outcome = await runner.claimAndProcessOne({ jobTypes: [jobType] });
+    expect(outcome).toEqual({ claimed: true, jobId, result: 'RETRY' });
+    const written = await db
+      .selectFrom('platform_domain_events')
+      .select('seq')
+      .where('event_id', '=', toBin(eventId))
+      .executeTakeFirst();
+    expect(written).toBeUndefined();
+    const row = await db
+      .selectFrom('platform_jobs')
+      .select(['status', 'attempts', 'last_error'])
+      .where('id', '=', toBin(jobId))
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({
+      status: 'PENDING',
+      attempts: 1,
+      last_error: 'échec après écriture',
+    });
+    await db.deleteFrom('platform_jobs').where('id', '=', toBin(jobId)).execute();
+  });
+
+  it('transaction perdue (interblocage) : l’échec est consigné hors de la transaction, la tâche reste due, rien ne remonte à la boucle du worker (P5-16)', async () => {
+    const registry = new JobHandlerRegistry();
+    const jobType = `test.job.lost.${freshUuid().slice(-12)}`;
+    registry.register(jobType, async (trx) => {
+      // MySQL annule toute la transaction d'une victime d'interblocage, point de sauvegarde compris.
+      await sql`ROLLBACK`.execute(trx);
+      throw new Error('transaction perdue');
+    });
+    const runner = new JobRunner(db, registry, new FixedClock(NOW));
+    const jobId = await db
+      .transaction()
+      .execute((trx) => buildJobsService().enqueue(trx, { jobType, payload: {} }));
+
+    const outcome = await runner.claimAndProcessOne({ jobTypes: [jobType] });
+    expect(outcome).toEqual({ claimed: true, jobId, result: 'RETRY' });
+    const row = await db
+      .selectFrom('platform_jobs')
+      .select(['status', 'attempts', 'last_error', 'run_at'])
+      .where('id', '=', toBin(jobId))
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({
+      status: 'PENDING',
+      attempts: 1,
+      last_error: 'transaction perdue',
+    });
+    expect(row.run_at.getTime()).toBeGreaterThan(NOW.getTime());
+    await db.deleteFrom('platform_jobs').where('id', '=', toBin(jobId)).execute();
   });
 
   it('SKIP LOCKED : deux tâches, deux réclamations concurrentes → chacune la sienne, en parallèle', async () => {

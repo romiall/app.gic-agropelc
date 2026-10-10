@@ -210,4 +210,5 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `procurement.po_approval_threshold_xaf` | 500 000 | AV-051 |
 | `inventory.count_approval_threshold_xaf` | 25 000 | AV-039 |
 | `inventory.transfer_unmatched_hours` | 48 | BR-STK-024 |
+| `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale |
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |

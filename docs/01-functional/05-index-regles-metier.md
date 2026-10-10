@@ -172,8 +172,8 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-021 | Écart = quantité expédiée − quantité reçue. Un écart positif est déplacé de `V_TRANSIT` vers `V_PENDING_LOSS` avec la catégorie `ECART_TRAN… | C (CM §22 « différences ») / AV-082 |
 | BR-STK-022 | Un déplacement interne immédiat (même site, même responsable, ex. case → case, bâtiment → magasin de ferme) est un transfert de type `INTER… | D |
 | BR-STK-023 | L'affectation de stock à un commercial ou vendeur (CM §23) est un transfert vers son emplacement `MOBILE`. Il en est responsable jusqu'à ve… | C (CM §23) |
-| BR-STK-024 | Une réception sans document (le transfert n'est pas encore téléchargé sur l'appareil destinataire) n'est permise que sur un emplacement exc… | D (CM §37, §39) |
-| BR-STK-025 | Un transfert ne peut être annulé qu'avant expédition. Après expédition, seul un transfert retour le neutralise. | C (CM §41) |
+| BR-STK-024 | Une réception sans document (le transfert n'est pas encore téléchargé sur l'appareil destinataire) n'est permise que sur un emplacement exc… | D (CM §37, §39) / AV-177 à AV-181 |
+| BR-STK-025 | Un transfert ne peut être annulé qu'avant expédition. Après expédition, seul un transfert retour le neutralise : `inventory.transfer.return… | C (CM §41) / AV-180 |
 | BR-STK-026 | Une demande de réapprovisionnement (`REQUESTED`) est satisfaite par l'expédition de l'emplacement fournisseur, qui peut expédier une quanti… | AV-081 |
 | BR-STK-030 | Une déclaration de perte porte : catégorie (`MORTALITE`, `CASSE`, `DETERIORATION`, `IMPROPRE`, `DESTRUCTION`, `INEXPLIQUEE`, `VOL_SUSPECTE`… | C (CM §24) / D (un produit) |
 | BR-STK-031 | La politique de contrôle en vigueur (catégorie, quantité, valeur) détermine si une photo, un commentaire ou une validation sont requis. | C (CM §24, §42) / AV-037, AV-048 |

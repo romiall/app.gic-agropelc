@@ -29,7 +29,7 @@ Un point nouveau, **AV-094** (permission de lecture des documents de stock), a �
 | AT | Scénario | Où | État |
 |---|---|---|---|
 | AT-016 | 58 plateaux expédiés, 57 reçus : perte en transit validée, conservation | `inventory-invariants.test.ts` | Vert |
-| AT-017 | Réception sans document, puis rapprochement automatique | — | Non construit (§4) |
+| AT-017 | Réception sans document, puis rapprochement automatique | `inventory-transfer-acceptance.test.ts` | Reporté de P2, livré en P5-16 (§4) |
 | AT-019 | Perte au-dessus du seuil : `V_PENDING_LOSS`, photo, validation | `inventory-loss-commands.test.ts` | Partiel : quantité indisponible et validation vertes ; photo exigée avant approbation non construite (§4) |
 | AT-020 | Rejet pour erreur de déclaration : retour en stock | `inventory-loss-commands.test.ts` | Vert |
 | AT-021 | Inventaire avec vente tardive antérieure : rapprochement | `inventory-count-commands.test.ts` | Partiel : écart −3 visible et justifiable, validation au-dessus du seuil ; rapprochement tardif (BR-STK-044) non construit (§4) |
@@ -97,7 +97,7 @@ Correctif découvert en P2-05 : le registre des commandes `inventory` recevait `
 |---|---|---|
 | Écrans PWA ECR-STK-01 à 05, 07, 08 ; ECR-ADM-08 ; ECR-NOT-01 | Même précédent que P0-11 et P1 : aucun écran métier construit, les API sont prêtes | Session dédiée aux écrans, ou P4 (première UI de vente) |
 | Inventaire d'ouverture (`count_type = OPENING`, `inventory.opening.post`) et chargement du stock d'ouverture (DoD) | Le mouvement `OPENING_BALANCE` existe et est testé ; le document d'ouverture et le chargement exigent les données GIC (AV-072) | Réception des stocks d'ouverture par emplacement (AV-002, AV-072) |
-| Réception sans document `BLIND_RECEIPT`, retour à la source (AT-017, BR-STK-024) | Rapprochement asynchrone et délai de 48 h (`inventory.transfer_unmatched_hours`) sans ordonnanceur récurrent réel | P5 (PDV en mode exclusif), avec un ordonnanceur |
+| Réception sans document `BLIND_RECEIPT`, retour à la source (AT-017, BR-STK-024) | Rapprochement asynchrone et délai de 48 h (`inventory.transfer_unmatched_hours`) sans ordonnanceur récurrent réel | **Livré en P5-16** (PDV en mode exclusif, ordonnanceur `platform.job_schedules`, tâche `inventory.transfers.unmatched_sweep`, AV-177 à AV-181) |
 | Rapprochement tardif d'inventaire (BR-STK-044, AT-021, INV-STK-09) ; répartition FIFO inverse (BR-STK-045) | Exige de détecter, à l'application de chaque mouvement, un inventaire comptabilisé postérieur à son `occurred_at` | Avant la mise en production de R1 (inventaires réels) |
 | Seuils de preuve par catégorie et montant (AV-037) ; photo exigée avant approbation (`ATTACHMENT_REQUIRED`, AT-019) | La `condition` des politiques n'est interprétée nulle part (P0-13) ; la présence de la pièce n'est pas vérifiée à la décision | Décision d'AV-037, puis évaluation des conditions dans `approvals` |
 | Annulation d'une perte `RECORDED` (`inventory.loss.request_cancellation`, BR-STK-034) | Exige `LOSS_CANCELLATION` au catalogue fermé des types d'opération (et ses deux `CHECK`) | Premier besoin réel |
@@ -107,7 +107,7 @@ Correctif découvert en P2-05 : le registre des commandes `inventory` recevait `
 | Motif d'écart obligatoire à la comptabilisation d'un inventaire (`variance_reason_code_id`, dictionnaire) | Stocké s'il est fourni, jamais exigé : l'écart n'est connu qu'au serveur, à la soumission (fait accompli) | Exigence au moment de la décision de validation, ou saisie après coup |
 | Jeux hors ligne des pertes et consommations | Le dictionnaire les marque « Offline DL (30 j) », mais le catalogue des jeux ([`../06-offline-sync/01-architecture-offline.md`](../06-offline-sync/01-architecture-offline.md) §3.1) n'a aucun code de jeu pour elles : incohérence interne du référentiel, non comblée | Arbitrage du catalogue des jeux (ajout d'un jeu, ou retrait de la mention du dictionnaire) |
 | `SCOPE_EXIT` des soldes quand un emplacement sort du périmètre d'un appareil | Aucun gestionnaire `identity` n'émet encore de sortie de périmètre | Réaffectation d'un rôle (identity), avec P3/P5 |
-| Ordonnancement récurrent de la réconciliation ; « zéro écart sur 7 jours de staging » (DoD) | Même limite que P0-07 : aucun ordonnanceur récurrent, et pas de `staging` (ADR-024) | Déploiement (AV-090) |
+| Ordonnancement récurrent de la réconciliation ; « zéro écart sur 7 jours de staging » (DoD) | Ordonnanceur livré en P5-16 (`inventory.ledger.reconcile_daily` inscrite à 02:00, heure de Douala) ; reste « zéro écart sur 7 jours de staging » : pas de `staging` (ADR-024) | Déploiement (AV-090) |
 
 ## 5. Prochaine étape
 

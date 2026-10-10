@@ -32,8 +32,8 @@
 | Rubrique | Contenu |
 |---|---|
 | Responsabilité | Types transverses (UUIDv7, argent, quantités, temps métier), unité de travail, outbox d'événements, séquences documentaires, file de tâches, registre des commandes et des consommateurs |
-| Tables | `platform.domain_events`, `platform.event_consumer_offsets`, `platform.document_sequences`, `platform.jobs`, `platform.event_consumer_marks` |
-| API | `uow.begin()`, `events.publish(uow, evt)`, `sequences.next(uow, type, site, year)`, `jobs.enqueue(...)`, `clock.now()` |
+| Tables | `platform.domain_events`, `platform.event_consumer_offsets`, `platform.document_sequences`, `platform.jobs`, `platform.event_consumer_marks`, `platform.job_schedules` (P5-16) |
+| API | `uow.begin()`, `events.publish(uow, evt)`, `sequences.next(uow, type, site, year)`, `jobs.enqueue(...)`, `clock.now()` ; ordonnanceur (P5-16) : `recurringJobs.register({ jobType, schedule })` (jeton `RECURRING_JOB_REGISTRY`, une ligne d'inscription par tâche dans le module propriétaire, au démarrage) et `scheduler.enqueueDue()` (appelé par la boucle du worker). `schedule` : `{ kind: 'INTERVAL', intervalSeconds }` ou `{ kind: 'DAILY', localTime: 'HH:MM' }` (Africa/Douala) ; le gestionnaire reste enregistré dans `JobHandlerRegistry`. Sémantique : au plus un dépôt par créneau (verrou de ligne `SKIP LOCKED`), aucun rattrapage en rafale, aucun empilement tant que la tâche précédente est `PENDING` |
 | Événements | — |
 | Dépendances autorisées | Aucune |
 | Interdites | Tout module métier |
@@ -142,8 +142,8 @@
 | Rubrique | Contenu |
 |---|---|
 | Responsabilité | Registre des mouvements, soldes, lots, transferts, allocations et réservations, pertes, consommations, inventaires, seuils, valorisation (CMUP, coût de lot), registre de coûts |
-| Tables | `stock_lots`, `stock_moves`, `stock_balances`, `stock_balance_snapshots`, `stock_transfers`, `stock_transfer_lines`, `stock_allocations`, `stock_allocation_entries`, `loss_declarations`, `consumptions`, `inventory_counts`, `inventory_count_lines`, `stock_thresholds`, `product_valuations`, `cost_entries` |
-| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) |
+| Tables | `stock_lots`, `stock_moves`, `stock_balances`, `stock_balance_snapshots`, `stock_transfers`, `stock_transfer_lines`, `transfer_pair_locks` (P5-16), `stock_allocations`, `stock_allocation_entries`, `loss_declarations`, `consumptions`, `inventory_counts`, `inventory_count_lines`, `stock_thresholds`, `product_valuations`, `cost_entries` |
+| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) ; P5-16 : `pairTransit` (transit net d'une paire de transfert, par produit), `transferTransit` (transit d'un document), `verifyTransferTransit` (INV-STK-08, relue par `inventory.ledger.reconcile_daily`). Tâches récurrentes inscrites à l'ordonnanceur : `inventory.transfers.unmatched_sweep` (horaire), `inventory.allocations.expiry_daily` (00:05), `inventory.ledger.reconcile_daily` (02:00), heures de Douala ; les tâches quotidiennes des autres modules (audit, finance, ventes, terrain) s'inscrivent de la même façon, une ligne chacune, dans leur module |
 | Événements | `StockTransfer*`, `StockAllocation*`, `AllocationRevocationPending`, `AllocationExpired`, `StockLoss*`, `ConsumptionRecorded`, `InventoryCount*`, `InventoryAdjusted`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`, `CostEntryRecorded` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments` |
 | Interdites | `sales`, `procurement`, `production`, `finance`, `crm` (ils l'appellent ; il ne les appelle jamais) |

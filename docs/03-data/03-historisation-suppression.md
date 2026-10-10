@@ -68,6 +68,7 @@ Codes : `IMMUABLE` (ni modification ni suppression, correction par écriture inv
 | `identity.users`, `identity.devices`, `crm.customers`, `procurement.suppliers`, `catalog.*`, `organization.*` (hors historiques), `finance.cash_accounts`, `finance.payment_methods`, `finance.expense_categories`, référentiels CRM | DESACTIVATION | Statut ; fusion pour les doublons de clients |
 | `identity.role_permissions` | Modification autorisée, **auditée** | — |
 | `sync.change_feed`, `identity.auth_sessions`, `communication.notifications`, `communication.push_subscriptions`, `integrations.inbox_messages` / `outbox_messages` (traités), fichiers d'`analytics.export_jobs`, `platform.jobs` (terminées, P0-08) | PURGE_TECHNIQUE | Rétentions : 60 j, 90 j, 90 j, à la révocation, 180 j, 30 j, 30 j |
+| `platform.job_schedules`, `inventory.transfer_pair_locks` (P5-16) | TECH sans purge | Tables techniques de petit volume (une ligne par tâche récurrente, une par paire de transfert) : jamais supprimées ; une récurrence retirée du code reste inerte |
 | `analytics.saved_views` | LIBRE | Suppression par le propriétaire, auditée |
 | `analytics.kpi_snapshots`, `inventory.stock_balances`, `inventory.product_valuations`, `inventory.stock_balance_snapshots` | Projection | Recalcul |
 

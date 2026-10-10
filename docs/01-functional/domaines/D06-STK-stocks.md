@@ -43,7 +43,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | UC-STK-02 | Demander un réapprovisionnement | `inventory.transfer.request` | VENDEUR_PDV, RESP_FERME | **Oui** |
 | UC-STK-03 | TRANSFÉRER : expédier (y compris affecter du stock à un commercial) | `inventory.transfer.dispatch` | MAGASINIER, RESP_FERME, détenteur d'un stock mobile (retour) | **Oui** |
 | UC-STK-04 | Déplacement interne immédiat (même site, même responsable) | `inventory.transfer.move_internal` | MAGASINIER, RESP_FERME | **Oui** |
-| UC-STK-05 | RECEVOIR un transfert (avec le document ou sans document) | `inventory.transfer.receive` | Destinataire | **Oui** |
+| UC-STK-05 | RECEVOIR un transfert : avec le document (`transferId`), ou **sans document** (emplacement source, produits, quantités ; P5-16, BR-STK-024) | `inventory.transfer.receive` | Destinataire | **Oui** |
 | UC-STK-06 | Traiter un écart de transfert | `approvals.request.approve` / `reject` | Responsable du site expéditeur, DIRECTION | Non |
 | UC-STK-07 | Annuler un transfert non expédié | `inventory.transfer.cancel` | Auteur, MAGASINIER | **Oui** |
 | UC-STK-08 | DÉCLARER UNE PERTE | `inventory.loss.declare` | Tout détenteur de stock | **Oui** |
@@ -55,6 +55,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | UC-STK-14 | Charger le stock d'ouverture | `inventory.count.open` (type `OPENING`) | ADMIN, MAGASINIER | Non |
 | UC-STK-15 | Paramétrer les seuils de réapprovisionnement | `inventory.threshold.set` | Responsables, DIRECTION | Non |
 | UC-STK-16 | Expliquer un écart : parcourir le registre d'un emplacement × produit | requête | Responsables, DIRECTION | Non |
+| UC-STK-17 | Retourner un transfert expédié à la source (P5-16, BR-STK-025) | `inventory.transfer.return_to_source` | MAGASINIER, RESP_FERME (permission `inventory.transfer.dispatch`) | **Oui** |
 
 ## 5. Entrées
 
@@ -103,11 +104,11 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | ID | Règle | Statut |
 |---|---|---|
 | BR-STK-020 | Un transfert entre deux emplacements physiques distincts suit deux temps. **Expédition** : source → `V_TRANSIT`, par l'expéditeur, à l'heure réelle. **Réception** : `V_TRANSIT` → destination, pour la quantité réellement reçue, par le destinataire. | C (CM §22) |
-| BR-STK-021 | Écart = quantité expédiée − quantité reçue. Un écart positif est déplacé de `V_TRANSIT` vers `V_PENDING_LOSS` avec la catégorie `ECART_TRANSFERT`, à justifier et valider. Une réception supérieure à l'expédition est refusée en ligne ; hors ligne, elle est appliquée et produit le conflit `TRANSFER_OVER_RECEIVED`. | C (CM §22 « différences ») / AV-082 |
+| BR-STK-021 | Écart = quantité expédiée − quantité reçue. Un écart positif est déplacé de `V_TRANSIT` vers `V_PENDING_LOSS` avec la catégorie `ECART_TRANSFERT`, à justifier et valider. Une réception supérieure à l'expédition est refusée en ligne ; hors ligne, elle est appliquée et produit le conflit `TRANSFER_OVER_RECEIVED`. La règle vaut aussi pour une réception **sans document** rapprochée sur-le-champ à une expédition connue (refus en ligne, AV-177) ; rapprochée après coup (arrivée de l'expédition, balayage), l'excédent est un fait déjà appliqué : reçu et signalé. | C (CM §22 « différences ») / AV-082 |
 | BR-STK-022 | Un déplacement interne immédiat (même site, même responsable, ex. case → case, bâtiment → magasin de ferme) est un transfert de type `INTERNAL`, sans passage par `V_TRANSIT`. | D |
 | BR-STK-023 | L'**affectation de stock** à un commercial ou vendeur (CM §23) est un transfert vers son emplacement `MOBILE`. Il en est responsable jusqu'à vente, retour (transfert inverse), perte ou régularisation par inventaire. | C (CM §23) |
-| BR-STK-024 | Une **réception sans document** (le transfert n'est pas encore téléchargé sur l'appareil destinataire) n'est permise que sur un emplacement exclusif. Elle déclare l'emplacement source et les quantités. Le serveur la rapproche du transfert expédié correspondant. Tant qu'aucun rapprochement n'a eu lieu, la quantité est imputée sur le transit non rapproché de la paire (source, destination) ; après 48 h, le conflit `TRANSFER_UNMATCHED` est ouvert. | D (CM §37, §39) |
-| BR-STK-025 | Un transfert ne peut être annulé qu'avant expédition. Après expédition, seul un transfert retour le neutralise. | C (CM §41) |
+| BR-STK-024 | Une **réception sans document** (le transfert n'est pas encore téléchargé sur l'appareil destinataire) n'est permise que sur un emplacement exclusif (en ligne, `BLIND_RECEIPT_NOT_ALLOWED` sinon ; hors ligne, fait appliqué avec le conflit `CUSTODY_DEVICE_MISMATCH`, AV-178). Elle crée un document de nature `BLIND_RECEIPT` (numéro `TRF` du site source) qui déclare l'emplacement source, les produits et les quantités reçues. Le serveur la rapproche du transfert expédié correspondant (règle AV-177, paramètre `inventory.blind_receipt_match_mode`) en trois points : à l'application de la réception si l'expédition est déjà connue, à l'application de l'expédition si la réception est arrivée avant, ou par la tâche horaire `inventory.transfers.unmatched_sweep` ; le transfert expédié passe `RECEIVED` ou `DISCREPANCY_PENDING`, la réception `MATCHED`. Tant qu'aucun rapprochement n'a eu lieu, la quantité est imputée sur le transit non rapproché de la paire (source, destination) et l'appareil reçoit l'avertissement `TRANSFER_UNMATCHED` ; au rapprochement après coup, la réception est requalifiée au lot et à la valeur de l'expédition (AV-179). Après 48 h (`inventory.transfer_unmatched_hours`, comptées depuis l'heure physique de la réception), le conflit `TRANSFER_UNMATCHED` est ouvert une seule fois, avec l'événement `StockTransferUnmatched` (AV-181). Un produit suivi par lot reçu sans document exige son lot en ligne (INV-STK-13). | D (CM §37, §39) / AV-177 à AV-181 |
+| BR-STK-025 | Un transfert ne peut être annulé qu'avant expédition. Après expédition, seul un transfert retour le neutralise : `inventory.transfer.return_to_source` (motif obligatoire, permission `inventory.transfer.dispatch`, hors ligne possible) contre-passe chaque mouvement d'expédition au coût d'origine (`TRANSFER_RECEIPT` inverse `V_TRANSIT` → source, même lot, même quantité, même valeur), rend le quota d'appareil consommé à l'expédition s'il est encore actif, et fait passer le transfert à `RETURNED`. Il n'est possible que sur un transfert `DISPATCHED` qu'aucune réception n'a touché ; un fait contradictoire arrivé hors ligne (réception d'un transfert retourné, retour d'un transfert reçu ou dont une réception sans document attend l'expédition) est mis en quarantaine (AV-180). | C (CM §41) / AV-180 |
 | BR-STK-026 | Une demande de réapprovisionnement (`REQUESTED`) est satisfaite par l'expédition de l'emplacement fournisseur, qui peut expédier une quantité différente de la quantité demandée. | AV-081 |
 
 ### 7.4 Pertes et consommations
@@ -172,7 +173,7 @@ Le stock n'est **jamais** une quantité saisie : il résulte de mouvements traç
 | `INVENTORY_GAIN` | `V_ADJUSTMENT` → emplacement | Inventaire | C (CM §25) |
 | `INVENTORY_LOSS` | emplacement → `V_ADJUSTMENT` | Inventaire | C (CM §25) |
 
-Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`), qui échange source et destination et reprend le produit, le lot, la quantité et le coût unitaire du mouvement d'origine (INV-STK-04, BR-STK-052). Le contrôle des couples (BR-STK-006) restant strict **par type**, un inverse porte un type dont le couple est l'inverse de celui d'origine : en P2, seule l'annulation d'une consommation est construite, avec le type dédié `CONSUMPTION_REVERSAL` (D, P2-04) — il distingue aussi, dans le registre, la seule entrée légitime depuis `V_CONSUMPTION`. Une vente, une livraison et un retour ne s'inversent pas (BR-STK-055) : une vente se contre-passe par des mouvements `CUSTOMER_RETURN` rattachés à elle ; les inverses des autres types (réception…) suivent le même principe que la consommation avec les documents qui les annulent.
+Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`), qui échange source et destination et reprend le produit, le lot, la quantité et le coût unitaire du mouvement d'origine (INV-STK-04, BR-STK-052). Le contrôle des couples (BR-STK-006) restant strict **par type**, un inverse porte un type dont le couple est l'inverse de celui d'origine : en P2, seule l'annulation d'une consommation est construite, avec le type dédié `CONSUMPTION_REVERSAL` (D, P2-04) — il distingue aussi, dans le registre, la seule entrée légitime depuis `V_CONSUMPTION`. Une vente, une livraison et un retour ne s'inversent pas (BR-STK-055) : une vente se contre-passe par des mouvements `CUSTOMER_RETURN` rattachés à elle ; les inverses des autres types (réception…) suivent le même principe que la consommation avec les documents qui les annulent. P5-16 : l'inverse d'une expédition (`TRANSFER_DISPATCH`, source → `V_TRANSIT`) est un `TRANSFER_RECEIPT` (`V_TRANSIT` → source), écrit par le retour à la source ; l'inverse d'une réception sans document non rapprochée (`TRANSFER_RECEIPT`, `V_TRANSIT` → destination) est un `TRANSFER_DISPATCH` (destination → `V_TRANSIT`), écrit par la requalification au rapprochement après coup (AV-179).
 
 ## 8. Validations
 
@@ -183,7 +184,9 @@ Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`),
 | Emplacements actifs ; source ≠ destination | `LOCATION_INVALID` |
 | Lot requis présent et cohérent avec le produit | `LOT_REQUIRED`, `LOT_MISMATCH` |
 | Disponibilité (BR-STK-017, en ligne) ; allocation (BR-STK-013, hors ligne) | `INSUFFICIENT_STOCK`, `ALLOCATION_EXCEEDED` |
-| Réception ≤ expédié (BR-STK-021, en ligne) | `TRANSFER_OVER_RECEIVED` |
+| Réception ≤ expédié (BR-STK-021, en ligne ; réception sans document rapprochée sur-le-champ comprise) | `TRANSFER_OVER_RECEIVED` |
+| Réception sans document : emplacements physiques existants et distincts ; produit et unité connus ; identifiant de document libre ; destination exclusive (en ligne) ; lot indiqué pour un produit suivi par lot (en ligne, sans expédition à rapprocher) | `LOCATION_INVALID`, `PRODUCT_INVALID`, `UNIT_INVALID`, `TRANSFER_ID_TAKEN`, `BLIND_RECEIPT_NOT_ALLOWED`, `LOT_REQUIRED` |
+| Retour à la source : transfert `STANDARD` au statut `DISPATCHED`, motif présent, aucune réception sans document en attente de cette expédition (en ligne) | `TRANSFER_STATUS_INVALID`, `NOT_FOUND`, `VALIDATION_ERROR` |
 | Octroi d'allocation ≤ disponible | `ALLOCATION_EXCEEDS_AVAILABLE` |
 | Photo requise présente (référence de pièce) | `ATTACHMENT_REQUIRED` |
 | Commentaire requis pour `INEXPLIQUEE` et `VOL_SUSPECTE` | `COMMENT_REQUIRED` |
@@ -206,6 +209,8 @@ Tout mouvement peut avoir un inverse (`is_reversal = true`, `reverses_move_id`),
 
 `StockTransferRequested`, `StockTransferDispatched`, `StockTransferReceived`, `StockTransferDiscrepancyDetected`, `StockTransferDiscrepancyResolved`, `StockTransferCancelled`, `StockTransferUnmatched`, `StockAllocated`, `StockAllocationIncreased`, `StockAllocationReleased`, `StockAllocationRevoked`, `AllocationRevocationPending`, `AllocationExpired`, `StockLossDeclared`, `StockLossApproved`, `StockLossRejected`, `ConsumptionRecorded`, `InventoryCountOpened`, `InventoryCountSubmitted`, `InventoryAdjusted`, `InventoryCountReconciled`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`.
 
+`StockTransferUnmatched` est publié par la tâche `inventory.transfers.unmatched_sweep` (au plus une fois par réception sans document, au délai de BR-STK-024) ; les rapprochements faits par cette tâche publient `StockTransferReceived` ou `StockTransferDiscrepancyDetected`, ceux faits par une commande sont tracés par l'événement et l'audit de la commande (`inventory.transfer.receive`, `inventory.transfer.dispatch`).
+
 Les mouvements eux-mêmes ne sont pas publiés un par un comme événements métier : le registre **est** la source. Les projections se mettent à jour dans la transaction.
 
 ## 11. Événements consommés
@@ -224,6 +229,7 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 | Données locales | Soldes et lots des emplacements du périmètre ; allocations et réservations propres ; transferts entrants et sortants ouverts ; inventaires ouverts ; seuils ; motifs ; politiques de contrôle. |
 | Consommation locale | L'appareil tient un **solde local** = solde téléchargé + opérations locales en attente. Il refuse de dépasser l'allocation ou le solde exclusif (BR-STK-013). |
 | Expédition, réception, perte, consommation, comptage | Possibles hors ligne ; commandes idempotentes. |
+| Réception sans document, retour à la source (P5-16) | Possibles hors ligne, jamais rejetés pour une raison d'état (BR-SYN-007) : destination non exclusive ou appareil hors garde → appliqué avec `CUSTODY_DEVICE_MISMATCH` ; fait contradictoire avec l'état du transfert → mis en quarantaine (`CONFLICT`, aucun mouvement) ; l'appareil reçoit le rapprochement par le jeu `transfers` (réception `MATCHED`, `matched_transfer_id`, transfert `RECEIVED`). |
 | Octroi et révocation d'allocation, validation | En ligne uniquement. |
 | Lot | Le lot FIFO proposé localement est **indicatif** ; le serveur recalcule sur son état. Si le lot local n'a plus de solde, le serveur applique le FIFO serveur et conserve le lot local dans `client_lot_hint`. |
 | Coût | Toujours déterminé par le serveur (jamais transmis par le client). |
@@ -236,6 +242,11 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 
 | Cas | Traitement |
 |---|---|
+| Deux ventes hors ligne dépassent le stock partagé (allocations contournées ou absentes) | BR-STK-018 : conflit `STOCK_NEGATIVE`, résolution par inventaire ou rapprochement. |
+| Transfert expédié hors ligne et reçu avant la synchronisation de l'expédition | BR-STK-024 : transit non rapproché, rapprochement automatique quand l'expédition arrive (requalification au lot et à la valeur de l'expédition, AV-179). |
+| Réception sans document supérieure à l'expédié, ou seconde réception d'un transfert déjà reçu (hors ligne) | Supérieure : en ligne, refusée (`TRANSFER_OVER_RECEIVED`) quand le rapprochement est immédiat ; hors ligne ou rapprochée après coup, excédent reçu, avertissement et conflit informatif `TRANSFER_OVER_RECEIVED` (BR-STK-021, AV-177). Seconde réception, ou réception avec document d'un transfert qu'une réception sans document attend : quarantaine, conflit `TRANSFER_OVER_RECEIVED` non appliqué, aucun mouvement (AV-180). |
+| Retour à la source et réception concurrents (hors ligne) | Le premier fait appliqué l'emporte ; le second est mis en quarantaine, conflit `TRANSFER_RETURN_CONFLICT`, décision du responsable du stock expéditeur (AV-180). Un second retour est sans effet. |
+| Réception sans document jamais rapprochée | Au délai (BR-STK-024), conflit `TRANSFER_UNMATCHED` ; sortie : enregistrer l'expédition manquante. Tant qu'elle est `UNMATCHED`, elle retient la désactivation des deux emplacements (INV-STK-07, AV-181). |
 | Deux ventes hors ligne dépassent le stock partagé (allocations contournées ou absentes) | BR-STK-018 : conflit `STOCK_NEGATIVE`, résolution par inventaire ou rapprochement. Le contournement est en outre signalé (P5-11) : `ALLOCATION_EXCEEDED` (quota dépassé, ou vente sans quota utilisable, AV-166) et `ALLOCATION_OVERCOMMITTED` si le stock promis à d'autres appareils est entamé. |
 | Transfert expédié hors ligne et reçu avant la synchronisation de l'expédition | BR-STK-024 : transit non rapproché, rapprochement automatique quand l'expédition arrive. |
 | Appareil perdu détenant des allocations | Révocation par le responsable ; les quantités restent physiquement là où elles sont ; inventaire recommandé. |
@@ -245,7 +256,7 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 
 ## 15. Choix d'implémentation (P7-02, prérequis de la production)
 
-Précisions retenues par `inventory` pour la production (P7) ; toutes **DÉDUITES**, sauf mention d'une décision du porteur du projet.
+Précisions retenues par `inventory` pour la production (P7) et pour les transferts sans document (P5-16) ; toutes **DÉDUITES**, sauf mention d'une décision du porteur du projet.
 
 | Point | Choix | Justification |
 |---|---|---|
@@ -263,3 +274,6 @@ Précisions retenues par `inventory` pour la production (P7) ; toutes **DÉDUITE
 | Lot clôturé (P7-03) | Un mouvement (hors inverse) sur le lot de stock clôturé d'un lot de production est refusé en ligne (`LOT_CLOSED`) et appliqué hors ligne. | INV-PRD-02. |
 | Inventaire d'animaux (P7-03) | Écart d'un lot d'animaux valorisé au coût par tête, gain sans coût déclaré. | ADR-027. |
 | Valeur exacte (revue P7) | Un inverse reprend la valeur figée du mouvement d'origine ; un mouvement d'un lot biologique qui vide le solde d'un emplacement (hors sortie définitive) en emporte la valeur exacte ; les sorties internes d'un lot d'incubation (`INCUBATION_EVENT`) ne diminuent pas son coût restant ; pertes d'un lot comptées sur les mouvements (`lotLostQuantity`) ; effectif `PENDING_LOSS` (têtes en attente de validation d'une perte). | ADR-027 ; BR-STK-052. |
+| Réception sans document et retour à la source (P5-16) | Document `BLIND_RECEIPT` (`transfer_kind` à `VARCHAR(20)`), rapproché à l'application de la réception, à l'application de l'expédition et par la tâche horaire ; règle d'éligibilité dans `packages/domain/src/stock-transfers.ts` (AV-177) ; réception répartie **par mouvement d'expédition** (lot et valeur exacts, expédition multi-lots comprise) ; requalification d'une réception non rapprochée par contre-passation puis réception du transfert (AV-179) ; retour par inverses exacts, quota rendu (ADR-033 §8). | AV-177 à AV-181 ; BR-STK-021, 024, 025 ; INV-STK-08, INV-STK-13. |
+| Ordre des verrous des transferts (P5-16) | Une ligne-verrou par paire (source, destination) (`inventory_transfer_pair_locks`) est prise **en premier** par l'expédition, les deux réceptions, le retour et le balayage ; viennent ensuite les transferts de la paire (lectures verrouillantes forcées sur l'index de paire), leurs lignes, le compteur de numéros `TRF`, les soldes, les quotas, les demandes de validation et les conflits, la tête de chaîne d'audit. Le motif est celui de `platform_document_sequences`. | Sans point de sérialisation unique, une réception sans document et une expédition concurrentes de la même paire s'interbloquent (verrous d'intervalle contre compteur) ; un interblocage résiduel reste `RETRY_LATER`. |
+| Transit des transferts (P5-16) | `V_TRANSIT` est global (un solde par produit et par lot) : le transit d'un transfert se lit **par document** (`source_doc_id`), celui d'une paire sur les documents de la paire (`pairTransit`). INV-STK-08 est vérifié par `verifyTransferTransit` (quantités par document, réception rapprochée comprise ; valeurs non contrôlées car `V_TRANSIT` est partagé), relue par `inventory.ledger.reconcile_daily` ; volontairement hors de `verifyStockLedger`. | Stratégie stock §6. |

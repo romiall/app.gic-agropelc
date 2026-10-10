@@ -4007,7 +4007,7 @@ CREATE TABLE `inventory_stock_transfers` (
   `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
   `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `site_id` binary(16) NOT NULL,
-  `transfer_kind` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'STANDARD',
+  `transfer_kind` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'STANDARD',
   `from_location_id` binary(16) NOT NULL,
   `to_location_id` binary(16) NOT NULL,
   `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
@@ -4020,6 +4020,11 @@ CREATE TABLE `inventory_stock_transfers` (
   `received_by` binary(16) DEFAULT NULL,
   `received_at` datetime(6) DEFAULT NULL,
   `matched_transfer_id` binary(16) DEFAULT NULL,
+  `matched_at` datetime(6) DEFAULT NULL,
+  `unmatched_signalled_at` datetime(6) DEFAULT NULL,
+  `returned_by` binary(16) DEFAULT NULL,
+  `returned_at` datetime(6) DEFAULT NULL,
+  `return_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `sales_order_id` binary(16) DEFAULT NULL,
   `approval_request_id` binary(16) DEFAULT NULL,
   `notes` text COLLATE utf8mb4_0900_as_cs,
@@ -4040,6 +4045,7 @@ CREATE TABLE `inventory_stock_transfers` (
   UNIQUE KEY `uq_inventory_stock_transfers_doc_number` (`doc_number`),
   UNIQUE KEY `uq_inventory_stock_transfers_command` (`command_id`),
   UNIQUE KEY `uq_inventory_stock_transfers_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_inventory_stock_transfers_matched` (`matched_transfer_id`),
   KEY `ix_inventory_stock_transfers_to_status` (`to_location_id`,`status`),
   KEY `ix_inventory_stock_transfers_from_status` (`from_location_id`,`status`),
   KEY `ix_inventory_stock_transfers_dispatched` (`dispatched_at`),
@@ -4048,10 +4054,12 @@ CREATE TABLE `inventory_stock_transfers` (
   KEY `fk_inventory_stock_transfers_dispatched_by` (`dispatched_by`),
   KEY `fk_inventory_stock_transfers_carrier` (`carrier_user_id`),
   KEY `fk_inventory_stock_transfers_received_by` (`received_by`),
-  KEY `fk_inventory_stock_transfers_matched` (`matched_transfer_id`),
   KEY `fk_inventory_stock_transfers_approval` (`approval_request_id`),
   KEY `fk_inventory_stock_transfers_created_by` (`created_by`),
   KEY `fk_inventory_stock_transfers_updated_by` (`updated_by`),
+  KEY `ix_inventory_stock_transfers_pair` (`to_location_id`,`from_location_id`,`transfer_kind`,`status`),
+  KEY `ix_inventory_stock_transfers_kind_status` (`transfer_kind`,`status`,`occurred_at`),
+  KEY `fk_inventory_stock_transfers_returned_by` (`returned_by`),
   CONSTRAINT `fk_inventory_stock_transfers_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_carrier` FOREIGN KEY (`carrier_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
@@ -4061,11 +4069,16 @@ CREATE TABLE `inventory_stock_transfers` (
   CONSTRAINT `fk_inventory_stock_transfers_matched` FOREIGN KEY (`matched_transfer_id`) REFERENCES `inventory_stock_transfers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_received_by` FOREIGN KEY (`received_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_inventory_stock_transfers_returned_by` FOREIGN KEY (`returned_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_to` FOREIGN KEY (`to_location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_inventory_stock_transfers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_inventory_stock_transfers_kind` CHECK ((`transfer_kind` in (_utf8mb4'STANDARD',_utf8mb4'INTERNAL',_utf8mb4'BLIND_RECEIPT'))),
+  CONSTRAINT `ck_inventory_stock_transfers_kind_status` CHECK ((((`transfer_kind` = _utf8mb4'BLIND_RECEIPT') and (`status` in (_utf8mb4'UNMATCHED',_utf8mb4'MATCHED'))) or ((`transfer_kind` = _utf8mb4'STANDARD') and (`status` in (_utf8mb4'REQUESTED',_utf8mb4'DECLINED',_utf8mb4'CANCELLED',_utf8mb4'DISPATCHED',_utf8mb4'RECEIVED',_utf8mb4'DISCREPANCY_PENDING',_utf8mb4'CLOSED',_utf8mb4'RETURNED'))) or ((`transfer_kind` = _utf8mb4'INTERNAL') and (`status` = _utf8mb4'COMPLETED')))),
   CONSTRAINT `ck_inventory_stock_transfers_locations` CHECK ((`from_location_id` <> `to_location_id`)),
+  CONSTRAINT `ck_inventory_stock_transfers_matched` CHECK ((((`status` = _utf8mb4'MATCHED') and (`matched_transfer_id` is not null) and (`matched_at` is not null)) or ((`status` <> _utf8mb4'MATCHED') and (`matched_transfer_id` is null) and (`matched_at` is null)))),
+  CONSTRAINT `ck_inventory_stock_transfers_returned` CHECK ((((`status` = _utf8mb4'RETURNED') and (`returned_by` is not null) and (`returned_at` is not null) and (`return_reason` is not null)) or ((`status` <> _utf8mb4'RETURNED') and (`returned_by` is null) and (`returned_at` is null) and (`return_reason` is null)))),
+  CONSTRAINT `ck_inventory_stock_transfers_signalled` CHECK (((`unmatched_signalled_at` is null) or (`transfer_kind` = _utf8mb4'BLIND_RECEIPT'))),
   CONSTRAINT `ck_inventory_stock_transfers_status` CHECK ((`status` in (_utf8mb4'REQUESTED',_utf8mb4'DECLINED',_utf8mb4'CANCELLED',_utf8mb4'DISPATCHED',_utf8mb4'RECEIVED',_utf8mb4'DISCREPANCY_PENDING',_utf8mb4'CLOSED',_utf8mb4'RETURNED',_utf8mb4'COMPLETED',_utf8mb4'UNMATCHED',_utf8mb4'MATCHED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4086,6 +4099,20 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `inventory_transfer_pair_locks`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_transfer_pair_locks` (
+  `from_location_id` binary(16) NOT NULL,
+  `to_location_id` binary(16) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`from_location_id`,`to_location_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `organization_locations`
@@ -4718,6 +4745,27 @@ CREATE TABLE `platform_event_consumer_offsets` (
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `last_error` text COLLATE utf8mb4_0900_as_cs,
   PRIMARY KEY (`consumer_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `platform_job_schedules`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `platform_job_schedules` (
+  `job_type` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `schedule_kind` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `interval_seconds` int DEFAULT NULL,
+  `local_time` char(5) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `next_run_at` datetime(6) NOT NULL,
+  `last_enqueued_at` datetime(6) DEFAULT NULL,
+  `last_job_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`job_type`),
+  CONSTRAINT `ck_platform_job_schedules_kind` CHECK ((((`schedule_kind` = _utf8mb4'INTERVAL') and (`interval_seconds` is not null) and (`interval_seconds` > 0) and (`local_time` is null)) or ((`schedule_kind` = _utf8mb4'DAILY') and (`interval_seconds` is null) and (`local_time` is not null) and regexp_like(`local_time`,_utf8mb4'^([01][0-9]|2[0-3]):[0-5][0-9]$'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -8230,5 +8278,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261008090000'),
   ('20261008090100'),
   ('20261008090200'),
-  ('20261010092000');
+  ('20261010092000'),
+  ('20261010093000'),
+  ('20261010093100');
 UNLOCK TABLES;

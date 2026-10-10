@@ -13,11 +13,20 @@ import {
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
 import { verifyStockLedger } from '../public/ledger-reconciliation.js';
+import { verifyTransferTransit, type TransferTransitBreach } from '../public/transfer-transit.js';
 
 export const LEDGER_RECONCILIATION_JOB_TYPE = 'inventory.ledger.reconcile_daily';
 
 /** Nombre d'écarts détaillés dans le message d'échec (le reste est compté, jamais tu). */
 const DETAILED_MISMATCHES = 5;
+
+/** Une rupture d'INV-STK-08 dans le message d'échec : quel transfert, quel produit, quel écart. */
+function describeTransitBreach(breach: TransferTransitBreach): string {
+  return (
+    `transfert ${breach.transferId} produit ${breach.productId ?? '-'} : ${breach.reason}, ` +
+    `attendu ${breach.expectedQty} ≠ constaté ${breach.actualQty}`
+  );
+}
 
 @Injectable()
 export class LedgerReconciliationJob implements OnModuleInit {
@@ -28,28 +37,34 @@ export class LedgerReconciliationJob implements OnModuleInit {
   onModuleInit(): void {
     this.registry.register(LEDGER_RECONCILIATION_JOB_TYPE, async (uow) => {
       const result = await verifyStockLedger(uow);
-      if (!result.ok) {
-        const details = result.mismatches
-          .slice(0, DETAILED_MISMATCHES)
-          .map(
-            (m) =>
-              `emplacement ${m.locationId} produit ${m.productId} lot ${m.lotId ?? '-'} : ` +
-              `projection ${m.projectedQty} ≠ registre ${m.ledgerQty}`,
-          )
-          .join(' ; ');
+      // INV-STK-08 (P5-16) : transit soldé des transferts clos, réception sans document comprise.
+      const transit = await verifyTransferTransit(uow);
+      if (!result.ok || !transit.ok) {
+        const details = [
+          ...result.mismatches
+            .slice(0, DETAILED_MISMATCHES)
+            .map(
+              (m) =>
+                `emplacement ${m.locationId} produit ${m.productId} lot ${m.lotId ?? '-'} : ` +
+                `projection ${m.projectedQty} ≠ registre ${m.ledgerQty}`,
+            ),
+          ...transit.breaches.slice(0, DETAILED_MISMATCHES).map(describeTransitBreach),
+        ].join(' ; ');
         throw new Error(
           `LEDGER_MISMATCH : ${result.mismatches.length} solde(s) en écart, ` +
             `${result.conservationBreaches.length} produit(s) hors conservation, ` +
             `${result.toDeliverBreaches.length} solde(s) « à livrer » négatif(s), ` +
             `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
             `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
-            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit` +
+            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit, ` +
+            `${transit.breaches.length} transfert(s) clos au transit non soldé` +
             (details ? ` — ${details}` : '') +
             '.',
         );
       }
       this.logger.log(
-        `Registre de stock réconcilié : ${result.balancesChecked} solde(s), aucun écart.`,
+        `Registre de stock réconcilié : ${result.balancesChecked} solde(s), ` +
+          `${transit.transfersChecked} transfert(s) clos, aucun écart.`,
       );
     });
   }

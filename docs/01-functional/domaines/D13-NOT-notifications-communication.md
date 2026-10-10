@@ -86,7 +86,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
 | `DUPLICATE_SUSPECTED` | Client, réception ou encaissement suspect de doublon | Sur application | WARNING | Responsable concerné | Manuelle (fusion ou décision) |
 | `APPROVAL_PENDING_LONG` | Demande de validation en attente depuis plus de 24 h | Planifiée | WARNING | Approbateurs + niveau supérieur | Auto |
 | `TRANSFER_NOT_RECEIVED` | Transfert expédié non reçu depuis plus de 48 h | Planifiée | WARNING | Expéditeur, destinataire | Auto |
-| `TRANSFER_UNMATCHED` | BR-STK-024 | Planifiée | WARNING | Magasinier, responsable | Manuelle |
+| `TRANSFER_UNMATCHED` | BR-STK-024 | Planifiée (tâche `inventory.transfers.unmatched_sweep`, événement `StockTransferUnmatched`, P5-16 ; l'alerte elle-même : P9) | WARNING | Magasinier, responsable | Manuelle |
 | `LOT_EXPIRING` | Lot fournisseur périmant sous 15 jours | Planifiée | WARNING | Magasinier | Auto |
 | `ATTACHMENT_MISSING` | Pièce requise non reçue après 7 jours | Planifiée | WARNING | Auteur, responsable | Auto |
 | `KOMMO_SYNC_FAILED` | Message d'intégration en échec définitif | Sur échec | WARNING | ADMIN | Manuelle (rejeu) |

@@ -15,6 +15,11 @@ import {
 } from './sync/command-handler-registry.provider.js';
 import { JobsService } from './jobs/jobs.service.js';
 import { JobRunner } from './jobs/job-runner.js';
+import { JobScheduler } from './jobs/job-scheduler.js';
+import {
+  recurringJobRegistryProvider,
+  RECURRING_JOB_REGISTRY,
+} from './jobs/recurring-job-registry.provider.js';
 import {
   jobHandlerRegistryProvider,
   JOB_HANDLER_REGISTRY,
@@ -38,6 +43,8 @@ import { chunkStorageProvider, CHUNK_STORAGE } from './storage/chunk-storage.pro
     JobsService,
     JobRunner,
     jobHandlerRegistryProvider,
+    JobScheduler,
+    recurringJobRegistryProvider,
     EventConsumerRunner,
     eventConsumerRegistryProvider,
     DocumentSequenceService,
@@ -52,6 +59,8 @@ import { chunkStorageProvider, CHUNK_STORAGE } from './storage/chunk-storage.pro
     JobsService,
     JobRunner,
     JOB_HANDLER_REGISTRY,
+    JobScheduler,
+    RECURRING_JOB_REGISTRY,
     EventConsumerRunner,
     EVENT_CONSUMER_REGISTRY,
     DocumentSequenceService,

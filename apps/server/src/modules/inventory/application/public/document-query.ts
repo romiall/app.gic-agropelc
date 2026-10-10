@@ -62,6 +62,13 @@ export interface TransferSummary {
   readonly carrierName: string | null;
   readonly receivedBy: string | null;
   readonly receivedAt: Date | null;
+  /** Réception sans document rapprochée : le transfert expédié qu'elle a reçu (P5-16). */
+  readonly matchedTransferId: string | null;
+  readonly matchedAt: Date | null;
+  /** Retour à la source (P5-16, BR-STK-025). */
+  readonly returnedBy: string | null;
+  readonly returnedAt: Date | null;
+  readonly returnReason: string | null;
   readonly approvalRequestId: string | null;
   readonly notes: string | null;
   readonly occurredAt: Date;
@@ -103,6 +110,11 @@ function transferSummaryOf(row: Selectable<DB['inventory_stock_transfers']>): Tr
     carrierName: row.carrier_name,
     receivedBy: fromBinOrNull(row.received_by),
     receivedAt: row.received_at,
+    matchedTransferId: fromBinOrNull(row.matched_transfer_id),
+    matchedAt: row.matched_at,
+    returnedBy: fromBinOrNull(row.returned_by),
+    returnedAt: row.returned_at,
+    returnReason: row.return_reason,
     approvalRequestId: fromBinOrNull(row.approval_request_id),
     notes: row.notes,
     occurredAt: row.occurred_at,
