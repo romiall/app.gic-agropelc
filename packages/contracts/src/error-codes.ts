@@ -104,6 +104,18 @@ export const WARNING_CODES = [
   // enregistré sur la caisse (jamais validée d'office, conflit informatif pour la Finance).
   'CASH_SESSION_SITE_CLOSED',
   'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS',
+  // P5-15 (remises de fonds ; ADR-032 §8, BR-FIN-012, AV-158, AV-173) : envoi hors ligne qui rend
+  // négative une caisse physique (anomalie `CASH_NEGATIVE`, conflit pour la Finance) ; envoi hors
+  // ligne entre deux types de comptes non admis par `finance.cash_transfer_allowed_pairs` (fait
+  // appliqué, conflit) ; réception d'un montant différent de l'envoi (validation
+  // `CASH_TRANSFER_DISCREPANCY`) ; courses hors ligne conservées en observation, sans mouvement :
+  // réception après l'annulation, annulation après la réception, seconde réception.
+  'CASH_NEGATIVE',
+  'CASH_TRANSFER_PAIR_NOT_ALLOWED',
+  'CASH_TRANSFER_DISCREPANCY',
+  'CASH_TRANSFER_RECEIVED_AFTER_CANCEL',
+  'CASH_TRANSFER_CANCEL_AFTER_RECEIVE',
+  'CASH_TRANSFER_RECEIVED_TWICE',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

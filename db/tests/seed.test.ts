@@ -76,8 +76,16 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // (Resp. production, Resp. ferme : frais généraux, AV-103, P7-02) ; + 2 octrois
     // production.overhead.allocate (Resp. production, Finance : répartition, AV-106, P7-10) ;
     // + 2 octrois sales.payment.reallocate et .refund (Finance, P4-08) ;
-    // + 2 octrois inventory.allocation.release (Commercial terrain, Vendeur PDV : portée propre, AV-162, P5-06).
-    expect(ROLE_PERMISSIONS.length).toBe(499);
+    // + 2 octrois inventory.allocation.release (Commercial terrain, Vendeur PDV : portée propre, AV-162, P5-06) ;
+    // + 1 octroi finance.cash_transfer.record OWN (Resp. commercial : alignement sur la matrice §5.5, P5-15).
+    expect(ROLE_PERMISSIONS.length).toBe(500);
+    expect(
+      ROLE_PERMISSIONS.find(
+        (grant) =>
+          grant.roleCode === 'RESP_COMMERCIAL' &&
+          grant.permissionCode === 'finance.cash_transfer.record',
+      )?.maxScope,
+    ).toBe('OWN');
   });
 
   it('crée les 9 emplacements virtuels globaux (BR-ADM-010 ; « à livrer » est par site, ADR-028)', async () => {

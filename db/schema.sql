@@ -2326,8 +2326,9 @@ CREATE TABLE `finance_cash_transfers` (
   CONSTRAINT `ck_finance_cash_transfers_amounts` CHECK (((`amount_sent_xaf` > 0) and ((`amount_received_xaf` is null) or (`amount_received_xaf` >= 0)))),
   CONSTRAINT `ck_finance_cash_transfers_discrepancy` CHECK ((`discrepancy_xaf` <=> (`amount_received_xaf` - `amount_sent_xaf`))),
   CONSTRAINT `ck_finance_cash_transfers_imputation` CHECK (((`imputation` is null) or (`imputation` in (_utf8mb4'SENDER',_utf8mb4'CARRIER',_utf8mb4'RECEIVER',_utf8mb4'COMPANY')))),
+  CONSTRAINT `ck_finance_cash_transfers_in_movement` CHECK (((`in_movement_id` is null) or (`amount_received_xaf` > 0))),
   CONSTRAINT `ck_finance_cash_transfers_received_pair` CHECK ((((`received_at` is null) and (`amount_received_xaf` is null) and (`received_by` is null)) or ((`received_at` is not null) and (`amount_received_xaf` is not null) and (`received_by` is not null)))),
-  CONSTRAINT `ck_finance_cash_transfers_state` CHECK ((((`status` = _utf8mb4'SENT') and (`received_at` is null) and (`cancelled_at` is null) and (`closed_at` is null)) or ((`status` = _utf8mb4'RECEIVED') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` = 0)) or ((`status` = _utf8mb4'DISCREPANCY_PENDING') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` <> 0) and (`closed_at` is null)) or ((`status` = _utf8mb4'CLOSED') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` <> 0) and (`imputation` is not null) and (`closed_at` is not null) and (`closed_by` is not null)) or ((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_movement_id` is not null) and (`received_at` is null)))),
+  CONSTRAINT `ck_finance_cash_transfers_state` CHECK ((((`status` = _utf8mb4'SENT') and (`received_at` is null) and (`cancelled_at` is null) and (`closed_at` is null)) or ((`status` = _utf8mb4'RECEIVED') and (`received_at` is not null) and (`in_movement_id` is not null) and (`discrepancy_xaf` = 0)) or ((`status` = _utf8mb4'DISCREPANCY_PENDING') and (`received_at` is not null) and (`discrepancy_xaf` <> 0) and (`closed_at` is null) and (((`amount_received_xaf` > 0) and (`in_movement_id` is not null)) or ((`amount_received_xaf` = 0) and (`in_movement_id` is null)))) or ((`status` = _utf8mb4'CLOSED') and (`received_at` is not null) and (`discrepancy_xaf` <> 0) and (((`amount_received_xaf` > 0) and (`in_movement_id` is not null)) or ((`amount_received_xaf` = 0) and (`in_movement_id` is null))) and (`imputation` is not null) and (`closing_reason` is not null) and (`closed_at` is not null) and (`closed_by` is not null)) or ((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_movement_id` is not null) and (`received_at` is null) and (`in_movement_id` is null)))),
   CONSTRAINT `ck_finance_cash_transfers_status` CHECK ((`status` in (_utf8mb4'SENT',_utf8mb4'RECEIVED',_utf8mb4'DISCREPANCY_PENDING',_utf8mb4'CLOSED',_utf8mb4'CANCELLED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -8225,8 +8226,9 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261003090900'),
   ('20261003091000'),
   ('20261005090000'),
-  ('20261008090200');
-  ('20261008090100');
-  ('20261008090000');
-  ('20261007090000');
+  ('20261007090000'),
+  ('20261008090000'),
+  ('20261008090100'),
+  ('20261008090200'),
+  ('20261010092000');
 UNLOCK TABLES;

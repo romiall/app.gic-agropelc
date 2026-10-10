@@ -231,6 +231,7 @@ Remarques :
 - `DIRECTION` n'a pas, par défaut, les permissions d'**exécution** opérationnelle (vente, réception, saisie de production). Si un dirigeant vend, il reçoit en plus un rôle opérationnel (cumul).
 - `ADMIN` a `crm.customer.merge` pour le dédoublonnage technique, mais aucune permission `A·` (RC-03).
 - `FINANCE` a `sales.payment.record` `ALL` pour enregistrer les virements et encaissements reçus au siège.
+- `finance.cash_transfer.record` (P5-15) : la portée s'évalue sur le compte concerné (source pour l'envoi et l'annulation, destinataire pour la réception) ; le détenteur d'une caisse personnelle en est propriétaire (§3) quel que soit le périmètre de son affectation. Le seed est aligné sur cette matrice pour `RESP_COMMERCIAL` (`OWN`, omis jusqu'en P5-15) ; `finance.expense.record` `OWN` de `RESP_COMMERCIAL` reste à aligner en P8.
 
 ## 6. Vue condensée par domaine (lecture rapide)
 
@@ -244,7 +245,7 @@ Remarques :
 | Stock | RO·ALL + A | ouverture | RO + A PDV | OWN | RO·ALL | SITE | ALL + A | SITE + A | SITE + A écarts | RO·ALL | RO·ALL + A |
 | Production | RO·ALL + A | — | — | — | — | — | ALL + A | SITE | — | RO | RO·ALL |
 | Approvisionnement | RO·ALL + A | — | — | — | — | — | DA + réception | DA + réception | DA + réception | ALL + A | RO·ALL |
-| Finance | RO·ALL + A | — | RO·TEAM | OWN | OWN | SITE (caisse) | dépenses | OWN / SITE | — | RO dettes | ALL + A |
+| Finance | RO·ALL + A | — | RO·TEAM + remises OWN | OWN | OWN | SITE (caisse) | dépenses | OWN / SITE | — | RO dettes | ALL + A |
 | Analytics | ALL | — | TEAM | OWN | OWN | SITE | ALL | SITE | SITE | ALL | ALL |
 | Audit | RO·ALL | RO·ALL | — | — | — | — | — | — | — | — | RO·ALL |
 

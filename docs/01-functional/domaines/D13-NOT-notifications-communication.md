@@ -75,6 +75,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
 | `CASH_VARIANCE` | Écart de caisse ≠ 0 : événement `CashVarianceDetected` (P5-12 ; responsable imputé `imputed_user_id`, AV-155, AV-170) | Sur clôture ; aussi sur ouverture, phase `OPENING` (DÉDUIT d'AV-156 : l'écart d'ouverture, fonds initial compris, est validé par la Finance avec la session) | WARNING (CRITICAL si ≥ `finance.cash_variance_critical_xaf`, 10 000 XAF par défaut) | FINANCE | Manuelle (validation) ; consommateur en P9 |
 | `CASH_HOLDING_HIGH` | Caisse utilisateur > plafond ou aucune remise depuis plus de 3 jours | Planifiée | WARNING | FINANCE, responsable | Auto |
 | `CASH_SESSION_OPEN_LONG` | Session de caisse ouverte depuis plus de `finance.cash_session_force_close_hours` (24 h par défaut, réglable par site) : événement `CashSessionOpenLongDetected` de la tâche `finance.cash_sessions.open_long_check` (P5-12), un par session et par jour métier | Planifiée | WARNING | FINANCE, vendeur | Auto ; consommateur en P9 |
+| `CASH_TRANSFER_NOT_RECEIVED` | Remise de fonds envoyée et non reçue depuis plus de 48 h (`finance.cash_transfer_unreceived_hours`, AV-158) | Planifiée (événement `CashTransferUnreceived`, tâche `finance.cash_transfers.unreceived_check`, P5-15) | WARNING | FINANCE, expéditeur | Auto (remise reçue ou annulée) |
 | `SYNC_ERROR` | Commande `REJECTED` ou `CONFLICT` sur un appareil | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto (conflit résolu) |
 | `SYNC_STALE` | Appareil actif sans synchronisation depuis plus de 24 h | Planifiée (horaire) | WARNING | Responsable de l'utilisateur, ADMIN | Auto |
 | `DEVICE_SEQ_GAP` | Trou de séquence non comblé depuis plus de 24 h | Planifiée | CRITICAL | ADMIN, DIRECTION | Manuelle |
@@ -105,7 +106,7 @@ Consomme les événements de tous les modules ; utilise ADM (rôles, périmètre
 
 ## 11. Événements consommés
 
-Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `MortalityRecorded`, `CashVarianceDetected`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
+Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `MortalityRecorded`, `CashVarianceDetected`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
 
 ## 12. Fonctionnement hors ligne
 

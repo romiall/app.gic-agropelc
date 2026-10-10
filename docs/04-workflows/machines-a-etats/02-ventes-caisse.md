@@ -161,17 +161,23 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> SENT : finance.cash_transfer.send
   SENT --> RECEIVED : réception, montant égal
-  SENT --> DISCREPANCY_PENDING : réception, montant différent
-  DISCREPANCY_PENDING --> CLOSED : validation Finance
+  SENT --> DISCREPANCY_PENDING : réception, montant différent (0 compris)
+  DISCREPANCY_PENDING --> CLOSED : validation Finance (imputation, motif)
   SENT --> CANCELLED : annulation par l'expéditeur avant réception
+  CANCELLED --> CANCELLED : seconde annulation sans effet, réception hors ligne observée
+  RECEIVED --> RECEIVED : annulation ou seconde réception hors ligne observée
 ```
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `finance.cash_transfer.send` | Solde du compte source suffisant (en ligne) | `SENT` | `CashTransferSent` | — | `TRANSFER_OUT` sur le compte source | `finance.cash_transfer.record` |
-| `SENT` | `finance.cash_transfer.receive` | Montant reçu = envoyé | `RECEIVED` | `CashTransferReceived` | — | `TRANSFER_IN` sur le compte destination | `finance.cash_transfer.record` |
-| `SENT` | `finance.cash_transfer.receive` | Montant reçu ≠ envoyé (manque ou excédent) | `DISCREPANCY_PENDING` | `CashTransferDiscrepancyDetected` ; écart signé = reçu − envoyé ; validation | — | `TRANSFER_IN` du montant reçu | `finance.cash_transfer.record` |
-| `DISCREPANCY_PENDING` | `approvals.request.approve` (type `CASH_TRANSFER_DISCREPANCY`) | Motif ; imputation choisie : expéditeur, porteur, récepteur ou entreprise (AV-153) | `CLOSED` | Écart, imputation et motif enregistrés **sur la remise** | — | **Aucun second mouvement** : la différence est déjà sortie des livres (`TRANSFER_OUT` du montant envoyé, `TRANSFER_IN` du montant reçu ; ADR-032 §7) | `finance.cash_session.validate` |
-| `SENT` | `finance.cash_transfer.cancel` | Pas de réception | `CANCELLED` | Tracé | — | Mouvement inverse sur le compte source | `finance.cash_transfer.record` (expéditeur) |
+| `[*]` | `finance.cash_transfer.send` | Paire de comptes admise (`finance.cash_transfer_allowed_pairs`, AV-158 ; refus en ligne seulement) ; compte source dans la portée de l'auteur ; en ligne, solde suffisant d'une caisse physique et compte destinataire actif | `SENT` | `CashTransferSent` (= `finance.cash_transfer.send`) ; numéro `RMF` (AV-176) ; hors ligne : `CASH_NEGATIVE` ou `CASH_TRANSFER_PAIR_NOT_ALLOWED` avec conflit pour la Finance | — | `TRANSFER_OUT` du montant envoyé sur le compte source | `finance.cash_transfer.record` |
+| `SENT` | `finance.cash_transfer.receive` | Montant reçu = envoyé ; récepteur ≠ expéditeur (`CASH_TRANSFER_SELF_RECEIVE`, en ligne et hors ligne, AV-172) ; compte destinataire dans sa portée | `RECEIVED` | `CashTransferReceived` (= `finance.cash_transfer.receive`) | — | `TRANSFER_IN` sur le compte destination | `finance.cash_transfer.record` |
+| `SENT` | `finance.cash_transfer.receive` | Montant reçu ≠ envoyé (manque, excédent, ou 0 pour une remise perdue, AV-175) | `DISCREPANCY_PENDING` | `CashTransferDiscrepancyDetected` ; écart signé = reçu − envoyé ; demande `CASH_TRANSFER_DISCREPANCY` (montant = \|écart\|) | — | `TRANSFER_IN` du montant reçu ; **aucun** pour une réception de 0 | `finance.cash_transfer.record` |
+| `DISCREPANCY_PENDING` | `approvals.request.approve` (type `CASH_TRANSFER_DISCREPANCY`) | Imputation (`decisionOption`) : expéditeur, porteur (s'il est connu), récepteur ou entreprise (AV-153) ; motif (`decisionData.reason`) ; valideur ni expéditeur, ni récepteur, ni porteur (AV-174) | `CLOSED` | Écart, imputation, motif, valideur et date enregistrés **sur la remise** (`CashTransferDiscrepancyClosed` = `approvals.request.approve`) | — | **Aucun second mouvement** : la différence est déjà sortie des livres (`TRANSFER_OUT` du montant envoyé, `TRANSFER_IN` du montant reçu ; ADR-032 §7) | `finance.cash_session.validate` |
+| `DISCREPANCY_PENDING` | `approvals.request.reject`, `.withdraw` | — | Inchangé | Refusés (`CASH_TRANSFER_DISCREPANCY_NOT_REJECTABLE`, `_NOT_WITHDRAWABLE`) : l'écart se décide toujours (AV-174) | — | — | — |
+| `SENT` | `finance.cash_transfer.cancel` | Par l'expéditeur seul (`CASH_TRANSFER_NOT_SENDER`, en ligne et hors ligne) ; motif | `CANCELLED` | `CashTransferCancelled` (= `finance.cash_transfer.cancel`) ; motif, auteur, date | — | Mouvement inverse sur le compte source, **daté de l'annulation** (fait physique nouveau, ADR-032 §2, AV-157) | `finance.cash_transfer.record` (expéditeur) |
+| `CANCELLED` | `finance.cash_transfer.cancel` | — | `CANCELLED` | Sans effet (rejeu) | — | — | `finance.cash_transfer.record` |
+| `CANCELLED` | `finance.cash_transfer.receive` | En ligne : refus `CASH_TRANSFER_CANCELLED` ; hors ligne : course | Inchangé | Observation : conflit informatif `CASH_TRANSFER_RECEIVED_AFTER_CANCEL` (Finance), avertissement (AV-173) | — | Aucun | `finance.cash_transfer.record` |
+| `RECEIVED`, `DISCREPANCY_PENDING`, `CLOSED` | `finance.cash_transfer.receive`, `.cancel` | En ligne : refus `CASH_TRANSFER_ALREADY_RECEIVED` ; hors ligne : course | Inchangé | Observation : conflit informatif `CASH_TRANSFER_RECEIVED_TWICE` ou `CASH_TRANSFER_CANCEL_AFTER_RECEIVE` (Finance), avertissement (AV-173) | — | Aucun | `finance.cash_transfer.record` |
 
-**Hors ligne** : envoi et annulation sont possibles hors ligne ; la réception se fait en général en ligne (Finance), mais reste possible hors ligne.
+**Hors ligne** : envoi et annulation sont possibles hors ligne ; la réception se fait en général en ligne (Finance), mais reste possible hors ligne. Les courses entre appareils (réception après annulation, annulation après réception, double réception) ne sont jamais rejetées : le fait est conservé comme observation, sans mouvement, et la Finance régularise (AV-173). La table des transitions est la fonction de domaine `decideCashTransferAction` (P5-15), partagée par l'appareil et le serveur.

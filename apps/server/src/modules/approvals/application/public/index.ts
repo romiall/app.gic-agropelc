@@ -24,6 +24,8 @@ export type {
   ApprovalDecisionContext,
   ApprovalDecisionHandler,
   ApprovalDecisionType,
+  ApprovalWithdrawalContext,
+  ApprovalWithdrawalGuard,
 } from '../decision-handler-registry.js';
 
 export { OPERATION_TYPES } from '../commands/operation-types.js';

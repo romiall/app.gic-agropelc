@@ -6,8 +6,10 @@
  *   requis, une active par détenteur), `CAISSE_CENTRALE`, `MOBILE_MONEY`, `BANQUE`. Chaque compte
  *   a un responsable (utilisateur actif). Le solde part de 0 : il ne se saisit jamais, il vient
  *   des mouvements (INV-FIN-02) ; un solde d'ouverture est un mouvement `OPENING_BALANCE`.
- * - Désactivation (« DÉSACTIVATION, solde nul ») : refusée tant que le solde n'est pas nul, et
- *   tant qu'une session de caisse est ouverte sur le compte (P5-12, `CASH_ACCOUNT_HAS_OPEN_SESSION`).
+ * - Désactivation (« DÉSACTIVATION, solde nul ») : refusée tant que le solde n'est pas nul, tant
+ *   qu'une session de caisse est ouverte sur le compte (P5-12, `CASH_ACCOUNT_HAS_OPEN_SESSION`) et
+ *   tant qu'une remise de fonds envoyée part du compte ou y arrive (P5-15,
+ *   `CASH_ACCOUNT_TRANSFER_IN_TRANSIT` : elle ne pourrait plus être reçue en ligne).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -24,6 +26,7 @@ import {
 } from '../../../../platform/kysely/uuid-columns.js';
 import { CASH_ACCOUNT_TYPES } from '../public/cash-accounts.js';
 import { emitCashAccountChange } from '../sync-changes.js';
+import { hasCashTransferInTransit } from '../cash-transfer-support.js';
 
 const PERMISSION = 'finance.cash_account.manage';
 
@@ -215,6 +218,12 @@ const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) 
     return rejected(
       'CASH_ACCOUNT_NOT_EMPTY',
       'Le solde du compte doit être nul pour le désactiver : remettre les fonds avant.',
+    );
+  }
+  if (await hasCashTransferInTransit(uow, envelope.aggregate_id)) {
+    return rejected(
+      'CASH_ACCOUNT_TRANSFER_IN_TRANSIT',
+      'Une remise de fonds envoyée part de ce compte ou y arrive : la recevoir ou l’annuler avant.',
     );
   }
   await uow

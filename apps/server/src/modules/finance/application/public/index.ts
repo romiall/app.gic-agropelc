@@ -53,3 +53,16 @@ export type { CashMovementLine } from './cash-account-query.js';
 // P5-12 : sessions de caisse — session couvrant un instant (index `cash_session_id`, ADR-032 §2).
 export { findCashSessionCovering } from './cash-sessions.js';
 export type { CoveringCashSession } from './cash-sessions.js';
+// P5-15 : remises de fonds — résumé, indicateur « en transit », cohérence avec le registre.
+export {
+  cashTransfersInTransit,
+  findCashTransfer,
+  verifyCashTransfers,
+} from './cash-transfer-query.js';
+export type {
+  CashTransferAccountTotal,
+  CashTransferMismatch,
+  CashTransferSummary,
+  CashTransfersInTransit,
+  CashTransferVerification,
+} from './cash-transfer-query.js';

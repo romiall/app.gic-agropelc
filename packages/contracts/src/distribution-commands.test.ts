@@ -85,7 +85,18 @@ describe('remises de fonds', () => {
     );
   });
 
+  it('référence locale facultative, 20 caractères au plus (P5-15)', () => {
+    expect(
+      cashTransferSendPayloadSchema.safeParse({ ...valid, localRef: 'R'.repeat(20) }).success,
+    ).toBe(true);
+    expect(
+      cashTransferSendPayloadSchema.safeParse({ ...valid, localRef: 'R'.repeat(21) }).success,
+    ).toBe(false);
+    expect(cashTransferSendPayloadSchema.safeParse({ ...valid, localRef: '' }).success).toBe(false);
+  });
+
   it('réception : montant reçu entier ≥ 0 (un zéro est un constat, pas une erreur)', () => {
+    expect(cashTransferReceivePayloadSchema.safeParse({ receivedXaf: 1.5 }).success).toBe(false);
     expect(cashTransferReceivePayloadSchema.safeParse({ receivedXaf: 170_000 }).success).toBe(true);
     expect(cashTransferReceivePayloadSchema.safeParse({ receivedXaf: 0 }).success).toBe(true);
     expect(cashTransferReceivePayloadSchema.safeParse({ receivedXaf: -1 }).success).toBe(false);

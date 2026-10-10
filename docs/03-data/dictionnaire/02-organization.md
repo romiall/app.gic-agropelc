@@ -202,7 +202,9 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `finance.cash_session_force_close_hours` | 24 | D05 §14 : au-delà, session signalée et clôture d'office possible |
 | `finance.cash_variance_critical_xaf` | 10 000 | D13 : gravité critique de l'alerte d'écart de caisse |
 | `finance.cash_variance_tolerance_xaf` | 0 | AV-057 : tout écart est validé ; un écart dans la tolérance est validé d'office |
-| `finance.cash_transfer_unreceived_hours` | 48 | AV-158 : alerte sur une remise de fonds envoyée et jamais reçue |
+| `finance.cash_transfer_unreceived_hours` | 48 | AV-158 : alerte sur une remise de fonds envoyée et jamais reçue (tâche `finance.cash_transfers.unreceived_check`, P5-15 ; entier > 0, sinon 48) |
+| `finance.cash_transfer_allowed_pairs` | `{CAISSE_PDV: [CAISSE_CENTRALE, BANQUE], CAISSE_UTILISATEUR: [CAISSE_CENTRALE, BANQUE], CAISSE_CENTRALE: [CAISSE_PDV, BANQUE], BANQUE: [CAISSE_CENTRALE], MOBILE_MONEY: [CAISSE_CENTRALE, BANQUE]}` | AV-158 (P5-15) : paires de comptes admises pour une remise (type source → types destinataires) ; téléchargé sur l'appareil ; forme invalide → défaut du domaine |
+| `finance.cash_transfer_series_code` | `SIEGE` | AV-176 (P5-15) : code de la série globale `RMF-{CODE}-AAAA-nnnnnn` d'une remise entre comptes sans site (1 à 10 lettres majuscules ou chiffres) |
 | `finance.cash_holding_max_days` | 3 | D09 §14 : jours d'encaisse sans remise avant l'alerte `CASH_HOLDING_HIGH` |
 | `finance.supplier_payment_approval_xaf` | 500 000 | AV-055 |
 | `procurement.po_approval_threshold_xaf` | 500 000 | AV-051 |

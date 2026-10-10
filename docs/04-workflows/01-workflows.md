@@ -301,9 +301,11 @@ Toutes ces étapes fonctionnent hors ligne ; la conversion est déterminée par 
 2. **Journée** : ventes espèces 180 000 ; remboursement 4 500 ; petite dépense 2 000 (sacs plastiques).
 3. **Solde attendu** : 20 000 + 180 000 − 4 500 − 2 000 = 193 500. Compté : 193 000 → écart −500.
 4. Mouvement `SESSION_VARIANCE` −500 ; session `PENDING_VALIDATION` ; alerte `CASH_VARIANCE`.
-5. **Remise** : `CAISSE_PDV` → `CAISSE_CENTRALE`, 173 000 (fonds de 20 000 conservé) ; la Finance réceptionne 173 000 ; la session est validée avec motif.
+5. **Remise** : `CAISSE_PDV` → `CAISSE_CENTRALE`, 173 000 (fonds de 20 000 conservé) ; la Finance réceptionne 173 000 ; la session est validée avec motif. Effets Finance : `TRANSFER_OUT` de 173 000 sur la caisse du PDV, `TRANSFER_IN` de 173 000 sur la caisse centrale, **aucun second mouvement** (ADR-032 §7). Envoyée après la clôture, la remise est hors de la fenêtre de la session : l'attendu de la journée reste 193 500 (ADR-032 §2).
 6. **Audit** : chaque étape.
-7. **Sync** : ouverture, clôture et envoi possibles hors ligne ; validation en ligne.
+7. **Sync** : ouverture, clôture et envoi possibles hors ligne ; validation en ligne. La remise peut être envoyée hors ligne et reçue en ligne par la Finance.
+
+**Vecteur automatisé** (P5-15, `apps/server/test/finance-wf15-cash-day.test.ts`) pour le **volet remise** : fonds de 20 000 envoyé par une vraie remise de la caisse centrale et reçu avant l'ouverture (écart d'ouverture nul), ventes et remboursement par les vraies commandes de vente, remise de 173 000 envoyée hors ligne puis reçue en ligne ; sont **injectés** en attendant leur incrément : la dépense de 2 000 (P8), l'écart de clôture de −500 (`SESSION_VARIANCE`, à remplacer par `finance.cash_session.open` et `.close` à l'intégration de P5-12) ; l'alerte et la validation de la session relèvent de P5-13 et P9.
 
 ---
 

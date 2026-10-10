@@ -291,7 +291,7 @@ erDiagram
   cash_accounts ||--o{ cash_movements : "registre"
   cash_accounts ||--o{ cash_sessions : "sessions"
   cash_sessions |o--o{ cash_movements : "rattache"
-  cash_transfers ||--|{ cash_movements : "génère (OUT, IN)"
+  cash_transfers ||--|{ cash_movements : "OUT ; IN si reçu > 0 ; inverse si annulée"
   customer_payments ||--o| cash_movements : "génère"
   supplier_payments ||--o| cash_movements : "génère"
   expenses |o--o| cash_movements : "génère (payée)"

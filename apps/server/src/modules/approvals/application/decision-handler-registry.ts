@@ -54,8 +54,29 @@ export type ApprovalDecisionHandler = (
   ctx: ApprovalDecisionContext,
 ) => Promise<void>;
 
+/** Retrait d'une demande par son demandeur (`approvals.request.withdraw`). */
+export interface ApprovalWithdrawalContext {
+  readonly requestId: string;
+  readonly subjectType: string;
+  readonly subjectId: string;
+  readonly requestedBy: string;
+  readonly withdrawnAt: Date;
+}
+
+/**
+ * Garde facultative du module propriétaire sur le retrait d'une demande (P5-15) : elle lève
+ * {@link ApprovalDecisionRefused} quand le document ne peut pas rester sans décision (ex. écart d'une
+ * remise de fonds déjà dans les livres, `CASH_TRANSFER_DISCREPANCY`, AV-174). Sans garde enregistrée,
+ * le retrait reste libre, comme avant.
+ */
+export type ApprovalWithdrawalGuard = (
+  uow: UnitOfWork,
+  ctx: ApprovalWithdrawalContext,
+) => Promise<void>;
+
 export class ApprovalDecisionHandlerRegistry {
   private readonly handlers = new Map<string, ApprovalDecisionHandler>();
+  private readonly withdrawalGuards = new Map<string, ApprovalWithdrawalGuard>();
 
   register(operationType: string, handler: ApprovalDecisionHandler): void {
     if (this.handlers.has(operationType)) {
@@ -66,5 +87,16 @@ export class ApprovalDecisionHandlerRegistry {
 
   resolve(operationType: string): ApprovalDecisionHandler | undefined {
     return this.handlers.get(operationType);
+  }
+
+  registerWithdrawalGuard(operationType: string, guard: ApprovalWithdrawalGuard): void {
+    if (this.withdrawalGuards.has(operationType)) {
+      throw new Error(`Garde de retrait déjà enregistrée : ${operationType}.`);
+    }
+    this.withdrawalGuards.set(operationType, guard);
+  }
+
+  resolveWithdrawalGuard(operationType: string): ApprovalWithdrawalGuard | undefined {
+    return this.withdrawalGuards.get(operationType);
   }
 }

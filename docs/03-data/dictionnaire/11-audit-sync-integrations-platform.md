@@ -265,7 +265,7 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `doc_type` | code | Non | — | `VTE`, `CMD`, … |
-| `site_id` | uuid | Non | — | Réf. sans FK (le noyau `platform` ne dépend d'aucun module) |
+| `site_id` | uuid | Non | — | Réf. sans FK (le noyau `platform` ne dépend d'aucun module). Clé du compteur : identifiant du site, sauf pour `RMF` (remises de fonds, P5-15, AV-176), clé par un identifiant déterministe tiré du **code** de la série (`codeEntityId('DOCUMENT_SERIES', code)`, ADR-031) : le numéro `RMF-{CODE}-{AAAA}-{seq6}` ne dépend que du code et de l'année, le compteur aussi |
 | `year` | smallint | Non | — | |
 | `next_value` | int | Non | 1 | Incrément sous verrou de ligne (numérotation sans trou) |
 

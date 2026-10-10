@@ -169,6 +169,29 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   // Jours d'encaisse sans remise avant l'alerte CASH_HOLDING_HIGH (D09 §14).
   { key: 'finance.cash_holding_max_days', value: 3, isClientVisible: false, ref: 'D09 §14' },
+  // P5-15 (AV-158, À VALIDER) : paires de comptes admises pour une remise de fonds, type source →
+  // types destinataires ; lues par l'appareil (même fonction de domaine, `cashTransferPairsFrom`) ;
+  // une valeur mal formée revient au défaut du domaine (`DEFAULT_CASH_TRANSFER_PAIRS`).
+  {
+    key: 'finance.cash_transfer_allowed_pairs',
+    value: {
+      CAISSE_PDV: ['CAISSE_CENTRALE', 'BANQUE'],
+      CAISSE_UTILISATEUR: ['CAISSE_CENTRALE', 'BANQUE'],
+      CAISSE_CENTRALE: ['CAISSE_PDV', 'BANQUE'],
+      BANQUE: ['CAISSE_CENTRALE'],
+      MOBILE_MONEY: ['CAISSE_CENTRALE', 'BANQUE'],
+    },
+    isClientVisible: true,
+    ref: 'AV-158',
+  },
+  // P5-15 (AV-176) : code de la série globale `RMF-{CODE}-AAAA-nnnnnn` d'une remise entre deux
+  // comptes sans site (1 à 10 lettres majuscules ou chiffres, sinon `SIEGE`).
+  {
+    key: 'finance.cash_transfer_series_code',
+    value: 'SIEGE',
+    isClientVisible: false,
+    ref: 'AV-176',
+  },
   {
     key: 'finance.supplier_payment_approval_xaf',
     value: 500_000,
