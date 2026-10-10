@@ -41,7 +41,7 @@ Sources : CM §12, §22, §23, §39, §54 ; PM §14.
 | UC-DIS-02 | OUVRIR LA CAISSE (fonds compté) | `finance.cash_session.open` | VENDEUR_PDV | **Oui** |
 | UC-DIS-03 | CLÔTURER LA CAISSE (comptage) | `finance.cash_session.close` | VENDEUR_PDV | **Oui** |
 | UC-DIS-04 | Valider une session de caisse et son écart | `finance.cash_session.validate` | FINANCE | Non |
-| UC-DIS-05 | Remettre les fonds (envoi) ; confirmer la réception des fonds | `finance.cash_transfer.send`, `finance.cash_transfer.receive` | VENDEUR_PDV ; FINANCE | **Oui** (envoi) |
+| UC-DIS-05 | Remettre les fonds (envoi) ; confirmer la réception des fonds ; annuler une remise non reçue | `finance.cash_transfer.send`, `finance.cash_transfer.receive`, `finance.cash_transfer.cancel` | VENDEUR_PDV ; FINANCE | **Oui** (envoi, annulation ; réception possible) |
 | UC-DIS-06 | Demander un réapprovisionnement (avec suggestion) | `inventory.transfer.request` | VENDEUR_PDV | **Oui** |
 | UC-DIS-07 | Approvisionner un PDV (expédition) | `inventory.transfer.dispatch` | MAGASINIER | **Oui** |
 | UC-DIS-08 | Recevoir un approvisionnement au PDV | `inventory.transfer.receive` | VENDEUR_PDV | **Oui** |
@@ -71,7 +71,7 @@ Tableau de distribution par PDV et période, suggestions de réapprovisionnement
 | BR-DIS-006 | Au plus une session ouverte par compte de caisse. Une session ouverte depuis plus de 24 h déclenche une alerte. | D |
 | BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds d'ouverture + encaissements espèces + autres entrées − remboursements − dépenses payées par la caisse − remises de fonds envoyées. Écart = compté − attendu. Si l'écart est non nul, il est enregistré en mouvement de caisse `SESSION_VARIANCE` et la validation Finance est requise. | C (CM §54 « anomalie de caisse ») / AV-057 |
 | BR-DIS-008 | Une session validée est **immuable**. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à valider (D04 §14). | D |
-| BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie de la caisse PDV) puis réception (entrée dans la caisse centrale ou en banque). Un écart entre les deux ouvre `CASH_TRANSFER_DISCREPANCY`. | D |
+| BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie `TRANSFER_OUT` du montant envoyé de la caisse du PDV) puis réception (entrée `TRANSFER_IN` du montant **reçu** dans la caisse centrale ou en banque ; aucune entrée pour une remise perdue, reçue à 0). Écart = reçu − envoyé ; un écart ouvre la validation `CASH_TRANSFER_DISCREPANCY`, close par la Finance avec imputation et motif **sans second mouvement** (la différence est déjà dans les livres). Le récepteur n'est pas l'expéditeur ; l'expéditeur seul annule une remise non reçue. Une remise envoyée après la clôture de la caisse tombe hors de la fenêtre de la session (ADR-032 §2). Détail : D09 §16. | D (ADR-032 §7) / AV-153, AV-175, AV-178 |
 | BR-DIS-010 | Indicateurs de distribution par PDV × produit × période (sur `occurred_at`) : **envoyé** = Σ quantités expédiées vers le PDV ; **reçu** = Σ quantités reçues ; **vendu** = Σ ventes depuis le PDV (net des annulations) ; **perdu** = Σ pertes reconnues au PDV + écarts d'inventaire négatifs ; **restant** = solde courant ; **encaissé** = Σ encaissements enregistrés au PDV ; **à réapprovisionner** = suggestion BR-STK-051. | C (CM §12, §2/Distribution) / D (formules) |
 | BR-DIS-011 | La suggestion de réapprovisionnement ne crée jamais de transfert automatiquement : un humain crée la demande ou l'expédition. | D (CM §54 « provoquer une action ») |
 | BR-DIS-012 | Les retours vers le magasin et les transferts entre PDV sont des transferts ordinaires (BR-STK-020). | C (CM §22) |
@@ -86,6 +86,7 @@ Tableau de distribution par PDV et période, suggestions de réapprovisionnement
 | Clôture : session ouverte ; comptage ≥ 0 | `CASH_SESSION_NOT_OPEN` |
 | Vente en espèces sans session ouverte | `CASH_SESSION_REQUIRED` |
 | Configuration : emplacement de vente appartenant au PDV ; caisse de type `CAISSE_PDV` rattachée au PDV | `POS_CONFIG_INVALID` |
+| Remise de fonds : paire de comptes admise (en ligne), compte dans la portée, solde suffisant (en ligne), récepteur ≠ expéditeur, annulation par l'expéditeur avant réception | `CASH_TRANSFER_PAIR_NOT_ALLOWED`, `CASH_ACCOUNT_FORBIDDEN`, `CASH_INSUFFICIENT`, `CASH_TRANSFER_SELF_RECEIVE`, `CASH_TRANSFER_NOT_SENDER`, `CASH_TRANSFER_ALREADY_RECEIVED` (liste complète : D09 §8) |
 
 ## 9. Dépendances
 
@@ -93,16 +94,17 @@ ADM (sites, emplacements, appareils), STK (transferts, allocations, seuils, inve
 
 ## 10. Événements produits
 
-`CashSessionOpened`, `CashSessionClosed`, `CashVarianceDetected`, `CashSessionValidated`, `CashTransferSent`, `CashTransferReceived`, `CashTransferDiscrepancyDetected`, `ReplenishmentSuggested` (interne, source d'alerte). Les événements de stock et de vente sont ceux de D04 et D06.
+`CashSessionOpened`, `CashSessionClosed`, `CashVarianceDetected`, `CashSessionValidated`, `CashTransferSent`, `CashTransferReceived`, `CashTransferCancelled`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived` (remise non reçue au-delà du délai, tâche planifiée), `ReplenishmentSuggested` (interne, source d'alerte). Les événements de stock et de vente sont ceux de D04 et D06.
 
 ## 11. Événements consommés
 
-`SaleConfirmed` et `SaleCancelled` (calcul du solde attendu de caisse), `StockThresholdBreached` (alerte de réapprovisionnement), `StockTransferDispatched` (notification au PDV destinataire), `PaymentReceived` (solde attendu).
+`StockThresholdBreached` (alerte de réapprovisionnement) et `StockTransferDispatched` (notification au PDV destinataire), consommés par NOT. **Aucun événement de vente ni d'encaissement** (`SaleConfirmed`, `SaleCancelled`, `PaymentReceived`) ne sert à calculer une caisse ou une remise : l'attendu et les remises se lisent sur le registre de trésorerie, écrit dans la transaction de chaque document (ADR-032 §1 ; corrigé en P5-15). Les décisions `CASH_VARIANCE` et `CASH_TRANSFER_DISCREPANCY` arrivent par le registre des gestionnaires de décision d'`approvals` (ADR-018), non par un événement.
 
 ## 12. Fonctionnement hors ligne
 
 - Le PDV doit pouvoir **vendre toute la journée sans réseau** (CM §37).
 - La session de caisse s'ouvre et se clôture localement. Le solde attendu est calculé localement à partir des opérations de l'appareil. La validation a lieu en ligne.
+- La remise de fonds s'envoie et s'annule hors ligne ; un envoi qui rend la caisse négative ou vise un compte non admis est appliqué avec conflit pour la Finance ; une réception arrivée après l'annulation (ou une annulation après la réception) est conservée comme observation, sans mouvement (AV-176).
 - En mode `EXCLUSIVE_DEVICE`, tout le stock du PDV est utilisable hors ligne par l'appareil désigné.
 - En mode `SHARED`, chaque appareil n'utilise que son allocation.
 - La réception d'un approvisionnement est possible sans le document (BR-STK-024) en mode exclusif.
@@ -120,3 +122,5 @@ ADM (sites, emplacements, appareils), STK (transferts, allocations, seuils, inve
 | Tablette du PDV en panne | Changement d'appareil désigné (BR-DIS-014). Si l'ancien appareil est irrécupérable, il est révoqué et un inventaire + comptage de caisse sont exigés. |
 | PDV hors ligne plusieurs jours | Ventes limitées au stock détenu ; réception sans document possible ; à la reconnexion, rapprochement complet. Au-delà de l'autonomie maximale (AV-009), passage en lecture seule. |
 | Écart de caisse récurrent | Alerte `CASH_VARIANCE` avec historique par vendeur ; décision humaine. |
+| Remise envoyée et non reçue | Signalée au-delà de 48 h (`finance.cash_transfer_unreceived_hours`, AV-158 ; événement `CashTransferUnreceived`, alerte en P9) ; l'expéditeur l'annule si l'argent n'est pas parti, la Finance la reçoit sinon. |
+| Remise perdue en route | La Finance la reçoit à 0 XAF : écart = − envoyé, clôture avec imputation (porteur, expéditeur…) et motif (AV-178). |

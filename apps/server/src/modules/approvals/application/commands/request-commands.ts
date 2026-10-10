@@ -19,6 +19,11 @@
  * réelle de la permission d'approbation à la bonne portée (déjà vérifiée juste avant), la
  * décision reste tracée et rejouable — DÉDUIT, paramétrable si une vérification de rôle plus
  * stricte s'avère nécessaire plus tard.
+ *
+ * Retrait (P5-15) : le module propriétaire d'un type peut enregistrer une **garde de retrait**
+ * (`registerWithdrawalGuard`) qui refuse le retrait quand le document ne peut pas rester sans
+ * décision — écart d'une remise de fonds, déjà dans les livres (AV-177). Sans garde, le retrait
+ * reste libre.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -211,38 +216,65 @@ function buildDecisionCommandHandler(
   };
 }
 
-const withdraw: CommandHandler<WithdrawPayload> = async (uow, envelope) => {
-  const requestId = toBin(envelope.payload.requestId);
-  const row = await uow
-    .selectFrom('approvals_approval_requests')
-    .select(['id', 'status', 'requested_by'])
-    .where('id', '=', requestId)
-    .executeTakeFirst();
-  if (!row) return notFound();
-  if (row.status !== 'PENDING') return notPending();
-  if (fromBin(row.requested_by) !== envelope.author_user_id) {
-    return {
-      status: 'REJECTED',
-      errorCode: 'FORBIDDEN',
-      messageFr: 'Seul le demandeur peut retirer sa demande.',
-    };
-  }
+const buildWithdrawHandler =
+  (decisionRegistry: ApprovalDecisionHandlerRegistry): CommandHandler<WithdrawPayload> =>
+  async (uow, envelope) => {
+    const requestId = toBin(envelope.payload.requestId);
+    const row = await uow
+      .selectFrom('approvals_approval_requests')
+      .select(['id', 'status', 'requested_by', 'operation_type', 'subject_type', 'subject_id'])
+      .where('id', '=', requestId)
+      .executeTakeFirst();
+    if (!row) return notFound();
+    if (row.status !== 'PENDING') return notPending();
+    if (fromBin(row.requested_by) !== envelope.author_user_id) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'FORBIDDEN',
+        messageFr: 'Seul le demandeur peut retirer sa demande.',
+      };
+    }
+    // P5-15 : le module propriétaire peut refuser le retrait (garde facultative, ADR-018).
+    const guard = decisionRegistry.resolveWithdrawalGuard(row.operation_type);
+    if (guard) {
+      try {
+        await guard(uow, {
+          requestId: fromBin(row.id),
+          subjectType: row.subject_type,
+          subjectId: fromBin(row.subject_id),
+          requestedBy: fromBin(row.requested_by),
+          withdrawnAt: new Date(envelope.occurred_at),
+        });
+      } catch (error) {
+        if (error instanceof ApprovalDecisionRefused) {
+          return { status: 'REJECTED', errorCode: error.code, messageFr: error.messageFr };
+        }
+        throw error;
+      }
+    }
+    return withdrawRequest(uow, envelope.author_user_id, row);
+  };
 
+async function withdrawRequest(
+  uow: Parameters<CommandHandler<WithdrawPayload>>[0],
+  authorUserId: string,
+  row: { readonly id: Buffer; readonly requested_by: Buffer },
+): Promise<CommandHandlerOutcome> {
   // ck_approvals_approval_requests_decision : CANCELLED exige decided_by/decided_at NULS
   // (réservés à APPROVED/REJECTED) — seuls updated_by/version tracent ce retrait ([STD-AUDIT]).
   await uow
     .updateTable('approvals_approval_requests')
     .set({
       status: 'CANCELLED',
-      updated_by: toBin(envelope.author_user_id),
+      updated_by: toBin(authorUserId),
       version: sql`version + 1`,
     })
-    .where('id', '=', requestId)
+    .where('id', '=', row.id)
     .execute();
   await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
 
   return { status: 'APPLIED' };
-};
+}
 
 export function registerRequestCommands(
   registry: CommandHandlerRegistry,
@@ -267,6 +299,6 @@ export function registerRequestCommands(
     version: 1,
     payloadSchema: withdrawPayloadSchema,
     permissionCode: 'approvals.request.read',
-    handler: withdraw,
+    handler: buildWithdrawHandler(decisionRegistry),
   });
 }

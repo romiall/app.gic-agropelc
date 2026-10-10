@@ -88,7 +88,7 @@ stateDiagram-v2
 | `[*]` | API interne `approvals.requestApproval` (dans la transaction du document) | Politique applicable | `PENDING` | Version de politique figée ; routage vers les approbateurs du périmètre ; `ApprovalRequested` | — | — | `system` |
 | `PENDING` | `approvals.request.approve` | Approbateur autorisé ; ≠ demandeur (sauf `SELF_APPROVED` Direction) ; pièces requises reçues | `APPROVED` | `ApprovalGranted` ; le gestionnaire enregistré par le module propriétaire exécute la transition de son document dans la même transaction (ADR-018) | Selon le document | Selon le document | Permission `*.approve` du type |
 | `PENDING` | `approvals.request.reject` | Motif obligatoire ; décision choisie parmi les issues du type (ex. AV-038) | `REJECTED` | `ApprovalRejected` → transition du document | Selon le document | Selon le document | idem |
-| `PENDING` | Retrait du demandeur, ou annulation du document | — | `CANCELLED` | `ApprovalCancelled` | — | — | Demandeur / `system` |
+| `PENDING` | Retrait du demandeur, ou annulation du document | Le module propriétaire peut refuser le retrait par une garde enregistrée auprès d'`approvals` (P5-15 : écart d'une remise de fonds, `CASH_TRANSFER_DISCREPANCY_NOT_WITHDRAWABLE`, AV-177) | `CANCELLED` | `ApprovalCancelled` | — | — | Demandeur / `system` |
 | `PENDING` | Délai de 24 h dépassé | — | `PENDING` (escaladée) | `AlertEscalated` vers le niveau supérieur | — | — | `system` |
 
 **Hors ligne** : aucune décision hors ligne (l'approbateur doit voir l'état à jour).

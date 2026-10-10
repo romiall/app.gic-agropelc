@@ -140,7 +140,7 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 | BR-DIS-006 | Au plus une session ouverte par compte de caisse. Une session ouverte depuis plus de 24 h déclenche une alerte. | D |
 | BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds d'ouverture + encaissements espèces + autres entrées − remboursements −… | C (CM §54 « anomalie de caisse ») / AV-057 |
 | BR-DIS-008 | Une session validée est immuable. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à v… | D |
-| BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie de la caisse PDV) puis réception (entrée dans la caisse centrale ou en banque). Un… | D |
+| BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie `TRANSFER_OUT` du montant envoyé de la caisse du PDV) puis réception (entrée `TRAN… | D (ADR-032 §7) / AV-153, AV-175, AV-178 |
 | BR-DIS-010 | Indicateurs de distribution par PDV × produit × période (sur `occurred_at`) : envoyé = Σ quantités expédiées vers le PDV ; reçu = Σ quantit… | C (CM §12, §2/Distribution) / D (formules) |
 | BR-DIS-011 | La suggestion de réapprovisionnement ne crée jamais de transfert automatiquement : un humain crée la demande ou l'expédition. | D (CM §54 « provoquer une action ») |
 | BR-DIS-012 | Les retours vers le magasin et les transferts entre PDV sont des transferts ordinaires (BR-STK-020). | C (CM §22) |
@@ -286,7 +286,7 @@ Fichier : [`domaines/D09-FIN-finance.md`](domaines/D09-FIN-finance.md)
 | BR-FIN-010 | Types de compte de trésorerie : `CAISSE_PDV`, `CAISSE_UTILISATEUR`, `CAISSE_CENTRALE`, `MOBILE_MONEY`, `BANQUE`. Chaque compte a un respons… | C (CM §12, §31) / D |
 | BR-FIN-011 | Tout flux d'argent est un mouvement de trésorerie en ajout seul : compte, sens (`IN` / `OUT`), montant > 0, type (`CUSTOMER_PAYMENT`, `REFU… | D (CM §31, §41) |
 | BR-FIN-012 | En ligne, une sortie ne peut rendre négatif le solde d'une caisse physique (`CAISSE_*`). Hors ligne, elle est appliquée et produit l'anomal… | D |
-| BR-FIN-013 | Une remise de fonds se fait en deux temps : `TRANSFER_OUT` à l'envoi, `TRANSFER_IN` à la réception. Un écart ouvre `CASH_TRANSFER_DISCREPAN… | D |
+| BR-FIN-013 | Une remise de fonds se fait en deux temps : `TRANSFER_OUT` du montant envoyé sur le compte source à l'envoi, `TRANSFER_IN` du montant reçu… | D (ADR-032 §7) / AV-153, AV-175, AV-178 |
 | BR-FIN-014 | Session de caisse : voir D05 (BR-DIS-005 à BR-DIS-008). À l'ouverture, un fonds compté différent du solde du compte produit un mouvement `S… | AV-057 |
 | BR-FIN-020 | Une dépense porte : catégorie, montant, `occurred_at` (date de la charge), bénéficiaire, description, objet de coût optionnel (lot de produ… | C (CM §31, §42) / AV-058 |
 | BR-FIN-021 | Payée immédiatement : le mouvement de trésorerie `EXPENSE` est enregistré tout de suite (fait accompli) ; la validation, si requise, est a… | D |

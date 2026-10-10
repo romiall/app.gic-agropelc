@@ -1193,7 +1193,9 @@ function grants(
 
 // ---------------------------------------------------------------------------------------
 // Matrice d'octroi (491 lignes : les 472 de docs/07-security-rbac/01-rbac.md §5, transposées par
-// rôle, plus 11 pour AV-093 et 8 pour AV-094).
+// rôle, plus 11 pour AV-093 et 8 pour AV-094 ; puis les ajouts commentés dans db/tests/seed.test.ts,
+// dont, en P5-15, `finance.cash_transfer.record` OWN de RESP_COMMERCIAL, présent dans la matrice §5.5
+// mais omis jusque-là).
 // `sales.price.override` porte le seul `limits` chiffré par la matrice (RC-06, AV-026) ;
 // VENDEUR_PDV n'a volontairement aucune ligne pour cette permission (annotée « 0 % » dans
 // la matrice source plutôt que silencieusement omise).
@@ -1313,7 +1315,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.opening.post', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 59
+  // RESP_COMMERCIAL — 60 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15)
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],
     ['identity.device.read', 'TEAM'],
@@ -1369,6 +1371,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.count.approve', 'ZONE'],
     ['inventory.threshold.manage', 'ZONE'],
     ['finance.expense.read', 'TEAM'],
+    // Remise de ses propres espèces (caisse personnelle) : la matrice §5.5 donne OWN (P5-15).
+    ['finance.cash_transfer.record', 'OWN'],
     ['analytics.dashboard.commercial', 'TEAM'],
     ['analytics.dashboard.distribution', 'ZONE'],
     ['analytics.explore', 'TEAM'],

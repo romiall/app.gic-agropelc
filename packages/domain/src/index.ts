@@ -266,5 +266,31 @@ export type {
   CashSessionWindow,
   CashTransferImputation,
 } from './cash-session.js';
+// P5-15 : remises de fonds (paires, séparation des tâches, transitions et courses hors ligne).
+export {
+  CASH_TRANSFER_STATUSES,
+  CASH_TRANSFER_ACCOUNT_TYPES,
+  CASH_TRANSFER_RACE_CODES,
+  CASH_TRANSFER_DEFAULT_SERIES_CODE,
+  DEFAULT_CASH_TRANSFER_PAIRS,
+  DEFAULT_CASH_TRANSFER_UNRECEIVED_HOURS,
+  cashTransferPairsFrom,
+  isCashTransferPairAllowed,
+  isAllowedTransferReceiver,
+  isAllowedTransferValidator,
+  checkTransferImputation,
+  cashTransferUnreceivedHoursFrom,
+  isTransferUnreceived,
+  cashTransferSeriesCodeFrom,
+  decideCashTransferAction,
+} from './cash-transfer.js';
+export type {
+  CashTransferAccountType,
+  CashTransferAction,
+  CashTransferDecision,
+  CashTransferPairs,
+  CashTransferRaceCode,
+  CashTransferStatus,
+} from './cash-transfer.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';

@@ -140,9 +140,9 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 
 | Élément | Contenu |
 |---|---|
-| Commandes | `finance.cash_session.open` (F), `.close` (F), `.force_close`, `.validate` ; `finance.cash_transfer.send` (F), `.receive` (F), `.cancel` ; `finance.expense.record` (F), `.pay`, `.cancel` ; `finance.supplier_invoice.record`, `.dispute`, `.approve`, `.cancel` ; `finance.supplier_payment.record`, `.cancel` ; `finance.cash_account.create`, `.update`, `.deactivate` |
+| Commandes | `finance.cash_session.open` (F), `.close` (F), `.force_close`, `.validate` ; `finance.cash_transfer.send` (F), `.receive` (F), `.cancel` (F ; SM-CASH-TRANSFER, P5-15) ; `finance.expense.record` (F), `.pay`, `.cancel` ; `finance.supplier_invoice.record`, `.dispute`, `.approve`, `.cancel` ; `finance.supplier_payment.record`, `.cancel` ; `finance.cash_account.create`, `.update`, `.deactivate` |
 | Requêtes | `GET /cash-accounts` (soldes), `/cash-accounts/{id}/movements`, `/cash-sessions?status=`, `/expenses?from=&to=`, `/payables?supplier_id=`, `/margins?group_by=` (délégué à analytics). `/cash-accounts` (filtres `site_id`, `account_type`, `status`) et `/cash-accounts/{id}/movements` (`from`/`to` en jours métier, `cursor`, `limit`) construites en P4-10 (`apps/server/src/finance-api/`) : droit `finance.cash.read` ; portée du compte (détenteur d'une caisse personnelle, à défaut responsable ; site du compte) ; compte hors portée : absent de la liste, 404 audité pour ses mouvements |
-| Événements | `CashSessionClosed`, `CashVarianceDetected`, `ExpenseRecorded`, `SupplierInvoiceMismatchDetected`, `SupplierPaymentRecorded` |
+| Événements | `CashSessionClosed`, `CashVarianceDetected`, `CashTransferSent`, `CashTransferReceived`, `CashTransferCancelled`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `ExpenseRecorded`, `SupplierInvoiceMismatchDetected`, `SupplierPaymentRecorded`. Lecture `GET /cash-transfers(/{id})` : P5-17 (les fonctions publiques `findCashTransfer` et `cashTransfersInTransit` sont livrées en P5-15) |
 | Permissions | `finance.*` |
 
 ### 4.10 `/approvals`, `/attachments`, `/alerts`, `/notifications`, `/notes` — modules `approvals`, `attachments`, `communication`

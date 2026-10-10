@@ -49,3 +49,17 @@ export {
   listCashMovements,
 } from './cash-account-query.js';
 export type { CashMovementLine } from './cash-account-query.js';
+
+// P5-15 : remises de fonds — résumé, indicateur « en transit », cohérence avec le registre.
+export {
+  cashTransfersInTransit,
+  findCashTransfer,
+  verifyCashTransfers,
+} from './cash-transfer-query.js';
+export type {
+  CashTransferAccountTotal,
+  CashTransferMismatch,
+  CashTransferSummary,
+  CashTransfersInTransit,
+  CashTransferVerification,
+} from './cash-transfer-query.js';

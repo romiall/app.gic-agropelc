@@ -69,7 +69,11 @@ export type CashSessionValidatePayload = z.infer<typeof cashSessionValidatePaylo
 
 // --- Remises de fonds (finance.cash_transfer.*) -----------------------------------------------------------------
 
-/** `finance.cash_transfer.send` — hors ligne possible ; sortie du compte source (`TRANSFER_OUT`). */
+/**
+ * `finance.cash_transfer.send` — hors ligne possible ; sortie du compte source (`TRANSFER_OUT`).
+ * `localRef` (P5-15) : référence locale de l'appareil, unique par appareil ; déjà prise hors ligne,
+ * la remise est appliquée sans elle (`LOCAL_REF_DUPLICATE`, comme une vente).
+ */
 export const cashTransferSendPayloadSchema = z
   .object({
     fromAccountId: uuid,
@@ -79,6 +83,7 @@ export const cashTransferSendPayloadSchema = z
     carrierUserId: uuid.optional(),
     carrierName: text(120).optional(),
     comment: text(500).optional(),
+    localRef: text(20).optional(),
   })
   .refine((payload) => payload.fromAccountId !== payload.toAccountId, {
     message: 'La remise doit viser un autre compte que la source.',
@@ -86,14 +91,20 @@ export const cashTransferSendPayloadSchema = z
   });
 export type CashTransferSendPayload = z.infer<typeof cashTransferSendPayloadSchema>;
 
-/** `finance.cash_transfer.receive` — le montant réellement reçu ; l'écart est calculé par le serveur. */
+/**
+ * `finance.cash_transfer.receive` — le montant réellement reçu ; l'écart est calculé par le serveur.
+ * Zéro est un constat (remise perdue en route, AV-178) : écart = − envoyé, sans entrée de trésorerie.
+ */
 export const cashTransferReceivePayloadSchema = z.object({
   receivedXaf: xafInt,
   comment: text(500).optional(),
 });
 export type CashTransferReceivePayload = z.infer<typeof cashTransferReceivePayloadSchema>;
 
-/** `finance.cash_transfer.cancel` — depuis `SENT` seulement, par l'expéditeur. */
+/**
+ * `finance.cash_transfer.cancel` — depuis `SENT` seulement, par l'expéditeur, hors ligne possible ;
+ * l'argent revient au compte source (inverse daté de l'annulation, ADR-032 §2).
+ */
 export const cashTransferCancelPayloadSchema = z.object({
   reason: text(500),
 });

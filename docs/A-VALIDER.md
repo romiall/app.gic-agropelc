@@ -180,6 +180,11 @@ Classification (PM §45) :
 | AV-163 | Garde d'appareil : mode par défaut des emplacements et appareil non désigné | IMPORTANTE | P5 | Mode obligatoire avec défaut par type ; appareil non désigné : fait appliqué et conflit | OUVERT |
 | AV-164 | Tableau de distribution : définitions de « vendu » et « perdu », périmètre, route | SECONDAIRE | P5 | Vendu net des contre-écritures (à livrer à part) ; perdu = pertes reconnues + écarts ; route d'analytique livrée en P5 | OUVERT |
 | AV-165 | Sessions de caisse hors PDV et PDV à plusieurs appareils | SECONDAIRE | P5 | Pas de session pour une caisse utilisateur ; validation sans attendre toutes les synchronisations | OUVERT |
+| AV-175 | Remises de fonds : qui réceptionne et qui annule | SECONDAIRE | P5 | Tout titulaire de la portée du compte destinataire, sauf l'expéditeur ; porteur admis ; annulation par l'expéditeur seul | OUVERT |
+| AV-176 | Courses hors ligne d'une remise (réception après annulation, annulation après réception, double réception) | IMPORTANTE | P5 | Fait conservé en observation dans un conflit pour la Finance, aucun mouvement ; refus en ligne ; régularisation humaine | OUVERT |
+| AV-177 | Décision sur l'écart d'une remise : rejet, retrait, correction, valideur | SECONDAIRE | P5 | Acceptation seule (rejet et retrait refusés) ; imputation et motif obligatoires ; valideur ni expéditeur, ni récepteur, ni porteur | OUVERT |
+| AV-178 | Remise perdue en route | IMPORTANTE | P5 | Réception de 0 XAF : écart = − envoyé, sans entrée de trésorerie, décision ordinaire | OUVERT |
+| AV-179 | Site de numérotation d'une remise entre comptes sans site | SECONDAIRE | P5 | Site du compte source, sinon du destinataire, sinon série globale `SIEGE` paramétrable | OUVERT |
 
 ---
 
@@ -1064,7 +1069,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : les sources ne fixent ni les paires de comptes, ni la séparation des tâches entre expéditeur et récepteur, ni de délai d'alerte pour l'argent (48 h existent pour les transferts de stock).
 - **Choix** : (a) toute caisse de PDV ou d'utilisateur vers la caisse centrale ou la banque (et la caisse centrale vers un PDV pour son fonds) ; récepteur = responsable du compte destinataire, différent de l'expéditeur ; alerte à 48 h (`finance.cash_transfer_unreceived_hours`) ; porteur = utilisateur ou nom libre ; une seule permission `finance.cash_transfer.record` contrôlée par la portée du compte concerné ; (b) permission de réception distincte ; (c) paires libres.
 - **Recommandation** : (a).
-- **Impact** : `finance.cash_transfer.*` ; RBAC. Défaut implémenté : (a).
+- **Impact** : `finance.cash_transfer.*` ; RBAC. Défaut implémenté : (a). **Précisions de P5-15** (À VALIDER) : les paires sont paramétrables (`finance.cash_transfer_allowed_pairs`, défaut du domaine `DEFAULT_CASH_TRANSFER_PAIRS`) et le défaut complète le (a) d'après le glossaire (« PDV → caisse centrale → banque ») et les flux de retrait — `CAISSE_PDV` et `CAISSE_UTILISATEUR` → `CAISSE_CENTRALE` ou `BANQUE` ; `CAISSE_CENTRALE` → `CAISSE_PDV` (fonds) ou `BANQUE` ; `BANQUE` → `CAISSE_CENTRALE` (retrait) ; `MOBILE_MONEY` → `CAISSE_CENTRALE` ou `BANQUE` ; aucune remise vers une caisse d'utilisateur ni vers le mobile money. Une paire refusée est rejetée en ligne (`CASH_TRANSFER_PAIR_NOT_ALLOWED`) et appliquée avec avertissement et conflit hors ligne (l'argent a déjà quitté la caisse, BR-SYN-007). Le récepteur et l'annulation sont précisés par AV-175, qui remplace « récepteur = responsable du compte destinataire ».
 
 ### AV-159 — Refus, recomptage et correction d'un écart de caisse — SECONDAIRE
 - **Question** : La Finance peut-elle refuser un comptage manifestement faux, ordonner un recomptage, ou corriger un écart déjà validé ?
@@ -1114,6 +1119,41 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) seules les caisses de PDV ont des sessions (une caisse utilisateur se vide par remise de fonds, alerte `CASH_HOLDING_HIGH`) ; la validation n'attend personne, la fraîcheur de synchronisation de chaque appareil du PDV est affichée à la Finance ; (b) sessions pour toutes les caisses ; (c) validation bloquée tant qu'un appareil n'a pas synchronisé.
 - **Recommandation** : (a).
 - **Impact** : `finance.cash_session.open` (refus d'un compte autre que `CAISSE_PDV`) ; tableau de distribution. Défaut implémenté : (a).
+
+### AV-175 — Remises de fonds : qui réceptionne et qui annule — SECONDAIRE
+- **Question** : Qui peut réceptionner une remise de fonds — le responsable nominatif du compte destinataire, ou tout titulaire de `finance.cash_transfer.record` dont la portée couvre ce compte ? Le porteur peut-il être le récepteur ? Qui peut l'annuler ?
+- **Pourquoi** : AV-158 (a) écrit à la fois « récepteur = responsable du compte destinataire » et « une seule permission contrôlée par la portée du compte » : deux lectures possibles. La Finance compte plusieurs personnes ; SM-CASH-TRANSFER réserve l'annulation à « l'expéditeur » sans dire ce que fait un collègue de relève. Une Finance réduite à une personne qui remet la caisse centrale à la banque ne peut pas réceptionner elle-même.
+- **Choix** : (a) réception par tout titulaire de la permission dont la portée couvre le compte destinataire (Finance `ALL` pour la caisse centrale et la banque ; vendeur du site pour le fonds d'un PDV), différent de l'expéditeur (`CASH_TRANSFER_SELF_RECEIVE`, en ligne **et** hors ligne : règle d'autorisation) ; le porteur peut réceptionner ; annulation par l'expéditeur seul, depuis tout appareil (`CASH_TRANSFER_NOT_SENDER`) ; (b) responsable nominatif du compte seul ; (c) récepteur différent aussi du porteur ; annulation ouverte à toute la portée du compte source.
+- **Recommandation** : (a). Équipe Finance d'une seule personne : faire réceptionner par un second titulaire (Direction avec un rôle `FINANCE` cumulé, AV-010) ; à défaut la remise reste `SENT`, l'alerte à 48 h la signale et la banque se confirme sur relevé.
+- **Impact** : `finance.cash_transfer.receive`, `.cancel` ; SM-CASH-TRANSFER ; D09 §16. Défaut implémenté : (a). Portée : le détenteur d'une caisse personnelle en est propriétaire (RBAC §3) quel que soit le périmètre de son affectation ; hors portée : `CASH_ACCOUNT_FORBIDDEN` (D09 §8).
+
+### AV-176 — Courses hors ligne d'une remise — IMPORTANTE
+- **Question** : Une réception de remise arrive au serveur après son annulation, une annulation après sa réception, ou deux réceptions de la même remise (deux appareils hors ligne). Que fait le serveur, et comment la Finance régularise-t-elle ?
+- **Pourquoi** : ADR-032 §8 tranche le principe (observation, conflit informatif, jamais de rejet pour un état métier, BR-SYN-007), mais ni les sources ni l'ADR ne décrivent la régularisation. Une réception après annulation laisse les deux comptes faux tant que la Finance n'a pas établi les faits (l'argent est revenu à la source dans les livres et a été compté à l'arrivée).
+- **Choix** : (a) le fait est conservé comme **observation** dans un conflit informatif appliqué (`CASH_TRANSFER_RECEIVED_AFTER_CANCEL`, `CASH_TRANSFER_CANCEL_AFTER_RECEIVE`, `CASH_TRANSFER_RECEIVED_TWICE` ; propriétaire `FINANCE` ; montant, auteur, appareil, heure, commentaire ou motif, état trouvé), réponse `APPLIED_WITH_WARNINGS` avec le même code, aucun mouvement, remise inchangée ; en ligne, refus (`CASH_TRANSFER_CANCELLED`, `CASH_TRANSFER_ALREADY_RECEIVED`). La Finance régularise par une nouvelle remise (ou par l'écart de session au comptage), puis résout le conflit (`sync.conflict.resolve`, P5-17) ; (b) appliquer la réception et compenser l'annulation par un mouvement automatique ; (c) rejeter le second fait.
+- **Recommandation** : (a) : aucun mouvement n'est inventé par le serveur ; la décision reste humaine et tracée.
+- **Impact** : `finance.cash_transfer.receive`, `.cancel` ; table `decideCashTransferAction` (`packages/domain`) ; matrice des conflits ; `02-synchronisation.md` §3.3. Défaut implémenté : (a). Le pipeline publie aussi l'événement de la commande observée (`finance.cash_transfer.receive` ou `.cancel`) : un consommateur lit l'état de la remise, jamais l'événement seul.
+
+### AV-177 — Décision sur l'écart d'une remise : rejet, retrait, correction, valideur — SECONDAIRE
+- **Question** : La Finance peut-elle rejeter l'écart d'une remise, ordonner un recomptage ou corriger une erreur de saisie du montant reçu ? Le récepteur peut-il retirer sa demande ? Qui peut valider ?
+- **Pourquoi** : SM-CASH-TRANSFER ne connaît que l'approbation. Le registre est immuable (un `TRANSFER_IN` ne se réécrit pas) ; le pendant pour la caisse (AV-155, AV-159) n'est pas transposé aux remises. Un retrait laisserait la remise en `DISCREPANCY_PENDING` sans décision possible.
+- **Choix** : (a) **acceptation seule** : un rejet est refusé (`CASH_TRANSFER_DISCREPANCY_NOT_REJECTABLE`) et le retrait aussi (`CASH_TRANSFER_DISCREPANCY_NOT_WITHDRAWABLE`, garde de retrait d'`approvals`) : la demande reste en attente ; imputation obligatoire (`decisionOption` : `SENDER`, `CARRIER`, `RECEIVER`, `COMPANY` ; `COMPANY` recommandé pour un excédent ; `CARRIER` sans porteur connu : `CASH_TRANSFER_IMPUTATION_INVALID`) ; motif obligatoire (`decisionData.reason`, 200 caractères au plus par la forme des données de décision, alors que `closing_reason` en admet 500) ; valideur ni expéditeur, ni récepteur, ni porteur (`CASH_TRANSFER_VALIDATOR_INVOLVED`, même avec `selfApproved`) ; une erreur de saisie se corrige par une remise de régularisation citée dans le motif, jamais par réécriture ; politique retenue : la plus récente qui exige une validation et nomme un approbateur, sinon `CONTROL_POLICY_MISSING` ; (b) rejet qui ramène la remise à `SENT` pour une nouvelle réception ; (c) recomptage obligatoire au-delà d'un seuil.
+- **Recommandation** : (a).
+- **Impact** : décision `CASH_TRANSFER_DISCREPANCY` (`finance`), garde de retrait (`approvals`), SM-CASH-TRANSFER, SM-APPROVAL ; migration `20261010092000` (motif exigé à `CLOSED`). Défaut implémenté : (a). La retenue sur la personne imputée relève de P8 (ADR-032 §7).
+
+### AV-178 — Remise perdue en route — IMPORTANTE
+- **Question** : Une remise envoyée n'arrive pas du tout (argent perdu ou volé en route) : comment la clôturer ?
+- **Pourquoi** : le `CHECK` d'état de P5-03 exigeait une entrée de trésorerie pour `DISCREPANCY_PENDING` et `CLOSED`, alors qu'un mouvement est toujours > 0 et que le schéma de réception admet 0 : une remise perdue n'avait aucune issue correcte. L'annulation rendrait l'argent à la source à tort.
+- **Choix** : (a) la Finance enregistre une **réception de 0 XAF** : `DISCREPANCY_PENDING` sans `TRANSFER_IN`, écart = − envoyé, décision `CASH_TRANSFER_DISCREPANCY` ordinaire (imputation au porteur ou à l'expéditeur, par exemple) ; (b) une commande dédiée « déclarer la remise perdue » ; (c) interdire la réception de 0 : la remise reste `SENT` (alerte à 48 h).
+- **Recommandation** : (a) : un seul chemin pour tout écart.
+- **Impact** : `finance.cash_transfer.receive` ; migration `20261010092000` (`CHECK` d'état : entrée exigée si reçu > 0, absente s'il est nul ; aucune entrée pour une remise annulée). Défaut implémenté : (a).
+
+### AV-179 — Site de numérotation d'une remise entre comptes sans site — SECONDAIRE
+- **Question** : Quel site de numérotation (`RMF-{SITE}-AAAA-nnnnnn`) pour une remise entre deux comptes sans site, par exemple la caisse personnelle d'un commercial vers la caisse centrale ?
+- **Pourquoi** : AV-077 impose un code de site dans chaque numéro et le compteur exige un site, alors que le dictionnaire déclare le site de la remise facultatif. C'est le flux principal des commerciaux (D09 §14, `CASH_HOLDING_HIGH`).
+- **Choix** : (a) site du compte source, à défaut celui du compte destinataire (la remise porte alors ce site), à défaut une **série globale** dont le code est paramétrable (`finance.cash_transfer_series_code`, défaut `SIEGE`, 1 à 10 lettres majuscules ou chiffres, sinon le défaut) ; si un site réel porte ce code, son compteur est partagé (aucun doublon possible), sinon un pseudo-site déterministe ; la remise n'a alors pas de site ; (b) site d'affectation de l'expéditeur ; (c) un site `BUREAU` désigné comme siège.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_transfer.send` ; `organization.system_settings` ; D09 §16. Défaut implémenté : (a).
 
 ---
 
