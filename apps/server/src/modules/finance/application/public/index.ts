@@ -49,3 +49,7 @@ export {
   listCashMovements,
 } from './cash-account-query.js';
 export type { CashMovementLine } from './cash-account-query.js';
+
+// P5-12 : sessions de caisse — session couvrant un instant (index `cash_session_id`, ADR-032 §2).
+export { findCashSessionCovering } from './cash-sessions.js';
+export type { CoveringCashSession } from './cash-sessions.js';

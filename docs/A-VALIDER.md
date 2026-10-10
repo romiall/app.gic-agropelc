@@ -181,6 +181,11 @@ Classification (PM §45) :
 | AV-164 | Tableau de distribution : définitions de « vendu » et « perdu », périmètre, route | SECONDAIRE | P5 | Vendu net des contre-écritures (à livrer à part) ; perdu = pertes reconnues + écarts ; route d'analytique livrée en P5 | OUVERT |
 | AV-165 | Sessions de caisse hors PDV et PDV à plusieurs appareils | SECONDAIRE | P5 | Pas de session pour une caisse utilisateur ; validation sans attendre toutes les synchronisations | OUVERT |
 | AV-166 | Vente hors ligne sans quota utilisable sur un emplacement partagé : signal du serveur | IMPORTANTE | P5 | Appliquée sur le stock commun et signalée `ALLOCATION_EXCEEDED` (motif `ALLOCATION_MISSING` ou `ALLOCATION_EXPIRED`) si l'emplacement porte au moins un quota actif du produit (même épuisé) ; réglable par site | OUVERT |
+| AV-167 | Ouverture de caisse hors ligne plus ancienne que la session qu'elle chevauche | SECONDAIRE | P5 | Fusion dans la plus ancienne session en cause, fenêtre inchangée, intervalle consigné | OUVERT |
+| AV-168 | Ouverture de caisse hors ligne pendant la session de la veille, close d'office depuis | IMPORTANTE | P5 | Ouverture prise en compte à la clôture forcée (décalée), comptage conservé, conflit | OUVERT |
+| AV-169 | Clôture de caisse hors ligne datée avant l'ouverture de la session | SECONDAIRE | P5 | Observation, session laissée ouverte | OUVERT |
+| AV-170 | Responsable imputé de l'écart d'une clôture forcée et de l'écart d'ouverture | IMPORTANTE | P5 | L'ouvreur de la session | OUVERT |
+| AV-171 | Clôture de caisse datée avant un mouvement déjà enregistré sur la caisse | SECONDAIRE | P5 | Refus en ligne ; hors ligne, appliquée, jamais validée d'office, signalée à la Finance | OUVERT |
 
 ---
 
@@ -1037,28 +1042,28 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : BR-DIS-006 interdit seulement deux sessions ouvertes ; D05 §14 interdit d'ouvrir avant la clôture de la précédente, mais la clôture forcée exige la Finance en ligne : un PDV hors ligne pourrait être bloqué. Une ouverture est un comptage physique, un fait accompli qui ne se rejette pas (BR-SYN-007).
 - **Choix** : (a) une session par PDV et par jour (paramètre `finance.cash_sessions_per_day_max`, défaut 1) ; en ligne, refus `CASH_SESSION_ALREADY_OPEN` ; hors ligne, la seconde ouverture est fusionnée dans la session la plus ancienne (comptage conservé, conflit informatif `CASH_SESSION_CONCURRENT_OPEN`) ; la Finance force la clôture d'une session de plus de 24 h ; (b) plusieurs sessions par jour sans limite ; (c) ouverture refusée tant que la précédente n'est pas close, même hors ligne.
 - **Recommandation** : (a).
-- **Impact** : `finance.cash_session.open` ; INV-FIN-06 ; matrice des conflits. Défaut implémenté : (a).
+- **Impact** : `finance.cash_session.open` ; INV-FIN-06 ; matrice des conflits. Défaut implémenté : (a) (P5-12 : `planCashSessionOpen`, refus en ligne `CASH_SESSION_ALREADY_OPEN`, `_OVERLAP`, `_DAILY_LIMIT`, fusion hors ligne ; AV-167 et AV-168 précisent la fusion ; limite comptée par caisse ; clôture forcée `finance.cash_session.force_close`).
 
 ### AV-155 — Responsabilité d'un écart de caisse avec plusieurs vendeurs, et valideur — IMPORTANTE
 - **Question** : Une tablette de PDV est partagée (AV-007) mais le PDV n'a qu'une caisse et une session par jour. À qui impute-t-on l'écart, et que signifie « le valideur n'est pas le vendeur » quand plusieurs vendeurs ont encaissé ?
 - **Pourquoi** : la session ne porte qu'un ouvreur et un clôtureur ; D05 §14 parle d'un historique d'écarts « par vendeur ».
 - **Choix** : (a) l'écart est imputé à celui qui clôture, journalisé, avec un sous-total des encaissements espèces par vendeur (`received_by_user_id`) pour l'enquête ; le valideur n'est ni l'ouvreur, ni le clôtureur, ni l'auteur d'une clôture forcée ; (b) répartition de l'écart au prorata des encaissements ; (c) une caisse par vendeur.
 - **Recommandation** : (a).
-- **Impact** : `finance.cash_session.validate` ; lecture d'une session ; ECR-FIN-05. Défaut implémenté : (a).
+- **Impact** : `finance.cash_session.validate` ; lecture d'une session ; ECR-FIN-05. Défaut implémenté : (a) (P5-12 : `closed_by` = l'auteur de la clôture, responsable imputé dans `CashVarianceDetected` ; clôture forcée : AV-170 ; valideur et sous-totaux par vendeur : P5-13, P5-14).
 
 ### AV-156 — Fonds de caisse initial et écart d'ouverture — SECONDAIRE
 - **Question** : La première session d'une caisse neuve s'ouvre avec 20 000 XAF comptés pour un solde de 0 : est-ce un écart ? Et à qui revient l'écart d'ouverture des sessions suivantes ?
 - **Pourquoi** : BR-FIN-014 écrit un écart à l'ouverture quand le fonds diffère du solde ; le fonds de départ n'est pas une erreur de comptage. Le solde d'ouverture est par ailleurs un mouvement `OPENING_BALANCE` selon le dictionnaire des comptes.
 - **Choix** : (a) un écart d'ouverture est toujours posé (`SESSION_VARIANCE`) et validé par la Finance, qui peut le motiver « fonds initial » ; il appartient à la période précédente et n'entre pas dans l'attendu (ADR-032) ; (b) la Finance alimente d'abord la caisse par une remise de fonds ou un solde d'ouverture ; (c) un fonds initial n'est jamais un écart.
 - **Recommandation** : (a), simple et traçable ; (b) reste possible.
-- **Impact** : `finance.cash_session.open` ; ADR-032. Défaut implémenté : (a).
+- **Impact** : `finance.cash_session.open` ; ADR-032. Défaut implémenté : (a) (P5-12 : écart d'ouverture = fonds compté − solde du registre à l'ouverture, `SESSION_VARIANCE` posé à l'ouverture, session `PENDING_VALIDATION` à la clôture).
 
 ### AV-157 — Mouvements d'espèces hors session ou décidés après coup — IMPORTANTE
 - **Question** : Un encaissement en espèces est saisi hors ligne sans session ouverte ; un remboursement est décidé en ligne par la Finance après la clôture ; un encaissement est annulé le lendemain. Dans quelle session tombent ces mouvements, et sont-ils refusés ?
 - **Pourquoi** : D05 §8 rejette (`CASH_SESSION_REQUIRED`) une vente en espèces sans session ; BR-SYN-007 interdit de rejeter un fait accompli. Le registre est immuable : un mouvement ne se rattache pas après coup (ADR-032).
 - **Choix** : (a) en ligne, refus `CASH_SESSION_REQUIRED` ; hors ligne, fait appliqué avec avertissement et conflit informatif `CASH_SESSION_MISSING` (propriétaire Finance), sans session si aucune ne couvre sa date ; un remboursement et une remise annulée se rattachent à la session couvrant **leur propre date** ; l'inverse d'un encaissement hérite de la session de l'original et déclenche une réévaluation ; (b) toute vente en espèces hors ligne sans session est bloquée par l'appareil ; (c) rattachement systématique à la session suivante.
 - **Recommandation** : (a).
-- **Impact** : `sales.sale.record`, `sales.payment.record`, `sales.payment.refund` ; matrice des conflits ; ADR-032. Défaut implémenté : (a).
+- **Impact** : `sales.sale.record`, `sales.payment.record`, `sales.payment.refund` ; matrice des conflits ; ADR-032. Défaut implémenté : (a). P5-12 : `recordCashMovement` pose l'index `cash_session_id` d'un inverse sur la session de l'original (son index, à défaut la session couvrant sa date) ; **reste à P5-14** : l'inverse d'une annulation d'encaissement est encore daté de la décision (`payment-commands.ts`), il doit porter l'`occurred_at` de l'original pour retomber dans sa fenêtre (ADR-032 §2).
 
 ### AV-158 — Remises de fonds : comptes admis, récepteur, alerte — SECONDAIRE
 - **Question** : Entre quels types de comptes une remise est-elle permise, qui la réceptionne, et au bout de combien de temps une remise envoyée et non reçue est-elle signalée ?
@@ -1114,7 +1119,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : BR-FIN-014 est générique alors que le dictionnaire et D05 parlent de PDV ; une tablette ne voit que ses propres ventes (D05 §12).
 - **Choix** : (a) seules les caisses de PDV ont des sessions (une caisse utilisateur se vide par remise de fonds, alerte `CASH_HOLDING_HIGH`) ; la validation n'attend personne, la fraîcheur de synchronisation de chaque appareil du PDV est affichée à la Finance ; (b) sessions pour toutes les caisses ; (c) validation bloquée tant qu'un appareil n'a pas synchronisé.
 - **Recommandation** : (a).
-- **Impact** : `finance.cash_session.open` (refus d'un compte autre que `CAISSE_PDV`) ; tableau de distribution. Défaut implémenté : (a).
+- **Impact** : `finance.cash_session.open` (refus d'un compte autre que `CAISSE_PDV`) ; tableau de distribution. Défaut implémenté : (a) (P5-12 : `CASH_SESSION_POS_ACCOUNT_REQUIRED`, en ligne comme hors ligne).
 
 ### AV-166 — Vente hors ligne sans quota utilisable sur un emplacement partagé : signal du serveur — IMPORTANTE
 - **Question** : Une vente hors ligne arrive d'un appareil qui n'a **aucun quota**, ou dont le quota est **échu**, sur un emplacement `SHARED` (PDV à plusieurs tablettes, magasin, bâtiment d'élevage). La tablette aurait dû la bloquer (`ALLOCATION_MISSING`, `ALLOCATION_EXPIRED`), ou la laisser passer en la signalant si le site a activé l'option « autorisée et signalée » (AV-025). Le serveur, qui l'applique toujours (BR-SYN-007), doit-il la signaler, et dans quels cas ?
@@ -1124,6 +1129,41 @@ Politique par défaut, paramétrable :
 - **Impact** : `inventory` (`prepareQuotaConsumption`), `packages/domain` (`offlineAllocationSignal`, miroir serveur de `decideLocalConsumption`, AT-003), paramètre semé, matrice des conflits, BR-VEN-018, WF-01, WF-18. Défaut implémenté : (a), paramétrable par site (`ALWAYS`, `NEVER`).
 
 ---
+
+### AV-167 — Ouverture de caisse hors ligne plus ancienne que la session qu'elle chevauche — SECONDAIRE
+- **Question** : Une ouverture de caisse saisie hors ligne arrive après qu'une autre ouverture de la même caisse, plus tardive dans la journée, a été enregistrée, ou elle précède une session déjà close. Dans quelle session la fusionner, et que deviennent les mouvements entre l'heure saisie et l'ouverture de la session retenue ?
+- **Pourquoi** : AV-154 (a) fusionne « dans la session la plus ancienne », mais la session déjà enregistrée ne peut pas avancer son heure d'ouverture (ouverture immuable, déclencheur `update_guard`) ; insérer l'ouverture plus ancienne créerait un chevauchement de fenêtres (ADR-032 §2), que le filet de la base refuserait en boucle. Le cas est réel avec deux tablettes d'un PDV partagé dont la plus matinale synchronise en dernier (AV-007).
+- **Choix** : (a) fusion dans la plus ancienne session existante en cause, fenêtre inchangée ; le comptage, l'heure saisie et l'heure retenue sont consignés dans le conflit `CASH_SESSION_CONCURRENT_OPEN` (`earlierThanTarget`) ; les mouvements de l'intervalle restent hors de la session retenue (dans aucune session, ou dans la fenêtre précédente), visibles par la Finance ; (b) clore d'office la session existante et ouvrir la plus ancienne (réécrit une ouverture, contraire à ADR-006 et au déclencheur) ; (c) rejet (contraire à BR-SYN-007).
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_session.open` ; `planCashSessionOpen` (`packages/domain`). Défaut implémenté (P5-12) : (a), isolé dans la fonction du domaine, modifiable sans migration.
+
+### AV-168 — Ouverture de caisse hors ligne pendant la session de la veille, close d'office depuis — IMPORTANTE
+- **Question** : Un vendeur oublie de clôturer la session de la veille ; le matin, sa tablette hors ligne ouvre la journée (07:30) ; la Finance clôture d'office la session de la veille en ligne à 10:00. Quand l'ouverture du matin arrive, son heure tombe dans la fenêtre de la session close `[veille, 10:00[`. Que devient-elle ?
+- **Pourquoi** : la fusion d'AV-154 vise une session de la veille **encore ouverte**. Fusionnée dans une session close, l'ouverture laisserait la journée sans session : la clôture du soir ne serait qu'une observation et l'argent du jour ne serait rapproché qu'à l'ouverture suivante (écart d'ouverture).
+- **Choix** : (a) la nouvelle session prend effet à la clôture de la session de la veille (ouverture « décalée »), avec le comptage saisi, un conflit informatif `CASH_SESSION_CONCURRENT_OPEN` (`SHIFTED` : heure saisie, heure retenue, solde des mouvements de l'intervalle) et aucun chevauchement ; l'écart d'ouverture comprend alors l'opposé des mouvements de l'intervalle, compensé à la clôture (la somme des deux écarts est l'écart réel de la journée) ; si la journée a déjà une session après la clôture forcée, l'ouverture y est fusionnée ; (b) fusion dans la session close, la journée reste sans session ; (c) refuser la clôture forcée d'une session dans laquelle une ouverture a été fusionnée.
+- **Recommandation** : (a) : la journée garde une session et la clôture du soir est rapprochée.
+- **Impact** : `finance.cash_session.open` ; `planCashSessionOpen` (mode `SHIFT` ou `MERGE`, paramètre de la fonction, `SHIFT` par défaut) ; matrice des conflits. Défaut implémenté (P5-12) : (a), hors ligne seulement et pour une session d'un jour métier antérieur. Reste ouvert par construction : une ouverture fusionnée dans une session **encore ouverte** de la veille, puis clôture forcée de celle-ci, laisse la fin de journée sans session (la clôture du soir est une observation).
+
+### AV-169 — Clôture de caisse hors ligne datée avant l'ouverture de la session — SECONDAIRE
+- **Question** : Une clôture saisie hors ligne porte une heure antérieure à l'ouverture de la session visée (identifiant fusionné dans une session ouverte plus tard par une autre tablette, horloge décalée). Que faire du comptage ?
+- **Pourquoi** : la base refuse une clôture antérieure à l'ouverture (`CHECK closed_at ≥ opened_at`) : appliquée telle quelle, l'erreur SQL serait rejouée sans fin ; un rejet contredirait BR-SYN-007.
+- **Choix** : (a) observation : comptage conservé dans le conflit `CASH_SESSION_CONCURRENT_CLOSE` (raison `CLOSE_BEFORE_OPEN`), session laissée ouverte, refermée par une clôture ultérieure ou la clôture forcée ; (b) clôture ramenée à l'heure d'ouverture (fenêtre vide, comptage retenu) ; (c) clôture à l'heure de réception, avec `clock_suspect`.
+- **Recommandation** : (a) : le comptage d'une autre période ne ferme pas la session d'une autre tablette.
+- **Impact** : `finance.cash_session.close` ; `planCashSessionClose` (mode `OBSERVE` ou `CLOSE_AT_OPENING`, paramètre de la fonction). Défaut implémenté (P5-12) : (a).
+
+### AV-170 — Responsable imputé de l'écart d'une clôture forcée et de l'écart d'ouverture — IMPORTANTE
+- **Question** : AV-155 impute l'écart de caisse à « celui qui clôture ». Pour une clôture forcée, c'est l'agent de la Finance ou de la Direction qui déclare un comptage a posteriori. À qui imputer l'écart dans l'historique des écarts par vendeur (D05 §14), et à qui imputer l'écart d'ouverture ?
+- **Pourquoi** : imputer l'écart à l'auteur de la clôture forcée fausserait l'historique par vendeur et l'alerte `CASH_VARIANCE` ; aucune source ne traite l'écart d'ouverture.
+- **Choix** : (a) clôture forcée : l'ouvreur de la session, qui ne l'a pas clôturée ; écart d'ouverture : celui qui a compté le fonds (l'ouvreur) ; (b) aucune imputation avant la décision de la Finance ; (c) l'auteur de la clôture forcée.
+- **Recommandation** : (a).
+- **Impact** : `cashVarianceImputedUser` (`packages/domain`, mode `OPENER`, `NONE` ou `FORCER`) ; champ `imputed_user_id` de `CashVarianceDetected`, distinct de `closed_by` et de `forced_by` ; alerte `CASH_VARIANCE` (P9). Défaut implémenté (P5-12) : (a).
+
+### AV-171 — Clôture de caisse datée avant un mouvement déjà enregistré sur la caisse — SECONDAIRE
+- **Question** : l'attendu d'une clôture se calcule sur la fenêtre `[ouverture, clôture[` d'après l'`occurred_at` (ADR-032 §3), et le pipeline ne refuse que les dates **futures**. Une clôture dont l'heure précède des mouvements déjà enregistrés sur la caisse (horloge en retard, heure falsifiée) les exclut de l'attendu : le vendeur compte exactement l'attendu tronqué, l'écart est nul, la session est validée d'office et la différence n'apparaît qu'à l'ouverture suivante, imputée à l'ouvreur du lendemain (AV-170). Que faire d'une telle clôture ?
+- **Pourquoi** : ADR-016 interdit toute correction silencieuse de `occurred_at` (on signale, on ne réécrit pas) ; BR-SYN-007 interdit de rejeter pour une raison d'état un fait déjà accompli hors ligne ; D05 §12 ne prévoit comme contrôle en ligne que « heure de clôture ≥ heure d'ouverture ».
+- **Choix** : (a) en ligne, refus `CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT` (sans effet) quand un mouvement du compte, hors `SESSION_VARIANCE` et `OPENING_BALANCE`, est daté à l'heure de clôture ou après (borne incluse : la fenêtre est demi-ouverte) ; hors ligne, la clôture est appliquée mais jamais validée d'office (`PENDING_VALIDATION`), avec l'avertissement et le conflit informatif `CASH_SESSION_CLOSE_BEFORE_MOVEMENTS` (dernier mouvement concerné, attendu, écart) ; la clôture forcée, toujours en ligne, suit la même règle ; (b) en ligne, clôture ramenée à l'heure de réception (correction de `occurred_at`, contraire à ADR-016) ; (c) accepter et signaler en ligne comme hors ligne ; (d) accepter sans rien signaler (comportement antérieur).
+- **Recommandation** : (a) : l'attendu n'est jamais tronqué sans que la Finance le sache, sans corriger l'heure déclarée ni rejeter un comptage physique déjà fait. Une tolérance d'horloge entre appareils (quelques secondes) n'est pas introduite : un refus se corrige en reclôturant à l'heure réelle.
+- **Impact** : `finance.cash_session.close` et `.force_close` ; `checkCashSessionCloseAgainstLedger` et `sessionStatusAfterClose` (`packages/domain`, mode `REFUSE_ONLINE` ou `FLAG`, paramètre de la fonction, `REFUSE_ONLINE` par défaut) ; matrice des conflits ; D05 §12 et §15. Défaut implémenté (P5-12, revue adverse) : (a).
 
 ## 3. Journal des décisions
 

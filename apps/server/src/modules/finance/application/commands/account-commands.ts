@@ -6,8 +6,8 @@
  *   requis, une active par détenteur), `CAISSE_CENTRALE`, `MOBILE_MONEY`, `BANQUE`. Chaque compte
  *   a un responsable (utilisateur actif). Le solde part de 0 : il ne se saisit jamais, il vient
  *   des mouvements (INV-FIN-02) ; un solde d'ouverture est un mouvement `OPENING_BALANCE`.
- * - Désactivation (« DÉSACTIVATION, solde nul ») : refusée tant que le solde n'est pas nul. Les
- *   sessions de caisse ouvertes (P5) s'ajouteront à cette condition.
+ * - Désactivation (« DÉSACTIVATION, solde nul ») : refusée tant que le solde n'est pas nul, et
+ *   tant qu'une session de caisse est ouverte sur le compte (P5-12, `CASH_ACCOUNT_HAS_OPEN_SESSION`).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -176,6 +176,29 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
+/**
+ * P5-12 : un compte qui a une session de caisse ouverte ne se désactive pas (la session se clôture
+ * d'abord, ou d'office par la Finance). Lecture verrouillante, sous le verrou du compte déjà pris
+ * (ordre compte puis session, celui de toutes les écritures de caisse).
+ */
+async function assertNoOpenCashSession(
+  uow: Uow,
+  cashAccountId: string,
+): Promise<CommandHandlerOutcome | null> {
+  const open = await uow
+    .selectFrom('finance_cash_sessions')
+    .select('id')
+    .where('open_account', '=', toBin(cashAccountId))
+    .forShare()
+    .executeTakeFirst();
+  return open
+    ? rejected(
+        'CASH_ACCOUNT_HAS_OPEN_SESSION',
+        'Une session de caisse est ouverte sur ce compte : la clôturer avant de le désactiver.',
+      )
+    : null;
+}
+
 const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) => {
   const accountId = toBin(envelope.aggregate_id);
   const account = await uow
@@ -186,6 +209,8 @@ const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) 
     .executeTakeFirst();
   if (!account) return rejected('NOT_FOUND', 'Compte de trésorerie introuvable.');
   if (account.status === 'INACTIVE') return { status: 'APPLIED' }; // rejeu idempotent
+  const openSession = await assertNoOpenCashSession(uow, envelope.aggregate_id);
+  if (openSession) return openSession;
   if (Number(account.balance_xaf) !== 0) {
     return rejected(
       'CASH_ACCOUNT_NOT_EMPTY',

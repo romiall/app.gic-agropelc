@@ -21,7 +21,7 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-008 | Un site a un type parmi `FERME`, `MAGASIN`, `POINT_DE_VENTE`, `BUREAU`. Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations ; s… | C (CM §12, §22) / D |
 | BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) ; AV-163 |
 | BR-ADM-010 | Les emplacements virtuels (`V_*`) sont créés par le système, uniques par type, et ne peuvent être ni modifiés ni désactivés. Les neuf types… | D (ADR-003 ; ADR-028 §1) |
-| BR-ADM-011 | Un emplacement ne peut être désactivé que si tous ses soldes sont nuls et qu'aucun transfert, réservation ou allocation n'y est en cours. | D (INV-STK-07) |
+| BR-ADM-011 | Un emplacement ne peut être désactivé que si tous ses soldes sont nuls et qu'aucun transfert, réservation ou allocation n'y est en cours ;… | D (INV-STK-07) |
 | BR-ADM-012 | Les zones forment un arbre sans cycle. Un géorepère est optionnel : point de référence + rayon, 500 m par défaut. | C (CM §10) / AV-003 |
 | BR-ADM-013 | Modifier un géorepère n'affecte que les pointages futurs ; chaque tentative de pointage fige le géorepère utilisé. | C (PM §7) |
 | BR-ADM-014 | Une équipe a un responsable. Un utilisateur appartient à au plus une équipe à une date donnée. Les appartenances sont historisées (début, f… | D (CM §6, §48) |
@@ -137,8 +137,8 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 | BR-DIS-003 | Les vendeurs d'un PDV sont les utilisateurs qui ont le rôle `VENDEUR_PDV` avec une portée `SITE` sur ce PDV. Un vendeur ne vend que dans le… | C (CM §12) / D |
 | BR-DIS-004 | Les prix du PDV sont résolus par le moteur de tarification avec le contexte du PDV : PDV > zone du PDV > zones parentes > global (D10). | C (CM §12, §29) |
 | BR-DIS-005 | Un encaissement en espèces au PDV exige une session de caisse ouverte. Sans session ouverte, l'écran de vente propose d'abord « Ouvrir la c… | AV-057 |
-| BR-DIS-006 | Au plus une session ouverte par compte de caisse. Une session ouverte depuis plus de 24 h déclenche une alerte. | D |
-| BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds d'ouverture + encaissements espèces + autres entrées − remboursements −… | C (CM §54 « anomalie de caisse ») / AV-057 |
+| BR-DIS-006 | Au plus une session ouverte par compte de caisse (INV-FIN-06) ; seule une caisse de PDV ouvre une session (AV-165). Une ouverture qui cheva… | D (P5-12) / AV-154 |
+| BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds compté à l'ouverture + Σ entrées − Σ sorties des mouvements du registre… | C (CM §54 « anomalie de caisse ») / D (ADR-032) / AV-057 |
 | BR-DIS-008 | Une session validée est immuable. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à v… | D |
 | BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie de la caisse PDV) puis réception (entrée dans la caisse centrale ou en banque). Un… | D |
 | BR-DIS-010 | Indicateurs de distribution par PDV × produit × période (sur `occurred_at`) : envoyé = Σ quantités expédiées vers le PDV ; reçu = Σ quantit… | C (CM §12, §2/Distribution) / D (formules) |
@@ -287,7 +287,7 @@ Fichier : [`domaines/D09-FIN-finance.md`](domaines/D09-FIN-finance.md)
 | BR-FIN-011 | Tout flux d'argent est un mouvement de trésorerie en ajout seul : compte, sens (`IN` / `OUT`), montant > 0, type (`CUSTOMER_PAYMENT`, `REFU… | D (CM §31, §41) |
 | BR-FIN-012 | En ligne, une sortie ne peut rendre négatif le solde d'une caisse physique (`CAISSE_*`). Hors ligne, elle est appliquée et produit l'anomal… | D |
 | BR-FIN-013 | Une remise de fonds se fait en deux temps : `TRANSFER_OUT` à l'envoi, `TRANSFER_IN` à la réception. Un écart ouvre `CASH_TRANSFER_DISCREPAN… | D |
-| BR-FIN-014 | Session de caisse : voir D05 (BR-DIS-005 à BR-DIS-008). À l'ouverture, un fonds compté différent du solde du compte produit un mouvement `S… | AV-057 |
+| BR-FIN-014 | Session de caisse : voir D05 (BR-DIS-005 à BR-DIS-008). Seule une caisse de PDV (`CAISSE_PDV`) ouvre une session (AV-165). À l'ouverture, u… | AV-057 / D (ADR-032, P5-12) |
 | BR-FIN-020 | Une dépense porte : catégorie, montant, `occurred_at` (date de la charge), bénéficiaire, description, objet de coût optionnel (lot de produ… | C (CM §31, §42) / AV-058 |
 | BR-FIN-021 | Payée immédiatement : le mouvement de trésorerie `EXPENSE` est enregistré tout de suite (fait accompli) ; la validation, si requise, est a… | D |
 | BR-FIN-022 | Une dépense imputée à un objet de coût crée une écriture de coût (`inventory.cost_entries`) à son approbation, ou dès l'enregistrement si a… | D |

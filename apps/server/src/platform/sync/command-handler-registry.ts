@@ -50,17 +50,28 @@ export type CommandHandler<P = unknown> = (
   envelope: CommandEnvelope<P>,
 ) => Promise<CommandHandlerOutcome>;
 
+/**
+ * Isolation de la transaction métier d'une commande. Par défaut (absent) : celle de la connexion
+ * (lecture répétable d'InnoDB). `read committed` : réservé aux commandes qui sérialisent leurs
+ * écritures sous un verrou de ligne explicite et dont les lectures verrouillantes par plage
+ * poseraient des verrous de plage (gap locks) inutiles, source d'interblocages entre lignes voisines
+ * de deux agrégats distincts (sessions de caisse, P5-12).
+ */
+export type CommandIsolationLevel = 'read committed';
+
 export interface RegisterCommandInput<P> {
   readonly commandType: string;
   readonly version: number;
   readonly payloadSchema: z.ZodType<P>;
   readonly permissionCode: string;
   readonly handler: CommandHandler<P>;
+  readonly isolationLevel?: CommandIsolationLevel;
 }
 
 interface ServerOnlyEntry {
   readonly permissionCode: string;
   readonly handler: CommandHandler;
+  readonly isolationLevel?: CommandIsolationLevel;
 }
 
 export class CommandHandlerRegistry {
@@ -72,6 +83,7 @@ export class CommandHandlerRegistry {
     this.serverOnly.set(registryKey(input.commandType, input.version), {
       permissionCode: input.permissionCode,
       handler: input.handler as CommandHandler,
+      ...(input.isolationLevel !== undefined ? { isolationLevel: input.isolationLevel } : {}),
     });
   }
 
