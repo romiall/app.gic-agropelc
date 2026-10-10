@@ -461,7 +461,39 @@ describe('miroir serveur du blocage local (AT-003, P5-11 ; AV-161, AV-166)', () 
     );
   });
 
-  it('portée du signal : jamais en ligne, jamais pour un quota révoqué ; AV-166 réservé à la vente et réglable', () => {
+  it('propriété : fait antérieur à la révocation — la tablette (qui ignore la révocation) bloque ⇔ le serveur signale, contre le reste à la révocation', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.integer({ min: 0, max: 1_000_000 }),
+        fc.boolean(),
+        (requestedMilli, revokedRemainingMilli, isSale) => {
+          const device = decideLocalConsumption({
+            custodyMode: 'SHARED',
+            requested: requestedMilli / 1000,
+            localBalance: 0,
+            holdsQuota: true,
+            quotaRemaining: revokedRemainingMilli / 1000,
+            quotaValidUntil: later,
+            now,
+            overAllocationAllowed: false,
+          });
+          const server = offlineAllocationSignal({
+            capturedOffline: true,
+            isSale,
+            quota: 'REVOKED',
+            quotaExceeded: requestedMilli > revokedRemainingMilli,
+            locationHasActiveQuota: false,
+            unallocatedSaleSignal: 'NEVER',
+          });
+          expect(device.allowed).toBe(server === null);
+          if (!device.allowed) expect(server).toBe(device.code);
+        },
+      ),
+    );
+  });
+
+  it('portée du signal : jamais en ligne ; quota révoqué seulement au-delà du reste à la révocation ; AV-166 réservé à la vente et réglable', () => {
     const base = {
       capturedOffline: true,
       isSale: true,
@@ -480,7 +512,29 @@ describe('miroir serveur du blocage local (AT-003, P5-11 ; AV-161, AV-166)', () 
         capturedOffline: false,
       }),
     ).toBeNull();
+    // Quota révoqué : rien tant que le fait ne dépassait pas le reste du quota à la révocation (un fait
+    // postérieur relève d'ALLOCATION_REVOKED_CONSUMED) ; au-delà, le dépassement est signalé comme AT-003.
     expect(offlineAllocationSignal({ ...base, quota: 'REVOKED' })).toBeNull();
+    expect(offlineAllocationSignal({ ...base, quota: 'REVOKED', quotaExceeded: true })).toBe(
+      'ALLOCATION_EXCEEDED',
+    );
+    expect(
+      offlineAllocationSignal({
+        ...base,
+        quota: 'REVOKED',
+        quotaExceeded: true,
+        isSale: false,
+        locationHasActiveQuota: false,
+      }),
+    ).toBe('ALLOCATION_EXCEEDED');
+    expect(
+      offlineAllocationSignal({
+        ...base,
+        quota: 'REVOKED',
+        quotaExceeded: true,
+        capturedOffline: false,
+      }),
+    ).toBeNull();
     expect(offlineAllocationSignal({ ...base, isSale: false })).toBeNull();
     expect(
       offlineAllocationSignal({ ...base, isSale: false, quota: 'USABLE', quotaExceeded: true }),

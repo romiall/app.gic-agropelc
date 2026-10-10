@@ -187,14 +187,11 @@ export async function confirmOrderPending(
   input: OrderConfirmationInput,
 ): Promise<OrderConfirmationResult> {
   const { deps, order, site, location, customer } = input;
-  // --- Quantité vendable par ligne : min(en attente, disponible), le disponible se consomme au fil des lignes
-  const consumed = new Map<string, number>();
-  const plan: {
+  // --- Lignes à vendre : quantité en attente et produit connu ------------------------------------------------
+  const candidates: {
     line: OrderLineRow;
-    quantityMilli: number;
-    isService: boolean;
-    productName: string;
-    baseUnitCode: string;
+    progress: ReturnType<typeof salesOrderLineProgress>;
+    product: NonNullable<Awaited<ReturnType<typeof findProduct>>>;
   }[] = [];
   for (const line of input.orderLines) {
     if (input.onlyOrderLineIds && !input.onlyOrderLineIds.has(fromBin(line.id))) continue;
@@ -204,14 +201,42 @@ export async function confirmOrderPending(
       delivered: quantityFromMilli(milli(line.delivered_quantity_base)),
     });
     if (quantityMilliUnits(progress.pending) <= 0) continue;
-    const productId = fromBin(line.product_id);
-    const product = await findProduct(uow, productId);
+    const product = await findProduct(uow, fromBin(line.product_id));
     if (!product) return { ok: false, outcome: rejected('PRODUCT_UNKNOWN', 'Produit inconnu.') };
+    candidates.push({ line, progress, product });
+  }
+
+  // --- Disponible par produit : lu (donc verrouillé) dans l'ordre des identifiants, comme la boucle de stock
+  // plus bas et comme la vente directe (`sale-commands.ts`), et non dans l'ordre des lignes de la commande :
+  // deux transactions qui touchent les mêmes produits verrouillent leurs soldes puis leurs quotas dans le même
+  // ordre et ne s'interbloquent pas (revue P5-11).
+  const availableByProduct = new Map<string, number>();
+  const storedProductIds = [
+    ...new Set(
+      candidates
+        .filter((candidate) => candidate.product.stockFamily !== 'SERVICE')
+        .map((candidate) => fromBin(candidate.line.product_id)),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  for (const productId of storedProductIds) {
+    availableByProduct.set(productId, await availableForSale(uow, location, productId));
+  }
+
+  // --- Quantité vendable par ligne : min(en attente, disponible), le disponible se consomme au fil des lignes
+  const consumed = new Map<string, number>();
+  const plan: {
+    line: OrderLineRow;
+    quantityMilli: number;
+    isService: boolean;
+    productName: string;
+    baseUnitCode: string;
+  }[] = [];
+  for (const { line, progress, product } of candidates) {
+    const productId = fromBin(line.product_id);
     const isService = product.stockFamily === 'SERVICE';
     let available = Number.POSITIVE_INFINITY;
     if (!isService) {
-      const total = await availableForSale(uow, location, productId);
-      available = total - (consumed.get(productId) ?? 0);
+      available = (availableByProduct.get(productId) ?? 0) - (consumed.get(productId) ?? 0);
     }
     const confirmable = isService
       ? progress.pending

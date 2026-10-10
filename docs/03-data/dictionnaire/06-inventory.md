@@ -194,7 +194,7 @@
 | `status` | enum(`ACTIVE`,`CLOSED`,`REVOKED`) | Non | `ACTIVE` | |
 | `close_cause` | enum(`RELEASED`,`CONSUMED`,`EXPIRED_RELEASED`) | Oui | — | Renseignée si `CLOSED` |
 | `revocation_pending` | boolean | Non | false | Appareil bloqué ou perdu : décision d'un responsable ; seulement si `ACTIVE` |
-| `revoked_at`, `revoked_by`, `revoke_reason` | ts, uuid, varchar(500) | Oui | — | Révocation forcée ; la date qualifie `ALLOCATION_REVOKED_CONSUMED` (selon `occurred_at`) |
+| `revoked_at`, `revoked_by`, `revoke_reason` | ts, uuid, varchar(500) | Oui | — | Révocation forcée ; la date qualifie `ALLOCATION_REVOKED_CONSUMED` (fait hors ligne dont l'`occurred_at` la suit) ; un fait hors ligne antérieur est comparé au reste du quota à la révocation (quantité de l'entrée `REVOKE`) |
 | `released_at`, `release_declared_remaining` | ts, qty | Oui | — | Libération par l'appareil : le reste déclaré ; un écart avec le serveur ouvre un conflit |
 | `granted_by` | uuid → identity.users | Non | — | |
 | [STD-AUDIT] | | | | |

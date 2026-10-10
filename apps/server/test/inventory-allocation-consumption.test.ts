@@ -7,6 +7,8 @@
  * (base MySQL réelle, commandes d'octroi du pipeline).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Transaction } from 'kysely';
+import type { DB } from '../src/platform/kysely/database.js';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
@@ -644,6 +646,121 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       expect(await exceededAt(storeA, productId)).toHaveLength(0);
     });
 
+    it('quota épuisé mais encore actif : « au moins un quota actif » compte les quotas, pas la somme de leurs restes (AV-166, revue P5-11)', async () => {
+      const holder = await newHolder();
+      const stranger = await newHolder();
+      const productId = await newProduct(40);
+      const id = await grantQuota(holder, productId, 10);
+      await sell(holder, productId, 10); // quota épuisé, toujours ACTIVE
+      const row = await quota(id);
+      expect(row.status).toBe('ACTIVE');
+      expect(Number(row.quantity_remaining)).toBe(0);
+
+      // Un couple sans quota vend hors ligne : l'emplacement porte un quota actif, la vente est signalée.
+      const moves = await sell(stranger, productId, 5, { capturedOffline: true });
+      expect(moves[0]?.warnings).toEqual(['ALLOCATION_EXCEEDED']); // rien n'est promis : pas de dépassement
+      const signal = await exceededAt(storeA, productId);
+      expect(signal).toHaveLength(1);
+      expect(signal[0]?.details).toMatchObject({
+        reason: 'ALLOCATION_MISSING',
+        allocationId: null,
+        excess: '5.000',
+      });
+    });
+
+    it('détenteur d’un quota épuisé, en ligne, au-delà du stock : ALLOCATION_EXCEEDED (BR-VEN-018), même si plus aucun reste n’est promis', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(10);
+      await grantQuota(holder, productId, 10);
+      await sell(holder, productId, 10); // le quota et le stock sont à 0
+
+      await expect(sell(holder, productId, 1)).rejects.toMatchObject({
+        code: 'ALLOCATION_EXCEEDED',
+      });
+      expect(await balanceOf(productId)).toBe(0);
+    });
+
+    it('ordre de verrouillage : une sortie à lot explicite verrouille tous les soldes du couple avant d’écrire (aucun interblocage avec une sortie de quota)', async () => {
+      const productId = await newProduct(0, storeA, 'OPTIONAL');
+      const [lotLow, lotHigh] = [freshUuid(), freshUuid()].sort();
+      await db.transaction().execute(async (trx) => {
+        for (const [lotId, rank] of [
+          [lotLow!, '2026-09-01'],
+          [lotHigh!, '2026-09-15'],
+        ] as const) {
+          await trx
+            .insertInto('inventory_stock_lots')
+            .values({
+              id: toBin(lotId),
+              lot_code: `L-${lotId.slice(-8)}`,
+              product_id: toBin(productId),
+              origin_type: 'SUPPLIER_LOT',
+              fifo_rank_at: new Date(`${rank}T00:00:00.000Z`),
+              created_by: toBin(admin),
+            })
+            .execute();
+        }
+      });
+      await stockIn(productId, 6, storeA, lotLow);
+      await stockIn(productId, 10, storeA, lotHigh);
+      const lossLocation = await db
+        .selectFrom('organization_locations')
+        .select('id')
+        .where('location_type', '=', 'V_LOSS')
+        .executeTakeFirstOrThrow();
+      const balanceRows = (trx: Transaction<DB>, lotId: string) =>
+        trx
+          .selectFrom('inventory_stock_balances')
+          .select('qty_on_hand')
+          .where('location_id', '=', toBin(storeA))
+          .where('product_id', '=', toBin(productId))
+          .where('lot_key', '=', toBin(lotId));
+
+      // Une transaction tient le solde du lot « bas » ; la sortie du lot « haut » doit s'arrêter sur ce
+      // verrou sans avoir écrit le solde du lot « haut » (sinon une sortie de quota, qui verrouille les
+      // soldes dans l'ordre de l'index, s'interbloquerait avec elle).
+      let holderReady!: () => void;
+      let releaseHolder!: () => void;
+      const ready = new Promise<void>((resolve) => (holderReady = resolve));
+      const gate = new Promise<void>((resolve) => (releaseHolder = resolve));
+      const holder = db.transaction().execute(async (trx) => {
+        await balanceRows(trx, lotLow!).forUpdate().execute();
+        holderReady();
+        await gate;
+      });
+      await ready;
+      const loss = db.transaction().execute((trx) =>
+        recordStockMove(trx, moveDeps, {
+          productId,
+          lotId: lotHigh!,
+          quantityBase: 2,
+          fromLocationId: storeA,
+          toLocationId: fromBin(lossLocation.id),
+          moveType: 'LOSS',
+          occurredAt: new Date(OCCURRED_AT),
+          sourceDocType: 'LOSS',
+          sourceDocId: freshUuid(),
+          createdBy: admin,
+          allowNegative: false,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      let highLocked = false;
+      try {
+        await db
+          .transaction()
+          .execute((trx) => balanceRows(trx, lotHigh!).forUpdate().noWait().execute());
+      } catch (error) {
+        if ((error as { errno?: number }).errno !== 3572) throw error; // ER_LOCK_NOWAIT
+        highLocked = true;
+      }
+      releaseHolder();
+      await holder;
+      await loss;
+      expect(highLocked).toBe(false);
+      expect(await balanceOf(productId)).toBe(14);
+    });
+
     it('concurrence : la seconde sortie du même couple voit le reste réel du quota (lecture verrouillante), refus ALLOCATION_EXCEEDED et non erreur SQL', async () => {
       const holder = await newHolder();
       const productId = await newProduct(10);
@@ -715,6 +832,26 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
   });
 
   describe('quota échu, révoqué : stock commun', () => {
+    /** Révocation forcée du quota par le responsable, à l'heure indiquée. */
+    async function revokeAt(id: string, at: string): Promise<void> {
+      clock.setTo(new Date(at));
+      try {
+        const revoke = await pipeline.handle(
+          buildEnvelope(manager, {
+            command_type: 'inventory.allocation.revoke',
+            aggregate_type: 'STOCK_ALLOCATION',
+            aggregate_id: id,
+            payload: { reason: 'Reprise du stock' },
+            occurred_at: at,
+          }),
+          managerCtx(),
+        );
+        expect(revoke.status).toBe('APPLIED');
+      } finally {
+        clock.setTo(new Date(OCCURRED_AT));
+      }
+    }
+
     it('quota échu à l’`occurred_at` : pris sur le stock commun, sans conflit, reste inchangé', async () => {
       const holder = await newHolder();
       const productId = await newProduct(100);
@@ -769,46 +906,114 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       expect(Number((await quota(id)).quantity_remaining)).toBe(0); // la révocation l'a remis à zéro
       expect(await balanceOf(productId)).toBe(90);
     });
+
+    it('quota révoqué, fait EN LIGNE postérieur à la révocation : sortie normale sur le stock commun, ni avertissement ni conflit (BR-STK-014, revue P5-11)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(100);
+      const id = await grantQuota(holder, productId, 30);
+      await revokeAt(id, '2026-10-08T10:00:00.000Z');
+
+      for (const minutes of ['30', '31']) {
+        const moves = await sell(holder, productId, 5, {
+          occurredAt: new Date(`2026-10-08T10:${minutes}:00.000Z`),
+        });
+        expect(moves[0]?.allocationId).toBeUndefined();
+        expect(moves[0]?.warnings).toBeUndefined();
+      }
+      expect(await conflicts(id, 'ALLOCATION_REVOKED_CONSUMED')).toHaveLength(0);
+      expect(await conflicts(id, 'ALLOCATION_EXCEEDED')).toHaveLength(0);
+      expect(await balanceOf(productId)).toBe(90);
+      await expectInvariants(id);
+    });
+
+    it('quota révoqué, fait hors ligne ANTÉRIEUR à la révocation : signalé ALLOCATION_EXCEEDED seulement s’il dépassait le reste du quota à la révocation (AT-003)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(100);
+      const id = await grantQuota(holder, productId, 30);
+      await sell(holder, productId, 20); // reste 10, synchronisé avant la révocation
+      await revokeAt(id, '2026-10-08T10:00:00.000Z');
+
+      // Dans le reste à la révocation : normal, aucun signal.
+      const within = await sell(holder, productId, 10, {
+        capturedOffline: true,
+        occurredAt: new Date('2026-10-08T09:30:00.000Z'),
+      });
+      expect(within[0]?.allocationId).toBeUndefined();
+      expect(within[0]?.warnings).toBeUndefined();
+      expect(await conflicts(id, 'ALLOCATION_EXCEEDED')).toHaveLength(0);
+
+      // Au-delà (11 pour un reste de 10) : appliqué sur le stock commun et signalé, comme sur la tablette.
+      const beyond = await sell(holder, productId, 11, {
+        capturedOffline: true,
+        occurredAt: new Date('2026-10-08T09:45:00.000Z'),
+      });
+      expect(beyond[0]?.allocationId).toBeUndefined();
+      expect(beyond[0]?.warnings).toEqual(['ALLOCATION_EXCEEDED']);
+      const found = await conflicts(id, 'ALLOCATION_EXCEEDED');
+      expect(found).toHaveLength(1);
+      expect(found[0]?.applied).toBe(1);
+      expect(found[0]?.details).toMatchObject({
+        reason: 'ALLOCATION_EXCEEDED',
+        allocationId: id,
+        revokedAt: '2026-10-08T10:00:00.000Z',
+        requested: '11.000',
+        quotaRemaining: '10.000',
+        excess: '1.000',
+        signalled: false,
+      });
+      // Antérieur à la révocation : jamais ALLOCATION_REVOKED_CONSUMED, et le registre reste intact.
+      expect(await conflicts(id, 'ALLOCATION_REVOKED_CONSUMED')).toHaveLength(0);
+      expect((await entries(id)).map((entry) => entry.entry_type)).toEqual([
+        'GRANT',
+        'CONSUME',
+        'REVOKE',
+      ]);
+      expect(await balanceOf(productId)).toBe(59); // 100 − 20 − 10 − 11
+      await expectInvariants(id);
+    });
   });
 
   describe('ALLOCATION_OVERCOMMITTED', () => {
-    it('une perte du serveur qui laisse le solde sous Σ restes ouvre un conflit, une seule fois', async () => {
-      const holder = await newHolder();
-      const productId = await newProduct(20);
-      await grantQuota(holder, productId, 15);
-
+    /** Perte déclarée par le serveur (aucun quota consommé) : la sortie qui entame le stock promis. */
+    async function declareLoss(productId: string, quantityBase: number) {
       const lossLocation = await db
         .selectFrom('organization_locations')
         .select('id')
         .where('location_type', '=', 'V_LOSS')
         .executeTakeFirstOrThrow();
-      const loss = (quantityBase: number) =>
-        db.transaction().execute((trx) =>
-          recordStockMove(trx, moveDeps, {
-            productId,
-            quantityBase,
-            fromLocationId: storeA,
-            toLocationId: fromBin(lossLocation.id),
-            moveType: 'LOSS',
-            occurredAt: new Date(OCCURRED_AT),
-            sourceDocType: 'LOSS',
-            sourceDocId: freshUuid(),
-            createdBy: admin,
-            allowNegative: false,
-          }),
+      return db.transaction().execute((trx) =>
+        recordStockMove(trx, moveDeps, {
+          productId,
+          quantityBase,
+          fromLocationId: storeA,
+          toLocationId: fromBin(lossLocation.id),
+          moveType: 'LOSS',
+          occurredAt: new Date(OCCURRED_AT),
+          sourceDocType: 'LOSS',
+          sourceDocId: freshUuid(),
+          createdBy: admin,
+          allowNegative: false,
+        }),
+      );
+    }
+    const overcommittedOf = (productId: string) =>
+      db
+        .selectFrom('sync_sync_conflicts')
+        .select(['applied', 'status', 'details'])
+        .where('conflict_type', '=', 'ALLOCATION_OVERCOMMITTED')
+        .where('entity_id', '=', toBin(storeA))
+        .execute()
+        .then((rows) =>
+          rows.filter((row) => (row.details as Record<string, unknown>)['productId'] === productId),
         );
-      const overcommitted = () =>
-        db
-          .selectFrom('sync_sync_conflicts')
-          .select(['applied', 'status', 'details'])
-          .where('conflict_type', '=', 'ALLOCATION_OVERCOMMITTED')
-          .where('entity_id', '=', toBin(storeA))
-          .execute()
-          .then((rows) =>
-            rows.filter(
-              (row) => (row.details as Record<string, unknown>)['productId'] === productId,
-            ),
-          );
+
+    it('une perte du serveur qui laisse le solde sous Σ restes ouvre un conflit, une seule fois', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(20);
+      await grantQuota(holder, productId, 15);
+
+      const loss = (quantityBase: number) => declareLoss(productId, quantityBase);
+      const overcommitted = () => overcommittedOf(productId);
 
       const first = await loss(4); // 16 ≥ 15 : rien
       expect(first[0]?.warnings).toBeUndefined();
@@ -823,6 +1028,34 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
 
       await loss(2); // toujours sous le total : pas de doublon tant que le conflit est ouvert
       expect(await overcommitted()).toHaveLength(1);
+    });
+
+    it('seule la sortie qui cause ou aggrave le dépassement reçoit l’avertissement : une sortie couverte par le quota de son auteur n’en reçoit pas (revue P5-11)', async () => {
+      const holderA = await newHolder();
+      const holderB = await newHolder();
+      const stranger = await newHolder();
+      const productId = await newProduct(20);
+      const idA = await grantQuota(holderA, productId, 10);
+      await grantQuota(holderB, productId, 8);
+
+      // Une perte ramène le solde à 15 sous les 18 promis : le conflit est ouvert (la perte l'a causé).
+      const loss = await declareLoss(productId, 5);
+      expect(loss[0]?.warnings).toEqual(['ALLOCATION_OVERCOMMITTED']);
+      expect(await overcommittedOf(productId)).toHaveLength(1);
+
+      // A vend 2 EN LIGNE dans son propre quota : le solde (13) et les restes (16) baissent de 2,
+      // l'écart reste de 3 et rien n'est pris à B — ni avertissement ni nouveau conflit.
+      const own = await sell(holderA, productId, 2);
+      expect(own).toHaveLength(1);
+      expect(own[0]?.allocationId).toBe(idA);
+      expect(own[0]?.warnings).toBeUndefined();
+      expect(await overcommittedOf(productId)).toHaveLength(1);
+
+      // Hors ligne, un couple sans quota prend sur le stock promis : il aggrave l'écart, il est signalé.
+      const worsening = await sell(stranger, productId, 1, { capturedOffline: true });
+      expect(worsening[0]?.warnings).toContain('ALLOCATION_OVERCOMMITTED');
+      expect(await overcommittedOf(productId)).toHaveLength(1); // un seul conflit ouvert
+      await expectInvariants(idA);
     });
   });
 

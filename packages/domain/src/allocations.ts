@@ -174,8 +174,9 @@ export function decideLocalConsumption(input: {
 /**
  * AV-166 (P5-11) : portée du signal d'une **vente** hors ligne sans quota utilisable (aucun, ou échu)
  * sur un emplacement partagé (`sales.offline_unallocated_sale_signal`, réglable par site).
- * `WHEN_ALLOCATED` (défaut) : seulement si l'(emplacement, produit) porte au moins un quota actif ;
- * `ALWAYS` : toujours ; `NEVER` : jamais.
+ * `WHEN_ALLOCATED` (défaut) : seulement si l'(emplacement, produit) porte au moins un quota actif
+ * (même épuisé : il reste actif jusqu'à sa libération ou sa révocation) ; `ALWAYS` : toujours ;
+ * `NEVER` : jamais.
  */
 export const UNALLOCATED_SALE_SIGNALS = ['NEVER', 'WHEN_ALLOCATED', 'ALWAYS'] as const;
 export type UnallocatedSaleSignal = (typeof UNALLOCATED_SALE_SIGNALS)[number];
@@ -202,7 +203,10 @@ export type OfflineAllocationSignal =
  * motif reprend le code de l'appareil. `null` : rien à signaler.
  *
  * - Quota utilisable : signal si la demande dépasse son reste (`quotaExceeded`), pour tout fait.
- * - Quota révoqué : relève d'`ALLOCATION_REVOKED_CONSUMED` (selon l'`occurred_at`), jamais d'ici.
+ * - Quota révoqué : un fait **postérieur** à la révocation relève d'`ALLOCATION_REVOKED_CONSUMED`
+ *   (selon l'`occurred_at`), jamais d'ici. Un fait **antérieur**, synchronisé après la révocation,
+ *   est signalé s'il dépassait le reste du quota au moment de la révocation (l'appelant calcule alors
+ *   `quotaExceeded` contre ce reste ; il le laisse faux pour un fait postérieur).
  * - Aucun quota, ou quota échu : une **vente** seulement, selon `unallocatedSaleSignal` (AV-166).
  * - En ligne : jamais (le dépassement est refusé, ou couvert par le stock libre : sortie normale).
  */
@@ -210,14 +214,23 @@ export function offlineAllocationSignal(input: {
   readonly capturedOffline: boolean;
   readonly isSale: boolean;
   readonly quota: ConsumerQuotaState;
+  /**
+   * Quota `USABLE` : la demande dépasse son reste. Quota `REVOKED` : le fait précède la révocation et
+   * dépasse le reste du quota à cet instant ; faux sinon.
+   */
   readonly quotaExceeded: boolean;
-  /** L'(emplacement, produit) porte au moins un quota actif (de n'importe quel détenteur). */
+  /**
+   * L'(emplacement, produit) porte au moins un quota actif (de n'importe quel détenteur), quel que
+   * soit son reste : un quota épuisé reste actif jusqu'à sa libération ou sa révocation.
+   */
   readonly locationHasActiveQuota: boolean;
   readonly unallocatedSaleSignal: UnallocatedSaleSignal;
 }): OfflineAllocationSignal | null {
   if (!input.capturedOffline) return null;
-  if (input.quota === 'USABLE') return input.quotaExceeded ? 'ALLOCATION_EXCEEDED' : null;
-  if (input.quota === 'REVOKED' || !input.isSale) return null;
+  if (input.quota === 'USABLE' || input.quota === 'REVOKED') {
+    return input.quotaExceeded ? 'ALLOCATION_EXCEEDED' : null;
+  }
+  if (!input.isSale) return null;
   const mode = input.unallocatedSaleSignal;
   if (mode === 'NEVER' || (mode === 'WHEN_ALLOCATED' && !input.locationHasActiveQuota)) {
     return null;

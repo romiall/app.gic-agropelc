@@ -128,7 +128,7 @@ Question CM §62 : « Combien de poulets réellement disponibles pouvons-nous ve
 - L'appareil télécharge son quota et le décrémente localement à chaque sortie. Il refuse de dépasser (AV-025).
 - Registre de quota `stock_allocation_entries` : `GRANT`, `INCREASE`, `CONSUME`, `RELEASE`, `REVOKE`, `ADJUST`, `RESTORE` (restitution à l'annulation d'une vente). Reste = Σ entrées signées, jamais négatif (INV-STK-20).
 - Libération : **confirmée par l'appareil** (il envoie son reste à la synchronisation). Tant que l'appareil ne l'a pas confirmée, le serveur considère le reste comme toujours détenu, ce qui empêche une double attribution.
-- Révocation forcée (appareil perdu, vendeur absent) : auditée ; toute consommation ultérieure imputée à ce quota ouvre `ALLOCATION_REVOKED_CONSUMED`.
+- Révocation forcée (appareil perdu, vendeur absent) : auditée ; toute consommation hors ligne ultérieure imputée à ce quota ouvre `ALLOCATION_REVOKED_CONSUMED` (en ligne, rien n'est imputé au quota révoqué : sortie normale du stock libre) ; un fait hors ligne antérieur à la révocation qui dépassait le reste du quota à cet instant ouvre `ALLOCATION_EXCEEDED`.
 
 Pourquoi ce choix plutôt qu'un stock négatif toléré (PM §6) ? Parce que la double consommation est **empêchée à la source**, au lieu d'être découverte a posteriori. Le coût opérationnel (octroyer des quotas) n'existe qu'en mode `SHARED`. Le mode `EXCLUSIVE_DEVICE`, recommandé par défaut pour les PDV, le supprime pour le cas courant.
 

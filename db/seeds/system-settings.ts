@@ -129,7 +129,7 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   // AV-166 (P5-11) : une vente hors ligne sans quota utilisable (aucun, ou échu) sur un emplacement
   // partagé est appliquée et signalée (`ALLOCATION_EXCEEDED`) : `WHEN_ALLOCATED` (défaut) si
-  // l'emplacement porte au moins un quota actif du produit, `ALWAYS`, ou `NEVER` (comportement de
+  // l'emplacement porte au moins un quota actif du produit (même épuisé), `ALWAYS`, ou `NEVER` (comportement de
   // P5-09). Réglable par site ; lu par le serveur seul.
   {
     key: 'sales.offline_unallocated_sale_signal',

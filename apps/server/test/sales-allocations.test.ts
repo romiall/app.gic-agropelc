@@ -31,6 +31,7 @@ import { registerCancelCommands } from '../src/modules/sales/application/command
 import { registerOrderCommands } from '../src/modules/sales/application/commands/order-commands.js';
 import { registerDeliveryCommands } from '../src/modules/sales/application/commands/delivery-commands.js';
 import { registerAllocationCommands } from '../src/modules/inventory/application/commands/allocation-commands.js';
+import { registerCountCommands } from '../src/modules/inventory/application/commands/count-commands.js';
 import {
   createStockLot,
   recordCostEntry,
@@ -47,8 +48,10 @@ import {
   closeTestDb,
   db,
   freshUuid,
+  grantTestPermission,
   insertTestDevice,
   insertTestLocation,
+  insertTestRole,
   insertTestSite,
   insertTestUser,
   insertTestZone,
@@ -85,6 +88,7 @@ describe('vente et quotas d’appareil (P5-11)', () => {
   let sellerB: Actor;
   let commercial: Actor;
   let terrain: Actor;
+  let counter: Actor;
   let terrainSecondDevice: string;
   let zoneId: string;
   let pdvSiteId: string;
@@ -489,6 +493,7 @@ describe('vente et quotas d’appareil (P5-11)', () => {
     registerOrderCommands(registry, idGenerator, sequences);
     registerDeliveryCommands(registry, idGenerator, sequences);
     registerAllocationCommands(registry, idGenerator);
+    registerCountCommands(registry, decisions, idGenerator, sequences);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     services = { push: new SyncPushService(pipeline, db, clock), pull: new SyncPullService(db) };
 
@@ -548,6 +553,10 @@ describe('vente et quotas d’appareil (P5-11)', () => {
       commercial = await actor(roles.sedentary, [{ scopeType: 'GLOBAL' }]);
       terrain = await actor(roles.terrain, [{ scopeType: 'ZONE', scopeZoneId: zoneId }]);
       terrainSecondDevice = await insertTestDevice(trx, terrain.userId, { status: 'ACTIVE' });
+      // Inventaire d'un emplacement (AT-049 de bout en bout) : rôle de test limité à `count.perform`.
+      const countRole = await insertTestRole(trx, adminId);
+      await grantTestPermission(trx, countRole, 'inventory.count.perform', adminId);
+      counter = await actor(countRole, [{ scopeType: 'GLOBAL' }]);
 
       // PDV mono-tablette : garde EXCLUSIVE_DEVICE, appareil désigné = la tablette du vendeur A.
       exclusivePosId = await insertTestLocation(trx, adminId, pdvSiteId, { locationType: 'POS' });
@@ -1658,5 +1667,304 @@ describe('vente et quotas d’appareil (P5-11)', () => {
       expect(moves.map((m) => fromBin(m.lot_id!))).toEqual([lotId]);
       await expectLedgerOk([pig.id]);
     });
+  });
+  // --- Corrections de la revue adverse de P5-11 ------------------------------------------------------------
+
+  describe('corrections de la revue adverse (P5-11)', () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    /** Une transaction concurrente qui tient les soldes du couple (emplacement, produit) jusqu'à `release()`. */
+    async function holdBalances(productId: string, locationId: string) {
+      let ready!: () => void;
+      let open!: () => void;
+      const held = new Promise<void>((resolve) => (ready = resolve));
+      const gate = new Promise<void>((resolve) => (open = resolve));
+      const done = db.transaction().execute(async (trx) => {
+        await trx
+          .selectFrom('inventory_stock_balances')
+          .select('qty_on_hand')
+          .where('location_id', '=', toBin(locationId))
+          .where('product_id', '=', toBin(productId))
+          .forUpdate()
+          .execute();
+        ready();
+        await gate;
+      });
+      await Promise.race([held, done]);
+      return {
+        release: async () => {
+          open();
+          await done;
+        },
+      };
+    }
+
+    /** Les soldes du couple sont-ils verrouillés par une autre transaction ? (`NOWAIT`, sans attendre). */
+    async function balancesLocked(productId: string, locationId: string): Promise<boolean> {
+      try {
+        await db
+          .transaction()
+          .execute((trx) =>
+            trx
+              .selectFrom('inventory_stock_balances')
+              .select('qty_on_hand')
+              .where('location_id', '=', toBin(locationId))
+              .where('product_id', '=', toBin(productId))
+              .forUpdate()
+              .noWait()
+              .execute(),
+          );
+        return false;
+      } catch (error) {
+        if ((error as { errno?: number }).errno !== 3572) throw error; // ER_LOCK_NOWAIT_ERR
+        return true;
+      }
+    }
+
+    it('ALLOCATION_OVERCOMMITTED : seule la vente qui cause ou aggrave le dépassement le reçoit ; une vente en ligne dans son propre quota sur un emplacement déjà en dépassement reste APPLIED', async () => {
+      const product = await sellable();
+      await stock(product.id, 20);
+      const idA = await grant(sellerA, product.id, 10);
+      const idB = await grant(sellerB, product.id, 8);
+      // Une perte du serveur ramène le solde à 15 sous les 18 promis : le conflit est ouvert.
+      await db.transaction().execute(async (trx) => {
+        await recordStockMove(
+          trx,
+          { idGenerator },
+          {
+            productId: product.id,
+            quantityBase: 5,
+            fromLocationId: posId,
+            toLocationId: await virtualLocationId(trx, 'V_LOSS'),
+            moveType: 'LOSS',
+            occurredAt: new Date(`${DAY}T06:00:00.000Z`),
+            sourceDocType: 'LOSS',
+            sourceDocId: freshUuid(),
+            createdBy: admin.userId,
+            allowNegative: false,
+          },
+        );
+      });
+      expect(await locationConflicts('ALLOCATION_OVERCOMMITTED', posId, product.id)).toHaveLength(
+        1,
+      );
+
+      // A vend 2 en ligne dans son quota : solde 13, restes 16, écart inchangé (3), rien n'est pris à B.
+      const own = await sellOnline(sellerA, saleBody(posId, product, 2), at('09:50:00'));
+      expect(own.result.status, JSON.stringify(own.result)).toBe('APPLIED');
+      expect(flagsOf(await saleRow(own.id))).toEqual([]);
+      expect(await remainingOf(idA)).toBe(8);
+      expect(await remainingOf(idB)).toBe(8);
+      expect(await onHand(product.id)).toBe(13);
+      expect(await locationConflicts('ALLOCATION_OVERCOMMITTED', posId, product.id)).toHaveLength(
+        1,
+      );
+
+      // Hors ligne, A vend 10 : 8 de son quota, 2 du stock promis à B → il aggrave l'écart, il est signalé.
+      const worsening = await sellOffline(
+        tabletOf(sellerA),
+        sellerA.userId,
+        saleBody(posId, product, 10),
+        at('09:51:00'),
+      );
+      expect(warningsOf(worsening.result)).toContain('ALLOCATION_OVERCOMMITTED');
+      expect(flagsOf(await saleRow(worsening.id))).toContain('ALLOCATION_OVERCOMMITTED');
+      expect(await locationConflicts('ALLOCATION_OVERCOMMITTED', posId, product.id)).toHaveLength(
+        1,
+      );
+      await expectQuotaInvariants(idA);
+      await expectQuotaInvariants(idB);
+      await expectLedgerOk([product.id]);
+    });
+
+    it('quota révoqué, vente EN LIGNE après la révocation : vente normale sur le stock libre, APPLIED, ni conflit ni drapeau (BR-STK-014)', async () => {
+      const product = await sellable();
+      await stock(product.id, 100);
+      const id = await grant(sellerA, product.id, 30);
+      await revoke(id, at('12:10:00'));
+
+      for (const when of ['12:40:00', '12:41:00']) {
+        const sale = await sellOnline(sellerA, saleBody(posId, product, 5), at(when));
+        expect(sale.result.status, JSON.stringify(sale.result)).toBe('APPLIED');
+        expect(flagsOf(await saleRow(sale.id))).toEqual([]);
+        expect(await conflictsOf('ALLOCATION_REVOKED_CONSUMED', sale.id)).toHaveLength(0);
+        expect((await saleMoves(sale.id)).every((m) => m.allocation_id === null)).toBe(true);
+      }
+      expect(await onHand(product.id)).toBe(90);
+      expect(await entryTypes(id)).toEqual(['GRANT', 'REVOKE']);
+      await expectQuotaInvariants(id);
+      await expectLedgerOk([product.id]);
+    });
+
+    it('quota révoqué, vente hors ligne ANTÉRIEURE à la révocation : normale dans le reste du quota, ALLOCATION_EXCEEDED au-delà (AT-003)', async () => {
+      const product = await sellable();
+      await stock(product.id, 100);
+      const id = await grant(sellerA, product.id, 30);
+      await revoke(id, at('12:20:00')); // reste du quota à la révocation : 30
+      const tablet = tabletOf(sellerA);
+
+      const within = await sellOffline(
+        tablet,
+        sellerA.userId,
+        saleBody(posId, product, 4),
+        at('12:00:00'),
+      );
+      expect(within.result.status, JSON.stringify(within.result)).toBe('APPLIED');
+
+      const beyond = await sellOffline(
+        tablet,
+        sellerA.userId,
+        saleBody(posId, product, 31),
+        at('12:01:00'),
+      );
+      expect(beyond.result.status, JSON.stringify(beyond.result)).toBe('APPLIED_WITH_WARNINGS');
+      expect(warningsOf(beyond.result)).toEqual(['ALLOCATION_EXCEEDED']);
+      expect(flagsOf(await saleRow(beyond.id))).toEqual(['ALLOCATION_EXCEEDED']);
+      const [conflict] = await conflictsOf('ALLOCATION_EXCEEDED', beyond.id);
+      expect(conflict).toMatchObject({ entity_type: 'STOCK_ALLOCATION', applied: 1 });
+      expect(fromBin(conflict!.entity_id)).toBe(id);
+      expect(details(conflict)).toMatchObject({
+        reason: 'ALLOCATION_EXCEEDED',
+        allocationId: id,
+        requested: '31.000',
+        quotaRemaining: '30.000',
+        excess: '1.000',
+      });
+      expect(await conflictsOf('ALLOCATION_REVOKED_CONSUMED', beyond.id)).toHaveLength(0);
+      expect((await saleMoves(beyond.id)).every((m) => m.allocation_id === null)).toBe(true);
+      expect(await entryTypes(id)).toEqual(['GRANT', 'REVOKE']);
+      expect(await onHand(product.id)).toBe(65);
+      await expectQuotaInvariants(id);
+      await expectLedgerOk([product.id]);
+    });
+
+    it('quota épuisé mais encore actif : la vente hors ligne d’un couple sans quota est signalée (AV-166, WHEN_ALLOCATED compte les quotas actifs)', async () => {
+      const product = await sellable();
+      await stock(product.id, 40);
+      const idB = await grant(sellerB, product.id, 10);
+      const exhaust = await sellOnline(sellerB, saleBody(posId, product, 10), at('12:50:00'));
+      expect(exhaust.result.status).toBe('APPLIED');
+      const row = await quota(idB);
+      expect(row.status).toBe('ACTIVE');
+      expect(Number(row.quantity_remaining)).toBe(0);
+
+      const { id: saleId, result } = await sellOffline(
+        tabletOf(sellerA),
+        sellerA.userId,
+        saleBody(posId, product, 5),
+        at('12:51:00'),
+      );
+      expect(warningsOf(result)).toEqual(['ALLOCATION_EXCEEDED']); // rien n'est promis : pas de dépassement
+      const [signal] = await conflictsOf('ALLOCATION_EXCEEDED', saleId);
+      expect(signal).toMatchObject({ entity_type: 'LOCATION' });
+      expect(details(signal)).toMatchObject({ reason: 'ALLOCATION_MISSING', excess: '5.000' });
+      await expectQuotaInvariants(idB);
+      await expectLedgerOk([product.id]);
+    });
+
+    it('confirmation de commande : soldes et quotas sont verrouillés dans l’ordre des produits, non des lignes (aucun interblocage avec une vente directe)', async () => {
+      const one = await sellable();
+      const two = await sellable();
+      const [low, high] = one.id < two.id ? [one, two] : [two, one];
+      await stock(low.id, 10, storeId);
+      await stock(high.id, 10, storeId);
+
+      // Une transaction concurrente tient le produit « bas » (une vente directe l'aurait verrouillé en
+      // premier). La commande, dont les lignes sont dans l'ordre inverse (haut, bas), doit s'arrêter sur
+      // ce verrou sans avoir pris le produit « haut » : sinon elle s'interbloquerait avec la vente.
+      const hold = await holdBalances(low.id, storeId);
+      const orderId = freshUuid();
+      const placing = run(commercial, 'sales.order.place', 'SALES_ORDER', orderId, at('16:30:00'), {
+        customerId,
+        fulfilmentLocationId: storeId,
+        lines: [line(high, 3), line(low, 3)],
+      });
+      let highLocked: boolean;
+      try {
+        await sleep(1_500);
+        highLocked = await balancesLocked(high.id, storeId);
+      } finally {
+        await hold.release();
+      }
+      const result = await placing;
+      expect(highLocked).toBe(false);
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+      const lines = await db
+        .selectFrom('sales_sales_order_lines')
+        .select(['product_id', 'sold_quantity_base'])
+        .where('order_id', '=', toBin(orderId))
+        .execute();
+      expect(lines.map((row) => Number(row.sold_quantity_base))).toEqual([3, 3]);
+      expect(await onHand(high.id, storeId)).toBe(7);
+      expect(await onHand(low.id, storeId)).toBe(7);
+    });
+
+    /** AT-049 : vente hors ligne réelle → `STOCK_NEGATIVE` → inventaire de l'emplacement → conflit clos. */
+    async function stockNegativeClosedByCount(
+      productIdInSale: (productId: string) => string,
+    ): Promise<void> {
+      const product = await sellable();
+      await stock(product.id, 2);
+      const body = saleBody(posId, product, 5);
+      const { id: saleId, result } = await sellOffline(
+        tabletOf(sellerA),
+        sellerA.userId,
+        {
+          ...body,
+          lines: body.lines.map((row) => ({ ...row, productId: productIdInSale(product.id) })),
+        },
+        at('13:30:00'),
+      );
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED_WITH_WARNINGS');
+      expect(warningsOf(result)).toContain('STOCK_NEGATIVE');
+      expect(await onHand(product.id)).toBe(-3);
+      const negative = () =>
+        db
+          .selectFrom('sync_sync_conflicts')
+          .select(['status', 'resolution', 'resolution_refs', 'details'])
+          .where('conflict_type', '=', 'STOCK_NEGATIVE')
+          .where('entity_id', '=', toBin(saleId))
+          .executeTakeFirstOrThrow();
+      const opened = await negative();
+      expect(opened.status).toBe('OPEN');
+      // Les clés que l'inventaire compare pour clore le conflit (texte exact, minuscules).
+      expect(details(opened)).toMatchObject({ productId: product.id, locationId: posId });
+
+      // Inventaire de l'emplacement : compté 0, théorique −3, écart +3, solde ramené à 0.
+      const countId = freshUuid();
+      for (const [commandType, payload] of [
+        ['inventory.count.open', { locationId: posId, countType: 'SPOT' }],
+        [
+          'inventory.count.record_lines',
+          {
+            countId,
+            lines: [{ productId: product.id, countedAt: at('17:00:00'), countedQtyBase: 0 }],
+          },
+        ],
+        ['inventory.count.submit', { countId }],
+      ] as const) {
+        const step = await run(
+          counter,
+          commandType,
+          'INVENTORY_COUNT',
+          countId,
+          at('17:00:00'),
+          payload,
+        );
+        expect(step.status, JSON.stringify(step)).toBe('APPLIED');
+      }
+      expect(await onHand(product.id)).toBe(0);
+      const closed = await negative();
+      expect(closed.status).toBe('RESOLVED');
+      expect(closed.resolution).toBe('COMPENSATE');
+      expect(closed.resolution_refs).toEqual([countId]);
+      await expectLedgerOk([product.id]);
+    }
+
+    it('AT-049 de bout en bout : la vente hors ligne réelle ouvre STOCK_NEGATIVE, l’inventaire de l’emplacement le clôt (COMPENSATE, référence de l’inventaire)', () =>
+      stockNegativeClosedByCount((productId) => productId));
+
+    it('AT-049 : un identifiant de produit en majuscules dans la commande de vente n’empêche pas la clôture (le conflit porte l’identifiant du catalogue, en minuscules)', () =>
+      stockNegativeClosedByCount((productId) => productId.toUpperCase()));
   });
 });
