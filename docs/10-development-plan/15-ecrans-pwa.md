@@ -12,7 +12,8 @@
 |---|---|---|---|
 | F-01 | Socle de l'appareil : jeux publiés depuis P1 | `215aedb` | `KNOWN_DATASETS` étendu aux 22 jeux publiés depuis P1 (34 en tout) (catalogue, prix, stock, quotas, CRM, achats, production, commandes, ventes récentes, caisses, communications) ; `SCOPE_EXIT` retiré par périmètre (une entité tenue par plusieurs périmètres reste tant qu'il en reste un) ; lecture typée des projections (`storage/projections.ts`, crochet `useProjected`) |
 | F-02 | Navigation par rôle ([ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md)) | `9fd96f7` | Registre des écrans livrés (`app/screens.ts`) ; route d'une action de l'accueil complétée par l'appareil quand le serveur renvoie `route: null` ; navigation mémorisée par utilisateur (store `navigation`, version 2 de la base locale) ; menu par rôle `/menu`, utilisable hors ligne, lien depuis l'en-tête et depuis l'accueil en erreur ; déconnexion déplacée dans le menu |
-| F-03 | ECR-VEN-01 « + Nouvelle vente » | _à venir_ | Couche de données des ventes (`features/sales/`) : référentiels lus sur l'appareil, prix par `resolvePrice` avec le canal déduit comme le serveur (BR-VEN-021), disponible local (solde moins opérations en attente), blocage hors ligne par `decideLocalConsumption` (AV-025), envoi par l'outbox et suivi du résultat (UX-05). Écran : emplacement prérempli, client de passage ou identifié, articles (conditionnements, poids, dérogation de prix avec motif), encaissement prérempli au total, référence exigée selon le moyen. Correctif du socle : clé locale d'un solde de stock = emplacement × produit |
+| F-03 | ECR-VEN-01 « + Nouvelle vente » | `295b3f1` | Couche de données des ventes (`features/sales/`) : référentiels lus sur l'appareil, prix par `resolvePrice` avec le canal déduit comme le serveur (BR-VEN-021), disponible local (solde moins opérations en attente), blocage hors ligne par `decideLocalConsumption` (AV-025), envoi par l'outbox et suivi du résultat (UX-05). Écran : emplacement prérempli, client de passage ou identifié, articles (conditionnements, poids, dérogation de prix avec motif), encaissement prérempli au total, référence exigée selon le moyen. Correctif du socle : clé locale d'un solde de stock = emplacement × produit |
+| F-04 | ECR-VEN-05 « Détail d'une vente (reçu, annulation) » et ventes récentes | _à venir_ | Ventes des 7 derniers jours (jeu `sales_recent`) complétées par les ventes de l'appareil pas encore confirmées (en attente, refusées, en conflit) ; reçu composé sur l'appareil, imprimable ; annulation par `sales.sale.cancel` (motif `CANCELLATION` ou commentaire, sort de la somme encaissée d'un client identifié), immédiate dans le délai `sales.direct_cancel_minutes` pour le vendeur, sinon demande soumise à validation ; annulation d'une vente encore sur l'appareil chaînée par `depends_on` ; rôles du registre alignés sur la matrice RBAC (`sales.sale.record`, `sales.sale.read`) |
 
 ## 2. Écrans
 
@@ -22,6 +23,7 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 |---|---|---|---|---|
 | ECR-ADM-03 | `/` et `/menu` | Enrichi (F-02) | Menu : oui ; accueil : non | Actions routées par le registre de l'appareil (ADR-050) |
 | ECR-VEN-01 | `/ventes/nouvelle` | Livré (F-03) | Oui, dans la limite du stock exclusif ; emplacement partagé bloqué hors ligne tant que les quotas ne sont pas servis (S-05) | Action `NEW_SALE` |
+| ECR-VEN-05 | `/ventes` et `/ventes/:saleId` | Livré (F-04) | Oui (7 derniers jours connus de l'appareil) | Reçu imprimable ; annulation directe ou demande |
 
 ## 3. Vérifications
 
@@ -30,6 +32,7 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 | F-01 | 96 verts (15 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 | F-02 | 105 verts (17 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 | F-03 | 17 verts sur les ventes (logique et écran, dont une vente hors ligne) | OK | OK | OK | Différé : connexion requise (voir § 7) |
+| F-04 | 5 verts (liste, reçu, annulation directe, annulation chaînée à une vente hors ligne, vente inconnue) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 ## 4. Besoins côté serveur et contrats
 

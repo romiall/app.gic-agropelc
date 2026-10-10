@@ -13,6 +13,8 @@ import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { MenuScreen } from '../features/navigation/MenuScreen.js';
 import { NewSaleScreen } from '../features/sales/NewSaleScreen.js';
+import { SaleDetailScreen } from '../features/sales/SaleDetailScreen.js';
+import { SalesListScreen } from '../features/sales/SalesListScreen.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
@@ -62,6 +64,8 @@ function AppShell() {
           <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
           <Route path={ROUTES.sync} element={<SyncScreen />} />
           <Route path={ROUTES.newSale} element={<NewSaleScreen />} />
+          <Route path={ROUTES.sales} element={<SalesListScreen />} />
+          <Route path={ROUTES.salePattern} element={<SaleDetailScreen />} />
         </Routes>
       </main>
     </div>

@@ -17,10 +17,21 @@ export const ROUTES = {
   menu: '/menu',
   sync: '/synchronisation',
   newSale: '/ventes/nouvelle',
+  sales: '/ventes',
+  salePattern: '/ventes/:saleId',
+  sale: (saleId: string) => `/ventes/${saleId}`,
 } as const;
 
-/** Rôles qui vendent (ECR-VEN-01 : vendeur de PDV, commerciaux, responsable de ferme). */
-const SELLER_ROLES = ['VENDEUR_PDV', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE', 'RESP_FERME'];
+/** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
+const SELLER_ROLES = [
+  'RESP_COMMERCIAL',
+  'COMMERCIAL_TERRAIN',
+  'COMMERCIAL_SEDENTAIRE',
+  'VENDEUR_PDV',
+  'RESP_FERME',
+];
+/** Rôles qui lisent les ventes (`sales.sale.read`). */
+const SALE_READER_ROLES = [...SELLER_ROLES, 'DIRECTION', 'FINANCE'];
 
 export type ScreenGroup = 'general' | 'sales' | 'stock' | 'crm' | 'procurement' | 'production';
 
@@ -65,6 +76,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: SELLER_ROLES,
     actionCodes: ['NEW_SALE'],
+    offline: true,
+  },
+  {
+    id: 'ECR-VEN-05',
+    path: ROUTES.sales,
+    labelKey: 'sales',
+    group: 'sales',
+    roles: SALE_READER_ROLES,
+    actionCodes: [],
     offline: true,
   },
 ];

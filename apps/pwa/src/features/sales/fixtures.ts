@@ -210,3 +210,61 @@ export async function seedSalesFixtures(
     }),
   ]);
 }
+
+export const SALE_ID = '01900000-0000-7000-8000-0000000000a1';
+
+/** Vente servie par le serveur (jeu `sales_recent`), payée en partie par un client identifié. */
+export function saleRow(overrides: Record<string, unknown> = {}): Projection {
+  return row(
+    'sales_recent',
+    'SALE',
+    SALE_ID,
+    {
+      id: SALE_ID,
+      doc_number: 'VTE-2026-000123',
+      local_ref: null,
+      sale_type: 'DIRECT',
+      order_id: null,
+      status: 'CONFIRMED',
+      payment_status: 'PARTIALLY_PAID',
+      customer_id: IDS.customer,
+      site_id: IDS.site,
+      from_location_id: IDS.pos,
+      channel_code: 'POINT_DE_VENTE',
+      seller_user_id: IDS.user,
+      commercial_user_id: null,
+      total_xaf: 7000,
+      discount_total_xaf: 0,
+      cancelled_xaf: 0,
+      net_total_xaf: 7000,
+      amount_paid_xaf: 5000,
+      balance_due_xaf: 2000,
+      due_date: '2026-11-09',
+      flags: [],
+      captured_offline: false,
+      occurred_at: '2026-10-10T08:50:00.000Z',
+      version: 1,
+      lines: [
+        {
+          id: '01900000-0000-7000-8000-0000000000b1',
+          line_no: 1,
+          order_line_id: null,
+          product_id: IDS.chicken,
+          product_name: 'Poulet de chair',
+          quantity: 2,
+          unit_code: 'U',
+          quantity_base: 2,
+          unit_price_xaf: 3500,
+          discount_xaf: 0,
+          line_total_xaf: 7000,
+          cancelled_quantity_base: 0,
+          cancelled_xaf: 0,
+          delivered_quantity_base: 2,
+        },
+      ],
+      payments: [],
+      ...overrides,
+    },
+    { type: 'USER', id: IDS.user },
+  );
+}

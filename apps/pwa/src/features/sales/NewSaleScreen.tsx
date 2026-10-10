@@ -9,8 +9,10 @@
  * emplacement partagé. En ligne, le serveur décide (stock, prix à jour, crédit, session de caisse).
  */
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { creditCheck, xaf } from '@gic/domain';
+import { ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -62,7 +64,7 @@ export function NewSaleScreen() {
   /** `null` : montant encaissé = total (préremplissage). */
   const [amountText, setAmountText] = useState<string | null>(null);
   const [reference, setReference] = useState('');
-  const [submittedId, setSubmittedId] = useState<string>();
+  const [submitted, setSubmitted] = useState<{ commandId: string; saleId: string }>();
   const [busy, setBusy] = useState(false);
 
   if (!refs || !userId) {
@@ -80,17 +82,20 @@ export function NewSaleScreen() {
     setMethodChoice(null);
     setAmountText(null);
     setReference('');
-    setSubmittedId(undefined);
+    setSubmitted(undefined);
   };
 
-  if (submittedId) {
+  if (submitted) {
     return (
       <section className="sale">
         <h1>{t('nav.screens.new_sale')}</h1>
-        <CommandResult commandId={submittedId} messages="sales.result">
+        <CommandResult commandId={submitted.commandId} messages="sales.result">
           <button type="button" onClick={reset}>
             {t('sales.new_sale')}
           </button>
+          <Link to={ROUTES.sale(submitted.saleId)} className="action action-compact">
+            <span className="action-label">{t('sales.view_sale')}</span>
+          </Link>
         </CommandResult>
       </section>
     );
@@ -229,7 +234,7 @@ export function NewSaleScreen() {
             : {}),
         },
       });
-      setSubmittedId(command.command_id);
+      setSubmitted({ commandId: command.command_id, saleId: command.aggregate_id });
     } finally {
       setBusy(false);
     }
