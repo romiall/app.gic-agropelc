@@ -103,7 +103,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stock: new Map(
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
-    pending: pendingConsumption(outbox, orderMap),
+    pending: pendingConsumption(outbox),
     customers: customers.filter((customer) => customer.merged_into_id === null),
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     reasonCodes: reasonCodes.filter((reason) => reason.is_active),

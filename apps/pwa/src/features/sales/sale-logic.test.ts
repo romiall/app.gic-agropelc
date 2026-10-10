@@ -14,7 +14,7 @@ import {
   type PricingContext,
 } from './sale-form.js';
 import { localAvailable, offlineSaleDecision, pendingConsumption, settingValue } from './stock.js';
-import type { SalesOrderData, SettingData, ZoneData } from './types.js';
+import type { SettingData, ZoneData } from './types.js';
 
 const NOW = new Date('2026-10-10T09:00:00.000Z');
 
@@ -179,34 +179,30 @@ describe('ventes — saisie et montants', () => {
 });
 
 describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
-  const order = {
-    id: 'o1',
-    fulfilment_location_id: 'loc',
-    lines: [{ id: 'ol1', product_id: 'p' }],
-  } as unknown as SalesOrderData;
-
-  it('les ventes et livraisons en attente réduisent le disponible ; les confirmées non', () => {
-    const pending = pendingConsumption(
-      [
-        outbox('sales.sale.record', {
-          fromLocationId: 'loc',
-          lines: [
-            { productId: 'p', quantityBase: 1.5 },
-            { productId: 'p', quantityBase: 0.25 },
-          ],
-        }),
-        outbox('sales.order.fulfil', {
-          orderId: 'o1',
-          lines: [{ orderLineId: 'ol1', quantityBase: 2 }],
-        }),
-        outbox(
-          'sales.sale.record',
-          { fromLocationId: 'loc', lines: [{ productId: 'p', quantityBase: 9 }] },
-          'SYNCED',
-        ),
-      ],
-      new Map([['o1', order]]),
-    );
+  it('ventes et commandes en attente réduisent le disponible ; livraisons et opérations confirmées non', () => {
+    const pending = pendingConsumption([
+      outbox('sales.sale.record', {
+        fromLocationId: 'loc',
+        lines: [
+          { productId: 'p', quantityBase: 1.5 },
+          { productId: 'p', quantityBase: 0.25 },
+        ],
+      }),
+      outbox('sales.order.place', {
+        fulfilmentLocationId: 'loc',
+        lines: [{ productId: 'p', quantityBase: 2 }],
+      }),
+      // La marchandise livrée a quitté l'emplacement à la confirmation (ADR-028) : pas de décompte.
+      outbox('sales.order.fulfil', {
+        orderId: 'o1',
+        lines: [{ orderLineId: 'ol1', quantityBase: 5 }],
+      }),
+      outbox(
+        'sales.sale.record',
+        { fromLocationId: 'loc', lines: [{ productId: 'p', quantityBase: 9 }] },
+        'SYNCED',
+      ),
+    ]);
     expect(pending.get('loc:p')).toBe(3.75);
     const balance = {
       location_id: 'loc',

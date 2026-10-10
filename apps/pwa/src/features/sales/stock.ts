@@ -2,7 +2,7 @@
  * Disponible local et blocage hors ligne de la vente (BR-VEN-018, AV-025 ; ADR-033).
  *
  * Disponible d'un emplacement = solde téléchargé (jeu `stock`) moins ce que l'appareil a déjà vendu
- * ou livré sans confirmation du serveur (commandes de l'outbox en attente). Hors ligne, la décision
+ * ou commandé sans confirmation du serveur (opérations de l'outbox en attente). Hors ligne, la décision
  * est celle de `decideLocalConsumption` (`packages/domain`), identique au miroir du serveur : sur un
  * emplacement à garde exclusive, le stock local suffit ; sur un emplacement partagé, il faut un quota
  * d'appareil. Le jeu `allocations` n'est pas encore servi par le serveur (lecteur prévu en P5-18,
@@ -17,7 +17,7 @@ import {
   type LocalConsumptionDecision,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import type { LocationData, SalesOrderData, SettingData, StockBalanceData } from './types.js';
+import type { LocationData, SettingData, StockBalanceData } from './types.js';
 
 const WAITING_STATUSES: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']);
 
@@ -27,48 +27,38 @@ const fromMilli = (milli: number): number => milli / 1000;
 export const stockKey = (locationId: string, productId: string): string =>
   `${locationId}:${productId}`;
 
-interface SalePayloadLike {
+interface StockPayloadLike {
   readonly fromLocationId?: string;
+  readonly fulfilmentLocationId?: string;
   readonly lines?: readonly { readonly productId?: string; readonly quantityBase?: number }[];
 }
 
-interface FulfilPayloadLike {
-  readonly orderId?: string;
-  readonly lines?: readonly { readonly orderLineId?: string; readonly quantityBase?: number }[];
-}
-
 /**
- * Quantités (unité de base, par `emplacement:produit`) que les ventes et livraisons de l'appareil
- * retirent déjà du stock sans que le serveur l'ait encore confirmé.
+ * Quantités (unité de base, par `emplacement:produit`) que les opérations de l'appareil retirent
+ * déjà de l'emplacement sans que le serveur l'ait encore confirmé :
+ * - une vente directe, sur son emplacement source ;
+ * - une commande passée, sur son emplacement de préparation : à sa confirmation, le serveur vend le
+ *   disponible et le déplace vers l'emplacement virtuel « à livrer » (ADR-028 §1 et §4). L'appareil
+ *   ne sait pas quelle part sera vendue : il compte toute la quantité commandée (choix prudent, qui
+ *   peut sous-estimer le disponible jusqu'à la synchronisation, jamais le surestimer).
+ * Une livraison ne consomme pas l'emplacement : la marchandise vendue l'a déjà quitté (« à livrer »).
  */
-export function pendingConsumption(
-  commands: readonly OutboxCommand[],
-  orders: ReadonlyMap<string, SalesOrderData>,
-): Map<string, number> {
+export function pendingConsumption(commands: readonly OutboxCommand[]): Map<string, number> {
   const milli = new Map<string, number>();
-  const add = (locationId: string, productId: string, quantity: number) => {
-    const key = stockKey(locationId, productId);
-    milli.set(key, (milli.get(key) ?? 0) + toMilli(quantity));
-  };
   for (const command of commands) {
     if (!WAITING_STATUSES.has(command.status)) continue;
-    if (command.command_type === 'sales.sale.record') {
-      const payload = command.payload as SalePayloadLike;
-      for (const line of payload.lines ?? []) {
-        if (payload.fromLocationId && line.productId && line.quantityBase) {
-          add(payload.fromLocationId, line.productId, line.quantityBase);
-        }
-      }
-    } else if (command.command_type === 'sales.order.fulfil') {
-      const payload = command.payload as FulfilPayloadLike;
-      const order = payload.orderId ? orders.get(payload.orderId) : undefined;
-      if (!order) continue;
-      for (const line of payload.lines ?? []) {
-        const orderLine = order.lines.find((candidate) => candidate.id === line.orderLineId);
-        if (orderLine && line.quantityBase) {
-          add(order.fulfilment_location_id, orderLine.product_id, line.quantityBase);
-        }
-      }
+    const payload = command.payload as StockPayloadLike;
+    const locationId =
+      command.command_type === 'sales.sale.record'
+        ? payload.fromLocationId
+        : command.command_type === 'sales.order.place'
+          ? payload.fulfilmentLocationId
+          : undefined;
+    if (!locationId) continue;
+    for (const line of payload.lines ?? []) {
+      if (!line.productId || !line.quantityBase) continue;
+      const key = stockKey(locationId, line.productId);
+      milli.set(key, (milli.get(key) ?? 0) + toMilli(line.quantityBase));
     }
   }
   return new Map([...milli].map(([key, value]) => [key, fromMilli(value)]));
