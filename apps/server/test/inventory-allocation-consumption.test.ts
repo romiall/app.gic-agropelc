@@ -297,7 +297,8 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       (total, move) => total + Math.round(Number(move.quantity) * 1000),
       0,
     );
-    expect(-sum(['CONSUME']) - sum(['RESTORE'])).toBe(moved);
+    // `0 −` : sans entrée CONSUME, `−0` n'égale pas `0` pour `toBe` (Object.is).
+    expect(0 - sum(['CONSUME']) - sum(['RESTORE'])).toBe(moved);
   }
 
   async function conflicts(entityId: string, type: string) {
@@ -483,7 +484,7 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       expect(await balanceOf(productId)).toBe(90);
     });
 
-    it('un utilisateur sans quota ne prend que le stock libre (BR-STK-011) ; son fait hors ligne est appliqué sans conflit de quota', async () => {
+    it('un utilisateur sans quota ne prend que le stock libre (BR-STK-011) ; sa vente hors ligne est appliquée et signalée (AV-166)', async () => {
       const holder = await newHolder();
       const stranger = await newHolder();
       const productId = await newProduct(20);
@@ -496,13 +497,29 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       expect(Number((await quota(id)).quantity_remaining)).toBe(15);
 
       const offline = await sell(stranger, productId, 3, { capturedOffline: true });
-      // Le solde (12) passe sous le quota promis (15) : conflit informatif, jamais corrigé en silence.
-      expect(offline[0]?.warnings).toEqual(['ALLOCATION_OVERCOMMITTED']);
+      // Vente hors ligne sans quota sur un emplacement qui en porte (AV-166, défaut WHEN_ALLOCATED) :
+      // appliquée, signalée ; le solde (12) passe sous le quota promis (15) : conflit informatif.
+      expect(offline[0]?.warnings).toEqual(['ALLOCATION_EXCEEDED', 'ALLOCATION_OVERCOMMITTED']);
       expect(await balanceOf(productId)).toBe(12); // 20 − 5 − 3 : le quota du détenteur en est la plus grande part
+      // Rien n'est imputé au quota du détenteur : le signal porte sur l'emplacement.
       expect(
         (await conflicts(id, 'ALLOCATION_EXCEEDED')).length +
           (await conflicts(id, 'ALLOCATION_REVOKED_CONSUMED')).length,
       ).toBe(0);
+      const signal = (await conflicts(storeA, 'ALLOCATION_EXCEEDED')).filter(
+        (row) => (row.details as Record<string, unknown>)['productId'] === productId,
+      );
+      expect(signal).toHaveLength(1);
+      expect(signal[0]?.owner_role).toBe('MAGASINIER');
+      expect(signal[0]?.details).toMatchObject({
+        reason: 'ALLOCATION_MISSING',
+        allocationId: null,
+        quotaRemaining: '0.000',
+        excess: '3.000',
+        signalled: false,
+        userId: stranger.userId,
+        deviceId: stranger.deviceId,
+      });
     });
 
     it('`lockSellableQuantity` ne vend pas ce qui est promis à un appareil (stock libre = Σ soldes − Σ restes)', async () => {
@@ -524,6 +541,176 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
         }),
       );
       expect(exclusive).toBe(40);
+    });
+  });
+
+  describe('corrections de P5-11 (BR-VEN-018, AV-166)', () => {
+    async function exceededAt(locationId: string, productId: string) {
+      return (await conflicts(locationId, 'ALLOCATION_EXCEEDED')).filter(
+        (row) => (row.details as Record<string, unknown>)['productId'] === productId,
+      );
+    }
+
+    it('en ligne, au-delà du quota dans le stock libre : sortie normale, ni avertissement ni conflit', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(100);
+      const id = await grantQuota(holder, productId, 10);
+
+      const moves = await sell(holder, productId, 15);
+      expect(moves.map((move) => [move.quantity, move.allocationId ?? null])).toEqual([
+        [10, id],
+        [5, null],
+      ]);
+      expect(moves.every((move) => move.warnings === undefined)).toBe(true);
+      expect(await conflicts(id, 'ALLOCATION_EXCEEDED')).toHaveLength(0);
+      await expectInvariants(id);
+    });
+
+    it('sans aucun quota sur l’emplacement : même refus, même code et même message que sans quota', async () => {
+      const stranger = await newHolder();
+      const productId = await newProduct(4);
+      const plain = sell(stranger, productId, 5, { consumesAllocation: false });
+      await expect(plain).rejects.toMatchObject({
+        code: 'INSUFFICIENT_STOCK',
+        message: 'Stock insuffisant sur l’emplacement source (BR-STK-017).',
+      });
+      await expect(sell(stranger, productId, 5)).rejects.toMatchObject({
+        code: 'INSUFFICIENT_STOCK',
+        message: 'Stock insuffisant sur l’emplacement source (BR-STK-017).',
+      });
+      expect(await balanceOf(productId)).toBe(4);
+
+      // Hors ligne, sans quota sur le produit (défaut WHEN_ALLOCATED) : aucun signal de quota.
+      const offline = await sell(stranger, productId, 2, { capturedOffline: true });
+      expect(offline[0]?.warnings).toBeUndefined();
+      expect(await exceededAt(storeA, productId)).toHaveLength(0);
+    });
+
+    it('détenteur d’un quota échu, en ligne : refus au message explicite (sa propre allocation a expiré)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(30);
+      await grantQuota(holder, productId, 30, { validityHours: 1 });
+
+      await expect(
+        sell(holder, productId, 5, { occurredAt: new Date('2026-10-08T11:00:00.000Z') }),
+      ).rejects.toMatchObject({
+        code: 'INSUFFICIENT_STOCK',
+        message:
+          'Votre allocation a expiré : libérez-la ou faites-la renouveler ; le stock libre ne couvre pas la demande (BR-STK-011).',
+      });
+    });
+
+    it('vente hors ligne avec un quota échu : appliquée au stock commun, ALLOCATION_EXCEEDED motif ALLOCATION_EXPIRED (AV-166)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(50);
+      const id = await grantQuota(holder, productId, 20, { validityHours: 1 });
+
+      const moves = await sell(holder, productId, 5, {
+        capturedOffline: true,
+        occurredAt: new Date('2026-10-08T11:00:00.000Z'),
+      });
+      expect(moves[0]?.allocationId).toBeUndefined();
+      expect(moves[0]?.warnings).toEqual(['ALLOCATION_EXCEEDED']);
+      expect(Number((await quota(id)).quantity_remaining)).toBe(20);
+      const found = await conflicts(id, 'ALLOCATION_EXCEEDED');
+      expect(found).toHaveLength(1);
+      expect(found[0]?.details).toMatchObject({
+        reason: 'ALLOCATION_EXPIRED',
+        allocationId: id,
+        excess: '5.000',
+        quotaRemaining: '0.000',
+      });
+      await expectInvariants(id);
+    });
+
+    it('le signal d’AV-166 ne concerne que la vente : une perte ou un transfert hors ligne sans quota n’est pas signalé', async () => {
+      const holder = await newHolder();
+      const stranger = await newHolder();
+      const productId = await newProduct(40);
+      await grantQuota(holder, productId, 10);
+      const lossLocation = await db
+        .selectFrom('organization_locations')
+        .select('id')
+        .where('location_type', '=', 'V_LOSS')
+        .executeTakeFirstOrThrow();
+
+      const moves = await sell(stranger, productId, 3, {
+        capturedOffline: true,
+        moveType: 'LOSS',
+        toLocationId: fromBin(lossLocation.id),
+        sourceDocType: 'LOSS',
+      });
+      expect(moves[0]?.warnings).toBeUndefined();
+      expect(await exceededAt(storeA, productId)).toHaveLength(0);
+    });
+
+    it('concurrence : la seconde sortie du même couple voit le reste réel du quota (lecture verrouillante), refus ALLOCATION_EXCEEDED et non erreur SQL', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(10);
+      const id = await grantQuota(holder, productId, 10);
+
+      await db.transaction().execute(async (trx) => {
+        // Instantané de cette transaction pris AVANT la première vente (isolation répétable).
+        await trx
+          .selectFrom('inventory_stock_allocations')
+          .select('quantity_remaining')
+          .where('id', '=', toBin(id))
+          .execute();
+        await sell(holder, productId, 8); // autre transaction, validée
+        await expect(
+          recordStockMove(trx, moveDeps, {
+            productId,
+            quantityBase: 8,
+            fromLocationId: storeA,
+            toLocationId: customerLocation,
+            moveType: 'SALE',
+            occurredAt: new Date(OCCURRED_AT),
+            sourceDocType: 'SALE',
+            sourceDocId: freshUuid(),
+            createdBy: holder.userId,
+            createdDeviceId: holder.deviceId,
+            consumesAllocation: true,
+            capturedOffline: false,
+            allowNegative: false,
+          }),
+        ).rejects.toMatchObject({ code: 'ALLOCATION_EXCEEDED' });
+      });
+      expect(Number((await quota(id)).quantity_remaining)).toBe(2);
+      expect(await balanceOf(productId)).toBe(2);
+      await expectInvariants(id);
+    });
+
+    it('concurrence : ALLOCATION_OVERCOMMITTED voit un octroi validé après l’instantané (lecture verrouillante)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(20);
+      const lossLocation = await db
+        .selectFrom('organization_locations')
+        .select('id')
+        .where('location_type', '=', 'V_LOSS')
+        .executeTakeFirstOrThrow();
+
+      const moves = await db.transaction().execute(async (trx) => {
+        await trx
+          .selectFrom('inventory_stock_allocations')
+          .select('id')
+          .where('product_id', '=', toBin(productId))
+          .execute();
+        await grantQuota(holder, productId, 15); // autre transaction, validée
+        return recordStockMove(trx, moveDeps, {
+          productId,
+          quantityBase: 7,
+          fromLocationId: storeA,
+          toLocationId: fromBin(lossLocation.id),
+          moveType: 'LOSS',
+          occurredAt: new Date(OCCURRED_AT),
+          sourceDocType: 'LOSS',
+          sourceDocId: freshUuid(),
+          createdBy: admin,
+          allowNegative: false,
+        });
+      });
+      // 13 < 15 promis : le conflit est ouvert malgré l'instantané antérieur à l'octroi.
+      expect(moves[0]?.warnings).toEqual(['ALLOCATION_OVERCOMMITTED']);
     });
   });
 

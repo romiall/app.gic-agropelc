@@ -9,6 +9,11 @@
  * (BR-VEN-004) et la confirmation ne rend jamais un solde négatif, même saisie hors ligne : c'est
  * une intention confirmée par le serveur (AV-126), non un fait accompli.
  *
+ * Quotas d'appareil (ADR-033 §7, P5-11) : la confirmation n'est pas un fait de l'appareil. Elle ne
+ * passe jamais `consumesAllocation` et ne vend que le **stock libre** d'un emplacement partagé (Σ soldes
+ * − Σ restes des quotas actifs, `availableForSale`) : aucun quota n'est consommé ni entamé, aucun
+ * `ALLOCATION_OVERCOMMITTED` n'en naît ; ce qui est promis aux appareils reste en attente.
+ *
  * La vente reprend, ligne par ligne, le prix convenu (`ORDER_QUOTE`, sa règle, sa dérogation et sa
  * validation), l'échéance part de l'heure de la vente (AV-129), l'acompte de la commande passe à la
  * vente (affectation renversée `ORDER_CONFIRMED`, puis réaffectée à la vente), et le prospect est
@@ -112,26 +117,29 @@ export async function lockOrder(
 }
 
 /**
- * Quantité vendable aujourd'hui d'un produit à l'emplacement de préparation : disponible positif
- * (sans les réservations), ou, depuis un emplacement d'élevage, seuls les lots « en vente ».
+ * Quantité vendable aujourd'hui d'un produit à l'emplacement de préparation : le **stock libre**
+ * (ADR-033 §4 et §7 : la confirmation est une opération du serveur, elle n'a pas de quota et ne prend
+ * rien de ce qui est promis à un appareil) — `lockSellableQuantity`, même sélection que la sortie
+ * stricte, en lecture verrouillante (revue P4-06), plafonnée sur un emplacement partagé à Σ soldes −
+ * Σ restes des quotas actifs. Depuis un emplacement d'élevage, seuls les lots « en vente » comptent,
+ * dans la même limite (P5-11 : la branche d'élevage n'était pas plafonnée).
  */
 export async function availableForSale(
   uow: Uow,
   location: StockLocationRef,
   productId: string,
 ): Promise<number> {
-  if (REARING_LOCATION_TYPES.includes(location.locationType)) {
-    const lots = await listLotBalances(uow, { locationId: location.id, productId });
-    return lots
-      .filter((lot) => lot.sellableFromRearing)
-      .reduce((sum, lot) => sum + lot.qtyOnHand, 0);
-  }
-  // Même sélection que la sortie stricte, en lecture verrouillante (revue P4-06).
-  return lockSellableQuantity(uow, {
+  const free = await lockSellableQuantity(uow, {
     locationId: location.id,
     custodyMode: location.custodyMode,
     productId,
   });
+  if (!REARING_LOCATION_TYPES.includes(location.locationType)) return free;
+  const lots = await listLotBalances(uow, { locationId: location.id, productId });
+  const selling = lots
+    .filter((lot) => lot.sellableFromRearing)
+    .reduce((sum, lot) => sum + lot.qtyOnHand, 0);
+  return Math.min(selling, free);
 }
 
 export interface OrderConfirmationInput {

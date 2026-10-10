@@ -92,8 +92,12 @@ const fulfilSchema = z.object({
 type FulfilPayload = z.infer<typeof fulfilSchema>;
 type Envelope = Parameters<CommandHandler<FulfilPayload>>[1];
 
-/** Avertissements possibles d'une livraison (`WARNING_CODES`, packages/contracts). */
-type Warning = 'ORDER_OVER_FULFILMENT' | 'STOCK_NEGATIVE';
+/**
+ * Avertissements possibles d'une livraison (`WARNING_CODES`, packages/contracts). La vente de
+ * régularisation ne consomme aucun quota (opération du serveur, ADR-033 §7) ; si elle entame le stock
+ * promis aux appareils d'un emplacement partagé, `inventory` ouvre `ALLOCATION_OVERCOMMITTED` (P5-11).
+ */
+type Warning = 'ORDER_OVER_FULFILMENT' | 'STOCK_NEGATIVE' | 'ALLOCATION_OVERCOMMITTED';
 
 const milliOf = (value: string | number): number =>
   quantityMilliUnits(quantityFromDecimal(Number(value)));
@@ -395,6 +399,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       if (!regularisation.ok) return regularisation.outcome;
       serverRefs['regularisationSaleDocNumber'] = regularisation.docNumber;
       if (regularisation.negative) warnings.add('STOCK_NEGATIVE');
+      if (regularisation.overcommitted) warnings.add('ALLOCATION_OVERCOMMITTED');
       warnings.add('ORDER_OVER_FULFILMENT');
       await recordConflict(uow, {
         id: idGenerator.newId(),
@@ -446,6 +451,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         readonly saleId: string;
         readonly docNumber: string;
         readonly negative: boolean;
+        /** Le stock promis aux quotas de l'emplacement a été entamé (conflit déjà ouvert). */
+        readonly overcommitted: boolean;
       }
     | { readonly ok: false; readonly outcome: CommandHandlerOutcome }
   > {
@@ -470,6 +477,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       ),
     }));
     let negative = false;
+    let overcommitted = false;
     const costs = new Map<string, { readonly costXaf: number; readonly unitCostXaf: number }>();
     const stockOrder = [...lines].sort(
       (a, b) =>
@@ -492,9 +500,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         createdDeviceId: input.origin.deviceId,
         commandId: input.envelope.command_id,
         offline: true,
+        // Opération du serveur : jamais `consumesAllocation` (ADR-033 §7), ni garde d'appareil.
       });
       if (!moved.ok) return moved;
       negative ||= moved.negative;
+      overcommitted ||= moved.warnings.includes('ALLOCATION_OVERCOMMITTED');
       const costXaf = moved.moves.reduce((sum, move) => sum + move.valueXaf, 0);
       costs.set(line.id, {
         costXaf,
@@ -513,7 +523,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       customer.paymentTermsDays ??
       (await numberSetting(uow, 'sales.default_payment_terms_days', at, 30));
     const session = await findWorkSessionAt(uow, input.author, at);
-    const flags = ['ORDER_OVER_FULFILMENT', ...(negative ? ['STOCK_NEGATIVE'] : [])];
+    const flags = [
+      'ORDER_OVER_FULFILMENT',
+      ...(negative ? ['STOCK_NEGATIVE'] : []),
+      ...(overcommitted ? ['ALLOCATION_OVERCOMMITTED'] : []),
+    ];
     await uow
       .insertInto('sales_sales')
       .values({
@@ -581,7 +595,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         })
         .execute();
     }
-    return { ok: true, saleId, docNumber, negative };
+    return { ok: true, saleId, docNumber, negative, overcommitted };
   }
 
   return { fulfil };

@@ -180,6 +180,7 @@ Classification (PM §45) :
 | AV-163 | Garde d'appareil : mode par défaut des emplacements et appareil non désigné | IMPORTANTE | P5 | Mode obligatoire avec défaut par type ; appareil non désigné : fait appliqué et conflit | OUVERT |
 | AV-164 | Tableau de distribution : définitions de « vendu » et « perdu », périmètre, route | SECONDAIRE | P5 | Vendu net des contre-écritures (à livrer à part) ; perdu = pertes reconnues + écarts ; route d'analytique livrée en P5 | OUVERT |
 | AV-165 | Sessions de caisse hors PDV et PDV à plusieurs appareils | SECONDAIRE | P5 | Pas de session pour une caisse utilisateur ; validation sans attendre toutes les synchronisations | OUVERT |
+| AV-166 | Vente hors ligne sans quota utilisable sur un emplacement partagé : signal du serveur | IMPORTANTE | P5 | Appliquée sur le stock commun et signalée `ALLOCATION_EXCEEDED` (motif `ALLOCATION_MISSING` ou `ALLOCATION_EXPIRED`) si l'emplacement porte au moins un quota actif du produit ; réglable par site | OUVERT |
 
 ---
 
@@ -1114,6 +1115,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) seules les caisses de PDV ont des sessions (une caisse utilisateur se vide par remise de fonds, alerte `CASH_HOLDING_HIGH`) ; la validation n'attend personne, la fraîcheur de synchronisation de chaque appareil du PDV est affichée à la Finance ; (b) sessions pour toutes les caisses ; (c) validation bloquée tant qu'un appareil n'a pas synchronisé.
 - **Recommandation** : (a).
 - **Impact** : `finance.cash_session.open` (refus d'un compte autre que `CAISSE_PDV`) ; tableau de distribution. Défaut implémenté : (a).
+
+### AV-166 — Vente hors ligne sans quota utilisable sur un emplacement partagé : signal du serveur — IMPORTANTE
+- **Question** : Une vente hors ligne arrive d'un appareil qui n'a **aucun quota**, ou dont le quota est **échu**, sur un emplacement `SHARED` (PDV à plusieurs tablettes, magasin, bâtiment d'élevage). La tablette aurait dû la bloquer (`ALLOCATION_MISSING`, `ALLOCATION_EXPIRED`), ou la laisser passer en la signalant si le site a activé l'option « autorisée et signalée » (AV-025). Le serveur, qui l'applique toujours (BR-SYN-007), doit-il la signaler, et dans quels cas ?
+- **Pourquoi** : AV-025 (tranché) et BR-STK-010, BR-DIS-002 réservent la vente hors ligne d'un emplacement partagé aux quotas, et WF-18 dit le stock non alloué « vendable seulement en ligne ». Mais ADR-033 et P5-09 ne signalaient que le dépassement d'un quota détenu, le quota d'autrui entamé (`ALLOCATION_OVERCOMMITTED`) et le stock négatif : un appareil modifié sans quota, ou dont le quota a expiré, contournait le blocage sans trace, et l'option « signalée » n'avait aucun signal serveur dans ce cas. À l'inverse, signaler toute vente hors ligne d'un emplacement partagé serait bruyant là où personne n'utilise de quota (bâtiments d'élevage, magasins), et rien n'y a été pris à un autre détenteur.
+- **Choix** : (a) **signaler quand l'emplacement porte au moins un quota actif du produit** (paramètre `sales.offline_unallocated_sale_signal` = `WHEN_ALLOCATED`) : avertissement, drapeau de la vente et conflit appliqué `ALLOCATION_EXCEEDED`, motif `ALLOCATION_MISSING` (entité : l'emplacement) ou `ALLOCATION_EXPIRED` (entité : le quota échu), `quotaRemaining` = 0, `excess` = la quantité, `signalled` = option du site ; (b) `ALWAYS` : signaler toute vente hors ligne sans quota utilisable d'un emplacement partagé ; (c) `NEVER` : ne rien signaler en propre (comportement de P5-09 : seuls `ALLOCATION_OVERCOMMITTED` et `STOCK_NEGATIVE` disent le dommage) ; (d) étendre le signal aux pertes, transferts et consommations hors ligne. Dans tous les cas, un quota **révoqué** relève d'`ALLOCATION_REVOKED_CONSUMED` (AV-161), jamais des deux, et la vente est appliquée sur le stock commun.
+- **Recommandation** : (a) pour le pilote, (b) sur les PDV partagés si des contournements apparaissent (réglage du site).
+- **Impact** : `inventory` (`prepareQuotaConsumption`), `packages/domain` (`offlineAllocationSignal`, miroir serveur de `decideLocalConsumption`, AT-003), paramètre semé, matrice des conflits, BR-VEN-018, WF-01, WF-18. Défaut implémenté : (a), paramétrable par site (`ALWAYS`, `NEVER`).
 
 ---
 

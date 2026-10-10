@@ -96,7 +96,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-001 | Une commande client exige un client identifié (pas de commande anonyme). | D (CM §7 « commandes » liées au prospect ou client) |
 | BR-VEN-002 | Une commande est confirmée par `sales.order.place` (engagement du client, avec d'éventuels acomptes joints) : elle naît `CONFIRMED`, ou `DR… | D ; AV-126 (tranché 30/09/2026) |
 | BR-VEN-003 | Chaque ligne de commande fige un prix convenu (`quoted_unit_price_xaf`) résolu par le moteur de tarification à l'heure de la saisie (`occur… | C (CM §30) / D ; AV-147, AV-148 (ouverts, défauts implémentés) |
-| BR-VEN-004 | La confirmation est une vente du disponible : le serveur vend, ligne par ligne, la quantité que couvre le stock de l'emplacement de prépara… | C (PM §6 : jamais refusée pour manque de stock) ; AV-126, AV-127 (tranchés 30/09/2026) ; ADR-028 §4 |
+| BR-VEN-004 | La confirmation est une vente du disponible : le serveur vend, ligne par ligne, la quantité que couvre le stock de l'emplacement de prépara… | C (PM §6 : jamais refusée pour manque de stock) ; AV-126, AV-127 (tranchés 30/09/2026) ; ADR-028 §4 ; D (ADR-033 §4 et §7 ; BR-STK-011) pour le stock libre |
 | BR-VEN-005 | Une commande est modifiable (quantités, produits ajoutés ou retirés, lieu de préparation du même site, date et adresse de livraison) tant q… | AV-130 (tranché 30/09/2026) ; D (PM §30 « commande modifiée ») |
 | BR-VEN-006 | Livrer une commande (`sales.order.fulfil`) enregistre un bon de livraison (`LIV`) : livreur, heure réelle de remise, réceptionnaire, preuve… | AV-024 (ADR-025), AV-034 (tranchés) ; AV-134 (ouvert, défaut implémenté) ; ADR-028 §7 |
 | BR-VEN-007 | Le prix convenu de la ligne de commande s'applique dès la vente (confirmation, `price_source = ORDER_QUOTE`) : la livraison ne porte aucun… | AV-087 (ouvert, défaut implémenté) ; ADR-028 |
@@ -110,7 +110,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-015 | Une dérogation de prix exige la permission `sales.price.override`. Elle doit rester dans le plafond de remise du rôle et porter un code mot… | AV-026 |
 | BR-VEN-016 | Les effets stock d'une vente sont des mouvements de l'emplacement source vers `V_CUSTOMER`, un par ligne et par lot. Le lot est choisi auto… | C (CM §13) / AV-036 |
 | BR-VEN-017 | Emplacement source d'une vente directe : l'emplacement de vente du PDV pour un vendeur ; le stock mobile pour un commercial ; l'emplacement… | C (CM §23) / D |
-| BR-VEN-018 | En ligne, une vente n'est acceptée que si la quantité est disponible pour le vendeur : solde − réservations − allocations d'autres détenteu… | C (CM §39) / AV-025 |
+| BR-VEN-018 | En ligne, une vente n'est acceptée que dans le disponible du vendeur (BR-STK-011) : sur un emplacement exclusif, le solde ; sur un emplacem… | C (CM §39) / AV-025 (tranché) ; D (ADR-033 §4 à §7) ; AV-161, AV-166 |
 | BR-VEN-019 | Une vente hors ligne réellement effectuée est toujours appliquée à la synchronisation, même si le solde serveur est insuffisant. Dans ce ca… | D (C-08 ; INV-STK-05) |
 | BR-VEN-020 | Attribution figée sur chaque vente. `seller_user_id` = l'utilisateur qui enregistre. `commercial_user_id` = pour une vente sur commande, le… | C (CM §8, §13) / D |
 | BR-VEN-021 | Le canal (`channel_code`) est déduit du contexte : vente de PDV → `POINT_DE_VENTE` ; commercial terrain en session → `TERRAIN` ; commercial… | C (CM §11) / D |
@@ -119,7 +119,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-024 | Une vente anonyme (sans client) doit être intégralement payée à l'enregistrement. | AV-027 |
 | BR-VEN-025 | Une vente à crédit exige un client autorisé au crédit, avec un encours après vente ≤ plafond. Hors ligne, le contrôle porte sur l'encours c… | AV-028 |
 | BR-VEN-026 | Le statut de paiement (`UNPAID`, `PARTIALLY_PAID`, `PAID`) est dérivé des affectations actives de paiement et n'est jamais saisi. | D (C-05) |
-| BR-VEN-027 | Annuler une vente produit : les mouvements inverses (de `V_CUSTOMER` vers l'emplacement d'origine, même lot, même coût unitaire) ; la resti… | C (CM §41) / D |
+| BR-VEN-027 | Annuler une vente, en tout ou en partie, est un document d'annulation (`ANV`) ; la vente reste immuable. Ses effets, à l'heure de l'annulat… | C (CM §41) / D (ADR-028 §5, ADR-029, ADR-033 §8) / AV-146, AV-149 |
 | BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at`, et si la session d… | AV-030 |
 | BR-VEN-029 | Pour une vente hors ligne, si le prix figé diffère du prix que le serveur aurait résolu à `occurred_at` avec les règles alors actives, la v… | AV-063 |
 | BR-VEN-030 | Une vente d'un produit désactivé est acceptée si elle a été capturée hors ligne avant la réception de la désactivation, avec une anomalie ;… | AV-083 |
@@ -162,7 +162,7 @@ Fichier : [`domaines/D06-STK-stocks.md`](domaines/D06-STK-stocks.md)
 | BR-STK-010 | Chaque emplacement physique a un mode de garde, obligatoire (défaut par type, AV-163 ; source unique : `organization.locations`, ADR-033) :… | D (CM §39 ; ADR-004) |
 | BR-STK-011 | Disponible pour un consommateur C : sur un emplacement exclusif, le solde ; sur un emplacement `SHARED`, Σ des soldes du produit à l'emplac… | D (ADR-033) |
 | BR-STK-012 | Une allocation (`DEVICE_QUOTA`) est accordée en ligne à un couple (utilisateur, appareil) sur un emplacement `SHARED`, pour un produit (le… | C (CM §39) / AV-035 |
-| BR-STK-013 | Toute opération qui réduit le stock (vente, perte, transfert sortant, consommation) faite par le détenteur d'une allocation sur l'emplaceme… | AV-025 ; ADR-033 §5 à §7 |
+| BR-STK-013 | Toute opération qui réduit le stock (vente, perte, transfert sortant, consommation) faite par le détenteur d'une allocation sur l'emplaceme… | AV-025 ; ADR-033 §5 à §7 ; AV-166 |
 | BR-STK-014 | Une allocation est libérée par l'appareil détenteur (libération confirmée à la synchronisation) ou révoquée par un responsable. Une révocat… | AV-035 |
 | BR-STK-015 | RETIRÉE (ADR-028 §4, ADR-033) : la confirmation d'une commande est une vente du disponible vers l'emplacement « à livrer » ; la part en att… | C (PM §6) / D |
 | BR-STK-016 | Le stock d'un emplacement `EXCLUSIVE_USER` n'est utilisable hors ligne que sur l'appareil principal du détenteur. Le changement d'appareil… | D (ADR-004) |

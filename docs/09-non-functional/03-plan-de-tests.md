@@ -86,8 +86,8 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-005 | Vente hors ligne à un prix devenu obsolète | Vente acceptée au prix figé ; anomalie `PRICE_MISMATCH` | AV-063, WF-14 |
 | AT-006 | Règle à date d'effet future téléchargée, puis appareil hors ligne à la date d'effet | Nouveau prix appliqué automatiquement | BR-PRX-011, REQ-049 |
 | AT-007 | Changement du prix de 4 500 à 4 800 | La vente antérieure reste à 4 500, avec sa règle et sa version | REQ-050, INV-VEN-05 |
-| AT-008 | Commande, réservation, acompte, livraison partielle, puis solde | Reliquat ; acompte transféré ; ventes partielles ; statut de commande | WF-02, SM-ORDER |
-| AT-009 | Annulation directe dans les 15 min | Mouvements inverses, remboursement, CA négatif daté de l'annulation | SM-SALE, REQ-066 |
+| AT-008 | Commande, vente du disponible à la confirmation (aucune réservation, ADR-028 §4), acompte, livraison partielle, puis solde | Reliquat en attente ; acompte transféré à la vente ; ventes partielles ; statut de commande | WF-02, SM-ORDER |
+| AT-009 | Annulation directe dans les 15 min | Retours rattachés à la vente d'origine (ADR-029, jamais des inverses), quota restitué s'il est encore actif, remboursement, CA négatif daté de l'annulation | SM-SALE, REQ-066 |
 | AT-010 | Annulation hors délai | Demande de validation ; auto-validation refusée ; validation par un autre utilisateur | AV-030, INV-ADM-02 |
 | AT-011 | Première vente à un prospect | Conversion en client ; KPI « nouveaux clients » | BR-CRM-010, REQ-010 |
 | AT-012 | Même prospect créé sur deux appareils hors ligne | Conflit `DUPLICATE_CUSTOMER` ; fusion ; acquéreur le plus ancien | BR-CRM-007, REQ-011 |

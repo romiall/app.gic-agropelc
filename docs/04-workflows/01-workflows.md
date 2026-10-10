@@ -56,38 +56,42 @@ sequenceDiagram
 
 | Effet | Détail |
 |---|---|
-| Stock | `SALE` : emplacement PDV → `V_CUSTOMER`, 3 têtes, lot choisi par FIFO serveur, coût unitaire figé ; consommation d'allocation si mode `SHARED`. |
+| Stock | `SALE` : emplacement PDV → `V_CUSTOMER`, 3 têtes, lot choisi par FIFO serveur, coût unitaire figé. Emplacement `SHARED` (P5-11, BR-VEN-018) : le mouvement consomme d'abord le quota du couple (vendeur, appareil lu dans l'inbox, jamais dans la commande) — part portant `allocation_id`, entrée `CONSUME` —, puis le stock libre. |
 | Finance | Vente 13 500 XAF (`occurred_at` 11:47) ; encaissement `ESPECES` affecté ; mouvement de trésorerie `IN` sur `CAISSE_PDV`, rattaché à la session ; `payment_status = PAID`. |
 | Audit | `sales.sale.record` (auteur, appareil, capture hors ligne, délai de synchronisation 2 h 35) ; `sales.payment.record`. |
 | Sync | Une commande (le paiement est inclus). Hors ligne : effet local immédiat ; `SYNCED` à 14:23. |
-| Échecs | Stock serveur insuffisant → appliquée, conflit `STOCK_NEGATIVE`. Prix serveur différent → appliquée, `PRICE_MISMATCH`. Appareil révoqué avant 11:47 → `CONFLICT` (quarantaine). |
+| Échecs | Stock serveur insuffisant → appliquée, conflit `STOCK_NEGATIVE`. Prix serveur différent → appliquée, `PRICE_MISMATCH`. Appareil révoqué avant 11:47 → `CONFLICT` (quarantaine). Emplacement `SHARED` (P5-11) : quota dépassé (appareil modifié, ou option « autorisée et signalée » du site) → appliquée, quota ramené à 0, excédent pris sur le stock commun, `ALLOCATION_EXCEEDED` ; vente sans quota utilisable (aucun, ou échu) → appliquée sur le stock commun, `ALLOCATION_EXCEEDED` motif `ALLOCATION_MISSING` ou `ALLOCATION_EXPIRED` (AV-166) ; quota révoqué avant 11:47 → `ALLOCATION_REVOKED_CONSUMED` ; stock promis à d'autres appareils entamé → `ALLOCATION_OVERCOMMITTED`. PDV `EXCLUSIVE_DEVICE` servi par une autre tablette → appliquée, `CUSTODY_DEVICE_MISMATCH` (AV-163). Chaque avertissement est aussi un drapeau de la vente ; le conflit (un par ligne) porte la vente dans `details.sourceDocId`. |
 
 ---
 
 ## WF-02 — Commande → livraison → vente → encaissement
 
-**Déclencheur** : un client commande 20 plateaux pour vendredi. **Acteurs** : commercial terrain, magasinier, livreur (commercial).
+**Déclencheur** : un client commande 20 plateaux pour vendredi et verse un acompte. **Acteurs** : commercial (sédentaire ou terrain), magasinier, livreur. Réécrit en P5-11 selon ADR-025 et ADR-028 (vente à la **confirmation**, emplacement « à livrer », livraisons partielles) et AT-008 : il n'existe plus ni réservation de commande (ADR-028 §4, BR-STK-015 retirée), ni transfert rattaché à une commande, ni vente `ORDER_FULFILMENT` à la livraison.
 
 ```mermaid
 sequenceDiagram
   actor C as Commercial
   participant S as Serveur
   actor M as Magasinier
-  C->>S: sales.order.place (20 plateaux, prix convenu)
-  S->>S: CONFIRMED ; réservation de 600 œufs au magasin (FULL)
-  S-->>M: notification « commande à préparer »
-  M->>S: inventory.transfer.dispatch magasin → stock mobile du commercial (réf. commande)
-  S->>S: réservation transférée vers le stock mobile
-  C->>S: sales.order.fulfil (20 plateaux remis, 10 000 XAF payés)
-  S->>S: vente ORDER_FULFILMENT ; commande FULFILLED
+  C->>S: sales.order.place (20 plateaux, prix convenu, acompte 10 000 XAF)
+  S->>S: CONFIRMED ; vente du disponible : 14 plateaux (vente ORDER, magasin → « à livrer ») ; 6 en attente
+  S-->>M: commande à préparer
+  C->>S: sales.order.fulfil (14 plateaux remis)
+  S->>S: bon LIV ; DELIVERY « à livrer » → client ; PARTIALLY_FULFILLED
+  M->>S: réapprovisionnement du magasin (réception, transfert)
+  C->>S: sales.order.confirm_remaining
+  S->>S: vente ORDER des 6 plateaux devenus disponibles
+  C->>S: sales.order.fulfil (6 plateaux) puis sales.payment.record (solde)
+  S->>S: commande FULFILLED ; ventes PAID
 ```
 
 | Étape | Stock | Finance | Audit | Sync |
 |---|---|---|---|---|
-| Commande | Réservation `ORDER_RESERVATION` (aucun mouvement) | — (acompte possible) | `sales.order.place` | Hors ligne possible ; réservation effective à la synchronisation |
-| Préparation | `TRANSFER_DISPATCH` magasin → `V_TRANSIT` ; `TRANSFER_RECEIPT` → stock mobile (réception par le commercial) | — | `inventory.transfer.*` | Hors ligne possible |
-| Livraison | `SALE` stock mobile → `V_CUSTOMER` ; réservation consommée | Vente au prix convenu (BR-VEN-007) ; encaissement 10 000 XAF ; créance du reste avec échéance ; acomptes éventuels transférés | `sales.order.fulfil` | Hors ligne possible (stock exclusif) |
-| Échecs | Commande modifiée pendant la livraison → la livraison fait foi (fait physique) ; la modification est en conflit `VERSION_CONFLICT`. Double livraison → vente directe excédentaire + conflit. | | | |
+| Commande (`place`) | `SALE` emplacement de préparation → `V_TO_DELIVER` du site pour le **disponible** (BR-VEN-004 ; sur un emplacement `SHARED`, le stock libre, net des restes des quotas d'appareil), coût figé ; aucun quota consommé ni entamé (ADR-033 §7) ; le reste demeure **en attente**, sans stock ni réservation | Commande `CMD` ; vente `ORDER` (`VTE`) et chiffre d'affaires à la confirmation ; acompte (`ENC`) affecté à la commande puis à la vente (ADR-028 §8) ; reste à crédit, échéance depuis l'heure de la vente (AV-129) | `sales.order.place` | Hors ligne possible : intention confirmée par le serveur à la synchronisation, à l'heure de la saisie (AV-126), jamais en solde négatif |
+| Livraison partielle (`fulfil`) | `DELIVERY` `V_TO_DELIVER` → `V_CUSTOMER`, rattaché au `SALE` d'origine, à sa valeur figée ; aucun quota | Aucun chiffre d'affaires (né à la confirmation) ; bon `LIV` | `sales.order.fulfil` | Hors ligne possible (fait accompli) |
+| Reste confirmé (`confirm_remaining`, ou hausse par `update`) | Nouvelle vente du disponible, même règle, depuis le magasin réapprovisionné | Vente `ORDER` au prix convenu ; acompte restant affecté | `sales.order.confirm_remaining` | Hors ligne possible (intention) |
+| Livraison du reste, solde | `DELIVERY` | Encaissement du solde (`sales.payment.record`), affecté aux ventes de la commande | `sales.order.fulfil`, `sales.payment.record` | Hors ligne possible |
+| Échecs | `update` sur une version dépassée → `VERSION_CONFLICT` (quarantaine). Livraison au-delà du vendu non livré : en ligne, refus `ORDER_OVER_FULFILMENT` ; hors ligne (commande annulée, réduite, livrée deux fois), la part rattachable l'est et le surplus devient une **vente directe de régularisation** depuis la préparation (`ORDER_OVER_FULFILMENT`, AV-133), sans quota ; si elle entame le stock promis aux quotas d'un emplacement partagé : `ALLOCATION_OVERCOMMITTED` (P5-11). | | | |
 
 ---
 
@@ -108,13 +112,15 @@ sequenceDiagram
 
 ## WF-04 — Annulation d'une vente
 
+Réécrit en P5-11 (ADR-028 §5, ADR-029, ADR-033 §8 ; AT-009) : une annulation est un **document** `ANV`, totale ou partielle ; la vente reste immuable.
+
 | Cas | Parcours | Stock | Finance | Audit |
 |---|---|---|---|---|
-| Erreur immédiate (≤ 15 min, caisse ouverte, auteur) | `sales.sale.cancel` | Inverses des `SALE` : `V_CUSTOMER` → emplacement d'origine, même lot, même coût ; allocation restituée | Affectations désactivées ; remboursement `REFUND` (espèces rendues) | `sales.sale.cancel` + motif |
-| Au-delà | `sales.sale.request_cancellation` → file du responsable → approbation | Idem, **à l'approbation** | Idem ; remboursement ou crédit client, au choix de l'approbateur | Demande + décision |
-| Vente de livraison | Idem | Idem ; la commande revient à `PARTIALLY_FULFILLED` ou `CONFIRMED` sans réservation automatique | Idem ; acomptes redeviennent du crédit client | Idem |
+| Erreur immédiate (vendeur de la vente, au plus `sales.direct_cancel_minutes` = 15 min) | `sales.sale.cancel` | Retours `CUSTOMER_RETURN` **rattachés** aux `SALE` d'origine (ADR-029 : lot le plus récent d'abord, valeur d'origine exacte), jamais des inverses ; la part qu'une vente directe avait imputée à un quota d'appareil encore actif lui revient (`RESTORE`, plafonné à sa consommation moins ce qui a déjà été rendu), le reste au stock commun | Chiffre d'affaires diminué à l'heure de l'annulation (`applied_at`) ; affectations renversées ; part payée libérée remboursée (`REFUND`) ou gardée en crédit client, au choix de l'annulateur (`paymentTreatment`) ; un encaissement sans client se rembourse (AV-146) | `sales.sale.cancel` + motif |
+| Au-delà du délai, ou par une autre personne autorisée | `sales.sale.cancel` transformée en demande (`CANCEL_WINDOW_EXCEEDED`), ou `sales.sale.request_cancellation` → validation `SALE_CANCELLATION` | Idem, **à la décision** (`applied_at`) ; quota restitué s'il est encore actif à ce moment | Idem ; sort de la part payée choisi par l'approbateur (`decisionOption`) | Demande + décision |
+| Vente sur commande | Idem | Limitée au **non-livré** (ADR-029 §10) : retour de « à livrer » vers la préparation ; aucune restitution de quota (la confirmation n'en consomme aucun) ; les quantités annulées sont retirées de la commande (AV-149) | Idem ; la part payée suit le même choix | Idem |
 
-CA : contre-écriture datée de l'annulation (BR-FIN-042). Sync : la demande est possible hors ligne ; la décision est en ligne.
+CA : contre-écriture datée de `applied_at` (BR-FIN-042). Condition « session de caisse de la vente encore ouverte » (BR-VEN-028) : P5-14. Sync : annulation directe possible hors ligne dans le délai, au-delà transformée en demande ; la décision est en ligne.
 
 ---
 
@@ -156,7 +162,7 @@ sequenceDiagram
 | Stock | Magasin → `V_TRANSIT` → mobile (50) ; mobile → `V_CUSTOMER` (44) ; mobile → `V_LOSS` ou `V_PENDING_LOSS` (2) ; mobile → `V_TRANSIT` → magasin (4). Solde mobile = 0 : responsabilité soldée. Un écart découvert plus tard se traite par inventaire du stock mobile. |
 | Finance | 44 ventes ; encaissements sur `CAISSE_UTILISATEUR` de Paul ; remise de fonds `CAISSE_UTILISATEUR` → `CAISSE_CENTRALE` ; écart de remise éventuel. |
 | Audit | Chaque opération, avec l'appareil de Paul et la session de travail. |
-| Sync | Journée entière hors ligne possible ; le stock mobile n'est utilisable que sur l'appareil principal de Paul (BR-STK-016). |
+| Sync | Journée entière hors ligne possible ; le stock mobile n'est utilisable que sur l'appareil principal de Paul (BR-STK-016) : une vente hors ligne saisie sur un autre de ses appareils est appliquée avec `CUSTODY_DEVICE_MISMATCH` (motif `DEVICE_NOT_PRIMARY`, P5-11). |
 
 ---
 
@@ -350,4 +356,5 @@ Situation : PDV Mboppi, 3 tablettes, emplacement `SHARED`, solde de 100 poulets.
 2. Journée hors ligne : A vend 38, B tente 31 (bloqué à 30), C vend 12.
 3. Synchronisation : ventes appliquées ; allocations consommées.
 4. Fin de journée : chaque tablette émet `inventory.allocation.release` pour son reste (A 2, C 8). Le solde se reconstitue.
-5. Si B avait vendu 31 malgré le blocage (appareil modifié) : la vente est appliquée avec un solde qui reste positif ; l'anomalie `ALLOCATION_EXCEEDED` est ouverte pour enquête (fraude possible).
+5. Si B avait vendu 31 malgré le blocage (appareil modifié) : la vente est appliquée avec un solde qui reste positif ; le quota de B est ramené à 0, l'unité en trop est prise sur le stock commun et l'anomalie `ALLOCATION_EXCEEDED` est ouverte pour enquête (fraude possible ; `signalled` vrai si le site autorise le dépassement, AV-025). Vérifié par AT-003 côté serveur (P5-11).
+6. En ligne, B peut vendre au-delà de ses 30 dans la limite des 10 non alloués, sans anomalie ; au-delà, refus `ALLOCATION_EXCEEDED`. Un vendeur sans quota ne vend en ligne que le stock non alloué (`INSUFFICIENT_STOCK` au-delà) ; s'il vend hors ligne malgré le blocage (`ALLOCATION_MISSING` sur l'appareil), la vente est appliquée sur le stock commun et signalée `ALLOCATION_EXCEEDED` (motif `ALLOCATION_MISSING`, AV-166) ; si elle entame la part d'une autre tablette, `ALLOCATION_OVERCOMMITTED` est aussi ouvert.

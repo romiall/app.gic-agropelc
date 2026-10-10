@@ -7,9 +7,15 @@
  *   commande, jamais du contenu de la commande (ADR-033 §5) : un appareil modifié ne peut pas
  *   consommer le quota d'un autre (INV-STK-11).
  * - **Ordre de verrouillage** : soldes du couple (emplacement, produit), puis quotas.
- * - **En ligne**, ce qui dépasse le quota et le stock libre est refusé sans effet ; **hors ligne**,
- *   le fait est toujours appliqué (BR-SYN-007) : le quota est ramené à 0 au plus, l'excédent est pris
- *   sur le stock commun, un conflit informatif `ALLOCATION_EXCEEDED` le consigne.
+ * - **En ligne**, sur un (emplacement, produit) qui porte au moins un quota actif, ce qui dépasse le
+ *   quota du couple et le stock libre est refusé sans effet ; un dépassement du seul quota que le
+ *   stock libre couvre est une sortie normale (BR-VEN-018, P5-11). Sans aucun quota actif, le contrôle
+ *   habituel par lot s'applique, message et code compris (`INSUFFICIENT_STOCK`, `LOT_REQUIRED`).
+ * - **Hors ligne**, le fait est toujours appliqué (BR-SYN-007) : le quota est ramené à 0 au plus,
+ *   l'excédent est pris sur le stock commun, un conflit informatif `ALLOCATION_EXCEEDED` le consigne.
+ *   Une **vente** hors ligne d'un couple sans quota utilisable (aucun, ou échu) sur un emplacement
+ *   partagé ouvre aussi `ALLOCATION_EXCEEDED` (motif `ALLOCATION_MISSING` ou `ALLOCATION_EXPIRED`,
+ *   miroir de `decideLocalConsumption`), selon `sales.offline_unallocated_sale_signal` (AV-166).
  * - Un quota révoqué, échu ou libéré n'est plus consommé : le fait est pris sur le stock commun ;
  *   `ALLOCATION_REVOKED_CONSUMED` n'est ouvert que si l'`occurred_at` suit la révocation.
  * - Un fait hors ligne d'un appareil qui n'est pas celui de la garde ouvre `CUSTODY_DEVICE_MISMATCH`
@@ -20,9 +26,13 @@ import { sql } from 'kysely';
 import {
   isAllocationExpired,
   isConsumedAfterRevocation,
+  offlineAllocationSignal,
+  parseUnallocatedSaleSignal,
   planQuotaConsumption,
   restorableQuantity,
+  type ConsumerQuotaState,
   type IdGenerator,
+  type UnallocatedSaleSignal,
 } from '@gic/domain';
 import type { DB } from '../../../platform/kysely/database.js';
 import { recordConflict } from '../../../platform/sync/conflicts.js';
@@ -68,6 +78,8 @@ export interface ConsumptionLocation {
 
 export interface ConsumptionRequest {
   readonly location: ConsumptionLocation;
+  /** Type du mouvement : seule une vente (`SALE`) porte le signal d'AV-166. */
+  readonly moveType: string;
   readonly productId: string;
   readonly quantityMilli: number;
   readonly userId: string;
@@ -182,28 +194,41 @@ async function custodyMismatch(
   return null;
 }
 
+/** Valeur d'un paramètre pour un site : réglage du site s'il existe, à défaut le réglage global. */
+async function siteSetting(
+  uow: Transaction<DB>,
+  key: string,
+  siteId: string | null,
+  at: Date,
+): Promise<unknown> {
+  if (siteId !== null) {
+    const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
+    if (bySite !== undefined && bySite !== null) return bySite;
+  }
+  return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
+}
+
 /** `sales.offline_over_allocation_allowed` (AV-025) : réglage du site, à défaut global, faux sinon. */
 async function overAllocationAllowed(
   uow: Transaction<DB>,
   siteId: string | null,
   at: Date,
 ): Promise<boolean> {
-  if (siteId !== null) {
-    const bySite = await currentSettingValue(uow, {
-      key: 'sales.offline_over_allocation_allowed',
-      scopeType: 'SITE',
-      scopeId: siteId,
-      at,
-    });
-    if (typeof bySite === 'boolean') return bySite;
-  }
-  const global = await currentSettingValue(uow, {
-    key: 'sales.offline_over_allocation_allowed',
-    scopeType: 'GLOBAL',
-    scopeId: null,
-    at,
-  });
-  return global === true;
+  return (await siteSetting(uow, 'sales.offline_over_allocation_allowed', siteId, at)) === true;
+}
+
+/**
+ * `sales.offline_unallocated_sale_signal` (AV-166) : réglage du site, à défaut global ; absent ou
+ * inconnu, le défaut du domaine (`WHEN_ALLOCATED`, aussi la valeur semée).
+ */
+async function unallocatedSaleSignal(
+  uow: Transaction<DB>,
+  siteId: string | null,
+  at: Date,
+): Promise<UnallocatedSaleSignal> {
+  return parseUnallocatedSaleSignal(
+    await siteSetting(uow, 'sales.offline_unallocated_sale_signal', siteId, at),
+  );
 }
 
 /**
@@ -254,12 +279,13 @@ export async function prepareQuotaConsumption(
     { lock: true },
   );
 
-  // Un quota échu n'est plus consommé (le fait est pris sur le stock commun, sans conflit).
-  const usable =
-    quotas.active !== undefined &&
-    !isAllocationExpired(quotas.active.validUntil, request.occurredAt)
+  // Un quota échu n'est plus consommé : le fait est pris sur le stock commun (AV-161) ; une vente
+  // hors ligne est en outre signalée (AV-166, plus bas).
+  const expired =
+    quotas.active !== undefined && isAllocationExpired(quotas.active.validUntil, request.occurredAt)
       ? quotas.active
       : undefined;
+  const usable = expired === undefined ? quotas.active : undefined;
 
   if (
     usable === undefined &&
@@ -286,11 +312,20 @@ export async function prepareQuotaConsumption(
     freeStock: Math.max(0, onHand - activeAll) / 1000,
   });
 
-  if (!request.allowNegative && plan.shortfall > 0) {
+  // Refus en ligne (BR-VEN-018, BR-STK-011) seulement quand des quotas existent sur (emplacement,
+  // produit) : sans aucun quota, le stock libre est le stock entier et le contrôle habituel par lot
+  // de `recordSingleMove` décide, message et code compris (P5-11).
+  if (!request.allowNegative && plan.shortfall > 0 && activeAll > 0) {
     if (usable !== undefined) {
       throw new AllocationRefusal(
         `Allocation dépassée : il vous reste ${milliToText(usable.remainingMilli)}, ${milliToText(request.quantityMilli)} demandé(s) et le stock libre ne couvre pas la différence.`,
         'ALLOCATION_EXCEEDED',
+      );
+    }
+    if (expired !== undefined) {
+      throw new AllocationRefusal(
+        'Votre allocation a expiré : libérez-la ou faites-la renouveler ; le stock libre ne couvre pas la demande (BR-STK-011).',
+        'INSUFFICIENT_STOCK',
       );
     }
     throw new AllocationRefusal(
@@ -299,18 +334,49 @@ export async function prepareQuotaConsumption(
     );
   }
 
-  if (usable !== undefined && plan.quotaExceeded) {
-    // Fait hors ligne au-delà du quota : appliqué, l'excédent pris sur le stock commun (AV-161).
+  // Miroir serveur du blocage de l'appareil (AT-003, `offlineAllocationSignal` du domaine) : un fait
+  // hors ligne que la tablette aurait dû bloquer est appliqué puis signalé. Au-delà du quota (AV-161) :
+  // l'excédent est pris sur le stock commun. Vente sans quota utilisable (AV-166) : tout vient du stock
+  // commun. En ligne, rien n'est signalé : un dépassement que le stock libre couvre est une sortie
+  // normale (P5-11), le reste a été refusé ci-dessus.
+  const quotaState: ConsumerQuotaState =
+    usable !== undefined
+      ? 'USABLE'
+      : expired !== undefined
+        ? 'EXPIRED'
+        : quotas.lastRevoked !== undefined
+          ? 'REVOKED'
+          : 'NONE';
+  const isSale = request.moveType === 'SALE';
+  const signal = offlineAllocationSignal({
+    capturedOffline: request.capturedOffline,
+    isSale,
+    quota: quotaState,
+    quotaExceeded: plan.quotaExceeded,
+    locationHasActiveQuota: activeAll > 0,
+    // Paramètre lu seulement quand il peut décider (vente hors ligne sans quota utilisable).
+    unallocatedSaleSignal:
+      request.capturedOffline && isSale && (quotaState === 'NONE' || quotaState === 'EXPIRED')
+        ? await unallocatedSaleSignal(uow, location.siteId, request.occurredAt)
+        : 'NEVER',
+  });
+  if (signal !== null) {
+    const allocation = usable ?? expired;
     warnings.add('ALLOCATION_EXCEEDED');
     await openConflict(uow, deps, request, {
       type: 'ALLOCATION_EXCEEDED',
-      entityType: 'STOCK_ALLOCATION',
-      entityId: usable.id,
+      entityType: allocation !== undefined ? 'STOCK_ALLOCATION' : 'LOCATION',
+      entityId: allocation !== undefined ? allocation.id : location.id,
       details: {
-        allocationId: usable.id,
+        reason: signal,
+        allocationId: allocation?.id ?? null,
+        ...(expired !== undefined ? { validUntil: expired.validUntil?.toISOString() ?? null } : {}),
         requested: milliToText(request.quantityMilli),
-        quotaRemaining: milliToText(usable.remainingMilli),
-        excess: plan.excessOverQuota.toFixed(3),
+        quotaRemaining: milliToText(usable?.remainingMilli ?? 0),
+        excess:
+          usable !== undefined
+            ? plan.excessOverQuota.toFixed(3)
+            : milliToText(request.quantityMilli),
         takenFromFreeStock: plan.fromFreeStock.toFixed(3),
         shortfall: plan.shortfall.toFixed(3),
         signalled: await overAllocationAllowed(uow, location.siteId, request.occurredAt),
@@ -327,6 +393,9 @@ export async function prepareQuotaConsumption(
  * INV-STK-19, ADR-033 §6 : après une sortie d'un emplacement partagé, un solde physique tombé sous la
  * somme des restes des quotas actifs ouvre `ALLOCATION_OVERCOMMITTED` (informatif, jamais corrigé en
  * silence). Un seul conflit ouvert par (emplacement, produit). Renvoie `true` s'il y a dépassement.
+ * Lectures verrouillantes (P5-11) : une lecture simple verrait l'instantané de la transaction, sans
+ * l'octroi ou la consommation d'un autre quota validés entre-temps (ordre : soldes, puis quotas ; les
+ * soldes de l'emplacement source viennent d'être écrits par la sortie).
  */
 export async function checkOvercommitted(
   uow: Transaction<DB>,
@@ -341,9 +410,11 @@ export async function checkOvercommitted(
   },
 ): Promise<boolean> {
   if (input.location.custodyMode !== 'SHARED') return false;
-  const activeAll = await activeRemainingMilli(uow, input.location.id, input.productId);
+  const onHand = await stockOnHandMilli(uow, input.location.id, input.productId, { lock: true });
+  const activeAll = await activeRemainingMilli(uow, input.location.id, input.productId, {
+    lock: true,
+  });
   if (activeAll === 0) return false;
-  const onHand = await stockOnHandMilli(uow, input.location.id, input.productId);
   if (onHand >= activeAll) return false;
   const already = await uow
     .selectFrom('sync_sync_conflicts')

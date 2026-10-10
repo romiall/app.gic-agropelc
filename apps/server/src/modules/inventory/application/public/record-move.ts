@@ -1158,6 +1158,7 @@ async function prepareConsumption(
   try {
     return await prepareQuotaConsumption(uow, deps, {
       location: consumptionLocation(input.fromLocationId, source),
+      moveType: input.moveType,
       productId: input.productId,
       quantityMilli: quantityToMilli(input.quantityBase),
       userId: input.createdBy,

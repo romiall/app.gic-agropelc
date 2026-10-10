@@ -172,6 +172,12 @@ export async function writeAllocationEntry(
  * Quotas d'un couple (utilisateur, appareil) sur un couple (emplacement, produit) : le quota actif
  * s'il existe, sinon le dernier révoqué (pour qualifier `ALLOCATION_REVOKED_CONSUMED`, ADR-033 §6).
  * `lock` verrouille le quota actif — à faire après les soldes du couple (ordre de verrouillage).
+ *
+ * Avec `lock`, chaque lecture est **verrouillante** (P5-11) : en isolation répétable, une lecture
+ * simple voit l'instantané de la transaction, pris à sa première lecture, et non le reste laissé par
+ * une vente concurrente validée entre-temps. Le plan aurait alors imputé au quota plus que son reste
+ * réel, et l'`UPDATE` relatif aurait heurté le `CHECK quantity_remaining >= 0` : erreur SQL rejouée
+ * (`RETRY_LATER`) au lieu du refus `ALLOCATION_EXCEEDED`.
  */
 export async function loadConsumerAllocations(
   uow: UnitOfWork,
@@ -197,14 +203,15 @@ export async function loadConsumerAllocations(
   let activeQuery = base().where('status', '=', 'ACTIVE');
   if (options.lock) activeQuery = activeQuery.forUpdate();
   const activeRow = await activeQuery.executeTakeFirst();
-  const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id)) : undefined;
+  const lock = options.lock === true;
+  const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id), { lock }) : undefined;
   if (active) return { active, lastRevoked: undefined };
-  const revokedRow = await base()
-    .where('status', '=', 'REVOKED')
-    .orderBy('revoked_at', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-  const lastRevoked = revokedRow ? await loadAllocation(uow, fromBin(revokedRow.id)) : undefined;
+  let revokedQuery = base().where('status', '=', 'REVOKED').orderBy('revoked_at', 'desc').limit(1);
+  if (lock) revokedQuery = revokedQuery.forUpdate();
+  const revokedRow = await revokedQuery.executeTakeFirst();
+  const lastRevoked = revokedRow
+    ? await loadAllocation(uow, fromBin(revokedRow.id), { lock })
+    : undefined;
   return { active: undefined, lastRevoked };
 }
 
