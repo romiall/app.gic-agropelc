@@ -26,6 +26,8 @@ export const ROUTES = {
   order: (orderId: string) => `/commandes/${orderId}`,
   deliverPattern: '/commandes/:orderId/livrer',
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
+  collect: '/encaisser',
+  collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -148,6 +150,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: ROLE_SETS.orderRead,
     actionCodes: ['FOLLOW_DELIVERIES'],
+    offline: true,
+  },
+  {
+    id: 'ECR-VEN-06',
+    path: ROUTES.collect,
+    labelKey: 'collect',
+    group: 'sales',
+    roles: ROLE_SETS.paymentRecord,
+    // « Encaissements » de la Finance : virements et règlements reçus au siège (01-rbac.md).
+    actionCodes: ['PAYMENTS'],
     offline: true,
   },
   {

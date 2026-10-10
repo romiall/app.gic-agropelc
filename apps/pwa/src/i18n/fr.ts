@@ -94,6 +94,7 @@ export const fr = {
       orders: 'Commandes',
       order_detail: 'Détail d’une commande',
       deliver: 'Livrer une commande',
+      collect: 'Encaisser une créance',
     },
   },
   sales: {
@@ -222,6 +223,7 @@ export const fr = {
       balance: 'Reste dû',
       due_date: 'Échéance : {{date}}',
       print: 'Imprimer le reçu',
+      collect: 'Encaisser le reste dû',
       rejection: 'Refusée par le serveur : {{reason}}',
       cancellation_pending: 'Une annulation de cette vente attend d’être envoyée.',
       flag_hint: 'Points signalés par le serveur : {{flags}}',
@@ -381,6 +383,36 @@ export const fr = {
       WARNING: 'Commande {{doc}} confirmée, avec un avertissement à examiner.',
       CONFLICT: 'Commande mise en attente d’examen (conflit).',
       REJECTED: 'Commande refusée : {{reason}}',
+    },
+  },
+  collect: {
+    customer_required: 'Choisissez le client qui règle.',
+    outstanding: 'Encours du client : {{amount}}',
+    dues_title: 'Créances à régler',
+    dues_online: 'Toutes les créances du client (lues en ligne).',
+    dues_offline:
+      'Hors ligne : seules les ventes des 7 derniers jours sont connues de l’appareil ; l’encours reste la référence.',
+    dues_loading: 'Lecture des créances…',
+    dues_none: 'Aucune créance connue pour ce client.',
+    due_line: '{{doc}} · échéance {{date}}',
+    due_line_no_date: '{{doc}}',
+    preview_title: 'Affectation prévue (la plus ancienne d’abord)',
+    preview_credit: 'Reste en avoir du client : {{amount}}',
+    pending_title: 'Encaissements en attente d’envoi',
+    amount_label: 'Montant reçu (F CFA)',
+    submit: 'Enregistrer l’encaissement',
+    new_payment: 'Nouvel encaissement',
+    offline_banner:
+      'Hors ligne : l’encaissement sera enregistré sur ce téléphone et affecté par le serveur au retour du réseau.',
+    result: {
+      WAITING_offline:
+        'Encaissement enregistré sur ce téléphone, il sera envoyé dès le retour du réseau.',
+      WAITING_online: 'Encaissement en cours d’envoi…',
+      DONE: 'Encaissement {{doc}} enregistré.',
+      WARNING:
+        'Encaissement {{doc}} enregistré, avec un avertissement à examiner (doublon possible ou part non affectée).',
+      CONFLICT: 'Encaissement mis en attente d’examen (conflit).',
+      REJECTED: 'Encaissement refusé : {{reason}}',
     },
   },
   errors: {

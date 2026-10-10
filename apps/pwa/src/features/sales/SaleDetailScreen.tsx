@@ -273,6 +273,11 @@ export function SaleDetailScreen() {
         <button type="button" className="secondary" onClick={() => window.print()}>
           {t('sales.detail.print')}
         </button>
+        {sale.customerId && sale.balanceDueXaf > 0 && sale.status === 'CONFIRMED' ? (
+          <Link to={ROUTES.collectFor(sale.customerId)} className="action action-compact">
+            <span className="action-label">{t('sales.detail.collect')}</span>
+          </Link>
+        ) : null}
         {cancellable && !cancelling ? (
           <button type="button" className="secondary" onClick={() => setCancelling(true)}>
             {t('sales.cancel.open')}
