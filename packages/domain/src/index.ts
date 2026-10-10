@@ -266,5 +266,32 @@ export type {
   CashSessionWindow,
   CashTransferImputation,
 } from './cash-session.js';
+// P5-12 : cycle de vie d'une session de caisse (ouverture, clôture, statut, imputation).
+export {
+  CASH_SESSION_PREVIOUS_DAY_OVERLAP_MODES,
+  CASH_SESSION_PREVIOUS_DAY_OVERLAP_DEFAULT,
+  CASH_SESSION_CLOSE_BEFORE_OPEN_MODES,
+  CASH_SESSION_CLOSE_BEFORE_OPEN_DEFAULT,
+  CASH_FORCED_VARIANCE_IMPUTATIONS,
+  CASH_FORCED_VARIANCE_IMPUTATION_DEFAULT,
+  normalizedSessionsPerDay,
+  planCashSessionOpen,
+  countsInOpeningBalance,
+  planCashSessionClose,
+  sessionStatusAfterClose,
+  cashSessionOpenLongerThan,
+  cashVarianceImputedUser,
+} from './cash-session-lifecycle.js';
+export type {
+  ExistingCashSession,
+  CashSessionPreviousDayOverlapMode,
+  CashSessionOpenRejection,
+  CashSessionMergeReason,
+  CashSessionOpenPlan,
+  PlanCashSessionOpenInput,
+  CashSessionCloseBeforeOpenMode,
+  CashSessionClosePlan,
+  CashForcedVarianceImputation,
+} from './cash-session-lifecycle.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';

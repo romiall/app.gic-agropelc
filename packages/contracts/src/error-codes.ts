@@ -91,6 +91,14 @@ export const WARNING_CODES = [
   'ALLOCATION_EXCEEDED',
   'ALLOCATION_OVERCOMMITTED',
   'CUSTODY_DEVICE_MISMATCH',
+  // P5-12 (ADR-032 §8, AV-154, AV-170 à AV-172) : ouverture de caisse saisie hors ligne fusionnée
+  // dans une session existante ou décalée après la session de la veille close depuis ; clôture
+  // saisie hors ligne d'une session qui n'est plus ouverte (ou datée avant son ouverture), comptage
+  // conservé comme observation ; ouverture hors ligne d'une caisse désactivée depuis (fait accompli).
+  // Conflits informatifs appliqués pour la Finance, jamais un rejet (BR-SYN-007).
+  'CASH_SESSION_CONCURRENT_OPEN',
+  'CASH_SESSION_CONCURRENT_CLOSE',
+  'CASH_ACCOUNT_INACTIVE',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

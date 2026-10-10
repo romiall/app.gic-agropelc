@@ -16,6 +16,12 @@
  *   (`CAISSE_*`) ; hors ligne (`allowNegative`), elle est appliquée et le résultat signale
  *   `negativeBalance` pour que l'appelant ouvre l'anomalie `CASH_NEGATIVE` (BR-SYN-007). Les
  *   comptes `MOBILE_MONEY` et `BANQUE` ne sont pas concernés.
+ * - P5-12 (ADR-032 §2) : sur une caisse de PDV, l'index dénormalisé `cash_session_id` est posé à
+ *   l'insertion quand l'appelant ne le fournit pas : session dont la fenêtre couvre `occurredAt` au
+ *   moment de l'écriture (lecture verrouillante, après le verrou du compte), ou, pour un inverse,
+ *   celle de l'original (son index, à défaut la session couvrant son `occurred_at` : AV-157). Ce
+ *   n'est qu'un index, jamais réécrit ni source de l'attendu : une clôture hors ligne rétrodatée
+ *   appliquée ensuite peut le contredire, la fenêtre de temps fait foi. Les autres comptes gardent `NULL`.
  */
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -24,6 +30,7 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { emitCashAccountChange } from '../sync-changes.js';
+import { findCashSessionCovering } from './cash-sessions.js';
 
 export const CASH_MOVEMENT_TYPES = [
   'CUSTOMER_PAYMENT',
@@ -152,6 +159,7 @@ export async function recordCashMovement(
     throw new CashMovementError('Compte de trésorerie inactif.', 'CASH_ACCOUNT_INACTIVE');
   }
 
+  let reversedOriginal: { cashSessionId: string | null; occurredAt: Date } | null = null;
   if (input.reversesMovementId !== undefined) {
     const original = await uow
       .selectFrom('finance_cash_movements')
@@ -163,6 +171,8 @@ export async function recordCashMovement(
         'source_doc_type',
         'source_doc_id',
         'is_reversal',
+        'cash_session_id',
+        'occurred_at',
       ])
       .where('id', '=', toBin(input.reversesMovementId))
       .executeTakeFirst();
@@ -189,6 +199,10 @@ export async function recordCashMovement(
         'CASH_REVERSAL_INVALID',
       );
     }
+    reversedOriginal = {
+      cashSessionId: original.cash_session_id === null ? null : fromBin(original.cash_session_id),
+      occurredAt: original.occurred_at,
+    };
   } else {
     const rule = MOVEMENT_RULES[input.movementType];
     if (!rule.directions.includes(input.direction) || rule.source !== input.sourceDocType) {
@@ -210,6 +224,8 @@ export async function recordCashMovement(
     );
   }
 
+  const cashSessionId = await sessionIndexFor(uow, account.account_type, input, reversedOriginal);
+
   const movementId = deps.idGenerator.newId();
   await uow
     .insertInto('finance_cash_movements')
@@ -221,7 +237,7 @@ export async function recordCashMovement(
       movement_type: input.movementType,
       source_doc_type: input.sourceDocType,
       source_doc_id: toBin(input.sourceDocId),
-      cash_session_id: toBinOrNull(input.cashSessionId ?? null),
+      cash_session_id: toBinOrNull(cashSessionId),
       occurred_at: input.occurredAt,
       is_reversal: toDbBool(input.reversesMovementId !== undefined),
       reverses_movement_id: toBinOrNull(input.reversesMovementId ?? null),
@@ -246,4 +262,24 @@ export async function recordCashMovement(
     balanceAfterXaf,
     negativeBalance,
   };
+}
+
+/**
+ * Index `cash_session_id` d'un nouveau mouvement (ADR-032 §2) : la valeur explicite de l'appelant
+ * prime (écarts de session) ; sinon, pour une caisse de PDV seulement, la session couvrant la date du
+ * mouvement — pour un inverse, celle de l'original. Lecture partagée verrouillante : le compte est déjà
+ * verrouillé en écriture, l'ordre compte puis session est celui de toutes les écritures de caisse.
+ */
+async function sessionIndexFor(
+  uow: Transaction<DB>,
+  accountType: string,
+  input: RecordCashMovementInput,
+  reversedOriginal: { readonly cashSessionId: string | null; readonly occurredAt: Date } | null,
+): Promise<string | null> {
+  if (input.cashSessionId !== undefined) return input.cashSessionId;
+  if (accountType !== 'CAISSE_PDV') return null;
+  if (reversedOriginal?.cashSessionId) return reversedOriginal.cashSessionId;
+  const at = reversedOriginal?.occurredAt ?? input.occurredAt;
+  const covering = await findCashSessionCovering(uow, input.cashAccountId, at, { lock: 'share' });
+  return covering?.id ?? null;
 }
