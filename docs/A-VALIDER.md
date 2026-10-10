@@ -184,6 +184,7 @@ Classification (PM §45) :
 | AV-171 | Ouverture de caisse hors ligne pendant la session de la veille, close d'office depuis | IMPORTANTE | P5 | Ouverture prise en compte à la clôture forcée (décalée), comptage conservé, conflit | OUVERT |
 | AV-172 | Clôture de caisse hors ligne datée avant l'ouverture de la session | SECONDAIRE | P5 | Observation, session laissée ouverte | OUVERT |
 | AV-173 | Responsable imputé de l'écart d'une clôture forcée et de l'écart d'ouverture | IMPORTANTE | P5 | L'ouvreur de la session | OUVERT |
+| AV-174 | Clôture de caisse datée avant un mouvement déjà enregistré sur la caisse | SECONDAIRE | P5 | Refus en ligne ; hors ligne, appliquée, jamais validée d'office, signalée à la Finance | OUVERT |
 
 ---
 
@@ -1146,6 +1147,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) clôture forcée : l'ouvreur de la session, qui ne l'a pas clôturée ; écart d'ouverture : celui qui a compté le fonds (l'ouvreur) ; (b) aucune imputation avant la décision de la Finance ; (c) l'auteur de la clôture forcée.
 - **Recommandation** : (a).
 - **Impact** : `cashVarianceImputedUser` (`packages/domain`, mode `OPENER`, `NONE` ou `FORCER`) ; champ `imputed_user_id` de `CashVarianceDetected`, distinct de `closed_by` et de `forced_by` ; alerte `CASH_VARIANCE` (P9). Défaut implémenté (P5-12) : (a).
+
+### AV-174 — Clôture de caisse datée avant un mouvement déjà enregistré sur la caisse — SECONDAIRE
+- **Question** : l'attendu d'une clôture se calcule sur la fenêtre `[ouverture, clôture[` d'après l'`occurred_at` (ADR-032 §3), et le pipeline ne refuse que les dates **futures**. Une clôture dont l'heure précède des mouvements déjà enregistrés sur la caisse (horloge en retard, heure falsifiée) les exclut de l'attendu : le vendeur compte exactement l'attendu tronqué, l'écart est nul, la session est validée d'office et la différence n'apparaît qu'à l'ouverture suivante, imputée à l'ouvreur du lendemain (AV-173). Que faire d'une telle clôture ?
+- **Pourquoi** : ADR-016 interdit toute correction silencieuse de `occurred_at` (on signale, on ne réécrit pas) ; BR-SYN-007 interdit de rejeter pour une raison d'état un fait déjà accompli hors ligne ; D05 §12 ne prévoit comme contrôle en ligne que « heure de clôture ≥ heure d'ouverture ».
+- **Choix** : (a) en ligne, refus `CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT` (sans effet) quand un mouvement du compte, hors `SESSION_VARIANCE` et `OPENING_BALANCE`, est daté à l'heure de clôture ou après (borne incluse : la fenêtre est demi-ouverte) ; hors ligne, la clôture est appliquée mais jamais validée d'office (`PENDING_VALIDATION`), avec l'avertissement et le conflit informatif `CASH_SESSION_CLOSE_BEFORE_MOVEMENTS` (dernier mouvement concerné, attendu, écart) ; la clôture forcée, toujours en ligne, suit la même règle ; (b) en ligne, clôture ramenée à l'heure de réception (correction de `occurred_at`, contraire à ADR-016) ; (c) accepter et signaler en ligne comme hors ligne ; (d) accepter sans rien signaler (comportement antérieur).
+- **Recommandation** : (a) : l'attendu n'est jamais tronqué sans que la Finance le sache, sans corriger l'heure déclarée ni rejeter un comptage physique déjà fait. Une tolérance d'horloge entre appareils (quelques secondes) n'est pas introduite : un refus se corrige en reclôturant à l'heure réelle.
+- **Impact** : `finance.cash_session.close` et `.force_close` ; `checkCashSessionCloseAgainstLedger` et `sessionStatusAfterClose` (`packages/domain`, mode `REFUSE_ONLINE` ou `FLAG`, paramètre de la fonction, `REFUSE_ONLINE` par défaut) ; matrice des conflits ; D05 §12 et §15. Défaut implémenté (P5-12, revue adverse) : (a).
 
 ---
 

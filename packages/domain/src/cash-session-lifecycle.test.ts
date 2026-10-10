@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   CASH_FORCED_VARIANCE_IMPUTATION_DEFAULT,
+  CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_DEFAULT,
   CASH_SESSION_CLOSE_BEFORE_OPEN_DEFAULT,
   CASH_SESSION_PREVIOUS_DAY_OVERLAP_DEFAULT,
   cashSessionOpenLongerThan,
   cashVarianceImputedUser,
+  checkCashSessionCloseAgainstLedger,
   countsInOpeningBalance,
   normalizedSessionsPerDay,
   planCashSessionClose,
@@ -423,6 +425,71 @@ describe('planCashSessionClose : clôture (SM-CASH-SESSION, ADR-032 §8)', () =>
   });
 });
 
+describe('checkCashSessionCloseAgainstLedger : clôture face au registre (AV-174)', () => {
+  const closedAt = at('2026-10-06T10:00:00Z');
+
+  it('défaut : refus en ligne, signalement hors ligne', () => {
+    expect(CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_DEFAULT).toBe('REFUSE_ONLINE');
+  });
+  it('aucun mouvement à la clôture ou après : rien à signaler', () => {
+    for (const capturedOffline of [false, true]) {
+      expect(
+        checkCashSessionCloseAgainstLedger({ closedAt, latestMovementAt: null, capturedOffline }),
+      ).toEqual({ kind: 'OK' });
+    }
+  });
+  it('mouvement strictement avant la clôture : rien à signaler', () => {
+    expect(
+      checkCashSessionCloseAgainstLedger({
+        closedAt,
+        latestMovementAt: at('2026-10-06T09:59:59.999Z'),
+        capturedOffline: false,
+      }),
+    ).toEqual({ kind: 'OK' });
+  });
+  it('mouvement après la clôture : refus en ligne, signalement hors ligne', () => {
+    const latest = at('2026-10-06T17:00:00Z');
+    expect(
+      checkCashSessionCloseAgainstLedger({
+        closedAt,
+        latestMovementAt: latest,
+        capturedOffline: false,
+      }),
+    ).toEqual({
+      kind: 'REJECT',
+      code: 'CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT',
+      latestMovementAt: latest,
+    });
+    expect(
+      checkCashSessionCloseAgainstLedger({
+        closedAt,
+        latestMovementAt: latest,
+        capturedOffline: true,
+      }),
+    ).toEqual({ kind: 'FLAG', latestMovementAt: latest });
+  });
+  it('mouvement daté exactement à la clôture : hors de la fenêtre demi-ouverte, donc concerné', () => {
+    expect(
+      checkCashSessionCloseAgainstLedger({
+        closedAt,
+        latestMovementAt: closedAt,
+        capturedOffline: false,
+      }).kind,
+    ).toBe('REJECT');
+  });
+  it('mode FLAG : jamais de refus, même en ligne', () => {
+    const latest = at('2026-10-06T17:00:00Z');
+    expect(
+      checkCashSessionCloseAgainstLedger({
+        closedAt,
+        latestMovementAt: latest,
+        capturedOffline: false,
+        mode: 'FLAG',
+      }),
+    ).toEqual({ kind: 'FLAG', latestMovementAt: latest });
+  });
+});
+
 describe('sessionStatusAfterClose (AV-057, AV-156)', () => {
   it('écarts nuls : validée d’office', () => {
     expect(
@@ -471,6 +538,26 @@ describe('sessionStatusAfterClose (AV-057, AV-156)', () => {
         forced: true,
       }),
     ).toEqual({ status: 'PENDING_VALIDATION', autoValidated: false });
+  });
+  it('AV-174 : clôture datée avant un mouvement enregistré — jamais validée d’office, même sans écart', () => {
+    expect(
+      sessionStatusAfterClose({
+        openingVarianceXaf: 0,
+        closingVarianceXaf: 0,
+        toleranceXaf: 0,
+        forced: false,
+        precedesMovements: true,
+      }),
+    ).toEqual({ status: 'PENDING_VALIDATION', autoValidated: false });
+    expect(
+      sessionStatusAfterClose({
+        openingVarianceXaf: 0,
+        closingVarianceXaf: 0,
+        toleranceXaf: 0,
+        forced: false,
+        precedesMovements: false,
+      }),
+    ).toEqual({ status: 'VALIDATED', autoValidated: true });
   });
   it('tolérance négative : erreur de domaine (celle de statusAfterClose)', () => {
     expect(() =>

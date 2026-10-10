@@ -10,9 +10,20 @@
  * l'insertion d'une session ou d'un conflit pose un verrou partagé sur la ligne du site (clé
  * étrangère) ; sans lui, `organization.site.close` (site exclusif, puis garde `finance`) et une
  * ouverture (compte exclusif, puis site partagé) formeraient un cycle.
+ *
+ * Isolation (revue adverse P5-12) : les trois commandes de session s'exécutent en **lecture
+ * confirmée** (`read committed`, option `isolationLevel` du registre). Sous la lecture répétable
+ * d'InnoDB, les lectures verrouillantes par plage ci-dessous posent des verrous de plage sur l'index
+ * `(cash_account_id, opened_at)` et sur celui du registre : pour deux caisses voisines dans l'index
+ * (deux caisses neuves, dont les identifiants UUIDv7 se suivent), chacune verrouille le même
+ * intervalle puis attend celui de l'autre pour son `INSERT` — interblocage 1213, reproduit 7 fois sur
+ * 8 par deux ouvertures parallèles. En lecture confirmée, aucune lecture n'y pose de verrou de plage ;
+ * la sérialisation des écritures d'un compte reste portée par le verrou exclusif de sa ligne, et
+ * toute lecture voit la dernière version validée (l'instantané n'est plus un sujet).
  */
 import { sql } from 'kysely';
 import {
+  CASH_EXPECTED_EXCLUDED_TYPES,
   expectedCashXaf,
   type CashMovementAmount,
   type CashSessionStatus,
@@ -256,6 +267,29 @@ export async function expectedAtClose(
     amountXaf: Number(row.total),
   }));
   return expectedCashXaf(input.openingCountedXaf, flows);
+}
+
+/**
+ * AV-174 : mouvement le plus récent du compte daté à `from` ou après (`occurred_at >= from`), hors
+ * `SESSION_VARIANCE` et `OPENING_BALANCE` (qui ne comptent jamais dans l'attendu) ; `null` s'il n'y en
+ * a aucun. Sert à repérer une clôture datée avant un mouvement déjà enregistré, qui l'exclurait de
+ * l'attendu `[ouverture, clôture[`. Lecture verrouillante partagée, comme `expectedAtClose`.
+ */
+export async function latestMovementAtOrAfter(
+  uow: UnitOfWork,
+  cashAccountId: string,
+  from: Date,
+): Promise<Date | null> {
+  const row = await uow
+    .selectFrom('finance_cash_movements')
+    .select((eb) => eb.fn.max<Date | string | null>('occurred_at').as('latest'))
+    .where('cash_account_id', '=', toBin(cashAccountId))
+    .where('occurred_at', '>=', from)
+    .where('movement_type', 'not in', [...CASH_EXPECTED_EXCLUDED_TYPES])
+    .forShare()
+    .executeTakeFirst();
+  const latest = row?.latest ?? null;
+  return latest === null ? null : new Date(latest);
 }
 
 /**

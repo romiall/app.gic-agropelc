@@ -99,6 +99,11 @@ export const WARNING_CODES = [
   'CASH_SESSION_CONCURRENT_OPEN',
   'CASH_SESSION_CONCURRENT_CLOSE',
   'CASH_ACCOUNT_INACTIVE',
+  // P5-12 (revue adverse ; AV-174) : ouverture hors ligne sur un site fermé depuis (fait accompli,
+  // conflit informatif pour la Finance) ; clôture saisie hors ligne datée avant un mouvement déjà
+  // enregistré sur la caisse (jamais validée d'office, conflit informatif pour la Finance).
+  'CASH_SESSION_SITE_CLOSED',
+  'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

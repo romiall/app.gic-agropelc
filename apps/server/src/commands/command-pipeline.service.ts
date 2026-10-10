@@ -372,7 +372,12 @@ export class CommandPipelineService {
 
     // Étape 6 : transaction métier.
     try {
-      const outcome = await this.db.transaction().execute(async (trx) => {
+      const transaction = this.db.transaction();
+      const outcome = await (
+        entry.isolationLevel !== undefined
+          ? transaction.setIsolationLevel(entry.isolationLevel)
+          : transaction
+      ).execute(async (trx) => {
         const handlerOutcome = await entry.handler(trx, parsed.envelope);
         if (handlerOutcome.status === 'REJECTED') {
           // Un rejet n'a aucun effet : l'exception annule la transaction, y compris une

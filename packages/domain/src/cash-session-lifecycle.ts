@@ -9,13 +9,16 @@
  *   clôture[` d'un compte, même formule que le filet de la base) ; limite de sessions par jour métier.
  * - **Clôture** (`planCashSessionClose`) : clore, refuser (en ligne) ou, hors ligne, conserver le
  *   comptage comme observation (course avec une autre clôture, clôture datée avant l'ouverture).
+ * - **Clôture face au registre** (`checkCashSessionCloseAgainstLedger`) : une clôture datée avant un
+ *   mouvement déjà enregistré est refusée en ligne, signalée hors ligne (AV-174).
  * - **Statut après clôture** (`sessionStatusAfterClose`) : composé de `statusAfterClose` (P5-02),
  *   écart d'ouverture compris ; une clôture forcée attend toujours la Finance.
  *
  * Les choix laissés ouverts par les sources sont des points AV dont le défaut est un paramètre de ces
  * fonctions (CLAUDE.md règle 2) : AV-170 (ouverture plus ancienne que la session qu'elle chevauche),
  * AV-171 (ouverture tombée dans la fenêtre d'une session de la veille close depuis), AV-172 (clôture
- * datée avant l'ouverture), AV-173 (responsable imputé d'un écart).
+ * datée avant l'ouverture), AV-173 (responsable imputé d'un écart), AV-174 (clôture datée avant un
+ * mouvement déjà enregistré).
  */
 import { businessDayOf } from './business-day.js';
 import { DomainError } from './errors.js';
@@ -241,19 +244,77 @@ export function planCashSessionClose(input: {
 }
 
 /**
- * Statut après clôture (SM-CASH-SESSION ; ADR-032 §5 ; AV-057, AV-156). Composé de `statusAfterClose`
- * appliqué à l'écart d'ouverture puis à l'écart de clôture : `VALIDATED` d'office (sans valideur)
- * seulement si **les deux** sont dans la tolérance ; une clôture forcée attend toujours la Finance.
+ * AV-174 : une clôture dont l'heure précède un mouvement déjà enregistré sur le compte (hors écarts et
+ * solde d'ouverture) exclut ce mouvement de l'attendu `[ouverture, clôture[` : un vendeur qui antidate
+ * sa clôture compterait exactement l'attendu tronqué (écart nul, validation d'office) et garderait la
+ * différence, retrouvée plus tard comme écart d'ouverture du vendeur suivant. `occurred_at` n'est
+ * jamais corrigé en silence (ADR-016) : on refuse ou on signale.
+ *
+ * `REFUSE_ONLINE` (défaut) : refus en ligne (`CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT`, sans effet) ;
+ * hors ligne, le comptage est un fait accompli : la clôture est appliquée, jamais validée d'office, et
+ * signalée à la Finance. `FLAG` : jamais de refus, signalement en ligne comme hors ligne.
+ */
+export const CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_MODES = ['REFUSE_ONLINE', 'FLAG'] as const;
+export type CashSessionCloseBeforeMovementsMode =
+  (typeof CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_MODES)[number];
+export const CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_DEFAULT: CashSessionCloseBeforeMovementsMode =
+  'REFUSE_ONLINE';
+
+export type CashSessionCloseLedgerCheck =
+  | { readonly kind: 'OK' }
+  | {
+      readonly kind: 'REJECT';
+      readonly code: 'CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT';
+      readonly latestMovementAt: Date;
+    }
+  | { readonly kind: 'FLAG'; readonly latestMovementAt: Date };
+
+/**
+ * Contrôle d'une clôture (ordinaire ou forcée) face au registre. `latestMovementAt` : le mouvement le
+ * plus récent du compte daté à `closedAt` ou après, hors `SESSION_VARIANCE` et `OPENING_BALANCE`
+ * (`CASH_EXPECTED_EXCLUDED_TYPES`), lu par l'appelant sous verrou ; `null` s'il n'y en a aucun. Un
+ * mouvement daté exactement à `closedAt` est hors de la fenêtre demi-ouverte : il compte.
+ */
+export function checkCashSessionCloseAgainstLedger(input: {
+  readonly closedAt: Date;
+  readonly latestMovementAt: Date | null;
+  readonly capturedOffline: boolean;
+  readonly mode?: CashSessionCloseBeforeMovementsMode;
+}): CashSessionCloseLedgerCheck {
+  const latest = input.latestMovementAt;
+  if (latest === null || latest.getTime() < input.closedAt.getTime()) return { kind: 'OK' };
+  const mode = input.mode ?? CASH_SESSION_CLOSE_BEFORE_MOVEMENTS_DEFAULT;
+  if (mode === 'REFUSE_ONLINE' && !input.capturedOffline) {
+    return {
+      kind: 'REJECT',
+      code: 'CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT',
+      latestMovementAt: latest,
+    };
+  }
+  return { kind: 'FLAG', latestMovementAt: latest };
+}
+
+/**
+ * Statut après clôture (SM-CASH-SESSION ; ADR-032 §5 ; AV-057, AV-156, AV-174). Composé de
+ * `statusAfterClose` appliqué à l'écart d'ouverture puis à l'écart de clôture : `VALIDATED` d'office
+ * (sans valideur) seulement si **les deux** sont dans la tolérance ; une clôture forcée, ou datée avant
+ * un mouvement déjà enregistré (`precedesMovements`), attend toujours la Finance.
  */
 export function sessionStatusAfterClose(input: {
   readonly openingVarianceXaf: number;
   readonly closingVarianceXaf: number;
   readonly toleranceXaf: number;
   readonly forced: boolean;
+  readonly precedesMovements?: boolean;
 }): { readonly status: CashSessionStatus; readonly autoValidated: boolean } {
   const opening = statusAfterClose(input.openingVarianceXaf, input.toleranceXaf);
   const closing = statusAfterClose(input.closingVarianceXaf, input.toleranceXaf);
-  if (!input.forced && opening === 'VALIDATED' && closing === 'VALIDATED') {
+  if (
+    !input.forced &&
+    input.precedesMovements !== true &&
+    opening === 'VALIDATED' &&
+    closing === 'VALIDATED'
+  ) {
     return { status: 'VALIDATED', autoValidated: true };
   }
   return { status: 'PENDING_VALIDATION', autoValidated: false };

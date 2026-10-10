@@ -1,6 +1,6 @@
 /**
  * Sessions de caisse (P5-12 ; ADR-032 ; D05 UC-DIS-02, UC-DIS-03, BR-DIS-005 à 007, §14, §15 ;
- * SM-CASH-SESSION ; BR-FIN-014 ; AV-154 à AV-156, AV-165, AV-170 à AV-173) :
+ * SM-CASH-SESSION ; BR-FIN-014 ; AV-154 à AV-156, AV-165, AV-170 à AV-174) :
  * `finance.cash_session.open` et `.close` (hors ligne possibles), `.force_close` (en ligne).
  *
  * - **Le registre fait foi** (ADR-032 §1-4) : l'écart d'ouverture compare le fonds compté au solde du
@@ -15,7 +15,13 @@
  *   valent qu'en ligne ; hors ligne, l'ouverture est fusionnée (ou décalée, AV-171) et la clôture est
  *   conservée comme observation, avec un conflit informatif pour la Finance.
  * - Seule une caisse de PDV ouvre une session (AV-165). Portée évaluée sur le site de la caisse.
- * - Verrous : site (partagé), compte, sessions du compte, registre (voir `cash-session-ledger.ts`).
+ * - **Clôture face au registre** (AV-174) : une clôture datée avant un mouvement déjà enregistré sur la
+ *   caisse l'exclurait de l'attendu ; refusée en ligne (`CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT`),
+ *   appliquée hors ligne mais jamais validée d'office et signalée à la Finance.
+ * - **Montants démesurés** : un écart hors des entiers sûrs (compté démesuré face à un attendu négatif)
+ *   est un refus de validité (`CASH_AMOUNT_INVALID`), jamais une exception rejouée sans fin.
+ * - Verrous : site (partagé), compte, sessions du compte, registre (voir `cash-session-ledger.ts`) ;
+ *   transaction en lecture confirmée (`isolationLevel`), sans verrou de plage entre caisses voisines.
  *   Le non-chevauchement des fenêtres est décidé sous ces verrous : les déclencheurs de la base restent
  *   un filet jamais atteint (une erreur SQL serait rejouée sans fin).
  * - Hors périmètre : validation et réévaluation (P5-13), exigence d'une session à l'encaissement (P5-14).
@@ -26,6 +32,8 @@ import {
   cashSessionOpenLongerThan,
   cashVarianceImputedUser,
   cashVarianceXaf,
+  checkCashSessionCloseAgainstLedger,
+  DomainError,
   planCashSessionClose,
   planCashSessionOpen,
   sessionStatusAfterClose,
@@ -60,6 +68,7 @@ import { CashMovementError, recordCashMovement } from '../public/cash-movements.
 import {
   cashSetting,
   expectedAtClose,
+  latestMovementAtOrAfter,
   ledgerBalanceAtOpening,
   loadCashSession,
   lockAccountSessionsFrom,
@@ -79,6 +88,8 @@ export const CASH_SESSION_CONFLICTS = {
   concurrentOpen: 'CASH_SESSION_CONCURRENT_OPEN',
   concurrentClose: 'CASH_SESSION_CONCURRENT_CLOSE',
   inactiveAccount: 'CASH_ACCOUNT_INACTIVE',
+  siteClosed: 'CASH_SESSION_SITE_CLOSED',
+  closeBeforeMovements: 'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS',
 } as const;
 
 type Deps = { readonly idGenerator: IdGenerator };
@@ -209,9 +220,22 @@ async function publishVariance(
   });
 }
 
-/** Une erreur du registre n'est jamais une exception rejouée sans fin : refus métier explicite. */
+/** Codes d'erreur de domaine d'un montant hors des entiers sûrs (compté démesuré, somme déraisonnable). */
+const UNSAFE_AMOUNT_CODES: readonly string[] = ['NOT_SAFE_INTEGER', 'AMOUNT_INVALID'];
+
+/**
+ * Une erreur du registre ou d'un montant démesuré n'est jamais une exception rejouée sans fin : refus
+ * explicite (validité du montant, pas un état métier : BR-SYN-007 ne s'y oppose pas). Toute autre
+ * erreur reste transitoire (le pipeline la rejoue).
+ */
 function cashRejection(error: unknown): CommandHandlerOutcome {
   if (error instanceof CashMovementError) return rejected(error.code, error.message);
+  if (error instanceof DomainError && UNSAFE_AMOUNT_CODES.includes(error.code)) {
+    return rejected(
+      'CASH_AMOUNT_INVALID',
+      'Le montant compté est démesuré : l’écart avec l’attendu sort des entiers représentables.',
+    );
+  }
   throw error;
 }
 
@@ -274,7 +298,14 @@ function openHandler(deps: Deps): CommandHandler<CashSessionOpenPayload> {
       return mergeOpening(uow, deps, { envelope, account, siteId, target, plan, origin });
     }
     try {
-      return await createSession(uow, deps, { envelope, account, siteId, plan, origin });
+      return await createSession(uow, deps, {
+        envelope,
+        account,
+        siteId,
+        siteStatus: siteStatus ?? 'UNKNOWN',
+        plan,
+        origin,
+      });
     } catch (error) {
       return cashRejection(error);
     }
@@ -288,6 +319,7 @@ async function createSession(
     readonly envelope: CommandEnvelope<CashSessionOpenPayload>;
     readonly account: CashAccountFacts;
     readonly siteId: string;
+    readonly siteStatus: string;
     readonly plan: Extract<CashSessionOpenPlan, { kind: 'CREATE' }>;
     readonly origin: CommandOrigin;
   },
@@ -409,6 +441,29 @@ async function createSession(
       },
     });
     warnings.push('CASH_SESSION_CONCURRENT_OPEN');
+  }
+  if (input.siteStatus !== 'ACTIVE') {
+    // Site fermé depuis (la garde de fermeture ne voyait pas cette ouverture, pas encore synchronisée) :
+    // la session est ouverte (fait accompli hors ligne), la Finance le voit pour la clôturer.
+    await recordConflict(uow, {
+      id: deps.idGenerator.newId(),
+      commandId: envelope.command_id,
+      conflictType: CASH_SESSION_CONFLICTS.siteClosed,
+      entityType: 'CASH_SESSION',
+      entityId: sessionId,
+      siteId,
+      ownerRole: 'FINANCE',
+      applied: true,
+      details: {
+        cashAccountId: account.id,
+        siteStatus: input.siteStatus,
+        openedAt: openedAt.toISOString(),
+        countedXaf: p.countedXaf,
+        deviceId: origin.deviceId,
+        authorUserId: author,
+      },
+    });
+    warnings.push('CASH_SESSION_SITE_CLOSED');
   }
   if (account.status !== 'ACTIVE') {
     // Caisse désactivée depuis : la session est ouverte (fait accompli hors ligne), la Finance le voit.
@@ -553,9 +608,11 @@ async function closeSession(
     readonly reason: string | null;
     readonly comment: string | null;
     readonly aliasOf: string | null;
+    /** AV-174 : mouvement le plus récent daté à la clôture ou après (signalé hors ligne), sinon `null`. */
+    readonly precedesMovementAt: Date | null;
   },
 ): Promise<CommandHandlerOutcome> {
-  const { envelope, session, closedAt, countedXaf, forced } = input;
+  const { envelope, session, closedAt, countedXaf, forced, precedesMovementAt } = input;
   const author = envelope.author_user_id;
   const offline = envelope.captured_offline;
   const origin = await loadCommandOrigin(uow, envelope.command_id);
@@ -577,6 +634,7 @@ async function closeSession(
     closingVarianceXaf: varianceXaf,
     toleranceXaf,
     forced,
+    precedesMovements: precedesMovementAt !== null,
   });
   if (varianceXaf !== 0) {
     await postVariance(uow, deps, {
@@ -654,29 +712,91 @@ async function closeSession(
       commandId: envelope.command_id,
     });
   }
-  return {
-    status: 'APPLIED',
-    serverRefs: {
-      cashSessionId: session.id,
-      closingExpectedXaf: String(closingExpectedXaf),
-      varianceXaf: String(varianceXaf),
-      status,
-    },
-    audit: {
-      after: {
-        cashSessionId: session.id,
-        aliasOf: input.aliasOf,
-        countedXaf,
-        comment: input.comment,
-        reason: input.reason,
+  if (precedesMovementAt !== null) {
+    // AV-174 : clôture datée avant un mouvement déjà enregistré (hors ligne : fait accompli). Elle est
+    // appliquée mais ne se valide pas d'office ; la Finance voit le mouvement que l'attendu exclut.
+    await recordConflict(uow, {
+      id: deps.idGenerator.newId(),
+      commandId: envelope.command_id,
+      conflictType: CASH_SESSION_CONFLICTS.closeBeforeMovements,
+      entityType: 'CASH_SESSION',
+      entityId: session.id,
+      siteId: session.siteId,
+      ownerRole: 'FINANCE',
+      applied: true,
+      details: {
         closedAt: closedAt.toISOString(),
+        latestMovementAt: precedesMovementAt.toISOString(),
+        countedXaf,
         closingExpectedXaf,
         varianceXaf,
         status,
-        autoValidated,
         forced,
+        capturedOffline: offline,
+        deviceId: origin.deviceId,
+        authorUserId: author,
       },
+    });
+  }
+  const serverRefs = {
+    cashSessionId: session.id,
+    closingExpectedXaf: String(closingExpectedXaf),
+    varianceXaf: String(varianceXaf),
+    status,
+  };
+  const audit = {
+    after: {
+      cashSessionId: session.id,
+      aliasOf: input.aliasOf,
+      countedXaf,
+      comment: input.comment,
+      reason: input.reason,
+      closedAt: closedAt.toISOString(),
+      closingExpectedXaf,
+      varianceXaf,
+      status,
+      autoValidated,
+      forced,
+      precedesMovementAt: precedesMovementAt?.toISOString() ?? null,
     },
+  };
+  return precedesMovementAt !== null
+    ? {
+        status: 'APPLIED_WITH_WARNINGS',
+        warnings: ['CASH_SESSION_CLOSE_BEFORE_MOVEMENTS'],
+        serverRefs,
+        audit,
+      }
+    : { status: 'APPLIED', serverRefs, audit };
+}
+
+/**
+ * AV-174 : la clôture précède-t-elle un mouvement déjà enregistré ? Un refus en ligne (`rejection`), ou
+ * le mouvement à signaler (`flaggedMovementAt`, hors ligne), ou rien.
+ */
+async function closeVersusLedger(
+  uow: UnitOfWork,
+  session: CashSessionRow,
+  closedAt: Date,
+  offline: boolean,
+): Promise<{ rejection: CommandHandlerOutcome | null; flaggedMovementAt: Date | null }> {
+  const check = checkCashSessionCloseAgainstLedger({
+    closedAt,
+    latestMovementAt: await latestMovementAtOrAfter(uow, session.cashAccountId, closedAt),
+    capturedOffline: offline,
+  });
+  if (check.kind === 'REJECT') {
+    return {
+      rejection: rejected(
+        check.code,
+        `La clôture est datée avant un mouvement déjà enregistré sur cette caisse (${check.latestMovementAt.toISOString()}) : vérifier l’horloge de l’appareil, puis clôturer à l’heure réelle.`,
+      ),
+      flaggedMovementAt: null,
+    };
+  }
+  return {
+    rejection: null,
+    flaggedMovementAt: check.kind === 'FLAG' ? check.latestMovementAt : null,
   };
 }
 
@@ -768,6 +888,13 @@ function closeHandler(deps: Deps): CommandHandler<CashSessionClosePayload> {
         aliasOf: resolved.aliasOf,
       });
     }
+    const versusLedger = await closeVersusLedger(
+      uow,
+      session,
+      plan.closedAt,
+      envelope.captured_offline,
+    );
+    if (versusLedger.rejection) return versusLedger.rejection;
     try {
       return await closeSession(uow, deps, {
         envelope,
@@ -778,6 +905,7 @@ function closeHandler(deps: Deps): CommandHandler<CashSessionClosePayload> {
         reason: null,
         comment: envelope.payload.comment ?? null,
         aliasOf: resolved.aliasOf,
+        precedesMovementAt: versusLedger.flaggedMovementAt,
       });
     } catch (error) {
       return cashRejection(error);
@@ -822,6 +950,8 @@ function forceCloseHandler(deps: Deps): CommandHandler<CashSessionForceClosePayl
         `Une session ne se clôture d’office qu’après plus de ${thresholdHours} h d’ouverture (finance.cash_session_force_close_hours).`,
       );
     }
+    const versusLedger = await closeVersusLedger(uow, session, occurredAt, false);
+    if (versusLedger.rejection) return versusLedger.rejection;
     try {
       return await closeSession(uow, deps, {
         envelope,
@@ -832,6 +962,7 @@ function forceCloseHandler(deps: Deps): CommandHandler<CashSessionForceClosePayl
         reason: envelope.payload.reason,
         comment: null,
         aliasOf: resolved.aliasOf,
+        precedesMovementAt: versusLedger.flaggedMovementAt,
       });
     } catch (error) {
       return cashRejection(error);
@@ -850,6 +981,7 @@ export function registerCashSessionCommands(
     payloadSchema: cashSessionOpenPayloadSchema,
     permissionCode: CASH_SESSION_OPERATE,
     handler: openHandler(deps),
+    isolationLevel: 'read committed',
   });
   registry.register({
     commandType: 'finance.cash_session.close',
@@ -857,6 +989,7 @@ export function registerCashSessionCommands(
     payloadSchema: cashSessionClosePayloadSchema,
     permissionCode: CASH_SESSION_OPERATE,
     handler: closeHandler(deps),
+    isolationLevel: 'read committed',
   });
   registry.register({
     commandType: 'finance.cash_session.force_close',
@@ -864,5 +997,6 @@ export function registerCashSessionCommands(
     payloadSchema: cashSessionForceClosePayloadSchema,
     permissionCode: CASH_SESSION_VALIDATE,
     handler: forceCloseHandler(deps),
+    isolationLevel: 'read committed',
   });
 }

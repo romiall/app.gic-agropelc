@@ -1,7 +1,7 @@
 /**
  * P5-12 — sessions de caisse (ADR-032 ; D05 BR-DIS-005 à 007, §14 ; SM-CASH-SESSION ; BR-FIN-014 ;
  * INV-FIN-02, INV-FIN-05, INV-FIN-06, INV-FIN-11 à la clôture ; AV-154 à AV-156, AV-165, AV-170 à
- * AV-173), à travers le vrai pipeline de commandes :
+ * AV-174), à travers le vrai pipeline de commandes :
  * - `finance.cash_session.open` : écart d'ouverture tiré du registre, caisse de PDV seulement, portée,
  *   ouvertures concurrentes (refus en ligne, fusion hors ligne avec conflit), limite du jour ;
  * - `finance.cash_session.close` : attendu par fenêtre, écart, `SESSION_VARIANCE`, statut, observation
@@ -728,6 +728,142 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(await varianceMovements(sessionId)).toHaveLength(1);
       expect(Number((await session(sessionId)).opening_counted_xaf)).toBe(5_000);
     });
+
+    it('revue P5-12 : ouvertures puis clôtures parallèles de caisses voisines et vierges — aucun interblocage (RETRY_LATER)', async () => {
+      // Deux caisses neuves ont des identifiants UUIDv7 voisins : sous la lecture répétable, leurs lectures
+      // verrouillantes par plage verrouillaient le même intervalle d'index puis s'attendaient l'une l'autre
+      // à l'INSERT (interblocage 1213, 7 tours sur 8 avant correction).
+      for (let round = 0; round < 6; round++) {
+        const [a, b] = [await newPos(), await newPos()];
+        const [sessionA, sessionB] = [freshUuid(), freshUuid()];
+        const opened = await Promise.all([
+          openSession(a, 20_000, t('6', '07:00'), { sessionId: sessionA }),
+          openSession(b, 20_000, t('6', '07:00'), { sessionId: sessionB }),
+        ]);
+        expect(opened.map((r) => r.status)).toEqual(['APPLIED', 'APPLIED']);
+        const closed = await Promise.all([
+          closeSession(a, sessionA, 19_000, t('6', '18:00')),
+          closeSession(b, sessionB, 19_000, t('6', '18:00')),
+        ]);
+        expect(closed.map((r) => r.status)).toEqual(['APPLIED', 'APPLIED']);
+      }
+    });
+
+    it('revue P5-12 : ouverture hors ligne sur un site fermé depuis — session ouverte, avertissement et conflit pour la Finance ; refus en ligne', async () => {
+      const pos = await newPos();
+      const closedSite = await run(
+        admin,
+        adminDevice,
+        'organization.site.close',
+        pos.siteId,
+        {},
+        { occurredAt: t('6', '18:00'), aggregateType: 'SITE' },
+      );
+      expect(closedSite.status).toBe('APPLIED');
+      expect(codeOf(await openSession(pos, 0, t('6', '07:00')))).toBe('SITE_CLOSED');
+      expect(await sessionsOf(pos.accountId)).toHaveLength(0);
+
+      // Ouverture saisie à 07:00 sur la tablette, synchronisée après la fermeture du site à 18:00.
+      const sessionId = freshUuid();
+      const offline = await openSession(pos, 0, t('6', '07:00'), { offline: true, sessionId });
+      expect(offline).toMatchObject({
+        status: 'APPLIED_WITH_WARNINGS',
+        warnings: ['CASH_SESSION_SITE_CLOSED'],
+        server_refs: { cashSessionId: sessionId },
+      });
+      expect((await session(sessionId)).status).toBe('OPEN');
+      const [conflict] = await conflicts(sessionId, 'CASH_SESSION_SITE_CLOSED');
+      expect(conflict).toMatchObject({
+        owner_role: 'FINANCE',
+        applied: 1,
+        status: 'OPEN',
+        entity_type: 'CASH_SESSION',
+        site_id: pos.siteId,
+      });
+      expect(conflict!.details).toMatchObject({
+        siteStatus: 'CLOSED',
+        cashAccountId: pos.accountId,
+        countedXaf: 0,
+        authorUserId: pos.vendor,
+        deviceId: pos.vendorDevice,
+      });
+      // La session reste clôturable (rien n'est perdu).
+      expect(
+        (await closeSession(pos, sessionId, 0, t('6', '19:00'), { offline: true })).status,
+      ).toBe('APPLIED');
+    });
+
+    it('revue P5-12 : caisse désactivée — ouverture hors ligne avec fonds (écart posé), puis clôture en ligne avec écart : faits accomplis, registre cohérent', async () => {
+      const pos = await newPos();
+      const deactivated = await run(
+        admin,
+        adminDevice,
+        'finance.cash_account.deactivate',
+        pos.accountId,
+        {},
+        { occurredAt: t('6', '06:30'), aggregateType: 'CASH_ACCOUNT' },
+      );
+      expect(deactivated.status).toBe('APPLIED');
+
+      const sessionId = freshUuid();
+      const opened = await openSession(pos, 20_000, t('6', '07:00'), { offline: true, sessionId });
+      expect(opened).toMatchObject({
+        status: 'APPLIED_WITH_WARNINGS',
+        warnings: ['CASH_ACCOUNT_INACTIVE'],
+        server_refs: { openingVarianceXaf: '20000' },
+      });
+      expect(await varianceMovements(sessionId)).toHaveLength(1);
+
+      // Clôture EN LIGNE sur la caisse désactivée : l'écart de clôture est posé (`pastFact`), la session
+      // ne reste pas ouverte faute d'un mouvement refusé (CASH_ACCOUNT_INACTIVE).
+      const closed = await closeSession(pos, sessionId, 19_000, t('6', '18:00'));
+      expect(closed).toMatchObject({
+        status: 'APPLIED',
+        server_refs: {
+          closingExpectedXaf: '20000',
+          varianceXaf: '-1000',
+          status: 'PENDING_VALIDATION',
+        },
+      });
+      const variances = await varianceMovements(sessionId);
+      expect(variances.map((v) => `${v.direction}:${Number(v.amount_xaf)}`)).toEqual([
+        'IN:20000',
+        'OUT:1000',
+      ]);
+      await assertClosingVarianceInvariant(sessionId);
+      await ledgerOk(pos.accountId);
+    });
+
+    it('revue P5-12 : montant compté démesuré face à un registre négatif — refus CASH_AMOUNT_INVALID, jamais une commande rejouée sans fin', async () => {
+      const huge = Number.MAX_SAFE_INTEGER;
+      // Ouverture : solde négatif du registre (dépense antérieure, fait accompli hors ligne, BR-FIN-012).
+      const negative = await newPos();
+      await movement(negative.accountId, 500, t('5', '12:00'), 'EXPENSE');
+      for (const offline of [false, true]) {
+        const result = await openSession(negative, huge, t('6', '07:00'), { offline });
+        expect(codeOf(result)).toBe('CASH_AMOUNT_INVALID');
+      }
+      expect(await sessionsOf(negative.accountId)).toHaveLength(0);
+
+      // Clôture ordinaire, hors ligne et forcée : attendu négatif (dépense dans la fenêtre).
+      const pos = await newPos();
+      const sessionId = await openOk(pos, 0, t('5', '07:00'));
+      await movement(pos.accountId, 500, t('5', '12:00'), 'EXPENSE');
+      for (const offline of [false, true]) {
+        const result = await closeSession(pos, sessionId, huge, t('5', '18:00'), { offline });
+        expect(codeOf(result)).toBe('CASH_AMOUNT_INVALID');
+      }
+      expect(codeOf(await forceClose(sessionId, huge, t('6', '13:00')))).toBe(
+        'CASH_AMOUNT_INVALID',
+      );
+      expect((await session(sessionId)).status).toBe('OPEN');
+      expect(await varianceMovements(sessionId)).toHaveLength(0);
+      // Un comptage réel referme ensuite la session.
+      expect(await closeSession(pos, sessionId, 0, t('5', '18:00'))).toMatchObject({
+        status: 'APPLIED',
+        server_refs: { closingExpectedXaf: '-500', varianceXaf: '500' },
+      });
+    });
   });
 
   // --- Clôture -----------------------------------------------------------------------------------
@@ -744,9 +880,7 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       await movement(pos.accountId, 4_500, t('6', '15:00'), 'REFUND');
       // Dépense de P8 payée par la caisse, injectée (BR-DIS-013).
       await movement(pos.accountId, 2_000, t('6', '16:00'), 'EXPENSE');
-      // Après la clôture : hors de la fenêtre, mais indexé à la session ouverte au moment de l'écriture.
-      const after = await movement(pos.accountId, 3_000, t('6', '19:00'));
-      expect(await movementIndex(after)).toBe(sessionId);
+      // Un mouvement daté après la clôture (hors fenêtre) rend la clôture suspecte : voir les tests AV-174.
 
       const result = await closeSession(pos, sessionId, 193_000, t('6', '18:00'), {
         comment: 'Billet de 500 manquant',
@@ -780,8 +914,6 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(variance!.occurred_at.toISOString()).toBe(t('6', '18:00'));
       await assertClosingVarianceInvariant(sessionId); // INV-FIN-11 à la clôture
       await ledgerOk(pos.accountId);
-      // L'index du mouvement de 19:00 reste celui de la session (jamais réécrit) ; la fenêtre fait foi.
-      expect(await movementIndex(after)).toBe(sessionId);
 
       expect(await events(sessionId, 'CashSessionClosed')).toEqual([
         expect.objectContaining({
@@ -976,6 +1108,105 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(await movementIndex(late)).toBe(sessionId);
       await ledgerOk(pos.accountId);
     });
+
+    it('AV-174 : clôture en ligne antidatée avant des encaissements — refusée sans effet ; à l’heure réelle, acceptée', async () => {
+      const pos = await newPos();
+      const sessionId = await openOk(pos, 0, t('6', '08:00'));
+      await movement(pos.accountId, 10_000, t('6', '09:00'));
+      await movement(pos.accountId, 50_000, t('6', '17:00'));
+      // Antidatée à 10:00 : l'attendu tronqué (10 000) serait compté sans écart et validé d'office,
+      // les 50 000 de 17:00 restant dans la poche du vendeur.
+      const antedated = await closeSession(pos, sessionId, 10_000, t('6', '10:00'));
+      expect(codeOf(antedated)).toBe('CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT');
+      expect((await session(sessionId)).status).toBe('OPEN');
+      expect(await varianceMovements(sessionId)).toHaveLength(0);
+      expect(await events(sessionId, 'CashSessionClosed')).toHaveLength(0);
+      expect(await conflicts(sessionId, 'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS')).toHaveLength(0);
+
+      const real = await closeSession(pos, sessionId, 60_000, t('6', '17:30'));
+      expect(real).toMatchObject({
+        status: 'APPLIED',
+        server_refs: { closingExpectedXaf: '60000', varianceXaf: '0', status: 'VALIDATED' },
+      });
+    });
+
+    it('AV-174 : borne exacte — un mouvement daté à l’instant de la clôture la fait refuser ; un instant plus tard, acceptée ; les écarts ne comptent pas', async () => {
+      const pos = await newPos();
+      const sessionId = await openOk(pos, 0, t('6', '08:00'));
+      await movement(pos.accountId, 4_000, t('6', '12:00'));
+      expect(codeOf(await closeSession(pos, sessionId, 4_000, t('6', '12:00')))).toBe(
+        'CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT',
+      );
+      expect(await closeSession(pos, sessionId, 4_000, '2026-10-06T12:00:00.001Z')).toMatchObject({
+        status: 'APPLIED',
+        server_refs: { closingExpectedXaf: '4000' },
+      });
+
+      // Le SESSION_VARIANCE d'ouverture, posé à l'instant de l'ouverture, n'est pas un mouvement à craindre.
+      const instant = await newPos();
+      const fund = await openOk(instant, 20_000, t('6', '07:00'));
+      expect(await closeSession(instant, fund, 20_000, t('6', '07:00'))).toMatchObject({
+        status: 'APPLIED',
+        server_refs: { closingExpectedXaf: '20000', varianceXaf: '0' },
+      });
+    });
+
+    it('AV-174 : clôture hors ligne antidatée — appliquée, jamais validée d’office, conflit pour la Finance ; clôture ordinaire inchangée', async () => {
+      const pos = await newPos();
+      const sessionId = await openOk(pos, 0, t('6', '08:00'));
+      await movement(pos.accountId, 10_000, t('6', '10:00'));
+      // Encaissement daté après la clôture, enregistré avant elle : hors de la fenêtre, indexé à la session.
+      const late = await movement(pos.accountId, 5_000, t('6', '17:00'));
+      expect(await movementIndex(late)).toBe(sessionId);
+
+      const closed = await closeSession(pos, sessionId, 10_000, t('6', '12:00'), { offline: true });
+      expect(closed).toMatchObject({
+        status: 'APPLIED_WITH_WARNINGS',
+        warnings: ['CASH_SESSION_CLOSE_BEFORE_MOVEMENTS'],
+        server_refs: {
+          closingExpectedXaf: '10000',
+          varianceXaf: '0',
+          status: 'PENDING_VALIDATION',
+        },
+      });
+      const row = await session(sessionId);
+      expect(row).toMatchObject({ status: 'PENDING_VALIDATION', auto_validated: 0 });
+      expect(row.validated_at).toBeNull();
+      expect(await movementIndex(late)).toBe(sessionId); // l'index n'est jamais réécrit
+      const [conflict] = await conflicts(sessionId, 'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS');
+      expect(conflict).toMatchObject({
+        owner_role: 'FINANCE',
+        applied: 1,
+        status: 'OPEN',
+        entity_type: 'CASH_SESSION',
+        site_id: pos.siteId,
+      });
+      expect(conflict!.details).toMatchObject({
+        closedAt: t('6', '12:00'),
+        latestMovementAt: t('6', '17:00'),
+        countedXaf: 10_000,
+        closingExpectedXaf: 10_000,
+        varianceXaf: 0,
+        status: 'PENDING_VALIDATION',
+        forced: false,
+        capturedOffline: true,
+        authorUserId: pos.vendor,
+      });
+      await assertClosingVarianceInvariant(sessionId);
+      await ledgerOk(pos.accountId);
+
+      // Clôture hors ligne postérieure à tous les mouvements : validée d'office, sans conflit.
+      const clean = await newPos();
+      const cleanId = await openOk(clean, 0, t('6', '08:00'));
+      await movement(clean.accountId, 10_000, t('6', '10:00'));
+      expect(
+        await closeSession(clean, cleanId, 10_000, t('6', '18:00'), { offline: true }),
+      ).toMatchObject({
+        status: 'APPLIED',
+        server_refs: { status: 'VALIDATED' },
+      });
+      expect(await conflicts(cleanId, 'CASH_SESSION_CLOSE_BEFORE_MOVEMENTS')).toHaveLength(0);
+    });
   });
 
   // --- Clôture forcée ----------------------------------------------------------------------------
@@ -1064,6 +1295,27 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
         server_refs: { varianceXaf: '0', status: 'PENDING_VALIDATION' },
       });
       expect(await varianceMovements(sessionId)).toHaveLength(0);
+    });
+
+    it('AV-174 : clôture forcée antidatée avant un mouvement enregistré — refusée sans effet ; à l’heure réelle, acceptée', async () => {
+      const pos = await newPos();
+      const sessionId = await openOk(pos, 0, t('5', '07:00'));
+      await movement(pos.accountId, 30_000, t('6', '12:00'));
+      expect(codeOf(await forceClose(sessionId, 0, t('6', '10:00')))).toBe(
+        'CASH_SESSION_CLOSE_BEFORE_LAST_MOVEMENT',
+      );
+      const row = await session(sessionId);
+      expect(row.status).toBe('OPEN');
+      expect(row.force_closed).toBe(0);
+      expect(await varianceMovements(sessionId)).toHaveLength(0);
+      expect(await forceClose(sessionId, 30_000, t('6', '13:00'))).toMatchObject({
+        status: 'APPLIED',
+        server_refs: {
+          closingExpectedXaf: '30000',
+          varianceXaf: '0',
+          status: 'PENDING_VALIDATION',
+        },
+      });
     });
   });
 
