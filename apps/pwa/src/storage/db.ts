@@ -42,10 +42,10 @@ export interface OutboxCommand {
   readonly occurred_at: string;
   readonly client_created_at: string;
   /**
-   * État du réseau à la saisie. Mis à vrai si le premier envoi, lancé juste après la saisie, n'a pas
-   * pu joindre le serveur : la saisie a eu lieu sans réseau utilisable (ADR-051).
+   * État du réseau à la saisie (serveur joignable au dernier cycle, ADR-051). Jamais modifié après
+   * l'enregistrement : il fait partie de l'empreinte d'idempotence calculée par le serveur.
    */
-  captured_offline: boolean;
+  readonly captured_offline: boolean;
   readonly backdated_reason: string | null;
   readonly attachment_ids: readonly string[];
   readonly payload: unknown;

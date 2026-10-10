@@ -6,7 +6,12 @@ import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { resetConnectivityForTests } from '../../platform/connectivity.js';
 import { CollectScreen } from './CollectScreen.js';
-import { duesFromRecentSales, previewAllocation, sortDues } from './collect.js';
+import {
+  afterPendingPayments,
+  duesFromRecentSales,
+  previewAllocation,
+  sortDues,
+} from './collect.js';
 import { IDS, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
 import type { SaleData } from './types.js';
 
@@ -55,6 +60,23 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     await getDb().outbox.clear();
   });
 
+  it('créance sans échéance en dernier ; encaissements en attente imputés avant l’aperçu', () => {
+    const dues = sortDues([
+      { saleId: 'n', docNumber: 'N', dueDate: null, occurredAt: '2026-09-01', balanceXaf: 500 },
+      {
+        saleId: 'd',
+        docNumber: 'D',
+        dueDate: '2026-12-01',
+        occurredAt: '2026-10-05',
+        balanceXaf: 800,
+      },
+    ]);
+    expect(dues.map((due) => due.saleId)).toEqual(['d', 'n']);
+    expect(afterPendingPayments(dues, [1000]).map((due) => [due.saleId, due.balanceXaf])).toEqual([
+      ['n', 300],
+    ]);
+  });
+
   it('affectation prévue : échéance la plus ancienne d’abord, le reste en avoir', () => {
     const dues = sortDues([
       {
@@ -92,7 +114,7 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     expect(request).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText('Montant reçu (F CFA)'), '1500');
-    expect(screen.getByText('− 1 500 F CFA')).toBeInTheDocument();
+    expect(screen.getByText('Réglé : 1 500 F CFA')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
     expect(
       await screen.findByText(
@@ -144,6 +166,7 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
         [
           sale({}),
           sale({ id: 'x', status: 'CANCELLED' }),
+          sale({ id: 'w', status: 'CANCELLATION_REQUESTED' }),
           sale({ id: 'y', balance_due_xaf: 0 }),
           sale({ id: 'z', customer_id: 'autre' }),
         ],

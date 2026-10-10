@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getDb } from '../../storage/db.js';
 import { clock, idGenerator } from '../../platform/composition.js';
+import { isEffectivelyOnline } from '../../platform/connectivity.js';
 import { enqueueCommand } from '../../sync/outbox.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { getSyncEngine } from './sync-engine-instance.js';
@@ -50,7 +51,7 @@ export function SyncScreen() {
           isClientVisible: true,
           reason: 'Diagnostic P0-14 : vérification du pipeline depuis la PWA.',
         },
-        capturedOffline: !navigator.onLine,
+        capturedOffline: !isEffectivelyOnline(),
       },
     );
     setDiagnosticMessage(

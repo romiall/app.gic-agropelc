@@ -14,7 +14,12 @@ export type PushCycleResult =
   | { readonly outcome: 'NOTHING_TO_PUSH' }
   | { readonly outcome: 'PUSHED'; readonly count: number }
   | { readonly outcome: 'OFFLINE' }
+  /** Le serveur a répondu par une erreur HTTP : joignable, nouvel essai au prochain cycle. */
+  | { readonly outcome: 'SERVER_ERROR' }
   | { readonly outcome: 'SESSION_INVALID' };
+
+/** Délai d'envoi d'un lot (jusqu'à 50 commandes, chacune dans sa transaction côté serveur). */
+const PUSH_TIMEOUT_MS = 60_000;
 
 function toEnvelope(command: OutboxCommand): RawCommandEnvelope {
   return {
@@ -38,9 +43,19 @@ function toEnvelope(command: OutboxCommand): RawCommandEnvelope {
 
 export async function runPushCycle(
   db: GicDatabase,
-  deps: { readonly clock: Clock; readonly idGenerator: IdGenerator; readonly deviceId: string },
+  deps: {
+    readonly clock: Clock;
+    readonly idGenerator: IdGenerator;
+    readonly deviceId: string;
+    /**
+     * Utilisateur de la session : seules ses commandes partent. Le serveur refuse définitivement
+     * une commande dont l'auteur n'est pas l'utilisateur authentifié (`FORBIDDEN`) ; celles d'un
+     * autre utilisateur de l'appareil attendent sa reconnexion.
+     */
+    readonly userId?: string;
+  },
 ): Promise<PushCycleResult> {
-  const batch = await pendingOutbox(db);
+  const batch = await pendingOutbox(db, 50, deps.userId);
   if (batch.length === 0) return { outcome: 'NOTHING_TO_PUSH' };
 
   await db.outbox
@@ -60,30 +75,27 @@ export async function runPushCycle(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),
+    timeoutMs: PUSH_TIMEOUT_MS,
   });
 
   if (!result.ok) {
     // Pas de résultat serveur : les commandes redeviennent PENDING_SYNC (repartent au
-    // prochain cycle) plutôt que SYNCING indéfiniment — reprise après coupure (§8).
-    // Premier envoi, lancé juste après la saisie, sans serveur joignable : la saisie a eu lieu sans
-    // réseau utilisable, c'est un fait hors ligne (ADR-051 ; BR-SYN-007). Une erreur HTTP prouve au
-    // contraire que le serveur était joignable : le drapeau n'est pas touché.
-    const unreachable = result.reason === 'OFFLINE';
+    // prochain cycle) plutôt que SYNCING indéfiniment — reprise après coupure (§8). L'enveloppe
+    // n'est jamais modifiée : le lot a pu atteindre le serveur avant la coupure, et son empreinte
+    // (`payload_hash`, toute l'enveloppe) doit rester identique au renvoi, sans quoi le serveur
+    // refuserait la commande déjà appliquée (`COMMAND_ID_REUSED`, ADR-051 §2).
     await db.outbox
       .where('command_id')
       .anyOf(batch.map((c) => c.command_id))
       .modify((c) => {
-        if (unreachable && c.attempts === 0) c.captured_offline = true;
         c.status = 'PENDING_SYNC';
         c.attempts += 1;
       });
     // Seul un jeton de rafraîchissement invalide (session révoquée) force la déconnexion
-    // locale : une erreur HTTP du contrôleur (ex. 400 sur une enveloppe malformée, un bug
-    // côté appareil) n'est pas une preuve que la session est invalide — elle est simplement
-    // reportée comme `OFFLINE` (nouvel essai au prochain cycle, sans effet destructeur).
-    return result.reason === 'SESSION_INVALID'
-      ? { outcome: 'SESSION_INVALID' }
-      : { outcome: 'OFFLINE' };
+    // locale. Une erreur HTTP du contrôleur (ex. 400 sur une enveloppe malformée) prouve que le
+    // serveur est joignable : `SERVER_ERROR`, nouvel essai au prochain cycle, sans effet destructeur.
+    if (result.reason === 'SESSION_INVALID') return { outcome: 'SESSION_INVALID' };
+    return result.reason === 'HTTP_ERROR' ? { outcome: 'SERVER_ERROR' } : { outcome: 'OFFLINE' };
   }
 
   await db.syncMeta.update('device', { clock_skew_ms: result.data.clock_skew_ms });

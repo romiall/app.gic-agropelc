@@ -101,6 +101,17 @@ describe('ensureAccessToken', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('erreur passagère du serveur (503, 429) : OFFLINE, la session est conservée', async () => {
+    for (const status of [503, 429]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('{}', { status })),
+      );
+      expect(await ensureAccessToken(db)).toEqual({ ok: false, reason: 'OFFLINE' });
+      expect(getSessionRuntime()).toBeDefined();
+    }
+  });
+
   it('hors ligne : OFFLINE pour tous, la session est conservée et le prochain appel réessaie', async () => {
     const fetchMock = vi
       .fn<() => Promise<Response>>()

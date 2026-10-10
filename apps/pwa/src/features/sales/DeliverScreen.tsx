@@ -15,6 +15,7 @@ import { CommandResult } from './CommandResult.js';
 import { formatQuantity } from './format.js';
 import { openOrders } from './open-orders.js';
 import { useSalesReferences } from './references.js';
+import { MAX_COMMENT_LENGTH, MAX_RECIPIENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
 
 /** Saisie décimale ≥ 0 (virgule ou point, 3 décimales au plus) ; `null` si invalide. */
@@ -36,13 +37,31 @@ export function DeliverScreen() {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [recipient, setRecipient] = useState('');
   const [notes, setNotes] = useState('');
-  const [submitted, setSubmitted] = useState<string>();
+  const [submitted, setSubmitted] = useState<{ commandId: string; doc: string }>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   if (!refs || !userId) {
     return (
       <section className="sale" aria-busy="true">
         <p className="home-muted">{t('sales.loading')}</p>
+      </section>
+    );
+  }
+
+  // Le résultat reste affiché même si la livraison complète fait sortir la commande du jeu `orders`.
+  if (submitted) {
+    return (
+      <section className="sale">
+        <h1>{t('orders.deliver.title', { doc: submitted.doc })}</h1>
+        <CommandResult commandId={submitted.commandId} messages="orders.deliver.result">
+          <Link
+            to={orderId ? ROUTES.order(orderId) : ROUTES.orders}
+            className="action action-compact"
+          >
+            <span className="action-label">{t('orders.deliver.back_to_order')}</span>
+          </Link>
+        </CommandResult>
       </section>
     );
   }
@@ -62,19 +81,6 @@ export function DeliverScreen() {
     );
   }
   const doc = order.docNumber ?? t('sales.pending_number');
-
-  if (submitted) {
-    return (
-      <section className="sale">
-        <h1>{t('orders.deliver.title', { doc })}</h1>
-        <CommandResult commandId={submitted} messages="orders.deliver.result">
-          <Link to={ROUTES.order(order.id)} className="action action-compact">
-            <span className="action-label">{t('orders.deliver.back_to_order')}</span>
-          </Link>
-        </CommandResult>
-      </section>
-    );
-  }
 
   const deliverable = order.lines.filter(
     (line): line is typeof line & { id: string } => line.id !== null && line.toDeliverBase > 0,
@@ -102,6 +108,7 @@ export function DeliverScreen() {
   const submit = async () => {
     if (!ready) return;
     setBusy(true);
+    setSaveError(false);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -119,7 +126,9 @@ export function DeliverScreen() {
           })),
         },
       });
-      setSubmitted(command.command_id);
+      setSubmitted({ commandId: command.command_id, doc });
+    } catch {
+      setSaveError(true);
     } finally {
       setBusy(false);
     }
@@ -177,6 +186,7 @@ export function DeliverScreen() {
             <input
               id="deliver-recipient"
               className="text-input"
+              maxLength={MAX_RECIPIENT_LENGTH}
               value={recipient}
               onChange={(event) => setRecipient(event.target.value)}
               autoComplete="off"
@@ -188,6 +198,7 @@ export function DeliverScreen() {
               id="deliver-notes"
               className="text-input"
               rows={2}
+              maxLength={MAX_COMMENT_LENGTH}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />
@@ -197,6 +208,11 @@ export function DeliverScreen() {
               {message}
             </p>
           ))}
+          {saveError ? (
+            <p className="alert alert-error" role="alert">
+              {t('sales.error_local_save')}
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn-block submit-sale"

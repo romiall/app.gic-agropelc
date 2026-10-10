@@ -5,23 +5,8 @@
  */
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MAX_REFERENCE_LENGTH, receivingAccounts } from './payment.js';
+import { MAX_REFERENCE_LENGTH, receivingAccounts, type PaymentFieldsValue } from './payment.js';
 import type { CashAccountData, PaymentMethodData } from './types.js';
-
-export interface PaymentFieldsValue {
-  readonly methodCode: string | null;
-  /** `null` : montant prérempli (par l'écran appelant). */
-  readonly amountText: string | null;
-  readonly reference: string;
-  readonly accountId: string | null;
-}
-
-export const EMPTY_PAYMENT: PaymentFieldsValue = {
-  methodCode: null,
-  amountText: null,
-  reference: '',
-  accountId: null,
-};
 
 interface PaymentFieldsProps {
   readonly methods: readonly PaymentMethodData[];
@@ -96,7 +81,7 @@ export function PaymentFields({
           />
         </div>
       ) : null}
-      {candidates.length > 1 ? (
+      {candidates.length > 0 ? (
         <div className="field">
           <label htmlFor={`${id}-account`}>{t('sales.account_label')}</label>
           <select
@@ -105,7 +90,11 @@ export function PaymentFields({
             value={value.accountId ?? ''}
             onChange={(event) => onChange({ ...value, accountId: event.target.value || null })}
           >
-            <option value="">{t('sales.account_placeholder')}</option>
+            <option value="">
+              {candidates.length > 1
+                ? t('sales.account_placeholder')
+                : t('sales.account_server_choice')}
+            </option>
             {candidates.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}

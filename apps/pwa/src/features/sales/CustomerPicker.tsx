@@ -27,6 +27,10 @@ interface CustomerPickerProps {
   readonly value: string | null;
   readonly onChange: (customerId: string | null) => void;
   readonly allowAnonymous: boolean;
+  /** Clients trouvés en ligne, ajoutés aux résultats (rôles sans portefeuille téléchargé). */
+  readonly remoteCustomers?: readonly CustomerData[];
+  /** Saisie de recherche, pour une recherche en ligne par l'écran appelant. */
+  readonly onQueryChange?: (query: string) => void;
 }
 
 export function CustomerPicker({
@@ -34,19 +38,25 @@ export function CustomerPicker({
   value,
   onChange,
   allowAnonymous,
+  remoteCustomers = [],
+  onQueryChange,
 }: CustomerPickerProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(value === null && !allowAnonymous);
   const inputId = useId();
-  const selected = value ? customers.find((customer) => customer.id === value) : undefined;
+  const known = useMemo(() => {
+    const ids = new Set(customers.map((customer) => customer.id));
+    return [...customers, ...remoteCustomers.filter((customer) => !ids.has(customer.id))];
+  }, [customers, remoteCustomers]);
+  const selected = value ? known.find((customer) => customer.id === value) : undefined;
   const results = useMemo(
     () =>
-      customers
+      known
         .filter((customer) => matches(customer, query))
         .sort((a, b) => a.display_name.localeCompare(b.display_name, 'fr'))
         .slice(0, MAX_RESULTS),
-    [customers, query],
+    [known, query],
   );
 
   if (!searching) {
@@ -54,7 +64,11 @@ export function CustomerPicker({
       <div className="picked">
         <div>
           <p className="picked-title">
-            {selected ? selected.display_name : t('sales.customer_anonymous')}
+            {selected
+              ? selected.display_name
+              : value
+                ? t('sales.customer_unknown')
+                : t('sales.customer_anonymous')}
           </p>
           <p className="picked-hint">
             {selected
@@ -89,7 +103,10 @@ export function CustomerPicker({
         className="text-input"
         placeholder={t('sales.customer_search')}
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          onQueryChange?.(event.target.value);
+        }}
         autoComplete="off"
       />
       <ul className="picker-list">

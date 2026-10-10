@@ -53,10 +53,14 @@ describe('encaissement : compte de réception et référence (AV-300)', () => {
     });
   });
 
-  it('un seul compte connu : désigné d’office ; aucun connu : laissé au serveur', () => {
+  it('un seul compte connu : jamais désigné d’office (il n’est peut-être pas le bon), seulement s’il est choisi', () => {
     const one = [account('om', 'MOBILE_MONEY')];
     const input = { method: ORANGE, amountXaf: 500, reference: 'OM-1', accountId: null };
-    expect(paymentPayload(input, one)).toMatchObject({ cashAccountId: 'om' });
+    expect(paymentIssues(input, one)).toEqual([]);
+    expect(paymentPayload(input, one)).not.toHaveProperty('cashAccountId');
+    expect(paymentPayload({ ...input, accountId: 'om' }, one)).toMatchObject({
+      cashAccountId: 'om',
+    });
     expect(paymentPayload(input, [])).not.toHaveProperty('cashAccountId');
   });
 

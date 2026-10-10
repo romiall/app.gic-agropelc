@@ -104,6 +104,7 @@ export const fr = {
       'Aucun emplacement de vente sur cet appareil : synchronisez, ou demandez une affectation à un point de vente ou un stock mobile.',
     customer_title: 'Client',
     customer_anonymous: 'Client de passage',
+    customer_unknown: 'Client inconnu de cet appareil',
     customer_anonymous_hint: 'Vente payée en totalité',
     customer_search: 'Rechercher un client (nom ou téléphone)',
     customer_none: 'Aucun client trouvé sur cet appareil.',
@@ -150,6 +151,7 @@ export const fr = {
     no_payment_method: 'Aucun moyen de paiement sur cet appareil : synchronisez.',
     account_label: 'Compte de réception',
     account_placeholder: 'Choisir le compte',
+    account_server_choice: 'Laisser le serveur choisir',
     account_unknown_hint:
       'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance (AV-300).',
     payment_issue: {
@@ -328,6 +330,7 @@ export const fr = {
       confirm_remaining: 'Vendre le disponible (reste en attente)',
       retire: 'Annuler la commande',
       close_remaining: 'Clôturer le reste',
+      action_pending: 'Une opération sur cette commande attend d’être envoyée.',
       rejection: 'Refusée par le serveur : {{reason}}',
     },
     retire: {
@@ -397,6 +400,12 @@ export const fr = {
     due_line: '{{doc}} · échéance {{date}}',
     due_line_no_date: '{{doc}}',
     preview_title: 'Affectation prévue (la plus ancienne d’abord)',
+    allocated: 'Réglé : {{amount}}',
+    site_label: 'Site de l’encaissement',
+    site_placeholder: 'Déduit par le serveur',
+    remote_search_hint: 'Recherche en ligne parmi tous les clients.',
+    remote_search_offline: 'Hors ligne : seuls les clients de l’appareil sont proposés.',
+    dues_total: 'Total des créances : {{amount}}',
     preview_credit: 'Reste en avoir du client : {{amount}}',
     pending_title: 'Encaissements en attente d’envoi',
     amount_label: 'Montant reçu (F CFA)',

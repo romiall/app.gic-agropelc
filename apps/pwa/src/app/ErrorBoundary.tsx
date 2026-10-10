@@ -39,6 +39,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({ failedKey: this.props.resetKey });
   }
 
+  /** Nouvelle route : l'écran repart sans l'erreur, y compris en revenant sur la route fautive. */
+  override componentDidUpdate(previous: ErrorBoundaryProps): void {
+    if (previous.resetKey !== this.props.resetKey && this.state.failedKey !== null) {
+      this.setState({ failedKey: null });
+    }
+  }
+
   override render(): ReactNode {
     const { failedKey } = this.state;
     if (failedKey !== null && (failedKey === '__pending__' || failedKey === this.props.resetKey)) {

@@ -6,7 +6,8 @@
  * vente hors ligne (AV-025), du bandeau « hors ligne » et de `captured_offline` (« état du réseau à la
  * saisie », 01-architecture-offline.md §5).
  */
-export type SyncOutcome = 'SYNCED' | 'OFFLINE' | 'SESSION_INVALID' | 'NOTHING_TO_DO';
+export type SyncOutcome =
+  'SYNCED' | 'OFFLINE' | 'SERVER_ERROR' | 'SESSION_INVALID' | 'NOTHING_TO_DO';
 
 type Listener = () => void;
 
@@ -17,6 +18,7 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
+/** Seul un échec réseau rend le serveur injoignable ; une erreur HTTP prouve qu'il répond. */
 export function reportSyncOutcome(outcome: SyncOutcome): void {
   const unreachable = outcome === 'OFFLINE';
   if (unreachable === serverUnreachable) return;

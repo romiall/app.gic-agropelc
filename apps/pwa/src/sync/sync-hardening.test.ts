@@ -78,28 +78,68 @@ describe('synchronisation durcie (ADR-051)', () => {
     expect(isEffectivelyOnline()).toBe(false);
   });
 
-  it('premier envoi sans serveur joignable : la saisie devient un fait hors ligne ; une erreur HTTP non', async () => {
-    const first = await enqueueSale(db);
+  it('envoi coupé : l’enveloppe renvoyée est identique (empreinte d’idempotence du serveur)', async () => {
+    const command = await enqueueSale(db);
+    const bodies: string[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
-        throw new TypeError('network');
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        bodies.push(String(init?.body));
+        throw new TypeError('connexion coupée après l’envoi');
       }),
     );
     await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(await db.outbox.get(first.command_id)).toMatchObject({
-      captured_offline: true,
-      attempts: 1,
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    const envelopes = bodies.map(
+      (body) => (JSON.parse(body) as { commands: unknown[] }).commands[0],
+    );
+    expect(envelopes).toHaveLength(2);
+    expect(envelopes[1]).toEqual(envelopes[0]);
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      captured_offline: false,
+      attempts: 2,
       status: 'PENDING_SYNC',
     });
+  });
 
-    const second = await enqueueSale(db);
+  it('erreur HTTP 500 : serveur joignable (SERVER_ERROR), l’appareil reste en ligne', async () => {
+    await enqueueSale(db);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ error: 'boom' }), { status: 500 })),
     );
-    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect((await db.outbox.get(second.command_id))?.captured_offline).toBe(false);
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({ outcome: 'SERVER_ERROR' });
+    reportSyncOutcome('SERVER_ERROR');
+    expect(isEffectivelyOnline()).toBe(true);
+  });
+
+  it('seules les commandes de l’utilisateur de la session partent', async () => {
+    const mine = await enqueueSale(db);
+    const other = await enqueueCommand(
+      db,
+      { clock, idGenerator },
+      {
+        authorUserId: 'user-2',
+        commandType: 'sales.sale.record',
+        commandVersion: 1,
+        aggregateType: 'SALE',
+        payload: {},
+        capturedOffline: true,
+      },
+    );
+    const sent: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { commands: { command_id: string }[] };
+        sent.push(...body.commands.map((command) => command.command_id));
+        throw new TypeError('network');
+      }),
+    );
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID, userId: 'user-1' });
+    expect(sent).toEqual([mine.command_id]);
+    expect((await db.outbox.get(other.command_id))?.status).toBe('LOCAL_ONLY');
   });
 
   it('commande acceptée : heure d’acceptation retenue', async () => {
@@ -131,6 +171,22 @@ describe('synchronisation durcie (ADR-051)', () => {
     expect((await db.syncCursors.get('stock'))?.pulled_at).toBe('2026-10-10T09:00:00.000Z');
   });
 
+  it('erreur HTTP sur un jeu : les autres jeux sont tirés, synchronisation incomplète', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown) =>
+        String(url).includes('dataset=stock&')
+          ? new Response('{}', { status: 500 })
+          : new Response(JSON.stringify(emptyPull()), { status: 200 }),
+      ),
+    );
+    const result = await runPullCycle(db, { clock });
+    expect(result).toEqual({ outcome: 'SERVER_ERROR', changeCount: 0 });
+    expect(await db.syncCursors.get('stock')).toBeUndefined();
+    expect((await db.syncCursors.get('product'))?.pulled_at).toBe('2026-10-10T09:00:00.000Z');
+    expect((await db.syncMeta.get('device'))?.last_sync_at).toBeNull();
+  });
+
   it('envoi interrompu (onglet fermé) : la commande repart', async () => {
     const command = await enqueueSale(db);
     await db.outbox.update(command.command_id, { status: 'SYNCING' });
@@ -152,10 +208,11 @@ describe('synchronisation durcie (ADR-051)', () => {
       seq: 1,
     });
     await db.syncCursors.put({ dataset: 'customers', cursor: 10 });
-    expect(await ensureDataOwner(db, 'user-1')).toBe(true); // propriétaire inconnu : effacement unique
-    await db.syncCursors.put({ dataset: 'customers', cursor: 12 });
+    // Appareil antérieur au champ : les jeux sont adoptés par l'utilisateur courant, sans effacement.
     expect(await ensureDataOwner(db, 'user-1')).toBe(false);
     expect(await db.syncCursors.count()).toBe(1);
+    expect(await db.projections.count()).toBe(1);
+    expect(await ensureDataOwner(db, 'user-1')).toBe(false);
 
     expect(await ensureDataOwner(db, 'user-2')).toBe(true);
     expect(await db.projections.count()).toBe(0);

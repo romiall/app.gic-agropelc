@@ -66,13 +66,25 @@ export async function enqueueCommand(
   });
 }
 
-/** File d'attente à pousser : tout ce qui n'est pas encore confirmé, dans l'ordre FIFO. */
-export async function pendingOutbox(db: GicDatabase, limit = 50): Promise<OutboxCommand[]> {
+/**
+ * File d'attente à pousser : tout ce qui n'est pas encore confirmé, dans l'ordre FIFO ; seulement les
+ * commandes de `authorUserId` s'il est donné (le serveur n'accepte que celles de l'utilisateur
+ * authentifié).
+ */
+export async function pendingOutbox(
+  db: GicDatabase,
+  limit = 50,
+  authorUserId?: string,
+): Promise<OutboxCommand[]> {
   return db.outbox
     .where('status')
     .anyOf(['LOCAL_ONLY', 'PENDING_SYNC'])
     .sortBy('device_seq')
-    .then((rows) => rows.slice(0, limit));
+    .then((rows) =>
+      rows
+        .filter((row) => authorUserId === undefined || row.author_user_id === authorUserId)
+        .slice(0, limit),
+    );
 }
 
 /**

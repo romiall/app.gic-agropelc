@@ -136,12 +136,14 @@ export async function applyChange(db: GicDatabase, change: Change): Promise<void
 
 export type PullCycleResult =
   | { readonly outcome: 'SYNCED'; readonly changeCount: number }
+  /** Au moins un jeu a répondu par une erreur HTTP ; les autres ont été tirés. */
+  | { readonly outcome: 'SERVER_ERROR'; readonly changeCount: number }
   | { readonly outcome: 'OFFLINE' }
   | { readonly outcome: 'SESSION_INVALID' };
 
 type PullDatasetResult =
   | { readonly ok: true; readonly changeCount: number }
-  | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' };
+  | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'HTTP_ERROR' };
 
 async function pullDataset(
   db: GicDatabase,
@@ -159,12 +161,9 @@ async function pullDataset(
       { method: 'GET' },
     );
     if (!result.ok) {
-      // Seul un jeton de rafraîchissement invalide force la déconnexion locale (même choix
-      // que `push.ts`) : une erreur HTTP du contrôleur est reportée comme `OFFLINE`.
-      return {
-        ok: false,
-        reason: result.reason === 'SESSION_INVALID' ? 'SESSION_INVALID' : 'OFFLINE',
-      };
+      // Seul un jeton de rafraîchissement invalide force la déconnexion locale (même choix que
+      // `push.ts`) ; une erreur HTTP n'interrompt que ce jeu (les curseurs sont par jeu).
+      return { ok: false, reason: result.reason };
     }
 
     for (const change of result.data.changes) await applyChange(db, change);
@@ -196,6 +195,13 @@ async function pullDataset(
 export async function ensureDataOwner(db: GicDatabase, userId: string): Promise<boolean> {
   const meta = await db.syncMeta.get('device');
   if (!meta || meta.data_user_id === userId) return false;
+  // Appareil antérieur à ce champ : ses jeux sont réputés être ceux de l'utilisateur courant, sans
+  // effacement (un appareil hors ligne au premier cycle après la mise à jour garderait sinon
+  // ni catalogue ni stock jusqu'au retour du réseau).
+  if (meta.data_user_id === undefined || meta.data_user_id === null) {
+    await db.syncMeta.update('device', { data_user_id: userId });
+    return false;
+  }
   const hasData = (await db.syncCursors.count()) > 0 || (await db.projections.count()) > 0;
   if (hasData) {
     await db.transaction('rw', db.projections, db.syncCursors, async () => {
@@ -213,11 +219,20 @@ export async function runPullCycle(
 ): Promise<PullCycleResult> {
   if (deps.userId) await ensureDataOwner(db, deps.userId);
   let total = 0;
+  let serverError = false;
   for (const dataset of KNOWN_DATASETS) {
     const result = await pullDataset(db, deps.clock, dataset);
-    if (!result.ok) return { outcome: result.reason };
+    if (!result.ok) {
+      if (result.reason === 'HTTP_ERROR') {
+        serverError = true;
+        continue;
+      }
+      return { outcome: result.reason };
+    }
     total += result.changeCount;
   }
+  // Synchronisation complète seulement si tous les jeux ont été tirés (fraîcheur des prix, §8).
+  if (serverError) return { outcome: 'SERVER_ERROR', changeCount: total };
   await db.syncMeta.update('device', { last_sync_at: deps.clock.now().toISOString() });
   return { outcome: 'SYNCED', changeCount: total };
 }

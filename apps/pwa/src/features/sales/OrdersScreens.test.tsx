@@ -156,6 +156,37 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     });
   });
 
+  it('détail : une clôture déjà saisie sur l’appareil ferme les autres suites', async () => {
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000000f1',
+      device_seq: 1,
+      command_type: 'sales.order.close_remaining',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'SALES_ORDER',
+      aggregate_id: ORDER_ID,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T09:00:00.000Z',
+      client_created_at: '2026-10-10T09:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { comment: 'stop' },
+      status: 'LOCAL_ONLY',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    renderAt(`/commandes/${ORDER_ID}`);
+    expect(
+      await screen.findByText('Une opération sur cette commande attend d’être envoyée.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clôturer le reste' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Livrer' })).not.toBeInTheDocument();
+  });
+
   it('détail : vendre le disponible (confirm_remaining) sur la même commande', async () => {
     const user = userEvent.setup();
     renderAt(`/commandes/${ORDER_ID}`);

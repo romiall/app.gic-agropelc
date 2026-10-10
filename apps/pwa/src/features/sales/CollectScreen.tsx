@@ -2,21 +2,28 @@
  * ECR-VEN-06 « ENCAISSER (règlement de créances d'un client) ». Client, montant reçu, moyen,
  * référence et compte de réception (bloc d'encaissement commun) ; l'affectation est automatique
  * (BR-FIN-004 : échéance la plus ancienne d'abord, le reste en avoir du client) et l'écran en montre
- * l'aperçu. Commande `sales.payment.record` (agrégat `CUSTOMER_PAYMENT`), utilisable hors ligne : le
- * serveur affecte au moment de l'application. En ligne, les créances viennent de
- * `GET /api/v1/receivables` ; hors ligne, des ventes récentes de l'appareil.
+ * l'aperçu, après les encaissements du client déjà saisis sur l'appareil. Commande
+ * `sales.payment.record` (agrégat `CUSTOMER_PAYMENT`), utilisable hors ligne : le serveur affecte au
+ * moment de l'application.
+ *
+ * Créances : en ligne, `GET /api/v1/receivables` (relues après chaque encaissement) ; hors ligne,
+ * celles des ventes récentes de l'appareil. Clients : ceux de l'appareil (jeu `customers`), et en
+ * ligne une recherche sur `GET /api/v1/customers` pour les rôles qui n'ont pas de portefeuille
+ * téléchargé (Finance, besoin S-12). Site : celui du point de vente ou du stock de l'utilisateur ; à
+ * défaut, l'utilisateur peut le choisir, sinon le serveur le déduit des créances réglées.
  */
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
-import { businessDayOf } from '@gic/domain';
 import {
+  afterPendingPayments,
   duesFromReceivables,
   duesFromRecentSales,
   pendingPaymentsOf,
@@ -26,16 +33,24 @@ import {
 import { CommandResult } from './CommandResult.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
-import { paymentIssues, paymentPayload } from './payment.js';
-import { EMPTY_PAYMENT, PaymentFields, type PaymentFieldsValue } from './PaymentFields.js';
+import {
+  EMPTY_PAYMENT,
+  paymentIssues,
+  paymentPayload,
+  type PaymentFieldsValue,
+} from './payment.js';
+import { PaymentFields } from './PaymentFields.js';
 import { useSalesReferences } from './references.js';
-import { parseXaf } from './sale-form.js';
+import { parseXaf, sellingLocations } from './sale-form.js';
 import { submitCommand } from './submit.js';
+import type { CustomerData } from './types.js';
 
 const DEFAULT_METHOD = 'ESPECES';
+const REMOTE_SEARCH_MIN_LENGTH = 2;
+const REMOTE_SEARCH_LIMIT = 20;
 
 interface ReceivablesState {
-  readonly customerId: string;
+  readonly key: string;
   readonly lines: readonly ReceivableLine[] | null;
 }
 
@@ -43,8 +58,10 @@ interface ReceivablesState {
 function useOnlineReceivables(
   customerId: string | null,
   online: boolean,
+  reloadKey: number,
 ): readonly ReceivableLine[] | null | undefined {
   const [state, setState] = useState<ReceivablesState>();
+  const key = `${customerId ?? ''}:${reloadKey}`;
   useEffect(() => {
     if (!customerId || !online) return;
     let cancelled = false;
@@ -53,15 +70,82 @@ function useOnlineReceivables(
       `/api/v1/receivables?customer_id=${encodeURIComponent(customerId)}`,
       { method: 'GET' },
     ).then((result) => {
-      if (cancelled) return;
-      setState({ customerId, lines: result.ok ? (result.data.receivables ?? []) : null });
+      if (!cancelled) setState({ key, lines: result.ok ? (result.data.receivables ?? []) : null });
     });
     return () => {
       cancelled = true;
     };
-  }, [customerId, online]);
+  }, [customerId, online, key]);
   if (!customerId || !online) return null;
-  return state?.customerId === customerId ? state.lines : undefined;
+  return state?.key === key ? state.lines : undefined;
+}
+
+/** Résumé client de `GET /api/v1/customers` (champs utiles à l'écran). */
+interface RemoteCustomer {
+  readonly id: string;
+  readonly stage: string;
+  readonly displayName: string;
+  readonly contactName: string | null;
+  readonly categoryId: string | null;
+  readonly phonePrimary: string | null;
+  readonly addressText: string | null;
+  readonly zoneId: string;
+  readonly ownerUserId: string | null;
+  readonly homeSiteId: string | null;
+  readonly mergedIntoId: string | null;
+  readonly creditAllowed: boolean;
+  readonly creditLimitXaf: number | null;
+  readonly paymentTermsDays: number | null;
+  readonly version: number;
+}
+
+function toCustomerData(remote: RemoteCustomer): CustomerData {
+  return {
+    id: remote.id,
+    stage: remote.stage,
+    display_name: remote.displayName,
+    contact_name: remote.contactName,
+    category_id: remote.categoryId,
+    phone_primary: remote.phonePrimary,
+    address_text: remote.addressText,
+    zone_id: remote.zoneId,
+    owner_user_id: remote.ownerUserId,
+    home_site_id: remote.homeSiteId,
+    merged_into_id: remote.mergedIntoId,
+    credit_allowed: remote.creditAllowed,
+    credit_limit_xaf: remote.creditLimitXaf,
+    payment_terms_days: remote.paymentTermsDays,
+    // L'encours n'est pas dans la lecture : les créances lues en ligne en tiennent lieu.
+    outstanding_xaf: 0,
+    version: remote.version,
+  };
+}
+
+/** Recherche en ligne des clients, à partir de 2 caractères. */
+function useRemoteCustomers(query: string, online: boolean): readonly CustomerData[] {
+  const [found, setFound] = useState<{ query: string; customers: readonly CustomerData[] }>();
+  const text = query.trim();
+  useEffect(() => {
+    if (!online || text.length < REMOTE_SEARCH_MIN_LENGTH) return;
+    let cancelled = false;
+    void authorizedRequest<{ customers?: RemoteCustomer[] }>(
+      getDb(),
+      `/api/v1/customers?q=${encodeURIComponent(text)}&limit=${REMOTE_SEARCH_LIMIT}`,
+      { method: 'GET' },
+    ).then((result) => {
+      if (cancelled || !result.ok) return;
+      setFound({
+        query: text,
+        customers: (result.data.customers ?? [])
+          .filter((customer) => customer.mergedIntoId === null)
+          .map(toCustomerData),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [text, online]);
+  return online && found?.query === text ? found.customers : [];
 }
 
 export function CollectScreen() {
@@ -72,11 +156,17 @@ export function CollectScreen() {
   const online = useOnline();
   const [searchParams] = useSearchParams();
   const [customerId, setCustomerId] = useState<string | null>(searchParams.get('client'));
+  const [query, setQuery] = useState('');
+  /** Client trouvé en ligne et choisi (absent du portefeuille de l'appareil). */
+  const [remoteSelected, setRemoteSelected] = useState<CustomerData>();
+  const [siteChoice, setSiteChoice] = useState('');
   const [payment, setPayment] = useState<PaymentFieldsValue>(EMPTY_PAYMENT);
   const [submitted, setSubmitted] = useState<string>();
+  const [reloadKey, setReloadKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const receivables = useOnlineReceivables(customerId, online);
+  const receivables = useOnlineReceivables(customerId, online, reloadKey);
+  const remoteCustomers = useRemoteCustomers(query, online);
 
   if (!refs || !userId) {
     return (
@@ -97,6 +187,8 @@ export function CollectScreen() {
             onClick={() => {
               setPayment(EMPTY_PAYMENT);
               setSubmitted(undefined);
+              // Relire les créances : l'encaissement accepté les a réduites.
+              setReloadKey((key) => key + 1);
             }}
           >
             {t('collect.new_payment')}
@@ -106,16 +198,30 @@ export function CollectScreen() {
     );
   }
 
-  const customer = customerId
+  const localCustomer = customerId
     ? refs.customers.find((candidate) => candidate.id === customerId)
     : undefined;
+  const customer =
+    localCustomer ?? (remoteSelected?.id === customerId ? remoteSelected : undefined);
   const fromServer = Array.isArray(receivables);
-  const dues = customer
+  const allDues = customer
     ? fromServer
       ? duesFromReceivables(receivables, customer.id)
       : duesFromRecentSales(refs.sales, customer.id)
     : [];
   const pending = customer ? pendingPaymentsOf(refs.outbox, customer.id) : [];
+  const dues = afterPendingPayments(
+    allDues,
+    pending.map((entry) => entry.amountXaf),
+  );
+  const duesTotal = dues.reduce((sum, due) => sum + due.balanceXaf, 0);
+  // Site de l'encaissement : celui du point de vente ou du stock de l'utilisateur, sinon son choix.
+  const ownSiteId = sellingLocations(refs, userId).find((location) => location.site_id)?.site_id;
+  const siteId = ownSiteId ?? (siteChoice || undefined);
+  const sites = [...refs.sites.values()]
+    .filter((site) => site.status === 'ACTIVE')
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
   const methods = refs.paymentMethods;
   const method =
     methods.find((candidate) => candidate.code === payment.methodCode) ??
@@ -143,6 +249,7 @@ export function CollectScreen() {
         aggregateType: 'CUSTOMER_PAYMENT',
         payload: {
           customerId: customer.id,
+          ...(siteId ? { siteId } : {}),
           ...paymentPayload(
             {
               method,
@@ -175,22 +282,28 @@ export function CollectScreen() {
         <h2 id="collect-customer-title">{t('sales.customer_title')}</h2>
         <CustomerPicker
           customers={refs.customers}
+          remoteCustomers={remoteCustomers}
+          onQueryChange={setQuery}
           value={customerId}
           onChange={(id) => {
             setCustomerId(id);
+            setRemoteSelected(remoteCustomers.find((candidate) => candidate.id === id));
             setPayment(EMPTY_PAYMENT);
           }}
           allowAnonymous={false}
         />
-        {customer ? (
+        <p className="home-muted">
+          {online ? t('collect.remote_search_hint') : t('collect.remote_search_offline')}
+        </p>
+        {localCustomer ? (
           <p className="total-line">
             <span>
-              {t('collect.outstanding', { amount: formatMoney(customer.outstanding_xaf) })}
+              {t('collect.outstanding', { amount: formatMoney(localCustomer.outstanding_xaf) })}
             </span>
           </p>
-        ) : (
+        ) : customer === undefined ? (
           <p className="home-muted">{t('collect.customer_required')}</p>
-        )}
+        ) : null}
       </section>
 
       {customer ? (
@@ -207,34 +320,40 @@ export function CollectScreen() {
             {dues.length === 0 ? (
               <p className="home-muted">{t('collect.dues_none')}</p>
             ) : (
-              <ul className="doc-list">
-                {dues.map((due) => {
-                  const allocated = preview?.lines.find((line) => line.due.saleId === due.saleId);
-                  return (
-                    <li key={due.saleId} className="doc-row">
-                      <span className="doc-main">
-                        <strong>
-                          {due.dueDate
-                            ? t('collect.due_line', {
-                                doc: due.docNumber,
-                                date: formatBusinessDay(due.dueDate),
-                              })
-                            : t('collect.due_line_no_date', { doc: due.docNumber })}
-                        </strong>
-                        <small>{formatMoment(due.occurredAt, today)}</small>
-                      </span>
-                      <span className="doc-side">
-                        <strong>{formatMoney(due.balanceXaf)}</strong>
-                        {allocated ? (
-                          <span className="badge badge-ok">
-                            − {formatMoney(allocated.amountXaf)}
-                          </span>
-                        ) : null}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <p className="home-muted">
+                  {t('collect.dues_total', { amount: formatMoney(duesTotal) })}
+                </p>
+                {preview ? <h3 className="field-label">{t('collect.preview_title')}</h3> : null}
+                <ul className="doc-list">
+                  {dues.map((due) => {
+                    const allocated = preview?.lines.find((line) => line.due.saleId === due.saleId);
+                    return (
+                      <li key={due.saleId} className="doc-row">
+                        <span className="doc-main">
+                          <strong>
+                            {due.dueDate
+                              ? t('collect.due_line', {
+                                  doc: due.docNumber,
+                                  date: formatBusinessDay(due.dueDate),
+                                })
+                              : t('collect.due_line_no_date', { doc: due.docNumber })}
+                          </strong>
+                          <small>{formatMoment(due.occurredAt, today)}</small>
+                        </span>
+                        <span className="doc-side">
+                          <strong>{formatMoney(due.balanceXaf)}</strong>
+                          {allocated ? (
+                            <span className="badge badge-ok">
+                              {t('collect.allocated', { amount: formatMoney(allocated.amountXaf) })}
+                            </span>
+                          ) : null}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
             {preview && preview.creditXaf > 0 ? (
               <p className="text-warn">
@@ -263,6 +382,24 @@ export function CollectScreen() {
 
           <section className="sale-block" aria-labelledby="collect-payment-title">
             <h2 id="collect-payment-title">{t('sales.payment_title')}</h2>
+            {ownSiteId === undefined && sites.length > 0 ? (
+              <div className="field">
+                <label htmlFor="collect-site">{t('collect.site_label')}</label>
+                <select
+                  id="collect-site"
+                  className="text-input"
+                  value={siteChoice}
+                  onChange={(event) => setSiteChoice(event.target.value)}
+                >
+                  <option value="">{t('collect.site_placeholder')}</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <PaymentFields
               methods={methods}
               accounts={refs.cashAccounts}

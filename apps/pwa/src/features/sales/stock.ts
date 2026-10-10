@@ -17,9 +17,8 @@ import {
   type LocalConsumptionDecision,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
+import { stillInFlight } from './pending.js';
 import type { LocationData, SettingData, StockBalanceData } from './types.js';
-
-const WAITING_STATUSES: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']);
 
 const toMilli = (value: number): number => Math.round(value * 1000);
 const fromMilli = (milli: number): number => milli / 1000;
@@ -40,10 +39,7 @@ interface StockPayloadLike {
  * réussi suivi d'un tirage interrompu ferait réapparaître la quantité vendue (ADR-051).
  */
 function stillPending(command: OutboxCommand, stockPulledAt: string | undefined): boolean {
-  if (WAITING_STATUSES.has(command.status)) return true;
-  if (command.status !== 'SYNCED' && command.status !== 'SYNCED_WITH_WARNING') return false;
-  if (!command.synced_at) return false;
-  return stockPulledAt === undefined || stockPulledAt < command.synced_at;
+  return stillInFlight(command, stockPulledAt);
 }
 
 /**

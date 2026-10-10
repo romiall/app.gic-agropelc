@@ -23,10 +23,16 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
+import { localOutstanding } from './credit.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
-import { paymentIssues, paymentPayload } from './payment.js';
-import { EMPTY_PAYMENT, PaymentFields, type PaymentFieldsValue } from './PaymentFields.js';
+import {
+  EMPTY_PAYMENT,
+  paymentIssues,
+  paymentPayload,
+  type PaymentFieldsValue,
+} from './payment.js';
+import { PaymentFields } from './PaymentFields.js';
 import { deduceChannel, openWorkSession, saleZoneId } from './pricing.js';
 import { ProductPicker } from './ProductPicker.js';
 import { useSalesReferences, type SalesReferences } from './references.js';
@@ -207,7 +213,8 @@ export function NewSaleScreen() {
     const credit = creditCheck({
       creditAllowed: customer.credit_allowed,
       creditLimitXaf: customer.credit_limit_xaf === null ? null : xaf(customer.credit_limit_xaf),
-      outstandingXaf: xaf(Math.max(0, customer.outstanding_xaf)),
+      // Encours téléchargé corrigé des opérations de l'appareil pas encore retéléchargées.
+      outstandingXaf: xaf(localOutstanding(customer, refs.outbox, refs.customersPulledAt)),
       newCreditXaf: xaf(total - amount),
     });
     if (credit.outcome === 'NOT_ALLOWED') warnings.push(t('sales.warning_credit_not_allowed'));

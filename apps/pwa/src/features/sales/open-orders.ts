@@ -10,10 +10,17 @@
  */
 import { quantityFromDecimal, quantityToDecimal, salesOrderLineProgress } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
+import { isAccepted, isWaiting, stillInFlight } from './pending.js';
 import type { SalesReferences } from './references.js';
 import type { SalesOrderData } from './types.js';
 
-const WAITING: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']);
+/** Opérations sur une commande existante qui en changent les suites possibles. */
+const ORDER_ACTIONS: ReadonlySet<string> = new Set([
+  'sales.order.cancel',
+  'sales.order.close_remaining',
+  'sales.order.confirm_remaining',
+  'sales.order.update',
+]);
 
 export type OrderViewStatus = SalesOrderData['status'] | 'PENDING' | 'REJECTED' | 'IN_CONFLICT';
 
@@ -52,6 +59,8 @@ export interface OrderView {
   readonly lines: readonly OrderViewLine[];
   readonly commandId: string | null;
   readonly rejection: string | null;
+  /** Opérations sur cette commande saisies sur l'appareil et pas encore envoyées. */
+  readonly pendingActions: readonly string[];
 }
 
 const round3 = (value: number): number => Math.round(value * 1000) / 1000;
@@ -73,11 +82,18 @@ function progress(ordered: number, sold: number, delivered: number) {
   }
 }
 
-/** Quantités livrées sur l'appareil et pas encore confirmées, par ligne de commande. */
-export function deliveringByLine(commands: readonly OutboxCommand[]): Map<string, number> {
+/**
+ * Quantités livrées sur l'appareil et pas encore retrouvées dans le jeu `orders`, par ligne de
+ * commande : en attente d'envoi, ou acceptées mais pas encore retéléchargées (ADR-051 §3).
+ */
+export function deliveringByLine(
+  commands: readonly OutboxCommand[],
+  ordersPulledAt: string | undefined,
+): Map<string, number> {
   const milli = new Map<string, number>();
   for (const command of commands) {
-    if (command.command_type !== 'sales.order.fulfil' || !WAITING.has(command.status)) continue;
+    if (command.command_type !== 'sales.order.fulfil') continue;
+    if (!stillInFlight(command, ordersPulledAt)) continue;
     const payload = command.payload as {
       readonly lines?: readonly { readonly orderLineId?: string; readonly quantityBase?: number }[];
     };
@@ -92,7 +108,22 @@ export function deliveringByLine(commands: readonly OutboxCommand[]): Map<string
   return new Map([...milli].map(([id, value]) => [id, value / 1000]));
 }
 
-function fromProjection(order: SalesOrderData, delivering: ReadonlyMap<string, number>): OrderView {
+function pendingActionsOf(outbox: readonly OutboxCommand[], orderId: string): string[] {
+  return outbox
+    .filter(
+      (command) =>
+        command.aggregate_id === orderId &&
+        ORDER_ACTIONS.has(command.command_type) &&
+        isWaiting(command),
+    )
+    .map((command) => command.command_type);
+}
+
+function fromProjection(
+  order: SalesOrderData,
+  delivering: ReadonlyMap<string, number>,
+  pendingActions: readonly string[],
+): OrderView {
   return {
     id: order.id,
     docNumber: order.doc_number,
@@ -131,6 +162,7 @@ function fromProjection(order: SalesOrderData, delivering: ReadonlyMap<string, n
     }),
     commandId: null,
     rejection: null,
+    pendingActions,
   };
 }
 
@@ -155,6 +187,16 @@ function fromCommand(
 ): OrderView {
   const payload = command.payload as PlacePayload;
   const names = new Map(refs.products.map((product) => [product.id, product.name]));
+  const status: OrderViewStatus =
+    command.status === 'REJECTED'
+      ? 'REJECTED'
+      : command.status === 'CONFLICT'
+        ? 'IN_CONFLICT'
+        : isWaiting(command)
+          ? 'PENDING'
+          : 'CONFIRMED';
+  // Refusée ou en conflit : rien n'attend du stock.
+  const live = status === 'PENDING' || status === 'CONFIRMED';
   const lines = (payload.lines ?? []).map((line) => {
     const lineTotalXaf = Math.round(line.quantityBase * line.unitPriceXaf);
     return {
@@ -167,7 +209,7 @@ function fromCommand(
       soldBase: 0,
       deliveredBase: 0,
       deliveringBase: 0,
-      pendingBase: line.quantityBase,
+      pendingBase: live ? line.quantityBase : 0,
       toDeliverBase: 0,
       quotedUnitPriceXaf: line.unitPriceXaf,
       lineTotalXaf,
@@ -176,14 +218,7 @@ function fromCommand(
   return {
     id: command.aggregate_id,
     docNumber: command.server_refs?.docNumber ?? null,
-    status:
-      command.status === 'REJECTED'
-        ? 'REJECTED'
-        : command.status === 'CONFLICT'
-          ? 'IN_CONFLICT'
-          : WAITING.has(command.status)
-            ? 'PENDING'
-            : 'CONFIRMED',
+    status,
     customerId: payload.customerId,
     fulfilmentLocationId: payload.fulfilmentLocationId,
     siteId:
@@ -198,20 +233,23 @@ function fromCommand(
     lines,
     commandId: command.command_id,
     rejection: command.last_error?.message_fr ?? null,
+    pendingActions: [],
   };
 }
 
 /** Commandes ouvertes, la plus récente d'abord. */
 export function openOrders(
-  refs: Pick<SalesReferences, 'orders' | 'outbox' | 'products' | 'locations'>,
+  refs: Pick<SalesReferences, 'orders' | 'outbox' | 'products' | 'locations' | 'ordersPulledAt'>,
 ): OrderView[] {
-  const delivering = deliveringByLine(refs.outbox);
+  const delivering = deliveringByLine(refs.outbox, refs.ordersPulledAt);
   const views = new Map<string, OrderView>();
-  for (const order of refs.orders.values()) views.set(order.id, fromProjection(order, delivering));
+  for (const order of refs.orders.values()) {
+    views.set(order.id, fromProjection(order, delivering, pendingActionsOf(refs.outbox, order.id)));
+  }
   for (const command of refs.outbox) {
     if (command.command_type !== 'sales.order.place' || views.has(command.aggregate_id)) continue;
-    // Acceptée puis livrée ou close avant le retéléchargement : le serveur ne la sert plus.
-    if (command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING') continue;
+    // Acceptée et déjà retéléchargée sans revenir : livrée, close ou annulée, le jeu ne la sert plus.
+    if (isAccepted(command) && !stillInFlight(command, refs.ordersPulledAt)) continue;
     views.set(command.aggregate_id, fromCommand(command, refs));
   }
   return [...views.values()].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));

@@ -18,6 +18,33 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('button', { name: 'Recharger l’application' })).toBeInTheDocument();
   });
 
+  it('une autre route efface l’erreur, y compris au retour sur la route fautive', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let fail = true;
+    function Maybe() {
+      if (fail) throw new Error('panne');
+      return <p>Écran</p>;
+    }
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/a">
+        <Maybe />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fail = false;
+    rerender(
+      <ErrorBoundary resetKey="/b">
+        <Maybe />
+      </ErrorBoundary>,
+    );
+    rerender(
+      <ErrorBoundary resetKey="/a">
+        <Maybe />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('Écran')).toBeInTheDocument();
+  });
+
   it('sans erreur : affiche l’écran', () => {
     render(
       <ErrorBoundary resetKey="/">

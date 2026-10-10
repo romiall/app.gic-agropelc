@@ -54,6 +54,9 @@ export interface SalesReferences {
   readonly cashAccounts: readonly CashAccountData[];
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
   readonly lastSyncAt: string | null;
+  /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-051 §3). */
+  readonly ordersPulledAt: string | undefined;
+  readonly customersPulledAt: string | undefined;
   /** Commandes de vente de l'outbox, tous statuts (affichage des opérations en attente). */
   readonly outbox: readonly OutboxCommand[];
 }
@@ -65,6 +68,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
   const [
     cashAccounts,
     stockCursor,
+    ordersCursor,
+    customersCursor,
     meta,
     products,
     productUnits,
@@ -86,6 +91,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
   ] = await Promise.all([
     listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
     db.syncCursors.get('stock'),
+    db.syncCursors.get('orders'),
+    db.syncCursors.get('customers'),
     db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
@@ -129,6 +136,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     cashAccounts,
     lastSyncAt: meta?.last_sync_at ?? null,
+    ordersPulledAt: ordersCursor?.pulled_at,
+    customersPulledAt: customersCursor?.pulled_at,
     outbox,
   };
 }

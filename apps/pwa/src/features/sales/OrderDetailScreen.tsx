@@ -25,6 +25,7 @@ import {
   type OrderView,
 } from './open-orders.js';
 import { useSalesReferences, type SalesReferences } from './references.js';
+import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
 
 type Treatment = 'REFUND' | 'CUSTOMER_CREDIT';
@@ -47,10 +48,18 @@ function RetireOrderForm({
   const [comment, setComment] = useState('');
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   const [busy, setBusy] = useState(false);
-  const closing = order.status === 'PARTIALLY_FULFILLED';
+  const [saveError, setSaveError] = useState(false);
+  // Une livraison saisie sur l'appareil rendra la commande « livrée en partie » avant l'annulation :
+  // seul le reste peut alors être clôturé (`CANCELLATION_EXCEEDS_UNDELIVERED` sinon).
+  const closing =
+    order.status === 'PARTIALLY_FULFILLED' || order.lines.some((line) => line.deliveringBase > 0);
   const reasons = refs.reasonCodes.filter((reason) => reason.category === 'CANCELLATION');
   const reason = reasons.find((candidate) => candidate.id === reasonId);
-  const needsTreatment = order.advancePaidXaf > 0;
+  // Somme libérée : acompte versé, ou part payée d'une marchandise vendue et pas encore livrée
+  // (l'acompte passe à la vente à la confirmation, AV-033). Sans choix, le serveur refuse
+  // (`PAYMENT_TREATMENT_REQUIRED`) ; un choix envoyé sans somme libérée est sans effet.
+  const needsTreatment =
+    order.advancePaidXaf > 0 || order.lines.some((line) => line.soldBase > line.deliveredBase);
   const errors: string[] = [];
   if ((!reason || reason.requires_comment) && !comment.trim()) {
     errors.push(t('sales.cancel.comment_required'));
@@ -60,6 +69,7 @@ function RetireOrderForm({
   const submit = async () => {
     if (errors.length > 0 || busy) return;
     setBusy(true);
+    setSaveError(false);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -73,6 +83,8 @@ function RetireOrderForm({
         },
       });
       onDone(command.command_id);
+    } catch {
+      setSaveError(true);
     } finally {
       setBusy(false);
     }
@@ -110,6 +122,7 @@ function RetireOrderForm({
           id="retire-comment"
           className="text-input"
           rows={2}
+          maxLength={MAX_COMMENT_LENGTH}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
         />
@@ -136,6 +149,11 @@ function RetireOrderForm({
           {message}
         </p>
       ))}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
       <div className="result-actions">
         <button type="button" onClick={() => void submit()} disabled={errors.length > 0 || busy}>
           {t('orders.retire.submit')}
@@ -158,6 +176,7 @@ export function OrderDetailScreen() {
   const [retiring, setRetiring] = useState(false);
   const [resultId, setResultId] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   if (!refs || !userId) {
     return (
@@ -174,10 +193,16 @@ export function OrderDetailScreen() {
     </Link>
   );
   if (!order) {
+    // Livrée ou close par l'opération que l'on vient d'enregistrer : le jeu ne la sert plus, mais le
+    // résultat de l'opération reste affiché.
     return (
       <section className="sale">
         {back}
-        <p className="alert alert-error">{t('orders.detail.not_found')}</p>
+        {resultId ? (
+          <CommandResult commandId={resultId} messages="orders.confirm_result" />
+        ) : (
+          <p className="alert alert-error">{t('orders.detail.not_found')}</p>
+        )}
       </section>
     );
   }
@@ -187,14 +212,26 @@ export function OrderDetailScreen() {
   const location = refs.locations.find((candidate) => candidate.id === order.fulfilmentLocationId);
   const doc = order.docNumber ?? t('sales.pending_number');
   const confirmed = order.status === 'CONFIRMED' || order.status === 'PARTIALLY_FULFILLED';
+  // Une annulation ou une clôture déjà saisie sur l'appareil ferme les autres suites.
+  const retiringPending = order.pendingActions.some(
+    (action) => action === 'sales.order.cancel' || action === 'sales.order.close_remaining',
+  );
+  const actionPending = order.pendingActions.length > 0;
   const canDeliver =
-    confirmed && hasSomethingToDeliver(order) && holdsAnyRole(roles, ROLE_SETS.orderFulfil);
+    confirmed &&
+    !retiringPending &&
+    hasSomethingToDeliver(order) &&
+    holdsAnyRole(roles, ROLE_SETS.orderFulfil);
   const canConfirm =
-    confirmed && hasPendingStock(order) && holdsAnyRole(roles, ROLE_SETS.orderCreate);
-  const canRetire = confirmed && holdsAnyRole(roles, ROLE_SETS.orderCancel);
+    confirmed &&
+    !actionPending &&
+    hasPendingStock(order) &&
+    holdsAnyRole(roles, ROLE_SETS.orderCreate);
+  const canRetire = confirmed && !actionPending && holdsAnyRole(roles, ROLE_SETS.orderCancel);
 
   const confirmRemaining = async () => {
     setBusy(true);
+    setSaveError(false);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -204,6 +241,8 @@ export function OrderDetailScreen() {
         payload: {},
       });
       setResultId(command.command_id);
+    } catch {
+      setSaveError(true);
     } finally {
       setBusy(false);
     }
@@ -271,6 +310,14 @@ export function OrderDetailScreen() {
           {t('orders.detail.rejection', { reason: order.rejection })}
         </p>
       ) : null}
+      {actionPending && !resultId ? (
+        <p className="home-banner">{t('orders.detail.action_pending')}</p>
+      ) : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
 
       {resultId ? (
         <CommandResult commandId={resultId} messages="orders.confirm_result" />
@@ -305,7 +352,8 @@ export function OrderDetailScreen() {
           {canRetire ? (
             <button type="button" className="secondary" onClick={() => setRetiring(true)}>
               {t(
-                order.status === 'PARTIALLY_FULFILLED'
+                order.status === 'PARTIALLY_FULFILLED' ||
+                  order.lines.some((line) => line.deliveringBase > 0)
                   ? 'orders.detail.close_remaining'
                   : 'orders.detail.retire',
               )}

@@ -11,7 +11,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf, withinCancellationWindow } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
-import { ROUTES } from '../../app/screens.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
@@ -19,6 +20,7 @@ import { formatMoney, formatQuantity } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { useSalesReferences, type SalesReferences } from './references.js';
 import { settingValue } from './stock.js';
+import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
 
 const DEFAULT_CANCEL_MINUTES = 15;
@@ -118,6 +120,7 @@ function CancelSaleForm({
           id="cancel-comment"
           className="text-input"
           rows={2}
+          maxLength={MAX_COMMENT_LENGTH}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
         />
@@ -164,6 +167,7 @@ export function SaleDetailScreen() {
   const { state } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
+  const navigation = useRememberedNavigation(userId);
   const [cancelling, setCancelling] = useState(false);
   const [cancelCommandId, setCancelCommandId] = useState<string>();
 
@@ -273,7 +277,11 @@ export function SaleDetailScreen() {
         <button type="button" className="secondary" onClick={() => window.print()}>
           {t('sales.detail.print')}
         </button>
-        {sale.customerId && sale.balanceDueXaf > 0 && sale.status === 'CONFIRMED' ? (
+        {sale.customerId &&
+        customer &&
+        sale.balanceDueXaf > 0 &&
+        sale.status === 'CONFIRMED' &&
+        holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.paymentRecord) ? (
           <Link to={ROUTES.collectFor(sale.customerId)} className="action action-compact">
             <span className="action-label">{t('sales.detail.collect')}</span>
           </Link>

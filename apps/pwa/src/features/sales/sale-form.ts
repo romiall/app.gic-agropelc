@@ -31,6 +31,12 @@ export const FULFILMENT_LOCATION_TYPES: readonly string[] = [
 ];
 
 /** Saisie décimale (virgule ou point) ; `null` si vide, non numérique, ≤ 0 ou plus de 3 décimales. */
+/** Longueurs maximales des champs libres (schémas zod du serveur, `order-commands.ts`,
+ * `delivery-commands.ts`, `cancel-commands.ts`) : la saisie est bornée plutôt que refusée à l'envoi. */
+export const MAX_COMMENT_LENGTH = 2000;
+export const MAX_ADDRESS_LENGTH = 1000;
+export const MAX_RECIPIENT_LENGTH = 200;
+
 /** Borne de `numeric(14,3)` côté serveur (`sale-payload.ts`). */
 export const MAX_QUANTITY = 99_999_999_999.999;
 

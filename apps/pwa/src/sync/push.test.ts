@@ -152,7 +152,7 @@ describe('sync/push (runPushCycle)', () => {
     expect(updated?.attempts).toBe(1);
   });
 
-  it('erreur HTTP du contrôleur (ex. 400) : reportée comme OFFLINE, pas de déconnexion forcée', async () => {
+  it('erreur HTTP du contrôleur (ex. 400) : SERVER_ERROR (serveur joignable), pas de déconnexion forcée', async () => {
     const command = await enqueueOne(db, 'malformée');
     vi.stubGlobal(
       'fetch',
@@ -163,8 +163,18 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'OFFLINE' });
+    expect(result).toEqual({ outcome: 'SERVER_ERROR' });
     expect((await db.outbox.get(command.command_id))?.status).toBe('PENDING_SYNC');
+  });
+
+  it('passerelle sans serveur (503) : OFFLINE', async () => {
+    await enqueueOne(db, 'passerelle');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 })),
+    );
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({ outcome: 'OFFLINE' });
   });
 
   it('session révoquée (rafraîchissement refusé) : SESSION_INVALID', async () => {

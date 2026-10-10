@@ -50,7 +50,8 @@ export function duesFromRecentSales(sales: readonly SaleData[], customerId: stri
       .filter(
         (sale) =>
           sale.customer_id === customerId &&
-          sale.status !== 'CANCELLED' &&
+          // Une vente en demande d'annulation n'est pas une cible payable (`ALLOCATION_TARGET_INVALID`).
+          sale.status === 'CONFIRMED' &&
           sale.balance_due_xaf > 0,
       )
       .map((sale) => ({
@@ -63,12 +64,46 @@ export function duesFromRecentSales(sales: readonly SaleData[], customerId: stri
   );
 }
 
-/** Échéance la plus ancienne d'abord, puis vente la plus ancienne (BR-FIN-004). */
+/**
+ * Échéance la plus ancienne d'abord, une créance sans échéance en dernier, puis vente la plus
+ * ancienne, puis identifiant (même ordre que l'affectation automatique du serveur, BR-FIN-004).
+ */
 export function sortDues(dues: readonly Due[]): Due[] {
+  const byDue = (a: Due, b: Due): number => {
+    if (a.dueDate === b.dueDate) return 0;
+    if (a.dueDate === null) return 1;
+    if (b.dueDate === null) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  };
   return [...dues].sort(
     (a, b) =>
-      (a.dueDate ?? '').localeCompare(b.dueDate ?? '') || a.occurredAt.localeCompare(b.occurredAt),
+      byDue(a, b) || a.occurredAt.localeCompare(b.occurredAt) || a.saleId.localeCompare(b.saleId),
   );
+}
+
+/**
+ * Créances restant dues une fois affectés, dans l'ordre de la file, les encaissements du client déjà
+ * saisis sur l'appareil et pas encore envoyés : l'aperçu du nouvel encaissement part de là.
+ */
+export function afterPendingPayments(
+  dues: readonly Due[],
+  pendingAmounts: readonly number[],
+): Due[] {
+  let remaining = [...dues];
+  for (const amount of pendingAmounts) {
+    if (amount <= 0) continue;
+    const { allocations } = allocatePayment(
+      xaf(amount),
+      remaining.map((due) => ({ targetId: due.saleId, balanceXaf: xaf(due.balanceXaf) })),
+    );
+    const paid = new Map(
+      allocations.map((allocation) => [allocation.targetId, allocation.amountXaf]),
+    );
+    remaining = remaining
+      .map((due) => ({ ...due, balanceXaf: due.balanceXaf - (paid.get(due.saleId) ?? 0) }))
+      .filter((due) => due.balanceXaf > 0);
+  }
+  return remaining;
 }
 
 export interface AllocationPreview {

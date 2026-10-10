@@ -8,6 +8,10 @@
  * que s'il n'existe qu'un compte actif du type du moyen ; sinon l'appareil doit désigner le compte,
  * parmi ceux que lui sert le jeu `cash`. Les comptes mobile money et bancaires de l'entreprise ne sont
  * aujourd'hui servis qu'à leurs responsables : un vendeur n'en connaît aucun (AV-300, besoin S-09).
+ *
+ * L'appareil ne désigne jamais un compte d'office : « seul compte connu de l'appareil » ne veut pas dire
+ * « seul compte de l'entreprise » (un paiement MTN pourrait être crédité au compte Orange). Le compte
+ * n'est envoyé que s'il a été choisi ; le choix est obligatoire dès que l'appareil en connaît plusieurs.
  */
 import type { CashAccountData, PaymentMethodData } from './types.js';
 
@@ -65,18 +69,16 @@ export function paymentIssues(
 /**
  * Paiement de la charge utile (`salePaymentSchema`) : la référence n'est envoyée que pour un moyen
  * qui l'exige (une référence saisie pour un autre moyen puis masquée n'est jamais transmise) ; le
- * compte est désigné quand l'appareil le connaît sans ambiguïté ou quand l'utilisateur l'a choisi.
+ * compte n'est désigné que si l'utilisateur l'a choisi.
  */
 export function paymentPayload(
   input: PaymentInput & { readonly amountXaf: number; readonly method: PaymentMethodData },
   accounts: readonly CashAccountData[],
 ) {
   const reference = input.method.requires_reference ? input.reference.trim() : '';
-  const candidates = receivingAccounts(accounts, input.method);
-  const accountId =
-    candidates.length === 1
-      ? candidates[0]!.id
-      : candidates.find((account) => account.id === input.accountId)?.id;
+  const accountId = receivingAccounts(accounts, input.method).find(
+    (account) => account.id === input.accountId,
+  )?.id;
   return {
     methodCode: input.method.code,
     amountXaf: input.amountXaf,
@@ -84,3 +86,19 @@ export function paymentPayload(
     ...(accountId ? { cashAccountId: accountId } : {}),
   };
 }
+
+/** Saisie d’un encaissement par le bloc commun (`PaymentFields`). */
+export interface PaymentFieldsValue {
+  readonly methodCode: string | null;
+  /** `null` : montant prérempli (par l'écran appelant). */
+  readonly amountText: string | null;
+  readonly reference: string;
+  readonly accountId: string | null;
+}
+
+export const EMPTY_PAYMENT: PaymentFieldsValue = {
+  methodCode: null,
+  amountText: null,
+  reference: '',
+  accountId: null,
+};
