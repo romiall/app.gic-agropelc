@@ -1,6 +1,7 @@
 /**
  * Événements explicites des sessions de caisse (P5-12 ; D05 §10 ; catalogue d'événements §2.8 ; D13) :
- * `CashSessionOpened`, `CashSessionClosed`, `CashVarianceDetected` et `CashSessionOpenLongDetected`,
+ * `CashSessionOpened`, `CashSessionClosed`, `CashVarianceDetected` (ouverture, clôture et, depuis P5-13,
+ * ajustement d'une réévaluation), `CashSessionOpenLongDetected` et `CashSessionValidated` (P5-13),
  * écrits dans `platform_domain_events` dans la transaction de la commande (ou de la tâche).
  *
  * Le pipeline écrit en plus sa ligne générique (`event_type` = type de commande) ; les consommateurs
@@ -16,7 +17,8 @@ export type CashSessionEventType =
   | 'CashSessionOpened'
   | 'CashSessionClosed'
   | 'CashVarianceDetected'
-  | 'CashSessionOpenLongDetected';
+  | 'CashSessionOpenLongDetected'
+  | 'CashSessionValidated';
 
 export async function publishCashSessionEvent(
   uow: UnitOfWork,

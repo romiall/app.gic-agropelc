@@ -18,6 +18,7 @@ import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { registerAccountCommands } from '../src/modules/finance/application/commands/account-commands.js';
 import { registerCashSessionCommands } from '../src/modules/finance/application/commands/cash-session-commands.js';
+import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import {
   recordCashMovement,
   verifyCashLedger,
@@ -221,7 +222,7 @@ describe('P5-12 : sessions de caisse et tablettes hors ligne (harnais multi-appa
     idGenerator = new Uuidv7Generator(clock);
     const registry = new CommandHandlerRegistry();
     registerAccountCommands(registry);
-    registerCashSessionCommands(registry, idGenerator);
+    registerCashSessionCommands(registry, idGenerator, new ApprovalDecisionHandlerRegistry());
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     services = { push: new SyncPushService(pipeline, db, clock), pull: new SyncPullService(db) };
 

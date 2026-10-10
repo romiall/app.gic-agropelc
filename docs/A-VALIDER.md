@@ -197,6 +197,7 @@ Classification (PM §45) :
 | AV-180 | Retour à la source et réception concurrents ; seconde réception ; retour en double | SECONDAIRE | P5 | Le premier fait appliqué l'emporte ; le second, contradictoire, est mis en quarantaine (hors ligne) ou refusé (en ligne) | OUVERT |
 | AV-181 | Délai de la réception sans document non rapprochée : origine, propriétaire du conflit, sortie | SECONDAIRE | P5 | Délai depuis l'heure physique de la réception ; conflit au responsable du stock expéditeur, une seule fois ; clos au rapprochement | OUVERT |
 | AV-182 | Portée (`SITE`/`OWN`) des commandes de stock : quelle extrémité d'un transfert fait ressource, et suite hors ligne | IMPORTANTE | P5 | Portée évaluée sur au moins une des deux extrémités (source ou destination) ; refus `FORBIDDEN_SCOPE`, en ligne comme hors ligne (contrôle de sécurité, hors BR-SYN-007) ; correctif commun à toutes les commandes `inventory` en P5-23 | OUVERT |
+| AV-183 | Session de caisse à valider sans politique `CASH_VARIANCE` active | SECONDAIRE | P5 | Clôture appliquée sans demande ; validation directe par `finance.cash_session.validate` (mêmes droits, séparation des tâches et motif) | OUVERT |
 
 ---
 
@@ -1255,6 +1256,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) portée évaluée sur au moins une des deux extrémités (source ou destination ; un retour peut être déclaré par le destinataire), refus `FORBIDDEN_SCOPE` en ligne comme hors ligne : un contrôle d'autorisation est un contrôle de sécurité, comme une permission absente (RC-01), et non un état métier (BR-SYN-007) ; (b) portée sur l'extrémité qui agit physiquement (source pour l'expédition et l'annulation, destination pour la réception et le retour) ; (c) hors ligne, fait appliqué avec conflit pour le responsable du stock.
 - **Recommandation** : (a).
 - **Impact** : toutes les commandes `inventory` hors quotas et frais généraux ; `evaluateAccess` ; tests de portée par commande ; RBAC §5.4. **Comportement actuel inchangé** (présence de la permission seule) ; correctif commun prévu dans P5-23 (revue adverse et correctifs de P5), à défaut avant tout déploiement multi-sites.
+
+### AV-183 — Session de caisse à valider sans politique `CASH_VARIANCE` active — SECONDAIRE
+- **Question** : Une session close avec écart (ou un ajustement d'une session validée) doit être validée par la Finance au moyen d'une demande `CASH_VARIANCE`. Que faire si aucune politique `CASH_VARIANCE` n'est active (retirée par un administrateur) au moment de la clôture ?
+- **Pourquoi** : `requestApproval` exige une politique ; la politique `CASH_VARIANCE_DEFAULT` est semée, mais elle peut être retirée. La clôture est souvent saisie hors ligne : la refuser pour une configuration contredirait BR-SYN-007 (seules la validité, l'authenticité et l'autorisation rejettent un fait accompli, ADR-032 §8). **DÉDUIT** (P5-13, 10/10/2026).
+- **Choix** : (a) clôture appliquée sans demande ; la session reste `PENDING_VALIDATION` et `finance.cash_session.validate` la valide directement, avec les mêmes contrôles (permission `finance.cash_session.validate` sur le site, valideur ni ouvreur ni clôtureur ni auteur de la clôture forcée, motif) ; idem pour un ajustement ; (b) refus `CONTROL_POLICY_MISSING` en ligne, application hors ligne ; (c) refus en ligne comme hors ligne, comme la réception d'une remise avec écart en P5-15.
+- **Recommandation** : (a).
+- **Impact** : `finance.cash_session.close`, `.force_close`, `.validate` ; réévaluation (`recordCashMovement`). Défaut implémenté : (a). **À harmoniser en P5-23** : la réception d'une remise avec écart (P5-15) refuse `CONTROL_POLICY_MISSING`, y compris hors ligne ; la même règle devrait valoir pour les deux validations de la caisse.
 
 ---
 

@@ -100,6 +100,8 @@ export interface CashSessionRow extends ExistingCashSession {
   readonly closingExpectedXaf: number | null;
   readonly varianceXaf: number | null;
   readonly forceClosed: boolean;
+  /** Demande `CASH_VARIANCE` de la session close (P5-13), lue sous le même verrou que son statut. */
+  readonly approvalRequestId: string | null;
   readonly version: number;
 }
 
@@ -119,6 +121,7 @@ const SESSION_COLUMNS = [
   'variance_xaf',
   'status',
   'force_closed',
+  'approval_request_id',
   'version',
 ] as const;
 
@@ -138,6 +141,7 @@ type SessionRecord = {
   variance_xaf: number | null;
   status: string;
   force_closed: number;
+  approval_request_id: Buffer | null;
   version: number;
 };
 
@@ -161,6 +165,7 @@ function toSessionRow(row: SessionRecord): CashSessionRow {
     varianceXaf: numberOrNull(row.variance_xaf),
     status: row.status as CashSessionStatus,
     forceClosed: Boolean(row.force_closed),
+    approvalRequestId: fromBinOrNull(row.approval_request_id),
     version: Number(row.version),
   };
 }

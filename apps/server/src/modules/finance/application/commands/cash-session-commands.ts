@@ -24,7 +24,11 @@
  *   transaction en lecture confirmée (`isolationLevel`), sans verrou de plage entre caisses voisines.
  *   Le non-chevauchement des fenêtres est décidé sous ces verrous : les déclencheurs de la base restent
  *   un filet jamais atteint (une erreur SQL serait rejouée sans fin).
- * - Hors périmètre : validation et réévaluation (P5-13), exigence d'une session à l'encaissement (P5-14).
+ * - **Validation** (P5-13, ADR-032 §5) : une clôture en `PENDING_VALIDATION` crée la demande
+ *   `CASH_VARIANCE` de la session (`cash-session-validation.ts`) ; `finance.cash_session.validate`
+ *   (en ligne) est la façade de sa décision, ou valide directement une session sans demande (AV-183) ;
+ *   la décision `CASH_VARIANCE` est enregistrée ici auprès du registre d'`approvals`.
+ * - Hors périmètre : exigence d'une session à l'encaissement (P5-14).
  */
 import {
   businessDayOf,
@@ -46,9 +50,11 @@ import {
   cashSessionClosePayloadSchema,
   cashSessionForceClosePayloadSchema,
   cashSessionOpenPayloadSchema,
+  cashSessionValidatePayloadSchema,
   type CashSessionClosePayload,
   type CashSessionForceClosePayload,
   type CashSessionOpenPayload,
+  type CashSessionValidatePayload,
   type CommandEnvelope,
   type WarningCode,
 } from '@gic/contracts';
@@ -64,6 +70,10 @@ import { latestConflictDetails, recordConflict } from '../../../../platform/sync
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
+import {
+  decideApprovalRequest,
+  type ApprovalDecisionHandlerRegistry,
+} from '../../../approvals/application/public/index.js';
 import { CashMovementError, recordCashMovement } from '../public/cash-movements.js';
 import {
   cashSetting,
@@ -79,6 +89,13 @@ import {
   type CashSessionRow,
 } from '../cash-session-ledger.js';
 import { publishCashSessionEvent } from '../cash-session-events.js';
+import {
+  registerCashVarianceDecisions,
+  requestCashVarianceValidation,
+  resolveCashValidationTarget,
+  validateCashSession,
+  validateCashSessionAdjustment,
+} from '../cash-session-validation.js';
 
 export const CASH_SESSION_OPERATE = 'finance.cash_session.operate';
 export const CASH_SESSION_VALIDATE = 'finance.cash_session.validate';
@@ -648,10 +665,31 @@ async function closeSession(
       capturedOffline: offline,
     });
   }
+  // P5-13, ADR-032 §5 : une session à valider porte sa demande `CASH_VARIANCE` (montant : écarts
+  // d'ouverture et de clôture en valeur absolue, DÉDUIT) ; sans politique active, aucune demande et la
+  // validation directe prend le relais (AV-183) — la clôture n'est jamais refusée pour autant.
+  const approvalRequestId =
+    status === 'PENDING_VALIDATION'
+      ? await requestCashVarianceValidation(uow, deps, {
+          subjectType: 'CASH_SESSION',
+          subjectId: session.id,
+          siteId: session.siteId,
+          amountXaf: Math.abs(session.openingVarianceXaf) + Math.abs(varianceXaf),
+          summary:
+            `Session de caisse du ${businessDayOf(session.openedAt)} : écart d'ouverture ` +
+            `${session.openingVarianceXaf} XAF, écart de clôture ${varianceXaf} XAF` +
+            (forced ? ' (clôture forcée)' : '') +
+            (precedesMovementAt !== null ? ' (clôture datée avant un mouvement)' : ''),
+          requestedBy: author,
+          requestedAt: closedAt,
+          ...(offline ? { policyFallbackAt: origin.receivedAt } : {}),
+        })
+      : null;
   await uow
     .updateTable('finance_cash_sessions')
     .set({
       status,
+      approval_request_id: toBinOrNull(approvalRequestId),
       closed_by: toBin(author),
       closed_device_id: toBinOrNull(origin.deviceId),
       closed_at: closedAt,
@@ -697,6 +735,7 @@ async function closeSession(
       reason: input.reason,
       comment: input.comment,
       captured_offline: offline,
+      approval_request_id: approvalRequestId,
     },
   });
   if (varianceXaf !== 0) {
@@ -743,6 +782,7 @@ async function closeSession(
     closingExpectedXaf: String(closingExpectedXaf),
     varianceXaf: String(varianceXaf),
     status,
+    ...(approvalRequestId !== null ? { approvalRequestId } : {}),
   };
   const audit = {
     after: {
@@ -758,6 +798,7 @@ async function closeSession(
       autoValidated,
       forced,
       precedesMovementAt: precedesMovementAt?.toISOString() ?? null,
+      approvalRequestId,
     },
   };
   return precedesMovementAt !== null
@@ -970,11 +1011,100 @@ function forceCloseHandler(deps: Deps): CommandHandler<CashSessionForceClosePayl
   };
 }
 
+// --- finance.cash_session.validate (P5-13) ------------------------------------------------------------------
+
+/**
+ * Façade de la décision `CASH_VARIANCE` (ADR-032 §5, SM-CASH-SESSION) : l'identifiant d'agrégat est
+ * celui de la session `PENDING_VALIDATION`, ou celui d'un ajustement à validation propre d'une session
+ * `VALIDATED`. Avec une demande liée, la décision passe par `approvals` (`decideApprovalRequest` :
+ * droit d'approbation, auto-approbation, pièces) puis par le gestionnaire `CASH_VARIANCE` ; sans
+ * demande (aucune politique active à la clôture, AV-183), la validation est directe. En ligne
+ * seulement ; motif (`reason`) exigé dès qu'un écart existe.
+ */
+function validateHandler(
+  deps: Deps,
+  decisionRegistry: ApprovalDecisionHandlerRegistry,
+): CommandHandler<CashSessionValidatePayload> {
+  return async (uow, envelope) => {
+    if (envelope.captured_offline) {
+      return rejected(
+        'ONLINE_REQUIRED',
+        'La validation d’un écart de caisse se fait en ligne, par la Finance ou la Direction.',
+      );
+    }
+    const target = await resolveCashValidationTarget(uow, envelope.aggregate_id);
+    if (!target) return SESSION_NOT_FOUND;
+    const at = new Date(envelope.occurred_at);
+    const author = envelope.author_user_id;
+    if (
+      !(await allowedOnSite(uow, {
+        userId: author,
+        permissionCode: CASH_SESSION_VALIDATE,
+        occurredAt: at,
+        siteId: target.session.siteId,
+      }))
+    ) {
+      return FORBIDDEN_SCOPE;
+    }
+    const reason = envelope.payload.reason?.trim() || null;
+    const requestId =
+      target.kind === 'SESSION' ? target.approvalRequestId : target.adjustment.approvalRequestId;
+    if (requestId !== null) {
+      const decided = await decideApprovalRequest(uow, decisionRegistry, {
+        requestId,
+        decision: 'APPROVED',
+        decidedBy: author,
+        decidedAt: at,
+        ...(reason !== null ? { comment: reason, decisionData: { reason } } : {}),
+      });
+      if (!decided.ok) return rejected(decided.errorCode, decided.messageFr);
+    } else {
+      const refusal =
+        target.kind === 'SESSION'
+          ? await validateCashSession(uow, deps, {
+              sessionId: target.session.id,
+              requestId: null,
+              validatorId: author,
+              at,
+              reason,
+              commandId: envelope.command_id,
+            })
+          : await validateCashSessionAdjustment(uow, deps, {
+              adjustmentId: target.adjustment.id,
+              requestId: null,
+              validatorId: author,
+              at,
+              reason,
+              commandId: envelope.command_id,
+            });
+      if (refusal) return rejected(refusal.errorCode, refusal.messageFr);
+    }
+    const serverRefs = {
+      cashSessionId: target.session.id,
+      ...(target.kind === 'ADJUSTMENT' ? { adjustmentId: target.adjustment.id } : {}),
+      status: 'VALIDATED',
+      ...(requestId !== null ? { approvalRequestId: requestId } : {}),
+    };
+    return {
+      status: 'APPLIED',
+      serverRefs,
+      audit: {
+        before: {
+          status: target.kind === 'SESSION' ? target.session.status : target.adjustment.status,
+        },
+        after: { ...serverRefs, reason, validatedBy: author, validatedAt: at.toISOString() },
+      },
+    };
+  };
+}
+
 export function registerCashSessionCommands(
   registry: CommandHandlerRegistry,
   idGenerator: IdGenerator,
+  decisionRegistry: ApprovalDecisionHandlerRegistry,
 ): void {
   const deps: Deps = { idGenerator };
+  registerCashVarianceDecisions(decisionRegistry, deps);
   registry.register({
     commandType: 'finance.cash_session.open',
     version: 1,
@@ -998,5 +1128,14 @@ export function registerCashSessionCommands(
     permissionCode: CASH_SESSION_VALIDATE,
     handler: forceCloseHandler(deps),
     isolationLevel: 'read committed',
+  });
+  // Validation : en ligne ; verrous compte puis session (puis ajustements), sans lecture par plage des
+  // sessions : isolation par défaut (ADR-034 ne s'applique pas).
+  registry.register({
+    commandType: 'finance.cash_session.validate',
+    version: 1,
+    payloadSchema: cashSessionValidatePayloadSchema,
+    permissionCode: CASH_SESSION_VALIDATE,
+    handler: validateHandler(deps, decisionRegistry),
   });
 }

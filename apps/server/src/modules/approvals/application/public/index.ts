@@ -6,6 +6,12 @@
 export { requestApproval } from './request-approval.js';
 export type { RequestApprovalInput } from './request-approval.js';
 
+export { decideApprovalRequest } from './decide-approval-request.js';
+export type {
+  DecideApprovalRequestInput,
+  DecideApprovalRequestResult,
+} from './decide-approval-request.js';
+
 export { cancelApprovalRequest } from './cancel-approval-request.js';
 export type { CancelApprovalRequestInput } from './cancel-approval-request.js';
 

@@ -32,18 +32,13 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin, fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
-import { toDbBool } from '../../../../platform/kysely/bool-column.js';
-import {
-  evaluateAccess,
-  type ResourceLocator,
-} from '../../../identity/application/public/index.js';
-import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
+import { toBin, fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import {
   ApprovalDecisionRefused,
   type ApprovalDecisionHandlerRegistry,
 } from '../decision-handler-registry.js';
 import { recordRequesterChange } from '../approval-changes.js';
+import { decideApprovalRequest } from '../public/decide-approval-request.js';
 
 const decisionBasePayloadSchema = z.object({
   requestId: z.string().uuid(),
@@ -90,129 +85,28 @@ function buildDecisionCommandHandler(
   decision: 'APPROVED' | 'REJECTED',
   decisionRegistry: ApprovalDecisionHandlerRegistry,
 ): CommandHandler<DecisionPayload> {
+  // Cœur partagé avec les commandes en façade d'un module propriétaire (P5-13,
+  // `finance.cash_session.validate`) : `decideApprovalRequest`.
   return async (uow, envelope) => {
-    const requestId = toBin(envelope.payload.requestId);
-    const row = await uow
-      .selectFrom('approvals_approval_requests')
-      .selectAll()
-      .where('id', '=', requestId)
-      .executeTakeFirst();
-    if (!row) return notFound();
-    if (row.status !== 'PENDING') return notPending();
-
-    const policy = row.policy_id
-      ? await uow
-          .selectFrom('approvals_control_policies')
-          .select(['approver_permission'])
-          .where('id', '=', row.policy_id)
-          .executeTakeFirst()
-      : undefined;
-    if (!policy?.approver_permission) {
-      // Ne devrait pas survenir (SM-APPROVAL : une demande PENDING vient toujours d'une
-      // politique applicable, BR-ADM-016) — garde défensive, pas un cas métier documenté.
-      return {
-        status: 'REJECTED',
-        errorCode: 'POLICY_UNRESOLVED',
-        messageFr: 'Politique de contrôle introuvable pour cette demande.',
-      };
-    }
-
-    // `policy.approver_scope` n'est pas revérifié séparément ici : DÉDUIT, descriptif
-    // (documente la portée voulue par la politique pour l'UI/l'audit) plutôt qu'une seconde
-    // contrainte à faire respecter — BR-ADM-018 ne décrit qu'un seul mécanisme, exactement
-    // celui qu'implémente déjà `evaluateAccess` (portée du grant de l'approbateur ∩ son
-    // affectation, RC-04). Aucun ordre total entre SITE/ZONE/TEAM/ALL n'est documenté qui
-    // permettrait de comparer une portée de politique à une portée de grant de façon fiable.
-    const resource: ResourceLocator = {
-      ownerUserId: fromBin(row.requested_by),
-      ...(fromBinOrNull(row.site_id) !== null ? { siteId: fromBinOrNull(row.site_id)! } : {}),
-      ...(fromBinOrNull(row.zone_id) !== null ? { zoneId: fromBinOrNull(row.zone_id)! } : {}),
-    };
-    const occurredAt = new Date(envelope.occurred_at);
-    const access = await evaluateAccess(uow, {
-      userId: envelope.author_user_id,
-      permissionCode: policy.approver_permission,
-      occurredAt,
-      resource,
+    const result = await decideApprovalRequest(uow, decisionRegistry, {
+      requestId: envelope.payload.requestId,
+      decision,
+      decidedBy: envelope.author_user_id,
+      decidedAt: new Date(envelope.occurred_at),
+      ...(envelope.payload.comment !== undefined ? { comment: envelope.payload.comment } : {}),
+      ...(envelope.payload.decisionOption !== undefined
+        ? { decisionOption: envelope.payload.decisionOption }
+        : {}),
+      ...('decisionData' in envelope.payload && envelope.payload.decisionData !== undefined
+        ? { decisionData: envelope.payload.decisionData }
+        : {}),
+      ...(envelope.payload.selfApproved !== undefined
+        ? { selfApproved: envelope.payload.selfApproved }
+        : {}),
     });
-    if (!access.allowed) {
-      return {
-        status: 'REJECTED',
-        errorCode: 'APPROVER_NOT_ALLOWED',
-        messageFr: "Droit d'approbation insuffisant sur le périmètre de cette opération.",
-      };
-    }
-
-    const isSelfRequest = envelope.author_user_id === fromBin(row.requested_by);
-    if (isSelfRequest && envelope.payload.selfApproved !== true) {
-      return {
-        status: 'REJECTED',
-        errorCode: 'SELF_APPROVAL_FORBIDDEN',
-        messageFr: "L'approbateur doit être différent du demandeur (BR-ADM-017).",
-      };
-    }
-
-    if (decision === 'APPROVED') {
-      const requiredIds = Array.isArray(row.required_attachment_ids)
-        ? row.required_attachment_ids.filter((v): v is string => typeof v === 'string')
-        : [];
-      if (!(await areAttachmentsAvailable(uow, requiredIds))) {
-        return {
-          status: 'REJECTED',
-          errorCode: 'ATTACHMENT_MISSING',
-          messageFr: 'Pièce justificative requise non encore reçue (BR-ADM-020).',
-        };
-      }
-    }
-
-    // ADR-018 : gestionnaire du module propriétaire, appelé dans la transaction de la
-    // décision. Aucun gestionnaire enregistré (tout P0, aucun module propriétaire avant
-    // P2) : no-op documenté (decision-handler-registry.ts).
-    const decisionHandler = decisionRegistry.resolve(row.operation_type);
-    if (decisionHandler) {
-      try {
-        await decisionHandler(uow, {
-          requestId: fromBin(row.id),
-          subjectType: row.subject_type,
-          subjectId: fromBin(row.subject_id),
-          decision,
-          ...(envelope.payload.decisionOption !== undefined
-            ? { decisionOption: envelope.payload.decisionOption }
-            : {}),
-          ...('decisionData' in envelope.payload && envelope.payload.decisionData !== undefined
-            ? { decisionData: envelope.payload.decisionData }
-            : {}),
-          decidedBy: envelope.author_user_id,
-          decidedAt: occurredAt,
-          requestedBy: fromBin(row.requested_by),
-          subjectSummary: row.subject_summary,
-        });
-      } catch (error) {
-        // Transition impossible pour le module propriétaire : décision refusée, sans effet.
-        if (error instanceof ApprovalDecisionRefused) {
-          return { status: 'REJECTED', errorCode: error.code, messageFr: error.messageFr };
-        }
-        throw error;
-      }
-    }
-
-    await uow
-      .updateTable('approvals_approval_requests')
-      .set({
-        status: decision,
-        decided_by: toBin(envelope.author_user_id),
-        decided_at: occurredAt,
-        decision_option: envelope.payload.decisionOption ?? null,
-        decision_comment: envelope.payload.comment ?? null,
-        self_approved: toDbBool(isSelfRequest),
-        updated_by: toBin(envelope.author_user_id),
-        version: sql`version + 1`,
-      })
-      .where('id', '=', requestId)
-      .execute();
-    await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
-
-    return { status: 'APPLIED' };
+    return result.ok
+      ? { status: 'APPLIED' }
+      : { status: 'REJECTED', errorCode: result.errorCode, messageFr: result.messageFr };
   };
 }
 

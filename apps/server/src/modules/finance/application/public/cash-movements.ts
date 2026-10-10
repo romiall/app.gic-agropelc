@@ -25,12 +25,16 @@
  */
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
-import type { IdGenerator } from '@gic/domain';
+import { CASH_EXPECTED_EXCLUDED_TYPES, type IdGenerator } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { emitCashAccountChange } from '../sync-changes.js';
 import { findCashSessionCovering } from './cash-sessions.js';
+import {
+  reevaluateClosedSession,
+  type CashSessionReevaluation,
+} from '../cash-session-validation.js';
 
 export const CASH_MOVEMENT_TYPES = [
   'CUSTOMER_PAYMENT',
@@ -124,6 +128,11 @@ export interface RecordedCashMovement {
   readonly balanceAfterXaf: number;
   /** Hors ligne : le solde d'une caisse physique est devenu négatif (anomalie `CASH_NEGATIVE`). */
   readonly negativeBalance: boolean;
+  /**
+   * P5-13 (ADR-032 §6) : mouvement tardif tombé dans la fenêtre d'une session close d'une caisse de
+   * PDV — ajustement du delta posé (conflit `CASH_SESSION_REEVALUATED` pour la Finance) ; sinon `null`.
+   */
+  readonly reevaluation: CashSessionReevaluation | null;
 }
 
 export async function recordCashMovement(
@@ -254,6 +263,31 @@ export async function recordCashMovement(
     .execute();
   await emitCashAccountChange(uow, input.cashAccountId);
 
+  // P5-13, ADR-032 §6 : une opération tardive dans la fenêtre d'une session close est réévaluée par le
+  // delta (compte déjà verrouillé : ordre compte puis session). Les écarts de session eux-mêmes
+  // (`SESSION_VARIANCE`, `OPENING_BALANCE`) ne comptent jamais dans l'attendu : pas de réévaluation.
+  const reevaluation =
+    account.account_type === 'CAISSE_PDV' &&
+    !CASH_EXPECTED_EXCLUDED_TYPES.includes(input.movementType)
+      ? await reevaluateClosedSession(
+          uow,
+          deps,
+          {
+            movementId,
+            cashAccountId: input.cashAccountId,
+            occurredAt: input.occurredAt,
+            isReversal: input.reversesMovementId !== undefined,
+            createdBy: input.createdBy,
+            ...(input.createdDeviceId !== undefined
+              ? { createdDeviceId: input.createdDeviceId }
+              : {}),
+            ...(input.commandId !== undefined ? { commandId: input.commandId } : {}),
+            capturedOffline: input.capturedOffline ?? false,
+          },
+          recordCashMovement,
+        )
+      : null;
+
   return {
     movementId,
     cashAccountId: input.cashAccountId,
@@ -261,6 +295,7 @@ export async function recordCashMovement(
     amountXaf: input.amountXaf,
     balanceAfterXaf,
     negativeBalance,
+    reevaluation,
   };
 }
 

@@ -23,6 +23,7 @@ import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-reg
 import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
 import { registerAccountCommands } from '../src/modules/finance/application/commands/account-commands.js';
 import { registerCashSessionCommands } from '../src/modules/finance/application/commands/cash-session-commands.js';
+import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { financeLocationDeactivationGuard } from '../src/modules/finance/application/location-deactivation-guard.js';
 import {
   CASH_SESSION_OPEN_LONG_JOB_TYPE,
@@ -388,7 +389,7 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
     idGenerator = new Uuidv7Generator(clock);
     const registry = new CommandHandlerRegistry();
     registerAccountCommands(registry);
-    registerCashSessionCommands(registry, idGenerator);
+    registerCashSessionCommands(registry, idGenerator, new ApprovalDecisionHandlerRegistry());
     const guards = new LocationDeactivationGuardRegistry();
     guards.register('finance', financeLocationDeactivationGuard);
     registerSiteCommands(registry, guards);
@@ -906,7 +907,30 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(fromBin(row.closed_by!)).toBe(pos.vendor);
       expect(fromBin(row.closed_device_id!)).toBe(pos.vendorDevice);
       expect(row.validated_at).toBeNull();
-      expect(row.approval_request_id).toBeNull();
+      // P5-13 : la session à valider porte sa demande CASH_VARIANCE (sujet : la session, demandeur : le
+      // clôtureur, montant : |écart| ; voir finance-cash-session-validation.test.ts).
+      expect(row.approval_request_id).not.toBeNull();
+      const request = await db
+        .selectFrom('approvals_approval_requests')
+        .select([
+          'operation_type',
+          'subject_type',
+          'subject_id',
+          'status',
+          'amount_xaf',
+          'requested_by',
+        ])
+        .where('id', '=', row.approval_request_id!)
+        .executeTakeFirstOrThrow();
+      expect(request).toMatchObject({
+        operation_type: 'CASH_VARIANCE',
+        subject_type: 'CASH_SESSION',
+        status: 'PENDING',
+      });
+      expect(fromBin(request.subject_id)).toBe(sessionId);
+      // Montant : écarts d'ouverture et de clôture en valeur absolue.
+      expect(Number(request.amount_xaf)).toBe(Math.abs(Number(row.opening_variance_xaf)) + 500);
+      expect(fromBin(request.requested_by)).toBe(pos.vendor);
       expect(row.close_command_id).not.toBeNull();
       const [variance] = await varianceMovements(sessionId);
       expect(variance).toMatchObject({ direction: 'OUT' });
