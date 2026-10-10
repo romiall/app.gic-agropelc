@@ -10,7 +10,9 @@
  *   personnelle n'a ni site ni zone) ; tout autre compte est évalué par `evaluateAccess` sur sa
  *   ressource (`cashAccountResourceOf` : responsable, site).
  * - Numérotation `RMF` (AV-077, AV-179) : site du compte source, à défaut du compte destinataire, à
- *   défaut une série globale de code paramétrable.
+ *   défaut une série globale de code paramétrable. Le compteur est clé par le code de la série, jamais
+ *   par l'identifiant d'un site : numéro et compteur se correspondent un pour un, quel que soit l'ordre
+ *   de création des sites.
  * - Politique `CASH_TRANSFER_DISCREPANCY` : la plus récente qui exige une validation et nomme un
  *   approbateur ; hors ligne, repli sur celle en vigueur à la réception (BR-SYN-007).
  * - Refus métier : une `DomainError` ou une `CashMovementError` devient un rejet ; toute autre erreur
@@ -122,12 +124,24 @@ export async function loadSiteRef(
 }
 
 /**
+ * Clé du compteur `RMF` d'un code de série : identifiant déterministe tiré du seul code (ADR-031).
+ * Le numéro `RMF-{CODE}-{AAAA}-{seq6}` ne dépend que du code et de l'année ; le compteur aussi. Ainsi
+ * deux envois ne reçoivent jamais le même numéro, que le code soit celui d'un site réel, de la série
+ * globale, ou des deux à la fois, et quel que soit l'ordre dans lequel le site réel a été créé
+ * (AV-179). Le code d'un site est unique et ne change pas (`uq_organization_sites_code`).
+ */
+export function cashTransferCounterKey(code: string): string {
+  return codeEntityId('DOCUMENT_SERIES', code);
+}
+
+/**
  * Numéro `RMF-{CODE}-{AAAA}-{seq6}` (AV-077, AV-179) et site de la remise. Site de numérotation : celui
  * du compte source, à défaut celui du compte destinataire (la remise porte alors ce site). Sans site,
- * série globale : code `finance.cash_transfer_series_code` (validé, `SIEGE` par défaut) ; si un site
- * réel porte ce code, son compteur est partagé (aucun numéro en double possible), sinon un pseudo-site
- * déterministe ; la remise n'a alors pas de site. Année = jour métier de Douala. Le compteur est pris
- * après le verrou des comptes (ADR-032 §10).
+ * série globale : code `finance.cash_transfer_series_code` (validé, `SIEGE` par défaut) ; la remise n'a
+ * alors pas de site. Dans les deux cas, le compteur est celui du code (`cashTransferCounterKey`) : un
+ * site réel créé après des remises de la série globale du même code reprend la suite de la numérotation,
+ * sans doublon. Année = jour métier de Douala. Le compteur est pris après le verrou des comptes
+ * (ADR-032 §10).
  */
 export async function nextCashTransferNumber(
   uow: Uow,
@@ -145,7 +159,7 @@ export async function nextCashTransferNumber(
     if (site) {
       const docNumber = await documentSequences.next(uow, {
         docType: CASH_TRANSFER_DOC_TYPE,
-        siteId: site.id,
+        siteId: cashTransferCounterKey(site.code),
         codeSite: site.code,
         year,
       });
@@ -155,15 +169,9 @@ export async function nextCashTransferNumber(
   const code = cashTransferSeriesCodeFrom(
     await globalSetting(uow, 'finance.cash_transfer_series_code', input.at),
   );
-  const homonym = await uow
-    .selectFrom('organization_sites')
-    .select('id')
-    .where('code', '=', code)
-    .executeTakeFirst();
-  const seriesId = homonym ? fromBin(homonym.id) : codeEntityId('DOCUMENT_SERIES', code);
   const docNumber = await documentSequences.next(uow, {
     docType: CASH_TRANSFER_DOC_TYPE,
-    siteId: seriesId,
+    siteId: cashTransferCounterKey(code),
     codeSite: code,
     year,
   });

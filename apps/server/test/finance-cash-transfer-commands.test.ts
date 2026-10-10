@@ -24,6 +24,7 @@ import {
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
+import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
 import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
@@ -37,6 +38,7 @@ import {
   CashTransferUnreceivedJob,
 } from '../src/modules/finance/application/jobs/cash-transfer-unreceived-job.js';
 import {
+  cashTransferCounterKey,
   cashTransferPairsAt,
   cashTransferUnreceivedHoursAt,
   nextCashTransferNumber,
@@ -533,60 +535,131 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     expect((await transferRow(a.id))!.site_id).toBeNull();
   });
 
-  it('numérotation : un site réel de code SIEGE partage son compteur avec la série globale (aucun doublon)', async () => {
-    await withTestUow(async (trx) => {
-      let siegeId: string;
+  /**
+   * Numérotation `RMF` (AV-179) : le compteur dépend du seul code. Outils des trois tests : un site
+   * réel de code `code` (créé s'il manque, dans la transaction annulée), un résumé de compte, et les
+   * tirages « site réel » et « série globale ».
+   */
+  const numbering = (trx: UnitOfWork) => {
+    const sequences = new DocumentSequenceService();
+    const when = new Date(at('18:00'));
+    const summary = (
+      type: 'CAISSE_PDV' | 'CAISSE_UTILISATEUR' | 'CAISSE_CENTRALE',
+      siteId: string | null,
+    ) => ({
+      id: freshUuid(),
+      code: 'X',
+      name: 'X',
+      accountType: type,
+      siteId,
+      holderUserId: null,
+      responsibleUserId: fin1.userId,
+      externalRef: null,
+      balanceXaf: 0,
+      status: 'ACTIVE' as const,
+    });
+    const realSite = async (code: string): Promise<string> => {
       const existing = await trx
         .selectFrom('organization_sites')
         .select('id')
-        .where('code', '=', 'SIEGE')
+        .where('code', '=', code)
         .executeTakeFirst();
-      if (existing) {
-        siegeId = fromBin(existing.id);
-      } else {
-        siegeId = freshUuid();
-        await trx
-          .insertInto('organization_sites')
-          .values({
-            id: toBin(siegeId),
-            code: 'SIEGE',
-            name: 'Siège (test annulé)',
-            site_type: 'BUREAU',
-            zone_id: toBin(zoneId),
-            created_by: toBin(root.userId),
-          })
-          .execute();
-      }
-      const summary = (
-        type: 'CAISSE_PDV' | 'CAISSE_UTILISATEUR' | 'CAISSE_CENTRALE',
-        siteId: string | null,
-      ) => ({
-        id: freshUuid(),
-        code: 'X',
-        name: 'X',
-        accountType: type,
-        siteId,
-        holderUserId: null,
-        responsibleUserId: fin1.userId,
-        externalRef: null,
-        balanceXaf: 0,
-        status: 'ACTIVE' as const,
-      });
-      const sequences = new DocumentSequenceService();
-      const fromSiege = await nextCashTransferNumber(trx, sequences, {
-        from: summary('CAISSE_PDV', siegeId),
+      if (existing) return fromBin(existing.id);
+      const siteId = freshUuid();
+      await trx
+        .insertInto('organization_sites')
+        .values({
+          id: toBin(siteId),
+          code,
+          name: `Site ${code} (test annulé)`,
+          site_type: 'BUREAU',
+          zone_id: toBin(zoneId),
+          created_by: toBin(root.userId),
+        })
+        .execute();
+      return siteId;
+    };
+    const fromSite = (siteId: string) =>
+      nextCashTransferNumber(trx, sequences, {
+        from: summary('CAISSE_PDV', siteId),
         to: summary('CAISSE_CENTRALE', null),
-        at: new Date(at('18:00')),
+        at: when,
       });
-      const global = await nextCashTransferNumber(trx, sequences, {
+    const fromGlobalSeries = () =>
+      nextCashTransferNumber(trx, sequences, {
         from: summary('CAISSE_UTILISATEUR', null),
         to: summary('CAISSE_CENTRALE', null),
-        at: new Date(at('18:00')),
+        at: when,
       });
+    return { realSite, fromSite, fromGlobalSeries };
+  };
+  const seqOf = (docNumber: string) => Number(docNumber.slice(-6));
+
+  it('numérotation : un site réel de code SIEGE partage son compteur avec la série globale (aucun doublon)', async () => {
+    await withTestUow(async (trx) => {
+      const { realSite, fromSite, fromGlobalSeries } = numbering(trx);
+      const siegeId = await realSite('SIEGE');
+      const fromSiege = await fromSite(siegeId);
+      const global = await fromGlobalSeries();
       expect(fromSiege.siteId).toBe(siegeId);
       expect(global.siteId).toBeNull();
       expect(fromSiege.docNumber).toMatch(/^RMF-SIEGE-2026-\d{6}$/);
-      expect(Number(global.docNumber.slice(-6))).toBe(Number(fromSiege.docNumber.slice(-6)) + 1);
+      expect(seqOf(global.docNumber)).toBe(seqOf(fromSiege.docNumber) + 1);
+    });
+  });
+
+  it('numérotation : la série globale d’abord, puis un site réel créé sous le même code, reprend la suite sans doublon (AV-179, revue P5-15)', async () => {
+    await withTestUow(async (trx) => {
+      const { realSite, fromSite, fromGlobalSeries } = numbering(trx);
+      // Aucun site réel de ce code n'existe encore : les remises de la série globale sont numérotées.
+      const first = await fromGlobalSeries();
+      const second = await fromGlobalSeries();
+      expect(seqOf(second.docNumber)).toBe(seqOf(first.docNumber) + 1);
+      // Un administrateur crée ensuite le site réel SIEGE : son compteur ne repart pas à 1.
+      const siegeId = await realSite('SIEGE');
+      const fromSiege = await fromSite(siegeId);
+      const third = await fromGlobalSeries();
+      expect(fromSiege.siteId).toBe(siegeId);
+      expect(seqOf(fromSiege.docNumber)).toBe(seqOf(second.docNumber) + 1);
+      expect(seqOf(third.docNumber)).toBe(seqOf(fromSiege.docNumber) + 1);
+      const numbers = [first, second, fromSiege, third].map((n) => n.docNumber);
+      expect(new Set(numbers).size).toBe(numbers.length);
+    });
+  });
+
+  it('numérotation : le compteur est propre à chaque code, et ne dépend ni de l’identifiant du site ni de l’ordre de création', async () => {
+    await withTestUow(async (trx) => {
+      const { realSite, fromSite, fromGlobalSeries } = numbering(trx);
+      const codeA = `A${freshUuid().slice(-8).toUpperCase()}`;
+      const codeB = `B${freshUuid().slice(-8).toUpperCase()}`;
+      const siteA = await realSite(codeA);
+      const siteB = await realSite(codeB);
+      const a1 = await fromSite(siteA);
+      const b1 = await fromSite(siteB);
+      const a2 = await fromSite(siteA);
+      const global = await fromGlobalSeries();
+      // Deux sites de codes différents numérotent chacun depuis 1, dans leur propre série.
+      expect(a1.docNumber).toBe(`RMF-${codeA}-2026-000001`);
+      expect(b1.docNumber).toBe(`RMF-${codeB}-2026-000001`);
+      expect(a2.docNumber).toBe(`RMF-${codeA}-2026-000002`);
+      // La série globale ne touche pas aux compteurs des sites d'autres codes.
+      expect(global.docNumber).toMatch(/^RMF-SIEGE-2026-\d{6}$/);
+      // Le compteur est tenu sous la clé du code (et non sous l'identifiant du site réel).
+      const keyed = await trx
+        .selectFrom('platform_document_sequences')
+        .select(['next_value'])
+        .where('doc_type', '=', 'RMF')
+        .where('site_id', '=', toBin(cashTransferCounterKey(codeA)))
+        .where('year', '=', 2026)
+        .executeTakeFirstOrThrow();
+      expect(keyed.next_value).toBe(3);
+      const bySiteId = await trx
+        .selectFrom('platform_document_sequences')
+        .select('next_value')
+        .where('doc_type', '=', 'RMF')
+        .where('site_id', '=', toBin(siteA))
+        .executeTakeFirst();
+      expect(bySiteId).toBeUndefined();
     });
   });
 
