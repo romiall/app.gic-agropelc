@@ -11,7 +11,8 @@
 | # | Incrément | Commit | Contenu |
 |---|---|---|---|
 | F-01 | Socle de l'appareil : jeux publiés depuis P1 | `215aedb` | `KNOWN_DATASETS` étendu aux 22 jeux publiés depuis P1 (34 en tout) (catalogue, prix, stock, quotas, CRM, achats, production, commandes, ventes récentes, caisses, communications) ; `SCOPE_EXIT` retiré par périmètre (une entité tenue par plusieurs périmètres reste tant qu'il en reste un) ; lecture typée des projections (`storage/projections.ts`, crochet `useProjected`) |
-| F-02 | Navigation par rôle ([ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md)) | _à venir_ | Registre des écrans livrés (`app/screens.ts`) ; route d'une action de l'accueil complétée par l'appareil quand le serveur renvoie `route: null` ; navigation mémorisée par utilisateur (store `navigation`, version 2 de la base locale) ; menu par rôle `/menu`, utilisable hors ligne, lien depuis l'en-tête et depuis l'accueil en erreur ; déconnexion déplacée dans le menu |
+| F-02 | Navigation par rôle ([ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md)) | `9fd96f7` | Registre des écrans livrés (`app/screens.ts`) ; route d'une action de l'accueil complétée par l'appareil quand le serveur renvoie `route: null` ; navigation mémorisée par utilisateur (store `navigation`, version 2 de la base locale) ; menu par rôle `/menu`, utilisable hors ligne, lien depuis l'en-tête et depuis l'accueil en erreur ; déconnexion déplacée dans le menu |
+| F-03 | ECR-VEN-01 « + Nouvelle vente » | _à venir_ | Couche de données des ventes (`features/sales/`) : référentiels lus sur l'appareil, prix par `resolvePrice` avec le canal déduit comme le serveur (BR-VEN-021), disponible local (solde moins opérations en attente), blocage hors ligne par `decideLocalConsumption` (AV-025), envoi par l'outbox et suivi du résultat (UX-05). Écran : emplacement prérempli, client de passage ou identifié, articles (conditionnements, poids, dérogation de prix avec motif), encaissement prérempli au total, référence exigée selon le moyen. Correctif du socle : clé locale d'un solde de stock = emplacement × produit |
 
 ## 2. Écrans
 
@@ -20,6 +21,7 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 | Écran | Route PWA | Statut | Hors ligne | Notes |
 |---|---|---|---|---|
 | ECR-ADM-03 | `/` et `/menu` | Enrichi (F-02) | Menu : oui ; accueil : non | Actions routées par le registre de l'appareil (ADR-050) |
+| ECR-VEN-01 | `/ventes/nouvelle` | Livré (F-03) | Oui, dans la limite du stock exclusif ; emplacement partagé bloqué hors ligne tant que les quotas ne sont pas servis (S-05) | Action `NEW_SALE` |
 
 ## 3. Vérifications
 
@@ -27,6 +29,7 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 |---|---|---|---|---|---|
 | F-01 | 96 verts (15 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 | F-02 | 105 verts (17 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
+| F-03 | 17 verts sur les ventes (logique et écran, dont une vente hors ligne) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 ## 4. Besoins côté serveur et contrats
 
@@ -38,6 +41,10 @@ Constats faits en construisant les écrans, sans modification du serveur ni des 
 | S-02 | Projection `PRODUCT_STANDARD_COST` servie à tout appareil qui tire le jeu `product_standard_cost` | RC-05 : aucun coût sur l'appareil | La PWA ne tire pas ce jeu |
 | S-03 | Tirage de plusieurs jeux par appel (`GET /sync/pull?datasets=…`) | 34 jeux = 34 appels par cycle de synchronisation (toutes les 30 s) | Appels successifs, un par jeu |
 | S-04 | Renseigner dans `apps/server/src/home-api/role-catalog.ts` la route des actions dont l'écran est livré par le fork (ADR-030 §8) : voir le registre `apps/pwa/src/app/screens.ts` (`actionCodes`) | Sans route du serveur, l'appareil complète seul ; une route du serveur l'emporte | Registre des écrans de l'appareil (ADR-050) |
+| S-05 | Lecteur de projection `STOCK_ALLOCATION` (jeu `allocations`, prévu en P5-18) : les lignes sont émises mais aucun lecteur ne les sert | Sans quota sur l'appareil, `decideLocalConsumption` bloque toute vente hors ligne sur un emplacement partagé (AV-025) | Quota tenu pour absent ; vente hors ligne possible sur un stock à garde exclusive, ou si le site autorise le dépassement (`sales.offline_over_allocation_allowed`) |
+| S-06 | Profondeur de zone (`zone_depth`) absente de la projection `PRICE_RULE` | `resolvePrice` en a besoin pour la spécificité | Lue dans la projection `ZONE` de la règle (à défaut 1) |
+| S-07 | Unités (`catalog_units`) et canaux de vente non synchronisés (aucun lecteur) ; données semées absentes du flux, sauf les moyens de paiement | Libellés d'unités et canaux inconnus de l'appareil ; un appareil neuf ne reçoit ni produits ni paramètres semés | Codes d'unité affichés tels quels ; canal déduit et envoyé explicitement ; paramètres absents = valeurs par défaut |
+| S-08 | Une règle de prix retirée ou annulée n'est jamais retirée de l'appareil (pas de `DELETE` ni de `SCOPE_EXIT`) | Prix catalogue périmé hors ligne jusqu'à la fin de validité de la règle | Le serveur signale `PRICE_MISMATCH` ; en ligne, `PRICE_OUTDATED` est expliqué à l'écran |
 
 ## 5. AV proposés
 

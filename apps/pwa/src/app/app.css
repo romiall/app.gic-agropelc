@@ -775,3 +775,249 @@ ul.outbox-list li {
   display: grid;
   gap: 12px;
 }
+
+/* --- Écrans de vente (ECR-VEN-01 à 06) ------------------------------------------------------ */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sale h1 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.sale h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-grey);
+}
+
+.sale-block {
+  margin: 16px 0;
+}
+
+.sale .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.sale .field label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.text-input {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.text-input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.picked-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.picked-hint {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--color-grey);
+}
+
+.picker {
+  display: grid;
+  gap: 8px;
+}
+
+.picker-head {
+  display: flex;
+  gap: 8px;
+}
+
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.picker-list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.picker-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  font-weight: 600;
+}
+
+.picker-list small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-grey);
+}
+
+.line-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.line-card {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.line-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.line-fields .field-wide {
+  grid-column: 1 / -1;
+}
+
+.line-unit {
+  align-self: end;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.line-price,
+.line-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.line-total {
+  justify-content: flex-end;
+  font-weight: 700;
+}
+
+.link-button {
+  min-height: var(--touch-target);
+  padding: 0 4px;
+  background: transparent;
+  color: var(--color-primary);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.total-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.total-line strong {
+  font-size: 24px;
+}
+
+.text-warn {
+  color: var(--color-orange);
+  font-weight: 600;
+}
+
+.submit-sale {
+  margin-top: 12px;
+}
+
+.result {
+  margin: 12px 0;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  font-weight: 600;
+}
+
+.result p {
+  margin: 0 0 10px;
+}
+
+.result-ok {
+  border-color: var(--color-green);
+  background: #e3efe5;
+}
+
+.result-info {
+  border-color: #9fb7a6;
+  background: #eef3ef;
+}
+
+.result-warn {
+  border-color: var(--color-orange);
+  background: #fbefdc;
+}
+
+.result-error {
+  border-color: #efb3ad;
+  background: #fbdfdc;
+  color: #8f1d17;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

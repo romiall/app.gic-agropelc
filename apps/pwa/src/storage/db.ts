@@ -54,7 +54,8 @@ export interface OutboxCommand {
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */
 export interface Projection {
-  readonly key: string; // `${dataset}:${entity_type}:${entity_id}`
+  /** `${dataset}:${entity_type}:${entity_id}` ; solde de stock : `…:${scope_id}:${entity_id}` (`projectionKey`). */
+  readonly key: string;
   readonly dataset: string;
   readonly entity_type: string;
   readonly entity_id: string;

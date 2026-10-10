@@ -16,7 +16,11 @@ export const ROUTES = {
   home: '/',
   menu: '/menu',
   sync: '/synchronisation',
+  newSale: '/ventes/nouvelle',
 } as const;
+
+/** Rôles qui vendent (ECR-VEN-01 : vendeur de PDV, commerciaux, responsable de ferme). */
+const SELLER_ROLES = ['VENDEUR_PDV', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE', 'RESP_FERME'];
 
 export type ScreenGroup = 'general' | 'sales' | 'stock' | 'crm' | 'procurement' | 'production';
 
@@ -52,6 +56,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'general',
     roles: 'ALL',
     actionCodes: ['SYNC_STATUS'],
+    offline: true,
+  },
+  {
+    id: 'ECR-VEN-01',
+    path: ROUTES.newSale,
+    labelKey: 'new_sale',
+    group: 'sales',
+    roles: SELLER_ROLES,
+    actionCodes: ['NEW_SALE'],
     offline: true,
   },
 ];

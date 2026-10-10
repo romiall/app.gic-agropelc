@@ -64,6 +64,22 @@ export const KNOWN_DATASETS = [
 
 export type KnownDataset = (typeof KNOWN_DATASETS)[number];
 
+/**
+ * Types d'entités dont la clé réelle inclut le périmètre de la ligne (`entity-projections.ts`) : un
+ * solde de stock est identifié par produit × emplacement, alors que le flux ne porte que le produit
+ * (`entity_id`) et l'emplacement en périmètre (`LOCATION`). Sans cela, les soldes d'un même produit
+ * sur deux emplacements s'écraseraient sur l'appareil.
+ */
+const SCOPED_KEY_ENTITY_TYPES: ReadonlySet<string> = new Set(['STOCK_BALANCE']);
+
+export function projectionKey(
+  change: Pick<Change, 'dataset' | 'entity_type' | 'entity_id' | 'scope_id'>,
+): string {
+  return SCOPED_KEY_ENTITY_TYPES.has(change.entity_type)
+    ? `${change.dataset}:${change.entity_type}:${change.scope_id ?? ''}:${change.entity_id}`
+    : `${change.dataset}:${change.entity_type}:${change.entity_id}`;
+}
+
 function scopeKeyOf(change: {
   readonly scope_type: string;
   readonly scope_id: string | null;
@@ -86,7 +102,7 @@ const PAGE_LIMIT = 500;
  * données et ajoute son périmètre.
  */
 export async function applyChange(db: GicDatabase, change: Change): Promise<void> {
-  const key = `${change.dataset}:${change.entity_type}:${change.entity_id}`;
+  const key = projectionKey(change);
   if (change.change_type === 'DELETE') {
     await db.projections.delete(key);
     return;

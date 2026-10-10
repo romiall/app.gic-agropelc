@@ -108,6 +108,26 @@ describe('sync/pull — jeux publiés et périmètres (applyChange)', () => {
     ]);
   });
 
+  it('solde de stock : un même produit sur deux emplacements donne deux projections', async () => {
+    const balance = (locationId: string, onHand: string): Change =>
+      orderChange({
+        dataset: 'stock',
+        entity_type: 'STOCK_BALANCE',
+        entity_id: 'product-1',
+        scope_type: 'LOCATION',
+        scope_id: locationId,
+        data: { location_id: locationId, product_id: 'product-1', qty_on_hand: onHand },
+      });
+    await applyChange(db, balance('loc-a', '5'));
+    await applyChange(db, balance('loc-b', '7'));
+    expect((await db.projections.get('stock:STOCK_BALANCE:loc-a:product-1'))?.data).toMatchObject({
+      qty_on_hand: '5',
+    });
+    expect((await db.projections.get('stock:STOCK_BALANCE:loc-b:product-1'))?.data).toMatchObject({
+      qty_on_hand: '7',
+    });
+  });
+
   it('SCOPE_EXIT d’une entité inconnue et DELETE : sans erreur, rien ne reste', async () => {
     await applyChange(db, orderChange({ change_type: 'SCOPE_EXIT' }));
     expect(await db.projections.count()).toBe(0);
