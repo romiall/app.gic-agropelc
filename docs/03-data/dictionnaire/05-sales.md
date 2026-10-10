@@ -132,7 +132,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `balance_due_xaf` | money_xaf | Non | généré | `total_xaf − cancelled_xaf − amount_paid_xaf` (colonne générée stockée) |
 | `payment_status` | enum(`UNPAID`,`PARTIALLY_PAID`,`PAID`) | Non | généré | Dérivé, jamais saisi (BR-VEN-026) : `PAID` si le solde dû est nul (donc aussi pour un net nul, y compris une vente entièrement annulée), sinon `UNPAID` si rien n'est payé, sinon `PARTIALLY_PAID` (colonne générée stockée, `varchar(15)`) |
 | `due_date` | date | Oui | — | DÉDUIT : échéance de toute vente à un client identifié, même soldée (jour métier de la vente + délai de paiement du client, AV-028, AV-129), pour qu'une créance rouverte (annulation d'un encaissement) ait une échéance ; figée |
-| `flags` | json | Non | `[]` | Tableau de codes d'anomalie (conventions §2 : `text[]` stocké en JSON) ; codes écrits par `sales.sale.record` (P4-04) : `PRICE_MISMATCH`, `STOCK_NEGATIVE` (le dictionnaire d'origine disait `STOCK_CONFLICT` : aligné sur le conflit et l'avertissement), `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ANONYMOUS_UNPAID`, `LOT_NOT_SELLABLE`, `PAYMENT_SUSPECT_DUPLICATE`, `OUT_OF_SESSION`, `SESSION_REJECTED` ; `ORDER_OVER_FULFILMENT` suivra avec les livraisons (P4-07) ; ajout possible après la création (`JSON_ARRAY_APPEND`) ; contenu non contraint par la base ; `ORDER_OVER_FULFILMENT` (vente de régularisation d'une livraison hors ligne, P4-07) |
+| `flags` | json | Non | `[]` | Tableau de codes d'anomalie (conventions §2 : `text[]` stocké en JSON) ; codes écrits par `sales.sale.record` (P4-04) : `PRICE_MISMATCH`, `STOCK_NEGATIVE` (le dictionnaire d'origine disait `STOCK_CONFLICT` : aligné sur le conflit et l'avertissement), `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ANONYMOUS_UNPAID`, `LOT_NOT_SELLABLE`, `PAYMENT_SUSPECT_DUPLICATE`, `OUT_OF_SESSION`, `SESSION_REJECTED` ; `ORDER_OVER_FULFILMENT` suivra avec les livraisons (P4-07) ; ajout possible après la création (`JSON_ARRAY_APPEND`) ; contenu non contraint par la base ; `ORDER_OVER_FULFILMENT` (vente de régularisation d'une livraison hors ligne, P4-07) ; quotas d'appareil et garde (P5-11, avertissements d'`inventory` repris par la vente directe) : `ALLOCATION_EXCEEDED`, `ALLOCATION_REVOKED_CONSUMED`, `ALLOCATION_OVERCOMMITTED`, `CUSTODY_DEVICE_MISMATCH` ; `ALLOCATION_OVERCOMMITTED` aussi sur une vente de régularisation qui entame le stock promis aux quotas (seule la vente qui cause ou aggrave le dépassement le porte) |
 | [STD-ORIGIN] | | | | |
 | `business_date` | date | Non | généré | Jour métier de `occurred_at` (voir Lecture) |
 | [STD-AUDIT] | | | | |
@@ -177,7 +177,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `delivered_quantity_base` | qty | Non | 0 | Quantité livrée ; ne diminue jamais ; une vente directe n'utilise pas ce compteur |
 | `unit_cost_xaf` | money_xaf | Oui | — | Coût unitaire figé, renseigné par le serveur ; ne change plus une fois renseigné |
 | `cost_xaf` | money_xaf | Oui | — | DÉDUIT (ADR-027) : somme des valeurs figées des mouvements `SALE` de la ligne ; ce n'est pas quantité × coût unitaire arrondi (dernière sortie d'un lot biologique) ; ne change plus une fois renseigné |
-| `allocation_id` | uuid → inventory.stock_allocations | Oui | — | Quota consommé |
+| `allocation_id` | uuid → inventory.stock_allocations | Oui | — | **Hérité, jamais renseigné** (P5-11) : le quota consommé est porté par le mouvement de stock (`inventory.stock_moves.allocation_id`) et l'entrée `CONSUME` du registre du quota (ADR-033 §5 et §8) ; une ligne peut être imputée en partie au quota, en partie au stock commun, ce que la ligne ne peut pas exprimer. Aucun code ne le lit ; la garde de la ligne en fait une colonne toujours nulle |
 | `client_lot_hint` | uuid | Oui | — | Lot proposé par l'appareil, information (sans clé étrangère) |
 | `created_at` | ts | Non | `now()` | |
 
@@ -352,6 +352,7 @@ Valeurs par défaut posées par les seeds (`db/seeds/system-settings.ts`, `db/se
 | `sales.default_payment_terms_days` | 30 | Non | AV-028 |
 | `sales.duplicate_payment_window_minutes` | 10 | Oui | AV-056 |
 | `sales.offline_over_allocation_allowed` | `false` (réglable par site) | Oui | AV-025 |
+| `sales.offline_unallocated_sale_signal` | `WHEN_ALLOCATED` (réglable par site ; `ALWAYS`, `NEVER`) | Non | AV-166 (P5-11) |
 | `sales.undelivered_alert_days` | 7 | Non | AV-132 |
 
 Cinq politiques de contrôle par défaut (validation requise, condition `{}`, portée `ALL`, sans photo) : `PRICE_OVERRIDE_DEFAULT` (`sales.price_override.approve`, AV-026), `SALE_CANCELLATION_DEFAULT` (`sales.sale_cancel.approve`, AV-030), `CREDIT_LIMIT_EXCEEDED_DEFAULT` (`sales.credit_limit_exceed.approve`, AV-028), `PAYMENT_CANCELLATION_DEFAULT` et `PAYMENT_DUPLICATE_DEFAULT` (`sales.payment.cancel`, AV-056).

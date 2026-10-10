@@ -13,8 +13,17 @@
  *   négatif (anomalie `STOCK_NEGATIVE`).
  *
  * Le stock négatif n'est jamais signalé par `inventory` : il se lit sur `fromBalanceAfter`.
+ *
+ * **Quotas d'appareil** (P5-11 ; ADR-033 §5 à §7) : seule la vente directe (`sales.sale.record`) est un
+ * fait de l'appareil et passe `consumesAllocation` ; `inventory` consomme alors d'abord le quota du
+ * couple (auteur, appareil de l'inbox), puis le stock libre, refuse en ligne ce que ni l'un ni l'autre
+ * ne couvre (`ALLOCATION_EXCEEDED`, `INSUFFICIENT_STOCK`) et contrôle hors ligne la garde d'appareil.
+ * La confirmation d'une commande (`strict`) et la vente de régularisation d'une livraison sont des
+ * opérations du serveur : elles ne le passent jamais (aucun quota consommé). Les avertissements de
+ * quota et de garde de tous les mouvements (un par lot, plusieurs sur l'élevage) sont regroupés.
  */
 import { selectLotsFifo, type IdGenerator } from '@gic/domain';
+import type { WarningCode } from '@gic/contracts';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import {
   listLotBalances,
@@ -45,6 +54,11 @@ export interface SoldStockInput {
    * intention confirmée par le serveur (AV-126), non un fait accompli (vente du disponible, AV-127).
    */
   readonly strict?: boolean;
+  /**
+   * Fait de l'appareil (vente directe seule) : la sortie consomme d'abord le quota du couple
+   * (`createdBy`, `createdDeviceId` lu dans l'inbox). Jamais avec `strict` (opération du serveur).
+   */
+  readonly consumesAllocation?: boolean;
 }
 
 export type SoldStockResult =
@@ -55,8 +69,19 @@ export type SoldStockResult =
       readonly negative: boolean;
       /** Des animaux de lots non vendables ont été vendus (hors ligne) : `LOT_NOT_SELLABLE`. */
       readonly lotsNotSellable: readonly string[];
+      /**
+       * Avertissements de quota et de garde consignés par `inventory` sur l'un des mouvements
+       * (`ALLOCATION_EXCEEDED`, `ALLOCATION_REVOKED_CONSUMED`, `ALLOCATION_OVERCOMMITTED`,
+       * `CUSTODY_DEVICE_MISMATCH`), sans doublon ; les conflits sont déjà ouverts.
+       */
+      readonly warnings: readonly WarningCode[];
     }
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome };
+
+/** Avertissements de tous les mouvements, sans doublon, dans l'ordre d'apparition. */
+function movesWarnings(moves: readonly RecordedMove[]): readonly WarningCode[] {
+  return [...new Set<WarningCode>(moves.flatMap((move) => move.warnings ?? []))];
+}
 
 export async function moveSoldStock(
   uow: Uow,
@@ -64,6 +89,7 @@ export async function moveSoldStock(
   input: SoldStockInput,
 ): Promise<SoldStockResult> {
   const lenient = input.offline && input.strict !== true;
+  const consumesAllocation = input.consumesAllocation === true && input.strict !== true;
   const base = {
     productId: input.productId,
     fromLocationId: input.fromLocationId,
@@ -78,6 +104,7 @@ export async function moveSoldStock(
     commandId: input.commandId,
     capturedOffline: input.offline,
     allowNegative: lenient,
+    ...(consumesAllocation ? { consumesAllocation: true } : {}),
   } satisfies Omit<RecordMoveInput, 'quantityBase' | 'lotId'>;
 
   if (!REARING_LOCATION_TYPES.includes(input.locationType)) {
@@ -87,6 +114,7 @@ export async function moveSoldStock(
       moves,
       negative: moves.some((move) => move.fromBalanceAfter < 0),
       lotsNotSellable: [],
+      warnings: movesWarnings(moves),
     };
   }
 
@@ -155,5 +183,6 @@ export async function moveSoldStock(
     moves,
     negative: moves.some((move) => move.fromBalanceAfter < 0),
     lotsNotSellable,
+    warnings: movesWarnings(moves),
   };
 }

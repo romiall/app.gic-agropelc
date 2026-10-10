@@ -107,19 +107,24 @@ export async function stockOnHandMilli(
     .selectFrom('inventory_stock_balances')
     .select('qty_on_hand')
     .where('location_id', '=', toBin(locationId))
-    .where('product_id', '=', toBin(productId));
+    .where('product_id', '=', toBin(productId))
+    // Ordre de la clé primaire : l'ordre de verrouillage est le même pour tous les appelants.
+    .orderBy('lot_key', 'asc');
   if (options.lock) query = query.forUpdate();
   const rows = await query.execute();
   return rows.reduce((total, row) => total + quantityToMilli(row.qty_on_hand), 0);
 }
 
-/** Σ des restes des quotas **actifs** du couple (emplacement, produit), le cas échéant hors l'un d'eux. */
-export async function activeRemainingMilli(
+/**
+ * Quotas **actifs** du couple (emplacement, produit), le cas échéant hors l'un d'eux : leur nombre
+ * (un quota épuisé reste actif jusqu'à sa libération ou sa révocation) et la somme de leurs restes.
+ */
+export async function activeQuotaSummary(
   uow: UnitOfWork,
   locationId: string,
   productId: string,
   options: { readonly lock?: boolean; readonly excludingId?: string } = {},
-): Promise<number> {
+): Promise<{ readonly count: number; readonly remainingMilli: number }> {
   let query = uow
     .selectFrom('inventory_stock_allocations')
     .select(['id', 'quantity_remaining'])
@@ -131,7 +136,38 @@ export async function activeRemainingMilli(
   }
   if (options.lock) query = query.forUpdate();
   const rows = await query.execute();
-  return rows.reduce((total, row) => total + quantityToMilli(row.quantity_remaining), 0);
+  return {
+    count: rows.length,
+    remainingMilli: rows.reduce((total, row) => total + quantityToMilli(row.quantity_remaining), 0),
+  };
+}
+
+/** Σ des restes des quotas **actifs** du couple (emplacement, produit), le cas échéant hors l'un d'eux. */
+export async function activeRemainingMilli(
+  uow: UnitOfWork,
+  locationId: string,
+  productId: string,
+  options: { readonly lock?: boolean; readonly excludingId?: string } = {},
+): Promise<number> {
+  return (await activeQuotaSummary(uow, locationId, productId, options)).remainingMilli;
+}
+
+/**
+ * Reste d'un quota **au moment de sa révocation** : la quantité de son entrée `REVOKE` (0 si le quota
+ * était épuisé, aucune entrée n'étant alors écrite). Sert à juger un fait hors ligne antérieur à la
+ * révocation, synchronisé après elle (AV-161).
+ */
+export async function revokedRemainingMilli(
+  uow: UnitOfWork,
+  allocationId: string,
+): Promise<number> {
+  const rows = await uow
+    .selectFrom('inventory_stock_allocation_entries')
+    .select('quantity')
+    .where('allocation_id', '=', toBin(allocationId))
+    .where('entry_type', '=', 'REVOKE')
+    .execute();
+  return rows.reduce((total, row) => total - quantityToMilli(row.quantity), 0);
 }
 
 /**
@@ -172,6 +208,12 @@ export async function writeAllocationEntry(
  * Quotas d'un couple (utilisateur, appareil) sur un couple (emplacement, produit) : le quota actif
  * s'il existe, sinon le dernier révoqué (pour qualifier `ALLOCATION_REVOKED_CONSUMED`, ADR-033 §6).
  * `lock` verrouille le quota actif — à faire après les soldes du couple (ordre de verrouillage).
+ *
+ * Avec `lock`, chaque lecture est **verrouillante** (P5-11) : en isolation répétable, une lecture
+ * simple voit l'instantané de la transaction, pris à sa première lecture, et non le reste laissé par
+ * une vente concurrente validée entre-temps. Le plan aurait alors imputé au quota plus que son reste
+ * réel, et l'`UPDATE` relatif aurait heurté le `CHECK quantity_remaining >= 0` : erreur SQL rejouée
+ * (`RETRY_LATER`) au lieu du refus `ALLOCATION_EXCEEDED`.
  */
 export async function loadConsumerAllocations(
   uow: UnitOfWork,
@@ -197,14 +239,15 @@ export async function loadConsumerAllocations(
   let activeQuery = base().where('status', '=', 'ACTIVE');
   if (options.lock) activeQuery = activeQuery.forUpdate();
   const activeRow = await activeQuery.executeTakeFirst();
-  const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id)) : undefined;
+  const lock = options.lock === true;
+  const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id), { lock }) : undefined;
   if (active) return { active, lastRevoked: undefined };
-  const revokedRow = await base()
-    .where('status', '=', 'REVOKED')
-    .orderBy('revoked_at', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-  const lastRevoked = revokedRow ? await loadAllocation(uow, fromBin(revokedRow.id)) : undefined;
+  let revokedQuery = base().where('status', '=', 'REVOKED').orderBy('revoked_at', 'desc').limit(1);
+  if (lock) revokedQuery = revokedQuery.forUpdate();
+  const revokedRow = await revokedQuery.executeTakeFirst();
+  const lastRevoked = revokedRow
+    ? await loadAllocation(uow, fromBin(revokedRow.id), { lock })
+    : undefined;
   return { active: undefined, lastRevoked };
 }
 

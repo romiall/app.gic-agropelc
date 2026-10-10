@@ -47,7 +47,7 @@
 | `source_doc_type` | enum(`SALE`,`TRANSFER`,`LOSS`,`CONSUMPTION`,`INVENTORY_COUNT`,`GOODS_RECEIPT`,`EGG_COLLECTION`,`INCUBATION_EVENT`,`LOT_ENTRY`,`SLAUGHTER`,`LOT_TRANSFER`,`SALE_CANCELLATION`,`DELIVERY`) | Non | — | `SLAUGHTER` (abattage, AV-032) et `LOT_TRANSFER` (sevrage et transfert entre lots, AV-111) ajoutés en P7-02 ; `SALE_CANCELLATION` (document d'annulation de vente) et `DELIVERY` (bon de livraison) ajoutés en P4-02 (ADR-029 §7), soit 13 valeurs ; `SALE_CANCELLATION` compte 17 caractères, dans la limite de la colonne (`varchar(20)`). DÉDUIT : un `CUSTOMER_RETURN` de vente porte `SALE_CANCELLATION` et un `DELIVERY` porte `DELIVERY` (`source_doc_id` = `sales.sale_cancellations` ou `sales.delivery_notes`) ; la base ne l'impose pas, le code des ventes (P4-03 et suivants) le fait |
 | `source_doc_id` | uuid | Non | — | Document |
 | `source_line_id` | uuid | Oui | — | Ligne du document |
-| `allocation_id` | uuid → stock_allocations | Oui | — | Quota ou réservation consommé |
+| `allocation_id` | uuid → stock_allocations | Oui | — | Quota d'appareil consommé par la part d'une sortie qui est un fait de l'appareil (P5-09 ; vente directe P5-11) ou auquel un retour est restitué (P5-10) ; jamais renseigné par une confirmation de commande, une livraison ni une régularisation (ADR-033 §7) |
 | `cost_object_type`, `cost_object_id` | enum, uuid | Oui | — | Pour `CONSUMPTION` : objet de coût |
 | `is_reversal` | boolean | Non | false | |
 | `reverses_move_id` | uuid → stock_moves | Oui | — | INV-STK-04. Jamais le mouvement d'un `SALE` ni d'un `DELIVERY`, qui ne s'inversent pas (BR-STK-055, garde en base) |
@@ -194,7 +194,7 @@
 | `status` | enum(`ACTIVE`,`CLOSED`,`REVOKED`) | Non | `ACTIVE` | |
 | `close_cause` | enum(`RELEASED`,`CONSUMED`,`EXPIRED_RELEASED`) | Oui | — | Renseignée si `CLOSED` |
 | `revocation_pending` | boolean | Non | false | Appareil bloqué ou perdu : décision d'un responsable ; seulement si `ACTIVE` |
-| `revoked_at`, `revoked_by`, `revoke_reason` | ts, uuid, varchar(500) | Oui | — | Révocation forcée ; la date qualifie `ALLOCATION_REVOKED_CONSUMED` (selon `occurred_at`) |
+| `revoked_at`, `revoked_by`, `revoke_reason` | ts, uuid, varchar(500) | Oui | — | Révocation forcée ; la date qualifie `ALLOCATION_REVOKED_CONSUMED` (fait hors ligne dont l'`occurred_at` la suit) ; un fait hors ligne antérieur est comparé au reste du quota à la révocation (quantité de l'entrée `REVOKE`) |
 | `released_at`, `release_declared_remaining` | ts, qty | Oui | — | Libération par l'appareil : le reste déclaré ; un écart avec le serveur ouvre un conflit |
 | `granted_by` | uuid → identity.users | Non | — | |
 | [STD-AUDIT] | | | | |

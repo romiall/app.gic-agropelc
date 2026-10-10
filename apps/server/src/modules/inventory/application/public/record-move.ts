@@ -26,8 +26,10 @@
  * le quota du couple (utilisateur, appareil) sur un emplacement `SHARED` — mouvement scindé en une
  * part imputée au quota (`allocation_id`, entrée `CONSUME`) et une part prise sur le stock commun. Une
  * opération du serveur (confirmation d'une commande, livraison, régularisation, annulation) ne le
- * passe pas : elle ne consomme aucun quota. Dans tous les cas, une sortie physique qui laisse le
- * solde sous la somme des restes des quotas actifs ouvre `ALLOCATION_OVERCOMMITTED`.
+ * passe pas : elle ne consomme aucun quota. Dans tous les cas, une sortie physique d'un emplacement
+ * `SHARED` verrouille d'abord tous les soldes du couple (emplacement, produit), puis les quotas ; et
+ * celle qui prend une part hors du quota de son auteur et laisse le solde sous la somme des restes des
+ * quotas actifs (elle cause ou aggrave le dépassement) ouvre `ALLOCATION_OVERCOMMITTED`.
  */
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -60,6 +62,7 @@ import {
   consumeFromAllocation,
   quantityToMilli,
   restoreToAllocation,
+  stockOnHandMilli,
   type AllocationState,
 } from '../allocation-ledger.js';
 import {
@@ -1042,6 +1045,13 @@ export async function recordStockMove(
   const source = fromIsPhysicalOutflow
     ? await loadLocation(uow, input.fromLocationId).catch(() => null)
     : null;
+  // Toute sortie d'un emplacement partagé verrouille d'abord **tous** les soldes du couple (emplacement,
+  // produit), dans l'ordre de l'index, avant la première écriture et que la sortie consomme un quota ou
+  // non : deux sorties du même couple se sérialisent au lieu de s'interbloquer (P5-11, revue). Les
+  // quotas viennent ensuite (`prepareConsumption`, `checkOvercommitted`) : l'ordre d'`inventory`.
+  if (source !== null && !source.isVirtual && source.custodyMode === 'SHARED') {
+    await stockOnHandMilli(uow, input.fromLocationId, input.productId, { lock: true });
+  }
   const quota = await prepareConsumption(uow, deps, input, source);
 
   const pieces = await pieceList(uow, input, fromIsPhysicalOutflow);
@@ -1059,6 +1069,11 @@ export async function recordStockMove(
       occurredAt: input.occurredAt,
       sourceDocType: input.sourceDocType,
       sourceDocId: input.sourceDocId,
+      // Seule la part prise hors du quota de l'auteur peut causer ou aggraver le dépassement.
+      fromFreeStockMilli: Math.max(
+        0,
+        quantityToMilli(input.quantityBase) - (quota?.quotaMilli ?? 0),
+      ),
     });
     if (overcommitted) warnings.add('ALLOCATION_OVERCOMMITTED');
   }
@@ -1158,6 +1173,7 @@ async function prepareConsumption(
   try {
     return await prepareQuotaConsumption(uow, deps, {
       location: consumptionLocation(input.fromLocationId, source),
+      moveType: input.moveType,
       productId: input.productId,
       quantityMilli: quantityToMilli(input.quantityBase),
       userId: input.createdBy,

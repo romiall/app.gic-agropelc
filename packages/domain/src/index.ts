@@ -232,13 +232,21 @@ export {
   allocationValidUntil,
   isAllocationExpired,
   isConsumedAfterRevocation,
+  // P5-11 : miroir serveur du blocage local (AT-003) et signal d'AV-166.
+  UNALLOCATED_SALE_SIGNALS,
+  DEFAULT_UNALLOCATED_SALE_SIGNAL,
+  parseUnallocatedSaleSignal,
+  offlineAllocationSignal,
 } from './allocations.js';
 export type {
   AllocationEntryType,
+  ConsumerQuotaState,
   CustodyMode,
   LocalConsumptionBlock,
   LocalConsumptionDecision,
+  OfflineAllocationSignal,
   QuotaConsumptionPlan,
+  UnallocatedSaleSignal,
 } from './allocations.js';
 export {
   CASH_SESSION_STATUSES,

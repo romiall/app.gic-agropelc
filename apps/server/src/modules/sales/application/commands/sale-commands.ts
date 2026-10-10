@@ -12,9 +12,18 @@
  * prospect. Détail des anomalies : `sale-pricing.ts`, `sale-stock.ts`, `sale-payments.ts`.
  *
  * Ordre d'écriture (verrous pris dans un ordre constant pour éviter les interblocages entre ventes) :
- * compte client → stock (lignes triées par produit) → numéro de vente → demandes de validation →
- * vente et lignes → mouvements de trésorerie (comptes par identifiant) → numéros et encaissements →
- * conversion.
+ * compte client → stock (lignes triées par produit ; pour chaque produit, soldes puis quotas, ordre
+ * d'`inventory`) → numéro de vente → demandes de validation → vente et lignes → mouvements de
+ * trésorerie (comptes par identifiant) → numéros et encaissements → conversion.
+ *
+ * Quotas d'appareil (P5-11 ; BR-VEN-018, ADR-033 §5 et §6) : la vente directe est un **fait de
+ * l'appareil** : chaque sortie consomme d'abord le quota du couple (auteur de l'enveloppe, appareil de
+ * l'inbox — jamais le contenu de la commande, INV-STK-11), puis le stock libre. En ligne, ce que ni
+ * l'un ni l'autre ne couvre est refusé sans effet (`ALLOCATION_EXCEEDED`, `INSUFFICIENT_STOCK`) ; hors
+ * ligne, la vente est appliquée et les avertissements d'`inventory` (`ALLOCATION_EXCEEDED`,
+ * `ALLOCATION_REVOKED_CONSUMED`, `ALLOCATION_OVERCOMMITTED`, `CUSTODY_DEVICE_MISMATCH`) remontent dans
+ * la réponse et dans les drapeaux de la vente ; les conflits, ouverts par `inventory`, ne sont pas
+ * rattachés à la vente (`details.sourceDocId` en fait le lien), un par ligne de vente.
  */
 import { sql } from 'kysely';
 import {
@@ -374,10 +383,18 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         createdDeviceId: origin.deviceId,
         commandId: envelope.command_id,
         offline,
+        // Fait de l'appareil : le quota du couple d'abord (ADR-033 §5) ; le couple vient de
+        // l'enveloppe authentifiée et de l'inbox, jamais du contenu de la commande (INV-STK-11).
+        consumesAllocation: true,
       });
       if (!result.ok) return result.outcome;
       const costXaf = result.moves.reduce((sum, move) => sum + move.valueXaf, 0);
       costs.set(line.id, { costXaf, unitCostXaf: unitCostXaf(costXaf, line.quantityBase) });
+      // Quotas et garde d'appareil (P5-11) : conflits déjà ouverts par `inventory`.
+      for (const warning of result.warnings) {
+        flags.add(warning);
+        warnings.add(warning);
+      }
       if (result.negative) {
         flags.add('STOCK_NEGATIVE');
         warnings.add('STOCK_NEGATIVE');

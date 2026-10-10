@@ -86,8 +86,8 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-005 | Vente hors ligne à un prix devenu obsolète | Vente acceptée au prix figé ; anomalie `PRICE_MISMATCH` | AV-063, WF-14 |
 | AT-006 | Règle à date d'effet future téléchargée, puis appareil hors ligne à la date d'effet | Nouveau prix appliqué automatiquement | BR-PRX-011, REQ-049 |
 | AT-007 | Changement du prix de 4 500 à 4 800 | La vente antérieure reste à 4 500, avec sa règle et sa version | REQ-050, INV-VEN-05 |
-| AT-008 | Commande, réservation, acompte, livraison partielle, puis solde | Reliquat ; acompte transféré ; ventes partielles ; statut de commande | WF-02, SM-ORDER |
-| AT-009 | Annulation directe dans les 15 min | Mouvements inverses, remboursement, CA négatif daté de l'annulation | SM-SALE, REQ-066 |
+| AT-008 | Commande, vente du disponible à la confirmation (aucune réservation, ADR-028 §4), acompte, livraison partielle, puis solde | Reliquat en attente ; acompte transféré à la vente ; ventes partielles ; statut de commande | WF-02, SM-ORDER |
+| AT-009 | Annulation directe dans les 15 min | Retours rattachés à la vente d'origine (ADR-029, jamais des inverses), quota restitué s'il est encore actif, remboursement, CA négatif daté de l'annulation | SM-SALE, REQ-066 |
 | AT-010 | Annulation hors délai | Demande de validation ; auto-validation refusée ; validation par un autre utilisateur | AV-030, INV-ADM-02 |
 | AT-011 | Première vente à un prospect | Conversion en client ; KPI « nouveaux clients » | BR-CRM-010, REQ-010 |
 | AT-012 | Même prospect créé sur deux appareils hors ligne | Conflit `DUPLICATE_CUSTOMER` ; fusion ; acquéreur le plus ancien | BR-CRM-007, REQ-011 |
@@ -127,7 +127,7 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-046 | Export de ventes par un responsable commercial | Limité à son équipe ; export audité | BR-ANA-007, 008 |
 | AT-047 | Stock sous le seuil, puis réapprovisionnement | Une seule alerte, résolue automatiquement | BR-NOT-002, 003 |
 | AT-048 | Note de direction à accusé de lecture | Lue et accusée hors ligne ; synchronisée | REQ-068 |
-| AT-049 | Solde négatif provoqué par une vente hors ligne | Conflit `STOCK_NEGATIVE` ; résolution par inventaire ; conflit fermé | INV-STK-05, C-08 |
+| AT-049 | Solde négatif provoqué par une vente hors ligne | Conflit `STOCK_NEGATIVE` ; résolution par inventaire ; conflit fermé. Automatisé de bout en bout avec la vraie vente (`sales-allocations.test.ts`, P5-11) et côté inventaire (`inventory-allocation-restore.test.ts`, P5-10) | INV-STK-05, C-08 |
 | AT-050 | Mise à jour de l'application avec des commandes N-1 en attente | Commandes acceptées ; mise à jour activée ensuite | BR-SYN-016 |
 | AT-051 | Visite hors ligne d'un client géolocalisé, saisie à 800 m de sa position, sans session de travail ouverte | Visite appliquée avec `far_from_customer` et `out_of_session` visibles du responsable ; comptée dans « prospects visités » ; non modifiable après synchronisation (correction = annulation + nouvelle visite) | REQ-009, BR-CRM-012, BR-CRM-013, BR-CRM-015, BR-CRM-016 |
 | AT-052 | Groupe de 40 porcs réparti sur 2 cases ; déplacement de 5 têtes d'une case à l'autre ; pesée d'échantillon ; vente de 3 têtes | Effectif par case = solde par emplacement ; effectif du groupe inchangé par le déplacement ; vente à la tête ou au kilo vif selon le mode de tarification (AV-031) ; aucun identifiant individuel demandé | REQ-034, REQ-035, BR-POR-001 à 004 |
