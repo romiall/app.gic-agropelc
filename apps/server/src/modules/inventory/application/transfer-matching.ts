@@ -903,16 +903,26 @@ export async function matchPolicy(
 /** Paires lues par page (constante technique, pas un seuil métier) ; toutes les pages sont traitées. */
 export const SWEEP_PAIR_PAGE = 200;
 
+/** Paire dont le traitement a échoué (transaction annulée en entier, aucun effet partiel). */
+export interface SweepFailure {
+  readonly pair: TransferPair;
+  readonly message: string;
+}
+
 export interface SweepResult {
   readonly pairs: number;
   readonly matched: number;
   readonly signalled: number;
+  /** Paires en échec : les suivantes ont été traitées quand même ; l'appelant rejoue la tâche. */
+  readonly failures: readonly SweepFailure[];
 }
 
 /**
  * `inventory.transfers.unmatched_sweep` : pour chaque paire qui a des réceptions sans document
  * `UNMATCHED`, une transaction propre (le verrou de paire en premier : lectures à jour, verrous
- * courts, une paire en échec n'annule pas les autres et la tâche est rejouée) :
+ * courts) ; une paire en échec est consignée dans `failures` (sa transaction est annulée en entier)
+ * et les paires suivantes sont traitées quand même : c'est à l'appelant (la tâche) de lever à la fin
+ * pour que la tâche soit rejouée, sans priver les autres paires du rapprochement ni du signalement :
  * 1. rapprochement glouton, la plus ancienne réception d'abord, sur les expéditions non encore
  *    rapprochées ; événement `StockTransferReceived` ou `StockTransferDiscrepancyDetected` et audit
  *    sous l'utilisateur système (action `inventory.transfer.auto_match`) ;
@@ -931,12 +941,17 @@ export async function sweepUnmatchedTransfers(
   const pairs = options.pairs ?? (await pendingPairs(db));
   let matched = 0;
   let signalled = 0;
+  const failures: SweepFailure[] = [];
   for (const pair of pairs) {
-    const result = await db.transaction().execute((trx) => sweepPair(trx, deps, pair, now));
-    matched += result.matched;
-    signalled += result.signalled;
+    try {
+      const result = await db.transaction().execute((trx) => sweepPair(trx, deps, pair, now));
+      matched += result.matched;
+      signalled += result.signalled;
+    } catch (error) {
+      failures.push({ pair, message: error instanceof Error ? error.message : String(error) });
+    }
   }
-  return { pairs: pairs.length, matched, signalled };
+  return { pairs: pairs.length, matched, signalled, failures };
 }
 
 interface PairCursor {

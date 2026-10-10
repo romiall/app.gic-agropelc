@@ -113,6 +113,7 @@ export type {
 // Réception sans document et retour à la source (P5-16 ; BR-STK-024, BR-STK-025).
 export {
   BLIND_RECEIPT_MAX_LINES,
+  receivedQuantitySchema,
   transferBlindReceivePayloadSchema,
   transferReturnToSourcePayloadSchema,
 } from './stock-transfer-commands.js';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLIND_RECEIPT_MAX_LINES,
+  receivedQuantitySchema,
   transferBlindReceivePayloadSchema,
   transferReturnToSourcePayloadSchema,
 } from './stock-transfer-commands.js';
@@ -123,5 +124,23 @@ describe('inventory.transfer.return_to_source (BR-STK-025)', () => {
       transferReturnToSourcePayloadSchema.safeParse({ transferId: FROM, reason: 'ok', lines: [] })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('quantité reçue d’une réception avec document', () => {
+  it('zéro et décimales permis ; négatif, infini, quatre décimales et au-delà de numeric(14,3) refusés', () => {
+    for (const quantity of [0, 8, 0.125, 99_999_999_999.999]) {
+      expect(receivedQuantitySchema.safeParse(quantity).success, String(quantity)).toBe(true);
+    }
+    for (const quantity of [
+      -1,
+      1.0005,
+      100_000_000_000,
+      5e11,
+      Number.POSITIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      expect(receivedQuantitySchema.safeParse(quantity).success, String(quantity)).toBe(false);
+    }
   });
 });

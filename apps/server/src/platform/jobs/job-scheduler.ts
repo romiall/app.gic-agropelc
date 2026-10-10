@@ -4,9 +4,12 @@
  * boucle du worker (`WorkerService.runOnce`) avant le traitement des tâches.
  *
  * Pour chaque récurrence inscrite (`RecurringJobRegistry`) :
- * - au premier passage du processus, sa ligne `platform_job_schedules` est créée (`next_run_at` =
- *   maintenant : la première occurrence part au premier tour) ou mise à jour (forme de la récurrence
- *   modifiée dans le code, **sans** réinitialiser `next_run_at`) ;
+ * - au premier passage du processus, sa ligne `platform_job_schedules` est créée ou mise à jour (forme
+ *   de la récurrence modifiée dans le code, **sans** réinitialiser `next_run_at`). À la création,
+ *   `next_run_at` vaut **maintenant** pour une récurrence `INTERVAL` (la première occurrence part au
+ *   premier tour) et le **prochain créneau local** pour une récurrence `DAILY` : une tâche « à
+ *   02:00 » ou « à 23:59 » ne part jamais au milieu de la journée parce qu'elle vient d'être inscrite.
+ *   (Un créneau manqué par un arrêt du worker reste dû et part, lui, une fois au redémarrage.)
  * - à chaque passage, une transaction par type : la ligne due est verrouillée
  *   (`FOR UPDATE SKIP LOCKED` : plusieurs workers ne déposent jamais deux fois le même créneau) ; si
  *   la tâche précédente attend encore (`PENDING`), rien n'est déposé (pas d'empilement) ; sinon une
@@ -73,9 +76,11 @@ export class JobScheduler {
     const now = this.clock.now();
     for (const job of this.registry.list()) {
       const columns = scheduleColumns(job);
+      // Nouvelle inscription : INTERVAL, due au premier tour ; DAILY, à son prochain créneau local.
+      const firstRun = job.schedule.kind === 'DAILY' ? nextRecurringRun(now, job.schedule) : now;
       await this.db
         .insertInto('platform_job_schedules')
-        .values({ job_type: job.jobType, ...columns, next_run_at: now })
+        .values({ job_type: job.jobType, ...columns, next_run_at: firstRun })
         .onDuplicateKeyUpdate(columns)
         .execute();
     }

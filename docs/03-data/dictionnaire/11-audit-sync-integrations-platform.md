@@ -307,13 +307,13 @@ worker, consommée par verrou de ligne (`SKIP LOCKED`), pas par courtier de mess
 | `schedule_kind` | varchar(10) | Non | — | `INTERVAL` (intervalle fixe) ou `DAILY` (heure locale quotidienne) |
 | `interval_seconds` | int | Oui | — | `INTERVAL` : secondes (> 0), créneaux alignés sur l'origine des temps |
 | `local_time` | char(5) | Oui | — | `DAILY` : `HH:MM` en Africa/Douala (UTC+1, sans heure d'été) |
-| `next_run_at` | ts | Non | — | Prochain créneau : la tâche est due dès que `next_run_at ≤ maintenant` |
+| `next_run_at` | ts | Non | — | Prochain créneau : la tâche est due dès que `next_run_at ≤ maintenant` ; à la création de la ligne, maintenant pour `INTERVAL`, prochain créneau local pour `DAILY` |
 | `last_enqueued_at` | ts | Oui | — | Dernier dépôt |
 | `last_job_id` | uuid | Oui | — | Dernière tâche déposée ; sans FK (`platform.jobs` est purgeable) |
 | `created_at`, `updated_at` | ts | Non | `now()` | |
 
 - **PK** `job_type`. **CK** `INTERVAL` ⇒ `interval_seconds > 0` et `local_time` nul ; `DAILY` ⇒ `local_time` au format `HH:MM` et `interval_seconds` nul.
-- **Sémantique** : à chaque tour, une transaction par type verrouille la ligne due (`FOR UPDATE SKIP LOCKED` : plusieurs workers ne déposent jamais deux fois un créneau), dépose la tâche, puis avance `next_run_at` au créneau **suivant l'instant présent** dans la même transaction. Aucun rattrapage en rafale après un arrêt (une seule occurrence puis le créneau à venir) ; aucun empilement tant que la tâche précédente est `PENDING` ; une ligne sans récurrence inscrite dans le processus est ignorée. La forme de la récurrence modifiée dans le code met la ligne à jour sans réinitialiser `next_run_at`.
+- **Sémantique** : à chaque tour, une transaction par type verrouille la ligne due (`FOR UPDATE SKIP LOCKED` : plusieurs workers ne déposent jamais deux fois un créneau), dépose la tâche, puis avance `next_run_at` au créneau **suivant l'instant présent** dans la même transaction. Aucun rattrapage en rafale après un arrêt (une seule occurrence puis le créneau à venir) ; aucun empilement tant que la tâche précédente est `PENDING` ; une ligne sans récurrence inscrite dans le processus est ignorée. La forme de la récurrence modifiée dans le code met la ligne à jour sans réinitialiser `next_run_at`. **Première inscription** d'un type : `next_run_at` vaut maintenant pour une récurrence `INTERVAL` (premier tour du worker) et le prochain créneau local pour une récurrence `DAILY` (une tâche « à 02:00 » ou « à 23:59 » ne part pas au milieu de la journée parce qu'elle vient d'être inscrite) ; un créneau manqué par un arrêt du worker reste dû et part, une seule fois, au redémarrage.
 - **Droits** `SELECT`, `INSERT`, `UPDATE` pour le compte applicatif (pas de `DELETE`). **Suppr.** Aucune (table technique). Pas de `[STD-AUDIT]` ni `[STD-ORIGIN]` (créée par du code système).
 - **Implémentation** : migration `20261010093100_create_platform_job_schedules.sql`.
 

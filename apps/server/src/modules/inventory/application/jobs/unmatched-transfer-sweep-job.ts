@@ -7,8 +7,9 @@
  *
  * Une **transaction par paire** (source, destination), ouverte par la tâche elle-même sur la
  * connexion : le verrou de la paire y est pris en premier (lectures à jour), les verrous restent
- * courts et une paire en échec n'annule pas les autres ; la tâche est rejouable sans doublon. La
- * transaction passée par `JobRunner` ne porte que l'état de la tâche.
+ * courts et une paire en échec n'annule pas les autres (elle est consignée, les suivantes sont
+ * traitées) ; la tâche lève **à la fin** si une paire a échoué, pour être rejouée (5 essais, attente
+ * progressive) sans doublon. La transaction passée par `JobRunner` ne porte que l'état de la tâche.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Clock, IdGenerator } from '@gic/domain';
@@ -22,6 +23,9 @@ import {
 import { sweepUnmatchedTransfers } from '../transfer-matching.js';
 
 export const UNMATCHED_TRANSFER_SWEEP_JOB_TYPE = 'inventory.transfers.unmatched_sweep';
+
+/** Paires en échec détaillées dans le message d'échec (le reste est compté, jamais tu). */
+const DETAILED_FAILURES = 5;
 
 @Injectable()
 export class UnmatchedTransferSweepJob implements OnModuleInit {
@@ -44,6 +48,19 @@ export class UnmatchedTransferSweepJob implements OnModuleInit {
         `Réceptions sans document : ${result.pairs} paire(s), ${result.matched} rapprochée(s), ` +
           `${result.signalled} signalée(s) au délai.`,
       );
+      if (result.failures.length > 0) {
+        const detail = result.failures
+          .slice(0, DETAILED_FAILURES)
+          .map(
+            (failure) =>
+              `${failure.pair.fromLocationId} → ${failure.pair.toLocationId} : ${failure.message}`,
+          )
+          .join(' ; ');
+        throw new Error(
+          `Balayage des réceptions sans document : ${result.failures.length} paire(s) en échec ` +
+            `sur ${result.pairs} (les autres sont traitées) — ${detail}.`,
+        );
+      }
     });
   }
 }

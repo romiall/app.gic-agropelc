@@ -24,6 +24,18 @@ const positiveQuantity = z
   .max(MAX_QUANTITY)
   .refine(hasAtMostThreeDecimals, 'Trois décimales au plus.');
 
+/**
+ * Quantité reçue d'une ligne de **réception avec document** : nulle permise (ligne expédiée non
+ * reçue, écart), mêmes bornes que {@link positiveQuantity}. Sans la borne, un excédent hors ligne
+ * démesuré ferait échouer l'écriture (`numeric(14,3)`, erreur SQL rejouée sans fin).
+ */
+export const receivedQuantitySchema = z
+  .number()
+  .nonnegative()
+  .finite()
+  .max(MAX_QUANTITY)
+  .refine(hasAtMostThreeDecimals, 'Trois décimales au plus.');
+
 /** Nombre maximal de lignes d'une réception sans document. */
 export const BLIND_RECEIPT_MAX_LINES = 200;
 

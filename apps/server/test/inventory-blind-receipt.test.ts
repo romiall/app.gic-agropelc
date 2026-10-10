@@ -6,6 +6,9 @@
  * garde d'appareil et emplacement non exclusif (AV-181), validations, idempotence, lot requis
  * (INV-STK-13), expédition multi-lots, lot biologique, délai paramétré et conflit `TRANSFER_UNMATCHED`,
  * concurrence, jeu `transfers`, garde de désactivation (INV-STK-07), transit des transferts (INV-STK-08).
+ * Revue adverse : réception avec document d'un transfert qu'une réception sans document attend (21,
+ * AV-183), excédent refusé en ligne et reçu après coup (22, BR-STK-021), quantité reçue bornée (23),
+ * balayage isolé par paire en échec (24).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Change } from '@gic/contracts';
@@ -888,5 +891,222 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
         .execute();
     }
     expect((await verifyTransferTransit(db, { transferIds: [stuck, wrong] })).ok).toBe(true);
+  });
+
+  /** Réception avec document d'un transfert expédié (une seule ligne). */
+  async function receiveWithDocument(
+    transferId: string,
+    receivedQtyBase: number,
+    options: { readonly offline?: boolean } = {},
+  ) {
+    const [line] = await linesOf(transferId);
+    return send(
+      world,
+      world.seller,
+      'inventory.transfer.receive',
+      transferId,
+      { transferId, lines: [{ transferLineId: fromBin(line!.id), receivedQtyBase }] },
+      { offline: options.offline ?? false, occurredAt: at('09:00') },
+    );
+  }
+
+  it('21 — réception avec document d’un transfert qu’une réception sans document attend : refusée en ligne, en quarantaine hors ligne, jamais comptée deux fois (AV-183)', async () => {
+    const pair = await newPair(world);
+    const productId = await newProduct(world);
+    await stock(world, productId, pair.store, 100);
+    // Aucune politique d'écart : la réception sans document de 8 sur 10 reste non rapprochée mais
+    // imputée sur le transit de la paire (destination +8).
+    const pending = await withoutActivePolicies(
+      'TRANSFER_DISCREPANCY',
+      new Date(at('00:00')),
+      async () => {
+        const sent = await dispatch(world, pair, productId, 10);
+        const receipt = await blindReceive(world, pair, [{ productId, receivedQtyBase: 8 }]);
+        expect((await transferOf(receipt.receiptId)).status).toBe('UNMATCHED');
+        expect((await transferOf(sent.transferId)).status).toBe('DISPATCHED');
+        return { ...sent, receiptId: receipt.receiptId };
+      },
+    );
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(8);
+
+    // La réception « complète » avec le document n'a pas besoin de politique (aucun écart) : sans
+    // garde, elle apporterait 10 unités de plus (18 pour 10 expédiées).
+    const online = await receiveWithDocument(pending.transferId, 10);
+    expect(online).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'TRANSFER_STATUS_INVALID' },
+    });
+    const offline = await receiveWithDocument(pending.transferId, 10, { offline: true });
+    expect(offline.status).toBe('CONFLICT');
+    const [conflict] = await conflictsOn('TRANSFER_OVER_RECEIVED', pending.transferId);
+    expect(conflict).toMatchObject({ applied: 0, status: 'OPEN' });
+    expect(conflict!.details as Record<string, unknown>).toMatchObject({
+      reason: 'BLIND_RECEIPT_PENDING',
+      blindReceiptId: pending.receiptId,
+    });
+    expect((await transferOf(pending.transferId)).status).toBe('DISPATCHED');
+    expect(await movesOf(pending.transferId, 'TRANSFER_RECEIPT')).toHaveLength(0);
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(8);
+    expect(await pairTransitOf(pair, productId)).toBe(2);
+
+    // La politique existe (celle du monde de test, rétablie) : le balayage rapproche la réception,
+    // le transfert passe en écart (8 sur 10) et le transit de la paire se solde.
+    expect((await sweep([pair])).matched).toBe(1);
+    expect((await transferOf(pending.receiptId)).status).toBe('MATCHED');
+    expect((await transferOf(pending.transferId)).status).toBe('DISCREPANCY_PENDING');
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(8);
+    expect(await pairTransitOf(pair, productId)).toBe(0);
+    // Le transfert n'est plus à recevoir : la réception avec document est refusée comme toute seconde.
+    expect(await receiveWithDocument(pending.transferId, 10)).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'TRANSFER_STATUS_INVALID' },
+    });
+
+    // Une réception sans document qui ne peut pas être celle de ce transfert (autre produit) ne le
+    // bloque pas.
+    const other = await newPair(world);
+    const p1 = await newProduct(world);
+    const p2 = await newProduct(world);
+    await stock(world, p1, other.store, 100);
+    const sent = await dispatch(world, other, p1, 10);
+    const stranger = await blindReceive(world, other, [{ productId: p2, receivedQtyBase: 3 }]);
+    expect((await transferOf(stranger.receiptId)).status).toBe('UNMATCHED');
+    expect((await receiveWithDocument(sent.transferId, 10)).status).toBe('APPLIED');
+    expect((await transferOf(sent.transferId)).status).toBe('RECEIVED');
+  });
+
+  it('22 — excédent d’une réception sans document rapprochée sur-le-champ : refusé en ligne (BR-STK-021), appliqué hors ligne ; rapproché après coup, reçu et signalé', async () => {
+    const pair = await newPair(world);
+    const productId = await newProduct(world);
+    await stock(world, productId, pair.store, 100);
+    const { transferId } = await dispatch(world, pair, productId, 58);
+
+    const over = await blindReceive(world, pair, [{ productId, receivedQtyBase: 59 }], {
+      offline: false,
+    });
+    expect(over.result).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'TRANSFER_OVER_RECEIVED' },
+    });
+    expect(
+      await db
+        .selectFrom('inventory_stock_transfers')
+        .select('id')
+        .where('id', '=', toBin(over.receiptId))
+        .executeTakeFirst(),
+    ).toBeUndefined();
+    expect((await transferOf(transferId)).status).toBe('DISPATCHED');
+    expect((await balanceOf(productId, pair.pos)).qty).toBe(0);
+    expect(await conflictsOn('TRANSFER_OVER_RECEIVED', transferId)).toHaveLength(0);
+
+    // La quantité exacte, en ligne, est rapprochée sans difficulté.
+    const exact = await blindReceive(world, pair, [{ productId, receivedQtyBase: 58 }], {
+      offline: false,
+    });
+    expect(exact.result).toMatchObject({
+      status: 'APPLIED',
+      server_refs: { matchedTransferId: transferId },
+    });
+
+    // Rapprochement après coup : la réception (fait déjà appliqué, hors ligne) est reçue et signalée,
+    // même quand l'expédition arrive en ligne.
+    const late = await newPair(world);
+    await stock(world, productId, late.store, 100);
+    const receipt = await blindReceive(world, late, [{ productId, receivedQtyBase: 59 }]);
+    const dispatched = await dispatch(world, late, productId, 58, { occurredAt: at('09:00') });
+    expect(dispatched.result.status).toBe('APPLIED');
+    expect((await transferOf(receipt.receiptId)).status).toBe('MATCHED');
+    expect((await transferOf(dispatched.transferId)).status).toBe('RECEIVED');
+    const [informative] = await conflictsOn('TRANSFER_OVER_RECEIVED', dispatched.transferId);
+    expect(informative).toMatchObject({ applied: 1, status: 'OPEN' });
+    expect((await balanceOf(productId, late.pos)).qty).toBe(59);
+  });
+
+  it('23 — réception avec document : une quantité reçue démesurée est refusée en validation (jamais rejouée sans fin)', async () => {
+    const pair = await newPair(world);
+    const productId = await newProduct(world);
+    await stock(world, productId, pair.store, 100);
+    const { transferId } = await dispatch(world, pair, productId, 10);
+    for (const received of [5e11, -1, 1.0005]) {
+      const result = await receiveWithDocument(transferId, received, { offline: true });
+      expect(result.status, String(received)).toBe('REJECTED');
+      if (result.status === 'REJECTED') expect(result.error.code).toMatch(/^VALIDATION_ERROR/);
+    }
+    expect((await transferOf(transferId)).status).toBe('DISPATCHED');
+    expect(await movesOf(transferId, 'TRANSFER_RECEIPT')).toHaveLength(0);
+    expect((await receiveWithDocument(transferId, 10, { offline: true })).status).toBe('APPLIED');
+  });
+
+  it('24 — balayage : une paire en échec n’empêche pas les suivantes ; la tâche lève à la fin pour être rejouée', async () => {
+    const poisoned = await newPair(world);
+    const healthy = await newPair(world);
+    const control = await newPair(world);
+    const p1 = await newProduct(world);
+    const p2 = await newProduct(world);
+    const p0 = await newProduct(world);
+    await stock(world, p1, poisoned.store, 100);
+    await stock(world, p2, healthy.store, 100);
+    await stock(world, p0, control.store, 100);
+    const setup = await withoutActivePolicies(
+      'TRANSFER_DISCREPANCY',
+      new Date(at('00:00')),
+      async () => ({
+        bad: await dispatch(world, poisoned, p1, 58),
+        badReceipt: await blindReceive(world, poisoned, [{ productId: p1, receivedQtyBase: 57 }]),
+        good: await dispatch(world, healthy, p2, 58),
+        goodReceipt: await blindReceive(world, healthy, [{ productId: p2, receivedQtyBase: 57 }]),
+      }),
+    );
+    const holder = await dispatch(world, control, p0, 5);
+    const holderReceipt = await blindReceive(world, control, [
+      { productId: p0, receivedQtyBase: 5 },
+    ]);
+    expect((await transferOf(holderReceipt.receiptId)).status).toBe('MATCHED');
+
+    // État corrompu à dessein : une autre réception tient déjà le transfert « bad » comme transfert
+    // rapproché (UNIQUE matched_transfer_id) : son rapprochement échoue en erreur SQL déterministe.
+    await db
+      .updateTable('inventory_stock_transfers')
+      .set({ matched_transfer_id: toBin(setup.bad.transferId) })
+      .where('id', '=', toBin(holderReceipt.receiptId))
+      .execute();
+    try {
+      const result = await sweep([poisoned, healthy]);
+      expect(result.pairs).toBe(2);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]!.pair).toEqual({
+        fromLocationId: poisoned.store,
+        toLocationId: poisoned.pos,
+      });
+      expect(result.failures[0]!.message.length).toBeGreaterThan(0);
+      // La paire saine, placée après la paire en échec, est rapprochée quand même.
+      expect(result.matched).toBe(1);
+      expect((await transferOf(setup.goodReceipt.receiptId)).status).toBe('MATCHED');
+      expect((await transferOf(setup.good.transferId)).status).toBe('DISCREPANCY_PENDING');
+      // La paire en échec n'a laissé aucun effet partiel (transaction annulée en entier).
+      expect((await transferOf(setup.badReceipt.receiptId)).status).toBe('UNMATCHED');
+      expect((await transferOf(setup.bad.transferId)).status).toBe('DISPATCHED');
+      expect(await movesOf(setup.badReceipt.receiptId)).toHaveLength(1);
+      expect(await pairTransitOf(poisoned, p1)).toBe(1);
+
+      // La tâche, elle, lève à la fin (rejouée, 5 essais) après avoir traité toutes les paires.
+      const registry = new JobHandlerRegistry();
+      new UnmatchedTransferSweepJob(db, world.clock, world.idGenerator, registry).onModuleInit();
+      const handler = registry.resolve(UNMATCHED_TRANSFER_SWEEP_JOB_TYPE)!;
+      await expect(
+        db.transaction().execute((trx) => handler(trx, { scheduledFor: at('12:00') })),
+      ).rejects.toThrow(/paire\(s\) en échec/);
+    } finally {
+      await db
+        .updateTable('inventory_stock_transfers')
+        .set({ matched_transfer_id: toBin(holder.transferId) })
+        .where('id', '=', toBin(holderReceipt.receiptId))
+        .execute();
+    }
+    // Réparé : la paire en échec est rapprochée au balayage suivant, rien ne reste en suspens.
+    const repaired = await sweep([poisoned]);
+    expect(repaired).toMatchObject({ matched: 1, failures: [] });
+    expect((await transferOf(setup.badReceipt.receiptId)).status).toBe('MATCHED');
+    expect(await pairTransitOf(poisoned, p1)).toBe(0);
   });
 });

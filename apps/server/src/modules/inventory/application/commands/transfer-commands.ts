@@ -33,6 +33,7 @@ import {
 } from '@gic/domain';
 import type { IdGenerator } from '@gic/domain';
 import {
+  receivedQuantitySchema,
   transferBlindReceivePayloadSchema,
   transferReturnToSourcePayloadSchema,
   type CommandEnvelope,
@@ -142,14 +143,18 @@ const dispatchPayloadSchema = z
   });
 type DispatchPayload = z.infer<typeof dispatchPayloadSchema>;
 
-/** Réception avec document (P2-04) : lignes du transfert expédié. */
+/**
+ * Réception avec document (P2-04) : lignes du transfert expédié. La quantité reçue est bornée à
+ * `numeric(14,3)` (contrat partagé) : un excédent hors ligne démesuré est refusé en validation, il
+ * ne fait pas échouer l'écriture (erreur SQL rejouée sans fin).
+ */
 const documentedReceivePayloadSchema = z.object({
   transferId: z.string().uuid(),
   lines: z
     .array(
       z.object({
         transferLineId: z.string().uuid(),
-        receivedQtyBase: z.number().nonnegative(),
+        receivedQtyBase: receivedQuantitySchema,
         discrepancyReasonCodeId: z.string().uuid().optional(),
       }),
     )
@@ -234,6 +239,27 @@ async function pendingBlindReceipts(
     headers.map((header) => header.id),
   );
   return headers.map((header) => ({ header, lines: lines.get(header.id) ?? [] }));
+}
+
+/**
+ * Réception sans document `UNMATCHED` de la paire qui attend ce transfert expédié (même règle
+ * d'éligibilité que le rapprochement, AV-180), ou `undefined`. Appelée sous le verrou de paire.
+ */
+async function awaitingBlindReceipt(
+  uow: UnitOfWork,
+  pair: TransferPair,
+  transfer: TransferHeader,
+  lines: readonly TransferLineRow[],
+  at: Date,
+): Promise<PendingBlindReceipt | undefined> {
+  const receipts = await pendingBlindReceipts(uow, pair);
+  if (receipts.length === 0) return undefined;
+  const mode = await blindReceiptMatchMode(uow, transfer.siteId, at);
+  return receipts.find(
+    (receipt) =>
+      blindReceiptMatch(receivedQuantities(receipt.lines), dispatchedQuantities(lines), mode) !==
+      null,
+  );
 }
 
 /** Quantité de base en millièmes ; `null` si elle porte plus de trois décimales. */
@@ -618,6 +644,28 @@ function buildTransferCommands(
     if (transfer.status !== 'DISPATCHED') return badStatus('DISPATCHED');
 
     const lines = (await lockTransferLines(uow, [transfer.id])).get(transfer.id) ?? [];
+    // Une réception sans document de la paire attend déjà ce transfert (rapprochement refusé faute de
+    // politique d'écart, ou course) : la recevoir aussi avec le document compterait deux fois la
+    // marchandise (INV-STK-03). Même traitement que le retour (AV-183) : refus en ligne, quarantaine
+    // hors ligne ; le balayage la rapprochera dès que la politique existe.
+    const awaiting = await awaitingBlindReceipt(
+      uow,
+      peek,
+      transfer,
+      lines,
+      new Date(envelope.occurred_at),
+    );
+    if (awaiting) {
+      return offline
+        ? quarantine(uow, envelope, transfer, 'TRANSFER_OVER_RECEIVED', {
+            reason: 'BLIND_RECEIPT_PENDING',
+            blindReceiptId: awaiting.header.id,
+          })
+        : rejected(
+            'TRANSFER_STATUS_INVALID',
+            'Une réception sans document attend ce transfert : il ne peut plus être reçu avec le document.',
+          );
+    }
     const receivedByLine = new Map<string, number>();
     const reasonByLine = new Map<string, string>();
     for (const line of payload.lines) {
@@ -784,6 +832,15 @@ function buildTransferCommands(
       ? await matchPolicy(uow, receipt, chosen.dispatch, origin.receivedAt)
       : null;
     const matching = chosen !== null && allowed !== null && allowed.allowed ? chosen : null;
+    // BR-STK-021 vaut aussi sans document : un excédent connu au rapprochement immédiat est refusé en
+    // ligne, appliqué et signalé hors ligne (fait accompli, BR-SYN-007). Rapproché après coup
+    // (expédition ou balayage), l'excédent est déjà un fait appliqué : reçu et signalé.
+    if (matching !== null && matching.match.kind === 'OVER' && !offline) {
+      return rejected(
+        'TRANSFER_OVER_RECEIVED',
+        'Quantité reçue supérieure à la quantité expédiée (BR-STK-021).',
+      );
+    }
 
     if (matching === null && !offline) {
       const missingLot = receiptLines.find(
@@ -966,14 +1023,8 @@ function buildTransferCommands(
     if (transfer.status !== 'DISPATCHED') return badStatus('DISPATCHED');
 
     const lines = (await lockTransferLines(uow, [transfer.id])).get(transfer.id) ?? [];
-    const receipts = await pendingBlindReceipts(uow, pair);
     const occurredAt = new Date(envelope.occurred_at);
-    const mode = await blindReceiptMatchMode(uow, transfer.siteId, occurredAt);
-    const awaiting = receipts.find(
-      (receipt) =>
-        blindReceiptMatch(receivedQuantities(receipt.lines), dispatchedQuantities(lines), mode) !==
-        null,
-    );
+    const awaiting = await awaitingBlindReceipt(uow, pair, transfer, lines, occurredAt);
     if (awaiting) {
       return offline
         ? quarantine(uow, envelope, transfer, 'TRANSFER_RETURN_CONFLICT', {

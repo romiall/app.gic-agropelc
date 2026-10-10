@@ -13,6 +13,11 @@
  * écritures sont annulées (`ROLLBACK TO SAVEPOINT`) **avant** que l'échec soit consigné et la
  * transaction validée. Sans cela, une tâche qui échoue au milieu laisserait un effet partiel validé,
  * puis le referait à la reprise (doublons).
+ *
+ * Transaction perdue (interblocage dont MySQL fait sa victime : toute la transaction, point de
+ * sauvegarde compris, est annulée) : le point de sauvegarde n'existe plus. L'échec est alors consigné
+ * dans une transaction courte **séparée** (la tâche compte une tentative et reste due), au lieu de
+ * remonter jusqu'à la boucle du worker, qu'il arrêterait avec ses consommateurs d'événements.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -92,9 +97,19 @@ export class JobRunner {
         try {
           await sql`ROLLBACK TO SAVEPOINT job_handler`.execute(trx);
         } catch {
-          // Transaction déjà annulée par MySQL (interblocage) : la tâche reste due, sans tentative
-          // consommée ; l'erreur d'origine annule le reste.
-          throw error;
+          // Transaction déjà annulée par MySQL (interblocage) : ses verrous sont libérés, l'échec
+          // se consigne hors d'elle ; si cette consignation échoue aussi (connexion perdue), l'erreur
+          // d'origine remonte.
+          try {
+            await this.recordFailure(this.db, job, error);
+          } catch {
+            throw error;
+          }
+          return {
+            claimed: true,
+            jobId,
+            result: job.attempts + 1 >= job.max_attempts ? 'FAILED' : 'RETRY',
+          };
         }
         await this.recordFailure(trx, job, error);
         return {
@@ -107,7 +122,7 @@ export class JobRunner {
   }
 
   private async recordFailure(
-    trx: UnitOfWork,
+    trx: UnitOfWork | Database,
     job: { id: Buffer; attempts: number; max_attempts: number; run_at: Date },
     error: unknown,
   ): Promise<void> {

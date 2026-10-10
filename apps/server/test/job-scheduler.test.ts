@@ -152,21 +152,45 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
     expect(row!.next_run_at.toISOString()).toBe(before);
   });
 
-  it('récurrence quotidienne à l’heure de Douala (02:00 = 01:00 UTC)', async () => {
+  it('récurrence quotidienne à l’heure de Douala (02:00 = 01:00 UTC) : à l’inscription elle attend son premier créneau local, puis part une fois par jour', async () => {
     const clock = new FixedClock(T0);
     const type = testType('daily');
     const scheduler = schedulerFor(
       [{ jobType: type, schedule: { kind: 'DAILY', localTime: '02:00' } }],
       clock,
     );
-    expect(await scheduler.enqueueDue({ jobTypes: [type] })).toHaveLength(1);
+    // 11:17 à Douala : une tâche « à 02:00 » ne part pas au milieu de la journée parce qu'elle vient
+    // d'être inscrite (contrairement à un intervalle, qui part au premier tour).
+    expect(await scheduler.enqueueDue({ jobTypes: [type] })).toEqual([]);
+    expect(await jobsOf(type)).toHaveLength(0);
     const row = await scheduleRow(type);
     expect(row).toMatchObject({
       schedule_kind: 'DAILY',
       interval_seconds: null,
       local_time: '02:00',
+      last_job_id: null,
     });
     expect(row!.next_run_at.toISOString()).toBe('2026-10-10T01:00:00.000Z');
+
+    clock.setTo(new Date('2026-10-10T01:00:30.000Z'));
+    expect(await scheduler.enqueueDue({ jobTypes: [type] })).toHaveLength(1);
+    expect(await scheduler.enqueueDue({ jobTypes: [type] })).toEqual([]);
+    expect((await scheduleRow(type))!.next_run_at.toISOString()).toBe('2026-10-11T01:00:00.000Z');
+  });
+
+  it('créneau quotidien manqué par un arrêt du worker : une seule occurrence de rattrapage au redémarrage', async () => {
+    const clock = new FixedClock(T0);
+    const type = testType('daily-missed');
+    const jobs = [
+      { jobType: type, schedule: { kind: 'DAILY', localTime: '02:00' } } as const,
+    ] as const;
+    await schedulerFor(jobs, clock).enqueueDue({ jobTypes: [type] });
+    // Le worker redémarre à 14:30 à Douala, après le créneau de 02:00 manqué : il part une fois.
+    clock.setTo(new Date('2026-10-10T13:30:00.000Z'));
+    const restarted = schedulerFor(jobs, clock);
+    expect(await restarted.enqueueDue({ jobTypes: [type] })).toHaveLength(1);
+    expect(await restarted.enqueueDue({ jobTypes: [type] })).toEqual([]);
+    expect((await scheduleRow(type))!.next_run_at.toISOString()).toBe('2026-10-11T01:00:00.000Z');
   });
 
   it('ligne d’un type non inscrit dans le processus : ignorée', async () => {

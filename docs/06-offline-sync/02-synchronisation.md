@@ -120,7 +120,7 @@ Règles :
 | `VALIDATION_ERROR:<détail>` | REJECTED | Non | Donnée invalide (codes métier des domaines) |
 | `VERSION_CONFLICT` | CONFLICT | Non | Modification concurrente non fusionnable |
 | `TRANSFER_RETURN_CONFLICT` | CONFLICT | Non | Quarantaine (P5-16, AV-183) : réception d'un transfert retourné, retour d'un transfert reçu ou dont une réception sans document attend l'expédition ; aucun mouvement |
-| `TRANSFER_OVER_RECEIVED` | CONFLICT (hors ligne) / REJECTED (en ligne) | Non | Seconde réception d'un transfert déjà reçu (quarantaine hors ligne) ; réception supérieure à l'expédié refusée en ligne |
+| `TRANSFER_OVER_RECEIVED` | CONFLICT (hors ligne) / REJECTED (en ligne) | Non | Seconde réception d'un transfert déjà reçu, ou réception avec document d'un transfert qu'une réception sans document attend (quarantaine hors ligne) ; réception supérieure à l'expédié, sans document comprise, refusée en ligne |
 | `BLIND_RECEIPT_NOT_ALLOWED`, `TRANSFER_ID_TAKEN`, `UNIT_INVALID`, `LOT_REQUIRED` | REJECTED | Non | Réception sans document refusée en ligne (P5-16) : destination non exclusive (`CUSTODY_DEVICE_MISMATCH` hors ligne, raison `LOCATION_NOT_EXCLUSIVE`), identifiant déjà pris, unité inconnue, lot manquant d'un produit suivi par lot |
 | `DEPENDENCY_PENDING` | RETRY_LATER | Oui | Dépendance non reçue |
 | `DEPENDENCY_REJECTED` | REJECTED | Non | Dépendance rejetée |
