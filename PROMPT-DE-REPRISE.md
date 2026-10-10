@@ -1,6 +1,6 @@
-# Prompt de reprise — GIC AGROPELC (phase P4 terminée ; prochaine phase à choisir avec le porteur)
+# Prompt de reprise — GIC AGROPELC (phase P5 en cours : P5-01 à P5-12, P5-15 et P5-16 faits ; prochaine étape P5-13)
 
-> Destiné à une nouvelle session d'agent de développement (Claude Code ou équivalent) qui reprend le projet **sans l'historique** de la session précédente. État vérifié le 07/10/2026 (fin de P4-14). Les sections 2 à 6 sont à jour ; l'historique détaillé des sessions précédentes est dans les démonstrations de phase (`docs/10-development-plan/07` à `13-demonstration-*.md`) et dans `git log`.
+> Destiné à une nouvelle session d'agent de développement (Claude Code ou équivalent) qui reprend le projet **sans l'historique** de la session précédente. État vérifié le 10/10/2026 (lot 1 de P5 intégré : P5-11, P5-12, P5-15, P5-16). Les sections 2 à 6 sont à jour ; l'historique détaillé des sessions précédentes est dans les démonstrations de phase (`docs/10-development-plan/07` à `13-demonstration-*.md`) et dans `git log`.
 
 Tu reprends le développement de **GIC AGROPELC**, une application de gestion (ventes, stock, CRM terrain, achats, production avicole et porcine, finance) pour un groupement d'éleveurs au Cameroun. Le cadrage est terminé ; le **code serveur des phases P0, P1, P2, P3, P4, P6 et P7 est terminé** (démonstrations de sortie dans `docs/10-development-plan/`). Ton premier travail : vérifier le point de départ (§5, étape 0), puis demander au porteur quelle phase engager (§5, étape 1).
 
@@ -63,12 +63,19 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 | **P5 Distribution et PDV** | **En cours** : P5-01 (conception : ADR-032, ADR-033, AV-153 à AV-165, backlog de 24 incréments) et P5-02 (logique partagée) et P5-03 (schéma de la caisse) et P5-04 (schéma des quotas) et P5-05 (configuration du PDV, registre de gardes de désactivation) et P5-06 (appareil partagé, permission de libération) et P5-07 (tablette partagée côté serveur, harnais `OfflineDevice`) et P5-08 (commandes de quotas, consommateur de révocation, tâche d'échéance) et P5-09 (consommation des quotas, garde d'appareil) et P5-10 (restitution, réconciliation, AT-049 côté inventaire) et P5-11 (vente directe sur les quotas, AT-003 côté serveur, AT-049 de bout en bout) et P5-12 (sessions de caisse, ADR-034) et P5-15 (remises de fonds) et P5-16 (réception sans document, retour à la source, ordonnanceur) faits ; **prochaine étape P5-13** | plan §4 (P5) |
 | P8, P9, P10 | Non commencées | plan §4 |
 
-- Tests au 07/10 : domaine **216** (17 fichiers, couverture ≥ 90 %), contrats **165**, base **117** (12 fichiers), PWA **58**, serveur **656** (85 fichiers) ; typage, lint, frontières, formatage et références verts ; **CI GitHub verte** sur la branche.
-- Git : `main` sur GitHub contient le travail local poussé le 07/10 (jusqu'à P4-06, commit `417c791`) ; la branche **`claude/brave-pasteur-c7q4y7`** porte en plus les correctifs de CI, P4-06 (revue), P4-07 à P4-14 et AV-150. Sa fusion dans `main` (pull request) est à la main du porteur.
+- Tests au 10/10 (commit `7c18646`, base neuve `gic_agropelc_base`) : domaine **353** (24 fichiers, couverture 99,1 %), contrats **207** (7), base **180** (18), PWA **90** (13), serveur **939** (104 fichiers, ~8 à 30 min selon la charge du poste) ; typage, lint (0 erreur, 1 avertissement préexistant de la PWA), frontières et références verts. La CI GitHub n'a pas tourné sur ces commits (rien n'est poussé).
+- Git : `main` sur GitHub contient le travail local poussé le 07/10 (jusqu'à P4-06, commit `417c791`) ; la branche **`claude/brave-pasteur-c7q4y7`** porte en plus les correctifs de CI, P4-06 (revue), P4-07 à P4-14 et AV-150 (poussés le 07/10), puis, **en local seulement**, ADR-030, l'accueil PWA, P5-01 à P5-12, P5-15 et P5-16 (20 commits d'avance sur `origin` le 10/10). Sa fusion dans `main` (pull request) est à la main du porteur. Les branches locales `claude/p5-11-vente-quotas`, `claude/p5-12-sessions-caisse`, `claude/p5-15-remises-fonds`, `claude/p5-16-reception-sans-document` et leurs worktrees (`.claude/worktrees/p5-*`) sont les lots parallèles du 10/10, déjà réunis par squash : jetables.
 - Écrans PWA : **un seul écran métier**, l'accueil par rôle (ECR-ADM-03, 08/10/2026 : signaux, actions du jour, indicateurs, activité, état hors ligne), plus la connexion, le PIN et la synchronisation ; l'appareil n'applique encore que les jeux hors ligne de P0 (`apps/pwa/src/sync/pull.ts`) ; les API, les jeux hors ligne côté serveur et la logique partagée sont prêts. Aucun déploiement.
-- Avancement estimé : code serveur ≈ 72 %, projet complet ≈ 48 % (les écrans PWA, P5, P8, P9, P10 et le déploiement restent).
+- Avancement estimé : code serveur ≈ 78 %, projet complet ≈ 52 % (restent P5-13, P5-14, P5-17 à P5-24, P8, P9, P10, les écrans PWA et le déploiement).
 
-## 3. Ce qu'a fait la session du 07/10/2026 (environnement distant, MySQL 8.0)
+## 3. Ce qu'a fait la session du 10/10/2026 (poste local, MySQL 8.4)
+
+- **Correctif de tests repris** (`b77f195`) : la session parallèle du 08/10 (worktree `amazing-grothendieck-f04efd`, non commité, sur l'ancien `main`) avait stabilisé les tests de politiques de contrôle face à la date réelle (`withoutActivePolicies`, `neutralizePolicy`) ; repris sur la branche, deux pièges ajoutés au §1.
+- **Lot 1 de P5 en parallèle** (un worktree et une base MySQL neuve par incrément, conception, critique, implémentation, revue adverse, contre-vérification, corrections), puis **intégration séquentielle par squash** : P5-11 (`ea1f660`), P5-12 (`38b40b9`, ADR-034), P5-15 (`a8f9d2b`), P5-16 (`7c18646`) ; AV-166 à AV-182 (renumérotés sans trou à l'intégration).
+- **Leçons** : le mode parallèle lourd (≈ 80 agents, plus de 6 M jetons) a épuisé deux fois le quota du porteur ; développer **en séquentiel** par défaut et réserver les sous-agents (modèle choisi par tâche, Sonnet quand il suffit) aux revues et lectures parallélisables. Un `resumeFromRunId` de workflow parallèle rejoue en direct des agents déjà terminés (cache positionnel) : ne pas s'y fier.
+- **Base de test** : `gic_agropelc_test` porte encore 36 versions de paramètres `production.*` datées dans le futur (pollution du 08/10) ; sa recréation (suppression puis migrations et seeds) attend le porteur, le classificateur du mode automatique ayant refusé le `DROP DATABASE`. En attendant, les suites tournent sur **`gic_agropelc_base`** (base neuve, mêmes comptes que `db/.env`, nom de base remplacé) ; bases de lot jetables `gic_agropelc_p511`, `p512`, `p515`, `p516`.
+
+## 3 bis. Ce qu'a fait la session du 07/10/2026 (environnement distant, MySQL 8.0)
 
 - Dossier local poussé vers GitHub par le porteur ; travail poursuivi sur la branche `claude/brave-pasteur-c7q4y7`.
 - **CI rendue verte** : seeds dans la CI, tests du contrat d'accueil, exclusion des tests Playwright de vitest, faux positif gitleaks (gabarit de clés JWT), verrou de lecture partagé pour les frais généraux.
@@ -85,7 +92,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 
 ## 5. Par où commencer
 
-**Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **656**, base **117**, domaine **216**, contrats **165**, PWA **58**) avant toute modification ; en cas d'échec, le signaler au porteur.
+**Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **939**, base **180**, domaine **353**, contrats **207**, PWA **90**) avant toute modification ; en cas d'échec, le signaler au porteur.
 
 **Étape 1 — la suite** : **P5 est engagée** (le porteur l'a demandée le 08/10/2026 avec les valeurs par défaut) : reprendre au premier incrément non fait du backlog de P5 (plan §4, **P5-13**). Les autres choix restent ouverts si le porteur change de direction (choix multiple, recommandation en premier) :
 1. **P5 Distribution et points de vente** (en cours ; P4 en dépend pour la caisse) — sessions de caisse (ouverture, clôture, écart, validation), quotas d'appareil (`DEVICE_QUOTA`) et blocage de la vente hors ligne au-delà de l'allocation (AV-025), caisse du PDV dans le jeu `cash`, remises de fonds ;
