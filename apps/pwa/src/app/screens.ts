@@ -20,6 +20,12 @@ export const ROUTES = {
   sales: '/ventes',
   salePattern: '/ventes/:saleId',
   sale: (saleId: string) => `/ventes/${saleId}`,
+  newOrder: '/commandes/nouvelle',
+  orders: '/commandes',
+  orderPattern: '/commandes/:orderId',
+  order: (orderId: string) => `/commandes/${orderId}`,
+  deliverPattern: '/commandes/:orderId/livrer',
+  deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -32,6 +38,54 @@ const SELLER_ROLES = [
 ];
 /** Rôles qui lisent les ventes (`sales.sale.read`). */
 const SALE_READER_ROLES = [...SELLER_ROLES, 'DIRECTION', 'FINANCE'];
+
+/**
+ * Rôles par permission de vente (07-security-rbac/01-rbac.md) : ils décident des écrans et des
+ * actions proposés, jamais de l'autorisation, que le serveur revérifie.
+ */
+export const ROLE_SETS = {
+  saleRecord: SELLER_ROLES,
+  saleRead: SALE_READER_ROLES,
+  orderRead: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'MAGASINIER',
+    'FINANCE',
+  ],
+  /** `sales.price.override` (plafonds RC-06) : le vendeur de PDV n'y a pas droit. */
+  priceOverride: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'RESP_FERME',
+  ],
+  orderCreate: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  orderCancel: ['DIRECTION', 'RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  orderFulfil: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'MAGASINIER',
+  ],
+  paymentRecord: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
+    'FINANCE',
+  ],
+} as const satisfies Record<string, readonly string[]>;
+
+/** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
+export function holdsAnyRole(held: readonly string[], allowed: readonly string[]): boolean {
+  return held.length === 0 || held.some((role) => allowed.includes(role));
+}
 
 export type ScreenGroup = 'general' | 'sales' | 'stock' | 'crm' | 'procurement' | 'production';
 
@@ -76,6 +130,24 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: SELLER_ROLES,
     actionCodes: ['NEW_SALE'],
+    offline: true,
+  },
+  {
+    id: 'ECR-VEN-02',
+    path: ROUTES.newOrder,
+    labelKey: 'new_order',
+    group: 'sales',
+    roles: ROLE_SETS.orderCreate,
+    actionCodes: ['NEW_ORDER'],
+    offline: true,
+  },
+  {
+    id: 'ECR-VEN-03',
+    path: ROUTES.orders,
+    labelKey: 'orders',
+    group: 'sales',
+    roles: ROLE_SETS.orderRead,
+    actionCodes: ['FOLLOW_DELIVERIES'],
     offline: true,
   },
   {

@@ -34,6 +34,19 @@ interface StockPayloadLike {
 }
 
 /**
+ * Une opération acceptée par le serveur reste décomptée jusqu'à ce qu'un tirage complet du jeu
+ * `stock`, commencé après son acceptation, ait ramené le solde qui l'inclut (01-architecture-offline.md
+ * §4 : « le delta est retiré quand le pull a ramené l'état serveur qui l'inclut ») ; sinon un envoi
+ * réussi suivi d'un tirage interrompu ferait réapparaître la quantité vendue (ADR-051).
+ */
+function stillPending(command: OutboxCommand, stockPulledAt: string | undefined): boolean {
+  if (WAITING_STATUSES.has(command.status)) return true;
+  if (command.status !== 'SYNCED' && command.status !== 'SYNCED_WITH_WARNING') return false;
+  if (!command.synced_at) return false;
+  return stockPulledAt === undefined || stockPulledAt < command.synced_at;
+}
+
+/**
  * Quantités (unité de base, par `emplacement:produit`) que les opérations de l'appareil retirent
  * déjà de l'emplacement sans que le serveur l'ait encore confirmé :
  * - une vente directe, sur son emplacement source ;
@@ -43,10 +56,13 @@ interface StockPayloadLike {
  *   peut sous-estimer le disponible jusqu'à la synchronisation, jamais le surestimer).
  * Une livraison ne consomme pas l'emplacement : la marchandise vendue l'a déjà quitté (« à livrer »).
  */
-export function pendingConsumption(commands: readonly OutboxCommand[]): Map<string, number> {
+export function pendingConsumption(
+  commands: readonly OutboxCommand[],
+  stockPulledAt: string | undefined,
+): Map<string, number> {
   const milli = new Map<string, number>();
   for (const command of commands) {
-    if (!WAITING_STATUSES.has(command.status)) continue;
+    if (!stillPending(command, stockPulledAt)) continue;
     const payload = command.payload as StockPayloadLike;
     const locationId =
       command.command_type === 'sales.sale.record'
@@ -70,7 +86,7 @@ export function localAvailable(
   custodyMode: LocationData['custody_mode'],
   pending: number,
 ): number {
-  if (!balance) return fromMilli(-toMilli(pending));
+  if (!balance) return pending > 0 ? fromMilli(-toMilli(pending)) : 0;
   const onHand = Number(balance.qty_on_hand);
   const reserved = Number(balance.qty_reserved);
   const allocated = Number(balance.qty_allocated);
@@ -79,7 +95,7 @@ export function localAvailable(
     custodyMode === 'SHARED' || custodyMode === null
       ? availableOnShared(onHand, reserved, allocated, 0)
       : availableOnExclusive(onHand, reserved);
-  return fromMilli(toMilli(available) - toMilli(pending));
+  return fromMilli(toMilli(available) - toMilli(pending)) || 0;
 }
 
 /** Valeur d'un paramètre visible du client : réglage du site, à défaut global, le plus récent. */

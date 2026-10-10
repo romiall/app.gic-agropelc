@@ -8,17 +8,26 @@ import { getDb } from '../../storage/db.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { SyncEngine, type SyncEngineDeps } from '../../sync/engine.js';
 import { tryApplyPendingUpdate } from '../../platform/service-worker.js';
+import { reportSyncOutcome } from '../../platform/connectivity.js';
 
 let engine: SyncEngine | undefined;
 
-export function startSyncEngine(deviceId: string, onSessionInvalid: () => void): SyncEngine {
+export function startSyncEngine(
+  deviceId: string,
+  userId: string,
+  onSessionInvalid: () => void,
+): SyncEngine {
   const deps: SyncEngineDeps = {
     db: getDb(),
     clock,
     idGenerator,
     deviceId,
+    userId,
     onSessionInvalid,
-    onCycleComplete: () => void tryApplyPendingUpdate(),
+    onCycleComplete: (outcome) => {
+      reportSyncOutcome(outcome);
+      void tryApplyPendingUpdate();
+    },
   };
   engine = new SyncEngine(deps);
   engine.start();

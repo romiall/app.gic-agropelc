@@ -65,10 +65,15 @@ export async function runPushCycle(
   if (!result.ok) {
     // Pas de résultat serveur : les commandes redeviennent PENDING_SYNC (repartent au
     // prochain cycle) plutôt que SYNCING indéfiniment — reprise après coupure (§8).
+    // Premier envoi, lancé juste après la saisie, sans serveur joignable : la saisie a eu lieu sans
+    // réseau utilisable, c'est un fait hors ligne (ADR-051 ; BR-SYN-007). Une erreur HTTP prouve au
+    // contraire que le serveur était joignable : le drapeau n'est pas touché.
+    const unreachable = result.reason === 'OFFLINE';
     await db.outbox
       .where('command_id')
       .anyOf(batch.map((c) => c.command_id))
       .modify((c) => {
+        if (unreachable && c.attempts === 0) c.captured_offline = true;
         c.status = 'PENDING_SYNC';
         c.attempts += 1;
       });
@@ -83,12 +88,15 @@ export async function runPushCycle(
 
   await db.syncMeta.update('device', { clock_skew_ms: result.data.clock_skew_ms });
 
+  const syncedAt = deps.clock.now().toISOString();
   for (const commandResult of result.data.results) {
     const nextStatus = deviceStateAfterResult(commandResult.status);
+    const accepted = nextStatus === 'SYNCED' || nextStatus === 'SYNCED_WITH_WARNING';
     await db.outbox.update(commandResult.command_id, {
       status: nextStatus,
       server_refs: commandResult.server_refs ?? null,
       last_error: commandResult.error ?? null,
+      ...(accepted ? { synced_at: syncedAt } : {}),
     });
   }
 

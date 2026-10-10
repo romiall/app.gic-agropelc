@@ -8,6 +8,7 @@ import type { Clock, IdGenerator } from '@gic/domain';
 import type { GicDatabase } from '../storage/db.js';
 import { runPushCycle } from './push.js';
 import { runPullCycle } from './pull.js';
+import { resetInterruptedPushes } from './outbox.js';
 
 const PERIODIC_INTERVAL_MS = 30_000;
 const MAX_PUSH_BATCHES_PER_CYCLE = 20; // borne de sécurité (outbox anormalement longue)
@@ -19,6 +20,8 @@ export interface SyncEngineDeps {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly deviceId: string;
+  /** Utilisateur de la session : titulaire des jeux téléchargés (ADR-051). */
+  readonly userId?: string;
   readonly onSessionInvalid: () => void;
   /** Appelé après chaque cycle (ex. tenter l'activation d'un service worker en attente). */
   readonly onCycleComplete?: (outcome: SyncCycleOutcome) => void;
@@ -37,7 +40,10 @@ export async function runSyncCycle(deps: SyncEngineDeps): Promise<SyncCycleOutco
     pushed = true;
   }
 
-  const pullResult = await runPullCycle(deps.db, deps);
+  const pullResult = await runPullCycle(deps.db, {
+    clock: deps.clock,
+    ...(deps.userId ? { userId: deps.userId } : {}),
+  });
   if (pullResult.outcome === 'OFFLINE') return pushed ? 'SYNCED' : 'OFFLINE';
   if (pullResult.outcome === 'SESSION_INVALID') {
     deps.onSessionInvalid();
@@ -56,7 +62,9 @@ export class SyncEngine {
   start(): void {
     window.addEventListener('online', this.onlineListener);
     this.intervalId = setInterval(() => void this.trigger(), PERIODIC_INTERVAL_MS);
-    void this.trigger();
+    void resetInterruptedPushes(this.deps.db)
+      .catch(() => 0)
+      .then(() => this.trigger());
   }
 
   stop(): void {

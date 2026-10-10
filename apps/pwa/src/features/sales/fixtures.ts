@@ -268,3 +268,51 @@ export function saleRow(overrides: Record<string, unknown> = {}): Projection {
     { type: 'USER', id: IDS.user },
   );
 }
+
+export const ORDER_ID = '01900000-0000-7000-8000-0000000000e1';
+export const ORDER_LINE_ID = '01900000-0000-7000-8000-0000000000e2';
+
+/** Commande confirmée (jeu `orders`) : 10 commandés, 6 vendus, 2 livrés ; acompte versé. */
+export function orderRow(overrides: Record<string, unknown> = {}): Projection {
+  return row(
+    'orders',
+    'SALES_ORDER',
+    ORDER_ID,
+    {
+      id: ORDER_ID,
+      doc_number: 'CMD-2026-000045',
+      local_ref: null,
+      status: 'PARTIALLY_FULFILLED',
+      site_id: IDS.site,
+      customer_id: IDS.customer,
+      commercial_user_id: IDS.user,
+      created_by: IDS.user,
+      channel_code: 'SEDENTAIRE',
+      fulfilment_location_id: IDS.pos,
+      requested_delivery_date: '2026-10-12',
+      delivery_address: 'Marché Mvog-Mbi',
+      total_estimated_xaf: 35000,
+      advance_paid_xaf: 5000,
+      occurred_at: '2026-10-09T10:00:00.000Z',
+      version: 3,
+      lines: [
+        {
+          id: ORDER_LINE_ID,
+          line_no: 1,
+          product_id: IDS.chicken,
+          product_name: 'Poulet de chair',
+          quantity: 10,
+          unit_code: 'U',
+          quantity_base: 10,
+          withdrawn_quantity_base: 0,
+          sold_quantity_base: 6,
+          delivered_quantity_base: 2,
+          quoted_unit_price_xaf: 3500,
+          line_total_xaf: 35000,
+        },
+      ],
+      ...overrides,
+    },
+    { type: 'USER', id: IDS.user },
+  );
+}

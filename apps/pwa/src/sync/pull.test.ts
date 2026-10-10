@@ -58,33 +58,31 @@ describe('sync/pull (runPullCycle)', () => {
   });
 
   it('UPSERT avec données : projeté, DELETE : retiré des projections', async () => {
-    let call = 0;
+    // Seul le jeu 'user' reçoit des changements dans ce test, pour ne pas dupliquer les mêmes
+    // assertions sur chaque jeu.
+    const isUser = (input: unknown) => String(input).includes('dataset=user&');
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
-        call += 1;
-        // Seul le premier jeu de données ('user', KNOWN_DATASETS[0]) reçoit des changements
-        // dans ce test, pour ne pas dupliquer les mêmes assertions sur chaque jeu.
-        const body: PullResponse =
-          call === 1
-            ? {
-                changes: [
-                  {
-                    seq: 1,
-                    dataset: 'user',
-                    entity_type: 'USER',
-                    entity_id: 'user-1',
-                    change_type: 'UPSERT',
-                    scope_type: 'USER',
-                    scope_id: 'user-1',
-                    row_version: 1,
-                    data: { full_name: 'Alpha' },
-                  },
-                ],
-                next_cursor: 1,
-                has_more: false,
-              }
-            : emptyPullResponse();
+      vi.fn(async (input: unknown) => {
+        const body: PullResponse = isUser(input)
+          ? {
+              changes: [
+                {
+                  seq: 1,
+                  dataset: 'user',
+                  entity_type: 'USER',
+                  entity_id: 'user-1',
+                  change_type: 'UPSERT',
+                  scope_type: 'USER',
+                  scope_id: 'user-1',
+                  row_version: 1,
+                  data: { full_name: 'Alpha' },
+                },
+              ],
+              next_cursor: 1,
+              has_more: false,
+            }
+          : emptyPullResponse();
         return new Response(JSON.stringify(body), { status: 200 });
       }),
     );
@@ -95,30 +93,27 @@ describe('sync/pull (runPullCycle)', () => {
     expect((await db.syncCursors.get('user'))?.cursor).toBe(1);
 
     // Second cycle : le même enregistrement est supprimé (DELETE).
-    call = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
-        call += 1;
-        const body: PullResponse =
-          call === 1
-            ? {
-                changes: [
-                  {
-                    seq: 2,
-                    dataset: 'user',
-                    entity_type: 'USER',
-                    entity_id: 'user-1',
-                    change_type: 'DELETE',
-                    scope_type: 'USER',
-                    scope_id: 'user-1',
-                    row_version: 2,
-                  },
-                ],
-                next_cursor: 2,
-                has_more: false,
-              }
-            : emptyPullResponse();
+      vi.fn(async (input: unknown) => {
+        const body: PullResponse = isUser(input)
+          ? {
+              changes: [
+                {
+                  seq: 2,
+                  dataset: 'user',
+                  entity_type: 'USER',
+                  entity_id: 'user-1',
+                  change_type: 'DELETE',
+                  scope_type: 'USER',
+                  scope_id: 'user-1',
+                  row_version: 2,
+                },
+              ],
+              next_cursor: 2,
+              has_more: false,
+            }
+          : emptyPullResponse();
         return new Response(JSON.stringify(body), { status: 200 });
       }),
     );

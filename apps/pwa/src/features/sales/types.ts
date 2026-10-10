@@ -11,6 +11,8 @@ export interface ProductData {
   readonly name: string;
   readonly category_id: string;
   readonly base_unit_code: string;
+  /** `SERVICE` : aucun effet de stock (BR-VEN-031). */
+  readonly stock_family: string;
   readonly is_sellable: boolean;
   readonly pricing_mode: 'PER_UNIT' | 'PER_WEIGHT';
   readonly status: string;
@@ -103,6 +105,7 @@ export interface CustomerData {
   readonly contact_name: string | null;
   readonly category_id: string | null;
   readonly phone_primary: string | null;
+  readonly address_text: string | null;
   readonly zone_id: string;
   readonly owner_user_id: string | null;
   readonly home_site_id: string | null;
@@ -112,6 +115,28 @@ export interface CustomerData {
   readonly payment_terms_days: number | null;
   readonly outstanding_xaf: number;
   readonly version: number;
+}
+
+/** (`fieldwork`, portée `USER`) session de travail de l'agent. */
+export interface WorkSessionData {
+  readonly id: string;
+  readonly user_id: string;
+  readonly declared_zone_id: string;
+  readonly started_at: string;
+  readonly ended_at: string | null;
+  readonly status: string;
+}
+
+/** (`cash`) compte de trésorerie actif du détenteur, du responsable ou du site. */
+export interface CashAccountData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly account_type: string;
+  readonly site_id: string | null;
+  readonly holder_user_id: string | null;
+  readonly responsible_user_id: string;
+  readonly status: string;
 }
 
 /** (`catalog`, `PAYMENT_METHOD`) */

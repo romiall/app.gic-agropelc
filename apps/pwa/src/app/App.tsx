@@ -4,7 +4,7 @@
  * moteur de synchronisation avec le cycle de vie de la session.
  */
 import { useEffect } from 'react';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext.js';
 import { LoginScreen } from '../features/auth/LoginScreen.js';
@@ -12,7 +12,11 @@ import { PinSetupScreen } from '../features/auth/PinSetupScreen.js';
 import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { MenuScreen } from '../features/navigation/MenuScreen.js';
+import { DeliverScreen } from '../features/sales/DeliverScreen.js';
+import { NewOrderScreen } from '../features/sales/NewOrderScreen.js';
 import { NewSaleScreen } from '../features/sales/NewSaleScreen.js';
+import { OrderDetailScreen } from '../features/sales/OrderDetailScreen.js';
+import { OrdersScreen } from '../features/sales/OrdersScreen.js';
 import { SaleDetailScreen } from '../features/sales/SaleDetailScreen.js';
 import { SalesListScreen } from '../features/sales/SalesListScreen.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
@@ -20,17 +24,20 @@ import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
 import { countPending } from '../sync/outbox.js';
 import { getDb } from '../storage/db.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
 import { ROUTES } from './screens.js';
 
 function AppShell() {
   const { t } = useTranslation();
   const { state, deviceId, logout } = useAuth();
+  const location = useLocation();
 
+  const unlockedUserId = state.status === 'unlocked' ? state.userId : undefined;
   useEffect(() => {
-    if (state.status !== 'unlocked' || !deviceId) return;
-    startSyncEngine(deviceId, () => void logout());
+    if (!unlockedUserId || !deviceId) return;
+    startSyncEngine(deviceId, unlockedUserId, () => void logout());
     return () => stopSyncEngine();
-  }, [state.status, deviceId, logout]);
+  }, [unlockedUserId, deviceId, logout]);
 
   if (state.status === 'loading') return null;
 
@@ -59,14 +66,20 @@ function AppShell() {
         </nav>
       </header>
       <main className="app-main">
-        <Routes>
-          <Route path={ROUTES.home} element={<HomeScreen />} />
-          <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
-          <Route path={ROUTES.sync} element={<SyncScreen />} />
-          <Route path={ROUTES.newSale} element={<NewSaleScreen />} />
-          <Route path={ROUTES.sales} element={<SalesListScreen />} />
-          <Route path={ROUTES.salePattern} element={<SaleDetailScreen />} />
-        </Routes>
+        <ErrorBoundary resetKey={location.pathname}>
+          <Routes>
+            <Route path={ROUTES.home} element={<HomeScreen />} />
+            <Route path={ROUTES.menu} element={<MenuScreen onLogout={() => void onLogout()} />} />
+            <Route path={ROUTES.sync} element={<SyncScreen />} />
+            <Route path={ROUTES.newSale} element={<NewSaleScreen />} />
+            <Route path={ROUTES.sales} element={<SalesListScreen />} />
+            <Route path={ROUTES.salePattern} element={<SaleDetailScreen />} />
+            <Route path={ROUTES.newOrder} element={<NewOrderScreen />} />
+            <Route path={ROUTES.orders} element={<OrdersScreen />} />
+            <Route path={ROUTES.orderPattern} element={<OrderDetailScreen />} />
+            <Route path={ROUTES.deliverPattern} element={<DeliverScreen />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

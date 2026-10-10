@@ -1222,3 +1222,31 @@ ul.outbox-list li {
     border: none;
   }
 }
+
+.progress-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px 6px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.progress-grid dt {
+  grid-row: 1;
+  color: var(--color-grey);
+}
+
+.progress-grid dd {
+  grid-row: 2;
+  margin: 0;
+  font-weight: 700;
+}
+
+.order-actions {
+  margin-top: 16px;
+}
+
+.field-label {
+  font-size: 14px;
+  font-weight: 600;
+}

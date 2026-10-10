@@ -4,15 +4,20 @@
  * au prix catalogue résolu sur l'appareil, encaissement prérempli au total. Utilisable hors ligne :
  * la vente est enregistrée dans l'outbox et envoyée au retour du réseau (UX-05).
  *
- * Hors ligne, la vente est bloquée localement au-delà de ce que l'appareil peut vendre (BR-VEN-018,
- * AV-025 ; `decideLocalConsumption`) : stock local pour une garde exclusive, quota d'appareil pour un
- * emplacement partagé. En ligne, le serveur décide (stock, prix à jour, crédit, session de caisse).
+ * Hors ligne (serveur injoignable, ADR-051), la vente est bloquée localement au-delà de ce que
+ * l'appareil peut vendre (BR-VEN-018, AV-025 ; `decideLocalConsumption`) : stock local pour une garde
+ * exclusive (et l'appareil désigné pour une garde d'appareil), quota d'appareil pour un emplacement
+ * partagé ; une ligne de service n'a pas d'effet de stock (BR-VEN-031). En ligne, le serveur décide
+ * (stock, prix à jour, crédit, session de caisse).
+ *
+ * Prix : zone de la vente (BR-VEN-022), canal déduit comme le serveur (BR-VEN-021) ; seuls les rôles
+ * qui ont `sales.price.override` peuvent modifier un prix.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { creditCheck, xaf } from '@gic/domain';
-import { ROUTES } from '../../app/screens.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -20,14 +25,16 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
-import { deduceChannel } from './pricing.js';
+import { paymentIssues, paymentPayload } from './payment.js';
+import { EMPTY_PAYMENT, PaymentFields, type PaymentFieldsValue } from './PaymentFields.js';
+import { deduceChannel, openWorkSession, saleZoneId } from './pricing.js';
 import { ProductPicker } from './ProductPicker.js';
 import { useSalesReferences, type SalesReferences } from './references.js';
 import {
   computeLine,
   linePayload,
   parseXaf,
-  paymentPayload,
+  pricesMayBeStale,
   requestedByProduct,
   saleUnitsOf,
   sellingLocations,
@@ -50,7 +57,7 @@ function availableAt(refs: SalesReferences, location: LocationData, productId: s
 
 export function NewSaleScreen() {
   const { t } = useTranslation();
-  const { state } = useAuth();
+  const { state, deviceId } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const navigation = useRememberedNavigation(userId);
   const refs = useSalesReferences();
@@ -60,12 +67,10 @@ export function NewSaleScreen() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [picking, setPicking] = useState(false);
-  const [methodChoice, setMethodChoice] = useState<string | null>(null);
-  /** `null` : montant encaissé = total (préremplissage). */
-  const [amountText, setAmountText] = useState<string | null>(null);
-  const [reference, setReference] = useState('');
+  const [payment, setPayment] = useState<PaymentFieldsValue>(EMPTY_PAYMENT);
   const [submitted, setSubmitted] = useState<{ commandId: string; saleId: string }>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   if (!refs || !userId) {
     return (
@@ -79,10 +84,9 @@ export function NewSaleScreen() {
   const reset = () => {
     setCustomerId(null);
     setLines([]);
-    setMethodChoice(null);
-    setAmountText(null);
-    setReference('');
+    setPayment(EMPTY_PAYMENT);
     setSubmitted(undefined);
+    setSaveError(false);
   };
 
   if (submitted) {
@@ -113,21 +117,29 @@ export function NewSaleScreen() {
   }
 
   const now = clock.now();
+  const roles = navigation ? navigation.roles : null;
   const site = location.site_id ? refs.sites.get(location.site_id) : undefined;
   const customer = customerId
     ? refs.customers.find((candidate) => candidate.id === customerId)
     : undefined;
+  const session = openWorkSession(refs.workSessions, userId, now);
   const context: PricingContext = {
     at: now,
     siteId: site?.id,
-    siteZoneId: site?.zone_id,
+    zoneId: saleZoneId({
+      locationType: location.location_type,
+      siteZoneId: site?.zone_id,
+      customerZoneId: customer?.zone_id,
+      sessionZoneId: session?.declared_zone_id,
+    }),
     customerCategoryId: customer?.category_id,
     channelCode: deduceChannel({
       locationType: location.location_type,
-      roles: navigation?.roles ?? [],
-      hasOpenSession: false,
+      roles,
+      hasOpenSession: session !== undefined,
     }),
   };
+  const canOverride = holdsAnyRole(roles ?? [], ROLE_SETS.priceOverride);
   const productsById = new Map(refs.products.map((product) => [product.id, product]));
   const sellable = refs.products.filter(
     (product) => product.is_sellable && product.status === 'ACTIVE',
@@ -139,43 +151,59 @@ export function NewSaleScreen() {
   const total = totalOf(computed);
   const overrideReasons = refs.reasonCodes.filter((reason) => reason.category === 'PRICE_OVERRIDE');
 
-  // Blocage local hors ligne (AV-025) : par produit, toutes lignes confondues.
+  // Blocage local hors ligne (AV-025) : par produit, toutes lignes confondues, hors services.
   const blocks: string[] = [];
   if (!online) {
-    const overAllowed =
-      settingValue(refs.settings, 'sales.offline_over_allocation_allowed', site?.id, now) === true;
-    for (const [productId, requested] of requestedByProduct(computed)) {
-      if (requested <= 0) continue;
-      const decision = offlineSaleDecision({
-        location,
-        requested,
-        available: availableAt(refs, location, productId),
-        now,
-        overAllocationAllowed: overAllowed,
-      });
-      if (!decision.allowed) {
-        blocks.push(`${productsById.get(productId)?.name ?? ''} : ${decision.messageFr}`);
+    const requested = requestedByProduct(computed);
+    if (
+      requested.size > 0 &&
+      location.custody_mode === 'EXCLUSIVE_DEVICE' &&
+      location.designated_device_id !== deviceId
+    ) {
+      blocks.push(t('sales.custody_device_mismatch'));
+    } else {
+      const overAllowed =
+        settingValue(refs.settings, 'sales.offline_over_allocation_allowed', site?.id, now) ===
+        true;
+      for (const [productId, quantity] of requested) {
+        if (quantity <= 0) continue;
+        const decision = offlineSaleDecision({
+          location,
+          requested: quantity,
+          available: availableAt(refs, location, productId),
+          now,
+          overAllocationAllowed: overAllowed,
+        });
+        if (!decision.allowed) {
+          blocks.push(`${productsById.get(productId)?.name ?? ''} : ${decision.messageFr}`);
+        }
       }
     }
   }
 
   const methods = refs.paymentMethods;
   const method =
-    methods.find((candidate) => candidate.code === methodChoice) ??
+    methods.find((candidate) => candidate.code === payment.methodCode) ??
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
-  const amount = amountText === null ? total : parseXaf(amountText);
+  const amount = payment.amountText === null ? (total ?? 0) : parseXaf(payment.amountText);
   const paymentErrors: string[] = [];
-  if (amount === null) paymentErrors.push(t('sales.error_amount_invalid'));
+  if (total === null) paymentErrors.push(t('sales.error_total_invalid'));
+  else if (amount === null) paymentErrors.push(t('sales.error_amount_invalid'));
   else {
     if (amount > total) paymentErrors.push(t('sales.error_payment_exceeds'));
     if (!customer && amount < total) paymentErrors.push(t('sales.error_anonymous_full'));
-    if (method?.requires_reference && amount > 0 && !reference.trim()) {
-      paymentErrors.push(t('sales.error_reference_required'));
+    if (amount > 0) {
+      for (const issue of paymentIssues(
+        { method, amountXaf: amount, reference: payment.reference, accountId: payment.accountId },
+        refs.cashAccounts,
+      )) {
+        paymentErrors.push(t(`sales.payment_issue.${issue}`));
+      }
     }
   }
   const warnings: string[] = [];
-  if (customer && amount !== null && amount < total) {
+  if (customer && total !== null && amount !== null && amount < total) {
     const credit = creditCheck({
       creditAllowed: customer.credit_allowed,
       creditLimitXaf: customer.credit_limit_xaf === null ? null : xaf(customer.credit_limit_xaf),
@@ -193,7 +221,6 @@ export function NewSaleScreen() {
     computed.every((line) => line.issue === null) &&
     paymentErrors.length === 0 &&
     blocks.length === 0 &&
-    (amount === 0 || method !== undefined) &&
     !busy;
 
   const addProduct = (product: ProductData) => {
@@ -215,6 +242,7 @@ export function NewSaleScreen() {
   const submit = async () => {
     if (!ready || amount === null) return;
     setBusy(true);
+    setSaveError(false);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -223,18 +251,28 @@ export function NewSaleScreen() {
         payload: {
           fromLocationId: location.id,
           ...(customer ? { customerId: customer.id } : {}),
-          channelCode: context.channelCode,
+          ...(context.channelCode ? { channelCode: context.channelCode } : {}),
           lines: computed.map(linePayload),
           ...(amount > 0 && method
             ? {
                 payments: [
-                  paymentPayload({ methodCode: method.code, amountXaf: amount, reference }),
+                  paymentPayload(
+                    {
+                      method,
+                      amountXaf: amount,
+                      reference: payment.reference,
+                      accountId: payment.accountId,
+                    },
+                    refs.cashAccounts,
+                  ),
                 ],
               }
             : {}),
         },
       });
       setSubmitted({ commandId: command.command_id, saleId: command.aggregate_id });
+    } catch {
+      setSaveError(true);
     } finally {
       setBusy(false);
     }
@@ -248,26 +286,32 @@ export function NewSaleScreen() {
           {t('sales.offline_banner')}
         </p>
       ) : null}
+      {pricesMayBeStale(refs.lastSyncAt, now) ? (
+        <p className="home-banner">{t('sales.stale_prices')}</p>
+      ) : null}
 
       <div className="field">
-        <label htmlFor="sale-location">{t('sales.location_label')}</label>
         {locations.length > 1 ? (
-          <select
-            id="sale-location"
-            className="text-input"
-            value={location.id}
-            onChange={(event) => setLocationChoice(event.target.value)}
-          >
-            {locations.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
+          <>
+            <label htmlFor="sale-location">{t('sales.location_label')}</label>
+            <select
+              id="sale-location"
+              className="text-input"
+              value={location.id}
+              onChange={(event) => setLocationChoice(event.target.value)}
+            >
+              {locations.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </>
         ) : (
-          <p id="sale-location" className="picked-title">
-            {location.name}
-          </p>
+          <>
+            <span className="field-label">{t('sales.location_label')}</span>
+            <p className="picked-title">{location.name}</p>
+          </>
         )}
       </div>
 
@@ -291,6 +335,7 @@ export function NewSaleScreen() {
                 line={line}
                 units={saleUnitsOf(line.product, refs)}
                 overrideReasons={overrideReasons}
+                canOverride={canOverride}
                 onChange={(draft) =>
                   setLines((current) =>
                     current.map((candidate) => (candidate.key === draft.key ? draft : candidate)),
@@ -323,48 +368,18 @@ export function NewSaleScreen() {
         <h2 id="sale-payment-title">{t('sales.payment_title')}</h2>
         <p className="total-line">
           <span>{t('sales.total')}</span>
-          <strong data-testid="sale-total">{formatMoney(total)}</strong>
+          <strong data-testid="sale-total">{formatMoney(total ?? 0)}</strong>
         </p>
-        {methods.length > 0 ? (
-          <div className="field">
-            <label htmlFor="sale-method">{t('sales.method_label')}</label>
-            <select
-              id="sale-method"
-              className="text-input"
-              value={method?.code ?? ''}
-              onChange={(event) => setMethodChoice(event.target.value)}
-            >
-              {methods.map((candidate) => (
-                <option key={candidate.code} value={candidate.code}>
-                  {candidate.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        <div className="field">
-          <label htmlFor="sale-amount">{t('sales.amount_label')}</label>
-          <input
-            id="sale-amount"
-            className="text-input"
-            inputMode="numeric"
-            value={amountText ?? String(total)}
-            onChange={(event) => setAmountText(event.target.value)}
-          />
-        </div>
-        {method?.requires_reference ? (
-          <div className="field">
-            <label htmlFor="sale-reference">{t('sales.reference_label')}</label>
-            <input
-              id="sale-reference"
-              className="text-input"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-        ) : null}
-        {amount !== null && amount <= total ? (
+        <PaymentFields
+          methods={methods}
+          accounts={refs.cashAccounts}
+          method={method}
+          value={payment}
+          amountLabel={t('sales.amount_label')}
+          amountPlaceholder={String(total ?? 0)}
+          onChange={setPayment}
+        />
+        {total !== null && amount !== null && amount <= total ? (
           <p className="home-muted">
             {amount === total
               ? t('sales.fully_paid')
@@ -383,6 +398,11 @@ export function NewSaleScreen() {
           {message}
         </p>
       ))}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
 
       <button
         type="button"

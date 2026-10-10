@@ -13,6 +13,8 @@ interface SaleLineEditorProps {
   readonly line: ComputedLine;
   readonly units: readonly SaleUnit[];
   readonly overrideReasons: readonly ReasonCodeData[];
+  /** Rôle autorisé à déroger au prix (`sales.price.override`) ; sinon le prix catalogue s'impose. */
+  readonly canOverride: boolean;
   readonly onChange: (draft: DraftLine) => void;
   readonly onRemove: () => void;
 }
@@ -21,6 +23,7 @@ export function SaleLineEditor({
   line,
   units,
   overrideReasons,
+  canOverride,
   onChange,
   onRemove,
 }: SaleLineEditorProps) {
@@ -29,7 +32,7 @@ export function SaleLineEditor({
   const { draft, product } = line;
   const update = (patch: Partial<DraftLine>) => onChange({ ...draft, ...patch });
   const byWeight = product.pricing_mode === 'PER_WEIGHT';
-  const showPrice = draft.priceText !== null || line.catalog === null;
+  const showPrice = canOverride && (draft.priceText !== null || line.catalog === null);
 
   return (
     <li className="line-card" aria-label={product.name}>
@@ -86,22 +89,26 @@ export function SaleLineEditor({
       {line.catalog ? (
         <p className="line-price">
           {t('sales.unit_price', { amount: formatMoney(line.catalog.unitPriceXaf) })}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() =>
-              update(
-                draft.priceText === null
-                  ? { priceText: String(line.catalog?.unitPriceXaf ?? '') }
-                  : { priceText: null, overrideReasonId: null },
-              )
-            }
-          >
-            {draft.priceText === null ? t('sales.change_price') : t('sales.use_catalog_price')}
-          </button>
+          {canOverride ? (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() =>
+                update(
+                  draft.priceText === null
+                    ? { priceText: String(line.catalog?.unitPriceXaf ?? '') }
+                    : { priceText: null, overrideReasonId: null },
+                )
+              }
+            >
+              {draft.priceText === null ? t('sales.change_price') : t('sales.use_catalog_price')}
+            </button>
+          ) : null}
         </p>
       ) : (
-        <p className="line-price text-warn">{t('sales.no_catalog_price')}</p>
+        <p className="line-price text-warn">
+          {canOverride ? t('sales.no_catalog_price') : t('sales.no_catalog_price_no_override')}
+        </p>
       )}
 
       {showPrice ? (
@@ -137,7 +144,7 @@ export function SaleLineEditor({
         </div>
       ) : null}
 
-      {line.issue ? (
+      {line.issue && !(line.issue === 'PRICE_REQUIRED' && !canOverride) ? (
         <p className="error-message" role="alert">
           {t(`sales.issue.${line.issue}`)}
         </p>

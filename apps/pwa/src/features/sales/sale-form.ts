@@ -31,11 +31,14 @@ export const FULFILMENT_LOCATION_TYPES: readonly string[] = [
 ];
 
 /** Saisie décimale (virgule ou point) ; `null` si vide, non numérique, ≤ 0 ou plus de 3 décimales. */
+/** Borne de `numeric(14,3)` côté serveur (`sale-payload.ts`). */
+export const MAX_QUANTITY = 99_999_999_999.999;
+
 export function parseQuantity(text: string): number | null {
   const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
   if (!/^\d+(\.\d{1,3})?$/.test(normalized)) return null;
   const value = Number(normalized);
-  return value > 0 ? value : null;
+  return value > 0 && value <= MAX_QUANTITY ? value : null;
 }
 
 /** Montant en francs entiers ; `null` si vide ou invalide. */
@@ -70,6 +73,36 @@ export function sellingLocations(
       const mine = (location: LocationData) => (location.custodian_user_id === userId ? 0 : 1);
       return mine(a) - mine(b) || a.name.localeCompare(b.name, 'fr');
     });
+}
+
+/**
+ * Emplacements de préparation proposés pour une commande : tout emplacement physique actif d'un type
+ * admis (`order-commands.ts`), hors stock mobile d'un autre détenteur ; ceux du site du client, puis
+ * ceux dont l'appareil détient le stock, d'abord. La commande n'est jamais refusée faute de stock
+ * (ADR-028 §4) : un emplacement sans stock connu de l'appareil reste proposé.
+ */
+export function fulfilmentLocations(
+  refs: Pick<SalesReferences, 'locations' | 'stock'>,
+  userId: string,
+  customerSiteId: string | null | undefined,
+): LocationData[] {
+  const withStock = new Set([...refs.stock.values()].map((balance) => balance.location_id));
+  const rank = (location: LocationData) =>
+    (customerSiteId && location.site_id === customerSiteId ? 0 : 2) +
+    (withStock.has(location.id) ? 0 : 1);
+  return refs.locations
+    .filter(
+      (location) =>
+        FULFILMENT_LOCATION_TYPES.includes(location.location_type) &&
+        !location.is_virtual &&
+        location.status === 'ACTIVE' &&
+        !(
+          location.custody_mode === 'EXCLUSIVE_USER' &&
+          location.custodian_user_id !== null &&
+          location.custodian_user_id !== userId
+        ),
+    )
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'fr'));
 }
 
 export interface SaleUnit {
@@ -134,9 +167,11 @@ export interface ComputedLine {
 export interface PricingContext {
   readonly at: Date;
   readonly siteId: string | undefined;
-  readonly siteZoneId: string | undefined;
+  /** Zone de tarification (BR-VEN-022, `saleZoneId`). */
+  readonly zoneId: string | undefined;
   readonly customerCategoryId: string | null | undefined;
-  readonly channelCode: string;
+  /** `undefined` : canal laissé au serveur (rôles inconnus de l'appareil). */
+  readonly channelCode: string | undefined;
 }
 
 export function computeLine(
@@ -145,7 +180,7 @@ export function computeLine(
   refs: Pick<SalesReferences, 'productUnits' | 'priceRules' | 'zones' | 'campaigns'>,
   context: PricingContext,
 ): ComputedLine {
-  const empty = {
+  const empty: Omit<ComputedLine, 'issue'> = {
     draft,
     product,
     quantity: 0,
@@ -166,23 +201,45 @@ export function computeLine(
   if (quantity === null) return { ...empty, issue: 'QUANTITY_INVALID' };
   const byWeight = product.pricing_mode === 'PER_WEIGHT';
   const weight = byWeight ? parseQuantity(draft.weightText) : null;
+  // Toute valeur hors des bornes du domaine (quantité démesurée, montant non entier sûr…) devient un
+  // défaut de saisie de la ligne, jamais une exception dans le rendu.
+  try {
+    return computeValidLine(draft, product, refs, context, { empty, unit, quantity, weight });
+  } catch (error) {
+    if (error instanceof DomainError) {
+      return { ...empty, issue: draft.priceText === null ? 'QUANTITY_INVALID' : 'PRICE_INVALID' };
+    }
+    throw error;
+  }
+}
+
+function computeValidLine(
+  draft: DraftLine,
+  product: ProductData,
+  refs: Pick<SalesReferences, 'productUnits' | 'priceRules' | 'zones' | 'campaigns'>,
+  context: PricingContext,
+  input: {
+    readonly empty: Omit<ComputedLine, 'issue'>;
+    readonly unit: SaleUnit;
+    readonly quantity: number;
+    readonly weight: number | null;
+  },
+): ComputedLine {
+  const { empty, unit, quantity, weight } = input;
   const quantityBaseQ = convertToBaseQuantity(quantityFromDecimal(quantity), unit.factorToBase);
   const quantityBase = quantityToDecimal(quantityBaseQ);
   const partial = { ...empty, quantity, quantityBase };
-  if (byWeight && weight === null) return { ...partial, issue: 'WEIGHT_REQUIRED' };
-  let pricingQty: number;
-  try {
-    pricingQty = quantityToDecimal(
-      pricingQuantity({
-        pricingMode: product.pricing_mode,
-        quantityBase: quantityBaseQ,
-        weightKg: weight === null ? null : quantityFromDecimal(weight),
-      }),
-    );
-  } catch (error) {
-    if (error instanceof DomainError) return { ...partial, issue: 'QUANTITY_INVALID' };
-    throw error;
+  if (product.pricing_mode === 'PER_WEIGHT' && weight === null) {
+    return { ...partial, issue: 'WEIGHT_REQUIRED' };
   }
+  if (quantityBase > MAX_QUANTITY) return { ...partial, issue: 'QUANTITY_INVALID' };
+  const pricingQty = quantityToDecimal(
+    pricingQuantity({
+      pricingMode: product.pricing_mode,
+      quantityBase: quantityBaseQ,
+      weightKg: weight === null ? null : quantityFromDecimal(weight),
+    }),
+  );
   const catalog = quoteCatalogPrice(
     { productId: product.id, pricingQuantity: pricingQty, ...context },
     refs.priceRules,
@@ -215,21 +272,31 @@ export function computeLine(
   };
 }
 
-export function totalOf(lines: readonly ComputedLine[]): number {
+/** Total des lignes ; `null` s'il sort des montants représentables (saisie démesurée). */
+export function totalOf(lines: readonly ComputedLine[]): number | null {
   if (lines.length === 0) return 0;
-  return saleTotals(
-    lines.map((line) => ({
-      grossXaf: xaf(line.grossXaf),
-      discountXaf: xaf(line.discountXaf),
-      lineTotalXaf: xaf(line.lineTotalXaf),
-    })),
-  ).totalXaf;
+  try {
+    return saleTotals(
+      lines.map((line) => ({
+        grossXaf: xaf(line.grossXaf),
+        discountXaf: xaf(line.discountXaf),
+        lineTotalXaf: xaf(line.lineTotalXaf),
+      })),
+    ).totalXaf;
+  } catch (error) {
+    if (error instanceof DomainError) return null;
+    throw error;
+  }
 }
 
-/** Quantité demandée par produit (unité de base), toutes lignes confondues. */
+/**
+ * Quantité demandée par produit (unité de base), toutes lignes confondues, hors services : une ligne
+ * de service (frais de livraison) n'a aucun effet de stock (BR-VEN-031).
+ */
 export function requestedByProduct(lines: readonly ComputedLine[]): Map<string, number> {
   const milli = new Map<string, number>();
   for (const line of lines) {
+    if (line.product.stock_family === 'SERVICE') continue;
     milli.set(
       line.product.id,
       (milli.get(line.product.id) ?? 0) + Math.round(line.quantityBase * 1000),
@@ -257,17 +324,9 @@ export function linePayload(line: ComputedLine) {
   };
 }
 
-export interface PaymentDraft {
-  readonly methodCode: string;
-  readonly amountXaf: number;
-  readonly reference: string;
-}
+const STALE_PRICES_MS = 24 * 60 * 60 * 1000;
 
-export function paymentPayload(payment: PaymentDraft) {
-  const reference = payment.reference.trim();
-  return {
-    methodCode: payment.methodCode,
-    amountXaf: payment.amountXaf,
-    ...(reference ? { reference } : {}),
-  };
+/** Catalogue de prix plus vieux que 24 h (01-architecture-offline.md §8). */
+export function pricesMayBeStale(lastSyncAt: string | null, now: Date): boolean {
+  return lastSyncAt === null || now.getTime() - new Date(lastSyncAt).getTime() > STALE_PRICES_MS;
 }

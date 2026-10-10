@@ -41,7 +41,11 @@ export interface OutboxCommand {
   readonly depends_on: readonly string[];
   readonly occurred_at: string;
   readonly client_created_at: string;
-  readonly captured_offline: boolean;
+  /**
+   * État du réseau à la saisie. Mis à vrai si le premier envoi, lancé juste après la saisie, n'a pas
+   * pu joindre le serveur : la saisie a eu lieu sans réseau utilisable (ADR-051).
+   */
+  captured_offline: boolean;
   readonly backdated_reason: string | null;
   readonly attachment_ids: readonly string[];
   readonly payload: unknown;
@@ -50,6 +54,8 @@ export interface OutboxCommand {
   next_attempt_at: string | null;
   last_error: { readonly code: string; readonly message_fr: string } | null;
   server_refs: Record<string, string> | null;
+  /** Heure à laquelle le serveur a accepté la commande (`SYNCED`, `SYNCED_WITH_WARNING`). */
+  synced_at?: string | null;
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */
@@ -78,6 +84,11 @@ export interface Projection {
 export interface SyncCursor {
   readonly dataset: string; // clé primaire
   readonly cursor: number;
+  /**
+   * Heure de départ de la dernière requête d'un tirage complet du jeu (`has_more` faux) : tout ce
+   * que le serveur avait appliqué avant cette heure est sur l'appareil (ADR-051).
+   */
+  readonly pulled_at?: string;
 }
 
 export interface SyncMeta {
@@ -85,6 +96,8 @@ export interface SyncMeta {
   device_id: string;
   clock_skew_ms: number | null;
   last_sync_at: string | null;
+  /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-051). */
+  data_user_id?: string | null;
 }
 
 export interface SessionRecord {

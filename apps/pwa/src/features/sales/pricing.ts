@@ -66,12 +66,52 @@ export function activeCampaignIds(campaigns: readonly CampaignData[], at: Date):
  */
 export function deduceChannel(input: {
   readonly locationType: string | null;
-  readonly roles: readonly string[];
+  /** `null` : rôles inconnus de l'appareil (accueil jamais ouvert en ligne). */
+  readonly roles: readonly string[] | null;
   readonly hasOpenSession: boolean;
-}): string {
+}): string | undefined {
   if (input.locationType === 'POS') return 'POINT_DE_VENTE';
   if (input.locationType === 'MOBILE' || input.hasOpenSession) return 'TERRAIN';
+  // Sans les rôles, l'appareil ne sait pas trancher : il n'envoie pas de canal et le serveur le
+  // déduit lui-même (le prix affiché ignore alors les règles propres à un canal).
+  if (input.roles === null) return undefined;
   return input.roles.includes('COMMERCIAL_SEDENTAIRE') ? 'SEDENTAIRE' : 'DIRECT';
+}
+
+/**
+ * Zone de la vente (BR-VEN-022, `sale-commands.ts`) : zone du site pour une vente en point de vente,
+ * sinon zone du client, à défaut zone déclarée de la session de travail, à défaut zone du site. Une
+ * commande est tarifée dans la zone de son client (`order-commands.ts`).
+ */
+export function saleZoneId(input: {
+  readonly locationType: string | null;
+  readonly siteZoneId: string | undefined;
+  readonly customerZoneId: string | undefined;
+  readonly sessionZoneId: string | undefined;
+}): string | undefined {
+  if (input.locationType === 'POS') return input.siteZoneId;
+  return input.customerZoneId ?? input.sessionZoneId ?? input.siteZoneId;
+}
+
+interface SessionLike {
+  readonly user_id: string;
+  readonly declared_zone_id: string;
+  readonly started_at: string;
+  readonly ended_at: string | null;
+}
+
+/** Session de travail ouverte à l'instant (`findWorkSessionAt` côté serveur). */
+export function openWorkSession<T extends SessionLike>(
+  sessions: readonly T[],
+  userId: string,
+  at: Date,
+): T | undefined {
+  return sessions.find(
+    (session) =>
+      session.user_id === userId &&
+      new Date(session.started_at) <= at &&
+      (session.ended_at === null || new Date(session.ended_at) > at),
+  );
 }
 
 export interface CatalogPrice {
@@ -83,9 +123,10 @@ export interface QuoteInput {
   readonly productId: string;
   readonly at: Date;
   readonly siteId: string | undefined;
-  readonly siteZoneId: string | undefined;
+  /** Zone de tarification (`saleZoneId`). */
+  readonly zoneId: string | undefined;
   readonly customerCategoryId: string | null | undefined;
-  readonly channelCode: string;
+  readonly channelCode: string | undefined;
   /** Quantité de tarification (unité de base, ou kg pour un produit au poids), décimale. */
   readonly pricingQuantity: number;
 }
@@ -102,9 +143,9 @@ export function quoteCatalogPrice(
       productId: input.productId,
       at: input.at,
       ...(input.siteId ? { siteId: input.siteId } : {}),
-      zonePath: zonePathOf(input.siteZoneId, zones),
+      zonePath: zonePathOf(input.zoneId, zones),
       ...(input.customerCategoryId ? { customerCategoryId: input.customerCategoryId } : {}),
-      channelCode: input.channelCode,
+      ...(input.channelCode ? { channelCode: input.channelCode } : {}),
       quantity: input.pricingQuantity,
       activeCampaignIds: activeCampaignIds(campaigns, input.at),
     },

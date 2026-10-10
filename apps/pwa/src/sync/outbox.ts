@@ -98,6 +98,15 @@ export async function pendingAfterBatch(
   return remaining;
 }
 
+/**
+ * Reprise après interruption : une commande restée `SYNCING` (onglet fermé ou appareil éteint pendant
+ * l'envoi) n'a pas de réponse du serveur ; elle repart au prochain cycle. Le serveur est idempotent
+ * (`command_id`) : un renvoi d'une commande déjà appliquée rend le même résultat.
+ */
+export async function resetInterruptedPushes(db: GicDatabase): Promise<number> {
+  return db.outbox.where('status').equals('SYNCING').modify({ status: 'PENDING_SYNC' });
+}
+
 export async function countPending(db: GicDatabase): Promise<number> {
   return db.outbox.where('status').anyOf(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']).count();
 }

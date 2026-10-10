@@ -13,7 +13,9 @@
 | F-01 | Socle de l'appareil : jeux publiés depuis P1 | `215aedb` | `KNOWN_DATASETS` étendu aux 22 jeux publiés depuis P1 (34 en tout) (catalogue, prix, stock, quotas, CRM, achats, production, commandes, ventes récentes, caisses, communications) ; `SCOPE_EXIT` retiré par périmètre (une entité tenue par plusieurs périmètres reste tant qu'il en reste un) ; lecture typée des projections (`storage/projections.ts`, crochet `useProjected`) |
 | F-02 | Navigation par rôle ([ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md)) | `9fd96f7` | Registre des écrans livrés (`app/screens.ts`) ; route d'une action de l'accueil complétée par l'appareil quand le serveur renvoie `route: null` ; navigation mémorisée par utilisateur (store `navigation`, version 2 de la base locale) ; menu par rôle `/menu`, utilisable hors ligne, lien depuis l'en-tête et depuis l'accueil en erreur ; déconnexion déplacée dans le menu |
 | F-03 | ECR-VEN-01 « + Nouvelle vente » | `295b3f1` | Couche de données des ventes (`features/sales/`) : référentiels lus sur l'appareil, prix par `resolvePrice` avec le canal déduit comme le serveur (BR-VEN-021), disponible local (solde moins opérations en attente), blocage hors ligne par `decideLocalConsumption` (AV-025), envoi par l'outbox et suivi du résultat (UX-05). Écran : emplacement prérempli, client de passage ou identifié, articles (conditionnements, poids, dérogation de prix avec motif), encaissement prérempli au total, référence exigée selon le moyen. Correctif du socle : clé locale d'un solde de stock = emplacement × produit |
-| F-04 | ECR-VEN-05 « Détail d'une vente (reçu, annulation) » et ventes récentes | _à venir_ | Ventes des 7 derniers jours (jeu `sales_recent`) complétées par les ventes de l'appareil pas encore confirmées (en attente, refusées, en conflit) ; reçu composé sur l'appareil, imprimable ; annulation par `sales.sale.cancel` (motif `CANCELLATION` ou commentaire, sort de la somme encaissée d'un client identifié), immédiate dans le délai `sales.direct_cancel_minutes` pour le vendeur, sinon demande soumise à validation ; annulation d'une vente encore sur l'appareil chaînée par `depends_on` ; rôles du registre alignés sur la matrice RBAC (`sales.sale.record`, `sales.sale.read`) |
+| F-04 | ECR-VEN-05 « Détail d'une vente (reçu, annulation) » et ventes récentes | `a643f36` | Ventes des 7 derniers jours (jeu `sales_recent`) complétées par les ventes de l'appareil pas encore confirmées (en attente, refusées, en conflit) ; reçu composé sur l'appareil, imprimable ; annulation par `sales.sale.cancel` (motif `CANCELLATION` ou commentaire, sort de la somme encaissée d'un client identifié), immédiate dans le délai `sales.direct_cancel_minutes` pour le vendeur, sinon demande soumise à validation ; annulation d'une vente encore sur l'appareil chaînée par `depends_on` ; rôles du registre alignés sur la matrice RBAC (`sales.sale.record`, `sales.sale.read`) |
+| — | Correctif : disponible local | `ad5516b` | Une livraison ne consomme plus l'emplacement (la part vendue l'a quitté à la confirmation, ADR-028) ; une commande passée sur l'appareil, oui |
+| F-05 | ECR-VEN-02, 03, 04 et corrections de la revue adverse | _à venir_ | Nouvelle commande (client obligatoire, préparation, prix convenu, date et adresse, acompte) ; commandes ouvertes avec filtres « à livrer » et « en attente de stock », commandes livrées ou closes lues en ligne ; détail (progression des lignes, livrer, vendre le disponible, annuler ou clôturer le reste) ; livraison plafonnée au reste à livrer, livraisons de l'appareil en attente déduites. Corrections confirmées par la revue adverse (8 agents ; 30 constats proposés, 28 confirmés, une quinzaine de défauts distincts une fois les doublons entre dimensions regroupés) : synchronisation durcie ([ADR-051](../decisions/ADR-051-synchronisation-appareil-durcie.md)), zone de tarification (BR-VEN-022), canal laissé au serveur si les rôles sont inconnus, dérogation de prix réservée aux rôles qui ont `sales.price.override`, services sans effet de stock (BR-VEN-031), garde d'appareil hors ligne (`EXCLUSIVE_DEVICE`), compte de réception désigné ou à choisir (AV-300), référence envoyée seulement si le moyen l'exige et bornée à 80 caractères, saisies démesurées et erreurs d'enregistrement rattrapées, garde-fou d'affichage, bandeau « prix peut-être non à jour » au-delà de 24 h, disponible jamais « -0 » |
 
 ## 2. Écrans
 
@@ -24,6 +26,9 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 | ECR-ADM-03 | `/` et `/menu` | Enrichi (F-02) | Menu : oui ; accueil : non | Actions routées par le registre de l'appareil (ADR-050) |
 | ECR-VEN-01 | `/ventes/nouvelle` | Livré (F-03) | Oui, dans la limite du stock exclusif ; emplacement partagé bloqué hors ligne tant que les quotas ne sont pas servis (S-05) | Action `NEW_SALE` |
 | ECR-VEN-05 | `/ventes` et `/ventes/:saleId` | Livré (F-04) | Oui (7 derniers jours connus de l'appareil) | Reçu imprimable ; annulation directe ou demande |
+| ECR-VEN-02 | `/commandes/nouvelle` | Livré (F-05) | Oui | Action `NEW_ORDER` ; pas de brouillon (`save_draft` est en ligne seulement) |
+| ECR-VEN-03 | `/commandes` et `/commandes/:orderId` | Livré (F-05) | Partiel : ouvertes hors ligne, livrées ou closes en ligne | Action `FOLLOW_DELIVERIES` |
+| ECR-VEN-04 | `/commandes/:orderId/livrer` | Livré (F-05) | Oui | Depuis le détail d'une commande |
 
 ## 3. Vérifications
 
@@ -33,6 +38,7 @@ Statut des écrans touchés par le fork (le statut de référence reste dans [`0
 | F-02 | 105 verts (17 fichiers) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 | F-03 | 17 verts sur les ventes (logique et écran, dont une vente hors ligne) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 | F-04 | 5 verts (liste, reçu, annulation directe, annulation chaînée à une vente hors ligne, vente inconnue) | OK | OK | OK | Différé : connexion requise (voir § 7) |
+| F-05 | 153 verts (24 fichiers), dont commandes (5), synchronisation durcie (6), encaissement (4), garde-fou (2) | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 ## 4. Besoins côté serveur et contrats
 
@@ -47,6 +53,9 @@ Constats faits en construisant les écrans, sans modification du serveur ni des 
 | S-05 | Lecteur de projection `STOCK_ALLOCATION` (jeu `allocations`, prévu en P5-18) : les lignes sont émises mais aucun lecteur ne les sert | Sans quota sur l'appareil, `decideLocalConsumption` bloque toute vente hors ligne sur un emplacement partagé (AV-025) | Quota tenu pour absent ; vente hors ligne possible sur un stock à garde exclusive, ou si le site autorise le dépassement (`sales.offline_over_allocation_allowed`) |
 | S-06 | Profondeur de zone (`zone_depth`) absente de la projection `PRICE_RULE` | `resolvePrice` en a besoin pour la spécificité | Lue dans la projection `ZONE` de la règle (à défaut 1) |
 | S-07 | Unités (`catalog_units`) et canaux de vente non synchronisés (aucun lecteur) ; données semées absentes du flux, sauf les moyens de paiement | Libellés d'unités et canaux inconnus de l'appareil ; un appareil neuf ne reçoit ni produits ni paramètres semés | Codes d'unité affichés tels quels ; canal déduit et envoyé explicitement ; paramètres absents = valeurs par défaut |
+| S-09 | Comptes de trésorerie mobile money et bancaires de l'entreprise : servis par le jeu `cash` à leurs seuls responsables ; la résolution du serveur est ambiguë dès deux comptes du type (`CASH_ACCOUNT_AMBIGUOUS`), même hors ligne | Un vendeur ne peut ni désigner le compte ni le laisser au serveur quand l'entreprise a un compte Orange et un compte MTN : tout encaissement mobile money est refusé | AV-300 : compte désigné quand l'appareil le connaît (seul compte du type d'office, choix si plusieurs) ; sinon laissé au serveur, avec un avertissement |
+| S-10 | Unités (`catalog_units.is_count`) non synchronisées | Une quantité fractionnaire d'un produit compté est refusée par le serveur (`LINE_INVALID`), même hors ligne : la vente faite est perdue | Aucune : l'appareil ne sait pas quelle unité est comptée ; saisie par défaut entière (1) |
+| S-11 | Session de caisse ouverte absente du jeu `cash` (prévue en P5-18) | P5-14 exige une session ouverte pour un encaissement en espèces au PDV (`CASH_SESSION_REQUIRED` en ligne, `CASH_SESSION_MISSING` hors ligne) : l'appareil ne peut pas prévenir | Le refus du serveur est affiché en clair ; aucun contrôle local |
 | S-08 | Une règle de prix retirée ou annulée n'est jamais retirée de l'appareil (pas de `DELETE` ni de `SCOPE_EXIT`) | Prix catalogue périmé hors ligne jusqu'à la fin de validité de la règle | Le serveur signale `PRICE_MISMATCH` ; en ligne, `PRICE_OUTDATED` est expliqué à l'écran |
 
 ## 5. AV proposés
@@ -57,6 +66,7 @@ Tant qu'ils ne sont pas reportés dans le registre, `check_refs.py` signale ces 
 
 | AV | Question | Défaut implémenté | Classe |
 |---|---|---|---|
+| AV-300 | Quel compte reçoit un encaissement mobile money ou bancaire quand l'entreprise a plusieurs comptes du type (Orange et MTN) et que l'appareil du vendeur n'en connaît aucun ? Pourquoi : BR-FIN-002 et AV-139 laissent l'appareil désigner le compte, mais le jeu `cash` ne sert ces comptes qu'à leurs responsables ; le serveur refuse alors l'encaissement (`CASH_ACCOUNT_AMBIGUOUS`), y compris une vente faite hors ligne. Choix : (a) publier les comptes d'entreprise à tous les appareils qui encaissent ; (b) rattacher chaque moyen de paiement à un compte (Orange → compte Orange) ; (c) laisser l'appareil sans compte et accepter l'encaissement en attente d'affectation par la Finance. Recommandation : (b), simple et sans saisie de plus pour le vendeur ; (c) pour les faits hors ligne. Impact : serveur (`cash-account-resolution.ts`, jeu `cash`), PWA (bloc d'encaissement) | Compte désigné quand l'appareil le connaît : seul compte du type d'office, choix obligatoire s'il y en a plusieurs ; sinon aucun compte envoyé et avertissement affiché (`payment.ts`) | Important |
 
 ## 6. ADR proposés
 
@@ -64,6 +74,7 @@ Plage réservée au fork : ADR numérotés de 050 à 059.
 
 | ADR | Décision |
 |---|---|
+| [ADR-051](../decisions/ADR-051-synchronisation-appareil-durcie.md) | Synchronisation de l'appareil durcie : joignabilité réelle du serveur, `captured_offline` constaté au premier envoi, décompte jusqu'au tirage du stock, reprise des envois interrompus, un seul titulaire des données, `allocations` non tiré tant qu'il n'est pas servi. Ligne d'index à ajouter à la fusion |
 | [ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md) | Navigation par rôle sur l'appareil : registre des écrans de la PWA, route complétée par l'appareil, navigation mémorisée hors ligne (store `navigation`), menu `/menu`. Ligne d'index à ajouter dans `docs/decisions/README.md` à la fusion |
 
 ## 7. Environnement du fork

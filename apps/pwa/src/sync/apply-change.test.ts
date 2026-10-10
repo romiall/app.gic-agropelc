@@ -37,7 +37,6 @@ describe('sync/pull — jeux publiés et périmètres (applyChange)', () => {
       'stock',
       'transfers',
       'counts',
-      'allocations',
       'customers',
       'crm_activity',
       'fieldwork',
@@ -51,6 +50,8 @@ describe('sync/pull — jeux publiés et périmètres (applyChange)', () => {
       expect(KNOWN_DATASETS).toContain(dataset);
     }
     expect(KNOWN_DATASETS).not.toContain('product_standard_cost');
+    // Pas servi tant que le serveur n'a pas de lecteur (S-05) : le curseur sauterait des lignes.
+    expect(KNOWN_DATASETS).not.toContain('allocations');
     expect(new Set(KNOWN_DATASETS).size).toBe(KNOWN_DATASETS.length);
   });
 

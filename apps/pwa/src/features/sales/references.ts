@@ -11,6 +11,7 @@ import { listProjected } from '../../storage/projections.js';
 import { toPriceRules } from './pricing.js';
 import { pendingConsumption, stockKey } from './stock.js';
 import type {
+  CashAccountData,
   CampaignData,
   CustomerData,
   CustomerPaymentData,
@@ -24,6 +25,7 @@ import type {
   SalesOrderData,
   SettingData,
   SiteData,
+  WorkSessionData,
   StockBalanceData,
   ZoneData,
 } from './types.js';
@@ -44,9 +46,14 @@ export interface SalesReferences {
   readonly paymentMethods: readonly PaymentMethodData[];
   readonly reasonCodes: readonly ReasonCodeData[];
   readonly settings: readonly SettingData[];
+  readonly workSessions: readonly WorkSessionData[];
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
+  /** Comptes de trésorerie actifs servis à l'appareil (jeu `cash`). */
+  readonly cashAccounts: readonly CashAccountData[];
+  /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
+  readonly lastSyncAt: string | null;
   /** Commandes de vente de l'outbox, tous statuts (affichage des opérations en attente). */
   readonly outbox: readonly OutboxCommand[];
 }
@@ -56,6 +63,9 @@ const byId = <T extends { readonly id: string }>(rows: readonly T[]): Map<string
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    cashAccounts,
+    stockCursor,
+    meta,
     products,
     productUnits,
     priceRules,
@@ -68,11 +78,15 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     paymentMethods,
     reasonCodes,
     settings,
+    workSessions,
     orders,
     sales,
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
+    db.syncCursors.get('stock'),
+    db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
     listProjected<PriceRuleData>(db, 'price_rule', 'PRICE_RULE'),
@@ -85,6 +99,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<PaymentMethodData>(db, 'catalog', 'PAYMENT_METHOD'),
     listProjected<ReasonCodeData>(db, 'reason_code', 'REASON_CODE'),
     listProjected<SettingData>(db, 'setting', 'SETTING'),
+    listProjected<WorkSessionData>(db, 'fieldwork', 'WORK_SESSION'),
     listProjected<SalesOrderData>(db, 'orders', 'SALES_ORDER'),
     listProjected<SaleData>(db, 'sales_recent', 'SALE'),
     listProjected<CustomerPaymentData>(db, 'sales_recent', 'CUSTOMER_PAYMENT'),
@@ -103,14 +118,17 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stock: new Map(
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
-    pending: pendingConsumption(outbox),
+    pending: pendingConsumption(outbox, stockCursor?.pulled_at),
     customers: customers.filter((customer) => customer.merged_into_id === null),
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     reasonCodes: reasonCodes.filter((reason) => reason.is_active),
     settings,
+    workSessions,
     orders: orderMap,
     sales,
     payments,
+    cashAccounts,
+    lastSyncAt: meta?.last_sync_at ?? null,
     outbox,
   };
 }

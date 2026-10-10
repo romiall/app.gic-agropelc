@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDb, type GicDatabase, type OutboxCommand } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from './fixtures.js';
-import { activeCampaignIds, deduceChannel, zonePathOf } from './pricing.js';
+import { activeCampaignIds, deduceChannel, saleZoneId, zonePathOf } from './pricing.js';
 import { loadSalesReferences, type SalesReferences } from './references.js';
 import {
   computeLine,
   linePayload,
   parseQuantity,
   parseXaf,
+  requestedByProduct,
   sellingLocations,
   totalOf,
   type DraftLine,
@@ -59,6 +60,33 @@ describe('ventes — prix sur l’appareil', () => {
     ).toEqual(['x']);
   });
 
+  it('zone de la vente (BR-VEN-022) : site au PDV, sinon client, session, site', () => {
+    const base = { siteZoneId: 'zs', customerZoneId: 'zc', sessionZoneId: 'zw' };
+    expect(saleZoneId({ ...base, locationType: 'POS' })).toBe('zs');
+    expect(saleZoneId({ ...base, locationType: 'MOBILE' })).toBe('zc');
+    expect(saleZoneId({ ...base, locationType: 'MOBILE', customerZoneId: undefined })).toBe('zw');
+    expect(
+      saleZoneId({
+        locationType: 'PEN',
+        siteZoneId: 'zs',
+        customerZoneId: undefined,
+        sessionZoneId: undefined,
+      }),
+    ).toBe('zs');
+  });
+
+  it('rôles inconnus de l’appareil : canal laissé au serveur hors PDV, stock mobile et session', () => {
+    expect(
+      deduceChannel({ locationType: 'STORE', roles: null, hasOpenSession: false }),
+    ).toBeUndefined();
+    expect(deduceChannel({ locationType: 'POS', roles: null, hasOpenSession: false })).toBe(
+      'POINT_DE_VENTE',
+    );
+    expect(deduceChannel({ locationType: 'STORE', roles: null, hasOpenSession: true })).toBe(
+      'TERRAIN',
+    );
+  });
+
   it('canal déduit comme le serveur (BR-VEN-021)', () => {
     expect(deduceChannel({ locationType: 'POS', roles: [], hasOpenSession: false })).toBe(
       'POINT_DE_VENTE',
@@ -89,7 +117,7 @@ describe('ventes — saisie et montants', () => {
     context = {
       at: NOW,
       siteId: IDS.site,
-      siteZoneId: IDS.zone,
+      zoneId: IDS.zone,
       customerCategoryId: null,
       channelCode: 'POINT_DE_VENTE',
     };
@@ -166,6 +194,24 @@ describe('ventes — saisie et montants', () => {
     expect(totalOf([withReason])).toBe(900);
   });
 
+  it('saisie démesurée : défaut de ligne, jamais d’exception ; total hors limites signalé', () => {
+    expect(parseQuantity('100000000000')).toBeNull();
+    const huge = computeLine(
+      draft({ quantityText: '99999999999', priceText: '999999999', overrideReasonId: IDS.reason }),
+      product(IDS.eggs),
+      refs,
+      context,
+    );
+    expect(huge.issue).toBe('PRICE_INVALID');
+    expect(totalOf([huge])).toBe(0);
+  });
+
+  it('service (BR-VEN-031) : aucune quantité demandée au stock', () => {
+    const service = { ...product(IDS.eggs), stock_family: 'SERVICE' };
+    const line = computeLine(draft(), service, refs, context);
+    expect(requestedByProduct([line]).size).toBe(0);
+  });
+
   it('produit au poids : le poids est exigé', () => {
     const byWeight = { ...product(IDS.chicken), pricing_mode: 'PER_WEIGHT' as const };
     expect(computeLine(draft({ productId: IDS.chicken }), byWeight, refs, context).issue).toBe(
@@ -179,30 +225,54 @@ describe('ventes — saisie et montants', () => {
 });
 
 describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
-  it('ventes et commandes en attente réduisent le disponible ; livraisons et opérations confirmées non', () => {
-    const pending = pendingConsumption([
-      outbox('sales.sale.record', {
-        fromLocationId: 'loc',
-        lines: [
-          { productId: 'p', quantityBase: 1.5 },
-          { productId: 'p', quantityBase: 0.25 },
-        ],
-      }),
-      outbox('sales.order.place', {
-        fulfilmentLocationId: 'loc',
-        lines: [{ productId: 'p', quantityBase: 2 }],
-      }),
-      // La marchandise livrée a quitté l'emplacement à la confirmation (ADR-028) : pas de décompte.
-      outbox('sales.order.fulfil', {
-        orderId: 'o1',
-        lines: [{ orderLineId: 'ol1', quantityBase: 5 }],
-      }),
-      outbox(
+  it('une vente acceptée reste décomptée jusqu’au tirage du stock qui l’inclut (ADR-051)', () => {
+    const accepted = {
+      ...outbox(
         'sales.sale.record',
-        { fromLocationId: 'loc', lines: [{ productId: 'p', quantityBase: 9 }] },
+        { fromLocationId: 'loc', lines: [{ productId: 'p', quantityBase: 4 }] },
         'SYNCED',
       ),
-    ]);
+      synced_at: '2026-10-10T09:00:00.000Z',
+    };
+    // Jamais tiré, ou tiré avant l'acceptation : la quantité vendue reste retirée.
+    expect(pendingConsumption([accepted], undefined).get('loc:p')).toBe(4);
+    expect(pendingConsumption([accepted], '2026-10-10T08:59:59.000Z').get('loc:p')).toBe(4);
+    // Tiré après l'acceptation : le solde téléchargé l'inclut, plus de décompte.
+    expect(pendingConsumption([accepted], '2026-10-10T09:00:01.000Z').get('loc:p')).toBeUndefined();
+  });
+
+  it('aucun solde ni opération en attente : disponible 0, jamais « -0 »', () => {
+    expect(Object.is(localAvailable(undefined, 'EXCLUSIVE_USER', 0), 0)).toBe(true);
+  });
+
+  it('ventes et commandes en attente réduisent le disponible ; livraisons et opérations confirmées non', () => {
+    const pending = pendingConsumption(
+      [
+        outbox('sales.sale.record', {
+          fromLocationId: 'loc',
+          lines: [
+            { productId: 'p', quantityBase: 1.5 },
+            { productId: 'p', quantityBase: 0.25 },
+          ],
+        }),
+        outbox('sales.order.place', {
+          fulfilmentLocationId: 'loc',
+          lines: [{ productId: 'p', quantityBase: 2 }],
+        }),
+        // La marchandise livrée a quitté l'emplacement à la confirmation (ADR-028) : pas de décompte.
+        outbox('sales.order.fulfil', {
+          orderId: 'o1',
+          lines: [{ orderLineId: 'ol1', quantityBase: 5 }],
+        }),
+        // Acceptée sans heure d'acceptation (ligne ancienne) : plus décomptée.
+        outbox(
+          'sales.sale.record',
+          { fromLocationId: 'loc', lines: [{ productId: 'p', quantityBase: 9 }] },
+          'SYNCED',
+        ),
+      ],
+      undefined,
+    );
     expect(pending.get('loc:p')).toBe(3.75);
     const balance = {
       location_id: 'loc',

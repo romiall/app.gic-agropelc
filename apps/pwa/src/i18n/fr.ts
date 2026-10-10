@@ -90,6 +90,10 @@ export const fr = {
       new_sale: '+ Nouvelle vente',
       sales: 'Ventes récentes',
       sale_detail: 'Détail d’une vente',
+      new_order: '+ Nouvelle commande',
+      orders: 'Commandes',
+      order_detail: 'Détail d’une commande',
+      deliver: 'Livrer une commande',
     },
   },
   sales: {
@@ -139,10 +143,30 @@ export const fr = {
     fully_paid: 'Payé en totalité',
     error_payment_exceeds: 'Le montant encaissé dépasse le total.',
     error_amount_invalid: 'Montant encaissé invalide (francs entiers).',
+    error_total_invalid: 'Montant total hors limites : vérifiez les quantités et les prix.',
+    error_local_save:
+      'Enregistrement impossible sur cet appareil. Réessayez ; si le problème persiste, synchronisez puis redémarrez l’application.',
+    no_payment_method: 'Aucun moyen de paiement sur cet appareil : synchronisez.',
+    account_label: 'Compte de réception',
+    account_placeholder: 'Choisir le compte',
+    account_unknown_hint:
+      'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance (AV-300).',
+    payment_issue: {
+      AMOUNT_INVALID: 'Montant encaissé invalide (francs entiers).',
+      REFERENCE_REQUIRED:
+        'La référence de la transaction est obligatoire pour ce moyen de paiement.',
+      REFERENCE_TOO_LONG: 'Référence trop longue (80 caractères au plus).',
+      ACCOUNT_REQUIRED: 'Choisissez le compte qui reçoit le paiement.',
+      METHOD_REQUIRED: 'Choisissez un moyen de paiement.',
+    },
+    stale_prices:
+      'Prix peut-être non à jour : aucune synchronisation complète depuis plus de 24 h. Le serveur signalera tout écart.',
+    no_catalog_price_no_override:
+      'Aucun prix catalogue pour ce produit ici : vente impossible sans dérogation, que votre rôle n’autorise pas.',
+    custody_device_mismatch:
+      'Ce stock est confié à un autre appareil : la vente hors ligne n’est pas possible ici.',
     error_anonymous_full:
       'Un client de passage paie la totalité : choisissez un client pour une vente à crédit.',
-    error_reference_required:
-      'La référence de la transaction est obligatoire pour ce moyen de paiement.',
     warning_credit_not_allowed:
       'Ce client n’a pas droit au crédit : le serveur refusera la vente en ligne.',
     warning_credit_limit: 'Plafond de crédit dépassé de {{amount}}.',
@@ -229,6 +253,140 @@ export const fr = {
         REJECTED: 'Annulation refusée : {{reason}}',
       },
     },
+  },
+  orders: {
+    customer_required: 'Choisissez le client de la commande.',
+    fulfilment_label: 'Préparée à',
+    no_fulfilment: 'Aucun emplacement de préparation connu de l’appareil : synchronisez.',
+    stock_note:
+      'La commande n’est jamais refusée faute de stock : le disponible est vendu à la confirmation, le reste attend.',
+    delivery_title: 'Livraison',
+    delivery_date_label: 'Livraison souhaitée le',
+    delivery_address_label: 'Adresse de livraison',
+    weight_not_orderable:
+      'Un produit vendu au poids ne se commande pas : faites une vente directe.',
+    total_estimated: 'Total estimé',
+    advance_title: 'Acompte',
+    advance_toggle: 'Encaisser un acompte',
+    advance_amount_label: 'Montant de l’acompte (F CFA)',
+    error_advance_exceeds: 'L’acompte dépasse le total estimé.',
+    error_advance_invalid: 'Montant de l’acompte invalide (francs entiers).',
+    warning_credit_not_allowed:
+      'Ce client n’a pas droit au crédit : le serveur refusera la commande en ligne si le reste n’est pas payé.',
+    warning_credit_limit:
+      'Plafond de crédit dépassé de {{amount}} : le serveur refusera la commande en ligne si le reste n’est pas payé.',
+    offline_banner:
+      'Hors ligne : la commande sera enregistrée sur ce téléphone et confirmée par le serveur au retour du réseau.',
+    submit: 'Passer la commande',
+    new_order: 'Nouvelle commande',
+    view_orders: 'Voir les commandes',
+    status: {
+      PENDING: 'En attente d’envoi',
+      REJECTED: 'Refusée',
+      IN_CONFLICT: 'En conflit',
+      DRAFT: 'Brouillon',
+      CONFIRMED: 'Confirmée',
+      PARTIALLY_FULFILLED: 'Livrée en partie',
+      FULFILLED: 'Livrée',
+      CLOSED: 'Close',
+      CANCELLED: 'Annulée',
+    },
+    list: {
+      hint: 'Commandes ouvertes connues de l’appareil (brouillons, confirmées, livrées en partie).',
+      filter_label: 'Afficher',
+      filter_all: 'Toutes',
+      filter_to_deliver: 'À livrer',
+      filter_waiting_stock: 'En attente de stock',
+      empty: 'Aucune commande ouverte sur cet appareil.',
+      open: 'Ouvrir la commande {{doc}}',
+      to_deliver_badge: 'À livrer',
+      waiting_stock_badge: 'Attend du stock',
+      delivery_on: 'Livraison le {{date}}',
+      closed_title: 'Commandes livrées ou closes (en ligne)',
+      closed_load: 'Afficher les commandes livrées récemment',
+      closed_offline: 'Disponible avec du réseau seulement.',
+      closed_empty: 'Aucune commande livrée ou close récemment.',
+      closed_error: 'Lecture impossible pour le moment.',
+    },
+    detail: {
+      not_found:
+        'Commande introuvable sur cet appareil (livrée, close, annulée, ou hors de votre périmètre).',
+      back: '← Commandes',
+      title: 'Commande {{doc}}',
+      prepared_at: 'Préparée à {{location}}',
+      ordered: 'Commandé',
+      sold: 'Vendu',
+      delivered: 'Livré',
+      pending: 'En attente de stock',
+      to_deliver: 'À livrer',
+      delivering: 'Livraison en attente d’envoi : {{quantity}}',
+      total_estimated: 'Total estimé',
+      advance_paid: 'Acompte versé',
+      deliver: 'Livrer',
+      confirm_remaining: 'Vendre le disponible (reste en attente)',
+      retire: 'Annuler la commande',
+      close_remaining: 'Clôturer le reste',
+      rejection: 'Refusée par le serveur : {{reason}}',
+    },
+    retire: {
+      title_cancel: 'Annuler la commande',
+      title_close: 'Clôturer le reste de la commande',
+      hint_cancel:
+        'Tout ce qui n’est pas livré est annulé : les ventes de la commande sont contre-passées.',
+      hint_close:
+        'La part en attente et la part vendue non livrée sont retirées ; le livré reste acquis.',
+      treatment_legend: 'Acompte ou somme payée libérée',
+      submit: 'Confirmer',
+      close: 'Revenir',
+    },
+    confirm_result: {
+      WAITING_offline:
+        'Demande enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
+      WAITING_online: 'Envoi en cours…',
+      DONE: 'Commande {{doc}} mise à jour.',
+      WARNING: 'Commande {{doc}} mise à jour, avec un avertissement à examiner.',
+      CONFLICT: 'Opération mise en attente d’examen (conflit).',
+      REJECTED: 'Opération refusée : {{reason}}',
+    },
+    deliver: {
+      title: 'Livrer la commande {{doc}}',
+      hint: 'Indiquez la quantité remise au client pour chaque article (unité de base). Le reste demeure à livrer.',
+      nothing: 'Rien à livrer sur cette commande pour le moment.',
+      line_max: 'À livrer : {{quantity}} {{unit}}',
+      quantity_label: 'Quantité remise ({{unit}})',
+      recipient_label: 'Remis à (nom de la personne)',
+      notes_label: 'Observations',
+      error_quantity:
+        'Quantité invalide pour {{product}} : entre 0 et {{max}}, au plus 3 décimales.',
+      error_empty: 'Indiquez au moins une quantité remise.',
+      submit: 'Enregistrer la livraison',
+      offline_banner:
+        'Hors ligne : la livraison sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+      result: {
+        WAITING_offline:
+          'Livraison enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
+        WAITING_online: 'Livraison en cours d’envoi…',
+        DONE: 'Livraison {{doc}} enregistrée.',
+        WARNING: 'Livraison {{doc}} enregistrée, avec un avertissement à examiner.',
+        CONFLICT: 'Livraison mise en attente d’examen (conflit).',
+        REJECTED: 'Livraison refusée : {{reason}}',
+      },
+      back_to_order: 'Retour à la commande',
+    },
+    result: {
+      WAITING_offline:
+        'Commande enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
+      WAITING_online: 'Commande en cours d’envoi…',
+      DONE: 'Commande {{doc}} confirmée.',
+      WARNING: 'Commande {{doc}} confirmée, avec un avertissement à examiner.',
+      CONFLICT: 'Commande mise en attente d’examen (conflit).',
+      REJECTED: 'Commande refusée : {{reason}}',
+    },
+  },
+  errors: {
+    title: 'Un problème est survenu sur cet écran.',
+    help: 'Vos opérations déjà enregistrées sont conservées sur l’appareil.',
+    reload: 'Recharger l’application',
   },
   sync: {
     screen_title: 'Synchronisation',

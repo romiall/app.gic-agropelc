@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from './fixtures.js';
 import { NewSaleScreen } from './NewSaleScreen.js';
+import { FixedClock } from '@gic/domain';
+import { rememberNavigation } from '../navigation/navigation-store.js';
 
 // Le moteur de synchronisation n'est pas démarré dans les tests (module du service worker).
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -116,6 +118,66 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.getByText(/La référence de la transaction est obligatoire/)).toBeInTheDocument();
     await user.type(screen.getByLabelText('Référence de la transaction'), 'OM-123');
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled();
+  });
+
+  it('vendeur de PDV : pas de modification de prix (pas de `sales.price.override`)', async () => {
+    await seedSalesFixtures(getDb());
+    await rememberNavigation(
+      getDb(),
+      new FixedClock(new Date('2026-10-10T08:00:00.000Z')),
+      IDS.user,
+      {
+        user: { fullName: 'Awa', roles: ['VENDEUR_PDV'] },
+        sections: [],
+      },
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const line = screen.getByRole('listitem', { name: 'Œufs de table' });
+    expect(within(line).getByText(/Prix unitaire : 100 F CFA/)).toBeInTheDocument();
+    expect(
+      within(line).queryByRole('button', { name: 'Modifier le prix' }),
+    ).not.toBeInTheDocument();
+    await getDb().navigation.clear();
+  });
+
+  it('mobile money avec deux comptes connus : compte de réception à choisir (AV-300)', async () => {
+    await seedSalesFixtures(getDb());
+    for (const id of ['om', 'mtn']) {
+      await getDb().projections.put({
+        key: `cash:CASH_ACCOUNT:${id}`,
+        dataset: 'cash',
+        entity_type: 'CASH_ACCOUNT',
+        entity_id: id,
+        scope_type: 'USER',
+        scope_id: IDS.user,
+        row_version: 1,
+        seq: 1,
+        data: {
+          id,
+          code: id.toUpperCase(),
+          name: `Compte ${id.toUpperCase()}`,
+          account_type: 'MOBILE_MONEY',
+          site_id: null,
+          holder_user_id: null,
+          responsible_user_id: IDS.user,
+          status: 'ACTIVE',
+        },
+      });
+    }
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    await user.selectOptions(screen.getByLabelText('Moyen de paiement'), 'MOBILE_MONEY_ORANGE');
+    await user.type(screen.getByLabelText('Référence de la transaction'), 'OM-1');
+    expect(screen.getByText('Choisissez le compte qui reçoit le paiement.')).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Compte de réception'), 'om');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la vente' }));
+    const [command] = await getDb().outbox.toArray();
+    expect((command?.payload as { payments: unknown[] }).payments).toEqual([
+      { methodCode: 'MOBILE_MONEY_ORANGE', amountXaf: 100, reference: 'OM-1', cashAccountId: 'om' },
+    ]);
   });
 
   it('hors ligne sur un emplacement partagé sans quota : vente bloquée sur l’appareil (AV-025)', async () => {

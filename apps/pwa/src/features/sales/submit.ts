@@ -8,10 +8,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { enqueueCommand, type EnqueueInput } from '../../sync/outbox.js';
 import { getSyncEngine } from '../sync/sync-engine-instance.js';
-
-export function isOnline(): boolean {
-  return typeof navigator === 'undefined' ? true : navigator.onLine;
-}
+import { isEffectivelyOnline } from '../../platform/connectivity.js';
 
 export async function submitCommand(
   input: Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> & {
@@ -21,7 +18,7 @@ export async function submitCommand(
   const command = await enqueueCommand(
     getDb(),
     { clock, idGenerator },
-    { commandVersion: 1, ...input, capturedOffline: !isOnline() },
+    { commandVersion: 1, ...input, capturedOffline: !isEffectivelyOnline() },
   );
   void getSyncEngine()?.trigger();
   return command;

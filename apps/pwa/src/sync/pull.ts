@@ -19,6 +19,13 @@ import type { GicDatabase, Projection } from '../storage/db.js';
 import { authorizedRequest } from './api-client.js';
 
 export const KNOWN_DATASETS = [
+  // Jeux d'exploitation d'abord : si un cycle s'interrompt, le stock et les ventes sont les plus
+  // frais (le disponible local en dépend, ADR-051).
+  'stock',
+  'orders',
+  'sales_recent',
+  'cash',
+  'customers',
   // P0 : identité, organisation, paramètres, validations, pièces (repli générique `GLOBAL`).
   'user',
   'device',
@@ -42,22 +49,17 @@ export const KNOWN_DATASETS = [
   'commercial_campaign',
   'supplier',
   'catalog',
-  // P2 et P5 : stock, transferts, inventaires (`LOCATION`), quotas de l'appareil (`DEVICE`).
-  'stock',
+  // P2 : transferts et inventaires (`LOCATION`). Le jeu `allocations` (quotas de l'appareil) n'est
+  // pas tiré tant que le serveur ne le sert pas (lecteur `STOCK_ALLOCATION` prévu en P5-18, besoin
+  // S-05) : le curseur avancerait au-delà de lignes jamais servies, perdues pour l'appareil.
   'transfers',
   'counts',
-  'allocations',
-  // P3 : portefeuille, activité commerciale, pointage.
-  'customers',
+  // P3 : activité commerciale, pointage.
   'crm_activity',
   'fieldwork',
   // P6 et P7 : achats et réceptions du site, production des fermes.
   'procurement',
   'production',
-  // P4 : commandes ouvertes, ventes et encaissements récents, caisses.
-  'orders',
-  'sales_recent',
-  'cash',
   // Alertes, notifications, conflits et demandes de validation de l'utilisateur.
   'comms',
 ] as const;
@@ -141,11 +143,16 @@ type PullDatasetResult =
   | { readonly ok: true; readonly changeCount: number }
   | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' };
 
-async function pullDataset(db: GicDatabase, dataset: string): Promise<PullDatasetResult> {
+async function pullDataset(
+  db: GicDatabase,
+  clock: Clock,
+  dataset: string,
+): Promise<PullDatasetResult> {
   let changeCount = 0;
   for (;;) {
     const cursorRow = await db.syncCursors.get(dataset);
     const cursor = cursorRow?.cursor ?? 0;
+    const requestedAt = clock.now().toISOString();
     const result = await authorizedRequest<PullResponse>(
       db,
       `/api/v1/sync/pull?dataset=${encodeURIComponent(dataset)}&cursor=${cursor}&limit=${PAGE_LIMIT}`,
@@ -162,19 +169,52 @@ async function pullDataset(db: GicDatabase, dataset: string): Promise<PullDatase
 
     for (const change of result.data.changes) await applyChange(db, change);
     changeCount += result.data.changes.length;
-    await db.syncCursors.put({ dataset, cursor: result.data.next_cursor });
-    if (!result.data.has_more) break;
+    if (!result.data.has_more) {
+      await db.syncCursors.put({
+        dataset,
+        cursor: result.data.next_cursor,
+        pulled_at: requestedAt,
+      });
+      break;
+    }
+    await db.syncCursors.put({
+      dataset,
+      cursor: result.data.next_cursor,
+      ...(cursorRow?.pulled_at ? { pulled_at: cursorRow.pulled_at } : {}),
+    });
   }
   return { ok: true, changeCount };
 }
 
+/**
+ * Un appareil ne détient les jeux téléchargés que d'un utilisateur à la fois (ADR-051) : à la première
+ * synchronisation d'un autre utilisateur, projections et curseurs sont effacés et retéléchargés dans
+ * son périmètre (l'outbox n'est jamais touchée). Sans cela, l'utilisateur suivant verrait les clients
+ * et les ventes du précédent, et ne recevrait pas les lignes de son propre périmètre plus anciennes
+ * que les curseurs.
+ */
+export async function ensureDataOwner(db: GicDatabase, userId: string): Promise<boolean> {
+  const meta = await db.syncMeta.get('device');
+  if (!meta || meta.data_user_id === userId) return false;
+  const hasData = (await db.syncCursors.count()) > 0 || (await db.projections.count()) > 0;
+  if (hasData) {
+    await db.transaction('rw', db.projections, db.syncCursors, async () => {
+      await db.projections.clear();
+      await db.syncCursors.clear();
+    });
+  }
+  await db.syncMeta.update('device', { data_user_id: userId });
+  return hasData;
+}
+
 export async function runPullCycle(
   db: GicDatabase,
-  deps: { readonly clock: Clock },
+  deps: { readonly clock: Clock; readonly userId?: string },
 ): Promise<PullCycleResult> {
+  if (deps.userId) await ensureDataOwner(db, deps.userId);
   let total = 0;
   for (const dataset of KNOWN_DATASETS) {
-    const result = await pullDataset(db, dataset);
+    const result = await pullDataset(db, deps.clock, dataset);
     if (!result.ok) return { outcome: result.reason };
     total += result.changeCount;
   }
