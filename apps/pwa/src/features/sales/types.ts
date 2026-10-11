@@ -138,6 +138,9 @@ export interface CustomerData {
   readonly credit_limit_xaf: number | null;
   readonly payment_terms_days: number | null;
   readonly outstanding_xaf: number;
+  /** Position du compte (chaînes décimales), absente tant qu'aucune n'est enregistrée. */
+  readonly lat?: string | null;
+  readonly lng?: string | null;
   readonly version: number;
   /**
    * Compte créé sur l'appareil et pas encore retéléchargé : commande `crm.customer.create` dont une
@@ -182,6 +185,8 @@ export interface VisitData {
   readonly flags: readonly string[];
   readonly status: string;
   readonly occurred_at: string;
+  /** Visite saisie sur l'appareil, pas encore retéléchargée : sa commande `crm.visit.record`. */
+  readonly pending_command_id?: string;
 }
 
 /** (`crm_activity`, 90 derniers jours) appel, SMS, courriel… */
@@ -196,6 +201,8 @@ export interface InteractionData {
   readonly next_action_note: string | null;
   readonly status: string;
   readonly occurred_at: string;
+  /** Échange saisi sur l'appareil, pas encore retéléchargé : sa commande `crm.interaction.record`. */
+  readonly pending_command_id?: string;
 }
 
 /** (`customer_category`, repli générique `GLOBAL`) */
@@ -214,6 +221,8 @@ export interface WorkSessionData {
   readonly started_at: string;
   readonly ended_at: string | null;
   readonly status: string;
+  /** Dérogation de prise de service : `NOT_REQUIRED`, `PENDING`, `APPROVED` ou `REJECTED`. */
+  readonly override_status?: string;
 }
 
 /** (`cash`) compte de trésorerie actif du détenteur, du responsable ou du site. */

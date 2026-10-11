@@ -98,6 +98,7 @@ export const fr = {
       stock: 'Stock par emplacement',
       new_prospect: '+ Prospect',
       portfolio: 'Mon portefeuille',
+      new_visit: '+ Visite',
       loss: 'Déclarer une perte',
       receive: 'Recevoir un transfert',
     },
@@ -485,6 +486,7 @@ export const fr = {
     credit_no_limit: 'Accordé, sans plafond',
     credit_limit: 'Plafond {{amount}}',
     sell: '+ Vente',
+    visit_action: '+ Visite',
     order: '+ Commande',
     collect: 'Encaisser',
     orders_title: 'Commandes ouvertes',
@@ -498,6 +500,48 @@ export const fr = {
       SMS: 'SMS',
       EMAIL: 'Courriel',
       AUTRE: 'Échange',
+    },
+  },
+  visit: {
+    offline_banner:
+      'Hors ligne : la visite sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+    out_of_session:
+      'Vous n’avez pas pris service : la visite sera signalée « hors session » à votre responsable.',
+    session_rejected:
+      'Votre prise de service a été refusée : la visite sera signalée à votre responsable.',
+    customer_title: 'Compte visité',
+    position_label: 'Position',
+    position_value: 'Position relevée (précision {{accuracy}} m).',
+    gps_unavailable:
+      'Position indisponible : autorisez la localisation, ou enregistrez la visite sans position.',
+    locate: 'Relever ma position',
+    locating: 'Localisation…',
+    far_from_customer:
+      'Vous êtes à {{distance}} m du compte (plus de {{max}} m) : la visite sera signalée.',
+    save_customer_position: 'Enregistrer cette position comme celle du compte',
+    outcome_label: 'Résultat de la visite',
+    outcome_placeholder: 'Choisir le résultat',
+    no_outcomes:
+      'Aucun résultat de visite n’est paramétré (motifs « résultat de visite ») : demandez-le à l’administrateur.',
+    notes_label: 'Commentaire (facultatif)',
+    next_action_at_label: 'Prochaine action le (facultatif)',
+    next_action_note_label: 'Prochaine action à faire (facultatif)',
+    issue: {
+      NEXT_ACTION_PAST: 'La prochaine action ne peut pas être dans le passé.',
+    },
+    role_hint:
+      'Votre rôle ne permet peut-être pas d’enregistrer une visite ; le serveur tranchera.',
+    submit: 'Enregistrer la visite',
+    another: 'Autre visite',
+    to_customer: 'Voir la fiche du compte',
+    result: {
+      WAITING_offline:
+        'Visite enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Visite en cours d’envoi…',
+      DONE: 'Visite enregistrée.',
+      WARNING: 'Visite enregistrée, avec un signalement.',
+      CONFLICT: 'Visite mise en attente d’examen (conflit).',
+      REJECTED: 'Visite refusée : {{reason}}',
     },
   },
   receive: {

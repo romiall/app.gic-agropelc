@@ -120,6 +120,11 @@ export function CustomerScreen() {
             <span className="action-label">{t('customer.sell')}</span>
           </Link>
         ) : null}
+        {holdsAnyRole(roles, ROLE_SETS.visitRecord) ? (
+          <Link to={ROUTES.newVisitFor(customer.id)} className="action action-compact">
+            <span className="action-label">{t('customer.visit_action')}</span>
+          </Link>
+        ) : null}
         {holdsAnyRole(roles, ROLE_SETS.orderCreate) ? (
           <Link to={ROUTES.newOrderFor(customer.id)} className="action action-compact">
             <span className="action-label">{t('customer.order')}</span>
@@ -201,6 +206,7 @@ export function CustomerScreen() {
                     })
                   : t(`customer.channel.${item.interaction.channel}`);
               const note = item.kind === 'VISIT' ? item.visit.notes : item.interaction.summary;
+              const pending = entry.pending_command_id !== undefined;
               return (
                 <li key={entry.id}>
                   <span>
@@ -215,7 +221,10 @@ export function CustomerScreen() {
                       </small>
                     ) : null}
                   </span>
-                  <span>{formatMoment(item.at, today)}</span>
+                  <span>
+                    {formatMoment(item.at, today)}
+                    {pending ? <small>{t('portfolio.pending')}</small> : null}
+                  </span>
                 </li>
               );
             })}

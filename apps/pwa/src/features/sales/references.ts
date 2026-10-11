@@ -56,7 +56,10 @@ export interface SalesReferences {
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
-  /** Visites et interactions enregistrées des 90 derniers jours (jeu `crm_activity`). */
+  /**
+   * Visites et interactions enregistrées des 90 derniers jours (jeu `crm_activity`), et celles
+   * saisies sur l'appareil pas encore retéléchargées.
+   */
   readonly visits: readonly VisitData[];
   readonly interactions: readonly InteractionData[];
   /** Transferts du périmètre (jeu `transfers`), tous statuts reçus. */
@@ -87,6 +90,7 @@ interface CreatePayload {
   readonly addressText?: string;
   readonly zoneId?: string;
   readonly homeSiteId?: string;
+  readonly position?: { readonly lat: number; readonly lng: number } | null;
 }
 
 /**
@@ -121,6 +125,8 @@ export function pendingCustomers(
         owner_user_id: command.author_user_id,
         home_site_id: payload.homeSiteId ?? null,
         merged_into_id: null,
+        lat: payload.position ? String(payload.position.lat) : null,
+        lng: payload.position ? String(payload.position.lng) : null,
         credit_allowed: false,
         credit_limit_xaf: null,
         payment_terms_days: null,
@@ -129,6 +135,86 @@ export function pendingCustomers(
         pending_command_id: command.command_id,
       };
     });
+}
+
+interface ActivityPayload {
+  readonly customerId?: string;
+  readonly outcomeReasonCodeId?: string;
+  readonly notes?: string | null;
+  readonly channel?: InteractionData['channel'];
+  readonly direction?: InteractionData['direction'];
+  readonly summary?: string | null;
+  readonly nextActionAt?: string | null;
+  readonly nextActionNote?: string | null;
+}
+
+/** Commandes d'activité de l'appareil que le jeu `crm_activity` ne sert pas encore (ADR-051 §3). */
+function pendingActivity(
+  outbox: readonly OutboxCommand[],
+  commandType: string,
+  downloaded: ReadonlySet<string>,
+  pulledAt: string | undefined,
+): { readonly command: OutboxCommand; readonly payload: ActivityPayload }[] {
+  return outbox
+    .filter(
+      (command) =>
+        command.command_type === commandType &&
+        !downloaded.has(command.aggregate_id) &&
+        stillInFlight(command, pulledAt),
+    )
+    .map((command) => ({ command, payload: command.payload as ActivityPayload }));
+}
+
+/** Visites saisies sur l'appareil, affichées dans l'activité du compte dès la saisie. */
+export function pendingVisits(
+  outbox: readonly OutboxCommand[],
+  downloaded: readonly VisitData[],
+  pulledAt: string | undefined,
+): VisitData[] {
+  return pendingActivity(
+    outbox,
+    'crm.visit.record',
+    new Set(downloaded.map((visit) => visit.id)),
+    pulledAt,
+  ).map(({ command, payload }) => ({
+    id: command.aggregate_id,
+    customer_id: payload.customerId ?? '',
+    user_id: command.author_user_id,
+    outcome_reason_code_id: payload.outcomeReasonCodeId ?? null,
+    notes: payload.notes ?? null,
+    next_action_at: payload.nextActionAt ?? null,
+    next_action_note: payload.nextActionNote ?? null,
+    flags: [],
+    status: 'RECORDED',
+    occurred_at: command.occurred_at,
+    pending_command_id: command.command_id,
+  }));
+}
+
+/** Échanges (appel, SMS…) saisis sur l'appareil, affichés dès la saisie. */
+export function pendingInteractions(
+  outbox: readonly OutboxCommand[],
+  downloaded: readonly InteractionData[],
+  pulledAt: string | undefined,
+): InteractionData[] {
+  return pendingActivity(
+    outbox,
+    'crm.interaction.record',
+    new Set(downloaded.map((interaction) => interaction.id)),
+    pulledAt,
+  ).map(({ command, payload }) => ({
+    id: command.aggregate_id,
+    customer_id: payload.customerId ?? '',
+    user_id: command.author_user_id,
+    channel: payload.channel ?? 'AUTRE',
+    direction: payload.direction ?? 'SORTANT',
+    summary: payload.summary ?? null,
+    next_action_at: payload.nextActionAt ?? null,
+    next_action_note: payload.nextActionNote ?? null,
+    status: 'RECORDED',
+    occurred_at: command.occurred_at,
+    pending_command_id: command.command_id,
+  }));
 }
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
@@ -142,6 +228,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stockCursor,
     ordersCursor,
     customersCursor,
+    activityCursor,
     meta,
     products,
     productUnits,
@@ -170,6 +257,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
     db.syncCursors.get('customers'),
+    db.syncCursors.get('crm_activity'),
     db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
@@ -192,7 +280,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
         (command) =>
           command.command_type.startsWith('sales.') ||
           command.command_type.startsWith('inventory.') ||
-          command.command_type === 'crm.customer.create',
+          command.command_type.startsWith('crm.'),
       )
       .toArray(),
   ]);
@@ -222,8 +310,14 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     orders: orderMap,
     sales,
     payments,
-    visits: visits.filter((visit) => visit.status === 'RECORDED'),
-    interactions: interactions.filter((interaction) => interaction.status === 'RECORDED'),
+    visits: [
+      ...visits.filter((visit) => visit.status === 'RECORDED'),
+      ...pendingVisits(outbox, visits, activityCursor?.pulled_at),
+    ],
+    interactions: [
+      ...interactions.filter((interaction) => interaction.status === 'RECORDED'),
+      ...pendingInteractions(outbox, interactions, activityCursor?.pulled_at),
+    ],
     transfers: transferMap,
     customerCategories: customerCategories
       .filter((category) => category.is_active)

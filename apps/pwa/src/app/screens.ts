@@ -33,6 +33,8 @@ export const ROUTES = {
   stock: '/stock',
   portfolio: '/clients',
   newProspect: '/clients/nouveau',
+  newVisit: '/clients/visite',
+  newVisitFor: (customerId: string) => `/clients/visite?client=${encodeURIComponent(customerId)}`,
   customerPattern: '/clients/:customerId',
   customer: (customerId: string) => `/clients/${customerId}`,
   loss: '/stock/perte',
@@ -106,6 +108,8 @@ export const ROLE_SETS = {
   ],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  /** `crm.visit.record` (01-rbac.md) : commercial terrain et responsable commercial. */
+  visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
@@ -235,6 +239,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'crm',
     roles: ROLE_SETS.customerCreate,
     actionCodes: ['NEW_PROSPECT'],
+    offline: true,
+  },
+  {
+    id: 'ECR-CRM-04',
+    path: ROUTES.newVisit,
+    labelKey: 'new_visit',
+    group: 'crm',
+    roles: ROLE_SETS.visitRecord,
+    actionCodes: ['NEW_VISIT'],
     offline: true,
   },
   {
