@@ -2,21 +2,28 @@
  * ECR-APP-03 « Bons de commande » (responsable des achats ; action `ORDERS` ; en ligne). Liste par
  * statut avec les actions de SM-PURCHASE-ORDER (modifier un brouillon, soumettre, marquer envoyé,
  * clôturer le reliquat, annuler), et création d'un bon depuis des lignes de demandes approuvées ou
- * directement. Relu après chaque opération ; l'opération suivante attend la réponse définitive.
+ * directement. Relu après chaque opération ; l'opération suivante attend la réponse définitive et la
+ * relecture qui la suit (listes périmées gardées à l'écran mais sans action). Un nouveau bon reste
+ * saisi jusqu'à la réponse du serveur : refusé, il se corrige sans tout ressaisir.
  */
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
+import { readPages, readPath, useOnlineRead, type Pages } from '../sales/online-read.js';
 import { settingValue } from '../sales/stock.js';
-import { phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
+import {
+  isBlockingWait,
+  lastWaitingCommand,
+  phaseOf,
+  submitCommand,
+  waitingCommands,
+} from '../sales/submit.js';
 import {
   cancelPayload,
   checkOrder,
@@ -29,6 +36,7 @@ import {
   orderableLines,
   orderActions,
   orderTotal,
+  requestRemaining,
   type DraftLineEdit,
   type OrderLineDraft,
   type OrderView,
@@ -40,22 +48,12 @@ import type { SupplierView } from './suppliers.js';
 type Section = 'LIST' | 'NEW';
 type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
 
-/** Lecture en ligne ; `undefined` pendant la lecture, `null` si indisponible. */
-function useRead<T>(path: string | null, online: boolean, reloadKey: string): T | null | undefined {
-  const [state, setState] = useState<{ path: string; data: T | null }>();
-  useEffect(() => {
-    if (!path || !online) return;
-    let cancelled = false;
-    void authorizedRequest<T>(getDb(), path, { method: 'GET' }).then((result) => {
-      if (!cancelled) setState({ path, data: result.ok ? result.data : null });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [path, online, reloadKey]);
-  if (!path || !online) return null;
-  return state?.path === path ? state.data : undefined;
-}
+/** Demandes d'achat à commander : approuvées et commandées en partie, toutes pages. */
+const REQUEST_PATHS = [
+  '/api/v1/purchase-requests?status=APPROVED&limit=200',
+  '/api/v1/purchase-requests?status=PARTIALLY_ORDERED&limit=200',
+];
+const MAX_REQUEST_PAGES = 50;
 
 function OrderCard({
   order,
@@ -64,6 +62,8 @@ function OrderCard({
   send,
   blocked,
   userId,
+  remaining,
+  remainingStale,
 }: {
   readonly order: OrderView;
   readonly refs: SalesReferences;
@@ -71,6 +71,10 @@ function OrderCard({
   readonly send: Send;
   readonly blocked: boolean;
   readonly userId: string;
+  /** Reste à commander par ligne de demande (modification d'un brouillon). */
+  readonly remaining: ReadonlyMap<string, number>;
+  /** Reste à commander pas encore relu : un brouillon tiré d'une demande ne s'enregistre pas. */
+  readonly remainingStale: boolean;
 }) {
   const { t } = useTranslation();
   const [panel, setPanel] = useState<'EDIT' | 'CANCEL' | 'CLOSE' | null>(null);
@@ -83,7 +87,7 @@ function OrderCard({
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationName =
     refs.locations.find((location) => location.id === order.deliveryLocationId)?.name ?? '';
-  const draft = panel === 'EDIT' ? draftUpdate(order, edits, date) : null;
+  const draft = panel === 'EDIT' ? draftUpdate(order, edits, date, remaining) : null;
   const cancellationReasons = refs.reasonCodes.filter(
     (reason) => reason.category === 'CANCELLATION',
   );
@@ -288,7 +292,11 @@ function OrderCard({
             <button
               type="button"
               className="btn-block submit-sale"
-              disabled={blocked || draft.issues.length > 0}
+              disabled={
+                blocked ||
+                draft.issues.length > 0 ||
+                (remainingStale && order.lines.some((line) => line.requestLineId !== null))
+              }
               onClick={() => command('procurement.order.update', draft.payload)}
             >
               {t('orders_po.save')}
@@ -376,15 +384,14 @@ function NewOrder({
   send,
   blocked,
   userId,
-  onCreated,
 }: {
   readonly refs: SalesReferences;
   readonly suppliers: readonly SupplierView[];
+  /** Demandes à commander ; `undefined` pendant la lecture, `null` si indisponibles. */
   readonly requests: readonly RequestView[] | null | undefined;
   readonly send: Send;
   readonly blocked: boolean;
   readonly userId: string;
-  readonly onCreated: () => void;
 }) {
   const { t } = useTranslation();
   const [supplierId, setSupplierId] = useState('');
@@ -404,16 +411,33 @@ function NewOrder({
   const activeSuppliers = suppliers
     .filter((supplier) => supplier.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  // Emplacements physiques actifs d'un site actif (le serveur refuse un site fermé).
   const locations = refs.locations
-    .filter((location) => !location.is_virtual && location.status === 'ACTIVE')
+    .filter(
+      (location) =>
+        !location.is_virtual &&
+        location.status === 'ACTIVE' &&
+        refs.sites.get(location.site_id ?? '')?.status === 'ACTIVE',
+    )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const purchasable = purchasableProducts(refs.products);
+  const purchasableIds = new Set(purchasable.map((product) => product.id));
   const taken = new Set(lines.map((line) => line.requestLineId).filter(Boolean));
-  const orderable = orderableLines(requests ?? []).filter((line) => !taken.has(line.requestLineId));
+  const remainingByLine = requests ? requestRemaining(requests) : null;
+  // Lignes de demande d'un produit encore achetable seulement (sinon tout le bon serait refusé).
+  const orderable = orderableLines(requests ?? []).filter(
+    (line) => !taken.has(line.requestLineId) && purchasableIds.has(line.productId),
+  );
   const rows = lines.map((line) => {
     const product = products.get(line.productId);
     const units = product ? purchaseUnitsOf(product, refs) : [];
     const unitCode = line.unitCode || product?.base_unit_code || '';
-    const draft = { ...line, unitCode };
+    // Reste à commander relu à chaque affichage (une autre commande a pu en prendre).
+    const remainingBase =
+      line.requestLineId !== null && remainingByLine
+        ? (remainingByLine.get(line.requestLineId) ?? 0)
+        : line.remainingBase;
+    const draft = { ...line, unitCode, remainingBase };
     return {
       line: draft,
       product,
@@ -432,12 +456,14 @@ function NewOrder({
     lines: checks,
   });
   const total = orderTotal(checks);
+  const linesValid = checks.every((check) => check.issues.length === 0);
+  // Montant hors des entiers sûrs : le serveur refuserait le bon.
+  const amountTooLarge = lines.length > 0 && linesValid && total === null;
   const threshold = Number(
     settingValue(refs.settings, 'procurement.po_approval_threshold_xaf', null, clock.now()) ??
       DEFAULT_APPROVAL_THRESHOLD_XAF,
   );
-  const ready =
-    issues.length === 0 && checks.every((check) => check.issues.length === 0) && !blocked;
+  const ready = issues.length === 0 && linesValid && total !== null && !blocked;
   const update = (key: string, patch: Partial<OrderLineDraft>) =>
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
 
@@ -463,6 +489,7 @@ function NewOrder({
     setLines((current) => [...current, newLine({ productId: productPick })]);
     setProductPick('');
   };
+  // La saisie reste jusqu'à la réponse du serveur (l'écran la referme une fois le bon créé).
   const submit = () => {
     if (!ready) return;
     void send({
@@ -475,11 +502,6 @@ function NewOrder({
         expectedDeliveryDate: date,
         lines: checks,
       }),
-    }).then((ok) => {
-      if (ok) {
-        setLines([]);
-        onCreated();
-      }
     });
   };
 
@@ -658,7 +680,7 @@ function NewOrder({
               onChange={(event) => setProductPick(event.target.value)}
             >
               <option value="">{t('lot_setup.choose')}</option>
-              {purchasableProducts(refs.products).map((product) => (
+              {purchasable.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name}
                 </option>
@@ -680,6 +702,9 @@ function NewOrder({
         <p className="home-muted">
           {t('orders_po.approval_hint', { threshold: formatMoney(threshold) })}
         </p>
+      ) : null}
+      {amountTooLarge ? (
+        <p className="error-message">{t('orders_po.issue.AMOUNT_TOO_LARGE')}</p>
       ) : null}
       {issues
         .filter(
@@ -708,6 +733,9 @@ export function OrdersScreen() {
   const online = useOnline();
   const [section, setSection] = useState<Section>('LIST');
   const [status, setStatus] = useState('');
+  const [ordersPages, setOrdersPages] = useState(1);
+  const [newOrderKey, setNewOrderKey] = useState(0);
+  const [handledCreate, setHandledCreate] = useState<string>();
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -717,17 +745,36 @@ export function OrdersScreen() {
   const reloadKey = `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps
     .map((command) => command.command_id)
     .join(',')}`;
-  const orders = useRead<{ purchase_orders?: OrderView[] }>(
-    `/api/v1/purchase-orders?limit=200${status ? `&status=${status}` : ''}`,
+  const ordersPath = `/api/v1/purchase-orders?limit=200${status ? `&status=${status}` : ''}`;
+  const orders = useOnlineRead<Pages<OrderView>>(
+    `${ordersPath}#${ordersPages}`,
+    () => readPages<OrderView>([ordersPath], 'purchase_orders', ordersPages),
     online,
     reloadKey,
   );
-  const suppliers = useRead<{ suppliers?: SupplierView[] }>('/api/v1/suppliers', online, reloadKey);
-  const requests = useRead<{ purchase_requests?: RequestView[] }>(
-    section === 'NEW' ? '/api/v1/purchase-requests?limit=200' : null,
+  const suppliers = useOnlineRead<{ suppliers?: SupplierView[] }>(
+    '/api/v1/suppliers',
+    readPath,
     online,
     reloadKey,
   );
+  // Demandes lues dans les deux rubriques : le reste à commander borne aussi un brouillon modifié.
+  const requests = useOnlineRead<Pages<RequestView>>(
+    REQUEST_PATHS.join('|'),
+    () => readPages<RequestView>(REQUEST_PATHS, 'purchase_requests', MAX_REQUEST_PAGES),
+    online,
+    reloadKey,
+  );
+  // Bon créé (réponse définitive acceptée) : retour à la liste, saisie remise à zéro.
+  const created =
+    lastCommand?.command_type === 'procurement.order.create' &&
+    (phaseOf(lastCommand) === 'DONE' || phaseOf(lastCommand) === 'WARNING');
+  if (created && last !== handledCreate) {
+    // Ajustement pendant le rendu (une seule fois par bon créé), sans effet en cascade.
+    setHandledCreate(last);
+    setSection('LIST');
+    setNewOrderKey((value) => value + 1);
+  }
 
   if (!refs || !userId) {
     return (
@@ -739,12 +786,17 @@ export function OrdersScreen() {
   }
 
   const waiting =
-    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online;
-  const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;
-  const supplierList = suppliers?.suppliers ?? [];
+  const shownCommandId =
+    last ?? lastWaitingCommand(refs.outbox, 'procurement.order.', userId)?.command_id;
+  const shownCommand = refs.outbox.find((command) => command.command_id === shownCommandId);
+  const supplierList = suppliers.data?.suppliers ?? [];
   const supplierNames = new Map(supplierList.map((supplier) => [supplier.id, supplier.name]));
+  const remaining = requestRemaining(requests.data?.items ?? []);
+  // Actions d'un bon sur une liste relue seulement.
+  const cardBlocked = blocked || orders.stale;
 
   const send: Send = async (input) => {
     if (blocked) return false;
@@ -771,7 +823,14 @@ export function OrdersScreen() {
         </p>
       ) : null}
       {shownCommandId ? (
-        <CommandResult commandId={shownCommandId} messages="orders_po.result" />
+        <CommandResult
+          commandId={shownCommandId}
+          messages={
+            shownCommand?.command_type === 'procurement.order.create'
+              ? 'orders_po.result_create'
+              : 'orders_po.result'
+          }
+        />
       ) : null}
       {saveError ? (
         <p className="alert alert-error" role="alert">
@@ -801,7 +860,10 @@ export function OrdersScreen() {
               id={statusId}
               className="text-input"
               value={status}
-              onChange={(event) => setStatus(event.target.value)}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setOrdersPages(1);
+              }}
             >
               <option value="">{t('orders_po.all_statuses')}</option>
               {ORDER_STATUSES.map((value) => (
@@ -811,45 +873,72 @@ export function OrdersScreen() {
               ))}
             </select>
           </div>
-          {online && orders === undefined ? (
+          {online && orders.data === undefined && !orders.failed ? (
             <p className="home-muted">{t('sales.loading')}</p>
           ) : null}
-          {online && orders === null ? (
-            <p className="alert alert-error">{t('orders_po.unavailable')}</p>
+          {online && orders.failed ? (
+            <div className="alert alert-error" role="alert">
+              <p>{orders.denied ? t('orders_po.denied') : t('orders_po.unavailable')}</p>
+              {orders.denied ? null : (
+                <button type="button" className="secondary" onClick={orders.retry}>
+                  {t('ledger.retry')}
+                </button>
+              )}
+            </div>
           ) : null}
-          {orders ? (
-            (orders.purchase_orders ?? []).length === 0 ? (
+          {online && orders.data && orders.stale && !orders.failed ? (
+            <p className="home-muted" role="status">
+              {t('orders_po.refreshing')}
+            </p>
+          ) : null}
+          {orders.data ? (
+            orders.data.items.length === 0 ? (
               <p className="home-muted">{t('orders_po.none')}</p>
             ) : (
               <ul className="line-list">
-                {(orders.purchase_orders ?? []).map((order) => (
+                {orders.data.items.map((order) => (
                   <OrderCard
                     key={`${order.id}:${reloadKey}`}
                     order={order}
                     refs={refs}
                     supplierName={supplierNames.get(order.supplierId) ?? ''}
                     send={send}
-                    blocked={blocked}
+                    blocked={cardBlocked}
                     userId={userId}
+                    remaining={remaining}
+                    remainingStale={requests.stale}
                   />
                 ))}
               </ul>
             )
           ) : null}
+          {orders.data?.more ? (
+            <div className="result-actions">
+              <p className="home-muted">{t('orders_po.truncated')}</p>
+              <button
+                type="button"
+                className="secondary"
+                disabled={orders.stale}
+                onClick={() => setOrdersPages((value) => value + 1)}
+              >
+                {t('orders_po.older')}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : (
         <section className="sale-block" aria-label={t('orders_po.section.NEW')}>
-          {suppliers === undefined ? (
+          {suppliers.data === undefined && !suppliers.failed ? (
             <p className="home-muted">{t('sales.loading')}</p>
           ) : (
             <NewOrder
+              key={newOrderKey}
               refs={refs}
               suppliers={supplierList}
-              requests={requests === undefined ? undefined : (requests?.purchase_requests ?? null)}
+              requests={requests.data ? requests.data.items : requests.failed ? null : undefined}
               send={send}
-              blocked={blocked}
+              blocked={blocked || suppliers.stale || requests.stale}
               userId={userId}
-              onCreated={() => setSection('LIST')}
             />
           )}
         </section>

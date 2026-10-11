@@ -184,4 +184,25 @@ describe('Demande d’achat (ECR-APP-02)', () => {
     expect(within(unscoped).getByText('Choisir le site')).toBeInTheDocument();
     expect(within(unscoped).queryByText('Ferme fermée')).not.toBeInTheDocument();
   });
+
+  it('site affecté encore vide : proposé parmi les autres sites, droit tranché par le serveur', async () => {
+    await getDb().projections.put(
+      projection('site', 'SITE', 'site-neuf', {
+        code: 'FERME-N',
+        name: 'Ferme neuve',
+        site_type: 'FERME',
+        zone_id: IDS.zone,
+        status: 'ACTIVE',
+      }),
+    );
+    renderScreen();
+    const site = await screen.findByLabelText('Pour le site');
+    // Un seul site déduit (stock, achats) : présélectionné ; la ferme neuve reste proposée.
+    expect(site).toHaveValue(IDS.site);
+    expect(within(site).getByRole('group', { name: 'Vos sites' })).toBeInTheDocument();
+    const others = within(site).getByRole('group', {
+      name: 'Autres sites (droit vérifié par le serveur)',
+    });
+    expect(within(others).getByRole('option', { name: 'Ferme neuve' })).toBeInTheDocument();
+  });
 });

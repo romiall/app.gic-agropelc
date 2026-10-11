@@ -109,7 +109,14 @@ function answer(path: string) {
     };
   }
   if (path.startsWith('/api/v1/purchase-requests')) {
-    return { ok: true, data: { purchase_requests: REQUESTS, next_cursor: null } };
+    const status = new URL(path, 'http://local').searchParams.get('status');
+    return {
+      ok: true,
+      data: {
+        purchase_requests: REQUESTS.filter((request) => !status || request.status === status),
+        next_cursor: null,
+      },
+    };
   }
   return { ok: true, data: { purchase_orders: ORDERS, next_cursor: null } };
 }
@@ -193,6 +200,8 @@ describe('Bons de commande (ECR-APP-03)', () => {
     cleanup();
     vi.restoreAllMocks();
     vi.mocked(authorizedRequest).mockReset();
+    // Lectures encore en cours (pages suivantes) après le test : réseau coupé.
+    vi.mocked(authorizedRequest).mockResolvedValue({ ok: false, reason: 'OFFLINE' } as never);
     await getDb().projections.clear();
     await getDb().outbox.clear();
   });
@@ -234,7 +243,9 @@ describe('Bons de commande (ECR-APP-03)', () => {
     await user.type(within(direct).getByLabelText('Quantité'), '30');
     expect(form.getByText(/validation auprès de la Direction/)).toBeInTheDocument();
     await user.click(form.getByRole('button', { name: 'Créer le bon de commande' }));
-    await screen.findByText(/Opération (en cours d’envoi|enregistrée)/);
+    await screen.findByText(/Bon de commande (en cours d’envoi|enregistré)/);
+    // La saisie reste jusqu'à la réponse du serveur (refusée, elle se corrigerait sans ressaisie).
+    expect(form.getAllByRole('listitem', { name: 'Aliment démarrage' })).toHaveLength(2);
 
     const [created] = await getDb().outbox.toArray();
     expect(created).toMatchObject({
@@ -255,6 +266,20 @@ describe('Bons de commande (ECR-APP-03)', () => {
         ],
       },
     });
+    // Accepté : numéro du bon annoncé, retour à la liste, saisie remise à zéro.
+    await getDb().outbox.update(created?.command_id ?? '', {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T09:00:05.000Z',
+      server_refs: { docNumber: 'BC-YDE-2026-000012' },
+    });
+    expect(await screen.findByText('Bon de commande BC-YDE-2026-000012 créé.')).toBeInTheDocument();
+    await screen.findByRole('region', { name: 'Bons de commande' });
+    await user.click(screen.getByRole('radio', { name: 'Nouveau bon de commande' }));
+    expect(
+      within(screen.getByRole('region', { name: 'Nouveau bon de commande' })).queryAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(0);
   });
 
   it('brouillon modifié puis soumis ; approuvé marqué envoyé ; reliquat clôturé avec motif', async () => {
@@ -308,6 +333,9 @@ describe('Bons de commande (ECR-APP-03)', () => {
   });
 
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {
+    // Lectures en chaîne du test précédent (pages suivantes) terminées avant de compter.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    vi.mocked(authorizedRequest).mockClear();
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();
     expect(await screen.findByRole('alert')).toHaveTextContent(/en ligne seulement/);
@@ -334,5 +362,27 @@ describe('Bons de commande : actions et brouillon', () => {
     ]);
     expect(draftUpdate(draft, allCancelled, '2026-10-20').issues).toEqual(['ORDER_EMPTY']);
     expect(draftUpdate(draft, new Map(), '').payload).toEqual({ expectedDeliveryDate: null });
+  });
+
+  it('brouillon tiré d’une demande : hausse bornée au reste de la demande ; montant borné', () => {
+    const fromRequest = order({
+      lines: [line({ requestLineId: 'rl', orderedQtyBase: 100, unitPriceXaf: 400 })],
+    });
+    const raise = (qty: string) =>
+      new Map([['l1', { qtyText: qty, priceText: '400', cancel: false }]]);
+    // Reste de la demande : 20 ; la ligne peut monter jusqu'à 120.
+    const remaining = new Map([['rl', 20]]);
+    expect(draftUpdate(fromRequest, raise('120'), '2026-10-20', remaining).issues).toEqual([]);
+    expect(draftUpdate(fromRequest, raise('121'), '2026-10-20', remaining).issues).toEqual([
+      'OVER_REQUEST',
+    ]);
+    // Demande inconnue de la liste (entièrement commandée) : baisse seulement.
+    expect(draftUpdate(fromRequest, raise('101'), '2026-10-20').issues).toEqual(['OVER_REQUEST']);
+    expect(draftUpdate(fromRequest, raise('90'), '2026-10-20').issues).toEqual([]);
+    // Montant hors des entiers sûrs : refusé avant l'envoi.
+    const huge = new Map([
+      ['l1', { qtyText: '99999999999', priceText: '999999999', cancel: false }],
+    ]);
+    expect(draftUpdate(order({}), huge, '2026-10-20').issues).toContain('AMOUNT_TOO_LARGE');
   });
 });

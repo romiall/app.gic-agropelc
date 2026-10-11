@@ -64,8 +64,17 @@ export const SUPPLIER_LIMITS = {
 export type SupplierIssue =
   'CODE_REQUIRED' | 'CODE_TAKEN' | 'NAME_REQUIRED' | 'EMAIL_INVALID' | 'TERMS_INVALID';
 
-/** Adresse électronique au format attendu par le serveur (contrôle simple, sans espace). */
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * Adresse électronique : même expression que `z.string().email()` du serveur (zod 3), pour refuser
+ * sur l'appareil exactement ce que le serveur refuse (sinon un refus en anglais revient).
+ */
+const EMAIL = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9-]*\.)+[A-Z]{2,}$/i;
+
+/**
+ * Délai de paiement au plus (jours) : la colonne est un `SMALLINT` que le serveur ne borne pas (une
+ * valeur trop grande lève une exception en base, S-37) ; même borne que les clients (3 650 jours).
+ */
+export const MAX_PAYMENT_TERMS_DAYS = 3650;
 
 export function checkSupplier(
   form: SupplierForm,
@@ -79,10 +88,28 @@ export function checkSupplier(
   }
   if (!form.name.trim()) issues.push('NAME_REQUIRED');
   if (form.email.trim() && !EMAIL.test(form.email.trim())) issues.push('EMAIL_INVALID');
-  if (form.paymentTermsText.trim() && !/^\d{1,5}$/.test(form.paymentTermsText.trim())) {
+  const termsText = form.paymentTermsText.trim();
+  if (termsText && (!/^\d{1,4}$/.test(termsText) || Number(termsText) > MAX_PAYMENT_TERMS_DAYS)) {
     issues.push('TERMS_INVALID');
   }
   return issues;
+}
+
+/** Codes des créations de fournisseur de l'appareil non refusées : pris (S-30). */
+export function pendingSupplierCodes(
+  outbox: readonly {
+    readonly command_type: string;
+    readonly status: string;
+    readonly payload: unknown;
+  }[],
+): string[] {
+  return outbox
+    .filter(
+      (command) =>
+        command.command_type === 'procurement.supplier.create' && command.status !== 'REJECTED',
+    )
+    .map((command) => String((command.payload as { code?: string }).code ?? '').trim())
+    .filter(Boolean);
 }
 
 const text = (value: string): string | undefined => {

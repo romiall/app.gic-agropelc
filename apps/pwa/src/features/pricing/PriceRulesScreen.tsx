@@ -17,7 +17,7 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand } from '../sales/submit.js';
+import { isBlockingWait, phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
 import type { ProductData } from '../sales/types.js';
 import { SIM_CHANNELS } from './price-sim.js';
 import {
@@ -513,12 +513,7 @@ export function PriceRulesScreen() {
   const lastCommand = refs?.outbox.find((command) => command.command_id === last?.commandId);
   // Opérations tarifaires de l'utilisateur encore sans réponse, même d'une visite précédente : elles
   // bloquent la suivante, et leur réponse déclenche la relecture comme celle de la dernière.
-  const pendingPricing = (refs?.outbox ?? []).filter(
-    (command) =>
-      command.command_type.startsWith('pricing.rule.') &&
-      command.author_user_id === userId &&
-      phaseOf(command) === 'WAITING',
-  );
+  const pendingPricing = waitingCommands(refs?.outbox ?? [], 'pricing.rule.', userId);
   const reloadKey = `${last?.commandId ?? ''}:${lastCommand?.status ?? ''}|${pendingPricing
     .map((command) => command.command_id)
     .join(',')}`;
@@ -553,7 +548,7 @@ export function PriceRulesScreen() {
   // l'utilisateur encore en attente (même après un retour sur l'écran) et la relecture qui la suit
   // avant d'en proposer une autre (pas de seconde activation ni de version en double).
   const waiting =
-    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingPricing.length > 0;
   const blocked = busy || waiting || productRules.stale;
   const rejected = lastCommand !== undefined && phaseOf(lastCommand) === 'REJECTED';

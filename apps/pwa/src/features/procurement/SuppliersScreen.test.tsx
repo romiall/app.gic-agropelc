@@ -10,6 +10,7 @@ import {
   checkSupplier,
   EMPTY_SUPPLIER,
   formOf,
+  MAX_PAYMENT_TERMS_DAYS,
   updatePayload,
   type SupplierView,
 } from './suppliers.js';
@@ -166,6 +167,57 @@ describe('Fournisseurs (ECR-APP-01)', () => {
     );
   });
 
+  it('commande renvoyée sans succès (SERVER_BUSY) : annoncée, sans figer l’écran', async () => {
+    await getDb().outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000000f2',
+      device_seq: 1,
+      command_type: 'procurement.supplier.create',
+      command_version: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      aggregate_type: 'SUPPLIER',
+      aggregate_id: '01900000-0000-7000-8000-0000000000a2',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { code: 'COUVOIR', name: 'Couvoir' },
+      status: 'PENDING_SYNC',
+      attempts: 3,
+      next_attempt_at: null,
+      last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+      server_refs: null,
+    });
+    renderScreen();
+    await screen.findByRole('listitem', { name: 'Provenderie du Centre' });
+    expect(
+      await screen.findByText(/renvoie cette opération sans l’appliquer \(Erreur transitoire/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Nouveau fournisseur' })).toBeEnabled(),
+    );
+    // Son code reste pris : la ressaisir lèverait la même exception en base.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Nouveau fournisseur' }));
+    await userEvent.setup().type(screen.getByLabelText('Code'), 'COUVOIR');
+    expect(screen.getByText('Ce code est déjà celui d’un autre fournisseur.')).toBeInTheDocument();
+  });
+
+  it('lecture en échec : annoncée, relue par « Réessayer »', async () => {
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({
+      ok: false,
+      reason: 'HTTP_ERROR',
+      status: 503,
+      body: null,
+    } as never);
+    renderScreen();
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByRole('listitem', { name: 'Provenderie du Centre' }),
+    ).toBeInTheDocument();
+  });
+
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();
@@ -186,6 +238,23 @@ describe('Fournisseurs : contrôles et changements', () => {
         { creating: true, takenCodes: new Set() },
       ),
     ).toEqual(['TERMS_INVALID']);
+    // Délai borné (la colonne déborderait au-delà, S-37) ; courriel au format du serveur (zod).
+    const valid = (patch: Partial<typeof EMPTY_SUPPLIER>) =>
+      checkSupplier(
+        { ...EMPTY_SUPPLIER, code: 'A', name: 'A', ...patch },
+        {
+          creating: true,
+          takenCodes: new Set(),
+        },
+      );
+    expect(valid({ paymentTermsText: String(MAX_PAYMENT_TERMS_DAYS) })).toEqual([]);
+    expect(valid({ paymentTermsText: String(MAX_PAYMENT_TERMS_DAYS + 1) })).toEqual([
+      'TERMS_INVALID',
+    ]);
+    expect(valid({ email: 'contact@ferme-mfou.cm' })).toEqual([]);
+    for (const email of ['a@b_c.cm', 'a@b.c', 'a.@b.cm', 'é@b.cm', 'a..b@c.cm']) {
+      expect(valid({ email })).toEqual(['EMAIL_INVALID']);
+    }
     expect(updatePayload(FEED_CO, formOf(FEED_CO))).toEqual({});
     // Un champ vidé ne s'efface pas (le serveur ne sait pas remettre à vide) : rien n'est envoyé.
     expect(updatePayload(FEED_CO, { ...formOf(FEED_CO), contactName: '' })).toEqual({});

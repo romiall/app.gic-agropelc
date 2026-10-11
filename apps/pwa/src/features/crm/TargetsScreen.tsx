@@ -16,7 +16,7 @@ import { formatBusinessDay } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
+import { isBlockingWait, submitCommand, waitingCommands } from '../sales/submit.js';
 import {
   checkTarget,
   currentMonth,
@@ -200,7 +200,7 @@ export function TargetsScreen() {
   }
 
   const waiting =
-    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online;
   const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;

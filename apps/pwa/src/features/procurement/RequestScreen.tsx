@@ -70,15 +70,18 @@ export function RequestScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  // Sites du périmètre de l'appareil (jeux bornés par le serveur ; le jeu `location` ne l'est pas) ;
-  // à défaut, tous les sites actifs, sans présélection (choix explicite).
+  // Sites du périmètre déduit de l'appareil (jeux bornés par le serveur ; le jeu `location` ne l'est
+  // pas) d'abord, puis les autres sites actifs : un site affecté mais encore vide (ni stock, ni
+  // document) n'apparaît dans aucun jeu, et le serveur tranche le droit. Présélection seulement quand
+  // le périmètre déduit compte un seul site.
   const scopeSites = scopeSiteIds(refs, userId);
   const allSites = [...refs.sites.values()]
     .filter((site) => site.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const scoped = allSites.filter((site) => scopeSites.has(site.id));
-  const sites = scoped.length > 0 ? scoped : allSites;
-  const siteId = siteChoice ?? (scoped.length > 0 ? (scoped[0]?.id ?? '') : '');
+  const others = allSites.filter((site) => !scopeSites.has(site.id));
+  const sites = allSites;
+  const siteId = siteChoice ?? (scoped.length === 1 ? (scoped[0]?.id ?? '') : '');
   const products = purchasableProducts(refs.products);
   const rows = lines.map((line) => {
     const product = products.find((candidate) => candidate.id === line.productId);
@@ -173,11 +176,30 @@ export function RequestScreen() {
               {siteId === '' ? (
                 <option value="">{t('purchase_request.site_placeholder')}</option>
               ) : null}
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
+              {scoped.length > 0 && others.length > 0 ? (
+                <>
+                  <optgroup label={t('purchase_request.scope_sites')}>
+                    {scoped.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={t('purchase_request.other_sites')}>
+                    {others.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : (
+                sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
           <div className="field">

@@ -93,6 +93,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
     deliveryNote,
     refs.goodsReceipts,
     refs.outbox,
+    refs.procurementPulledAt,
   );
   const commentRequired = rows.some(
     (row) =>

@@ -4,6 +4,7 @@ import { pendingConsumption } from '../sales/stock.js';
 import type { LocationData, PurchaseOrderData, SettingData } from '../sales/types.js';
 import {
   duplicateDeliveryNote,
+  inFlightAccepted,
   receiptLocations,
   receiptSettings,
   receivableOrders,
@@ -141,7 +142,12 @@ describe('Réception d’achat : emplacements, paramètres, quarantaine', () => 
     ).toBeUndefined();
   });
   it('bon de livraison déjà reçu : quarantaine prévue ; indice local sans effet après la réponse', () => {
-    const posted = { supplier_id: 'sup', supplier_delivery_note_ref: 'BL-7', status: 'POSTED' };
+    const posted = {
+      id: 'r0',
+      supplier_id: 'sup',
+      supplier_delivery_note_ref: 'BL-7',
+      status: 'POSTED',
+    };
     expect(duplicateDeliveryNote('sup', ' BL-7 ', [posted], [])).toBe(true);
     expect(duplicateDeliveryNote('autre', 'BL-7', [posted], [])).toBe(false);
     expect(duplicateDeliveryNote('sup', 'BL-7', [{ ...posted, status: 'REJECTED' }], [])).toBe(
@@ -173,5 +179,53 @@ describe('Réception d’achat : emplacements, paramètres, quarantaine', () => 
         undefined,
       ).get('store-b:p'),
     ).toBe(-8);
+  });
+
+  it('bon de livraison d’une réception annulée : ressaisie sans faux doublon', () => {
+    // La réception r1 (BL-7) est téléchargée annulée ; sa commande acceptée reste dans l'outbox.
+    const cancelled = {
+      id: 'r1',
+      supplier_id: 'sup',
+      supplier_delivery_note_ref: 'BL-7',
+      status: 'CANCELLED',
+    };
+    const accepted = receipt({
+      status: 'SYNCED',
+      synced_at: '2026-10-10T08:30:00.000Z',
+      payload: { supplierId: 'sup', supplierDeliveryNoteRef: 'BL-7', lines: [] },
+    });
+    expect(duplicateDeliveryNote('sup', 'BL-7', [cancelled], [accepted])).toBe(false);
+    // Commande acceptée et déjà retéléchargée (tirage postérieur) : le jeu fait foi.
+    expect(duplicateDeliveryNote('sup', 'BL-7', [], [accepted], '2026-10-10T08:45:00.000Z')).toBe(
+      false,
+    );
+    // Encore en vol : doublon.
+    expect(duplicateDeliveryNote('sup', 'BL-7', [], [accepted], '2026-10-10T08:00:00.000Z')).toBe(
+      true,
+    );
+  });
+
+  it('reste à recevoir : une réception en quarantaine n’avance pas le bon', () => {
+    const line = (overrides: Partial<OutboxCommand>) =>
+      receipt({
+        payload: { lines: [{ poLineId: 'pol', qtyDeliveredBase: 100, qtyRejectedBase: 0 }] },
+        ...overrides,
+      });
+    expect(inFlightAccepted([line({})], undefined).get('pol')).toBe(100);
+    expect(
+      inFlightAccepted([line({ local_flags: ['EXPECTED_QUARANTINE'] })], undefined).get('pol'),
+    ).toBeUndefined();
+    expect(
+      inFlightAccepted(
+        [
+          line({
+            status: 'SYNCED_WITH_WARNING',
+            synced_at: '2026-10-10T08:30:00.000Z',
+            warnings: ['RECEIPT_QUARANTINED'],
+          }),
+        ],
+        undefined,
+      ).get('pol'),
+    ).toBeUndefined();
   });
 });

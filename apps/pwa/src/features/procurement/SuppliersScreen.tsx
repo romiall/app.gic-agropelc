@@ -4,47 +4,31 @@
  * réactivation (`procurement.supplier.*`, agrégat `SUPPLIER`). Relue après chaque opération ;
  * l'opération suivante attend la réponse définitive de la précédente.
  */
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
+import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
+import {
+  isBlockingWait,
+  lastWaitingCommand,
+  submitCommand,
+  waitingCommands,
+} from '../sales/submit.js';
 import {
   checkSupplier,
   createPayload,
   EMPTY_SUPPLIER,
   formOf,
+  MAX_PAYMENT_TERMS_DAYS,
+  pendingSupplierCodes,
   SUPPLIER_LIMITS,
   updatePayload,
   type SupplierForm,
   type SupplierView,
 } from './suppliers.js';
-
-/** Fournisseurs lus en ligne ; `undefined` pendant la lecture, `null` si indisponible. */
-function useSuppliers(
-  online: boolean,
-  reloadKey: string,
-): readonly SupplierView[] | null | undefined {
-  const [state, setState] = useState<{ suppliers: readonly SupplierView[] | null }>();
-  useEffect(() => {
-    if (!online) return;
-    let cancelled = false;
-    void authorizedRequest<{ suppliers?: SupplierView[] }>(getDb(), '/api/v1/suppliers', {
-      method: 'GET',
-    }).then((result) => {
-      if (!cancelled) setState({ suppliers: result.ok ? (result.data.suppliers ?? []) : null });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [online, reloadKey]);
-  if (!online) return null;
-  return state?.suppliers;
-}
 
 interface EditorProps {
   readonly refs: SalesReferences;
@@ -121,6 +105,7 @@ function SupplierEditor({ refs, supplier, takenCodes, blocked, onCancel, onSubmi
           id={ids.terms}
           className="text-input"
           inputMode="numeric"
+          maxLength={String(MAX_PAYMENT_TERMS_DAYS).length}
           value={form.paymentTermsText}
           onChange={(event) => update({ paymentTermsText: event.target.value })}
         />
@@ -182,10 +167,15 @@ export function SuppliersScreen() {
   const [saveError, setSaveError] = useState(false);
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'procurement.supplier.', userId);
-  const suppliers = useSuppliers(
+  // Liste gardée pendant une relecture ou une coupure (saisie conservée), mais périmée : actions
+  // bloquées jusqu'à la relecture qui suit la dernière opération.
+  const read = useOnlineRead<{ suppliers?: SupplierView[] }>(
+    '/api/v1/suppliers',
+    readPath,
     online,
     `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
   );
+  const suppliers = read.data ? (read.data.suppliers ?? []) : undefined;
 
   if (!refs || !userId) {
     return (
@@ -197,11 +187,17 @@ export function SuppliersScreen() {
   }
 
   const waiting =
-    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
-  const blocked = busy || waiting || !online;
-  const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;
-  const takenCodes = new Set((suppliers ?? []).map((supplier) => supplier.code));
+  const blocked = busy || waiting || !online || read.stale;
+  const shownCommandId =
+    last ?? lastWaitingCommand(refs.outbox, 'procurement.supplier.', userId)?.command_id;
+  // Codes pris : liste lue et créations de l'appareil non refusées (un doublon lèverait une
+  // exception en base, S-30).
+  const takenCodes = new Set([
+    ...(suppliers ?? []).map((supplier) => supplier.code),
+    ...pendingSupplierCodes(refs.outbox),
+  ]);
   const sorted = [...(suppliers ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 
   const send = async (input: Parameters<typeof submitCommand>[0]) => {
@@ -235,11 +231,23 @@ export function SuppliersScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      {online && suppliers === undefined ? (
+      {online && suppliers === undefined && !read.failed ? (
         <p className="home-muted">{t('sales.loading')}</p>
       ) : null}
-      {online && suppliers === null ? (
-        <p className="alert alert-error">{t('suppliers.unavailable')}</p>
+      {online && read.failed ? (
+        <div className="alert alert-error" role="alert">
+          <p>{read.denied ? t('suppliers.denied') : t('suppliers.unavailable')}</p>
+          {read.denied ? null : (
+            <button type="button" className="secondary" onClick={read.retry}>
+              {t('ledger.retry')}
+            </button>
+          )}
+        </div>
+      ) : null}
+      {online && suppliers && read.stale && !read.failed ? (
+        <p className="home-muted" role="status">
+          {t('suppliers.refreshing')}
+        </p>
       ) : null}
       {suppliers && editing ? (
         <SupplierEditor

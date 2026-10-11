@@ -891,6 +891,8 @@ export const fr = {
     new_title: 'Nouvelle demande',
     site_label: 'Pour le site',
     site_placeholder: 'Choisir le site',
+    scope_sites: 'Vos sites',
+    other_sites: 'Autres sites (droit vérifié par le serveur)',
     needed_by_label: 'Souhaitée pour le (facultatif)',
     justification_label: 'Justification',
     no_product: 'Aucun produit achetable n’est connu de ce téléphone.',
@@ -1009,6 +1011,11 @@ export const fr = {
     online_only:
       'Écran en ligne seulement : les bons de commande se lisent et se gèrent sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Bons de commande indisponibles : réessayez quand le serveur répond.',
+    denied: 'Lecture des bons de commande refusée : droit insuffisant.',
+    refreshing: 'Relecture des bons après la dernière opération…',
+    truncated:
+      'Seuls les bons les plus récents sont affichés : filtrez par statut, ou affichez les plus anciens.',
+    older: 'Afficher les bons plus anciens',
     none: 'Aucun bon de commande.',
     section_label: 'Rubrique',
     section: {
@@ -1045,6 +1052,9 @@ export const fr = {
         'Quantité positive (3 décimales au plus) et prix entier attendus sur chaque ligne.',
       ORDER_EMPTY: 'Le bon doit garder au moins une ligne.',
       DATE_INVALID: 'Date de livraison invalide.',
+      OVER_REQUEST:
+        'Une ligne tirée d’une demande d’achat dépasse ce qui reste à commander sur la demande.',
+      AMOUNT_TOO_LARGE: 'Montant du bon trop grand : vérifiez les quantités et les prix.',
     },
     cancel_reason_label: 'Motif (facultatif)',
     no_reason: 'Aucun',
@@ -1079,6 +1089,7 @@ export const fr = {
       DATE_INVALID: 'Date de livraison invalide.',
       TOO_MANY_LINES: '200 lignes au plus.',
       DUPLICATE_REQUEST_LINE: 'Une ligne de demande ne figure qu’une fois.',
+      AMOUNT_TOO_LARGE: 'Montant du bon trop grand : vérifiez les quantités et les prix.',
     },
     result: {
       WAITING_offline:
@@ -1089,11 +1100,22 @@ export const fr = {
       CONFLICT: 'Opération mise en attente d’examen (conflit).',
       REJECTED: 'Opération refusée : {{reason}}',
     },
+    result_create: {
+      WAITING_offline:
+        'Bon de commande enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Bon de commande en cours d’envoi…',
+      DONE: 'Bon de commande {{doc}} créé.',
+      WARNING: 'Bon de commande {{doc}} créé, avec un signalement.',
+      CONFLICT: 'Bon de commande mis en attente d’examen (conflit).',
+      REJECTED: 'Bon de commande refusé : {{reason}}. Corrigez la saisie et renvoyez-le.',
+    },
   },
   suppliers: {
     online_only:
       'Écran en ligne seulement : les fournisseurs se lisent et se gèrent sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
+    denied: 'Lecture des fournisseurs refusée : droit insuffisant.',
+    refreshing: 'Relecture des fournisseurs après la dernière opération…',
     none: 'Aucun fournisseur.',
     new: 'Nouveau fournisseur',
     new_title: 'Nouveau fournisseur',
@@ -1127,7 +1149,7 @@ export const fr = {
       CODE_TAKEN: 'Ce code est déjà celui d’un autre fournisseur.',
       NAME_REQUIRED: 'La raison sociale est obligatoire.',
       EMAIL_INVALID: 'Adresse électronique invalide.',
-      TERMS_INVALID: 'Délai de paiement : nombre entier de jours.',
+      TERMS_INVALID: 'Délai de paiement : nombre entier de jours, de 0 à 3 650.',
     },
     result: {
       WAITING_offline:
@@ -2170,6 +2192,8 @@ export const fr = {
     reload: 'Recharger l’application',
   },
   sync: {
+    repeated_failure:
+      'Le serveur renvoie cette opération sans l’appliquer ({{reason}}). Elle est réessayée automatiquement ; signalez-la à l’administrateur si cela dure.',
     screen_title: 'Synchronisation',
     force_sync: 'Forcer la synchronisation',
     syncing: 'Synchronisation…',

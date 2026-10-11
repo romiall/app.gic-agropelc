@@ -64,8 +64,55 @@ export function waitingCommands(
     (command) =>
       command.command_type.startsWith(prefix) &&
       command.author_user_id === userId &&
-      phaseOf(command) === 'WAITING',
+      isBlockingWait(command),
   );
+}
+
+/**
+ * Dernière commande de l'utilisateur d'un domaine encore sans réponse définitive, échec répété
+ * compris : son résultat reste affiché au retour sur l'écran.
+ */
+export function lastWaitingCommand(
+  outbox: readonly OutboxCommand[],
+  prefix: string,
+  userId: string | undefined,
+): OutboxCommand | undefined {
+  if (!userId) return undefined;
+  return outbox
+    .filter(
+      (command) =>
+        command.command_type.startsWith(prefix) &&
+        command.author_user_id === userId &&
+        phaseOf(command) === 'WAITING',
+    )
+    .at(-1);
+}
+
+/**
+ * Renvois `SERVER_BUSY` (erreur du serveur, le plus souvent une contrainte de la base qui lève une
+ * exception, S-29 à S-31) au-delà desquels une commande en attente est tenue pour en échec répété.
+ */
+export const REPEATED_FAILURE_ATTEMPTS = 3;
+
+/** Commande que le serveur renvoie sans l'appliquer (`RETRY_LATER`, `SERVER_BUSY`) à chaque essai. */
+export function inRepeatedFailure(
+  command: Pick<OutboxCommand, 'status' | 'attempts' | 'last_error'>,
+): boolean {
+  return (
+    phaseOf(command) === 'WAITING' &&
+    command.last_error?.code === 'SERVER_BUSY' &&
+    command.attempts >= REPEATED_FAILURE_ATTEMPTS
+  );
+}
+
+/**
+ * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
+ * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce).
+ */
+export function isBlockingWait(
+  command: Pick<OutboxCommand, 'status' | 'attempts' | 'last_error'>,
+): boolean {
+  return phaseOf(command) === 'WAITING' && !inRepeatedFailure(command);
 }
 
 /** Message du serveur pour une commande rejetée (`error.message_fr`), s'il existe. */

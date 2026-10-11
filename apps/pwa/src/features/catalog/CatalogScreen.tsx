@@ -16,7 +16,7 @@ import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand } from '../sales/submit.js';
+import { submitCommand, waitingCommands } from '../sales/submit.js';
 import type { ProductCategoryData } from '../sales/types.js';
 import {
   categoryPayload,
@@ -838,12 +838,7 @@ export function CatalogScreen() {
     last !== undefined && !refs.outbox.some((command) => command.command_id === last);
   // Une opération du catalogue de l'utilisateur encore sans réponse bloque la suivante, même après
   // un retour sur l'écran.
-  const waiting = refs.outbox.some(
-    (command) =>
-      command.command_type.startsWith('catalog.') &&
-      command.author_user_id === userId &&
-      phaseOf(command) === 'WAITING',
-  );
+  const waiting = waitingCommands(refs.outbox, 'catalog.', userId).length > 0;
   const blocked = busy || settling || waiting || !online;
   const pending = pendingCatalogCodes(refs.outbox);
   const send = async (input: Parameters<typeof submitCommand>[0]) => {

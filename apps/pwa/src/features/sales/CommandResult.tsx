@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { phaseOf, rejectionMessage, useOutboxCommand } from './submit.js';
+import { inRepeatedFailure, phaseOf, rejectionMessage, useOutboxCommand } from './submit.js';
 
 interface CommandResultProps {
   readonly commandId: string;
@@ -26,7 +26,11 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
     command.server_refs?.batchCode ??
     '';
   let text: string;
-  if (phase === 'WAITING') {
+  const repeated = inRepeatedFailure(command);
+  if (repeated) {
+    // Renvoyée sans succès : toujours réessayée, mais elle ne bloque plus l'écran.
+    text = t('sync.repeated_failure', { reason: rejectionMessage(command) ?? '' });
+  } else if (phase === 'WAITING') {
     text = t(`${messages}.WAITING_${command.captured_offline ? 'offline' : 'online'}`);
   } else if (phase === 'REJECTED') {
     text = t(`${messages}.REJECTED`, { reason: rejectionMessage(command) ?? '' });
@@ -42,11 +46,13 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
   const tone =
     phase === 'REJECTED'
       ? 'error'
-      : phase === 'WAITING'
-        ? 'info'
-        : phase === 'DONE'
-          ? 'ok'
-          : 'warn';
+      : repeated
+        ? 'warn'
+        : phase === 'WAITING'
+          ? 'info'
+          : phase === 'DONE'
+            ? 'ok'
+            : 'warn';
   return (
     <div className={`result result-${tone}`} role={phase === 'REJECTED' ? 'alert' : 'status'}>
       <p>{text}</p>

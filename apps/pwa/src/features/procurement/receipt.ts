@@ -23,7 +23,7 @@ import {
   receiptLineQuantities,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import { stillInFlight } from '../sales/pending.js';
+import { isWaiting, stillInFlight } from '../sales/pending.js';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
 import { settingValue } from '../sales/stock.js';
 import type {
@@ -74,7 +74,18 @@ interface ReceiptPayload {
   }[];
 }
 
-/** Acceptations des réceptions de l'appareil pas encore retéléchargées, par ligne de bon de commande. */
+/** Réception mise ou attendue en quarantaine : elle ne fait avancer ni le bon ni le stock (INV-APP-03). */
+function quarantined(command: OutboxCommand): boolean {
+  return (
+    (isWaiting(command) && command.local_flags?.includes('EXPECTED_QUARANTINE') === true) ||
+    command.warnings?.includes('RECEIPT_QUARANTINED') === true
+  );
+}
+
+/**
+ * Acceptations des réceptions de l'appareil pas encore retéléchargées, par ligne de bon de commande ;
+ * une réception en quarantaine n'en fait pas partie (le serveur n'avance le bon qu'en comptabilisant).
+ */
 export function inFlightAccepted(
   outbox: readonly OutboxCommand[],
   pulledAt: string | undefined,
@@ -83,6 +94,7 @@ export function inFlightAccepted(
   for (const command of outbox) {
     if (command.command_type !== 'procurement.receipt.record') continue;
     if (!stillInFlight(command, pulledAt)) continue;
+    if (quarantined(command)) continue;
     for (const line of (command.payload as ReceiptPayload).lines ?? []) {
       if (!line.poLineId || !line.qtyDeliveredBase) continue;
       const accepted =
@@ -232,18 +244,20 @@ const DELIVERY_NOTE_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Le bon de livraison de ce fournisseur est déjà reçu (réception téléchargée ou saisie sur l'appareil
- * et non mise en quarantaine) : le serveur mettra la nouvelle réception en quarantaine, en ligne comme
- * hors ligne (BR-APP-012). Comparaison exacte après nettoyage des blancs, comme la base.
+ * Le bon de livraison de ce fournisseur est déjà reçu (réception téléchargée, ou saisie sur l'appareil,
+ * pas encore retéléchargée et non mise en quarantaine) : le serveur mettra la nouvelle réception en
+ * quarantaine, en ligne comme hors ligne (BR-APP-012). Une réception téléchargée fait foi par son statut
+ * (annulée : le bon de livraison se ressaisit). Comparaison exacte après nettoyage des blancs.
  */
 export function duplicateDeliveryNote(
   supplierId: string,
   deliveryNoteRef: string,
   receipts: readonly Pick<
     GoodsReceiptData,
-    'supplier_id' | 'supplier_delivery_note_ref' | 'status'
+    'id' | 'supplier_id' | 'supplier_delivery_note_ref' | 'status'
   >[],
   outbox: readonly OutboxCommand[],
+  pulledAt?: string,
 ): boolean {
   const ref = deliveryNoteRef.trim();
   if (!ref) return false;
@@ -257,11 +271,12 @@ export function duplicateDeliveryNote(
   ) {
     return true;
   }
+  const downloaded = new Set(receipts.map((receipt) => receipt.id));
   return outbox.some((command) => {
     if (command.command_type !== 'procurement.receipt.record') return false;
-    if (command.status === 'REJECTED') return false;
-    if (command.local_flags?.includes('EXPECTED_QUARANTINE')) return false;
-    if (command.warnings?.includes('RECEIPT_QUARANTINED')) return false;
+    if (downloaded.has(command.aggregate_id)) return false;
+    if (!stillInFlight(command, pulledAt)) return false;
+    if (quarantined(command)) return false;
     const payload = command.payload as {
       readonly supplierId?: string;
       readonly supplierDeliveryNoteRef?: string;

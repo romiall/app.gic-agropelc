@@ -2,7 +2,8 @@
  * ECR-APP-03 « Bons de commande » (responsable des achats ; en ligne ; D08, SM-PURCHASE-ORDER ;
  * BR-APP-001 à 006, AV-051) : logique pure.
  *
- * - Liste lue sur `GET /purchase-orders` (par statut, page par page) ; actions selon le statut :
+ * - Liste lue sur `GET /purchase-orders` (par statut ; 200 bons par page, les plus anciens à la
+ *   demande, liste tronquée annoncée) ; actions selon le statut :
  *   brouillon modifiable (`procurement.order.update` : date prévue, quantité et prix des lignes,
  *   annulation de lignes), soumis (`.submit` : approuvé d'office jusqu'au seuil
  *   `procurement.po_approval_threshold_xaf`, sinon validation de la Direction), marqué envoyé
@@ -12,7 +13,11 @@
  *   de livraison physique actif, date prévue, 1 à 200 lignes ; chaque ligne vient d'une ligne de
  *   demande approuvée (quantité au plus le reste à commander, même produit) ou d'un produit
  *   achetable, dans une unité d'achat convertie en unité de base, au prix par unité de base. Total
- *   calculé par `orderAmounts` (packages/domain), comme le serveur.
+ *   calculé par `orderAmounts` (packages/domain), comme le serveur ; un montant hors des entiers
+ *   sûrs est refusé avant l'envoi. Demandes lues par statut (approuvées, commandées en partie), toutes
+ *   pages ; le reste à commander d'une ligne de demande est relu à chaque affichage.
+ * - Brouillon modifié : une ligne tirée d'une demande ne dépasse pas sa quantité actuelle plus le
+ *   reste à commander de la demande (`REQUEST_QTY_EXCEEDED` au serveur).
  */
 import { DomainError, orderAmounts, quantityFromDecimal } from '@gic/domain';
 import type { SaleUnit } from '../sales/sale-form.js';
@@ -94,6 +99,11 @@ export function orderActions(status: string): {
     closeRemaining: status === 'PARTIALLY_RECEIVED',
     cancel: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT'].includes(status),
   };
+}
+
+/** Reste à commander par ligne de demande (unité de base). */
+export function requestRemaining(requests: readonly RequestView[]): Map<string, number> {
+  return new Map(orderableLines(requests).map((line) => [line.requestLineId, line.remainingBase]));
 }
 
 /** Lignes de demandes approuvées encore à commander. */
@@ -254,25 +264,32 @@ const parseBaseQty = (text: string): number | null => {
   return value > 0 && value <= 99_999_999_999.999 ? value : null;
 };
 
-export type DraftEditIssue = 'LINE_INVALID' | 'ORDER_EMPTY' | 'DATE_INVALID' | 'NOTHING';
+export type DraftEditIssue =
+  'LINE_INVALID' | 'ORDER_EMPTY' | 'DATE_INVALID' | 'OVER_REQUEST' | 'AMOUNT_TOO_LARGE' | 'NOTHING';
 
 /**
  * Charge utile de `procurement.order.update` pour un brouillon : lignes changées seulement, date
  * prévue changée (vide : retirée). `issues` vide quand la modification est envoyable.
+ * `remaining` : reste à commander par ligne de demande ; une ligne tirée d'une demande inconnue de
+ * cette liste (demande entièrement commandée, ou non lue) ne peut pas augmenter.
  */
 export function draftUpdate(
   order: OrderView,
   edits: ReadonlyMap<string, DraftLineEdit>,
   expectedDeliveryDate: string,
+  remaining: ReadonlyMap<string, number> = new Map(),
 ): { readonly issues: readonly DraftEditIssue[]; readonly payload: Record<string, unknown> } {
   const issues: DraftEditIssue[] = [];
   const lines: Record<string, unknown>[] = [];
+  // Lignes gardées (quantité, prix) pour contrôler le montant comme le serveur.
+  const kept: { quantityBase: number; unitPriceXaf: number | null }[] = [];
   let active = 0;
   for (const line of order.lines) {
     if (line.status === 'CANCELLED') continue;
     const edit = edits.get(line.id);
     if (!edit) {
       active += 1;
+      kept.push({ quantityBase: line.orderedQtyBase, unitPriceXaf: line.unitPriceXaf });
       continue;
     }
     if (edit.cancel) {
@@ -286,6 +303,14 @@ export function draftUpdate(
       issues.push('LINE_INVALID');
       continue;
     }
+    kept.push({ quantityBase: qty, unitPriceXaf: price });
+    const increase = Math.round(qty * 1000) - Math.round(line.orderedQtyBase * 1000);
+    if (
+      line.requestLineId !== null &&
+      increase > Math.round((remaining.get(line.requestLineId) ?? 0) * 1000)
+    ) {
+      issues.push('OVER_REQUEST');
+    }
     const change: Record<string, unknown> = {};
     if (Math.round(qty * 1000) !== Math.round(line.orderedQtyBase * 1000))
       change.orderedQtyBase = qty;
@@ -293,6 +318,13 @@ export function draftUpdate(
     if (Object.keys(change).length > 0) lines.push({ lineNo: line.lineNo, ...change });
   }
   if (active === 0) issues.push('ORDER_EMPTY');
+  if (
+    kept.length > 0 &&
+    kept.every((line) => line.unitPriceXaf !== null) &&
+    orderTotal(kept) === null
+  ) {
+    issues.push('AMOUNT_TOO_LARGE');
+  }
   const payload: Record<string, unknown> = {};
   if (expectedDeliveryDate !== (order.expectedDeliveryDate ?? '')) {
     if (expectedDeliveryDate && !DATE_ONLY.test(expectedDeliveryDate)) issues.push('DATE_INVALID');

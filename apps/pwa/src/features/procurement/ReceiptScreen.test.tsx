@@ -168,13 +168,14 @@ describe('Réceptionner (ECR-APP-04)', () => {
     const refs = await loadSalesReferences(getDb());
     expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBeUndefined();
 
-    // Le reste à recevoir tient compte de la réception en attente.
+    // Réception attendue en quarantaine : elle n'avance pas le bon (le serveur ne le fait qu'en
+    // comptabilisant), le reste à recevoir est inchangé.
     await user.click(screen.getByRole('link', { name: '← Bons de commande à recevoir' }));
     await user.click(
       await screen.findByRole('link', { name: 'Réceptionner le bon de commande BC-2026-000004' }),
     );
     const again = await screen.findByRole('listitem', { name: 'Œufs de table' });
-    expect(within(again).getByText('Reste à recevoir : 30 U')).toBeInTheDocument();
+    expect(within(again).getByText('Reste à recevoir : 300 U')).toBeInTheDocument();
   });
 
   it('en ligne : accepté au-delà du reste à recevoir, réception bloquée', async () => {
