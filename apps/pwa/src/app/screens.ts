@@ -42,6 +42,7 @@ export const ROUTES = {
   receive: '/stock/receptions',
   receivePattern: '/stock/receptions/:transferId',
   receiveOne: (transferId: string) => `/stock/receptions/${transferId}`,
+  count: '/stock/inventaire',
   transfer: '/stock/transferts',
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
@@ -118,6 +119,8 @@ export const ROLE_SETS = {
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
+  countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
   /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
   transferDispatch: ['MAGASINIER', 'RESP_FERME'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
@@ -303,6 +306,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'stock',
     roles: ROLE_SETS.lossDeclare,
     actionCodes: ['LOSS'],
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-05',
+    path: ROUTES.count,
+    labelKey: 'count',
+    group: 'stock',
+    roles: ROLE_SETS.countPerform,
+    actionCodes: ['COUNT'],
     offline: true,
   },
   {
