@@ -27,6 +27,7 @@ export const ROUTES = {
   deliverPattern: '/commandes/:orderId/livrer',
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
+  stock: '/stock',
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
@@ -74,6 +75,19 @@ export const ROLE_SETS = {
     'VENDEUR_PDV',
     'MAGASINIER',
   ],
+  /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
+  stockRead: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'RESP_ACHATS',
+    'FINANCE',
+  ],
   paymentRecord: [
     'RESP_COMMERCIAL',
     'COMMERCIAL_TERRAIN',
@@ -102,6 +116,8 @@ export interface ScreenEntry {
   readonly roles: readonly string[] | 'ALL';
   /** Codes d'actions de l'accueil qui mènent à cet écran. */
   readonly actionCodes: readonly string[];
+  /** Paramètres ajoutés à la route pour une action donnée (ex. filtre des alertes). */
+  readonly actionQuery?: Readonly<Record<string, string>>;
   /** Utilisable sans réseau (colonne « hors ligne » de l'inventaire). */
   readonly offline: boolean;
 }
@@ -163,6 +179,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: true,
   },
   {
+    id: 'ECR-STK-01',
+    path: ROUTES.stock,
+    labelKey: 'stock',
+    group: 'stock',
+    roles: ROLE_SETS.stockRead,
+    // « Alertes de stock » du magasinier : l'écran s'ouvre sur les produits sous le seuil.
+    actionCodes: ['STOCK_ALERTS'],
+    actionQuery: { STOCK_ALERTS: '?alertes=1' },
+    offline: true,
+  },
+  {
     id: 'ECR-VEN-05',
     path: ROUTES.sales,
     labelKey: 'sales',
@@ -183,7 +210,11 @@ export const SCREEN_GROUPS: readonly ScreenGroup[] = [
 ];
 
 const ACTION_ROUTES: ReadonlyMap<string, string> = new Map(
-  SCREENS.flatMap((screen) => screen.actionCodes.map((code) => [code, screen.path] as const)),
+  SCREENS.flatMap((screen) =>
+    screen.actionCodes.map(
+      (code) => [code, `${screen.path}${screen.actionQuery?.[code] ?? ''}`] as const,
+    ),
+  ),
 );
 
 /** Route d'une action de l'accueil : celle du serveur, à défaut celle de l'écran livré. */

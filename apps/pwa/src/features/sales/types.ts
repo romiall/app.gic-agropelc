@@ -95,6 +95,28 @@ export interface StockBalanceData {
   readonly qty_on_hand: string;
   readonly qty_reserved: string;
   readonly qty_allocated: string;
+  readonly lots?: readonly StockLotData[];
+}
+
+/** (`stock`, portée `LOCATION`) lot d'un solde. */
+export interface StockLotData {
+  readonly lot_id: string | null;
+  readonly lot_code: string | null;
+  readonly expiry_date: string | null;
+  readonly qty_on_hand: string;
+  readonly qty_reserved: string;
+  readonly qty_allocated: string;
+  readonly last_move_at: string | null;
+}
+
+/** (`stock`, portée `LOCATION`) seuil d'un produit sur un emplacement (BR-STK-051). */
+export interface StockThresholdData {
+  readonly id: string;
+  readonly location_id: string;
+  readonly product_id: string;
+  readonly min_qty_base: string;
+  readonly target_qty_base: string;
+  readonly is_active: boolean;
 }
 
 /** (`customers`) */

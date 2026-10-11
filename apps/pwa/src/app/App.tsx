@@ -13,6 +13,7 @@ import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { MenuScreen } from '../features/navigation/MenuScreen.js';
 import { CollectScreen } from '../features/sales/CollectScreen.js';
+import { StockScreen } from '../features/stock/StockScreen.js';
 import { DeliverScreen } from '../features/sales/DeliverScreen.js';
 import { NewOrderScreen } from '../features/sales/NewOrderScreen.js';
 import { NewSaleScreen } from '../features/sales/NewSaleScreen.js';
@@ -80,6 +81,7 @@ function AppShell() {
             <Route path={ROUTES.orderPattern} element={<OrderDetailScreen />} />
             <Route path={ROUTES.deliverPattern} element={<DeliverScreen />} />
             <Route path={ROUTES.collect} element={<CollectScreen />} />
+            <Route path={ROUTES.stock} element={<StockScreen />} />
           </Routes>
         </ErrorBoundary>
       </main>

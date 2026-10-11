@@ -95,6 +95,7 @@ export const fr = {
       order_detail: 'Détail d’une commande',
       deliver: 'Livrer une commande',
       collect: 'Encaisser une créance',
+      stock: 'Stock par emplacement',
     },
   },
   sales: {
@@ -387,6 +388,31 @@ export const fr = {
       CONFLICT: 'Commande mise en attente d’examen (conflit).',
       REJECTED: 'Commande refusée : {{reason}}',
     },
+  },
+  stock: {
+    location_label: 'Emplacement',
+    no_location:
+      'Aucun stock sur cet appareil : synchronisez, ou demandez une affectation à un emplacement.',
+    custody: {
+      EXCLUSIVE_USER: 'Stock confié à une personne',
+      EXCLUSIVE_DEVICE: 'Stock confié à un appareil',
+      SHARED: 'Stock partagé : le disponible tient compte des quotas des autres appareils',
+    },
+    alerts_only: 'Seulement les produits sous le seuil ({{count}})',
+    empty: 'Aucun produit en stock sur cet emplacement.',
+    no_alert: 'Aucun produit sous le seuil.',
+    state: {
+      STOCK_LOW: 'Sous le seuil',
+      STOCK_OUT: 'Rupture',
+    },
+    on_hand: 'Physique',
+    available: 'Disponible',
+    allocated: 'Quotas',
+    pending: 'Opérations de l’appareil en attente : {{quantity}} {{unit}}',
+    threshold: 'Seuil : {{min}} {{unit}} · réapprovisionnement suggéré : {{suggested}} {{unit}}',
+    lots: 'Lots ({{count}})',
+    no_lot: 'Sans lot',
+    expiry: 'Péremption : {{date}}',
   },
   collect: {
     customer_required: 'Choisissez le client qui règle.',

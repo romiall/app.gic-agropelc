@@ -27,6 +27,7 @@ import type {
   SiteData,
   WorkSessionData,
   StockBalanceData,
+  StockThresholdData,
   ZoneData,
 } from './types.js';
 
@@ -50,6 +51,8 @@ export interface SalesReferences {
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
+  /** Seuils de stock actifs des emplacements du périmètre (jeu `stock`). */
+  readonly thresholds: readonly StockThresholdData[];
   /** Comptes de trésorerie actifs servis à l'appareil (jeu `cash`). */
   readonly cashAccounts: readonly CashAccountData[];
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
@@ -66,6 +69,7 @@ const byId = <T extends { readonly id: string }>(rows: readonly T[]): Map<string
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    thresholds,
     cashAccounts,
     stockCursor,
     ordersCursor,
@@ -89,6 +93,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<StockThresholdData>(db, 'stock', 'STOCK_THRESHOLD'),
     listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
@@ -134,6 +139,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     orders: orderMap,
     sales,
     payments,
+    thresholds: thresholds.filter((threshold) => threshold.is_active),
     cashAccounts,
     lastSyncAt: meta?.last_sync_at ?? null,
     ordersPulledAt: ordersCursor?.pulled_at,
