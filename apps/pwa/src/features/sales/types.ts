@@ -146,6 +146,30 @@ export interface CustomerData {
   readonly pending_command_id?: string;
 }
 
+/** (`transfers`, portée `LOCATION`) transfert de stock ; quantités en chaînes décimales. */
+export interface StockTransferData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly transfer_kind: 'STANDARD' | 'INTERNAL' | 'BLIND_RECEIPT';
+  readonly from_location_id: string;
+  readonly to_location_id: string;
+  readonly status: string;
+  readonly dispatched_at: string | null;
+  readonly carrier_name: string | null;
+  readonly notes: string | null;
+  readonly occurred_at: string;
+  readonly version: number;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly product_id: string;
+    readonly lot_id: string | null;
+    readonly unit_code: string;
+    readonly requested_qty_base: string | null;
+    readonly dispatched_qty_base: string | null;
+    readonly received_qty_base: string | null;
+  }[];
+}
+
 /** (`customer_category`, repli générique `GLOBAL`) */
 export interface CustomerCategoryData {
   readonly id: string;

@@ -98,6 +98,7 @@ export const fr = {
       stock: 'Stock par emplacement',
       new_prospect: '+ Prospect',
       loss: 'Déclarer une perte',
+      receive: 'Recevoir un transfert',
     },
   },
   sales: {
@@ -446,6 +447,42 @@ export const fr = {
       WARNING: 'Prospect enregistré, signalé comme doublon possible d’un compte existant.',
       CONFLICT: 'Prospect mis en attente d’examen (conflit).',
       REJECTED: 'Prospect refusé : {{reason}}',
+    },
+  },
+  receive: {
+    list_hint: 'Transferts expédiés vers vos emplacements, en attente de réception.',
+    empty: 'Aucun transfert à recevoir sur cet appareil.',
+    open: 'Recevoir le transfert {{doc}}',
+    from: 'De {{from}}',
+    to_receive: 'À recevoir',
+    receiving: 'Réception en attente d’envoi',
+    title: 'Réception {{doc}}',
+    route: '{{from}} → {{to}}',
+    back: '← Transferts à recevoir',
+    not_found: 'Transfert introuvable sur cet appareil, ou déjà reçu.',
+    already_receiving:
+      'Une réception de ce transfert est déjà enregistrée sur l’appareil et attend d’être envoyée.',
+    hint: 'Comptez la marchandise reçue : saisissez la quantité réellement reçue pour chaque article (unité de base).',
+    dispatched: 'Expédié : {{quantity}} {{unit}}',
+    received_label: 'Reçu ({{unit}})',
+    quantity_invalid: 'Quantité invalide (0 ou plus, 3 décimales au plus).',
+    short: 'Manque : {{quantity}} {{unit}} (écart à justifier)',
+    reason_label: 'Motif de l’écart',
+    reason_placeholder: 'Choisir un motif (facultatif)',
+    over_online:
+      'Une quantité reçue dépasse l’expédié : corrigez-la (le serveur refuse un excédent en ligne).',
+    over_offline: 'Une quantité reçue dépasse l’expédié : l’excédent sera signalé au responsable.',
+    offline_banner:
+      'Hors ligne : la réception sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+    submit: 'Enregistrer la réception',
+    result: {
+      WAITING_offline:
+        'Réception enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
+      WAITING_online: 'Réception en cours d’envoi…',
+      DONE: 'Réception enregistrée.',
+      WARNING: 'Réception enregistrée, avec un écart ou un excédent à examiner.',
+      CONFLICT: 'Réception mise en quarantaine : le transfert a déjà été reçu ou retourné.',
+      REJECTED: 'Réception refusée : {{reason}}',
     },
   },
   loss: {

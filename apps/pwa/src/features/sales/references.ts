@@ -30,6 +30,7 @@ import type {
   WorkSessionData,
   StockBalanceData,
   StockThresholdData,
+  StockTransferData,
   ZoneData,
 } from './types.js';
 
@@ -53,6 +54,8 @@ export interface SalesReferences {
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
+  /** Transferts du périmètre (jeu `transfers`), tous statuts reçus. */
+  readonly transfers: ReadonlyMap<string, StockTransferData>;
   /** Catégories de client actives (jeu `customer_category`). */
   readonly customerCategories: readonly CustomerCategoryData[];
   /** Seuils de stock actifs des emplacements du périmètre (jeu `stock`). */
@@ -125,6 +128,7 @@ export function pendingCustomers(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    transfers,
     customerCategories,
     thresholds,
     cashAccounts,
@@ -150,6 +154,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<StockTransferData>(db, 'transfers', 'STOCK_TRANSFER'),
     listProjected<CustomerCategoryData>(db, 'customer_category', 'CUSTOMER_CATEGORY'),
     listProjected<StockThresholdData>(db, 'stock', 'STOCK_THRESHOLD'),
     listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
@@ -183,6 +188,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       .toArray(),
   ]);
   const zoneMap = byId(zones);
+  const transferMap = byId(transfers);
   const orderMap = byId(orders);
   return {
     products,
@@ -195,7 +201,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stock: new Map(
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
-    pending: pendingConsumption(outbox, stockCursor?.pulled_at),
+    pending: pendingConsumption(outbox, stockCursor?.pulled_at, transferMap),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),
       ...pendingCustomers(outbox, customers, customersCursor?.pulled_at),
@@ -207,6 +213,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     orders: orderMap,
     sales,
     payments,
+    transfers: transferMap,
     customerCategories: customerCategories
       .filter((category) => category.is_active)
       .sort((a, b) => a.name.localeCompare(b.name, 'fr')),

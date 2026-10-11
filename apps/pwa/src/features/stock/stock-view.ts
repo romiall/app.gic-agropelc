@@ -8,7 +8,13 @@
 import { evaluateStockThreshold, type StockThresholdState } from '@gic/domain';
 import type { SalesReferences } from '../sales/references.js';
 import { localAvailable, stockKey } from '../sales/stock.js';
-import type { LocationData, ProductData, StockBalanceData, StockLotData } from '../sales/types.js';
+import type {
+  LocationData,
+  ProductData,
+  StockBalanceData,
+  StockLotData,
+  StockTransferData,
+} from '../sales/types.js';
 
 export interface StockRow {
   readonly product: ProductData;
@@ -35,17 +41,39 @@ export function stockLocations(refs: Pick<SalesReferences, 'locations' | 'stock'
 
 const num = (value: string | undefined): number => (value === undefined ? 0 : Number(value));
 
+/**
+ * Quantités en route vers l'emplacement (transferts expédiés, pas encore reçus), par produit : elles
+ * réduisent le réapprovisionnement suggéré (BR-STK-051 : cible − disponible − transit entrant).
+ */
+export function inTransitTo(
+  transfers: ReadonlyMap<string, StockTransferData>,
+  locationId: string,
+): Map<string, number> {
+  const milli = new Map<string, number>();
+  for (const transfer of transfers.values()) {
+    if (transfer.status !== 'DISPATCHED' || transfer.to_location_id !== locationId) continue;
+    for (const line of transfer.lines) {
+      const remaining =
+        num(line.dispatched_qty_base ?? undefined) - num(line.received_qty_base ?? undefined);
+      if (remaining <= 0) continue;
+      milli.set(line.product_id, (milli.get(line.product_id) ?? 0) + Math.round(remaining * 1000));
+    }
+  }
+  return new Map([...milli].map(([id, value]) => [id, value / 1000]));
+}
+
 export function stockRows(
-  refs: Pick<SalesReferences, 'stock' | 'pending' | 'products' | 'thresholds'>,
+  refs: Pick<SalesReferences, 'stock' | 'pending' | 'products' | 'thresholds' | 'transfers'>,
   location: LocationData,
 ): StockRow[] {
   const products = new Map(refs.products.map((product) => [product.id, product]));
+  const transit = inTransitTo(refs.transfers, location.id);
   const rows: StockRow[] = [];
   for (const balance of refs.stock.values()) {
     if (balance.location_id !== location.id) continue;
     const product = products.get(balance.product_id);
     if (!product) continue;
-    rows.push(rowOf(refs, location, product, balance));
+    rows.push(rowOf(refs, location, product, balance, transit.get(product.id) ?? 0));
   }
   return rows.sort((a, b) => a.product.name.localeCompare(b.product.name, 'fr'));
 }
@@ -55,6 +83,7 @@ function rowOf(
   location: LocationData,
   product: ProductData,
   balance: StockBalanceData,
+  inTransitIn: number,
 ): StockRow {
   const pending = refs.pending.get(stockKey(location.id, product.id)) ?? 0;
   const available = localAvailable(balance, location.custody_mode, pending);
@@ -67,7 +96,6 @@ function rowOf(
     allocated: num(balance.qty_allocated),
     available,
     pending,
-    // Transit entrant non compté : le jeu `transfers` le portera avec l'écran de réception.
     threshold: threshold
       ? (() => {
           const minQty = num(threshold.min_qty_base);
@@ -75,7 +103,7 @@ function rowOf(
             available,
             minQty,
             targetQty: num(threshold.target_qty_base),
-            inTransitIn: 0,
+            inTransitIn,
           });
           return { state: evaluation.state, minQty, suggestedQty: evaluation.suggestedQty };
         })()

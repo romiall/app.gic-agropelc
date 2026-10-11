@@ -18,7 +18,7 @@ import {
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from './pending.js';
-import type { LocationData, SettingData, StockBalanceData } from './types.js';
+import type { LocationData, SettingData, StockBalanceData, StockTransferData } from './types.js';
 
 const toMilli = (value: number): number => Math.round(value * 1000);
 const fromMilli = (milli: number): number => milli / 1000;
@@ -58,11 +58,34 @@ function stillPending(command: OutboxCommand, stockPulledAt: string | undefined)
 export function pendingConsumption(
   commands: readonly OutboxCommand[],
   stockPulledAt: string | undefined,
+  transfers: ReadonlyMap<string, StockTransferData> = new Map(),
 ): Map<string, number> {
   const milli = new Map<string, number>();
   for (const command of commands) {
     if (!stillPending(command, stockPulledAt)) continue;
     const payload = command.payload as StockPayloadLike;
+    // Réception d'un transfert sur l'appareil : entrée sur l'emplacement de destination (quantité
+    // négative : elle augmente le disponible local jusqu'au retéléchargement du stock).
+    if (command.command_type === 'inventory.transfer.receive') {
+      const receipt = command.payload as {
+        readonly transferId?: string;
+        readonly lines?: readonly {
+          readonly transferLineId?: string;
+          readonly receivedQtyBase?: number;
+        }[];
+      };
+      const transfer = receipt.transferId ? transfers.get(receipt.transferId) : undefined;
+      if (!transfer) continue;
+      for (const line of receipt.lines ?? []) {
+        const transferLine = transfer.lines.find(
+          (candidate) => candidate.id === line.transferLineId,
+        );
+        if (!transferLine || !line.receivedQtyBase) continue;
+        const key = stockKey(transfer.to_location_id, transferLine.product_id);
+        milli.set(key, (milli.get(key) ?? 0) - toMilli(line.receivedQtyBase));
+      }
+      continue;
+    }
     // Perte déclarée sur l'appareil : sortie de l'emplacement (mise de côté si elle part en validation).
     if (command.command_type === 'inventory.loss.declare') {
       if (payload.locationId && payload.productId && payload.quantityBase) {
@@ -93,7 +116,8 @@ export function localAvailable(
   custodyMode: LocationData['custody_mode'],
   pending: number,
 ): number {
-  if (!balance) return pending > 0 ? fromMilli(-toMilli(pending)) : 0;
+  // Sans solde téléchargé : seulement les opérations de l'appareil (une réception en attente ajoute).
+  if (!balance) return fromMilli(-toMilli(pending)) || 0;
   const onHand = Number(balance.qty_on_hand);
   const reserved = Number(balance.qty_reserved);
   const allocated = Number(balance.qty_allocated);

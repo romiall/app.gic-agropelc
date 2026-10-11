@@ -30,6 +30,9 @@ export const ROUTES = {
   stock: '/stock',
   newProspect: '/clients/nouveau',
   loss: '/stock/perte',
+  receive: '/stock/receptions',
+  receivePattern: '/stock/receptions/:transferId',
+  receiveOne: (transferId: string) => `/stock/receptions/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
@@ -87,6 +90,14 @@ export const ROLE_SETS = {
   ],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** `inventory.transfer.receive` : destinataires de transferts. */
+  transferReceive: [
+    'COMMERCIAL_TERRAIN',
+    'VENDEUR_PDV',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+  ],
   /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
   stockRead: [
     'DIRECTION',
@@ -208,6 +219,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     // « Alertes de stock » du magasinier : l'écran s'ouvre sur les produits sous le seuil.
     actionCodes: ['STOCK_ALERTS'],
     actionQuery: { STOCK_ALERTS: '?alertes=1' },
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-03',
+    path: ROUTES.receive,
+    labelKey: 'receive',
+    group: 'stock',
+    roles: ROLE_SETS.transferReceive,
+    actionCodes: ['RECEIVE_TRANSFER'],
     offline: true,
   },
   {
