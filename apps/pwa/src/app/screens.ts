@@ -45,6 +45,7 @@ export const ROUTES = {
   receivePattern: '/stock/receptions/:transferId',
   receiveOne: (transferId: string) => `/stock/receptions/${transferId}`,
   count: '/stock/inventaire',
+  consumption: '/stock/consommation',
   transfer: '/stock/transferts',
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
@@ -123,6 +124,8 @@ export const ROLE_SETS = {
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-STK-08 (`inventory.consumption.record`) : magasinier et responsable de ferme. */
+  consumptionRecord: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
   countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
   /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
@@ -319,6 +322,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'stock',
     roles: ROLE_SETS.countPerform,
     actionCodes: ['COUNT'],
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-08',
+    path: ROUTES.consumption,
+    labelKey: 'consumption',
+    group: 'stock',
+    roles: ROLE_SETS.consumptionRecord,
+    actionCodes: [],
     offline: true,
   },
   {

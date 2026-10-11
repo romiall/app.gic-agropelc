@@ -104,6 +104,7 @@ export const fr = {
       receive: 'Recevoir un transfert',
       transfer: 'Transférer',
       count: 'Inventaire',
+      consumption: 'Consommer un intrant',
     },
   },
   sales: {
@@ -664,6 +665,35 @@ export const fr = {
       WARNING: 'Dérogation demandée, avec un signalement.',
       CONFLICT: 'Demande de dérogation mise en attente d’examen (conflit).',
       REJECTED: 'Dérogation refusée : {{reason}}',
+    },
+  },
+  consumption: {
+    offline_banner:
+      'Hors ligne : la consommation sera enregistrée sur ce téléphone et envoyée au retour du réseau ; l’intrant quitte aussitôt le disponible.',
+    no_site:
+      'Cet emplacement n’est rattaché à aucun site : la consommation ne peut pas lui être imputée.',
+    product_label: 'Intrant',
+    cost_label: 'Nature du coût',
+    cost_placeholder: 'Choisir la nature',
+    cost: {
+      ALIMENT: 'Aliment',
+      VETERINAIRE: 'Produit vétérinaire',
+      AUTRE_INTRANT: 'Autre intrant (emballage, litière…)',
+    },
+    over_online:
+      'La quantité dépasse le stock de l’emplacement (ou du lot choisi) : le serveur refuserait la consommation.',
+    over_offline:
+      'La quantité dépasse le stock connu de l’appareil : la consommation sera tout de même enregistrée et signalée.',
+    submit: 'Enregistrer la consommation',
+    another: 'Autre consommation',
+    result: {
+      WAITING_offline:
+        'Consommation enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Consommation en cours d’envoi…',
+      DONE: 'Consommation enregistrée.',
+      WARNING: 'Consommation enregistrée, avec un signalement.',
+      CONFLICT: 'Consommation mise en attente d’examen (conflit).',
+      REJECTED: 'Consommation refusée : {{reason}}',
     },
   },
   count: {

@@ -87,7 +87,11 @@ export function pendingConsumption(
       continue;
     }
     // Perte déclarée sur l'appareil : sortie de l'emplacement (mise de côté si elle part en validation).
-    if (command.command_type === 'inventory.loss.declare') {
+    // Consommation d'intrant : sortie de l'emplacement vers la consommation.
+    if (
+      command.command_type === 'inventory.loss.declare' ||
+      command.command_type === 'inventory.consumption.record'
+    ) {
       if (payload.locationId && payload.productId && payload.quantityBase) {
         const key = stockKey(payload.locationId, payload.productId);
         milli.set(key, (milli.get(key) ?? 0) + toMilli(payload.quantityBase));
