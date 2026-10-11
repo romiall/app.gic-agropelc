@@ -6,7 +6,8 @@
  *   temps reçoit la saisie hors ligne avec un signalement.
  * - Effectif en élevage (INV-PRD-01) : soldes du lot de stock du lot de production sur les bâtiments
  *   et cases (`BUILDING`, `PEN`) du jeu `stock`, moins les mortalités de l'appareil en attente
- *   (comparées au tirage du jeu `stock`, qui porte l'effet de la mortalité). Le serveur contrôle le
+ *   et les sorties vers la commercialisation (ECR-PRD-07) saisies sur l'appareil, comparées au tirage
+ *   du jeu `stock`, qui porte leur effet. Le serveur contrôle le
  *   solde de l'emplacement choisi : la garde « plus de morts que l'effectif » porte sur ce bâtiment.
  * - Mortalité (`production.mortality.record`) : nombre entier de têtes, emplacement d'élevage, cause
  *   `LOSS` facultative ; validée selon la politique `MORTALITY` (photo non jointe par l'application,
@@ -20,6 +21,7 @@ import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import type { LocationData, ProductData, ProductionLotData } from '../sales/types.js';
 import type { TransferLineCheck } from '../stock/transfer.js';
+import { pendingLotDispatches } from './output.js';
 
 export const OBSERVATION_TYPES = [
   'SANITAIRE',
@@ -163,8 +165,16 @@ export function rearingHeadcount(
   );
   const heads = lotHeads(refs, lot, (locationId) => rearing.has(locationId));
   if (heads === null) return null;
-  const pending = pendingDeaths(refs.outbox, refs.stockPulledAt).get(lot.id) ?? 0;
-  return Math.round((heads - pending) * 1000) / 1000;
+  const deaths = pendingDeaths(refs.outbox, refs.stockPulledAt).get(lot.id) ?? 0;
+  let dispatched = 0;
+  for (const [locationId, quantity] of pendingLotDispatches(
+    refs.outbox,
+    refs.stockPulledAt,
+    lot.stock_lot_id,
+  )) {
+    if (rearing.has(locationId)) dispatched += quantity;
+  }
+  return Math.round((heads - deaths - dispatched) * 1000) / 1000;
 }
 
 /**
@@ -178,9 +188,11 @@ export function locationHeadcount(
 ): number | null {
   const heads = lotHeads(refs, lot, (candidate) => candidate === locationId);
   if (heads === null) return null;
-  const pending =
+  const deaths =
     pendingDeaths(refs.outbox, refs.stockPulledAt, true).get(`${lot.id}:${locationId}`) ?? 0;
-  return Math.round((heads - pending) * 1000) / 1000;
+  const dispatched =
+    pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id).get(locationId) ?? 0;
+  return Math.round((heads - deaths - dispatched) * 1000) / 1000;
 }
 
 /** Âge du lot en jours (jour métier), depuis la première entrée ; `null` sans date de début. */

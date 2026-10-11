@@ -8,6 +8,7 @@ import { loadSalesReferences } from '../sales/references.js';
 import { DailyEntryScreen } from './DailyEntryScreen.js';
 import { EggCollectionScreen } from './EggCollectionScreen.js';
 import { LotsScreen } from './LotsScreen.js';
+import { OutputScreen } from './OutputScreen.js';
 import { checkEggs, EMPTY_EGGS } from './eggs.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -84,6 +85,7 @@ function renderAt(path: string) {
         <Route path="/production/lots" element={<LotsScreen />} />
         <Route path="/production/lots/:lotId" element={<DailyEntryScreen />} />
         <Route path="/production/collecte" element={<EggCollectionScreen />} />
+        <Route path="/production/sortie" element={<OutputScreen />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -158,6 +160,71 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     vi.restoreAllMocks();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+    await getDb().navigation.clear();
+  });
+
+  async function rememberRoles(roles: readonly string[]) {
+    await getDb().navigation.put({
+      user_id: IDS.user,
+      roles: [...roles],
+      sections: [],
+      saved_at: '2026-10-10T08:00:00.000Z',
+    });
+  }
+
+  it('sortie vers commercialisation hors ligne : têtes du lot expédiées, effectif aussitôt réduit', async () => {
+    await rememberRoles(['RESP_FERME']);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/production/lots/${BROILERS}`);
+    await user.click(await screen.findByRole('link', { name: 'Sortie vers commercialisation →' }));
+    expect(await screen.findByText('Effectif sur cet emplacement : 500 têtes')).toBeInTheDocument();
+    // Le responsable de ferme ne déclare pas le lot prêt à la vente.
+    expect(
+      screen.queryByRole('button', { name: 'Déclarer prêt à la vente' }),
+    ).not.toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Enregistrer la sortie' });
+    await user.type(screen.getByLabelText('Nombre de têtes (U)'), '20');
+    expect(submit).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Vers'), IDS.pos);
+    await user.type(screen.getByLabelText('Transporteur (facultatif)'), 'Moto Paul');
+    await user.click(submit);
+    expect(await screen.findByText(/Sortie enregistrée sur ce téléphone/)).toBeInTheDocument();
+    expect(await screen.findByText('Effectif sur cet emplacement : 480 têtes')).toBeInTheDocument();
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'inventory.transfer.dispatch',
+      aggregate_type: 'STOCK_TRANSFER',
+      captured_offline: true,
+      payload: {
+        fromLocationId: BUILDING,
+        toLocationId: IDS.pos,
+        lines: [
+          { productId: IDS.chicken, unitCode: 'U', quantityBase: 20, lotId: BROILER_STOCK_LOT },
+        ],
+        carrierName: 'Moto Paul',
+      },
+    });
+    const refs = await loadSalesReferences(getDb());
+    expect(refs.pending.get(`${BUILDING}:${IDS.chicken}`)).toBe(20);
+  });
+
+  it('responsable de production en ligne : lot prêt à la vente ; plus de têtes que l’effectif bloqué', async () => {
+    await rememberRoles(['RESP_PRODUCTION']);
+    const user = userEvent.setup();
+    renderAt(`/production/sortie?lot=${BROILERS}`);
+    await user.type(await screen.findByLabelText('Nombre de têtes (U)'), '501');
+    expect(screen.getByRole('alert')).toHaveTextContent(/le serveur refuserait/);
+    await user.click(screen.getByRole('button', { name: 'Déclarer prêt à la vente' }));
+    expect(await screen.findByText(/Changement de statut en cours d’envoi/)).toBeInTheDocument();
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'production.lot.set_status',
+      aggregate_type: 'PRODUCTION_LOT',
+      aggregate_id: BROILERS,
+      payload: { status: 'SELLING' },
+    });
   });
 
   it('hors ligne : lots actifs, mortalité et aliment saisis, effectif et journal aussitôt à jour', async () => {

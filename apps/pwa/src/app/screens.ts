@@ -36,6 +36,8 @@ export const ROUTES = {
   dailyEntry: (lotId: string) => `/production/lots/${lotId}`,
   eggCollection: '/production/collecte',
   eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
+  productionOutput: '/production/sortie',
+  productionOutputFor: (lotId: string) => `/production/sortie?lot=${encodeURIComponent(lotId)}`,
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
@@ -149,6 +151,11 @@ export const ROLE_SETS = {
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-PRD-01 et 02 (`production.daily.record`, jeu `production` des fermes) : production, ferme. */
   production: ['RESP_PRODUCTION', 'RESP_FERME'],
+  /**
+   * ECR-PRD-07 (`inventory.transfer.dispatch` SITE pour la ferme, ALL pour la production) : responsable
+   * de ferme ; le responsable de production y déclare en plus le lot prêt à la vente.
+   */
+  productionOutput: ['RESP_FERME', 'RESP_PRODUCTION'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -470,6 +477,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'production',
     roles: ROLE_SETS.production,
     actionCodes: ['EGG_COLLECTION'],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRD-07',
+    path: ROUTES.productionOutput,
+    labelKey: 'production_output',
+    group: 'production',
+    roles: ROLE_SETS.productionOutput,
+    actionCodes: [],
     offline: true,
   },
   {

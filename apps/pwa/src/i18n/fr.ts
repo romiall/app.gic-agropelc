@@ -110,6 +110,7 @@ export const fr = {
       price_rules: 'Règles tarifaires',
       catalog: 'Catalogue',
       stock_ledger: 'Registre des mouvements',
+      production_output: 'Sortie vers commercialisation',
       purchase_receipt: 'Réceptionner',
       purchase_request: 'Demande d’achat',
       production_lots: 'Lots actifs',
@@ -759,6 +760,7 @@ export const fr = {
     deaths_over_offline:
       'Plus de morts que l’effectif de cet emplacement connu du téléphone : la saisie sera tout de même enregistrée.',
     comment_required: 'Cette cause exige un commentaire.',
+    to_output: 'Sortie vers commercialisation →',
     journal_pending_approval: 'En attente de validation',
     cause_label: 'Cause (facultatif)',
     cause_placeholder: 'Cause non précisée',
@@ -990,6 +992,54 @@ export const fr = {
       WARNING_RECEIPT_QUARANTINED: 'Réception {{doc}} mise en quarantaine pour validation.',
       CONFLICT: 'Réception mise en attente d’examen (conflit).',
       REJECTED: 'Réception refusée : {{reason}}',
+    },
+  },
+  output: {
+    back: '← Saisie du jour {{code}}',
+    offline_banner:
+      'Hors ligne : la sortie sera enregistrée sur ce téléphone et envoyée au retour du réseau ; les têtes quittent aussitôt l’effectif affiché.',
+    no_lot: 'Aucun lot actif ou en vente sur vos fermes.',
+    lot_label: 'Lot',
+    lot_status: {
+      ACTIVE: 'En élevage',
+      SELLING: 'Prêt à la vente depuis l’élevage',
+    },
+    status_title: 'Vente depuis l’élevage',
+    status_hint:
+      'Un lot prêt à la vente se vend directement depuis son bâtiment ; une sortie vers un point de vente est possible dès l’élevage.',
+    status_online_only: 'Changement de statut en ligne seulement.',
+    ready_to_sell: 'Déclarer prêt à la vente',
+    back_to_rearing: 'Revenir en élevage',
+    dispatch_title: 'Sortir des têtes vers un point de vente',
+    source_label: 'Depuis le bâtiment ou la case',
+    destination_label: 'Vers',
+    destination_placeholder: 'Choisir le magasin, le PDV ou le commercial',
+    no_destination: 'Aucun emplacement commercial connu : synchronisez avant de saisir une sortie.',
+    quantity_label: 'Nombre de têtes ({{unit}})',
+    over_online:
+      'Plus de têtes que l’effectif de cet emplacement : le serveur refuserait la sortie. Vérifiez le nombre ou l’emplacement.',
+    over_offline:
+      'Plus de têtes que l’effectif connu du téléphone : la sortie sera tout de même enregistrée et signalée.',
+    carrier_label: 'Transporteur (facultatif)',
+    notes_label: 'Note (facultatif)',
+    receive_hint: 'Le destinataire confirme l’arrivée (« Recevoir un transfert »).',
+    submit: 'Enregistrer la sortie',
+    result: {
+      WAITING_offline:
+        'Sortie enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Sortie en cours d’envoi…',
+      DONE: 'Sortie enregistrée : {{doc}}.',
+      WARNING: 'Sortie {{doc}} enregistrée, avec un signalement.',
+      CONFLICT: 'Sortie mise en attente d’examen (conflit).',
+      REJECTED: 'Sortie refusée : {{reason}}',
+    },
+    status_result: {
+      WAITING_offline: 'Statut enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Changement de statut en cours d’envoi…',
+      DONE: 'Statut du lot mis à jour.',
+      WARNING: 'Statut du lot mis à jour, avec un signalement.',
+      CONFLICT: 'Changement de statut mis en attente d’examen (conflit).',
+      REJECTED: 'Changement de statut refusé : {{reason}}',
     },
   },
   ledger: {
