@@ -1,9 +1,11 @@
 /**
  * ECR-STK-02 « TRANSFÉRER (expédier) » (magasinier, responsable de ferme ; expédition vers un
- * commercial comprise). Demandes reçues à expédier, et expédition directe d'un emplacement de
- * l'appareil vers un autre. Commande `inventory.transfer.dispatch` (agrégat `STOCK_TRANSFER`),
- * utilisable hors ligne ; le numéro `TRF-…` est lu dans le jeu `transfers` au tirage suivant. La
- * marchandise quitte aussitôt le disponible local et part en transit jusqu'à sa réception (ECR-STK-03).
+ * commercial comprise). Demandes reçues à expédier ou à refuser, expédition directe d'un emplacement
+ * de l'appareil vers un autre, et mouvement interne vers un autre emplacement du même site.
+ * Commandes `inventory.transfer.dispatch`, `.decline` et `.move_internal` (agrégat `STOCK_TRANSFER`),
+ * utilisables hors ligne ; le numéro `TRF-…` est lu dans le jeu `transfers` au tirage suivant. La
+ * marchandise expédiée quitte aussitôt le disponible local et part en transit jusqu'à sa réception
+ * (ECR-STK-03) ; celle d'un mouvement interne passe aussitôt sur la destination.
  */
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -22,9 +24,13 @@ import { LinesEditor } from './LinesEditor.js';
 import { stockLocations } from './stock-view.js';
 import {
   computeLines,
+  declinePayload,
   destinations,
   directDispatchPayload,
+  internalDestinations,
+  internalMovePayload,
   MAX_CARRIER_NAME,
+  MAX_DECLINE_COMMENT,
   MAX_TRANSFER_NOTES,
   overAvailable,
   parseDispatched,
@@ -57,12 +63,18 @@ const newLine = (): TransferLineDraft => ({
   quantityText: '',
 });
 
+/** Messages du résultat selon l'opération. */
+type ResultMessages = 'transfer.result' | 'transfer.decline_result' | 'transfer.move_result';
+
 interface FormProps {
   readonly refs: SalesReferences;
   readonly userId: string;
   readonly online: boolean;
-  readonly onDone: (commandId: string) => void;
+  readonly onDone: (commandId: string, messages: ResultMessages) => void;
 }
+
+/** Expédition directe ou mouvement interne. */
+type Mode = 'DISPATCH' | 'MOVE';
 
 /** Transporteur et note, communs aux deux formes d'expédition. */
 /** Transporteur, et note pour une expédition directe (la note d'une demande n'est pas conservée). */
@@ -104,19 +116,28 @@ function CarrierFields(props: {
   );
 }
 
-function OverAvailable({ online, names }: { online: boolean; names: readonly string[] }) {
+function OverAvailable({
+  online,
+  names,
+  mode = 'DISPATCH',
+}: {
+  online: boolean;
+  names: readonly string[];
+  mode?: Mode;
+}) {
   const { t } = useTranslation();
   if (names.length === 0) return null;
+  const prefix = mode === 'MOVE' ? 'transfer.move_over' : 'transfer.over';
   return online ? (
     <p className="error-message" role="alert">
-      {t('transfer.over_online', { products: names.join(', ') })}
+      {t(`${prefix}_online`, { products: names.join(', ') })}
     </p>
   ) : (
-    <p className="text-warn">{t('transfer.over_offline', { products: names.join(', ') })}</p>
+    <p className="text-warn">{t(`${prefix}_offline`, { products: names.join(', ') })}</p>
   );
 }
 
-function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
+function DirectDispatchForm({ refs, userId, online, onDone, mode }: FormProps & { mode: Mode }) {
   const { t } = useTranslation();
   const sources = stockLocations(refs);
   const [sourceChoice, setSourceChoice] = useState<string | null>(null);
@@ -132,7 +153,10 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
   const source = sources.find((candidate) => candidate.id === sourceChoice) ?? sources[0];
   if (!source) return <p className="home-muted">{t('stock.no_location')}</p>;
 
-  const targets = destinations(refs.locations, source.id);
+  const targets =
+    mode === 'MOVE'
+      ? internalDestinations(refs.locations, source)
+      : destinations(refs.locations, source.id);
   const products = refs.products
     .filter((product) => refs.stock.has(stockKey(source.id, product.id)))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
@@ -156,19 +180,34 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
     setBusy(true);
     setSaveError(false);
     try {
-      const command = await submitCommand({
-        authorUserId: userId,
-        commandType: 'inventory.transfer.dispatch',
-        aggregateType: 'STOCK_TRANSFER',
-        payload: directDispatchPayload({
-          fromLocationId: source.id,
-          toLocationId: destinationId,
-          lines: checks.map(({ check }) => check),
-          carrierName: carrier,
-          notes,
-        }),
-      });
-      onDone(command.command_id);
+      const lineChecks = checks.map(({ check }) => check);
+      const command = await submitCommand(
+        mode === 'MOVE'
+          ? {
+              authorUserId: userId,
+              commandType: 'inventory.transfer.move_internal',
+              aggregateType: 'STOCK_TRANSFER',
+              payload: internalMovePayload({
+                fromLocationId: source.id,
+                toLocationId: destinationId,
+                lines: lineChecks,
+                notes,
+              }),
+            }
+          : {
+              authorUserId: userId,
+              commandType: 'inventory.transfer.dispatch',
+              aggregateType: 'STOCK_TRANSFER',
+              payload: directDispatchPayload({
+                fromLocationId: source.id,
+                toLocationId: destinationId,
+                lines: lineChecks,
+                carrierName: carrier,
+                notes,
+              }),
+            },
+      );
+      onDone(command.command_id, mode === 'MOVE' ? 'transfer.move_result' : 'transfer.result');
     } catch {
       setSaveError(true);
     } finally {
@@ -178,7 +217,10 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
 
   return (
     <section className="sale-block" aria-labelledby="transfer-direct-title">
-      <h2 id="transfer-direct-title">{t('transfer.direct_title')}</h2>
+      <h2 id="transfer-direct-title">
+        {mode === 'MOVE' ? t('transfer.move_title') : t('transfer.direct_title')}
+      </h2>
+      {mode === 'MOVE' ? <p className="home-muted">{t('transfer.move_hint')}</p> : null}
       <div className="field">
         <label htmlFor={sourceSelectId}>{t('transfer.source_label')}</label>
         <select
@@ -234,9 +276,17 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
           })
         }
       />
-      <CarrierFields carrier={carrier} notes={notes} onCarrier={setCarrier} onNotes={setNotes} />
+      {mode === 'MOVE' && targets.length === 0 ? (
+        <p className="alert alert-error">{t('transfer.move_no_destination')}</p>
+      ) : null}
+      {mode === 'MOVE' ? (
+        <NotesField notes={notes} onNotes={setNotes} />
+      ) : (
+        <CarrierFields carrier={carrier} notes={notes} onCarrier={setCarrier} onNotes={setNotes} />
+      )}
       <OverAvailable
         online={online}
+        mode={mode}
         names={over.map((productId) => productNames.get(productId) ?? productId)}
       />
       {saveError ? (
@@ -250,8 +300,101 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
         disabled={!ready}
         onClick={() => void submit()}
       >
-        {busy ? t('sales.submitting') : t('transfer.submit')}
+        {busy
+          ? t('sales.submitting')
+          : mode === 'MOVE'
+            ? t('transfer.move_submit')
+            : t('transfer.submit')}
       </button>
+    </section>
+  );
+}
+
+function NotesField({ notes, onNotes }: { notes: string; onNotes: (value: string) => void }) {
+  const { t } = useTranslation();
+  const notesId = useId();
+  return (
+    <div className="field">
+      <label htmlFor={notesId}>{t('transfer.notes_label')}</label>
+      <textarea
+        id={notesId}
+        className="text-input"
+        rows={2}
+        maxLength={MAX_TRANSFER_NOTES}
+        value={notes}
+        onChange={(event) => onNotes(event.target.value)}
+      />
+    </div>
+  );
+}
+
+/** Refus d'une demande reçue, commentaire facultatif (SM-TRANSFER `REQUESTED → DECLINED`). */
+function DeclineBlock({
+  userId,
+  onDone,
+  transfer,
+}: Pick<FormProps, 'userId' | 'onDone'> & { readonly transfer: StockTransferData }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const commentId = useId();
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setSaveError(false);
+    try {
+      const command = await submitCommand({
+        authorUserId: userId,
+        commandType: 'inventory.transfer.decline',
+        aggregateType: 'STOCK_TRANSFER',
+        aggregateId: transfer.id,
+        payload: declinePayload(transfer, comment),
+      });
+      onDone(command.command_id, 'transfer.decline_result');
+    } catch {
+      setSaveError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="secondary" onClick={() => setOpen(true)}>
+        {t('transfer.decline_open')}
+      </button>
+    );
+  }
+  return (
+    <section className="sale-block" aria-labelledby="transfer-decline-title">
+      <h2 id="transfer-decline-title">{t('transfer.decline_title')}</h2>
+      <div className="field">
+        <label htmlFor={commentId}>{t('transfer.decline_comment_label')}</label>
+        <textarea
+          id={commentId}
+          className="text-input"
+          rows={2}
+          maxLength={MAX_DECLINE_COMMENT}
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+        />
+      </div>
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
+      <div className="result-actions">
+        <button type="button" className="secondary" onClick={() => setOpen(false)}>
+          {t('transfer.decline_cancel')}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void submit()}>
+          {busy ? t('sales.submitting') : t('transfer.decline_submit')}
+        </button>
+      </div>
     </section>
   );
 }
@@ -304,7 +447,7 @@ function RequestDispatchForm({
         aggregateId: transfer.id,
         payload: requestDispatchPayload(transfer, quantities, carrier),
       });
-      onDone(command.command_id);
+      onDone(command.command_id, 'transfer.result');
     } catch {
       setSaveError(true);
     } finally {
@@ -374,6 +517,7 @@ function RequestDispatchForm({
       >
         {busy ? t('sales.submitting') : t('transfer.submit_request')}
       </button>
+      <DeclineBlock userId={userId} onDone={onDone} transfer={transfer} />
     </section>
   );
 }
@@ -385,8 +529,13 @@ export function TransferScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
-  // Résultat attaché à la route où l'expédition a été saisie.
-  const [submitted, setSubmitted] = useState<{ commandId: string; route: string | undefined }>();
+  // Résultat attaché à la route où l'opération a été saisie.
+  const [submitted, setSubmitted] = useState<{
+    commandId: string;
+    route: string | undefined;
+    messages: ResultMessages;
+  }>();
+  const [mode, setMode] = useState<Mode>('DISPATCH');
 
   if (!refs || !userId) {
     return (
@@ -401,7 +550,7 @@ export function TransferScreen() {
     return (
       <section className="sale">
         <h1>{t('nav.screens.transfer')}</h1>
-        <CommandResult commandId={submitted.commandId} messages="transfer.result">
+        <CommandResult commandId={submitted.commandId} messages={submitted.messages}>
           <Link
             to={ROUTES.transfer}
             className="action action-compact"
@@ -414,7 +563,8 @@ export function TransferScreen() {
     );
   }
 
-  const onDone = (commandId: string) => setSubmitted({ commandId, route: transferId });
+  const onDone = (commandId: string, messages: ResultMessages) =>
+    setSubmitted({ commandId, route: transferId, messages });
   const requests = requestsToDispatch(refs);
   const locations = new Map(refs.locations.map((location) => [location.id, location]));
 
@@ -435,6 +585,8 @@ export function TransferScreen() {
           <p className="alert alert-error">{t('transfer.not_found')}</p>
         ) : entry.dispatching ? (
           <p className="home-muted">{t('transfer.dispatching')}</p>
+        ) : entry.declining ? (
+          <p className="home-muted">{t('transfer.declining')}</p>
         ) : (
           <RequestDispatchForm
             refs={refs}
@@ -462,7 +614,7 @@ export function TransferScreen() {
           <p className="home-muted">{t('transfer.no_request')}</p>
         ) : (
           <ul className="doc-list">
-            {requests.map(({ transfer, dispatching }) => (
+            {requests.map(({ transfer, dispatching, declining }) => (
               <li key={transfer.id}>
                 <Link
                   to={ROUTES.transferOne(transfer.id)}
@@ -481,6 +633,8 @@ export function TransferScreen() {
                   <span className="doc-side">
                     {dispatching ? (
                       <span className="badge badge-warn">{t('transfer.dispatching_badge')}</span>
+                    ) : declining ? (
+                      <span className="badge badge-warn">{t('transfer.declining_badge')}</span>
                     ) : (
                       <span className="badge badge-info">
                         {t('transfer.lines_count', { count: transfer.lines.length })}
@@ -493,7 +647,29 @@ export function TransferScreen() {
           </ul>
         )}
       </section>
-      <DirectDispatchForm refs={refs} userId={userId} online={online} onDone={onDone} />
+      <fieldset className="choice-group">
+        <legend>{t('transfer.mode_label')}</legend>
+        {(['DISPATCH', 'MOVE'] as const).map((value) => (
+          <label key={value} className="choice">
+            <input
+              type="radio"
+              name="transfer-mode"
+              value={value}
+              checked={mode === value}
+              onChange={() => setMode(value)}
+            />
+            {t(`transfer.mode.${value}`)}
+          </label>
+        ))}
+      </fieldset>
+      <DirectDispatchForm
+        key={mode}
+        refs={refs}
+        userId={userId}
+        online={online}
+        onDone={onDone}
+        mode={mode}
+      />
     </section>
   );
 }

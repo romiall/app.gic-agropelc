@@ -232,6 +232,20 @@ export function pendingConsumption(
       }
       continue;
     }
+    // Mouvement interne : sortie de la source et entrée sur la destination (transfert aussitôt
+    // terminé au serveur, sans transit).
+    if (command.command_type === 'inventory.transfer.move_internal') {
+      const move = command.payload as StockPayloadLike & { readonly toLocationId?: string };
+      if (!move.fromLocationId || !move.toLocationId) continue;
+      for (const line of move.lines ?? []) {
+        if (!line.productId || !line.quantityBase) continue;
+        const from = stockKey(move.fromLocationId, line.productId);
+        const to = stockKey(move.toLocationId, line.productId);
+        milli.set(from, (milli.get(from) ?? 0) + toMilli(line.quantityBase));
+        milli.set(to, (milli.get(to) ?? 0) - toMilli(line.quantityBase));
+      }
+      continue;
+    }
     // Expédition saisie sur l'appareil : sortie de la source (directe, ou celle de la demande).
     const dispatchSource =
       command.command_type === 'inventory.transfer.dispatch'

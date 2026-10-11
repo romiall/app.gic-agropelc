@@ -1921,6 +1921,27 @@ export const fr = {
     lines_count_one: '{{count}} ligne',
     lines_count_other: '{{count}} lignes',
     dispatching_badge: 'Expédition en attente d’envoi',
+    declining_badge: 'Refus en attente d’envoi',
+    declining: 'Cette demande est déjà refusée depuis ce téléphone ; le refus attend l’envoi.',
+    decline_open: 'Refuser la demande',
+    decline_title: 'Refuser la demande',
+    decline_comment_label: 'Motif du refus (facultatif)',
+    decline_cancel: 'Ne pas refuser',
+    decline_submit: 'Confirmer le refus',
+    mode_label: 'Opération',
+    mode: {
+      DISPATCH: 'Expédier vers un autre emplacement',
+      MOVE: 'Déplacer dans le même site',
+    },
+    move_title: 'Mouvement interne',
+    move_hint:
+      'Déplacement immédiat vers un autre emplacement du même site, sans transit ni réception : la marchandise passe aussitôt sur la destination.',
+    move_no_destination: 'Aucun autre emplacement actif sur le site de cet emplacement.',
+    move_over_online:
+      'Quantité supérieure au disponible ({{products}}) : le serveur refuserait le mouvement. Vérifiez les quantités.',
+    move_over_offline:
+      'Quantité supérieure au disponible connu ({{products}}) : le mouvement sera tout de même enregistré et signalé.',
+    move_submit: 'Déplacer',
     dispatching:
       'Cette demande est déjà expédiée depuis ce téléphone ; l’expédition attend l’envoi.',
     not_found:
@@ -1954,6 +1975,23 @@ export const fr = {
       WARNING: 'Expédition enregistrée, avec un signalement.',
       CONFLICT: 'Expédition mise en attente d’examen (conflit).',
       REJECTED: 'Expédition refusée : {{reason}}',
+    },
+    decline_result: {
+      WAITING_offline: 'Refus enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Refus en cours d’envoi…',
+      DONE: 'Demande refusée : le demandeur en est informé au prochain tirage.',
+      WARNING: 'Demande refusée, avec un signalement.',
+      CONFLICT: 'Refus mis en attente d’examen (conflit).',
+      REJECTED: 'Refus non pris en compte : {{reason}}',
+    },
+    move_result: {
+      WAITING_offline:
+        'Mouvement enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Mouvement en cours d’envoi…',
+      DONE: 'Mouvement enregistré : la marchandise est sur la destination.',
+      WARNING: 'Mouvement enregistré, avec un signalement.',
+      CONFLICT: 'Mouvement mis en attente d’examen (conflit).',
+      REJECTED: 'Mouvement refusé : {{reason}}',
     },
   },
   blind: {

@@ -7,6 +7,13 @@
  * - Expédition directe : source tenue par l'appareil, destination physique quelconque (dont
  *   l'emplacement mobile d'un commercial), lignes saisies dans l'unité choisie, converties en unité
  *   de base.
+ * - Refus d'une demande reçue (`inventory.transfer.decline`, SM-TRANSFER `REQUESTED → DECLINED`),
+ *   commentaire facultatif ; impossible tant qu'une expédition de la demande est en attente, et
+ *   inversement.
+ * - Mouvement interne (`inventory.transfer.move_internal`, UC-STK-04 : transfert `INTERNAL`,
+ *   aussitôt `COMPLETED`) : d'un emplacement tenu par l'appareil vers un autre emplacement physique
+ *   actif du même site. La sortie de la source et l'entrée sur la destination comptent aussitôt dans
+ *   le disponible local.
  * - Lot : le serveur prend le plus ancien (FIFO, BR-STK-050) ; l'appareil n'en impose pas.
  * - Au-delà du disponible : bloqué en ligne (le serveur refuserait, `INSUFFICIENT_STOCK`), fait
  *   accompli signalé hors ligne (BR-STK-018). La marchandise expédiée quitte aussitôt le disponible
@@ -25,6 +32,7 @@ import type { LocationData, ProductData, StockTransferData } from '../sales/type
 import { stockLocations } from './stock-view.js';
 
 export const MAX_TRANSFER_NOTES = 2000;
+export const MAX_DECLINE_COMMENT = 2000;
 export const MAX_CARRIER_NAME = 200;
 
 export interface TransferLineDraft {
@@ -93,26 +101,39 @@ export function overAvailable(
     .map(([productId]) => productId);
 }
 
-/** Transferts dont une expédition est saisie sur l'appareil et pas encore confirmée. */
-export function dispatchingTransferIds(outbox: SalesReferences['outbox']): Set<string> {
+/** Transferts visés par une commande de ce type saisie sur l'appareil et pas encore retéléchargée. */
+function transferIdsInFlight(outbox: SalesReferences['outbox'], commandType: string): Set<string> {
   return new Set(
     outbox
       .filter(
-        (command) =>
-          command.command_type === 'inventory.transfer.dispatch' &&
-          stillInFlight(command, undefined),
+        (command) => command.command_type === commandType && stillInFlight(command, undefined),
       )
       .map((command) => (command.payload as { transferId?: string }).transferId)
       .filter((id): id is string => typeof id === 'string'),
   );
 }
 
+/** Transferts dont une expédition est saisie sur l'appareil et pas encore confirmée. */
+export function dispatchingTransferIds(outbox: SalesReferences['outbox']): Set<string> {
+  return transferIdsInFlight(outbox, 'inventory.transfer.dispatch');
+}
+
+/** Demandes dont un refus est saisi sur l'appareil et pas encore confirmé. */
+export function decliningTransferIds(outbox: SalesReferences['outbox']): Set<string> {
+  return transferIdsInFlight(outbox, 'inventory.transfer.decline');
+}
+
 /** Demandes de transfert à expédier depuis un emplacement de l'appareil, la plus ancienne d'abord. */
 export function requestsToDispatch(
   refs: Pick<SalesReferences, 'transfers' | 'locations' | 'stock' | 'outbox'>,
-): { readonly transfer: StockTransferData; readonly dispatching: boolean }[] {
+): {
+  readonly transfer: StockTransferData;
+  readonly dispatching: boolean;
+  readonly declining: boolean;
+}[] {
   const held = new Set(stockLocations(refs).map((location) => location.id));
   const dispatching = dispatchingTransferIds(refs.outbox);
+  const declining = decliningTransferIds(refs.outbox);
   return [...refs.transfers.values()]
     .filter(
       (transfer) =>
@@ -120,8 +141,52 @@ export function requestsToDispatch(
         transfer.status === 'REQUESTED' &&
         held.has(transfer.from_location_id),
     )
-    .map((transfer) => ({ transfer, dispatching: dispatching.has(transfer.id) }))
+    .map((transfer) => ({
+      transfer,
+      dispatching: dispatching.has(transfer.id),
+      declining: declining.has(transfer.id),
+    }))
     .sort((a, b) => a.transfer.occurred_at.localeCompare(b.transfer.occurred_at));
+}
+
+/** Charge utile du refus d'une demande (`inventory.transfer.decline`). */
+export function declinePayload(transfer: Pick<StockTransferData, 'id'>, comment: string) {
+  const trimmed = comment.trim();
+  return { transferId: transfer.id, ...(trimmed ? { comment: trimmed } : {}) };
+}
+
+/**
+ * Destinations d'un mouvement interne : emplacements physiques actifs du site de la source, autres
+ * qu'elle (INTERNAL_MOVE : même site, D06 §7.7), par nom.
+ */
+export function internalDestinations(
+  locations: readonly LocationData[],
+  source: Pick<LocationData, 'id' | 'site_id'>,
+): LocationData[] {
+  if (!source.site_id) return [];
+  return destinations(locations, source.id).filter(
+    (location) => location.site_id === source.site_id,
+  );
+}
+
+/** Charge utile d'un mouvement interne (`inventory.transfer.move_internal`). */
+export function internalMovePayload(input: {
+  readonly fromLocationId: string;
+  readonly toLocationId: string;
+  readonly lines: readonly TransferLineCheck[];
+  readonly notes: string;
+}) {
+  const notes = optionalText(input.notes);
+  return {
+    fromLocationId: input.fromLocationId,
+    toLocationId: input.toLocationId,
+    lines: input.lines.map((line) => ({
+      productId: line.draft.productId,
+      unitCode: line.draft.unitCode,
+      quantityBase: line.quantityBase as number,
+    })),
+    ...(notes ? { notes } : {}),
+  };
 }
 
 /** Destinations possibles : emplacements physiques actifs autres que la source, par nom. */

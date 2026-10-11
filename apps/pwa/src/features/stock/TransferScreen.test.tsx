@@ -21,6 +21,7 @@ vi.mock('../auth/AuthContext.js', () => ({
 const STORE = IDS.mobile;
 const REQUEST = '01900000-0000-7000-8000-0000000000c9';
 const REQUEST_LINE = '01900000-0000-7000-8000-0000000000ca';
+const OTHER_SITE_STORE = '01900000-0000-7000-8000-0000000000cb';
 
 function renderAt(path: string) {
   return render(
@@ -174,5 +175,96 @@ describe('Transférer (ECR-STK-02)', () => {
     });
     await user.click(screen.getByRole('link', { name: 'Autre expédition' }));
     expect(await screen.findByText('Expédition en attente d’envoi')).toBeInTheDocument();
+  });
+
+  it('demande reçue refusée avec un motif, puis signalée en attente sans nouvelle expédition', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/stock/transferts/${REQUEST}`);
+    await user.click(await screen.findByRole('button', { name: 'Refuser la demande' }));
+    await user.type(screen.getByLabelText('Motif du refus (facultatif)'), '  Rupture au PDV ');
+    await user.click(screen.getByRole('button', { name: 'Confirmer le refus' }));
+    expect(await screen.findByText(/Refus enregistré sur ce téléphone/)).toBeInTheDocument();
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'inventory.transfer.decline',
+      aggregate_type: 'STOCK_TRANSFER',
+      aggregate_id: REQUEST,
+      payload: { transferId: REQUEST, comment: 'Rupture au PDV' },
+    });
+    // Rien ne quitte le disponible pour un refus.
+    const refs = await loadSalesReferences(getDb());
+    expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBeUndefined();
+    await user.click(screen.getByRole('link', { name: 'Autre expédition' }));
+    expect(await screen.findByText('Refus en attente d’envoi')).toBeInTheDocument();
+    cleanup();
+    renderAt(`/stock/transferts/${REQUEST}`);
+    expect(await screen.findByText(/déjà refusée depuis ce téléphone/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Expédier la demande' })).not.toBeInTheDocument();
+  });
+
+  it('hors ligne : mouvement interne vers un emplacement du même site, sortie et entrée aussitôt comptées', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put({
+      key: `location:LOCATION:${OTHER_SITE_STORE}`,
+      dataset: 'location',
+      entity_type: 'LOCATION',
+      entity_id: OTHER_SITE_STORE,
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id: OTHER_SITE_STORE,
+        site_id: '01900000-0000-7000-8000-0000000000cc',
+        code: 'MAG-DLA',
+        name: 'Magasin de Douala',
+        location_type: 'STORE',
+        is_virtual: false,
+        custody_mode: 'SHARED',
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      },
+    });
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    // L'expédition propose aussi les emplacements des autres sites.
+    expect(
+      within(await screen.findByLabelText('Vers')).getByRole('option', {
+        name: 'Magasin de Douala',
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Déplacer dans le même site' }));
+    expect(screen.getByRole('heading', { name: 'Mouvement interne' })).toBeInTheDocument();
+    const destination = screen.getByLabelText('Vers');
+    expect(
+      within(destination).queryByRole('option', { name: 'Magasin de Douala' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Transporteur (facultatif)')).not.toBeInTheDocument();
+    await user.selectOptions(destination, STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '30');
+    await user.type(screen.getByLabelText('Note (facultatif)'), 'Rangement');
+    await user.click(screen.getByRole('button', { name: 'Déplacer' }));
+    expect(await screen.findByText(/Mouvement enregistré sur ce téléphone/)).toBeInTheDocument();
+
+    const [command] = await getDb().outbox.toArray();
+    expect(command).toMatchObject({
+      command_type: 'inventory.transfer.move_internal',
+      aggregate_type: 'STOCK_TRANSFER',
+      captured_offline: true,
+      payload: {
+        fromLocationId: IDS.pos,
+        toLocationId: STORE,
+        lines: [{ productId: IDS.eggs, unitCode: 'U', quantityBase: 30 }],
+        notes: 'Rangement',
+      },
+    });
+    const refs = await loadSalesReferences(getDb());
+    expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(30);
+    expect(refs.pending.get(`${STORE}:${IDS.eggs}`)).toBe(-30);
   });
 });
