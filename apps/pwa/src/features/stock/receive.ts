@@ -32,3 +32,60 @@ export function parseReceived(text: string): number | null {
   const value = Number(normalized);
   return value <= MAX_QUANTITY ? value : null;
 }
+
+/** Nombre maximal de lignes d'une réception sans document (`BLIND_RECEIPT_MAX_LINES`). */
+export const BLIND_RECEIPT_MAX_LINES = 200;
+
+/**
+ * Transfert expédié connu de l'appareil sur la même paire source → destination : il se reçoit avec
+ * son document, jamais sans (06-offline-sync, BR-STK-024).
+ */
+export function knownDispatch(
+  transfers: ReadonlyMap<string, StockTransferData>,
+  fromLocationId: string,
+  toLocationId: string,
+): StockTransferData | undefined {
+  return [...transfers.values()].find(
+    (transfer) =>
+      transfer.transfer_kind === 'STANDARD' &&
+      transfer.status === 'DISPATCHED' &&
+      transfer.from_location_id === fromLocationId &&
+      transfer.to_location_id === toLocationId,
+  );
+}
+
+/** Produits saisis plus d'une fois (un produit ne figure qu'une fois dans une réception sans document). */
+export function duplicateProducts(productIds: readonly string[]): Set<string> {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const id of productIds) {
+    if (!id) continue;
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
+  return duplicates;
+}
+
+/** Charge utile stricte de la réception sans document (aucune clé en plus, BR-STK-024). */
+export function blindReceiptPayload(input: {
+  readonly fromLocationId: string;
+  readonly toLocationId: string;
+  readonly lines: readonly {
+    readonly productId: string;
+    readonly unitCode: string;
+    readonly receivedQtyBase: number;
+  }[];
+  readonly notes: string;
+}) {
+  const notes = input.notes.trim();
+  return {
+    fromLocationId: input.fromLocationId,
+    toLocationId: input.toLocationId,
+    lines: input.lines.map((line) => ({
+      productId: line.productId,
+      unitCode: line.unitCode,
+      receivedQtyBase: line.receivedQtyBase,
+    })),
+    ...(notes ? { notes } : {}),
+  };
+}

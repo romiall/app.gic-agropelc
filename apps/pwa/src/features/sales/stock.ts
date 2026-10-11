@@ -74,6 +74,22 @@ export function pendingConsumption(
           readonly receivedQtyBase?: number;
         }[];
       };
+      // Réception sans document : entrée sur la destination déclarée, produit par produit.
+      const blind = receipt as {
+        readonly toLocationId?: string;
+        readonly lines?: readonly {
+          readonly productId?: string;
+          readonly receivedQtyBase?: number;
+        }[];
+      };
+      if (!receipt.transferId && blind.toLocationId) {
+        for (const line of blind.lines ?? []) {
+          if (!line.productId || !line.receivedQtyBase) continue;
+          const key = stockKey(blind.toLocationId, line.productId);
+          milli.set(key, (milli.get(key) ?? 0) - toMilli(line.receivedQtyBase));
+        }
+        continue;
+      }
       const transfer = receipt.transferId ? transfers.get(receipt.transferId) : undefined;
       if (!transfer) continue;
       for (const line of receipt.lines ?? []) {

@@ -20,8 +20,8 @@ import {
 } from '@gic/domain';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { MAX_QUANTITY, parseQuantity, type SaleUnit } from '../sales/sale-form.js';
-import type { LocationData, StockTransferData } from '../sales/types.js';
+import { MAX_QUANTITY, parseQuantity, saleUnitsOf, type SaleUnit } from '../sales/sale-form.js';
+import type { LocationData, ProductData, StockTransferData } from '../sales/types.js';
 import { stockLocations } from './stock-view.js';
 
 export const MAX_TRANSFER_NOTES = 2000;
@@ -194,4 +194,31 @@ export function requestDispatchPayload(
     ...(carrier ? { carrierName: carrier } : {}),
     ...(text ? { notes: text } : {}),
   };
+}
+
+export interface LineRow {
+  readonly check: TransferLineCheck;
+  readonly units: readonly SaleUnit[];
+  readonly product: ProductData | undefined;
+}
+
+/** Lignes contrôlées : unité par défaut = unité de base du produit. */
+export function computeLines(
+  lines: readonly TransferLineDraft[],
+  products: readonly ProductData[],
+  refs: Pick<SalesReferences, 'productUnits'>,
+): LineRow[] {
+  return lines.map((line) => {
+    const product = products.find((candidate) => candidate.id === line.productId);
+    const units = product ? saleUnitsOf(product, refs) : [];
+    const unitCode = line.unitCode || product?.base_unit_code || '';
+    return {
+      check: checkTransferLine(
+        { ...line, unitCode },
+        units.find((unit) => unit.unitCode === unitCode),
+      ),
+      units,
+      product,
+    };
+  });
 }

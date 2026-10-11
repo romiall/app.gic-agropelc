@@ -1,0 +1,111 @@
+/**
+ * Lignes de marchandise saisies dans l'unité choisie (expédition directe, réception sans document) :
+ * produit, quantité, unité ; quantité convertie en unité de base par `checkTransferLine`.
+ */
+import { useTranslation } from 'react-i18next';
+import type { ProductData } from '../sales/types.js';
+import type { LineRow, TransferLineDraft } from './transfer.js';
+
+interface LinesEditorProps {
+  readonly rows: readonly LineRow[];
+  readonly products: readonly ProductData[];
+  readonly onUpdate: (key: string, patch: Partial<TransferLineDraft>) => void;
+  readonly onRemove: (key: string) => void;
+  readonly onAdd: () => void;
+  /** Indication sous le produit choisi (ex. disponible de la source). */
+  readonly hint?: (product: ProductData) => string | null;
+  /** Message propre à une ligne (ex. produit en double). */
+  readonly lineIssue?: (row: LineRow) => string | null;
+}
+
+export function LinesEditor({
+  rows,
+  products,
+  onUpdate,
+  onRemove,
+  onAdd,
+  hint,
+  lineIssue,
+}: LinesEditorProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <ul className="line-list">
+        {rows.map((row, index) => {
+          const { check, units, product } = row;
+          const line = check.draft;
+          const note = product && hint ? hint(product) : null;
+          const issue = lineIssue ? lineIssue(row) : null;
+          return (
+            <li
+              key={line.key}
+              className="line-card"
+              aria-label={t('transfer.line_label', { index: index + 1 })}
+            >
+              <div className="field">
+                <label htmlFor={`${line.key}-product`}>{t('loss.product_label')}</label>
+                <select
+                  id={`${line.key}-product`}
+                  className="text-input"
+                  value={line.productId}
+                  onChange={(event) =>
+                    onUpdate(line.key, { productId: event.target.value, unitCode: '' })
+                  }
+                >
+                  <option value="">{t('loss.product_placeholder')}</option>
+                  {products.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+                {note ? <p className="home-muted">{note}</p> : null}
+              </div>
+              <div className="line-fields">
+                <div className="field">
+                  <label htmlFor={`${line.key}-quantity`}>{t('sales.quantity_label')}</label>
+                  <input
+                    id={`${line.key}-quantity`}
+                    className="text-input"
+                    inputMode="decimal"
+                    value={line.quantityText}
+                    onChange={(event) => onUpdate(line.key, { quantityText: event.target.value })}
+                  />
+                </div>
+                {units.length > 1 ? (
+                  <div className="field">
+                    <label htmlFor={`${line.key}-unit`}>{t('sales.unit_label')}</label>
+                    <select
+                      id={`${line.key}-unit`}
+                      className="text-input"
+                      value={line.unitCode}
+                      onChange={(event) => onUpdate(line.key, { unitCode: event.target.value })}
+                    >
+                      {units.map((unit) => (
+                        <option key={unit.unitCode} value={unit.unitCode}>
+                          {unit.unitCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+              {line.quantityText && check.issue === 'QUANTITY_INVALID' ? (
+                <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
+              ) : null}
+              {issue ? <p className="error-message">{issue}</p> : null}
+              {rows.length > 1 ? (
+                <button type="button" className="secondary" onClick={() => onRemove(line.key)}>
+                  {t('transfer.remove_line', { index: index + 1 })}
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      <button type="button" className="secondary" onClick={onAdd}>
+        {t('transfer.add_line')}
+      </button>
+    </>
+  );
+}

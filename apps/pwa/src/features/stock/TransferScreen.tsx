@@ -15,13 +15,13 @@ import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { saleUnitsOf } from '../sales/sale-form.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import type { LocationData, StockTransferData } from '../sales/types.js';
+import { LinesEditor } from './LinesEditor.js';
 import { stockLocations } from './stock-view.js';
 import {
-  checkTransferLine,
+  computeLines,
   destinations,
   directDispatchPayload,
   MAX_CARRIER_NAME,
@@ -134,20 +134,7 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
     .filter((product) => refs.stock.has(stockKey(source.id, product.id)))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const productNames = new Map(refs.products.map((product) => [product.id, product.name]));
-  const checks = lines.map((line) => {
-    const product = products.find((candidate) => candidate.id === line.productId);
-    const units = product ? saleUnitsOf(product, refs) : [];
-    const unitCode = line.unitCode || product?.base_unit_code || '';
-    const effective = { ...line, unitCode };
-    return {
-      check: checkTransferLine(
-        effective,
-        units.find((unit) => unit.unitCode === unitCode),
-      ),
-      units,
-      product,
-    };
-  });
+  const checks = computeLines(lines, products, refs);
   const totals = totalsByProduct(
     checks.map(({ check }) => ({
       productId: check.draft.productId,
@@ -160,9 +147,6 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
     checks.every(({ check }) => check.issue === null) &&
     !(online && over.length > 0) &&
     !busy;
-
-  const updateLine = (key: string, patch: Partial<TransferLineDraft>) =>
-    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
 
   const submit = async () => {
     if (!ready) return;
@@ -228,92 +212,25 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
         </select>
       </div>
 
-      <ul className="line-list">
-        {checks.map(({ check, units, product }, index) => {
-          const line = check.draft;
-          const label = t('transfer.line_label', { index: index + 1 });
-          return (
-            <li key={line.key} className="line-card" aria-label={label}>
-              <div className="field">
-                <label htmlFor={`${line.key}-product`}>{t('loss.product_label')}</label>
-                <select
-                  id={`${line.key}-product`}
-                  className="text-input"
-                  value={line.productId}
-                  onChange={(event) =>
-                    updateLine(line.key, { productId: event.target.value, unitCode: '' })
-                  }
-                >
-                  <option value="">{t('loss.product_placeholder')}</option>
-                  {products.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </option>
-                  ))}
-                </select>
-                {product ? (
-                  <p className="home-muted">
-                    {t('sales.product_available', {
-                      quantity: formatQuantity(availableAt(refs, source, product.id)),
-                      unit: product.base_unit_code,
-                    })}
-                  </p>
-                ) : null}
-              </div>
-              <div className="line-fields">
-                <div className="field">
-                  <label htmlFor={`${line.key}-quantity`}>{t('sales.quantity_label')}</label>
-                  <input
-                    id={`${line.key}-quantity`}
-                    className="text-input"
-                    inputMode="decimal"
-                    value={line.quantityText}
-                    onChange={(event) => updateLine(line.key, { quantityText: event.target.value })}
-                  />
-                </div>
-                {units.length > 1 ? (
-                  <div className="field">
-                    <label htmlFor={`${line.key}-unit`}>{t('sales.unit_label')}</label>
-                    <select
-                      id={`${line.key}-unit`}
-                      className="text-input"
-                      value={line.unitCode}
-                      onChange={(event) => updateLine(line.key, { unitCode: event.target.value })}
-                    >
-                      {units.map((unit) => (
-                        <option key={unit.unitCode} value={unit.unitCode}>
-                          {unit.unitCode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-              </div>
-              {line.quantityText && check.issue === 'QUANTITY_INVALID' ? (
-                <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
-              ) : null}
-              {lines.length > 1 ? (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() =>
-                    setLines((current) => current.filter((candidate) => candidate.key !== line.key))
-                  }
-                >
-                  {t('transfer.remove_line', { index: index + 1 })}
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-      <button
-        type="button"
-        className="secondary"
-        onClick={() => setLines((current) => [...current, newLine()])}
-      >
-        {t('transfer.add_line')}
-      </button>
+      <LinesEditor
+        rows={checks}
+        products={products}
+        onUpdate={(key, patch) =>
+          setLines((current) =>
+            current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+          )
+        }
+        onRemove={(key) =>
+          setLines((current) => current.filter((candidate) => candidate.key !== key))
+        }
+        onAdd={() => setLines((current) => [...current, newLine()])}
+        hint={(product) =>
+          t('sales.product_available', {
+            quantity: formatQuantity(availableAt(refs, source, product.id)),
+            unit: product.base_unit_code,
+          })
+        }
+      />
       <CarrierFields carrier={carrier} notes={notes} onCarrier={setCarrier} onNotes={setNotes} />
       <OverAvailable
         online={online}

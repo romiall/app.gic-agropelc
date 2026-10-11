@@ -891,6 +891,35 @@ export const fr = {
       REJECTED: 'Expédition refusée : {{reason}}',
     },
   },
+  blind: {
+    title: 'Réception sans document',
+    hint: 'Marchandise arrivée sans transfert connu de ce téléphone : le serveur la rapprochera de l’expédition correspondante.',
+    offline_banner:
+      'Hors ligne : la réception sera enregistrée sur ce téléphone et envoyée au retour du réseau ; la marchandise est aussitôt ajoutée au disponible.',
+    destination_label: 'Reçu sur',
+    not_exclusive_online:
+      'Cet emplacement est partagé : la réception sans document n’y est pas permise. Recevez le transfert avec son document.',
+    not_exclusive_offline:
+      'Cet emplacement est partagé : la réception sera enregistrée mais signalée au responsable.',
+    source_label: 'En provenance de',
+    source_placeholder: 'Choisir la source',
+    known_dispatch: 'Le transfert {{doc}} de cette source est connu de ce téléphone :',
+    receive_with_document: 'le recevoir avec son document',
+    duplicate: 'Ce produit figure déjà dans la réception : regroupez les quantités.',
+    lot_required:
+      'Un produit suivi par lot est reçu sans lot : le serveur peut le refuser s’il ne trouve pas l’expédition correspondante.',
+    submit: 'Enregistrer la réception',
+    another: 'Autre réception sans document',
+    result: {
+      WAITING_offline:
+        'Réception enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Réception en cours d’envoi…',
+      DONE: 'Réception enregistrée et rapprochée de son expédition.',
+      WARNING: 'Réception enregistrée, en attente de rapprochement ou signalée.',
+      CONFLICT: 'Réception mise en attente d’examen (conflit).',
+      REJECTED: 'Réception refusée : {{reason}}',
+    },
+  },
   receive: {
     list_hint: 'Transferts expédiés vers vos emplacements, en attente de réception.',
     empty: 'Aucun transfert à recevoir sur cet appareil.',

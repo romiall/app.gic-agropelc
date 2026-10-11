@@ -264,7 +264,12 @@ export function ReceiveTransferScreen() {
 
   return (
     <section className="sale">
-      <h1>{t('nav.screens.receive')}</h1>
+      <div className="screen-head">
+        <h1>{t('nav.screens.receive')}</h1>
+        <Link to={ROUTES.blindReceipt} className="action action-compact">
+          <span className="action-label">{t('blind.title')}</span>
+        </Link>
+      </div>
       <p className="home-muted">{t('receive.list_hint')}</p>
       {incoming.length === 0 ? (
         <p className="home-muted">{t('receive.empty')}</p>

@@ -45,6 +45,7 @@ export const ROUTES = {
   loss: '/stock/perte',
   receive: '/stock/receptions',
   receivePattern: '/stock/receptions/:transferId',
+  blindReceipt: '/stock/receptions/sans-document',
   receiveOne: (transferId: string) => `/stock/receptions/${transferId}`,
   count: '/stock/inventaire',
   consumption: '/stock/consommation',
