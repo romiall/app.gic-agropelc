@@ -5,7 +5,7 @@
 // transaction annulée.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 const T = (hhmm: string, day = '2026-10-08') => `${day} ${hhmm}:00.000000`;
 
@@ -27,7 +27,7 @@ async function setup(conn: PoolConnection): Promise<Refs> {
     await conn.query(
       `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
        VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-      [id, `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, id],
+      [id, await freshPhone(conn), id],
     );
     return id;
   };

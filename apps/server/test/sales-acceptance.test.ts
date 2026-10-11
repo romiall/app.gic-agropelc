@@ -63,6 +63,7 @@ import {
   insertTestUser,
   insertTestZone,
   openTestCashSession,
+  freshPhone,
 } from './helpers.js';
 
 const DAY = '2026-10-20';
@@ -231,7 +232,7 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
           stage: 'PROSPECT',
           pipeline_step_id: toBin(stepId),
           display_name: 'Restaurant du port',
-          phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+          phone_primary: await freshPhone(),
           zone_id: toBin(zoneId),
           source_code: sourceCode,
           acquired_by_user_id: toBin(owner.userId),

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 async function insertAdmin(conn: PoolConnection): Promise<Buffer> {
   const id = randomId();
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Admin', ?, 'x', 'ACTIVE', ?)`,
-    [id, `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`, id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }
@@ -19,12 +19,12 @@ async function insertZoneAndSite(
   const zoneId = randomId();
   await conn.query(
     `INSERT INTO organization_zones (id, level, code, name, depth, created_by) VALUES (?, 'VILLE', ?, 'Douala', 1, ?)`,
-    [zoneId, `Z${Math.floor(Math.random() * 1_000_000)}`, admin],
+    [zoneId, `Z${Math.floor(Math.random() * 1_000_000_000)}`, admin],
   );
   const siteId = randomId();
   await conn.query(
     `INSERT INTO organization_sites (id, code, name, site_type, zone_id, created_by) VALUES (?, ?, 'Ferme', 'FERME', ?, ?)`,
-    [siteId, `S${Math.floor(Math.random() * 1_000_000)}`, zoneId, admin],
+    [siteId, `S${Math.floor(Math.random() * 1_000_000_000)}`, zoneId, admin],
   );
   return { zoneId, siteId };
 }

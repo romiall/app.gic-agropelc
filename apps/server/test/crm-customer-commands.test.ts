@@ -29,6 +29,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  freshLocalPhone,
 } from './helpers.js';
 
 const NOW = '2026-10-06T18:00:00.000Z';
@@ -36,10 +37,6 @@ const at = (hhmmss: string) => `2026-10-06T${hhmmss}.000Z`;
 let deviceSeq = 0;
 
 /** Numéro national camerounais aléatoire (9 chiffres) : unique entre exécutions (base persistante). */
-function randomPhone(): string {
-  return `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
-}
-
 interface Actor {
   readonly userId: string;
   readonly deviceId: string;
@@ -115,7 +112,7 @@ describe('crm.customer.* (P3-04)', () => {
     options: { readonly occurredAt?: string; readonly offline?: boolean } = {},
   ) {
     const id = freshUuid();
-    const phone = randomPhone();
+    const phone = await freshLocalPhone();
     const result = await run(
       actor,
       'crm.customer.create',

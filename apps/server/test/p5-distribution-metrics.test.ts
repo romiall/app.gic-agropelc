@@ -60,6 +60,7 @@ import {
   insertTestZone,
   neutralizePolicy,
   withoutActivePolicies,
+  freshPhone,
 } from './helpers.js';
 import { fund, newActor, tx, type Actor } from './cash-transfer-fixtures.js';
 import { OfflineDevice } from './device-harness.js';
@@ -366,7 +367,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
             stage: 'PROSPECT',
             pipeline_step_id: toBin(stepId),
             display_name: 'Restaurant du marché',
-            phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+            phone_primary: await freshPhone(),
             zone_id: toBin(zoneId),
             source_code: sourceCode,
             acquired_by_user_id: toBin(owner.userId),

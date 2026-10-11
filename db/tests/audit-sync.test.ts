@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone, freshShortCode } from './helpers.js';
 
 async function insertAdmin(conn: PoolConnection): Promise<Buffer> {
   const id = randomId();
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Admin', ?, 'x', 'ACTIVE', ?)`,
-    [id, `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`, id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }
@@ -63,8 +63,8 @@ describe('sync_command_inbox', () => {
       const admin = await insertAdmin(conn);
       const deviceId = randomId();
       await conn.query(
-        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, 'DV01', ?, ?)`,
-        [deviceId, admin, admin],
+        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, ?, ?, ?)`,
+        [deviceId, await freshShortCode(conn), admin, admin],
       );
       await conn.query(
         `INSERT INTO sync_command_inbox (command_id, device_id, user_id, device_seq, transport, command_type, depends_on, payload, payload_hash, occurred_at)
@@ -128,8 +128,8 @@ describe('sync_device_sync_state', () => {
       const admin = await insertAdmin(conn);
       const deviceId = randomId();
       await conn.query(
-        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, 'DV02', ?, ?)`,
-        [deviceId, admin, admin],
+        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, ?, ?, ?)`,
+        [deviceId, await freshShortCode(conn), admin, admin],
       );
       await conn.query(
         `INSERT INTO sync_device_sync_state (device_id, dataset, cursor_seq) VALUES (?, 'catalog', 0)`,

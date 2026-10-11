@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FixedClock, SystemClock, Uuidv7Generator } from '@gic/domain';
 import { recordAudit } from '../src/audit/record-audit.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
-import { db, insertTestUser, withTestUow } from './helpers.js';
+import { db, insertTestUser, withTestUow, freshPhone } from './helpers.js';
 
 // audit_audit_log est en ajout seul (aucun DELETE accordé à gic_app, cohérent avec
 // INV-AUD-01) : la genèse (prev_hash = 64 zéros) n'est vérifiable qu'une seule fois, à
@@ -26,7 +26,7 @@ function deps(now = new Date('2026-09-24T10:00:01.000Z')) {
  */
 async function createRealTestUser(): Promise<string> {
   const id = realIdGenerator.newId();
-  const phone = `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`;
+  const phone = await freshPhone();
   await db
     .insertInto('identity_users')
     .values({

@@ -7,6 +7,7 @@
  * avoir capturé le résultat ou l'erreur réels de `fn`, pour un rollback garanti quel que soit
  * l'issue testée (comme `withRollback`, dont c'est l'équivalent).
  */
+import { randomInt } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
 import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
 import { createDatabase, type DB } from '../src/platform/kysely/database.js';
@@ -58,36 +59,122 @@ export async function withTestUow<T>(fn: (trx: UnitOfWork) => Promise<T>): Promi
   return box.result as T;
 }
 
+/** Erreur MySQL de doublon sur l'index (ou la colonne) `key`. */
+export function isDuplicateKey(error: unknown, key: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string }).code === 'ER_DUP_ENTRY' &&
+    ((error as { message?: string }).message?.includes(key) ?? false)
+  );
+}
+
+/** Numéro national de test : `6` puis 8 chiffres (aléa cryptographique, 10^8 numéros). */
+export function drawLocalPhone(): string {
+  return `6${String(randomInt(100_000_000)).padStart(8, '0')}`;
+}
+
+const MAX_PHONE_DRAWS = 20;
+/** Numéros déjà délivrés par ce processus (forme nationale), insérés ou non. */
+const issuedPhones = new Set<string>();
+
+export interface FreshPhoneOptions {
+  /** Lecture de contrôle ; défaut : la connexion partagée. Une transaction y voit ses propres lignes. */
+  readonly executor?: Kysely<DB>;
+  /** Tirage (tests du générateur) ; défaut : `drawLocalPhone`. */
+  readonly draw?: () => string;
+}
+
+async function phoneTaken(executor: Kysely<DB>, e164: string): Promise<boolean> {
+  const user = await executor
+    .selectFrom('identity_users')
+    .select('id')
+    .where('active_phone', '=', e164)
+    .limit(1)
+    .executeTakeFirst();
+  if (user !== undefined) return true;
+  const customer = await executor
+    .selectFrom('crm_customers')
+    .select('id')
+    .where((eb) => eb.or([eb('phone_primary', '=', e164), eb('phone_secondary', '=', e164)]))
+    .limit(1)
+    .executeTakeFirst();
+  return customer !== undefined;
+}
+
+/**
+ * Numéro national de test (`6XXXXXXXX`, la forme saisie sur le terrain) libre au moment du tirage :
+ * jamais délivré par ce processus, ni porté (forme E.164) par un utilisateur actif ou suspendu
+ * (`uq_identity_users_active_phone`) ni par un client (principal ou secondaire ;
+ * `uq_crm_customers_phone`). Un tirage brut ne suffisait pas : la base partagée garde les fixtures
+ * validées des exécutions précédentes (des milliers de numéros), d'où des collisions réelles à
+ * l'échelle d'une suite. Reste la ligne validée par un fichier parallèle entre ce contrôle et
+ * l'insertion : `insertTestUser` la couvre par un nouvel essai.
+ */
+export async function freshLocalPhone(options: FreshPhoneOptions = {}): Promise<string> {
+  const executor = options.executor ?? db;
+  const draw = options.draw ?? drawLocalPhone;
+  for (let attempt = 1; attempt <= MAX_PHONE_DRAWS; attempt++) {
+    const local = draw();
+    if (issuedPhones.has(local)) continue;
+    issuedPhones.add(local);
+    if (!(await phoneTaken(executor, `+237${local}`))) return local;
+  }
+  throw new Error(`Aucun numéro de test libre après ${MAX_PHONE_DRAWS} tirages.`);
+}
+
+/** `freshLocalPhone` sous sa forme E.164 (`+2376XXXXXXXX`), celle des colonnes `phone`. */
+export async function freshPhone(options: FreshPhoneOptions = {}): Promise<string> {
+  return `+237${await freshLocalPhone(options)}`;
+}
+
 export interface TestUserOptions {
   readonly status?: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
   readonly statusChangedAt?: Date | null;
+  /** Tirage du numéro (tests du générateur) ; défaut : `drawLocalPhone`. */
+  readonly drawPhone?: () => string;
 }
 
 /**
  * Insère un utilisateur minimal (auto-référencé comme created_by, comme le bootstrap seed).
  * `status_reason` obligatoire dès que le statut n'est pas ACTIVE (ck_identity_users_status_reason).
+ * Téléphone : `freshPhone`, puis nouvel essai si un fichier parallèle a validé le même numéro entre
+ * le contrôle et l'insertion (un doublon n'annule que l'instruction, pas la transaction).
  */
 export async function insertTestUser(
   trx: UnitOfWork,
   options: TestUserOptions = {},
 ): Promise<string> {
   const id = freshUuid();
-  const phone = `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`;
   const status = options.status ?? 'ACTIVE';
-  await trx
-    .insertInto('identity_users')
-    .values({
-      id: toBin(id),
-      full_name: 'Test',
-      phone,
-      password_hash: 'x',
-      status,
-      status_reason: status === 'ACTIVE' ? null : 'Fixture de test',
-      status_changed_at: options.statusChangedAt ?? null,
-      created_by: toBin(id),
-    })
-    .execute();
-  return id;
+  for (let attempt = 1; attempt <= MAX_PHONE_DRAWS; attempt++) {
+    const phone = await freshPhone({
+      executor: trx,
+      ...(options.drawPhone !== undefined ? { draw: options.drawPhone } : {}),
+    });
+    try {
+      await trx
+        .insertInto('identity_users')
+        .values({
+          id: toBin(id),
+          full_name: 'Test',
+          phone,
+          password_hash: 'x',
+          status,
+          status_reason: status === 'ACTIVE' ? null : 'Fixture de test',
+          status_changed_at: options.statusChangedAt ?? null,
+          created_by: toBin(id),
+        })
+        .execute();
+      return id;
+    } catch (error) {
+      if (!isDuplicateKey(error, 'uq_identity_users_active_phone') || attempt === MAX_PHONE_DRAWS) {
+        throw error;
+      }
+    }
+  }
+  /* istanbul ignore next -- la boucle retourne ou lève systématiquement */
+  throw new Error('Impossible d’attribuer un téléphone unique (test).');
 }
 
 export interface TestDeviceOptions {
@@ -136,12 +223,7 @@ export async function insertTestDevice(
         .execute();
       return id;
     } catch (error) {
-      const isDuplicateShortCode =
-        typeof error === 'object' &&
-        error !== null &&
-        (error as { code?: string }).code === 'ER_DUP_ENTRY' &&
-        (error as { message?: string }).message?.includes('short_code');
-      if (!isDuplicateShortCode || attempt === MAX_SHORT_CODE_ATTEMPTS) throw error;
+      if (!isDuplicateKey(error, 'short_code') || attempt === MAX_SHORT_CODE_ATTEMPTS) throw error;
     }
   }
   /* istanbul ignore next -- la boucle retourne ou lève systématiquement */

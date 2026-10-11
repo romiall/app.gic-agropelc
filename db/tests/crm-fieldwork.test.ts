@@ -4,7 +4,7 @@
 // dépendance à l'ordre d'exécution du seed.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone, freshShortCode } from './helpers.js';
 
 const T0 = '2026-10-01 08:00:00.000000';
 const T1 = '2026-10-02 08:00:00.000000';
@@ -14,16 +14,12 @@ function randomCode(prefix: string): string {
   return `${prefix}${Math.floor(Math.random() * 1_000_000_000)}`;
 }
 
-function randomPhone(): string {
-  return `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
-}
-
 async function insertUser(conn: PoolConnection): Promise<Buffer> {
   const id = randomId();
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-    [id, randomPhone(), id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }
@@ -74,7 +70,7 @@ async function insertCustomer(
       id,
       overrides.stage ?? 'PROSPECT',
       refs.stepId,
-      overrides.phone === undefined ? randomPhone() : overrides.phone,
+      overrides.phone === undefined ? await freshPhone(conn) : overrides.phone,
       refs.zoneId,
       refs.sourceCode,
       refs.admin,
@@ -122,7 +118,7 @@ describe('crm_customers', () => {
   it('INV-CRM-03 : téléphone unique hors comptes fusionnés ; un doublon hors ligne en attente est toléré', async () => {
     await withRollback(async (conn) => {
       const refs = await setup(conn);
-      const phone = randomPhone();
+      const phone = await freshPhone(conn);
       const kept = await insertCustomer(conn, refs, { phone });
       await expect(insertCustomer(conn, refs, { phone })).rejects.toThrow(/uq_crm_customers_phone/);
       // Fait accompli hors ligne (BR-SYN-007) : enregistré, rattaché au compte existant.
@@ -319,7 +315,7 @@ async function insertDevice(conn: PoolConnection, owner: Buffer): Promise<Buffer
   const id = randomId();
   await conn.query(
     `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, ?, ?, ?)`,
-    [id, randomCode('D').slice(0, 4).padEnd(4, 'X'), owner, owner],
+    [id, await freshShortCode(conn), owner, owner],
   );
   return id;
 }

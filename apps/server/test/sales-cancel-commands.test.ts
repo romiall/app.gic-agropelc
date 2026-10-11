@@ -39,6 +39,7 @@ import {
   insertTestUser,
   insertTestZone,
   openTestCashSession,
+  freshPhone,
 } from './helpers.js';
 
 const NOW = '2026-10-07T18:00:00.000Z';
@@ -226,7 +227,7 @@ describe('sales.sale.cancel / request_cancellation (P4-05)', () => {
         stage: 'PROSPECT',
         pipeline_step_id: toBin(stepId),
         display_name: 'Boutique de test',
-        phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+        phone_primary: await freshPhone(),
         zone_id: toBin(zoneId),
         source_code: sourceCode,
         acquired_by_user_id: toBin(admin.userId),

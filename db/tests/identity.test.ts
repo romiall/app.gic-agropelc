@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone, freshShortCode } from './helpers.js';
 
 /** Utilisateur système auto-créateur (bootstrap), pour les FK created_by/updated_by. */
 async function insertBootstrapUser(conn: PoolConnection): Promise<Buffer> {
@@ -8,7 +8,7 @@ async function insertBootstrapUser(conn: PoolConnection): Promise<Buffer> {
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, is_system, created_by)
      VALUES (?, 'Système', ?, 'x', 'ACTIVE', TRUE, ?)`,
-    [id, `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`, id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }
@@ -118,8 +118,8 @@ describe('identity_devices', () => {
       await expect(
         conn.query(
           `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, status, created_by)
-           VALUES (?, 'AB01', ?, 'ACTIVE', ?)`,
-          [randomId(), admin, admin],
+           VALUES (?, ?, ?, 'ACTIVE', ?)`,
+          [randomId(), await freshShortCode(conn), admin, admin],
         ),
       ).rejects.toThrow(/ck_identity_devices_approved_by/);
     });
@@ -156,8 +156,8 @@ describe('identity_auth_sessions', () => {
       const admin = await insertBootstrapUser(conn);
       const deviceId = randomId();
       await conn.query(
-        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, 'AB02', ?, ?)`,
-        [deviceId, admin, admin],
+        `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, created_by) VALUES (?, ?, ?, ?)`,
+        [deviceId, await freshShortCode(conn), admin, admin],
       );
       const sessionId = randomId();
       await conn.query(

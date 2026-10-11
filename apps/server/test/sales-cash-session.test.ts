@@ -51,6 +51,7 @@ import {
   insertTestLocation,
   insertTestUser,
   insertTestZone,
+  freshPhone,
 } from './helpers.js';
 import { OfflineDevice } from './device-harness.js';
 import {
@@ -241,7 +242,7 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
         stage: 'PROSPECT',
         pipeline_step_id: toBin(stepId),
         display_name: 'Restaurant de la gare',
-        phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+        phone_primary: await freshPhone(),
         zone_id: toBin(zoneId),
         source_code: sourceCode,
         acquired_by_user_id: toBin(root),

@@ -34,6 +34,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  freshLocalPhone,
 } from './helpers.js';
 
 const NOW = '2026-10-06T18:00:00.000Z';
@@ -109,7 +110,7 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
       displayName: 'Dépôt de test',
       zoneId,
       sourceCode: 'PROSPECTION_TERRAIN',
-      phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+      phonePrimary: await freshLocalPhone(),
       position: { ...CENTER, accuracyM: 10 },
     });
     expect(result.status, JSON.stringify(result)).toBe('APPLIED');
