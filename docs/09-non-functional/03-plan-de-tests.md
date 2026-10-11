@@ -36,7 +36,8 @@ Un harnais crée N appareils virtuels (clients de la bibliothèque de synchronis
 - la perte de réponse (la commande est appliquée mais la réponse est perdue, ce qui teste l'idempotence) ;
 - le rejeu d'un lot ;
 - l'inversion d'ordre de lots ;
-- l'avance ou le retard d'horloge ;
+- l'avance ou le retard d'horloge, propre à chaque appareil (`OfflineDevice.setClockOffset`, P5-21 : `device_sent_at` et heures de saisie suivent l'horloge de l'appareil) ;
+- la boucle de reprise d'un vrai appareil (`syncUntilSettled`), la lecture de la file (`outbox`), l'effacement local d'un appareil révoqué qui garde sa file (`wipeLocal`) et le curseur de départ d'un jeu sur la base partagée (`setCursor`) (P5-21) ;
 - la révocation d'appareil ou d'utilisateur pendant une période hors ligne ;
 - la réaffectation de portefeuille ;
 - les changements de prix ;

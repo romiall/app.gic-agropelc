@@ -27,6 +27,8 @@ export const SYNC_PROTOCOL_ERROR_CODES = [
   'VERSION_CONFLICT',
   'DEPENDENCY_PENDING',
   'DEPENDENCY_REJECTED',
+  /** P5-21 (AV-210) : une commande précédente du lot doit être renvoyée d'abord (INV-SYN-04). */
+  'PRECEDING_COMMAND_PENDING',
   'SERVER_BUSY',
 ] as const;
 
