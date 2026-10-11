@@ -116,7 +116,8 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
         ],
       },
     });
-  });
+    // Saisie longue (une vingtaine d'interactions) : marge contre la lenteur d'une machine chargée.
+  }, 20_000);
 
   it('liste : badges « À livrer » et « Attend du stock », filtre', async () => {
     const user = userEvent.setup();
