@@ -36,7 +36,12 @@ import type {
 } from '@gic/contracts';
 import type { DB } from '../platform/kysely/database.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { openConflictSummary } from '../platform/sync/conflicts.js';
+import {
+  listConflicts,
+  openConflictSummary,
+  type OpenConflictSummary,
+} from '../platform/sync/conflicts.js';
+import { conflictResource } from '../sync/conflict-resource.js';
 import { ALL_SCOPE, type ReadScope } from '../platform/read-scope.js';
 import {
   activeRoleAssignmentsAt,
@@ -386,6 +391,42 @@ async function productionBlock(ctx: Context, scope: ReadScope): Promise<Built> {
   return built;
 }
 
+/**
+ * Rôle d'équipe (ou de personne) : les anomalies ouvertes de ses rôles propriétaires dont le titulaire
+ * est l'une de ses personnes — l'auteur de la commande, ou pour un conflit système le détenteur du
+ * stock mobile en cause (`conflictResource`) : la règle de la portée `TEAM` de `GET /sync/conflicts`.
+ */
+async function peopleConflictSummary(
+  ctx: Context,
+  ownerRoles: readonly string[],
+  people: readonly string[],
+): Promise<OpenConflictSummary> {
+  if (ownerRoles.length === 0 || people.length === 0) return { total: 0, byType: {} };
+  const members = new Set(people);
+  const byType: Record<string, number> = {};
+  let total = 0;
+  let beforeId: string | undefined;
+  for (;;) {
+    const page = await listConflicts(ctx.executor, {
+      status: 'OPEN',
+      ownerRoles,
+      // Pré-filtre sûr : conflits produits par ces personnes, ou conflits système (évalués ensuite).
+      confinement: { siteIds: [], authorUserIds: people },
+      limit: 200,
+      ...(beforeId !== undefined ? { beforeId } : {}),
+    });
+    for (const conflict of page.items) {
+      const { ownerUserId } = await conflictResource(ctx.executor, conflict);
+      if (ownerUserId === undefined || !members.has(ownerUserId)) continue;
+      byType[conflict.conflictType] = (byType[conflict.conflictType] ?? 0) + 1;
+      total += 1;
+    }
+    if (page.nextCursor === null) break;
+    beforeId = page.nextCursor;
+  }
+  return { total, byType };
+}
+
 async function coordinationBlock(
   ctx: Context,
   scope: ReadScope,
@@ -406,12 +447,14 @@ async function coordinationBlock(
       }),
     );
   }
-  const conflicts = await openConflictSummary(ctx.executor, {
-    ...(role.conflictRoles === 'ALL' ? {} : { ownerRoles: role.conflictRoles }),
-    // Rôle de sites : les anomalies de ses seuls sites (P5-20). Les rôles d'équipe ne sont pas encore
-    // filtrés par auteur, contrairement à `GET /sync/conflicts` (défaut antérieur, hors P5-20).
-    ...(scope.siteIds !== undefined ? { siteIds: scope.siteIds } : {}),
-  });
+  const conflicts =
+    role.conflictRoles !== 'ALL' && scope.userIds !== undefined
+      ? await peopleConflictSummary(ctx, role.conflictRoles, scope.userIds)
+      : await openConflictSummary(ctx.executor, {
+          ...(role.conflictRoles === 'ALL' ? {} : { ownerRoles: role.conflictRoles }),
+          // Rôle de sites : les anomalies de ses seuls sites (P5-20).
+          ...(scope.siteIds !== undefined ? { siteIds: scope.siteIds } : {}),
+        });
   if (conflicts.total > 0) {
     const critical = (conflicts.byType['STOCK_NEGATIVE'] ?? 0) > 0;
     const types = Object.entries(conflicts.byType)
