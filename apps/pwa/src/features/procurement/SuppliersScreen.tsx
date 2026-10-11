@@ -190,8 +190,11 @@ export function SuppliersScreen() {
     (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online || read.stale;
-  const shownCommandId =
-    last ?? lastWaitingCommand(refs.outbox, 'procurement.supplier.', userId)?.command_id;
+  // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
+  // son résultat (refus compris) reste affiché jusqu'à la réponse.
+  const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'procurement.supplier.', userId);
+  if (adopt) setLast(adopt.command_id);
+  const shownCommandId = last;
   // Codes pris : liste lue et créations de l'appareil non refusées (un doublon lèverait une
   // exception en base, S-30).
   const takenCodes = new Set([

@@ -123,6 +123,8 @@ export interface SalesReferences {
   readonly transfers: ReadonlyMap<string, StockTransferData>;
   /** Catégories de client actives (jeu `customer_category`). */
   readonly customerCategories: readonly CustomerCategoryData[];
+  /** Toutes les catégories de client, actives ou non, par identifiant (libellé d'une valeur reprise). */
+  readonly customerCategoryById: ReadonlyMap<string, CustomerCategoryData>;
   /** Seuils de stock actifs des emplacements du périmètre (jeu `stock`). */
   readonly thresholds: readonly StockThresholdData[];
   /** Comptes de trésorerie actifs servis à l'appareil (jeu `cash`). */
@@ -496,6 +498,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     customerCategories: customerCategories
       .filter((category) => category.is_active)
       .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    customerCategoryById: byId(customerCategories),
     thresholds: thresholds.filter((threshold) => threshold.is_active),
     cashAccounts,
     lastSyncAt: meta?.last_sync_at ?? null,

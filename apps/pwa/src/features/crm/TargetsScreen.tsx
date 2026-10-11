@@ -219,7 +219,11 @@ export function TargetsScreen() {
     (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online || read.stale;
-  const shownCommandId = last ?? lastWaitingCommand(refs.outbox, 'crm.target.', userId)?.command_id;
+  // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
+  // son résultat (refus compris) reste affiché jusqu'à la réponse.
+  const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'crm.target.', userId);
+  if (adopt) setLast(adopt.command_id);
+  const shownCommandId = last;
   // Cibles admises par la portée : tout pour la direction, les équipes dirigées et leurs membres
   // pour le responsable commercial.
   const users = refs.users.filter(

@@ -370,7 +370,20 @@ export function LedgerScreen() {
             </>
           ) : currentBalances &&
             (currentBalances.opening === null || currentBalances.closing === null) ? (
-            <p className="alert alert-error">{t('ledger.balance_unavailable')}</p>
+            <div className="alert alert-error" role="alert">
+              <p>{t('ledger.balance_unavailable')}</p>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setRefresh((value) => value + 1)}
+              >
+                {t('ledger.retry')}
+              </button>
+            </div>
+          ) : current?.denied ? (
+            <p className="home-muted">{t('ledger.out_of_scope')}</p>
+          ) : current?.failed ? (
+            <p className="home-muted">{t('ledger.explain_unavailable')}</p>
           ) : current && current.next !== null ? (
             <p className="home-muted">{t('ledger.explain_incomplete')}</p>
           ) : (

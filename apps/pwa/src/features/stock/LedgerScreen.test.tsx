@@ -173,6 +173,73 @@ describe('Registre des mouvements (ECR-STK-07)', () => {
     ).toBeInTheDocument();
   });
 
+  it('soldes lus une fois la liste complète ; échecs relus par « Réessayer »', async () => {
+    // Liste du produit en deux pages : les soldes attendent la seconde.
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => {
+      const url = new URL(path, 'http://local');
+      if (url.pathname === '/api/v1/stock-moves' && url.searchParams.get('product_id')) {
+        return (
+          url.searchParams.get('cursor') === 'eggs-2'
+            ? { ok: true, data: { moves: [FIRST[1]], next_cursor: null } }
+            : { ok: true, data: { moves: [FIRST[0]], next_cursor: 'eggs-2' } }
+        ) as never;
+      }
+      return answer(path, 120) as never;
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const moves = within(await screen.findByRole('region', { name: 'Mouvements' }));
+    await moves.findByRole('listitem', { name: 'Réception de transfert' });
+    const stockAt = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter(([, path]) => String(path).startsWith('/api/v1/stock/at')).length;
+    expect(stockAt()).toBe(0);
+    await user.click(moves.getByRole('button', { name: 'Afficher la suite' }));
+    const explain = within(screen.getByRole('region', { name: 'Explication de l’écart' }));
+    expect(
+      await explain.findByText('Les mouvements listés expliquent tout l’écart.'),
+    ).toBeInTheDocument();
+    expect(stockAt()).toBe(2);
+
+    // Soldes en échec : annoncés, relus par « Réessayer ».
+    cleanup();
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (String(path).startsWith('/api/v1/stock/at')
+          ? { ok: false, reason: 'HTTP_ERROR', status: 403, body: null }
+          : answer(path, 120)) as never,
+    );
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const failed = within(await screen.findByRole('region', { name: 'Explication de l’écart' }));
+    expect(await failed.findByText(/Soldes indisponibles/)).toBeInTheDocument();
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) => answer(path, 120) as never,
+    );
+    await user.click(failed.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await failed.findByText('Les mouvements listés expliquent tout l’écart.'),
+    ).toBeInTheDocument();
+
+    // Mouvements en échec : l'explication ne reste pas « Chargement… ».
+    cleanup();
+    vi.mocked(authorizedRequest).mockResolvedValue({ ok: false, reason: 'OFFLINE' } as never);
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    expect(
+      await screen.findByText('Explication indisponible tant que les mouvements ne sont pas lus.'),
+    ).toBeInTheDocument();
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) => answer(path, 120) as never,
+    );
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByText('Les mouvements listés expliquent tout l’écart.'),
+    ).toBeInTheDocument();
+  });
+
   it('emplacement hors de la portée du registre : refus annoncé comme tel', async () => {
     vi.mocked(authorizedRequest).mockResolvedValue({
       ok: false,

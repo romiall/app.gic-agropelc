@@ -237,7 +237,16 @@ describe('Catalogue (ECR-PRX-01)', () => {
     );
     // Créée, pas encore tirée : affichée en attente.
     expect(await within(categories.getByRole('list')).findByText('OEUFS')).toBeInTheDocument();
+    expect(
+      within(categories.getByRole('list')).getByText('En attente d’envoi'),
+    ).toBeInTheDocument();
     await settleLast(2);
+    // Acceptée, pas encore tirée : annoncée comme créée.
+    expect(
+      await within(categories.getByRole('list')).findByText(
+        'Créée, arrive à la prochaine synchronisation',
+      ),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: 'Conditionnements' }));
     const packaging = within(screen.getByRole('region', { name: 'Conditionnements' }));
@@ -301,6 +310,40 @@ describe('Catalogue (ECR-PRX-01)', () => {
         },
       }),
     );
+  });
+
+  it('retour sur l’écran : opération en attente annoncée, listes relues à sa réponse', async () => {
+    await getDb().outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000000f4',
+      device_seq: 1,
+      command_type: 'catalog.unit.create',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'UNIT',
+      aggregate_id: 'SAC',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:59:00.000Z',
+      client_created_at: '2026-10-10T08:59:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { code: 'SAC', name: 'Sac', isCount: true },
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    renderScreen();
+    expect(await screen.findByText('Opération en cours d’envoi…')).toBeInTheDocument();
+    const unitReads = () =>
+      vi.mocked(authorizedRequest).mock.calls.filter(([, path]) => String(path) === '/api/v1/units')
+        .length;
+    await waitFor(() => expect(unitReads()).toBeGreaterThan(0));
+    const before = unitReads();
+    await settleLast(1);
+    await waitFor(() => expect(unitReads()).toBeGreaterThan(before));
   });
 
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {
@@ -387,6 +430,7 @@ describe('Règles du catalogue', () => {
     ).toEqual({
       units: ['SAC'],
       categories: ['OEUFS'],
+      acceptedCategories: [],
       products: [],
       reasons: [{ category: 'LOSS', code: 'CHALEUR' }],
     });

@@ -254,10 +254,15 @@ export function pendingCatalogCodes(
 ): {
   readonly units: readonly string[];
   readonly categories: readonly string[];
+  /** Catégories déjà acceptées par le serveur, pas encore tirées par l'appareil. */
+  readonly acceptedCategories: readonly string[];
   readonly products: readonly string[];
   readonly reasons: readonly { readonly category: string; readonly code: string }[];
 } {
   const live = outbox.filter((command) => command.status !== 'REJECTED');
+  const accepted = live.filter(
+    (command) => command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING',
+  );
   const codes = (type: string) =>
     live
       .filter((command) => command.command_type === type)
@@ -266,6 +271,10 @@ export function pendingCatalogCodes(
   return {
     units: codes('catalog.unit.create'),
     categories: codes('catalog.product_category.create'),
+    acceptedCategories: accepted
+      .filter((command) => command.command_type === 'catalog.product_category.create')
+      .map((command) => normalizedCode((command.payload as CodePayload).code ?? ''))
+      .filter(Boolean),
     products: codes('catalog.product.create'),
     reasons: live
       .filter((command) => command.command_type === 'catalog.reason_code.set')

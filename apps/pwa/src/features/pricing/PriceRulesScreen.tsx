@@ -5,19 +5,24 @@
  * validité par la Direction (AV-062), conflit d'activation annoncé par le moteur partagé (BR-PRX-006).
  * Un produit désactivé ou non vendable reste consultable, et ses règles peuvent être terminées.
  */
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { prospectZoneOptions } from '../crm/prospect.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
+import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { isBlockingWait, phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
+import {
+  isBlockingWait,
+  lastWaitingCommand,
+  phaseOf,
+  submitCommand,
+  waitingCommands,
+} from '../sales/submit.js';
 import type { ProductData } from '../sales/types.js';
 import { SIM_CHANNELS } from './price-sim.js';
 import {
@@ -46,44 +51,17 @@ const ACTIVATION_TOLERANCE_MS = 5 * 60 * 1000;
  * Règles lues en ligne : `rules` vaut `undefined` pendant la première lecture et `null` si aucune
  * lecture n'a abouti ; la dernière liste reçue reste affichée pendant une relecture ou une coupure,
  * marquée `stale` (périmée) tant qu'elle ne correspond pas à la dernière opération : on n'agit pas
- * sur une liste périmée (une seconde version ou une activation y serait refusée par la base).
+ * sur une liste périmée (une seconde version ou une activation y serait refusée par la base). Une
+ * lecture en échec s'annonce et se relit par `retry`.
  */
-function useRules(
-  path: string | null,
-  online: boolean,
-  reloadKey: string,
-): { readonly rules: readonly RuleView[] | null | undefined; readonly stale: boolean } {
-  const [state, setState] = useState<{
-    path: string;
-    key: string;
-    rules: readonly RuleView[] | null;
-    failed: boolean;
-  }>();
-  useEffect(() => {
-    if (!path || !online) return;
-    let cancelled = false;
-    void authorizedRequest<{ price_rules?: RuleView[] }>(getDb(), path, { method: 'GET' }).then(
-      (result) => {
-        if (cancelled) return;
-        setState((current) =>
-          result.ok
-            ? { path, key: reloadKey, rules: result.data.price_rules ?? [], failed: false }
-            : {
-                path,
-                key: reloadKey,
-                rules: current?.path === path ? current.rules : null,
-                failed: true,
-              },
-        );
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [path, online, reloadKey]);
-  if (!path) return { rules: null, stale: false };
-  if (state?.path !== path) return { rules: online ? undefined : null, stale: true };
-  return { rules: state.rules, stale: state.key !== reloadKey || state.failed || !online };
+function useRules(path: string | null, online: boolean, reloadKey: string) {
+  const read = useOnlineRead<{ price_rules?: RuleView[] }>(path, readPath, online, reloadKey);
+  const rules: readonly RuleView[] | null | undefined = read.data
+    ? (read.data.price_rules ?? [])
+    : !path || !online || read.failed
+      ? null
+      : undefined;
+  return { rules, stale: read.stale, failed: read.failed, retry: read.retry };
 }
 
 const canDraft = (product: ProductData): boolean =>
@@ -132,6 +110,8 @@ interface EditorProps {
   readonly editing: Editing;
   /** Codes de toutes les règles (nouvelle lignée) ; `undefined` en lecture, `null` si indisponible. */
   readonly takenCodes: ReadonlySet<string> | null | undefined;
+  /** Relit les codes après un échec. */
+  readonly onRetryCodes: () => void;
   readonly onCancel: () => void;
   readonly onSubmit: (input: Parameters<typeof submitCommand>[0], form: RuleForm) => void;
   readonly userId: string;
@@ -144,6 +124,7 @@ function RuleEditor({
   rules,
   editing,
   takenCodes,
+  onRetryCodes,
   onCancel,
   onSubmit,
   userId,
@@ -191,6 +172,7 @@ function RuleEditor({
   });
   const issueIds = {
     code: `${ids.code}-issue`,
+    codes: `${ids.code}-codes`,
     price: `${ids.price}-issue`,
     min: `${ids.min}-issue`,
     priority: `${ids.priority}-issue`,
@@ -307,16 +289,24 @@ function RuleEditor({
             value={form.code}
             aria-invalid={has('CODE_REQUIRED', 'CODE_TAKEN') || undefined}
             aria-describedby={
-              has('CODE_REQUIRED', 'CODE_TAKEN') || takenCodes === null ? issueIds.code : undefined
+              [
+                has('CODE_REQUIRED', 'CODE_TAKEN') ? issueIds.code : null,
+                takenCodes === null ? issueIds.codes : null,
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined
             }
             onChange={(event) => update({ code: event.target.value })}
           />
           {takenCodes === undefined ? (
             <p className="home-muted">{t('price_rules.codes_loading')}</p>
           ) : takenCodes === null ? (
-            <p id={issueIds.code} className="error-message">
-              {t('price_rules.codes_unavailable')}
-            </p>
+            <div id={issueIds.codes} className="error-message">
+              <p>{t('price_rules.codes_unavailable')}</p>
+              <button type="button" className="secondary" onClick={onRetryCodes}>
+                {t('ledger.retry')}
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -349,11 +339,13 @@ function RuleEditor({
         (siteId) => update({ siteId }),
         withCurrent(
           [...refs.sites.values()]
-            .filter((site) => site.status === 'ACTIVE' || site.id === form.siteId)
+            .filter((site) => site.status === 'ACTIVE')
             .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
             .map((site) => ({ value: site.id, label: site.name })),
           form.siteId,
-          t('price_rules.unknown_option', { name: form.siteId }),
+          refs.sites.get(form.siteId)
+            ? t('price_rules.inactive_option', { name: refs.sites.get(form.siteId)?.name ?? '' })
+            : t('price_rules.unknown_option', { name: form.siteId }),
         ),
         has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
       )}
@@ -379,7 +371,11 @@ function RuleEditor({
         withCurrent(
           refs.customerCategories.map((category) => ({ value: category.id, label: category.name })),
           form.customerCategoryId,
-          t('price_rules.unknown_option', { name: form.customerCategoryId }),
+          refs.customerCategoryById.get(form.customerCategoryId)
+            ? t('price_rules.inactive_option', {
+                name: refs.customerCategoryById.get(form.customerCategoryId)?.name ?? '',
+              })
+            : t('price_rules.unknown_option', { name: form.customerCategoryId }),
         ),
       )}
       {select(
@@ -552,11 +548,16 @@ export function PriceRulesScreen() {
     pendingPricing.length > 0;
   const blocked = busy || waiting || productRules.stale;
   const rejected = lastCommand !== undefined && phaseOf(lastCommand) === 'REJECTED';
-  const shownCommandId = last?.commandId ?? pendingPricing[pendingPricing.length - 1]?.command_id;
+  // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
+  // son résultat (refus compris) reste affiché jusqu'à la réponse.
+  const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'pricing.rule.', userId);
+  if (adopt) setLast({ commandId: adopt.command_id });
+  const shownCommandId = last?.commandId;
   const grouped = rules ? groupRules(rules, now) : null;
   // Codes pris : toutes les lignées lues, plus les brouillons encore en attente d'envoi.
-  const takenCodes =
-    allRules.rules === undefined || (allRules.stale && online)
+  const takenCodes = allRules.failed
+    ? null
+    : allRules.rules === undefined || (allRules.stale && online)
       ? undefined
       : allRules.rules === null
         ? null
@@ -751,10 +752,15 @@ export function PriceRulesScreen() {
       {product && online && rules === undefined ? (
         <p className="home-muted">{t('price_rules.loading')}</p>
       ) : null}
-      {product && online && rules === null ? (
-        <p className="alert alert-error">{t('price_rules.unavailable')}</p>
+      {product && online && productRules.failed ? (
+        <div className="alert alert-error" role="alert">
+          <p>{t('price_rules.unavailable')}</p>
+          <button type="button" className="secondary" onClick={productRules.retry}>
+            {t('ledger.retry')}
+          </button>
+        </div>
       ) : null}
-      {product && rules && productRules.stale && online ? (
+      {product && rules && productRules.stale && online && !productRules.failed ? (
         <p className="home-muted" role="status">
           {t('price_rules.refreshing')}
         </p>
@@ -767,6 +773,7 @@ export function PriceRulesScreen() {
           rules={rules}
           editing={editing}
           takenCodes={takenCodes}
+          onRetryCodes={allRules.retry}
           onCancel={() => setEditing(null)}
           onSubmit={(input, form) =>
             void send(input, { superseded: editing.superseded, productId: product.id, form })

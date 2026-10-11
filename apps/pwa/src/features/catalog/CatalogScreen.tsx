@@ -16,7 +16,7 @@ import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { submitCommand, waitingCommands } from '../sales/submit.js';
+import { lastWaitingCommand, submitCommand, waitingCommands } from '../sales/submit.js';
 import type { ProductCategoryData } from '../sales/types.js';
 import {
   categoryPayload,
@@ -223,7 +223,11 @@ function CategoriesSection({ refs, send, blocked, userId, pending }: SectionProp
               <span>
                 <strong>{code}</strong>
               </span>
-              <span>{t('catalog.pending')}</span>
+              <span>
+                {pending.acceptedCategories.includes(code)
+                  ? t('catalog.created_pending_pull')
+                  : t('catalog.pending')}
+              </span>
             </li>
           ))}
         </ul>
@@ -815,7 +819,9 @@ export function CatalogScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const lastStatus = refs?.outbox.find((command) => command.command_id === last)?.status ?? '';
-  const reloadKey = `${last ?? ''}:${lastStatus}`;
+  // Réponse de la dernière opération, ou d'une opération retrouvée en attente : relecture des listes.
+  const pendingOps = waitingCommands(refs?.outbox ?? [], 'catalog.', userId);
+  const reloadKey = `${last ?? ''}:${lastStatus}|${pendingOps.map((c) => c.command_id).join(',')}`;
   const units = useOnlineList<UnitView>('/api/v1/units', 'units', online, reloadKey);
   const products = useOnlineList<ProductView>('/api/v1/products', 'products', online, reloadKey);
   const reasons = useOnlineList<ReasonView>(
@@ -838,8 +844,13 @@ export function CatalogScreen() {
     last !== undefined && !refs.outbox.some((command) => command.command_id === last);
   // Une opération du catalogue de l'utilisateur encore sans réponse bloque la suivante, même après
   // un retour sur l'écran.
-  const waiting = waitingCommands(refs.outbox, 'catalog.', userId).length > 0;
+  const waiting = pendingOps.length > 0;
   const blocked = busy || settling || waiting || !online;
+  // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
+  // son résultat (refus compris) reste affiché jusqu'à la réponse.
+  const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'catalog.', userId);
+  if (adopt) setLast(adopt.command_id);
+
   const pending = pendingCatalogCodes(refs.outbox);
   const send = async (input: Parameters<typeof submitCommand>[0]) => {
     if (blocked) return false;

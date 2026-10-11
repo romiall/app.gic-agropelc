@@ -789,8 +789,11 @@ export function OrdersScreen() {
     (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online;
-  const shownCommandId =
-    last ?? lastWaitingCommand(refs.outbox, 'procurement.order.', userId)?.command_id;
+  // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
+  // son résultat (refus compris) reste affiché jusqu'à la réponse.
+  const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'procurement.order.', userId);
+  if (adopt) setLast(adopt.command_id);
+  const shownCommandId = last;
   const shownCommand = refs.outbox.find((command) => command.command_id === shownCommandId);
   const supplierList = suppliers.data?.suppliers ?? [];
   const supplierNames = new Map(supplierList.map((supplier) => [supplier.id, supplier.name]));

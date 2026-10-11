@@ -342,15 +342,20 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     await user.click(within(site).getByRole('button', { name: 'Activer' }));
     await screen.findByText(/Opération (en cours d’envoi|enregistrée)/);
 
-    // La relecture qui suit la réponse ne revient pas tout de suite.
-    let release: (() => void) | undefined;
+    // La relecture qui suit la réponse ne revient pas tout de suite (toutes les lectures retenues).
+    const pendingReads: (() => void)[] = [];
     vi.mocked(authorizedRequest).mockImplementation(
       (_db, path) =>
         new Promise((resolve) => {
-          release = () => resolve(answer(path) as never);
+          pendingReads.push(() => resolve(answer(path) as never));
         }),
     );
+    const before = vi.mocked(authorizedRequest).mock.calls.length;
     await settleLast();
+    // Relecture partie après la réponse SYNCED.
+    await waitFor(() =>
+      expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(before),
+    );
     expect(
       await screen.findByText('Relecture des règles après la dernière opération…'),
     ).toBeInTheDocument();
@@ -360,7 +365,8 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeDisabled();
 
     rules = [rule({}), rule({ id: 'd-site', code: 'OEUF-PDV', siteId: IDS.site })];
-    release?.();
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => answer(path) as never);
+    for (const release of pendingReads.splice(0)) release();
     await waitFor(() =>
       expect(
         screen.queryByText('Relecture des règles après la dernière opération…'),
@@ -369,6 +375,91 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeEnabled(),
     );
+  });
+
+  it('lecture en échec : annoncée, relue par « Réessayer » ; codes indisponibles relus aussi', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({
+      ok: false,
+      reason: 'HTTP_ERROR',
+      status: 503,
+      body: null,
+    } as never);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.click(await screen.findByRole('button', { name: 'Réessayer' }));
+    const newRule = await screen.findByRole('button', { name: 'Nouvelle règle' });
+    await waitFor(() => expect(newRule).toBeEnabled());
+
+    // Lecture des codes de toutes les lignées en échec : annoncée, avec un nouvel essai.
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({
+      ok: false,
+      reason: 'OFFLINE',
+    } as never);
+    await user.click(newRule);
+    expect(await screen.findByText(/Codes existants indisponibles/)).toBeInTheDocument();
+    const code = screen.getByLabelText('Code de la règle');
+    expect(code.getAttribute('aria-describedby')?.split(' ').length).toBe(2);
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    await waitFor(() =>
+      expect(screen.queryByText(/Codes existants indisponibles/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('opération d’une visite précédente refusée : le refus reste affiché', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    await getDb().outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000000f3',
+      device_seq: 1,
+      command_type: 'pricing.rule.supersede',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'PRICE_RULE',
+      aggregate_id: '01900000-0000-7000-8000-0000000000a3',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:59:00.000Z',
+      client_created_at: '2026-10-10T08:59:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { supersedesRuleId: 'r-actif', unitPriceXaf: 105 },
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    renderScreen();
+    expect(await screen.findByText(/Opération (en cours d’envoi|enregistrée)/)).toBeInTheDocument();
+    await settleLast('REJECTED');
+    expect(await screen.findByText(/Canal inconnu/)).toBeInTheDocument();
+  });
+
+  it('nouvelle version : catégorie de client inactive libellée par son nom', async () => {
+    rules = [rule({ customerCategoryId: 'cat-ancienne' })];
+    await getDb().projections.put({
+      key: 'customer_category:CUSTOMER_CATEGORY:cat-ancienne',
+      dataset: 'customer_category',
+      entity_type: 'CUSTOMER_CATEGORY',
+      entity_id: 'cat-ancienne',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id: 'cat-ancienne', code: 'GROS', name: 'Grossistes', is_active: false },
+    });
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle version' }));
+    const category = screen.getByLabelText('Catégorie de client');
+    expect(category).toHaveValue('cat-ancienne');
+    expect(
+      within(category).getByRole('option', { name: 'Grossistes (inactive)' }),
+    ).toBeInTheDocument();
   });
 
   it('fin avant la date d’effet du brouillon suivant : avertie et confirmée', async () => {
@@ -502,7 +593,8 @@ describe('Règles tarifaires : gardes', () => {
     expect(at('2026-10-10T09:59')).toEqual(['VALID_FROM_PAST']);
     const ending = rule({ validTo: '2026-10-10T20:00:00.000Z' });
     expect(formFrom(ending, new Date('2026-10-10T10:00:00.000Z')).validTo).toBe('2026-10-10T21:00');
-    expect(formFrom(ending, new Date('2026-10-10T20:00:00.000Z')).validTo).toBe('');
+    // Fin jamais effacée en silence : à égalité avec la date d'effet, VALID_TO_INVALID le dira.
+    expect(formFrom(ending, new Date('2026-10-10T20:00:00.000Z')).validTo).toBe('2026-10-10T21:00');
   });
 
   it('lignée, dates proposées et fin admise', () => {
@@ -515,9 +607,11 @@ describe('Règles tarifaires : gardes', () => {
     // Règle à venir : la nouvelle version ne part pas avant son début.
     const future = rule({ validFrom: '2026-11-01T00:00:00.000Z' });
     expect(supersedeValidFrom(future, NOW).toISOString()).toBe('2026-11-01T00:01:00.000Z');
-    // Règle qui finit ce soir : la nouvelle version ne part pas après sa fin.
+    // Règle qui finit ce soir : la nouvelle version part maintenant (minute supérieure), avant sa fin,
+    // qui est reprise telle quelle.
     const bounded = rule({ validTo: '2026-10-10T20:00:00.000Z' });
-    expect(supersedeValidFrom(bounded, NOW).toISOString()).toBe('2026-10-10T20:00:00.000Z');
+    expect(supersedeValidFrom(bounded, NOW).toISOString()).toBe('2026-10-10T09:00:00.000Z');
+    expect(formFrom(bounded, supersedeValidFrom(bounded, NOW)).validTo).toBe('2026-10-10T21:00');
     // Fin : ni passée, ni avant le début, plus tôt que la fin actuelle.
     expect(endAllowed('2026-10-10T10:00', v1, NOW)).toBe(true);
     // À 10 h 00 min 30 s (Douala), la fin la plus proche admise est 10 h 01.

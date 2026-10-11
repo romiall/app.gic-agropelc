@@ -309,7 +309,10 @@ export function conflictsOf(
   return active.filter((rule) => found.has(rule.id));
 }
 
-/** Formulaire prérempli depuis une règle (nouvelle version) : portée, campagne et fin reprises. */
+/**
+ * Formulaire prérempli depuis une règle (nouvelle version) : portée, campagne et fin reprises. La fin
+ * n'est jamais effacée en silence : si elle ne suit pas la date d'effet, `VALID_TO_INVALID` le dit.
+ */
 export function formFrom(rule: RuleView, validFrom: Date): RuleForm {
   return {
     code: rule.code,
@@ -323,23 +326,23 @@ export function formFrom(rule: RuleView, validFrom: Date): RuleForm {
     priorityText: String(rule.priority),
     commercialCampaignId: rule.commercialCampaignId ?? '',
     validFrom: doualaLocal(validFrom),
-    // La fin reprise doit suivre la date d'effet proposée (sinon le formulaire s'ouvrirait invalide).
-    validTo:
-      rule.validTo && new Date(rule.validTo) > validFrom ? doualaLocal(new Date(rule.validTo)) : '',
+    validTo: rule.validTo ? doualaLocal(new Date(rule.validTo)) : '',
     notes: '',
   };
 }
 
 /**
- * Date d'effet proposée pour une nouvelle version : le lendemain à 0 h, ramenée dans la période de la
- * règle remplacée (après son début, au plus tard à sa fin).
+ * Date d'effet proposée pour une nouvelle version : le lendemain à 0 h, après le début de la règle
+ * remplacée. Une règle qui finit avant le lendemain (promotion du jour) : maintenant, à la minute
+ * supérieure, pour que la nouvelle version tienne avant sa fin (reprise telle quelle).
  */
 export function supersedeValidFrom(rule: Pick<RuleView, 'validFrom' | 'validTo'>, now: Date): Date {
   const tomorrow = businessDayEndUtc(businessDayOf(now));
   const start = new Date(rule.validFrom);
-  let proposed = tomorrow > start ? tomorrow : new Date(start.getTime() + 60_000);
-  if (rule.validTo && proposed > new Date(rule.validTo)) proposed = new Date(rule.validTo);
-  return proposed;
+  const afterStart = new Date(start.getTime() + 60_000);
+  const endsBeforeTomorrow = rule.validTo !== null && new Date(rule.validTo) < tomorrow;
+  const wanted = endsBeforeTomorrow ? ceilMinute(now) : tomorrow;
+  return wanted > start ? wanted : afterStart;
 }
 
 /** Fin minimale admise pour `pricing.rule.end` : maintenant (à la minute supérieure) et après le début. */

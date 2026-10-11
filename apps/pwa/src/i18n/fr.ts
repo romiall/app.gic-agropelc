@@ -1536,6 +1536,7 @@ export const fr = {
     refresh: 'Actualiser',
     retry: 'Réessayer',
     out_of_scope: 'Emplacement hors de votre périmètre de registre : choisissez-en un autre.',
+    explain_unavailable: 'Explication indisponible tant que les mouvements ne sont pas lus.',
     counterpart: {
       customer: 'client',
       transit: 'transit',
@@ -1618,6 +1619,7 @@ export const fr = {
     immutable_hint:
       'L’unité de base, la famille et le suivi par lot ne se modifient plus après la création : vérifiez-les avant d’enregistrer.',
     pending: 'En attente d’envoi',
+    created_pending_pull: 'Créée, arrive à la prochaine synchronisation',
     family: {
       BIOLOGIQUE: 'Biologique (animaux)',
       PRODUCTION_COMMERCIALISABLE: 'Production commercialisable',
