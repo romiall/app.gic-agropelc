@@ -104,6 +104,8 @@ Instruire les demandes d'achat (ECR-APP-02) → émettre les bons de commande (E
 
 Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel / Non) | phase de livraison.
 
+État de livraison dans la PWA (écrans livrés, routes, limites connues) : [suivi des écrans PWA](../10-development-plan/15-ecrans-pwa.md) §2.
+
 ### 3.1 Transverse et administration
 
 | ID | Écran | Rôles | Hors ligne | Phase |
