@@ -44,6 +44,7 @@ export const ROUTES = {
   priceRules: '/prix/regles',
   catalog: '/catalogue',
   stock: '/stock',
+  stockLedger: '/stock/registre',
   portfolio: '/clients',
   performance: '/objectifs',
   newProspect: '/clients/nouveau',
@@ -167,6 +168,18 @@ export const ROLE_SETS = {
   consumptionRecord: ['MAGASINIER', 'RESP_FERME', 'VENDEUR_PDV', 'RESP_PRODUCTION'],
   /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
   countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
+  /**
+   * ECR-STK-07 (`inventory.ledger.read`, 01-rbac.md) : « responsables, direction » de l'inventaire des
+   * écrans, magasinier compris (WF-J3 étape 5), et la finance ; pas les vendeurs ni les commerciaux.
+   */
+  stockLedger: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'FINANCE',
+  ],
   /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
   transferDispatch: ['MAGASINIER', 'RESP_FERME'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
@@ -371,6 +384,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.countPerform,
     actionCodes: ['COUNT'],
     offline: true,
+  },
+  {
+    id: 'ECR-STK-07',
+    path: ROUTES.stockLedger,
+    labelKey: 'stock_ledger',
+    group: 'stock',
+    roles: ROLE_SETS.stockLedger,
+    actionCodes: [],
+    offline: false,
   },
   {
     id: 'ECR-STK-08',
