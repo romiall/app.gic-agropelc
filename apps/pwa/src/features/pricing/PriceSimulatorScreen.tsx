@@ -1,0 +1,266 @@
+/**
+ * ECR-PRX-03 « Simulateur de prix » (responsable commercial, direction) : pour un produit, une
+ * quantité, une date, un site, une zone, une catégorie de client et un canal, le prix catalogue que
+ * la vente appliquerait, la règle retenue et les autres règles applicables dans l'ordre du départage.
+ * Aucune écriture ; calcul sur l'appareil avec les règles téléchargées (partiel hors ligne, S-08).
+ */
+import { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  businessDayOf,
+  lineAmountXaf,
+  quantityFromDecimal,
+  xaf,
+  type PriceRule,
+} from '@gic/domain';
+import { clock } from '../../platform/composition.js';
+import { formatBusinessDay } from '../home/format-home.js';
+import { formatMoney, formatQuantity } from '../sales/format.js';
+import { useSalesReferences } from '../sales/references.js';
+import { applicableRules, parseSimQuantity, SIM_CHANNELS } from './price-sim.js';
+
+export function PriceSimulatorScreen() {
+  const { t } = useTranslation();
+  const refs = useSalesReferences();
+  const [productId, setProductId] = useState('');
+  const [quantityText, setQuantityText] = useState('1');
+  const [day, setDay] = useState(() => businessDayOf(clock.now()));
+  const [siteId, setSiteId] = useState('');
+  const [zoneId, setZoneId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [channelCode, setChannelCode] = useState('');
+  const ids = {
+    product: useId(),
+    quantity: useId(),
+    day: useId(),
+    site: useId(),
+    zone: useId(),
+    category: useId(),
+    channel: useId(),
+  };
+
+  if (!refs) {
+    return (
+      <section className="sale" aria-busy="true">
+        <h1>{t('nav.screens.price_simulator')}</h1>
+        <p className="home-muted">{t('sales.loading')}</p>
+      </section>
+    );
+  }
+
+  const products = refs.products
+    .filter((product) => product.is_sellable && product.status === 'ACTIVE')
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const product = products.find((candidate) => candidate.id === productId);
+  const pricingUnit = product
+    ? product.pricing_mode === 'PER_WEIGHT'
+      ? 'kg'
+      : product.base_unit_code
+    : '';
+  const sites = [...refs.sites.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const zones = [...refs.zones.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const quantity = parseSimQuantity(quantityText);
+  const validDay = /^\d{4}-\d{2}-\d{2}$/.test(day);
+  // Midi à Douala : le jour choisi, sans dépendre de l'heure de la simulation.
+  const at = validDay ? new Date(`${day}T12:00:00+01:00`) : null;
+  const rules =
+    product && quantity !== null && at
+      ? applicableRules(
+          {
+            productId: product.id,
+            at,
+            siteId,
+            zoneId,
+            customerCategoryId: categoryId,
+            channelCode,
+            quantity,
+          },
+          refs.priceRules,
+          refs.zones,
+          refs.campaigns,
+        )
+      : [];
+  const [winner, ...others] = rules;
+
+  const describe = (rule: PriceRule): string =>
+    [
+      rule.siteId
+        ? t('price_sim.scope.site', { name: refs.sites.get(rule.siteId)?.name ?? '' })
+        : null,
+      rule.zoneId
+        ? t('price_sim.scope.zone', { name: refs.zones.get(rule.zoneId)?.name ?? '' })
+        : null,
+      rule.customerCategoryId
+        ? t('price_sim.scope.category', {
+            name:
+              refs.customerCategories.find((category) => category.id === rule.customerCategoryId)
+                ?.name ?? '',
+          })
+        : null,
+      rule.channelCode
+        ? t('price_sim.scope.channel', {
+            name: t(`price_sim.channel.${rule.channelCode}`, { defaultValue: rule.channelCode }),
+          })
+        : null,
+      rule.minQuantity !== null
+        ? t('price_sim.scope.min_quantity', {
+            quantity: formatQuantity(rule.minQuantity),
+            unit: pricingUnit,
+          })
+        : null,
+      rule.commercialCampaignId ? t('price_sim.scope.campaign') : null,
+      t('price_sim.scope.priority', { priority: rule.priority }),
+    ]
+      .filter(Boolean)
+      .join(' · ') || t('price_sim.scope.general');
+
+  const select = (
+    id: string,
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+    options: readonly { readonly value: string; readonly label: string }[],
+    placeholder: string,
+  ) => (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <select
+        id={id}
+        className="text-input"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  return (
+    <section className="sale">
+      <h1>{t('nav.screens.price_simulator')}</h1>
+      <p className="home-muted">{t('price_sim.hint')}</p>
+      {select(
+        ids.product,
+        t('price_sim.product_label'),
+        productId,
+        setProductId,
+        products.map((candidate) => ({ value: candidate.id, label: candidate.name })),
+        t('loss.product_placeholder'),
+      )}
+      <div className="line-fields">
+        <div className="field">
+          <label htmlFor={ids.quantity}>
+            {t('price_sim.quantity_label', { unit: pricingUnit || '—' })}
+          </label>
+          <input
+            id={ids.quantity}
+            className="text-input"
+            inputMode="decimal"
+            value={quantityText}
+            onChange={(event) => setQuantityText(event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor={ids.day}>{t('price_sim.day_label')}</label>
+          <input
+            id={ids.day}
+            type="date"
+            className="text-input"
+            value={day}
+            onChange={(event) => setDay(event.target.value)}
+          />
+        </div>
+      </div>
+      {select(
+        ids.site,
+        t('price_sim.site_label'),
+        siteId,
+        setSiteId,
+        sites.map((site) => ({ value: site.id, label: site.name })),
+        t('price_sim.any'),
+      )}
+      {select(
+        ids.zone,
+        t('price_sim.zone_label'),
+        zoneId,
+        setZoneId,
+        zones.map((zone) => ({ value: zone.id, label: zone.name })),
+        t('price_sim.any'),
+      )}
+      {select(
+        ids.category,
+        t('price_sim.category_label'),
+        categoryId,
+        setCategoryId,
+        refs.customerCategories.map((category) => ({ value: category.id, label: category.name })),
+        t('price_sim.any'),
+      )}
+      {select(
+        ids.channel,
+        t('price_sim.channel_label'),
+        channelCode,
+        setChannelCode,
+        SIM_CHANNELS.map((code) => ({ value: code, label: t(`price_sim.channel.${code}`) })),
+        t('price_sim.any'),
+      )}
+
+      {product && quantityText && quantity === null ? (
+        <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
+      ) : null}
+      {product && quantity !== null && at ? (
+        <section className="sale-block" aria-labelledby="price-sim-result" role="status">
+          <h2 id="price-sim-result">{t('price_sim.result_title')}</h2>
+          {winner ? (
+            <>
+              <p>
+                <strong>
+                  {t('price_sim.price', {
+                    price: formatMoney(winner.unitPriceXaf),
+                    unit: pricingUnit,
+                  })}
+                </strong>
+              </p>
+              <p>
+                {t('price_sim.total', {
+                  quantity: formatQuantity(quantity),
+                  unit: pricingUnit,
+                  total: formatMoney(
+                    lineAmountXaf(quantityFromDecimal(quantity), xaf(winner.unitPriceXaf)),
+                  ),
+                })}
+              </p>
+              <p className="home-muted">
+                {t('price_sim.rule', {
+                  scope: describe(winner),
+                  from: formatBusinessDay(businessDayOf(winner.validFrom)),
+                })}
+              </p>
+              {others.length > 0 ? (
+                <>
+                  <h3>{t('price_sim.others_title')}</h3>
+                  <ul className="receipt-lines">
+                    {others.map((rule) => (
+                      <li key={rule.id}>
+                        <span>
+                          <small>{describe(rule)}</small>
+                        </span>
+                        <span>{formatMoney(rule.unitPriceXaf)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-warn">{t('price_sim.none')}</p>
+          )}
+        </section>
+      ) : null}
+    </section>
+  );
+}

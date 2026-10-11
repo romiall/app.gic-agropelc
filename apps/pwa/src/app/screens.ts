@@ -31,6 +31,7 @@ export const ROUTES = {
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
   service: '/service',
+  priceSimulator: '/prix/simulateur',
   stock: '/stock',
   portfolio: '/clients',
   newProspect: '/clients/nouveau',
@@ -116,6 +117,8 @@ export const ROLE_SETS = {
   ],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  /** ECR-PRX-03 : responsable commercial et direction (03-parcours-et-ecrans.md §3.2). */
+  priceSimulator: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
   fieldwork: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `crm.interaction.record` (01-rbac.md) : commerciaux et responsable commercial. */
@@ -330,6 +333,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'consumption',
     group: 'stock',
     roles: ROLE_SETS.consumptionRecord,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRX-03',
+    path: ROUTES.priceSimulator,
+    labelKey: 'price_simulator',
+    group: 'sales',
+    roles: ROLE_SETS.priceSimulator,
     actionCodes: [],
     offline: true,
   },
