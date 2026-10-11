@@ -1,7 +1,7 @@
 /**
- * ECR-STK-01 « Stock par emplacement » : soldes de l'emplacement choisi, disponible pour cet appareil
- * (net des quotas des autres appareils), alloué, opérations de l'appareil en attente, lots en solde et
- * alertes de seuil (BR-STK-051). Utilisable hors ligne, dans le périmètre téléchargé (jeu `stock`).
+ * ECR-STK-01 « Stock par emplacement » : soldes de l'emplacement choisi, disponible pour cet appareil,
+ * opérations de l'appareil en attente, lots en solde et alertes de seuil (BR-STK-051, sur le solde
+ * physique). Les quotas des appareils ne sont pas encore servis (S-05) et ne sont pas affichés. Utilisable hors ligne, dans le périmètre téléchargé (jeu `stock`).
  * L'action « Alertes de stock » du magasinier ouvre l'écran filtré sur les produits sous le seuil.
  */
 import { useId, useState } from 'react';
@@ -120,10 +120,6 @@ export function StockScreen() {
                   <dt>{t('stock.available')}</dt>
                   <dd className={row.available <= 0 ? 'text-warn' : undefined}>
                     {formatQuantity(row.available)} {unit}
-                  </dd>
-                  <dt>{t('stock.allocated')}</dt>
-                  <dd>
-                    {formatQuantity(row.allocated)} {unit}
                   </dd>
                 </dl>
                 {row.pending > 0 ? (

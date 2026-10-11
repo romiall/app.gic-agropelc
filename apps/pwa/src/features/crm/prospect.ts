@@ -10,7 +10,7 @@
  * - Sources de prospect : liste du référentiel semé, que le serveur ne publie pas (besoin S-15).
  */
 import { DomainError, normalizePhone } from '@gic/domain';
-import type { CustomerData } from '../sales/types.js';
+import type { CustomerData, ZoneData } from '../sales/types.js';
 
 export const DEFAULT_COUNTRY_CODE = '237';
 
@@ -24,6 +24,32 @@ export const LEAD_SOURCES = [
 ] as const;
 
 export const CUSTOMER_TYPES = ['PARTICULIER', 'ENTREPRISE'] as const;
+
+/** Zone proposée pour un prospect : active (ZONE_INVALID sinon), libellée par son chemin. */
+export interface ZoneOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** Zones actives, libellées « ville › quartier » pour lever les homonymes, par libellé. */
+export function prospectZoneOptions(zones: ReadonlyMap<string, ZoneData>): ZoneOption[] {
+  const active = (zone: ZoneData) => zone.is_active !== false && zone.is_active !== 0;
+  const pathOf = (zone: ZoneData): string => {
+    const names = [zone.name];
+    const seen = new Set([zone.id]);
+    let parent = zone.parent_id ? zones.get(zone.parent_id) : undefined;
+    while (parent && !seen.has(parent.id)) {
+      names.unshift(parent.name);
+      seen.add(parent.id);
+      parent = parent.parent_id ? zones.get(parent.parent_id) : undefined;
+    }
+    return names.join(' › ');
+  };
+  return [...zones.values()]
+    .filter(active)
+    .map((zone) => ({ id: zone.id, label: pathOf(zone) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+}
 
 export interface Position {
   readonly lat: number;

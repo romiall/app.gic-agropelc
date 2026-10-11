@@ -64,6 +64,8 @@ export interface ZoneData {
   readonly parent_id: string | null;
   readonly name: string;
   readonly depth: number;
+  /** Booléen, ou 0/1 selon la sérialisation de la ligne ; absent : active. */
+  readonly is_active?: boolean | number;
 }
 
 /** (`site`) */

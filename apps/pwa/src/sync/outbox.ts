@@ -66,25 +66,45 @@ export async function enqueueCommand(
   });
 }
 
+/** Statuts d'une commande qui n'a pas encore reçu de réponse définitive du serveur. */
+const UNSETTLED: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']);
+
 /**
  * File d'attente à pousser : tout ce qui n'est pas encore confirmé, dans l'ordre FIFO ; seulement les
  * commandes de `authorUserId` s'il est donné (le serveur n'accepte que celles de l'utilisateur
  * authentifié).
+ *
+ * Une commande dont une dépendance (`depends_on`) attend encore sa réponse sur l'appareil reste en
+ * file : elle part au lot suivant, une fois la dépendance appliquée. Le serveur accepte aujourd'hui
+ * une dépendance seulement reçue ou en échec passager, et la commande dépendante serait alors
+ * refusée définitivement (S-17). Une dépendance refusée ou en conflit n'arrête pas l'envoi : le
+ * serveur refuse alors la dépendante normalement (`DEPENDENCY_REJECTED`).
  */
 export async function pendingOutbox(
   db: GicDatabase,
   limit = 50,
   authorUserId?: string,
 ): Promise<OutboxCommand[]> {
-  return db.outbox
+  const rows = await db.outbox
     .where('status')
     .anyOf(['LOCAL_ONLY', 'PENDING_SYNC'])
-    .sortBy('device_seq')
-    .then((rows) =>
-      rows
-        .filter((row) => authorUserId === undefined || row.author_user_id === authorUserId)
-        .slice(0, limit),
-    );
+    .sortBy('device_seq');
+  const candidates = rows.filter(
+    (row) => authorUserId === undefined || row.author_user_id === authorUserId,
+  );
+  const dependencyIds = [...new Set(candidates.flatMap((row) => row.depends_on))];
+  const dependencies =
+    dependencyIds.length === 0
+      ? []
+      : await db.outbox.where('command_id').anyOf(dependencyIds).toArray();
+  const unsettled = new Set(
+    dependencies
+      .filter((dependency) => UNSETTLED.has(dependency.status))
+      .map((dependency) => dependency.command_id),
+  );
+  return candidates
+    .filter((row) => row.depends_on.every((dependency) => !unsettled.has(dependency)))
+    .slice(0, limit);
 }
 
 /**

@@ -89,8 +89,9 @@ function AppShell() {
             <Route path={ROUTES.collect} element={<CollectScreen />} />
             <Route path={ROUTES.stock} element={<StockScreen />} />
             <Route path={ROUTES.loss} element={<LossScreen />} />
-            <Route path={ROUTES.receive} element={<ReceiveTransferScreen />} />
-            <Route path={ROUTES.receivePattern} element={<ReceiveTransferScreen />} />
+            {/* Clés distinctes : l'écran de résultat ne survit pas au retour à la liste. */}
+            <Route path={ROUTES.receive} element={<ReceiveTransferScreen key="liste" />} />
+            <Route path={ROUTES.receivePattern} element={<ReceiveTransferScreen key="detail" />} />
             <Route path={ROUTES.portfolio} element={<PortfolioScreen />} />
             <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />
             <Route path={ROUTES.newVisit} element={<NewVisitScreen />} />

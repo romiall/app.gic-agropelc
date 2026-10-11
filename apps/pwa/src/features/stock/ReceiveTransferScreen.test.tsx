@@ -6,7 +6,7 @@ import { getDb } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { ReceiveTransferScreen } from './ReceiveTransferScreen.js';
-import { inTransitTo } from './stock-view.js';
+import { inTransitTo, receivingTransferIds } from './stock-view.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../auth/AuthContext.js', () => ({
@@ -115,11 +115,17 @@ describe('Recevoir un transfert (ECR-STK-03)', () => {
     });
     const after = await loadSalesReferences(getDb());
     expect(after.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(-54);
-    unmount();
+    // La quantité reçue compte dans les opérations en attente : plus en transit.
+    expect(
+      inTransitTo(after.transfers, IDS.pos, receivingTransferIds(after.outbox)).get(IDS.eggs),
+    ).toBeUndefined();
 
-    // Le transfert n'est pas proposé une seconde fois.
-    renderAt('/stock/receptions');
+    // Retour à la liste depuis le résultat, sans démonter l'écran : la liste s'affiche, et le
+    // transfert n'est pas proposé une seconde fois.
+    await user.click(screen.getByRole('link', { name: '← Transferts à recevoir' }));
     expect(await screen.findByText('Réception en attente d’envoi')).toBeInTheDocument();
+    expect(screen.queryByText(/Réception enregistrée sur ce téléphone/)).not.toBeInTheDocument();
+    unmount();
   });
 
   it('en ligne : un reçu supérieur à l’expédié est bloqué sur l’appareil', async () => {

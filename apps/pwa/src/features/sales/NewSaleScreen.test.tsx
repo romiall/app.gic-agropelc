@@ -109,6 +109,24 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled();
   });
 
+  it('client choisi absent de l’appareil : vente bloquée tant qu’un client n’est pas choisi', async () => {
+    await seedSalesFixtures(getDb());
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={['/ventes/nouvelle?client=01900000-0000-7000-8000-0000000000ee']}
+      >
+        <NewSaleScreen />
+      </MemoryRouter>,
+    );
+    await addEggs(user);
+    expect(screen.getByRole('alert')).toHaveTextContent(/n’est plus sur ce téléphone/);
+    expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Vendre sans client' }));
+    expect(screen.queryByText(/n’est plus sur ce téléphone/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled();
+  });
+
   it('moyen de paiement à référence : référence exigée', async () => {
     await seedSalesFixtures(getDb());
     const user = userEvent.setup();

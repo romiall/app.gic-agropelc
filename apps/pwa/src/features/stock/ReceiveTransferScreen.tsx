@@ -182,7 +182,12 @@ export function ReceiveTransferScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
-  const [submitted, setSubmitted] = useState<{ commandId: string; doc: string }>();
+  // Résultat attaché au transfert reçu : il ne s'affiche plus une fois revenu à la liste.
+  const [submitted, setSubmitted] = useState<{
+    commandId: string;
+    doc: string;
+    transferId: string;
+  }>();
 
   if (!refs || !userId) {
     return (
@@ -193,7 +198,7 @@ export function ReceiveTransferScreen() {
     );
   }
 
-  if (submitted) {
+  if (submitted && submitted.transferId === transferId) {
     return (
       <section className="sale">
         <h1>{t('receive.title', { doc: submitted.doc })}</h1>
@@ -249,7 +254,9 @@ export function ReceiveTransferScreen() {
           refs={refs}
           userId={userId}
           online={online}
-          onDone={(commandId) => setSubmitted({ commandId, doc: transfer.doc_number })}
+          onDone={(commandId) =>
+            setSubmitted({ commandId, doc: transfer.doc_number, transferId: transfer.id })
+          }
         />
       </section>
     );

@@ -3,9 +3,12 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { routeOfAction } from '../../app/screens.js';
-import { getDb } from '../../storage/db.js';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { stockKey } from '../sales/stock.js';
+import type { LocationData, StockTransferData } from '../sales/types.js';
 import { StockScreen } from './StockScreen.js';
+import { inTransitTo, receivingTransferIds, stockRows } from './stock-view.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 
@@ -78,9 +81,64 @@ describe('Stock par emplacement (ECR-STK-01)', () => {
     expect(within(eggs).getByText('300 U')).toBeInTheDocument();
     expect(within(eggs).getByText('270 U')).toBeInTheDocument();
     expect(within(eggs).getByText(/en attente : 30 U/)).toBeInTheDocument();
+    // Quotas des appareils non servis (S-05) : rien n'est affiché comme un fait.
+    expect(within(eggs).queryByText('Quotas')).not.toBeInTheDocument();
     const chicken = screen.getByRole('listitem', { name: 'Poulet de chair' });
     expect(within(chicken).getByText('Sous le seuil')).toBeInTheDocument();
     expect(within(chicken).getByText(/réapprovisionnement suggéré : 16 U/)).toBeInTheDocument();
+  });
+
+  it('seuil lu sur le solde physique (ADR-033 §10) ; transit dont la réception est saisie exclu', () => {
+    const location = { id: 'loc', custody_mode: 'SHARED', is_virtual: false } as LocationData;
+    const refs = {
+      stock: new Map([
+        [
+          stockKey('loc', 'p'),
+          {
+            location_id: 'loc',
+            product_id: 'p',
+            qty_on_hand: '100.000',
+            qty_reserved: '0.000',
+            qty_allocated: '80.000',
+            lots: [],
+          },
+        ],
+      ]),
+      pending: new Map<string, number>(),
+      products: [{ id: 'p', name: 'Produit', base_unit_code: 'U' }],
+      thresholds: [
+        {
+          location_id: 'loc',
+          product_id: 'p',
+          min_qty_base: '30.000',
+          target_qty_base: '50.000',
+          is_active: true,
+        },
+      ],
+      transfers: new Map(),
+      outbox: [],
+    } as unknown as Parameters<typeof stockRows>[0];
+    const [row] = stockRows(refs, location);
+    // Disponible net des quotas : 20 ; physique : 100, au-dessus du minimum de 30.
+    expect(row?.available).toBe(20);
+    expect(row?.threshold?.state).toBe('OK');
+
+    const transfer = {
+      id: 't',
+      status: 'DISPATCHED',
+      to_location_id: 'loc',
+      lines: [{ product_id: 'p', dispatched_qty_base: '60.000', received_qty_base: null }],
+    } as unknown as StockTransferData;
+    const transfers = new Map([['t', transfer]]);
+    expect(inTransitTo(transfers, 'loc').get('p')).toBe(60);
+    const receiving = receivingTransferIds([
+      {
+        command_type: 'inventory.transfer.receive',
+        status: 'LOCAL_ONLY',
+        payload: { transferId: 't' },
+      } as unknown as OutboxCommand,
+    ]);
+    expect(inTransitTo(transfers, 'loc', receiving).get('p')).toBeUndefined();
   });
 
   it('action « Alertes de stock » : écran filtré sur les produits sous le seuil', async () => {

@@ -37,14 +37,23 @@ describe('sync/engine (runSyncCycle)', () => {
 
   it('vide l’outbox (plusieurs lots) puis tire, et rapporte SYNCED', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50 })
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50, settled: 50 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3, settled: 3 })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
 
     const outcome = await runSyncCycle(deps());
     expect(outcome).toBe('SYNCED');
     expect(pushMock).toHaveBeenCalledTimes(3);
+    expect(pullMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('lot sans rien de réglé (RETRY_LATER partout) : pas de renvoi immédiat, le tirage a lieu', async () => {
+    pushMock.mockResolvedValue({ outcome: 'PUSHED', count: 2, settled: 0 });
+    pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
+
+    expect(await runSyncCycle(deps())).toBe('SYNCED');
+    expect(pushMock).toHaveBeenCalledTimes(1);
     expect(pullMock).toHaveBeenCalledTimes(1);
   });
 
@@ -72,7 +81,7 @@ describe('sync/engine (runSyncCycle)', () => {
 
   it('push réussi mais pull hors ligne : OFFLINE, le serveur n’est plus joignable (ADR-051)', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1, settled: 1 })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'OFFLINE' });
 

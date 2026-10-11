@@ -6,8 +6,14 @@ import { getDb } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { NewSaleScreen } from '../sales/NewSaleScreen.js';
 import { NewProspectScreen } from './NewProspectScreen.js';
-import { checkProspect, prospectPayload, type ProspectDraft } from './prospect.js';
-import type { CustomerData } from '../sales/types.js';
+import {
+  checkProspect,
+  prospectPayload,
+  prospectZoneOptions,
+  type ProspectDraft,
+} from './prospect.js';
+import { loadSalesReferences } from '../sales/references.js';
+import type { CustomerData, ZoneData } from '../sales/types.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../auth/AuthContext.js', () => ({
@@ -71,6 +77,77 @@ describe('+ Prospect (ECR-CRM-02)', () => {
     });
   });
 
+  it('zones proposées : actives seulement, libellées par leur chemin', () => {
+    const zone = (id: string, name: string, parent: string | null, active = true): ZoneData => ({
+      id,
+      name,
+      parent_id: parent,
+      depth: parent ? 2 : 1,
+      is_active: active ? 1 : 0,
+    });
+    const zones = new Map(
+      [
+        zone('z1', 'Yaoundé', null),
+        zone('z2', 'Mvog-Mbi', 'z1'),
+        zone('z3', 'Ancien secteur', 'z1', false),
+      ].map((value) => [value.id, value]),
+    );
+    expect(prospectZoneOptions(zones)).toEqual([
+      { id: 'z1', label: 'Yaoundé' },
+      { id: 'z2', label: 'Yaoundé › Mvog-Mbi' },
+    ]);
+  });
+
+  it('tablette partagée : le prospect en attente d’un autre utilisateur n’est pas proposé', async () => {
+    const db = getDb();
+    await db.syncMeta.put({
+      key: 'device',
+      device_id: '01900000-0000-7000-8000-0000000000ff',
+      clock_skew_ms: null,
+      last_sync_at: null,
+      data_user_id: IDS.user,
+    });
+    const base = {
+      command_version: 1,
+      aggregate_type: 'CUSTOMER',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      status: 'LOCAL_ONLY' as const,
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+      command_type: 'crm.customer.create',
+    };
+    await db.outbox.bulkPut([
+      {
+        ...base,
+        command_id: '01900000-0000-7000-8000-0000000000d1',
+        device_seq: 1,
+        author_user_id: '01900000-0000-7000-8000-0000000000ab',
+        aggregate_id: '01900000-0000-7000-8000-0000000000c1',
+        payload: { displayName: 'Prospect du collègue', zoneId: IDS.zone },
+      },
+      {
+        ...base,
+        command_id: '01900000-0000-7000-8000-0000000000d2',
+        device_seq: 2,
+        author_user_id: IDS.user,
+        aggregate_id: '01900000-0000-7000-8000-0000000000c2',
+        payload: { displayName: 'Mon prospect', zoneId: IDS.zone },
+      },
+    ]);
+    const names = (await loadSalesReferences(db)).customers.map((c) => c.display_name);
+    expect(names).toContain('Mon prospect');
+    expect(names).not.toContain('Prospect du collègue');
+    await db.syncMeta.delete('device');
+  });
+
   it('en ligne, téléphone d’un compte existant : création bloquée sur l’appareil', async () => {
     const user = userEvent.setup();
     render(
@@ -101,6 +178,11 @@ describe('+ Prospect (ECR-CRM-02)', () => {
     await user.click(screen.getByRole('button', { name: 'Enregistrer le prospect' }));
     expect(await screen.findByText(/Prospect enregistré sur ce téléphone/)).toBeInTheDocument();
     const [create] = await getDb().outbox.toArray();
+    // « Vendre à ce client » ouvre la vente, client déjà choisi.
+    expect(await screen.findByRole('link', { name: 'Vendre à ce client' })).toHaveAttribute(
+      'href',
+      `/ventes/nouvelle?client=${create?.aggregate_id}`,
+    );
     expect(create).toMatchObject({
       command_type: 'crm.customer.create',
       aggregate_type: 'CUSTOMER',

@@ -4,7 +4,7 @@
  * boucle tant qu'il reste des commandes en attente.
  */
 import type { PushRequest, PushResponse, RawCommandEnvelope } from '@gic/contracts';
-import { deviceStateAfterResult } from '@gic/contracts';
+import { deviceStateAfterResult, syncResultStatusSchema } from '@gic/contracts';
 import type { Clock, IdGenerator } from '@gic/domain';
 import type { GicDatabase, OutboxCommand } from '../storage/db.js';
 import { pendingAfterBatch, pendingOutbox } from './outbox.js';
@@ -12,7 +12,11 @@ import { authorizedRequest } from './api-client.js';
 
 export type PushCycleResult =
   | { readonly outcome: 'NOTHING_TO_PUSH' }
-  | { readonly outcome: 'PUSHED'; readonly count: number }
+  /**
+   * `count` : résultats reçus ; `settled` : commandes qui ont reçu une réponse définitive (appliquée,
+   * en conflit ou refusée). Aucune (`RETRY_LATER` partout) : inutile de renvoyer aussitôt.
+   */
+  | { readonly outcome: 'PUSHED'; readonly count: number; readonly settled: number }
   | { readonly outcome: 'OFFLINE' }
   /** Le serveur a répondu par une erreur HTTP : joignable, nouvel essai au prochain cycle. */
   | { readonly outcome: 'SERVER_ERROR' }
@@ -101,9 +105,37 @@ export async function runPushCycle(
   await db.syncMeta.update('device', { clock_skew_ms: result.data.clock_skew_ms });
 
   const syncedAt = deps.clock.now().toISOString();
+  const answered = new Set<string>();
+  let settled = 0;
   for (const commandResult of result.data.results) {
-    const nextStatus = deviceStateAfterResult(commandResult.status);
+    answered.add(commandResult.command_id);
+    const known = syncResultStatusSchema.safeParse(commandResult.status);
+    if (!known.success) {
+      // Statut hors du protocole (ex. `RECEIVED` après un `RETRY_LATER`, S-18) : jamais écrit sur
+      // l'appareil ; la commande repart au prochain cycle, motif précédent conservé.
+      await db.outbox
+        .where('command_id')
+        .equals(commandResult.command_id)
+        .modify((c) => {
+          c.status = 'PENDING_SYNC';
+          c.attempts += 1;
+        });
+      continue;
+    }
+    const nextStatus = deviceStateAfterResult(known.data);
     const accepted = nextStatus === 'SYNCED' || nextStatus === 'SYNCED_WITH_WARNING';
+    if (nextStatus === 'PENDING_SYNC') {
+      await db.outbox
+        .where('command_id')
+        .equals(commandResult.command_id)
+        .modify((c) => {
+          c.status = 'PENDING_SYNC';
+          c.attempts += 1;
+          c.last_error = commandResult.error ?? c.last_error;
+        });
+      continue;
+    }
+    settled += 1;
     await db.outbox.update(commandResult.command_id, {
       status: nextStatus,
       server_refs: commandResult.server_refs ?? null,
@@ -111,6 +143,17 @@ export async function runPushCycle(
       ...(accepted ? { synced_at: syncedAt } : {}),
     });
   }
+  // Commande du lot sans résultat : elle ne reste pas « en cours d'envoi » indéfiniment.
+  const unanswered = batch.filter((command) => !answered.has(command.command_id));
+  if (unanswered.length > 0) {
+    await db.outbox
+      .where('command_id')
+      .anyOf(unanswered.map((command) => command.command_id))
+      .modify((c) => {
+        c.status = 'PENDING_SYNC';
+        c.attempts += 1;
+      });
+  }
 
-  return { outcome: 'PUSHED', count: result.data.results.length };
+  return { outcome: 'PUSHED', count: result.data.results.length, settled };
 }

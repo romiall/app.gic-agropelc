@@ -1,10 +1,13 @@
 /**
  * Stock d'un emplacement vu par l'appareil (ECR-STK-01) : par produit, en unité de base, la quantité
- * physique, l'alloué aux quotas des appareils, le disponible pour cet appareil (règles d'ADR-033 :
- * garde exclusive = physique ; emplacement partagé = physique moins les quotas des autres appareils),
- * les opérations de l'appareil pas encore confirmées, et l'état du seuil (BR-STK-051,
- * `evaluateStockThreshold`). Il n'y a plus de réservé de commande (ADR-028 §4). Logique pure.
+ * physique, le disponible pour cet appareil (règles d'ADR-033), les opérations de l'appareil pas
+ * encore confirmées, et l'état du seuil (BR-STK-051, `evaluateStockThreshold`), évalué comme le
+ * serveur sur le solde physique (ADR-033 §10), diminué des seules opérations de l'appareil en
+ * attente. Les quotas des appareils ne sont pas servis (jeu `allocations`, S-05) : ils ne sont ni
+ * affichés ni déduits. Il n'y a plus de réservé de commande (ADR-028 §4). Logique pure.
  */
+import type { OutboxCommand } from '../../storage/db.js';
+import { stillInFlight } from '../sales/pending.js';
 import { evaluateStockThreshold, type StockThresholdState } from '@gic/domain';
 import type { SalesReferences } from '../sales/references.js';
 import { localAvailable, stockKey } from '../sales/stock.js';
@@ -19,7 +22,6 @@ import type {
 export interface StockRow {
   readonly product: ProductData;
   readonly onHand: number;
-  readonly allocated: number;
   /** Disponible pour cet appareil, opérations en attente déduites (peut être négatif). */
   readonly available: number;
   readonly pending: number;
@@ -41,17 +43,35 @@ export function stockLocations(refs: Pick<SalesReferences, 'locations' | 'stock'
 
 const num = (value: string | undefined): number => (value === undefined ? 0 : Number(value));
 
+/** Transferts dont la réception est saisie sur l'appareil et pas encore confirmée par le serveur. */
+export function receivingTransferIds(outbox: readonly OutboxCommand[]): Set<string> {
+  return new Set(
+    outbox
+      .filter(
+        (command) =>
+          command.command_type === 'inventory.transfer.receive' &&
+          stillInFlight(command, undefined),
+      )
+      .map((command) => (command.payload as { transferId?: string }).transferId)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+}
+
 /**
  * Quantités en route vers l'emplacement (transferts expédiés, pas encore reçus), par produit : elles
- * réduisent le réapprovisionnement suggéré (BR-STK-051 : cible − disponible − transit entrant).
+ * réduisent le réapprovisionnement suggéré (BR-STK-051 : cible − disponible − transit entrant). Un
+ * transfert dont la réception est déjà saisie sur l'appareil n'est plus en transit : la quantité
+ * reçue compte déjà dans les opérations en attente.
  */
 export function inTransitTo(
   transfers: ReadonlyMap<string, StockTransferData>,
   locationId: string,
+  receiving: ReadonlySet<string> = new Set(),
 ): Map<string, number> {
   const milli = new Map<string, number>();
   for (const transfer of transfers.values()) {
     if (transfer.status !== 'DISPATCHED' || transfer.to_location_id !== locationId) continue;
+    if (receiving.has(transfer.id)) continue;
     for (const line of transfer.lines) {
       const remaining =
         num(line.dispatched_qty_base ?? undefined) - num(line.received_qty_base ?? undefined);
@@ -63,11 +83,14 @@ export function inTransitTo(
 }
 
 export function stockRows(
-  refs: Pick<SalesReferences, 'stock' | 'pending' | 'products' | 'thresholds' | 'transfers'>,
+  refs: Pick<
+    SalesReferences,
+    'stock' | 'pending' | 'products' | 'thresholds' | 'transfers' | 'outbox'
+  >,
   location: LocationData,
 ): StockRow[] {
   const products = new Map(refs.products.map((product) => [product.id, product]));
-  const transit = inTransitTo(refs.transfers, location.id);
+  const transit = inTransitTo(refs.transfers, location.id, receivingTransferIds(refs.outbox));
   const rows: StockRow[] = [];
   for (const balance of refs.stock.values()) {
     if (balance.location_id !== location.id) continue;
@@ -90,17 +113,19 @@ function rowOf(
   const threshold = refs.thresholds.find(
     (candidate) => candidate.location_id === location.id && candidate.product_id === product.id,
   );
+  const onHand = num(balance.qty_on_hand);
+  // Seuil lu sur le solde physique, comme le serveur (ADR-033 §10), net des opérations en attente.
+  const physical = Math.round((onHand - pending) * 1000) / 1000;
   return {
     product,
-    onHand: num(balance.qty_on_hand),
-    allocated: num(balance.qty_allocated),
+    onHand,
     available,
     pending,
     threshold: threshold
       ? (() => {
           const minQty = num(threshold.min_qty_base);
           const evaluation = evaluateStockThreshold({
-            available,
+            available: physical,
             minQty,
             targetQty: num(threshold.target_qty_base),
             inTransitIn,

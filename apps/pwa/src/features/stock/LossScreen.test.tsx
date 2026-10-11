@@ -5,7 +5,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { checkLoss } from './loss.js';
 import { LossScreen } from './LossScreen.js';
+import { parseReceived } from './receive.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../auth/AuthContext.js', () => ({
@@ -85,6 +87,51 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     });
     const refs = await loadSalesReferences(getDb());
     expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(60);
+  });
+
+  it('au-delà du disponible : bloquée en ligne (BR-STK-017), signalée hors ligne (BR-STK-018)', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    // 4 poulets en stock.
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.chicken);
+    await user.type(screen.getByLabelText('Quantité'), '5');
+    await user.click(screen.getByLabelText('Casse'));
+    expect(screen.getByRole('alert')).toHaveTextContent(/le serveur refuserait la perte/);
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeDisabled();
+    unmount();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.chicken);
+    await user.type(screen.getByLabelText('Quantité'), '5');
+    await user.click(screen.getByLabelText('Casse'));
+    expect(screen.getByText(/sera tout de même enregistrée et signalée/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
+  });
+
+  it('quantité hors de la borne numeric(14,3) : refusée sur l’appareil', () => {
+    const draft = {
+      productId: IDS.eggs,
+      unitCode: 'PLATEAU',
+      quantityText: '9999999999',
+      category: 'CASSE' as const,
+      reasonCodeId: '',
+      lotId: '',
+      comment: '',
+    };
+    expect(checkLoss(draft, { unitCode: 'PLATEAU', factorToBase: '30' }, []).issues).toEqual([
+      'QUANTITY_INVALID',
+    ]);
+    expect(parseReceived('100000000000')).toBeNull();
+    expect(parseReceived('99999999999.999')).toBe(99_999_999_999.999);
   });
 
   it('perte inexpliquée : commentaire obligatoire', async () => {

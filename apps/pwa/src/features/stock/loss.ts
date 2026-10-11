@@ -7,8 +7,10 @@
  * - Commentaire obligatoire pour une perte inexpliquée ou un vol suspecté (`COMMENT_REQUIRED`), et
  *   pour un motif qui l'exige (`requires_comment`, que le serveur ne contrôle pas).
  * - Lot : facultatif ; sans lot, le serveur choisit le plus ancien (FIFO, BR-STK-050).
- * - Une perte est un fait : elle n'est jamais bloquée faute de stock, même hors ligne ; l'écran
- *   prévient seulement quand la quantité dépasse le disponible connu.
+ * - Au-delà du disponible connu (ou du lot choisi), la perte est bloquée en ligne, comme le serveur
+ *   la refuserait (`INSUFFICIENT_STOCK`, BR-STK-017) ; hors ligne, c'est un fait accompli, signalé
+ *   et enregistré (BR-STK-018).
+ * - Quantité dans la borne `numeric(14,3)` (`MAX_QUANTITY`).
  */
 import {
   convertToBaseQuantity,
@@ -16,7 +18,7 @@ import {
   quantityFromDecimal,
   quantityToDecimal,
 } from '@gic/domain';
-import { parseQuantity, type SaleUnit } from '../sales/sale-form.js';
+import { MAX_QUANTITY, parseQuantity, type SaleUnit } from '../sales/sale-form.js';
 import type { ReasonCodeData } from '../sales/types.js';
 
 export const DEVICE_LOSS_CATEGORIES = [
@@ -80,6 +82,10 @@ export function checkLoss(
       quantityBase = quantityToDecimal(
         convertToBaseQuantity(quantityFromDecimal(quantity), unit.factorToBase),
       );
+      if (quantityBase > MAX_QUANTITY) {
+        quantityBase = null;
+        issues.push('QUANTITY_INVALID');
+      }
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
       issues.push('QUANTITY_INVALID');

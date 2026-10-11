@@ -286,6 +286,10 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
   ]);
   const zoneMap = byId(zones);
   const transferMap = byId(transfers);
+  // Tablette partagée : seules les créations de l'utilisateur détenteur des données sont proposées.
+  // Une opération qui dépendrait de la commande d'un autre auteur attendrait sa reconnexion.
+  const owner = meta?.data_user_id;
+  const ownOutbox = owner ? outbox.filter((command) => command.author_user_id === owner) : outbox;
   const orderMap = byId(orders);
   return {
     products,
@@ -301,7 +305,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     pending: pendingConsumption(outbox, stockCursor?.pulled_at, transferMap),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),
-      ...pendingCustomers(outbox, customers, customersCursor?.pulled_at),
+      ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),
     ],
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     reasonCodes: reasonCodes.filter((reason) => reason.is_active),
@@ -312,11 +316,11 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     visits: [
       ...visits.filter((visit) => visit.status === 'RECORDED'),
-      ...pendingVisits(outbox, visits, activityCursor?.pulled_at),
+      ...pendingVisits(ownOutbox, visits, activityCursor?.pulled_at),
     ],
     interactions: [
       ...interactions.filter((interaction) => interaction.status === 'RECORDED'),
-      ...pendingInteractions(outbox, interactions, activityCursor?.pulled_at),
+      ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
     transfers: transferMap,
     customerCategories: customerCategories

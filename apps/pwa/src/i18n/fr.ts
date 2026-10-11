@@ -115,6 +115,9 @@ export const fr = {
     customer_search: 'Rechercher un client (nom ou téléphone)',
     customer_none: 'Aucun client trouvé sur cet appareil.',
     customer_change: 'Changer',
+    customer_missing:
+      'Le client choisi n’est plus sur ce téléphone (création refusée, ou hors de votre périmètre) : choisissez un autre client.',
+    customer_missing_anonymous: 'Vendre sans client',
     customer_outstanding: 'Encours : {{amount}}',
     lines_title: 'Articles',
     add_product: '+ Ajouter un article',
@@ -599,8 +602,10 @@ export const fr = {
     reason_label: 'Motif',
     reason_placeholder: 'Choisir un motif (facultatif)',
     comment_label: 'Commentaire',
-    over_available:
-      'La quantité dépasse le disponible connu de l’appareil : la perte sera tout de même enregistrée.',
+    over_online:
+      'La quantité dépasse le disponible (ou le lot choisi) : le serveur refuserait la perte. Vérifiez la quantité.',
+    over_offline:
+      'La quantité dépasse le disponible connu de l’appareil : la perte sera tout de même enregistrée et signalée.',
     photo_hint:
       'La photo justificative n’est pas encore prise par l’application : gardez-la sur le téléphone.',
     issue: {
@@ -628,7 +633,7 @@ export const fr = {
     custody: {
       EXCLUSIVE_USER: 'Stock confié à une personne',
       EXCLUSIVE_DEVICE: 'Stock confié à un appareil',
-      SHARED: 'Stock partagé : le disponible tient compte des quotas des autres appareils',
+      SHARED: 'Stock partagé entre plusieurs appareils',
     },
     alerts_only: 'Seulement les produits sous le seuil ({{count}})',
     empty: 'Aucun produit en stock sur cet emplacement.',
@@ -639,7 +644,6 @@ export const fr = {
     },
     on_hand: 'Physique',
     available: 'Disponible',
-    allocated: 'Quotas',
     pending: 'Opérations de l’appareil en attente : {{quantity}} {{unit}}',
     threshold: 'Seuil : {{min}} {{unit}} · réapprovisionnement suggéré : {{suggested}} {{unit}}',
     lots: 'Lots ({{count}})',

@@ -225,7 +225,11 @@ export function NewSaleScreen() {
     }
   }
 
+  // Client choisi qui n'est plus sur l'appareil (prospect refusé…) : jamais vendu en client de passage
+  // sans le dire.
+  const customerMissing = customerId !== null && customer === undefined;
   const ready =
+    !customerMissing &&
     computed.length > 0 &&
     computed.every((line) => line.issue === null) &&
     paymentErrors.length === 0 &&
@@ -334,6 +338,14 @@ export function NewSaleScreen() {
           onChange={setCustomerId}
           allowAnonymous
         />
+        {customerMissing ? (
+          <div className="alert alert-error" role="alert">
+            <p>{t('sales.customer_missing')}</p>
+            <button type="button" className="secondary" onClick={() => setCustomerId(null)}>
+              {t('sales.customer_missing_anonymous')}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <section className="sale-block" aria-labelledby="sale-lines-title">

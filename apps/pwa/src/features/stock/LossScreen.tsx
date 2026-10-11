@@ -109,8 +109,13 @@ export function LossScreen() {
       )
     : 0;
   const lots = (balance?.lots ?? []).filter((lot) => lot.lot_id && Number(lot.qty_on_hand) > 0);
-  const overAvailable = check.quantityBase !== null && check.quantityBase > available;
-  const ready = check.issues.length === 0 && !busy;
+  const chosenLot = lots.find((lot) => lot.lot_id === draft.lotId);
+  const overAvailable =
+    check.quantityBase !== null &&
+    (check.quantityBase > available ||
+      (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
+  // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
+  const ready = check.issues.length === 0 && !(online && overAvailable) && !busy;
 
   const submit = async () => {
     if (!ready || !draft.category || check.quantity === null || check.quantityBase === null) return;
@@ -279,7 +284,15 @@ export function LossScreen() {
           onChange={(event) => update({ comment: event.target.value })}
         />
       </div>
-      {overAvailable ? <p className="text-warn">{t('loss.over_available')}</p> : null}
+      {overAvailable ? (
+        online ? (
+          <p className="error-message" role="alert">
+            {t('loss.over_online')}
+          </p>
+        ) : (
+          <p className="text-warn">{t('loss.over_offline')}</p>
+        )
+      ) : null}
       {draft.productId || draft.quantityText || draft.category
         ? check.issues.map((issue) => (
             <p key={issue} className="error-message">

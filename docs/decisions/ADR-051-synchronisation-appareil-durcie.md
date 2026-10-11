@@ -1,7 +1,7 @@
 # ADR-051 — Synchronisation de l'appareil : joignabilité réelle du serveur, décompte jusqu'au tirage, reprise des envois, un seul titulaire des données, enveloppe immuable
 
 - **Statut** : PROPOSÉ (fork « Écrans PWA », à accepter à la fusion ; DÉDUIT, technique)
-- **Date** : 10/10/2026 (révisé le même jour après la seconde revue adverse du fork : §2 retiré et remplacé, §7 à §10 ajoutés)
+- **Date** : 10/10/2026 (révisé le même jour après la seconde revue adverse du fork : §2 retiré et remplacé, §7 à §10 ajoutés ; §11 à §13 ajoutés le 11/10/2026 après la troisième revue)
 
 ## Contexte
 
@@ -25,6 +25,9 @@ Les premiers écrans de vente hors ligne (ECR-VEN-01 à 05) s'appuient sur le mo
 8. **Commandes de l'auteur seulement** : un lot ne contient que les commandes de l'utilisateur de la session. Le serveur refuse définitivement une commande dont l'auteur n'est pas l'utilisateur authentifié ; celles d'un autre utilisateur de l'appareil attendent sa reconnexion.
 9. **Session gardée sur une erreur passagère** : un renouvellement de jeton refusé par 400, 401 ou 403 invalide la session ; une autre réponse (429, 5xx) la garde et le renouvellement est retenté.
 10. **Relance immédiate** : un déclenchement reçu pendant un cycle (une saisie, le retour du réseau) provoque un cycle de plus dès la fin du cycle en cours, au lieu d'attendre le déclenchement périodique. Le décompte « en vol » du §3 s'applique aussi aux livraisons et commandes (jeu `orders`) et à l'encours des clients (jeu `customers`). Le propriétaire des données d'un appareil antérieur à ce champ est adopté sans effacement.
+11. **Dépendance d'abord** : une commande dont une dépendance (`depends_on`) attend encore sa réponse sur l'appareil (`LOCAL_ONLY`, `PENDING_SYNC`, `SYNCING`) ne part pas dans le même lot ; elle part au lot suivant, une fois la dépendance appliquée. Le serveur accepte aujourd'hui une dépendance seulement reçue ou en échec passager, et refuserait alors définitivement la commande dépendante (S-17). Une dépendance refusée ou en conflit n'arrête pas l'envoi : le serveur refuse la dépendante (`DEPENDENCY_REJECTED`).
+12. **Statut hors protocole jamais écrit** : un résultat dont le statut n'appartient pas au protocole (ex. `RECEIVED`, renvoyé après un `RETRY_LATER`, S-18), ou une commande du lot restée sans résultat, repasse `PENDING_SYNC` (essai compté, motif précédent conservé). Un lot où rien n'est réglé (`RETRY_LATER` partout) n'est pas renvoyé aussitôt dans le même cycle.
+13. **Créations de l'utilisateur seulement** : un compte, une visite ou un échange saisis sur l'appareil par un autre utilisateur (tablette partagée) ne sont pas proposés : une opération qui en dépendrait attendrait la reconnexion de leur auteur.
 
 La base Dexie n'est pas renumérotée : les nouveaux champs ne sont pas indexés.
 
@@ -44,4 +47,4 @@ La base Dexie n'est pas renumérotée : les nouveaux champs ne sont pas indexés
 
 ## Risques
 
-L'horloge de l'appareil sert aux deux heures comparées (`synced_at`, `pulled_at`). Elles sont prises sur le même appareil, donc un décalage avec le serveur ne fausse pas la comparaison. Un recul de l'horloge entre l'envoi et le tirage maintiendrait le décompte jusqu'au tirage suivant, ce qui est sans danger. Tests : `apps/pwa/src/sync/sync-hardening.test.ts`, `apps/pwa/src/features/sales/sale-logic.test.ts`.
+L'horloge de l'appareil sert aux deux heures comparées (`synced_at`, `pulled_at`). Elles sont prises sur le même appareil, donc un décalage avec le serveur ne fausse pas la comparaison. Un recul de l'horloge entre l'envoi et le tirage maintiendrait le décompte jusqu'au tirage suivant, ce qui est sans danger. Tests : `apps/pwa/src/sync/sync-hardening.test.ts`, `apps/pwa/src/features/sales/sale-logic.test.ts`, `apps/pwa/src/sync/outbox.test.ts` (§11), `apps/pwa/src/sync/push.test.ts` et `engine.test.ts` (§12), `apps/pwa/src/features/crm/NewProspectScreen.test.tsx` (§13).

@@ -19,13 +19,14 @@ import { openWorkSession } from '../sales/pricing.js';
 import { useSalesReferences } from '../sales/references.js';
 import { sellingLocations } from '../sales/sale-form.js';
 import { settingValue } from '../sales/stock.js';
-import { submitCommand } from '../sales/submit.js';
+import { phaseOf, submitCommand, useOutboxCommand } from '../sales/submit.js';
 import {
   checkProspect,
   CUSTOMER_TYPES,
   DEFAULT_COUNTRY_CODE,
   LEAD_SOURCES,
   prospectPayload,
+  prospectZoneOptions,
   type Position,
   type ProspectDraft,
 } from './prospect.js';
@@ -47,6 +48,20 @@ const EMPTY: ProspectDraft = {
 
 type GpsState = 'idle' | 'locating' | 'denied';
 
+/** « Vendre à ce client », client déjà choisi ; pas proposé si la création est refusée ou en conflit. */
+function SellToProspect({ commandId, customerId }: { commandId: string; customerId: string }) {
+  const { t } = useTranslation();
+  const command = useOutboxCommand(commandId);
+  if (!command) return null;
+  const phase = phaseOf(command);
+  if (phase === 'REJECTED' || phase === 'CONFLICT') return null;
+  return (
+    <Link to={ROUTES.newSaleFor(customerId)} className="action action-compact">
+      <span className="action-label">{t('prospect.to_sale')}</span>
+    </Link>
+  );
+}
+
 export function NewProspectScreen() {
   const { t } = useTranslation();
   const { state } = useAuth();
@@ -56,7 +71,7 @@ export function NewProspectScreen() {
   const online = useOnline();
   const [draft, setDraft] = useState<ProspectDraft>(EMPTY);
   const [gps, setGps] = useState<GpsState>('idle');
-  const [submitted, setSubmitted] = useState<string>();
+  const [submitted, setSubmitted] = useState<{ commandId: string; customerId: string }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
@@ -73,7 +88,7 @@ export function NewProspectScreen() {
     return (
       <section className="sale">
         <h1>{t('nav.screens.new_prospect')}</h1>
-        <CommandResult commandId={submitted} messages="prospect.result">
+        <CommandResult commandId={submitted.commandId} messages="prospect.result">
           <button
             type="button"
             onClick={() => {
@@ -83,9 +98,7 @@ export function NewProspectScreen() {
           >
             {t('prospect.another')}
           </button>
-          <Link to={ROUTES.newSale} className="action action-compact">
-            <span className="action-label">{t('prospect.to_sale')}</span>
-          </Link>
+          <SellToProspect commandId={submitted.commandId} customerId={submitted.customerId} />
         </CommandResult>
       </section>
     );
@@ -94,7 +107,7 @@ export function NewProspectScreen() {
   const now = clock.now();
   const update = (patch: Partial<ProspectDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
-  const zones = [...refs.zones.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const zones = prospectZoneOptions(refs.zones);
   // Zone préremplie : celle du point de vente de l'utilisateur, sinon celle de sa session de travail.
   const ownLocation = sellingLocations(refs, userId)[0];
   const ownSite = ownLocation?.site_id ? refs.sites.get(ownLocation.site_id) : undefined;
@@ -155,7 +168,7 @@ export function NewProspectScreen() {
         aggregateType: 'CUSTOMER',
         payload: prospectPayload(effective, homeSiteId ? { homeSiteId } : {}),
       });
-      setSubmitted(command.command_id);
+      setSubmitted({ commandId: command.command_id, customerId: command.aggregate_id });
     } catch {
       setSaveError(true);
     } finally {
@@ -227,7 +240,7 @@ export function NewProspectScreen() {
           <option value="">{t('prospect.zone_placeholder')}</option>
           {zones.map((zone) => (
             <option key={zone.id} value={zone.id}>
-              {zone.name}
+              {zone.label}
             </option>
           ))}
         </select>

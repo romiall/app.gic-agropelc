@@ -49,6 +49,8 @@ export async function runSyncCycle(deps: SyncEngineDeps): Promise<SyncCycleOutco
       break;
     }
     pushed = true;
+    // Rien de réglé (`RETRY_LATER` partout) : renvoyer aussitôt le même lot ne servirait à rien.
+    if (result.settled === 0) break;
   }
 
   const pullResult = await runPullCycle(deps.db, {
