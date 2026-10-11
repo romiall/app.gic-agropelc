@@ -80,6 +80,7 @@ import {
   rejected,
   transferDiscrepancyPolicy,
 } from '../cash-transfer-support.js';
+import { emitCashTransferChange } from '../sync-changes.js';
 
 type Uow = Transaction<DB>;
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
@@ -306,6 +307,7 @@ export function registerCashTransferCommands(
         created_by: toBin(author),
       })
       .execute();
+    await emitCashTransferChange(uow, transferId);
 
     if (movement.negativeBalance) {
       // BR-FIN-012 : anomalie `CASH_NEGATIVE`, conflit appliqué pour la Finance.
@@ -560,6 +562,7 @@ export function registerCashTransferCommands(
       })
       .where('id', '=', toBin(transfer.id))
       .execute();
+    await emitCashTransferChange(uow, transfer.id);
 
     const serverRefs = { docNumber: transfer.docNumber };
     const audit = {
@@ -661,6 +664,7 @@ export function registerCashTransferCommands(
       })
       .where('id', '=', toBin(transfer.id))
       .execute();
+    await emitCashTransferChange(uow, transfer.id);
     return {
       status: 'APPLIED',
       serverRefs: { docNumber: transfer.docNumber },
@@ -757,6 +761,7 @@ export function registerCashTransferCommands(
       })
       .where('id', '=', toBin(transfer.id))
       .execute();
+    await emitCashTransferChange(uow, transfer.id);
   });
 
   // AV-174 : l'écart reste à décider — le récepteur ne retire pas la demande (sinon la remise

@@ -18,7 +18,7 @@
 | `is_system` | boolean | Non | false | Valeur utilisée par des règles (ex. canal `POINT_DE_VENTE`, source `KOMMO`) : non désactivable |
 | [STD-AUDIT] | | | | |
 
-- **UQ** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL.
+- **UQ** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL — jeu `catalog`, ligne `GLOBAL` (P5-18, AV-196) : `PIPELINE_STEP` (republiée par `crm.pipeline.configure`), `LEAD_SOURCE` (semées, publiées par le seed), `SALES_CHANNEL` (clé dérivée du code, ADR-031) ; les catégories de client restent sur le repli. Canaux système (`is_system`, colonne absente de `catalog.sales_channels`) : `POINT_DE_VENTE`, `TERRAIN`, `SEDENTAIRE`, `DIRECT`, désactivation refusée `SYSTEM_REFERENCE` (liste `SYSTEM_SALES_CHANNEL_CODES`, P5-18).
 
 ## crm.customers
 

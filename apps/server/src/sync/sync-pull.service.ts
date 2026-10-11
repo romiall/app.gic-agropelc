@@ -7,11 +7,15 @@
  * Chargement initial (§5.4) : pas de code séparé — un appareil neuf appelle ce même point
  * avec `cursor = 0`, qui renvoie tout l'historique du flux dans son périmètre. Chaque ligne
  * projette l'état **courant** de son entité (jamais l'état historique au moment du
- * changement) : si une entité a changé plusieurs fois, l'appareil reçoit plusieurs lignes
- * identiques pour elle (upsert répété, sans effet, sans perte de correction) plutôt que
- * l'instantané dédupliqué que décrit le §5.4 — dédup déférée : le volume de P0 (quelques
- * centaines de lignes) ne le justifie pas encore. `next_cursor` avance néanmoins de manière
- * strictement croissante, jamais au-delà de ce qui a été effectivement lu (aucune perte).
+ * changement). **Dédoublonnage par page** (P5-18, RISK-23) : dans une page, seule la dernière
+ * ligne de chaque (type d'entité, entité, portée) est servie — les précédentes projetteraient le même
+ * état courant (un `UPSERT`) ou seraient annulées par elle (un `SCOPE_EXIT` ou un `DELETE` plus
+ * récent) ; un quota consommé quarante fois n'occupe ainsi qu'une ligne. Entre deux pages, une
+ * entité peut encore revenir (sans effet). `next_cursor` avance de manière strictement croissante,
+ * jusqu'au dernier numéro lu. **Limite connue (AV-198, préexistante, à corriger en P5-23)** : `seq`
+ * est attribué à l'insertion, pas à la validation ; une ligne d'une transaction encore ouverte,
+ * validée après une ligne de numéro supérieur déjà servie, est sautée par ce curseur — une sortie
+ * terminale (quota révoqué, session validée, remise reçue) peut alors manquer à l'appareil.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import type { ExpressionBuilder } from 'kysely';
@@ -54,8 +58,15 @@ export class SyncPullService {
     const hasMore = rows.length > request.limit;
     const page = hasMore ? rows.slice(0, request.limit) : rows;
 
+    // Dernière ligne de chaque (type, entité, portée) dans la page (dédoublonnage, voir l'en-tête).
+    const lastSeqOf = new Map<string, number>();
+    const keyOf = (row: (typeof page)[number]) =>
+      `${row.entity_type}|${fromBin(row.entity_id)}|${row.scope_type}|${fromBinOrNull(row.scope_id) ?? ''}`;
+    for (const row of page) lastSeqOf.set(keyOf(row), Number(row.seq));
+
     const changes: Change[] = [];
     for (const row of page) {
+      if (lastSeqOf.get(keyOf(row)) !== Number(row.seq)) continue;
       const base = {
         seq: Number(row.seq),
         dataset: row.dataset,

@@ -4,7 +4,8 @@
  *   (`TEAM`, pour le responsable) et du PDV de rattachement (`SITE`) ; à la réaffectation,
  *   `SCOPE_EXIT` vers l'ancien titulaire et les équipes qu'il quitte (§5.3) ;
  * - jeu `crm_activity` : visites et interactions (`USER` : auteur et titulaire du compte ; `TEAM` :
- *   équipes de l'auteur), objectifs (`USER`, `TEAM` ou `SITE` de la cible).
+ *   équipes de l'auteur), objectifs (`USER`, `TEAM` ou `SITE` de la cible) ;
+ * - jeu `catalog` (P5-18) : étapes du pipeline, ligne `GLOBAL` (référentiel de vente).
  * Les types d'entité sont les clés de `sync/entity-projections.ts`, qui ne servent une ligne que
  * si l'entité appartient encore à ce périmètre (jamais le repli générique `GLOBAL` du pipeline).
  */
@@ -16,6 +17,8 @@ import { listTeamsOfUserAt } from '../../organization/application/public/index.j
 
 export const CUSTOMERS_DATASET = 'customers';
 export const CRM_ACTIVITY_DATASET = 'crm_activity';
+/** Jeu des référentiels de vente (étapes, sources), propriété du catalogue des jeux. */
+export const REFERENCES_DATASET = 'catalog';
 
 type Uow = Transaction<DB>;
 
@@ -162,6 +165,29 @@ export async function emitTargetChange(uow: Uow, targetId: string): Promise<void
       entityType: 'SALES_TARGET',
       entityId: targetId,
       ...scope,
+      rowVersion: row.version,
+    },
+  ]);
+}
+
+/**
+ * Étape du pipeline (P5-18, AV-196) : référentiel de vente du jeu `catalog` (01-architecture-offline.md
+ * §3.1), ligne `GLOBAL`, à sa version. Les étapes et les sources semées sont publiées par le seed.
+ */
+export async function emitPipelineStepChange(uow: Uow, stepId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('crm_pipeline_steps')
+    .select('version')
+    .where('id', '=', toBin(stepId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: REFERENCES_DATASET,
+      entityType: 'PIPELINE_STEP',
+      entityId: stepId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
       rowVersion: row.version,
     },
   ]);

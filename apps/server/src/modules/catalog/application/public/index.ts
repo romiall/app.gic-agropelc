@@ -13,6 +13,7 @@ export {
   findProduct,
   findProductByCode,
   findStandardUnitCostXaf,
+  SYSTEM_SALES_CHANNEL_CODES,
 } from './catalog-query.js';
 export type {
   ProductSummary,

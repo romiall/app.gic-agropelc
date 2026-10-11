@@ -18,6 +18,8 @@ Le flux de changements (`sync_change_feed`, 06-offline-sync/02-synchronisation.m
 
 Moyens de paiement : jeu `catalog`, type d'entité `PAYMENT_METHOD` (code, libellé, référence obligatoire, type de compte par défaut, actif, version). Les unités et les canaux de vente peuvent suivre la même règle ; leurs commandes de création (P1) publient encore le seul repli générique et restent servies en ligne (`GET /units`, `GET /sales-channels`).
 
+**Suite (P5-18, 11/10/2026 ; AV-196).** Les unités (`UNIT`) et les canaux de vente (`SALES_CHANNEL`) suivent la même règle : leurs commandes de création, de désactivation et de réactivation publient une ligne `GLOBAL` du jeu `catalog` sous la clé dérivée de leur code (la désactivation et la réactivation lisent désormais le code dans la charge utile) ; motifs, étapes et sources rejoignent le jeu `catalog` à leur identifiant, les paramètres visibles le jeu `me`, les politiques le jeu `policies`. Le seed publie, de façon idempotente, toutes les lignes semées (`db/seeds/publish-references.ts`, qui reprend la boucle des moyens de paiement).
+
 ## Alternatives
 
 - **Colonne `id` UUID ajoutée aux tables à code** : migration et double clé (le code reste la clé des références), pour un besoin propre à la synchronisation. Écartée.
@@ -28,4 +30,4 @@ Moyens de paiement : jeu `catalog`, type d'entité `PAYMENT_METHOD` (code, libel
 
 - Le flux du jeu `catalog` porte des lignes `GLOBAL` de type `PAYMENT_METHOD` ; tout appareil les reçoit.
 - Un changement de libellé ou de statut d'un moyen de paiement doit incrémenter sa `version` pour être republié par le seed.
-- Les référentiels du seed autres que les moyens de paiement (motifs, sources de prospects, étapes, paramètres) ne sont pas encore publiés dans le flux ; c'est un écart distinct, signalé hors de cet ADR.
+- Les référentiels du seed autres que les moyens de paiement (motifs, sources de prospects, étapes, paramètres) n'étaient pas publiés dans le flux ; écart refermé en P5-18 (AV-196). La purge future du flux (BR-SYN-015) imposera l'instantané du chargement initial ou une republication des lignes semées.

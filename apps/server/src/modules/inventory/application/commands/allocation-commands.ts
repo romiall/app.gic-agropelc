@@ -445,8 +445,14 @@ function revokeHandler(deps: {
       })
       .where('id', '=', toBin(allocation.id))
       .execute();
+    // Quota terminé : il sort du jeu de l'appareil détenteur (AV-193).
     await recordChanges(uow, [
-      allocationChange(allocation.id, allocation.holderDeviceId, allocation.version + 1),
+      allocationChange(
+        allocation.id,
+        allocation.holderDeviceId,
+        allocation.version + 1,
+        'SCOPE_EXIT',
+      ),
     ]);
     return { status: 'APPLIED' };
   };
@@ -521,8 +527,14 @@ function releaseHandler(deps: {
       })
       .where('id', '=', toBin(allocation.id))
       .execute();
+    // Quota terminé : il sort du jeu de l'appareil détenteur (AV-193).
     await recordChanges(uow, [
-      allocationChange(allocation.id, allocation.holderDeviceId, allocation.version + 1),
+      allocationChange(
+        allocation.id,
+        allocation.holderDeviceId,
+        allocation.version + 1,
+        'SCOPE_EXIT',
+      ),
     ]);
 
     // Un écart entre le reste déclaré et celui du serveur n'est jamais corrigé en silence (ADR-033 §9).

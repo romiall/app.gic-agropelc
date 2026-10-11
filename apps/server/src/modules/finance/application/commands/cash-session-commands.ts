@@ -100,6 +100,7 @@ import {
   validateCashSession,
   validateCashSessionAdjustment,
 } from '../cash-session-validation.js';
+import { emitCashSessionChange } from '../sync-changes.js';
 
 export const CASH_SESSION_OPERATE = 'finance.cash_session.operate';
 export const CASH_SESSION_VALIDATE = 'finance.cash_session.validate';
@@ -377,6 +378,7 @@ async function createSession(
       created_by: toBin(author),
     })
     .execute();
+  await emitCashSessionChange(uow, sessionId);
   const session = { id: sessionId, cashAccountId: account.id, siteId, openedBy: author };
   if (openingVarianceXaf !== 0) {
     await postVariance(uow, deps, {
@@ -737,6 +739,7 @@ async function closeSession(
     })
     .where('id', '=', toBin(session.id))
     .execute();
+  await emitCashSessionChange(uow, session.id);
 
   await publishCashSessionEvent(uow, deps, {
     eventType: 'CashSessionClosed',

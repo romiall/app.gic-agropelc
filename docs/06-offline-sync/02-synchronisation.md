@@ -163,6 +163,9 @@ Réponse : `changes[]` (entité, type de changement, `row_version`, données), `
 | Produit désactivé | `DELETE` (jeu `catalog`) | Masqué à la saisie ; conservé pour l'affichage des opérations passées |
 | Règle tarifaire terminée | `DELETE` (jeu `pricing`) après `valid_to` | Retirée du moteur local |
 | Emplacement retiré du périmètre (changement de rôle) | `SCOPE_EXIT` des soldes de l'emplacement | Soldes supprimés localement |
+| Quota libéré ou révoqué ; session de caisse validée ; remise reçue, close ou annulée (P5-18, AV-193) | `SCOPE_EXIT` (jeux `allocations`, `cash`) | Retiré localement |
+| Version d'un paramètre visible remplacée ; politique retirée (P5-18, AV-196) | `DELETE` (jeux `me`, `policies`) | Seule la version en vigueur reste sur l'appareil |
+| Appareil désigné d'un PDV changé (P5-18, AV-195) | `UPSERT` de `POINT_OF_SALE` (jeu `org`) et de l'emplacement de vente, sans `SCOPE_EXIT` | L'ancien appareil apprend qu'il n'est plus désigné |
 | Suppression physique | N'existe pas pour les données métier (ADR-006) | — |
 
 ### 5.4 Chargement initial et nouveau chargement
@@ -171,6 +174,8 @@ Réponse : `changes[]` (entité, type de changement, `row_version`, données), `
 2. Il renvoie un instantané paginé du jeu pour le périmètre.
 3. Le curseur de l'appareil est posé à `high_water`. Les changements survenus pendant le chargement seront renvoyés en double : ils sont idempotents grâce à `row_version`.
 4. Un nouveau chargement est exigé si `cursor < min(seq disponible)` (flux purgé après 60 jours), ou si le schéma du jeu change de version.
+
+**Implémentation actuelle (P0 à P5)** : il n'y a pas d'instantané séparé. Un appareil neuf lit le flux depuis `cursor = 0` ; chaque ligne projette l'état **courant** de son entité. Depuis P5-18 (RISK-23), le pull **dédoublonne chaque page** : seule la dernière ligne de chaque (type d'entité, entité, portée) y est servie — les précédentes projetteraient le même état courant ou seraient annulées par une sortie plus récente ; un quota consommé quarante fois n'occupe ainsi qu'une ligne. Entre deux pages, une entité peut encore revenir (sans effet). Les référentiels semés sont publiés une fois par le seed : la purge du flux (BR-SYN-015), quand elle sera codée, exigera l'instantané ci-dessus ou une republication (AV-196). **Limite connue** (AV-198, préexistante, à corriger en P5-23) : `seq` est attribué à l'insertion, pas à la validation ; une ligne validée après une ligne de numéro supérieur déjà servie est sautée par le curseur.
 
 ## 6. Détection et résolution des conflits
 

@@ -22,7 +22,8 @@ import type {
   CommandHandler,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { emitPolicyChanges } from '../policy-changes.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { OPERATION_TYPES } from './operation-types.js';
@@ -82,6 +83,12 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
     .executeTakeFirst();
   const nextVersion = (currentMax?.maxVersion ?? 0) + 1;
 
+  const retired = await uow
+    .selectFrom('approvals_control_policies')
+    .select('id')
+    .where('code', '=', code)
+    .where('status', '=', 'ACTIVE')
+    .execute();
   await uow
     .updateTable('approvals_control_policies')
     .set({ status: 'RETIRED', valid_to: occurredAt })
@@ -109,6 +116,12 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
     })
     .execute();
 
+  // P5-18 : la version active atteint les appareils, la version retirée en sort (jeu `policies`).
+  await emitPolicyChanges(
+    uow,
+    envelope.aggregate_id,
+    retired.map((row) => fromBin(row.id)),
+  );
   return { status: 'APPLIED' };
 };
 

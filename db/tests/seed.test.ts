@@ -188,8 +188,92 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     }
   });
 
+  it('publie les référentiels semés dans le flux, une ligne GLOBAL chacun (P5-18, AV-196)', async () => {
+    // Chaque ligne à publier a sa ligne `UPSERT` `GLOBAL` (même requête que publish-references.ts).
+    const missing = async (dataset: string, entityType: string, rowsSql: string) => {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS c FROM (${rowsSql}) r
+          WHERE NOT EXISTS (
+            SELECT 1 FROM sync_change_feed f
+             WHERE f.dataset = ? AND f.entity_type = ? AND f.entity_id = r.id
+               AND f.change_type = 'UPSERT' AND f.scope_type = 'GLOBAL')`,
+        [dataset, entityType],
+      );
+      return Number((rows[0] as { c: number }).c);
+    };
+    expect(await missing('catalog', 'REASON_CODE', 'SELECT id FROM catalog_reason_codes')).toBe(0);
+    expect(await missing('catalog', 'PIPELINE_STEP', 'SELECT id FROM crm_pipeline_steps')).toBe(0);
+    expect(await missing('catalog', 'LEAD_SOURCE', 'SELECT id FROM crm_lead_sources')).toBe(0);
+    expect(
+      await missing(
+        'policies',
+        'CONTROL_POLICY',
+        "SELECT id FROM approvals_control_policies WHERE status = 'ACTIVE'",
+      ),
+    ).toBe(0);
+    expect(
+      await missing(
+        'location',
+        'LOCATION',
+        'SELECT id FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL',
+      ),
+    ).toBe(0);
+    // Paramètres : la version en vigueur de chaque clé visible du seed.
+    for (const setting of SYSTEM_SETTINGS.filter((item) => item.isClientVisible)) {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS c FROM sync_change_feed f
+          WHERE f.dataset = 'me' AND f.entity_type = 'SETTING' AND f.entity_id = (
+            SELECT s.id FROM organization_system_settings s
+             WHERE s.\`key\` = ? AND s.scope_type = 'GLOBAL'
+             ORDER BY s.valid_from DESC, s.created_at DESC LIMIT 1)`,
+        [setting.key],
+      );
+      expect((rows[0] as { c: number }).c, setting.key).toBeGreaterThanOrEqual(1);
+    }
+    // Étapes et sources semées, par leur code.
+    for (const [table, items] of [
+      ['crm_pipeline_steps', PIPELINE_STEPS],
+      ['crm_lead_sources', LEAD_SOURCES],
+    ] as const) {
+      for (const item of items) {
+        const [rows] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) AS c FROM ${table} t JOIN sync_change_feed f
+              ON f.entity_id = t.id AND f.dataset = 'catalog'
+           WHERE t.code = ?`,
+          [item.code],
+        );
+        expect((rows[0] as { c: number }).c, item.code).toBeGreaterThanOrEqual(1);
+      }
+    }
+    // Unités et canaux : clé dérivée du code (ADR-031).
+    for (const [table, entityType] of [
+      ['catalog_units', 'UNIT'],
+      ['catalog_sales_channels', 'SALES_CHANNEL'],
+    ] as const) {
+      const [codes] = await conn.query<mysql.RowDataPacket[]>(`SELECT code FROM ${table}`);
+      for (const { code } of codes) {
+        const [rows] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) AS c FROM sync_change_feed
+            WHERE dataset = 'catalog' AND entity_type = ? AND entity_id = UNHEX(REPLACE(?, '-', ''))`,
+          [entityType, codeEntityId(entityType, code as string)],
+        );
+        expect((rows[0] as { c: number }).c, `${entityType} ${code}`).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
   it('est idempotent : une seconde exécution ne modifie aucun décompte', async () => {
+    const feedCount = async () => {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS c FROM sync_change_feed
+          WHERE dataset IN ('catalog', 'me', 'policies', 'location')`,
+      );
+      return Number((rows[0] as { c: number }).c);
+    };
+    const feedBefore = await feedCount();
     runSeed();
+    // P5-18 : la publication des référentiels semés n'ajoute rien à la seconde exécution.
+    expect(await feedCount()).toBe(feedBefore);
 
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
