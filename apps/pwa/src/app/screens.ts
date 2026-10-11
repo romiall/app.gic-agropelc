@@ -28,6 +28,7 @@ export const ROUTES = {
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
   stock: '/stock',
+  newProspect: '/clients/nouveau',
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
@@ -74,6 +75,14 @@ export const ROLE_SETS = {
     'COMMERCIAL_SEDENTAIRE',
     'VENDEUR_PDV',
     'MAGASINIER',
+  ],
+  /** `crm.customer.create` (01-rbac.md) : commerciaux, vendeur de PDV, responsable de ferme. */
+  customerCreate: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
   ],
   /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
   stockRead: [
@@ -176,6 +185,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.paymentRecord,
     // « Encaissements » de la Finance : virements et règlements reçus au siège (01-rbac.md).
     actionCodes: ['PAYMENTS'],
+    offline: true,
+  },
+  {
+    id: 'ECR-CRM-02',
+    path: ROUTES.newProspect,
+    labelKey: 'new_prospect',
+    group: 'crm',
+    roles: ROLE_SETS.customerCreate,
+    actionCodes: ['NEW_PROSPECT'],
     offline: true,
   },
   {

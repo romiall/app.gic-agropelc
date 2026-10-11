@@ -212,6 +212,8 @@ export function NewOrderScreen() {
         authorUserId: userId,
         commandType: 'sales.order.place',
         aggregateType: 'SALES_ORDER',
+        // Client créé sur l'appareil : l'opération attend sa création (FIFO de l'appareil).
+        ...(customer?.pending_command_id ? { dependsOn: [customer.pending_command_id] } : {}),
         payload: {
           customerId: customer.id,
           fulfilmentLocationId: location.id,

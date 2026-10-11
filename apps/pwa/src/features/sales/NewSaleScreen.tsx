@@ -255,6 +255,8 @@ export function NewSaleScreen() {
         authorUserId: userId,
         commandType: 'sales.sale.record',
         aggregateType: 'SALE',
+        // Client créé sur l'appareil : l'opération attend sa création (FIFO de l'appareil).
+        ...(customer?.pending_command_id ? { dependsOn: [customer.pending_command_id] } : {}),
         payload: {
           fromLocationId: location.id,
           ...(customer ? { customerId: customer.id } : {}),

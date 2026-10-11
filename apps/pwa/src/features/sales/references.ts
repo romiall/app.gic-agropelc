@@ -9,10 +9,12 @@ import type { PriceRule } from '@gic/domain';
 import { getDb, type GicDatabase, type OutboxCommand } from '../../storage/db.js';
 import { listProjected } from '../../storage/projections.js';
 import { toPriceRules } from './pricing.js';
+import { stillInFlight } from './pending.js';
 import { pendingConsumption, stockKey } from './stock.js';
 import type {
   CashAccountData,
   CampaignData,
+  CustomerCategoryData,
   CustomerData,
   CustomerPaymentData,
   LocationData,
@@ -51,6 +53,8 @@ export interface SalesReferences {
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
+  /** Catégories de client actives (jeu `customer_category`). */
+  readonly customerCategories: readonly CustomerCategoryData[];
   /** Seuils de stock actifs des emplacements du périmètre (jeu `stock`). */
   readonly thresholds: readonly StockThresholdData[];
   /** Comptes de trésorerie actifs servis à l'appareil (jeu `cash`). */
@@ -67,8 +71,61 @@ export interface SalesReferences {
 const byId = <T extends { readonly id: string }>(rows: readonly T[]): Map<string, T> =>
   new Map(rows.map((row) => [row.id, row]));
 
+interface CreatePayload {
+  readonly displayName?: string;
+  readonly contactName?: string;
+  readonly categoryId?: string | null;
+  readonly phonePrimary?: string | null;
+  readonly addressText?: string;
+  readonly zoneId?: string;
+  readonly homeSiteId?: string;
+}
+
+/**
+ * Comptes créés sur l'appareil que le jeu `customers` ne sert pas encore (en attente d'envoi, ou
+ * acceptés mais pas encore retéléchargés, ADR-051 §3) : proposés à la vente, à la commande et à
+ * l'encaissement, qui dépendront de leur création.
+ */
+export function pendingCustomers(
+  outbox: readonly OutboxCommand[],
+  downloaded: readonly CustomerData[],
+  customersPulledAt: string | undefined,
+): CustomerData[] {
+  const known = new Set(downloaded.map((customer) => customer.id));
+  return outbox
+    .filter(
+      (command) =>
+        command.command_type === 'crm.customer.create' &&
+        !known.has(command.aggregate_id) &&
+        stillInFlight(command, customersPulledAt),
+    )
+    .map((command) => {
+      const payload = command.payload as CreatePayload;
+      return {
+        id: command.aggregate_id,
+        stage: 'PROSPECT',
+        display_name: payload.displayName ?? '',
+        contact_name: payload.contactName ?? null,
+        category_id: payload.categoryId ?? null,
+        phone_primary: payload.phonePrimary ?? null,
+        address_text: payload.addressText ?? null,
+        zone_id: payload.zoneId ?? '',
+        owner_user_id: command.author_user_id,
+        home_site_id: payload.homeSiteId ?? null,
+        merged_into_id: null,
+        credit_allowed: false,
+        credit_limit_xaf: null,
+        payment_terms_days: null,
+        outstanding_xaf: 0,
+        version: 0,
+        pending_command_id: command.command_id,
+      };
+    });
+}
+
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    customerCategories,
     thresholds,
     cashAccounts,
     stockCursor,
@@ -93,6 +150,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<CustomerCategoryData>(db, 'customer_category', 'CUSTOMER_CATEGORY'),
     listProjected<StockThresholdData>(db, 'stock', 'STOCK_THRESHOLD'),
     listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
     db.syncCursors.get('stock'),
@@ -115,7 +173,13 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<SalesOrderData>(db, 'orders', 'SALES_ORDER'),
     listProjected<SaleData>(db, 'sales_recent', 'SALE'),
     listProjected<CustomerPaymentData>(db, 'sales_recent', 'CUSTOMER_PAYMENT'),
-    db.outbox.filter((command) => command.command_type.startsWith('sales.')).toArray(),
+    db.outbox
+      .filter(
+        (command) =>
+          command.command_type.startsWith('sales.') ||
+          command.command_type === 'crm.customer.create',
+      )
+      .toArray(),
   ]);
   const zoneMap = byId(zones);
   const orderMap = byId(orders);
@@ -131,7 +195,10 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
     pending: pendingConsumption(outbox, stockCursor?.pulled_at),
-    customers: customers.filter((customer) => customer.merged_into_id === null),
+    customers: [
+      ...customers.filter((customer) => customer.merged_into_id === null),
+      ...pendingCustomers(outbox, customers, customersCursor?.pulled_at),
+    ],
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     reasonCodes: reasonCodes.filter((reason) => reason.is_active),
     settings,
@@ -139,6 +206,9 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     orders: orderMap,
     sales,
     payments,
+    customerCategories: customerCategories
+      .filter((category) => category.is_active)
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
     thresholds: thresholds.filter((threshold) => threshold.is_active),
     cashAccounts,
     lastSyncAt: meta?.last_sync_at ?? null,

@@ -137,6 +137,19 @@ export interface CustomerData {
   readonly payment_terms_days: number | null;
   readonly outstanding_xaf: number;
   readonly version: number;
+  /**
+   * Compte créé sur l'appareil et pas encore retéléchargé : commande `crm.customer.create` dont une
+   * vente, une commande ou un encaissement de ce client doit dépendre (`depends_on`).
+   */
+  readonly pending_command_id?: string;
+}
+
+/** (`customer_category`, repli générique `GLOBAL`) */
+export interface CustomerCategoryData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly is_active: boolean;
 }
 
 /** (`fieldwork`, portée `USER`) session de travail de l'agent. */

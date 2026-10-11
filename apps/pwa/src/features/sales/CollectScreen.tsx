@@ -247,6 +247,8 @@ export function CollectScreen() {
         authorUserId: userId,
         commandType: 'sales.payment.record',
         aggregateType: 'CUSTOMER_PAYMENT',
+        // Client créé sur l'appareil : l'opération attend sa création (FIFO de l'appareil).
+        ...(customer?.pending_command_id ? { dependsOn: [customer.pending_command_id] } : {}),
         payload: {
           customerId: customer.id,
           ...(siteId ? { siteId } : {}),
