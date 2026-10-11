@@ -5,7 +5,9 @@
  * - Saisie seulement sur un lot `ACTIVE` ou `SELLING` (`acceptsDailyEntries`) ; un lot clôturé entre-
  *   temps reçoit la saisie hors ligne avec un signalement.
  * - Effectif en élevage (INV-PRD-01) : soldes du lot de stock du lot de production sur les bâtiments
- *   et cases (`BUILDING`, `PEN`) du jeu `stock`, moins les mortalités de l'appareil en attente.
+ *   et cases (`BUILDING`, `PEN`) du jeu `stock`, moins les mortalités de l'appareil en attente
+ *   (comparées au tirage du jeu `stock`, qui porte l'effet de la mortalité). Le serveur contrôle le
+ *   solde de l'emplacement choisi : la garde « plus de morts que l'effectif » porte sur ce bâtiment.
  * - Mortalité (`production.mortality.record`) : nombre entier de têtes, emplacement d'élevage, cause
  *   `LOSS` facultative ; validée selon la politique `MORTALITY` (photo non jointe par l'application,
  *   S-16). Intrant (`production.input.record`) : produit consommable, quantité convertie en unité de
@@ -31,6 +33,10 @@ export const INPUT_COST_TYPES = ['ALIMENT', 'VETERINAIRE', 'AUTRE_INTRANT'] as c
 export const MAX_DAILY_COMMENT = 2000;
 export const MAX_OBSERVATION_TEXT = 4000;
 const REARING_TYPES: ReadonlySet<string> = new Set(['BUILDING', 'PEN']);
+/** Emplacements de la ferme où l'on ne stocke pas d'œufs collectés. */
+const NOT_EGG_STORAGE: ReadonlySet<string> = new Set(['INCUBATOR', 'HATCHER', 'SLAUGHTERHOUSE']);
+/** Mortalités qui ne comptent plus : retournées pour erreur de déclaration, annulées. */
+const DROPPED_LOSS_STATUSES: ReadonlySet<string> = new Set(['REJECTED_RETURNED', 'CANCELLED']);
 const LAYING_TYPES: ReadonlySet<string> = new Set(['PONDEUSE', 'REPRODUCTEUR_VOLAILLE']);
 
 export const isDailyLot = (lot: Pick<ProductionLotData, 'status'>): boolean =>
@@ -61,6 +67,7 @@ export function rearingLocations(
       (location) =>
         location.site_id === lot.site_id &&
         !location.is_virtual &&
+        location.status === 'ACTIVE' &&
         REARING_TYPES.has(location.location_type),
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
@@ -72,19 +79,41 @@ export function farmLocations(
   lot: Pick<ProductionLotData, 'site_id'>,
 ): LocationData[] {
   return locations
-    .filter((location) => location.site_id === lot.site_id && !location.is_virtual)
+    .filter(
+      (location) =>
+        location.site_id === lot.site_id && !location.is_virtual && location.status === 'ACTIVE',
+    )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
+/**
+ * Emplacements de stockage des œufs collectés : ceux de la ferme hors incubateur, éclosoir et abattoir,
+ * les magasins d'abord.
+ */
+export function eggStorageLocations(
+  locations: readonly LocationData[],
+  lot: Pick<ProductionLotData, 'site_id'>,
+): LocationData[] {
+  const stores = (location: LocationData) => (location.location_type === 'STORE' ? 0 : 1);
+  return farmLocations(locations, lot)
+    .filter((location) => !NOT_EGG_STORAGE.has(location.location_type))
+    .sort((a, b) => stores(a) - stores(b));
 }
 
 interface MortalityPayload {
   readonly productionLotId?: string;
+  readonly locationId?: string;
   readonly quantity?: number;
 }
 
-/** Mortalités de l'appareil pas encore retéléchargées, par lot de production. */
+/**
+ * Mortalités de l'appareil pas encore retéléchargées, par lot de production (ou par lot et
+ * emplacement, clé `lot:emplacement`, si `byLocation`).
+ */
 export function pendingDeaths(
   outbox: readonly OutboxCommand[],
   pulledAt: string | undefined,
+  byLocation = false,
 ): Map<string, number> {
   const deaths = new Map<string, number>();
   for (const command of outbox) {
@@ -92,12 +121,31 @@ export function pendingDeaths(
     if (!stillInFlight(command, pulledAt)) continue;
     const payload = command.payload as MortalityPayload;
     if (!payload.productionLotId || !payload.quantity) continue;
-    deaths.set(
-      payload.productionLotId,
-      (deaths.get(payload.productionLotId) ?? 0) + payload.quantity,
-    );
+    const key = byLocation
+      ? `${payload.productionLotId}:${payload.locationId ?? ''}`
+      : payload.productionLotId;
+    deaths.set(key, (deaths.get(key) ?? 0) + payload.quantity);
   }
   return deaths;
+}
+
+/** Têtes du lot de stock du lot sur les emplacements retenus ; `null` sans aucun solde connu. */
+function lotHeads(
+  refs: Pick<SalesReferences, 'stock'>,
+  lot: ProductionLotData,
+  keep: (locationId: string) => boolean,
+): number | null {
+  let found = false;
+  let heads = 0;
+  for (const balance of refs.stock.values()) {
+    if (balance.product_id !== lot.product_id || !keep(balance.location_id)) continue;
+    for (const stockLot of balance.lots ?? []) {
+      if (stockLot.lot_id !== lot.stock_lot_id) continue;
+      found = true;
+      heads += Number(stockLot.qty_on_hand);
+    }
+  }
+  return found ? heads : null;
 }
 
 /**
@@ -105,7 +153,7 @@ export function pendingDeaths(
  * mortalités de l'appareil en attente ; `null` si l'appareil n'en détient aucun solde.
  */
 export function rearingHeadcount(
-  refs: Pick<SalesReferences, 'stock' | 'locations' | 'outbox' | 'productionPulledAt'>,
+  refs: Pick<SalesReferences, 'stock' | 'locations' | 'outbox' | 'stockPulledAt'>,
   lot: ProductionLotData,
 ): number | null {
   const rearing = new Set(
@@ -113,18 +161,25 @@ export function rearingHeadcount(
       .filter((location) => REARING_TYPES.has(location.location_type))
       .map((location) => location.id),
   );
-  let found = false;
-  let heads = 0;
-  for (const balance of refs.stock.values()) {
-    if (balance.product_id !== lot.product_id || !rearing.has(balance.location_id)) continue;
-    for (const stockLot of balance.lots ?? []) {
-      if (stockLot.lot_id !== lot.stock_lot_id) continue;
-      found = true;
-      heads += Number(stockLot.qty_on_hand);
-    }
-  }
-  if (!found) return null;
-  const pending = pendingDeaths(refs.outbox, refs.productionPulledAt).get(lot.id) ?? 0;
+  const heads = lotHeads(refs, lot, (locationId) => rearing.has(locationId));
+  if (heads === null) return null;
+  const pending = pendingDeaths(refs.outbox, refs.stockPulledAt).get(lot.id) ?? 0;
+  return Math.round((heads - pending) * 1000) / 1000;
+}
+
+/**
+ * Têtes du lot sur un bâtiment ou une case (ce que le serveur contrôle pour une mortalité), moins les
+ * mortalités de l'appareil en attente sur cet emplacement ; `null` sans solde connu.
+ */
+export function locationHeadcount(
+  refs: Pick<SalesReferences, 'stock' | 'outbox' | 'stockPulledAt'>,
+  lot: ProductionLotData,
+  locationId: string,
+): number | null {
+  const heads = lotHeads(refs, lot, (candidate) => candidate === locationId);
+  if (heads === null) return null;
+  const pending =
+    pendingDeaths(refs.outbox, refs.stockPulledAt, true).get(`${lot.id}:${locationId}`) ?? 0;
   return Math.round((heads - pending) * 1000) / 1000;
 }
 
@@ -182,7 +237,7 @@ export function todayJournal(
   for (const loss of refs.lotLosses) {
     if (loss.production_lot_id !== lotId || loss.category !== 'MORTALITE') continue;
     known.add(loss.id);
-    if (loss.status === 'CANCELLED' || !isToday(loss.occurred_at, today)) continue;
+    if (DROPPED_LOSS_STATUSES.has(loss.status) || !isToday(loss.occurred_at, today)) continue;
     entries.push({
       id: loss.id,
       kind: 'MORTALITY',

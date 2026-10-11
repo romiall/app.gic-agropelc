@@ -71,10 +71,10 @@ function KpiCard({ kpi }: { readonly kpi: HomeKpi }) {
   );
 }
 
-function ActionButton({ action }: { readonly action: HomeAction }) {
+function ActionButton({ action, role }: { readonly action: HomeAction; readonly role: string }) {
   const { t } = useTranslation();
   const className = `action${action.primary ? ' action-primary' : ''}`;
-  const route = routeOfAction(action);
+  const route = routeOfAction(action, role);
   const body = (
     <>
       <span className="action-label">{action.label}</span>
@@ -172,7 +172,7 @@ function RoleSection({
       {section.actions.length > 0 ? (
         <div className="home-actions" role="group" aria-label={t('home.actions_title')}>
           {section.actions.map((action) => (
-            <ActionButton key={action.code} action={action} />
+            <ActionButton key={action.code} action={action} role={section.role} />
           ))}
         </div>
       ) : null}

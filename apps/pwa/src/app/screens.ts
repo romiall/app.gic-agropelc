@@ -159,8 +159,12 @@ export const ROLE_SETS = {
   ],
   /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
   purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
-  /** ECR-STK-08 (`inventory.consumption.record`) : magasinier et responsable de ferme. */
-  consumptionRecord: ['MAGASINIER', 'RESP_FERME'],
+  /**
+   * ECR-STK-08 (`inventory.consumption.record`, 01-rbac.md) : magasinier, responsable de ferme, et les
+   * autres détenteurs de la permission, vendeur de PDV (emballages, UC-STK-10) et responsable de
+   * production ; l'inventaire des écrans (03-parcours-et-ecrans.md) ne cite que les deux premiers.
+   */
+  consumptionRecord: ['MAGASINIER', 'RESP_FERME', 'VENDEUR_PDV', 'RESP_PRODUCTION'],
   /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
   countPerform: ['MAGASINIER', 'VENDEUR_PDV', 'RESP_FERME'],
   /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
@@ -466,17 +470,23 @@ export const SCREEN_GROUPS: readonly ScreenGroup[] = [
   'general',
 ];
 
-const ACTION_ROUTES: ReadonlyMap<string, string> = new Map(
-  SCREENS.flatMap((screen) =>
-    screen.actionCodes.map(
-      (code) => [code, `${screen.path}${screen.actionQuery?.[code] ?? ''}`] as const,
-    ),
-  ),
-);
-
-/** Route d'une action de l'accueil : celle du serveur, à défaut celle de l'écran livré. */
-export function routeOfAction(action: Pick<HomeAction, 'code' | 'route'>): string | null {
-  return action.route ?? ACTION_ROUTES.get(action.code) ?? null;
+/**
+ * Route d'une action de l'accueil : celle du serveur, à défaut celle de l'écran livré. Avec le rôle
+ * de la section, l'écran doit être proposé à ce rôle : une même action peut porter un sens différent
+ * d'un rôle à l'autre (`RECEIPTS` : saisir une réception pour le responsable de ferme, suivre les
+ * réceptions pour le responsable des achats, écran non livré) et reste alors « Bientôt ».
+ */
+export function routeOfAction(
+  action: Pick<HomeAction, 'code' | 'route'>,
+  role?: string,
+): string | null {
+  if (action.route) return action.route;
+  const screen = SCREENS.find(
+    (candidate) =>
+      candidate.actionCodes.includes(action.code) &&
+      (role === undefined || candidate.roles === 'ALL' || candidate.roles.includes(role)),
+  );
+  return screen ? `${screen.path}${screen.actionQuery?.[action.code] ?? ''}` : null;
 }
 
 /** Écrans proposés à un utilisateur selon ses rôles, dans l'ordre du registre. */

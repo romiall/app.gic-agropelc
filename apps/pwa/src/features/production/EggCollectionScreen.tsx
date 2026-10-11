@@ -16,7 +16,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
-import { farmLocations, isDailyLot, laysEggs } from './daily.js';
+import { eggStorageLocations, isDailyLot, laysEggs } from './daily.js';
 import { checkEggs, EMPTY_EGGS, eggCollectionPayload, eggSetup, type EggDraft } from './eggs.js';
 
 const COUNTERS = ['collected', 'broken', 'nonconforming', 'hatching'] as const;
@@ -52,9 +52,9 @@ export function EggCollectionScreen() {
     .filter((lot) => isDailyLot(lot) && laysEggs(lot))
     .sort((a, b) => a.lot_code.localeCompare(b.lot_code, 'fr'));
   const lot = lots.find((candidate) => candidate.id === lotChoice) ?? lots[0];
-  const storages = lot ? farmLocations(refs.locations, lot) : [];
+  const storages = lot ? eggStorageLocations(refs.locations, lot) : [];
   const storage = storages.find((candidate) => candidate.id === storageChoice) ?? storages[0];
-  const setup = lot ? eggSetup(refs.products, refs.settings, lot.site_id, now) : undefined;
+  const setup = lot ? eggSetup(refs.products, refs.settings, now) : undefined;
   const check = setup ? checkEggs(draft, setup) : undefined;
   const dayValid = /^\d{4}-\d{2}-\d{2}$/.test(day) && day <= today;
   const settling =

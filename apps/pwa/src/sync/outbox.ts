@@ -21,6 +21,8 @@ export interface EnqueueInput {
   readonly capturedOffline: boolean;
   readonly backdatedReason?: string | null;
   readonly attachmentIds?: readonly string[];
+  /** Indices locaux (hors enveloppe, jamais envoyés), voir `OutboxCommand.local_flags`. */
+  readonly localFlags?: readonly string[];
 }
 
 async function nextDeviceSeq(db: GicDatabase): Promise<number> {
@@ -60,6 +62,9 @@ export async function enqueueCommand(
       next_attempt_at: null,
       last_error: null,
       server_refs: null,
+      ...(input.localFlags && input.localFlags.length > 0
+        ? { local_flags: [...input.localFlags] }
+        : {}),
     };
     await db.outbox.put(command);
     return command;

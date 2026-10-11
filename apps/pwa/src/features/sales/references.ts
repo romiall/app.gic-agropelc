@@ -91,6 +91,8 @@ export interface SalesReferences {
   readonly lotObservations: readonly LotObservationData[];
   readonly eggCollections: readonly EggCollectionData[];
   readonly productionPulledAt: string | undefined;
+  /** Heure du dernier tirage complet du jeu `stock` (soldes, effectif des lots). */
+  readonly stockPulledAt: string | undefined;
   /** Achats (jeu `procurement`) : bons de commande à recevoir, réceptions récentes, fournisseurs. */
   readonly purchaseOrders: readonly PurchaseOrderData[];
   readonly purchaseRequests: readonly PurchaseRequestData[];
@@ -405,7 +407,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stock: new Map(
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
-    pending: pendingConsumption(outbox, stockCursor?.pulled_at, transferMap),
+    pending: pendingConsumption(outbox, stockCursor?.pulled_at, transferMap, byId(productionLots)),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),
       ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),
@@ -434,6 +436,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     lotObservations,
     eggCollections,
     productionPulledAt: productionCursor?.pulled_at,
+    stockPulledAt: stockCursor?.pulled_at,
     purchaseOrders,
     purchaseRequests,
     goodsReceipts,

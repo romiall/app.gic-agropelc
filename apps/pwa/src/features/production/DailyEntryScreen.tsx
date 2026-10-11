@@ -28,6 +28,7 @@ import {
   inputPayload,
   isDailyLot,
   laysEggs,
+  locationHeadcount,
   MAX_DAILY_COMMENT,
   MAX_OBSERVATION_TEXT,
   mortalityPayload,
@@ -67,14 +68,19 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
     locations.find((candidate) => candidate.id === lot.main_location_id) ??
     locations[0];
   const quantity = parseCount(quantityText);
-  const heads = rearingHeadcount(refs, lot);
+  // Le serveur contrôle le solde de l'emplacement choisi, pas l'effectif du lot entier.
+  const heads = location ? locationHeadcount(refs, lot, location.id) : null;
   const over = quantity !== null && heads !== null && quantity > heads;
   const reasons = refs.reasonCodes.filter(
     (reason) =>
       reason.category === 'LOSS' &&
       (reason.loss_category === null || reason.loss_category === 'MORTALITE'),
   );
-  const ready = location !== undefined && quantity !== null && !(online && over) && !blocked;
+  const commentMissing =
+    reasons.find((reason) => reason.id === reasonId)?.requires_comment === true &&
+    comment.trim() === '';
+  const ready =
+    location !== undefined && quantity !== null && !commentMissing && !(online && over) && !blocked;
 
   const submit = () => {
     if (!ready || !location || quantity === null) return;
@@ -117,6 +123,11 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
               </option>
             ))}
           </select>
+          {heads !== null ? (
+            <p className="home-muted">
+              {t('production.location_headcount', { heads: formatQuantity(heads) })}
+            </p>
+          ) : null}
         </div>
       )}
       <div className="field">
@@ -167,6 +178,9 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
           value={comment}
           onChange={(event) => setComment(event.target.value)}
         />
+        {commentMissing ? (
+          <p className="error-message">{t('production.comment_required')}</p>
+        ) : null}
       </div>
       <p className="home-muted">{t('production.photo_hint')}</p>
       <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
@@ -617,12 +631,20 @@ export function DailyEntryScreen() {
           </label>
         ))}
       </fieldset>
-      <section className="sale-block" aria-label={t(`production.kind.${kind}`)}>
-        {kind === 'MORTALITY' ? <MortalityForm {...props} /> : null}
-        {kind === 'INPUT' ? <InputForm {...props} /> : null}
-        {kind === 'WEIGHING' ? <WeighingForm {...props} /> : null}
-        {kind === 'OBSERVATION' ? <ObservationForm {...props} /> : null}
-      </section>
+      {/* Les quatre formulaires restent montés : changer de nature ne perd pas un brouillon. */}
+      {KINDS.map((value) => (
+        <section
+          key={value}
+          className="sale-block"
+          aria-label={t(`production.kind.${value}`)}
+          hidden={kind !== value}
+        >
+          {value === 'MORTALITY' ? <MortalityForm {...props} /> : null}
+          {value === 'INPUT' ? <InputForm {...props} /> : null}
+          {value === 'WEIGHING' ? <WeighingForm {...props} /> : null}
+          {value === 'OBSERVATION' ? <ObservationForm {...props} /> : null}
+        </section>
+      ))}
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
@@ -639,6 +661,9 @@ export function DailyEntryScreen() {
                 <span>
                   <strong>{t(`production.journal.${entry.kind}`, entry.values)}</strong>
                   {entry.kind === 'OBSERVATION' ? <small>{String(entry.values.text)}</small> : null}
+                  {entry.values.status === 'PENDING_APPROVAL' ? (
+                    <small>{t('production.journal_pending_approval')}</small>
+                  ) : null}
                 </span>
                 <span>
                   {formatClockTime(entry.at)}

@@ -141,6 +141,9 @@ export async function runPushCycle(
       server_refs: commandResult.server_refs ?? null,
       last_error: commandResult.error ?? null,
       ...(accepted ? { synced_at: syncedAt } : {}),
+      ...(commandResult.warnings && commandResult.warnings.length > 0
+        ? { warnings: [...commandResult.warnings] }
+        : {}),
     });
   }
   // Commande du lot sans résultat : elle ne reste pas « en cours d'envoi » indéfiniment.

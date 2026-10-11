@@ -4,11 +4,12 @@
  * - Lots de pondeuses ou de reproducteurs seulement (`LOT_NOT_LAYING`).
  * - Bilan : collectés = cassés + non conformes + commercialisables par calibre + à couver
  *   (`eggCollectionBalance`, même calcul que le serveur).
- * - Calibres : produits de `production.egg_grade_product_codes` ; tant que le paramètre n'est pas
- *   servi, les produits commercialisables non biologiques (le serveur refuse en ligne un calibre non
- *   paramétré, `EGG_GRADE_INVALID`).
- * - Œufs à couver : produit `production.hatching_egg_product_code`, exigé dès qu'il y en a, même hors
- *   ligne (`HATCHING_PRODUCT_MISSING`).
+ * - Calibres : produits actifs et non biologiques de `production.egg_grade_product_codes`, hors produit
+ *   des œufs à couver ; tant que le paramètre n'est pas servi, les produits commercialisables (le
+ *   serveur refuse en ligne un calibre non paramétré, `EGG_GRADE_INVALID`).
+ * - Œufs à couver : produit actif et non biologique de `production.hatching_egg_product_code`, exigé
+ *   dès qu'il y en a, même hors ligne (`HATCHING_PRODUCT_MISSING`).
+ * - Paramètres lus en portée globale, comme le serveur (une valeur de site n'est pas lue).
  * - Seuls les commercialisables et les œufs à couver entrent en stock (BR-OEU-002).
  */
 import { DomainError, eggCollectionBalance } from '@gic/domain';
@@ -48,18 +49,24 @@ export interface EggSetup {
 export function eggSetup(
   products: readonly ProductData[],
   settings: readonly SettingData[],
-  siteId: string,
   now: Date,
 ): EggSetup {
-  const codes = settingValue(settings, 'production.egg_grade_product_codes', siteId, now);
+  // Le serveur lit ces deux clés en portée globale seulement : une valeur de site n'est pas lue.
+  const usable = (product: ProductData | undefined): product is ProductData =>
+    product !== undefined && product.status === 'ACTIVE' && product.stock_family !== 'BIOLOGIQUE';
+  const codes = settingValue(settings, 'production.egg_grade_product_codes', null, now);
   const list = Array.isArray(codes) ? codes.map(String) : [];
   const byCode = new Map(products.map((product) => [product.code, product]));
+  const hatchingCode = settingValue(settings, 'production.hatching_egg_product_code', null, now);
+  const hatchingCandidate =
+    typeof hatchingCode === 'string' && hatchingCode.trim()
+      ? byCode.get(hatchingCode.trim())
+      : undefined;
+  const hatchingProduct = usable(hatchingCandidate) ? hatchingCandidate : undefined;
   const configured = list
     .map((code) => byCode.get(code))
-    .filter((product): product is ProductData => product !== undefined);
-  const hatchingCode = settingValue(settings, 'production.hatching_egg_product_code', siteId, now);
-  const hatchingProduct =
-    typeof hatchingCode === 'string' && hatchingCode ? byCode.get(hatchingCode) : undefined;
+    .filter(usable)
+    .filter((product) => product.id !== hatchingProduct?.id);
   if (configured.length > 0) {
     return { grades: configured, gradesConfigured: true, hatchingProduct };
   }

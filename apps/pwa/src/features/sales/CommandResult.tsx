@@ -15,7 +15,7 @@ interface CommandResultProps {
 }
 
 export function CommandResult({ commandId, messages, children }: CommandResultProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const command = useOutboxCommand(commandId);
   if (!command) return null;
   const phase = phaseOf(command);
@@ -25,6 +25,12 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
     text = t(`${messages}.WAITING_${command.captured_offline ? 'offline' : 'online'}`);
   } else if (phase === 'REJECTED') {
     text = t(`${messages}.REJECTED`, { reason: rejectionMessage(command) ?? '' });
+  } else if (phase === 'WARNING') {
+    // Libellé propre à l'avertissement renvoyé par le serveur s'il existe (ex. quarantaine).
+    const specific = (command.warnings ?? [])
+      .map((code) => `${messages}.WARNING_${code}`)
+      .find((key) => i18n.exists(key));
+    text = t(specific ?? `${messages}.WARNING`, { doc });
   } else {
     text = t(`${messages}.${phase}`, { doc });
   }

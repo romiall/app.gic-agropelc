@@ -33,7 +33,7 @@ export function MenuScreen({ onLogout }: MenuScreenProps) {
   const seen = new Set<string>();
   const actions = (navigation?.sections ?? []).flatMap((section) =>
     section.actions.flatMap((action) => {
-      const route = routeOfAction(action);
+      const route = routeOfAction(action, section.role);
       if (!route || route === '/' || seen.has(action.code)) return [];
       seen.add(action.code);
       return [{ ...action, route }];

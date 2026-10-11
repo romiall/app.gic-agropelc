@@ -160,4 +160,29 @@ describe('Mes objectifs (ECR-CRM-05)', () => {
     expect(targets.getByText(/150\s000\sF\sCFA sur 500\s000\sF\sCFA/)).toBeInTheDocument();
     expect(targets.getByText('30 %')).toBeInTheDocument();
   });
+
+  it('en ligne, serveur sans réponse : annoncé comme tel, estimation, puis nouvel essai', async () => {
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({ ok: false } as never);
+    const user = userEvent.setup();
+    renderScreen();
+    expect(await screen.findByText(/Le serveur n’a pas répondu/)).toBeInTheDocument();
+    expect(screen.queryByText(/Hors ligne/)).not.toBeInTheDocument();
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        effort: {
+          prospectsCreated: 0,
+          visits: 9,
+          customersVisited: 0,
+          prospectsVisited: 0,
+          interactions: 0,
+          newCustomers: 0,
+        },
+        targets: [],
+      },
+    } as never);
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByText(/Chiffres du serveur/)).toBeInTheDocument();
+    expect(authorizedRequest).toHaveBeenCalledTimes(2);
+  });
 });

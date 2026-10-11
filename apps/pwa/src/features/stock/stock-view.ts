@@ -35,6 +35,25 @@ export interface StockRow {
   readonly lots: readonly StockLotData[];
 }
 
+/**
+ * Emplacements où recevoir sans document : ceux dont l'appareil détient le stock, et les emplacements
+ * physiques actifs dont l'utilisateur a la garde (un premier arrivage sur un emplacement vide).
+ */
+export function receivingLocations(
+  refs: Pick<SalesReferences, 'locations' | 'stock'>,
+  userId: string,
+): LocationData[] {
+  const held = new Set(stockLocations(refs).map((location) => location.id));
+  return refs.locations
+    .filter(
+      (location) =>
+        !location.is_virtual &&
+        (held.has(location.id) ||
+          (location.status === 'ACTIVE' && location.custodian_user_id === userId)),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
 /** Emplacements dont l'appareil détient le stock (jeu `stock`), par nom. */
 export function stockLocations(refs: Pick<SalesReferences, 'locations' | 'stock'>): LocationData[] {
   const held = new Set([...refs.stock.values()].map((balance) => balance.location_id));

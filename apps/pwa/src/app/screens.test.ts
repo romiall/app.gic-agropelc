@@ -11,6 +11,23 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(routeOfAction({ code: 'CONTROL_TOWER', route: null })).toBeNull();
   });
 
+  it('la route dépend du rôle de la section : RECEIPTS mène à la saisie pour la ferme seulement', () => {
+    expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'RESP_FERME')).toBe(
+      ROUTES.purchaseReceipts,
+    );
+    expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'RESP_ACHATS')).toBeNull();
+    for (const screen of SCREENS) {
+      if (screen.roles === 'ALL') continue;
+      for (const code of screen.actionCodes) {
+        for (const role of screen.roles) {
+          expect(routeOfAction({ code, route: null }, role)).toBe(
+            `${screen.path}${screen.actionQuery?.[code] ?? ''}`,
+          );
+        }
+      }
+    }
+  });
+
   it('propose les écrans de tous les rôles de l’utilisateur, et les écrans communs à tous', () => {
     const common = screensForRoles([]).map((screen) => screen.id);
     expect(common).toEqual(expect.arrayContaining(['ECR-ADM-03', 'ECR-SYN-01']));

@@ -18,7 +18,13 @@ import {
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from './pending.js';
-import type { LocationData, SettingData, StockBalanceData, StockTransferData } from './types.js';
+import type {
+  LocationData,
+  ProductionLotData,
+  SettingData,
+  StockBalanceData,
+  StockTransferData,
+} from './types.js';
 
 const toMilli = (value: number): number => Math.round(value * 1000);
 const fromMilli = (milli: number): number => milli / 1000;
@@ -59,6 +65,7 @@ export function pendingConsumption(
   commands: readonly OutboxCommand[],
   stockPulledAt: string | undefined,
   transfers: ReadonlyMap<string, StockTransferData> = new Map(),
+  productionLots: ReadonlyMap<string, Pick<ProductionLotData, 'product_id'>> = new Map(),
 ): Map<string, number> {
   const milli = new Map<string, number>();
   for (const command of commands) {
@@ -116,9 +123,16 @@ export function pendingConsumption(
       }
       continue;
     }
-    // Réception d'achat : la quantité acceptée (livré − rejeté) entre sur l'emplacement (une
-    // réception mise en quarantaine par le serveur n'entre pas ; elle disparaît au tirage suivant).
+    // Réception d'achat : la quantité acceptée (livré − rejeté) entre sur l'emplacement, sauf une
+    // réception que le serveur met en quarantaine (aucun effet de stock avant décision, INV-APP-03) :
+    // annoncée à la saisie hors ligne (dépassement, mode `QUARANTINE`) ou renvoyée par le serveur.
     if (command.command_type === 'procurement.receipt.record') {
+      if (
+        command.local_flags?.includes('EXPECTED_QUARANTINE') ||
+        command.warnings?.includes('RECEIPT_QUARANTINED')
+      ) {
+        continue;
+      }
       const receipt = command.payload as {
         readonly locationId?: string;
         readonly lines?: readonly {
@@ -134,6 +148,21 @@ export function pendingConsumption(
         if (accepted <= 0) continue;
         const key = stockKey(receipt.locationId, line.productId);
         milli.set(key, (milli.get(key) ?? 0) - accepted);
+      }
+      continue;
+    }
+    // Mortalité saisie sur l'appareil : les têtes mortes quittent le bâtiment (produit du lot).
+    // Les œufs à couver d'une collecte n'entrent pas ici (sous-estimation seulement).
+    if (command.command_type === 'production.mortality.record') {
+      const death = command.payload as {
+        readonly productionLotId?: string;
+        readonly locationId?: string;
+        readonly quantity?: number;
+      };
+      const lot = death.productionLotId ? productionLots.get(death.productionLotId) : undefined;
+      if (lot && death.locationId && death.quantity) {
+        const key = stockKey(death.locationId, lot.product_id);
+        milli.set(key, (milli.get(key) ?? 0) + toMilli(death.quantity));
       }
       continue;
     }

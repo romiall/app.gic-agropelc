@@ -6,18 +6,19 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  businessDayOf,
-  lineAmountXaf,
-  quantityFromDecimal,
-  xaf,
-  type PriceRule,
-} from '@gic/domain';
+import { businessDayOf, type PriceRule } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { formatBusinessDay } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
-import { applicableRules, parseSimQuantity, SIM_CHANNELS } from './price-sim.js';
+import { pricesMayBeStale } from '../sales/sale-form.js';
+import {
+  applicableRules,
+  parseSimQuantity,
+  SIM_CHANNELS,
+  simInstant,
+  simTotal,
+} from './price-sim.js';
 import { describeScope } from './scope.js';
 
 export function PriceSimulatorScreen() {
@@ -61,9 +62,9 @@ export function PriceSimulatorScreen() {
   const sites = [...refs.sites.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const zones = [...refs.zones.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const quantity = parseSimQuantity(quantityText);
-  const validDay = /^\d{4}-\d{2}-\d{2}$/.test(day);
-  // Midi à Douala : le jour choisi, sans dépendre de l'heure de la simulation.
-  const at = validDay ? new Date(`${day}T12:00:00+01:00`) : null;
+  const now = clock.now();
+  const instant = simInstant(day, now);
+  const at = instant?.at ?? null;
   const rules =
     product && quantity !== null && at
       ? applicableRules(
@@ -82,6 +83,7 @@ export function PriceSimulatorScreen() {
         )
       : [];
   const [winner, ...others] = rules;
+  const total = winner && quantity !== null ? simTotal(quantity, winner.unitPriceXaf) : null;
 
   const describe = (rule: PriceRule): string => describeScope(rule, refs, pricingUnit, t);
 
@@ -115,6 +117,11 @@ export function PriceSimulatorScreen() {
     <section className="sale">
       <h1>{t('nav.screens.price_simulator')}</h1>
       <p className="home-muted">{t('price_sim.hint')}</p>
+      {pricesMayBeStale(refs.lastSyncAt, now) ? (
+        <p className="home-banner" role="status">
+          {t('sales.stale_prices')}
+        </p>
+      ) : null}
       {select(
         ids.product,
         t('price_sim.product_label'),
@@ -186,6 +193,9 @@ export function PriceSimulatorScreen() {
       {product && quantity !== null && at ? (
         <section className="sale-block" aria-labelledby="price-sim-result" role="status">
           <h2 id="price-sim-result">{t('price_sim.result_title')}</h2>
+          <p className="home-muted">
+            {instant?.now ? t('price_sim.at_now') : t('price_sim.at_noon')}
+          </p>
           {winner ? (
             <>
               <p>
@@ -196,15 +206,17 @@ export function PriceSimulatorScreen() {
                   })}
                 </strong>
               </p>
-              <p>
-                {t('price_sim.total', {
-                  quantity: formatQuantity(quantity),
-                  unit: pricingUnit,
-                  total: formatMoney(
-                    lineAmountXaf(quantityFromDecimal(quantity), xaf(winner.unitPriceXaf)),
-                  ),
-                })}
-              </p>
+              {total !== null ? (
+                <p>
+                  {t('price_sim.total', {
+                    quantity: formatQuantity(quantity),
+                    unit: pricingUnit,
+                    total: formatMoney(total),
+                  })}
+                </p>
+              ) : (
+                <p className="text-warn">{t('price_sim.total_too_large')}</p>
+              )}
               <p className="home-muted">
                 {t('price_sim.rule', {
                   scope: describe(winner),

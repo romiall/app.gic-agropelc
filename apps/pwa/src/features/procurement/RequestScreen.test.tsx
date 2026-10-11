@@ -158,4 +158,29 @@ describe('Demande d’achat (ECR-APP-02)', () => {
     expect(screen.getByText('La date souhaitée ne peut pas être passée.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Soumettre la demande' })).toBeDisabled();
   });
+
+  it('site fermé jamais proposé ; sans emplacement du périmètre, aucun site présélectionné', async () => {
+    const db = getDb();
+    await db.projections.bulkPut([
+      projection('site', 'SITE', 'site-ferme', {
+        code: 'FERME-X',
+        name: 'Ferme fermée',
+        site_type: 'FERME',
+        zone_id: IDS.zone,
+        status: 'CLOSED',
+      }),
+    ]);
+    renderScreen();
+    const site = await screen.findByLabelText('Pour le site');
+    expect(within(site).queryByText('Ferme fermée')).not.toBeInTheDocument();
+    expect(site).toHaveValue(IDS.site);
+
+    cleanup();
+    await db.projections.where('dataset').equals('location').delete();
+    renderScreen();
+    const unscoped = await screen.findByLabelText('Pour le site');
+    expect(unscoped).toHaveValue('');
+    expect(within(unscoped).getByText('Choisir le site')).toBeInTheDocument();
+    expect(within(unscoped).queryByText('Ferme fermée')).not.toBeInTheDocument();
+  });
 });

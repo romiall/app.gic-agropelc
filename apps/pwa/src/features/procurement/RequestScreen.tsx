@@ -14,7 +14,6 @@ import { formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
-import { stockLocations } from '../stock/stock-view.js';
 import { checkTransferLine } from '../stock/transfer.js';
 import {
   checkRequest,
@@ -70,14 +69,20 @@ export function RequestScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  const heldSites = new Set(
-    stockLocations(refs)
+  // Sites des emplacements physiques du périmètre de l'appareil (jeu `location`, borné par le
+  // serveur) ; à défaut, tous les sites actifs, sans présélection (choix explicite).
+  const scopeSites = new Set(
+    refs.locations
+      .filter((location) => !location.is_virtual && location.status === 'ACTIVE')
       .map((location) => location.site_id)
       .filter((id): id is string => id !== null),
   );
-  const allSites = [...refs.sites.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const sites = heldSites.size > 0 ? allSites.filter((site) => heldSites.has(site.id)) : allSites;
-  const siteId = siteChoice ?? sites[0]?.id ?? '';
+  const allSites = [...refs.sites.values()]
+    .filter((site) => site.status === 'ACTIVE')
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const scoped = allSites.filter((site) => scopeSites.has(site.id));
+  const sites = scoped.length > 0 ? scoped : allSites;
+  const siteId = siteChoice ?? (scoped.length > 0 ? (scoped[0]?.id ?? '') : '');
   const products = purchasableProducts(refs.products);
   const rows = lines.map((line) => {
     const product = products.find((candidate) => candidate.id === line.productId);
@@ -169,6 +174,9 @@ export function RequestScreen() {
               value={siteId}
               onChange={(event) => setSiteChoice(event.target.value)}
             >
+              {siteId === '' ? (
+                <option value="">{t('purchase_request.site_placeholder')}</option>
+              ) : null}
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.name}

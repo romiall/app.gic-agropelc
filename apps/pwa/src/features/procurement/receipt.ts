@@ -1,13 +1,17 @@
 /**
  * ECR-APP-04 « RÉCEPTIONNER » sur bon de commande (UC-APP-07 ; BR-APP-007 à 014) : logique pure.
  *
- * - Bons de commande envoyés ou reçus en partie (jeu `procurement`), livrés sur un emplacement tenu
- *   par l'appareil ou sur son site ; reliquat du serveur diminué des réceptions de l'appareil en vol.
+ * - Bons de commande envoyés ou reçus en partie (jeu `procurement`, borné par le serveur aux sites de
+ *   l'appareil) ; reliquat du serveur diminué des réceptions de l'appareil en vol. Réception sur un
+ *   emplacement physique et actif du site du bon, celui de livraison proposé d'abord (jamais un autre
+ *   choisi sans le dire).
  * - Par ligne : livré, rejeté (motif `REJECTION` exigé, BR-APP-007), accepté = livré − rejeté
  *   (`receiptLineQuantities`, même calcul que le serveur) ; lot fournisseur et péremption facultatifs.
  * - Au-delà du reliquat (tolérance `procurement.receipt_over_tolerance_pct`, 0 par défaut,
- *   `overReceiptQuantity`) : refusé en ligne (`OVER_RECEIPT`), mis en quarantaine hors ligne
- *   (BR-APP-010, AV-095).
+ *   `overReceiptQuantity`) : refusé en ligne (`OVER_RECEIPT`) ; hors ligne, mis en quarantaine ou
+ *   appliqué avec revue selon `procurement.offline_over_receipt_mode` (BR-APP-010, AV-095). Une
+ *   réception annoncée en quarantaine n'entre pas au disponible local (indice `EXPECTED_QUARANTINE`).
+ * - Paramètres `procurement.*` lus en portée globale seulement, comme le serveur.
  * - Sans bon de commande : non proposé, la photo du bon de livraison y est toujours exigée et
  *   l'application ne sait pas encore la joindre (S-16, S-24).
  */
@@ -21,9 +25,35 @@ import {
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from '../sales/pending.js';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
-import type { LocationData, PurchaseOrderData } from '../sales/types.js';
+import { settingValue } from '../sales/stock.js';
+import type { LocationData, PurchaseOrderData, SettingData } from '../sales/types.js';
 
 export const DEFAULT_OVER_TOLERANCE_PCT = 0;
+export const DEFAULT_PHOTO_THRESHOLD_XAF = 100_000;
+export type OfflineOverMode = 'QUARANTINE' | 'APPLY_WITH_REVIEW';
+
+export interface ReceiptSettings {
+  readonly tolerancePct: number;
+  readonly offlineOverMode: OfflineOverMode;
+  readonly photoThresholdXaf: number;
+}
+
+/** Paramètres de réception, lus comme le serveur : valeur globale, défauts identiques. */
+export function receiptSettings(settings: readonly SettingData[], now: Date): ReceiptSettings {
+  const number = (key: string, fallback: number): number => {
+    const value = Number(settingValue(settings, key, null, now) ?? fallback);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const mode = settingValue(settings, 'procurement.offline_over_receipt_mode', null, now);
+  return {
+    tolerancePct: number('procurement.receipt_over_tolerance_pct', DEFAULT_OVER_TOLERANCE_PCT),
+    offlineOverMode: mode === 'APPLY_WITH_REVIEW' ? 'APPLY_WITH_REVIEW' : 'QUARANTINE',
+    photoThresholdXaf: number(
+      'procurement.receipt_photo_threshold_xaf',
+      DEFAULT_PHOTO_THRESHOLD_XAF,
+    ),
+  };
+}
 export const MAX_DELIVERY_NOTE_REF = 60;
 export const MAX_OBSERVATIONS = 4000;
 export const MAX_LOT_REF = 60;
@@ -58,25 +88,37 @@ export function inFlightAccepted(
   return new Map([...milli].map(([id, value]) => [id, value / 1000]));
 }
 
-/** Bons de commande à recevoir sur les emplacements (ou les sites) de l'appareil. */
-export function receivableOrders(
-  orders: readonly PurchaseOrderData[],
-  held: readonly LocationData[],
-): PurchaseOrderData[] {
-  const locations = new Set(held.map((location) => location.id));
-  const sites = new Set(held.map((location) => location.site_id).filter(Boolean));
+/**
+ * Bons de commande à recevoir : envoyés ou reçus en partie. Le jeu `procurement` est déjà borné par le
+ * serveur aux sites de l'appareil ; un premier arrivage dans un magasin vide reste donc recevable.
+ */
+export function receivableOrders(orders: readonly PurchaseOrderData[]): PurchaseOrderData[] {
   return orders
-    .filter(
-      (order) =>
-        (order.status === 'SENT' || order.status === 'PARTIALLY_RECEIVED') &&
-        ((order.delivery_location_id !== null && locations.has(order.delivery_location_id)) ||
-          sites.has(order.site_id)),
-    )
+    .filter((order) => order.status === 'SENT' || order.status === 'PARTIALLY_RECEIVED')
     .sort(
       (a, b) =>
         (a.expected_delivery_date ?? '9999').localeCompare(b.expected_delivery_date ?? '9999') ||
         a.doc_number.localeCompare(b.doc_number),
     );
+}
+
+/**
+ * Emplacements où recevoir un bon de commande : physiques et actifs, du site du bon (ou son emplacement
+ * de livraison), celui de livraison en tête, les autres par nom.
+ */
+export function receiptLocations(
+  locations: readonly LocationData[],
+  order: Pick<PurchaseOrderData, 'site_id' | 'delivery_location_id'>,
+): LocationData[] {
+  const delivery = (location: LocationData) => (location.id === order.delivery_location_id ? 0 : 1);
+  return locations
+    .filter(
+      (location) =>
+        !location.is_virtual &&
+        location.status === 'ACTIVE' &&
+        (location.site_id === order.site_id || location.id === order.delivery_location_id),
+    )
+    .sort((a, b) => delivery(a) - delivery(b) || a.name.localeCompare(b.name, 'fr'));
 }
 
 export interface ReceiptLineDraft {

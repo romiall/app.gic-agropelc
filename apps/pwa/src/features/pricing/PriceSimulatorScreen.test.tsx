@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -14,6 +14,7 @@ vi.mock('../../platform/composition.js', async () => {
 });
 
 const SITE_RULE = '01900000-0000-7000-8000-0000000000f8';
+const PROMO = '01900000-0000-7000-8000-0000000000f9';
 
 describe('Simulateur de prix (ECR-PRX-03)', () => {
   beforeEach(async () => {
@@ -45,7 +46,7 @@ describe('Simulateur de prix (ECR-PRX-03)', () => {
     await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
     await user.clear(screen.getByLabelText('Quantité (U)'));
     await user.type(screen.getByLabelText('Quantité (U)'), '30');
-    const result = () => within(screen.getByRole('status'));
+    const result = () => within(screen.getByRole('status', { name: 'Prix appliqué' }));
     expect(result().getByText(/100\sF\sCFA par U/)).toBeInTheDocument();
     expect(result().getByText(/Pour 30 U : 3\s000\sF\sCFA/)).toBeInTheDocument();
 
@@ -55,6 +56,60 @@ describe('Simulateur de prix (ECR-PRX-03)', () => {
     expect(
       result().getByText('Autres règles applicables (ordre du départage)'),
     ).toBeInTheDocument();
+    // La règle sans dimension est décrite comme générale.
+    expect(result().getByText('règle générale')).toBeInTheDocument();
+  });
+
+  it('jour courant : prix à l’instant ; autre jour : à midi ; bandeau de prix anciens', async () => {
+    const db = getDb();
+    const general = await db.projections.get(`price_rule:PRICE_RULE:${IDS.ruleEggs}`);
+    if (!general) throw new Error('règle de la fixture absente');
+    // Promotion prioritaire qui s'arrête à 11 h (Douala) : en vigueur à 10 h, plus à midi.
+    await db.projections.put({
+      ...general,
+      key: `price_rule:PRICE_RULE:${PROMO}`,
+      entity_id: PROMO,
+      data: {
+        ...general.data,
+        id: PROMO,
+        unit_price_xaf: 80,
+        priority: 2,
+        valid_to: '2026-10-10T10:00:00.000Z',
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <PriceSimulatorScreen />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Prix peut-être non à jour/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    const result = () => within(screen.getByRole('status', { name: 'Prix appliqué' }));
+    expect(result().getByText(/80\sF\sCFA par U/)).toBeInTheDocument();
+    expect(result().getByText(/Prix à l’instant/)).toBeInTheDocument();
+    expect(result().getByText(/règle générale · priorité 2/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-11' } });
+    expect(result().getByText(/100\sF\sCFA par U/)).toBeInTheDocument();
+    expect(result().getByText(/Prix à 12 h/)).toBeInTheDocument();
+  });
+
+  it('quantité démesurée : refusée, ou total non calculable sans planter', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <PriceSimulatorScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const quantity = screen.getByLabelText('Quantité (U)');
+    await user.clear(quantity);
+    await user.type(quantity, '999999999999');
+    expect(screen.getByText('Quantité invalide (au plus 3 décimales).')).toBeInTheDocument();
+    await user.clear(quantity);
+    await user.type(quantity, '99999999999');
+    expect(screen.getByText(/Montant trop grand/)).toBeInTheDocument();
   });
 
   it('aucune règle applicable : le dire, la vente demanderait une dérogation', async () => {

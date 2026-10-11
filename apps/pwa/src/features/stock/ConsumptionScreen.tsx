@@ -93,8 +93,17 @@ export function ConsumptionScreen() {
     );
   }
 
+  // Intrants et emballages consommables seulement (un intrant désactivé garde son solde consommable).
   const products = refs.products
-    .filter((product) => refs.stock.has(stockKey(location.id, product.id)))
+    .filter(
+      (product) =>
+        (product.is_consumable === true ||
+          product.stock_family === 'INTRANT' ||
+          product.stock_family === 'EMBALLAGE_CONSOMMABLE') &&
+        product.stock_family !== 'BIOLOGIQUE' &&
+        product.stock_family !== 'SERVICE' &&
+        refs.stock.has(stockKey(location.id, product.id)),
+    )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const product = products.find((candidate) => candidate.id === line.productId);
   const units = product ? saleUnitsOf(product, refs) : [];

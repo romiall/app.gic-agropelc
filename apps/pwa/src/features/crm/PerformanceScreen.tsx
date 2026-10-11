@@ -1,8 +1,9 @@
 /**
  * ECR-CRM-05 « Mes objectifs et performances » (commerciaux ; WF-J1, étapes 3 et 8). En ligne :
- * effort et objectifs avec leur réalisé, calculés par le serveur. Hors ligne (ou serveur injoignable) :
- * estimation de l'appareil pour les visites, comptes visités, échanges et prospects créés ; le chiffre
- * d'affaires, les quantités vendues et les nouveaux clients se lisent en ligne.
+ * effort et objectifs avec leur réalisé, calculés par le serveur. Hors ligne, ou serveur sans réponse
+ * (annoncé comme tel, avec « Réessayer ») : estimation de l'appareil pour les visites, comptes visités,
+ * échanges et prospects créés ; le chiffre d'affaires, les quantités vendues et les nouveaux clients
+ * se lisent en ligne.
  */
 import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,13 +37,20 @@ const EFFORT_KEYS: readonly (keyof Effort)[] = [
   'newCustomers',
 ];
 
-/** Performance lue en ligne pour la période ; `undefined` pendant la lecture, `null` si indisponible. */
+type ServerState =
+  | { readonly status: 'OFFLINE' }
+  | { readonly status: 'LOADING' }
+  | { readonly status: 'ERROR' }
+  | { readonly status: 'OK'; readonly data: ServerPerformance };
+
+/** Performance lue en ligne pour la période, et relance de la lecture après une erreur du serveur. */
 function useServerPerformance(
   period: Period,
   online: boolean,
-): ServerPerformance | null | undefined {
+): { readonly server: ServerState; readonly retry: () => void } {
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{ key: string; data: ServerPerformance | null }>();
-  const key = `${period.from}:${period.to}`;
+  const key = `${period.from}:${period.to}:${attempt}`;
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
@@ -57,8 +65,13 @@ function useServerPerformance(
       cancelled = true;
     };
   }, [key, online, period.from, period.to]);
-  if (!online) return null;
-  return state?.key === key ? state.data : undefined;
+  const retry = () => setAttempt((current) => current + 1);
+  if (!online) return { server: { status: 'OFFLINE' }, retry };
+  if (state?.key !== key) return { server: { status: 'LOADING' }, retry };
+  return {
+    server: state.data ? { status: 'OK', data: state.data } : { status: 'ERROR' },
+    retry,
+  };
 }
 
 export function PerformanceScreen() {
@@ -70,7 +83,8 @@ export function PerformanceScreen() {
   const [kind, setKind] = useState<PeriodKind>('MONTH');
   const today = businessDayOf(clock.now());
   const period = periodOf(kind, today);
-  const server = useServerPerformance(period, online);
+  const { server: serverState, retry } = useServerPerformance(period, online);
+  const server = serverState.status === 'OK' ? serverState.data : null;
 
   if (!refs || !userId) {
     return (
@@ -120,10 +134,17 @@ export function PerformanceScreen() {
               from: formatBusinessDay(period.from),
               to: formatBusinessDay(period.to),
             })
-          : server === undefined
+          : serverState.status === 'LOADING'
             ? t('performance.loading')
-            : t('performance.source_device')}
+            : serverState.status === 'ERROR'
+              ? t('performance.source_error')
+              : t('performance.source_device')}
       </p>
+      {serverState.status === 'ERROR' ? (
+        <button type="button" className="secondary" onClick={retry}>
+          {t('performance.retry')}
+        </button>
+      ) : null}
 
       <section className="sale-block" aria-labelledby="performance-effort-title">
         <h2 id="performance-effort-title">{t('performance.effort_title')}</h2>

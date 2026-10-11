@@ -115,7 +115,7 @@ describe('Réceptionner (ECR-APP-04)', () => {
     await getDb().outbox.clear();
   });
 
-  it('hors ligne : rejet motivé, dépassement mis en quarantaine, accepté ajouté au disponible et déduit du reste', async () => {
+  it('hors ligne : rejet motivé, dépassement mis en quarantaine, rien au disponible, accepté déduit du reste', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const user = userEvent.setup();
     renderAt('/achats/receptions');
@@ -163,8 +163,10 @@ describe('Réceptionner (ECR-APP-04)', () => {
         { poLineId: LINE_CHICKEN, productId: IDS.chicken, unitCode: 'U', qtyDeliveredBase: 6 },
       ],
     });
+    // Quarantaine annoncée (mode par défaut) : aucun effet de stock avant décision (INV-APP-03).
+    expect(command?.local_flags).toEqual(['EXPECTED_QUARANTINE']);
     const refs = await loadSalesReferences(getDb());
-    expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(-270);
+    expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBeUndefined();
 
     // Le reste à recevoir tient compte de la réception en attente.
     await user.click(screen.getByRole('link', { name: '← Bons de commande à recevoir' }));

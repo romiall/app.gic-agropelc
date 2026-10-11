@@ -56,6 +56,13 @@ export interface OutboxCommand {
   server_refs: Record<string, string> | null;
   /** Heure à laquelle le serveur a accepté la commande (`SYNCED`, `SYNCED_WITH_WARNING`). */
   synced_at?: string | null;
+  /** Codes d'avertissement renvoyés avec l'acceptation (ex. `RECEIPT_QUARANTINED`), hors enveloppe. */
+  warnings?: readonly string[];
+  /**
+   * Indices posés sur l'appareil à la saisie, hors enveloppe et jamais envoyés (ex.
+   * `EXPECTED_QUARANTINE` : réception hors ligne que le serveur mettra en quarantaine).
+   */
+  readonly local_flags?: readonly string[];
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */

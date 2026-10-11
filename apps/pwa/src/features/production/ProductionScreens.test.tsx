@@ -174,9 +174,10 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     expect(await screen.findByText(/Mortalité enregistrée sur ce téléphone/)).toBeInTheDocument();
     const journal = within(screen.getByRole('region', { name: 'Journal du jour' }));
     expect(await journal.findByText('3 mort(s)')).toBeInTheDocument();
-    expect(screen.getByText(/497 têtes/)).toBeInTheDocument();
+    expect(screen.getByText(/· 497 têtes/)).toBeInTheDocument();
+    expect(screen.getByText('Effectif sur cet emplacement : 497 têtes')).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText('Aliment et intrants'));
+    await user.click(screen.getByRole('radio', { name: 'Aliment et intrants' }));
     await user.selectOptions(screen.getByLabelText('Aliment ou intrant'), FEED);
     await user.selectOptions(screen.getByLabelText('Pris sur'), STORE);
     await user.type(screen.getByLabelText('Quantité'), '25');
@@ -214,13 +215,13 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/le serveur refuserait/);
     expect(screen.getByRole('button', { name: 'Enregistrer la mortalité' })).toBeDisabled();
 
-    await user.click(screen.getByLabelText('Pesée'));
+    await user.click(screen.getByRole('radio', { name: 'Pesée' }));
     await user.type(screen.getByLabelText('Nombre de sujets pesés'), '20');
     await user.type(screen.getByLabelText('Poids moyen (g)'), '1250,5');
     await user.click(screen.getByRole('button', { name: 'Enregistrer la pesée' }));
     await screen.findByText(/Pesée : 20 sujets, 1250.5 g en moyenne/);
 
-    await user.click(screen.getByLabelText('Observation'));
+    await user.click(screen.getByRole('radio', { name: 'Observation' }));
     await user.type(screen.getByLabelText('Observation', { selector: 'textarea' }), 'RAS');
     await user.click(screen.getByRole('button', { name: 'Enregistrer l’observation' }));
     await screen.findByText('RAS');
@@ -229,6 +230,32 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
       { productionLotId: BROILERS, sampleSize: 20, avgWeightG: 1250.5, source: 'MANUAL' },
       { productionLotId: BROILERS, observationType: 'SANITAIRE', text: 'RAS', severity: 'INFO' },
     ]);
+  });
+
+  it('brouillon conservé en changeant de nature ; cause exigeant un commentaire', async () => {
+    await getDb().projections.put(
+      projection('reason_code', 'REASON_CODE', 'cause-chaleur', {
+        category: 'LOSS',
+        code: 'CHALEUR',
+        label: 'Coup de chaleur',
+        loss_category: 'MORTALITE',
+        requires_comment: true,
+        is_active: true,
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt(`/production/lots/${BROILERS}`);
+    await user.type(await screen.findByLabelText('Nombre de morts'), '4');
+    await user.click(screen.getByRole('radio', { name: 'Pesée' }));
+    await user.click(screen.getByRole('radio', { name: 'Mortalité' }));
+    expect(screen.getByLabelText('Nombre de morts')).toHaveValue('4');
+
+    await user.selectOptions(screen.getByLabelText('Cause (facultatif)'), 'cause-chaleur');
+    expect(screen.getByText('Cette cause exige un commentaire.')).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Enregistrer la mortalité' });
+    expect(submit).toBeDisabled();
+    await user.type(screen.getByLabelText('Commentaire (facultatif)'), 'Panne de ventilation');
+    expect(submit).toBeEnabled();
   });
 
   it('collecte d’œufs : bilan exigé, calibres paramétrés, œufs à couver sans produit refusés', async () => {

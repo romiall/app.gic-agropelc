@@ -122,6 +122,17 @@ describe('Réception sans document (ECR-STK-03, BR-STK-024)', () => {
     expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(-60);
   });
 
+  it('produit désactivé : toujours recevable, signalé comme tel (BR-CAT-006)', async () => {
+    await seed('EXCLUSIVE_USER');
+    const db = getDb();
+    const chicken = await db.projections.get(`product:PRODUCT:${IDS.chicken}`);
+    if (!chicken) throw new Error('produit de la fixture absent');
+    await db.projections.put({ ...chicken, data: { ...chicken.data, status: 'INACTIVE' } });
+    renderScreen();
+    const line = await screen.findByRole('listitem', { name: 'Ligne 1' });
+    expect(within(line).getByText('Poulet de chair (désactivé)')).toBeInTheDocument();
+  });
+
   it('en ligne sur un emplacement partagé : refusée sur l’appareil', async () => {
     await seed('SHARED');
     renderScreen();

@@ -804,6 +804,10 @@ ul.outbox-list li {
   margin: 16px 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .sale .field {
   display: flex;
   flex-direction: column;

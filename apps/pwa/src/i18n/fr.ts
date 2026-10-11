@@ -573,6 +573,9 @@ export const fr = {
     source_server: 'Chiffres du serveur, du {{from}} au {{to}}.',
     source_device:
       'Hors ligne : estimation de ce téléphone (90 derniers jours) ; le chiffre d’affaires, les quantités vendues et les nouveaux clients se lisent en ligne.',
+    source_error:
+      'Le serveur n’a pas répondu : estimation de ce téléphone (90 derniers jours) ; le chiffre d’affaires, les quantités vendues et les nouveaux clients se lisent en ligne.',
+    retry: 'Réessayer',
     effort_title: 'Mon activité',
     effort: {
       visits: 'Visites',
@@ -749,10 +752,13 @@ export const fr = {
     rearing_location_label: 'Bâtiment ou case',
     deaths_label: 'Nombre de morts',
     count_invalid: 'Nombre entier attendu.',
+    location_headcount: 'Effectif sur cet emplacement : {{heads}} têtes',
     deaths_over_online:
-      'Plus de morts que l’effectif connu : le serveur refuserait la saisie. Vérifiez le nombre.',
+      'Plus de morts que l’effectif de cet emplacement : le serveur refuserait la saisie. Vérifiez le nombre ou l’emplacement.',
     deaths_over_offline:
-      'Plus de morts que l’effectif connu du téléphone : la saisie sera tout de même enregistrée.',
+      'Plus de morts que l’effectif de cet emplacement connu du téléphone : la saisie sera tout de même enregistrée.',
+    comment_required: 'Cette cause exige un commentaire.',
+    journal_pending_approval: 'En attente de validation',
     cause_label: 'Cause (facultatif)',
     cause_placeholder: 'Cause non précisée',
     comment_label: 'Commentaire (facultatif)',
@@ -873,6 +879,7 @@ export const fr = {
       'Hors ligne : la demande sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
     new_title: 'Nouvelle demande',
     site_label: 'Pour le site',
+    site_placeholder: 'Choisir le site',
     needed_by_label: 'Souhaitée pour le (facultatif)',
     justification_label: 'Justification',
     no_product: 'Aucun produit achetable n’est connu de ce téléphone.',
@@ -939,9 +946,9 @@ export const fr = {
     not_found:
       'Ce bon de commande n’est plus à recevoir (reçu, clôturé ou hors de vos emplacements).',
     order_title: 'Réceptionner {{doc}}',
-    no_location:
-      'Aucun de vos emplacements n’appartient au site de livraison de ce bon de commande.',
+    no_location: 'Aucun emplacement actif connu sur le site de livraison de ce bon de commande.',
     location_label: 'Reçu sur',
+    location_placeholder: 'Choisir l’emplacement de réception',
     delivery_note_label: 'N° du bon de livraison du fournisseur',
     delivery_note_hint:
       'Recommandé : il permet au serveur de repérer une livraison saisie deux fois.',
@@ -964,17 +971,22 @@ export const fr = {
     over_online:
       'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : le serveur refuserait la réception. Ne recevez que le reste.',
     over_offline:
-      'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : la réception sera mise en quarantaine pour validation.',
+      'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : la réception sera mise en quarantaine pour validation et n’entrera pas au stock avant décision.',
+    over_offline_apply:
+      'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : la réception sera appliquée, avec un signalement pour revue.',
     observations_label: 'Observations (facultatif)',
+    comment_required:
+      'Un motif de rejet choisi exige une précision : décrivez-la dans les observations.',
     photo_hint:
-      'Au-delà de 100 000 F acceptés, le serveur exige la photo du bon de livraison, que l’application ne sait pas encore joindre : la réception serait alors refusée.',
+      'Au-delà de {{threshold}} acceptés, le serveur exige la photo du bon de livraison, que l’application ne sait pas encore joindre : la réception serait alors refusée.',
     submit: 'Enregistrer la réception',
     result: {
       WAITING_offline:
         'Réception enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
       WAITING_online: 'Réception en cours d’envoi…',
       DONE: 'Réception enregistrée : {{doc}}.',
-      WARNING: 'Réception {{doc}} mise en quarantaine pour validation.',
+      WARNING: 'Réception {{doc}} enregistrée, avec un signalement.',
+      WARNING_RECEIPT_QUARANTINED: 'Réception {{doc}} mise en quarantaine pour validation.',
       CONFLICT: 'Réception mise en attente d’examen (conflit).',
       REJECTED: 'Réception refusée : {{reason}}',
     },
@@ -1182,6 +1194,9 @@ export const fr = {
     result_title: 'Prix appliqué',
     price: '{{price}} par {{unit}}',
     total: 'Pour {{quantity}} {{unit}} : {{total}}',
+    total_too_large: 'Montant trop grand pour être calculé : réduisez la quantité.',
+    at_now: 'Prix à l’instant (règles en vigueur maintenant).',
+    at_noon: 'Prix à 12 h, heure de Douala, ce jour-là.',
     rule: 'Règle retenue : {{scope}} — en vigueur depuis le {{from}}.',
     others_title: 'Autres règles applicables (ordre du départage)',
     none: 'Aucune règle ne s’applique : la vente demanderait un prix saisi, soumis à dérogation.',
@@ -1360,6 +1375,7 @@ export const fr = {
   },
   blind: {
     title: 'Réception sans document',
+    inactive_product: '{{name}} (désactivé)',
     hint: 'Marchandise arrivée sans transfert connu de ce téléphone : le serveur la rapprochera de l’expédition correspondante.',
     offline_banner:
       'Hors ligne : la réception sera enregistrée sur ce téléphone et envoyée au retour du réseau ; la marchandise est aussitôt ajoutée au disponible.',

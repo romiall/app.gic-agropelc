@@ -95,6 +95,52 @@ describe('sync/push (runPushCycle)', () => {
     expect(meta?.clock_skew_ms).toBe(1234);
   });
 
+  it('APPLIED_WITH_WARNINGS : avertissements conservés ; indices locaux jamais envoyés', async () => {
+    const command = await enqueueCommand(
+      db,
+      { clock, idGenerator },
+      {
+        authorUserId: 'user-1',
+        commandType: 'procurement.receipt.record',
+        commandVersion: 1,
+        aggregateType: 'GOODS_RECEIPT',
+        payload: { note: 'réception' },
+        capturedOffline: true,
+        localFlags: ['EXPECTED_QUARANTINE'],
+      },
+    );
+    expect(command.local_flags).toEqual(['EXPECTED_QUARANTINE']);
+    const response: PushResponse = {
+      results: [
+        {
+          command_id: command.command_id,
+          status: 'APPLIED_WITH_WARNINGS',
+          warnings: ['RECEIPT_QUARANTINED'],
+        },
+      ],
+      server_time: clock.now().toISOString(),
+      clock_skew_ms: 0,
+    };
+    const fetchSpy = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(JSON.stringify(response), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    const sent = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body)) as {
+      commands: Record<string, unknown>[];
+    };
+    expect(sent.commands[0]).not.toHaveProperty('local_flags');
+    expect(sent.commands[0]).not.toHaveProperty('warnings');
+    const updated = await db.outbox.get(command.command_id);
+    expect(updated).toMatchObject({
+      status: 'SYNCED_WITH_WARNING',
+      warnings: ['RECEIPT_QUARANTINED'],
+      local_flags: ['EXPECTED_QUARANTINE'],
+    });
+  });
+
   it('déclare au serveur ce qui reste dans la file après le lot, par auteur (BR-DIS-014)', async () => {
     const command = await enqueueOne(db, 'un');
     const response: PushResponse = {

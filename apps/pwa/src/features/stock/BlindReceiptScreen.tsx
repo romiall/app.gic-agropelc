@@ -23,7 +23,7 @@ import {
   duplicateProducts,
   knownDispatch,
 } from './receive.js';
-import { stockLocations } from './stock-view.js';
+import { receivingLocations } from './stock-view.js';
 import {
   computeLines,
   destinations,
@@ -91,7 +91,7 @@ export function BlindReceiptScreen() {
     );
   }
 
-  const held = stockLocations(refs);
+  const held = receivingLocations(refs, userId);
   const destination = held.find((candidate) => candidate.id === destinationChoice) ?? held[0];
   if (!destination) {
     return (
@@ -104,8 +104,14 @@ export function BlindReceiptScreen() {
   }
 
   const sources = destinations(refs.locations, destination.id);
+  // Un produit désactivé reste recevable (BR-CAT-006) : seul un service est écarté, comme au serveur.
   const products = refs.products
-    .filter((product) => product.status === 'ACTIVE' && product.stock_family !== 'SERVICE')
+    .filter((product) => product.stock_family !== 'SERVICE')
+    .map((product) =>
+      product.status === 'ACTIVE'
+        ? product
+        : { ...product, name: t('blind.inactive_product', { name: product.name }) },
+    )
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const rows = computeLines(lines, products, refs);
   const duplicates = duplicateProducts(rows.map((row) => row.check.draft.productId));

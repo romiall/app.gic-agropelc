@@ -3,7 +3,8 @@
  * à recevoir sur les emplacements de l'appareil, puis réception ligne par ligne : livré, rejeté avec
  * motif, accepté ; lot fournisseur et péremption ; numéro du bon de livraison (doublon détecté par
  * le serveur). Commande `procurement.receipt.record` (agrégat `GOODS_RECEIPT`), utilisable hors
- * ligne ; l'accepté entre aussitôt au disponible local. Réceptions des 30 derniers jours listées.
+ * ligne ; l'accepté entre aussitôt au disponible local, sauf une réception annoncée en quarantaine.
+ * Réceptions des 30 derniers jours listées.
  */
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -15,22 +16,21 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { settingValue } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import type { PurchaseOrderData } from '../sales/types.js';
-import { stockLocations } from '../stock/stock-view.js';
 import {
   checkReceiptLine,
-  DEFAULT_OVER_TOLERANCE_PCT,
   EMPTY_LINE,
   inFlightAccepted,
   localRemaining,
   MAX_DELIVERY_NOTE_REF,
   MAX_LOT_REF,
   MAX_OBSERVATIONS,
+  receiptLocations,
   receiptPayload,
+  receiptSettings,
   receivableOrders,
   type ReceiptLineDraft,
 } from './receipt.js';
@@ -55,19 +55,15 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
   const noteId = useId();
   const observationsId = useId();
 
-  const now = clock.now();
-  const tolerance = Number(
-    settingValue(refs.settings, 'procurement.receipt_over_tolerance_pct', order.site_id, now) ??
-      DEFAULT_OVER_TOLERANCE_PCT,
+  const { tolerancePct, offlineOverMode, photoThresholdXaf } = receiptSettings(
+    refs.settings,
+    clock.now(),
   );
-  const tolerancePct = Number.isFinite(tolerance) ? tolerance : DEFAULT_OVER_TOLERANCE_PCT;
-  const locations = stockLocations(refs).filter(
-    (location) => location.site_id === order.site_id || location.id === order.delivery_location_id,
-  );
+  const locations = receiptLocations(refs.locations, order);
+  // Sans emplacement de livraison connu, aucun emplacement n'est choisi à la place du magasinier.
   const location =
     locations.find((candidate) => candidate.id === locationChoice) ??
-    locations.find((candidate) => candidate.id === order.delivery_location_id) ??
-    locations[0];
+    locations.find((candidate) => candidate.id === order.delivery_location_id);
   const inFlight = inFlightAccepted(refs.outbox, refs.procurementPulledAt);
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const reasons = refs.reasonCodes.filter((reason) => reason.category === 'REJECTION');
@@ -91,10 +87,19 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
     });
   const delivered = rows.filter((row) => row.check.delivered !== null);
   const over = rows.filter((row) => row.check.over > 0);
+  // Motif de rejet qui exige un commentaire : précisé dans les observations (pas de commentaire par
+  // ligne dans le contrat).
+  const commentMissing =
+    rows.some(
+      (row) =>
+        row.check.rejected > 0 &&
+        reasons.find((reason) => reason.id === row.draft.reasonId)?.requires_comment === true,
+    ) && observations.trim() === '';
   const ready =
     location !== undefined &&
     delivered.length > 0 &&
     rows.every((row) => row.check.issues.length === 0) &&
+    !commentMissing &&
     !(online && over.length > 0) &&
     !busy;
 
@@ -110,6 +115,10 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         authorUserId: userId,
         commandType: 'procurement.receipt.record',
         aggregateType: 'GOODS_RECEIPT',
+        // Dépassement hors ligne en mode quarantaine : rien n'entre au disponible local.
+        ...(!online && over.length > 0 && offlineOverMode === 'QUARANTINE'
+          ? { localFlags: ['EXPECTED_QUARANTINE'] }
+          : {}),
         payload: receiptPayload({
           order,
           locationId: location.id,
@@ -140,6 +149,9 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           value={location?.id ?? ''}
           onChange={(event) => setLocationChoice(event.target.value)}
         >
+          {location === undefined ? (
+            <option value="">{t('purchase_receipt.location_placeholder')}</option>
+          ) : null}
           {locations.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
@@ -280,10 +292,12 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                   </p>
                 ) : (
                   <p className="text-warn">
-                    {t('purchase_receipt.over_offline', {
-                      quantity: formatQuantity(check.over),
-                      unit,
-                    })}
+                    {t(
+                      offlineOverMode === 'QUARANTINE'
+                        ? 'purchase_receipt.over_offline'
+                        : 'purchase_receipt.over_offline_apply',
+                      { quantity: formatQuantity(check.over), unit },
+                    )}
                   </p>
                 )
               ) : null}
@@ -301,8 +315,13 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           value={observations}
           onChange={(event) => setObservations(event.target.value)}
         />
+        {commentMissing ? (
+          <p className="error-message">{t('purchase_receipt.comment_required')}</p>
+        ) : null}
       </div>
-      <p className="home-muted">{t('purchase_receipt.photo_hint')}</p>
+      <p className="home-muted">
+        {t('purchase_receipt.photo_hint', { threshold: formatMoney(photoThresholdXaf) })}
+      </p>
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
@@ -339,7 +358,7 @@ export function ReceiptScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  const orders = receivableOrders(refs.purchaseOrders, stockLocations(refs));
+  const orders = receivableOrders(refs.purchaseOrders);
   const supplierName = (id: string) =>
     refs.suppliers.get(id)?.name ?? t('purchase_receipt.supplier_unknown');
   const back = (
