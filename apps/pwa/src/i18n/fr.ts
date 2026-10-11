@@ -1993,10 +1993,30 @@ export const fr = {
     decline_online_only:
       'Le refus d’une demande se fait en ligne (il se décide sur l’état à jour de la demande).',
     lot_label: 'Lot déplacé',
+    lot_option: '{{code}} ({{quantity}} {{unit}})',
     lot_required: 'Plusieurs lots sur la source : choisissez le lot déplacé.',
+    lot_fifo_risk:
+      'Des sorties sans lot désigné attendent l’envoi : le serveur peut les prendre sur ce lot (le plus ancien d’abord) et le trouver insuffisant.',
     reenter_direct: 'Ressaisir en expédition directe',
     reenter_hint:
-      'Expédition préremplie depuis une demande que le serveur n’a pas acceptée (refusée ou annulée entre-temps) : vérifiez puis expédiez.',
+      'Expédition préremplie depuis une expédition que le serveur n’a pas acceptée, quantités en unité de base : vérifiez les emplacements et les quantités, puis expédiez.',
+    refused_title: 'Expéditions non acceptées par le serveur',
+    refused_label: 'Expédition non acceptée {{doc}}',
+    refused: {
+      NOT_DISPATCHABLE:
+        'La demande {{doc}} a été refusée ou annulée avant votre expédition, que le serveur n’a pas acceptée. Si la marchandise est partie, ressaisissez-la en expédition directe.',
+      ALREADY_DISPATCHED:
+        'La demande {{doc}} a déjà été expédiée depuis un autre appareil : votre expédition n’a pas été acceptée. Ne la ressaisissez que si une seconde expédition a réellement eu lieu.',
+      NOT_REREAD:
+        'Votre expédition de la demande {{doc}} n’a pas été acceptée, et la demande paraît encore à expédier sur ce téléphone : attendez la prochaine synchronisation pour savoir ce qu’elle est devenue.',
+      UNKNOWN:
+        'Une expédition de demande n’a pas été acceptée par le serveur, et la demande n’est plus sur ce téléphone. Ne la ressaisissez que si la marchandise est bien partie.',
+    },
+    refused_confirm: {
+      ALREADY_DISPATCHED: 'Une seconde expédition a réellement eu lieu',
+      UNKNOWN: 'La marchandise est bien partie',
+    },
+    refused_dismiss: 'Ignorer',
     decline_cancel: 'Ne pas refuser',
     decline_submit: 'Confirmer le refus',
     mode_label: 'Opération',
@@ -2007,7 +2027,8 @@ export const fr = {
     move_title: 'Mouvement interne',
     move_hint:
       'Déplacement immédiat vers un autre emplacement du même site, sans transit ni réception : la marchandise passe aussitôt sur la destination.',
-    move_no_destination: 'Aucun autre emplacement actif sur le site de cet emplacement.',
+    move_no_destination:
+      'Aucun autre emplacement de ce site sous votre garde ou celle de ce téléphone ; un stock confié à un autre détenteur se transfère par expédition.',
     move_over_online:
       'Quantité supérieure au disponible ({{products}}) : le serveur refuserait le mouvement. Vérifiez les quantités.',
     move_over_offline:

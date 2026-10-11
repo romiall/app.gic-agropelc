@@ -40,6 +40,7 @@ export function LinesEditor({
           const line = check.draft;
           const note = product && hint ? hint(product) : null;
           const issue = lineIssue ? lineIssue(row) : null;
+          const quantityInvalid = line.quantityText !== '' && check.issue === 'QUANTITY_INVALID';
           return (
             <li
               key={line.key}
@@ -72,6 +73,8 @@ export function LinesEditor({
                     id={`${line.key}-quantity`}
                     className="text-input"
                     inputMode="decimal"
+                    aria-invalid={quantityInvalid}
+                    aria-describedby={quantityInvalid ? `${line.key}-quantity-issue` : undefined}
                     value={line.quantityText}
                     onChange={(event) => onUpdate(line.key, { quantityText: event.target.value })}
                   />
@@ -95,10 +98,16 @@ export function LinesEditor({
                 ) : null}
               </div>
               {extra ? extra(row) : null}
-              {line.quantityText && check.issue === 'QUANTITY_INVALID' ? (
-                <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
+              {quantityInvalid ? (
+                <p id={`${line.key}-quantity-issue`} className="error-message">
+                  {t('loss.issue.QUANTITY_INVALID')}
+                </p>
               ) : null}
-              {issue ? <p className="error-message">{issue}</p> : null}
+              {issue ? (
+                <p id={`${line.key}-issue`} className="error-message">
+                  {issue}
+                </p>
+              ) : null}
               {rows.length > 1 ? (
                 <button type="button" className="secondary" onClick={() => onRemove(line.key)}>
                   {t('transfer.remove_line', { index: index + 1 })}

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
+import type { StockTransferData } from '../sales/types.js';
+import { lotsAt } from './transfer.js';
 import { TransferScreen } from './TransferScreen.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -15,8 +17,14 @@ vi.mock('../auth/AuthContext.js', () => ({
       userId: '01900000-0000-7000-8000-000000000001',
       deviceStatus: 'ACTIVE',
     },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
   }),
 }));
+
+const DEVICE = '01900000-0000-7000-8000-0000000000d0';
+const OTHER_DEVICE = '01900000-0000-7000-8000-0000000000d2';
+const OTHER_USER = '01900000-0000-7000-8000-0000000000e9';
+const REJECTED_DISPATCH = '01900000-0000-7000-8000-0000000000d1';
 
 const STORE = IDS.mobile;
 const REQUEST = '01900000-0000-7000-8000-0000000000c9';
@@ -26,15 +34,136 @@ const PAUL_MOBILE = '01900000-0000-7000-8000-0000000000cd';
 const LOT_1 = '01900000-0000-7000-8000-0000000000ce';
 const LOT_2 = '01900000-0000-7000-8000-0000000000cf';
 
+/** Navigation dans l'historique du routeur de test. */
+function History() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button type="button" onClick={() => void navigate(-1)}>
+        Retour arrière
+      </button>
+      <button type="button" onClick={() => void navigate(1)}>
+        Page suivante
+      </button>
+    </>
+  );
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
+      <History />
       <Routes>
         <Route path="/stock/transferts" element={<TransferScreen key="liste" />} />
         <Route path="/stock/transferts/:transferId" element={<TransferScreen key="detail" />} />
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/** Demande de transfert relue avec d'autres valeurs (statut, unité de saisie). */
+async function setRequest(patch: Partial<StockTransferData>) {
+  const db = getDb();
+  const key = `transfers:STOCK_TRANSFER:${REQUEST}`;
+  const row = await db.projections.get(key);
+  if (!row) throw new Error('demande absente');
+  await db.projections.put({
+    ...row,
+    data: { ...(row.data as unknown as StockTransferData), ...patch },
+  });
+}
+
+/** Expédition de la demande refusée par le serveur (demande plus à expédier, S-40). */
+async function addRejectedDispatch() {
+  await getDb().outbox.add({
+    command_id: REJECTED_DISPATCH,
+    device_seq: 1,
+    command_type: 'inventory.transfer.dispatch',
+    command_version: 1,
+    author_user_id: IDS.user,
+    aggregate_type: 'STOCK_TRANSFER',
+    aggregate_id: REQUEST,
+    base_version: null,
+    depends_on: [],
+    occurred_at: '2026-10-10T08:00:00.000Z',
+    client_created_at: '2026-10-10T08:00:00.000Z',
+    captured_offline: true,
+    backdated_reason: null,
+    attachment_ids: [],
+    payload: {
+      transferId: REQUEST,
+      lines: [
+        {
+          transferLineId: REQUEST_LINE,
+          productId: IDS.eggs,
+          unitCode: 'PLATEAU',
+          quantityBase: 60,
+        },
+      ],
+    },
+    status: 'REJECTED',
+    attempts: 1,
+    next_attempt_at: null,
+    last_error: {
+      code: 'TRANSFER_STATUS_INVALID',
+      message_fr: 'Le transfert doit être au statut REQUESTED.',
+    },
+    server_refs: null,
+  });
+}
+
+/** Emplacement du site principal, sous la garde donnée. */
+function siteLocation(
+  id: string,
+  name: string,
+  custody: { mode: string; user?: string; device?: string },
+) {
+  return {
+    key: `location:LOCATION:${id}`,
+    dataset: 'location',
+    entity_type: 'LOCATION',
+    entity_id: id,
+    scope_type: 'GLOBAL',
+    scope_id: null,
+    row_version: 1,
+    seq: 1,
+    data: {
+      id,
+      site_id: IDS.site,
+      code: id.slice(-4),
+      name,
+      location_type: 'STORE',
+      is_virtual: false,
+      custody_mode: custody.mode,
+      custodian_user_id: custody.user ?? null,
+      designated_device_id: custody.device ?? null,
+      status: 'ACTIVE',
+    },
+  };
+}
+
+/** Œufs du PDV répartis en lots. */
+function eggLots(lots: { id: string; code: string; qty: string }[]) {
+  const total = lots.reduce((sum, lot) => sum + Number(lot.qty), 0);
+  return {
+    key: `stock:STOCK_BALANCE:${IDS.pos}:${IDS.eggs}`,
+    dataset: 'stock',
+    entity_type: 'STOCK_BALANCE',
+    entity_id: IDS.eggs,
+    scope_type: 'LOCATION',
+    scope_id: IDS.pos,
+    row_version: 1,
+    seq: 1,
+    data: {
+      id: IDS.eggs,
+      location_id: IDS.pos,
+      product_id: IDS.eggs,
+      qty_on_hand: String(total),
+      qty_reserved: '0',
+      qty_allocated: '0',
+      lots: lots.map((lot) => ({ lot_id: lot.id, lot_code: lot.code, qty_on_hand: lot.qty })),
+    },
+  };
 }
 
 describe('Transférer (ECR-STK-02)', () => {
@@ -218,16 +347,27 @@ describe('Transférer (ECR-STK-02)', () => {
   it('hors ligne : refus d’une demande indisponible (décision en ligne)', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderAt(`/stock/transferts/${REQUEST}`);
-    expect(await screen.findByRole('button', { name: 'Refuser la demande' })).toBeDisabled();
-    expect(screen.getByText(/Le refus d’une demande se fait en ligne/)).toBeInTheDocument();
+    const decline = await screen.findByRole('button', { name: 'Refuser la demande' });
+    expect(decline).toBeDisabled();
+    expect(decline).toHaveAccessibleDescription(/Le refus d’une demande se fait en ligne/);
   });
 
-  it('expédition d’une demande refusée entre-temps : ressaisie en expédition directe préremplie', async () => {
+  it('expédition hors ligne refusée après avoir quitté le résultat : retrouvée, ressaisie en unité de base, préremplissage consommé', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const request = (await getDb().projections.get(`transfers:STOCK_TRANSFER:${REQUEST}`))
+      ?.data as unknown as StockTransferData;
+    // Demande saisie en plateaux : 2 PLATEAU, soit 60 œufs en unité de base.
+    await setRequest({ lines: request.lines.map((line) => ({ ...line, unit_code: 'PLATEAU' })) });
     const user = userEvent.setup();
     renderAt(`/stock/transferts/${REQUEST}`);
     await user.click(await screen.findByRole('button', { name: 'Expédier la demande' }));
-    await screen.findByText(/Expédition (en cours d’envoi|enregistrée)/);
+    await screen.findByText(/Expédition enregistrée sur ce téléphone/);
     const [sent] = await getDb().outbox.toArray();
+    expect(sent?.payload).toMatchObject({ lines: [{ unitCode: 'PLATEAU', quantityBase: 60 }] });
+
+    // L'utilisateur a quitté l'écran ; au retour du réseau le serveur refuse, la demande est relue
+    // refusée.
+    cleanup();
     await getDb().outbox.update(sent?.command_id as string, {
       status: 'REJECTED',
       last_error: {
@@ -235,14 +375,82 @@ describe('Transférer (ECR-STK-02)', () => {
         message_fr: 'Le transfert doit être au statut REQUESTED.',
       },
     });
-    await user.click(
-      await screen.findByRole('button', { name: 'Ressaisir en expédition directe' }),
-    );
-    expect(await screen.findByText(/Expédition préremplie depuis une demande/)).toBeInTheDocument();
+    await setRequest({ status: 'DECLINED' });
+    renderAt('/stock/transferts');
+    expect(
+      await screen.findByRole('listitem', { name: 'Expédition non acceptée TRF-2026-000012' }),
+    ).toHaveTextContent(/refusée ou annulée avant votre expédition/);
+    // La fiche de la demande la propose aussi, au lieu de « plus à expédier ».
+    cleanup();
+    renderAt(`/stock/transferts/${REQUEST}`);
+    const card = await screen.findByRole('listitem', {
+      name: 'Expédition non acceptée TRF-2026-000012',
+    });
+    expect(screen.queryByText(/n’est plus à expédier/)).not.toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Ressaisir en expédition directe' }));
+    expect(await screen.findByText(/quantités en unité de base/)).toBeInTheDocument();
     expect(screen.getByLabelText('Vers')).toHaveValue(STORE);
     const line = screen.getByRole('listitem', { name: 'Ligne 1' });
     expect(within(line).getByLabelText('Produit')).toHaveValue(IDS.eggs);
     expect(within(line).getByLabelText('Quantité')).toHaveValue('60');
+    // Rien en mode « Déplacer » : la mention ne s'y affiche pas.
+    await user.click(screen.getByRole('radio', { name: 'Déplacer dans le même site' }));
+    expect(screen.queryByText(/quantités en unité de base/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Expédier vers un autre emplacement' }));
+    await user.click(screen.getByRole('button', { name: 'Expédier' }));
+    await screen.findByText(/Expédition enregistrée sur ce téléphone/);
+
+    const direct = (await getDb().outbox.toArray()).find(
+      (command) => command.command_id !== sent?.command_id,
+    );
+    // 60 œufs, et non 60 plateaux.
+    expect(direct?.payload).toMatchObject({
+      fromLocationId: IDS.pos,
+      toLocationId: STORE,
+      lines: [{ productId: IDS.eggs, unitCode: 'U', quantityBase: 60 }],
+    });
+    expect((await getDb().outbox.get(sent?.command_id as string))?.local_flags).toEqual([
+      'REENTERED',
+    ]);
+    // Le préremplissage est consommé : revenir sur l'entrée de l'envoi ne le repropose pas, et
+    // l'expédition refusée n'est plus proposée.
+    await user.click(screen.getByRole('button', { name: 'Retour arrière' }));
+    expect(await screen.findByText(/n’est plus à expédier/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Page suivante' }));
+    const fresh = await screen.findByRole('listitem', { name: 'Ligne 1' });
+    expect(within(fresh).getByLabelText('Quantité')).toHaveValue('');
+    expect(screen.queryByText(/quantités en unité de base/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('listitem', { name: /Expédition non acceptée/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('expédition refusée : demande non relue en attente, déjà expédiée ailleurs ressaisie sur confirmation, puis ignorée', async () => {
+    await addRejectedDispatch();
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    const name = 'Expédition non acceptée TRF-2026-000012';
+    // Demande encore « à expédier » sur l'appareil : attendre la relecture, pas de ressaisie.
+    let card = await screen.findByRole('listitem', { name });
+    expect(card).toHaveTextContent(/paraît encore à expédier/);
+    expect(
+      within(card).queryByRole('button', { name: 'Ressaisir en expédition directe' }),
+    ).not.toBeInTheDocument();
+    // Relue expédiée depuis un autre appareil : ressaisie seulement après confirmation.
+    await setRequest({ status: 'DISPATCHED' });
+    await waitFor(() =>
+      expect(screen.getByRole('listitem', { name })).toHaveTextContent(
+        /déjà été expédiée depuis un autre appareil/,
+      ),
+    );
+    card = screen.getByRole('listitem', { name });
+    const reenter = within(card).getByRole('button', { name: 'Ressaisir en expédition directe' });
+    expect(reenter).toBeDisabled();
+    await user.click(within(card).getByLabelText('Une seconde expédition a réellement eu lieu'));
+    expect(reenter).toBeEnabled();
+    await user.click(within(card).getByRole('button', { name: 'Ignorer' }));
+    await waitFor(() => expect(screen.queryByRole('listitem', { name })).not.toBeInTheDocument());
+    expect((await getDb().outbox.get(REJECTED_DISPATCH))?.local_flags).toEqual(['DISMISSED']);
   });
 
   it('mouvement interne : jamais le stock d’un autre détenteur ; lot désigné quand la source en a plusieurs', async () => {
@@ -265,11 +473,23 @@ describe('Transférer (ECR-STK-02)', () => {
           location_type: 'MOBILE',
           is_virtual: false,
           custody_mode: 'EXCLUSIVE_USER',
-          custodian_user_id: '01900000-0000-7000-8000-0000000000e9',
+          custodian_user_id: OTHER_USER,
           designated_device_id: null,
           status: 'ACTIVE',
         },
       },
+      siteLocation('01900000-0000-7000-8000-0000000000d3', 'Magasin de Jean', {
+        mode: 'EXCLUSIVE_USER',
+        user: OTHER_USER,
+      }),
+      siteLocation('01900000-0000-7000-8000-0000000000d4', 'Chambre de ce téléphone', {
+        mode: 'EXCLUSIVE_DEVICE',
+        device: DEVICE,
+      }),
+      siteLocation('01900000-0000-7000-8000-0000000000d5', 'Chambre d’un autre téléphone', {
+        mode: 'EXCLUSIVE_DEVICE',
+        device: OTHER_DEVICE,
+      }),
       {
         key: `stock:STOCK_BALANCE:${PAUL_MOBILE}:${IDS.eggs}`,
         dataset: 'stock',
@@ -315,21 +535,32 @@ describe('Transférer (ECR-STK-02)', () => {
     const user = userEvent.setup();
     renderAt('/stock/transferts');
     await user.click(await screen.findByRole('radio', { name: 'Déplacer dans le même site' }));
+    for (const field of ['Depuis', 'Vers']) {
+      for (const other of [
+        'Stock mobile de Paul',
+        'Magasin de Jean',
+        'Chambre d’un autre téléphone',
+      ]) {
+        expect(
+          within(screen.getByLabelText(field)).queryByRole('option', { name: other }),
+        ).not.toBeInTheDocument();
+      }
+    }
+    // Emplacement désigné pour ce téléphone : proposé.
     expect(
-      within(screen.getByLabelText('Depuis')).queryByRole('option', {
-        name: 'Stock mobile de Paul',
+      within(screen.getByLabelText('Vers')).getByRole('option', {
+        name: 'Chambre de ce téléphone',
       }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(screen.getByLabelText('Vers')).queryByRole('option', {
-        name: 'Stock mobile de Paul',
-      }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText('Vers'), STORE);
     const line = screen.getByRole('listitem', { name: 'Ligne 1' });
     await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
     await user.type(within(line).getByLabelText('Quantité'), '150');
-    expect(within(line).getByText(/choisissez le lot déplacé/)).toBeInTheDocument();
+    const lotField = within(line).getByLabelText('Lot déplacé');
+    expect(lotField).toHaveAttribute('aria-invalid', 'true');
+    expect(lotField).toHaveAccessibleDescription(/choisissez le lot déplacé/);
+    // Solde du lot en unité de base.
+    expect(within(lotField).getByRole('option', { name: 'COL-1 (200 U)' })).toBeInTheDocument();
     const move = screen.getByRole('button', { name: 'Déplacer' });
     expect(move).toBeDisabled();
     // Lot de 100 : 150 dépasse son solde (bloqué en ligne) ; lot de 200 : admis.
@@ -338,12 +569,76 @@ describe('Transférer (ECR-STK-02)', () => {
     expect(move).toBeDisabled();
     await user.selectOptions(within(line).getByLabelText('Lot déplacé'), LOT_1);
     await waitFor(() => expect(move).toBeEnabled());
+    expect(lotField).toHaveAttribute('aria-invalid', 'false');
     await user.click(move);
     await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
     const [command] = await getDb().outbox.toArray();
     expect(command?.payload).toMatchObject({
       lines: [{ productId: IDS.eggs, quantityBase: 150, lotId: LOT_1 }],
     });
+  });
+
+  it('mouvement interne : lot oublié au changement de produit, totaux par lot en millièmes', async () => {
+    await getDb().projections.put(
+      eggLots([
+        { id: LOT_1, code: 'COL-1', qty: '3.3' },
+        { id: LOT_2, code: 'COL-2', qty: '1' },
+      ]),
+    );
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.click(await screen.findByRole('radio', { name: 'Déplacer dans le même site' }));
+    await user.selectOptions(screen.getByLabelText('Vers'), STORE);
+    // 1,1 + 2,2 sur le lot de 3,3 : admis (pas de faux dépassement en flottants).
+    let line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '1.1');
+    await user.selectOptions(within(line).getByLabelText('Lot déplacé'), LOT_1);
+    await user.click(screen.getByRole('button', { name: /Ajouter une ligne/ }));
+    const second = screen.getByRole('listitem', { name: 'Ligne 2' });
+    await user.selectOptions(within(second).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(second).getByLabelText('Quantité'), '2.2');
+    await user.selectOptions(within(second).getByLabelText('Lot déplacé'), LOT_1);
+    const move = screen.getByRole('button', { name: 'Déplacer' });
+    await waitFor(() => expect(move).toBeEnabled());
+    expect(screen.queryByText(/le serveur refuserait le mouvement/)).not.toBeInTheDocument();
+    // Changement de produit après la désignation du lot : le lot n'est plus envoyé.
+    await user.click(screen.getByRole('button', { name: 'Retirer la ligne 2' }));
+    line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.chicken);
+    await user.clear(within(line).getByLabelText('Quantité'));
+    await user.type(within(line).getByLabelText('Quantité'), '2');
+    await waitFor(() => expect(move).toBeEnabled());
+    await user.click(move);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [command] = await getDb().outbox.toArray();
+    const [sentLine] = (command?.payload as { lines: object[] }).lines;
+    expect(sentLine).toMatchObject({ productId: IDS.chicken, quantityBase: 2 });
+    expect(sentLine).not.toHaveProperty('lotId');
+  });
+
+  it('lots désignables : bornés par le disponible du produit, prudence pour les sorties sans lot', async () => {
+    await getDb().projections.put(
+      eggLots([
+        { id: LOT_1, code: 'COL-1', qty: '200' },
+        { id: LOT_2, code: 'COL-2', qty: '100' },
+      ]),
+    );
+    const refs = await loadSalesReferences(getDb());
+    // Vente de 250 œufs sans lot en attente : le serveur la prendra au plus ancien.
+    const withSale = {
+      ...refs,
+      pending: new Map([[`${IDS.pos}:${IDS.eggs}`, 250]]),
+      pendingOut: new Map([[`${IDS.pos}:${IDS.eggs}`, 250]]),
+    };
+    expect(lotsAt(withSale, IDS.pos, IDS.eggs)).toEqual([
+      { lotId: LOT_1, lotCode: 'COL-1', quantity: 50, cautious: 0 },
+      { lotId: LOT_2, lotCode: 'COL-2', quantity: 50, cautious: 0 },
+    ]);
+    expect(lotsAt(refs, IDS.pos, IDS.eggs)).toEqual([
+      { lotId: LOT_1, lotCode: 'COL-1', quantity: 200, cautious: 200 },
+      { lotId: LOT_2, lotCode: 'COL-2', quantity: 100, cautious: 100 },
+    ]);
   });
 
   it('hors ligne : mouvement interne vers un emplacement du même site, sortie et entrée aussitôt comptées', async () => {

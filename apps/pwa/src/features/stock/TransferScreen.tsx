@@ -5,7 +5,9 @@
  * Commandes `inventory.transfer.dispatch`, `.decline` et `.move_internal` (agrégat `STOCK_TRANSFER`),
  * utilisables hors ligne ; le numéro `TRF-…` est lu dans le jeu `transfers` au tirage suivant. La
  * marchandise expédiée quitte aussitôt le disponible local et part en transit jusqu'à sa réception
- * (ECR-STK-03) ; celle d'un mouvement interne passe aussitôt sur la destination.
+ * (ECR-STK-03) ; celle d'un mouvement interne passe aussitôt sur la destination. Une expédition de
+ * demande que le serveur n'accepte pas (demande plus à expédier, S-40) reste proposée à la ressaisie
+ * en expédition directe tant qu'elle n'est ni ressaisie ni écartée.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -13,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { ROUTES } from '../../app/screens.js';
 import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
+import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
@@ -27,6 +30,7 @@ import {
   declinePayload,
   destinations,
   directDispatchPayload,
+  DISMISSED_FLAG,
   internalDestinations,
   internalMovePayload,
   lotsAt,
@@ -36,10 +40,15 @@ import {
   MAX_TRANSFER_NOTES,
   overAvailable,
   parseDispatched,
+  REENTERED_FLAG,
+  refusedDispatches,
+  refusedDispatchOf,
   requestDispatchPayload,
   requestsToDispatch,
   totalsByProduct,
+  type RefusedDispatch,
   type TransferLineDraft,
+  type TransferPrefill,
 } from './transfer.js';
 
 function availableAt(refs: SalesReferences, location: LocationData, productId: string): number {
@@ -65,6 +74,23 @@ const newLine = (): TransferLineDraft => ({
   quantityText: '',
 });
 
+/** Brouillon sans lot désigné. */
+function withoutLot(line: TransferLineDraft): TransferLineDraft {
+  const { lotId, ...rest } = line;
+  void lotId;
+  return rest;
+}
+
+/** Pose un indice local sur une expédition refusée : ressaisie, ou écartée par l'utilisateur. */
+async function flagRefused(commandId: string, flag: string): Promise<void> {
+  const db = getDb();
+  await db.transaction('rw', db.outbox, async () => {
+    const command = await db.outbox.get(commandId);
+    if (!command || command.local_flags?.includes(flag)) return;
+    await db.outbox.update(commandId, { local_flags: [...(command.local_flags ?? []), flag] });
+  });
+}
+
 /** Messages du résultat selon l'opération. */
 type ResultMessages = 'transfer.result' | 'transfer.decline_result' | 'transfer.move_result';
 
@@ -78,18 +104,6 @@ interface FormProps {
 /** Expédition directe ou mouvement interne. */
 type Mode = 'DISPATCH' | 'MOVE';
 
-/** Expédition directe préremplie (ressaisie d'une expédition de demande refusée par le serveur). */
-interface Prefill {
-  readonly fromLocationId: string | null;
-  readonly toLocationId: string | null;
-  readonly lines: readonly {
-    readonly productId: string;
-    readonly unitCode: string;
-    readonly quantityBase: number;
-  }[];
-}
-
-/** Transporteur et note, communs aux deux formes d'expédition. */
 /** Transporteur, et note pour une expédition directe (la note d'une demande n'est pas conservée). */
 function CarrierFields(props: {
   readonly carrier: string;
@@ -161,7 +175,7 @@ function DirectDispatchForm({
 }: FormProps & {
   readonly mode: Mode;
   readonly deviceId: string | undefined;
-  readonly prefill?: Prefill | undefined;
+  readonly prefill?: TransferPrefill | undefined;
 }) {
   const { t } = useTranslation();
   // Mouvement interne : sources sous la garde de l'utilisateur ou de l'appareil, hors stock mobile.
@@ -177,7 +191,9 @@ function DirectDispatchForm({
       ? prefill.lines.map((line) => ({
           ...newLine(),
           productId: line.productId,
-          unitCode: line.unitCode,
+          // Quantité de l'expédition refusée, en unité de base (l'unité de la demande n'est pas
+          // reprise : la quantité y serait multipliée par le facteur).
+          unitCode: '',
           quantityText: String(line.quantityBase),
         }))
       : [newLine()],
@@ -211,19 +227,34 @@ function DirectDispatchForm({
   // déplacerait le plus ancien) ; la quantité se contrôle contre le solde de ce lot.
   const lotChoices = (productId: string) =>
     mode === 'MOVE' && productId ? lotsAt(refs, source.id, productId) : [];
+  // Lot désigné encore proposé pour le produit de la ligne (sinon il n'est ni compté ni envoyé).
+  const lotValid = (draft: TransferLineDraft) =>
+    !!draft.lotId && lotChoices(draft.productId).some((lot) => lot.lotId === draft.lotId);
   const lotMissing = (draft: TransferLineDraft) =>
-    lotChoices(draft.productId).length > 1 &&
-    !lotChoices(draft.productId).some((lot) => lot.lotId === draft.lotId);
+    lotChoices(draft.productId).length > 1 && !lotValid(draft);
+  // Total par lot désigné, en millièmes comme totalsByProduct.
   const lotTotals = new Map<string, number>();
   for (const { check } of checks) {
-    if (!check.draft.lotId || check.quantityBase === null) continue;
+    if (!lotValid(check.draft) || check.quantityBase === null) continue;
     const key = `${check.draft.productId}|${check.draft.lotId}`;
-    lotTotals.set(key, (lotTotals.get(key) ?? 0) + check.quantityBase);
+    lotTotals.set(key, (lotTotals.get(key) ?? 0) + Math.round(check.quantityBase * 1000));
   }
-  const lotOver = [...lotTotals].filter(([key, quantity]) => {
+  const lotOf = (key: string) => {
     const [productId = '', lotId] = key.split('|');
-    const lot = lotChoices(productId).find((candidate) => candidate.lotId === lotId);
-    return quantity > (lot?.quantity ?? 0);
+    return lotChoices(productId).find((candidate) => candidate.lotId === lotId);
+  };
+  const lotOver = [...lotTotals].filter(
+    ([key, milli]) => milli > Math.round((lotOf(key)?.quantity ?? 0) * 1000),
+  );
+  // Lot désigné que des sorties en attente sans lot (le plus ancien d'abord au serveur) pourraient
+  // épuiser : avertissement seulement.
+  const lotRisk = [...lotTotals].some(([key, milli]) => {
+    const lot = lotOf(key);
+    return (
+      lot !== undefined &&
+      milli <= Math.round(lot.quantity * 1000) &&
+      milli > Math.round(lot.cautious * 1000)
+    );
   });
   // Dépassement du produit sur la source, ou du lot désigné : bloqué en ligne, signalé hors ligne.
   const over = [
@@ -244,7 +275,12 @@ function DirectDispatchForm({
     setBusy(true);
     setSaveError(false);
     try {
-      const lineChecks = checks.map(({ check }) => check);
+      // Un lot désigné qui n'est plus proposé n'est pas envoyé (le serveur prend le plus ancien).
+      const lineChecks = checks.map(({ check }) =>
+        check.draft.lotId && !lotValid(check.draft)
+          ? { ...check, draft: withoutLot(check.draft) }
+          : check,
+      );
       const command = await submitCommand(
         mode === 'MOVE'
           ? {
@@ -271,6 +307,11 @@ function DirectDispatchForm({
               }),
             },
       );
+      if (mode === 'DISPATCH' && prefill) {
+        // Expédition refusée d'origine marquée ressaisie ; en cas d'échec elle reste proposée, et
+        // l'utilisateur peut l'écarter.
+        await flagRefused(prefill.originCommandId, REENTERED_FLAG).catch(() => undefined);
+      }
       onDone(command.command_id, mode === 'MOVE' ? 'transfer.move_result' : 'transfer.result');
     } catch {
       setSaveError(true);
@@ -326,7 +367,14 @@ function DirectDispatchForm({
         products={products}
         onUpdate={(key, patch) =>
           setLines((current) =>
-            current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+            current.map((line) => {
+              if (line.key !== key) return line;
+              const next = { ...line, ...patch };
+              // Le lot désigné ne suit pas un changement de produit.
+              return patch.productId !== undefined && patch.productId !== line.productId
+                ? withoutLot(next)
+                : next;
+            }),
           )
         }
         onRemove={(key) =>
@@ -344,12 +392,15 @@ function DirectDispatchForm({
           const lots = lotChoices(row.check.draft.productId);
           if (lots.length <= 1) return null;
           const lotFieldId = `${row.check.draft.key}-lot`;
+          const missing = lotMissing(row.check.draft);
           return (
             <div className="field">
               <label htmlFor={lotFieldId}>{t('transfer.lot_label')}</label>
               <select
                 id={lotFieldId}
                 className="text-input"
+                aria-invalid={missing}
+                aria-describedby={missing ? `${row.check.draft.key}-issue` : undefined}
                 value={row.check.draft.lotId ?? ''}
                 onChange={(event) =>
                   setLines((current) =>
@@ -364,7 +415,11 @@ function DirectDispatchForm({
                 <option value="">{t('lot_setup.choose')}</option>
                 {lots.map((lot) => (
                   <option key={lot.lotId} value={lot.lotId}>
-                    {`${lot.lotCode} (${formatQuantity(lot.quantity)})`}
+                    {t('transfer.lot_option', {
+                      code: lot.lotCode,
+                      quantity: formatQuantity(lot.quantity),
+                      unit: row.product?.base_unit_code ?? '',
+                    })}
                   </option>
                 ))}
               </select>
@@ -387,6 +442,7 @@ function DirectDispatchForm({
         mode={mode}
         names={over.map((productId) => productNames.get(productId) ?? productId)}
       />
+      {lotRisk ? <p className="text-warn">{t('transfer.lot_fifo_risk')}</p> : null}
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
@@ -439,6 +495,7 @@ function DeclineBlock({
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const commentId = useId();
+  const offlineHintId = useId();
   const commentRef = useRef<HTMLTextAreaElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
   const opened = useRef(false);
@@ -481,11 +538,16 @@ function DeclineBlock({
           type="button"
           className="secondary"
           disabled={!online}
+          aria-describedby={!online ? offlineHintId : undefined}
           onClick={() => setOpen(true)}
         >
           {t('transfer.decline_open')}
         </button>
-        {!online ? <p className="home-muted">{t('transfer.decline_online_only')}</p> : null}
+        {!online ? (
+          <p id={offlineHintId} className="home-muted">
+            {t('transfer.decline_online_only')}
+          </p>
+        ) : null}
       </>
     );
   }
@@ -524,6 +586,99 @@ function DeclineBlock({
           {busy ? t('sales.submitting') : t('transfer.decline_submit')}
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Expédition de demande refusée par le serveur (S-40) : ressaisie en expédition directe, sur
+ * confirmation d'une expédition réelle quand la demande est déjà expédiée ailleurs ou inconnue de
+ * l'appareil ; ou écartée.
+ */
+function RefusedDispatchCard({
+  refused,
+  onReenter,
+}: {
+  readonly refused: RefusedDispatch;
+  readonly onReenter: (prefill: TransferPrefill) => void;
+}) {
+  const { t } = useTranslation();
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const confirmId = useId();
+  const needsConfirm = refused.kind === 'ALREADY_DISPATCHED' || refused.kind === 'UNKNOWN';
+  const canReenter = refused.kind !== 'NOT_REREAD' && refused.prefill.lines.length > 0;
+
+  const dismiss = async () => {
+    setBusy(true);
+    setSaveError(false);
+    try {
+      await flagRefused(refused.commandId, DISMISSED_FLAG);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li
+      className="line-card"
+      aria-label={t('transfer.refused_label', { doc: refused.docNumber ?? '' })}
+    >
+      <p>{t(`transfer.refused.${refused.kind}`, { doc: refused.docNumber ?? '' })}</p>
+      {canReenter && needsConfirm ? (
+        <label className="choice" htmlFor={confirmId}>
+          <input
+            id={confirmId}
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          {t(`transfer.refused_confirm.${refused.kind}`)}
+        </label>
+      ) : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
+      <div className="result-actions">
+        {canReenter ? (
+          <button
+            type="button"
+            disabled={needsConfirm && !confirmed}
+            onClick={() => onReenter(refused.prefill)}
+          >
+            {t('transfer.reenter_direct')}
+          </button>
+        ) : null}
+        <button type="button" className="secondary" disabled={busy} onClick={() => void dismiss()}>
+          {t('transfer.refused_dismiss')}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function RefusedDispatchList({
+  refused,
+  onReenter,
+}: {
+  readonly refused: readonly RefusedDispatch[];
+  readonly onReenter: (prefill: TransferPrefill) => void;
+}) {
+  const { t } = useTranslation();
+  if (refused.length === 0) return null;
+  return (
+    <section className="sale-block" aria-labelledby="transfer-refused-title">
+      <h2 id="transfer-refused-title">{t('transfer.refused_title')}</h2>
+      <ul className="line-list">
+        {refused.map((entry) => (
+          <RefusedDispatchCard key={entry.commandId} refused={entry} onReenter={onReenter} />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -657,7 +812,7 @@ export function TransferScreen() {
   const { state, deviceId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const prefill = (location.state as { prefill?: Prefill } | null)?.prefill;
+  const prefill = (location.state as { prefill?: TransferPrefill } | null)?.prefill;
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
@@ -678,41 +833,19 @@ export function TransferScreen() {
     );
   }
 
-  // Expédition d'une demande refusée par le serveur parce que la demande n'est plus à expédier
-  // (refusée, annulée, déjà expédiée) : le fait physique se ressaisit en expédition directe (S-40).
+  // Expéditions de demande refusées par le serveur parce que la demande n'est plus à expédier
+  // (S-40), tirées de l'outbox : proposées à la ressaisie tant qu'elles ne sont ni ressaisies ni
+  // écartées, même après avoir quitté l'écran de résultat.
+  const refused = refusedDispatches(refs, userId);
   const submittedCommand = submitted
     ? refs.outbox.find((command) => command.command_id === submitted.commandId)
     : undefined;
-  const refusedPayload = submittedCommand?.payload as
-    | {
-        readonly transferId?: string;
-        readonly lines?: readonly {
-          readonly productId?: string;
-          readonly unitCode?: string;
-          readonly quantityBase?: number;
-        }[];
-      }
-    | undefined;
-  const refusedTransfer = refusedPayload?.transferId
-    ? refs.transfers.get(refusedPayload.transferId)
-    : undefined;
-  const refusedDispatch: Prefill | undefined =
-    submittedCommand?.command_type === 'inventory.transfer.dispatch' &&
-    submittedCommand.status === 'REJECTED' &&
-    submittedCommand.last_error?.code === 'TRANSFER_STATUS_INVALID' &&
-    refusedPayload?.transferId
-      ? {
-          fromLocationId: refusedTransfer?.from_location_id ?? null,
-          toLocationId: refusedTransfer?.to_location_id ?? null,
-          lines: (refusedPayload.lines ?? [])
-            .filter((line) => line.productId && line.quantityBase)
-            .map((line) => ({
-              productId: line.productId as string,
-              unitCode: line.unitCode ?? '',
-              quantityBase: line.quantityBase as number,
-            })),
-        }
-      : undefined;
+  const refusedHere = submittedCommand ? refusedDispatchOf(submittedCommand, refs.transfers) : null;
+  const reenter = (next: TransferPrefill) => {
+    setSubmitted(undefined);
+    setMode('DISPATCH');
+    navigate(ROUTES.transfer, { state: { prefill: next } });
+  };
 
   if (submitted && submitted.route === transferId) {
     return (
@@ -726,25 +859,17 @@ export function TransferScreen() {
           >
             <span className="action-label">{t('transfer.another')}</span>
           </Link>
-          {refusedDispatch ? (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                setSubmitted(undefined);
-                navigate(ROUTES.transfer, { state: { prefill: refusedDispatch } });
-              }}
-            >
-              {t('transfer.reenter_direct')}
-            </button>
-          ) : null}
         </CommandResult>
+        {refusedHere ? <RefusedDispatchList refused={[refusedHere]} onReenter={reenter} /> : null}
       </section>
     );
   }
 
-  const onDone = (commandId: string, messages: ResultMessages) =>
+  const onDone = (commandId: string, messages: ResultMessages) => {
     setSubmitted({ commandId, route: transferId, messages });
+    // Préremplissage consommé : un retour arrière ne repropose pas la même expédition.
+    if (prefill) navigate(location.pathname, { replace: true, state: null });
+  };
   const requests = requestsToDispatch(refs);
   const locations = new Map(refs.locations.map((location) => [location.id, location]));
 
@@ -762,7 +887,14 @@ export function TransferScreen() {
           </p>
         ) : null}
         {!entry ? (
-          <p className="alert alert-error">{t('transfer.not_found')}</p>
+          refused.some((candidate) => candidate.transferId === transferId) ? (
+            <RefusedDispatchList
+              refused={refused.filter((candidate) => candidate.transferId === transferId)}
+              onReenter={reenter}
+            />
+          ) : (
+            <p className="alert alert-error">{t('transfer.not_found')}</p>
+          )
         ) : entry.dispatching ? (
           <p className="home-muted">{t('transfer.dispatching')}</p>
         ) : entry.declining ? (
@@ -788,6 +920,7 @@ export function TransferScreen() {
           {t('transfer.offline_banner')}
         </p>
       ) : null}
+      <RefusedDispatchList refused={refused} onReenter={reenter} />
       <section className="sale-block" aria-labelledby="transfer-requests-title">
         <h2 id="transfer-requests-title">{t('transfer.requests_title')}</h2>
         {requests.length === 0 ? (
@@ -842,7 +975,9 @@ export function TransferScreen() {
           </label>
         ))}
       </fieldset>
-      {prefill ? <p className="home-muted">{t('transfer.reenter_hint')}</p> : null}
+      {mode === 'DISPATCH' && prefill ? (
+        <p className="home-muted">{t('transfer.reenter_hint')}</p>
+      ) : null}
       <DirectDispatchForm
         key={`${mode}:${location.key}`}
         refs={refs}

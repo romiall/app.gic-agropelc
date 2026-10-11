@@ -33,7 +33,7 @@ import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import { MAX_QUANTITY, parseQuantity, saleUnitsOf, type SaleUnit } from '../sales/sale-form.js';
 import type { LocationData, ProductData, StockTransferData } from '../sales/types.js';
-import { lotStockKey, stockKey } from '../sales/stock.js';
+import { lotStockKey, pendingWithoutLot, physicalLeft, stockKey } from '../sales/stock.js';
 import { stockLocations } from './stock-view.js';
 
 export const MAX_TRANSFER_NOTES = 2000;
@@ -223,25 +223,131 @@ export function internalMovePayload(input: {
   };
 }
 
-/** Lots identifiés en stock d'un produit sur un emplacement, nets de l'attente qui les désigne. */
+/**
+ * Lots identifiés en stock d'un produit sur un emplacement : nets de l'attente qui les désigne et
+ * bornés par le disponible physique du produit (`quantity`, contrôle bloquant en ligne) ; `cautious`
+ * retranche en plus les sorties en attente sans lot désigné, que le serveur prend au plus ancien
+ * (avertissement seulement).
+ */
 export function lotsAt(
-  refs: Pick<SalesReferences, 'stock' | 'pendingLots'>,
+  refs: Pick<SalesReferences, 'stock' | 'pending' | 'pendingOut' | 'pendingLots'>,
   locationId: string,
   productId: string,
-): { readonly lotId: string; readonly lotCode: string; readonly quantity: number }[] {
-  return (refs.stock.get(stockKey(locationId, productId))?.lots ?? [])
+): {
+  readonly lotId: string;
+  readonly lotCode: string;
+  readonly quantity: number;
+  readonly cautious: number;
+}[] {
+  const key = stockKey(locationId, productId);
+  const productLeft = physicalLeft(refs.stock.get(key), refs.pending.get(key) ?? 0);
+  const unlotted = pendingWithoutLot(refs, locationId, productId);
+  return (refs.stock.get(key)?.lots ?? [])
     .filter((lot) => lot.lot_id !== null)
-    .map((lot) => ({
-      lotId: lot.lot_id as string,
-      lotCode: lot.lot_code ?? '',
-      quantity:
-        Math.round(
-          (Number(lot.qty_on_hand) -
-            (refs.pendingLots.get(lotStockKey(locationId, productId, lot.lot_id as string)) ?? 0)) *
-            1000,
-        ) / 1000,
-    }))
+    .map((lot) => {
+      const designated =
+        Number(lot.qty_on_hand) -
+        (refs.pendingLots.get(lotStockKey(locationId, productId, lot.lot_id as string)) ?? 0);
+      const quantity = Math.round(Math.min(designated, productLeft) * 1000) / 1000;
+      return {
+        lotId: lot.lot_id as string,
+        lotCode: lot.lot_code ?? '',
+        quantity,
+        cautious: Math.max(0, Math.round((quantity - unlotted) * 1000) / 1000),
+      };
+    })
     .filter((lot) => lot.quantity > 0);
+}
+
+/** Expédition directe préremplie (ressaisie d'une expédition de demande refusée par le serveur). */
+export interface TransferPrefill {
+  readonly fromLocationId: string | null;
+  readonly toLocationId: string | null;
+  /** Lignes en unité de base (l'unité de la demande n'est pas reprise). */
+  readonly lines: readonly { readonly productId: string; readonly quantityBase: number }[];
+  /** Expédition refusée d'origine, marquée ressaisie à l'envoi. */
+  readonly originCommandId: string;
+}
+
+/** Indices posés sur une expédition refusée : ressaisie, ou écartée par l'utilisateur. */
+export const REENTERED_FLAG = 'REENTERED';
+export const DISMISSED_FLAG = 'DISMISSED';
+
+/**
+ * Ce que l'on sait de la demande d'une expédition refusée : refusée ou annulée (ressaisie proposée),
+ * déjà expédiée ailleurs (ressaisie seulement sur confirmation d'une seconde expédition physique),
+ * encore « à expédier » sur l'appareil (relecture attendue), ou inconnue.
+ */
+export type RefusedKind = 'NOT_DISPATCHABLE' | 'ALREADY_DISPATCHED' | 'NOT_REREAD' | 'UNKNOWN';
+
+export interface RefusedDispatch {
+  readonly commandId: string;
+  readonly transferId: string;
+  readonly docNumber: string | null;
+  readonly kind: RefusedKind;
+  readonly prefill: TransferPrefill;
+}
+
+/**
+ * Expédition d'une demande refusée par le serveur parce que la demande n'est plus à expédier
+ * (`TRANSFER_STATUS_INVALID`, S-40), ni ressaisie ni écartée ; `null` sinon.
+ */
+export function refusedDispatchOf(
+  command: SalesReferences['outbox'][number],
+  transfers: ReadonlyMap<string, StockTransferData>,
+): RefusedDispatch | null {
+  if (command.command_type !== 'inventory.transfer.dispatch') return null;
+  if (command.status !== 'REJECTED' || command.last_error?.code !== 'TRANSFER_STATUS_INVALID') {
+    return null;
+  }
+  if (
+    command.local_flags?.includes(REENTERED_FLAG) ||
+    command.local_flags?.includes(DISMISSED_FLAG)
+  ) {
+    return null;
+  }
+  const payload = command.payload as {
+    readonly transferId?: string;
+    readonly lines?: readonly { readonly productId?: string; readonly quantityBase?: number }[];
+  };
+  if (!payload.transferId) return null;
+  const transfer = transfers.get(payload.transferId);
+  const kind: RefusedKind = !transfer
+    ? 'UNKNOWN'
+    : transfer.status === 'REQUESTED'
+      ? 'NOT_REREAD'
+      : transfer.status === 'DECLINED' || transfer.status === 'CANCELLED'
+        ? 'NOT_DISPATCHABLE'
+        : 'ALREADY_DISPATCHED';
+  return {
+    commandId: command.command_id,
+    transferId: payload.transferId,
+    docNumber: transfer?.doc_number ?? null,
+    kind,
+    prefill: {
+      fromLocationId: transfer?.from_location_id ?? null,
+      toLocationId: transfer?.to_location_id ?? null,
+      lines: (payload.lines ?? [])
+        .filter((line) => line.productId && line.quantityBase)
+        .map((line) => ({
+          productId: line.productId as string,
+          quantityBase: line.quantityBase as number,
+        })),
+      originCommandId: command.command_id,
+    },
+  };
+}
+
+/** Expéditions refusées de l'utilisateur encore à traiter, la plus récente d'abord. */
+export function refusedDispatches(
+  refs: Pick<SalesReferences, 'outbox' | 'transfers'>,
+  userId: string,
+): RefusedDispatch[] {
+  return refs.outbox
+    .filter((command) => command.author_user_id === userId)
+    .map((command) => refusedDispatchOf(command, refs.transfers))
+    .filter((entry): entry is RefusedDispatch => entry !== null)
+    .reverse();
 }
 
 /** Destinations possibles : emplacements physiques actifs autres que la source, par nom. */
