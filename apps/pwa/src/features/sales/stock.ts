@@ -94,12 +94,19 @@ export function pendingConsumption(
       }
       continue;
     }
+    // Expédition saisie sur l'appareil : sortie de la source (directe, ou celle de la demande).
+    const dispatchSource =
+      command.command_type === 'inventory.transfer.dispatch'
+        ? (payload.fromLocationId ??
+          transfers.get((command.payload as { transferId?: string }).transferId ?? '')
+            ?.from_location_id)
+        : undefined;
     const locationId =
       command.command_type === 'sales.sale.record'
         ? payload.fromLocationId
         : command.command_type === 'sales.order.place'
           ? payload.fulfilmentLocationId
-          : undefined;
+          : dispatchSource;
     if (!locationId) continue;
     for (const line of payload.lines ?? []) {
       if (!line.productId || !line.quantityBase) continue;

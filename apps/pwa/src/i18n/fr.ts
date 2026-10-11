@@ -102,6 +102,7 @@ export const fr = {
       service: 'Prendre / finir le service',
       loss: 'Déclarer une perte',
       receive: 'Recevoir un transfert',
+      transfer: 'Transférer',
     },
   },
   sales: {
@@ -633,6 +634,51 @@ export const fr = {
       WARNING: 'Dérogation demandée, avec un signalement.',
       CONFLICT: 'Demande de dérogation mise en attente d’examen (conflit).',
       REJECTED: 'Dérogation refusée : {{reason}}',
+    },
+  },
+  transfer: {
+    offline_banner:
+      'Hors ligne : l’expédition sera enregistrée sur ce téléphone et envoyée au retour du réseau ; la marchandise quitte aussitôt le disponible.',
+    requests_title: 'Demandes à expédier',
+    no_request: 'Aucune demande de transfert à expédier depuis vos emplacements.',
+    open_request: 'Expédier la demande {{doc}}',
+    route: '{{from}} → {{to}}',
+    lines_count_one: '{{count}} ligne',
+    lines_count_other: '{{count}} lignes',
+    dispatching_badge: 'Expédition en attente d’envoi',
+    dispatching:
+      'Cette demande est déjà expédiée depuis ce téléphone ; l’expédition attend l’envoi.',
+    not_found:
+      'Cette demande n’est plus à expédier (déjà expédiée, annulée, ou hors de vos emplacements).',
+    back: '← Transférer',
+    request_title: 'Expédier la demande {{doc}}',
+    requested: 'Demandé : {{quantity}} {{unit}}',
+    dispatched_label: 'Expédié ({{unit}})',
+    nothing: 'Indiquez au moins une quantité à expédier.',
+    direct_title: 'Nouvelle expédition',
+    source_label: 'Depuis',
+    destination_label: 'Vers',
+    destination_placeholder: 'Choisir la destination',
+    line_label: 'Ligne {{index}}',
+    add_line: '+ Ajouter une ligne',
+    remove_line: 'Retirer la ligne {{index}}',
+    carrier_label: 'Transporteur (facultatif)',
+    notes_label: 'Note (facultatif)',
+    over_online:
+      'Quantité supérieure au disponible ({{products}}) : le serveur refuserait l’expédition. Vérifiez les quantités.',
+    over_offline:
+      'Quantité supérieure au disponible connu ({{products}}) : l’expédition sera tout de même enregistrée et signalée.',
+    submit: 'Expédier',
+    submit_request: 'Expédier la demande',
+    another: 'Autre expédition',
+    result: {
+      WAITING_offline:
+        'Expédition enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Expédition en cours d’envoi…',
+      DONE: 'Expédition enregistrée : la marchandise est en transit.',
+      WARNING: 'Expédition enregistrée, avec un signalement.',
+      CONFLICT: 'Expédition mise en attente d’examen (conflit).',
+      REJECTED: 'Expédition refusée : {{reason}}',
     },
   },
   receive: {

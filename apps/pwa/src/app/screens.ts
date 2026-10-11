@@ -42,6 +42,9 @@ export const ROUTES = {
   receive: '/stock/receptions',
   receivePattern: '/stock/receptions/:transferId',
   receiveOne: (transferId: string) => `/stock/receptions/${transferId}`,
+  transfer: '/stock/transferts',
+  transferPattern: '/stock/transferts/:transferId',
+  transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
@@ -115,6 +118,8 @@ export const ROLE_SETS = {
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-STK-02 (`inventory.transfer.dispatch`) : magasinier et responsable de ferme. */
+  transferDispatch: ['MAGASINIER', 'RESP_FERME'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
   transferReceive: [
     'COMMERCIAL_TERRAIN',
@@ -271,6 +276,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     // « Alertes de stock » du magasinier : l'écran s'ouvre sur les produits sous le seuil.
     actionCodes: ['STOCK_ALERTS'],
     actionQuery: { STOCK_ALERTS: '?alertes=1' },
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-02',
+    path: ROUTES.transfer,
+    labelKey: 'transfer',
+    group: 'stock',
+    roles: ROLE_SETS.transferDispatch,
+    actionCodes: ['TRANSFER'],
     offline: true,
   },
   {
