@@ -36,6 +36,7 @@ export const ROUTES = {
   dailyEntry: (lotId: string) => `/production/lots/${lotId}`,
   eggCollection: '/production/collecte',
   eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
+  purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
@@ -141,6 +142,15 @@ export const ROLE_SETS = {
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-PRD-01 et 02 (`production.daily.record`, jeu `production` des fermes) : production, ferme. */
   production: ['RESP_PRODUCTION', 'RESP_FERME'],
+  /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
+  purchaseRequest: [
+    'DIRECTION',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'RESP_ACHATS',
+    'FINANCE',
+  ],
   /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
   purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-STK-08 (`inventory.consumption.record`) : magasinier et responsable de ferme. */
@@ -368,6 +378,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: ROLE_SETS.priceSimulator,
     actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-APP-02',
+    path: ROUTES.purchaseRequests,
+    labelKey: 'purchase_request',
+    group: 'procurement',
+    roles: ROLE_SETS.purchaseRequest,
+    // « Demandes d'achat » du responsable des achats.
+    actionCodes: ['REQUESTS'],
     offline: true,
   },
   {

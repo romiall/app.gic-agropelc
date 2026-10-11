@@ -20,6 +20,8 @@ export interface ProductData {
   readonly status: string;
   /** Intrant consommable sur un lot (aliment, produit vétérinaire…). */
   readonly is_consumable?: boolean;
+  /** Produit achetable (demande d'achat, BR-APP-001). */
+  readonly is_purchasable?: boolean;
 }
 
 /** (`product_unit`) `factor_to_base` : chaîne `DECIMAL(14,6)`. */
@@ -29,6 +31,8 @@ export interface ProductUnitData {
   readonly unit_code: string;
   readonly factor_to_base: string;
   readonly is_sales_unit: boolean;
+  /** Conditionnement d'achat (demandes et bons de commande). */
+  readonly is_purchase_unit?: boolean;
   readonly is_active: boolean;
 }
 
@@ -266,6 +270,26 @@ export interface EggCollectionData {
   readonly status: string;
   readonly occurred_at: string;
   readonly grades: readonly { readonly product_id: string; readonly quantity: number }[];
+}
+
+/** (`procurement`, `USER` = demandeur) demande d'achat, tous statuts. */
+export interface PurchaseRequestData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly site_id: string;
+  readonly requested_by: string;
+  readonly justification: string;
+  readonly needed_by_date: string | null;
+  readonly status: string;
+  readonly estimated_total_xaf: number | null;
+  readonly occurred_at: string;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly product_id: string;
+    readonly unit_code: string;
+    readonly quantity: string | number;
+    readonly quantity_base: string | number;
+  }[];
 }
 
 /** (`procurement`, `GLOBAL`) fournisseur actif. */

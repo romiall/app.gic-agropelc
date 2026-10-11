@@ -26,6 +26,7 @@ import type {
   LotWeighingData,
   ProductionLotData,
   PurchaseOrderData,
+  PurchaseRequestData,
   SalesTargetData,
   SupplierData,
   VisitData,
@@ -89,6 +90,7 @@ export interface SalesReferences {
   readonly productionPulledAt: string | undefined;
   /** Achats (jeu `procurement`) : bons de commande à recevoir, réceptions récentes, fournisseurs. */
   readonly purchaseOrders: readonly PurchaseOrderData[];
+  readonly purchaseRequests: readonly PurchaseRequestData[];
   readonly goodsReceipts: readonly GoodsReceiptData[];
   readonly suppliers: ReadonlyMap<string, SupplierData>;
   readonly procurementPulledAt: string | undefined;
@@ -285,6 +287,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     lotObservations,
     eggCollections,
     productionCursor,
+    purchaseRequests,
     purchaseOrders,
     goodsReceipts,
     suppliers,
@@ -329,6 +332,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<LotObservationData>(db, 'production', 'LOT_OBSERVATION'),
     listProjected<EggCollectionData>(db, 'production', 'EGG_COLLECTION'),
     db.syncCursors.get('production'),
+    listProjected<PurchaseRequestData>(db, 'procurement', 'PURCHASE_REQUEST'),
     listProjected<PurchaseOrderData>(db, 'procurement', 'PURCHASE_ORDER'),
     listProjected<GoodsReceiptData>(db, 'procurement', 'GOODS_RECEIPT'),
     listProjected<SupplierData>(db, 'procurement', 'SUPPLIER'),
@@ -423,6 +427,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     eggCollections,
     productionPulledAt: productionCursor?.pulled_at,
     purchaseOrders,
+    purchaseRequests,
     goodsReceipts,
     suppliers: byId(suppliers),
     procurementPulledAt: procurementCursor?.pulled_at,
