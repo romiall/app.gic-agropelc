@@ -18,6 +18,7 @@ import { formatBusinessDay } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { applicableRules, parseSimQuantity, SIM_CHANNELS } from './price-sim.js';
+import { describeScope } from './scope.js';
 
 export function PriceSimulatorScreen() {
   const { t } = useTranslation();
@@ -82,37 +83,7 @@ export function PriceSimulatorScreen() {
       : [];
   const [winner, ...others] = rules;
 
-  const describe = (rule: PriceRule): string =>
-    [
-      rule.siteId
-        ? t('price_sim.scope.site', { name: refs.sites.get(rule.siteId)?.name ?? '' })
-        : null,
-      rule.zoneId
-        ? t('price_sim.scope.zone', { name: refs.zones.get(rule.zoneId)?.name ?? '' })
-        : null,
-      rule.customerCategoryId
-        ? t('price_sim.scope.category', {
-            name:
-              refs.customerCategories.find((category) => category.id === rule.customerCategoryId)
-                ?.name ?? '',
-          })
-        : null,
-      rule.channelCode
-        ? t('price_sim.scope.channel', {
-            name: t(`price_sim.channel.${rule.channelCode}`, { defaultValue: rule.channelCode }),
-          })
-        : null,
-      rule.minQuantity !== null
-        ? t('price_sim.scope.min_quantity', {
-            quantity: formatQuantity(rule.minQuantity),
-            unit: pricingUnit,
-          })
-        : null,
-      rule.commercialCampaignId ? t('price_sim.scope.campaign') : null,
-      t('price_sim.scope.priority', { priority: rule.priority }),
-    ]
-      .filter(Boolean)
-      .join(' · ') || t('price_sim.scope.general');
+  const describe = (rule: PriceRule): string => describeScope(rule, refs, pricingUnit, t);
 
   const select = (
     id: string,

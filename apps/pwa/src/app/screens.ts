@@ -41,6 +41,7 @@ export const ROUTES = {
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
   priceSimulator: '/prix/simulateur',
+  priceRules: '/prix/regles',
   stock: '/stock',
   portfolio: '/clients',
   performance: '/objectifs',
@@ -130,6 +131,8 @@ export const ROLE_SETS = {
   performance: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  /** ECR-PRX-02 : rédaction (`pricing.rule.draft`) ; activation et fin par la Direction (AV-062). */
+  priceRules: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** ECR-PRX-03 : responsable commercial et direction (03-parcours-et-ecrans.md §3.2). */
   priceSimulator: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
@@ -370,6 +373,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.consumptionRecord,
     actionCodes: [],
     offline: true,
+  },
+  {
+    id: 'ECR-PRX-02',
+    path: ROUTES.priceRules,
+    labelKey: 'price_rules',
+    group: 'sales',
+    roles: ROLE_SETS.priceRules,
+    // « Tarifs » de la Direction : activer les règles de prix.
+    actionCodes: ['PRICES'],
+    offline: false,
   },
   {
     id: 'ECR-PRX-03',

@@ -376,7 +376,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
           command.command_type.startsWith('crm.') ||
           command.command_type.startsWith('fieldwork.') ||
           command.command_type.startsWith('procurement.') ||
-          command.command_type.startsWith('production.'),
+          command.command_type.startsWith('production.') ||
+          command.command_type.startsWith('pricing.'),
       )
       .toArray(),
   ]);

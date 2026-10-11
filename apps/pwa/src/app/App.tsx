@@ -26,6 +26,7 @@ import { NewProspectScreen } from '../features/crm/NewProspectScreen.js';
 import { NewVisitScreen } from '../features/crm/NewVisitScreen.js';
 import { PerformanceScreen } from '../features/crm/PerformanceScreen.js';
 import { ServiceScreen } from '../features/fieldwork/ServiceScreen.js';
+import { PriceRulesScreen } from '../features/pricing/PriceRulesScreen.js';
 import { PriceSimulatorScreen } from '../features/pricing/PriceSimulatorScreen.js';
 import { ReceiptScreen } from '../features/procurement/ReceiptScreen.js';
 import { RequestScreen } from '../features/procurement/RequestScreen.js';
@@ -116,6 +117,7 @@ function AppShell() {
             <Route path={ROUTES.performance} element={<PerformanceScreen />} />
             <Route path={ROUTES.service} element={<ServiceScreen />} />
             <Route path={ROUTES.priceSimulator} element={<PriceSimulatorScreen />} />
+            <Route path={ROUTES.priceRules} element={<PriceRulesScreen />} />
             <Route path={ROUTES.productionLots} element={<LotsScreen />} />
             <Route path={ROUTES.dailyEntryPattern} element={<DailyEntryScreen />} />
             <Route path={ROUTES.eggCollection} element={<EggCollectionScreen />} />
