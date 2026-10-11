@@ -27,7 +27,7 @@
 | D16-CAT | `catalog` |
 | Transverse technique | `platform` |
 
-**Lectures HTTP (P5-17).** Les contrôleurs de lecture appartiennent à la couche de transport (`apps/server/src/<module>-api/`, `apps/server/src/sync/`), non aux modules : ils composent au besoin les lectures publiques de plusieurs modules (le PDV et sa caisse, la session de caisse et ses sous-totaux par vendeur). Ils partagent la boîte à outils `apps/server/src/read-api/read-access.ts` (`ReadAccess`, `parseOrThrow`), extraite du patron de P4-10 : 400 `VALIDATION_ERROR`, 403 `FORBIDDEN` audité (`access.denied`), 404 `NOT_FOUND` audité hors portée ou inconnu. Aucun module n'importe ce dossier.
+**Lectures HTTP (P5-17).** Les contrôleurs de lecture appartiennent à la couche de transport (`apps/server/src/<module>-api/`, `apps/server/src/sync/`), non aux modules : ils composent au besoin les lectures publiques de plusieurs modules (le PDV et sa caisse, la session de caisse et ses sous-totaux par vendeur). Ils partagent la boîte à outils `apps/server/src/read-api/read-access.ts` (`ReadAccess`, `parseOrThrow`), extraite du patron de P4-10 : 400 `VALIDATION_ERROR`, 403 `FORBIDDEN` audité (`access.denied`), 404 `NOT_FOUND` audité hors portée ou inconnu. Aucun module n'importe ce dossier. Les tableaux d'analyse livrés avant P9 suivent le même patron (`apps/server/src/distribution-api/`, P5-20, ADR-035) ; `read-api/distribution-targets.ts` résout les cibles d'un ensemble de PDV (sites, emplacements de vente, caisses), pour le tableau et pour l'accueil.
 
 ## 1. `platform` (noyau partagé technique)
 

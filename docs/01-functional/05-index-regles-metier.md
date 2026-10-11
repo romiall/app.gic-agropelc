@@ -141,7 +141,7 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 | BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds compté à l'ouverture + Σ entrées − Σ sorties des mouvements du registre… | C (CM §54 « anomalie de caisse ») / D (ADR-032) / AV-057 |
 | BR-DIS-008 | Une session validée est immuable. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à v… | D |
 | BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie `TRANSFER_OUT` du montant envoyé de la caisse du PDV) puis réception (entrée `TRAN… | D (ADR-032 §7) / AV-153, AV-172, AV-175 |
-| BR-DIS-010 | Indicateurs de distribution par PDV × produit × période (sur `occurred_at`) : envoyé = Σ quantités expédiées vers le PDV ; reçu = Σ quantit… | C (CM §12, §2/Distribution) / D (formules) |
+| BR-DIS-010 | Indicateurs de distribution d'un PDV, calculés à la demande (BR-ANA-001) par emplacement de vente du PDV × produit × période de jours métie… | C (CM §12, §2/Distribution) pour les notions / D (formules) |
 | BR-DIS-011 | La suggestion de réapprovisionnement ne crée jamais de transfert automatiquement : un humain crée la demande ou l'expédition. | D (CM §54 « provoquer une action ») |
 | BR-DIS-012 | Les retours vers le magasin et les transferts entre PDV sont des transferts ordinaires (BR-STK-020). | C (CM §22) |
 | BR-DIS-013 | Les petites dépenses payées depuis la caisse du PDV sont permises pour les catégories autorisées et sous un plafond. Elles diminuent le sol… | AV-058 |

@@ -30,9 +30,11 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { deviceFreshness, devicesOfSites } from '../src/sync/device-freshness.js';
+import { openConflictSummary, recordConflict } from '../src/platform/sync/conflicts.js';
 import {
   allocationPositions,
   distributionFlowsOf,
+  distributionKpisOf,
   listStockBalances,
   locationFlows,
   recentLosses,
@@ -46,23 +48,31 @@ import {
   toDeliverByLocation,
 } from '../src/modules/sales/application/public/index.js';
 import {
+  cashSessionThresholdsAt,
   cashSessionsOverview,
   pendingCashTransfers,
 } from '../src/modules/finance/application/public/index.js';
 import {
+  assignTestRole,
   closeTestDb,
   db,
   freshUuid,
   insertTestDevice,
   insertTestLocation,
   insertTestSite,
+  insertTestTeam,
   insertTestUser,
   insertTestZone,
   neutralizePolicy,
   withoutActivePolicies,
   freshPhone,
 } from './helpers.js';
-import { fund, newActor, tx, type Actor } from './cash-transfer-fixtures.js';
+import { fund, newActor, roleIdOf, tx, type Actor } from './cash-transfer-fixtures.js';
+import {
+  distributionDashboardResponseSchema,
+  homeResponseSchema,
+  type HomeResponse,
+} from '@gic/contracts';
 import { OfflineDevice } from './device-harness.js';
 
 const D0 = '2026-09-14';
@@ -1192,6 +1202,442 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
       overcommitted: true,
       holderRemainingQty: 0,
       availableToHolderQty: -3,
+    });
+  });
+
+  describe('AT-042 : GET /api/v1/analytics/dashboards/distribution', () => {
+    const tokenOf = (actor: Actor) =>
+      signAccessToken(
+        app.get(JWT_KEYS).privateKey,
+        { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
+        clock.now(),
+      );
+    const dashboard = async (actor: Actor, query: string) => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/analytics/dashboards/distribution?${query}`,
+        headers: { authorization: `Bearer ${await tokenOf(actor)}` },
+      });
+      return response;
+    };
+    const okDashboard = async (actor: Actor, query: string) => {
+      const response = await dashboard(actor, query);
+      expect(response.statusCode, response.body).toBe(200);
+      return distributionDashboardResponseSchema.parse(response.json());
+    };
+
+    beforeAll(async () => {
+      // Session ouverte aujourd'hui à la caisse du PDV : détail de caisse visible ou masqué.
+      await ok(venP, {
+        type: 'finance.cash_session.open',
+        aggregateType: 'CASH_SESSION',
+        aggregateId: freshUuid(),
+        occurredAt: new Date().toISOString(),
+        payload: { cashAccountId: posAcc, countedXaf: 8_000 },
+      });
+    });
+
+    it('envoyé, reçu, vendu, perdu, restant, encaissé du PDV : les mêmes valeurs que les fonctions des modules (BR-ANA-009)', async () => {
+      const body = await okDashboard(dir, `from=${D1}&to=${D3}&site_id=${siteP}`);
+      expect(body.period).toEqual({ code: 'CUSTOM', fromDay: D1, toDay: D3 });
+      expect(body.scope).toEqual({ allSites: false, pointsOfSaleCount: 1 });
+      const [pos] = body.pointsOfSale;
+      expect(pos).toMatchObject({ siteId: siteP, salesLocationId: counter, custodyMode: 'SHARED' });
+      const row = pos!.products.find((line) => line.productId === productId)!;
+      const [flow] = await locationFlows(db, {
+        locationIds: [counter],
+        period: period(D1, D3),
+        productIds: [productId],
+      });
+      const kpis = distributionKpisOf(flow!);
+      expect(row).toMatchObject({
+        stocked: true,
+        sentQty: 130,
+        receivedQty: 129,
+        soldNetQty: 11,
+        soldNetXaf: 11 * PRICE,
+        lostQty: 5,
+        lostPendingQty: 0,
+        transitPendingQty: 0,
+        openingQty: 0,
+        remainingQty: 115,
+        toDeliverQty: 3,
+        allocatedQty: 9,
+        unallocatedQty: 106,
+        overcommitted: false,
+        replenish: null,
+        remainingValueXaf: kpis.remainingValueXaf,
+        lostValueXaf: kpis.lostValueXaf,
+        reconciliation: { residualQty: 0, reconciled: true, salesMatchLedger: true },
+      });
+      expect(row.lostQty).toBe(kpis.lostQty);
+      expect(row.sentQty).toBe(kpis.sentQty);
+      expect(pos!.sales).toEqual({
+        soldXaf: 15 * PRICE,
+        cancelledXaf: 4 * PRICE,
+        netXaf: 11 * PRICE,
+      });
+      expect(pos!.cashed).toMatchObject({
+        amountXaf: 5_000,
+        paymentsCount: 1,
+        byMethod: [{ paymentMethodCode: 'ESPECES', amountXaf: 5_000, paymentsCount: 1 }],
+      });
+      expect(pos!.cashed.amountXaf).toBe(
+        (await cashedSummary(db, { siteIds: [siteP] }, period(D1, D3))).amountXaf,
+      );
+      expect(pos!.cash).toMatchObject({
+        accountsCount: 1,
+        pendingValidationCount: 1,
+        transfers: { inTransitCount: 1, inTransitXaf: 1_000, overdueCount: 1, discrepancyCount: 0 },
+      });
+      expect(pos!.cash.openSession).toMatchObject({ status: 'OPEN', severity: expect.any(String) });
+      expect(pos!.devices).toMatchObject({ count: 3, staleCount: 1 });
+      expect(pos!.reconciled).toBe(true);
+      expect(body.freshness).toMatchObject({ devicesCount: 3, staleDevices: 1 });
+      expect(body.totals).toMatchObject({
+        soldNetXaf: 11 * PRICE,
+        cashedXaf: 5_000,
+        paymentsCount: 1,
+      });
+      // Jour par jour : l'identité tient chaque jour ; le retour à la source compte à sa date.
+      for (const [day, sent] of [
+        [D1, 150],
+        [D2, -30],
+        [D3, 10],
+      ] as const) {
+        const daily = await okDashboard(dir, `from=${day}&to=${day}&site_id=${siteP}`);
+        const line = daily.pointsOfSale[0]!.products.find((p) => p.productId === productId)!;
+        expect(line.sentQty, day).toBe(sent);
+        expect(line.reconciliation?.reconciled, day).toBe(true);
+      }
+    });
+
+    it('masque par droit : valeurs, détail de caisse, receveurs, auteurs (AV-205, AV-206)', async () => {
+      const query = `from=${D1}&to=${D3}&site_id=${siteP}`;
+      const view = async (actor: Actor) => {
+        const pos = (await okDashboard(actor, query)).pointsOfSale[0]!;
+        const row = pos.products.find((line) => line.productId === productId)!;
+        return {
+          value: row.remainingValueXaf !== null,
+          cashDetail: pos.cash.openSession?.detail !== null,
+          receivers: pos.cashed.byReceiver !== null,
+          authors: pos.devices.items.every((device) => device.authors !== null),
+        };
+      };
+      expect(await view(dir)).toEqual({
+        value: true,
+        cashDetail: true,
+        receivers: true,
+        authors: true,
+      });
+      expect(await view(fin)).toEqual({
+        value: true,
+        cashDetail: true,
+        receivers: true,
+        authors: false,
+      });
+      expect(await view(venP)).toEqual({
+        value: false,
+        cashDetail: true,
+        receivers: true,
+        authors: false,
+      });
+      expect(await view(magP)).toEqual({
+        value: false,
+        cashDetail: false,
+        receivers: false,
+        authors: true,
+      });
+      const masked = await okDashboard(magP, query);
+      expect(masked.totals.remainingValueXaf).toBeNull();
+      expect(masked.totals.lostValueXaf).toBeNull();
+    });
+
+    it('refus et périmètre : 403 sans le droit, 404 hors portée, vide sans PDV', async () => {
+      for (const actor of [admin, comS]) {
+        expect((await dashboard(actor, `site_id=${siteP}`)).statusCode).toBe(403);
+      }
+      expect((await dashboard(magS, `site_id=${siteP}`)).statusCode).toBe(404);
+      const denied = await db
+        .selectFrom('audit_audit_log')
+        .select('error_code')
+        .where('actor_user_id', '=', toBin(magS.userId))
+        .where('action', '=', 'access.denied')
+        .execute();
+      expect(denied.map((row) => row.error_code)).toContain('NOT_FOUND');
+      const empty = await okDashboard(magS, `from=${D1}&to=${D3}`);
+      expect(empty.pointsOfSale).toEqual([]);
+      expect(empty.totals).toMatchObject({
+        soldNetXaf: 0,
+        cashedXaf: 0,
+        cashSessionsToValidate: 0,
+      });
+      expect(empty.freshness.devicesCount).toBe(0);
+    });
+
+    it('paramètres : période nommée, dates exclusives et appariées, bornes, dates inexistantes', async () => {
+      const today = businessDayOf(new Date());
+      const week = await okDashboard(dir, `period=WEEK&site_id=${siteP}`);
+      expect(week.period.code).toBe('WEEK');
+      expect(week.period.fromDay <= today && today <= week.period.toDay).toBe(true);
+      expect(new Date(`${week.period.fromDay}T12:00:00Z`).getUTCDay()).toBe(1);
+      expect((await okDashboard(dir, `site_id=${siteP}`)).period).toEqual({
+        code: 'TODAY',
+        fromDay: today,
+        toDay: today,
+      });
+      for (const query of [
+        `period=TODAY&from=${D1}&to=${D1}`,
+        `from=${D1}`,
+        `from=${D3}&to=${D1}`,
+        'from=2025-01-01&to=2026-12-31',
+        'from=2026-02-30&to=2026-03-01',
+        'period=QUARTER',
+      ]) {
+        expect((await dashboard(dir, `${query}&site_id=${siteP}`)).statusCode, query).toBe(400);
+      }
+    });
+
+    it('portée d’une zone : un responsable commercial voit les PDV de sa zone et de ses sous-zones (AV-204)', async () => {
+      // Zone Z et sous-zone Z1 : PDV A dans Z, B dans Z1 ; PDV C ailleurs.
+      const sites = await tx(async (trx) => {
+        const zone = await insertTestZone(trx, root);
+        const sub = await insertTestZone(trx, root, { parentId: zone });
+        const elsewhere = await insertTestZone(trx, root);
+        const a = await insertTestSite(trx, root, zone, { siteType: 'POINT_DE_VENTE' });
+        const b = await insertTestSite(trx, root, sub, { siteType: 'POINT_DE_VENTE' });
+        const c = await insertTestSite(trx, root, elsewhere, { siteType: 'POINT_DE_VENTE' });
+        const locations = [];
+        for (const site of [a, b, c]) {
+          locations.push(await insertTestLocation(trx, root, site, { locationType: 'POS' }));
+        }
+        return { zone, a, b, c, locations };
+      });
+      for (const [index, site] of [sites.a, sites.b, sites.c].entries()) {
+        await ok(admin, {
+          type: 'organization.pos.configure',
+          aggregateType: 'SITE',
+          aggregateId: site,
+          occurredAt: new Date().toISOString(),
+          payload: { salesLocationId: sites.locations[index], custodyMode: 'SHARED' },
+        });
+      }
+      const manager = await newActor('RESP_COMMERCIAL', root, {
+        scopeType: 'ZONE',
+        scopeZoneId: sites.zone,
+      });
+      const teamManager = await tx(async (trx) => {
+        const userId = await insertTestUser(trx);
+        const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+        const team = await insertTestTeam(trx, userId, root);
+        await assignTestRole(trx, userId, await roleIdOf('RESP_COMMERCIAL'), root, {
+          scopeType: 'TEAM',
+          scopeTeamId: team,
+        });
+        return { userId, deviceId };
+      });
+      const seller = await newActor('VENDEUR_PDV', root, {
+        scopeType: 'SITE',
+        scopeSiteId: sites.a,
+      });
+      const ours = new Set([sites.a, sites.b, sites.c]);
+      const seen = async (actor: Actor) =>
+        (await okDashboard(actor, '')).pointsOfSale
+          .map((pos) => pos.siteId)
+          .filter((id) => ours.has(id))
+          .sort();
+      expect(await seen(manager)).toEqual([sites.a, sites.b].sort());
+      expect(await seen(seller)).toEqual([sites.a]);
+      expect(await seen(dir)).toEqual([sites.a, sites.b, sites.c].sort());
+      // Affectation d'équipe : un PDV n'a pas de titulaire, la portée TEAM n'en atteint aucun.
+      expect((await okDashboard(teamManager, '')).pointsOfSale).toEqual([]);
+      expect((await dashboard(manager, `site_id=${sites.c}`)).statusCode).toBe(404);
+    });
+  });
+
+  describe('accueil Finance et Magasinier (P5-20, AV-208)', () => {
+    const home = async (actor: Actor): Promise<HomeResponse> => {
+      const token = await signAccessToken(
+        app.get(JWT_KEYS).privateKey,
+        { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
+        clock.now(),
+      );
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/home',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      return homeResponseSchema.parse(response.json());
+    };
+    const kpisOf = (body: HomeResponse, role: string) =>
+      body.sections.find((section) => section.role === role)!.kpis;
+    const kpiOf = (body: HomeResponse, role: string, code: string) =>
+      kpisOf(body, role).find((kpi) => kpi.code === code);
+    const signalOf = (body: HomeResponse, code: string) =>
+      body.signals.find((signal) => signal.code === code);
+    const DISTRIBUTION_KPIS = ['KPI-DIS-07', 'KPI-DIS-QUOTAS', 'KPI-OPS-01'];
+
+    it('magasinier du PDV : réapprovisionnement, quotas à régulariser, appareils et anomalies de son seul site', async () => {
+      // Seuil franchi sur l'emplacement de vente ; quota d'un second vendeur, échu depuis D3.
+      await ok(magP, {
+        type: 'inventory.threshold.set',
+        aggregateType: 'STOCK_THRESHOLD',
+        aggregateId: freshUuid(),
+        occurredAt: new Date().toISOString(),
+        payload: { locationId: counter, productId, minQtyBase: 1_000, targetQtyBase: 3_000 },
+      });
+      const seller = await newActor('VENDEUR_PDV', root, { scopeType: 'SITE', scopeSiteId: siteP });
+      const expiring = freshUuid();
+      await ok(magP, {
+        type: 'inventory.allocation.grant',
+        aggregateType: 'STOCK_ALLOCATION',
+        aggregateId: expiring,
+        occurredAt: at(D3, '10:00'),
+        payload: {
+          holderUserId: seller.userId,
+          holderDeviceId: seller.deviceId,
+          locationId: counter,
+          productId,
+          quantityBase: 1,
+          validUntil: at(D3, '11:00'),
+        },
+      });
+      // Échu **et** en révocation (effet du consommateur de révocation sur un appareil bloqué) : un
+      // seul quota à régulariser, jamais deux.
+      await db
+        .updateTable('inventory_stock_allocations')
+        .set({ revocation_pending: 1 })
+        .where('id', '=', toBin(expiring))
+        .execute();
+      // Anomalie ouverte d'un autre site : hors de la vue du magasinier du PDV.
+      await tx((trx) =>
+        recordConflict(trx, {
+          id: freshUuid(),
+          commandId: null,
+          conflictType: 'TRANSFER_UNMATCHED',
+          entityType: 'STOCK_TRANSFER',
+          entityId: freshUuid(),
+          siteId: siteS,
+          ownerRole: 'MAGASINIER',
+          applied: true,
+          details: {},
+        }),
+      );
+
+      const body = await home(magP);
+      const now = new Date();
+      expect(kpisOf(body, 'MAGASINIER').filter((kpi) => kpi.code.startsWith('KPI-FIN'))).toEqual(
+        [],
+      );
+      expect(kpiOf(body, 'MAGASINIER', 'KPI-DIS-07')).toMatchObject({
+        value: 1,
+        unit: 'COUNT',
+        detail: 'sur 1 seuil suivi des PDV',
+        tone: 'warn',
+      });
+      // Mêmes fonctions que le tableau (BR-ANA-009) ; l'union ne compte le quota qu'une fois.
+      const positions = await allocationPositions(db, { locationIds: [counter], now });
+      const sum = (pick: (position: (typeof positions)[number]) => number) =>
+        positions.reduce((total, position) => total + pick(position), 0);
+      const toSettle = sum((position) => position.toSettleAllocations);
+      expect(toSettle).toBeGreaterThanOrEqual(1);
+      expect(
+        sum((position) => position.expiredAllocations + position.revocationPendingAllocations),
+      ).toBe(toSettle + 1);
+      expect(kpiOf(body, 'MAGASINIER', 'KPI-DIS-QUOTAS')?.value).toBe(toSettle);
+      const bySite = await devicesOfSites(db, [siteP]);
+      const report = await deviceFreshness(db, {
+        deviceIds: [...new Set([...bySite.values()].flat())],
+        now,
+      });
+      expect(report.staleCount).toBeGreaterThanOrEqual(1);
+      expect(kpiOf(body, 'MAGASINIER', 'KPI-OPS-01')?.value).toBe(report.staleCount);
+      expect(signalOf(body, 'DEVICES_STALE')).toMatchObject({
+        severity: 'WARNING',
+        count: report.staleCount,
+      });
+      // Anomalies : celles du site du PDV seulement.
+      const mine = await openConflictSummary(db, { ownerRoles: ['MAGASINIER'], siteIds: [siteP] });
+      const all = await openConflictSummary(db, { ownerRoles: ['MAGASINIER'] });
+      expect(all.total).toBeGreaterThan(mine.total);
+      expect(signalOf(body, 'SYNC_CONFLICTS')?.count ?? 0).toBe(mine.total);
+
+      // Magasinier d'un site sans PDV : aucun bloc de distribution ; l'anomalie de son site.
+      const store = await home(magS);
+      const storeCodes = kpisOf(store, 'MAGASINIER').map((kpi) => kpi.code);
+      for (const code of DISTRIBUTION_KPIS) expect(storeCodes).not.toContain(code);
+      expect(signalOf(store, 'SYNC_CONFLICTS')?.count).toBeGreaterThanOrEqual(1);
+    });
+
+    it('Finance : sessions à valider, écart critique du jour, remise non reçue, appareils (base partagée : minorants)', async () => {
+      // Seuil de session ouverte mal saisi sur le site du PDV (0) : le défaut reprend, rien n'échoue.
+      await ok(admin, {
+        type: 'organization.setting.set',
+        aggregateType: 'SETTING',
+        aggregateId: freshUuid(),
+        occurredAt: new Date().toISOString(),
+        payload: {
+          key: 'finance.cash_session_force_close_hours',
+          value: 0,
+          scopeType: 'SITE',
+          scopeId: siteP,
+          reason: 'Saisie absurde (test P5-20)',
+        },
+      });
+      expect(
+        (await cashSessionThresholdsAt(db, { siteIds: [siteP], at: new Date() })).get(siteP),
+      ).toMatchObject({ forceCloseHours: 24 });
+      await home(fin);
+      const token = await signAccessToken(
+        app.get(JWT_KEYS).privateKey,
+        { sub: dir.userId, device_id: dir.deviceId, session_id: freshUuid() },
+        clock.now(),
+      );
+      const board = await app.inject({
+        method: 'GET',
+        url: `/api/v1/analytics/dashboards/distribution?site_id=${siteP}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(board.statusCode, board.body).toBe(200);
+      expect(
+        distributionDashboardResponseSchema.parse(board.json()).pointsOfSale[0]!.cash.openSession,
+      ).toMatchObject({ status: 'OPEN', openLong: false });
+
+      // La session ouverte aujourd'hui est close avec un excédent bien au-delà du seuil critique.
+      const open = await db
+        .selectFrom('finance_cash_sessions')
+        .select('id')
+        .where('cash_account_id', '=', toBin(posAcc))
+        .where('status', '=', 'OPEN')
+        .executeTakeFirstOrThrow();
+      await ok(venP, {
+        type: 'finance.cash_session.close',
+        aggregateType: 'CASH_SESSION',
+        aggregateId: fromBin(open.id),
+        occurredAt: new Date().toISOString(),
+        payload: { countedXaf: 108_000 },
+      });
+      const [account] = (
+        await cashSessionsOverview(db, { accountIds: [posAcc], day: businessDayOf(new Date()) })
+      ).accounts;
+      expect(account!.sessionsOfDay.map((session) => session.id)).toContain(fromBin(open.id));
+      const body = await home(fin);
+      const pending = kpiOf(body, 'FINANCE', 'KPI-FIN-CS-PENDING');
+      // Session du jour 1 et session du jour, toutes deux à valider.
+      expect(pending?.value).toBeGreaterThanOrEqual(2);
+      expect(pending?.tone).toBe('warn');
+      const variance = kpiOf(body, 'FINANCE', 'KPI-FIN-CS-VAR');
+      expect(variance?.value).toBeGreaterThanOrEqual(1);
+      expect(variance?.detail).toMatch(/^manquant .+ · excédent .+$/);
+      expect(signalOf(body, 'CASH_VARIANCE')).toMatchObject({ severity: 'CRITICAL' });
+      expect(signalOf(body, 'CASH_VARIANCE')?.count).toBeGreaterThanOrEqual(1);
+      // La remise du jour 2, jamais reçue.
+      expect(kpiOf(body, 'FINANCE', 'KPI-FIN-TRANSFERS')?.value).toBeGreaterThanOrEqual(1);
+      expect(signalOf(body, 'CASH_TRANSFER_NOT_RECEIVED')?.count).toBeGreaterThanOrEqual(1);
+      expect(kpiOf(body, 'FINANCE', 'KPI-OPS-01')?.unit).toBe('COUNT');
+      // Pas de signal « sessions à valider » en doublon des validations (AV-208).
+      expect(body.signals.map((signal) => signal.code)).not.toContain('CASH_SESSIONS_PENDING');
     });
   });
 });

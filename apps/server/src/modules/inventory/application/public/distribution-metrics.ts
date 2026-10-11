@@ -91,6 +91,14 @@ export interface LocationProductFlows {
   readonly transitLostQty: number;
   /** Écarts de transfert rejetés : marchandise rendue à L (déjà comptée dans le reçu ; hors identité). */
   readonly transitReleasedQty: number;
+  /** P5-20 : valeur du solde de fin au coût du registre (Σ signée de `value_xaf`) — mesure financière
+   * (RC-05, `inventory.valuation.read`). */
+  readonly closingValueXaf: number;
+  /** P5-20 : valeur du perdu à l'emplacement (pertes, écarts d'inventaire négatifs, déclarations
+   * validées), au coût du registre — mesure financière. */
+  readonly lostValueXaf: number;
+  /** P5-20 : valeur des écarts de transfert confirmés des transferts destinés à L — mesure financière. */
+  readonly transitLostValueXaf: number;
 }
 
 const qty = (value: unknown): number => Number(value ?? 0);
@@ -128,6 +136,8 @@ interface FlowRow {
   readonly inventory_gain_qty: string;
   readonly other_in_qty: string;
   readonly other_out_qty: string;
+  readonly closing_value_xaf: string;
+  readonly lost_value_xaf: string;
 }
 
 /**
@@ -184,16 +194,21 @@ export async function locationFlows(
       COALESCE(SUM(CASE WHEN x.in_period AND x.move_type NOT IN (${categorized}) AND x.dir = 1
         THEN x.q END), 0) AS other_in_qty,
       COALESCE(SUM(CASE WHEN x.in_period AND x.move_type NOT IN (${categorized}) AND x.dir = -1
-        THEN x.q END), 0) AS other_out_qty
+        THEN x.q END), 0) AS other_out_qty,
+      COALESCE(SUM(x.dir * x.v), 0) AS closing_value_xaf,
+      COALESCE(SUM(CASE WHEN x.in_period AND x.move_type IN ('LOSS', 'INVENTORY_LOSS')
+        THEN -x.dir * x.v END), 0) AS lost_value_xaf
     FROM (
-      SELECT m.from_location_id AS loc, m.product_id, -1 AS dir, m.quantity AS q, m.move_type,
+      SELECT m.from_location_id AS loc, m.product_id, -1 AS dir, m.quantity AS q, m.value_xaf AS v,
+             m.move_type,
              m.is_reversal, m.source_doc_type, cp.location_type AS other_type, m.occurred_at,
              (m.occurred_at >= ${start}) AS in_period
         FROM inventory_stock_moves m
         JOIN organization_locations cp ON cp.id = m.to_location_id
        WHERE m.from_location_id IN (${locations}) AND m.occurred_at < ${end} ${productFilter}
       UNION ALL
-      SELECT m.to_location_id AS loc, m.product_id, 1 AS dir, m.quantity AS q, m.move_type,
+      SELECT m.to_location_id AS loc, m.product_id, 1 AS dir, m.quantity AS q, m.value_xaf AS v,
+             m.move_type,
              m.is_reversal, m.source_doc_type, cp.location_type AS other_type, m.occurred_at,
              (m.occurred_at >= ${start}) AS in_period
         FROM inventory_stock_moves m
@@ -231,6 +246,9 @@ export async function locationFlows(
       transitDiscrepancyQty: 0,
       transitLostQty: 0,
       transitReleasedQty: 0,
+      closingValueXaf: Number(row.closing_value_xaf),
+      lostValueXaf: Number(row.lost_value_xaf),
+      transitLostValueXaf: 0,
     };
     flows.set(`${flow.locationId}|${flow.productId}`, flow);
   }
@@ -242,10 +260,13 @@ export async function locationFlows(
     readonly loc: Buffer;
     readonly product_id: Buffer;
     readonly confirmed_qty: string;
+    readonly confirmed_value_xaf: string;
   }>`
     SELECT d.location_id AS loc, m.product_id,
       COALESCE(SUM(CASE WHEN m.is_reversal = 1 THEN -m.quantity ELSE m.quantity END), 0)
-        AS confirmed_qty
+        AS confirmed_qty,
+      COALESCE(SUM(CASE WHEN m.is_reversal = 1 THEN -m.value_xaf ELSE m.value_xaf END), 0)
+        AS confirmed_value_xaf
     FROM inventory_stock_moves m
     JOIN inventory_loss_declarations d ON d.id = m.source_doc_id
     WHERE m.source_doc_type = 'LOSS' AND m.move_type = 'LOSS_CONFIRMATION'
@@ -263,6 +284,7 @@ export async function locationFlows(
       lostQty: milliToQty(quantityToMilli(flow.lostQty) + quantityToMilli(confirmed)),
       lossConfirmedQty: confirmed,
       lostPendingQty: milliToQty(quantityToMilli(flow.lostPendingQty) - quantityToMilli(confirmed)),
+      lostValueXaf: flow.lostValueXaf + Number(row.confirmed_value_xaf),
     });
   }
 
@@ -277,6 +299,7 @@ export async function locationFlows(
       transitDiscrepancyQty: line.transitDiscrepancyQty,
       transitLostQty: line.transitLostQty,
       transitReleasedQty: line.transitReleasedQty,
+      transitLostValueXaf: line.transitLostValueXaf,
     });
   }
   return [...flows.values()].sort(
@@ -304,6 +327,48 @@ export function distributionFlowsOf(flow: LocationProductFlows): DistributionFlo
   };
 }
 
+/** Indicateurs affichés d'un (emplacement, produit) : la définition **unique** du tableau de
+ * distribution et de l'accueil (BR-DIS-010, BR-ANA-009 ; AV-164, AV-199). */
+export interface DistributionKpis {
+  /** KPI-DIS-01 : envoyé vers le PDV, net des retours à la source. */
+  readonly sentQty: number;
+  /** KPI-DIS-02. */
+  readonly receivedQty: number;
+  /** KPI-DIS-03 (registre). */
+  readonly soldNetQty: number;
+  /** KPI-DIS-04 : perdu à l'emplacement + écarts de transfert confirmés (AV-164 (a)). */
+  readonly lostQty: number;
+  readonly lostPendingQty: number;
+  /** Écarts de transfert constatés, ni confirmés ni rejetés sur la période. */
+  readonly transitPendingQty: number;
+  readonly openingQty: number;
+  /** KPI-DIS-05 : restant à la fin de la période. */
+  readonly remainingQty: number;
+  /** Mesures financières (RC-05). */
+  readonly remainingValueXaf: number;
+  readonly lostValueXaf: number;
+}
+
+export function distributionKpisOf(flow: LocationProductFlows): DistributionKpis {
+  const milli = quantityToMilli;
+  return {
+    sentQty: flow.sentToQty,
+    receivedQty: flow.receivedQty,
+    soldNetQty: flow.soldNetQty,
+    lostQty: milliToQty(milli(flow.lostQty) + milli(flow.transitLostQty)),
+    lostPendingQty: flow.lostPendingQty,
+    transitPendingQty: milliToQty(
+      milli(flow.transitDiscrepancyQty) -
+        milli(flow.transitLostQty) -
+        milli(flow.transitReleasedQty),
+    ),
+    openingQty: flow.openingQty,
+    remainingQty: flow.closingQty,
+    remainingValueXaf: flow.closingValueXaf,
+    lostValueXaf: flow.lostValueXaf + flow.transitLostValueXaf,
+  };
+}
+
 function emptyFlow(locationId: string, productId: string): LocationProductFlows {
   return {
     locationId,
@@ -327,6 +392,9 @@ function emptyFlow(locationId: string, productId: string): LocationProductFlows 
     transitDiscrepancyQty: 0,
     transitLostQty: 0,
     transitReleasedQty: 0,
+    closingValueXaf: 0,
+    lostValueXaf: 0,
+    transitLostValueXaf: 0,
   };
 }
 
@@ -346,6 +414,7 @@ async function inboundTransferFlows(
     readonly transitDiscrepancyQty: number;
     readonly transitLostQty: number;
     readonly transitReleasedQty: number;
+    readonly transitLostValueXaf: number;
   }[]
 > {
   const productFilter =
@@ -359,6 +428,7 @@ async function inboundTransferFlows(
     readonly discrepancy_qty: string;
     readonly lost_qty: string;
     readonly released_qty: string;
+    readonly lost_value_xaf: string;
   }>`
     SELECT t.to_location_id AS loc, m.product_id,
       COALESCE(SUM(CASE
@@ -367,7 +437,9 @@ async function inboundTransferFlows(
       COALESCE(SUM(CASE WHEN m.move_type = 'TRANSFER_DISCREPANCY' THEN m.quantity END), 0)
         AS discrepancy_qty,
       COALESCE(SUM(CASE WHEN m.move_type = 'LOSS_CONFIRMATION' THEN m.quantity END), 0) AS lost_qty,
-      COALESCE(SUM(CASE WHEN m.move_type = 'LOSS_RELEASE' THEN m.quantity END), 0) AS released_qty
+      COALESCE(SUM(CASE WHEN m.move_type = 'LOSS_RELEASE' THEN m.quantity END), 0) AS released_qty,
+      COALESCE(SUM(CASE WHEN m.move_type = 'LOSS_CONFIRMATION' THEN m.value_xaf END), 0)
+        AS lost_value_xaf
     FROM inventory_stock_moves m
     JOIN inventory_stock_transfers t ON t.id = m.source_doc_id
     WHERE m.source_doc_type = 'TRANSFER'
@@ -384,6 +456,7 @@ async function inboundTransferFlows(
     transitDiscrepancyQty: qty(row.discrepancy_qty),
     transitLostQty: qty(row.lost_qty),
     transitReleasedQty: qty(row.released_qty),
+    transitLostValueXaf: Number(row.lost_value_xaf),
   }));
 }
 
@@ -483,6 +556,8 @@ export interface AllocationPosition {
   /** Quotas actifs dont la validité est passée (le serveur ne libère jamais seul, SM-ALLOCATION). */
   readonly expiredAllocations: number;
   readonly revocationPendingAllocations: number;
+  /** Quotas à régulariser : échus **ou** en révocation, chacun compté une fois (accueil, AV-208). */
+  readonly toSettleAllocations: number;
   /** Non alloué : max(0, solde − réservé − alloué). */
   readonly unallocatedQty: number;
   /** Σ restes alloués au-delà du solde (`ALLOCATION_OVERCOMMITTED`, INV-STK-19). */
@@ -540,6 +615,8 @@ export async function allocationPositions(
         'expired_count',
       ),
       sql<string>`SUM(a.revocation_pending)`.as('revocation_count'),
+      sql<string>`SUM((a.valid_until IS NOT NULL AND a.valid_until <= ${input.now})
+        OR a.revocation_pending = 1)`.as('settle_count'),
       sql<string>`COALESCE(SUM(CASE WHEN a.holder_user_id = ${holderUser}
         AND a.holder_device_id = ${holderDevice} THEN a.quantity_remaining END), 0)`.as(
         'holder_remaining',
@@ -561,6 +638,7 @@ export async function allocationPositions(
     active: number;
     expired: number;
     revocation: number;
+    settle: number;
     holder: number;
   }
   const acc = new Map<string, Acc>();
@@ -578,6 +656,7 @@ export async function allocationPositions(
         active: 0,
         expired: 0,
         revocation: 0,
+        settle: 0,
         holder: 0,
       };
       acc.set(key, value);
@@ -595,6 +674,7 @@ export async function allocationPositions(
     value.active = Number(row.active_count);
     value.expired = Number(row.expired_count);
     value.revocation = Number(row.revocation_count);
+    value.settle = Number(row.settle_count);
     value.holder = quantityToMilli(row.holder_remaining);
   }
   const positions: AllocationPosition[] = [];
@@ -615,6 +695,7 @@ export async function allocationPositions(
       activeAllocations: value.active,
       expiredAllocations: value.expired,
       revocationPendingAllocations: value.revocation,
+      toSettleAllocations: value.settle,
       unallocatedQty: milliToQty(Math.max(0, value.onHand - value.reserved - value.allocated)),
       overcommitted: value.onHand - value.reserved < value.allocated,
       holderRemainingQty: milliToQty(value.holder),

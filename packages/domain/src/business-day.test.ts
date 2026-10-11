@@ -9,7 +9,10 @@ import {
   periodOfBusinessDay,
   isWithinBusinessDay,
   nextBusinessDay,
+  businessPeriodDays,
+  businessPeriodOf,
 } from './business-day.js';
+import { DomainError } from './errors.js';
 
 describe("businessDayOf (Africa/Douala, UTC+1, sans heure d'été)", () => {
   it('23:30 UTC le 24 septembre est déjà le 25 septembre à Douala (00:30)', () => {
@@ -110,5 +113,59 @@ describe('businessMonthDays', () => {
     expect(businessMonthDays('2026-10', '2026-11-15')).toHaveLength(31);
     expect(periodOfBusinessDay('2026-10-21')).toBe('2026-10');
     expect(() => businessMonthDays('2026-13')).toThrow(/PERIOD_INVALID|invalide/);
+  });
+});
+
+describe('périodes nommées des tableaux de bord (BR-ANA-002, P5-20)', () => {
+  it('aujourd’hui et hier', () => {
+    expect(businessPeriodOf('TODAY', '2026-10-11')).toEqual({
+      fromDay: '2026-10-11',
+      toDay: '2026-10-11',
+    });
+    expect(businessPeriodOf('YESTERDAY', '2026-03-01')).toEqual({
+      fromDay: '2026-02-28',
+      toDay: '2026-02-28',
+    });
+  });
+
+  it('cette semaine : du lundi au dimanche, dimanche compris', () => {
+    // 2026-10-11 est un dimanche ; 2026-10-05 un lundi.
+    expect(businessPeriodOf('WEEK', '2026-10-11')).toEqual({
+      fromDay: '2026-10-05',
+      toDay: '2026-10-11',
+    });
+    expect(businessPeriodOf('WEEK', '2026-10-05')).toEqual({
+      fromDay: '2026-10-05',
+      toDay: '2026-10-11',
+    });
+    expect(businessPeriodOf('WEEK', '2026-12-31')).toEqual({
+      fromDay: '2026-12-28',
+      toDay: '2027-01-03',
+    });
+  });
+
+  it('ce mois et cette année, années bissextiles comprises', () => {
+    expect(businessPeriodOf('MONTH', '2028-02-10')).toEqual({
+      fromDay: '2028-02-01',
+      toDay: '2028-02-29',
+    });
+    expect(businessPeriodOf('MONTH', '2026-12-31')).toEqual({
+      fromDay: '2026-12-01',
+      toDay: '2026-12-31',
+    });
+    expect(businessPeriodOf('YEAR', '2026-01-01')).toEqual({
+      fromDay: '2026-01-01',
+      toDay: '2026-12-31',
+    });
+    expect(() => businessPeriodOf('TODAY', '2026-02-30')).toThrow(DomainError);
+  });
+
+  it('nombre de jours, bornes incluses ; période inversée refusée', () => {
+    expect(businessPeriodDays({ fromDay: '2026-10-11', toDay: '2026-10-11' })).toBe(1);
+    expect(businessPeriodDays({ fromDay: '2026-01-01', toDay: '2026-12-31' })).toBe(365);
+    expect(businessPeriodDays({ fromDay: '2028-01-01', toDay: '2028-12-31' })).toBe(366);
+    expect(() => businessPeriodDays({ fromDay: '2026-10-12', toDay: '2026-10-11' })).toThrow(
+      DomainError,
+    );
   });
 });

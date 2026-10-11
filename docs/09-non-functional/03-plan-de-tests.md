@@ -120,7 +120,7 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-039 | « Combien vendu cette semaine, par quel commercial, à quels clients ? » | Tableau de bord = explorateur = documents | REQ-084, BR-ANA-009 |
 | AT-040 | « Combien réellement encaissé ? » | Encaissé distinct du CA ; créances cohérentes | REQ-084, REQ-051 |
 | AT-041 | « Quelles pertes ? Combien a coûté cette production ? » | Pertes par produit, lot et motif ; coût du lot | REQ-084, REQ-053 |
-| AT-042 | « Quelle quantité envoyée à ce PDV ? » | Envoyé, reçu, vendu, perdu, restant, encaissé | REQ-024, BR-DIS-010 |
+| AT-042 | « Quelle quantité envoyée à ce PDV ? » | Envoyé, reçu, vendu, perdu, restant, encaissé. Automatisé (P5-20) : `p5-distribution-metrics.test.ts` (« AT-042 ») — `GET /analytics/dashboards/distribution` rend les mêmes valeurs que les fonctions des modules sur la période et jour par jour, identité de rapprochement vraie chaque jour ; masquage par droit ; refus (403, 404 audité, réponse vide) ; périmètre d'une zone et de ses sous-zones ; paramètres de période | REQ-024, BR-DIS-010 |
 | AT-043 | « Pourquoi manque-t-il 5 unités ? » | Remontée du registre jusqu'aux documents, auteurs et appareils | REQ-083, REQ-084 |
 | AT-044 | Lead Kommo qualifié → client → vente | Compte GIC créé et lié ; CA cumulé dans Kommo ; écho ignoré | WF-17, REQ-071 |
 | AT-045 | Enquête d'audit sur une vente annulée | Qui, quand (réel et serveur), appareil, hors ligne, validateur, avant et après ; chaîne vérifiée | REQ-065, INV-AUD-01 |

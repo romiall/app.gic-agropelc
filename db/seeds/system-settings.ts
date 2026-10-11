@@ -250,6 +250,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     ref: 'AV-177',
   },
   { key: 'analytics.freshness_warning_hours', value: 2, isClientVisible: false, ref: 'BR-ANA-005' },
+  // P5-20 (AV-207) : durée maximale d'une période personnalisée d'un tableau de bord, en jours.
+  {
+    key: 'analytics.dashboard_max_period_days',
+    value: 366,
+    isClientVisible: false,
+    ref: 'AV-207',
+  },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).

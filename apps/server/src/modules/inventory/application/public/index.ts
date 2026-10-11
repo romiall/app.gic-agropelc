@@ -183,15 +183,19 @@ export { stockHealth, recentLosses } from './home-metrics.js';
 export {
   allocationPositions,
   distributionFlowsOf,
+  distributionKpisOf,
   locationFlows,
   sentByDestination,
 } from './distribution-metrics.js';
 export type {
   AllocationPosition,
   BusinessPeriod,
+  DistributionKpis,
   LocationProductFlows,
   SentByDestinationLine,
 } from './distribution-metrics.js';
+// P5-20 : seuils de plusieurs emplacements (KPI-DIS-07).
+export { stockThresholdsOf } from './document-query.js';
 export type { StockHealth, RecentLosses } from './home-metrics.js';
 
 // P5-17 : lectures des quotas d'appareil (`GET /allocations`, `/allocations/{id}`).

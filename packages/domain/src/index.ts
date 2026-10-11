@@ -59,7 +59,11 @@ export {
   addBusinessDays,
   businessMonthDays,
   periodOfBusinessDay,
+  BUSINESS_PERIOD_CODES,
+  businessPeriodOf,
+  businessPeriodDays,
 } from './business-day.js';
+export type { BusinessPeriodCode } from './business-day.js';
 
 export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';
 

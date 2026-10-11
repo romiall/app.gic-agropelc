@@ -215,3 +215,4 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `inventory.transfer_unmatched_hours` | 48 | BR-STK-024 |
 | `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale |
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
+| `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |

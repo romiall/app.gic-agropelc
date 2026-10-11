@@ -78,7 +78,11 @@ export const ROLES: readonly RoleSeed[] = [
     name: 'Responsable commercial',
     description:
       "Pilotage de l'équipe commerciale (ventes, prospects, visites, présences, objectifs, clients inactifs, réaffectations, remises, dérogations de pointage) ; peut aussi être commercial opérationnel (CM §6).",
-    allowedScopeTypes: ['TEAM'],
+    // `ZONE` (P5-20, AV-204) : la matrice lui accorde sept droits de portée `ZONE` (registre, pertes,
+    // inventaires, quotas, seuils, tableau de distribution), qu'une affectation `TEAM` n'atteint jamais
+    // (une ressource de site n'a pas de titulaire). L'affectation `ZONE` s'ajoute à `TEAM`, qui seule
+    // alimente les jeux hors ligne de l'équipe.
+    allowedScopeTypes: ['TEAM', 'ZONE'],
   },
   {
     code: 'COMMERCIAL_TERRAIN',

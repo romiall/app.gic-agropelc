@@ -21,7 +21,7 @@
  * la sérialisation des écritures d'un compte reste portée par le verrou exclusif de sa ligne, et
  * toute lecture voit la dernière version validée (l'instantané n'est plus un sujet).
  */
-import { sql } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import {
   CASH_EXPECTED_EXCLUDED_TYPES,
   expectedCashXaf,
@@ -29,6 +29,7 @@ import {
   type CashSessionStatus,
   type ExistingCashSession,
 } from '@gic/domain';
+import type { DB } from '../../../platform/kysely/database.js';
 import type { UnitOfWork } from '../../../platform/unit-of-work.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../platform/kysely/uuid-columns.js';
 import { currentSettingValue } from '../../organization/application/public/index.js';
@@ -302,7 +303,7 @@ export async function latestMovementAtOrAfter(
  * défaut du seed (`db/seeds/system-settings.ts`), en vigueur à `at`.
  */
 export async function cashNumberSetting(
-  uow: UnitOfWork,
+  uow: UnitOfWork | Kysely<DB>,
   input: {
     readonly key: string;
     readonly siteId: string | null;

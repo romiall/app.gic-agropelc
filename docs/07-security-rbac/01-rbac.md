@@ -258,7 +258,8 @@ Remarques :
 
 | Utilisateur | Affectations | Effet |
 |---|---|---|
-| Paul (démarrage commercial) | `RESP_COMMERCIAL` / `TEAM` Douala Nord ; `COMMERCIAL_TERRAIN` / `ZONE` Akwa | Voit son équipe ; a son portefeuille ; prend service à Akwa ; ne peut pas approuver ses propres remises (RC-03) |
+| Paul (démarrage commercial) | `RESP_COMMERCIAL` / `TEAM` Douala Nord ; `COMMERCIAL_TERRAIN` / `ZONE` Akwa | Voit son équipe ; a son portefeuille ; prend service à Akwa ; ne peut pas approuver ses propres remises (RC-03) ; aucun PDV au tableau de distribution (un PDV n'a pas de titulaire, AV-204) |
+| Paul, responsable de zone | `RESP_COMMERCIAL` / `TEAM` Douala Nord ; `RESP_COMMERCIAL` / `ZONE` Douala | Voit son équipe, et les PDV, stocks, pertes et quotas de la zone Douala et de ses sous-zones (droits `ZONE` du rôle, tableau de distribution) ; l'affectation `ZONE` du Resp. commercial est permise depuis P5-20 (`allowed_scope_types` : `TEAM`, `ZONE` ; AV-204). Elle s'ajoute à `TEAM` (seule source des jeux hors ligne de l'équipe), borne ses pointages à la zone (BR-TER-006) et, si une politique lie les approbations de pertes ou d'inventaires, les étend à tous les sites de la zone, fermes comprises (« (PDV) » est indicatif) |
 | Awa | `VENDEUR_PDV` / `SITE` PDV Mboppi | Vend, encaisse, reçoit et déclare au PDV Mboppi uniquement |
 | Jean | `RESP_FERME` / `SITE` Ferme Nkometou ; `MAGASINIER` / `SITE` Ferme Nkometou | Saisies de production, réceptions et stock de sa ferme |
 | Mme la Directrice | `DIRECTION` / `GLOBAL` ; `ADMIN` / `GLOBAL` | Pilotage, validations (marquées `SELF_APPROVED` si elle est aussi l'auteur), configuration |

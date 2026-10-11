@@ -302,6 +302,10 @@ describe('Accueil par rôle (ADR-030)', () => {
     expect(out?.detail).toBe('0 sous le seuil · 1 suivis');
     expect(body.signals.map((signal) => signal.code)).not.toContain('STOCK_OUT');
     expect(body.signals.map((signal) => signal.code)).not.toContain('STOCK_LOW');
+    // Site sans PDV : aucun bloc de distribution (P5-20, AV-208).
+    for (const code of ['KPI-DIS-07', 'KPI-DIS-QUOTAS', 'KPI-OPS-01']) {
+      expect(section!.kpis.map((kpi) => kpi.code)).not.toContain(code);
+    }
   });
 
   it('magasinier du site B : voit la rupture de son site, pas le seuil respecté du site A', async () => {

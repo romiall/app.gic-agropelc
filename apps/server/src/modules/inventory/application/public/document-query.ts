@@ -490,53 +490,80 @@ export async function listStockThresholds(
     readonly productId?: string;
   },
 ): Promise<readonly StockThresholdStatus[]> {
-  const location = toBin(params.locationId);
+  const statuses = await stockThresholdsOf(executor, {
+    locationIds: [params.locationId],
+    ...(params.productId !== undefined ? { productIds: [params.productId] } : {}),
+  });
+  return statuses.map(({ locationId: _locationId, ...status }) => status);
+}
+
+/**
+ * Seuils actifs de plusieurs emplacements (P5-20 : KPI-DIS-07 « à réapprovisionner » du tableau de
+ * distribution et de l'accueil, BR-ANA-009), même évaluation que `listStockThresholds`, en trois
+ * requêtes quel que soit le nombre d'emplacements. Un tableau vide ne lit rien.
+ */
+export async function stockThresholdsOf(
+  executor: Executor,
+  params: { readonly locationIds: readonly string[]; readonly productIds?: readonly string[] },
+): Promise<readonly (StockThresholdStatus & { readonly locationId: string })[]> {
+  if (params.locationIds.length === 0 || params.productIds?.length === 0) return [];
+  const locations = params.locationIds.map((id) => toBin(id));
   const thresholds = await executor
     .selectFrom('inventory_stock_thresholds')
     .selectAll()
-    .where('location_id', '=', location)
+    .where('location_id', 'in', locations)
     .where('is_active', '=', 1)
-    .$if(params.productId !== undefined, (qb) =>
-      qb.where('product_id', '=', toBin(params.productId!)),
+    .$if(params.productIds !== undefined, (qb) =>
+      qb.where(
+        'product_id',
+        'in',
+        params.productIds!.map((id) => toBin(id)),
+      ),
     )
+    .orderBy('location_id', 'asc')
     .orderBy('product_id', 'asc')
     .execute();
   if (thresholds.length === 0) return [];
-  const productIds = thresholds.map((t) => t.product_id);
+  const productIds = [
+    ...new Map(thresholds.map((t) => [fromBin(t.product_id), t.product_id])).values(),
+  ];
 
   const balances = await executor
     .selectFrom('inventory_stock_balances')
-    .select([
-      'product_id',
-      sql<string>`SUM(qty_on_hand)`.as('qty_on_hand'),
-      sql<string>`SUM(qty_reserved)`.as('qty_reserved'),
-      sql<string>`SUM(qty_allocated)`.as('qty_allocated'),
-    ])
-    .where('location_id', '=', location)
+    .select(['location_id', 'product_id', sql<string>`SUM(qty_on_hand)`.as('qty_on_hand')])
+    .where('location_id', 'in', locations)
     .where('product_id', 'in', productIds)
-    .groupBy('product_id')
+    .groupBy(['location_id', 'product_id'])
     .execute();
-  const balanceByProduct = new Map(balances.map((b) => [fromBin(b.product_id), b]));
+  const keyOf = (location: Buffer, product: Buffer) => `${fromBin(location)}|${fromBin(product)}`;
+  const balanceByKey = new Map(balances.map((b) => [keyOf(b.location_id, b.product_id), b]));
 
   const transit = await executor
     .selectFrom('inventory_stock_transfer_lines as tl')
     .innerJoin('inventory_stock_transfers as t', 't.id', 'tl.transfer_id')
-    .select(['tl.product_id as product_id', sql<string>`SUM(tl.dispatched_qty_base)`.as('qty')])
-    .where('t.to_location_id', '=', location)
+    .select([
+      't.to_location_id as location_id',
+      'tl.product_id as product_id',
+      sql<string>`SUM(tl.dispatched_qty_base)`.as('qty'),
+    ])
+    .where('t.to_location_id', 'in', locations)
     .where('t.status', '=', 'DISPATCHED')
     .where('tl.product_id', 'in', productIds)
-    .groupBy('tl.product_id')
+    .groupBy(['t.to_location_id', 'tl.product_id'])
     .execute();
-  const transitByProduct = new Map(transit.map((t) => [fromBin(t.product_id), Number(t.qty)]));
+  const transitByKey = new Map(
+    transit.map((t) => [keyOf(t.location_id, t.product_id), Number(t.qty)]),
+  );
 
   return thresholds.map((threshold) => {
     const productId = fromBin(threshold.product_id);
-    const balance = balanceByProduct.get(productId);
+    const key = keyOf(threshold.location_id, threshold.product_id);
+    const balance = balanceByKey.get(key);
     // AV-040, ADR-033 §10 : le seuil d'un emplacement `SHARED` se lit sur le solde **physique**
     // (quotas compris) — un quota promis à un appareil ne vide pas le magasin. Le disponible net des
     // quotas ne sert qu'à la vente en ligne.
     const qtyAvailable = Number(balance?.qty_on_hand ?? 0);
-    const qtyInTransitIn = transitByProduct.get(productId) ?? 0;
+    const qtyInTransitIn = transitByKey.get(key) ?? 0;
     const minQtyBase = Number(threshold.min_qty_base);
     const targetQtyBase = Number(threshold.target_qty_base);
     const evaluation = evaluateStockThreshold({
@@ -546,6 +573,7 @@ export async function listStockThresholds(
       inTransitIn: qtyInTransitIn,
     });
     return {
+      locationId: fromBin(threshold.location_id),
       id: fromBin(threshold.id),
       productId,
       minQtyBase,

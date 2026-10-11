@@ -159,7 +159,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-DIS-01 | Accueil PDV : stock, allocation, ventes et caisse du jour | VENDEUR_PDV | Oui | P5 |
 | ECR-DIS-02 | Ouverture et clôture de caisse | VENDEUR_PDV | Oui | P5 |
 | ECR-DIS-03 | Demande de réapprovisionnement | VENDEUR_PDV | Oui | P5 |
-| ECR-DIS-04 | Distribution par PDV : envoyé, vendu, restant, perdu, encaissé, besoin | DIRECTION, RESP_COMMERCIAL, MAGASINIER | Non | P5 |
+| ECR-DIS-04 | Distribution par PDV : envoyé, reçu, vendu, perdu, restant, encaissé, à réapprovisionner (BR-DIS-010), avec le reste à livrer, les quotas, la caisse et les appareils du PDV ; lecture `GET /analytics/dashboards/distribution` (P5-20, ADR-035) | DIRECTION, FINANCE, RESP_COMMERCIAL, VENDEUR_PDV, MAGASINIER (`analytics.dashboard.distribution`, 01-rbac.md §5.1 ; périmètre : AV-204) | Non | P5 |
 
 ### 3.5 Stock
 

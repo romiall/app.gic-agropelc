@@ -11,7 +11,9 @@
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { isTransferUnreceived } from '@gic/domain';
 import { cashTransfersInTransit } from './cash-transfer-query.js';
+import { CASH_SETTING_DEFAULTS, cashNumberSetting } from '../cash-session-ledger.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -42,6 +44,11 @@ export interface CashSessionsOverview {
     readonly openSession: CashSessionBrief | null;
     /** Dernière session ouverte le jour métier demandé (AV-201). */
     readonly sessionOfDay: CashSessionBrief | null;
+    /** Toutes les sessions ouvertes le jour métier demandé, la plus récente d'abord (écarts du jour). */
+    readonly sessionsOfDay: readonly CashSessionBrief[];
+    /** P5-20 : sessions à valider et ajustements en attente de cette caisse. */
+    readonly pendingValidationCount: number;
+    readonly pendingAdjustmentsCount: number;
   }[];
   /** Sessions closes à valider (`PENDING_VALIDATION`), tous jours confondus. */
   readonly pendingValidationCount: number;
@@ -115,18 +122,24 @@ export async function cashSessionsOverview(
   };
   const pending = await executor
     .selectFrom('finance_cash_sessions')
-    .select(sql<string>`COUNT(*)`.as('count'))
+    .select(['cash_account_id', sql<string>`COUNT(*)`.as('count')])
     .where('cash_account_id', 'in', accountIds)
     .where('status', '=', 'PENDING_VALIDATION')
-    .executeTakeFirstOrThrow();
+    .groupBy('cash_account_id')
+    .execute();
   const adjustments = await executor
     .selectFrom('finance_cash_session_adjustments as a')
     .innerJoin('finance_cash_sessions as s', 's.id', 'a.session_id')
-    .select(sql<string>`COUNT(*)`.as('count'))
+    .select(['s.cash_account_id as cash_account_id', sql<string>`COUNT(*)`.as('count')])
     .where('s.cash_account_id', 'in', accountIds)
     .where('a.treatment', '=', 'OWN_APPROVAL')
     .where('a.status', '=', 'PENDING')
-    .executeTakeFirstOrThrow();
+    .groupBy('s.cash_account_id')
+    .execute();
+  const countOf = (rows: readonly { cash_account_id: Buffer; count: string }[], id: Buffer) =>
+    Number(rows.find((row) => row.cash_account_id.equals(id))?.count ?? 0);
+  const total = (rows: readonly { count: string }[]) =>
+    rows.reduce((sum, row) => sum + Number(row.count), 0);
   return {
     accounts: accounts.map((account) => {
       const own = sessions.filter((row) => row.cash_account_id.equals(account.id));
@@ -137,10 +150,13 @@ export async function cashSessionsOverview(
         siteId: fromBinOrNull(account.site_id),
         openSession: open === undefined ? null : briefOf(open),
         sessionOfDay: ofDay === undefined ? null : briefOf(ofDay),
+        sessionsOfDay: own.filter((row) => row.business_day === input.day).map(briefOf),
+        pendingValidationCount: countOf(pending, account.id),
+        pendingAdjustmentsCount: countOf(adjustments, account.id),
       };
     }),
-    pendingValidationCount: Number(pending.count),
-    pendingAdjustmentsCount: Number(adjustments.count),
+    pendingValidationCount: total(pending),
+    pendingAdjustmentsCount: total(adjustments),
   };
 }
 
@@ -162,6 +178,15 @@ export interface PendingCashTransfers {
   };
   /** Remises en attente (plan P5-19) : en transit + en écart. */
   readonly pendingCount: number;
+  /** P5-20 : par compte demandé (source ou destinataire) ; une remise entre deux comptes demandés
+   * compte pour chacun, mais une seule fois dans les totaux. */
+  readonly byAccount: readonly {
+    readonly accountId: string;
+    readonly inTransitCount: number;
+    readonly inTransitXaf: number;
+    readonly overdueCount: number;
+    readonly discrepancyCount: number;
+  }[];
 }
 
 /**
@@ -198,6 +223,33 @@ export async function pendingCashTransfers(
           )
           .executeTakeFirstOrThrow();
   const discrepancyCount = Number(discrepancy.count);
+  const pendingRows =
+    accountIds.length === 0
+      ? []
+      : await executor
+          .selectFrom('finance_cash_transfers')
+          .select(['from_account_id', 'to_account_id', 'status', 'amount_sent_xaf', 'sent_at'])
+          .where('status', 'in', ['SENT', 'DISCREPANCY_PENDING'])
+          .where((eb) =>
+            eb.or([eb('from_account_id', 'in', accountIds), eb('to_account_id', 'in', accountIds)]),
+          )
+          .execute();
+  const byAccount = input.accountIds.map((accountId) => {
+    const id = toBin(accountId);
+    const own = pendingRows.filter(
+      (row) => row.from_account_id.equals(id) || row.to_account_id.equals(id),
+    );
+    const sent = own.filter((row) => row.status === 'SENT');
+    return {
+      accountId,
+      inTransitCount: sent.length,
+      inTransitXaf: sent.reduce((sum, row) => sum + Number(row.amount_sent_xaf), 0),
+      overdueCount: sent.filter((row) =>
+        isTransferUnreceived(row.sent_at, input.now, inTransit.unreceivedHours),
+      ).length,
+      discrepancyCount: own.length - sent.length,
+    };
+  });
   return {
     inTransit: {
       count: inTransit.count,
@@ -213,5 +265,49 @@ export async function pendingCashTransfers(
       receivedXaf: Number(discrepancy.received),
     },
     pendingCount: inTransit.count + discrepancyCount,
+    byAccount,
   };
+}
+
+export interface CashSessionThresholds {
+  /** Écart toléré (validé d'office) : `finance.cash_variance_tolerance_xaf`. */
+  readonly varianceToleranceXaf: number;
+  /** Écart critique (D13) : `finance.cash_variance_critical_xaf`. */
+  readonly varianceCriticalXaf: number;
+  /** Session ouverte trop longtemps : `finance.cash_session_force_close_hours`. */
+  readonly forceCloseHours: number;
+}
+
+/**
+ * Seuils de caisse de chaque site à `at` (P5-20 : gravité des écarts et sessions ouvertes trop
+ * longtemps du tableau de distribution et de l'accueil) : valeur du site, à défaut globale, à défaut le
+ * défaut du seed — la règle des commandes de caisse (règle 8, aucun seuil codé ailleurs). Une valeur
+ * absurde (montant négatif ou non entier, heures nulles ou négatives) reprend le défaut, comme dans
+ * `cash-session-commands.ts` : un paramètre mal saisi ne fait jamais échouer une lecture.
+ */
+export async function cashSessionThresholdsAt(
+  executor: Executor,
+  input: { readonly siteIds: readonly string[]; readonly at: Date },
+): Promise<ReadonlyMap<string, CashSessionThresholds>> {
+  const value = async (name: keyof typeof CASH_SETTING_DEFAULTS, siteId: string) => {
+    const { fallback } = CASH_SETTING_DEFAULTS[name];
+    const raw = await cashNumberSetting(executor, {
+      ...CASH_SETTING_DEFAULTS[name],
+      siteId,
+      at: input.at,
+    });
+    if (name === 'forceCloseHours') return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+    return Number.isSafeInteger(raw) && raw >= 0 ? raw : fallback;
+  };
+  const entries = await Promise.all(
+    [...new Set(input.siteIds)].map(async (siteId) => {
+      const [varianceToleranceXaf, varianceCriticalXaf, forceCloseHours] = await Promise.all([
+        value('varianceToleranceXaf', siteId),
+        value('varianceCriticalXaf', siteId),
+        value('forceCloseHours', siteId),
+      ]);
+      return [siteId, { varianceToleranceXaf, varianceCriticalXaf, forceCloseHours }] as const;
+    }),
+  );
+  return new Map(entries);
 }
