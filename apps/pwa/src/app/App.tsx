@@ -16,7 +16,9 @@ import { CollectScreen } from '../features/sales/CollectScreen.js';
 import { StockScreen } from '../features/stock/StockScreen.js';
 import { LossScreen } from '../features/stock/LossScreen.js';
 import { ReceiveTransferScreen } from '../features/stock/ReceiveTransferScreen.js';
+import { CustomerScreen } from '../features/crm/CustomerScreen.js';
 import { NewProspectScreen } from '../features/crm/NewProspectScreen.js';
+import { PortfolioScreen } from '../features/crm/PortfolioScreen.js';
 import { DeliverScreen } from '../features/sales/DeliverScreen.js';
 import { NewOrderScreen } from '../features/sales/NewOrderScreen.js';
 import { NewSaleScreen } from '../features/sales/NewSaleScreen.js';
@@ -88,7 +90,9 @@ function AppShell() {
             <Route path={ROUTES.loss} element={<LossScreen />} />
             <Route path={ROUTES.receive} element={<ReceiveTransferScreen />} />
             <Route path={ROUTES.receivePattern} element={<ReceiveTransferScreen />} />
+            <Route path={ROUTES.portfolio} element={<PortfolioScreen />} />
             <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />
+            <Route path={ROUTES.customerPattern} element={<CustomerScreen />} />
           </Routes>
         </ErrorBoundary>
       </main>

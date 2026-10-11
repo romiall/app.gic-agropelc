@@ -8,7 +8,7 @@
  * poids ne se commande pas (`PRODUCT_NOT_ORDERABLE`).
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { creditCheck, xaf } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
@@ -56,7 +56,9 @@ export function NewOrderScreen() {
   const refs = useSalesReferences();
   const online = useOnline();
 
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  // Client déjà choisi depuis sa fiche (ECR-CRM-03).
+  const [searchParams] = useSearchParams();
+  const [customerId, setCustomerId] = useState<string | null>(searchParams.get('client'));
   const [locationChoice, setLocationChoice] = useState<string | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [picking, setPicking] = useState(false);

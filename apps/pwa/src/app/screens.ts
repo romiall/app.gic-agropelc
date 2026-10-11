@@ -17,10 +17,13 @@ export const ROUTES = {
   menu: '/menu',
   sync: '/synchronisation',
   newSale: '/ventes/nouvelle',
+  newSaleFor: (customerId: string) => `/ventes/nouvelle?client=${encodeURIComponent(customerId)}`,
   sales: '/ventes',
   salePattern: '/ventes/:saleId',
   sale: (saleId: string) => `/ventes/${saleId}`,
   newOrder: '/commandes/nouvelle',
+  newOrderFor: (customerId: string) =>
+    `/commandes/nouvelle?client=${encodeURIComponent(customerId)}`,
   orders: '/commandes',
   orderPattern: '/commandes/:orderId',
   order: (orderId: string) => `/commandes/${orderId}`,
@@ -28,7 +31,10 @@ export const ROUTES = {
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
   stock: '/stock',
+  portfolio: '/clients',
   newProspect: '/clients/nouveau',
+  customerPattern: '/clients/:customerId',
+  customer: (customerId: string) => `/clients/${customerId}`,
   loss: '/stock/perte',
   receive: '/stock/receptions',
   receivePattern: '/stock/receptions/:transferId',
@@ -88,6 +94,18 @@ export const ROLE_SETS = {
     'VENDEUR_PDV',
     'RESP_FERME',
   ],
+  /** `crm.customer.read` (01-rbac.md) : tous les rôles qui suivent des clients. */
+  customerRead: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
+    'FINANCE',
+  ],
+  /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
+  portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
   /** `inventory.transfer.receive` : destinataires de transferts. */
@@ -199,6 +217,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.paymentRecord,
     // « Encaissements » de la Finance : virements et règlements reçus au siège (01-rbac.md).
     actionCodes: ['PAYMENTS'],
+    offline: true,
+  },
+  {
+    id: 'ECR-CRM-01',
+    path: ROUTES.portfolio,
+    labelKey: 'portfolio',
+    group: 'crm',
+    roles: ROLE_SETS.portfolio,
+    actionCodes: [],
     offline: true,
   },
   {

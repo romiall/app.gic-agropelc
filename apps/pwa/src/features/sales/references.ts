@@ -15,6 +15,8 @@ import type {
   CashAccountData,
   CampaignData,
   CustomerCategoryData,
+  InteractionData,
+  VisitData,
   CustomerData,
   CustomerPaymentData,
   LocationData,
@@ -54,6 +56,9 @@ export interface SalesReferences {
   readonly orders: ReadonlyMap<string, SalesOrderData>;
   readonly sales: readonly SaleData[];
   readonly payments: readonly CustomerPaymentData[];
+  /** Visites et interactions enregistrées des 90 derniers jours (jeu `crm_activity`). */
+  readonly visits: readonly VisitData[];
+  readonly interactions: readonly InteractionData[];
   /** Transferts du périmètre (jeu `transfers`), tous statuts reçus. */
   readonly transfers: ReadonlyMap<string, StockTransferData>;
   /** Catégories de client actives (jeu `customer_category`). */
@@ -128,6 +133,8 @@ export function pendingCustomers(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    visits,
+    interactions,
     transfers,
     customerCategories,
     thresholds,
@@ -154,6 +161,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<VisitData>(db, 'crm_activity', 'VISIT'),
+    listProjected<InteractionData>(db, 'crm_activity', 'INTERACTION'),
     listProjected<StockTransferData>(db, 'transfers', 'STOCK_TRANSFER'),
     listProjected<CustomerCategoryData>(db, 'customer_category', 'CUSTOMER_CATEGORY'),
     listProjected<StockThresholdData>(db, 'stock', 'STOCK_THRESHOLD'),
@@ -213,6 +222,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     orders: orderMap,
     sales,
     payments,
+    visits: visits.filter((visit) => visit.status === 'RECORDED'),
+    interactions: interactions.filter((interaction) => interaction.status === 'RECORDED'),
     transfers: transferMap,
     customerCategories: customerCategories
       .filter((category) => category.is_active)

@@ -170,6 +170,34 @@ export interface StockTransferData {
   }[];
 }
 
+/** (`crm_activity`, 90 derniers jours) visite d'un compte. */
+export interface VisitData {
+  readonly id: string;
+  readonly customer_id: string;
+  readonly user_id: string;
+  readonly outcome_reason_code_id: string | null;
+  readonly notes: string | null;
+  readonly next_action_at: string | null;
+  readonly next_action_note: string | null;
+  readonly flags: readonly string[];
+  readonly status: string;
+  readonly occurred_at: string;
+}
+
+/** (`crm_activity`, 90 derniers jours) appel, SMS, courriel… */
+export interface InteractionData {
+  readonly id: string;
+  readonly customer_id: string;
+  readonly user_id: string;
+  readonly channel: 'APPEL' | 'SMS' | 'EMAIL' | 'AUTRE';
+  readonly direction: 'ENTRANT' | 'SORTANT';
+  readonly summary: string | null;
+  readonly next_action_at: string | null;
+  readonly next_action_note: string | null;
+  readonly status: string;
+  readonly occurred_at: string;
+}
+
 /** (`customer_category`, repli générique `GLOBAL`) */
 export interface CustomerCategoryData {
   readonly id: string;
