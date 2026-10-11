@@ -180,6 +180,30 @@ export interface StockTransferData {
   }[];
 }
 
+/** (`counts`) inventaire d'un emplacement ; quantités en unité de base, chaînes décimales. */
+export interface InventoryCountData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly location_id: string;
+  readonly count_type: 'FULL' | 'PARTIAL' | 'SPOT' | 'OPENING';
+  readonly status: string;
+  readonly occurred_at: string;
+  readonly submitted_at: string | null;
+  readonly posted_at: string | null;
+  readonly version: number;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly product_id: string;
+    readonly lot_id: string | null;
+    readonly counted_at: string;
+    readonly counted_qty_base: string;
+    readonly theoretical_qty_base: string | null;
+    readonly variance_qty_base: string | null;
+    readonly variance_reason_code_id: string | null;
+    readonly comment: string | null;
+  }[];
+}
+
 /** (`crm_activity`, 90 derniers jours) visite d'un compte. */
 export interface VisitData {
   readonly id: string;

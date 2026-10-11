@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
@@ -201,6 +201,9 @@ describe('Portefeuille (ECR-CRM-01, logique)', () => {
       }),
     ],
     interactions: [call({ id: 'i1', customer_id: 'c', occurred_at: '2026-10-09T08:00:00.000Z' })],
+    outbox: [],
+    customersPulledAt: undefined,
+    customerAlias: new Map<string, string>(),
   };
 
   it('écarte les comptes fusionnés, met en tête la prochaine action la plus proche, puis trie par nom', () => {
@@ -252,15 +255,18 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     const user = userEvent.setup();
     renderAt('/clients');
 
-    const first = await screen.findByRole('link', { name: 'Ouvrir la fiche de Boutique Mvog-Mbi' });
-    expect(first).toHaveTextContent(/À faire le lundi 12 octobre Livrer 10 plateaux/);
-    expect(screen.getAllByRole('link', { name: /Ouvrir la fiche de/ })).toHaveLength(2);
+    const first = await screen.findByRole('link', { name: /Boutique Mvog-Mbi/ });
+    // Le nom accessible porte la prochaine action et l'encours corrigé (12 000 + 3 000 en attente).
+    expect(first).toHaveAccessibleName(/À faire le lundi 12 octobre Livrer 10 plateaux/);
+    expect(first).toHaveAccessibleName(/Encours 15\s000\sF\sCFA/);
+    const rows = () => within(screen.getByRole('list')).getAllByRole('link');
+    expect(rows()).toHaveLength(2);
 
     await user.selectOptions(screen.getByLabelText('Stade'), 'PROSPECT');
-    expect(screen.getAllByRole('link', { name: /Ouvrir la fiche de/ })).toHaveLength(1);
+    expect(rows()).toHaveLength(1);
     await user.selectOptions(screen.getByLabelText('Stade'), 'ALL');
 
-    await user.click(screen.getByRole('link', { name: 'Ouvrir la fiche de Boutique Mvog-Mbi' }));
+    await user.click(screen.getByRole('link', { name: /Boutique Mvog-Mbi/ }));
     expect(await screen.findByRole('heading', { name: 'Boutique Mvog-Mbi' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '+237 699 11 22 33' })).toHaveAttribute(
       'href',
@@ -281,6 +287,63 @@ describe('Portefeuille et fiche compte (ECR-CRM-01, ECR-CRM-03)', () => {
     await user.click(screen.getByRole('link', { name: '+ Vente' }));
     expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Changer' })).toBeInTheDocument();
+  });
+
+  it('compte conservé après fusion : activité et opérations de l’absorbé rattachées ; vente refusée sans « reste »', async () => {
+    const ABSORBED = '01900000-0000-7000-8000-0000000000e9';
+    const db = getDb();
+    await db.projections.bulkPut([
+      {
+        key: `customers:CUSTOMER:${ABSORBED}`,
+        dataset: 'customers',
+        entity_type: 'CUSTOMER',
+        entity_id: ABSORBED,
+        scope_type: 'USER',
+        scope_id: IDS.user,
+        row_version: 1,
+        seq: 1,
+        data: asData(
+          customer({
+            id: ABSORBED,
+            stage: 'MERGED',
+            display_name: 'Boutique Mvog-Mbi (doublon)',
+            merged_into_id: IDS.customer,
+          }),
+        ),
+      },
+      {
+        key: 'crm_activity:VISIT:v-absorbe',
+        dataset: 'crm_activity',
+        entity_type: 'VISIT',
+        entity_id: 'v-absorbe',
+        scope_type: 'USER',
+        scope_id: IDS.user,
+        row_version: 1,
+        seq: 1,
+        data: asData(
+          visit({ id: 'v-absorbe', customer_id: ABSORBED, notes: 'Visite sur le doublon' }),
+        ),
+      },
+    ]);
+    const onAbsorbed = pendingCreditSale();
+    await db.outbox.bulkPut([
+      { ...onAbsorbed, payload: { ...(onAbsorbed.payload as object), customerId: ABSORBED } },
+      {
+        ...pendingCreditSale(),
+        command_id: '01900000-0000-7000-8000-0000000000d7',
+        device_seq: 2,
+        aggregate_id: '01900000-0000-7000-8000-0000000000c7',
+        status: 'REJECTED',
+        last_error: { code: 'CREDIT_LIMIT', message_fr: 'Plafond dépassé.' },
+      },
+    ]);
+    renderAt(`/clients/${IDS.customer}`);
+    expect(await screen.findByText('Visite sur le doublon')).toBeInTheDocument();
+    // 12 000 servis + 3 000 de la vente à crédit en attente sur le compte absorbé.
+    expect(screen.getByText('Encours').nextElementSibling).toHaveTextContent(/15\s000\sF\sCFA/);
+    const sales = within(screen.getByRole('region', { name: 'Ventes des 7 derniers jours' }));
+    expect(sales.getByText('Refusée')).toBeInTheDocument();
+    expect(sales.getAllByText(/Reste/)).toHaveLength(1);
   });
 
   it('les raccourcis suivent les rôles mémorisés : pas de commande pour le vendeur de PDV', async () => {

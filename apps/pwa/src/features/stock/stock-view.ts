@@ -3,8 +3,10 @@
  * physique, le disponible pour cet appareil (règles d'ADR-033), les opérations de l'appareil pas
  * encore confirmées, et l'état du seuil (BR-STK-051, `evaluateStockThreshold`), évalué comme le
  * serveur sur le solde physique (ADR-033 §10), diminué des seules opérations de l'appareil en
- * attente. Les quotas des appareils ne sont pas servis (jeu `allocations`, S-05) : ils ne sont ni
- * affichés ni déduits. Il n'y a plus de réservé de commande (ADR-028 §4). Logique pure.
+ * attente. Le solde porte `qty_allocated`, que le serveur ne tient pas encore (toujours 0) ; le reste
+ * du quota propre de l'appareil n'est pas servi (jeu `allocations`, S-05) : aucune colonne « Quotas »
+ * n'est affichée tant que ces valeurs ne sont pas fiables. Il n'y a plus de réservé de commande
+ * (ADR-028 §4). Logique pure.
  */
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from '../sales/pending.js';

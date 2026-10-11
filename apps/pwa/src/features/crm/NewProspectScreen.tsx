@@ -114,7 +114,13 @@ export function NewProspectScreen() {
   const session = openWorkSession(refs.workSessions, userId, now);
   const defaultZone =
     ownLocation?.location_type === 'POS' ? ownSite?.zone_id : session?.declared_zone_id;
-  const zoneId = draft.zoneId || defaultZone || '';
+  // Une zone préremplie ou choisie qui n'est plus proposée (inactive) n'est jamais envoyée.
+  const offered = (id: string | undefined) => id !== undefined && zones.some((z) => z.id === id);
+  const zoneId = offered(draft.zoneId)
+    ? draft.zoneId
+    : offered(defaultZone)
+      ? (defaultZone as string)
+      : '';
   const defaultSource =
     ownLocation?.location_type === 'POS' ? 'VISITE_SPONTANEE' : 'PROSPECTION_TERRAIN';
   const sourceCode = draft.sourceCode || defaultSource;

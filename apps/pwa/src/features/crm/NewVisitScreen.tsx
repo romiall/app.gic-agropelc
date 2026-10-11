@@ -80,6 +80,8 @@ export function NewVisitScreen() {
             onClick={() => {
               setDraft(EMPTY_VISIT);
               setSubmitted(undefined);
+              // Nouvelle visite, nouveau lieu : la position précédente n'est jamais reprise.
+              geo.reset();
             }}
           >
             {t('visit.another')}
@@ -108,12 +110,10 @@ export function NewVisitScreen() {
     today,
   });
   const outcomes = visitOutcomes(refs.reasonCodes);
-  const proposePosition = proposesCustomerPosition(
-    customer,
-    effective.position,
-    refs.outbox,
-    refs.customersPulledAt,
-  );
+  // Pas de proposition pendant un relevé : la position affichée pourrait être l'ancienne.
+  const proposePosition =
+    geo.state !== 'locating' &&
+    proposesCustomerPosition(customer, effective.position, refs.outbox, refs.customersPulledAt);
   const roles = navigation ? navigation.roles : [];
   const ready = check.issues.length === 0 && outcomes.length > 0 && !busy;
 

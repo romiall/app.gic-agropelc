@@ -98,6 +98,37 @@ describe('+ Prospect (ECR-CRM-02)', () => {
     ]);
   });
 
+  it('zone préremplie devenue inactive : non envoyée, une zone active est à choisir', async () => {
+    const db = getDb();
+    const key = `zone:ZONE:${IDS.zone}`;
+    const centre = await db.projections.get(key);
+    if (!centre) throw new Error('zone de la fixture absente');
+    await db.projections.bulkPut([
+      { ...centre, data: { ...centre.data, is_active: 0 } },
+      {
+        ...centre,
+        key: 'zone:ZONE:z-active',
+        entity_id: 'z-active',
+        data: { id: 'z-active', parent_id: null, name: 'Nord', depth: 1, is_active: 1 },
+      },
+    ]);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <NewProspectScreen />
+      </MemoryRouter>,
+    );
+    await user.type(
+      await screen.findByLabelText('Nom du client ou de l’établissement'),
+      'Épicerie Etoudi',
+    );
+    await user.type(screen.getByLabelText('Téléphone'), '677 00 11 22');
+    expect(screen.getByLabelText('Zone')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Enregistrer le prospect' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Zone'), 'z-active');
+    expect(screen.getByRole('button', { name: 'Enregistrer le prospect' })).toBeEnabled();
+  });
+
   it('tablette partagée : le prospect en attente d’un autre utilisateur n’est pas proposé', async () => {
     const db = getDb();
     await db.syncMeta.put({

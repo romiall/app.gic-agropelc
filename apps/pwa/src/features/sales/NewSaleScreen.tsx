@@ -216,7 +216,9 @@ export function NewSaleScreen() {
       creditAllowed: customer.credit_allowed,
       creditLimitXaf: customer.credit_limit_xaf === null ? null : xaf(customer.credit_limit_xaf),
       // Encours téléchargé corrigé des opérations de l'appareil pas encore retéléchargées.
-      outstandingXaf: xaf(localOutstanding(customer, refs.outbox, refs.customersPulledAt)),
+      outstandingXaf: xaf(
+        localOutstanding(customer, refs.outbox, refs.customersPulledAt, refs.customerAlias),
+      ),
       newCreditXaf: xaf(total - amount),
     });
     if (credit.outcome === 'NOT_ALLOWED') warnings.push(t('sales.warning_credit_not_allowed'));

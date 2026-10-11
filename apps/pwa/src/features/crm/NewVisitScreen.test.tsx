@@ -184,6 +184,30 @@ describe('+ Visite (ECR-CRM-04)', () => {
     ]);
   });
 
+  it('« Autre visite » relève une nouvelle position, jamais celle de la visite précédente', async () => {
+    await seedOutcome();
+    locateAt({ latitude: 3.8667, longitude: 11.5167, accuracy: 20 });
+    const user = userEvent.setup();
+    renderAt(`/clients/visite?client=${IDS.customer}`);
+    await user.selectOptions(await screen.findByLabelText('Résultat de la visite'), OUTCOME);
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la visite' }));
+    locateAt({ latitude: 3.9, longitude: 11.55, accuracy: 15 });
+    await user.click(await screen.findByRole('button', { name: 'Autre visite' }));
+    expect(await screen.findByText(/Position relevée \(précision 15 m\)/)).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText(/Rechercher un client/), 'Mvog');
+    await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    await user.selectOptions(screen.getByLabelText('Résultat de la visite'), OUTCOME);
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la visite' }));
+    await screen.findByRole('button', { name: 'Autre visite' });
+    const visits = (await getDb().outbox.orderBy('device_seq').toArray()).filter(
+      (command) => command.command_type === 'crm.visit.record',
+    );
+    expect(visits.map((command) => (command.payload as { position: unknown }).position)).toEqual([
+      { lat: 3.8667, lng: 11.5167, accuracyM: 20 },
+      { lat: 3.9, lng: 11.55, accuracyM: 15 },
+    ]);
+  });
+
   it('en session, loin du compte déjà situé : signalement de distance, pas de proposition de position', async () => {
     await seedOutcome();
     await openSession();

@@ -15,7 +15,7 @@ import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
-import { localAvailable, stockKey } from '../sales/stock.js';
+import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import {
   checkLoss,
@@ -110,9 +110,13 @@ export function LossScreen() {
     : 0;
   const lots = (balance?.lots ?? []).filter((lot) => lot.lot_id && Number(lot.qty_on_hand) > 0);
   const chosenLot = lots.find((lot) => lot.lot_id === draft.lotId);
+  // Contrôle sur le physique (et le lot choisi), comme le serveur ; les quotas n'y entrent pas.
+  const physical = product
+    ? physicalLeft(balance, refs.pending.get(stockKey(location.id, product.id)) ?? 0)
+    : 0;
   const overAvailable =
     check.quantityBase !== null &&
-    (check.quantityBase > available ||
+    (check.quantityBase > physical ||
       (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
   // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
   const ready = check.issues.length === 0 && !(online && overAvailable) && !busy;

@@ -34,6 +34,8 @@ export function localOutstanding(
   customer: { readonly id: string; readonly outstanding_xaf: number },
   outbox: readonly OutboxCommand[],
   customersPulledAt: string | undefined,
+  /** Comptes absorbés : leurs opérations comptent pour le compte conservé (encours servi agrégé). */
+  alias: ReadonlyMap<string, string> = new Map(),
 ): number {
   let outstanding = customer.outstanding_xaf;
   for (const command of outbox) {
@@ -45,7 +47,12 @@ export function localOutstanding(
       readonly advancePayments?: readonly { readonly amountXaf?: number }[];
       readonly amountXaf?: number;
     };
-    if (payload.customerId !== customer.id) continue;
+    if (
+      !payload.customerId ||
+      (alias.get(payload.customerId) ?? payload.customerId) !== customer.id
+    ) {
+      continue;
+    }
     try {
       if (command.command_type === 'sales.sale.record') {
         outstanding += Math.max(0, linesTotal(payload.lines) - paid(payload.payments));

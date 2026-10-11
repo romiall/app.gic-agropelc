@@ -21,6 +21,8 @@ export function useGeolocation(): {
   readonly position: DevicePosition | null;
   readonly state: GeolocationState;
   readonly locate: () => void;
+  /** Oublie la position relevée et en relève une nouvelle (saisie suivante). */
+  readonly reset: () => void;
 } {
   const [position, setPosition] = useState<DevicePosition | null>(null);
   const [state, setState] = useState<GeolocationState>(() =>
@@ -57,5 +59,10 @@ export function useGeolocation(): {
     request();
   }, [request]);
 
-  return { position, state, locate };
+  const reset = useCallback(() => {
+    setPosition(null);
+    locate();
+  }, [locate]);
+
+  return { position, state, locate, reset };
 }

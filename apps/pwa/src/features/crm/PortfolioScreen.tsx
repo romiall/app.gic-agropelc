@@ -75,50 +75,51 @@ export function PortfolioScreen() {
         <p className="home-muted">{t('portfolio.empty')}</p>
       ) : (
         <ul className="doc-list">
-          {rows.map(({ customer, lastActivityAt, nextActionAt, nextActionNote }) => (
-            <li key={customer.id}>
-              <Link
-                to={ROUTES.customer(customer.id)}
-                className="doc-row"
-                aria-label={t('portfolio.open', { name: customer.display_name })}
-              >
-                <span className="doc-main">
-                  <strong>{customer.display_name}</strong>
-                  <small>
-                    {[
-                      customer.phone_primary,
-                      lastActivityAt
-                        ? t('portfolio.last_activity', {
-                            when: formatMoment(lastActivityAt, today),
-                          })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </small>
-                  {nextActionAt ? (
-                    <small className={nextActionAt <= today ? 'text-warn' : undefined}>
-                      {t('portfolio.next_action', {
-                        date: formatBusinessDay(nextActionAt),
-                        note: nextActionNote ?? '',
-                      })}
+          {rows.map(
+            ({ customer, lastActivityAt, nextActionAt, nextActionNote, outstandingXaf }) => (
+              <li key={customer.id}>
+                <Link to={ROUTES.customer(customer.id)} className="doc-row">
+                  <span className="doc-main">
+                    <strong>{customer.display_name}</strong>
+                    <small>
+                      {[
+                        customer.phone_primary,
+                        lastActivityAt
+                          ? t('portfolio.last_activity', {
+                              when: formatMoment(lastActivityAt, today),
+                            })
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </small>
-                  ) : null}
-                </span>
-                <span className="doc-side">
-                  <span className="badge badge-info">
-                    {t(`portfolio.stage.${customer.stage}`, { defaultValue: customer.stage })}
+                    {nextActionAt ? (
+                      <small className={nextActionAt <= today ? 'text-warn' : undefined}>
+                        {t('portfolio.next_action', {
+                          date: formatBusinessDay(nextActionAt),
+                          note: nextActionNote ?? '',
+                        })}
+                        {nextActionAt < today ? ` · ${t('portfolio.overdue')}` : null}
+                      </small>
+                    ) : null}
                   </span>
-                  {customer.pending_command_id ? (
-                    <span className="badge badge-warn">{t('portfolio.pending')}</span>
-                  ) : null}
-                  {customer.outstanding_xaf > 0 ? (
-                    <small>{formatMoney(customer.outstanding_xaf)}</small>
-                  ) : null}
-                </span>
-              </Link>
-            </li>
-          ))}
+                  <span className="doc-side">
+                    <span className="badge badge-info">
+                      {t(`portfolio.stage.${customer.stage}`, { defaultValue: customer.stage })}
+                    </span>
+                    {customer.pending_command_id ? (
+                      <span className="badge badge-warn">{t('portfolio.pending')}</span>
+                    ) : null}
+                    {outstandingXaf > 0 ? (
+                      <small>
+                        {t('portfolio.outstanding', { amount: formatMoney(outstandingXaf) })}
+                      </small>
+                    ) : null}
+                  </span>
+                </Link>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </section>

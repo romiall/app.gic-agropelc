@@ -3,6 +3,7 @@
  * comptes du jeu `customers` (et comptes créés sur l'appareil en attente), dernière activité et
  * prochaine action tirées des visites et interactions des 90 derniers jours (jeu `crm_activity`).
  */
+import { localOutstanding } from '../sales/credit.js';
 import type { SalesReferences } from '../sales/references.js';
 import type { CustomerData, InteractionData, VisitData } from '../sales/types.js';
 
@@ -14,23 +15,26 @@ export interface PortfolioRow {
   /** Prochaine action prévue (`AAAA-MM-JJ`) la plus proche, s'il y en a. */
   readonly nextActionAt: string | null;
   readonly nextActionNote: string | null;
+  /** Encours corrigé des opérations de l'appareil en attente (comme la fiche). */
+  readonly outstandingXaf: number;
 }
 
 export type ActivityItem =
   | { readonly kind: 'VISIT'; readonly at: string; readonly visit: VisitData }
   | { readonly kind: 'INTERACTION'; readonly at: string; readonly interaction: InteractionData };
 
-/** Activité d'un compte, la plus récente d'abord. */
+/** Activité d'un compte (comptes absorbés compris), la plus récente d'abord. */
 export function activityOf(
-  refs: Pick<SalesReferences, 'visits' | 'interactions'>,
+  refs: Pick<SalesReferences, 'visits' | 'interactions' | 'customerAlias'>,
   customerId: string,
 ): ActivityItem[] {
+  const owns = (id: string) => (refs.customerAlias.get(id) ?? id) === customerId;
   return [
     ...refs.visits
-      .filter((visit) => visit.customer_id === customerId)
+      .filter((visit) => owns(visit.customer_id))
       .map((visit) => ({ kind: 'VISIT' as const, at: visit.occurred_at, visit })),
     ...refs.interactions
-      .filter((interaction) => interaction.customer_id === customerId)
+      .filter((interaction) => owns(interaction.customer_id))
       .map((interaction) => ({
         kind: 'INTERACTION' as const,
         at: interaction.occurred_at,
@@ -56,7 +60,10 @@ function matches(customer: CustomerData, text: string): boolean {
  * La prochaine action d'un compte est celle de sa dernière visite ou interaction qui en prévoit une.
  */
 export function portfolioRows(
-  refs: Pick<SalesReferences, 'customers' | 'visits' | 'interactions'>,
+  refs: Pick<
+    SalesReferences,
+    'customers' | 'visits' | 'interactions' | 'customerAlias' | 'outbox' | 'customersPulledAt'
+  >,
   filter: { readonly stage: StageFilter; readonly query: string },
 ): PortfolioRow[] {
   const text = filter.query.trim().toLowerCase();
@@ -77,6 +84,12 @@ export function portfolioRows(
         lastActivityAt: activity[0]?.at ?? null,
         nextActionAt: planned?.next_action_at ?? null,
         nextActionNote: planned?.next_action_note ?? null,
+        outstandingXaf: localOutstanding(
+          customer,
+          refs.outbox,
+          refs.customersPulledAt,
+          refs.customerAlias,
+        ),
       };
     })
     .sort((a, b) => {

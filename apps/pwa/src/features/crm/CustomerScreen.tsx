@@ -16,7 +16,7 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { localOutstanding } from '../sales/credit.js';
 import { formatMoney } from '../sales/format.js';
 import { openOrders } from '../sales/open-orders.js';
-import { recentSales } from '../sales/recent-sales.js';
+import { recentSales, saleStatusTone } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
 import { activityOf } from './portfolio.js';
 
@@ -53,9 +53,17 @@ export function CustomerScreen() {
 
   const roles = navigation ? navigation.roles : [];
   const today = businessDayOf(clock.now());
-  const outstanding = localOutstanding(customer, refs.outbox, refs.customersPulledAt);
-  const sales = recentSales(refs).filter((sale) => sale.customerId === customer.id);
-  const orders = openOrders(refs).filter((order) => order.customerId === customer.id);
+  const outstanding = localOutstanding(
+    customer,
+    refs.outbox,
+    refs.customersPulledAt,
+    refs.customerAlias,
+  );
+  // Comptes absorbés compris (BR-CRM-007).
+  const owns = (id: string | null) =>
+    id !== null && (refs.customerAlias.get(id) ?? id) === customer.id;
+  const sales = recentSales(refs).filter((sale) => owns(sale.customerId));
+  const orders = openOrders(refs).filter((order) => owns(order.customerId));
   const activity = activityOf(refs, customer.id);
   const reasons = new Map(refs.reasonCodes.map((reason) => [reason.id, reason.label]));
   const zone = refs.zones.get(customer.zone_id);
@@ -176,7 +184,13 @@ export function CustomerScreen() {
                   </span>
                   <span className="doc-side">
                     <strong>{formatMoney(sale.netTotalXaf)}</strong>
-                    {sale.balanceDueXaf > 0 ? (
+                    <span className={`badge badge-${saleStatusTone(sale.status)}`}>
+                      {sale.status === 'CONFIRMED' && sale.paymentStatus
+                        ? t(`sales.payment_status.${sale.paymentStatus}`)
+                        : t(`sales.status.${sale.status}`)}
+                    </span>
+                    {sale.balanceDueXaf > 0 &&
+                    (sale.status === 'CONFIRMED' || sale.status === 'PENDING') ? (
                       <small>
                         {t('customer.balance_due', { amount: formatMoney(sale.balanceDueXaf) })}
                       </small>

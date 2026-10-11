@@ -16,7 +16,7 @@ import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
-import { localAvailable, stockKey } from '../sales/stock.js';
+import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import type { LocationData, StockTransferData } from '../sales/types.js';
 import { stockLocations } from './stock-view.js';
@@ -38,6 +38,14 @@ function availableAt(refs: SalesReferences, location: LocationData, productId: s
   return localAvailable(
     refs.stock.get(stockKey(location.id, productId)),
     location.custody_mode,
+    refs.pending.get(stockKey(location.id, productId)) ?? 0,
+  );
+}
+
+/** Contrôle de l'expédition : le physique moins les opérations en attente, comme le serveur. */
+function physicalAt(refs: SalesReferences, location: LocationData, productId: string): number {
+  return physicalLeft(
+    refs.stock.get(stockKey(location.id, productId)),
     refs.pending.get(stockKey(location.id, productId)) ?? 0,
   );
 }
@@ -146,7 +154,7 @@ function DirectDispatchForm({ refs, userId, online, onDone }: FormProps) {
       quantityBase: check.quantityBase,
     })),
   );
-  const over = overAvailable(totals, (productId) => availableAt(refs, source, productId));
+  const over = overAvailable(totals, (productId) => physicalAt(refs, source, productId));
   const ready =
     destinationId !== '' &&
     checks.every(({ check }) => check.issue === null) &&
@@ -360,7 +368,7 @@ function RequestDispatchForm({
     })),
   );
   const over = source
-    ? overAvailable(totals, (productId) => availableAt(refs, source, productId))
+    ? overAvailable(totals, (productId) => physicalAt(refs, source, productId))
     : [];
   const nothing = [...quantities.values()].every((value) => value === 0);
   const ready = !invalid && !nothing && !(online && over.length > 0) && !busy;

@@ -17,6 +17,7 @@ import type {
   CampaignData,
   CustomerCategoryData,
   InteractionData,
+  InventoryCountData,
   VisitData,
   CustomerData,
   CustomerPaymentData,
@@ -63,6 +64,14 @@ export interface SalesReferences {
    */
   readonly visits: readonly VisitData[];
   readonly interactions: readonly InteractionData[];
+  /**
+   * Comptes fusionnés connus de l'appareil : identifiant absorbé → compte conservé (racine de la chaîne
+   * de fusion, BR-CRM-007). Leurs ventes, commandes et visites se rattachent au compte conservé.
+   */
+  readonly customerAlias: ReadonlyMap<string, string>;
+  /** Inventaires des emplacements du périmètre (jeu `counts`) et heure de leur dernier tirage. */
+  readonly counts: readonly InventoryCountData[];
+  readonly countsPulledAt: string | undefined;
   /** Transferts du périmètre (jeu `transfers`), tous statuts reçus. */
   readonly transfers: ReadonlyMap<string, StockTransferData>;
   /** Catégories de client actives (jeu `customer_category`). */
@@ -82,6 +91,30 @@ export interface SalesReferences {
 
 const byId = <T extends { readonly id: string }>(rows: readonly T[]): Map<string, T> =>
   new Map(rows.map((row) => [row.id, row]));
+
+/** Compte absorbé → compte conservé, en suivant la chaîne `merged_into_id` (garde contre un cycle). */
+export function mergeAliases(customers: readonly CustomerData[]): Map<string, string> {
+  const into = new Map(
+    customers
+      .filter((customer) => customer.merged_into_id !== null)
+      .map((customer) => [customer.id, customer.merged_into_id as string]),
+  );
+  const alias = new Map<string, string>();
+  for (const id of into.keys()) {
+    let root = id;
+    const seen = new Set<string>();
+    while (into.has(root) && !seen.has(root)) {
+      seen.add(root);
+      root = into.get(root) as string;
+    }
+    alias.set(id, root);
+  }
+  return alias;
+}
+
+/** Identifiant du compte conservé pour un compte éventuellement absorbé. */
+export const rootCustomerId = (alias: ReadonlyMap<string, string>, id: string): string =>
+  alias.get(id) ?? id;
 
 interface CreatePayload {
   readonly displayName?: string;
@@ -220,6 +253,8 @@ export function pendingInteractions(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    counts,
+    countsCursor,
     visits,
     interactions,
     transfers,
@@ -250,6 +285,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<InventoryCountData>(db, 'counts', 'INVENTORY_COUNT'),
+    db.syncCursors.get('counts'),
     listProjected<VisitData>(db, 'crm_activity', 'VISIT'),
     listProjected<InteractionData>(db, 'crm_activity', 'INTERACTION'),
     listProjected<StockTransferData>(db, 'transfers', 'STOCK_TRANSFER'),
@@ -326,6 +363,9 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...interactions.filter((interaction) => interaction.status === 'RECORDED'),
       ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
+    customerAlias: mergeAliases(customers),
+    counts,
+    countsPulledAt: countsCursor?.pulled_at,
     transfers: transferMap,
     customerCategories: customerCategories
       .filter((category) => category.is_active)

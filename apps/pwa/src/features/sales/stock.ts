@@ -136,6 +136,16 @@ export function localAvailable(
   return fromMilli(toMilli(available) - toMilli(pending)) || 0;
 }
 
+/**
+ * Solde physique de l'emplacement diminué des opérations de l'appareil en attente : ce que le serveur
+ * contrôle à coup sûr (`INSUFFICIENT_STOCK`) pour une perte ou une expédition. Le reste du quota propre
+ * de l'appareil n'est pas connu (jeu `allocations`, S-05) : il ne sert pas à bloquer.
+ */
+export function physicalLeft(balance: StockBalanceData | undefined, pending: number): number {
+  const onHand = balance ? Number(balance.qty_on_hand) : 0;
+  return fromMilli(toMilli(onHand) - toMilli(pending)) || 0;
+}
+
 /** Valeur d'un paramètre visible du client : réglage du site, à défaut global, le plus récent. */
 export function settingValue(
   settings: readonly SettingData[],
