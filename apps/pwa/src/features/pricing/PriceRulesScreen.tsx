@@ -22,6 +22,7 @@ import {
   phaseOf,
   submitCommand,
   waitingCommands,
+  waitingIds,
 } from '../sales/submit.js';
 import type { ProductData } from '../sales/types.js';
 import { SIM_CHANNELS } from './price-sim.js';
@@ -36,6 +37,7 @@ import {
   formFrom,
   groupRules,
   isLatestVersion,
+  supersedesPending,
   minimumEnd,
   predecessorOf,
   ruleDimensions,
@@ -510,16 +512,21 @@ export function PriceRulesScreen() {
   // Opérations tarifaires de l'utilisateur encore sans réponse, même d'une visite précédente : elles
   // bloquent la suivante, et leur réponse déclenche la relecture comme celle de la dernière.
   const pendingPricing = waitingCommands(refs?.outbox ?? [], 'pricing.rule.', userId);
-  // Clé de relecture sur la phase (le statut brut passe par SYNCING à chaque cycle).
-  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingPricing
-    .map((command) => command.command_id)
-    .join(',')}`;
+  // Clé de relecture sur la phase (le statut brut passe par SYNCING à chaque cycle), et sur toutes
+  // les opérations encore en attente, échec répété compris (leur réponse tardive relit aussi).
+  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(
+    refs?.outbox ?? [],
+    'pricing.rule.',
+    userId,
+  )}`;
   const productRules = useRules(
     productId ? `/api/v1/price-rules?product_id=${encodeURIComponent(productId)}` : null,
     online,
     reloadKey,
   );
   const rules = productRules.rules;
+  // Règles dont une nouvelle version attend l'envoi (échec répété compris) : pas de second remplacement.
+  const pendingSupersede = supersedesPending(refs?.outbox ?? []);
   // Codes de toutes les lignées, pour une nouvelle règle seulement (unicité du code).
   const allRules = useRules(
     editing && editing.superseded === null ? '/api/v1/price-rules' : null,
@@ -807,7 +814,9 @@ export function PriceRulesScreen() {
                   ruleRow(
                     rule,
                     <div className="result-actions">
-                      {canDraft(product) && isLatestVersion(rule, rules) ? (
+                      {canDraft(product) && pendingSupersede.has(rule.id) ? (
+                        <p className="home-muted">{t('price_rules.supersede_pending')}</p>
+                      ) : canDraft(product) && isLatestVersion(rule, rules) ? (
                         <button
                           type="button"
                           className="secondary"

@@ -342,6 +342,68 @@ describe('Bons de commande (ECR-APP-03)', () => {
     expect(await getDb().outbox.count()).toBe(1);
   });
 
+  it('création en échec répété puis acceptée : la saisie d’un autre bon reste affichée', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
+    const form = await fillDirectOrder(user);
+    await user.click(form.getByRole('button', { name: 'Créer le bon de commande' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [sent] = await getDb().outbox.toArray();
+    await getDb().outbox.update(sent?.command_id as string, {
+      status: 'PENDING_SYNC',
+      busy_retries: 3,
+      last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+    });
+    expect(await form.findByText(/ne le ressaisissez pas/)).toBeInTheDocument();
+    // L'utilisateur commence un autre bon ; la première création est enfin acceptée.
+    await user.selectOptions(form.getByLabelText('Fournisseur'), SUPPLIER);
+    const calls = vi.mocked(authorizedRequest).mock.calls.length;
+    await getDb().outbox.update(sent?.command_id as string, {
+      status: 'SYNCED',
+      busy_retries: 0,
+      last_error: null,
+    });
+    await screen.findByText(/Bon de commande .*créé/);
+    // L'écran a traité la réponse (relecture des listes) sans quitter la saisie.
+    await waitFor(() =>
+      expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(calls),
+    );
+    expect(screen.getByRole('region', { name: 'Nouveau bon de commande' })).toBeVisible();
+    expect(form.getByLabelText('Fournisseur')).toHaveValue(SUPPLIER);
+  });
+
+  it('relecture des demandes en échec après une création : annoncée dans « Nouveau bon », « Réessayer » sur place', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
+    const form = await fillDirectOrder(user);
+    await form.findByLabelText('Ligne d’une demande approuvée');
+    await user.click(form.getByRole('button', { name: 'Créer le bon de commande' }));
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (String(path).startsWith('/api/v1/purchase-requests')
+          ? { ok: false, reason: 'HTTP_ERROR', status: 500, body: null }
+          : answer(path)) as never,
+    );
+    await settleLast(1);
+    // Création acceptée : retour à la liste, puis retour à la saisie.
+    await screen.findByText(/Bon de commande .*créé/);
+    await user.click(screen.getByRole('radio', { name: 'Nouveau bon de commande' }));
+    expect(await form.findByText(/Relecture des demandes d’achat en échec/)).toBeInTheDocument();
+    // Les anciennes demandes restent listées, mais aucune ligne n'en est tirée avant la relecture.
+    await user.selectOptions(form.getByLabelText('Ligne d’une demande approuvée'), REQUEST_LINE);
+    expect(form.getByRole('button', { name: 'Ajouter la ligne de demande' })).toBeDisabled();
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => answer(path) as never);
+    await user.click(form.getByRole('button', { name: 'Réessayer' }));
+    await waitFor(() =>
+      expect(form.queryByText(/Relecture des demandes d’achat en échec/)).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(form.getByRole('button', { name: 'Ajouter la ligne de demande' })).toBeEnabled(),
+    );
+  });
+
   it('demandes indisponibles : un bon direct reste créable, « Réessayer » relit les demandes', async () => {
     vi.mocked(authorizedRequest).mockImplementation(
       async (_db, path) =>
@@ -515,6 +577,11 @@ describe('Bons de commande : actions et brouillon', () => {
     // Demande inconnue de la liste (entièrement commandée) : baisse seulement.
     expect(draftUpdate(fromRequest, raise('101'), '2026-10-20').issues).toEqual(['OVER_REQUEST']);
     expect(draftUpdate(fromRequest, raise('90'), '2026-10-20').issues).toEqual([]);
+    // Demandes jamais lues : la hausse attend leur lecture (reste inconnu, pas « dépassé »).
+    expect(draftUpdate(fromRequest, raise('101'), '2026-10-20', null).issues).toEqual([
+      'REMAINING_UNKNOWN',
+    ]);
+    expect(draftUpdate(fromRequest, raise('90'), '2026-10-20', null).issues).toEqual([]);
     // Montant hors des entiers sûrs : refusé avant l'envoi.
     const huge = new Map([
       ['l1', { qtyText: '99999999999', priceText: '999999999', cancel: false }],

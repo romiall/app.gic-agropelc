@@ -28,6 +28,7 @@ import {
   phaseOf,
   submitCommand,
   waitingCommands,
+  waitingIds,
 } from '../sales/submit.js';
 import {
   checkTarget,
@@ -211,7 +212,7 @@ export function TargetsScreen() {
     ].join('|'),
     readTargets,
     online,
-    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
+    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(refs?.outbox ?? [], 'crm.target.', userId)}`,
   );
   const targets = read.data;
 

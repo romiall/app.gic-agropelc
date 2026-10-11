@@ -15,7 +15,13 @@ import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { lastWaitingCommand, phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
+import {
+  lastWaitingCommand,
+  phaseOf,
+  submitCommand,
+  waitingCommands,
+  waitingIds,
+} from '../sales/submit.js';
 import type { ProductCategoryData } from '../sales/types.js';
 import {
   categoryPayload,
@@ -55,6 +61,7 @@ function useOnlineList<T>(path: string, field: string, online: boolean, reloadKe
   const read = useOnlineRead<Record<string, T[] | undefined>>(path, readPath, online, reloadKey);
   return {
     items: read.data ? (read.data[field] ?? []) : undefined,
+    stale: read.stale,
     failed: read.failed,
     retry: read.retry,
   };
@@ -801,7 +808,7 @@ export function CatalogScreen() {
   const lastStatus = lastFound ? phaseOf(lastFound) : '';
   // Réponse de la dernière opération, ou d'une opération retrouvée en attente : relecture des listes.
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'catalog.', userId);
-  const reloadKey = `${last ?? ''}:${lastStatus}|${pendingOps.map((c) => c.command_id).join(',')}`;
+  const reloadKey = `${last ?? ''}:${lastStatus}|${waitingIds(refs?.outbox ?? [], 'catalog.', userId)}`;
   const units = useOnlineList<UnitView>('/api/v1/units', 'units', online, reloadKey);
   const products = useOnlineList<ProductView>('/api/v1/products', 'products', online, reloadKey);
   const reasons = useOnlineList<ReasonView>(
@@ -825,7 +832,10 @@ export function CatalogScreen() {
   // Une opération du catalogue de l'utilisateur encore sans réponse bloque la suivante, même après
   // un retour sur l'écran.
   const waiting = pendingOps.length > 0;
-  const blocked = busy || settling || waiting || !online;
+  // Listes périmées (relecture en cours ou en échec) : les actions se déduisent de l'état affiché,
+  // elles attendent la relecture.
+  const stale = units.stale || products.stale || reasons.stale;
+  const blocked = busy || settling || waiting || !online || stale;
   // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
   // son résultat (refus compris) reste affiché jusqu'à la réponse.
   const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'catalog.', userId);
@@ -909,6 +919,11 @@ export function CatalogScreen() {
         </div>
       ) : null}
       {online && !loaded && !failed ? <p className="home-muted">{t('sales.loading')}</p> : null}
+      {online && loaded && stale && !failed ? (
+        <p className="home-muted" role="status">
+          {t('catalog.refreshing')}
+        </p>
+      ) : null}
       {props ? (
         <section className="sale-block" aria-label={t(`catalog.section.${section}`)}>
           {section === 'PRODUCTS' ? <ProductsSection {...props} /> : null}

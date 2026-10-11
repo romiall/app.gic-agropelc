@@ -313,8 +313,11 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     const user = userEvent.setup();
     renderScreen();
     await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
-    const newVersion = await screen.findByRole('button', { name: 'Nouvelle version' });
-    expect(newVersion).toBeDisabled();
+    // Nouvelle version de la v1 en attente : pas de second remplacement proposé.
+    expect(
+      await screen.findByText('Une nouvelle version de cette règle attend l’envoi.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nouvelle version' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeDisabled();
     expect(screen.getByText(/Opération (en cours d’envoi|enregistrée)/)).toBeInTheDocument();
 
@@ -331,6 +334,68 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeEnabled(),
     );
+  });
+
+  it('réponse tardive d’une opération en échec répété : liste relue alors qu’une autre est la dernière', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const command = (id: string, seq: number, type: string, payload: object): OutboxCommand => ({
+      command_id: id,
+      device_seq: seq,
+      command_type: type,
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'PRICE_RULE',
+      aggregate_id: `${id.slice(0, -2)}a${seq}`,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:59:00.000Z',
+      client_created_at: '2026-10-10T08:59:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload,
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    const STUCK = '01900000-0000-7000-8000-0000000000f1';
+    const OTHER = '01900000-0000-7000-8000-0000000000f2';
+    await getDb().outbox.bulkAdd([
+      // Nouvelle version de la v1 renvoyée trois fois par le serveur : elle ne bloque plus l'écran.
+      {
+        ...command(STUCK, 1, 'pricing.rule.supersede', {
+          supersedesRuleId: 'r-actif',
+          unitPriceXaf: 105,
+        }),
+        busy_retries: 3,
+        last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+      },
+      // Opération suivante, qui devient « la dernière ».
+      command(OTHER, 2, 'pricing.rule.activate', { ruleId: 'd-site' }),
+    ]);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    expect(
+      await screen.findByText('Une nouvelle version de cette règle attend l’envoi.'),
+    ).toBeInTheDocument();
+    // Réponse à la dernière opération : relue, l'écran se débloque.
+    await getDb().outbox.update(OTHER, { status: 'SYNCED' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeEnabled(),
+    );
+    // Réponse tardive de la nouvelle version : la liste est relue et la montre.
+    rules = [
+      rule({}),
+      rule({ id: 'v2', version: 2, status: 'DRAFT', unitPriceXaf: 105, validFrom: TOMORROW }),
+    ];
+    const calls = vi.mocked(authorizedRequest).mock.calls.length;
+    await getDb().outbox.update(STUCK, { status: 'SYNCED', busy_retries: 0, last_error: null });
+    expect(await screen.findByRole('listitem', { name: 'OEUF-GEN v2' })).toBeInTheDocument();
+    expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(calls);
+    expect(screen.queryByRole('button', { name: 'Nouvelle version' })).not.toBeInTheDocument();
   });
 
   it('relecture lente après une opération : liste gardée mais actions bloquées jusqu’à la réponse', async () => {

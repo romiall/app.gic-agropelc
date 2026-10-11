@@ -24,6 +24,7 @@ import {
   phaseOf,
   submitCommand,
   waitingCommands,
+  waitingIds,
 } from '../sales/submit.js';
 import {
   cancelPayload,
@@ -73,8 +74,11 @@ function OrderCard({
   readonly send: Send;
   readonly blocked: boolean;
   readonly userId: string;
-  /** Reste à commander par ligne de demande (modification d'un brouillon). */
-  readonly remaining: ReadonlyMap<string, number>;
+  /**
+   * Reste à commander par ligne de demande (modification d'un brouillon) ; `null` tant que les
+   * demandes n'ont jamais été lues.
+   */
+  readonly remaining: ReadonlyMap<string, number> | null;
   /** Reste à commander pas encore relu : une hausse d'une ligne tirée d'une demande attend. */
   readonly remainingStale: boolean;
 }) {
@@ -397,6 +401,7 @@ function NewOrder({
   suppliersFailed,
   requests,
   requestsStale,
+  requestsFailed,
   onRetrySuppliers,
   onRetryRequests,
   acceptedCreateId,
@@ -413,6 +418,8 @@ function NewOrder({
   readonly requests: readonly RequestView[] | null | undefined;
   /** Demandes pas encore relues : une ligne tirée d'une demande attend la relecture. */
   readonly requestsStale: boolean;
+  /** Dernière lecture des demandes en échec (anciennes données gardées ou non). */
+  readonly requestsFailed: boolean;
   readonly onRetrySuppliers: () => void;
   readonly onRetryRequests: () => void;
   /** Création acceptée par le serveur (réponse définitive). */
@@ -439,6 +446,7 @@ function NewOrder({
     date: useId(),
     request: useId(),
     product: useId(),
+    requestsWait: useId(),
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const activeSuppliers = suppliers
@@ -714,16 +722,21 @@ function NewOrder({
 
       {lines.length < MAX_ORDER_LINES ? (
         <>
-          {requests === undefined ? (
-            <p className="home-muted">{t('orders_po.requests_loading')}</p>
-          ) : requests === null ? (
+          {requestsFailed ? (
             <div className="alert alert-error" role="alert">
-              <p>{t('orders_po.requests_unavailable')}</p>
+              <p>
+                {requests
+                  ? t('orders_po.requests_stale_failed')
+                  : t('orders_po.requests_unavailable')}
+              </p>
               <button type="button" className="secondary" onClick={onRetryRequests}>
                 {t('ledger.retry')}
               </button>
             </div>
-          ) : orderable.length > 0 ? (
+          ) : null}
+          {requests === undefined ? (
+            <p className="home-muted">{t('orders_po.requests_loading')}</p>
+          ) : requests === null ? null : orderable.length > 0 ? (
             <div className="field">
               <label htmlFor={ids.request}>{t('orders_po.request_line_label')}</label>
               <select
@@ -747,7 +760,7 @@ function NewOrder({
               <button
                 type="button"
                 className="secondary"
-                disabled={!requestPick}
+                disabled={!requestPick || requestsStale}
                 onClick={addFromRequest}
               >
                 {t('orders_po.add_request_line')}
@@ -825,9 +838,12 @@ export function OrdersScreen() {
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'procurement.order.', userId);
   // Clé de relecture sur la phase (pas le statut brut, qui passe par SYNCING à chaque cycle).
-  const reloadKey = `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps
-    .map((command) => command.command_id)
-    .join(',')}`;
+  // Toutes les opérations encore en attente, échec répété compris (leur réponse tardive relit aussi).
+  const reloadKey = `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(
+    refs?.outbox ?? [],
+    'procurement.order.',
+    userId,
+  )}`;
   const ordersPath = `/api/v1/purchase-orders?limit=200${status ? `&status=${status}` : ''}`;
   const orders = useOnlineRead<Pages<OrderView>>(
     `${ordersPath}#${ordersPages}`,
@@ -860,6 +876,9 @@ export function OrdersScreen() {
   }
   const acceptedCreateId = created ? last : undefined;
   const retryingCreateId = isCreate && inRepeatedFailure(lastCommand) ? last : undefined;
+  // Création en échec répété : sa saisie est déjà vidée ; son acceptation tardive ne change plus de
+  // rubrique (l'utilisateur a pu commencer un autre bon), le résultat l'annonce.
+  if (retryingCreateId && retryingCreateId !== handledCreate) setHandledCreate(retryingCreateId);
 
   if (!refs || !userId) {
     return (
@@ -886,7 +905,7 @@ export function OrdersScreen() {
   const shownCommand = refs.outbox.find((command) => command.command_id === shownCommandId);
   const supplierList = suppliers.data?.suppliers ?? [];
   const supplierNames = new Map(supplierList.map((supplier) => [supplier.id, supplier.name]));
-  const remaining = requestRemaining(requests.data?.items ?? []);
+  const remaining = requests.data ? requestRemaining(requests.data.items) : null;
   // Actions d'un bon sur une liste relue seulement.
   const cardBlocked = blocked || orders.stale;
 
@@ -1046,6 +1065,7 @@ export function OrdersScreen() {
             suppliersFailed={suppliers.failed ? { denied: suppliers.denied } : null}
             requests={requests.data ? requests.data.items : requests.failed ? null : undefined}
             requestsStale={requests.stale}
+            requestsFailed={requests.failed}
             onRetrySuppliers={suppliers.retry}
             onRetryRequests={requests.retry}
             acceptedCreateId={acceptedCreateId}

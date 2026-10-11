@@ -265,19 +265,26 @@ const parseBaseQty = (text: string): number | null => {
 };
 
 export type DraftEditIssue =
-  'LINE_INVALID' | 'ORDER_EMPTY' | 'DATE_INVALID' | 'OVER_REQUEST' | 'AMOUNT_TOO_LARGE' | 'NOTHING';
+  | 'REMAINING_UNKNOWN'
+  | 'LINE_INVALID'
+  | 'ORDER_EMPTY'
+  | 'DATE_INVALID'
+  | 'OVER_REQUEST'
+  | 'AMOUNT_TOO_LARGE'
+  | 'NOTHING';
 
 /**
  * Charge utile de `procurement.order.update` pour un brouillon : lignes changées seulement, date
  * prévue changée (vide : retirée). `issues` vide quand la modification est envoyable.
  * `remaining` : reste à commander par ligne de demande ; une ligne tirée d'une demande inconnue de
- * cette liste (demande entièrement commandée, ou non lue) ne peut pas augmenter.
+ * cette liste (demande entièrement commandée) ne peut pas augmenter ; `null` quand les demandes
+ * n'ont jamais été lues : la hausse attend leur lecture (`REMAINING_UNKNOWN`).
  */
 export function draftUpdate(
   order: OrderView,
   edits: ReadonlyMap<string, DraftLineEdit>,
   expectedDeliveryDate: string,
-  remaining: ReadonlyMap<string, number> = new Map(),
+  remaining: ReadonlyMap<string, number> | null = new Map(),
 ): { readonly issues: readonly DraftEditIssue[]; readonly payload: Record<string, unknown> } {
   const issues: DraftEditIssue[] = [];
   const lines: Record<string, unknown>[] = [];
@@ -305,8 +312,11 @@ export function draftUpdate(
     }
     kept.push({ quantityBase: qty, unitPriceXaf: price });
     const increase = Math.round(qty * 1000) - Math.round(line.orderedQtyBase * 1000);
-    if (
+    if (line.requestLineId !== null && increase > 0 && remaining === null) {
+      issues.push('REMAINING_UNKNOWN');
+    } else if (
       line.requestLineId !== null &&
+      remaining !== null &&
       increase > Math.round((remaining.get(line.requestLineId) ?? 0) * 1000)
     ) {
       issues.push('OVER_REQUEST');

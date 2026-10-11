@@ -1054,6 +1054,8 @@ export const fr = {
       DATE_INVALID: 'Date de livraison invalide.',
       OVER_REQUEST:
         'Une ligne tirée d’une demande d’achat dépasse ce qui reste à commander sur la demande.',
+      REMAINING_UNKNOWN:
+        'Reste à commander sur la demande pas encore lu : la hausse d’une ligne tirée d’une demande attend la lecture des demandes d’achat.',
       AMOUNT_TOO_LARGE: 'Montant du bon trop grand : vérifiez les quantités et les prix.',
     },
     cancel_reason_label: 'Motif (facultatif)',
@@ -1070,6 +1072,8 @@ export const fr = {
     remove_line: 'Retirer la ligne {{name}}',
     requests_loading: 'Lecture des demandes d’achat approuvées…',
     requests_unavailable: 'Demandes d’achat indisponibles : lignes directes seulement.',
+    requests_stale_failed:
+      'Relecture des demandes d’achat en échec : une ligne tirée d’une demande attend leur relecture.',
     requests_unavailable_list:
       'Demandes d’achat indisponibles : la hausse d’une ligne tirée d’une demande attend leur relecture.',
     suppliers_unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
@@ -1603,6 +1607,7 @@ export const fr = {
     online_only:
       'Écran en ligne seulement : le catalogue se lit et se gère sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Catalogue indisponible : réessayez quand le serveur répond.',
+    refreshing: 'Relecture du catalogue après la dernière opération…',
     section_label: 'Rubrique',
     section: {
       PRODUCTS: 'Produits',
@@ -1773,6 +1778,7 @@ export const fr = {
     read_only_hint:
       'Produit désactivé ou non vendable : ses règles se consultent et se terminent, sans nouvelle rédaction.',
     newer_version_exists: 'Une version plus récente existe déjà (brouillon compris).',
+    supersede_pending: 'Une nouvelle version de cette règle attend l’envoi.',
     outside_superseded:
       'Date d’effet hors de la période de la règle remplacée : l’activation échouerait. Rédigez une nouvelle version.',
     retroactive:

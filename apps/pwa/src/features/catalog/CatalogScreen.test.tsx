@@ -346,6 +346,30 @@ describe('Catalogue (ECR-PRX-01)', () => {
     await waitFor(() => expect(unitReads()).toBeGreaterThan(before));
   });
 
+  it('relecture en échec après une opération : actions bloquées sur la liste périmée jusqu’à « Réessayer »', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const list = within(await screen.findByRole('region', { name: 'Produits' }));
+    await user.click(await list.findByRole('button', { name: 'Désactiver Œufs' }));
+    await screen.findByText(/Opération (en cours d’envoi|enregistrée)/);
+    // La relecture qui suit la réponse échoue : la liste gardée est périmée.
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (String(path) === '/api/v1/products'
+          ? { ok: false, reason: 'HTTP_ERROR', status: 503, body: null }
+          : answer(path)) as never,
+    );
+    await settleLast(1);
+    expect(await screen.findByText(/Catalogue indisponible/)).toBeInTheDocument();
+    expect(list.getByRole('button', { name: 'Désactiver Œufs' })).toBeDisabled();
+    expect(list.getByRole('button', { name: 'Réactiver Poulet' })).toBeDisabled();
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => answer(path) as never);
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    await waitFor(() =>
+      expect(list.getByRole('button', { name: 'Réactiver Poulet' })).toBeEnabled(),
+    );
+  });
+
   it('lecture en échec : annoncée, relue par « Réessayer »', async () => {
     vi.mocked(authorizedRequest).mockImplementation(
       async (_db, path) =>

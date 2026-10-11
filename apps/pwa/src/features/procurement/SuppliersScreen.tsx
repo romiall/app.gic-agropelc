@@ -17,6 +17,7 @@ import {
   phaseOf,
   submitCommand,
   waitingCommands,
+  waitingIds,
 } from '../sales/submit.js';
 import {
   checkSupplier,
@@ -174,7 +175,7 @@ export function SuppliersScreen() {
     '/api/v1/suppliers',
     readPath,
     online,
-    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
+    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(refs?.outbox ?? [], 'procurement.supplier.', userId)}`,
   );
   const suppliers = read.data ? (read.data.suppliers ?? []) : undefined;
 

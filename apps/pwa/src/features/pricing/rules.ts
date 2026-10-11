@@ -14,6 +14,8 @@
  */
 import { businessDayEndUtc, businessDayOf, findConflicts, xaf, type PriceRule } from '@gic/domain';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
+import { phaseOf } from '../sales/submit.js';
+import type { OutboxCommand } from '../../storage/db.js';
 import type { SiteData, ZoneData } from '../sales/types.js';
 
 /** Règle telle que la renvoie `GET /api/v1/price-rules` (dates en chaîne ISO). */
@@ -92,6 +94,24 @@ export function predecessorOf(rule: RuleView, rules: readonly RuleView[]): RuleV
     rules.find(
       (candidate) => candidate.code === rule.code && candidate.version === rule.version - 1,
     ) ?? null
+  );
+}
+
+/**
+ * Règles visées par un remplacement encore sans réponse dans l'outbox de l'appareil (échec répété
+ * compris) : un second remplacement de la même version serait refusé par la base (S-29).
+ */
+export function supersedesPending(
+  outbox: readonly Pick<OutboxCommand, 'command_type' | 'status' | 'payload'>[],
+): ReadonlySet<string> {
+  return new Set(
+    outbox
+      .filter(
+        (command) =>
+          command.command_type === 'pricing.rule.supersede' && phaseOf(command) === 'WAITING',
+      )
+      .map((command) => (command.payload as { supersedesRuleId?: string }).supersedesRuleId)
+      .filter((id): id is string => typeof id === 'string'),
   );
 }
 
