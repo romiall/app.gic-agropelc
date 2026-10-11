@@ -39,6 +39,8 @@ export const ROUTES = {
   productionOutput: '/production/sortie',
   lotSetup: '/production/nouveau-lot',
   incubation: '/production/incubation',
+  lotSheet: '/production/fiche',
+  lotSheetFor: (lotId: string) => `/production/fiche?lot=${encodeURIComponent(lotId)}`,
   productionOutputFor: (lotId: string) => `/production/sortie?lot=${encodeURIComponent(lotId)}`,
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
@@ -167,6 +169,8 @@ export const ROLE_SETS = {
   lotSetup: ['RESP_PRODUCTION'],
   /** ECR-PRD-06 (`production.incubation.record` : production ALL, ferme SITE). */
   incubation: ['RESP_FERME', 'RESP_PRODUCTION'],
+  /** ECR-PRD-03 : responsable de production et direction (03-parcours-et-ecrans.md). */
+  lotSheet: ['RESP_PRODUCTION', 'DIRECTION'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -511,6 +515,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.production,
     actionCodes: ['EGG_COLLECTION'],
     offline: true,
+  },
+  {
+    id: 'ECR-PRD-03',
+    path: ROUTES.lotSheet,
+    labelKey: 'lot_sheet',
+    group: 'production',
+    roles: ROLE_SETS.lotSheet,
+    // « Coûts des lots » du responsable de production.
+    actionCodes: ['LOT_COSTS'],
+    offline: false,
   },
   {
     id: 'ECR-PRD-04',

@@ -619,6 +619,9 @@ export function DailyEntryScreen() {
       <p>
         <Link to={ROUTES.productionOutputFor(lot.id)}>{t('production.to_output')}</Link>
       </p>
+      <p>
+        <Link to={ROUTES.lotSheetFor(lot.id)}>{t('production.to_sheet')}</Link>
+      </p>
       <fieldset className="choice-group">
         <legend>{t('production.kind_label')}</legend>
         {KINDS.map((value) => (

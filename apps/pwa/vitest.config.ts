@@ -15,6 +15,9 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     // Les scénarios Playwright (e2e/) se lancent par `pnpm run e2e`, pas par Vitest.
     exclude: [...configDefaults.exclude, 'e2e/**'],
+    // Les parcours d'écran complets (plusieurs saisies, relectures, réponses simulées) dépassent
+    // parfois 5 s quand la machine est chargée : délai relevé pour éviter les échecs de charge.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
