@@ -34,7 +34,7 @@ Tous les utilisateurs d'appareils, `ADMIN` (supervision, conflits techniques), r
 | UC-SYN-04 | Voir l'état de synchronisation et les opérations en attente, rejetées ou en conflit | ECR-SYN-01 | Tous | **Oui** |
 | UC-SYN-05 | Relancer manuellement la synchronisation | bouton « Synchroniser » | Tous | n/a |
 | UC-SYN-06 | Accuser réception d'une opération rejetée, puis ressaisir si besoin | local | Auteur | **Oui** |
-| UC-SYN-07 | Résoudre un conflit | `sync.conflict.resolve` | ADMIN, responsable concerné | Non |
+| UC-SYN-07 | Résoudre un conflit | `GET /sync/conflicts` (file) puis `sync.conflict.resolve` ou `.dismiss` (P5-17 : clôture administrative tracée, AV-190 ; visibilité par rôle propriétaire et portée, AV-191 ; auto-clôture d'un signal refusée, AV-192 — **DÉDUIT**, **À VALIDER**) | ADMIN, DIRECTION, responsable concerné | Non |
 | UC-SYN-08 | Superviser les appareils (fraîcheur, erreurs, trous de séquence, horloge) | ECR-SYN-02 | ADMIN, DIRECTION | Non |
 
 ## 5. Entrées
@@ -100,3 +100,4 @@ La synchronisation de ses propres commandes est implicite pour tout utilisateur 
 | Appareil réinitialisé avec des commandes non envoyées | Perte locale irréversible ; détectée par le trou de séquence (BR-SYN-003) ; enquête et régularisation par inventaire. |
 | Saturation du stockage local | Alerte locale à 80 % du quota ; purge des données de consultation les plus anciennes, **jamais** de l'outbox. |
 | Serveur indisponible | `RETRY_LATER` avec attente progressive ; l'activité continue hors ligne. |
+| Conflit en quarantaine à clore (P5-17) | `sync.conflict.resolve` en ligne : `KEEP_SERVER` (le fait reste écarté) ou `COMPENSATE` (régularisé par d'autres documents, cités dans `refs`) ; `ACCEPT_CLIENT` et `MERGE` ne sont pas pris en charge (`CONFLICT_REPLAY_NOT_SUPPORTED`) ; la commande reste `CONFLICT` dans l'inbox (AV-190). |

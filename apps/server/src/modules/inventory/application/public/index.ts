@@ -179,3 +179,20 @@ export type {
 // Accueil par rôle (ADR-030).
 export { stockHealth, recentLosses } from './home-metrics.js';
 export type { StockHealth, RecentLosses } from './home-metrics.js';
+
+// P5-17 : lectures des quotas d'appareil (`GET /allocations`, `/allocations/{id}`).
+export {
+  ALLOCATION_STATUSES,
+  activeAllocationTotals,
+  findAllocation,
+  listAllocationEntries,
+  listAllocations,
+} from './allocation-query.js';
+export type {
+  ActiveAllocationTotal,
+  AllocationEntryLine,
+  AllocationStatus,
+  AllocationSummary,
+} from './allocation-query.js';
+// P5-17 (AV-190) : anomalies de stock encore présentes, avant la clôture manuelle de leur conflit.
+export { hasNegativeStock, isAllocationOvercommitted } from './stock-conflict-conditions.js';

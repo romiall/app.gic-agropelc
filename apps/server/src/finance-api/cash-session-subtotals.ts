@@ -3,7 +3,7 @@
  * composition **dans la couche de transport**, parce que `finance` (registre et sessions) n'importe pas
  * `sales` (vendeur d'un encaissement). Chaque module garde ses lectures ; ce fichier ne fait que les
  * assembler, comme `production-api/` pour le chiffre d'affaires des lots. La route
- * `GET /cash-sessions/{id}` qui l'exposera, avec ses droits, est P5-17.
+ * `GET /cash-sessions/{id}` l'expose depuis P5-17 (`cash-operations-read.controller.ts`, droit `finance.cash.read`).
  */
 import type { Kysely, Transaction } from 'kysely';
 import { sellerCashSubtotals, type SellerCashSubtotal } from '@gic/domain';

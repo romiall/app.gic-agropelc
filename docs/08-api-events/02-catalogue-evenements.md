@@ -190,7 +190,8 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `InternalNotePublished`, `InternalNoteAcknowledged` | communication | SYN | `note_id` | Téléchargement des notes |
 | `CommandRejected` | sync | NOT | `command_id`, code | Alerte `SYNC_ERROR` |
 | `CommandApplied` | sync | — (technique, non publié) | — | Métriques uniquement |
-| `SyncConflictDetected`, `SyncConflictResolved` | sync | NOT, module concerné | `conflict_id`, type, rôle responsable | File de résolution |
+| `SyncConflictDetected` | sync | NOT, module concerné | `conflict_id`, type, rôle responsable | File de résolution. **Pas encore produit** (la file se lit par `GET /sync/conflicts`) |
+| `SyncConflictResolved` | sync | NOT, module concerné | `conflict_id`, `conflict_type`, `owner_role`, `entity_type`, `entity_id`, `site_id`, `applied`, `status`, `resolution`, `refs` | File de résolution. **Produit depuis P5-17** par `sync.conflict.resolve` et `.dismiss` (agrégat `SYNC_CONFLICT`), en plus de l'événement générique du pipeline ; clôture administrative sans rejeu (AV-190) |
 | `DeviceSequenceGapDetected` | sync | NOT | `device_id`, trou | Alerte critique |
 | `ClockSkewDetected` | sync | NOT | `device_id`, écart | Alerte `CLOCK_SKEW` |
 | `DeviceSyncStale` | sync (tâche planifiée) | NOT | `device_id`, dernière synchronisation | Alerte `SYNC_STALE` |

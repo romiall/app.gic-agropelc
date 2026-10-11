@@ -60,6 +60,7 @@
 
 - **PK** `id`. **UQ** `code`. **CK** `closed_on` renseigné si et seulement si `CLOSED`.
 - **Suppr.** `DESACTIVATION` (`CLOSED`). **Audit** Toute modification. **Offline** DL.
+- **Lecture (P5-17)** : `GET /sites` (filtres `site_type`, `status`, `zone_id` ; droit `org.structure.read`, portée du site et de sa zone, AV-189) ; lectures publiques `listSites`, `findSite`.
 
 ## organization.points_of_sale
 
@@ -78,6 +79,7 @@
 - **PK** `site_id`. **CK** `designated_device_id` requis si `EXCLUSIVE_DEVICE` ; le site est de type `POINT_DE_VENTE` (TX).
 - **Écriture** (P5-05, ADR-033 §2, INV-DIS-01) : `organization.pos.configure` est la seule commande qui l'écrit, par upsert (rejouer la même configuration est sans effet). Elle refuse (`POS_CONFIG_INVALID`) un emplacement de vente qui n'est pas un `POS` actif de ce site ou qui appartient à un autre PDV, un magasin source qui n'est pas un `STORE` actif d'un *autre* site, un appareil non actif ou déjà désigné pour un autre PDV. `SHARED` ne désigne aucun appareil. **Dans la même transaction**, le mode et l'appareil désigné sont reportés sur l'emplacement de vente (`organization.locations`), seule source lue par le stock, les ventes et la synchronisation. Changer ou retirer l'appareil désigné est refusé (`POS_DEVICE_CHANGE_BLOCKED`, BR-DIS-014) tant que l'ancien appareil déclare des opérations en attente (`sync.device_sync_state`, ligne `_device`, `pending_reported` > 0) ; l'appareil bloqué, perdu ou retiré ne retient plus personne, et un appareil qui n'a encore rien envoyé n'a rien déclaré (DÉDUIT : la correction d'une désignation faite par erreur reste possible).
 - **Suppr.** Suit le site. **Audit** Toute modification (changement d'appareil désigné : BR-DIS-014). **Offline** DL (son PDV).
+- **Lecture (P5-17)** : `GET /points-of-sale` (filtre `site_id` ; droit `org.structure.read`, portée du site et de sa zone, AV-189) ; lecture publique `listPointsOfSale`. La couche de transport y ajoute l'identifiant de la caisse `CAISSE_PDV` active du site et celui de sa session ouverte, sans aucun montant.
 - Le compte de caisse du PDV se trouve dans `finance.cash_accounts` (`site_id`, type `CAISSE_PDV`) : pas de clé étrangère organization → finance.
 
 ## organization.locations
@@ -105,6 +107,7 @@
 - **IX** `(site_id, location_type)`, `(custodian_user_id)`.
 - **Suppr.** `DESACTIVATION` sous condition (BR-ADM-011, INV-STK-07). Les virtuels, `V_TO_DELIVER` compris, ne sont jamais désactivés. `organization.location.deactivate` refuse l'emplacement de vente d'un PDV configuré (`LOCATION_IS_POS_SALES_LOCATION`, BR-DIS-001), puis consulte le **registre de gardes** (P5-05) où chaque module propriétaire d'une donnée enregistre la sienne (inversion de dépendance, comme les décisions d'approbation) : `inventory` refuse un solde non nul (`LOCATION_NOT_EMPTY`), un quota d'appareil actif (`LOCATION_HAS_ALLOCATIONS`) ou un transfert ouvert (`LOCATION_HAS_OPEN_TRANSFER` : demandé, expédié, écart à trancher, non rapproché) ; `finance` (P5-12) refuse l'emplacement de vente (`POS`) d'un site dont la caisse de PDV a une session de caisse ouverte (`LOCATION_HAS_OPEN_CASH_SESSION`, sessions lues en verrou partagé) — limite connue : un site sans emplacement `POS` actif ne consulte pas cette garde à sa fermeture. `organization.site.close` consulte les mêmes gardes pour chacun des emplacements actifs du site (« à livrer » compris).
 - **Audit** Création, modification, désactivation, changement de détenteur ou d'appareil. **Offline** DL (emplacements du périmètre et virtuels globaux ; l'emplacement « à livrer » suit son site, DÉDUIT de son rattachement à un site).
+- **Lecture (P5-17)** : `GET /locations?site_id=` (site obligatoire ; filtres `status`, `location_type` ; droit `org.structure.read`, portée du site, AV-189) ; lecture publique `listLocations`.
 - **Emplacement « à livrer » `V_TO_DELIVER`** (P4-02, ADR-028 §1, ADR-029) :
   - *Rôle* (ADR-028 §1, DÉDUIT dans l'ADR) : un emplacement virtuel **par site**, où la marchandise d'une commande confirmée attend sa livraison. Virtuel, il n'est ni vendable, ni compté dans le disponible, ni dans l'effectif non vendu d'un lot, ni dans un inventaire du magasin.
   - *Création* (ADR-028 §1) : par le système, à la première confirmation sur le site. Elle ne vient ni du seed de démarrage, qui ne porte que les neuf types globaux (BR-ADM-010), ni de `organization.location.create`, qui ne crée que des types physiques.

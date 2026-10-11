@@ -220,6 +220,7 @@
 - **UQ** un quota `ACTIVE` par (holder_user_id, holder_device_id, location_id, product_id, lot) ; les augmentations passent par des entrées.
 - **IX** `(location_id, product_id, status)`, `(holder_device_id, status)`.
 - **Déclencheurs** : `update_guard` (identité immuable, accordé jamais en baisse, `CLOSED` et `REVOKED` terminaux et figés) ; `no_delete`. **Suppr.** `IMMUABLE` sauf transitions. **Audit** Octroi, augmentation, libération, révocation. **Offline** DL (les quotas de l'appareil, jeu `allocations`, P5-18).
+- **Lecture (P5-17)** : `GET /allocations` et `GET /allocations/{id}` (droit `inventory.stock.read`, AV-189) ; lectures publiques `listAllocations` (par emplacement, ou « mes quotas » du détenteur), `findAllocation`, `listAllocationEntries` (registre de la fiche) et `activeAllocationTotals` (Σ des restes des quotas `ACTIVE` d'un emplacement, par produit). `GET /stock` ne les déduit pas encore (P5-19).
 
 ## inventory.stock_allocation_entries
 

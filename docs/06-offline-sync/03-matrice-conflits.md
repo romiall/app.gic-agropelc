@@ -93,3 +93,6 @@
 | Authenticité (appareil, utilisateur, séquence) | ADMIN + DIRECTION | `ALL` |
 
 Toute résolution est tracée (SM-CONFLICT) et, si elle crée des documents compensatoires (inventaire, transfert, perte), ceux-ci suivent leur propre cycle de vie et leur propre audit.
+
+**Traitement manuel et visibilité (P5-17, AV-190, AV-191).** `sync.conflict.resolve` et `sync.conflict.dismiss` clôturent le conflit avec une trace (décision, motif, références) sans rejouer la commande ni créer de document : les documents compensatoires ci-dessus sont créés par les commandes ordinaires de chaque module, que la personne cite dans `refs`. Un conflit n'est visible et traitable que si son rôle propriétaire (`owner_role`) est l'un des rôles de l'utilisateur (catalogue des rôles `conflictRoles` : Direction et Admin lisent tous les conflits, y compris ceux du titulaire d'un compte client), puis dans la portée de `sync.conflict.resolve` sur le site du conflit et l'auteur de la commande ; un conflit système prend pour titulaire le détenteur du stock mobile en cause ; sans site ni titulaire, il n'est visible qu'en portée `ALL`. **DÉDUIT** (AV-190 à AV-192 ; **À VALIDER**). Le conflit `PAYMENT_REFERENCE_DUPLICATE` se clôt par la décision `PAYMENT_DUPLICATE`, non par ces commandes. Les lignes de la matrice ne sont pas modifiées.
+

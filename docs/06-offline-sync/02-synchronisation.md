@@ -185,6 +185,8 @@ Réponse : `changes[]` (entité, type de changement, `row_version`, données), `
 
 Le détail par entité est dans [`03-matrice-conflits.md`](03-matrice-conflits.md). Le « dernier écrit gagne » n'est **jamais** la règle par défaut (PM §30).
 
+**Traitement manuel (P5-17, SM-CONFLICT).** `sync.conflict.resolve` et `sync.conflict.dismiss`, en ligne seulement, sont une **clôture administrative tracée** : décision (`ACCEPT_CLIENT`, `KEEP_SERVER`, `MERGE`, `COMPENSATE`), motif et références des documents de régularisation. Le serveur ne rejoue aucune commande en quarantaine et ne crée aucun document ; la commande reste `CONFLICT` dans l'inbox (AV-190). La file `GET /sync/conflicts` montre à chaque utilisateur les conflits dont le rôle propriétaire est l'un des siens, dans la portée de `sync.conflict.resolve` sur le site et l'auteur de la commande d'origine (AV-191). **DÉDUIT** (AV-190 à AV-192 ; **À VALIDER**).
+
 ## 7. Versions
 
 | Version | Portée | Usage |

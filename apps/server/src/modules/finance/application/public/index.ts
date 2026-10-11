@@ -69,3 +69,16 @@ export type {
   CashTransfersInTransit,
   CashTransferVerification,
 } from './cash-transfer-query.js';
+// P5-17 : lectures HTTP des sessions de caisse et des remises de fonds.
+export {
+  findCashSessionDetail,
+  listCashSessionAdjustments,
+  listCashSessions,
+} from './cash-session-query.js';
+export type { CashSessionAdjustmentLine, CashSessionDetail } from './cash-session-query.js';
+export {
+  CASH_TRANSFER_STATUSES,
+  cashTransferMovements,
+  listCashTransfers,
+} from './cash-transfer-query.js';
+export type { CashTransferMovementLine } from './cash-transfer-query.js';

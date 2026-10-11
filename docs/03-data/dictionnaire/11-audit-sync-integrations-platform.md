@@ -106,11 +106,12 @@
 | `details` | json | Non | — | État serveur et intention client, différences |
 | `status` | enum(`OPEN`,`RESOLVED`,`DISMISSED`) | Non | `OPEN` | SM-CONFLICT |
 | `resolution` | enum(`ACCEPT_CLIENT`,`KEEP_SERVER`,`MERGE`,`COMPENSATE`) | Oui | — | |
-| `resolution_refs` | uuid[] | Non | `{}` | Documents compensatoires créés |
+| `resolution_refs` | uuid[] | Non | `{}` | Documents de régularisation, cités par la personne qui clôt (`refs`, P5-17, AV-190) ou par le traitement qui clôt d'office (ex. l'inventaire, P5-10) ; la clôture manuelle n'en crée aucun |
 | `resolved_by`, `resolved_at`, `resolution_comment` | | Oui | — | |
 | `created_at` | ts | Non | `now()` | |
 
 - **PK** `id`. **IX** `(status, owner_role, site_id)`. **Suppr.** `IMMUABLE` après résolution. **Offline** DL (conflits de l'utilisateur).
+- **Lecture (P5-17)** : `GET /sync/conflicts(/{id})` (droit `sync.conflict.resolve`, visibilité par rôle propriétaire puis portée sur le site et l'auteur de la commande d'origine, AV-191 ; lectures du noyau `listConflicts`, `findConflict`). **Clôture manuelle** (`sync.conflict.resolve`, `.dismiss`, AV-190) : `status` `RESOLVED` avec `resolution`, ou `DISMISSED` avec `resolution` **nulle** ; `resolved_by`, `resolved_at` (heure de la décision, `occurred_at` de la commande), `resolution_comment` et `resolution_refs` renseignés ; la ligne n'est modifiée que si elle est encore `OPEN` (`closeConflict`), le déclencheur d'immuabilité n'est donc jamais atteint.
 
 ## sync.change_feed
 
