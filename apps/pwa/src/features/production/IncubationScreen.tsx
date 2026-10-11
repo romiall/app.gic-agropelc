@@ -424,8 +424,10 @@ function StartBatch({
   const effectiveSpecies =
     configuredSpecies.length > 0 && !configuredSpecies.includes(species) ? '' : species.trim();
   const eggs = parseEggCount(eggsText);
+  // Lot désigné revalidé contre la source du moment : la charge utile envoie ce qui s'affiche.
+  const lotId = source?.lots.some((lot) => lot.lotId === sourceLotId) ? sourceLotId : '';
   const available = source
-    ? (source.lots.find((lot) => lot.lotId === sourceLotId)?.quantity ?? source.quantity)
+    ? (source.lots.find((lot) => lot.lotId === lotId)?.quantity ?? source.quantity)
     : null;
   const over = eggs !== null && available !== null && eggs > available;
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
@@ -436,6 +438,7 @@ function StartBatch({
     chickProductId !== '' &&
     incubatorId !== '' &&
     source !== undefined &&
+    (source.fifo || lotId !== '') &&
     eggs !== null &&
     eggs > 0 &&
     !(online && over) &&
@@ -455,7 +458,7 @@ function StartBatch({
         eggSource,
         eggsSet: eggs,
         sourceLocationId: source.locationId,
-        ...(sourceLotId ? { sourceStockLotId: sourceLotId } : {}),
+        ...(lotId ? { sourceStockLotId: lotId } : {}),
       },
     }).then((ok) => {
       if (ok) {
@@ -597,16 +600,17 @@ function StartBatch({
           <select
             id={ids.lot}
             className="text-input"
-            value={sourceLotId}
+            value={lotId}
             onChange={(event) => setSourceLotId(event.target.value)}
           >
-            <option value="">{t('lot_setup.fifo')}</option>
+            <option value="">{source.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}</option>
             {source.lots.map((lot) => (
               <option key={lot.lotId} value={lot.lotId}>
                 {`${lot.lotCode} (${formatQuantity(lot.quantity)})`}
               </option>
             ))}
           </select>
+          {!source.fifo ? <p className="home-muted">{t('incubation.egg_lot_required')}</p> : null}
         </div>
       ) : null}
       <fieldset className="choice-group">
@@ -676,7 +680,7 @@ export function IncubationScreen() {
   const settling =
     last !== undefined && !refs.outbox.some((command) => command.command_id === last);
   const blocked = busy || settling;
-  const batches = batchViews(refs);
+  const batches = batchViews(refs, userId);
   const open = batches.filter(
     (batch) => batch.status === 'INCUBATING' || batch.status === 'IN_HATCHER',
   );

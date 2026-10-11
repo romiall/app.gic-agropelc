@@ -6,7 +6,7 @@ import { getDb } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { IncubationScreen } from './IncubationScreen.js';
-import { batchViews } from './incubation.js';
+import { batchViews, eggSources } from './incubation.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../platform/composition.js', async () => {
@@ -234,6 +234,57 @@ describe('Incubation (ECR-PRD-06)', () => {
     });
     const refs = await loadSalesReferences(getDb());
     expect(refs.pending.get(`${STORE}:${HATCH_EGG}`)).toBe(300);
+    // Œufs nets du démarrage en attente : 600 − 300.
+    expect(eggSources(refs, FARM, HATCH_EGG)).toEqual([
+      {
+        locationId: STORE,
+        quantity: 300,
+        lots: [{ lotId: COLLECTION_LOT, lotCode: 'COL-1', quantity: 300 }],
+        fifo: true,
+      },
+    ]);
+    // Un autre utilisateur de la tablette ne voit pas ce lot en attente.
+    expect(batchViews(refs, '01900000-0000-7000-8000-0000000000e9').map((view) => view.id)).toEqual(
+      [BATCH_A, BATCH_B],
+    );
+  });
+
+  it('salle mêlée à un lot engagé : le lot d’œufs se désigne', async () => {
+    const db = getDb();
+    await db.projections.put(
+      projection(
+        'stock',
+        'STOCK_BALANCE',
+        HATCH_EGG,
+        {
+          location_id: STORE,
+          product_id: HATCH_EGG,
+          qty_on_hand: '650',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [
+            { lot_id: COLLECTION_LOT, lot_code: 'COL-1', qty_on_hand: '600' },
+            { lot_id: `${BATCH_A}-lot`, lot_code: 'INC-MFO-2026-001', qty_on_hand: '50' },
+          ],
+        },
+        `stock:STOCK_BALANCE:${STORE}:${HATCH_EGG}`,
+      ),
+    );
+    const refs = await loadSalesReferences(db);
+    expect(eggSources(refs, FARM, HATCH_EGG)).toMatchObject([{ quantity: 600, fifo: false }]);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Démarrer un lot' }));
+    const start = within(screen.getByRole('region', { name: 'Démarrer un lot' }));
+    await user.selectOptions(start.getByLabelText('Espèce'), 'POULE');
+    await user.selectOptions(start.getByLabelText('Poussins produits'), CHICK);
+    await user.selectOptions(start.getByLabelText('Œufs pris sur'), STORE);
+    await user.type(start.getByLabelText('Œufs mis à couver'), '100');
+    expect(start.getByText(/désignez le lot d’œufs/)).toBeInTheDocument();
+    const go = start.getByRole('button', { name: 'Démarrer l’incubation' });
+    expect(go).toBeDisabled();
+    await user.selectOptions(start.getByLabelText('Lot d’œufs'), COLLECTION_LOT);
+    await waitFor(() => expect(go).toBeEnabled());
   });
 
   it('en ligne : mirage et éclosion contrôlés par le bilan du domaine, transfert vers l’éclosoir', async () => {
@@ -294,6 +345,6 @@ describe('Incubation (ECR-PRD-06)', () => {
     ]);
     // Après l'éclosion en attente, le lot n'est plus proposé à l'éclosion.
     const refs = await loadSalesReferences(getDb());
-    expect(batchViews(refs).find((view) => view.id === BATCH_B)?.status).toBe('CLOSED');
+    expect(batchViews(refs, IDS.user).find((view) => view.id === BATCH_B)?.status).toBe('CLOSED');
   });
 });

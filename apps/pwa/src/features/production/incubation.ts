@@ -26,7 +26,7 @@ import {
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { settingValue } from '../sales/stock.js';
+import { settingValue, stockKey } from '../sales/stock.js';
 import type {
   IncubationBatchData,
   LocationData,
@@ -122,19 +122,31 @@ export function incubationFarms(
     .map((site) => ({ id: site.id, name: site.name }));
 }
 
-/** Œufs à couver en stock sur la ferme, hors incubateurs, éclosoirs et lots déjà engagés. */
+/**
+ * Œufs à couver en stock sur la ferme, hors incubateurs, éclosoirs et lots déjà engagés, nets des
+ * opérations de l'appareil en attente sur l'emplacement.
+ */
 export interface EggSource {
   readonly locationId: string;
   readonly quantity: number;
+  /** Lots désignables, quantité bornée par le disponible (l'attente n'est pas ventilée par lot). */
   readonly lots: readonly {
     readonly lotId: string;
     readonly lotCode: string;
     readonly quantity: number;
   }[];
+  /**
+   * « Le plus ancien d'abord » admis : faux quand le solde contient des œufs d'un lot engagé, que le
+   * choix du serveur pourrait retenir (il refuserait alors le démarrage, même hors ligne).
+   */
+  readonly fifo: boolean;
 }
 
 export function eggSources(
-  refs: Pick<SalesReferences, 'stock' | 'locations' | 'productionLots' | 'incubationBatches'>,
+  refs: Pick<
+    SalesReferences,
+    'stock' | 'locations' | 'productionLots' | 'incubationBatches' | 'pending'
+  >,
   siteId: string,
   eggProductId: string,
 ): EggSource[] {
@@ -161,8 +173,17 @@ export function eggSources(
     const engagedQty = (balance.lots ?? [])
       .filter((lot) => lot.lot_id !== null && engaged.has(lot.lot_id))
       .reduce((sum, lot) => sum + Number(lot.qty_on_hand), 0);
-    const quantity = Math.round((Number(balance.qty_on_hand) - engagedQty) * 1000) / 1000;
-    if (quantity > 0) sources.push({ locationId: balance.location_id, quantity, lots });
+    const pending = refs.pending.get(stockKey(balance.location_id, eggProductId)) ?? 0;
+    const quantity = Math.round((Number(balance.qty_on_hand) - engagedQty - pending) * 1000) / 1000;
+    if (quantity <= 0) continue;
+    const fifo = engagedQty <= 0;
+    if (!fifo && lots.length === 0) continue;
+    sources.push({
+      locationId: balance.location_id,
+      quantity,
+      lots: lots.map((lot) => ({ ...lot, quantity: Math.min(lot.quantity, quantity) })),
+      fifo,
+    });
   }
   return sources;
 }
@@ -198,9 +219,14 @@ const counterOf = (batch: IncubationBatchData): IncubationCounters => ({
 const isAccepted = (command: OutboxCommand) =>
   command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING';
 
-/** Lots d'incubation de l'appareil avec leurs compteurs corrigés des étapes en attente. */
+/**
+ * Lots d'incubation de l'appareil avec leurs compteurs corrigés des étapes en attente ; les lots
+ * démarrés sur l'appareil et pas encore retéléchargés sont ceux de l'utilisateur (pas ceux d'un autre
+ * utilisateur d'une tablette partagée).
+ */
 export function batchViews(
   refs: Pick<SalesReferences, 'incubationBatches' | 'outbox' | 'productionPulledAt' | 'locations'>,
+  authorUserId: string,
 ): BatchView[] {
   const sites = new Map(refs.locations.map((location) => [location.id, location.site_id]));
   const known = new Set(refs.incubationBatches.map((batch) => batch.id));
@@ -231,6 +257,7 @@ export function batchViews(
   );
   for (const command of inFlight) {
     if (command.command_type !== 'production.incubation.start') continue;
+    if (command.author_user_id !== authorUserId) continue;
     if (known.has(command.aggregate_id)) continue;
     const payload = command.payload as StartPayload;
     const siteId = payload.incubatorLocationId ? sites.get(payload.incubatorLocationId) : undefined;

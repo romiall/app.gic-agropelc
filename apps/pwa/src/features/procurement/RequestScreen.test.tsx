@@ -176,7 +176,8 @@ describe('Demande d’achat (ECR-APP-02)', () => {
     expect(site).toHaveValue(IDS.site);
 
     cleanup();
-    await db.projections.where('dataset').equals('location').delete();
+    // Périmètre tiré des jeux bornés par le serveur (stock, achats) ; le jeu `location` est global.
+    await db.projections.where('dataset').anyOf(['stock', 'procurement']).delete();
     renderScreen();
     const unscoped = await screen.findByLabelText('Pour le site');
     expect(unscoped).toHaveValue('');

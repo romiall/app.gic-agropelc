@@ -54,6 +54,38 @@ export function receivingLocations(
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
+/**
+ * Sites du périmètre de l'appareil, tirés des jeux que le serveur borne (le jeu `location` est global,
+ * S-32) : emplacements dont l'appareil détient le stock ou dont l'utilisateur a la garde, documents
+ * d'achat, lots de production et d'incubation.
+ */
+export function scopeSiteIds(
+  refs: Pick<
+    SalesReferences,
+    | 'locations'
+    | 'stock'
+    | 'purchaseRequests'
+    | 'purchaseOrders'
+    | 'productionLots'
+    | 'incubationBatches'
+  >,
+  userId: string,
+): Set<string> {
+  const sites = new Set<string>();
+  const add = (siteId: string | null | undefined) => {
+    if (siteId) sites.add(siteId);
+  };
+  for (const location of stockLocations(refs)) add(location.site_id);
+  for (const location of refs.locations) {
+    if (location.custodian_user_id === userId) add(location.site_id);
+  }
+  for (const request of refs.purchaseRequests) add(request.site_id);
+  for (const order of refs.purchaseOrders) add(order.site_id);
+  for (const lot of refs.productionLots) add(lot.site_id);
+  for (const batch of refs.incubationBatches) add(batch.site_id);
+  return sites;
+}
+
 /** Emplacements dont l'appareil détient le stock (jeu `stock`), par nom. */
 export function stockLocations(refs: Pick<SalesReferences, 'locations' | 'stock'>): LocationData[] {
   const held = new Set([...refs.stock.values()].map((balance) => balance.location_id));

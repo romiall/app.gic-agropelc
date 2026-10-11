@@ -42,33 +42,48 @@ import { describeScope } from './scope.js';
 
 const ACTIVATION_TOLERANCE_MS = 5 * 60 * 1000;
 
-/** Règles lues en ligne ; `undefined` pendant la lecture, `null` si indisponible. */
+/**
+ * Règles lues en ligne : `rules` vaut `undefined` pendant la première lecture et `null` si aucune
+ * lecture n'a abouti ; la dernière liste reçue reste affichée pendant une relecture ou une coupure,
+ * marquée `stale` (périmée) tant qu'elle ne correspond pas à la dernière opération : on n'agit pas
+ * sur une liste périmée (une seconde version ou une activation y serait refusée par la base).
+ */
 function useRules(
   path: string | null,
   online: boolean,
   reloadKey: string,
-): readonly RuleView[] | null | undefined {
+): { readonly rules: readonly RuleView[] | null | undefined; readonly stale: boolean } {
   const [state, setState] = useState<{
     path: string;
+    key: string;
     rules: readonly RuleView[] | null;
+    failed: boolean;
   }>();
   useEffect(() => {
     if (!path || !online) return;
     let cancelled = false;
     void authorizedRequest<{ price_rules?: RuleView[] }>(getDb(), path, { method: 'GET' }).then(
       (result) => {
-        if (!cancelled) {
-          setState({ path, rules: result.ok ? (result.data.price_rules ?? []) : null });
-        }
+        if (cancelled) return;
+        setState((current) =>
+          result.ok
+            ? { path, key: reloadKey, rules: result.data.price_rules ?? [], failed: false }
+            : {
+                path,
+                key: reloadKey,
+                rules: current?.path === path ? current.rules : null,
+                failed: true,
+              },
+        );
       },
     );
     return () => {
       cancelled = true;
     };
   }, [path, online, reloadKey]);
-  if (!path || !online) return null;
-  // Relecture après une opération : la liste précédente du même chemin reste affichée.
-  return state?.path === path ? state.rules : undefined;
+  if (!path) return { rules: null, stale: false };
+  if (state?.path !== path) return { rules: online ? undefined : null, stale: true };
+  return { rules: state.rules, stale: state.key !== reloadKey || state.failed || !online };
 }
 
 const canDraft = (product: ProductData): boolean =>
@@ -94,8 +109,20 @@ function emptyForm(product: ProductData): RuleForm {
 
 interface Editing {
   readonly superseded: RuleView | null;
+  /** Produit de la saisie : une reprise ne vaut que pour lui. */
+  readonly productId: string;
   /** Saisie reprise après un refus du serveur. */
   readonly form?: RuleForm;
+}
+
+/** Options d'une liste, la valeur courante comprise même absente ou inactive (signalée). */
+function withCurrent(
+  options: readonly { readonly value: string; readonly label: string }[],
+  current: string,
+  label: string,
+): { readonly value: string; readonly label: string }[] {
+  if (!current || options.some((option) => option.value === current)) return [...options];
+  return [{ value: current, label }, ...options];
 }
 
 interface EditorProps {
@@ -145,13 +172,44 @@ function RuleEditor({
     notes: useId(),
   };
   const newLineage = superseded === null;
+  // La règle remplacée est relue dans la dernière liste : elle doit être encore active, la dernière
+  // de sa lignée, et du produit affiché.
+  const fresh = superseded ? rules.find((rule) => rule.id === superseded.id) : undefined;
+  const supersededStale =
+    superseded !== null &&
+    (!fresh ||
+      fresh.status !== 'ACTIVE' ||
+      !isLatestVersion(fresh, rules) ||
+      fresh.productId !== product.id);
   const check = checkRule(form, {
     needsCode: newLineage,
     takenCodes: takenCodes ?? new Set(rules.map((rule) => rule.code)),
-    superseded,
+    superseded: fresh ?? superseded,
     sites: refs.sites,
     zones: refs.zones,
+    now: clock.now(),
   });
+  const issueIds = {
+    code: `${ids.code}-issue`,
+    price: `${ids.price}-issue`,
+    min: `${ids.min}-issue`,
+    priority: `${ids.priority}-issue`,
+    dates: `${ids.from}-issue`,
+    scope: `${ids.site}-issue`,
+  };
+  const has = (...codes: string[]) => codes.some((code) => check.issues.includes(code as never));
+  const issueField: Readonly<Record<string, string>> = {
+    CODE_REQUIRED: issueIds.code,
+    CODE_TAKEN: issueIds.code,
+    PRICE_INVALID: issueIds.price,
+    MIN_QUANTITY_INVALID: issueIds.min,
+    PRIORITY_INVALID: issueIds.priority,
+    VALID_FROM_INVALID: issueIds.dates,
+    VALID_FROM_PAST: issueIds.dates,
+    OUTSIDE_SUPERSEDED: issueIds.dates,
+    VALID_TO_INVALID: issueIds.dates,
+    SITE_NOT_IN_ZONE: issueIds.scope,
+  };
   const update = (patch: Partial<RuleForm>) => setForm((current) => ({ ...current, ...patch }));
   const candidate: RuleView | null =
     check.issues.length === 0
@@ -181,7 +239,7 @@ function RuleEditor({
   // Une nouvelle lignée attend la liste de tous les codes : un code en double ne serait pas refusé
   // proprement par le serveur (S-29).
   const codesReady = !newLineage || (takenCodes !== undefined && takenCodes !== null);
-  const ready = check.issues.length === 0 && codesReady && !blocked;
+  const ready = check.issues.length === 0 && codesReady && !supersededStale && !blocked;
 
   const submit = () => {
     if (!ready) return;
@@ -192,7 +250,7 @@ function RuleEditor({
             authorUserId: userId,
             commandType: 'pricing.rule.supersede',
             aggregateType: 'PRICE_RULE',
-            payload: { ...dimensions, supersedesRuleId: superseded.id },
+            payload: { ...dimensions, supersedesRuleId: (fresh ?? superseded).id },
           }
         : {
             authorUserId: userId,
@@ -210,6 +268,7 @@ function RuleEditor({
     value: string,
     onChange: (value: string) => void,
     options: readonly { readonly value: string; readonly label: string }[],
+    invalidBy?: string,
   ) => (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -217,6 +276,8 @@ function RuleEditor({
         id={id}
         className="text-input"
         value={value}
+        aria-invalid={invalidBy ? true : undefined}
+        aria-describedby={invalidBy}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{t('price_rules.any')}</option>
@@ -244,17 +305,28 @@ function RuleEditor({
             className="text-input"
             maxLength={40}
             value={form.code}
+            aria-invalid={has('CODE_REQUIRED', 'CODE_TAKEN') || undefined}
+            aria-describedby={
+              has('CODE_REQUIRED', 'CODE_TAKEN') || takenCodes === null ? issueIds.code : undefined
+            }
             onChange={(event) => update({ code: event.target.value })}
           />
           {takenCodes === undefined ? (
             <p className="home-muted">{t('price_rules.codes_loading')}</p>
           ) : takenCodes === null ? (
-            <p className="error-message">{t('price_rules.codes_unavailable')}</p>
+            <p id={issueIds.code} className="error-message">
+              {t('price_rules.codes_unavailable')}
+            </p>
           ) : null}
         </div>
       ) : null}
       {form.commercialCampaignId ? (
         <p className="home-muted">{t('price_rules.campaign_kept')}</p>
+      ) : null}
+      {supersededStale ? (
+        <p className="error-message" role="alert">
+          {t('price_rules.superseded_changed')}
+        </p>
       ) : null}
       <div className="field">
         <label htmlFor={ids.price}>
@@ -265,6 +337,8 @@ function RuleEditor({
           className="text-input"
           inputMode="numeric"
           value={form.unitPriceText}
+          aria-invalid={has('PRICE_INVALID') || undefined}
+          aria-describedby={has('PRICE_INVALID') ? issueIds.price : undefined}
           onChange={(event) => update({ unitPriceText: event.target.value })}
         />
       </div>
@@ -273,31 +347,51 @@ function RuleEditor({
         t('price_sim.site_label'),
         form.siteId,
         (siteId) => update({ siteId }),
-        [...refs.sites.values()]
-          .filter((site) => site.status === 'ACTIVE' || site.id === form.siteId)
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-          .map((site) => ({ value: site.id, label: site.name })),
+        withCurrent(
+          [...refs.sites.values()]
+            .filter((site) => site.status === 'ACTIVE' || site.id === form.siteId)
+            .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+            .map((site) => ({ value: site.id, label: site.name })),
+          form.siteId,
+          t('price_rules.unknown_option', { name: form.siteId }),
+        ),
+        has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
       )}
       {select(
         ids.zone,
         t('price_sim.zone_label'),
         form.zoneId,
         (zoneId) => update({ zoneId }),
-        prospectZoneOptions(refs.zones).map((zone) => ({ value: zone.id, label: zone.label })),
+        withCurrent(
+          prospectZoneOptions(refs.zones).map((zone) => ({ value: zone.id, label: zone.label })),
+          form.zoneId,
+          refs.zones.get(form.zoneId)
+            ? t('price_rules.inactive_option', { name: refs.zones.get(form.zoneId)?.name ?? '' })
+            : t('price_rules.unknown_option', { name: form.zoneId }),
+        ),
+        has('SITE_NOT_IN_ZONE') ? issueIds.scope : undefined,
       )}
       {select(
         ids.category,
         t('price_sim.category_label'),
         form.customerCategoryId,
         (customerCategoryId) => update({ customerCategoryId }),
-        refs.customerCategories.map((category) => ({ value: category.id, label: category.name })),
+        withCurrent(
+          refs.customerCategories.map((category) => ({ value: category.id, label: category.name })),
+          form.customerCategoryId,
+          t('price_rules.unknown_option', { name: form.customerCategoryId }),
+        ),
       )}
       {select(
         ids.channel,
         t('price_sim.channel_label'),
         form.channelCode,
         (channelCode) => update({ channelCode }),
-        SIM_CHANNELS.map((code) => ({ value: code, label: t(`price_sim.channel.${code}`) })),
+        withCurrent(
+          SIM_CHANNELS.map((code) => ({ value: code, label: t(`price_sim.channel.${code}`) })),
+          form.channelCode,
+          t('price_rules.unknown_option', { name: form.channelCode }),
+        ),
       )}
       <div className="line-fields">
         <div className="field">
@@ -309,6 +403,8 @@ function RuleEditor({
             className="text-input"
             inputMode="decimal"
             value={form.minQuantityText}
+            aria-invalid={has('MIN_QUANTITY_INVALID') || undefined}
+            aria-describedby={has('MIN_QUANTITY_INVALID') ? issueIds.min : undefined}
             onChange={(event) => update({ minQuantityText: event.target.value })}
           />
         </div>
@@ -319,6 +415,8 @@ function RuleEditor({
             className="text-input"
             inputMode="numeric"
             value={form.priorityText}
+            aria-invalid={has('PRIORITY_INVALID') || undefined}
+            aria-describedby={has('PRIORITY_INVALID') ? issueIds.priority : undefined}
             onChange={(event) => update({ priorityText: event.target.value })}
           />
         </div>
@@ -331,6 +429,14 @@ function RuleEditor({
             type="datetime-local"
             className="text-input"
             value={form.validFrom}
+            aria-invalid={
+              has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED') || undefined
+            }
+            aria-describedby={
+              has('VALID_FROM_INVALID', 'VALID_FROM_PAST', 'OUTSIDE_SUPERSEDED')
+                ? issueIds.dates
+                : undefined
+            }
             onChange={(event) => update({ validFrom: event.target.value })}
           />
         </div>
@@ -341,6 +447,8 @@ function RuleEditor({
             type="datetime-local"
             className="text-input"
             value={form.validTo}
+            aria-invalid={has('VALID_TO_INVALID') || undefined}
+            aria-describedby={has('VALID_TO_INVALID') ? issueIds.dates : undefined}
             onChange={(event) => update({ validTo: event.target.value })}
           />
         </div>
@@ -356,11 +464,16 @@ function RuleEditor({
           onChange={(event) => update({ notes: event.target.value })}
         />
       </div>
-      {check.issues.map((issue) => (
-        <p key={issue} className="error-message">
-          {t(`price_rules.issue.${issue}`)}
-        </p>
-      ))}
+      <div role="status" aria-live="polite">
+        {[...new Set(check.issues.map((issue) => issueField[issue] ?? issue))].map((fieldId) => (
+          <p key={fieldId} id={fieldId} className="error-message">
+            {check.issues
+              .filter((issue) => (issueField[issue] ?? issue) === fieldId)
+              .map((issue) => t(`price_rules.issue.${issue}`))
+              .join(' ')}
+          </p>
+        ))}
+      </div>
       {conflicts.length > 0 ? (
         <p className="text-warn" role="status">
           {t('price_rules.conflict_warning', { count: conflicts.length })}
@@ -387,19 +500,34 @@ export function PriceRulesScreen() {
   const online = useOnline();
   const [productId, setProductId] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [ending, setEnding] = useState<{ ruleId: string; value: string } | null>(null);
+  const [ending, setEnding] = useState<{
+    ruleId: string;
+    value: string;
+    confirmed?: boolean;
+  } | null>(null);
   const [last, setLast] = useState<{ commandId: string; editing?: Editing }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const productSelectId = useId();
   const endId = useId();
   const lastCommand = refs?.outbox.find((command) => command.command_id === last?.commandId);
-  const reloadKey = `${last?.commandId ?? ''}:${lastCommand?.status ?? ''}`;
-  const rules = useRules(
+  // Opérations tarifaires de l'utilisateur encore sans réponse, même d'une visite précédente : elles
+  // bloquent la suivante, et leur réponse déclenche la relecture comme celle de la dernière.
+  const pendingPricing = (refs?.outbox ?? []).filter(
+    (command) =>
+      command.command_type.startsWith('pricing.rule.') &&
+      command.author_user_id === userId &&
+      phaseOf(command) === 'WAITING',
+  );
+  const reloadKey = `${last?.commandId ?? ''}:${lastCommand?.status ?? ''}|${pendingPricing
+    .map((command) => command.command_id)
+    .join(',')}`;
+  const productRules = useRules(
     productId ? `/api/v1/price-rules?product_id=${encodeURIComponent(productId)}` : null,
     online,
     reloadKey,
   );
+  const rules = productRules.rules;
   // Codes de toutes les lignées, pour une nouvelle règle seulement (unicité du code).
   const allRules = useRules(
     editing && editing.superseded === null ? '/api/v1/price-rules' : null,
@@ -421,19 +549,29 @@ export function PriceRulesScreen() {
   const director = navigation?.roles.includes('DIRECTION') === true;
   const products = [...refs.products].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const product = products.find((candidate) => candidate.id === productId);
-  // L'écran est en ligne : on attend la réponse définitive de la dernière opération et la relecture
-  // qui la suit avant d'en proposer une autre (pas de seconde activation ni de version en double).
+  // L'écran est en ligne : on attend la réponse définitive de toute opération tarifaire de
+  // l'utilisateur encore en attente (même après un retour sur l'écran) et la relecture qui la suit
+  // avant d'en proposer une autre (pas de seconde activation ni de version en double).
   const waiting =
-    last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING');
-  const blocked = busy || waiting;
+    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    pendingPricing.length > 0;
+  const blocked = busy || waiting || productRules.stale;
   const rejected = lastCommand !== undefined && phaseOf(lastCommand) === 'REJECTED';
+  const shownCommandId = last?.commandId ?? pendingPricing[pendingPricing.length - 1]?.command_id;
   const grouped = rules ? groupRules(rules, now) : null;
+  // Codes pris : toutes les lignées lues, plus les brouillons encore en attente d'envoi.
   const takenCodes =
-    allRules === undefined
+    allRules.rules === undefined || (allRules.stale && online)
       ? undefined
-      : allRules === null
+      : allRules.rules === null
         ? null
-        : new Set(allRules.map((r) => r.code));
+        : new Set([
+            ...allRules.rules.map((r) => r.code),
+            ...refs.outbox
+              .filter((command) => command.command_type === 'pricing.rule.draft')
+              .filter((command) => phaseOf(command) !== 'REJECTED')
+              .map((command) => String((command.payload as { code?: string }).code ?? '')),
+          ]);
 
   const send = async (input: Parameters<typeof submitCommand>[0], resume?: Editing) => {
     if (blocked) return;
@@ -489,7 +627,7 @@ export function PriceRulesScreen() {
   );
 
   const endControls = (rule: RuleView) => {
-    if (!director) return null;
+    if (!director || !rules) return null;
     if (ending?.ruleId !== rule.id) {
       return (
         <button
@@ -503,6 +641,19 @@ export function PriceRulesScreen() {
       );
     }
     const allowed = endAllowed(ending.value, rule, now);
+    // Une fin avant la date d'effet du brouillon de la version suivante rendrait celui-ci
+    // inactivable (la fin de la règle remplacée ne peut que reculer, S-29) : confirmation exigée.
+    const successor = rules.find(
+      (candidate) =>
+        candidate.code === rule.code &&
+        candidate.version === rule.version + 1 &&
+        candidate.status === 'DRAFT',
+    );
+    const endInstant = doualaInstant(ending.value);
+    const breaksSuccessor =
+      successor !== undefined &&
+      endInstant !== null &&
+      endInstant < new Date(successor.validFrom).toISOString();
     return (
       <div className="field">
         <label htmlFor={endId}>{t('price_rules.end_label')}</label>
@@ -512,13 +663,36 @@ export function PriceRulesScreen() {
           className="text-input"
           min={doualaLocal(minimumEnd(rule, now))}
           value={ending.value}
+          aria-invalid={!allowed || undefined}
+          aria-describedby={!allowed ? `${endId}-issue` : undefined}
           onChange={(event) => setEnding({ ruleId: rule.id, value: event.target.value })}
         />
-        {!allowed ? <p className="error-message">{t('price_rules.end_invalid')}</p> : null}
+        {!allowed ? (
+          <p id={`${endId}-issue`} className="error-message">
+            {t('price_rules.end_invalid')}
+          </p>
+        ) : null}
+        {breaksSuccessor ? (
+          <>
+            <p className="text-warn" role="alert">
+              {t('price_rules.end_before_successor', { version: successor.version })}
+            </p>
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={ending.confirmed === true}
+                onChange={(event) => setEnding({ ...ending, confirmed: event.target.checked })}
+              />
+              {t('price_rules.end_confirm_successor')}
+            </label>
+          </>
+        ) : null}
         <button
           type="button"
           className="secondary"
-          disabled={!online || blocked || !allowed}
+          disabled={
+            !online || blocked || !allowed || (breaksSuccessor && ending.confirmed !== true)
+          }
           onClick={() =>
             void send({
               authorUserId: userId,
@@ -543,10 +717,10 @@ export function PriceRulesScreen() {
           {t('price_rules.online_only')}
         </p>
       ) : null}
-      {last ? (
-        <CommandResult commandId={last.commandId} messages="price_rules.result">
-          {rejected && last.editing && !editing ? (
-            <button type="button" onClick={() => last.editing && setEditing(last.editing)}>
+      {shownCommandId ? (
+        <CommandResult commandId={shownCommandId} messages="price_rules.result">
+          {rejected && last?.editing && last.editing.productId === productId && !editing ? (
+            <button type="button" onClick={() => last?.editing && setEditing(last.editing)}>
               {t('price_rules.resume')}
             </button>
           ) : null}
@@ -585,6 +759,11 @@ export function PriceRulesScreen() {
       {product && online && rules === null ? (
         <p className="alert alert-error">{t('price_rules.unavailable')}</p>
       ) : null}
+      {product && rules && productRules.stale && online ? (
+        <p className="home-muted" role="status">
+          {t('price_rules.refreshing')}
+        </p>
+      ) : null}
       {product && rules && grouped && editing ? (
         <RuleEditor
           key={last?.commandId ?? 'new'}
@@ -594,7 +773,9 @@ export function PriceRulesScreen() {
           editing={editing}
           takenCodes={takenCodes}
           onCancel={() => setEditing(null)}
-          onSubmit={(input, form) => void send(input, { superseded: editing.superseded, form })}
+          onSubmit={(input, form) =>
+            void send(input, { superseded: editing.superseded, productId: product.id, form })
+          }
           userId={userId}
           blocked={blocked || !online}
         />
@@ -606,7 +787,7 @@ export function PriceRulesScreen() {
               type="button"
               className="btn-block"
               disabled={!online || blocked}
-              onClick={() => setEditing({ superseded: null })}
+              onClick={() => setEditing({ superseded: null, productId: product.id })}
             >
               {t('price_rules.new_rule')}
             </button>
@@ -628,7 +809,7 @@ export function PriceRulesScreen() {
                           type="button"
                           className="secondary"
                           disabled={!online || blocked}
-                          onClick={() => setEditing({ superseded: rule })}
+                          onClick={() => setEditing({ superseded: rule, productId: product.id })}
                         >
                           {t('price_rules.supersede')}
                         </button>

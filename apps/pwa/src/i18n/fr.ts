@@ -766,6 +766,7 @@ export const fr = {
     deaths_over_offline:
       'Plus de morts que l’effectif de cet emplacement connu du téléphone : la saisie sera tout de même enregistrée.',
     comment_required: 'Cette cause exige un commentaire.',
+    comment_required_label: 'Commentaire (exigé par cette cause)',
     to_output: 'Sortie vers commercialisation →',
     to_sheet: 'Fiche du lot →',
     journal_pending_approval: 'En attente de validation',
@@ -985,6 +986,9 @@ export const fr = {
     over_offline_apply:
       'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : la réception sera appliquée, avec un signalement pour revue.',
     observations_label: 'Observations (facultatif)',
+    observations_required_label: 'Observations (exigées par le motif de rejet)',
+    duplicate_note:
+      'Ce bon de livraison est déjà reçu pour ce fournisseur : la réception sera mise en quarantaine pour vérification et n’entrera pas au stock avant décision.',
     comment_required:
       'Un motif de rejet choisi exige une précision : décrivez-la dans les observations.',
     photo_hint:
@@ -1302,6 +1306,8 @@ export const fr = {
     source_label: 'Œufs pris sur',
     source: '{{place}} ({{quantity}})',
     egg_lot_label: 'Lot d’œufs',
+    egg_lot_required:
+      'Cette salle contient aussi des œufs déjà engagés dans un lot : désignez le lot d’œufs.',
     egg_source_label: 'Origine des œufs',
     egg_source: {
       INTERNAL: 'Collecte de la ferme',
@@ -1367,11 +1373,19 @@ export const fr = {
     stock_source: '{{product}} — {{place}} ({{quantity}})',
     stock_lot_label: 'Lot de stock d’origine',
     fifo: 'Le plus ancien d’abord',
-    no_receipt: 'Aucune réception comptabilisée d’animaux de cette espèce sur la ferme.',
+    stock_lot_required:
+      'Ce stock contient aussi des animaux d’un lot de production : désignez le lot de stock d’origine.',
+    no_receipt:
+      'Aucune réception comptabilisée d’animaux de cette espèce encore à mettre en place sur la ferme.',
     receipt_label: 'Réception d’achat',
     receipt_product_label: 'Animaux reçus',
     source_lot_label: 'Lot d’origine',
     source_location_label: 'Bâtiment ou case d’origine',
+    source_location: '{{name}} ({{heads}} têtes)',
+    no_source_heads:
+      'Ce lot n’a aucune tête connue du téléphone dans un bâtiment ou une case de la ferme.',
+    parent_inactive_offline:
+      'Le lot de truies n’est pas actif : la naissance sera enregistrée et signalée en conflit à la synchronisation.',
     to_label: 'Vers le bâtiment ou la case',
     main_location: 'Bâtiment principal du lot ({{name}})',
     quantity_label: 'Nombre de têtes',
@@ -1441,8 +1455,8 @@ export const fr = {
       WAITING_offline:
         'Sortie enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
       WAITING_online: 'Sortie en cours d’envoi…',
-      DONE: 'Sortie enregistrée : {{doc}}.',
-      WARNING: 'Sortie {{doc}} enregistrée, avec un signalement.',
+      DONE: 'Sortie enregistrée : les têtes sont en transit vers le point de vente.',
+      WARNING: 'Sortie enregistrée, avec un signalement.',
       CONFLICT: 'Sortie mise en attente d’examen (conflit).',
       REJECTED: 'Sortie refusée : {{reason}}',
     },
@@ -1476,7 +1490,20 @@ export const fr = {
     closing: 'Solde à la fin',
     explained: 'Les mouvements listés expliquent tout l’écart.',
     unexplained:
-      'Écart non expliqué par les mouvements listés : {{quantity}} {{unit}} (opération datée d’un autre jour que son heure, ou mouvement hors de la période).',
+      'Écart non expliqué : {{quantity}} {{unit}}. Des opérations ont probablement été enregistrées pendant la lecture (synchronisation en cours) : actualisez.',
+    refresh: 'Actualiser',
+    retry: 'Réessayer',
+    out_of_scope: 'Emplacement hors de votre périmètre de registre : choisissez-en un autre.',
+    counterpart: {
+      customer: 'client',
+      transit: 'transit',
+      loss: 'pertes',
+      supplier: 'fournisseur',
+      opening: 'stock d’ouverture',
+      adjustment: 'ajustement d’inventaire',
+      consumption: 'consommation',
+      production: 'production',
+    },
     explain_incomplete: 'Affichez toute la liste pour totaliser les mouvements.',
     balance_unavailable: 'Soldes indisponibles : réessayez quand le serveur répond.',
     moves_title: 'Mouvements',
@@ -1547,7 +1574,8 @@ export const fr = {
     species_label: 'Espèce',
     flags_label: 'Usages',
     immutable_hint:
-      'L’unité de base et la famille ne se modifient plus après la création : vérifiez-les avant d’enregistrer.',
+      'L’unité de base, la famille et le suivi par lot ne se modifient plus après la création : vérifiez-les avant d’enregistrer.',
+    pending: 'En attente d’envoi',
     family: {
       BIOLOGIQUE: 'Biologique (animaux)',
       PRODUCTION_COMMERCIALISABLE: 'Production commercialisable',
@@ -1627,7 +1655,10 @@ export const fr = {
       UNIT_REQUIRED: 'Choisissez une unité (autre que l’unité de base pour un conditionnement).',
       SPECIES_REQUIRED: 'Un produit biologique exige une espèce.',
       SERVICE_LOT: 'Un service ne se suit pas par lot.',
-      FACTOR_INVALID: 'Facteur : nombre positif, 6 décimales au plus.',
+      BIO_LOT:
+        'Un produit biologique se suit par lot : sans suivi, il ne pourrait entrer dans aucun lot de production.',
+      FACTOR_INVALID: 'Facteur : nombre positif, 8 chiffres avant la virgule et 6 après au plus.',
+      FACTOR_NOT_WHOLE: 'L’unité de base se compte : le facteur est un nombre entier.',
       PACKAGING_EXISTS: 'Ce conditionnement existe déjà pour ce produit.',
     },
     result: {
@@ -1668,6 +1699,14 @@ export const fr = {
     end_invalid:
       'La fin doit être à venir, après la date d’effet de la règle et avant sa fin actuelle.',
     resume: 'Reprendre la saisie',
+    refreshing: 'Relecture des règles après la dernière opération…',
+    superseded_changed:
+      'La règle remplacée a changé depuis l’ouverture (terminée, déjà remplacée ou d’un autre produit) : annulez et recommencez.',
+    inactive_option: '{{name}} (inactive)',
+    unknown_option: '{{name}} (hors du référentiel du téléphone)',
+    end_before_successor:
+      'Cette fin précède la date d’effet du brouillon v{{version}} : il ne pourrait plus être activé et resterait à vie.',
+    end_confirm_successor: 'Je confirme cette fin malgré le brouillon de la version suivante',
     product_read_only: '{{name}} (consultation seulement)',
     read_only_hint:
       'Produit désactivé ou non vendable : ses règles se consultent et se terminent, sans nouvelle rédaction.',
@@ -1697,6 +1736,8 @@ export const fr = {
       MIN_QUANTITY_INVALID:
         'Seuil de quantité : nombre positif, 3 décimales au plus, 99 999 999 999 au plus.',
       PRIORITY_INVALID: 'Priorité : nombre entier entre −2 147 483 648 et 2 147 483 647.',
+      VALID_FROM_PAST:
+        'La date d’effet doit être à venir (une date passée ne pourrait être activée).',
       OUTSIDE_SUPERSEDED:
         'La date d’effet doit suivre le début de la règle remplacée et ne pas dépasser sa fin.',
       SITE_NOT_IN_ZONE: 'Le site choisi n’appartient pas à la zone choisie.',
@@ -1736,6 +1777,7 @@ export const fr = {
     price: '{{price}} par {{unit}}',
     total: 'Pour {{quantity}} {{unit}} : {{total}}',
     total_too_large: 'Montant trop grand pour être calculé : réduisez la quantité.',
+    quantity_too_large: 'Quantité trop grande : {{max}} au plus.',
     at_now: 'Prix à l’instant (règles en vigueur maintenant).',
     at_noon: 'Prix à 12 h, heure de Douala, ce jour-là.',
     rule: 'Règle retenue : {{scope}} — en vigueur depuis le {{from}}.',
@@ -1995,6 +2037,7 @@ export const fr = {
       DESTRUCTION: 'Destruction',
       INEXPLIQUEE: 'Perte inexpliquée',
       VOL_SUSPECTE: 'Vol suspecté',
+      MORTALITE: 'Mortalité',
     },
     reason_label: 'Motif',
     reason_placeholder: 'Choisir un motif (facultatif)',

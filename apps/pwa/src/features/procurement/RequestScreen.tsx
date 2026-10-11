@@ -14,6 +14,7 @@ import { formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
+import { scopeSiteIds } from '../stock/stock-view.js';
 import { checkTransferLine } from '../stock/transfer.js';
 import {
   checkRequest,
@@ -69,14 +70,9 @@ export function RequestScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  // Sites des emplacements physiques du périmètre de l'appareil (jeu `location`, borné par le
-  // serveur) ; à défaut, tous les sites actifs, sans présélection (choix explicite).
-  const scopeSites = new Set(
-    refs.locations
-      .filter((location) => !location.is_virtual && location.status === 'ACTIVE')
-      .map((location) => location.site_id)
-      .filter((id): id is string => id !== null),
-  );
+  // Sites du périmètre de l'appareil (jeux bornés par le serveur ; le jeu `location` ne l'est pas) ;
+  // à défaut, tous les sites actifs, sans présélection (choix explicite).
+  const scopeSites = scopeSiteIds(refs, userId);
   const allSites = [...refs.sites.values()]
     .filter((site) => site.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));

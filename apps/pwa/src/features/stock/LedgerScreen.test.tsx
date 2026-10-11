@@ -121,7 +121,8 @@ describe('Registre des mouvements (ECR-STK-07)', () => {
     const moves = within(await screen.findByRole('region', { name: 'Mouvements' }));
     const sale = await moves.findByRole('listitem', { name: 'Vente' });
     expect(sale).toHaveTextContent(/− 30 U/);
-    expect(sale).toHaveTextContent(/emplacement hors de votre périmètre/);
+    // Contrepartie virtuelle (absente de l'appareil) nommée d'après le type de mouvement.
+    expect(sale).toHaveTextContent(/vers client/);
     expect(sale).toHaveTextContent(/saisi hors ligne/);
     expect(moves.getByRole('listitem', { name: 'Réception de transfert' })).toHaveTextContent(
       /\+ 50 U/,
@@ -148,14 +149,41 @@ describe('Registre des mouvements (ECR-STK-07)', () => {
     expect(explain.getByText('Solde au début').nextElementSibling).toHaveTextContent('100 U');
     expect(explain.getByText('Entrées').nextElementSibling).toHaveTextContent('+ 50 U');
     expect(explain.getByText('Sorties').nextElementSibling).toHaveTextContent('− 30 U');
-    expect(
-      explain.getByText(/Écart non expliqué par les mouvements listés : [-−]5 U/),
-    ).toBeInTheDocument();
+    expect(explain.getByText(/Écart non expliqué : [-−]5 U/)).toBeInTheDocument();
     expect(authorizedRequest).toHaveBeenCalledWith(
       expect.anything(),
       `/api/v1/stock/at?location_id=${IDS.pos}&at=${encodeURIComponent(closingInstant('2026-10-10'))}&product_id=${IDS.eggs}`,
       { method: 'GET' },
     );
+    // Les opérations enregistrées entre-temps sont relues : l'écart disparaît.
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) => answer(path, 120) as never,
+    );
+    await user.click(explain.getByRole('button', { name: 'Actualiser' }));
+    expect(
+      await explain.findByText('Les mouvements listés expliquent tout l’écart.'),
+    ).toBeInTheDocument();
+    expect(
+      within(explain.getByText('Vente').closest('li') as HTMLElement).getByText(/− 30/),
+    ).toBeInTheDocument();
+    expect(
+      within(explain.getByText('Réception de transfert').closest('li') as HTMLElement).getByText(
+        /\+ 50/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('emplacement hors de la portée du registre : refus annoncé comme tel', async () => {
+    vi.mocked(authorizedRequest).mockResolvedValue({
+      ok: false,
+      reason: 'HTTP_ERROR',
+      status: 404,
+      body: {},
+    } as never);
+    renderScreen();
+    expect(
+      await screen.findByText(/Emplacement hors de votre périmètre de registre/),
+    ).toBeInTheDocument();
   });
 
   it('période invalide : aucune lecture ; hors ligne : écran en ligne seulement', async () => {

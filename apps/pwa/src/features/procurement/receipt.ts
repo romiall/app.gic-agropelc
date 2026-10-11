@@ -26,7 +26,12 @@ import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from '../sales/pending.js';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
 import { settingValue } from '../sales/stock.js';
-import type { LocationData, PurchaseOrderData, SettingData } from '../sales/types.js';
+import type {
+  GoodsReceiptData,
+  LocationData,
+  PurchaseOrderData,
+  SettingData,
+} from '../sales/types.js';
 
 export const DEFAULT_OVER_TOLERANCE_PCT = 0;
 export const DEFAULT_PHOTO_THRESHOLD_XAF = 100_000;
@@ -217,6 +222,53 @@ const optionalText = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 };
+
+/** Statuts d'une réception dont le bon de livraison compte comme déjà reçu (doublon, BR-APP-012). */
+const DELIVERY_NOTE_STATUSES: ReadonlySet<string> = new Set([
+  'POSTED',
+  'POSTED_PENDING_REVIEW',
+  'REVIEW_REJECTED',
+  'CANCELLATION_PENDING',
+]);
+
+/**
+ * Le bon de livraison de ce fournisseur est déjà reçu (réception téléchargée ou saisie sur l'appareil
+ * et non mise en quarantaine) : le serveur mettra la nouvelle réception en quarantaine, en ligne comme
+ * hors ligne (BR-APP-012). Comparaison exacte après nettoyage des blancs, comme la base.
+ */
+export function duplicateDeliveryNote(
+  supplierId: string,
+  deliveryNoteRef: string,
+  receipts: readonly Pick<
+    GoodsReceiptData,
+    'supplier_id' | 'supplier_delivery_note_ref' | 'status'
+  >[],
+  outbox: readonly OutboxCommand[],
+): boolean {
+  const ref = deliveryNoteRef.trim();
+  if (!ref) return false;
+  if (
+    receipts.some(
+      (receipt) =>
+        receipt.supplier_id === supplierId &&
+        receipt.supplier_delivery_note_ref?.trim() === ref &&
+        DELIVERY_NOTE_STATUSES.has(receipt.status),
+    )
+  ) {
+    return true;
+  }
+  return outbox.some((command) => {
+    if (command.command_type !== 'procurement.receipt.record') return false;
+    if (command.status === 'REJECTED') return false;
+    if (command.local_flags?.includes('EXPECTED_QUARANTINE')) return false;
+    if (command.warnings?.includes('RECEIPT_QUARANTINED')) return false;
+    const payload = command.payload as {
+      readonly supplierId?: string;
+      readonly supplierDeliveryNoteRef?: string;
+    };
+    return payload.supplierId === supplierId && payload.supplierDeliveryNoteRef?.trim() === ref;
+  });
+}
 
 /** Charge utile de `procurement.receipt.record` sur bon de commande (sans `localRef`). */
 export function receiptPayload(input: {

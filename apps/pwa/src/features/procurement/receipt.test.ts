@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
 import { pendingConsumption } from '../sales/stock.js';
 import type { LocationData, PurchaseOrderData, SettingData } from '../sales/types.js';
-import { receiptLocations, receiptSettings, receivableOrders } from './receipt.js';
+import {
+  duplicateDeliveryNote,
+  receiptLocations,
+  receiptSettings,
+  receivableOrders,
+} from './receipt.js';
 
 const NOW = new Date('2026-10-10T09:00:00.000Z');
 
@@ -134,5 +139,39 @@ describe('Réception d’achat : emplacements, paramètres, quarantaine', () => 
         undefined,
       ).get('store-b:p'),
     ).toBeUndefined();
+  });
+  it('bon de livraison déjà reçu : quarantaine prévue ; indice local sans effet après la réponse', () => {
+    const posted = { supplier_id: 'sup', supplier_delivery_note_ref: 'BL-7', status: 'POSTED' };
+    expect(duplicateDeliveryNote('sup', ' BL-7 ', [posted], [])).toBe(true);
+    expect(duplicateDeliveryNote('autre', 'BL-7', [posted], [])).toBe(false);
+    expect(duplicateDeliveryNote('sup', 'BL-7', [{ ...posted, status: 'REJECTED' }], [])).toBe(
+      false,
+    );
+    const sent = receipt({
+      payload: {
+        purchaseOrderId: 'po',
+        supplierId: 'sup',
+        supplierDeliveryNoteRef: 'BL-8',
+        locationId: 'store-b',
+        lines: [],
+      },
+    });
+    expect(duplicateDeliveryNote('sup', 'BL-8', [], [sent])).toBe(true);
+    expect(
+      duplicateDeliveryNote('sup', 'BL-8', [], [{ ...sent, local_flags: ['EXPECTED_QUARANTINE'] }]),
+    ).toBe(false);
+    // Accepté sans quarantaine : la réponse du serveur fait foi, l'indice local ne retient plus rien.
+    expect(
+      pendingConsumption(
+        [
+          receipt({
+            status: 'SYNCED',
+            synced_at: '2026-10-10T08:30:00.000Z',
+            local_flags: ['EXPECTED_QUARANTINE'],
+          }),
+        ],
+        undefined,
+      ).get('store-b:p'),
+    ).toBe(-8);
   });
 });

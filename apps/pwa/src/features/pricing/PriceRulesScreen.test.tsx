@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { getDb } from '../../storage/db.js';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { PriceRulesScreen } from './PriceRulesScreen.js';
@@ -10,6 +10,7 @@ import {
   checkRule,
   defaultValidFrom,
   endAllowed,
+  formFrom,
   isLatestVersion,
   predecessorOf,
   supersedeValidFrom,
@@ -283,6 +284,140 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     expect(screen.getByLabelText('Prix par U (F)')).toHaveValue('85');
   });
 
+  it('opération retrouvée en attente au retour sur l’écran : tout attend sa réponse et la relecture', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    // Nouvelle version envoyée lors d'une visite précédente, toujours sans réponse.
+    const pending: OutboxCommand = {
+      command_id: '01900000-0000-7000-8000-0000000000f1',
+      device_seq: 1,
+      command_type: 'pricing.rule.supersede',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'PRICE_RULE',
+      aggregate_id: '01900000-0000-7000-8000-0000000000a1',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:59:00.000Z',
+      client_created_at: '2026-10-10T08:59:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { supersedesRuleId: 'r-actif', unitPriceXaf: 105 },
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    };
+    await getDb().outbox.add(pending);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const newVersion = await screen.findByRole('button', { name: 'Nouvelle version' });
+    expect(newVersion).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeDisabled();
+    expect(screen.getByText(/Opération (en cours d’envoi|enregistrée)/)).toBeInTheDocument();
+
+    // Réponse reçue : la relecture montre la version 2 et retire « Nouvelle version » de la v1.
+    rules = [
+      rule({}),
+      rule({ id: 'v2', version: 2, status: 'DRAFT', unitPriceXaf: 105, validFrom: TOMORROW }),
+    ];
+    const calls = vi.mocked(authorizedRequest).mock.calls.length;
+    await settleLast();
+    await screen.findByRole('listitem', { name: 'OEUF-GEN v2' });
+    expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(calls);
+    expect(screen.queryByRole('button', { name: 'Nouvelle version' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeEnabled(),
+    );
+  });
+
+  it('relecture lente après une opération : liste gardée mais actions bloquées jusqu’à la réponse', async () => {
+    await rememberRoles(['DIRECTION']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const site = await screen.findByRole('listitem', { name: 'OEUF-PDV v1' });
+    await user.click(within(site).getByRole('button', { name: 'Activer' }));
+    await screen.findByText(/Opération (en cours d’envoi|enregistrée)/);
+
+    // La relecture qui suit la réponse ne revient pas tout de suite.
+    let release: (() => void) | undefined;
+    vi.mocked(authorizedRequest).mockImplementation(
+      (_db, path) =>
+        new Promise((resolve) => {
+          release = () => resolve(answer(path) as never);
+        }),
+    );
+    await settleLast();
+    expect(
+      await screen.findByText('Relecture des règles après la dernière opération…'),
+    ).toBeInTheDocument();
+    // La liste reste affichée, mais rien ne s'active sur elle (le brouillon y paraît encore).
+    const stillDraft = screen.getByRole('listitem', { name: 'OEUF-PDV v1' });
+    expect(within(stillDraft).getByRole('button', { name: 'Activer' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeDisabled();
+
+    rules = [rule({}), rule({ id: 'd-site', code: 'OEUF-PDV', siteId: IDS.site })];
+    release?.();
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Relecture des règles après la dernière opération…'),
+      ).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Nouvelle règle' })).toBeEnabled(),
+    );
+  });
+
+  it('fin avant la date d’effet du brouillon suivant : avertie et confirmée', async () => {
+    rules = [
+      rule({}),
+      rule({
+        id: 'v2',
+        version: 2,
+        status: 'DRAFT',
+        unitPriceXaf: 105,
+        validFrom: '2026-10-19T23:00:00.000Z',
+      }),
+    ];
+    await rememberRoles(['DIRECTION']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const active = await screen.findByRole('listitem', { name: 'OEUF-GEN v1' });
+    await user.click(within(active).getByRole('button', { name: 'Terminer' }));
+    const endInput = within(active).getByLabelText('Fin de validité (heure de Douala)');
+    fireEvent.change(endInput, { target: { value: '2026-10-15T00:00' } });
+    expect(within(active).getByRole('alert')).toHaveTextContent(/brouillon v2/);
+    const confirm = within(active).getByRole('checkbox', {
+      name: 'Je confirme cette fin malgré le brouillon de la version suivante',
+    });
+    const submit = within(active).getByRole('button', { name: 'Avancer la fin' });
+    expect(submit).toBeDisabled();
+    await user.click(confirm);
+    expect(submit).toBeEnabled();
+    // Une fin au-delà de la date d'effet du brouillon ne demande rien.
+    fireEvent.change(endInput, { target: { value: '2026-10-25T00:00' } });
+    expect(within(active).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('date d’effet passée : refusée et signalée sur le champ', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle règle' }));
+    await user.type(screen.getByLabelText('Code de la règle'), 'OEUF-HIER');
+    await user.type(screen.getByLabelText('Prix par U (F)'), '90');
+    const from = screen.getByLabelText('Date d’effet (heure de Douala)');
+    fireEvent.change(from, { target: { value: '2026-10-09T08:00' } });
+    expect(await screen.findByText(/La date d’effet doit être à venir/)).toBeInTheDocument();
+    expect(from).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Enregistrer le brouillon' })).toBeDisabled();
+  });
+
   it('rôles inconnus : aucune action de la Direction proposée', async () => {
     renderScreen();
     await userEvent.setup().selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
@@ -357,6 +492,17 @@ describe('Règles tarifaires : gardes', () => {
       checkRule(form({ siteId: 'pdv', zoneId }), { needsCode: false, sites, zones }).issues;
     expect(zoneCheck('pays')).toEqual([]);
     expect(zoneCheck('dla')).toEqual(['SITE_NOT_IN_ZONE']);
+  });
+
+  it('date d’effet à venir exigée ; fin reprise seulement si elle suit la date d’effet', () => {
+    const at = (validFrom: string) =>
+      checkRule(form({ validFrom }), { needsCode: false, now: NOW }).issues;
+    // 10 h à Douala = maintenant : admis (minute en cours arrondie au-dessus) ; 9 h 59 refusé.
+    expect(at('2026-10-10T10:00')).toEqual([]);
+    expect(at('2026-10-10T09:59')).toEqual(['VALID_FROM_PAST']);
+    const ending = rule({ validTo: '2026-10-10T20:00:00.000Z' });
+    expect(formFrom(ending, new Date('2026-10-10T10:00:00.000Z')).validTo).toBe('2026-10-10T21:00');
+    expect(formFrom(ending, new Date('2026-10-10T20:00:00.000Z')).validTo).toBe('');
   });
 
   it('lignée, dates proposées et fin admise', () => {

@@ -17,7 +17,7 @@ import {
   type LocalConsumptionDecision,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import { stillInFlight } from './pending.js';
+import { isWaiting, stillInFlight } from './pending.js';
 import type {
   LocationData,
   ProductionLotData,
@@ -129,8 +129,9 @@ export function pendingConsumption(
     // réception que le serveur met en quarantaine (aucun effet de stock avant décision, INV-APP-03) :
     // annoncée à la saisie hors ligne (dépassement, mode `QUARANTINE`) ou renvoyée par le serveur.
     if (command.command_type === 'procurement.receipt.record') {
+      // La réponse du serveur fait foi une fois reçue : l'indice local ne vaut que pendant l'attente.
       if (
-        command.local_flags?.includes('EXPECTED_QUARANTINE') ||
+        (isWaiting(command) && command.local_flags?.includes('EXPECTED_QUARANTINE')) ||
         command.warnings?.includes('RECEIPT_QUARANTINED')
       ) {
         continue;

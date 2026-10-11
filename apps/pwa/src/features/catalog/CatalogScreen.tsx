@@ -3,7 +3,10 @@
  * catégories de produit, produits (création, désactivation, réactivation), conditionnements
  * (immuables, BR-CAT-004) et motifs (référentiel des écrans de perte, visite, rejet, inventaire…).
  * Les listes se lisent sur le serveur (`GET /units`, `/products`, `/reason-codes`) et sur l'appareil
- * (catégories, conditionnements) ; elles sont relues après chaque opération.
+ * (catégories, conditionnements) ; elles sont relues après chaque opération et la dernière liste lue
+ * reste affichée pendant une coupure (saisie conservée, envoi bloqué). Un code déjà pris ou encore en
+ * attente d'envoi est refusé (la base lèverait une violation d'unicité, S-31) ; l'opération suivante
+ * attend la réponse définitive de la précédente, même après un retour sur l'écran.
  */
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +16,7 @@ import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { submitCommand } from '../sales/submit.js';
+import { phaseOf, submitCommand } from '../sales/submit.js';
 import type { ProductCategoryData } from '../sales/types.js';
 import {
   categoryPayload,
@@ -25,6 +28,7 @@ import {
   EMPTY_PRODUCT,
   LOSS_CATEGORIES,
   LOT_TRACKINGS,
+  pendingCatalogCodes,
   PRICING_MODES,
   productPayload,
   reasonPayload,
@@ -44,28 +48,38 @@ const SECTIONS: readonly Section[] = ['PRODUCTS', 'UNITS', 'CATEGORIES', 'PACKAG
 const isActiveCategory = (category: ProductCategoryData) =>
   category.is_active === undefined || Boolean(category.is_active);
 
-/** Liste lue en ligne ; `undefined` pendant la première lecture, `null` si indisponible. */
+/**
+ * Liste lue en ligne : la dernière liste reçue (`undefined` avant la première), gardée quand une
+ * relecture échoue ou que le réseau tombe, et l'échec de la dernière lecture.
+ */
 function useOnlineList<T>(
   path: string,
   field: string,
   online: boolean,
   reloadKey: string,
-): readonly T[] | null | undefined {
-  const [state, setState] = useState<{ path: string; items: readonly T[] | null }>();
+): { readonly items: readonly T[] | undefined; readonly failed: boolean } {
+  const [state, setState] = useState<{ items: readonly T[] | undefined; failed: boolean }>({
+    items: undefined,
+    failed: false,
+  });
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
     void authorizedRequest<Record<string, T[] | undefined>>(getDb(), path, { method: 'GET' }).then(
       (result) => {
-        if (!cancelled) setState({ path, items: result.ok ? (result.data[field] ?? []) : null });
+        if (cancelled) return;
+        setState((current) =>
+          result.ok
+            ? { items: result.data[field] ?? [], failed: false }
+            : { items: current.items, failed: true },
+        );
       },
     );
     return () => {
       cancelled = true;
     };
   }, [path, field, online, reloadKey]);
-  if (!online) return null;
-  return state?.path === path ? state.items : undefined;
+  return state;
 }
 
 interface SectionProps {
@@ -76,6 +90,8 @@ interface SectionProps {
   readonly send: (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
   readonly blocked: boolean;
   readonly userId: string;
+  /** Codes des créations encore en attente (un doublon serait renvoyé sans fin). */
+  readonly pending: ReturnType<typeof pendingCatalogCodes>;
 }
 
 function Issues({ issues, prefix }: { issues: readonly string[]; prefix: string }) {
@@ -91,11 +107,14 @@ function Issues({ issues, prefix }: { issues: readonly string[]; prefix: string 
   );
 }
 
-function UnitsSection({ units, send, blocked, userId }: SectionProps) {
+function UnitsSection({ units, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState({ code: '', name: '', isCount: true });
   const ids = { code: useId(), name: useId() };
-  const issues = checkUnit(form, units);
+  const issues = checkUnit(form, [
+    ...units,
+    ...pending.units.map((code) => ({ code, name: '', isCount: true, isActive: true })),
+  ]);
   const touched = form.code !== '' || form.name !== '';
   const submit = () =>
     void send({
@@ -165,14 +184,14 @@ function UnitsSection({ units, send, blocked, userId }: SectionProps) {
   );
 }
 
-function CategoriesSection({ refs, send, blocked, userId }: SectionProps) {
+function CategoriesSection({ refs, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState({ code: '', name: '', parentId: '' });
   const ids = { code: useId(), name: useId(), parent: useId() };
-  const issues = checkCategory(
-    form,
-    refs.productCategories.map((category) => category.code),
-  );
+  const known = new Set(refs.productCategories.map((category) => category.code));
+  // Catégories créées et pas encore tirées : affichées « en attente », leur code est pris.
+  const waiting = pending.categories.filter((code) => !known.has(code));
+  const issues = checkCategory(form, [...known, ...waiting]);
   const touched = form.code !== '' || form.name !== '';
   const names = new Map(refs.productCategories.map((category) => [category.id, category.name]));
   const submit = () =>
@@ -186,7 +205,7 @@ function CategoriesSection({ refs, send, blocked, userId }: SectionProps) {
     });
   return (
     <>
-      {refs.productCategories.length === 0 ? (
+      {refs.productCategories.length === 0 && waiting.length === 0 ? (
         <p className="home-muted">{t('catalog.none')}</p>
       ) : (
         <ul className="receipt-lines">
@@ -197,6 +216,14 @@ function CategoriesSection({ refs, send, blocked, userId }: SectionProps) {
                 <small>{category.code}</small>
               </span>
               <span>{category.parent_id ? (names.get(category.parent_id) ?? '') : ''}</span>
+            </li>
+          ))}
+          {waiting.map((code) => (
+            <li key={`attente-${code}`}>
+              <span>
+                <strong>{code}</strong>
+              </span>
+              <span>{t('catalog.pending')}</span>
             </li>
           ))}
         </ul>
@@ -253,7 +280,7 @@ function CategoriesSection({ refs, send, blocked, userId }: SectionProps) {
   );
 }
 
-function ProductsSection({ refs, units, products, send, blocked, userId }: SectionProps) {
+function ProductsSection({ refs, units, products, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT);
   const [creating, setCreating] = useState(false);
@@ -267,7 +294,10 @@ function ProductsSection({ refs, units, products, send, blocked, userId }: Secti
     mode: useId(),
     species: useId(),
   };
-  const issues = checkProduct(form, products);
+  const issues = checkProduct(form, [
+    ...products,
+    ...pending.products.map((code) => ({ code }) as ProductView),
+  ]);
   const update = (patch: Partial<ProductForm>) => setForm((current) => ({ ...current, ...patch }));
   const toggle = (product: ProductView) =>
     void send({
@@ -414,7 +444,17 @@ function ProductsSection({ refs, units, products, send, blocked, userId }: Secti
               value: family,
               label: t(`catalog.family.${family}`),
             })),
-            (stockFamily) => update({ stockFamily: stockFamily as ProductForm['stockFamily'] }),
+            (stockFamily) =>
+              // Un produit biologique se suit par lot (lots de production, BR-PRD-001), un service
+              // jamais (BR-CAT-005) : le suivi est réglé avec la famille.
+              update({
+                stockFamily: stockFamily as ProductForm['stockFamily'],
+                ...(stockFamily === 'BIOLOGIQUE'
+                  ? { lotTracking: 'REQUIRED' as const }
+                  : stockFamily === 'SERVICE'
+                    ? { lotTracking: 'NONE' as const }
+                    : {}),
+              }),
           )}
           {select(
             ids.unit,
@@ -498,7 +538,12 @@ function PackagingSection({ refs, units, products, send, blocked, userId }: Sect
   const ids = { product: useId(), unit: useId(), factor: useId() };
   const product = products.find((candidate) => candidate.id === productId);
   const existing = refs.productUnits;
-  const check = checkPackaging({ productId, ...form }, product, existing);
+  const check = checkPackaging(
+    { productId, ...form },
+    product,
+    existing,
+    units.find((unit) => unit.code === product?.baseUnitCode)?.isCount ?? false,
+  );
   const touched = form.unitCode !== '' || form.factorText !== '';
   const submit = () => {
     if (!product || check.factor === null) return;
@@ -623,7 +668,7 @@ function PackagingSection({ refs, units, products, send, blocked, userId }: Sect
   );
 }
 
-function ReasonsSection({ reasons, send, blocked, userId }: SectionProps) {
+function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProps) {
   const { t } = useTranslation();
   const [form, setForm] = useState({
     category: 'VISIT_OUTCOME' as string,
@@ -633,7 +678,18 @@ function ReasonsSection({ reasons, send, blocked, userId }: SectionProps) {
     requiresComment: false,
   });
   const ids = { category: useId(), code: useId(), label: useId(), loss: useId() };
-  const issues = checkReason(form, reasons);
+  const issues = checkReason(form, [
+    ...reasons,
+    ...pending.reasons.map((reason) => ({
+      id: '',
+      category: reason.category,
+      code: reason.code,
+      label: '',
+      lossCategory: null,
+      requiresComment: false,
+      isActive: true,
+    })),
+  ]);
   const touched = form.code !== '' || form.label !== '';
   const listed = reasons.filter((reason) => reason.category === form.category);
   const submit = () =>
@@ -672,7 +728,9 @@ function ReasonsSection({ reasons, send, blocked, userId }: SectionProps) {
                 <strong>{reason.label}</strong>
                 <small>
                   {reason.code}
-                  {reason.lossCategory ? ` · ${reason.lossCategory}` : ''}
+                  {reason.lossCategory
+                    ? ` · ${t(`loss.categories.${reason.lossCategory}`, { defaultValue: reason.lossCategory })}`
+                    : ''}
                 </small>
               </span>
               <span>{reason.requiresComment ? t('catalog.requires_comment_short') : ''}</span>
@@ -717,7 +775,7 @@ function ReasonsSection({ reasons, send, blocked, userId }: SectionProps) {
             <option value="">{t('catalog.any_loss')}</option>
             {LOSS_CATEGORIES.map((category) => (
               <option key={category} value={category}>
-                {category}
+                {t(`loss.categories.${category}`, { defaultValue: category })}
               </option>
             ))}
           </select>
@@ -778,7 +836,16 @@ export function CatalogScreen() {
 
   const settling =
     last !== undefined && !refs.outbox.some((command) => command.command_id === last);
-  const blocked = busy || settling || !online;
+  // Une opération du catalogue de l'utilisateur encore sans réponse bloque la suivante, même après
+  // un retour sur l'écran.
+  const waiting = refs.outbox.some(
+    (command) =>
+      command.command_type.startsWith('catalog.') &&
+      command.author_user_id === userId &&
+      phaseOf(command) === 'WAITING',
+  );
+  const blocked = busy || settling || waiting || !online;
+  const pending = pendingCatalogCodes(refs.outbox);
   const send = async (input: Parameters<typeof submitCommand>[0]) => {
     if (blocked) return false;
     setBusy(true);
@@ -794,10 +861,21 @@ export function CatalogScreen() {
       setBusy(false);
     }
   };
-  const loaded = units && products && reasons;
-  const props: SectionProps | null = loaded
-    ? { refs, units, products, reasons, send, blocked, userId }
-    : null;
+  const loaded = units.items && products.items && reasons.items;
+  const props: SectionProps | null =
+    units.items && products.items && reasons.items
+      ? {
+          refs,
+          units: units.items,
+          products: products.items,
+          reasons: reasons.items,
+          send,
+          blocked,
+          userId,
+          pending,
+        }
+      : null;
+  const failed = units.failed || products.failed || reasons.failed;
 
   return (
     <section className="sale">
@@ -828,12 +906,8 @@ export function CatalogScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      {online && (units === null || products === null || reasons === null) ? (
-        <p className="alert alert-error">{t('catalog.unavailable')}</p>
-      ) : null}
-      {online && !loaded && units !== null && products !== null && reasons !== null ? (
-        <p className="home-muted">{t('sales.loading')}</p>
-      ) : null}
+      {online && failed ? <p className="alert alert-error">{t('catalog.unavailable')}</p> : null}
+      {online && !loaded && !failed ? <p className="home-muted">{t('sales.loading')}</p> : null}
       {props ? (
         <section className="sale-block" aria-label={t(`catalog.section.${section}`)}>
           {section === 'PRODUCTS' ? <ProductsSection {...props} /> : null}

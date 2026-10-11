@@ -16,7 +16,7 @@ import { formatBusinessDay } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand } from '../sales/submit.js';
+import { phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
 import {
   checkTarget,
   currentMonth,
@@ -182,11 +182,12 @@ export function TargetsScreen() {
     value: useId(),
   };
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
+  const pendingOps = waitingCommands(refs?.outbox ?? [], 'crm.target.', userId);
   const managedTeams = (refs?.teams ?? []).filter((team) => team.manager_user_id === userId);
   const targets = useTargets(
     ['/api/v1/targets', ...managedTeams.map((team) => `/api/v1/targets?team_id=${team.id}`)],
     online,
-    `${last ?? ''}:${lastCommand?.status ?? ''}`,
+    `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
   );
 
   if (!refs || !userId) {
@@ -199,8 +200,10 @@ export function TargetsScreen() {
   }
 
   const waiting =
-    last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING');
+    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    pendingOps.length > 0;
   const blocked = busy || waiting || !online;
+  const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;
   const users = refs.users.filter((user) => user.status === 'ACTIVE');
   const teams = refs.teams.filter((team) => team.is_active);
   const sites = [...refs.sites.values()]
@@ -252,7 +255,9 @@ export function TargetsScreen() {
           {t('targets.online_only')}
         </p>
       ) : null}
-      {last ? <CommandResult commandId={last} messages="targets.result" /> : null}
+      {shownCommandId ? (
+        <CommandResult commandId={shownCommandId} messages="targets.result" />
+      ) : null}
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}

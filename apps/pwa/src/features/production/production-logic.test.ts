@@ -131,6 +131,18 @@ describe('Production : effectif, journal, calibres, emplacements', () => {
     expect(locationHeadcount(refs, lot, 'b3')).toBeNull();
   });
 
+  it('effectif borné par le reste physique : une vente depuis le bâtiment le réduit aussi', () => {
+    const refs = {
+      stock,
+      outbox: [],
+      stockPulledAt: undefined,
+      // Vente hors ligne de 30 têtes depuis b1, sans lot désigné.
+      pending: new Map([[stockKey('b1', 'broiler'), 30]]),
+    };
+    expect(locationHeadcount(refs, lot, 'b1')).toBe(270);
+    expect(rearingHeadcount({ ...refs, locations }, lot)).toBe(470);
+  });
+
   it('mortalité de l’appareil retirée du disponible local du bâtiment (produit du lot)', () => {
     const pending = pendingConsumption(
       [mortality({}, 3, 'b1')],

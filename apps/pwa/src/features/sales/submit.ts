@@ -49,6 +49,25 @@ export function phaseOf(command: Pick<OutboxCommand, 'status'>): CommandPhase {
   }
 }
 
+/**
+ * Commandes de l'utilisateur d'un domaine (préfixe du type) encore sans réponse définitive, dans
+ * l'ordre de saisie : un écran en ligne attend leur réponse avant l'opération suivante, même après un
+ * retour sur l'écran (l'état local de la dernière opération est alors perdu).
+ */
+export function waitingCommands(
+  outbox: readonly OutboxCommand[],
+  prefix: string,
+  userId: string | undefined,
+): OutboxCommand[] {
+  if (!userId) return [];
+  return outbox.filter(
+    (command) =>
+      command.command_type.startsWith(prefix) &&
+      command.author_user_id === userId &&
+      phaseOf(command) === 'WAITING',
+  );
+}
+
 /** Message du serveur pour une commande rejetée (`error.message_fr`), s'il existe. */
 export function rejectionMessage(command: Pick<OutboxCommand, 'last_error'>): string | null {
   return command.last_error?.message_fr || command.last_error?.code || null;

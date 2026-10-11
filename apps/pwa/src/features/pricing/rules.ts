@@ -128,6 +128,7 @@ export type RuleIssue =
   | 'MIN_QUANTITY_INVALID'
   | 'PRIORITY_INVALID'
   | 'VALID_FROM_INVALID'
+  | 'VALID_FROM_PAST'
   | 'VALID_TO_INVALID'
   | 'OUTSIDE_SUPERSEDED'
   | 'SITE_NOT_IN_ZONE';
@@ -201,6 +202,11 @@ export interface RuleContext {
   readonly superseded?: Pick<RuleView, 'validFrom' | 'validTo'> | null;
   readonly sites?: ReadonlyMap<string, SiteData>;
   readonly zones?: ReadonlyMap<string, ZoneData>;
+  /**
+   * Instant de la saisie : une date d'effet passée rendrait le brouillon inactivable (activation non
+   * rétroactive de plus de 5 minutes) et, faute d'annulation (S-29), figerait la lignée.
+   */
+  readonly now?: Date;
 }
 
 export function checkRule(form: RuleForm, context: RuleContext): RuleCheck {
@@ -228,6 +234,9 @@ export function checkRule(form: RuleForm, context: RuleContext): RuleCheck {
   if (!priorityOk) issues.push('PRIORITY_INVALID');
   const validFrom = doualaInstant(form.validFrom);
   if (!validFrom) issues.push('VALID_FROM_INVALID');
+  else if (context.now && validFrom < ceilMinute(context.now).toISOString()) {
+    issues.push('VALID_FROM_PAST');
+  }
   let validTo: string | null = null;
   if (form.validTo) {
     validTo = doualaInstant(form.validTo);
@@ -314,7 +323,9 @@ export function formFrom(rule: RuleView, validFrom: Date): RuleForm {
     priorityText: String(rule.priority),
     commercialCampaignId: rule.commercialCampaignId ?? '',
     validFrom: doualaLocal(validFrom),
-    validTo: rule.validTo ? doualaLocal(new Date(rule.validTo)) : '',
+    // La fin reprise doit suivre la date d'effet proposée (sinon le formulaire s'ouvrirait invalide).
+    validTo:
+      rule.validTo && new Date(rule.validTo) > validFrom ? doualaLocal(new Date(rule.validTo)) : '',
     notes: '',
   };
 }

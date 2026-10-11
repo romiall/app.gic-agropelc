@@ -6,7 +6,13 @@ import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { CatalogScreen } from './CatalogScreen.js';
-import { checkPackaging, checkProduct, EMPTY_PRODUCT, productPayload } from './catalog.js';
+import {
+  checkPackaging,
+  checkProduct,
+  EMPTY_PRODUCT,
+  pendingCatalogCodes,
+  productPayload,
+} from './catalog.js';
 import type { ProductView, ReasonView, UnitView } from './catalog.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -83,6 +89,16 @@ function renderScreen() {
   );
 }
 
+/** Réponse définitive du serveur à la dernière commande (le moteur de synchronisation est simulé). */
+async function settleLast(expectedCount: number) {
+  await waitFor(async () => expect(await getDb().outbox.count()).toBe(expectedCount));
+  const command = await nextCommand();
+  await getDb().outbox.update(command?.command_id as string, {
+    status: 'SYNCED',
+    synced_at: '2026-10-10T09:00:05.000Z',
+  });
+}
+
 async function nextCommand() {
   const commands = await getDb().outbox.orderBy('device_seq').toArray();
   return commands[commands.length - 1];
@@ -133,6 +149,7 @@ describe('Catalogue (ECR-PRX-01)', () => {
       aggregate_id: IDS.eggs,
       payload: {},
     });
+    await settleLast(1);
     const reactivate = list.getByRole('button', { name: 'Réactiver Poulet' });
     await waitFor(() => expect(reactivate).toBeEnabled());
     await user.click(reactivate);
@@ -142,8 +159,10 @@ describe('Catalogue (ECR-PRX-01)', () => {
         aggregate_id: IDS.chicken,
       }),
     );
+    await settleLast(2);
 
-    await user.click(list.getByRole('button', { name: 'Nouveau produit' }));
+    const newProduct = list.getByRole('button', { name: 'Nouveau produit' });
+    await user.click(newProduct);
     await user.type(list.getByLabelText('Code'), 'porc-eng');
     await user.type(list.getByLabelText('Libellé'), 'Porc à l’engraissement');
     await user.selectOptions(list.getByLabelText('Catégorie'), CATEGORY);
@@ -165,6 +184,8 @@ describe('Catalogue (ECR-PRX-01)', () => {
           categoryId: CATEGORY,
           stockFamily: 'BIOLOGIQUE',
           baseUnitCode: 'U',
+          // Un produit biologique se suit par lot (réglé avec la famille).
+          lotTracking: 'REQUIRED',
           species: 'PORC',
           isSellable: true,
         },
@@ -194,6 +215,7 @@ describe('Catalogue (ECR-PRX-01)', () => {
         payload: { code: 'SAC50', name: 'Sac de 50 kg', isCount: false },
       }),
     );
+    await settleLast(1);
 
     await user.click(screen.getByRole('radio', { name: 'Catégories' }));
     const categories = within(screen.getByRole('region', { name: 'Catégories' }));
@@ -213,6 +235,9 @@ describe('Catalogue (ECR-PRX-01)', () => {
         payload: { code: 'OEUFS', name: 'Œufs', parentId: CATEGORY },
       }),
     );
+    // Créée, pas encore tirée : affichée en attente.
+    expect(await within(categories.getByRole('list')).findByText('OEUFS')).toBeInTheDocument();
+    await settleLast(2);
 
     await user.click(screen.getByRole('radio', { name: 'Conditionnements' }));
     const packaging = within(screen.getByRole('region', { name: 'Conditionnements' }));
@@ -224,6 +249,12 @@ describe('Catalogue (ECR-PRX-01)', () => {
     ).toBeInTheDocument();
     await user.selectOptions(packaging.getByLabelText('Unité'), 'KG');
     await user.type(packaging.getByLabelText('Équivaut à (en U)'), '16,5');
+    // L'unité de base U se compte : facteur entier exigé (BR-CAT-003).
+    expect(
+      packaging.getByText('L’unité de base se compte : le facteur est un nombre entier.'),
+    ).toBeInTheDocument();
+    await user.clear(packaging.getByLabelText('Équivaut à (en U)'));
+    await user.type(packaging.getByLabelText('Équivaut à (en U)'), '15');
     await user.click(packaging.getByLabelText('L’achat'));
     const createPackaging = packaging.getByRole('button', { name: 'Ajouter le conditionnement' });
     await waitFor(() => expect(createPackaging).toBeEnabled());
@@ -235,13 +266,14 @@ describe('Catalogue (ECR-PRX-01)', () => {
         payload: {
           productId: IDS.eggs,
           unitCode: 'KG',
-          factorToBase: 16.5,
+          factorToBase: 15,
           isSalesUnit: true,
           isPurchaseUnit: true,
           isCountUnit: false,
         },
       }),
     );
+    await settleLast(3);
 
     await user.click(screen.getByRole('radio', { name: 'Motifs' }));
     const reasons = within(screen.getByRole('region', { name: 'Motifs' }));
@@ -251,6 +283,7 @@ describe('Catalogue (ECR-PRX-01)', () => {
     await user.type(reasons.getByLabelText('Code'), 'CHALEUR');
     await user.type(reasons.getByLabelText('Libellé'), 'Coup de chaleur');
     await user.selectOptions(reasons.getByLabelText('Catégorie de perte'), 'MORTALITE');
+    expect(reasons.getByLabelText('Catégorie de perte')).toHaveDisplayValue('Mortalité');
     await user.click(reasons.getByLabelText('Commentaire obligatoire'));
     const createReason = reasons.getByRole('button', { name: 'Enregistrer le motif' });
     await waitFor(() => expect(createReason).toBeEnabled());
@@ -299,6 +332,12 @@ describe('Règles du catalogue', () => {
       species: 'PORC',
     };
     expect(checkProduct(service, [])).toEqual(['SERVICE_LOT']);
+    expect(
+      checkProduct(
+        { ...service, stockFamily: 'BIOLOGIQUE', lotTracking: 'NONE', species: 'PORC' },
+        [],
+      ),
+    ).toEqual(['BIO_LOT']);
     expect(productPayload(service)).toMatchObject({ code: 'LIVRAISON', lotTracking: 'NONE' });
     expect(productPayload(service)).not.toHaveProperty('species');
     expect(checkProduct({ ...service, code: 'OEUF', lotTracking: 'NONE' }, PRODUCTS)).toEqual([
@@ -323,5 +362,33 @@ describe('Règles du catalogue', () => {
     expect(
       checkPackaging({ ...base, unitCode: 'PLATEAU', factorText: '30' }, PRODUCTS[0], existing),
     ).toEqual({ issues: ['PACKAGING_EXISTS'], factor: 30 });
+    // DECIMAL(14,6) : 8 chiffres avant la virgule au plus.
+    expect(
+      checkPackaging({ ...base, factorText: '100000000' }, PRODUCTS[0], existing).issues,
+    ).toEqual(['FACTOR_INVALID']);
+    expect(
+      checkPackaging({ ...base, factorText: '2,5' }, PRODUCTS[0], existing, true).issues,
+    ).toEqual(['FACTOR_NOT_WHOLE']);
+  });
+
+  it('codes des créations en attente pris en compte (sauf refusées)', () => {
+    const command = (type: string, payload: object, status = 'PENDING_SYNC') => ({
+      command_type: type,
+      status,
+      payload,
+    });
+    expect(
+      pendingCatalogCodes([
+        command('catalog.unit.create', { code: 'sac' }),
+        command('catalog.product_category.create', { code: 'oeufs' }),
+        command('catalog.product.create', { code: 'PC' }, 'REJECTED'),
+        command('catalog.reason_code.set', { category: 'LOSS', code: 'chaleur' }),
+      ]),
+    ).toEqual({
+      units: ['SAC'],
+      categories: ['OEUFS'],
+      products: [],
+      reasons: [{ category: 'LOSS', code: 'CHALEUR' }],
+    });
   });
 });

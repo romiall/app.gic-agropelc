@@ -15,9 +15,10 @@ import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
-import { locationHeadcount, rearingLocations } from './daily.js';
+import { rearingLocations } from './daily.js';
 import {
   allowedKinds,
+  birthParentActive,
   checkEntry,
   checkLotDraft,
   EMPTY_ENTRY,
@@ -32,6 +33,9 @@ import {
   parentCandidates,
   placementReceipts,
   PRODUCTION_LOT_TYPES,
+  receiptAvailable,
+  receiptProducts,
+  sourceLocations,
   sourceLots,
   stockSources,
   type EntryDraft,
@@ -308,11 +312,11 @@ function RecordEntry({
     stillborn: useId(),
     weight: useId(),
   };
-  const lots = entryLots(refs);
+  const lots = entryLots(refs, userId);
   const lot: EntryLot | undefined = lots.find((candidate) => candidate.id === lotChoice) ?? lots[0];
   if (!lot) return <p className="home-muted">{t('lot_setup.no_entry_lot')}</p>;
 
-  const kinds = allowedKinds(lot, refs.productionLots);
+  const kinds = allowedKinds(lot, refs.productionLots, online);
   const kind: LotEntrySourceKind = kinds.includes(draft.kind)
     ? draft.kind
     : (kinds[0] ?? 'INTERNAL_STOCK');
@@ -322,42 +326,47 @@ function RecordEntry({
   const stock = kind === 'INTERNAL_STOCK' ? stockSources(refs, lot) : [];
   const receipts = kind === 'PURCHASE' ? placementReceipts(refs, lot) : [];
   const receipt = receipts.find((candidate) => candidate.id === draft.goodsReceiptId);
+  const receiptChoices = receipt ? receiptProducts(refs, receipt, lot) : [];
   const fromLots =
     kind === 'TRANSFER' || kind === 'WEANING' ? sourceLots(refs.productionLots, lot, kind) : [];
   const fromLot = fromLots.find((candidate) => candidate.id === draft.sourceProductionLotId);
-  const fromLocations = fromLot ? rearingLocations(refs.locations, fromLot) : [];
+  const fromLocations = fromLot ? sourceLocations(refs, fromLot) : [];
+  const chosenStock = stock.find((s) => `${s.locationId}|${s.productId}` === draft.stockSource);
+  // Chaque choix est revalidé contre les listes du moment : la charge utile envoie ce qui s'affiche.
   const effective: EntryDraft = {
     ...draft,
     kind,
-    stockSource: stock.some((s) => `${s.locationId}|${s.productId}` === draft.stockSource)
-      ? draft.stockSource
+    toLocationId: rearing.some((location) => location.id === draft.toLocationId)
+      ? draft.toLocationId
+      : '',
+    stockSource: chosenStock ? draft.stockSource : '',
+    sourceStockLotId: chosenStock?.lots.some(
+      (stockLot) => stockLot.lotId === draft.sourceStockLotId,
+    )
+      ? draft.sourceStockLotId
       : '',
     goodsReceiptId: receipt ? receipt.id : '',
-    receiptProductId:
-      receipt && receipt.lines.some((line) => line.product_id === draft.receiptProductId)
-        ? draft.receiptProductId
-        : '',
+    receiptProductId: receiptChoices.includes(draft.receiptProductId) ? draft.receiptProductId : '',
     sourceProductionLotId: fromLot ? fromLot.id : '',
-    sourceLocationId: fromLocations.some((location) => location.id === draft.sourceLocationId)
+    sourceLocationId: fromLocations.some((entry) => entry.location.id === draft.sourceLocationId)
       ? draft.sourceLocationId
       : '',
   };
-  const check = checkEntry(effective);
-  const chosenStock = stock.find((s) => `${s.locationId}|${s.productId}` === effective.stockSource);
-  // Têtes disponibles à l'origine : le serveur refuse en ligne au-delà (stock, lot d'origine).
+  const check = checkEntry(effective, chosenStock?.fifo === false);
+  // Têtes disponibles à l'origine : le serveur refuse en ligne au-delà (stock, réception, lot).
   const available =
     kind === 'INTERNAL_STOCK'
-      ? (chosenStock?.lots.find((stockLot) => stockLot.lotId === draft.sourceStockLotId)
+      ? (chosenStock?.lots.find((stockLot) => stockLot.lotId === effective.sourceStockLotId)
           ?.quantity ??
         chosenStock?.quantity ??
         null)
       : (kind === 'TRANSFER' || kind === 'WEANING') && fromLot && effective.sourceLocationId
-        ? locationHeadcount(refs, fromLot, effective.sourceLocationId)
+        ? (fromLocations.find((entry) => entry.location.id === effective.sourceLocationId)?.heads ??
+          null)
         : kind === 'PURCHASE' && receipt && effective.receiptProductId
-          ? receipt.lines
-              .filter((line) => line.product_id === effective.receiptProductId)
-              .reduce((sum, line) => sum + Number(line.qty_accepted_base), 0)
+          ? receiptAvailable(refs, receipt, effective.receiptProductId)
           : null;
+  const parentInactive = kind === 'BIRTH' && !birthParentActive(lot, refs.productionLots);
   const over = check.quantity !== null && available !== null && check.quantity > available;
   const update = (patch: Partial<EntryDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const ready = check.issues.length === 0 && !(online && over) && !blocked;
@@ -393,7 +402,16 @@ function RecordEntry({
         id={ids.lot}
         label={t('lot_setup.entry_lot_label')}
         value={lot.id}
-        onChange={(value) => setLotChoice(value)}
+        onChange={(value) => {
+          setLotChoice(value);
+          // Destination et origines d'un autre lot ne valent plus pour celui-ci.
+          setDraft((current) => ({
+            ...current,
+            toLocationId: '',
+            sourceProductionLotId: '',
+            sourceLocationId: '',
+          }));
+        }}
         options={lots.map((candidate) => ({ value: candidate.id, label: lotLabel(candidate) }))}
       />
       {lot.createCommandId ? <p className="home-muted">{t('lot_setup.pending_lot_hint')}</p> : null}
@@ -437,14 +455,17 @@ function RecordEntry({
               <Select
                 id={ids.stockLot}
                 label={t('lot_setup.stock_lot_label')}
-                value={draft.sourceStockLotId}
+                value={effective.sourceStockLotId}
                 onChange={(value) => update({ sourceStockLotId: value })}
                 options={chosenStock.lots.map((stockLot) => ({
                   value: stockLot.lotId,
                   label: `${stockLot.lotCode} (${formatQuantity(stockLot.quantity)})`,
                 }))}
-                placeholder={t('lot_setup.fifo')}
+                placeholder={chosenStock.fifo ? t('lot_setup.fifo') : t('lot_setup.choose')}
               />
+            ) : null}
+            {chosenStock && !chosenStock.fifo ? (
+              <p className="home-muted">{t('lot_setup.stock_lot_required')}</p>
             ) : null}
           </>
         )
@@ -472,9 +493,10 @@ function RecordEntry({
                 label={t('lot_setup.receipt_product_label')}
                 value={effective.receiptProductId}
                 onChange={(value) => update({ receiptProductId: value })}
-                options={[...new Set(receipt.lines.map((line) => line.product_id))]
-                  .filter((id) => products.get(id)?.stock_family === 'BIOLOGIQUE')
-                  .map((id) => ({ value: id, label: products.get(id)?.name ?? id }))}
+                options={receiptChoices.map((id) => ({
+                  value: id,
+                  label: products.get(id)?.name ?? id,
+                }))}
                 placeholder={t('lot_setup.choose')}
               />
             ) : null}
@@ -495,15 +517,24 @@ function RecordEntry({
             }))}
             placeholder={t('lot_setup.choose')}
           />
-          {fromLot ? (
+          {fromLot && fromLocations.length === 0 ? (
+            <p className="alert alert-error">{t('lot_setup.no_source_heads')}</p>
+          ) : null}
+          {fromLot && fromLocations.length > 0 ? (
             <Select
               id={ids.sourceLocation}
               label={t('lot_setup.source_location_label')}
               value={effective.sourceLocationId}
               onChange={(value) => update({ sourceLocationId: value })}
-              options={fromLocations.map((location) => ({
-                value: location.id,
-                label: location.name,
+              options={fromLocations.map((entry) => ({
+                value: entry.location.id,
+                label:
+                  entry.heads === null
+                    ? entry.location.name
+                    : t('lot_setup.source_location', {
+                        name: entry.location.name,
+                        heads: formatQuantity(entry.heads),
+                      }),
               }))}
               placeholder={t('lot_setup.choose')}
             />
@@ -515,9 +546,7 @@ function RecordEntry({
         <Select
           id={ids.to}
           label={t('lot_setup.to_label')}
-          value={
-            rearing.some((location) => location.id === draft.toLocationId) ? draft.toLocationId : ''
-          }
+          value={effective.toLocationId}
           onChange={(value) => update({ toLocationId: value })}
           options={rearing.map((location) => ({ value: location.id, label: location.name }))}
           placeholder={t('lot_setup.main_location', {
@@ -547,6 +576,9 @@ function RecordEntry({
           />
         </div>
       </div>
+      {parentInactive ? (
+        <p className="text-warn">{t('lot_setup.parent_inactive_offline')}</p>
+      ) : null}
       {kind === 'BIRTH' ? (
         <div className="field">
           <label htmlFor={ids.stillborn}>{t('lot_setup.stillborn_label')}</label>

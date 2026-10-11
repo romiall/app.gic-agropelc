@@ -142,6 +142,30 @@ describe('Fournisseurs (ECR-APP-01)', () => {
     });
   });
 
+  it('retour sur l’écran avant la réponse : l’opération en attente bloque encore la suivante', async () => {
+    const user = userEvent.setup();
+    const first = renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Provenderie du Centre' });
+    await user.click(within(card).getByRole('button', { name: 'Désactiver' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    first.unmount();
+
+    renderScreen();
+    const again = await screen.findByRole('listitem', { name: 'Provenderie du Centre' });
+    expect(within(again).getByRole('button', { name: 'Désactiver' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nouveau fournisseur' })).toBeDisabled();
+    expect(await screen.findByText(/Opération (en cours d’envoi|enregistrée)/)).toBeInTheDocument();
+    const reads = vi.mocked(authorizedRequest).mock.calls.length;
+    await settleLast();
+    // La réponse reçue relit la liste et rend la main.
+    await waitFor(() =>
+      expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(reads),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Nouveau fournisseur' })).toBeEnabled(),
+    );
+  });
+
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();

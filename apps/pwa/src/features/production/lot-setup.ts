@@ -11,6 +11,11 @@
  *   création, ADR-051 §11) : depuis le stock de la ferme, depuis une réception d'achat comptabilisée de
  *   la ferme, depuis un autre lot (transfert), par sevrage, ou naissance ; sortes admises selon
  *   `checkLotEntry` (packages/domain), comme le serveur. Têtes entières.
+ * - Disponibles à l'origine, comme les contrôle le serveur et nets des opérations de l'appareil en
+ *   attente : stock de la ferme hors têtes d'un lot de production (un solde mêlé exige de désigner le
+ *   lot de stock, le « plus ancien d'abord » du serveur pouvant tomber sur le lot de production) ;
+ *   têtes acceptées de la réception encore sur leur lot fournisseur ; effectif du lot d'origine sur
+ *   le bâtiment choisi.
  */
 import {
   acceptsDailyEntries,
@@ -27,6 +32,8 @@ import {
 } from '@gic/domain';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
+import { stockKey } from '../sales/stock.js';
+import { locationHeadcount, rearingHeadcount, rearingLocations } from './daily.js';
 import type {
   GoodsReceiptData,
   LocationData,
@@ -168,9 +175,13 @@ interface CreatePayloadLike {
   readonly parentLotId?: string;
 }
 
-/** Lots qui acceptent une entrée (planifiés, actifs, en vente), y compris ceux créés sur l'appareil. */
+/**
+ * Lots qui acceptent une entrée (planifiés, actifs, en vente), y compris ceux que l'utilisateur a créés
+ * sur l'appareil (pas ceux d'un autre utilisateur d'une tablette partagée).
+ */
 export function entryLots(
   refs: Pick<SalesReferences, 'productionLots' | 'outbox' | 'productionPulledAt' | 'locations'>,
+  authorUserId: string,
 ): EntryLot[] {
   const known = new Set(refs.productionLots.map((lot) => lot.id));
   const sites = new Map(refs.locations.map((location) => [location.id, location.site_id]));
@@ -190,6 +201,7 @@ export function entryLots(
   const pending: EntryLot[] = [];
   for (const command of refs.outbox) {
     if (command.command_type !== 'production.lot.create') continue;
+    if (command.author_user_id !== authorUserId) continue;
     if (known.has(command.aggregate_id)) continue;
     if (!stillInFlight(command, refs.productionPulledAt)) continue;
     const payload = command.payload as CreatePayloadLike;
@@ -247,16 +259,29 @@ export function sourceLots(
     .sort((a, b) => a.lot_code.localeCompare(b.lot_code, 'fr'));
 }
 
-/** Sortes d'entrée proposées pour ce lot. */
+/** Lot de truies de la naissance, s'il est actif ou en vente (le serveur l'exige en ligne). */
+export function birthParentActive(lot: EntryLot, lots: readonly ProductionLotData[]): boolean {
+  const parent = lot.parentLotId
+    ? lots.find((candidate) => candidate.id === lot.parentLotId)
+    : undefined;
+  return parent !== undefined && acceptsDailyEntries(parent.status as ProductionLotStatus);
+}
+
+/**
+ * Sortes d'entrée proposées pour ce lot. En ligne, la naissance exige un lot de truies actif ; hors
+ * ligne, elle reste proposée (le serveur l'accepte en conflit, BR-SYN-007) avec un avertissement.
+ */
 export function allowedKinds(
   lot: EntryLot,
   lots: readonly ProductionLotData[],
+  online = true,
 ): LotEntrySourceKind[] {
   const parent = lot.parentLotId
     ? lots.find((candidate) => candidate.id === lot.parentLotId)
     : undefined;
   return LOT_SOURCE_KINDS.filter((kind) => {
     if (kind === 'TRANSFER' || kind === 'WEANING') return sourceLots(lots, lot, kind).length > 0;
+    if (kind === 'BIRTH' && online && !birthParentActive(lot, lots)) return false;
     return entryAllowed({
       lotType: lot.lotType,
       sourceKind: kind,
@@ -265,21 +290,33 @@ export function allowedKinds(
   });
 }
 
-/** Animaux en stock sur la ferme du lot, de la même espèce, hors têtes d'un lot de production. */
+/**
+ * Animaux en stock sur la ferme du lot, de la même espèce, hors têtes d'un lot de production et nets
+ * des opérations de l'appareil en attente sur l'emplacement.
+ */
 export interface StockSource {
   readonly locationId: string;
   readonly productId: string;
-  /** Lots de stock (fournisseur, incubation) avec leur quantité ; vide si non suivi par lot. */
+  /**
+   * Lots de stock (fournisseur, incubation) avec leur quantité, bornée par le disponible de
+   * l'emplacement (les opérations en attente ne sont pas ventilées par lot) ; vide si non suivi.
+   */
   readonly lots: readonly {
     readonly lotId: string;
     readonly lotCode: string;
     readonly quantity: number;
   }[];
   readonly quantity: number;
+  /**
+   * « Le plus ancien d'abord » admis : faux quand le solde contient aussi des têtes d'un lot de
+   * production, que le choix du serveur pourrait retenir (il refuserait alors l'entrée) ; le lot de
+   * stock se désigne.
+   */
+  readonly fifo: boolean;
 }
 
 export function stockSources(
-  refs: Pick<SalesReferences, 'stock' | 'locations' | 'products' | 'productionLots'>,
+  refs: Pick<SalesReferences, 'stock' | 'locations' | 'products' | 'productionLots' | 'pending'>,
   lot: EntryLot,
 ): StockSource[] {
   const lotProduct = refs.products.find((product) => product.id === lot.productId);
@@ -316,26 +353,81 @@ export function stockSources(
     const inProduction = (balance.lots ?? [])
       .filter((stockLot) => stockLot.lot_id !== null && productionStockLots.has(stockLot.lot_id))
       .reduce((sum, stockLot) => sum + Number(stockLot.qty_on_hand), 0);
-    const quantity = Math.round((Number(balance.qty_on_hand) - inProduction) * 1000) / 1000;
+    const pending = refs.pending.get(stockKey(balance.location_id, balance.product_id)) ?? 0;
+    const quantity =
+      Math.round((Number(balance.qty_on_hand) - inProduction - pending) * 1000) / 1000;
     if (quantity <= 0) continue;
+    const fifo = inProduction <= 0;
+    // Reste sans lot désignable à côté d'un lot de production : le serveur prendrait ce dernier.
+    if (!fifo && lots.length === 0) continue;
     sources.push({
       locationId: balance.location_id,
       productId: balance.product_id,
-      lots,
+      lots: lots.map((stockLot) => ({
+        ...stockLot,
+        quantity: Math.min(stockLot.quantity, quantity),
+      })),
       quantity,
+      fifo,
     });
   }
   return sources;
 }
 
-/** Réceptions comptabilisées de la ferme qui portent des animaux de l'espèce du lot. */
-export function placementReceipts(
-  refs: Pick<SalesReferences, 'goodsReceipts' | 'locations' | 'products'>,
-  lot: EntryLot,
-): GoodsReceiptData[] {
+/**
+ * Têtes d'un produit d'une réception encore à mettre en place, comme les compte le serveur : sur chaque
+ * ligne, l'accepté borné par le solde de son lot fournisseur à l'emplacement de réception (l'accepté
+ * seul si l'appareil n'en détient pas le solde), moins les opérations de l'appareil en attente sur cet
+ * emplacement.
+ */
+export function receiptAvailable(
+  refs: Pick<SalesReferences, 'stock' | 'pending'>,
+  receipt: Pick<GoodsReceiptData, 'location_id' | 'lines'>,
+  productId: string,
+): number {
+  const key = stockKey(receipt.location_id, productId);
+  const balance = refs.stock.get(key);
+  let total = 0;
+  for (const line of receipt.lines) {
+    if (line.product_id !== productId) continue;
+    const accepted = Number(line.qty_accepted_base);
+    if (!(accepted > 0)) continue;
+    const lotId = line.stock_lot_id ?? null;
+    const onLot =
+      lotId === null || balance === undefined
+        ? accepted
+        : Number(balance.lots?.find((stockLot) => stockLot.lot_id === lotId)?.qty_on_hand ?? 0);
+    total += Math.min(accepted, onLot);
+  }
+  const left = Math.round((total - (refs.pending.get(key) ?? 0)) * 1000) / 1000;
+  return Math.max(0, left);
+}
+
+/** Produits d'une réception à mettre en place dans ce lot : animaux de son espèce encore disponibles. */
+export function receiptProducts(
+  refs: Pick<SalesReferences, 'products' | 'stock' | 'pending'>,
+  receipt: Pick<GoodsReceiptData, 'location_id' | 'lines'>,
+  lot: Pick<EntryLot, 'productId'>,
+): string[] {
   const lotProduct = refs.products.find((product) => product.id === lot.productId);
   const group = speciesGroupOfProduct(lotProduct?.species ?? null);
   const products = new Map(refs.products.map((product) => [product.id, product]));
+  return [...new Set(receipt.lines.map((line) => line.product_id))].filter((productId) => {
+    const product = products.get(productId);
+    return (
+      product?.stock_family === 'BIOLOGIQUE' &&
+      group !== null &&
+      speciesGroupOfProduct(product.species ?? null) === group &&
+      receiptAvailable(refs, receipt, productId) > 0
+    );
+  });
+}
+
+/** Réceptions comptabilisées de la ferme qui portent encore des animaux de l'espèce du lot. */
+export function placementReceipts(
+  refs: Pick<SalesReferences, 'goodsReceipts' | 'locations' | 'products' | 'stock' | 'pending'>,
+  lot: EntryLot,
+): GoodsReceiptData[] {
   const sites = new Map(
     refs.locations.map((location: LocationData) => [location.id, location.site_id]),
   );
@@ -344,17 +436,27 @@ export function placementReceipts(
       (receipt) =>
         PLACEABLE_RECEIPT_STATUSES.has(receipt.status) &&
         sites.get(receipt.location_id) === lot.siteId &&
-        receipt.lines.some((line) => {
-          const product = products.get(line.product_id);
-          return (
-            product?.stock_family === 'BIOLOGIQUE' &&
-            group !== null &&
-            speciesGroupOfProduct(product.species ?? null) === group &&
-            Number(line.qty_accepted_base) > 0
-          );
-        }),
+        receiptProducts(refs, receipt, lot).length > 0,
     )
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+}
+
+/**
+ * Bâtiments ou cases d'où faire passer des têtes d'un lot (transfert, sevrage), avec l'effectif du
+ * lot connu du téléphone. Si l'appareil détient des soldes du lot, un emplacement sans solde compte
+ * pour 0 et n'est pas proposé ; s'il n'en détient aucun, tous sont proposés, sans effectif (`null`).
+ */
+export function sourceLocations(
+  refs: Pick<SalesReferences, 'stock' | 'outbox' | 'stockPulledAt' | 'pending' | 'locations'>,
+  fromLot: ProductionLotData,
+): { readonly location: LocationData; readonly heads: number | null }[] {
+  const known = rearingHeadcount(refs, fromLot) !== null;
+  return rearingLocations(refs.locations, fromLot)
+    .map((location) => ({
+      location,
+      heads: locationHeadcount(refs, fromLot, location.id) ?? (known ? 0 : null),
+    }))
+    .filter((entry) => entry.heads === null || entry.heads > 0);
 }
 
 export interface EntryDraft {
@@ -406,7 +508,10 @@ export interface EntryCheck {
   readonly avgWeightG: number | null;
 }
 
-export function checkEntry(draft: EntryDraft): EntryCheck {
+/**
+ * `stockLotRequired` : le solde d'origine est mêlé à un lot de production, le lot de stock se désigne.
+ */
+export function checkEntry(draft: EntryDraft, stockLotRequired = false): EntryCheck {
   const issues: EntryIssue[] = [];
   const quantity = wholeCount(draft.quantityText, false);
   if (quantity === null) issues.push('QUANTITY_INVALID');
@@ -425,7 +530,8 @@ export function checkEntry(draft: EntryDraft): EntryCheck {
     }
   }
   const sourceMissing =
-    (draft.kind === 'INTERNAL_STOCK' && !draft.stockSource) ||
+    (draft.kind === 'INTERNAL_STOCK' &&
+      (!draft.stockSource || (stockLotRequired && !draft.sourceStockLotId))) ||
     (draft.kind === 'PURCHASE' && (!draft.goodsReceiptId || !draft.receiptProductId)) ||
     ((draft.kind === 'TRANSFER' || draft.kind === 'WEANING') &&
       (!draft.sourceProductionLotId || !draft.sourceLocationId));

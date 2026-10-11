@@ -12,7 +12,7 @@ import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { phaseOf, submitCommand } from '../sales/submit.js';
+import { phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
 import {
   checkSupplier,
   createPayload,
@@ -181,7 +181,11 @@ export function SuppliersScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
-  const suppliers = useSuppliers(online, `${last ?? ''}:${lastCommand?.status ?? ''}`);
+  const pendingOps = waitingCommands(refs?.outbox ?? [], 'procurement.supplier.', userId);
+  const suppliers = useSuppliers(
+    online,
+    `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
+  );
 
   if (!refs || !userId) {
     return (
@@ -193,8 +197,10 @@ export function SuppliersScreen() {
   }
 
   const waiting =
-    last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING');
+    (last !== undefined && (lastCommand === undefined || phaseOf(lastCommand) === 'WAITING')) ||
+    pendingOps.length > 0;
   const blocked = busy || waiting || !online;
+  const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;
   const takenCodes = new Set((suppliers ?? []).map((supplier) => supplier.code));
   const sorted = [...(suppliers ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 
@@ -221,7 +227,9 @@ export function SuppliersScreen() {
           {t('suppliers.online_only')}
         </p>
       ) : null}
-      {last ? <CommandResult commandId={last} messages="suppliers.result" /> : null}
+      {shownCommandId ? (
+        <CommandResult commandId={shownCommandId} messages="suppliers.result" />
+      ) : null}
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}

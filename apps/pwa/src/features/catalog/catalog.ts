@@ -95,7 +95,9 @@ export type CatalogIssue =
   | 'UNIT_REQUIRED'
   | 'SPECIES_REQUIRED'
   | 'SERVICE_LOT'
+  | 'BIO_LOT'
   | 'FACTOR_INVALID'
+  | 'FACTOR_NOT_WHOLE'
   | 'PACKAGING_EXISTS';
 
 const normalizedCode = (code: string): string => code.trim().toUpperCase();
@@ -186,6 +188,9 @@ export function checkProduct(form: ProductForm, products: readonly ProductView[]
   if (!form.baseUnitCode) issues.push('UNIT_REQUIRED');
   if (form.stockFamily === 'BIOLOGIQUE' && !form.species) issues.push('SPECIES_REQUIRED');
   if (form.stockFamily === 'SERVICE' && form.lotTracking !== 'NONE') issues.push('SERVICE_LOT');
+  // Un lot de production ou d'incubation exige un produit biologique suivi par lot (BR-PRD-001) ; le
+  // suivi ne se modifie plus après la création.
+  if (form.stockFamily === 'BIOLOGIQUE' && form.lotTracking === 'NONE') issues.push('BIO_LOT');
   return issues;
 }
 
@@ -211,20 +216,66 @@ export function checkPackaging(
   form: { readonly productId: string; readonly unitCode: string; readonly factorText: string },
   product: Pick<ProductView, 'baseUnitCode'> | undefined,
   existing: readonly { readonly product_id: string; readonly unit_code: string }[],
+  /** L'unité de base est une unité de comptage : le facteur est entier (BR-CAT-003). */
+  baseIsCount = false,
 ): { readonly issues: readonly CatalogIssue[]; readonly factor: number | null } {
   const issues: CatalogIssue[] = [];
   if (!form.unitCode || (product && form.unitCode === product.baseUnitCode)) {
     issues.push('UNIT_REQUIRED');
   }
   const normalized = form.factorText.trim().replace(',', '.');
-  const factor = /^\d+(\.\d{1,6})?$/.test(normalized) ? Number(normalized) : null;
+  // `factor_to_base` est un DECIMAL(14,6) : 8 chiffres avant la virgule au plus.
+  const factor = /^\d{1,8}(\.\d{1,6})?$/.test(normalized) ? Number(normalized) : null;
   if (factor === null || factor <= 0) issues.push('FACTOR_INVALID');
+  else if (baseIsCount && !Number.isInteger(factor)) issues.push('FACTOR_NOT_WHOLE');
   if (
     existing.some((unit) => unit.product_id === form.productId && unit.unit_code === form.unitCode)
   ) {
     issues.push('PACKAGING_EXISTS');
   }
   return { issues, factor: factor !== null && factor > 0 ? factor : null };
+}
+
+interface CodePayload {
+  readonly code?: string;
+  readonly category?: string;
+}
+
+/**
+ * Codes des créations du catalogue encore sur l'appareil ou pas encore relues (non refusées) : un
+ * second envoi du même code lèverait une violation d'unicité côté base, renvoyée sans fin (S-31).
+ */
+export function pendingCatalogCodes(
+  outbox: readonly {
+    readonly command_type: string;
+    readonly status: string;
+    readonly payload: unknown;
+  }[],
+): {
+  readonly units: readonly string[];
+  readonly categories: readonly string[];
+  readonly products: readonly string[];
+  readonly reasons: readonly { readonly category: string; readonly code: string }[];
+} {
+  const live = outbox.filter((command) => command.status !== 'REJECTED');
+  const codes = (type: string) =>
+    live
+      .filter((command) => command.command_type === type)
+      .map((command) => normalizedCode((command.payload as CodePayload).code ?? ''))
+      .filter(Boolean);
+  return {
+    units: codes('catalog.unit.create'),
+    categories: codes('catalog.product_category.create'),
+    products: codes('catalog.product.create'),
+    reasons: live
+      .filter((command) => command.command_type === 'catalog.reason_code.set')
+      .map((command) => command.payload as CodePayload)
+      .filter((payload) => payload.code && payload.category)
+      .map((payload) => ({
+        category: payload.category as string,
+        code: normalizedCode(payload.code as string),
+      })),
+  };
 }
 
 export function checkReason(

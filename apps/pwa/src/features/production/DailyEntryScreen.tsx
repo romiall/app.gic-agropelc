@@ -76,9 +76,9 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
       reason.category === 'LOSS' &&
       (reason.loss_category === null || reason.loss_category === 'MORTALITE'),
   );
-  const commentMissing =
-    reasons.find((reason) => reason.id === reasonId)?.requires_comment === true &&
-    comment.trim() === '';
+  const commentRequired =
+    reasons.find((reason) => reason.id === reasonId)?.requires_comment === true;
+  const commentMissing = commentRequired && comment.trim() === '';
   const ready =
     location !== undefined && quantity !== null && !commentMissing && !(online && over) && !blocked;
 
@@ -169,17 +169,24 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
         </select>
       </div>
       <div className="field">
-        <label htmlFor={ids.comment}>{t('production.comment_label')}</label>
+        <label htmlFor={ids.comment}>
+          {commentRequired ? t('production.comment_required_label') : t('production.comment_label')}
+        </label>
         <textarea
           id={ids.comment}
           className="text-input"
           rows={2}
           maxLength={MAX_DAILY_COMMENT}
           value={comment}
+          aria-required={commentRequired}
+          aria-invalid={commentMissing}
+          aria-describedby={commentMissing ? `${ids.comment}-error` : undefined}
           onChange={(event) => setComment(event.target.value)}
         />
         {commentMissing ? (
-          <p className="error-message">{t('production.comment_required')}</p>
+          <p id={`${ids.comment}-error`} className="error-message">
+            {t('production.comment_required')}
+          </p>
         ) : null}
       </div>
       <p className="home-muted">{t('production.photo_hint')}</p>

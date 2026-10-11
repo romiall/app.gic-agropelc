@@ -69,6 +69,12 @@ export function parseSimQuantity(text: string): number | null {
   return value > 0 && value <= MAX_QUANTITY ? value : null;
 }
 
+/** Quantité saisie trop grande (au-delà de la borne `numeric(14,3)`) plutôt que mal formée. */
+export function simQuantityTooLarge(text: string): boolean {
+  const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
+  return /^\d+(\.\d{1,3})?$/.test(normalized) && Number(normalized) > MAX_QUANTITY;
+}
+
 /** Montant de la ligne simulée (même calcul que la vente) ; `null` s'il dépasse ce que gère le domaine. */
 export function simTotal(quantity: number, unitPriceXaf: number): number | null {
   try {

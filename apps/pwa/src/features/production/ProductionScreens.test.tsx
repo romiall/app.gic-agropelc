@@ -214,11 +214,21 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     await rememberRoles(['RESP_PRODUCTION']);
     const user = userEvent.setup();
     renderAt(`/production/sortie?lot=${BROILERS}`);
-    await user.type(await screen.findByLabelText('Nombre de têtes (U)'), '501');
+    await user.selectOptions(await screen.findByLabelText('Vers'), IDS.pos);
+    const quantity = screen.getByLabelText('Nombre de têtes (U)');
+    const dispatch = screen.getByRole('button', { name: 'Enregistrer la sortie' });
+    await user.type(quantity, '501');
     expect(screen.getByRole('alert')).toHaveTextContent(/le serveur refuserait/);
+    expect(dispatch).toBeDisabled();
+    await user.clear(quantity);
+    await user.type(quantity, '500');
+    expect(dispatch).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Déclarer prêt à la vente' }));
     expect(await screen.findByText(/Changement de statut en cours d’envoi/)).toBeInTheDocument();
-    const [command] = await getDb().outbox.toArray();
+    // Aucune sortie partie : seul le changement de statut est dans l'outbox.
+    const commands = await getDb().outbox.toArray();
+    expect(commands.map((entry) => entry.command_type)).toEqual(['production.lot.set_status']);
+    const [command] = commands;
     expect(command).toMatchObject({
       command_type: 'production.lot.set_status',
       aggregate_type: 'PRODUCTION_LOT',
@@ -321,7 +331,9 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     expect(screen.getByText('Cette cause exige un commentaire.')).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Enregistrer la mortalité' });
     expect(submit).toBeDisabled();
-    await user.type(screen.getByLabelText('Commentaire (facultatif)'), 'Panne de ventilation');
+    const comment = screen.getByLabelText('Commentaire (exigé par cette cause)');
+    expect(comment).toHaveAttribute('aria-invalid', 'true');
+    await user.type(comment, 'Panne de ventilation');
     expect(submit).toBeEnabled();
   });
 

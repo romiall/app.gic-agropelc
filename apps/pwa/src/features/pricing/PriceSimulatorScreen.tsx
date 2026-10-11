@@ -11,10 +11,11 @@ import { clock } from '../../platform/composition.js';
 import { formatBusinessDay } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
-import { pricesMayBeStale } from '../sales/sale-form.js';
+import { MAX_QUANTITY, pricesMayBeStale } from '../sales/sale-form.js';
 import {
   applicableRules,
   parseSimQuantity,
+  simQuantityTooLarge,
   SIM_CHANNELS,
   simInstant,
   simTotal,
@@ -188,7 +189,11 @@ export function PriceSimulatorScreen() {
       )}
 
       {product && quantityText && quantity === null ? (
-        <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
+        <p className="error-message">
+          {simQuantityTooLarge(quantityText)
+            ? t('price_sim.quantity_too_large', { max: formatQuantity(MAX_QUANTITY) })
+            : t('loss.issue.QUANTITY_INVALID')}
+        </p>
       ) : null}
       {product && quantity !== null && at ? (
         <section className="sale-block" aria-labelledby="price-sim-result" role="status">

@@ -19,6 +19,7 @@ import { acceptsDailyEntries, businessDayOf, type ProductionLotStatus } from '@g
 import type { OutboxCommand } from '../../storage/db.js';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
+import { physicalLeft, stockKey } from '../sales/stock.js';
 import type { LocationData, ProductData, ProductionLotData } from '../sales/types.js';
 import type { TransferLineCheck } from '../stock/transfer.js';
 import { pendingLotDispatches, pendingLotTransfersOut } from './output.js';
@@ -150,38 +151,18 @@ function lotHeads(
   return found ? heads : null;
 }
 
-/**
- * Effectif en élevage (INV-PRD-01) : têtes du lot de stock sur les bâtiments et cases, moins les
- * mortalités de l'appareil en attente ; `null` si l'appareil n'en détient aucun solde.
- */
-export function rearingHeadcount(
-  refs: Pick<SalesReferences, 'stock' | 'locations' | 'outbox' | 'stockPulledAt'>,
-  lot: ProductionLotData,
-): number | null {
-  const rearing = new Set(
-    refs.locations
-      .filter((location) => REARING_TYPES.has(location.location_type))
-      .map((location) => location.id),
-  );
-  const heads = lotHeads(refs, lot, (locationId) => rearing.has(locationId));
-  if (heads === null) return null;
-  const deaths = pendingDeaths(refs.outbox, refs.stockPulledAt).get(lot.id) ?? 0;
-  let dispatched = 0;
-  for (const [locationId, quantity] of [
-    ...pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id),
-    ...pendingLotTransfersOut(refs.outbox, refs.stockPulledAt, lot.id),
-  ]) {
-    if (rearing.has(locationId)) dispatched += quantity;
-  }
-  return Math.round((heads - deaths - dispatched) * 1000) / 1000;
-}
+/** Références utiles à l'effectif ; `pending` (disponible local) borne l'effectif s'il est fourni. */
+type HeadRefs = Pick<SalesReferences, 'stock' | 'outbox' | 'stockPulledAt'> &
+  Partial<Pick<SalesReferences, 'pending'>>;
 
 /**
  * Têtes du lot sur un bâtiment ou une case (ce que le serveur contrôle pour une mortalité), moins les
- * mortalités de l'appareil en attente sur cet emplacement ; `null` sans solde connu.
+ * mortalités, sorties et transferts de l'appareil en attente sur cet emplacement ; borné par le reste
+ * physique de l'emplacement pour le produit du lot (les autres opérations de l'appareil — ventes
+ * depuis l'élevage, pertes, expéditions sans lot — y sont comptées) ; `null` sans solde connu.
  */
 export function locationHeadcount(
-  refs: Pick<SalesReferences, 'stock' | 'outbox' | 'stockPulledAt'>,
+  refs: HeadRefs,
   lot: ProductionLotData,
   locationId: string,
 ): number | null {
@@ -192,7 +173,31 @@ export function locationHeadcount(
   const dispatched =
     (pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id).get(locationId) ?? 0) +
     (pendingLotTransfersOut(refs.outbox, refs.stockPulledAt, lot.id).get(locationId) ?? 0);
-  return Math.round((heads - deaths - dispatched) * 1000) / 1000;
+  const own = heads - deaths - dispatched;
+  if (!refs.pending) return Math.round(own * 1000) / 1000;
+  const key = stockKey(locationId, lot.product_id);
+  const left = physicalLeft(refs.stock.get(key), refs.pending.get(key) ?? 0);
+  return Math.round(Math.min(own, left) * 1000) / 1000;
+}
+
+/**
+ * Effectif en élevage (INV-PRD-01) : somme, bâtiment par bâtiment, de l'effectif borné ci-dessus ;
+ * `null` si l'appareil n'en détient aucun solde.
+ */
+export function rearingHeadcount(
+  refs: HeadRefs & Pick<SalesReferences, 'locations'>,
+  lot: ProductionLotData,
+): number | null {
+  let found = false;
+  let total = 0;
+  for (const location of refs.locations) {
+    if (!REARING_TYPES.has(location.location_type)) continue;
+    const heads = locationHeadcount(refs, lot, location.id);
+    if (heads === null) continue;
+    found = true;
+    total += heads;
+  }
+  return found ? Math.round(total * 1000) / 1000 : null;
 }
 
 /** Âge du lot en jours (jour métier), depuis la première entrée ; `null` sans date de début. */

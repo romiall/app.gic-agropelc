@@ -8,7 +8,19 @@ import { loadSalesReferences } from '../sales/references.js';
 import type { ProductData, ProductionLotData } from '../sales/types.js';
 import { rearingHeadcount } from './daily.js';
 import { LotSetupScreen } from './LotSetupScreen.js';
-import { allowedKinds, checkLotDraft, lotProducts, type EntryLot } from './lot-setup.js';
+import {
+  allowedKinds,
+  checkEntry,
+  checkLotDraft,
+  EMPTY_ENTRY,
+  entryLots,
+  lotProducts,
+  receiptAvailable,
+  receiptProducts,
+  sourceLocations,
+  stockSources,
+  type EntryLot,
+} from './lot-setup.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../platform/composition.js', async () => {
@@ -36,6 +48,9 @@ const LOT_A = '01900000-0000-7000-8000-0000000006a7';
 const LOT_B = '01900000-0000-7000-8000-0000000006a8';
 const STOCK_LOT_A = '01900000-0000-7000-8000-0000000006a9';
 const STOCK_LOT_B = '01900000-0000-7000-8000-0000000006aa';
+const BUILDING_2 = '01900000-0000-7000-8000-0000000006ab';
+const SUPPLIER_LOT_2 = '01900000-0000-7000-8000-0000000006ac';
+const OTHER_USER = '01900000-0000-7000-8000-0000000000e9';
 
 function projection(
   dataset: string,
@@ -140,6 +155,7 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
         status: 'ACTIVE',
       }),
       location(BUILDING, 'Bâtiment 1', 'BUILDING'),
+      location(BUILDING_2, 'Bâtiment 2', 'BUILDING'),
       location(STORE, 'Magasin ferme', 'STORE'),
       product(CHICK, 'POUSSIN', 'Poussins d’un jour'),
       product(BROILER, 'PC', 'Poulets de chair'),
@@ -182,6 +198,15 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     await waitFor(() => expect(record).toBeEnabled());
     await user.click(record);
     expect(await screen.findByText(/Entrée enregistrée sur ce téléphone/)).toBeInTheDocument();
+    // Le disponible du magasin est net de l'entrée en attente : 1 000 − 800.
+    expect(await entry.findByText('Disponibles à l’origine : 200')).toBeInTheDocument();
+    expect(
+      within(entry.getByLabelText('Animaux en stock')).getByRole('option', {
+        name: 'Poussins d’un jour — Magasin ferme (200)',
+      }),
+    ).toBeInTheDocument();
+    await user.type(entry.getByLabelText('Nombre de têtes'), '300');
+    expect(entry.getByText(/Plus de têtes que l’origine connue du téléphone/)).toBeInTheDocument();
 
     const [created, placed] = await getDb().outbox.orderBy('device_seq').toArray();
     expect(created).toMatchObject({
@@ -217,10 +242,16 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     renderScreen();
     await user.click(await screen.findByRole('radio', { name: 'Entrée dans un lot' }));
     const entry = within(screen.getByRole('region', { name: 'Entrée dans un lot' }));
+    // Une destination choisie pour un lot ne suit pas le changement de lot.
+    await user.selectOptions(entry.getByLabelText('Vers le bâtiment ou la case'), BUILDING_2);
     await user.selectOptions(entry.getByLabelText('Lot'), LOT_B);
+    expect(entry.getByLabelText('Vers le bâtiment ou la case')).toHaveValue('');
     await user.click(entry.getByRole('radio', { name: 'Depuis un autre lot' }));
     await user.selectOptions(entry.getByLabelText('Lot d’origine'), LOT_A);
-    await user.selectOptions(entry.getByLabelText('Bâtiment ou case d’origine'), BUILDING);
+    // Le Bâtiment 2, où le lot d'origine n'a aucune tête, n'est pas proposé.
+    const from = entry.getByLabelText('Bâtiment ou case d’origine');
+    expect(within(from).queryByRole('option', { name: /Bâtiment 2/ })).not.toBeInTheDocument();
+    await user.selectOptions(from, BUILDING);
     expect(entry.getByText('Disponibles à l’origine : 500')).toBeInTheDocument();
     await user.type(entry.getByLabelText('Nombre de têtes'), '600');
     expect(entry.getByRole('alert')).toHaveTextContent(/le serveur refuserait/);
@@ -232,6 +263,7 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     await screen.findByText(/Entrée (en cours d’envoi|enregistrée)/);
 
     const [command] = await getDb().outbox.toArray();
+    expect((command?.payload as { toLocationId?: string }).toLocationId).toBeUndefined();
     expect(command).toMatchObject({
       command_type: 'production.lot.record_entry',
       depends_on: [],
@@ -247,6 +279,120 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     const lotA = refs.productionLots.find((candidate) => candidate.id === LOT_A);
     expect(lotA && rearingHeadcount(refs, lotA)).toBe(400);
     expect(refs.pending.get(`${BUILDING}:${BROILER}`)).toBe(100);
+  });
+
+  it('origines : solde mêlé à un lot de production, réception entamée, bâtiment sans tête', async () => {
+    const db = getDb();
+    // Bâtiment 1 : 500 têtes du lot A (production) et 50 d'un lot fournisseur ; un reste sans lot.
+    await db.projections.put(
+      balance(BUILDING, BROILER, [
+        { id: STOCK_LOT_A, qty: '500' },
+        { id: SUPPLIER_LOT_2, qty: '50' },
+      ]),
+    );
+    await db.projections.put(balance(BUILDING_2, BROILER, [{ id: STOCK_LOT_A, qty: '20' }]));
+    const refs = await loadSalesReferences(db);
+    const [target] = entryLots(refs, IDS.user).filter((candidate) => candidate.id === LOT_B);
+    if (!target) throw new Error('lot B absent');
+    const mixed = stockSources(refs, target).find((source) => source.locationId === BUILDING);
+    expect(mixed).toMatchObject({ quantity: 50, fifo: false });
+    expect(mixed?.lots.map((stockLot) => stockLot.lotId)).toEqual([SUPPLIER_LOT_2]);
+    const draft = { ...EMPTY_ENTRY, quantityText: '10', stockSource: `${BUILDING}|${BROILER}` };
+    expect(checkEntry(draft, true).issues).toEqual(['SOURCE_REQUIRED']);
+    expect(checkEntry({ ...draft, sourceStockLotId: SUPPLIER_LOT_2 }, true).issues).toEqual([]);
+    // Reste sans lot à côté du lot de production : source écartée (le serveur prendrait le lot A).
+    const untracked = {
+      ...balance(BUILDING_2, BROILER, [{ id: STOCK_LOT_A, qty: '20' }]).data,
+      qty_on_hand: '30',
+    };
+    const refsUntracked = {
+      ...refs,
+      stock: new Map([[`${BUILDING_2}:${BROILER}`, untracked as never]]),
+    };
+    expect(stockSources(refsUntracked, target)).toEqual([]);
+
+    // Lot A : têtes au Bâtiment 1 et au Bâtiment 2 ; un bâtiment sans solde n'est pas proposé.
+    const lotA = refs.productionLots.find((candidate) => candidate.id === LOT_A);
+    if (!lotA) throw new Error('lot A absent');
+    expect(sourceLocations(refs, lotA).map((entry) => [entry.location.id, entry.heads])).toEqual([
+      [BUILDING, 500],
+      [BUILDING_2, 20],
+    ]);
+
+    // Réception de 1 000 poussins dont 600 déjà mis en place (solde du lot fournisseur : 400).
+    const receipt = {
+      location_id: STORE,
+      lines: [
+        {
+          id: 'l1',
+          po_line_id: null,
+          product_id: CHICK,
+          qty_delivered_base: '1000',
+          qty_rejected_base: '0',
+          qty_accepted_base: '1000',
+          stock_lot_id: SUPPLIER_LOT,
+        },
+        {
+          id: 'l2',
+          po_line_id: null,
+          product_id: IDS.eggs,
+          qty_delivered_base: '30',
+          qty_rejected_base: '0',
+          qty_accepted_base: '30',
+          stock_lot_id: null,
+        },
+      ],
+    };
+    const placed = {
+      ...refs,
+      stock: new Map([
+        [
+          `${STORE}:${CHICK}`,
+          balance(STORE, CHICK, [{ id: SUPPLIER_LOT, qty: '400' }]).data as never,
+        ],
+      ]),
+      pending: new Map([[`${STORE}:${CHICK}`, 100]]),
+    };
+    expect(receiptAvailable(placed, receipt, CHICK)).toBe(300);
+    // Sans le solde sur l'appareil : l'accepté, moins l'attente.
+    expect(receiptAvailable({ ...placed, stock: new Map() }, receipt, CHICK)).toBe(900);
+    // Les œufs ne sont pas des animaux de l'espèce du lot.
+    expect(receiptProducts(placed, receipt, target)).toEqual([CHICK]);
+    const emptied = { ...placed, pending: new Map([[`${STORE}:${CHICK}`, 400]]) };
+    expect(receiptProducts(emptied, receipt, target)).toEqual([]);
+  });
+
+  it('lots créés sur une tablette partagée : seuls ceux de l’utilisateur reçoivent ses entrées', async () => {
+    const refs = await loadSalesReferences(getDb());
+    const create = (author: string, id: string) =>
+      ({
+        command_id: `c-${id}`,
+        device_seq: 1,
+        command_type: 'production.lot.create',
+        command_version: 1,
+        author_user_id: author,
+        aggregate_type: 'PRODUCTION_LOT',
+        aggregate_id: id,
+        base_version: null,
+        depends_on: [],
+        occurred_at: '2026-10-10T08:00:00.000Z',
+        client_created_at: '2026-10-10T08:00:00.000Z',
+        captured_offline: true,
+        backdated_reason: null,
+        attachment_ids: [],
+        payload: { lotType: 'POULET_CHAIR', productId: BROILER, mainLocationId: BUILDING },
+        status: 'LOCAL_ONLY',
+        attempts: 0,
+        next_attempt_at: null,
+        last_error: null,
+        server_refs: null,
+      }) as const;
+    const lots = entryLots(
+      { ...refs, outbox: [create(IDS.user, 'mien'), create(OTHER_USER, 'autre')] },
+      IDS.user,
+    ).map((candidate) => candidate.id);
+    expect(lots).toContain('mien');
+    expect(lots).not.toContain('autre');
   });
 });
 
@@ -320,6 +466,10 @@ describe('Nouveau lot : règles du domaine', () => {
       createCommandId: null,
     });
     expect(allowedKinds(target('PORC_NAISSAGE', 'truies'), [sows])).toContain('BIRTH');
+    // Truies seulement planifiées : naissance refusée en ligne, admise hors ligne (en conflit).
+    const planned = { ...sows, status: 'PLANNED' };
+    expect(allowedKinds(target('PORC_NAISSAGE', 'truies'), [planned])).not.toContain('BIRTH');
+    expect(allowedKinds(target('PORC_NAISSAGE', 'truies'), [planned], false)).toContain('BIRTH');
     expect(allowedKinds(target('PORC_NAISSAGE', null), [sows])).not.toContain('BIRTH');
     expect(allowedKinds(target('PORC_ENGRAISSEMENT', null), [sows])).toContain('WEANING');
     expect(allowedKinds(target('POULET_CHAIR', null), [sows])).toEqual([

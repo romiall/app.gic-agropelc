@@ -378,6 +378,8 @@ export interface GoodsReceiptData {
     readonly qty_delivered_base: string;
     readonly qty_rejected_base: string;
     readonly qty_accepted_base: string;
+    /** Lot de stock créé à la réception (lot fournisseur) ; nul si le produit n'est pas suivi. */
+    readonly stock_lot_id?: string | null;
   }[];
 }
 

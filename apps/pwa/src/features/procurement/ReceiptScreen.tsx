@@ -22,6 +22,7 @@ import { submitCommand } from '../sales/submit.js';
 import type { PurchaseOrderData } from '../sales/types.js';
 import {
   checkReceiptLine,
+  duplicateDeliveryNote,
   EMPTY_LINE,
   inFlightAccepted,
   localRemaining,
@@ -87,14 +88,20 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
     });
   const delivered = rows.filter((row) => row.check.delivered !== null);
   const over = rows.filter((row) => row.check.over > 0);
+  const duplicateNote = duplicateDeliveryNote(
+    order.supplier_id,
+    deliveryNote,
+    refs.goodsReceipts,
+    refs.outbox,
+  );
+  const commentRequired = rows.some(
+    (row) =>
+      row.check.rejected > 0 &&
+      reasons.find((reason) => reason.id === row.draft.reasonId)?.requires_comment === true,
+  );
   // Motif de rejet qui exige un commentaire : précisé dans les observations (pas de commentaire par
   // ligne dans le contrat).
-  const commentMissing =
-    rows.some(
-      (row) =>
-        row.check.rejected > 0 &&
-        reasons.find((reason) => reason.id === row.draft.reasonId)?.requires_comment === true,
-    ) && observations.trim() === '';
+  const commentMissing = commentRequired && observations.trim() === '';
   const ready =
     location !== undefined &&
     delivered.length > 0 &&
@@ -115,8 +122,9 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         authorUserId: userId,
         commandType: 'procurement.receipt.record',
         aggregateType: 'GOODS_RECEIPT',
-        // Dépassement hors ligne en mode quarantaine : rien n'entre au disponible local.
-        ...(!online && over.length > 0 && offlineOverMode === 'QUARANTINE'
+        // Quarantaine prévisible (bon de livraison déjà reçu, ou dépassement hors ligne en mode
+        // quarantaine) : rien n'entre au disponible local.
+        ...(duplicateNote || (!online && over.length > 0 && offlineOverMode === 'QUARANTINE')
           ? { localFlags: ['EXPECTED_QUARANTINE'] }
           : {}),
         payload: receiptPayload({
@@ -169,6 +177,11 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           onChange={(event) => setDeliveryNote(event.target.value)}
         />
         <p className="home-muted">{t('purchase_receipt.delivery_note_hint')}</p>
+        {duplicateNote ? (
+          <p className="text-warn" role="status">
+            {t('purchase_receipt.duplicate_note')}
+          </p>
+        ) : null}
       </div>
 
       <ul className="line-list">
@@ -306,17 +319,26 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         })}
       </ul>
       <div className="field">
-        <label htmlFor={observationsId}>{t('purchase_receipt.observations_label')}</label>
+        <label htmlFor={observationsId}>
+          {commentRequired
+            ? t('purchase_receipt.observations_required_label')
+            : t('purchase_receipt.observations_label')}
+        </label>
         <textarea
           id={observationsId}
           className="text-input"
           rows={2}
           maxLength={MAX_OBSERVATIONS}
           value={observations}
+          aria-required={commentRequired}
+          aria-invalid={commentMissing}
+          aria-describedby={commentMissing ? `${observationsId}-error` : undefined}
           onChange={(event) => setObservations(event.target.value)}
         />
         {commentMissing ? (
-          <p className="error-message">{t('purchase_receipt.comment_required')}</p>
+          <p id={`${observationsId}-error`} className="error-message">
+            {t('purchase_receipt.comment_required')}
+          </p>
         ) : null}
       </div>
       <p className="home-muted">

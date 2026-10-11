@@ -106,7 +106,9 @@ describe('Simulateur de prix (ECR-PRX-03)', () => {
     const quantity = screen.getByLabelText('Quantité (U)');
     await user.clear(quantity);
     await user.type(quantity, '999999999999');
-    expect(screen.getByText('Quantité invalide (au plus 3 décimales).')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Quantité trop grande : 99\s999\s999\s999,999 au plus\./),
+    ).toBeInTheDocument();
     await user.clear(quantity);
     await user.type(quantity, '99999999999');
     expect(screen.getByText(/Montant trop grand/)).toBeInTheDocument();
