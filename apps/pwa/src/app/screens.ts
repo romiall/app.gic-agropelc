@@ -31,6 +31,11 @@ export const ROUTES = {
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
   service: '/service',
+  productionLots: '/production/lots',
+  dailyEntryPattern: '/production/lots/:lotId',
+  dailyEntry: (lotId: string) => `/production/lots/${lotId}`,
+  eggCollection: '/production/collecte',
+  eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
   purchaseReceipts: '/achats/receptions',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
@@ -134,6 +139,8 @@ export const ROLE_SETS = {
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-PRD-01 et 02 (`production.daily.record`, jeu `production` des fermes) : production, ferme. */
+  production: ['RESP_PRODUCTION', 'RESP_FERME'],
   /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
   purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-STK-08 (`inventory.consumption.record`) : magasinier et responsable de ferme. */
@@ -371,6 +378,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.purchaseReceipt,
     // « Réceptionner » du magasinier, « Réceptions » du responsable de ferme.
     actionCodes: ['RECEIVE', 'RECEIPTS'],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRD-01',
+    path: ROUTES.productionLots,
+    labelKey: 'production_lots',
+    group: 'production',
+    roles: ROLE_SETS.production,
+    // « Lots de production » du responsable de production ; « SAISIE DU JOUR » du responsable de
+    // ferme, qui choisit le lot dans la liste.
+    actionCodes: ['LOTS', 'DAILY_ENTRY'],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRD-02',
+    path: ROUTES.eggCollection,
+    labelKey: 'egg_collection',
+    group: 'production',
+    roles: ROLE_SETS.production,
+    actionCodes: ['EGG_COLLECTION'],
     offline: true,
   },
   {

@@ -17,8 +17,14 @@ import type {
   CampaignData,
   CustomerCategoryData,
   InteractionData,
+  EggCollectionData,
   GoodsReceiptData,
   InventoryCountData,
+  LotConsumptionData,
+  LotLossData,
+  LotObservationData,
+  LotWeighingData,
+  ProductionLotData,
   PurchaseOrderData,
   SalesTargetData,
   SupplierData,
@@ -73,6 +79,14 @@ export interface SalesReferences {
    * de fusion, BR-CRM-007). Leurs ventes, commandes et visites se rattachent au compte conservé.
    */
   readonly customerAlias: ReadonlyMap<string, string>;
+  /** Production (jeu `production`) : lots et saisies des 30 derniers jours. */
+  readonly productionLots: readonly ProductionLotData[];
+  readonly lotLosses: readonly LotLossData[];
+  readonly lotConsumptions: readonly LotConsumptionData[];
+  readonly lotWeighings: readonly LotWeighingData[];
+  readonly lotObservations: readonly LotObservationData[];
+  readonly eggCollections: readonly EggCollectionData[];
+  readonly productionPulledAt: string | undefined;
   /** Achats (jeu `procurement`) : bons de commande à recevoir, réceptions récentes, fournisseurs. */
   readonly purchaseOrders: readonly PurchaseOrderData[];
   readonly goodsReceipts: readonly GoodsReceiptData[];
@@ -264,6 +278,13 @@ export function pendingInteractions(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    productionLots,
+    lotLosses,
+    lotConsumptions,
+    lotWeighings,
+    lotObservations,
+    eggCollections,
+    productionCursor,
     purchaseOrders,
     goodsReceipts,
     suppliers,
@@ -301,6 +322,13 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<ProductionLotData>(db, 'production', 'PRODUCTION_LOT'),
+    listProjected<LotLossData>(db, 'production', 'LOT_LOSS'),
+    listProjected<LotConsumptionData>(db, 'production', 'LOT_CONSUMPTION'),
+    listProjected<LotWeighingData>(db, 'production', 'LOT_WEIGHING'),
+    listProjected<LotObservationData>(db, 'production', 'LOT_OBSERVATION'),
+    listProjected<EggCollectionData>(db, 'production', 'EGG_COLLECTION'),
+    db.syncCursors.get('production'),
     listProjected<PurchaseOrderData>(db, 'procurement', 'PURCHASE_ORDER'),
     listProjected<GoodsReceiptData>(db, 'procurement', 'GOODS_RECEIPT'),
     listProjected<SupplierData>(db, 'procurement', 'SUPPLIER'),
@@ -343,7 +371,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
           command.command_type.startsWith('inventory.') ||
           command.command_type.startsWith('crm.') ||
           command.command_type.startsWith('fieldwork.') ||
-          command.command_type.startsWith('procurement.'),
+          command.command_type.startsWith('procurement.') ||
+          command.command_type.startsWith('production.'),
       )
       .toArray(),
   ]);
@@ -386,6 +415,13 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
     customerAlias: mergeAliases(customers),
+    productionLots,
+    lotLosses,
+    lotConsumptions,
+    lotWeighings,
+    lotObservations,
+    eggCollections,
+    productionPulledAt: productionCursor?.pulled_at,
     purchaseOrders,
     goodsReceipts,
     suppliers: byId(suppliers),

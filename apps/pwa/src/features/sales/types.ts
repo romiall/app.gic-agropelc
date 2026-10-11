@@ -18,6 +18,8 @@ export interface ProductData {
   readonly is_sellable: boolean;
   readonly pricing_mode: 'PER_UNIT' | 'PER_WEIGHT';
   readonly status: string;
+  /** Intrant consommable sur un lot (aliment, produit vétérinaire…). */
+  readonly is_consumable?: boolean;
 }
 
 /** (`product_unit`) `factor_to_base` : chaîne `DECIMAL(14,6)`. */
@@ -181,6 +183,89 @@ export interface StockTransferData {
     readonly dispatched_qty_base: string | null;
     readonly received_qty_base: string | null;
   }[];
+}
+
+/** (`production`, `SITE`) lot de production planifié, actif ou en vente. */
+export interface ProductionLotData {
+  readonly id: string;
+  readonly lot_code: string;
+  readonly lot_type: string;
+  readonly product_id: string;
+  readonly stock_lot_id: string;
+  readonly site_id: string;
+  readonly main_location_id: string;
+  readonly strain: string | null;
+  readonly status: string;
+  readonly start_date: string | null;
+  readonly planned_end_date: string | null;
+  readonly initial_quantity: number | null;
+  readonly occurred_at: string;
+}
+
+/** (`production`, 30 derniers jours) perte rattachée à un lot (mortalité comprise). */
+export interface LotLossData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly production_lot_id: string;
+  readonly location_id: string;
+  readonly quantity_base: number | null;
+  readonly category: string;
+  readonly reason_code_id: string | null;
+  readonly comment: string | null;
+  readonly status: string;
+  readonly occurred_at: string;
+}
+
+/** (`production`, 30 derniers jours) consommation d'intrant imputée à un lot. */
+export interface LotConsumptionData {
+  readonly id: string;
+  readonly production_lot_id: string;
+  readonly location_id: string;
+  readonly product_id: string;
+  readonly quantity_base: number | null;
+  readonly unit_code: string;
+  readonly quantity: number | null;
+  readonly cost_type: string;
+  readonly status: string;
+  readonly occurred_at: string;
+}
+
+/** (`production`, 30 derniers jours) pesée d'échantillon. */
+export interface LotWeighingData {
+  readonly id: string;
+  readonly production_lot_id: string;
+  readonly sample_size: number;
+  readonly avg_weight_g: number;
+  readonly total_weight_kg: number | null;
+  readonly status: string;
+  readonly occurred_at: string;
+}
+
+/** (`production`, 30 derniers jours) observation, immuable. */
+export interface LotObservationData {
+  readonly id: string;
+  readonly production_lot_id: string;
+  readonly observation_type: string;
+  readonly text: string;
+  readonly severity: string;
+  readonly occurred_at: string;
+}
+
+/** (`production`, 30 derniers jours) collecte d'œufs. */
+export interface EggCollectionData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly production_lot_id: string;
+  readonly collection_date: string | null;
+  readonly storage_location_id: string;
+  readonly collected_qty: number;
+  readonly broken_qty: number;
+  readonly nonconforming_qty: number;
+  readonly marketable_qty: number;
+  readonly hatching_qty: number;
+  readonly status: string;
+  readonly occurred_at: string;
+  readonly grades: readonly { readonly product_id: string; readonly quantity: number }[];
 }
 
 /** (`procurement`, `GLOBAL`) fournisseur actif. */

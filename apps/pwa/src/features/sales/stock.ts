@@ -102,6 +102,20 @@ export function pendingConsumption(
       }
       continue;
     }
+    // Collecte d'œufs : les commercialisables par calibre entrent sur l'emplacement de stockage.
+    if (command.command_type === 'production.egg_collection.record') {
+      const collection = command.payload as {
+        readonly storageLocationId?: string;
+        readonly grades?: readonly { readonly productId?: string; readonly quantity?: number }[];
+      };
+      if (!collection.storageLocationId) continue;
+      for (const grade of collection.grades ?? []) {
+        if (!grade.productId || !grade.quantity) continue;
+        const key = stockKey(collection.storageLocationId, grade.productId);
+        milli.set(key, (milli.get(key) ?? 0) - toMilli(grade.quantity));
+      }
+      continue;
+    }
     // Réception d'achat : la quantité acceptée (livré − rejeté) entre sur l'emplacement (une
     // réception mise en quarantaine par le serveur n'entre pas ; elle disparaît au tirage suivant).
     if (command.command_type === 'procurement.receipt.record') {
@@ -127,7 +141,8 @@ export function pendingConsumption(
     // Consommation d'intrant : sortie de l'emplacement vers la consommation.
     if (
       command.command_type === 'inventory.loss.declare' ||
-      command.command_type === 'inventory.consumption.record'
+      command.command_type === 'inventory.consumption.record' ||
+      command.command_type === 'production.input.record'
     ) {
       if (payload.locationId && payload.productId && payload.quantityBase) {
         const key = stockKey(payload.locationId, payload.productId);
