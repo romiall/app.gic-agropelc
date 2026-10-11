@@ -58,6 +58,43 @@ export function pendingLotDispatches(
   return new Map([...milli].map(([id, value]) => [id, value / 1000]));
 }
 
+interface EntryPayloadLike {
+  readonly sourceKind?: string;
+  readonly sourceProductionLotId?: string;
+  readonly sourceLocationId?: string;
+  readonly quantity?: number;
+}
+
+/**
+ * Têtes d'un lot de production passées dans un autre lot depuis l'appareil (transfert, sevrage,
+ * ECR-PRD-04) et pas encore dans le jeu `stock`, par emplacement de départ.
+ */
+export function pendingLotTransfersOut(
+  outbox: readonly OutboxCommand[],
+  stockPulledAt: string | undefined,
+  productionLotId: string,
+): Map<string, number> {
+  const milli = new Map<string, number>();
+  for (const command of outbox) {
+    if (command.command_type !== 'production.lot.record_entry') continue;
+    if (!stillInFlight(command, stockPulledAt)) continue;
+    const payload = command.payload as EntryPayloadLike;
+    if (
+      (payload.sourceKind !== 'TRANSFER' && payload.sourceKind !== 'WEANING') ||
+      payload.sourceProductionLotId !== productionLotId ||
+      !payload.sourceLocationId ||
+      !payload.quantity
+    ) {
+      continue;
+    }
+    milli.set(
+      payload.sourceLocationId,
+      (milli.get(payload.sourceLocationId) ?? 0) + Math.round(payload.quantity * 1000),
+    );
+  }
+  return new Map([...milli].map(([id, value]) => [id, value / 1000]));
+}
+
 const optionalText = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;

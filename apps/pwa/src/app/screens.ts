@@ -37,6 +37,7 @@ export const ROUTES = {
   eggCollection: '/production/collecte',
   eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
   productionOutput: '/production/sortie',
+  lotSetup: '/production/nouveau-lot',
   productionOutputFor: (lotId: string) => `/production/sortie?lot=${encodeURIComponent(lotId)}`,
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
@@ -156,6 +157,11 @@ export const ROLE_SETS = {
    * de ferme ; le responsable de production y déclare en plus le lot prêt à la vente.
    */
   productionOutput: ['RESP_FERME', 'RESP_PRODUCTION'],
+  /**
+   * ECR-PRD-04 (`production.lot.manage`, responsable de production seul ; l'entrée relève aussi de
+   * `production.daily.record`, mais l'inventaire des écrans réserve l'écran à la production).
+   */
+  lotSetup: ['RESP_PRODUCTION'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -477,6 +483,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'production',
     roles: ROLE_SETS.production,
     actionCodes: ['EGG_COLLECTION'],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRD-04',
+    path: ROUTES.lotSetup,
+    labelKey: 'lot_setup',
+    group: 'production',
+    roles: ROLE_SETS.lotSetup,
+    actionCodes: [],
     offline: true,
   },
   {

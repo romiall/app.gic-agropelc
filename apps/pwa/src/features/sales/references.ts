@@ -407,7 +407,13 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     stock: new Map(
       balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
     ),
-    pending: pendingConsumption(outbox, stockCursor?.pulled_at, transferMap, byId(productionLots)),
+    pending: pendingConsumption(
+      outbox,
+      stockCursor?.pulled_at,
+      transferMap,
+      byId(productionLots),
+      new Map(goodsReceipts.map((receipt) => [receipt.id, receipt.location_id])),
+    ),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),
       ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),

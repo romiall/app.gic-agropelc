@@ -21,7 +21,7 @@ import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import type { LocationData, ProductData, ProductionLotData } from '../sales/types.js';
 import type { TransferLineCheck } from '../stock/transfer.js';
-import { pendingLotDispatches } from './output.js';
+import { pendingLotDispatches, pendingLotTransfersOut } from './output.js';
 
 export const OBSERVATION_TYPES = [
   'SANITAIRE',
@@ -167,11 +167,10 @@ export function rearingHeadcount(
   if (heads === null) return null;
   const deaths = pendingDeaths(refs.outbox, refs.stockPulledAt).get(lot.id) ?? 0;
   let dispatched = 0;
-  for (const [locationId, quantity] of pendingLotDispatches(
-    refs.outbox,
-    refs.stockPulledAt,
-    lot.stock_lot_id,
-  )) {
+  for (const [locationId, quantity] of [
+    ...pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id),
+    ...pendingLotTransfersOut(refs.outbox, refs.stockPulledAt, lot.id),
+  ]) {
     if (rearing.has(locationId)) dispatched += quantity;
   }
   return Math.round((heads - deaths - dispatched) * 1000) / 1000;
@@ -191,7 +190,8 @@ export function locationHeadcount(
   const deaths =
     pendingDeaths(refs.outbox, refs.stockPulledAt, true).get(`${lot.id}:${locationId}`) ?? 0;
   const dispatched =
-    pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id).get(locationId) ?? 0;
+    (pendingLotDispatches(refs.outbox, refs.stockPulledAt, lot.stock_lot_id).get(locationId) ?? 0) +
+    (pendingLotTransfersOut(refs.outbox, refs.stockPulledAt, lot.id).get(locationId) ?? 0);
   return Math.round((heads - deaths - dispatched) * 1000) / 1000;
 }
 

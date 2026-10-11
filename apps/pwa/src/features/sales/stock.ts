@@ -66,6 +66,8 @@ export function pendingConsumption(
   stockPulledAt: string | undefined,
   transfers: ReadonlyMap<string, StockTransferData> = new Map(),
   productionLots: ReadonlyMap<string, Pick<ProductionLotData, 'product_id'>> = new Map(),
+  /** Emplacement de chaque réception d'achat connue (mise en place depuis une réception). */
+  receiptLocations: ReadonlyMap<string, string> = new Map(),
 ): Map<string, number> {
   const milli = new Map<string, number>();
   for (const command of commands) {
@@ -163,6 +165,42 @@ export function pendingConsumption(
       if (lot && death.locationId && death.quantity) {
         const key = stockKey(death.locationId, lot.product_id);
         milli.set(key, (milli.get(key) ?? 0) + toMilli(death.quantity));
+      }
+      continue;
+    }
+    // Entrée dans un lot de production (ECR-PRD-04) : les animaux quittent leur emplacement d'origine
+    // (stock, réception d'achat, autre lot) ; leur arrivée dans l'élevage n'est pas créditée ici.
+    if (command.command_type === 'production.lot.record_entry') {
+      const entry = command.payload as {
+        readonly sourceKind?: string;
+        readonly quantity?: number;
+        readonly sourceLocationId?: string;
+        readonly sourceProductId?: string;
+        readonly goodsReceiptId?: string;
+        readonly sourceProductionLotId?: string;
+      };
+      if (!entry.quantity) continue;
+      let source: { locationId: string; productId: string } | null = null;
+      if (
+        entry.sourceKind === 'INTERNAL_STOCK' &&
+        entry.sourceLocationId &&
+        entry.sourceProductId
+      ) {
+        source = { locationId: entry.sourceLocationId, productId: entry.sourceProductId };
+      } else if (entry.sourceKind === 'PURCHASE' && entry.goodsReceiptId && entry.sourceProductId) {
+        const locationId = receiptLocations.get(entry.goodsReceiptId);
+        if (locationId) source = { locationId, productId: entry.sourceProductId };
+      } else if (
+        (entry.sourceKind === 'TRANSFER' || entry.sourceKind === 'WEANING') &&
+        entry.sourceLocationId &&
+        entry.sourceProductionLotId
+      ) {
+        const lot = productionLots.get(entry.sourceProductionLotId);
+        if (lot) source = { locationId: entry.sourceLocationId, productId: lot.product_id };
+      }
+      if (source) {
+        const key = stockKey(source.locationId, source.productId);
+        milli.set(key, (milli.get(key) ?? 0) + toMilli(entry.quantity));
       }
       continue;
     }

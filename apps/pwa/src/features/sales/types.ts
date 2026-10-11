@@ -22,6 +22,8 @@ export interface ProductData {
   readonly is_consumable?: boolean;
   /** Produit achetable (demande d'achat, BR-APP-001). */
   readonly is_purchasable?: boolean;
+  /** Espèce d'un produit biologique (`POULET_CHAIR`, `PONDEUSE`, `PORC`), sinon nulle. */
+  readonly species?: string | null;
 }
 
 /** (`product_unit`) `factor_to_base` : chaîne `DECIMAL(14,6)`. */
@@ -207,6 +209,8 @@ export interface ProductionLotData {
   readonly stock_lot_id: string;
   readonly site_id: string;
   readonly main_location_id: string;
+  /** Lot lié (truies d'un lot de porcelets, bande ; AV-099, AV-111). */
+  readonly parent_lot_id?: string | null;
   readonly strain: string | null;
   readonly status: string;
   readonly start_date: string | null;
