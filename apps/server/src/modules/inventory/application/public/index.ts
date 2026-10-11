@@ -178,11 +178,26 @@ export type {
 
 // Accueil par rôle (ADR-030).
 export { stockHealth, recentLosses } from './home-metrics.js';
+
+// P5-19 : métriques de distribution partagées (tableau de P5-20, accueil ; BR-ANA-009, AV-199).
+export {
+  allocationPositions,
+  distributionFlowsOf,
+  locationFlows,
+  sentByDestination,
+} from './distribution-metrics.js';
+export type {
+  AllocationPosition,
+  BusinessPeriod,
+  LocationProductFlows,
+  SentByDestinationLine,
+} from './distribution-metrics.js';
 export type { StockHealth, RecentLosses } from './home-metrics.js';
 
 // P5-17 : lectures des quotas d'appareil (`GET /allocations`, `/allocations/{id}`).
 export {
   ALLOCATION_STATUSES,
+  activeAllocationHolderDevices,
   activeAllocationTotals,
   findAllocation,
   listAllocationEntries,

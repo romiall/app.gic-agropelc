@@ -7,6 +7,7 @@ export { customerOutstandingXaf, listReceivables, summarizeReceivables } from '.
 export { paymentReceivers } from './payment-receivers.js';
 export type { ReceivableLine, ReceivableFilter, ReceivableAgingSummary } from './receivables.js';
 export {
+  cashedByGroup,
   cashedSummary,
   receivablesSummary,
   recentSales,
@@ -15,12 +16,20 @@ export {
   suspectPaymentsCount,
 } from './home-metrics.js';
 export type {
+  CashedGroup,
   CashedSummary,
   ReceivablesSummary,
   RecentSale,
   SalesDay,
   SalesPeriodSummary,
 } from './home-metrics.js';
+// P5-19 : métriques de distribution partagées (vendu par PDV, à livrer ; BR-ANA-009).
+export { soldByLocation, toDeliverByLocation } from './distribution-metrics.js';
+export type {
+  SalesLocationFilter,
+  SoldByLocationLine,
+  ToDeliverLine,
+} from './distribution-metrics.js';
 // P4-09 : chiffre d'affaires, coût des ventes et marges (BR-FIN-042, 043).
 export { lotRevenue, periodRevenue, periodProductQuantity } from './revenue.js';
 export type { LotRevenue, LotRevenueMonth, PeriodRevenue, RevenueFilter } from './revenue.js';

@@ -183,3 +183,28 @@ export async function activeAllocationTotals(
     quantityRemaining: Number(row.remaining),
   }));
 }
+
+/**
+ * Appareils détenteurs d'un quota actif sur un emplacement des sites donnés (P5-19, AV-202 : appareils
+ * d'un PDV pour la fraîcheur de synchronisation). Un tableau vide ne lit rien.
+ */
+export async function activeAllocationHolderDevices(
+  executor: Executor,
+  siteIds: readonly string[],
+): Promise<readonly { readonly siteId: string; readonly deviceId: string }[]> {
+  if (siteIds.length === 0) return [];
+  const rows = await executor
+    .selectFrom('inventory_stock_allocations as a')
+    .innerJoin('organization_locations as l', 'l.id', 'a.location_id')
+    .select(['l.site_id as site_id', 'a.holder_device_id as device_id'])
+    .distinct()
+    .where('a.status', '=', 'ACTIVE')
+    .where('a.holder_device_id', 'is not', null)
+    .where(
+      'l.site_id',
+      'in',
+      siteIds.map((id) => toBin(id)),
+    )
+    .execute();
+  return rows.map((row) => ({ siteId: fromBin(row.site_id!), deviceId: fromBin(row.device_id!) }));
+}

@@ -82,3 +82,10 @@ export {
   listCashTransfers,
 } from './cash-transfer-query.js';
 export type { CashTransferMovementLine } from './cash-transfer-query.js';
+// P5-19 : métriques de distribution partagées (sessions des PDV, remises en attente ; BR-ANA-009).
+export { cashSessionsOverview, pendingCashTransfers } from './distribution-metrics.js';
+export type {
+  CashSessionBrief,
+  CashSessionsOverview,
+  PendingCashTransfers,
+} from './distribution-metrics.js';

@@ -142,7 +142,7 @@
 | `device_id` | uuid → identity.devices | Non | — | |
 | `dataset` | code | Non | — | |
 | `cursor_seq` | bigint | Non | 0 | Dernier `change_feed.seq` reçu |
-| `last_pull_at` | ts | Oui | — | |
+| `last_pull_at` | ts | Oui | — | Dernier pull (P5-19, AV-202) : écrit à chaque `GET /sync/pull` sur les lignes `_device` et `_a:<auteur>` (appareil connu seulement), base de la fraîcheur avec `last_push_at` |
 | `bootstrapped_at` | ts | Oui | — | |
 | `needs_rebootstrap` | boolean | Non | false | |
 

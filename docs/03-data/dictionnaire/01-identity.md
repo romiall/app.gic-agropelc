@@ -127,7 +127,7 @@
 | `app_version` | varchar(20) | Oui | — | Version de la PWA au dernier contact |
 | `is_shared` | boolean | Non | false | Appareil partagé (AV-007) ; écrit par `identity.device.designate` |
 | `designated_site_id` | uuid → organization.sites | Oui | — | Site de rattachement d'un appareil de PDV ou de ferme ; écrit par `identity.device.designate` (site actif ; l'appareil désigné d'un PDV ne se rattache qu'à ce PDV, BR-DIS-003 ; refusé pour un appareil perdu ou retiré) |
-| `last_seen_at` | ts | Oui | — | Dernier contact serveur |
+| `last_seen_at` | ts | Oui | — | Dernière connexion (écrit au `POST /auth/login`) ; le dernier contact de l'appareil se lit avec les derniers envoi et pull de `sync.device_sync_state` (P5-19, AV-202) |
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** `short_code`.

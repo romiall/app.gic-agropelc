@@ -18,12 +18,13 @@
  * terminale (quota révoqué, session validée, remise reçue) peut alors manquer à l'appareil.
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type { ExpressionBuilder } from 'kysely';
+import { sql, type ExpressionBuilder } from 'kysely';
 import type { Change, PullRequest, PullResponse } from '@gic/contracts';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
 import { computeDeviceScope, type DeviceScopeEntry } from './device-scope.js';
+import { authorDataset, DEVICE_DATASET } from './sync-push.service.js';
 import { resolveEntityProjection } from './entity-projections.js';
 
 export interface SyncPullContext {
@@ -93,7 +94,26 @@ export class SyncPullService {
     }
 
     const nextCursor = page.length > 0 ? Number(page[page.length - 1]!.seq) : request.cursor;
+    await this.recordPull(ctx);
     return { changes, next_cursor: nextCursor, has_more: hasMore };
+  }
+
+  /**
+   * Dernier pull de l'appareil (ligne `_device`) et de l'auteur (`_a:<utilisateur>`) : `last_pull_at`
+   * (dictionnaire `sync.device_sync_state`), base de la fraîcheur d'un appareil (P5-19, AV-202) — une
+   * tablette en ligne mais sans rien à envoyer tire le flux sans jamais pousser. Écrit pour un appareil
+   * connu seulement (`INSERT … SELECT`) ; aucune autre colonne n'est touchée (BR-DIS-014 lit
+   * `last_push_at`).
+   */
+  private async recordPull(ctx: SyncPullContext): Promise<void> {
+    const deviceId = toBin(ctx.authenticatedDeviceId);
+    for (const dataset of [DEVICE_DATASET, authorDataset(ctx.authenticatedUserId)]) {
+      await sql`
+        INSERT INTO sync_device_sync_state (device_id, dataset, last_pull_at)
+        SELECT d.id, ${dataset}, ${ctx.now} FROM identity_devices d WHERE d.id = ${deviceId}
+        ON DUPLICATE KEY UPDATE last_pull_at = GREATEST(COALESCE(last_pull_at, ${ctx.now}), ${ctx.now})
+      `.execute(this.db);
+    }
   }
 }
 

@@ -58,6 +58,7 @@ import {
   listCostEntries,
   listInventoryCounts,
   listLossDeclarations,
+  allocationPositions,
   listStockBalances,
   listStockMoves,
   listStockThresholds,
@@ -279,9 +280,32 @@ export class InventoryReadController {
       custodyMode: location.custodyMode,
       ...(query.product_id !== undefined ? { productId: query.product_id } : {}),
     });
+    // P5-19 (reporté de P5-17, AV-203) : disponible net des quotas par produit. `qtyAvailable` des
+    // lignes reste le disponible sans consommateur désigné (`qty_allocated` reste à zéro, ADR-033 §3) ;
+    // le bloc `allocations` ajoute le restant alloué, le non alloué et, pour le demandeur (utilisateur et
+    // appareil du jeton), son reste et son disponible (BR-STK-011).
+    const allocations = await allocationPositions(this.db, {
+      locationIds: [location.id],
+      now,
+      ...(query.product_id !== undefined ? { productIds: [query.product_id] } : {}),
+      holder: { userId: request.auth!.sub, deviceId: request.auth!.device_id },
+    });
     return {
       location_id: location.id,
       balances: balances.map((b) => mask(b, ['unitCostXaf', 'valueXaf'], financial)),
+      allocations: allocations.map((a) => ({
+        productId: a.productId,
+        qtyOnHand: a.onHandQty,
+        qtyReserved: a.reservedQty,
+        allocatedRemaining: a.allocatedQty,
+        activeAllocations: a.activeAllocations,
+        expiredAllocations: a.expiredAllocations,
+        revocationPendingAllocations: a.revocationPendingAllocations,
+        qtyUnallocated: a.unallocatedQty,
+        overcommitted: a.overcommitted,
+        ownRemaining: a.holderRemainingQty,
+        qtyAvailableToMe: a.availableToHolderQty,
+      })),
     };
   }
 

@@ -98,7 +98,7 @@
 | `lot_key` | uuid | Non | UUID nul | `lot_id` ou UUID nul |
 | `qty_on_hand` | qty (signé) | Non | 0 | Peut être négatif seulement dans le cas INV-STK-05 |
 | `qty_reserved` | qty | Non | 0 | Σ réservations actives |
-| `qty_allocated` | qty | Non | 0 | Σ restes de quotas actifs |
+| `qty_allocated` | qty | Non | 0 | Réservé à l'origine aux restes des quotas ; **reste à zéro** (ADR-033 §3) : les quotas se lisent dans `inventory.stock_allocations` (P5-19 : bloc `allocations` de `GET /stock`, AV-203) |
 | `value_xaf` | bigint | Non | 0 | Valeur au coût courant (mise à jour par la valorisation) |
 | `last_move_at` | ts | Oui | — | |
 | `updated_at` | ts | Non | `now()` | |
@@ -220,7 +220,7 @@
 - **UQ** un quota `ACTIVE` par (holder_user_id, holder_device_id, location_id, product_id, lot) ; les augmentations passent par des entrées.
 - **IX** `(location_id, product_id, status)`, `(holder_device_id, status)`.
 - **Déclencheurs** : `update_guard` (identité immuable, accordé jamais en baisse, `CLOSED` et `REVOKED` terminaux et figés) ; `no_delete`. **Suppr.** `IMMUABLE` sauf transitions. **Audit** Octroi, augmentation, libération, révocation. **Offline** DL (les quotas de l'appareil, jeu `allocations`) — P5-18 : `STOCK_ALLOCATION`, ligne `DEVICE` de l'appareil détenteur, servi tant qu'il est `ACTIVE` (sortie `SCOPE_EXIT` à la libération ou à la révocation, AV-193), détenteur projeté (tablette partagée : AV-194) ; ni motif ni registre.
-- **Lecture (P5-17)** : `GET /allocations` et `GET /allocations/{id}` (droit `inventory.stock.read`, AV-189) ; lectures publiques `listAllocations` (par emplacement, ou « mes quotas » du détenteur), `findAllocation`, `listAllocationEntries` (registre de la fiche) et `activeAllocationTotals` (Σ des restes des quotas `ACTIVE` d'un emplacement, par produit). `GET /stock` ne les déduit pas encore (P5-19).
+- **Lecture (P5-17)** : `GET /allocations` et `GET /allocations/{id}` (droit `inventory.stock.read`, AV-189) ; lectures publiques `listAllocations` (par emplacement, ou « mes quotas » du détenteur), `findAllocation`, `listAllocationEntries` (registre de la fiche) et `activeAllocationTotals` (Σ des restes des quotas `ACTIVE` d'un emplacement, par produit). `GET /stock` les expose dans son bloc `allocations` (P5-19, AV-203, `allocationPositions`) ; les lignes par lot restent sans consommateur désigné.
 
 ## inventory.stock_allocation_entries
 

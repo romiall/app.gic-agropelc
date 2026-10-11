@@ -91,30 +91,62 @@ export interface RecentLosses {
 }
 
 /**
- * Pertes enregistrées depuis `since` (KPI-PRD-02, KPI-STK-03) : mouvements vers `V_LOSS` ou
- * `V_PENDING_LOSS` depuis un emplacement du périmètre. Les animaux se reconnaissent à la famille
- * biologique du produit.
+ * Pertes enregistrées depuis `since` (KPI-PRD-02, KPI-STK-03) : sorties d'un emplacement **physique** du
+ * périmètre vers `V_LOSS` ou `V_PENDING_LOSS`, moins les retours d'une perte vers un emplacement du
+ * périmètre (perte rejetée ou annulée : `LOSS_RELEASE`, inverse), chacun à sa date. Les animaux se
+ * reconnaissent à la famille biologique du produit.
+ *
+ * P5-19 (revue de P5-18) : la confirmation d'une perte en attente (`V_PENDING_LOSS` → `V_LOSS`) n'est
+ * plus comptée une seconde fois (sa source est virtuelle), et une perte rejetée ou annulée est
+ * retranchée — **seulement si cette perte a été comptée dans la même fenêtre** (même document), sans
+ * quoi le total pourrait devenir négatif. Les écarts de transfert, partis du transit, n'y entrent pas
+ * (jeu de distribution : `locationFlows`, `transitLostQty`).
  */
 export async function recentLosses(
   executor: Executor,
   scope: ReadScope,
   since: Date,
 ): Promise<RecentLosses> {
-  const row = await executor
+  const sums = [
+    sql<string>`COALESCE(SUM(CASE WHEN p.stock_family = 'BIOLOGIQUE' THEN m.quantity ELSE 0 END), 0)`.as(
+      'heads',
+    ),
+    sql<string>`COALESCE(SUM(m.value_xaf), 0)`.as('value'),
+  ];
+  const lost = await executor
     .selectFrom('inventory_stock_moves as m')
     .innerJoin('organization_locations as src', 'src.id', 'm.from_location_id')
     .innerJoin('organization_locations as dst', 'dst.id', 'm.to_location_id')
     .innerJoin('catalog_products as p', 'p.id', 'm.product_id')
-    .select([
-      sql<string>`COALESCE(SUM(CASE WHEN p.stock_family = 'BIOLOGIQUE' THEN m.quantity ELSE 0 END), 0)`.as(
-        'heads',
-      ),
-      sql<string>`COALESCE(SUM(m.value_xaf), 0)`.as('value'),
-    ])
+    .select(sums)
     .where('dst.location_type', 'in', ['V_LOSS', 'V_PENDING_LOSS'])
-    .where('m.is_reversal', '=', 0)
+    .where('src.is_virtual', '=', 0)
     .where('m.occurred_at', '>=', since)
     .where(scopeSql(scope, { site: 'src.site_id' }))
     .executeTakeFirstOrThrow();
-  return { animalHeads: Number(row.heads), valueXaf: Number(row.value) };
+  const returned = await executor
+    .selectFrom('inventory_stock_moves as m')
+    .innerJoin('organization_locations as src', 'src.id', 'm.from_location_id')
+    .innerJoin('organization_locations as dst', 'dst.id', 'm.to_location_id')
+    .innerJoin('catalog_products as p', 'p.id', 'm.product_id')
+    .select(sums)
+    .where('src.location_type', 'in', ['V_LOSS', 'V_PENDING_LOSS'])
+    .where('dst.is_virtual', '=', 0)
+    // Un écart de transfert rejeté rend la marchandise à la destination, sans perte comptée avant.
+    .where('m.source_doc_type', '<>', 'TRANSFER')
+    // La perte rendue doit avoir été comptée dans la fenêtre (même document, sortie physique).
+    .where(
+      sql<boolean>`EXISTS (SELECT 1 FROM inventory_stock_moves p
+        JOIN organization_locations ps ON ps.id = p.from_location_id
+        WHERE p.source_doc_type = m.source_doc_type AND p.source_doc_id = m.source_doc_id
+          AND p.move_type IN ('LOSS', 'LOSS_PENDING') AND p.is_reversal = 0
+          AND ps.is_virtual = 0 AND p.occurred_at >= ${since})`,
+    )
+    .where('m.occurred_at', '>=', since)
+    .where(scopeSql(scope, { site: 'dst.site_id' }))
+    .executeTakeFirstOrThrow();
+  return {
+    animalHeads: Math.round((Number(lost.heads) - Number(returned.heads)) * 1000) / 1000,
+    valueXaf: Number(lost.value) - Number(returned.value),
+  };
 }
