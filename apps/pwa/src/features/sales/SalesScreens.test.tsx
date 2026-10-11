@@ -155,6 +155,29 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(cancel?.payload).toEqual({ saleId: PENDING_SALE, comment: 'Client parti' });
   });
 
+  it('vente d’un compte absorbé depuis : au nom du compte conservé, encaissement sur lui', async () => {
+    const ABSORBED = '01900000-0000-7000-8000-0000000000e9';
+    const db = getDb();
+    const kept = await db.projections.get(`customers:CUSTOMER:${IDS.customer}`);
+    if (!kept) throw new Error('client de la fixture absent');
+    await db.projections.put({
+      ...kept,
+      key: `customers:CUSTOMER:${ABSORBED}`,
+      entity_id: ABSORBED,
+      data: {
+        ...kept.data,
+        id: ABSORBED,
+        stage: 'MERGED',
+        display_name: 'Doublon',
+        merged_into_id: IDS.customer,
+      },
+    });
+    await db.projections.put(saleRow({ customer_id: ABSORBED }));
+    renderAt(`/ventes/${SALE_ID}`);
+    const receipt = await screen.findByRole('article', { name: /Reçu VTE-2026-000123/ });
+    expect(within(receipt).getByText(/Boutique Mvog-Mbi · Vendeur : vous/)).toBeInTheDocument();
+  });
+
   it('vente inconnue de l’appareil : message explicite', async () => {
     renderAt('/ventes/01900000-0000-7000-8000-0000000000ff');
     expect(await screen.findByText(/Vente introuvable sur cet appareil/)).toBeInTheDocument();

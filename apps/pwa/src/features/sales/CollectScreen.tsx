@@ -207,9 +207,9 @@ export function CollectScreen() {
   const allDues = customer
     ? fromServer
       ? duesFromReceivables(receivables, customer.id)
-      : duesFromRecentSales(refs.sales, customer.id)
+      : duesFromRecentSales(refs.sales, customer.id, refs.customerAlias)
     : [];
-  const pending = customer ? pendingPaymentsOf(refs.outbox, customer.id) : [];
+  const pending = customer ? pendingPaymentsOf(refs.outbox, customer.id, refs.customerAlias) : [];
   const dues = afterPendingPayments(
     allDues,
     pending.map((entry) => entry.amountXaf),

@@ -1,9 +1,11 @@
 /**
  * ECR-TER-01 « PRENDRE SERVICE / FIN DE SERVICE » (WF-J1, étapes 2 et 9 ; UC-TER-01 à 03). La
- * position est relevée à l'ouverture, la zone proposée est celle dont le géorepère la contient. Toute
- * tentative est enregistrée (`fieldwork.checkin.record`, hors ligne) ; une prise acceptée sur
- * l'appareil ouvre aussitôt la session, qui rattache les visites. Après des refus répétés, une
- * dérogation motivée ouvre une session en attente de validation (`fieldwork.checkin.request_override`).
+ * position est relevée à l'ouverture, et de nouveau après chaque pointage ; la zone proposée est
+ * celle dont le géorepère la contient. Toute tentative est enregistrée (`fieldwork.checkin.record`,
+ * hors ligne) ; une prise acceptée sur l'appareil ouvre aussitôt la session, qui rattache les visites.
+ * En service, une prise dans une autre zone clôt la session en cours (BR-TER-009). Après des refus
+ * répétés, une dérogation motivée ouvre une session en attente de validation
+ * (`fieldwork.checkin.request_override`).
  */
 import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -14,6 +16,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { useGeolocation } from '../../platform/useGeolocation.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { zonePathLabel } from '../crm/prospect.js';
 import { formatClockTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -40,6 +43,9 @@ const numberSetting = (value: unknown, fallback: number): number => {
   const parsed = Number(value);
   return value !== undefined && value !== null && Number.isFinite(parsed) ? parsed : fallback;
 };
+
+const meters = (value: number | null | undefined): string | number =>
+  value === null || value === undefined ? '?' : Math.round(value);
 
 export function ServiceScreen() {
   const { t } = useTranslation();
@@ -77,8 +83,12 @@ export function ServiceScreen() {
   );
   const session = openWorkSession(refs.workSessions, userId, now);
   const attempts = todayAttempts(refs.outbox, userId, today);
-  const position = geo.position;
-  const zoneNames = new Map([...refs.zones.values()].map((zone) => [zone.id, zone.name]));
+  const locating = geo.state === 'locating';
+  const position = locating ? null : geo.position;
+  const zoneName = (id: string): string => {
+    const zone = refs.zones.get(id);
+    return zone ? zonePathLabel(refs.zones, zone) : '';
+  };
   const autoZone = position ? zoneAt(position, zones) : undefined;
   const lastZoneId = session?.declared_zone_id ?? attempts[0]?.zoneId;
   const zoneId =
@@ -96,17 +106,26 @@ export function ServiceScreen() {
     settingValue(refs.settings, 'fieldwork.override_min_minutes', undefined, now),
     DEFAULT_OVERRIDE_MIN_MINUTES,
   );
-  const canOverride = !session && overrideAllowed(attempts, minAttempts, minMinutes);
+  const canOverride = overrideAllowed(attempts, minAttempts, minMinutes);
   const roles = navigation ? navigation.roles : [];
+  // Garde contre une seconde saisie tant que la commande envoyée n'est pas visible dans l'outbox.
+  const settling =
+    last !== undefined && !refs.outbox.some((command) => command.command_id === last.commandId);
+  const blocked = busy || settling;
 
   const send = async (action: LastAction, input: Parameters<typeof submitCommand>[0]) => {
-    if (busy) return;
+    if (blocked) return;
     setBusy(true);
     setSaveError(false);
     try {
       const command = await submitCommand(input);
       setLast({ commandId: command.command_id, action });
       if (action === 'OVERRIDE') setReason('');
+      // Chaque pointage part sur une position fraîche : la suivante sera relevée de nouveau.
+      if (action !== 'OVERRIDE') {
+        setZoneChoice(null);
+        geo.reset();
+      }
     } catch {
       setSaveError(true);
     } finally {
@@ -115,7 +134,7 @@ export function ServiceScreen() {
   };
 
   const start = () => {
-    if (!zone || !evaluation) return;
+    if (!zone || !evaluation || locating) return;
     const accepted = evaluation.result === 'ACCEPTED';
     void send(accepted ? 'START' : 'ATTEMPT', {
       authorUserId: userId,
@@ -133,7 +152,7 @@ export function ServiceScreen() {
   };
 
   const end = () => {
-    if (!session) return;
+    if (!session || locating) return;
     const sessionZone = zones.find((candidate) => candidate.zone.id === session.declared_zone_id);
     // Fin hors zone : signalée, jamais bloquante (BR-TER-007).
     const result: CheckinResult = sessionZone
@@ -141,11 +160,12 @@ export function ServiceScreen() {
       : position
         ? 'REJECTED_OUT_OF_ZONE'
         : 'NO_POSITION';
+    // Pas de dépendance vers la prise : l'ordre du lot suffit, et les visites saisies après la fin
+    // ne doivent pas partir avant elle (ADR-051 §11).
     void send('END', {
       authorUserId: userId,
       commandType: 'fieldwork.checkin.record',
       aggregateType: 'GEO_CHECKIN',
-      dependsOn: session.pending_command_id ? [session.pending_command_id] : [],
       payload: checkinPayload({
         checkinType: 'END_SERVICE',
         zoneId: session.declared_zone_id,
@@ -167,13 +187,8 @@ export function ServiceScreen() {
   };
 
   const locateButton = (
-    <button
-      type="button"
-      className="secondary"
-      onClick={geo.locate}
-      disabled={geo.state === 'locating'}
-    >
-      {geo.state === 'locating' ? t('service.locating') : t('service.locate')}
+    <button type="button" className="secondary" onClick={geo.locate} disabled={locating}>
+      {locating ? t('service.locating') : t('service.locate')}
     </button>
   );
 
@@ -190,11 +205,11 @@ export function ServiceScreen() {
       ) : null}
 
       {session ? (
-        <div className="sale-block" aria-labelledby="service-session-title">
+        <section className="sale-block" aria-labelledby="service-session-title">
           <h2 id="service-session-title">{t('service.in_service_title')}</h2>
           <p>
             {t('service.in_service', {
-              zone: zoneNames.get(session.declared_zone_id) ?? '',
+              zone: zoneName(session.declared_zone_id),
               time: formatClockTime(session.started_at),
             })}
           </p>
@@ -210,9 +225,11 @@ export function ServiceScreen() {
             </p>
           ) : null}
           <p className="home-muted">
-            {position
-              ? t('service.position_value', { accuracy: position.accuracyM ?? '?' })
-              : t('service.gps_unavailable_end')}
+            {locating
+              ? t('service.locating')
+              : position
+                ? t('service.position_value', { accuracy: meters(position.accuracyM) })
+                : t('service.gps_unavailable_end')}
           </p>
           {locateButton}
           <div className="result-actions">
@@ -222,92 +239,104 @@ export function ServiceScreen() {
               </Link>
             ) : null}
           </div>
-          <button type="button" className="btn-block submit-sale" disabled={busy} onClick={end}>
-            {busy ? t('sales.submitting') : t('service.end')}
-          </button>
-        </div>
-      ) : (
-        <div className="sale-block" aria-labelledby="service-start-title">
-          <h2 id="service-start-title">{t('service.start_title')}</h2>
-          {zones.length === 0 ? (
-            <p className="alert alert-error" role="alert">
-              {t('service.no_zone')}
-            </p>
-          ) : (
-            <div className="field">
-              <label htmlFor={zoneSelectId}>{t('service.zone_label')}</label>
-              <select
-                id={zoneSelectId}
-                className="text-input"
-                value={zoneId}
-                onChange={(event) => setZoneChoice(event.target.value || null)}
-              >
-                <option value="">{t('service.zone_placeholder')}</option>
-                {zones.map((candidate) => (
-                  <option key={candidate.zone.id} value={candidate.zone.id}>
-                    {candidate.zone.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="field">
-            <span className="field-label">{t('service.position_label')}</span>
-            {geo.state === 'locating' ? (
-              <p className="home-muted">{t('service.locating')}</p>
-            ) : evaluation && zone ? (
-              <p
-                className={evaluation.result === 'ACCEPTED' ? 'home-muted' : 'text-warn'}
-                role="status"
-              >
-                {t(`service.evaluation.${evaluation.result}`, {
-                  distance: Math.round(evaluation.distanceM ?? 0),
-                  radius: zone.geofence.radiusM,
-                  accuracy: position?.accuracyM ?? '?',
-                  max: zone.maxAccuracyM,
-                })}
-              </p>
-            ) : !position ? (
-              <p className="text-warn">{t('service.gps_unavailable')}</p>
-            ) : null}
-            {locateButton}
-          </div>
-          {!holdsAnyRole(roles, ROLE_SETS.fieldwork) ? (
-            <p className="text-warn">{t('service.role_hint')}</p>
-          ) : null}
           <button
             type="button"
             className="btn-block submit-sale"
-            disabled={!zone || busy || geo.state === 'locating'}
-            onClick={start}
+            disabled={blocked || locating}
+            onClick={end}
           >
-            {busy ? t('sales.submitting') : t('service.start')}
+            {busy ? t('sales.submitting') : t('service.end')}
           </button>
+        </section>
+      ) : null}
 
-          {canOverride && zone ? (
-            <div className="field">
-              <label htmlFor={reasonId}>{t('service.override_label')}</label>
-              <p className="home-muted">{t('service.override_hint')}</p>
-              <textarea
-                id={reasonId}
-                className="text-input"
-                rows={2}
-                maxLength={MAX_OVERRIDE_REASON_LENGTH}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
-              <button
-                type="button"
-                className="secondary"
-                disabled={!reason.trim() || busy}
-                onClick={requestOverride}
-              >
-                {t('service.override_submit')}
-              </button>
-            </div>
+      <section className="sale-block" aria-labelledby="service-start-title">
+        <h2 id="service-start-title">
+          {session ? t('service.change_zone_title') : t('service.start_title')}
+        </h2>
+        {session ? (
+          <p className="home-muted">
+            {t('service.start_supersedes', { zone: zoneName(session.declared_zone_id) })}
+          </p>
+        ) : null}
+        {zones.length === 0 ? (
+          <p className="alert alert-error" role="alert">
+            {t('service.no_zone')}
+          </p>
+        ) : (
+          <div className="field">
+            <label htmlFor={zoneSelectId}>{t('service.zone_label')}</label>
+            <select
+              id={zoneSelectId}
+              className="text-input"
+              value={zoneId}
+              onChange={(event) => setZoneChoice(event.target.value || null)}
+            >
+              <option value="">{t('service.zone_placeholder')}</option>
+              {zones.map((candidate) => (
+                <option key={candidate.zone.id} value={candidate.zone.id}>
+                  {zonePathLabel(refs.zones, candidate.zone)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="field">
+          <span className="field-label">{t('service.position_label')}</span>
+          {locating ? (
+            <p className="home-muted">{t('service.locating')}</p>
+          ) : evaluation && zone ? (
+            <p
+              className={evaluation.result === 'ACCEPTED' ? 'home-muted' : 'text-warn'}
+              role="status"
+            >
+              {t(`service.evaluation.${evaluation.result}`, {
+                distance: Math.round(evaluation.distanceM ?? 0),
+                radius: zone.geofence.radiusM,
+                accuracy: meters(position?.accuracyM),
+                max: zone.maxAccuracyM,
+              })}
+            </p>
+          ) : !position ? (
+            <p className="text-warn">{t('service.gps_unavailable')}</p>
           ) : null}
+          {locateButton}
         </div>
-      )}
+        {!holdsAnyRole(roles, ROLE_SETS.fieldwork) ? (
+          <p className="text-warn">{t('service.role_hint')}</p>
+        ) : null}
+        <button
+          type="button"
+          className={session ? 'btn-block' : 'btn-block submit-sale'}
+          disabled={!zone || blocked || locating}
+          onClick={start}
+        >
+          {busy ? t('sales.submitting') : session ? t('service.change_zone') : t('service.start')}
+        </button>
+
+        {canOverride && zone ? (
+          <div className="field">
+            <label htmlFor={reasonId}>{t('service.override_label')}</label>
+            <p className="home-muted">{t('service.override_hint')}</p>
+            <textarea
+              id={reasonId}
+              className="text-input"
+              rows={2}
+              maxLength={MAX_OVERRIDE_REASON_LENGTH}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <button
+              type="button"
+              className="secondary"
+              disabled={!reason.trim() || blocked}
+              onClick={requestOverride}
+            >
+              {t('service.override_submit')}
+            </button>
+          </div>
+        ) : null}
+      </section>
 
       {saveError ? (
         <p className="alert alert-error" role="alert">
@@ -326,7 +355,7 @@ export function ServiceScreen() {
                 <span>
                   <strong>{t(`service.type.${attempt.type}`)}</strong>
                   <small>
-                    {zoneNames.get(attempt.zoneId) ?? ''} ·{' '}
+                    {zoneName(attempt.zoneId)} ·{' '}
                     {t(`service.attempt_result.${attempt.clientResult}`)}
                   </small>
                 </span>

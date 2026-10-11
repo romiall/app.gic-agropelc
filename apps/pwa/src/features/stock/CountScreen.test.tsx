@@ -146,6 +146,75 @@ describe('Inventaire (ECR-STK-05, logique)', () => {
   });
 });
 
+describe('Inventaire (ECR-STK-05, lots et opérations en attente)', () => {
+  const location = { id: 'loc' } as LocationData;
+  const products = [
+    { id: 'p-oeufs', name: 'Œufs', base_unit_code: 'U', lot_tracking: 'OPTIONAL' },
+  ] as unknown as ProductData[];
+  const [full] = deviceCounts(
+    [
+      {
+        id: 'c',
+        doc_number: 'INV-1',
+        location_id: 'loc',
+        count_type: 'FULL',
+        status: 'IN_PROGRESS',
+        occurred_at: '2026-10-10T07:00:00.000Z',
+        submitted_at: null,
+        posted_at: null,
+        version: 1,
+        lines: [],
+      },
+    ],
+    [],
+    undefined,
+  );
+  const entries = (lots: readonly object[], pending: number) =>
+    countEntries(
+      {
+        products,
+        stock: new Map([['loc:p-oeufs', { qty_on_hand: '0', lots }]]),
+        pending: new Map(pending ? [['loc:p-oeufs', pending]] : []),
+      } as unknown as Parameters<typeof countEntries>[0],
+      location,
+      full!,
+      [],
+    ).map((entry) => [entry.key, entry.expectedQtyBase]);
+
+  it('lot facultatif : une ligne par lot réel et une pour le reste sans lot, chacune à sa quantité', () => {
+    expect(
+      entries(
+        [
+          { lot_id: 'lot-a', lot_code: 'LOT-A', qty_on_hand: '100.000' },
+          { lot_id: null, lot_code: null, qty_on_hand: '20.000' },
+        ],
+        0,
+      ),
+    ).toEqual([
+      ['p-oeufs:', 20],
+      ['p-oeufs:lot-a', 100],
+    ]);
+  });
+
+  it('opérations en attente : imputées au lot unique, inconnues entre plusieurs lots', () => {
+    expect(entries([{ lot_id: 'lot-a', lot_code: 'LOT-A', qty_on_hand: '100.000' }], 30)).toEqual([
+      ['p-oeufs:lot-a', 70],
+    ]);
+    expect(
+      entries(
+        [
+          { lot_id: 'lot-a', lot_code: 'LOT-A', qty_on_hand: '100.000' },
+          { lot_id: 'lot-b', lot_code: 'LOT-B', qty_on_hand: '50.000' },
+        ],
+        30,
+      ),
+    ).toEqual([
+      ['p-oeufs:lot-a', null],
+      ['p-oeufs:lot-b', null],
+    ]);
+  });
+});
+
 describe('Inventaire (ECR-STK-05, écran)', () => {
   beforeEach(async () => {
     const db = getDb();
@@ -234,6 +303,82 @@ describe('Inventaire (ECR-STK-05, écran)', () => {
       depends_on: [open?.command_id, record?.command_id],
       payload: { countId: open?.aggregate_id },
     });
+  });
+
+  it('saisie effacée : plus de modification, la fin reste possible ; motif qui exige un commentaire', async () => {
+    const db = getDb();
+    await db.projections.put({
+      key: 'reason_code:REASON_CODE:r-vol',
+      dataset: 'reason_code',
+      entity_type: 'REASON_CODE',
+      entity_id: 'r-vol',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id: 'r-vol',
+        category: 'INVENTORY_ADJUSTMENT',
+        code: 'VOL',
+        label: 'Vol constaté',
+        loss_category: null,
+        requires_comment: true,
+        is_active: true,
+      },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('button', { name: 'Ouvrir l’inventaire' }));
+    const eggs = await screen.findByRole('listitem', { name: 'Œufs de table' });
+    await user.type(within(eggs).getByLabelText('Compté (U)'), '290');
+    await user.selectOptions(within(eggs).getByLabelText('Motif de l’écart'), 'r-vol');
+    const save = screen.getByRole('button', { name: 'Enregistrer les comptages' });
+    expect(within(eggs).getByText('Ce motif exige un commentaire.')).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    await user.type(
+      within(eggs).getByLabelText('Commentaire (exigé par ce motif)'),
+      'Plateaux manquants',
+    );
+    await user.click(save);
+    await screen.findByText('Enregistré sur le téléphone');
+
+    // Une saisie tapée puis effacée sur une autre ligne ne bloque rien.
+    const chicken = screen.getByRole('listitem', { name: 'Poulet de chair' });
+    await user.type(within(chicken).getByLabelText('Compté (U)'), '3');
+    expect(screen.getByRole('button', { name: 'Terminer l’inventaire' })).toBeDisabled();
+    await user.clear(within(chicken).getByLabelText('Compté (U)'));
+    expect(screen.getByRole('button', { name: 'Terminer l’inventaire' })).toBeEnabled();
+  });
+
+  it('nouvelle ouverture après un abandon en attente : elle l’attend ; ouverture d’un autre utilisateur ignorée', async () => {
+    const db = getDb();
+    // Inventaire ouvert hors ligne par un autre utilisateur de la tablette : pas proposé.
+    await db.outbox.put({
+      ...command(
+        'inventory.count.open',
+        'cnt-autre',
+        { locationId: IDS.pos, countType: 'FULL' },
+        1,
+      ),
+      author_user_id: '01900000-0000-7000-8000-0000000000ab',
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('button', { name: 'Ouvrir l’inventaire' }));
+    await user.click(await screen.findByRole('button', { name: 'Abandonner l’inventaire' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmer l’abandon de l’inventaire' }));
+    await screen.findByText('Abandon en attente d’envoi');
+    await user.click(screen.getByRole('button', { name: 'Ouvrir l’inventaire' }));
+    await screen.findByText(/Inventaire numéro à venir/);
+    const mine = (await db.outbox.orderBy('device_seq').toArray()).filter(
+      (entry) => entry.author_user_id === IDS.user,
+    );
+    expect(mine.map((entry) => entry.command_type)).toEqual([
+      'inventory.count.open',
+      'inventory.count.cancel',
+      'inventory.count.open',
+    ]);
+    expect(mine[2]?.depends_on).toEqual([mine[1]?.command_id]);
   });
 
   it('abandon : confirmation demandée avant l’envoi', async () => {

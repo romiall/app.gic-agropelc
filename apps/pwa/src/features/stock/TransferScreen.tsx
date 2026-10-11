@@ -65,11 +65,12 @@ interface FormProps {
 }
 
 /** Transporteur et note, communs aux deux formes d'expédition. */
+/** Transporteur, et note pour une expédition directe (la note d'une demande n'est pas conservée). */
 function CarrierFields(props: {
   readonly carrier: string;
-  readonly notes: string;
   readonly onCarrier: (value: string) => void;
-  readonly onNotes: (value: string) => void;
+  readonly notes?: string;
+  readonly onNotes?: (value: string) => void;
 }) {
   const { t } = useTranslation();
   const carrierId = useId();
@@ -86,17 +87,19 @@ function CarrierFields(props: {
           onChange={(event) => props.onCarrier(event.target.value)}
         />
       </div>
-      <div className="field">
-        <label htmlFor={notesId}>{t('transfer.notes_label')}</label>
-        <textarea
-          id={notesId}
-          className="text-input"
-          rows={2}
-          maxLength={MAX_TRANSFER_NOTES}
-          value={props.notes}
-          onChange={(event) => props.onNotes(event.target.value)}
-        />
-      </div>
+      {props.onNotes ? (
+        <div className="field">
+          <label htmlFor={notesId}>{t('transfer.notes_label')}</label>
+          <textarea
+            id={notesId}
+            className="text-input"
+            rows={2}
+            maxLength={MAX_TRANSFER_NOTES}
+            value={props.notes ?? ''}
+            onChange={(event) => props.onNotes?.(event.target.value)}
+          />
+        </div>
+      ) : null}
     </>
   );
 }
@@ -263,7 +266,6 @@ function RequestDispatchForm({
   const { t } = useTranslation();
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [carrier, setCarrier] = useState('');
-  const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const source = refs.locations.find((location) => location.id === transfer.from_location_id);
@@ -300,7 +302,7 @@ function RequestDispatchForm({
         commandType: 'inventory.transfer.dispatch',
         aggregateType: 'STOCK_TRANSFER',
         aggregateId: transfer.id,
-        payload: requestDispatchPayload(transfer, quantities, carrier, notes),
+        payload: requestDispatchPayload(transfer, quantities, carrier),
       });
       onDone(command.command_id);
     } catch {
@@ -354,7 +356,7 @@ function RequestDispatchForm({
       </ul>
       {invalid ? <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p> : null}
       {nothing && !invalid ? <p className="text-warn">{t('transfer.nothing')}</p> : null}
-      <CarrierFields carrier={carrier} notes={notes} onCarrier={setCarrier} onNotes={setNotes} />
+      <CarrierFields carrier={carrier} onCarrier={setCarrier} />
       <OverAvailable
         online={online}
         names={over.map((productId) => productNames.get(productId)?.name ?? productId)}

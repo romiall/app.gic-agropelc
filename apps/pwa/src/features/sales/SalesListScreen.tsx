@@ -11,7 +11,7 @@ import { ROUTES } from '../../app/screens.js';
 import { formatMoment } from '../home/format-home.js';
 import { formatMoney } from './format.js';
 import { recentSales, saleStatusTone } from './recent-sales.js';
-import { useSalesReferences } from './references.js';
+import { rootCustomerId, useSalesReferences } from './references.js';
 
 export function SalesListScreen() {
   const { t } = useTranslation();
@@ -45,7 +45,8 @@ export function SalesListScreen() {
         <ul className="doc-list">
           {sales.map((sale) => {
             const customerName = sale.customerId
-              ? (customers.get(sale.customerId)?.display_name ?? t('sales.list.unknown_customer'))
+              ? (customers.get(rootCustomerId(refs.customerAlias, sale.customerId))?.display_name ??
+                t('sales.list.unknown_customer'))
               : t('sales.list.anonymous');
             const doc = sale.docNumber ?? t('sales.pending_number');
             return (

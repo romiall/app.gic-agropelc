@@ -32,22 +32,24 @@ export interface ZoneOption {
 }
 
 /** Zones actives, libellées « ville › quartier » pour lever les homonymes, par libellé. */
+/** Libellé « ville › quartier » d'une zone : son chemin depuis la racine (garde contre un cycle). */
+export function zonePathLabel(zones: ReadonlyMap<string, ZoneData>, zone: ZoneData): string {
+  const names = [zone.name];
+  const seen = new Set([zone.id]);
+  let parent = zone.parent_id ? zones.get(zone.parent_id) : undefined;
+  while (parent && !seen.has(parent.id)) {
+    names.unshift(parent.name);
+    seen.add(parent.id);
+    parent = parent.parent_id ? zones.get(parent.parent_id) : undefined;
+  }
+  return names.join(' › ');
+}
+
 export function prospectZoneOptions(zones: ReadonlyMap<string, ZoneData>): ZoneOption[] {
   const active = (zone: ZoneData) => zone.is_active !== false && zone.is_active !== 0;
-  const pathOf = (zone: ZoneData): string => {
-    const names = [zone.name];
-    const seen = new Set([zone.id]);
-    let parent = zone.parent_id ? zones.get(zone.parent_id) : undefined;
-    while (parent && !seen.has(parent.id)) {
-      names.unshift(parent.name);
-      seen.add(parent.id);
-      parent = parent.parent_id ? zones.get(parent.parent_id) : undefined;
-    }
-    return names.join(' › ');
-  };
   return [...zones.values()]
     .filter(active)
-    .map((zone) => ({ id: zone.id, label: pathOf(zone) }))
+    .map((zone) => ({ id: zone.id, label: zonePathLabel(zones, zone) }))
     .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 }
 

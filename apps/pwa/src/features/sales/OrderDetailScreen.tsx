@@ -24,7 +24,7 @@ import {
   orderStatusTone,
   type OrderView,
 } from './open-orders.js';
-import { useSalesReferences, type SalesReferences } from './references.js';
+import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
 
@@ -208,7 +208,8 @@ export function OrderDetailScreen() {
   }
 
   const roles = navigation?.roles ?? [];
-  const customer = refs.customers.find((candidate) => candidate.id === order.customerId);
+  const customerId = rootCustomerId(refs.customerAlias, order.customerId);
+  const customer = refs.customers.find((candidate) => candidate.id === customerId);
   const location = refs.locations.find((candidate) => candidate.id === order.fulfilmentLocationId);
   const doc = order.docNumber ?? t('sales.pending_number');
   const confirmed = order.status === 'CONFIRMED' || order.status === 'PARTIALLY_FULFILLED';

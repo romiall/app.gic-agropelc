@@ -1164,6 +1164,13 @@ ul.outbox-list li {
   flex-direction: column;
 }
 
+.receipt-lines li > span:last-child:not(:first-child) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
 .receipt-lines small {
   color: var(--color-grey);
 }

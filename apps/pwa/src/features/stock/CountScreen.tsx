@@ -77,7 +77,12 @@ export function CountScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  const counts = deviceCounts(refs.counts, refs.outbox, refs.countsPulledAt);
+  // Tablette partagée : seules les saisies de l'utilisateur (ADR-051 §13).
+  const counts = deviceCounts(
+    refs.counts,
+    refs.outbox.filter((command) => command.author_user_id === userId),
+    refs.countsPulledAt,
+  );
   const count = activeCount(counts, location.id);
   const history = counts.filter(
     (candidate) => candidate.locationId === location.id && candidate !== count,
@@ -92,8 +97,32 @@ export function CountScreen() {
     setConfirmCancel(false);
   };
 
+  // Garde contre une seconde saisie tant que la commande envoyée n'est pas visible dans l'outbox.
+  const settling =
+    last !== undefined && !refs.outbox.some((command) => command.command_id === last.commandId);
+  const blocked = busy || settling;
+  const hasDraft =
+    Object.keys(texts).length + Object.keys(reasonIds).length + Object.keys(comments).length > 0;
+
+  /** Saisie d'un champ : revenue à la valeur enregistrée, elle n'est plus une modification. */
+  const edit = (setter: typeof setTexts) => (key: string, value: string, recordedValue: string) =>
+    setter((current) => {
+      const next = { ...current };
+      if (value === recordedValue) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  const editText = edit(setTexts);
+  const editReason = edit(setReasonIds);
+  const editComment = edit(setComments);
+  const clearDrafts = () => {
+    setTexts({});
+    setReasonIds({});
+    setComments({});
+  };
+
   const send = async (action: LastAction, input: Parameters<typeof submitCommand>[0]) => {
-    if (busy) return false;
+    if (blocked) return false;
     setBusy(true);
     setSaveError(false);
     try {
@@ -125,6 +154,8 @@ export function CountScreen() {
           id={locationSelectId}
           className="text-input"
           value={location.id}
+          // Des comptages non enregistrés ne sont jamais perdus par un changement d'emplacement.
+          disabled={hasDraft}
           onChange={(event) => {
             setLocationChoice(event.target.value);
             resetEntries();
@@ -169,11 +200,17 @@ export function CountScreen() {
     ) : null;
 
   if (!count) {
+    // Une fin ou un abandon encore en vol sur l'emplacement passe avant la nouvelle ouverture,
+    // sinon le serveur la refuserait (`COUNT_ALREADY_OPEN`).
+    const closing = history
+      .map((candidate) => candidate.closingCommandId)
+      .filter((id): id is string => id !== null);
     const open = () =>
       void send('OPEN', {
         authorUserId: userId,
         commandType: 'inventory.count.open',
         aggregateType: 'INVENTORY_COUNT',
+        dependsOn: closing,
         payload: { locationId: location.id, countType },
       }).then((ok) => {
         if (ok) resetEntries();
@@ -204,7 +241,7 @@ export function CountScreen() {
               {t('sales.error_local_save')}
             </p>
           ) : null}
-          <button type="button" className="btn-block submit-sale" disabled={busy} onClick={open}>
+          <button type="button" className="btn-block submit-sale" disabled={blocked} onClick={open}>
             {busy ? t('sales.submitting') : t('count.open')}
           </button>
         </section>
@@ -216,21 +253,35 @@ export function CountScreen() {
   const entries = countEntries(refs, location, count, added);
   const rows = entries.map((entry) => {
     const recorded = count.lines.get(entry.key);
-    const text =
-      texts[entry.key] ??
-      (recorded ? formatQuantity(recorded.countedQtyBase).replace(/\s/g, '') : '');
+    const recordedText = recorded ? formatQuantity(recorded.countedQtyBase).replace(/\s/g, '') : '';
+    const recordedReason = recorded?.varianceReasonCodeId ?? '';
+    const recordedComment = recorded?.comment ?? '';
+    const text = texts[entry.key] ?? recordedText;
     const value = text === '' ? null : parseCounted(text);
-    const reasonId = reasonIds[entry.key] ?? recorded?.varianceReasonCodeId ?? '';
-    const comment = comments[entry.key] ?? recorded?.comment ?? '';
+    const reasonId = reasonIds[entry.key] ?? recordedReason;
+    const comment = comments[entry.key] ?? recordedComment;
     const dirty = entry.key in texts || entry.key in reasonIds || entry.key in comments;
-    const variance = value === null ? null : estimatedVariance(value, entry.expectedQtyBase);
+    // Écart estimé seulement pour une saisie en cours : celui d'une ligne enregistrée dépend de son
+    // `counted_at`, que seul le serveur connaît.
+    const estimable = dirty && value !== null && entry.expectedQtyBase !== null;
+    const variance = estimable
+      ? estimatedVariance(value as number, entry.expectedQtyBase as number)
+      : null;
     const needsReason =
       REQUIRE_VARIANCE_REASON && variance !== null && variance !== 0 && reasons.length > 0;
-    const invalid = text !== '' && value === null;
+    const invalid = dirty && text !== '' && value === null;
     const missingReason = needsReason && !reasonId;
+    const reason = reasons.find((candidate) => candidate.id === reasonId);
+    const needsComment = variance !== null && variance !== 0 && reason?.requires_comment === true;
+    const missingComment = needsComment && !comment.trim();
+    // Ligne enregistrée vidée : une quantité est attendue.
+    const emptied = dirty && text === '' && recorded !== undefined;
     return {
       entry,
       recorded,
+      recordedText,
+      recordedReason,
+      recordedComment,
       text,
       value,
       reasonId,
@@ -239,13 +290,18 @@ export function CountScreen() {
       variance,
       invalid,
       missingReason,
+      needsComment,
+      missingComment,
+      emptied,
     };
   });
   const toSave = rows.filter((row) => row.dirty && row.value !== null);
-  const blocking = rows.some((row) => row.dirty && (row.invalid || row.missingReason));
-  const canSave = toSave.length > 0 && !blocking && !busy;
+  const blocking = rows.some(
+    (row) => row.dirty && (row.invalid || row.missingReason || row.missingComment || row.emptied),
+  );
+  const canSave = toSave.length > 0 && !blocking && !blocked;
   const unsaved = rows.some((row) => row.dirty);
-  const canSubmit = count.lines.size > 0 && !unsaved && !busy;
+  const canSubmit = count.lines.size > 0 && !unsaved && !blocked;
   const opening = count.openCommandId ? [count.openCommandId] : [];
   const addable = refs.products
     .filter((product) => !entries.some((entry) => entry.productId === product.id))
@@ -269,9 +325,7 @@ export function CountScreen() {
       payload: recordLinesPayload(count.id, inputs, clock.now().toISOString()),
     }).then((ok) => {
       if (ok) {
-        setTexts({});
-        setReasonIds({});
-        setComments({});
+        clearDrafts();
       }
     });
   };
@@ -345,13 +399,15 @@ export function CountScreen() {
                     className="text-input"
                     inputMode="decimal"
                     value={row.text}
-                    onChange={(event) =>
-                      setTexts((current) => ({ ...current, [entry.key]: event.target.value }))
-                    }
+                    onChange={(event) => editText(entry.key, event.target.value, row.recordedText)}
                   />
                 </div>
                 {row.invalid ? (
                   <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
+                ) : row.emptied ? (
+                  <p className="error-message">{t('count.quantity_required')}</p>
+                ) : row.dirty && row.value !== null && entry.expectedQtyBase === null ? (
+                  <p className="home-muted">{t('count.variance_unknown')}</p>
                 ) : row.variance !== null ? (
                   <p className={row.variance === 0 ? 'home-muted' : 'text-warn'}>
                     {row.variance === 0
@@ -367,7 +423,7 @@ export function CountScreen() {
                       className="text-input"
                       value={row.reasonId}
                       onChange={(event) =>
-                        setReasonIds((current) => ({ ...current, [entry.key]: event.target.value }))
+                        editReason(entry.key, event.target.value, row.recordedReason)
                       }
                     >
                       <option value="">{t('count.reason_placeholder')}</option>
@@ -384,16 +440,23 @@ export function CountScreen() {
                 ) : null}
                 {row.variance !== null && row.variance !== 0 ? (
                   <div className="field">
-                    <label htmlFor={`comment-${entry.key}`}>{t('count.comment_label')}</label>
+                    <label htmlFor={`comment-${entry.key}`}>
+                      {row.needsComment
+                        ? t('count.comment_required_label')
+                        : t('count.comment_label')}
+                    </label>
                     <input
                       id={`comment-${entry.key}`}
                       className="text-input"
                       maxLength={MAX_COUNT_COMMENT}
                       value={row.comment}
                       onChange={(event) =>
-                        setComments((current) => ({ ...current, [entry.key]: event.target.value }))
+                        editComment(entry.key, event.target.value, row.recordedComment)
                       }
                     />
+                    {row.missingComment ? (
+                      <p className="error-message">{t('count.comment_required')}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </li>
@@ -429,7 +492,14 @@ export function CountScreen() {
         <button type="button" className="btn-block" disabled={!canSave} onClick={save}>
           {busy ? t('sales.submitting') : t('count.save')}
         </button>
-        {unsaved ? <p className="home-muted">{t('count.unsaved')}</p> : null}
+        {unsaved ? (
+          <p className="home-muted">
+            {t('count.unsaved')}{' '}
+            <button type="button" className="link-button" onClick={clearDrafts}>
+              {t('count.clear_drafts')}
+            </button>
+          </p>
+        ) : null}
         <button
           type="button"
           className="btn-block submit-sale"
@@ -438,7 +508,7 @@ export function CountScreen() {
         >
           {t('count.submit')}
         </button>
-        <button type="button" className="secondary" disabled={busy} onClick={cancel}>
+        <button type="button" className="secondary" disabled={blocked} onClick={cancel}>
           {confirmCancel ? t('count.cancel_confirm') : t('count.cancel')}
         </button>
       </section>

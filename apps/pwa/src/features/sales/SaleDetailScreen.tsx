@@ -18,7 +18,7 @@ import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
-import { useSalesReferences, type SalesReferences } from './references.js';
+import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
@@ -194,8 +194,10 @@ export function SaleDetailScreen() {
     );
   }
 
-  const customer = sale.customerId
-    ? refs.customers.find((candidate) => candidate.id === sale.customerId)
+  // Vente d'un compte absorbé depuis : rattachée au compte conservé (BR-CRM-007).
+  const customerId = sale.customerId ? rootCustomerId(refs.customerAlias, sale.customerId) : null;
+  const customer = customerId
+    ? refs.customers.find((candidate) => candidate.id === customerId)
     : undefined;
   const location = refs.locations.find((candidate) => candidate.id === sale.fromLocationId);
   const doc = sale.docNumber ?? t('sales.pending_number');
@@ -282,7 +284,7 @@ export function SaleDetailScreen() {
         sale.balanceDueXaf > 0 &&
         sale.status === 'CONFIRMED' &&
         holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.paymentRecord) ? (
-          <Link to={ROUTES.collectFor(sale.customerId)} className="action action-compact">
+          <Link to={ROUTES.collectFor(customer.id)} className="action action-compact">
             <span className="action-label">{t('sales.detail.collect')}</span>
           </Link>
         ) : null}

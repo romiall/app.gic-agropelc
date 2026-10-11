@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
@@ -251,8 +251,90 @@ describe('Pointage (ECR-TER-01, écran)', () => {
     expect(await screen.findByRole('button', { name: 'PRENDRE SERVICE' })).toBeInTheDocument();
     const end = (await getDb().outbox.orderBy('device_seq').toArray())[1];
     expect(end).toMatchObject({
-      depends_on: [start?.command_id],
+      // Pas de dépendance vers la prise : l'ordre du lot suffit (ADR-051 §11).
+      depends_on: [],
       payload: { checkinType: 'END_SERVICE', sessionId, clientResult: 'ACCEPTED' },
+    });
+  });
+
+  it('en service : nouvelle position relevée, fin bloquée pendant le relevé, prise dans une autre zone qui clôt la session', async () => {
+    const NORTH = '01900000-0000-7000-8000-0000000000f6';
+    await getDb().projections.put({
+      key: `zone:ZONE:${NORTH}`,
+      dataset: 'zone',
+      entity_type: 'ZONE',
+      entity_id: NORTH,
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: {
+        ...zone({
+          id: NORTH,
+          name: 'Nord',
+          geofence_lat: String(OUTSIDE.latitude),
+          geofence_lng: String(OUTSIDE.longitude),
+        }),
+      },
+    });
+    // Premier relevé : dans la zone Centre ; le suivant reste en cours, puis aboutit au Nord.
+    const pending: ((position: { coords: typeof INSIDE }) => void)[] = [];
+    let calls = 0;
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (ok: (position: { coords: typeof INSIDE }) => void) => {
+          calls += 1;
+          if (calls === 1) ok({ coords: INSIDE });
+          else pending.push(ok);
+        },
+      },
+    });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ServiceScreen />
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole('button', { name: 'PRENDRE SERVICE' }));
+    await screen.findByText(/En service depuis 10:00 — zone Centre/);
+    // Une position fraîche est demandée après le pointage ; tant qu'elle manque, pas de fin.
+    expect(calls).toBe(2);
+    const session = within(screen.getByRole('region', { name: 'En service' }));
+    expect(session.getByText('Localisation…', { selector: 'p' })).toBeInTheDocument();
+    expect(session.getByRole('button', { name: 'FIN DE SERVICE' })).toBeDisabled();
+
+    act(() => pending.shift()?.({ coords: OUTSIDE }));
+    const change = within(await screen.findByRole('region', { name: 'Changer de zone' }));
+    expect(change.getByLabelText('Zone de travail')).toHaveValue(NORTH);
+    await user.click(change.getByRole('button', { name: 'Prendre service dans cette zone' }));
+    expect(await screen.findByText(/En service depuis 10:00 — zone Nord/)).toBeInTheDocument();
+    const starts = (await getDb().outbox.orderBy('device_seq').toArray()).map(
+      (command) => command.payload as { declaredZoneId: string; sessionId?: string },
+    );
+    expect(starts.map((payload) => payload.declaredZoneId)).toEqual([IDS.zone, NORTH]);
+    expect(starts[0]?.sessionId).not.toBe(starts[1]?.sessionId);
+  });
+
+  it('précision au dixième, jamais arrondie au mètre : 150,4 m pour 150 m admis est refusée', async () => {
+    locateAt({ ...INSIDE, accuracy: 150.4 });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ServiceScreen />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByText(/Position trop imprécise \(± 150 m, au plus 150 m\)/),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'PRENDRE SERVICE' }));
+    await screen.findByText(/Tentative refusée/);
+    const [attempt] = await getDb().outbox.toArray();
+    expect(attempt?.payload).toMatchObject({
+      accuracyM: 150.4,
+      clientResult: 'REJECTED_LOW_ACCURACY',
     });
   });
 

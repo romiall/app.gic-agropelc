@@ -44,12 +44,18 @@ export function duesFromReceivables(lines: readonly ReceivableLine[], customerId
   );
 }
 
-export function duesFromRecentSales(sales: readonly SaleData[], customerId: string): Due[] {
+export function duesFromRecentSales(
+  sales: readonly SaleData[],
+  customerId: string,
+  /** Comptes absorbés : leurs ventes sont dues par le compte conservé (BR-CRM-007). */
+  alias: ReadonlyMap<string, string> = new Map(),
+): Due[] {
   return sortDues(
     sales
       .filter(
         (sale) =>
-          sale.customer_id === customerId &&
+          sale.customer_id !== null &&
+          (alias.get(sale.customer_id) ?? sale.customer_id) === customerId &&
           // Une vente en demande d'annulation n'est pas une cible payable (`ALLOCATION_TARGET_INVALID`).
           sale.status === 'CONFIRMED' &&
           sale.balance_due_xaf > 0,
@@ -132,14 +138,15 @@ export function previewAllocation(amountXaf: number, dues: readonly Due[]): Allo
 export function pendingPaymentsOf(
   outbox: readonly OutboxCommand[],
   customerId: string,
+  alias: ReadonlyMap<string, string> = new Map(),
 ): { readonly commandId: string; readonly amountXaf: number; readonly occurredAt: string }[] {
   return outbox
-    .filter(
-      (command) =>
-        command.command_type === 'sales.payment.record' &&
-        ['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING'].includes(command.status) &&
-        (command.payload as { customerId?: string }).customerId === customerId,
-    )
+    .filter((command) => {
+      if (command.command_type !== 'sales.payment.record') return false;
+      if (!['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING'].includes(command.status)) return false;
+      const payer = (command.payload as { customerId?: string }).customerId;
+      return payer !== undefined && (alias.get(payer) ?? payer) === customerId;
+    })
     .map((command) => ({
       commandId: command.command_id,
       amountXaf: (command.payload as { amountXaf?: number }).amountXaf ?? 0,

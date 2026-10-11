@@ -21,7 +21,7 @@ import {
   openOrders,
   orderStatusTone,
 } from './open-orders.js';
-import { useSalesReferences } from './references.js';
+import { rootCustomerId, useSalesReferences } from './references.js';
 
 type Filter = 'all' | 'to_deliver' | 'waiting_stock';
 
@@ -77,7 +77,11 @@ export function OrdersScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  const customers = new Map(refs.customers.map((customer) => [customer.id, customer]));
+  const customerMap = new Map(refs.customers.map((customer) => [customer.id, customer]));
+  // Comptes absorbés : la commande s'affiche au nom du compte conservé (BR-CRM-007).
+  const customers = {
+    get: (id: string) => customerMap.get(rootCustomerId(refs.customerAlias, id)),
+  };
   const all = openOrders(refs);
   const orders = all.filter((order) =>
     filter === 'to_deliver'

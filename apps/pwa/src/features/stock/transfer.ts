@@ -172,15 +172,16 @@ export function parseDispatched(text: string): number | null {
   return value <= MAX_QUANTITY ? value : null;
 }
 
-/** Charge utile de l'expédition d'une demande : les lignes à expédier (quantité > 0). */
+/**
+ * Charge utile de l'expédition d'une demande : les lignes à expédier (quantité > 0) et le transporteur.
+ * Pas de note : le serveur ne l'enregistre pas pour une demande (S-21).
+ */
 export function requestDispatchPayload(
   transfer: StockTransferData,
   quantities: ReadonlyMap<string, number>,
   carrierName: string,
-  notes: string,
 ) {
   const carrier = optionalText(carrierName);
-  const text = optionalText(notes);
   return {
     transferId: transfer.id,
     lines: transfer.lines
@@ -192,7 +193,6 @@ export function requestDispatchPayload(
         quantityBase: quantities.get(line.id) as number,
       })),
     ...(carrier ? { carrierName: carrier } : {}),
-    ...(text ? { notes: text } : {}),
   };
 }
 

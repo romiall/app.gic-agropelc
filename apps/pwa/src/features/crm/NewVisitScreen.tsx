@@ -185,7 +185,12 @@ export function NewVisitScreen() {
         <span className="field-label">{t('visit.position_label')}</span>
         {effective.position ? (
           <p className="home-muted">
-            {t('visit.position_value', { accuracy: effective.position.accuracyM ?? '?' })}
+            {t('visit.position_value', {
+              accuracy:
+                effective.position.accuracyM === null
+                  ? '?'
+                  : Math.round(effective.position.accuracyM),
+            })}
           </p>
         ) : geo.state === 'unavailable' ? (
           <p className="text-warn">{t('visit.gps_unavailable')}</p>
