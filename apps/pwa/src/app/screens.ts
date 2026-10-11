@@ -34,6 +34,7 @@ export const ROUTES = {
   priceSimulator: '/prix/simulateur',
   stock: '/stock',
   portfolio: '/clients',
+  performance: '/objectifs',
   newProspect: '/clients/nouveau',
   newVisit: '/clients/visite',
   newVisitFor: (customerId: string) => `/clients/visite?client=${encodeURIComponent(customerId)}`,
@@ -115,6 +116,8 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'FINANCE',
   ],
+  /** ECR-CRM-05 : commerciaux (`crm.target.read`, 03-parcours-et-ecrans.md §3). */
+  performance: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-PRX-03 : responsable commercial et direction (03-parcours-et-ecrans.md §3.2). */
@@ -250,6 +253,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'portfolio',
     group: 'crm',
     roles: ROLE_SETS.portfolio,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-CRM-05',
+    path: ROUTES.performance,
+    labelKey: 'performance',
+    group: 'crm',
+    roles: ROLE_SETS.performance,
     actionCodes: [],
     offline: true,
   },

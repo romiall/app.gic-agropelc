@@ -145,6 +145,9 @@ export interface CustomerData {
   readonly credit_limit_xaf: number | null;
   readonly payment_terms_days: number | null;
   readonly outstanding_xaf: number;
+  /** Acquisition du compte (BR-CRM-003) : qui l'a créé, et quand (instant ISO). */
+  readonly acquired_by_user_id?: string | null;
+  readonly acquired_at?: string | null;
   /** Position du compte (chaînes décimales), absente tant qu'aucune n'est enregistrée. */
   readonly lat?: string | null;
   readonly lng?: string | null;
@@ -202,6 +205,21 @@ export interface InventoryCountData {
     readonly variance_reason_code_id: string | null;
     readonly comment: string | null;
   }[];
+}
+
+/** (`crm_activity`) objectif commercial ; `target_value` : chaîne décimale. */
+export interface SalesTargetData {
+  readonly id: string;
+  readonly target_type: 'USER' | 'TEAM' | 'SITE';
+  readonly user_id: string | null;
+  readonly team_id: string | null;
+  readonly site_id: string | null;
+  readonly metric: string;
+  readonly product_id: string | null;
+  readonly period_start: string;
+  readonly period_end: string;
+  readonly target_value: string;
+  readonly status: string;
 }
 
 /** (`crm_activity`, 90 derniers jours) visite d'un compte. */

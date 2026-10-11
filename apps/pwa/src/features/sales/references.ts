@@ -18,6 +18,7 @@ import type {
   CustomerCategoryData,
   InteractionData,
   InventoryCountData,
+  SalesTargetData,
   VisitData,
   CustomerData,
   CustomerPaymentData,
@@ -69,6 +70,8 @@ export interface SalesReferences {
    * de fusion, BR-CRM-007). Leurs ventes, commandes et visites se rattachent au compte conservé.
    */
   readonly customerAlias: ReadonlyMap<string, string>;
+  /** Objectifs commerciaux servis (jeu `crm_activity`). */
+  readonly targets: readonly SalesTargetData[];
   /** Inventaires des emplacements du périmètre (jeu `counts`) et heure de leur dernier tirage. */
   readonly counts: readonly InventoryCountData[];
   readonly countsPulledAt: string | undefined;
@@ -253,6 +256,7 @@ export function pendingInteractions(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    targets,
     counts,
     countsCursor,
     visits,
@@ -285,6 +289,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<SalesTargetData>(db, 'crm_activity', 'SALES_TARGET'),
     listProjected<InventoryCountData>(db, 'counts', 'INVENTORY_COUNT'),
     db.syncCursors.get('counts'),
     listProjected<VisitData>(db, 'crm_activity', 'VISIT'),
@@ -364,6 +369,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
     customerAlias: mergeAliases(customers),
+    targets,
     counts,
     countsPulledAt: countsCursor?.pulled_at,
     transfers: transferMap,
