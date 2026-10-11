@@ -93,8 +93,8 @@ interface LotChoice {
   readonly lotType: string;
 }
 
-const CLOSED_LOTS_PATH = '/api/v1/production/lots?status=CLOSED&limit=200';
-const MAX_CLOSED_PAGES = 5;
+/** Lots clôturés : une page à la fois (chaque lot coûte un calcul d'effectif au serveur, S-41). */
+const CLOSED_LOTS_PATH = '/api/v1/production/lots?status=CLOSED&limit=50';
 
 const percent = (rate: number | null): string | null =>
   rate === null ? null : `${formatQuantity(Math.round(rate * 10000) / 100)} %`;
@@ -107,31 +107,37 @@ export function LotSheetScreen() {
   const refs = useSalesReferences();
   const online = useOnline();
   const [lotChoice, setLotChoice] = useState<string | null>(searchParams.get('lot'));
+  const [closedPages, setClosedPages] = useState(1);
   const lotId = useId();
   const closed = useOnlineRead<Pages<ClosedLot>>(
-    CLOSED_LOTS_PATH,
-    () => readPages<ClosedLot>([CLOSED_LOTS_PATH], 'lots', MAX_CLOSED_PAGES),
+    `${CLOSED_LOTS_PATH}#${closedPages}`,
+    () => readPages<ClosedLot>([CLOSED_LOTS_PATH], 'lots', closedPages),
     online,
     '',
   );
   const deviceLots = refs?.productionLots ?? [];
   const known = new Set(deviceLots.map((candidate) => candidate.id));
-  const lots: LotChoice[] = [
-    ...deviceLots.map((candidate) => ({
+  const byCodeDesc = (a: LotChoice, b: LotChoice) => b.lotCode.localeCompare(a.lotCode, 'fr');
+  // Lots de l'appareil (ouverts) d'abord, puis les lots clôturés lus en ligne.
+  const openLots: LotChoice[] = deviceLots
+    .map((candidate) => ({
       id: candidate.id,
       lotCode: candidate.lot_code,
       lotType: candidate.lot_type,
-    })),
-    ...(closed.data?.items ?? [])
-      .filter((candidate) => !known.has(candidate.id))
-      .map((candidate) => ({
-        id: candidate.id,
-        lotCode: candidate.lotCode,
-        lotType: candidate.lotType,
-      })),
-  ].sort((a, b) => b.lotCode.localeCompare(a.lotCode, 'fr'));
-  // Lot demandé (lien, choix) lu tel quel même absent de la liste ; sinon le plus récent.
-  const id = lotChoice ?? lots[0]?.id ?? '';
+    }))
+    .sort(byCodeDesc);
+  const closedLots: LotChoice[] = (closed.data?.items ?? [])
+    .filter((candidate) => !known.has(candidate.id))
+    .map((candidate) => ({
+      id: candidate.id,
+      lotCode: candidate.lotCode,
+      lotType: candidate.lotType,
+    }))
+    .sort(byCodeDesc);
+  const lots = [...openLots, ...closedLots];
+  // Lot demandé (lien, choix) lu tel quel même absent de la liste ; sinon un lot ouvert, et un lot
+  // clôturé seulement s'il n'y en a aucun.
+  const id = lotChoice ?? openLots[0]?.id ?? closedLots[0]?.id ?? '';
   const lot = deviceLots.find((candidate) => candidate.id === id);
   const sheet = useOnlineRead<{ lot: LotSheet }>(
     id ? `/api/v1/production/lots/${encodeURIComponent(id)}` : null,
@@ -149,7 +155,9 @@ export function LotSheetScreen() {
     );
   }
 
-  const current = sheet.data?.lot;
+  // Hors ligne, la fiche lue avant la coupure n'est plus présentée : l'estimation de l'appareil prend
+  // le relais, comme l'annonce le bandeau.
+  const current = online ? sheet.data?.lot : undefined;
   const localHeads = lot ? rearingHeadcount(refs, lot) : null;
   const productId = current?.productId ?? lot?.product_id;
   const product = productId
@@ -172,8 +180,20 @@ export function LotSheetScreen() {
   return (
     <section className="sale">
       <h1>{t('nav.screens.lot_sheet')}</h1>
+      {online && closed.failed ? (
+        <div className="alert alert-error" role="alert">
+          <p>{t('lot_sheet.closed_unavailable')}</p>
+          <button type="button" className="secondary" onClick={closed.retry}>
+            {t('ledger.retry')}
+          </button>
+        </div>
+      ) : null}
       {!id ? (
-        <p className="home-muted">{t('lot_sheet.no_lot')}</p>
+        online && closed.data === undefined && !closed.failed ? (
+          <p className="home-muted">{t('sales.loading')}</p>
+        ) : (
+          <p className="home-muted">{t('lot_sheet.no_lot')}</p>
+        )
       ) : (
         <>
           <div className="field">
@@ -187,14 +207,35 @@ export function LotSheetScreen() {
               {choice ? null : (
                 <option value={id}>{current?.lotCode ?? t('lot_sheet.requested_lot')}</option>
               )}
-              {lots.map((candidate) => (
+              {openLots.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
                   {`${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
                     defaultValue: candidate.lotType,
                   })}`}
                 </option>
               ))}
+              {closedLots.length > 0 ? (
+                <optgroup label={t('lot_sheet.closed_group')}>
+                  {closedLots.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {`${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
+                        defaultValue: candidate.lotType,
+                      })}`}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
+            {closed.data?.more ? (
+              <button
+                type="button"
+                className="secondary"
+                disabled={closed.stale}
+                onClick={() => setClosedPages((value) => value + 1)}
+              >
+                {t('lot_sheet.more_closed')}
+              </button>
+            ) : null}
           </div>
           <p className="home-muted">
             {[

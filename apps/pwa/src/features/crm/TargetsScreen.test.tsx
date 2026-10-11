@@ -41,6 +41,8 @@ const SITE_TARGET: TargetView = {
 
 const TEAM = '01900000-0000-7000-8000-0000000009a1';
 const MEMBER = '01900000-0000-7000-8000-0000000009a2';
+const NEW_MEMBER = '01900000-0000-7000-8000-0000000009a3';
+const LEFT_MEMBER = '01900000-0000-7000-8000-0000000009a4';
 
 async function rememberRoles(roles: readonly string[]) {
   await getDb().navigation.put({
@@ -173,11 +175,26 @@ describe('Gestion des objectifs (ECR-CRM-07)', () => {
         is_active: true,
       }),
       projection('user', 'USER', MEMBER, { full_name: 'Awa Commerciale', status: 'ACTIVE' }),
+      projection('user', 'USER', NEW_MEMBER, { full_name: 'Bella Arrivée', status: 'ACTIVE' }),
+      projection('user', 'USER', LEFT_MEMBER, { full_name: 'Carl Parti', status: 'ACTIVE' }),
+      // Appartenances en instants (DATETIME) ; l'horloge est à 10 h (Douala) le 10/10.
       projection('team_membership', 'TEAM_MEMBERSHIP', 'm1', {
         team_id: TEAM,
         user_id: MEMBER,
-        valid_from: '2026-01-01',
+        valid_from: '2026-01-01T00:00:00.000Z',
         valid_to: null,
+      }),
+      projection('team_membership', 'TEAM_MEMBERSHIP', 'm2', {
+        team_id: TEAM,
+        user_id: NEW_MEMBER,
+        valid_from: '2026-10-10T08:30:00.000Z',
+        valid_to: null,
+      }),
+      projection('team_membership', 'TEAM_MEMBERSHIP', 'm3', {
+        team_id: TEAM,
+        user_id: LEFT_MEMBER,
+        valid_from: '2026-01-01T00:00:00.000Z',
+        valid_to: '2026-10-10T08:00:00.000Z',
       }),
     ]);
     const user = userEvent.setup();
@@ -199,6 +216,34 @@ describe('Gestion des objectifs (ECR-CRM-07)', () => {
       expect.anything(),
       `/api/v1/targets?team_id=${TEAM}`,
       { method: 'GET' },
+    );
+    // Entré ce matin : proposé et relu ; sorti avant l'heure de l'horloge : ni l'un ni l'autre.
+    expect(authorizedRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      `/api/v1/targets?user_id=${NEW_MEMBER}`,
+      { method: 'GET' },
+    );
+    expect(
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.some(([, path]) => String(path).includes(LEFT_MEMBER)),
+    ).toBe(false);
+    const target = screen.getByLabelText('Commercial');
+    const names = within(target)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(names).toContain('Bella Arrivée');
+    expect(names).not.toContain('Carl Parti');
+
+    // Cible choisie puis sortie de l'équipe : revalidée, l'envoi se bloque.
+    await user.selectOptions(target, MEMBER);
+    await user.type(screen.getByLabelText('Chiffre d’affaires visé (F)'), '100000');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Définir l’objectif' })).toBeEnabled(),
+    );
+    await getDb().projections.delete('team_membership:TEAM_MEMBERSHIP:m1');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Définir l’objectif' })).toBeDisabled(),
     );
   });
 

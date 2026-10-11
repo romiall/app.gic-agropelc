@@ -438,7 +438,10 @@ export interface TeamData {
   readonly is_active: boolean;
 }
 
-/** (`team_membership`) appartenance d'un utilisateur à une équipe, sur une période. */
+/**
+ * (`team_membership`) appartenance d'un utilisateur à une équipe, sur une période : instants ISO
+ * (colonnes `DATETIME`), comparés comme tels (début inclus, fin exclue, comme le serveur).
+ */
 export interface TeamMembershipData {
   readonly id: string;
   readonly team_id: string;

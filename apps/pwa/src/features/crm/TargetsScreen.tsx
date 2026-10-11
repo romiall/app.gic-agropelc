@@ -2,8 +2,10 @@
  * ECR-CRM-07 « Gestion des objectifs » (responsable commercial, direction ; en ligne). Objectifs lus
  * sur le serveur, définition d'un objectif avec le contrôle de chevauchement, annulation. Cibles selon
  * la portée de `crm.target.manage` (01-rbac.md) : la direction (ALL) fixe des objectifs par site,
- * équipe ou commercial ; le responsable commercial (TEAM) seulement pour les équipes qu'il dirige et
- * leurs membres, le serveur refusant tout objectif par site (FORBIDDEN_SCOPE). Commerciaux, équipes
+ * équipe ou commercial ; le responsable commercial (TEAM) pour lui-même, les équipes qu'il dirige et
+ * leurs membres en cours, le serveur refusant tout objectif par site (FORBIDDEN_SCOPE). L'équipe de
+ * son affectation TEAM n'est pas reprise : l'appareil ne sait pas quel rôle porte la permission
+ * (S-41). Commerciaux, équipes
  * et appartenances : jeux `user`, `team`, `team_membership` de l'appareil, pas encore publiés (S-28).
  * La liste relue reste affichée mais sans action tant qu'elle ne reflète pas la dernière opération ;
  * l'opération suivante attend la réponse définitive de la précédente.
@@ -179,27 +181,33 @@ export function TargetsScreen() {
   const director = navigation?.roles.includes('DIRECTION') === true;
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'crm.target.', userId);
-  const managedTeams = (refs?.teams ?? []).filter(
-    (team) => team.is_active && team.manager_user_id === userId,
-  );
-  // Membres en cours des équipes dirigées (portée TEAM du responsable commercial).
-  const members = new Set(
-    (refs?.teamMemberships ?? [])
+  // Équipes dirigées : toutes pour la lecture et les membres (comme le serveur), actives seulement
+  // pour les cibles proposées.
+  const ledTeams = (refs?.teams ?? []).filter((team) => team.manager_user_id === userId);
+  const managedTeams = ledTeams.filter((team) => team.is_active);
+  // Membres en cours des équipes dirigées, et l'utilisateur lui-même (portée TEAM) : appartenances
+  // comparées en instants (début inclus, fin exclue), comme le serveur.
+  const nowMs = clock.now().getTime();
+  const members = new Set([
+    ...(userId ? [userId] : []),
+    ...(refs?.teamMemberships ?? [])
       .filter(
         (membership) =>
-          managedTeams.some((team) => team.id === membership.team_id) &&
-          membership.valid_from <= today &&
-          (membership.valid_to === null || membership.valid_to >= today),
+          ledTeams.some((team) => team.id === membership.team_id) &&
+          Date.parse(membership.valid_from) <= nowMs &&
+          (membership.valid_to === null || Date.parse(membership.valid_to) > nowMs),
       )
       .map((membership) => membership.user_id),
-  );
+  ]);
   // Sans portée ALL, `GET /targets` ne rend que les objectifs propres : les équipes dirigées et
   // leurs membres se lisent un à un (S-28).
   const read = useOnlineRead<readonly TargetView[]>(
     [
       '/api/v1/targets',
-      ...managedTeams.map((team) => `/api/v1/targets?team_id=${team.id}`),
-      ...(director ? [] : [...members].map((id) => `/api/v1/targets?user_id=${id}`)),
+      ...ledTeams.map((team) => `/api/v1/targets?team_id=${team.id}`),
+      ...(director
+        ? []
+        : [...members].filter((id) => id !== userId).map((id) => `/api/v1/targets?user_id=${id}`)),
     ].join('|'),
     readTargets,
     online,
@@ -240,13 +248,17 @@ export function TargetsScreen() {
     ...(director ? (['SITE'] as const) : []),
   ];
   const targetType = types.includes(form.targetType) ? form.targetType : types[0];
-  const effective: TargetForm = { ...form, targetType: targetType ?? form.targetType };
   const targetOptions =
     targetType === 'USER'
       ? users.map((user) => ({ value: user.id, label: user.full_name }))
       : targetType === 'TEAM'
         ? teams.map((team) => ({ value: team.id, label: team.name }))
         : sites.map((site) => ({ value: site.id, label: site.name }));
+  // Cible revalidée contre les options du moment (type forcé, appartenance close entre-temps).
+  const targetId = targetOptions.some((option) => option.value === form.targetId)
+    ? form.targetId
+    : '';
+  const effective: TargetForm = { ...form, targetType: targetType ?? form.targetType, targetId };
   const labelOf = (target: TargetView): string =>
     (target.userId && refs.users.find((user) => user.id === target.userId)?.full_name) ||
     (target.teamId && refs.teams.find((team) => team.id === target.teamId)?.name) ||
@@ -346,7 +358,7 @@ export function TargetsScreen() {
             <select
               id={ids.target}
               className="text-input"
-              value={form.targetId}
+              value={targetId}
               onChange={(event) => update({ targetId: event.target.value })}
             >
               <option value="">{t('lot_setup.choose')}</option>

@@ -1237,6 +1237,9 @@ export const fr = {
     no_lot: 'Aucun lot de production sur vos fermes.',
     lot_label: 'Lot',
     requested_lot: 'Lot demandé',
+    closed_group: 'Lots clôturés',
+    closed_unavailable: 'Lots clôturés indisponibles : réessayez quand le serveur répond.',
+    more_closed: 'Afficher plus de lots clôturés',
     closed_on: 'clôturé le {{date}}',
     not_on_device:
       'Hors ligne : ce lot n’est pas sur le téléphone (lot clôturé ou hors de vos fermes) ; sa fiche se lit en ligne.',

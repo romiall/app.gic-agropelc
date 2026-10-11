@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
@@ -235,6 +236,66 @@ describe('Fiche lot (ECR-PRD-03)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Indicateurs' })).not.toBeInTheDocument();
     expect(screen.queryByText('Réessayer')).not.toBeInTheDocument();
+  });
+
+  it('sans lot demandé : le lot ouvert reste choisi quand des lots clôturés arrivent', async () => {
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => {
+      if (path.startsWith('/api/v1/production/lots?')) {
+        return {
+          ok: true,
+          data: {
+            lots: [
+              {
+                id: CLOSED_LOT,
+                lotCode: 'LOT-MFO-2026-012',
+                lotType: 'POULET_CHAIR',
+                status: 'CLOSED',
+              },
+            ],
+            next_cursor: null,
+          },
+        } as never;
+      }
+      return { ok: true, data: { lot: SHEET } } as never;
+    });
+    render(
+      <MemoryRouter initialEntries={['/production/fiche']}>
+        <LotSheetScreen />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Lot');
+    expect(await within(select).findByRole('group', { name: 'Lots clôturés' })).toBeInTheDocument();
+    expect(select).toHaveValue(LOT);
+  });
+
+  it('passage hors ligne après lecture : estimation du téléphone, fiche serveur retirée', async () => {
+    serve({ [LOT]: SHEET });
+    renderScreen();
+    await screen.findByRole('region', { name: 'Indicateurs' });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    expect(
+      await screen.findByText(/Hors ligne : effectif calculé par ce téléphone/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('En élevage (estimation du téléphone)')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Indicateurs' })).not.toBeInTheDocument();
+  });
+
+  it('lots clôturés indisponibles : annoncés, relus par « Réessayer »', async () => {
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (path.startsWith('/api/v1/production/lots?')
+          ? { ok: false, reason: 'HTTP_ERROR', status: 503, body: null }
+          : { ok: true, data: { lot: SHEET } }) as never,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    expect(await screen.findByText(/Lots clôturés indisponibles/)).toBeInTheDocument();
+    serve({ [LOT]: SHEET });
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByRole('option', { name: 'LOT-MFO-2025-009 · Poulet de chair' }),
+    ).toBeInTheDocument();
   });
 
   it('hors ligne : effectif estimé par le téléphone, aucune lecture', async () => {
