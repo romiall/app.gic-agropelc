@@ -168,9 +168,17 @@ describe('Registre des mouvements (ECR-STK-07)', () => {
     fireEvent.change(screen.getByLabelText('Du'), { target: { value: '2026-10-11' } });
     expect(screen.getByText('La fin de la période doit suivre son début.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Mouvements' })).not.toBeInTheDocument();
-    await waitFor(() => expect(authorizedRequest).not.toHaveBeenCalled());
+    // Aucune lecture avec la période invalide (une relecture de la période précédente peut finir).
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(authorizedRequest)
+          .mock.calls.some(([, path]) => String(path).includes('from=2026-10-11')),
+      ).toBe(false),
+    );
 
     cleanup();
+    vi.mocked(authorizedRequest).mockClear();
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();
     expect(await screen.findByRole('alert')).toHaveTextContent(/en ligne seulement/);

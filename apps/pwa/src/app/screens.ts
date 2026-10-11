@@ -55,6 +55,7 @@ export const ROUTES = {
   stockLedger: '/stock/registre',
   portfolio: '/clients',
   performance: '/objectifs',
+  targets: '/objectifs/gestion',
   newProspect: '/clients/nouveau',
   newVisit: '/clients/visite',
   newVisitFor: (customerId: string) => `/clients/visite?client=${encodeURIComponent(customerId)}`,
@@ -139,6 +140,8 @@ export const ROLE_SETS = {
   ],
   /** ECR-CRM-05 : commerciaux (`crm.target.read`, 03-parcours-et-ecrans.md §3). */
   performance: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  /** ECR-CRM-07 (`crm.target.manage` : direction ALL, responsable commercial TEAM). */
+  targets: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-PRX-02 : rédaction (`pricing.rule.draft`) ; activation et fin par la Direction (AV-062). */
@@ -345,6 +348,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.customerCreate,
     actionCodes: ['NEW_PROSPECT'],
     offline: true,
+  },
+  {
+    id: 'ECR-CRM-07',
+    path: ROUTES.targets,
+    labelKey: 'targets',
+    group: 'crm',
+    roles: ROLE_SETS.targets,
+    actionCodes: ['TARGETS'],
+    offline: false,
   },
   {
     id: 'ECR-TER-01',

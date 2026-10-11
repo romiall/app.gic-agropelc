@@ -114,6 +114,7 @@ export const fr = {
       lot_setup: 'Nouveau lot ou entrée',
       incubation: 'Incubation',
       lot_sheet: 'Fiche lot',
+      targets: 'Gestion des objectifs',
       suppliers: 'Fournisseurs',
       purchase_orders: 'Bons de commande',
       purchase_receipt: 'Réceptionner',
@@ -1123,6 +1124,63 @@ export const fr = {
       NAME_REQUIRED: 'La raison sociale est obligatoire.',
       EMAIL_INVALID: 'Adresse électronique invalide.',
       TERMS_INVALID: 'Délai de paiement : nombre entier de jours.',
+    },
+    result: {
+      WAITING_offline:
+        'Opération enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Opération en cours d’envoi…',
+      DONE: 'Opération enregistrée.',
+      WARNING: 'Opération enregistrée, avec un signalement.',
+      CONFLICT: 'Opération mise en attente d’examen (conflit).',
+      REJECTED: 'Opération refusée : {{reason}}',
+    },
+  },
+  targets: {
+    online_only:
+      'Écran en ligne seulement : les objectifs se lisent et se définissent sur le serveur. Reconnectez-vous pour continuer.',
+    unavailable: 'Objectifs indisponibles : réessayez quand le serveur répond.',
+    none: 'Aucun objectif.',
+    sites_only:
+      'Commerciaux et équipes ne sont pas encore publiés au téléphone : seuls les objectifs par site se définissent ici.',
+    new: 'Nouvel objectif',
+    new_title: 'Nouvel objectif',
+    type_label: 'Objectif de',
+    type: {
+      USER: 'Un commercial',
+      TEAM: 'Une équipe',
+      SITE: 'Un site',
+    },
+    target_label: {
+      USER: 'Commercial',
+      TEAM: 'Équipe',
+      SITE: 'Site',
+    },
+    metric_label: 'Mesure',
+    product_label: 'Produit',
+    start_label: 'Du',
+    end_label: 'Au',
+    value_label: {
+      CA: 'Chiffre d’affaires visé (F)',
+      QTE_PRODUIT: 'Quantité visée',
+      NOUVEAUX_CLIENTS: 'Nouveaux clients visés',
+      VISITES: 'Visites visées',
+      PROSPECTS_CREES: 'Prospects créés visés',
+    },
+    save: 'Définir l’objectif',
+    cancel: 'Annuler l’objectif',
+    cancel_comment_label: 'Commentaire (facultatif)',
+    cancel_confirm: 'Confirmer l’annulation',
+    status: {
+      ACTIVE: 'Actif',
+      CANCELLED: 'Annulé',
+    },
+    issue: {
+      TARGET_REQUIRED: 'Choisissez la cible.',
+      PRODUCT_REQUIRED: 'Choisissez le produit.',
+      PERIOD_INVALID: 'La fin de la période doit suivre son début.',
+      VALUE_INVALID: 'Valeur : nombre entier positif (trois décimales pour une quantité).',
+      OVERLAP:
+        'Un objectif actif de même cible, mesure et produit couvre déjà cette période : annulez-le d’abord.',
     },
     result: {
       WAITING_offline:

@@ -420,6 +420,22 @@ export interface SalesTargetData {
   readonly status: string;
 }
 
+/** (`user`) utilisateur publié à l'appareil (S-28 : jeu tiré, pas encore alimenté). */
+export interface UserData {
+  readonly id: string;
+  readonly full_name: string;
+  readonly status: string;
+}
+
+/** (`team`) équipe commerciale et son responsable. */
+export interface TeamData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly manager_user_id: string;
+  readonly is_active: boolean;
+}
+
 /** (`crm_activity`, 90 derniers jours) visite d'un compte. */
 export interface VisitData {
   readonly id: string;
