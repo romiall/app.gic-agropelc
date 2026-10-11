@@ -17,8 +17,11 @@ import type {
   CampaignData,
   CustomerCategoryData,
   InteractionData,
+  GoodsReceiptData,
   InventoryCountData,
+  PurchaseOrderData,
   SalesTargetData,
+  SupplierData,
   VisitData,
   CustomerData,
   CustomerPaymentData,
@@ -70,6 +73,11 @@ export interface SalesReferences {
    * de fusion, BR-CRM-007). Leurs ventes, commandes et visites se rattachent au compte conservé.
    */
   readonly customerAlias: ReadonlyMap<string, string>;
+  /** Achats (jeu `procurement`) : bons de commande à recevoir, réceptions récentes, fournisseurs. */
+  readonly purchaseOrders: readonly PurchaseOrderData[];
+  readonly goodsReceipts: readonly GoodsReceiptData[];
+  readonly suppliers: ReadonlyMap<string, SupplierData>;
+  readonly procurementPulledAt: string | undefined;
   /** Objectifs commerciaux servis (jeu `crm_activity`). */
   readonly targets: readonly SalesTargetData[];
   /** Inventaires des emplacements du périmètre (jeu `counts`) et heure de leur dernier tirage. */
@@ -256,6 +264,10 @@ export function pendingInteractions(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    purchaseOrders,
+    goodsReceipts,
+    suppliers,
+    procurementCursor,
     targets,
     counts,
     countsCursor,
@@ -289,6 +301,10 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<PurchaseOrderData>(db, 'procurement', 'PURCHASE_ORDER'),
+    listProjected<GoodsReceiptData>(db, 'procurement', 'GOODS_RECEIPT'),
+    listProjected<SupplierData>(db, 'procurement', 'SUPPLIER'),
+    db.syncCursors.get('procurement'),
     listProjected<SalesTargetData>(db, 'crm_activity', 'SALES_TARGET'),
     listProjected<InventoryCountData>(db, 'counts', 'INVENTORY_COUNT'),
     db.syncCursors.get('counts'),
@@ -326,7 +342,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
           command.command_type.startsWith('sales.') ||
           command.command_type.startsWith('inventory.') ||
           command.command_type.startsWith('crm.') ||
-          command.command_type.startsWith('fieldwork.'),
+          command.command_type.startsWith('fieldwork.') ||
+          command.command_type.startsWith('procurement.'),
       )
       .toArray(),
   ]);
@@ -369,6 +386,10 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
     customerAlias: mergeAliases(customers),
+    purchaseOrders,
+    goodsReceipts,
+    suppliers: byId(suppliers),
+    procurementPulledAt: procurementCursor?.pulled_at,
     targets,
     counts,
     countsPulledAt: countsCursor?.pulled_at,

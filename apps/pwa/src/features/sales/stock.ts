@@ -102,6 +102,27 @@ export function pendingConsumption(
       }
       continue;
     }
+    // Réception d'achat : la quantité acceptée (livré − rejeté) entre sur l'emplacement (une
+    // réception mise en quarantaine par le serveur n'entre pas ; elle disparaît au tirage suivant).
+    if (command.command_type === 'procurement.receipt.record') {
+      const receipt = command.payload as {
+        readonly locationId?: string;
+        readonly lines?: readonly {
+          readonly productId?: string;
+          readonly qtyDeliveredBase?: number;
+          readonly qtyRejectedBase?: number;
+        }[];
+      };
+      if (!receipt.locationId) continue;
+      for (const line of receipt.lines ?? []) {
+        if (!line.productId || !line.qtyDeliveredBase) continue;
+        const accepted = toMilli(line.qtyDeliveredBase) - toMilli(line.qtyRejectedBase ?? 0);
+        if (accepted <= 0) continue;
+        const key = stockKey(receipt.locationId, line.productId);
+        milli.set(key, (milli.get(key) ?? 0) - accepted);
+      }
+      continue;
+    }
     // Perte déclarée sur l'appareil : sortie de l'emplacement (mise de côté si elle part en validation).
     // Consommation d'intrant : sortie de l'emplacement vers la consommation.
     if (

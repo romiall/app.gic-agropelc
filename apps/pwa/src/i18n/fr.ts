@@ -107,6 +107,7 @@ export const fr = {
       count: 'Inventaire',
       consumption: 'Consommer un intrant',
       price_simulator: 'Simulateur de prix',
+      purchase_receipt: 'Réceptionner',
     },
   },
   sales: {
@@ -703,6 +704,74 @@ export const fr = {
       WARNING: 'Dérogation demandée, avec un signalement.',
       CONFLICT: 'Demande de dérogation mise en attente d’examen (conflit).',
       REJECTED: 'Dérogation refusée : {{reason}}',
+    },
+  },
+  purchase_receipt: {
+    offline_banner:
+      'Hors ligne : la réception sera enregistrée sur ce téléphone et envoyée au retour du réseau ; l’accepté entre aussitôt au disponible.',
+    orders_title: 'Bons de commande à recevoir',
+    no_order:
+      'Aucun bon de commande à recevoir sur vos emplacements (la réception sans bon de commande n’est pas encore proposée par l’application).',
+    open: 'Réceptionner le bon de commande {{doc}}',
+    expected: 'livraison prévue le {{date}}',
+    order_status: {
+      SENT: 'Envoyé',
+      PARTIALLY_RECEIVED: 'Reçu en partie',
+    },
+    recent_title: 'Réceptions des 30 derniers jours',
+    no_receipt: 'Aucune réception récente.',
+    status: {
+      POSTED: 'Comptabilisée',
+      POSTED_PENDING_REVIEW: 'En revue',
+      QUARANTINED: 'En quarantaine',
+      REJECTED: 'Refusée',
+      REVIEW_REJECTED: 'Revue refusée',
+      CANCELLATION_PENDING: 'Annulation demandée',
+      CANCELLED: 'Annulée',
+    },
+    supplier_unknown: 'Fournisseur',
+    back: '← Bons de commande à recevoir',
+    not_found:
+      'Ce bon de commande n’est plus à recevoir (reçu, clôturé ou hors de vos emplacements).',
+    order_title: 'Réceptionner {{doc}}',
+    no_location:
+      'Aucun de vos emplacements n’appartient au site de livraison de ce bon de commande.',
+    location_label: 'Reçu sur',
+    delivery_note_label: 'N° du bon de livraison du fournisseur',
+    delivery_note_hint:
+      'Recommandé : il permet au serveur de repérer une livraison saisie deux fois.',
+    remaining: 'Reste à recevoir : {{quantity}} {{unit}}',
+    delivered_label: 'Livré ({{unit}})',
+    rejected_label: 'Rejeté ({{unit}})',
+    accepted: 'Accepté : {{quantity}} {{unit}}',
+    reason_label: 'Motif du rejet',
+    reason_placeholder: 'Choisir un motif',
+    no_reason:
+      'Aucun motif de rejet n’est paramétré : un rejet est impossible, demandez-le à l’administrateur.',
+    lot_label: 'Lot du fournisseur (facultatif)',
+    expiry_label: 'Péremption (facultatif)',
+    issue: {
+      QUANTITY_INVALID: 'Quantité invalide (au plus 3 décimales).',
+      REJECTED_OVER_DELIVERED: 'Le rejeté ne peut pas dépasser le livré.',
+      REASON_REQUIRED: 'Un rejet se justifie par un motif.',
+      EXPIRY_INVALID: 'Date de péremption invalide.',
+    },
+    over_online:
+      'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : le serveur refuserait la réception. Ne recevez que le reste.',
+    over_offline:
+      'Accepté au-delà du reste à recevoir de {{quantity}} {{unit}} : la réception sera mise en quarantaine pour validation.',
+    observations_label: 'Observations (facultatif)',
+    photo_hint:
+      'Au-delà de 100 000 F acceptés, le serveur exige la photo du bon de livraison, que l’application ne sait pas encore joindre : la réception serait alors refusée.',
+    submit: 'Enregistrer la réception',
+    result: {
+      WAITING_offline:
+        'Réception enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Réception en cours d’envoi…',
+      DONE: 'Réception enregistrée : {{doc}}.',
+      WARNING: 'Réception {{doc}} mise en quarantaine pour validation.',
+      CONFLICT: 'Réception mise en attente d’examen (conflit).',
+      REJECTED: 'Réception refusée : {{reason}}',
     },
   },
   price_sim: {

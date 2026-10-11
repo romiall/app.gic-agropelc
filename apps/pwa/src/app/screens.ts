@@ -31,6 +31,9 @@ export const ROUTES = {
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
   service: '/service',
+  purchaseReceipts: '/achats/receptions',
+  purchaseReceiptPattern: '/achats/receptions/:orderId',
+  purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
   priceSimulator: '/prix/simulateur',
   stock: '/stock',
   portfolio: '/clients',
@@ -131,6 +134,8 @@ export const ROLE_SETS = {
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
   lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
+  purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-STK-08 (`inventory.consumption.record`) : magasinier et responsable de ferme. */
   consumptionRecord: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-STK-05 (`inventory.count.perform`) : magasinier, vendeur de PDV, responsable de ferme. */
@@ -356,6 +361,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: ROLE_SETS.priceSimulator,
     actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-APP-04',
+    path: ROUTES.purchaseReceipts,
+    labelKey: 'purchase_receipt',
+    group: 'procurement',
+    roles: ROLE_SETS.purchaseReceipt,
+    // « Réceptionner » du magasinier, « Réceptions » du responsable de ferme.
+    actionCodes: ['RECEIVE', 'RECEIPTS'],
     offline: true,
   },
   {

@@ -183,6 +183,57 @@ export interface StockTransferData {
   }[];
 }
 
+/** (`procurement`, `GLOBAL`) fournisseur actif. */
+export interface SupplierData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
+/** (`procurement`, `SITE`) bon de commande envoyé ou reçu en partie ; quantités en unité de base. */
+export interface PurchaseOrderData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly site_id: string;
+  readonly supplier_id: string;
+  readonly delivery_location_id: string | null;
+  readonly expected_delivery_date: string | null;
+  readonly status: string;
+  readonly sent_at: string | null;
+  readonly version: number;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly line_no: number;
+    readonly product_id: string;
+    readonly unit_code: string;
+    readonly ordered_qty_base: string;
+    readonly accepted_qty_base: string;
+    readonly closed_qty_base: string;
+    readonly remaining_qty_base: string;
+    readonly status: string;
+  }[];
+}
+
+/** (`procurement`, `SITE`, 30 derniers jours) réception de marchandise. */
+export interface GoodsReceiptData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly purchase_order_id: string | null;
+  readonly supplier_id: string;
+  readonly location_id: string;
+  readonly supplier_delivery_note_ref: string | null;
+  readonly status: string;
+  readonly occurred_at: string;
+  readonly lines: readonly {
+    readonly id: string;
+    readonly po_line_id: string | null;
+    readonly product_id: string;
+    readonly qty_delivered_base: string;
+    readonly qty_rejected_base: string;
+    readonly qty_accepted_base: string;
+  }[];
+}
+
 /** (`counts`) inventaire d'un emplacement ; quantités en unité de base, chaînes décimales. */
 export interface InventoryCountData {
   readonly id: string;
