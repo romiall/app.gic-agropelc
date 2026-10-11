@@ -6,12 +6,13 @@
  * compte) sont annoncés avant l'envoi. Un compte sans position reçoit celle de la visite si elle est
  * précise (BR-CRM-014, `crm.customer.update`).
  */
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
+import { useGeolocation } from '../../platform/useGeolocation.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
@@ -21,7 +22,6 @@ import { openWorkSession } from '../sales/pricing.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
-import type { Position } from './prospect.js';
 import {
   checkVisit,
   customerPositionPayload,
@@ -35,10 +35,6 @@ import {
   type VisitDraft,
 } from './visit.js';
 
-const GPS_TIMEOUT_MS = 15_000;
-
-type GpsState = 'idle' | 'locating' | 'unavailable';
-
 export function NewVisitScreen() {
   const { t } = useTranslation();
   const { state } = useAuth();
@@ -51,9 +47,6 @@ export function NewVisitScreen() {
     ...EMPTY_VISIT,
     customerId: searchParams.get('client'),
   }));
-  const [gps, setGps] = useState<GpsState>(() =>
-    typeof navigator !== 'undefined' && navigator.geolocation ? 'locating' : 'unavailable',
-  );
   const [submitted, setSubmitted] = useState<{ visit: string; customerId: string }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -63,37 +56,10 @@ export function NewVisitScreen() {
 
   const update = (patch: Partial<VisitDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
-  const requestPosition = useCallback(() => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const value: Position = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyM: Number.isFinite(position.coords.accuracy)
-            ? Math.round(position.coords.accuracy)
-            : null,
-        };
-        setDraft((current) => ({ ...current, position: value }));
-        setGps('idle');
-      },
-      () => setGps('unavailable'),
-      { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS },
-    );
-  }, []);
-
   // Visite géolocalisée (03-parcours-et-ecrans.md, WF-J1) : la position est relevée à l'ouverture.
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.geolocation) requestPosition();
-  }, [requestPosition]);
-
-  const locate = () => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGps('unavailable');
-      return;
-    }
-    setGps('locating');
-    requestPosition();
-  };
+  const geo = useGeolocation();
+  // La position de la visite est la dernière relevée.
+  const effective: VisitDraft = { ...draft, position: geo.position };
 
   if (!refs || !userId) {
     return (
@@ -112,7 +78,7 @@ export function NewVisitScreen() {
           <button
             type="button"
             onClick={() => {
-              setDraft({ ...EMPTY_VISIT, position: draft.position });
+              setDraft(EMPTY_VISIT);
               setSubmitted(undefined);
             }}
           >
@@ -135,7 +101,7 @@ export function NewVisitScreen() {
     settingValue(refs.settings, 'crm.visit.max_distance_m', undefined, now) ??
       DEFAULT_VISIT_MAX_DISTANCE_M,
   );
-  const check = checkVisit(draft, {
+  const check = checkVisit(effective, {
     customer,
     session,
     maxDistanceM: Number.isFinite(maxDistanceM) ? maxDistanceM : DEFAULT_VISIT_MAX_DISTANCE_M,
@@ -144,7 +110,7 @@ export function NewVisitScreen() {
   const outcomes = visitOutcomes(refs.reasonCodes);
   const proposePosition = proposesCustomerPosition(
     customer,
-    draft.position,
+    effective.position,
     refs.outbox,
     refs.customersPulledAt,
   );
@@ -162,9 +128,9 @@ export function NewVisitScreen() {
         commandType: 'crm.visit.record',
         aggregateType: 'VISIT',
         dependsOn,
-        payload: visitPayload(draft),
+        payload: visitPayload(effective),
       });
-      if (proposePosition && draft.saveCustomerPosition && draft.position) {
+      if (proposePosition && draft.saveCustomerPosition && effective.position) {
         try {
           await submitCommand({
             authorUserId: userId,
@@ -174,7 +140,7 @@ export function NewVisitScreen() {
             // Compte créé sur l'appareil : pas encore de version servie.
             baseVersion: customer.pending_command_id ? null : customer.version,
             dependsOn,
-            payload: customerPositionPayload(draft.position),
+            payload: customerPositionPayload(effective.position),
           });
         } catch {
           // La visite est enregistrée ; la position du compte sera proposée à la prochaine visite.
@@ -197,7 +163,9 @@ export function NewVisitScreen() {
         </p>
       ) : null}
       {check.flags.includes('OUT_OF_SESSION') ? (
-        <p className="text-warn">{t('visit.out_of_session')}</p>
+        <p className="text-warn">
+          {t('visit.out_of_session')} <Link to={ROUTES.service}>{t('visit.take_service')}</Link>
+        </p>
       ) : null}
       {check.flags.includes('SESSION_REJECTED') ? (
         <p className="text-warn">{t('visit.session_rejected')}</p>
@@ -215,11 +183,11 @@ export function NewVisitScreen() {
 
       <div className="field">
         <span className="field-label">{t('visit.position_label')}</span>
-        {draft.position ? (
+        {effective.position ? (
           <p className="home-muted">
-            {t('visit.position_value', { accuracy: draft.position.accuracyM ?? '?' })}
+            {t('visit.position_value', { accuracy: effective.position.accuracyM ?? '?' })}
           </p>
-        ) : gps === 'unavailable' ? (
+        ) : geo.state === 'unavailable' ? (
           <p className="text-warn">{t('visit.gps_unavailable')}</p>
         ) : null}
         {check.flags.includes('FAR_FROM_CUSTOMER') && check.distanceToCustomerM !== null ? (
@@ -230,8 +198,13 @@ export function NewVisitScreen() {
             })}
           </p>
         ) : null}
-        <button type="button" className="secondary" onClick={locate} disabled={gps === 'locating'}>
-          {gps === 'locating' ? t('visit.locating') : t('visit.locate')}
+        <button
+          type="button"
+          className="secondary"
+          onClick={geo.locate}
+          disabled={geo.state === 'locating'}
+        >
+          {geo.state === 'locating' ? t('visit.locating') : t('visit.locate')}
         </button>
         {proposePosition ? (
           <label className="choice">

@@ -30,6 +30,7 @@ export const ROUTES = {
   deliverPattern: '/commandes/:orderId/livrer',
   deliver: (orderId: string) => `/commandes/${orderId}/livrer`,
   collect: '/encaisser',
+  service: '/service',
   stock: '/stock',
   portfolio: '/clients',
   newProspect: '/clients/nouveau',
@@ -108,6 +109,8 @@ export const ROLE_SETS = {
   ],
   /** ECR-CRM-01 : commerciaux et responsable commercial (03-parcours-et-ecrans.md §3). */
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
+  /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
+  fieldwork: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `crm.visit.record` (01-rbac.md) : commercial terrain et responsable commercial. */
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */
@@ -239,6 +242,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'crm',
     roles: ROLE_SETS.customerCreate,
     actionCodes: ['NEW_PROSPECT'],
+    offline: true,
+  },
+  {
+    id: 'ECR-TER-01',
+    path: ROUTES.service,
+    labelKey: 'service',
+    group: 'crm',
+    roles: ROLE_SETS.fieldwork,
+    actionCodes: ['START_SERVICE'],
     offline: true,
   },
   {

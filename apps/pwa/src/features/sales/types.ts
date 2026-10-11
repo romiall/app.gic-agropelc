@@ -66,6 +66,11 @@ export interface ZoneData {
   readonly depth: number;
   /** Booléen, ou 0/1 selon la sérialisation de la ligne ; absent : active. */
   readonly is_active?: boolean | number;
+  /** Géorepère de prise de service (chaînes décimales), absent ou nul s'il n'y en a pas. */
+  readonly geofence_lat?: string | number | null;
+  readonly geofence_lng?: string | number | null;
+  readonly geofence_radius_m?: string | number | null;
+  readonly max_gps_accuracy_m?: string | number | null;
 }
 
 /** (`site`) */
@@ -225,6 +230,10 @@ export interface WorkSessionData {
   readonly status: string;
   /** Dérogation de prise de service : `NOT_REQUIRED`, `PENDING`, `APPROVED` ou `REJECTED`. */
   readonly override_status?: string;
+  /** Session ouverte sur l'appareil, pas encore retéléchargée : la commande qui l'ouvre. */
+  readonly pending_command_id?: string;
+  /** Fin calculée sur l'appareil : clôture automatique à 23:59 (BR-TER-008). */
+  readonly auto_close?: boolean;
 }
 
 /** (`cash`) compte de trésorerie actif du détenteur, du responsable ou du site. */

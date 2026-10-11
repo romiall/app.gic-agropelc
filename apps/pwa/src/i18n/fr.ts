@@ -99,6 +99,7 @@ export const fr = {
       new_prospect: '+ Prospect',
       portfolio: 'Mon portefeuille',
       new_visit: '+ Visite',
+      service: 'Prendre / finir le service',
       loss: 'Déclarer une perte',
       receive: 'Recevoir un transfert',
     },
@@ -536,6 +537,7 @@ export const fr = {
       'Votre rôle ne permet peut-être pas d’enregistrer une visite ; le serveur tranchera.',
     submit: 'Enregistrer la visite',
     another: 'Autre visite',
+    take_service: 'Prendre service',
     to_customer: 'Voir la fiche du compte',
     result: {
       WAITING_offline:
@@ -545,6 +547,92 @@ export const fr = {
       WARNING: 'Visite enregistrée, avec un signalement.',
       CONFLICT: 'Visite mise en attente d’examen (conflit).',
       REJECTED: 'Visite refusée : {{reason}}',
+    },
+  },
+  service: {
+    offline_banner:
+      'Hors ligne : la tentative est évaluée sur ce téléphone et enregistrée ; elle sera envoyée au retour du réseau.',
+    start_title: 'Prendre service',
+    zone_label: 'Zone de travail',
+    zone_placeholder: 'Choisir la zone',
+    no_zone:
+      'Aucune zone avec géorepère n’est connue de ce téléphone : synchronisez, ou demandez à l’administrateur de définir le géorepère de votre zone.',
+    position_label: 'Position',
+    locate: 'Relever ma position',
+    locating: 'Localisation…',
+    gps_unavailable: 'Position indisponible : autorisez la localisation, puis relevez à nouveau.',
+    gps_unavailable_end:
+      'Position indisponible : la fin de service sera enregistrée sans position (signalée).',
+    position_value: 'Position relevée (précision {{accuracy}} m).',
+    evaluation: {
+      ACCEPTED: 'Dans la zone : à {{distance}} m du centre (rayon {{radius}} m).',
+      REJECTED_OUT_OF_ZONE:
+        'Hors de la zone : à {{distance}} m du centre (rayon {{radius}} m). Rapprochez-vous puis relevez à nouveau.',
+      REJECTED_LOW_ACCURACY:
+        'Position trop imprécise (± {{accuracy}} m, au plus {{max}} m) : attendez quelques secondes puis relevez à nouveau.',
+      NO_POSITION: 'Position indisponible : autorisez la localisation, puis relevez à nouveau.',
+    },
+    role_hint: 'Votre rôle ne permet peut-être pas de pointer ; le serveur tranchera.',
+    start: 'PRENDRE SERVICE',
+    in_service_title: 'En service',
+    in_service: 'En service depuis {{time}} — zone {{zone}}.',
+    auto_close: 'Sans fin de service, la session se termine automatiquement à {{time}}.',
+    override_pending:
+      'Prise de service par dérogation : en attente de validation par votre responsable. Vos visites sont enregistrées.',
+    override_rejected:
+      'Dérogation refusée : vos visites de cette session sont signalées à votre responsable.',
+    end: 'FIN DE SERVICE',
+    override_label: 'Demander une dérogation',
+    override_hint:
+      'Plusieurs tentatives ont été refusées. Expliquez pourquoi : la session s’ouvrira en attente de validation.',
+    override_submit: 'Demander la dérogation',
+    attempts_title: 'Pointages du jour',
+    no_attempt: 'Aucun pointage aujourd’hui sur ce téléphone.',
+    type: {
+      START_SERVICE: 'Prise de service',
+      END_SERVICE: 'Fin de service',
+    },
+    attempt_result: {
+      ACCEPTED: 'acceptée',
+      REJECTED_OUT_OF_ZONE: 'hors zone',
+      REJECTED_LOW_ACCURACY: 'position imprécise',
+      NO_POSITION: 'sans position',
+    },
+    result_START: {
+      WAITING_offline:
+        'Service pris sur ce téléphone ; le pointage sera envoyé au retour du réseau.',
+      WAITING_online: 'Pointage en cours d’envoi…',
+      DONE: 'Service pris.',
+      WARNING: 'Service pris, avec un signalement.',
+      CONFLICT: 'Pointage mis en attente d’examen (conflit).',
+      REJECTED: 'Pointage refusé : {{reason}}',
+    },
+    result_ATTEMPT: {
+      WAITING_offline:
+        'Tentative refusée sur ce téléphone, enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Tentative refusée, en cours d’envoi…',
+      DONE: 'Tentative refusée enregistrée.',
+      WARNING: 'Tentative refusée enregistrée, avec un signalement.',
+      CONFLICT: 'Tentative mise en attente d’examen (conflit).',
+      REJECTED: 'Tentative refusée par le serveur : {{reason}}',
+    },
+    result_END: {
+      WAITING_offline:
+        'Fin de service enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Fin de service en cours d’envoi…',
+      DONE: 'Fin de service enregistrée.',
+      WARNING: 'Fin de service enregistrée, avec un signalement.',
+      CONFLICT: 'Fin de service mise en attente d’examen (conflit).',
+      REJECTED: 'Fin de service refusée : {{reason}}',
+    },
+    result_OVERRIDE: {
+      WAITING_offline:
+        'Dérogation demandée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Demande de dérogation en cours d’envoi…',
+      DONE: 'Dérogation demandée : session ouverte, en attente de validation.',
+      WARNING: 'Dérogation demandée, avec un signalement.',
+      CONFLICT: 'Demande de dérogation mise en attente d’examen (conflit).',
+      REJECTED: 'Dérogation refusée : {{reason}}',
     },
   },
   receive: {

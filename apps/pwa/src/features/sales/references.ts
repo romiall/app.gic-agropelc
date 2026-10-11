@@ -8,6 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { PriceRule } from '@gic/domain';
 import { getDb, type GicDatabase, type OutboxCommand } from '../../storage/db.js';
 import { listProjected } from '../../storage/projections.js';
+import { deviceWorkSessions } from '../fieldwork/service.js';
 import { toPriceRules } from './pricing.js';
 import { stillInFlight } from './pending.js';
 import { pendingConsumption, stockKey } from './stock.js';
@@ -229,6 +230,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     ordersCursor,
     customersCursor,
     activityCursor,
+    fieldworkCursor,
     meta,
     products,
     productUnits,
@@ -258,6 +260,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     db.syncCursors.get('orders'),
     db.syncCursors.get('customers'),
     db.syncCursors.get('crm_activity'),
+    db.syncCursors.get('fieldwork'),
     db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
@@ -280,7 +283,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
         (command) =>
           command.command_type.startsWith('sales.') ||
           command.command_type.startsWith('inventory.') ||
-          command.command_type.startsWith('crm.'),
+          command.command_type.startsWith('crm.') ||
+          command.command_type.startsWith('fieldwork.'),
       )
       .toArray(),
   ]);
@@ -310,7 +314,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     paymentMethods: paymentMethods.filter((method) => method.is_active),
     reasonCodes: reasonCodes.filter((reason) => reason.is_active),
     settings,
-    workSessions,
+    workSessions: deviceWorkSessions(workSessions, ownOutbox, fieldworkCursor?.pulled_at),
     orders: orderMap,
     sales,
     payments,
