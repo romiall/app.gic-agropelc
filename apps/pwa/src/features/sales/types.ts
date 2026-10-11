@@ -189,6 +189,15 @@ export interface StockTransferData {
   }[];
 }
 
+/** (`product_category`, repli générique `GLOBAL`) catégorie de produit. */
+export interface ProductCategoryData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly parent_id: string | null;
+  readonly is_active?: boolean | number;
+}
+
 /** (`production`, `SITE`) lot de production planifié, actif ou en vente. */
 export interface ProductionLotData {
   readonly id: string;

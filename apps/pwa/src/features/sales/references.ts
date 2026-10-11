@@ -24,6 +24,7 @@ import type {
   LotLossData,
   LotObservationData,
   LotWeighingData,
+  ProductCategoryData,
   ProductionLotData,
   PurchaseOrderData,
   PurchaseRequestData,
@@ -80,6 +81,8 @@ export interface SalesReferences {
    * de fusion, BR-CRM-007). Leurs ventes, commandes et visites se rattachent au compte conservé.
    */
   readonly customerAlias: ReadonlyMap<string, string>;
+  /** Catégories de produit (jeu `product_category`). */
+  readonly productCategories: readonly ProductCategoryData[];
   /** Production (jeu `production`) : lots et saisies des 30 derniers jours. */
   readonly productionLots: readonly ProductionLotData[];
   readonly lotLosses: readonly LotLossData[];
@@ -280,6 +283,7 @@ export function pendingInteractions(
 
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
+    productCategories,
     productionLots,
     lotLosses,
     lotConsumptions,
@@ -325,6 +329,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     payments,
     outbox,
   ] = await Promise.all([
+    listProjected<ProductCategoryData>(db, 'product_category', 'PRODUCT_CATEGORY'),
     listProjected<ProductionLotData>(db, 'production', 'PRODUCTION_LOT'),
     listProjected<LotLossData>(db, 'production', 'LOT_LOSS'),
     listProjected<LotConsumptionData>(db, 'production', 'LOT_CONSUMPTION'),
@@ -377,7 +382,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
           command.command_type.startsWith('fieldwork.') ||
           command.command_type.startsWith('procurement.') ||
           command.command_type.startsWith('production.') ||
-          command.command_type.startsWith('pricing.'),
+          command.command_type.startsWith('pricing.') ||
+          command.command_type.startsWith('catalog.'),
       )
       .toArray(),
   ]);
@@ -420,6 +426,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...pendingInteractions(ownOutbox, interactions, activityCursor?.pulled_at),
     ],
     customerAlias: mergeAliases(customers),
+    productCategories: [...productCategories].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
     productionLots,
     lotLosses,
     lotConsumptions,

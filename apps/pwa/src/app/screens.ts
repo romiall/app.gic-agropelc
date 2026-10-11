@@ -42,6 +42,7 @@ export const ROUTES = {
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
   priceSimulator: '/prix/simulateur',
   priceRules: '/prix/regles',
+  catalog: '/catalogue',
   stock: '/stock',
   portfolio: '/clients',
   performance: '/objectifs',
@@ -133,6 +134,8 @@ export const ROLE_SETS = {
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** ECR-PRX-02 : rédaction (`pricing.rule.draft`) ; activation et fin par la Direction (AV-062). */
   priceRules: ['RESP_COMMERCIAL', 'DIRECTION'],
+  /** ECR-PRX-01 : `catalog.product.manage`, `catalog.reference.manage` (01-rbac.md) : administrateur. */
+  catalog: ['ADMIN'],
   /** ECR-PRX-03 : responsable commercial et direction (03-parcours-et-ecrans.md §3.2). */
   priceSimulator: ['RESP_COMMERCIAL', 'DIRECTION'],
   /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
@@ -392,6 +395,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.priceSimulator,
     actionCodes: [],
     offline: true,
+  },
+  {
+    id: 'ECR-PRX-01',
+    path: ROUTES.catalog,
+    labelKey: 'catalog',
+    group: 'general',
+    roles: ROLE_SETS.catalog,
+    // Aucune action de l'accueil de l'administrateur n'y mène encore (S-26) : menu seulement.
+    actionCodes: [],
+    offline: false,
   },
   {
     id: 'ECR-APP-02',
