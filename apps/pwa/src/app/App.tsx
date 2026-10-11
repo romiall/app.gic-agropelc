@@ -19,6 +19,7 @@ import { ReceiveTransferScreen } from '../features/stock/ReceiveTransferScreen.j
 import { CountScreen } from '../features/stock/CountScreen.js';
 import { TransferScreen } from '../features/stock/TransferScreen.js';
 import { CustomerScreen } from '../features/crm/CustomerScreen.js';
+import { InteractionScreen } from '../features/crm/InteractionScreen.js';
 import { NewProspectScreen } from '../features/crm/NewProspectScreen.js';
 import { NewVisitScreen } from '../features/crm/NewVisitScreen.js';
 import { ServiceScreen } from '../features/fieldwork/ServiceScreen.js';
@@ -103,6 +104,7 @@ function AppShell() {
             <Route path={ROUTES.newVisit} element={<NewVisitScreen />} />
             <Route path={ROUTES.service} element={<ServiceScreen />} />
             <Route path={ROUTES.customerPattern} element={<CustomerScreen />} />
+            <Route path={ROUTES.interactionPattern} element={<InteractionScreen />} />
           </Routes>
         </ErrorBoundary>
       </main>

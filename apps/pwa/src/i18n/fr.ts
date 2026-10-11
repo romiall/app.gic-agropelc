@@ -494,6 +494,7 @@ export const fr = {
     credit_limit: 'Plafond {{amount}}',
     sell: '+ Vente',
     visit_action: '+ Visite',
+    interaction_action: 'Noter un échange',
     order: '+ Commande',
     collect: 'Encaisser',
     orders_title: 'Commandes ouvertes',
@@ -550,6 +551,33 @@ export const fr = {
       WARNING: 'Visite enregistrée, avec un signalement.',
       CONFLICT: 'Visite mise en attente d’examen (conflit).',
       REJECTED: 'Visite refusée : {{reason}}',
+    },
+  },
+  interaction: {
+    title: 'Noter un échange',
+    back: '← Fiche du compte',
+    offline_banner:
+      'Hors ligne : l’échange sera enregistré sur ce téléphone et envoyé au retour du réseau.',
+    channel_label: 'Canal',
+    direction_label: 'Sens',
+    direction: {
+      SORTANT: 'Vers le client',
+      ENTRANT: 'Du client',
+    },
+    summary_label: 'Résumé (facultatif)',
+    issue: {
+      CHANNEL_REQUIRED: 'Choisissez le canal de l’échange.',
+    },
+    role_hint: 'Votre rôle ne permet peut-être pas de noter un échange ; le serveur tranchera.',
+    submit: 'Enregistrer l’échange',
+    another: 'Autre échange',
+    result: {
+      WAITING_offline: 'Échange enregistré sur ce téléphone ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Échange en cours d’envoi…',
+      DONE: 'Échange enregistré.',
+      WARNING: 'Échange enregistré, avec un signalement.',
+      CONFLICT: 'Échange mis en attente d’examen (conflit).',
+      REJECTED: 'Échange refusé : {{reason}}',
     },
   },
   service: {

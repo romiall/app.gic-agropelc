@@ -38,6 +38,8 @@ export const ROUTES = {
   newVisitFor: (customerId: string) => `/clients/visite?client=${encodeURIComponent(customerId)}`,
   customerPattern: '/clients/:customerId',
   customer: (customerId: string) => `/clients/${customerId}`,
+  interactionPattern: '/clients/:customerId/echange',
+  interaction: (customerId: string) => `/clients/${customerId}/echange`,
   loss: '/stock/perte',
   receive: '/stock/receptions',
   receivePattern: '/stock/receptions/:transferId',
@@ -115,6 +117,8 @@ export const ROLE_SETS = {
   portfolio: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** `fieldwork.checkin.perform` (01-rbac.md) : commercial terrain et responsable commercial. */
   fieldwork: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
+  /** `crm.interaction.record` (01-rbac.md) : commerciaux et responsable commercial. */
+  interactionRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN', 'COMMERCIAL_SEDENTAIRE'],
   /** `crm.visit.record` (01-rbac.md) : commercial terrain et responsable commercial. */
   visitRecord: ['RESP_COMMERCIAL', 'COMMERCIAL_TERRAIN'],
   /** `inventory.loss.declare` : détenteurs de stock. */

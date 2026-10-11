@@ -133,6 +133,11 @@ export function CustomerScreen() {
             <span className="action-label">{t('customer.visit_action')}</span>
           </Link>
         ) : null}
+        {holdsAnyRole(roles, ROLE_SETS.interactionRecord) ? (
+          <Link to={ROUTES.interaction(customer.id)} className="action action-compact">
+            <span className="action-label">{t('customer.interaction_action')}</span>
+          </Link>
+        ) : null}
         {holdsAnyRole(roles, ROLE_SETS.orderCreate) ? (
           <Link to={ROUTES.newOrderFor(customer.id)} className="action action-compact">
             <span className="action-label">{t('customer.order')}</span>
