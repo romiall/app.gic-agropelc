@@ -452,6 +452,10 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       stockCursor?.pulled_at,
       byId(productionLots),
       transferMap,
+      byId(goodsReceipts),
+      new Map(
+        balances.map((balance) => [stockKey(balance.location_id, balance.product_id), balance]),
+      ),
     ),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),

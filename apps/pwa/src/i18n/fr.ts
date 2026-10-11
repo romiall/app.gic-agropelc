@@ -1338,6 +1338,13 @@ export const fr = {
       'Mirage : {{counted}} œufs retirés, mais il n’en reste que {{remaining}} dans l’incubateur.',
     hatch_unbalanced:
       'Éclosion : {{counted}} œufs comptés pour {{remaining}} restants ; le total doit être égal.',
+    stock_gap:
+      'Écart de stock à confirmer : {{gap}} œufs de moins en stock que le restant annoncé (perte déclarée ?). L’éclosion se contrôle sur le stock.',
+    stock_stale:
+      'Plus aucun œuf de ce lot en stock alors que le lot en annonce : données à resynchroniser avant l’éclosion.',
+    other_author_waiting:
+      'Une étape saisie par un autre utilisateur de ce téléphone attend sa synchronisation : l’éclosion attend.',
+    pending_loss_hold: 'Éclosion suspendue jusqu’à la confirmation de la perte en attente.',
     pending_loss:
       'Une perte de ce lot saisie sur ce téléphone n’est pas encore confirmée : si elle attend une validation, le serveur refusera l’éclosion jusqu’à la décision.',
     save_hatch: 'Enregistrer l’éclosion',
@@ -1421,6 +1428,8 @@ export const fr = {
     stock_source: '{{product}} — {{place}} ({{quantity}})',
     stock_lot_label: 'Lot de stock d’origine',
     fifo: 'Le plus ancien d’abord',
+    lot_fifo_risk:
+      'Des sorties sans lot désigné attendent l’envoi : le serveur peut les prendre sur ce lot (le plus ancien d’abord) et le trouver insuffisant.',
     stock_lot_required:
       'Ce stock contient aussi des animaux d’un lot de production : désignez le lot de stock d’origine.',
     no_receipt:
@@ -2126,6 +2135,9 @@ export const fr = {
     product_placeholder: 'Choisir le produit',
     lot_label: 'Lot',
     lot_fifo: 'Le plus ancien (choisi par le serveur)',
+    lot_choose: 'Choisir le lot',
+    lot_required_incubation:
+      'Incubateur ou éclosoir : désignez le lot d’incubation touché (sinon le bilan d’un autre lot serait faussé).',
     category_label: 'Nature de la perte',
     categories: {
       CASSE: 'Casse',

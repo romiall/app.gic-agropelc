@@ -420,7 +420,120 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     };
     expect(
       stockSources(placedLot, target).find((source) => source.locationId === STORE)?.lots,
-    ).toEqual([{ lotId: SUPPLIER_LOT_2, lotCode: 'L-500', quantity: 500 }]);
+    ).toEqual([{ lotId: SUPPLIER_LOT_2, lotCode: 'L-500', quantity: 500, cautious: 500 }]);
+  });
+
+  it('attente par lot tirée de l’outbox : clés emplacement:produit:lot, réception imputée, entrées exclues', async () => {
+    const db = getDb();
+    const RECEIPT_1 = '01900000-0000-7000-8000-0000000006b1';
+    const RECEIPT_2 = '01900000-0000-7000-8000-0000000006b2';
+    const receiptProjection = (id: string, lotId: string, accepted: number) => ({
+      key: `procurement:GOODS_RECEIPT:${id}`,
+      dataset: 'procurement',
+      entity_type: 'GOODS_RECEIPT',
+      entity_id: id,
+      scope_type: 'SITE',
+      scope_id: FARM,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id,
+        doc_number: `REC-${id.slice(-2)}`,
+        purchase_order_id: null,
+        supplier_id: 'f1',
+        location_id: STORE,
+        supplier_delivery_note_ref: null,
+        status: 'POSTED',
+        occurred_at: '2026-10-09T08:00:00.000Z',
+        lines: [
+          {
+            id: `${id}-l`,
+            po_line_id: null,
+            product_id: CHICK,
+            qty_delivered_base: String(accepted),
+            qty_rejected_base: '0',
+            qty_accepted_base: String(accepted),
+            stock_lot_id: lotId,
+          },
+        ],
+      },
+    });
+    await db.projections.bulkPut([
+      receiptProjection(RECEIPT_1, SUPPLIER_LOT, 100),
+      receiptProjection(RECEIPT_2, SUPPLIER_LOT_2, 50),
+      balance(STORE, CHICK, [
+        { id: SUPPLIER_LOT, qty: '100' },
+        { id: SUPPLIER_LOT_2, qty: '50' },
+      ]),
+    ]);
+    const entry = (payload: object, seq: number) => ({
+      command_id: `01900000-0000-7000-8000-00000000${String(seq).padStart(4, '0')}`,
+      device_seq: seq,
+      command_type: 'production.lot.record_entry',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'LOT_ENTRY',
+      aggregate_id: `01900000-0000-7000-8000-00000001${String(seq).padStart(4, '0')}`,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload,
+      status: 'LOCAL_ONLY' as const,
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    await db.outbox.bulkAdd([
+      // Mise en place de 100 têtes depuis la réception 1 : imputée à son lot fournisseur.
+      entry(
+        {
+          productionLotId: LOT_B,
+          sourceKind: 'PURCHASE',
+          quantity: 100,
+          goodsReceiptId: RECEIPT_1,
+          sourceProductId: CHICK,
+        },
+        1,
+      ),
+      // Transfert de 30 têtes du lot A depuis le bâtiment : clé du lot de stock du lot A.
+      entry(
+        {
+          productionLotId: LOT_B,
+          sourceKind: 'TRANSFER',
+          quantity: 30,
+          sourceProductionLotId: LOT_A,
+          sourceLocationId: BUILDING,
+        },
+        2,
+      ),
+    ]);
+    const refs = await loadSalesReferences(db);
+    expect(refs.pendingLots.get(`${STORE}:${CHICK}:${SUPPLIER_LOT}`)).toBe(100);
+    expect(refs.pendingLots.get(`${BUILDING}:${BROILER}:${STOCK_LOT_A}`)).toBe(30);
+    // La réception 2, sur un autre lot, reste entièrement disponible ; la 1 est épuisée.
+    const receipt2 = refs.goodsReceipts.find((receipt) => receipt.id === RECEIPT_2);
+    const receipt1 = refs.goodsReceipts.find((receipt) => receipt.id === RECEIPT_1);
+    if (!receipt1 || !receipt2) throw new Error('réceptions absentes');
+    expect(receiptAvailable(refs, receipt2, CHICK)).toBe(50);
+    expect(receiptAvailable(refs, receipt1, CHICK)).toBe(0);
+    // Une réception d'achat en attente sur le magasin (entrée) ne regonfle pas la réception 1.
+    await db.outbox.add({
+      ...entry({ locationId: STORE, lines: [] }, 3),
+      command_type: 'procurement.receipt.record',
+      aggregate_type: 'GOODS_RECEIPT',
+      payload: {
+        locationId: STORE,
+        lines: [{ productId: CHICK, qtyDeliveredBase: 200, qtyRejectedBase: 0 }],
+      },
+    });
+    const withIncoming = await loadSalesReferences(db);
+    expect(receiptAvailable(withIncoming, receipt1, CHICK)).toBe(0);
+    expect(withIncoming.pendingOut.get(`${STORE}:${CHICK}`)).toBe(100);
   });
 
   it('lots créés sur une tablette partagée : seuls ceux de l’utilisateur reçoivent ses entrées', async () => {

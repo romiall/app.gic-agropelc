@@ -78,12 +78,14 @@ function BatchCard({
   refs,
   send,
   blocked,
+  online,
   userId,
 }: {
   readonly batch: BatchView;
   readonly refs: SalesReferences;
   readonly send: Send;
   readonly blocked: boolean;
+  readonly online: boolean;
   readonly userId: string;
 }) {
   const { t } = useTranslation();
@@ -104,7 +106,18 @@ function BatchCard({
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
-  const remaining = eggsRemaining(batch.counters);
+  // Restant affiché (jeu `production`) et restant contrôlé (borné par le stock réel du lot).
+  const shownRemaining = eggsRemaining(batch.counters);
+  const remaining = eggsRemaining(batch.checkCounters);
+  // Éclosion suspendue : étape d'un autre utilisateur en attente, stock épuisé alors que le jeu
+  // annonce des œufs (données périmées), ou perte en attente (en ligne, le serveur refuserait).
+  const hatchHold = batch.otherAuthorWaiting
+    ? 'incubation.other_author_waiting'
+    : batch.stockStale
+      ? 'incubation.stock_stale'
+      : online && batch.pendingLoss
+        ? 'incubation.pending_loss_hold'
+        : null;
   const hatcherList = hatchers(refs.locations, batch.siteId);
   const outputs = refs.locations
     .filter(
@@ -196,10 +209,20 @@ function BatchCard({
           set: formatQuantity(batch.counters.eggsSet),
           removed: formatQuantity(batch.counters.infertile + batch.counters.earlyDead),
           lost: formatQuantity(batch.counters.accidentalLoss),
-          remaining: formatQuantity(remaining),
+          remaining: formatQuantity(shownRemaining),
         })}
       </p>
+      {batch.stockGap > 0 && !batch.stockStale ? (
+        <p className="text-warn">
+          {t('incubation.stock_gap', { gap: formatQuantity(batch.stockGap) })}
+        </p>
+      ) : null}
       {batch.pendingLoss ? <p className="text-warn">{t('incubation.pending_loss')}</p> : null}
+      {hatchHold ? (
+        <p className="text-warn" role="status">
+          {t(hatchHold)}
+        </p>
+      ) : null}
       {batch.expectedHatchDate ? (
         <p className="home-muted">
           {t('incubation.schedule', {
@@ -239,7 +262,7 @@ function BatchCard({
             <button
               type="button"
               className="secondary"
-              disabled={blocked}
+              disabled={blocked || hatchHold !== null}
               onClick={() => open('HATCH')}
             >
               {t('incubation.hatch')}
@@ -485,6 +508,9 @@ function StartBatch({
     ? (source.lots.find((lot) => lot.lotId === lotId)?.quantity ?? source.quantity)
     : null;
   const over = eggs !== null && available !== null && eggs > available;
+  // Lot désigné : des sorties sans lot en attente peuvent le toucher (le plus ancien d'abord).
+  const chosenLot = source?.lots.find((lot) => lot.lotId === lotId);
+  const lotRisk = !over && eggs !== null && chosenLot !== undefined && eggs > chosenLot.cautious;
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
   const ready =
     siteId !== '' &&
@@ -717,6 +743,7 @@ function StartBatch({
           <p className="text-warn">{t('incubation.over_offline')}</p>
         )
       ) : null}
+      {lotRisk ? <p className="text-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
       <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
         {t('incubation.start')}
       </button>
@@ -811,6 +838,7 @@ export function IncubationScreen() {
                   refs={refs}
                   send={send}
                   blocked={blocked}
+                  online={online}
                   userId={userId}
                 />
               ))}

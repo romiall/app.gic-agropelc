@@ -32,7 +32,7 @@ import {
 } from '@gic/domain';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { lotStockKey, pendingOnLots, stockKey } from '../sales/stock.js';
+import { lotStockKey, pendingOnLots, pendingWithoutLot, stockKey } from '../sales/stock.js';
 import { locationHeadcount, rearingHeadcount, rearingLocations } from './daily.js';
 import type {
   GoodsReceiptData,
@@ -305,6 +305,11 @@ export interface StockSource {
     readonly lotId: string;
     readonly lotCode: string;
     readonly quantity: number;
+    /**
+     * Prudente : moins aussi les sorties en attente sans lot désigné, que le serveur peut prendre sur
+     * ce lot s'il est le plus ancien (avertissement seulement).
+     */
+    readonly cautious: number;
   }[];
   readonly quantity: number;
   /**
@@ -318,7 +323,7 @@ export interface StockSource {
 export function stockSources(
   refs: Pick<
     SalesReferences,
-    'stock' | 'locations' | 'products' | 'productionLots' | 'pending' | 'pendingLots'
+    'stock' | 'locations' | 'products' | 'productionLots' | 'pending' | 'pendingOut' | 'pendingLots'
   >,
   lot: EntryLot,
 ): StockSource[] {
@@ -380,10 +385,20 @@ export function stockSources(
     sources.push({
       locationId: balance.location_id,
       productId: balance.product_id,
-      lots: lots.map((stockLot) => ({
-        ...stockLot,
-        quantity: Math.min(stockLot.quantity, quantity),
-      })),
+      lots: lots.map((stockLot) => {
+        const lotQuantity = Math.min(stockLot.quantity, quantity);
+        return {
+          ...stockLot,
+          quantity: lotQuantity,
+          cautious: Math.max(
+            0,
+            Math.round(
+              (lotQuantity - pendingWithoutLot(refs, balance.location_id, balance.product_id)) *
+                1000,
+            ) / 1000,
+          ),
+        };
+      }),
       quantity,
       fifo,
     });
@@ -395,8 +410,10 @@ export function stockSources(
  * Têtes d'un produit d'une réception encore à mettre en place, comme les compte le serveur : sur chaque
  * ligne, l'accepté borné par le solde de son lot fournisseur à l'emplacement de réception, net des
  * sorties de l'appareil qui désignent ce lot (l'accepté seul si l'appareil ne connaît pas encore ce
- * lot sur l'emplacement) ; puis moins les sorties en attente sans lot désigné (le serveur les prend au
- * plus ancien). Les entrées en attente (une autre réception) ne regonflent jamais une réception.
+ * lot sur l'emplacement) — une mise en place en attente depuis une réception y est imputée aux lots de
+ * ses lignes, comme le serveur ; puis moins les sorties en attente sans lot désigné (le serveur les
+ * prend au plus ancien). Les entrées en attente (une autre réception) ne regonflent jamais une
+ * réception.
  */
 export function receiptAvailable(
   refs: Pick<SalesReferences, 'stock' | 'pendingOut' | 'pendingLots'>,

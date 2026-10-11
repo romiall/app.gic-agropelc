@@ -89,6 +89,75 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     expect(refs.pending.get(`${IDS.pos}:${IDS.eggs}`)).toBe(60);
   });
 
+  it('éclosoir : le lot d’incubation se désigne (présélectionné s’il est seul)', async () => {
+    const db = getDb();
+    const HATCHER = '01900000-0000-7000-8000-0000000008f1';
+    const projection = (dataset: string, type: string, id: string, data: object, key?: string) => ({
+      key: key ?? `${dataset}:${type}:${id}`,
+      dataset,
+      entity_type: type,
+      entity_id: id,
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id, ...data } as Record<string, unknown>,
+    });
+    const eggs = (lots: { id: string; qty: string }[]) =>
+      projection(
+        'stock',
+        'STOCK_BALANCE',
+        IDS.eggs,
+        {
+          location_id: HATCHER,
+          product_id: IDS.eggs,
+          qty_on_hand: String(lots.reduce((sum, lot) => sum + Number(lot.qty), 0)),
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: lots.map((lot) => ({ lot_id: lot.id, lot_code: lot.id, qty_on_hand: lot.qty })),
+        },
+        `stock:STOCK_BALANCE:${HATCHER}:${IDS.eggs}`,
+      );
+    await db.projections.bulkPut([
+      projection('location', 'LOCATION', HATCHER, {
+        site_id: IDS.site,
+        code: 'ECL-1',
+        name: 'Éclosoir 1',
+        location_type: 'HATCHER',
+        is_virtual: false,
+        custody_mode: 'SHARED',
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      }),
+      eggs([
+        { id: 'INC-1', qty: '100' },
+        { id: 'INC-2', qty: '80' },
+      ]),
+    ]);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Emplacement'), HATCHER);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText('Quantité'), '10');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    // Deux lots d'incubation : le lot se désigne avant de déclarer.
+    expect(screen.getByText(/désignez le lot d’incubation touché/)).toBeInTheDocument();
+    const declare = screen.getByRole('button', { name: 'Déclarer la perte' });
+    expect(declare).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Lot'), 'INC-2');
+    await user.click(declare);
+    expect(await screen.findByText(/Perte enregistrée sur ce téléphone/)).toBeInTheDocument();
+    const [command] = await getDb().outbox.toArray();
+    expect(command?.payload).toMatchObject({ locationId: HATCHER, lotId: 'INC-2' });
+  });
+
   it('au-delà du disponible : bloquée en ligne (BR-STK-017), signalée hors ligne (BR-STK-018)', async () => {
     const user = userEvent.setup();
     const { unmount } = render(

@@ -296,7 +296,7 @@ describe('Incubation (ECR-PRD-06)', () => {
       {
         locationId: STORE,
         quantity: 300,
-        lots: [{ lotId: COLLECTION_LOT, lotCode: 'COL-1', quantity: 300 }],
+        lots: [{ lotId: COLLECTION_LOT, lotCode: 'COL-1', quantity: 300, cautious: 300 }],
         fifo: true,
       },
     ]);
@@ -419,9 +419,11 @@ describe('Incubation (ECR-PRD-06)', () => {
       eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 355 }]),
     );
     let refs = await loadSalesReferences(db);
-    expect(batchViews(refs, IDS.user).find((view) => view.id === BATCH_B)?.counters).toMatchObject({
-      accidentalLoss: 15,
-    });
+    const first = batchViews(refs, IDS.user).find((view) => view.id === BATCH_B);
+    // Écart contrôlé sur le stock, affiché à part (les compteurs du jeu restent ceux du serveur).
+    expect(first?.checkCounters.accidentalLoss).toBe(15);
+    expect(first?.counters.accidentalLoss).toBe(0);
+    expect(first?.stockGap).toBe(15);
     // Une perte de 5 œufs du lot en attente sur l'appareil : retranchée et signalée.
     await db.outbox.add(
       command('inventory.loss.declare', {
@@ -433,12 +435,48 @@ describe('Incubation (ECR-PRD-06)', () => {
     );
     refs = await loadSalesReferences(db);
     const view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B);
-    expect(view?.counters.accidentalLoss).toBe(20);
+    expect(view?.checkCounters.accidentalLoss).toBe(20);
     expect(view?.pendingLoss).toBe(true);
     renderScreen();
     const card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
-    expect(card).toHaveTextContent(/pertes 20 · restants 350/);
+    expect(card).toHaveTextContent(/pertes 0 · restants 370/);
+    expect(within(card).getByText(/Écart de stock à confirmer : 20 œufs/)).toBeInTheDocument();
     expect(within(card).getByText(/n’est pas encore confirmée/)).toBeInTheDocument();
+    // En ligne, l'éclosion attend la confirmation de la perte.
+    expect(within(card).getByRole('button', { name: 'Éclosion' })).toBeDisabled();
+  });
+
+  it('perte sans lot à l’éclosoir : signalée sur le lot ; transfert fait ailleurs : stock compté partout', async () => {
+    const db = getDb();
+    await db.outbox.add(
+      command('inventory.loss.declare', {
+        locationId: HATCHER,
+        productId: HATCH_EGG,
+        quantityBase: 10,
+      }),
+    );
+    let refs = await loadSalesReferences(db);
+    // Seul lot ouvert sur l'éclosoir : la perte sans lot lui est imputée et l'éclosion attend.
+    let view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B);
+    expect(view?.pendingLoss).toBe(true);
+    await db.outbox.clear();
+
+    // Lot A (incubateur au jeu) déjà transféré par un autre appareil : ses 500 œufs sont à l'éclosoir.
+    await db.projections.put(
+      eggBalance(HATCHER, [{ id: `${BATCH_A}-lot`, code: 'INC-1', qty: 500 }]),
+    );
+    refs = await loadSalesReferences(db);
+    view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_A);
+    expect(view).toMatchObject({ stockGap: 0, stockStale: false });
+    expect(view && view.checkCounters.accidentalLoss).toBe(0);
+    // Plus aucun œuf du lot nulle part : données périmées, éclosion suspendue.
+    await db.projections.put(
+      eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 0 }]),
+    );
+    refs = await loadSalesReferences(db);
+    expect(
+      batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B)?.stockStale,
+    ).toBe(true);
   });
 
   it('lot d’œufs désigné net de l’attente ; étape d’un autre utilisateur en dépendance', async () => {
@@ -475,17 +513,16 @@ describe('Incubation (ECR-PRD-06)', () => {
       {
         locationId: STORE,
         quantity: 300,
-        lots: [{ lotId: COLLECTION_LOT_2, lotCode: 'COL-2', quantity: 300 }],
+        lots: [{ lotId: COLLECTION_LOT_2, lotCode: 'COL-2', quantity: 300, cautious: 300 }],
         fifo: true,
       },
     ]);
-    // Le mirage d'un autre utilisateur, pas encore envoyé, compte et la prochaine étape en dépend.
+    // Le mirage d'un autre utilisateur, pas encore envoyé, compte ; aucune étape n'en dépend (il ne
+    // part qu'à la reconnexion de son auteur), mais l'éclosion attend.
     const batchA = batchViews(refs, IDS.user).find((view) => view.id === BATCH_A);
     expect(batchA?.counters.infertile).toBe(5);
-    const otherStep = (await db.outbox.toArray()).find(
-      (candidate) => candidate.author_user_id === OTHER_USER,
-    );
-    expect(batchA && stepDependsOn(batchA)).toEqual([otherStep?.command_id]);
+    expect(batchA && stepDependsOn(batchA)).toEqual([]);
+    expect(batchA?.otherAuthorWaiting).toBe(true);
   });
 
   it('saisie du mirage remise à zéro après l’envoi ; espèce libre en majuscules ; ferme du périmètre', async () => {

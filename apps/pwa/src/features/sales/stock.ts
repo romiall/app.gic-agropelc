@@ -283,14 +283,28 @@ export const lotStockKey = (locationId: string, productId: string, lotId: string
  * d'incubation, ou lot de stock d'un lot de production), par `emplacement:produit:lot` (unité de
  * base) : mise en place depuis le stock avec lot, transfert ou sevrage depuis un lot, mortalité,
  * démarrage d'incubation avec lot, perte, consommation ou intrant avec lot, expédition ou mouvement
- * interne d'une ligne avec lot. Le disponible d'un lot désigné en est net ; le reste de l'attente
- * d'un emplacement (sans lot désigné) se répartit au plus ancien, côté serveur.
+ * interne d'une ligne avec lot ; mise en place depuis une réception d'achat, imputée comme le serveur
+ * aux lots fournisseurs des lignes de la réception, dans leur ordre (au plus le solde connu du lot).
+ * Le disponible d'un lot désigné en est net ; le reste de l'attente d'un emplacement (sans lot
+ * désigné) se répartit au plus ancien, côté serveur.
  */
 export function pendingLotConsumption(
   commands: readonly OutboxCommand[],
   stockPulledAt: string | undefined,
   productionLots: ReadonlyMap<string, Pick<ProductionLotData, 'product_id' | 'stock_lot_id'>>,
   transfers: ReadonlyMap<string, StockTransferData> = new Map(),
+  receipts: ReadonlyMap<
+    string,
+    {
+      readonly location_id: string;
+      readonly lines: readonly {
+        readonly product_id: string;
+        readonly qty_accepted_base: string | number;
+        readonly stock_lot_id?: string | null;
+      }[];
+    }
+  > = new Map(),
+  stock: ReadonlyMap<string, StockBalanceData> = new Map(),
 ): Map<string, number> {
   const milli = new Map<string, number>();
   const add = (locationId: string, productId: string, lotId: string, quantity: number) => {
@@ -307,6 +321,7 @@ export function pendingLotConsumption(
       readonly sourceProductId?: string;
       readonly sourceStockLotId?: string;
       readonly sourceProductionLotId?: string;
+      readonly goodsReceiptId?: string;
       readonly productionLotId?: string;
       readonly locationId?: string;
       readonly productId?: string;
@@ -323,6 +338,29 @@ export function pendingLotConsumption(
     };
     switch (command.command_type) {
       case 'production.lot.record_entry': {
+        if (p.sourceKind === 'PURCHASE' && p.goodsReceiptId && p.sourceProductId && p.quantity) {
+          const receipt = receipts.get(p.goodsReceiptId);
+          if (!receipt) break;
+          const balance = stock.get(stockKey(receipt.location_id, p.sourceProductId));
+          let remaining = toMilli(p.quantity);
+          for (const line of receipt.lines) {
+            if (remaining <= 0) break;
+            if (line.product_id !== p.sourceProductId || !line.stock_lot_id) continue;
+            const accepted = toMilli(Number(line.qty_accepted_base));
+            if (accepted <= 0) continue;
+            const entry = balance?.lots?.find((lot) => lot.lot_id === line.stock_lot_id);
+            const onLot = entry ? toMilli(Number(entry.qty_on_hand)) : accepted;
+            const key = lotStockKey(receipt.location_id, p.sourceProductId, line.stock_lot_id);
+            const take = Math.min(
+              remaining,
+              Math.max(0, Math.min(accepted, onLot) - (milli.get(key) ?? 0)),
+            );
+            if (take <= 0) continue;
+            milli.set(key, (milli.get(key) ?? 0) + take);
+            remaining -= take;
+          }
+          break;
+        }
         if (!p.quantity || !p.sourceLocationId) break;
         if (p.sourceKind === 'INTERNAL_STOCK' && p.sourceProductId && p.sourceStockLotId) {
           add(p.sourceLocationId, p.sourceProductId, p.sourceStockLotId, p.quantity);
@@ -373,6 +411,27 @@ export function pendingLotConsumption(
     }
   }
   return new Map([...milli].map(([key, value]) => [key, fromMilli(value)]));
+}
+
+/**
+ * Sorties en attente d'un emplacement et d'un produit qui ne désignent aucun lot : le serveur les
+ * prend au plus ancien, peut-être sur un lot désigné ailleurs.
+ */
+export function pendingWithoutLot(
+  refs: {
+    readonly pendingOut: ReadonlyMap<string, number>;
+    readonly pendingLots: ReadonlyMap<string, number>;
+  },
+  locationId: string,
+  productId: string,
+): number {
+  return Math.max(
+    0,
+    fromMilli(
+      toMilli(refs.pendingOut.get(stockKey(locationId, productId)) ?? 0) -
+        toMilli(pendingOnLots(refs.pendingLots, locationId, productId)),
+    ),
+  );
 }
 
 /** Somme de l'attente par lot sur un emplacement et un produit, pour les lots retenus. */

@@ -109,7 +109,14 @@ export function LossScreen() {
       )
     : 0;
   const lots = (balance?.lots ?? []).filter((lot) => lot.lot_id && Number(lot.qty_on_hand) > 0);
-  const chosenLot = lots.find((lot) => lot.lot_id === draft.lotId);
+  // Incubateur, éclosoir : le lot d'incubation se désigne (une perte au plus ancien fausserait le
+  // bilan d'un autre lot, BR-INC-003) ; présélectionné s'il est seul.
+  const lotRequired =
+    (location.location_type === 'INCUBATOR' || location.location_type === 'HATCHER') &&
+    lots.length > 0;
+  const lotId =
+    lotRequired && !draft.lotId && lots.length === 1 ? (lots[0]?.lot_id ?? '') : draft.lotId;
+  const chosenLot = lots.find((lot) => lot.lot_id === lotId);
   // Contrôle sur le physique (et le lot choisi), comme le serveur ; les quotas n'y entrent pas.
   const physical = product
     ? physicalLeft(balance, refs.pending.get(stockKey(location.id, product.id)) ?? 0)
@@ -119,7 +126,11 @@ export function LossScreen() {
     (check.quantityBase > physical ||
       (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
   // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
-  const ready = check.issues.length === 0 && !(online && overAvailable) && !busy;
+  const ready =
+    check.issues.length === 0 &&
+    !(lotRequired && !chosenLot) &&
+    !(online && overAvailable) &&
+    !busy;
 
   const submit = async () => {
     if (!ready || !draft.category || check.quantity === null || check.quantityBase === null) return;
@@ -131,7 +142,7 @@ export function LossScreen() {
         commandType: 'inventory.loss.declare',
         aggregateType: 'STOCK_LOSS',
         aggregateId: idGenerator.newId(),
-        payload: lossPayload({ ...effective, category: draft.category }, location.id, {
+        payload: lossPayload({ ...effective, lotId, category: draft.category }, location.id, {
           ...check,
           quantity: check.quantity,
           quantityBase: check.quantityBase,
@@ -232,16 +243,20 @@ export function LossScreen() {
           <select
             id="loss-lot"
             className="text-input"
-            value={draft.lotId}
+            value={lotId}
+            aria-required={lotRequired || undefined}
             onChange={(event) => update({ lotId: event.target.value })}
           >
-            <option value="">{t('loss.lot_fifo')}</option>
+            <option value="">{lotRequired ? t('loss.lot_choose') : t('loss.lot_fifo')}</option>
             {lots.map((lot) => (
               <option key={lot.lot_id} value={lot.lot_id ?? ''}>
                 {lot.lot_code ?? lot.lot_id} · {formatQuantity(Number(lot.qty_on_hand))}
               </option>
             ))}
           </select>
+          {lotRequired && !chosenLot ? (
+            <p className="home-muted">{t('loss.lot_required_incubation')}</p>
+          ) : null}
         </div>
       ) : null}
       <fieldset className="choice-group">

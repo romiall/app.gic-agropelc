@@ -31,7 +31,13 @@ import {
 import type { OutboxCommand } from '../../storage/db.js';
 import { isWaiting, stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { lotStockKey, pendingOnLots, settingValue, stockKey } from '../sales/stock.js';
+import {
+  lotStockKey,
+  pendingOnLots,
+  pendingWithoutLot,
+  settingValue,
+  stockKey,
+} from '../sales/stock.js';
 import { scopeSiteIds } from '../stock/stock-view.js';
 import type {
   IncubationBatchData,
@@ -57,14 +63,29 @@ export interface BatchView {
   readonly expectedCandlingDate: string | null;
   readonly expectedTransferDate: string | null;
   readonly expectedHatchDate: string | null;
+  /** Compteurs du jeu `production`, corrigés des étapes de l'appareil en attente (affichage). */
   readonly counters: IncubationCounters;
+  /**
+   * Compteurs de contrôle (mirage, éclosion) : restant borné en plus par le stock réel du lot, comme
+   * le serveur compte les pertes du lot de stock (S-38).
+   */
+  readonly checkCounters: IncubationCounters;
+  /** Écart entre le restant du jeu et le stock réel du lot (œufs), à confirmer. */
+  readonly stockGap: number;
+  /** Plus aucun œuf du lot en stock alors que le jeu en annonce : données périmées. */
+  readonly stockStale: boolean;
+  /** Étape d'un autre utilisateur de l'appareil encore en attente sur ce lot. */
+  readonly otherAuthorWaiting: boolean;
   /** Étapes de l'appareil comptées dans les compteurs, pas encore confirmées. */
   readonly pendingSteps: number;
   /** Commande de démarrage encore sur l'appareil : une étape en dépend. */
   readonly startCommandId: string | null;
-  /** Étapes du lot encore en attente sur l'appareil, de tout utilisateur : la suivante en dépend. */
+  /** Étapes du lot de cet utilisateur encore en attente : la suivante en dépend (ADR-051 §13). */
   readonly waitingStepIds: readonly string[];
-  /** Perte de l'appareil sur ce lot pas encore confirmée (l'éclosion peut être refusée). */
+  /**
+   * Perte de l'appareil pas encore confirmée sur ce lot, ou sans lot désigné sur son incubateur ou son
+   * éclosoir (le serveur peut la prendre sur ce lot) : l'éclosion attend.
+   */
   readonly pendingLoss: boolean;
 }
 
@@ -160,6 +181,11 @@ export interface EggSource {
     readonly lotId: string;
     readonly lotCode: string;
     readonly quantity: number;
+    /**
+     * Prudente : moins aussi les sorties en attente sans lot désigné, que le serveur peut prendre sur
+     * ce lot s'il est le plus ancien (avertissement seulement).
+     */
+    readonly cautious: number;
   }[];
   /**
    * « Le plus ancien d'abord » admis : faux quand le solde contient des œufs d'un lot engagé, que le
@@ -171,7 +197,13 @@ export interface EggSource {
 export function eggSources(
   refs: Pick<
     SalesReferences,
-    'stock' | 'locations' | 'productionLots' | 'incubationBatches' | 'pending' | 'pendingLots'
+    | 'stock'
+    | 'locations'
+    | 'productionLots'
+    | 'incubationBatches'
+    | 'pending'
+    | 'pendingOut'
+    | 'pendingLots'
   >,
   siteId: string,
   eggProductId: string,
@@ -214,7 +246,19 @@ export function eggSources(
     sources.push({
       locationId: balance.location_id,
       quantity,
-      lots: lots.map((lot) => ({ ...lot, quantity: Math.min(lot.quantity, quantity) })),
+      lots: lots.map((lot) => {
+        const lotQuantity = Math.min(lot.quantity, quantity);
+        return {
+          ...lot,
+          quantity: lotQuantity,
+          cautious: Math.max(
+            0,
+            Math.round(
+              (lotQuantity - pendingWithoutLot(refs, balance.location_id, eggProductId)) * 1000,
+            ) / 1000,
+          ),
+        };
+      }),
       fifo,
     });
   }
@@ -282,6 +326,10 @@ export function batchViews(
       expectedTransferDate: batch.expected_transfer_date,
       expectedHatchDate: batch.expected_hatch_date,
       counters: counterOf(batch),
+      checkCounters: counterOf(batch),
+      stockGap: 0,
+      stockStale: false,
+      otherAuthorWaiting: false,
       pendingSteps: 0,
       startCommandId: null,
       waitingStepIds: [],
@@ -322,6 +370,18 @@ export function batchViews(
         hatchedViable: 0,
         hatchedNonviable: 0,
       },
+      checkCounters: {
+        eggsSet: payload.eggsSet,
+        infertile: 0,
+        earlyDead: 0,
+        accidentalLoss: 0,
+        unhatched: 0,
+        hatchedViable: 0,
+        hatchedNonviable: 0,
+      },
+      stockGap: 0,
+      stockStale: false,
+      otherAuthorWaiting: false,
       pendingSteps: 0,
       startCommandId: isAccepted(command) ? null : command.command_id,
       waitingStepIds: [],
@@ -362,41 +422,64 @@ export function batchViews(
     } else {
       continue;
     }
+    // Une étape ne dépend que des étapes de son auteur : celles d'un autre utilisateur ne partent
+    // qu'à sa reconnexion (ADR-051 §13) ; elles suspendent l'éclosion sur l'écran.
+    const own = command.author_user_id === authorUserId;
     views.set(view.id, {
       ...next,
+      checkCounters: next.counters,
       pendingSteps: view.pendingSteps + 1,
-      waitingStepIds: isWaiting(command)
-        ? [...view.waitingStepIds, command.command_id]
-        : view.waitingStepIds,
+      waitingStepIds:
+        isWaiting(command) && own
+          ? [...view.waitingStepIds, command.command_id]
+          : view.waitingStepIds,
+      otherAuthorWaiting: view.otherAuthorWaiting || (isWaiting(command) && !own),
     });
   }
   // Restant borné par le solde réel du lot de stock (incubateur et éclosoir), net des mirages et
   // pertes pas encore dans le stock téléchargé : une perte accidentelle sur le lot n'est pas
   // reportée dans le jeu `production` (S-38), le serveur la compte (bilan de l'éclosion).
   const stockLots = new Map(refs.incubationBatches.map((batch) => [batch.id, batch.stock_lot_id]));
-  for (const view of views.values()) {
-    if (view.status !== 'INCUBATING' && view.status !== 'IN_HATCHER') continue;
-    const lotId = stockLots.get(view.id);
-    if (!lotId) continue;
-    let known = false;
-    let physical = 0;
+  const open = [...views.values()].filter(
+    (view) => view.status === 'INCUBATING' || view.status === 'IN_HATCHER',
+  );
+  // Lots d'incubation ouverts par emplacement et produit d'œuf (perte sans lot désigné).
+  const sharing = new Map<string, number>();
+  for (const view of open) {
     for (const locationId of new Set(
       [view.incubatorLocationId, view.hatcherLocationId].filter((id): id is string => !!id),
     )) {
-      const entry = refs.stock
-        .get(stockKey(locationId, view.eggProductId))
-        ?.lots?.find((lot) => lot.lot_id === lotId);
+      const key = stockKey(locationId, view.eggProductId);
+      sharing.set(key, (sharing.get(key) ?? 0) + 1);
+    }
+  }
+  for (const view of open) {
+    const lotId = stockLots.get(view.id);
+    if (!lotId) continue;
+    // Stock réel du lot, sur tout emplacement téléchargé (un transfert fait ailleurs a pu le déplacer
+    // avant que le jeu `production` ne le dise).
+    let known = false;
+    let physical = 0;
+    for (const balance of refs.stock.values()) {
+      if (balance.product_id !== view.eggProductId) continue;
+      const entry = balance.lots?.find((lot) => lot.lot_id === lotId);
       if (entry) {
         known = true;
         physical += Number(entry.qty_on_hand);
       }
     }
+    const places = new Set(
+      [view.incubatorLocationId, view.hatcherLocationId].filter((id): id is string => !!id),
+    );
     let candled = 0;
     let lost = 0;
+    let unlottedLoss = false;
     for (const command of refs.outbox) {
       if (!stillInFlight(command, refs.stockPulledAt)) continue;
       const payload = command.payload as StepPayload & {
         readonly lotId?: string;
+        readonly locationId?: string;
+        readonly productId?: string;
         readonly quantityBase?: number;
       };
       if (
@@ -404,17 +487,35 @@ export function batchViews(
         payload.batchId === view.id
       ) {
         candled += (payload.infertile ?? 0) + (payload.earlyDead ?? 0);
-      } else if (command.command_type === 'inventory.loss.declare' && payload.lotId === lotId) {
-        lost += payload.quantityBase ?? 0;
+      } else if (command.command_type === 'inventory.loss.declare') {
+        if (payload.lotId === lotId) {
+          lost += payload.quantityBase ?? 0;
+        } else if (
+          !payload.lotId &&
+          payload.productId === view.eggProductId &&
+          payload.locationId !== undefined &&
+          places.has(payload.locationId)
+        ) {
+          // Sans lot désigné : le serveur peut la prendre sur ce lot ; retranchée s'il est seul.
+          unlottedLoss = true;
+          if (sharing.get(stockKey(payload.locationId, view.eggProductId)) === 1) {
+            lost += payload.quantityBase ?? 0;
+          }
+        }
       }
     }
     const remaining = eggsRemaining(view.counters);
     const physicalRemaining = physical - candled - lost;
-    const extraLoss = known && physicalRemaining < remaining ? remaining - physicalRemaining : 0;
+    const gap = known && physicalRemaining < remaining ? remaining - physicalRemaining : 0;
     views.set(view.id, {
       ...view,
-      counters: { ...view.counters, accidentalLoss: view.counters.accidentalLoss + extraLoss },
-      pendingLoss: lost > 0,
+      checkCounters: {
+        ...view.counters,
+        accidentalLoss: view.counters.accidentalLoss + gap,
+      },
+      stockGap: gap,
+      stockStale: known && physical <= 0 && remaining > 0,
+      pendingLoss: lost > 0 || unlottedLoss,
     });
   }
   return [...views.values()].sort((a, b) => (a.batchCode ?? '~').localeCompare(b.batchCode ?? '~'));
@@ -432,7 +533,9 @@ function stepIssue(check: () => void, counted: number, batch: BatchView): StepIs
     check();
     return null;
   } catch (error) {
-    if (error instanceof DomainError) return { counted, remaining: eggsRemaining(batch.counters) };
+    if (error instanceof DomainError) {
+      return { counted, remaining: eggsRemaining(batch.checkCounters) };
+    }
     throw error;
   }
 }
@@ -442,7 +545,7 @@ export const candlingError = (
   candling: { readonly infertile: number; readonly earlyDead: number },
 ) =>
   stepIssue(
-    () => checkCandling(batch.counters, candling),
+    () => checkCandling(batch.checkCounters, candling),
     candling.infertile + candling.earlyDead,
     batch,
   );
@@ -456,7 +559,7 @@ export const hatchError = (
   },
 ) =>
   stepIssue(
-    () => checkHatch(batch.counters, hatch),
+    () => checkHatch(batch.checkCounters, hatch),
     hatch.unhatched + hatch.hatchedViable + hatch.hatchedNonviable,
     batch,
   );

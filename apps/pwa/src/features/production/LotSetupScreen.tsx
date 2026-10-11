@@ -368,6 +368,16 @@ function RecordEntry({
           : null;
   const parentInactive = kind === 'BIRTH' && !birthParentActive(lot, refs.productionLots);
   const over = check.quantity !== null && available !== null && check.quantity > available;
+  // Lot désigné : des sorties sans lot en attente peuvent le toucher (le plus ancien d'abord).
+  const designatedLot =
+    kind === 'INTERNAL_STOCK'
+      ? chosenStock?.lots.find((stockLot) => stockLot.lotId === effective.sourceStockLotId)
+      : undefined;
+  const lotRisk =
+    !over &&
+    check.quantity !== null &&
+    designatedLot !== undefined &&
+    check.quantity > designatedLot.cautious;
   const update = (patch: Partial<EntryDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const ready = check.issues.length === 0 && !(online && over) && !blocked;
 
@@ -615,6 +625,7 @@ function RecordEntry({
           <p className="text-warn">{t('lot_setup.over_offline')}</p>
         )
       ) : null}
+      {lotRisk ? <p className="text-warn">{t('lot_setup.lot_fifo_risk')}</p> : null}
       <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
         {t('lot_setup.record_entry')}
       </button>
