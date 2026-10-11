@@ -8,15 +8,14 @@
  * attente d'envoi est refusé (la base lèverait une violation d'unicité, S-31) ; l'opération suivante
  * attend la réponse définitive de la précédente, même après un retour sur l'écran.
  */
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
+import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { lastWaitingCommand, submitCommand, waitingCommands } from '../sales/submit.js';
+import { lastWaitingCommand, phaseOf, submitCommand, waitingCommands } from '../sales/submit.js';
 import type { ProductCategoryData } from '../sales/types.js';
 import {
   categoryPayload,
@@ -50,36 +49,15 @@ const isActiveCategory = (category: ProductCategoryData) =>
 
 /**
  * Liste lue en ligne : la dernière liste reçue (`undefined` avant la première), gardée quand une
- * relecture échoue ou que le réseau tombe, et l'échec de la dernière lecture.
+ * relecture échoue ou que le réseau tombe ; l'échec de la dernière lecture et son nouvel essai.
  */
-function useOnlineList<T>(
-  path: string,
-  field: string,
-  online: boolean,
-  reloadKey: string,
-): { readonly items: readonly T[] | undefined; readonly failed: boolean } {
-  const [state, setState] = useState<{ items: readonly T[] | undefined; failed: boolean }>({
-    items: undefined,
-    failed: false,
-  });
-  useEffect(() => {
-    if (!online) return;
-    let cancelled = false;
-    void authorizedRequest<Record<string, T[] | undefined>>(getDb(), path, { method: 'GET' }).then(
-      (result) => {
-        if (cancelled) return;
-        setState((current) =>
-          result.ok
-            ? { items: result.data[field] ?? [], failed: false }
-            : { items: current.items, failed: true },
-        );
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [path, field, online, reloadKey]);
-  return state;
+function useOnlineList<T>(path: string, field: string, online: boolean, reloadKey: string) {
+  const read = useOnlineRead<Record<string, T[] | undefined>>(path, readPath, online, reloadKey);
+  return {
+    items: read.data ? (read.data[field] ?? []) : undefined,
+    failed: read.failed,
+    retry: read.retry,
+  };
 }
 
 interface SectionProps {
@@ -818,7 +796,9 @@ export function CatalogScreen() {
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const lastStatus = refs?.outbox.find((command) => command.command_id === last)?.status ?? '';
+  const lastFound = refs?.outbox.find((command) => command.command_id === last);
+  // Clé de relecture sur la phase (le statut brut passe par SYNCING à chaque cycle).
+  const lastStatus = lastFound ? phaseOf(lastFound) : '';
   // Réponse de la dernière opération, ou d'une opération retrouvée en attente : relecture des listes.
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'catalog.', userId);
   const reloadKey = `${last ?? ''}:${lastStatus}|${pendingOps.map((c) => c.command_id).join(',')}`;
@@ -912,7 +892,22 @@ export function CatalogScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      {online && failed ? <p className="alert alert-error">{t('catalog.unavailable')}</p> : null}
+      {online && failed ? (
+        <div className="alert alert-error" role="alert">
+          <p>{t('catalog.unavailable')}</p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              units.retry();
+              products.retry();
+              reasons.retry();
+            }}
+          >
+            {t('ledger.retry')}
+          </button>
+        </div>
+      ) : null}
       {online && !loaded && !failed ? <p className="home-muted">{t('sales.loading')}</p> : null}
       {props ? (
         <section className="sale-block" aria-label={t(`catalog.section.${section}`)}>

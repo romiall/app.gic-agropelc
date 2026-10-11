@@ -89,29 +89,24 @@ export function lastWaitingCommand(
 }
 
 /**
- * Renvois `SERVER_BUSY` (erreur du serveur, le plus souvent une contrainte de la base qui lève une
- * exception, S-29 à S-31) au-delà desquels une commande en attente est tenue pour en échec répété.
+ * Renvois consécutifs `SERVER_BUSY` (erreur du serveur, le plus souvent une contrainte de la base qui
+ * lève une exception, S-29 à S-31, S-37) au-delà desquels une commande en attente est tenue pour en
+ * échec répété. Les coupures réseau ne comptent pas (`busy_retries`, tenu par `push.ts`).
  */
 export const REPEATED_FAILURE_ATTEMPTS = 3;
 
 /** Commande que le serveur renvoie sans l'appliquer (`RETRY_LATER`, `SERVER_BUSY`) à chaque essai. */
 export function inRepeatedFailure(
-  command: Pick<OutboxCommand, 'status' | 'attempts' | 'last_error'>,
+  command: Pick<OutboxCommand, 'status' | 'busy_retries'>,
 ): boolean {
-  return (
-    phaseOf(command) === 'WAITING' &&
-    command.last_error?.code === 'SERVER_BUSY' &&
-    command.attempts >= REPEATED_FAILURE_ATTEMPTS
-  );
+  return phaseOf(command) === 'WAITING' && (command.busy_retries ?? 0) >= REPEATED_FAILURE_ATTEMPTS;
 }
 
 /**
  * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
  * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce).
  */
-export function isBlockingWait(
-  command: Pick<OutboxCommand, 'status' | 'attempts' | 'last_error'>,
-): boolean {
+export function isBlockingWait(command: Pick<OutboxCommand, 'status' | 'busy_retries'>): boolean {
   return phaseOf(command) === 'WAITING' && !inRepeatedFailure(command);
 }
 

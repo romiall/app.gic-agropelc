@@ -346,6 +346,21 @@ describe('Catalogue (ECR-PRX-01)', () => {
     await waitFor(() => expect(unitReads()).toBeGreaterThan(before));
   });
 
+  it('lecture en échec : annoncée, relue par « Réessayer »', async () => {
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (String(path) === '/api/v1/units'
+          ? { ok: false, reason: 'HTTP_ERROR', status: 503, body: null }
+          : answer(path)) as never,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    expect(await screen.findByText(/Catalogue indisponible/)).toBeInTheDocument();
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => answer(path) as never);
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByRole('region', { name: 'Produits' })).toBeInTheDocument();
+  });
+
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();

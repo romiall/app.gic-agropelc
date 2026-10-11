@@ -14,6 +14,7 @@ import { useSalesReferences, type SalesReferences } from '../sales/references.js
 import {
   isBlockingWait,
   lastWaitingCommand,
+  phaseOf,
   submitCommand,
   waitingCommands,
 } from '../sales/submit.js';
@@ -173,7 +174,7 @@ export function SuppliersScreen() {
     '/api/v1/suppliers',
     readPath,
     online,
-    `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
+    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
   );
   const suppliers = read.data ? (read.data.suppliers ?? []) : undefined;
 

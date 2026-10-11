@@ -203,6 +203,42 @@ describe('Registre des mouvements (ECR-STK-07)', () => {
     ).toBeInTheDocument();
     expect(stockAt()).toBe(2);
 
+    // Soldes en échec après la seconde page : « Réessayer » relit les soldes seuls.
+    cleanup();
+    let balancesFail = true;
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => {
+      const url = new URL(path, 'http://local');
+      if (url.pathname === '/api/v1/stock/at' && balancesFail) {
+        return { ok: false, reason: 'HTTP_ERROR', status: 500, body: null } as never;
+      }
+      if (url.pathname === '/api/v1/stock-moves' && url.searchParams.get('product_id')) {
+        return (
+          url.searchParams.get('cursor') === 'eggs-2'
+            ? { ok: true, data: { moves: [FIRST[1]], next_cursor: null } }
+            : { ok: true, data: { moves: [FIRST[0]], next_cursor: 'eggs-2' } }
+        ) as never;
+      }
+      return answer(path, 120) as never;
+    });
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    const paged = within(await screen.findByRole('region', { name: 'Mouvements' }));
+    await paged.findByRole('listitem', { name: 'Réception de transfert' });
+    await user.click(paged.getByRole('button', { name: 'Afficher la suite' }));
+    const pagedExplain = within(screen.getByRole('region', { name: 'Explication de l’écart' }));
+    expect(await pagedExplain.findByText(/Soldes indisponibles/)).toBeInTheDocument();
+    const movesReads = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter(([, path]) => String(path).startsWith('/api/v1/stock-moves')).length;
+    const before = movesReads();
+    balancesFail = false;
+    await user.click(pagedExplain.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await pagedExplain.findByText('Les mouvements listés expliquent tout l’écart.'),
+    ).toBeInTheDocument();
+    expect(movesReads()).toBe(before);
+
     // Soldes en échec : annoncés, relus par « Réessayer ».
     cleanup();
     vi.mocked(authorizedRequest).mockImplementation(

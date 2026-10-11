@@ -313,7 +313,7 @@ export function conflictsOf(
  * Formulaire prérempli depuis une règle (nouvelle version) : portée, campagne et fin reprises. La fin
  * n'est jamais effacée en silence : si elle ne suit pas la date d'effet, `VALID_TO_INVALID` le dit.
  */
-export function formFrom(rule: RuleView, validFrom: Date): RuleForm {
+export function formFrom(rule: RuleView, validFrom: Date | null): RuleForm {
   return {
     code: rule.code,
     unitPriceText: String(rule.unitPriceXaf),
@@ -325,24 +325,39 @@ export function formFrom(rule: RuleView, validFrom: Date): RuleForm {
     minQuantityText: rule.minQuantity === null ? '' : String(rule.minQuantity),
     priorityText: String(rule.priority),
     commercialCampaignId: rule.commercialCampaignId ?? '',
-    validFrom: doualaLocal(validFrom),
+    validFrom: validFrom ? doualaLocal(validFrom) : '',
     validTo: rule.validTo ? doualaLocal(new Date(rule.validTo)) : '',
     notes: '',
   };
 }
 
 /**
- * Date d'effet proposée pour une nouvelle version : le lendemain à 0 h, après le début de la règle
- * remplacée. Une règle qui finit avant le lendemain (promotion du jour) : maintenant, à la minute
- * supérieure, pour que la nouvelle version tienne avant sa fin (reprise telle quelle).
+ * Délai laissé, pour une règle qui finit d'ici le lendemain 0 h, entre maintenant et la date d'effet
+ * proposée : le temps de rédiger puis de faire activer la version (l'activation est refusée au-delà de
+ * quelques minutes après la date d'effet). Valeur proposée à l'écran, modifiable par l'utilisateur.
  */
-export function supersedeValidFrom(rule: Pick<RuleView, 'validFrom' | 'validTo'>, now: Date): Date {
+export const SAME_DAY_SUPERSEDE_MARGIN_MINUTES = 30;
+
+/**
+ * Date d'effet proposée pour une nouvelle version : le lendemain à 0 h, après le début de la règle
+ * remplacée. Une règle qui finit d'ici le lendemain 0 h (promotion du jour) : dans
+ * `SAME_DAY_SUPERSEDE_MARGIN_MINUTES`, avant sa fin (reprise telle quelle) ; si la fenêtre est plus
+ * courte, aucune date n'est proposée (choix explicite).
+ */
+export function supersedeValidFrom(
+  rule: Pick<RuleView, 'validFrom' | 'validTo'>,
+  now: Date,
+): Date | null {
   const tomorrow = businessDayEndUtc(businessDayOf(now));
   const start = new Date(rule.validFrom);
   const afterStart = new Date(start.getTime() + 60_000);
-  const endsBeforeTomorrow = rule.validTo !== null && new Date(rule.validTo) < tomorrow;
-  const wanted = endsBeforeTomorrow ? ceilMinute(now) : tomorrow;
-  return wanted > start ? wanted : afterStart;
+  const end = rule.validTo !== null ? new Date(rule.validTo) : null;
+  if (end && end <= tomorrow) {
+    const soon = new Date(ceilMinute(now).getTime() + SAME_DAY_SUPERSEDE_MARGIN_MINUTES * 60_000);
+    const wanted = soon > start ? soon : afterStart;
+    return wanted.getTime() <= end.getTime() - 60_000 ? wanted : null;
+  }
+  return tomorrow > start ? tomorrow : afterStart;
 }
 
 /** Fin minimale admise pour `pricing.rule.end` : maintenant (à la minute supérieure) et après le début. */

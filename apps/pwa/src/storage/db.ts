@@ -63,6 +63,11 @@ export interface OutboxCommand {
    * `EXPECTED_QUARANTINE` : réception hors ligne que le serveur mettra en quarantaine).
    */
   readonly local_flags?: readonly string[];
+  /**
+   * Renvois consécutifs du serveur sans application (`RETRY_LATER` avec `SERVER_BUSY`), hors
+   * coupures réseau ; remis à zéro par toute autre réponse. Non indexé, hors enveloppe.
+   */
+  busy_retries?: number;
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */

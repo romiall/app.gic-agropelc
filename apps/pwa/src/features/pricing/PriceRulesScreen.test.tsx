@@ -606,12 +606,21 @@ describe('Règles tarifaires : gardes', () => {
     expect(defaultValidFrom(NOW)).toBe('2026-10-11T00:00');
     // Règle à venir : la nouvelle version ne part pas avant son début.
     const future = rule({ validFrom: '2026-11-01T00:00:00.000Z' });
-    expect(supersedeValidFrom(future, NOW).toISOString()).toBe('2026-11-01T00:01:00.000Z');
-    // Règle qui finit ce soir : la nouvelle version part maintenant (minute supérieure), avant sa fin,
-    // qui est reprise telle quelle.
+    expect(supersedeValidFrom(future, NOW)?.toISOString()).toBe('2026-11-01T00:01:00.000Z');
+    // Règle qui finit ce soir : la nouvelle version part dans 30 minutes (le temps de la rédiger et de
+    // la faire activer), avant sa fin, qui est reprise telle quelle.
     const bounded = rule({ validTo: '2026-10-10T20:00:00.000Z' });
-    expect(supersedeValidFrom(bounded, NOW).toISOString()).toBe('2026-10-10T09:00:00.000Z');
+    expect(supersedeValidFrom(bounded, NOW)?.toISOString()).toBe('2026-10-10T09:30:00.000Z');
     expect(formFrom(bounded, supersedeValidFrom(bounded, NOW)).validTo).toBe('2026-10-10T21:00');
+    // Promotion du jour qui finit à minuit (Douala) : même proposition, formulaire valide.
+    const midnight = rule({ validTo: '2026-10-10T23:00:00.000Z' });
+    const midnightForm = formFrom(midnight, supersedeValidFrom(midnight, NOW));
+    expect(midnightForm.validFrom).toBe('2026-10-10T10:30');
+    expect(checkRule(midnightForm, { needsCode: false, now: NOW }).issues).toEqual([]);
+    // Fenêtre plus courte que le délai : aucune date proposée, choix explicite.
+    const closing = rule({ validTo: '2026-10-10T09:20:00.000Z' });
+    expect(supersedeValidFrom(closing, NOW)).toBeNull();
+    expect(formFrom(closing, null).validFrom).toBe('');
     // Fin : ni passée, ni avant le début, plus tôt que la fin actuelle.
     expect(endAllowed('2026-10-10T10:00', v1, NOW)).toBe(true);
     // À 10 h 00 min 30 s (Douala), la fin la plus proche admise est 10 h 01.

@@ -23,6 +23,7 @@ import { useSalesReferences, type SalesReferences } from '../sales/references.js
 import {
   isBlockingWait,
   lastWaitingCommand,
+  phaseOf,
   submitCommand,
   waitingCommands,
 } from '../sales/submit.js';
@@ -202,7 +203,7 @@ export function TargetsScreen() {
     ].join('|'),
     readTargets,
     online,
-    `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
+    `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
   );
   const targets = read.data;
 

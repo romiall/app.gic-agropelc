@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { getDb } from '../../storage/db.js';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { OrdersScreen } from './OrdersScreen.js';
@@ -165,6 +165,46 @@ function renderScreen() {
   );
 }
 
+/** Commande des bons retrouvée dans l'outbox (visite précédente). */
+function pendingOrderCommand(overrides: Partial<OutboxCommand>): OutboxCommand {
+  return {
+    command_id: '01900000-0000-7000-8000-0000000007f1',
+    device_seq: 1,
+    command_type: 'procurement.order.create',
+    command_version: 1,
+    author_user_id: IDS.user,
+    aggregate_type: 'PURCHASE_ORDER',
+    aggregate_id: '01900000-0000-7000-8000-0000000007f2',
+    base_version: null,
+    depends_on: [],
+    occurred_at: '2026-10-10T08:00:00.000Z',
+    client_created_at: '2026-10-10T08:00:00.000Z',
+    captured_offline: false,
+    backdated_reason: null,
+    attachment_ids: [],
+    payload: { supplierId: SUPPLIER, deliveryLocationId: IDS.pos, lines: [] },
+    status: 'PENDING_SYNC',
+    attempts: 1,
+    next_attempt_at: null,
+    last_error: null,
+    server_refs: null,
+    ...overrides,
+  };
+}
+
+/** Bon direct d'une ligne saisi dans la rubrique « Nouveau bon de commande ». */
+async function fillDirectOrder(user: ReturnType<typeof userEvent.setup>) {
+  const form = within(screen.getByRole('region', { name: 'Nouveau bon de commande' }));
+  await user.selectOptions(await form.findByLabelText('Fournisseur'), SUPPLIER);
+  await user.selectOptions(form.getByLabelText('Livré sur'), IDS.pos);
+  await user.selectOptions(form.getByLabelText('Produit achetable'), FEED);
+  await user.click(form.getByRole('button', { name: 'Ajouter le produit' }));
+  const direct = form.getByRole('listitem', { name: 'Aliment démarrage' });
+  await user.type(within(direct).getByLabelText('Quantité'), '10');
+  await user.type(within(direct).getByLabelText('Prix par KG (F)'), '400');
+  return form;
+}
+
 describe('Bons de commande (ECR-APP-03)', () => {
   beforeEach(async () => {
     const db = getDb();
@@ -280,6 +320,102 @@ describe('Bons de commande (ECR-APP-03)', () => {
         'listitem',
       ),
     ).toHaveLength(0);
+  });
+
+  it('nouveau bon en échec répété : saisie vidée, annoncée, aucun second bon', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
+    const form = await fillDirectOrder(user);
+    await user.click(form.getByRole('button', { name: 'Créer le bon de commande' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [sent] = await getDb().outbox.toArray();
+    // Le serveur la renvoie trois fois (exception en base) : elle reste réessayée.
+    await getDb().outbox.update(sent?.command_id as string, {
+      status: 'PENDING_SYNC',
+      busy_retries: 3,
+      last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+    });
+    expect(await form.findByText(/ne le ressaisissez pas/)).toBeInTheDocument();
+    expect(form.queryAllByRole('listitem')).toHaveLength(0);
+    expect(form.getByRole('button', { name: 'Créer le bon de commande' })).toBeDisabled();
+    expect(await getDb().outbox.count()).toBe(1);
+  });
+
+  it('demandes indisponibles : un bon direct reste créable, « Réessayer » relit les demandes', async () => {
+    vi.mocked(authorizedRequest).mockImplementation(
+      async (_db, path) =>
+        (String(path).startsWith('/api/v1/purchase-requests')
+          ? { ok: false, reason: 'HTTP_ERROR', status: 500, body: null }
+          : answer(path)) as never,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
+    const form = await fillDirectOrder(user);
+    expect(form.getByText(/Demandes d’achat indisponibles/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(form.getByRole('button', { name: 'Créer le bon de commande' })).toBeEnabled(),
+    );
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => answer(path) as never);
+    await user.click(form.getByRole('button', { name: 'Réessayer' }));
+    expect(await form.findByLabelText('Ligne d’une demande approuvée')).toBeInTheDocument();
+  });
+
+  it('commande retrouvée en échec répété : pas de relecture à chaque cycle, panneau ouvert gardé', async () => {
+    await getDb().outbox.add(
+      pendingOrderCommand({
+        command_type: 'procurement.order.submit',
+        aggregate_id: 'bc-approved',
+        payload: {},
+        busy_retries: 3,
+        last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+      }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    const draftCard = await screen.findByRole('listitem', { name: 'BC-YDE-2026-000010' });
+    const edit = await enabledButton('BC-YDE-2026-000010', 'Modifier');
+    await user.click(edit);
+    const first = within(draftCard).getByRole('group', { name: 'Aliment démarrage (ligne 1)' });
+    await user.clear(within(first).getByLabelText('Quantité (KG)'));
+    await user.type(within(first).getByLabelText('Quantité (KG)'), '480');
+    const reads = vi.mocked(authorizedRequest).mock.calls.length;
+    // Un cycle de synchronisation repousse la commande : SYNCING puis PENDING_SYNC.
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000007f1', { status: 'SYNCING' });
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000007f1', {
+      status: 'PENDING_SYNC',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(vi.mocked(authorizedRequest).mock.calls.length).toBe(reads);
+    expect(
+      within(screen.getByRole('listitem', { name: 'BC-YDE-2026-000010' })).getByRole('group', {
+        name: 'Aliment démarrage (ligne 1)',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        within(screen.getByRole('listitem', { name: 'BC-YDE-2026-000010' })).getByRole('group', {
+          name: 'Aliment démarrage (ligne 1)',
+        }),
+      ).getByLabelText('Quantité (KG)'),
+    ).toHaveValue('480');
+  });
+
+  it('création d’une visite précédente : sa réponse ne vide ni ne quitte la saisie en cours', async () => {
+    await getDb().outbox.add(pendingOrderCommand({}));
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
+    const form = await fillDirectOrder(user);
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000007f1', {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T09:00:05.000Z',
+      server_refs: { docNumber: 'BC-YDE-2026-000020' },
+    });
+    expect(await screen.findByText('Bon de commande BC-YDE-2026-000020 créé.')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Nouveau bon de commande' })).toBeChecked();
+    expect(form.getByRole('listitem', { name: 'Aliment démarrage' })).toBeInTheDocument();
   });
 
   it('brouillon modifié puis soumis ; approuvé marqué envoyé ; reliquat clôturé avec motif', async () => {

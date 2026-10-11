@@ -510,7 +510,8 @@ export function PriceRulesScreen() {
   // Opérations tarifaires de l'utilisateur encore sans réponse, même d'une visite précédente : elles
   // bloquent la suivante, et leur réponse déclenche la relecture comme celle de la dernière.
   const pendingPricing = waitingCommands(refs?.outbox ?? [], 'pricing.rule.', userId);
-  const reloadKey = `${last?.commandId ?? ''}:${lastCommand?.status ?? ''}|${pendingPricing
+  // Clé de relecture sur la phase (le statut brut passe par SYNCING à chaque cycle).
+  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingPricing
     .map((command) => command.command_id)
     .join(',')}`;
   const productRules = useRules(

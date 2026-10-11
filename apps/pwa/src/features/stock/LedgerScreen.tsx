@@ -110,6 +110,8 @@ export function LedgerScreen() {
   const [balances, setBalances] = useState<Balances>();
   const [loadingMore, setLoadingMore] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  // Nouvel essai des seuls soldes (la liste, complète, n'est pas relue).
+  const [balancesAttempt, setBalancesAttempt] = useState(0);
   const [remembered] = useState(rememberedLocation);
   const ids = { location: useId(), product: useId(), from: useId(), to: useId() };
 
@@ -130,7 +132,7 @@ export function LedgerScreen() {
   // enregistrées entre les deux lectures.
   const completeCount =
     loaded?.key === key && !loaded.failed && loaded.next === null ? loaded.moves.length : -1;
-  const balancesKey = `${key}#${completeCount}`;
+  const balancesKey = `${key}#${completeCount}#${balancesAttempt}`;
 
   useEffect(() => {
     if (!ready) return;
@@ -375,7 +377,7 @@ export function LedgerScreen() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setRefresh((value) => value + 1)}
+                onClick={() => setBalancesAttempt((value) => value + 1)}
               >
                 {t('ledger.retry')}
               </button>

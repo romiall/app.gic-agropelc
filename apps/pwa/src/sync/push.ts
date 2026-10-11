@@ -119,6 +119,7 @@ export async function runPushCycle(
         .modify((c) => {
           c.status = 'PENDING_SYNC';
           c.attempts += 1;
+          c.busy_retries = 0;
         });
       continue;
     }
@@ -132,12 +133,17 @@ export async function runPushCycle(
           c.status = 'PENDING_SYNC';
           c.attempts += 1;
           c.last_error = commandResult.error ?? c.last_error;
+          // Renvois consécutifs pour erreur du serveur (exception en base, S-29 à S-31, S-37) ;
+          // une attente de dépendance remet le compteur à zéro.
+          c.busy_retries =
+            commandResult.error?.code === 'SERVER_BUSY' ? (c.busy_retries ?? 0) + 1 : 0;
         });
       continue;
     }
     settled += 1;
     await db.outbox.update(commandResult.command_id, {
       status: nextStatus,
+      busy_retries: 0,
       server_refs: commandResult.server_refs ?? null,
       last_error: commandResult.error ?? null,
       ...(accepted ? { synced_at: syncedAt } : {}),

@@ -200,6 +200,68 @@ describe('sync/push (runPushCycle)', () => {
     expect((await db.outbox.get(retry.command_id))?.last_error?.code).toBe('DEPENDENCY_PENDING');
   });
 
+  it('échec répété : renvois SERVER_BUSY consécutifs seulement, sans les coupures réseau', async () => {
+    const command = await enqueueOne(db, 'contrainte en base');
+    const busy = () =>
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              command_id: command.command_id,
+              status: 'RETRY_LATER',
+              error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+            },
+          ],
+          server_time: clock.now().toISOString(),
+          clock_skew_ms: 0,
+        }),
+        { status: 200 },
+      );
+    const run = () => runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    // Deux coupures puis un SERVER_BUSY : un seul renvoi compté.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error');
+      }),
+    );
+    await run();
+    await run();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => busy()),
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({ attempts: 3, busy_retries: 1 });
+    // Deux autres renvois consécutifs : échec répété (3).
+    await run();
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(3);
+    // Une attente de dépendance remet le compteur à zéro.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: command.command_id,
+                  status: 'RETRY_LATER',
+                  error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+                },
+              ],
+              server_time: clock.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+  });
+
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {
     const command = await enqueueOne(db, 'refusée');
     const response: PushResponse = {

@@ -1070,6 +1070,12 @@ export const fr = {
     remove_line: 'Retirer la ligne {{name}}',
     requests_loading: 'Lecture des demandes d’achat approuvées…',
     requests_unavailable: 'Demandes d’achat indisponibles : lignes directes seulement.',
+    requests_unavailable_list:
+      'Demandes d’achat indisponibles : la hausse d’une ligne tirée d’une demande attend leur relecture.',
+    suppliers_unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
+    suppliers_denied: 'Lecture des fournisseurs refusée : droit insuffisant.',
+    create_retrying:
+      'Le bon envoyé est toujours réessayé automatiquement par le téléphone : ne le ressaisissez pas, il serait créé deux fois.',
     request_line_label: 'Ligne d’une demande approuvée',
     request_line: '{{doc}} — {{product}} ({{quantity}} {{unit}} à commander)',
     add_request_line: 'Ajouter la ligne de demande',

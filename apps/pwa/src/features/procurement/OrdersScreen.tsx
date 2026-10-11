@@ -18,6 +18,7 @@ import { useSalesReferences, type SalesReferences } from '../sales/references.js
 import { readPages, readPath, useOnlineRead, type Pages } from '../sales/online-read.js';
 import { settingValue } from '../sales/stock.js';
 import {
+  inRepeatedFailure,
   isBlockingWait,
   lastWaitingCommand,
   phaseOf,
@@ -46,7 +47,8 @@ import { purchasableProducts, purchaseUnitsOf } from './request.js';
 import type { SupplierView } from './suppliers.js';
 
 type Section = 'LIST' | 'NEW';
-type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
+/** Enregistre la commande ; renvoie son identifiant, `null` si l'enregistrement local a échoué. */
+type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<string | null>;
 
 /** Demandes d'achat à commander : approuvées et commandées en partie, toutes pages. */
 const REQUEST_PATHS = [
@@ -73,7 +75,7 @@ function OrderCard({
   readonly userId: string;
   /** Reste à commander par ligne de demande (modification d'un brouillon). */
   readonly remaining: ReadonlyMap<string, number>;
-  /** Reste à commander pas encore relu : un brouillon tiré d'une demande ne s'enregistre pas. */
+  /** Reste à commander pas encore relu : une hausse d'une ligne tirée d'une demande attend. */
   readonly remainingStale: boolean;
 }) {
   const { t } = useTranslation();
@@ -88,6 +90,22 @@ function OrderCard({
   const locationName =
     refs.locations.find((location) => location.id === order.deliveryLocationId)?.name ?? '';
   const draft = panel === 'EDIT' ? draftUpdate(order, edits, date, remaining) : null;
+  // Panneau ouvert sur une saisie neuve (les valeurs du bon relu, pas celles d'une saisie passée).
+  const openPanel = (next: 'EDIT' | 'CANCEL' | 'CLOSE') => {
+    setEdits(new Map());
+    setDate(order.expectedDeliveryDate ?? '');
+    setComment('');
+    setReasonId('');
+    setPanel(next);
+  };
+  // Seule une hausse d'une ligne tirée d'une demande dépend du reste à commander relu.
+  const raisesRequestLine = order.lines.some((line) => {
+    if (line.requestLineId === null) return false;
+    const edit = edits.get(line.id);
+    if (!edit || edit.cancel) return false;
+    const quantity = Number(edit.qtyText.trim().replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(quantity) && quantity > line.orderedQtyBase;
+  });
   const cancellationReasons = refs.reasonCodes.filter(
     (reason) => reason.category === 'CANCELLATION',
   );
@@ -165,7 +183,7 @@ function OrderCard({
               type="button"
               className="secondary"
               disabled={blocked}
-              onClick={() => setPanel('EDIT')}
+              onClick={() => openPanel('EDIT')}
             >
               {t('orders_po.edit')}
             </button>
@@ -195,7 +213,7 @@ function OrderCard({
               type="button"
               className="secondary"
               disabled={blocked}
-              onClick={() => setPanel('CLOSE')}
+              onClick={() => openPanel('CLOSE')}
             >
               {t('orders_po.close_remaining')}
             </button>
@@ -205,7 +223,7 @@ function OrderCard({
               type="button"
               className="secondary"
               disabled={blocked}
-              onClick={() => setPanel('CANCEL')}
+              onClick={() => openPanel('CANCEL')}
             >
               {t('orders_po.cancel')}
             </button>
@@ -292,11 +310,7 @@ function OrderCard({
             <button
               type="button"
               className="btn-block submit-sale"
-              disabled={
-                blocked ||
-                draft.issues.length > 0 ||
-                (remainingStale && order.lines.some((line) => line.requestLineId !== null))
-              }
+              disabled={blocked || draft.issues.length > 0 || (remainingStale && raisesRequestLine)}
               onClick={() => command('procurement.order.update', draft.payload)}
             >
               {t('orders_po.save')}
@@ -380,15 +394,31 @@ const newLine = (patch: Partial<OrderLineDraft> = {}): OrderLineDraft => ({
 function NewOrder({
   refs,
   suppliers,
+  suppliersFailed,
   requests,
+  requestsStale,
+  onRetrySuppliers,
+  onRetryRequests,
+  acceptedCreateId,
+  retryingCreateId,
   send,
   blocked,
   userId,
 }: {
   readonly refs: SalesReferences;
   readonly suppliers: readonly SupplierView[];
+  /** Lecture des fournisseurs en échec : refus de droit ou panne. */
+  readonly suppliersFailed: { readonly denied: boolean } | null;
   /** Demandes à commander ; `undefined` pendant la lecture, `null` si indisponibles. */
   readonly requests: readonly RequestView[] | null | undefined;
+  /** Demandes pas encore relues : une ligne tirée d'une demande attend la relecture. */
+  readonly requestsStale: boolean;
+  readonly onRetrySuppliers: () => void;
+  readonly onRetryRequests: () => void;
+  /** Création acceptée par le serveur (réponse définitive). */
+  readonly acceptedCreateId: string | undefined;
+  /** Création renvoyée sans succès par le serveur (échec répété), toujours réessayée. */
+  readonly retryingCreateId: string | undefined;
   readonly send: Send;
   readonly blocked: boolean;
   readonly userId: string;
@@ -398,6 +428,9 @@ function NewOrder({
   const [locationId, setLocationId] = useState('');
   const [date, setDate] = useState('');
   const [lines, setLines] = useState<readonly OrderLineDraft[]>([]);
+  // Création envoyée depuis cette saisie, et charge utile envoyée (comparée à la saisie courante).
+  const [sent, setSent] = useState<{ readonly commandId: string; readonly payload: string }>();
+  const [retrying, setRetrying] = useState<string>();
   const [requestPick, setRequestPick] = useState('');
   const [productPick, setProductPick] = useState('');
   const ids = {
@@ -463,7 +496,36 @@ function NewOrder({
     settingValue(refs.settings, 'procurement.po_approval_threshold_xaf', null, clock.now()) ??
       DEFAULT_APPROVAL_THRESHOLD_XAF,
   );
-  const ready = issues.length === 0 && linesValid && total !== null && !blocked;
+  const fromRequest = lines.some((line) => line.requestLineId !== null);
+  const ready =
+    issues.length === 0 &&
+    linesValid &&
+    total !== null &&
+    !blocked &&
+    !(requestsStale && fromRequest);
+  const payload = createOrderPayload({
+    supplierId,
+    deliveryLocationId: locationId,
+    expectedDeliveryDate: date,
+    lines: checks,
+  });
+  const clear = () => {
+    setSupplierId('');
+    setLocationId('');
+    setDate('');
+    setLines([]);
+  };
+  // Bon accepté : la saisie se vide si elle est toujours celle qui a été envoyée (sinon l'utilisateur
+  // l'a reprise : elle reste). Bon en échec répété : la saisie se vide aussi (il est toujours
+  // réessayé ; le renvoyer créerait un second bon).
+  if (sent && acceptedCreateId === sent.commandId) {
+    setSent(undefined);
+    if (JSON.stringify(payload) === sent.payload) clear();
+  } else if (sent && retryingCreateId === sent.commandId) {
+    setSent(undefined);
+    setRetrying(sent.commandId);
+    clear();
+  }
   const update = (key: string, patch: Partial<OrderLineDraft>) =>
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
 
@@ -489,24 +551,40 @@ function NewOrder({
     setLines((current) => [...current, newLine({ productId: productPick })]);
     setProductPick('');
   };
-  // La saisie reste jusqu'à la réponse du serveur (l'écran la referme une fois le bon créé).
+  // La saisie reste jusqu'à la réponse du serveur (refusé, le bon se corrige sans tout ressaisir).
   const submit = () => {
     if (!ready) return;
     void send({
       authorUserId: userId,
       commandType: 'procurement.order.create',
       aggregateType: 'PURCHASE_ORDER',
-      payload: createOrderPayload({
-        supplierId,
-        deliveryLocationId: locationId,
-        expectedDeliveryDate: date,
-        lines: checks,
-      }),
+      payload,
+    }).then((commandId) => {
+      if (commandId) setSent({ commandId, payload: JSON.stringify(payload) });
     });
   };
 
   return (
     <>
+      {suppliersFailed ? (
+        <div className="alert alert-error" role="alert">
+          <p>
+            {suppliersFailed.denied
+              ? t('orders_po.suppliers_denied')
+              : t('orders_po.suppliers_unavailable')}
+          </p>
+          {suppliersFailed.denied ? null : (
+            <button type="button" className="secondary" onClick={onRetrySuppliers}>
+              {t('ledger.retry')}
+            </button>
+          )}
+        </div>
+      ) : null}
+      {retrying && retrying === retryingCreateId ? (
+        <p className="text-warn" role="status">
+          {t('orders_po.create_retrying')}
+        </p>
+      ) : null}
       <div className="field">
         <label htmlFor={ids.supplier}>{t('orders_po.supplier_label')}</label>
         <select
@@ -639,7 +717,12 @@ function NewOrder({
           {requests === undefined ? (
             <p className="home-muted">{t('orders_po.requests_loading')}</p>
           ) : requests === null ? (
-            <p className="alert alert-error">{t('orders_po.requests_unavailable')}</p>
+            <div className="alert alert-error" role="alert">
+              <p>{t('orders_po.requests_unavailable')}</p>
+              <button type="button" className="secondary" onClick={onRetryRequests}>
+                {t('ledger.retry')}
+              </button>
+            </div>
           ) : orderable.length > 0 ? (
             <div className="field">
               <label htmlFor={ids.request}>{t('orders_po.request_line_label')}</label>
@@ -734,7 +817,6 @@ export function OrdersScreen() {
   const [section, setSection] = useState<Section>('LIST');
   const [status, setStatus] = useState('');
   const [ordersPages, setOrdersPages] = useState(1);
-  const [newOrderKey, setNewOrderKey] = useState(0);
   const [handledCreate, setHandledCreate] = useState<string>();
   const [last, setLast] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -742,7 +824,8 @@ export function OrdersScreen() {
   const statusId = useId();
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'procurement.order.', userId);
-  const reloadKey = `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps
+  // Clé de relecture sur la phase (pas le statut brut, qui passe par SYNCING à chaque cycle).
+  const reloadKey = `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${pendingOps
     .map((command) => command.command_id)
     .join(',')}`;
   const ordersPath = `/api/v1/purchase-orders?limit=200${status ? `&status=${status}` : ''}`;
@@ -765,16 +848,18 @@ export function OrdersScreen() {
     online,
     reloadKey,
   );
-  // Bon créé (réponse définitive acceptée) : retour à la liste, saisie remise à zéro.
+  // Bon créé dans cette visite (réponse définitive acceptée) : retour à la liste ; la saisie se vide
+  // d'elle-même si elle est encore celle qui a été envoyée.
+  const isCreate = lastCommand?.command_type === 'procurement.order.create';
   const created =
-    lastCommand?.command_type === 'procurement.order.create' &&
-    (phaseOf(lastCommand) === 'DONE' || phaseOf(lastCommand) === 'WARNING');
+    isCreate && (phaseOf(lastCommand) === 'DONE' || phaseOf(lastCommand) === 'WARNING');
   if (created && last !== handledCreate) {
     // Ajustement pendant le rendu (une seule fois par bon créé), sans effet en cascade.
     setHandledCreate(last);
     setSection('LIST');
-    setNewOrderKey((value) => value + 1);
   }
+  const acceptedCreateId = created ? last : undefined;
+  const retryingCreateId = isCreate && inRepeatedFailure(lastCommand) ? last : undefined;
 
   if (!refs || !userId) {
     return (
@@ -792,7 +877,11 @@ export function OrdersScreen() {
   // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que
   // son résultat (refus compris) reste affiché jusqu'à la réponse.
   const adopt = last ? undefined : lastWaitingCommand(refs.outbox, 'procurement.order.', userId);
-  if (adopt) setLast(adopt.command_id);
+  if (adopt) {
+    setLast(adopt.command_id);
+    // Création d'une visite précédente : sa réponse ne touche ni la rubrique ni la saisie.
+    if (adopt.command_type === 'procurement.order.create') setHandledCreate(adopt.command_id);
+  }
   const shownCommandId = last;
   const shownCommand = refs.outbox.find((command) => command.command_id === shownCommandId);
   const supplierList = suppliers.data?.suppliers ?? [];
@@ -802,16 +891,16 @@ export function OrdersScreen() {
   const cardBlocked = blocked || orders.stale;
 
   const send: Send = async (input) => {
-    if (blocked) return false;
+    if (blocked) return null;
     setBusy(true);
     setSaveError(false);
     try {
       const command = await submitCommand(input);
       setLast(command.command_id);
-      return true;
+      return command.command_id;
     } catch {
       setSaveError(true);
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
@@ -855,8 +944,13 @@ export function OrdersScreen() {
           </label>
         ))}
       </fieldset>
-      {section === 'LIST' ? (
-        <section className="sale-block" aria-label={t('orders_po.section.LIST')}>
+      <section
+        className="sale-block"
+        aria-label={t('orders_po.section.LIST')}
+        hidden={section !== 'LIST'}
+      >
+        {/* La rubrique masquée reste montée : une saisie en cours n'est jamais perdue. */}
+        <>
           <div className="field">
             <label htmlFor={statusId}>{t('orders_po.status_filter')}</label>
             <select
@@ -894,6 +988,14 @@ export function OrdersScreen() {
               {t('orders_po.refreshing')}
             </p>
           ) : null}
+          {online && requests.failed ? (
+            <div className="alert alert-error" role="alert">
+              <p>{t('orders_po.requests_unavailable_list')}</p>
+              <button type="button" className="secondary" onClick={requests.retry}>
+                {t('ledger.retry')}
+              </button>
+            </div>
+          ) : null}
           {orders.data ? (
             orders.data.items.length === 0 ? (
               <p className="home-muted">{t('orders_po.none')}</p>
@@ -901,7 +1003,7 @@ export function OrdersScreen() {
               <ul className="line-list">
                 {orders.data.items.map((order) => (
                   <OrderCard
-                    key={`${order.id}:${reloadKey}`}
+                    key={order.id}
                     order={order}
                     refs={refs}
                     supplierName={supplierNames.get(order.supplierId) ?? ''}
@@ -928,24 +1030,32 @@ export function OrdersScreen() {
               </button>
             </div>
           ) : null}
-        </section>
-      ) : (
-        <section className="sale-block" aria-label={t('orders_po.section.NEW')}>
-          {suppliers.data === undefined && !suppliers.failed ? (
-            <p className="home-muted">{t('sales.loading')}</p>
-          ) : (
-            <NewOrder
-              key={newOrderKey}
-              refs={refs}
-              suppliers={supplierList}
-              requests={requests.data ? requests.data.items : requests.failed ? null : undefined}
-              send={send}
-              blocked={blocked || suppliers.stale || requests.stale}
-              userId={userId}
-            />
-          )}
-        </section>
-      )}
+        </>
+      </section>
+      <section
+        className="sale-block"
+        aria-label={t('orders_po.section.NEW')}
+        hidden={section !== 'NEW'}
+      >
+        {suppliers.data === undefined && !suppliers.failed ? (
+          <p className="home-muted">{t('sales.loading')}</p>
+        ) : (
+          <NewOrder
+            refs={refs}
+            suppliers={supplierList}
+            suppliersFailed={suppliers.failed ? { denied: suppliers.denied } : null}
+            requests={requests.data ? requests.data.items : requests.failed ? null : undefined}
+            requestsStale={requests.stale}
+            onRetrySuppliers={suppliers.retry}
+            onRetryRequests={requests.retry}
+            acceptedCreateId={acceptedCreateId}
+            retryingCreateId={retryingCreateId}
+            send={send}
+            blocked={blocked || (suppliers.stale && !suppliers.failed)}
+            userId={userId}
+          />
+        )}
+      </section>
     </section>
   );
 }
