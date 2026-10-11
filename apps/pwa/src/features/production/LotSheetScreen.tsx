@@ -4,18 +4,17 @@
  * indicateurs (taux de mortalité, gain moyen quotidien, indice de consommation, ponte), coûts par
  * nature, coût restant et par tête, résultat mensuel, chiffre d'affaires et marges, entrées et pesées.
  * Hors ligne : la fiche du lot téléchargé et l'effectif calculé par l'appareil seulement. Montants
- * nuls sans droit de valorisation (RC-05). Aucune écriture.
+ * nuls sans droit de valorisation (RC-05). Les lots clôturés (sortis du jeu `production`) se lisent en
+ * ligne ; un lot demandé absent de l'appareil se lit directement, sans retomber sur un autre lot.
+ * Dates avec l'année (un lot de pondeuses dure plus d'un an). Aucune écriture.
  */
-import { Fragment, useEffect, useId, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { businessDayOf } from '@gic/domain';
-import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
-import { formatBusinessDay, formatMoment } from '../home/format-home.js';
+import { formatBusinessDate, formatDateTime, formatMonthPeriod } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
+import { readPages, readPath, useOnlineRead, type Pages } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { rearingHeadcount } from './daily.js';
 
@@ -27,6 +26,7 @@ interface LotSheet {
   readonly productId: string;
   readonly status: string;
   readonly startDate: string | null;
+  readonly closedAt?: string | null;
   readonly initialQuantity: number | null;
   readonly headcount: { readonly unsold: number; readonly rearing: number };
   readonly mortality: {
@@ -78,6 +78,24 @@ interface LotSheet {
   }[];
 }
 
+/** Lot clôturé lu en ligne (`GET /production/lots?status=CLOSED`). */
+interface ClosedLot {
+  readonly id: string;
+  readonly lotCode: string;
+  readonly lotType: string;
+  readonly status: string;
+}
+
+/** Lot proposé : de l'appareil (ouvert) ou lu en ligne (clôturé). */
+interface LotChoice {
+  readonly id: string;
+  readonly lotCode: string;
+  readonly lotType: string;
+}
+
+const CLOSED_LOTS_PATH = '/api/v1/production/lots?status=CLOSED&limit=200';
+const MAX_CLOSED_PAGES = 5;
+
 const percent = (rate: number | null): string | null =>
   rate === null ? null : `${formatQuantity(Math.round(rate * 10000) / 100)} %`;
 const money = (value: number | null | undefined): string | null =>
@@ -89,28 +107,38 @@ export function LotSheetScreen() {
   const refs = useSalesReferences();
   const online = useOnline();
   const [lotChoice, setLotChoice] = useState<string | null>(searchParams.get('lot'));
-  const [sheet, setSheet] = useState<{ id: string; data: LotSheet | null }>();
   const lotId = useId();
-  const lots = [...(refs?.productionLots ?? [])].sort((a, b) =>
-    b.lot_code.localeCompare(a.lot_code, 'fr'),
+  const closed = useOnlineRead<Pages<ClosedLot>>(
+    CLOSED_LOTS_PATH,
+    () => readPages<ClosedLot>([CLOSED_LOTS_PATH], 'lots', MAX_CLOSED_PAGES),
+    online,
+    '',
   );
-  const lot = lots.find((candidate) => candidate.id === lotChoice) ?? lots[0];
-  const id = lot?.id ?? '';
-
-  useEffect(() => {
-    if (!id || !online) return;
-    let cancelled = false;
-    void authorizedRequest<{ lot: LotSheet }>(
-      getDb(),
-      `/api/v1/production/lots/${encodeURIComponent(id)}`,
-      { method: 'GET' },
-    ).then((result) => {
-      if (!cancelled) setSheet({ id, data: result.ok ? result.data.lot : null });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, online]);
+  const deviceLots = refs?.productionLots ?? [];
+  const known = new Set(deviceLots.map((candidate) => candidate.id));
+  const lots: LotChoice[] = [
+    ...deviceLots.map((candidate) => ({
+      id: candidate.id,
+      lotCode: candidate.lot_code,
+      lotType: candidate.lot_type,
+    })),
+    ...(closed.data?.items ?? [])
+      .filter((candidate) => !known.has(candidate.id))
+      .map((candidate) => ({
+        id: candidate.id,
+        lotCode: candidate.lotCode,
+        lotType: candidate.lotType,
+      })),
+  ].sort((a, b) => b.lotCode.localeCompare(a.lotCode, 'fr'));
+  // Lot demandé (lien, choix) lu tel quel même absent de la liste ; sinon le plus récent.
+  const id = lotChoice ?? lots[0]?.id ?? '';
+  const lot = deviceLots.find((candidate) => candidate.id === id);
+  const sheet = useOnlineRead<{ lot: LotSheet }>(
+    id ? `/api/v1/production/lots/${encodeURIComponent(id)}` : null,
+    readPath,
+    online,
+    '',
+  );
 
   if (!refs) {
     return (
@@ -121,12 +149,17 @@ export function LotSheetScreen() {
     );
   }
 
-  const today = businessDayOf(clock.now());
-  const current = online && sheet?.id === id ? sheet.data : undefined;
+  const current = sheet.data?.lot;
   const localHeads = lot ? rearingHeadcount(refs, lot) : null;
-  const product = lot
-    ? refs.products.find((candidate) => candidate.id === lot.product_id)
+  const productId = current?.productId ?? lot?.product_id;
+  const product = productId
+    ? refs.products.find((candidate) => candidate.id === productId)
     : undefined;
+  // Statut et démarrage du serveur dès que la fiche est lue ; ceux de l'appareil en repli.
+  const status = current?.status ?? lot?.status;
+  const startDate = current?.startDate ?? lot?.start_date ?? null;
+  const choice = lots.find((candidate) => candidate.id === id);
+  const amountsHidden = current?.costs.netXaf === null;
   const unit = product?.base_unit_code ?? '';
   const row = (label: string, value: string | null) =>
     value === null ? null : (
@@ -139,7 +172,7 @@ export function LotSheetScreen() {
   return (
     <section className="sale">
       <h1>{t('nav.screens.lot_sheet')}</h1>
-      {lots.length === 0 || !lot ? (
+      {!id ? (
         <p className="home-muted">{t('lot_sheet.no_lot')}</p>
       ) : (
         <>
@@ -148,13 +181,16 @@ export function LotSheetScreen() {
             <select
               id={lotId}
               className="text-input"
-              value={lot.id}
+              value={id}
               onChange={(event) => setLotChoice(event.target.value)}
             >
+              {choice ? null : (
+                <option value={id}>{current?.lotCode ?? t('lot_sheet.requested_lot')}</option>
+              )}
               {lots.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
-                  {`${candidate.lot_code} · ${t(`production.lot_type.${candidate.lot_type}`, {
-                    defaultValue: candidate.lot_type,
+                  {`${candidate.lotCode} · ${t(`production.lot_type.${candidate.lotType}`, {
+                    defaultValue: candidate.lotType,
                   })}`}
                 </option>
               ))}
@@ -163,9 +199,10 @@ export function LotSheetScreen() {
           <p className="home-muted">
             {[
               product?.name,
-              t(`lot_sheet.status.${lot.status}`, { defaultValue: lot.status }),
-              lot.start_date
-                ? t('lot_sheet.started', { date: formatBusinessDay(lot.start_date) })
+              status ? t(`lot_sheet.status.${status}`, { defaultValue: status }) : null,
+              startDate ? t('lot_sheet.started', { date: formatBusinessDate(startDate) }) : null,
+              current?.closedAt
+                ? t('lot_sheet.closed_on', { date: formatDateTime(current.closedAt) })
                 : null,
             ]
               .filter(Boolean)
@@ -173,14 +210,21 @@ export function LotSheetScreen() {
           </p>
           {!online ? (
             <p className="home-banner" role="status">
-              {t('lot_sheet.offline')}
+              {lot ? t('lot_sheet.offline') : t('lot_sheet.not_on_device')}
             </p>
           ) : null}
-          {online && current === undefined ? (
+          {online && current === undefined && !sheet.failed ? (
             <p className="home-muted">{t('sales.loading')}</p>
           ) : null}
-          {online && current === null ? (
-            <p className="alert alert-error">{t('lot_sheet.unavailable')}</p>
+          {online && sheet.failed ? (
+            <div className="alert alert-error" role="alert">
+              <p>{sheet.denied ? t('lot_sheet.not_found') : t('lot_sheet.unavailable')}</p>
+              {sheet.denied ? null : (
+                <button type="button" className="secondary" onClick={sheet.retry}>
+                  {t('ledger.retry')}
+                </button>
+              )}
+            </div>
           ) : null}
 
           <section className="sale-block" aria-labelledby="lot-sheet-heads">
@@ -217,14 +261,16 @@ export function LotSheetScreen() {
                       `${formatQuantity(current.mortality.lostQuantity)} ${unit}`,
                     ),
                   ]
-                : [
-                    row(
-                      t('lot_sheet.rearing_device'),
-                      localHeads === null
-                        ? t('production.headcount_unknown')
-                        : `${formatQuantity(localHeads)} ${unit}`,
-                    ),
-                  ]}
+                : lot
+                  ? [
+                      row(
+                        t('lot_sheet.rearing_device'),
+                        localHeads === null
+                          ? t('production.headcount_unknown')
+                          : `${formatQuantity(localHeads)} ${unit}`,
+                      ),
+                    ]
+                  : null}
             </dl>
           </section>
 
@@ -288,6 +334,9 @@ export function LotSheetScreen() {
               {current.sales ? (
                 <section className="sale-block" aria-labelledby="lot-sheet-sales">
                   <h2 id="lot-sheet-sales">{t('lot_sheet.sales_title')}</h2>
+                  {current.sales.netRevenueXaf === null ? (
+                    <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
+                  ) : null}
                   <dl className="receipt-totals">
                     {row(
                       t('lot_sheet.sold'),
@@ -301,13 +350,13 @@ export function LotSheetScreen() {
                 </section>
               ) : null}
 
-              {current.costs.monthly.length > 0 && current.costs.netXaf !== null ? (
+              {current.costs.monthly.length > 0 && !amountsHidden ? (
                 <section className="sale-block" aria-labelledby="lot-sheet-monthly">
                   <h2 id="lot-sheet-monthly">{t('lot_sheet.monthly_title')}</h2>
                   <ul className="receipt-lines">
                     {current.costs.monthly.map((month) => (
                       <li key={month.period}>
-                        <span>{month.period}</span>
+                        <span>{formatMonthPeriod(month.period)}</span>
                         <span>
                           {t('lot_sheet.month', {
                             cost: money(month.netXaf) ?? '—',
@@ -351,7 +400,7 @@ export function LotSheetScreen() {
                       .filter((weighing) => weighing.status !== 'CANCELLED')
                       .map((weighing) => (
                         <li key={weighing.id}>
-                          <span>{formatMoment(weighing.occurredAt, today)}</span>
+                          <span>{formatDateTime(weighing.occurredAt)}</span>
                           <span>
                             {t('lot_sheet.weighing', {
                               weight: formatQuantity(weighing.avgWeightG),

@@ -27,6 +27,7 @@ import type {
   ProductCategoryData,
   IncubationBatchData,
   TeamData,
+  TeamMembershipData,
   UserData,
   ProductionLotData,
   PurchaseOrderData,
@@ -95,6 +96,8 @@ export interface SalesReferences {
   /** Utilisateurs et équipes publiés à l'appareil (vides tant que le serveur ne les publie pas, S-28). */
   readonly users: readonly UserData[];
   readonly teams: readonly TeamData[];
+  /** Appartenances aux équipes (jeu `team_membership`, pas encore publié : S-28). */
+  readonly teamMemberships: readonly TeamMembershipData[];
   /** Lots d'incubation des fermes de l'appareil (jeu `production`). */
   readonly incubationBatches: readonly IncubationBatchData[];
   readonly lotLosses: readonly LotLossData[];
@@ -299,6 +302,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
   const [
     users,
     teams,
+    teamMemberships,
     productCategories,
     productionLots,
     incubationBatches,
@@ -348,6 +352,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
   ] = await Promise.all([
     listProjected<UserData>(db, 'user', 'USER'),
     listProjected<TeamData>(db, 'team', 'TEAM'),
+    listProjected<TeamMembershipData>(db, 'team_membership', 'TEAM_MEMBERSHIP'),
     listProjected<ProductCategoryData>(db, 'product_category', 'PRODUCT_CATEGORY'),
     listProjected<ProductionLotData>(db, 'production', 'PRODUCTION_LOT'),
     listProjected<IncubationBatchData>(db, 'production', 'INCUBATION_BATCH'),
@@ -471,6 +476,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     incubationBatches,
     users: [...users].sort((a, b) => a.full_name.localeCompare(b.full_name, 'fr')),
     teams: [...teams].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    teamMemberships,
     lotLosses,
     lotConsumptions,
     lotWeighings,

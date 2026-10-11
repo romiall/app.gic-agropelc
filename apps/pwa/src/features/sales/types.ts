@@ -438,6 +438,15 @@ export interface TeamData {
   readonly is_active: boolean;
 }
 
+/** (`team_membership`) appartenance d'un utilisateur à une équipe, sur une période. */
+export interface TeamMembershipData {
+  readonly id: string;
+  readonly team_id: string;
+  readonly user_id: string;
+  readonly valid_from: string;
+  readonly valid_to: string | null;
+}
+
 /** (`crm_activity`, 90 derniers jours) visite d'un compte. */
 export interface VisitData {
   readonly id: string;

@@ -39,6 +39,32 @@ const SITE_TARGET: TargetView = {
   status: 'ACTIVE',
 };
 
+const TEAM = '01900000-0000-7000-8000-0000000009a1';
+const MEMBER = '01900000-0000-7000-8000-0000000009a2';
+
+async function rememberRoles(roles: readonly string[]) {
+  await getDb().navigation.put({
+    user_id: IDS.user,
+    roles: [...roles],
+    sections: [],
+    saved_at: '2026-10-10T08:00:00.000Z',
+  });
+}
+
+function projection(dataset: string, type: string, id: string, data: object) {
+  return {
+    key: `${dataset}:${type}:${id}`,
+    dataset,
+    entity_type: type,
+    entity_id: id,
+    scope_type: 'GLOBAL',
+    scope_id: null,
+    row_version: 1,
+    seq: 1,
+    data: { id, ...data } as Record<string, unknown>,
+  };
+}
+
 function renderScreen() {
   return render(
     <MemoryRouter>
@@ -52,6 +78,7 @@ describe('Gestion des objectifs (ECR-CRM-07)', () => {
     const db = getDb();
     await db.projections.clear();
     await db.outbox.clear();
+    await db.navigation.clear();
     await seedSalesFixtures(db);
     vi.mocked(authorizedRequest).mockResolvedValue({
       ok: true,
@@ -65,24 +92,33 @@ describe('Gestion des objectifs (ECR-CRM-07)', () => {
     vi.mocked(authorizedRequest).mockReset();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+    await getDb().navigation.clear();
   });
 
   it('objectif de site : chevauchement refusé, quantité d’un produit définie, objectif annulé', async () => {
+    await rememberRoles(['DIRECTION']);
     const user = userEvent.setup();
     renderScreen();
-    const card = await screen.findByRole('listitem', { name: /PDV Yaoundé · Chiffre d’affaires/ });
+    const card = await screen.findByRole('listitem', {
+      name: /PDV Yaoundé · Chiffre d’affaires · du 1 octobre 2026 au 31 octobre 2026/,
+    });
     expect(card).toHaveTextContent(/5\s000\s000\sF\sCFA/);
     expect(screen.getByText(/seuls les objectifs par site se définissent ici/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Nouvel objectif' }));
     await user.selectOptions(screen.getByLabelText('Site'), IDS.site);
     await user.type(screen.getByLabelText('Chiffre d’affaires visé (F)'), '6000000');
-    expect(screen.getByText(/couvre déjà cette période/)).toBeInTheDocument();
+    const overlap = screen.getByText(/couvre déjà cette période/);
+    expect(screen.getByLabelText('Du')).toHaveAttribute('aria-describedby', overlap.id);
     expect(screen.getByRole('button', { name: 'Définir l’objectif' })).toBeDisabled();
 
     await user.selectOptions(screen.getByLabelText('Mesure'), 'QTE_PRODUIT');
     await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
-    await user.type(screen.getByLabelText('Quantité visée'), '12000');
+    // La quantité visée se saisit dans l'unité de base du produit (celle du réalisé).
+    await user.type(
+      screen.getByLabelText('Quantité visée (en U, unité de base du produit)'),
+      '12000',
+    );
     await user.click(screen.getByRole('button', { name: 'Définir l’objectif' }));
     await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
     const [created] = await getDb().outbox.toArray();
@@ -118,6 +154,67 @@ describe('Gestion des objectifs (ECR-CRM-07)', () => {
       aggregate_id: 't-site',
       payload: { comment: 'Objectif revu' },
     });
+  });
+
+  it('responsable commercial : pas d’objectif par site ; équipes dirigées et leurs membres seulement', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    renderScreen();
+    // Commerciaux et équipes pas encore publiés (S-28) : rien à définir, et pas de faux « par site ».
+    expect(await screen.findByText(/aucun objectif ne peut être défini ici/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nouvel objectif' })).not.toBeInTheDocument();
+    cleanup();
+
+    // Une équipe dirigée et un membre en cours : cibles équipe et commercial, jamais le site.
+    await getDb().projections.bulkPut([
+      projection('team', 'TEAM', TEAM, {
+        code: 'EQ-YDE',
+        name: 'Équipe Yaoundé',
+        manager_user_id: IDS.user,
+        is_active: true,
+      }),
+      projection('user', 'USER', MEMBER, { full_name: 'Awa Commerciale', status: 'ACTIVE' }),
+      projection('team_membership', 'TEAM_MEMBERSHIP', 'm1', {
+        team_id: TEAM,
+        user_id: MEMBER,
+        valid_from: '2026-01-01',
+        valid_to: null,
+      }),
+    ]);
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole('button', { name: 'Nouvel objectif' }));
+    const kinds = within(screen.getByLabelText('Objectif de'))
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(kinds).toEqual(['Un commercial', 'Une équipe']);
+    // Les objectifs de l'équipe et de son membre sont relus un à un.
+    await waitFor(() =>
+      expect(authorizedRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        `/api/v1/targets?user_id=${MEMBER}`,
+        { method: 'GET' },
+      ),
+    );
+    expect(authorizedRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      `/api/v1/targets?team_id=${TEAM}`,
+      { method: 'GET' },
+    );
+  });
+
+  it('lecture en échec : annoncée et relue par « Réessayer »', async () => {
+    await rememberRoles(['DIRECTION']);
+    vi.mocked(authorizedRequest).mockResolvedValueOnce({
+      ok: false,
+      reason: 'HTTP_ERROR',
+      status: 503,
+      body: null,
+    } as never);
+    renderScreen();
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByRole('listitem', { name: /PDV Yaoundé · Chiffre d’affaires/ }),
+    ).toBeInTheDocument();
   });
 
   it('hors ligne : écran en ligne seulement, aucune lecture', async () => {

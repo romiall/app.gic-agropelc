@@ -1,22 +1,31 @@
 /**
  * ECR-CRM-07 « Gestion des objectifs » (responsable commercial, direction ; en ligne). Objectifs lus
- * sur le serveur, définition d'un objectif (commercial, équipe ou site ; métrique, période, valeur)
- * avec le contrôle de chevauchement, annulation. Commerciaux et équipes : jeux `user` et `team` de
- * l'appareil (S-28). L'opération suivante attend la réponse définitive de la précédente.
+ * sur le serveur, définition d'un objectif avec le contrôle de chevauchement, annulation. Cibles selon
+ * la portée de `crm.target.manage` (01-rbac.md) : la direction (ALL) fixe des objectifs par site,
+ * équipe ou commercial ; le responsable commercial (TEAM) seulement pour les équipes qu'il dirige et
+ * leurs membres, le serveur refusant tout objectif par site (FORBIDDEN_SCOPE). Commerciaux, équipes
+ * et appartenances : jeux `user`, `team`, `team_membership` de l'appareil, pas encore publiés (S-28).
+ * La liste relue reste affichée mais sans action tant qu'elle ne reflète pas la dernière opération ;
+ * l'opération suivante attend la réponse définitive de la précédente.
  */
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb } from '../../storage/db.js';
-import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { formatBusinessDay } from '../home/format-home.js';
+import { formatBusinessDate } from '../home/format-home.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
+import { readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { isBlockingWait, submitCommand, waitingCommands } from '../sales/submit.js';
+import {
+  isBlockingWait,
+  lastWaitingCommand,
+  submitCommand,
+  waitingCommands,
+} from '../sales/submit.js';
 import {
   checkTarget,
   currentMonth,
@@ -29,38 +38,17 @@ import {
   type TargetView,
 } from './targets.js';
 
-/** Objectifs lus en ligne (plusieurs chemins réunis) ; `undefined` pendant la lecture, `null` si indisponibles. */
-function useTargets(
-  paths: readonly string[],
-  online: boolean,
-  reloadKey: string,
-): readonly TargetView[] | null | undefined {
-  const key = paths.join('|');
-  const [state, setState] = useState<{ key: string; targets: readonly TargetView[] | null }>();
-  useEffect(() => {
-    if (!online) return;
-    let cancelled = false;
-    void Promise.all(
-      key
-        .split('|')
-        .map((path) =>
-          authorizedRequest<{ targets?: TargetView[] }>(getDb(), path, { method: 'GET' }),
-        ),
-    ).then((results) => {
-      if (cancelled) return;
-      setState({
-        key,
-        targets: results.every((result) => result.ok)
-          ? mergeTargets(results.map((result) => (result.ok ? (result.data.targets ?? []) : [])))
-          : null,
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [key, online, reloadKey]);
-  if (!online) return null;
-  return state?.key === key ? state.targets : state?.targets;
+/** Objectifs de plusieurs lectures (chemins séparés par `|`), réunis sans doublon. */
+async function readTargets(key: string): Promise<ReadResult<readonly TargetView[]>> {
+  const results = await Promise.all(
+    key.split('|').map((path) => readPath<{ targets?: TargetView[] }>(path)),
+  );
+  const failed = results.find((result) => !result.ok);
+  if (failed && !failed.ok) return failed;
+  return {
+    ok: true,
+    data: mergeTargets(results.map((result) => (result.ok ? (result.data.targets ?? []) : []))),
+  };
 }
 
 function TargetCard({
@@ -89,10 +77,15 @@ function TargetCard({
       : target.metric === 'QTE_PRODUIT'
         ? `${formatQuantity(target.targetValue)} ${product?.base_unit_code ?? ''}`.trim()
         : formatQuantity(target.targetValue);
+  // Périodes avec l'année : la liste mêle les objectifs actifs de plusieurs années.
+  const period = t('performance.target_period', {
+    from: formatBusinessDate(target.periodStart),
+    to: formatBusinessDate(target.periodEnd),
+  });
   return (
     <li
       className="line-card"
-      aria-label={`${label} · ${t(`performance.metric.${target.metric}`, { defaultValue: target.metric })}`}
+      aria-label={`${label} · ${t(`performance.metric.${target.metric}`, { defaultValue: target.metric })} · ${period}`}
     >
       <div className="line-head">
         <strong>{label}</strong>
@@ -104,12 +97,7 @@ function TargetCard({
         {t(`performance.metric.${target.metric}`, { defaultValue: target.metric })}
         {product ? ` · ${product.name}` : ''} : <strong>{value}</strong>
       </p>
-      <p className="home-muted">
-        {t('performance.target_period', {
-          from: formatBusinessDay(target.periodStart),
-          to: formatBusinessDay(target.periodEnd),
-        })}
-      </p>
+      <p className="home-muted">{period}</p>
       {target.status === 'ACTIVE' ? (
         cancelling ? (
           <div className="field">
@@ -127,7 +115,10 @@ function TargetCard({
                 type="button"
                 className="secondary"
                 disabled={blocked}
-                onClick={() => onCancel(comment)}
+                onClick={() => {
+                  onCancel(comment);
+                  setCancelling(false);
+                }}
               >
                 {t('targets.cancel_confirm')}
               </button>
@@ -180,15 +171,40 @@ export function TargetsScreen() {
     start: useId(),
     end: useId(),
     value: useId(),
+    issues: useId(),
   };
+  const navigation = useRememberedNavigation(userId);
+  // Portée ALL de `crm.target.manage` : aucun repli permissif tant que les rôles ne sont pas connus.
+  const director = navigation?.roles.includes('DIRECTION') === true;
   const lastCommand = refs?.outbox.find((command) => command.command_id === last);
   const pendingOps = waitingCommands(refs?.outbox ?? [], 'crm.target.', userId);
-  const managedTeams = (refs?.teams ?? []).filter((team) => team.manager_user_id === userId);
-  const targets = useTargets(
-    ['/api/v1/targets', ...managedTeams.map((team) => `/api/v1/targets?team_id=${team.id}`)],
+  const managedTeams = (refs?.teams ?? []).filter(
+    (team) => team.is_active && team.manager_user_id === userId,
+  );
+  // Membres en cours des équipes dirigées (portée TEAM du responsable commercial).
+  const members = new Set(
+    (refs?.teamMemberships ?? [])
+      .filter(
+        (membership) =>
+          managedTeams.some((team) => team.id === membership.team_id) &&
+          membership.valid_from <= today &&
+          (membership.valid_to === null || membership.valid_to >= today),
+      )
+      .map((membership) => membership.user_id),
+  );
+  // Sans portée ALL, `GET /targets` ne rend que les objectifs propres : les équipes dirigées et
+  // leurs membres se lisent un à un (S-28).
+  const read = useOnlineRead<readonly TargetView[]>(
+    [
+      '/api/v1/targets',
+      ...managedTeams.map((team) => `/api/v1/targets?team_id=${team.id}`),
+      ...(director ? [] : [...members].map((id) => `/api/v1/targets?user_id=${id}`)),
+    ].join('|'),
+    readTargets,
     online,
     `${last ?? ''}:${lastCommand?.status ?? ''}|${pendingOps.map((c) => c.command_id).join(',')}`,
   );
+  const targets = read.data;
 
   if (!refs || !userId) {
     return (
@@ -202,22 +218,28 @@ export function TargetsScreen() {
   const waiting =
     (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
     pendingOps.length > 0;
-  const blocked = busy || waiting || !online;
-  const shownCommandId = last ?? pendingOps[pendingOps.length - 1]?.command_id;
-  const users = refs.users.filter((user) => user.status === 'ACTIVE');
-  const teams = refs.teams.filter((team) => team.is_active);
+  const blocked = busy || waiting || !online || read.stale;
+  const shownCommandId = last ?? lastWaitingCommand(refs.outbox, 'crm.target.', userId)?.command_id;
+  // Cibles admises par la portée : tout pour la direction, les équipes dirigées et leurs membres
+  // pour le responsable commercial.
+  const users = refs.users.filter(
+    (user) => user.status === 'ACTIVE' && (director || members.has(user.id)),
+  );
+  const teams = director ? refs.teams.filter((team) => team.is_active) : managedTeams;
   const sites = [...refs.sites.values()]
     .filter((site) => site.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const types: TargetType[] = [
     ...(users.length > 0 ? (['USER'] as const) : []),
     ...(teams.length > 0 ? (['TEAM'] as const) : []),
-    'SITE',
+    ...(director ? (['SITE'] as const) : []),
   ];
+  const targetType = types.includes(form.targetType) ? form.targetType : types[0];
+  const effective: TargetForm = { ...form, targetType: targetType ?? form.targetType };
   const targetOptions =
-    form.targetType === 'USER'
+    targetType === 'USER'
       ? users.map((user) => ({ value: user.id, label: user.full_name }))
-      : form.targetType === 'TEAM'
+      : targetType === 'TEAM'
         ? teams.map((team) => ({ value: team.id, label: team.name }))
         : sites.map((site) => ({ value: site.id, label: site.name }));
   const labelOf = (target: TargetView): string =>
@@ -225,10 +247,22 @@ export function TargetsScreen() {
     (target.teamId && refs.teams.find((team) => team.id === target.teamId)?.name) ||
     (target.siteId && refs.sites.get(target.siteId)?.name) ||
     t(`targets.type.${target.targetType}`);
-  const issues = checkTarget(form, targets ?? []);
+  const issues = checkTarget(effective, targets ?? []);
   const products = refs.products
     .filter((product) => product.is_sellable && product.status === 'ACTIVE')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const product = products.find((candidate) => candidate.id === form.productId);
+  // Anomalie affichée et champ qui la porte (annoncée et reliée, comme les règles tarifaires).
+  const shown = issues.filter(
+    (issue) =>
+      (issue !== 'TARGET_REQUIRED' && issue !== 'VALUE_INVALID') ||
+      (issue === 'VALUE_INVALID' && form.valueText !== ''),
+  );
+  const issueId = (issue: string) => `${ids.issues}-${issue}`;
+  const describedBy = (...codes: string[]) => {
+    const list = shown.filter((issue) => codes.includes(issue)).map(issueId);
+    return list.length > 0 ? list.join(' ') : undefined;
+  };
   const update = (patch: Partial<TargetForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const send = async (input: Parameters<typeof submitCommand>[0]) => {
@@ -263,11 +297,26 @@ export function TargetsScreen() {
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      {users.length === 0 && teams.length === 0 ? (
+      {online && read.failed ? (
+        <div className="alert alert-error" role="alert">
+          <p>{read.denied ? t('targets.denied') : t('targets.unavailable')}</p>
+          {read.denied ? null : (
+            <button type="button" className="secondary" onClick={read.retry}>
+              {t('ledger.retry')}
+            </button>
+          )}
+        </div>
+      ) : null}
+      {director && users.length === 0 && teams.length === 0 ? (
         <p className="home-muted">{t('targets.sites_only')}</p>
       ) : null}
+      {types.length === 0 ? (
+        <p className="home-muted">
+          {navigation ? t('targets.no_target_for_role') : t('targets.roles_unknown')}
+        </p>
+      ) : null}
 
-      {creating ? (
+      {creating && targetType ? (
         <section className="sale-block" aria-labelledby="target-new-title">
           <h2 id="target-new-title">{t('targets.new_title')}</h2>
           <div className="field">
@@ -275,7 +324,7 @@ export function TargetsScreen() {
             <select
               id={ids.type}
               className="text-input"
-              value={form.targetType}
+              value={targetType}
               onChange={(event) =>
                 update({ targetType: event.target.value as TargetType, targetId: '' })
               }
@@ -288,7 +337,7 @@ export function TargetsScreen() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor={ids.target}>{t(`targets.target_label.${form.targetType}`)}</label>
+            <label htmlFor={ids.target}>{t(`targets.target_label.${targetType}`)}</label>
             <select
               id={ids.target}
               className="text-input"
@@ -327,6 +376,8 @@ export function TargetsScreen() {
                 id={ids.product}
                 className="text-input"
                 value={form.productId}
+                aria-invalid={describedBy('PRODUCT_REQUIRED') ? true : undefined}
+                aria-describedby={describedBy('PRODUCT_REQUIRED')}
                 onChange={(event) => update({ productId: event.target.value })}
               >
                 <option value="">{t('lot_setup.choose')}</option>
@@ -346,6 +397,8 @@ export function TargetsScreen() {
                 type="date"
                 className="text-input"
                 value={form.periodStart}
+                aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
+                aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
                 onChange={(event) => update({ periodStart: event.target.value })}
               />
             </div>
@@ -356,42 +409,49 @@ export function TargetsScreen() {
                 type="date"
                 className="text-input"
                 value={form.periodEnd}
+                aria-invalid={describedBy('PERIOD_INVALID', 'OVERLAP') ? true : undefined}
+                aria-describedby={describedBy('PERIOD_INVALID', 'OVERLAP')}
                 onChange={(event) => update({ periodEnd: event.target.value })}
               />
             </div>
           </div>
           <div className="field">
-            <label htmlFor={ids.value}>{t(`targets.value_label.${form.metric}`)}</label>
+            <label htmlFor={ids.value}>
+              {form.metric === 'QTE_PRODUIT' && product
+                ? t('targets.value_label_unit', { unit: product.base_unit_code })
+                : t(`targets.value_label.${form.metric}`)}
+            </label>
             <input
               id={ids.value}
               className="text-input"
               inputMode={form.metric === 'QTE_PRODUIT' ? 'decimal' : 'numeric'}
               value={form.valueText}
+              aria-invalid={describedBy('VALUE_INVALID') ? true : undefined}
+              aria-describedby={describedBy('VALUE_INVALID')}
               onChange={(event) => update({ valueText: event.target.value })}
             />
           </div>
-          {issues
-            .filter(
-              (issue) =>
-                (issue !== 'TARGET_REQUIRED' && issue !== 'VALUE_INVALID') ||
-                (issue === 'VALUE_INVALID' && form.valueText),
-            )
-            .map((issue) => (
-              <p key={issue} className="error-message">
+          <div role="status" aria-live="polite">
+            {shown.map((issue) => (
+              <p key={issue} id={issueId(issue)} className="error-message">
                 {t(`targets.issue.${issue}`)}
               </p>
             ))}
+            {targets === undefined && !read.failed ? (
+              <p className="home-muted">{t('targets.overlap_pending')}</p>
+            ) : null}
+          </div>
           <div className="result-actions">
             <button
               type="button"
               className="btn-block submit-sale"
-              disabled={issues.length > 0 || blocked}
+              disabled={issues.length > 0 || blocked || targets === undefined}
               onClick={() =>
                 void send({
                   authorUserId: userId,
                   commandType: 'crm.target.set',
                   aggregateType: 'SALES_TARGET',
-                  payload: targetPayload(form),
+                  payload: targetPayload(effective),
                 }).then((ok) => {
                   if (ok) {
                     setCreating(false);
@@ -407,7 +467,7 @@ export function TargetsScreen() {
             </button>
           </div>
         </section>
-      ) : (
+      ) : types.length > 0 ? (
         <button
           type="button"
           className="btn-block"
@@ -416,11 +476,15 @@ export function TargetsScreen() {
         >
           {t('targets.new')}
         </button>
-      )}
+      ) : null}
 
-      {online && targets === undefined ? <p className="home-muted">{t('sales.loading')}</p> : null}
-      {online && targets === null ? (
-        <p className="alert alert-error">{t('targets.unavailable')}</p>
+      {online && targets === undefined && !read.failed ? (
+        <p className="home-muted">{t('sales.loading')}</p>
+      ) : null}
+      {online && targets && read.stale && !read.failed ? (
+        <p className="home-muted" role="status">
+          {t('targets.refreshing')}
+        </p>
       ) : null}
       {targets ? (
         targets.length === 0 ? (

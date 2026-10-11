@@ -70,9 +70,54 @@ const SHEET = {
   ],
 };
 
-function renderScreen() {
+const CLOSED_LOT = '01900000-0000-7000-8000-0000000009a4';
+
+/** Masquage du serveur sans droit de valorisation : toute clé en …Xaf à null, récursivement. */
+function maskAmounts(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(maskAmounts);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        key.endsWith('Xaf') ? null : maskAmounts(item),
+      ]),
+    );
+  }
+  return value;
+}
+
+/** Réponses du serveur : lots clôturés, puis fiche demandée. */
+function serve(sheets: Record<string, unknown>) {
+  vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => {
+    if (path.startsWith('/api/v1/production/lots?')) {
+      return {
+        ok: true,
+        data: {
+          lots: [
+            {
+              id: CLOSED_LOT,
+              lotCode: 'LOT-MFO-2025-009',
+              lotType: 'POULET_CHAIR',
+              status: 'CLOSED',
+            },
+          ],
+          next_cursor: null,
+        },
+      } as never;
+    }
+    const id = path.split('/').pop() ?? '';
+    const sheet = sheets[decodeURIComponent(id)];
+    return (
+      sheet
+        ? { ok: true, data: { lot: sheet } }
+        : { ok: false, reason: 'HTTP_ERROR', status: 404, body: null }
+    ) as never;
+  });
+}
+
+function renderScreen(lotId: string = LOT) {
   return render(
-    <MemoryRouter initialEntries={[`/production/fiche?lot=${LOT}`]}>
+    <MemoryRouter initialEntries={[`/production/fiche?lot=${lotId}`]}>
       <LotSheetScreen />
     </MemoryRouter>,
   );
@@ -120,7 +165,7 @@ describe('Fiche lot (ECR-PRD-03)', () => {
   });
 
   it('en ligne : effectif, indicateurs, coûts, marges et pesées du serveur', async () => {
-    vi.mocked(authorizedRequest).mockResolvedValue({ ok: true, data: { lot: SHEET } } as never);
+    serve({ [LOT]: SHEET });
     renderScreen();
     const heads = within(await screen.findByRole('region', { name: 'Effectif' }));
     expect(await heads.findByText('Morts en attente de validation')).toBeInTheDocument();
@@ -137,6 +182,14 @@ describe('Fiche lot (ECR-PRD-03)', () => {
       /-1\s350\s000|−1\s350\s000/,
     );
     expect(screen.getByText(/1\s250,5 g en moyenne \(20 sujets\)/)).toBeInTheDocument();
+    // Dates avec l'année : démarrage, pesée, mois du résultat.
+    expect(screen.getByText(/démarré le 20 septembre 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/9 oct\. 2026/)).toBeInTheDocument();
+    expect(screen.getByText('septembre 2026')).toBeInTheDocument();
+    // Les lots clôturés, sortis du jeu de l'appareil, restent consultables en ligne.
+    expect(
+      await screen.findByRole('option', { name: 'LOT-MFO-2025-009 · Poulet de chair' }),
+    ).toBeInTheDocument();
     expect(authorizedRequest).toHaveBeenCalledWith(
       expect.anything(),
       `/api/v1/production/lots/${LOT}`,
@@ -144,16 +197,44 @@ describe('Fiche lot (ECR-PRD-03)', () => {
     );
   });
 
-  it('sans droit de valorisation : montants masqués annoncés', async () => {
-    const masked = {
-      ...SHEET,
-      costs: { ...SHEET.costs, netXaf: null, remainingXaf: null, costPerHeadXaf: null },
-    };
-    vi.mocked(authorizedRequest).mockResolvedValue({ ok: true, data: { lot: masked } } as never);
+  it('sans droit de valorisation : aucun montant, masquage annoncé dans les coûts et les ventes', async () => {
+    serve({ [LOT]: maskAmounts(SHEET) });
     renderScreen();
+    const costs = within(await screen.findByRole('region', { name: 'Coûts' }));
     expect(
-      await screen.findByText('Montants réservés aux rôles qui voient les valorisations.'),
+      costs.getByText('Montants réservés aux rôles qui voient les valorisations.'),
     ).toBeInTheDocument();
+    const sales = within(screen.getByRole('region', { name: 'Ventes et marges' }));
+    expect(
+      sales.getByText('Montants réservés aux rôles qui voient les valorisations.'),
+    ).toBeInTheDocument();
+    for (const region of ['Coûts', 'Ventes et marges']) {
+      expect(screen.getByRole('region', { name: region })).not.toHaveTextContent(/F CFA/);
+    }
+    expect(screen.queryByRole('region', { name: 'Résultat mensuel' })).not.toBeInTheDocument();
+  });
+
+  it('lot demandé absent de l’appareil : lu en ligne, introuvable annoncé sans afficher un autre lot', async () => {
+    serve({
+      [CLOSED_LOT]: {
+        ...SHEET,
+        id: CLOSED_LOT,
+        lotCode: 'LOT-MFO-2025-009',
+        status: 'CLOSED',
+        closedAt: '2026-03-02T10:00:00.000Z',
+      },
+    });
+    renderScreen(CLOSED_LOT);
+    expect(await screen.findByText(/clôturé le 2 mars 2026/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Lot')).toHaveValue(CLOSED_LOT);
+    cleanup();
+
+    renderScreen('01900000-0000-7000-8000-0000000009ff');
+    expect(
+      await screen.findByText('Lot introuvable ou hors de votre périmètre.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Indicateurs' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Réessayer')).not.toBeInTheDocument();
   });
 
   it('hors ligne : effectif estimé par le téléphone, aucune lecture', async () => {

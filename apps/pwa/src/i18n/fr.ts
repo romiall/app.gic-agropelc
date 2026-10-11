@@ -1165,9 +1165,17 @@ export const fr = {
     online_only:
       'Écran en ligne seulement : les objectifs se lisent et se définissent sur le serveur. Reconnectez-vous pour continuer.',
     unavailable: 'Objectifs indisponibles : réessayez quand le serveur répond.',
+    denied: 'Lecture des objectifs refusée : droit insuffisant.',
+    refreshing: 'Relecture des objectifs après la dernière opération…',
     none: 'Aucun objectif.',
     sites_only:
       'Commerciaux et équipes ne sont pas encore publiés au téléphone : seuls les objectifs par site se définissent ici.',
+    no_target_for_role:
+      'Vous fixez les objectifs des équipes que vous dirigez et de leurs membres : ils ne sont pas encore publiés au téléphone, aucun objectif ne peut être défini ici pour l’instant.',
+    roles_unknown:
+      'Rôles de l’utilisateur pas encore connus du téléphone : reconnectez-vous en ligne pour définir un objectif.',
+    overlap_pending:
+      'Lecture des objectifs existants en cours : le chevauchement sera contrôlé ensuite.',
     new: 'Nouvel objectif',
     new_title: 'Nouvel objectif',
     type_label: 'Objectif de',
@@ -1192,6 +1200,7 @@ export const fr = {
       VISITES: 'Visites visées',
       PROSPECTS_CREES: 'Prospects créés visés',
     },
+    value_label_unit: 'Quantité visée (en {{unit}}, unité de base du produit)',
     save: 'Définir l’objectif',
     cancel: 'Annuler l’objectif',
     cancel_comment_label: 'Commentaire (facultatif)',
@@ -1221,6 +1230,11 @@ export const fr = {
   lot_sheet: {
     no_lot: 'Aucun lot de production sur vos fermes.',
     lot_label: 'Lot',
+    requested_lot: 'Lot demandé',
+    closed_on: 'clôturé le {{date}}',
+    not_on_device:
+      'Hors ligne : ce lot n’est pas sur le téléphone (lot clôturé ou hors de vos fermes) ; sa fiche se lit en ligne.',
+    not_found: 'Lot introuvable ou hors de votre périmètre.',
     started: 'démarré le {{date}}',
     status: {
       PLANNED: 'Planifié',
