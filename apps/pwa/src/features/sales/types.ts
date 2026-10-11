@@ -219,6 +219,31 @@ export interface ProductionLotData {
   readonly occurred_at: string;
 }
 
+/** (`production`, `SITE`) lot d'incubation (SM-INCUBATION) et ses compteurs. */
+export interface IncubationBatchData {
+  readonly id: string;
+  readonly batch_code: string;
+  readonly stock_lot_id: string;
+  readonly site_id: string;
+  readonly species: string;
+  readonly egg_product_id: string;
+  readonly chick_product_id: string;
+  readonly incubator_location_id: string;
+  readonly hatcher_location_id: string | null;
+  readonly egg_source: string;
+  readonly eggs_set_qty: number;
+  readonly set_at: string;
+  readonly expected_candling_date: string | null;
+  readonly expected_transfer_date: string | null;
+  readonly expected_hatch_date: string | null;
+  readonly infertile_qty: number;
+  readonly early_dead_qty: number;
+  readonly accidental_loss_qty: number;
+  readonly transferred_qty: number | null;
+  /** `INCUBATING`, `IN_HATCHER`, `CLOSED`, `CANCELLED`. */
+  readonly status: string;
+}
+
 /** (`production`, 30 derniers jours) perte rattachée à un lot (mortalité comprise). */
 export interface LotLossData {
   readonly id: string;

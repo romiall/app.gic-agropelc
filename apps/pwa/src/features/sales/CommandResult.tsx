@@ -20,7 +20,11 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
   if (!command) return null;
   const phase = phaseOf(command);
   // Numéro du document créé (vente, perte…) ; numéro du lot pour une création de lot.
-  const doc = command.server_refs?.docNumber ?? command.server_refs?.lotCode ?? '';
+  const doc =
+    command.server_refs?.docNumber ??
+    command.server_refs?.lotCode ??
+    command.server_refs?.batchCode ??
+    '';
   let text: string;
   if (phase === 'WAITING') {
     text = t(`${messages}.WAITING_${command.captured_offline ? 'offline' : 'online'}`);

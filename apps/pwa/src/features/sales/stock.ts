@@ -168,6 +168,20 @@ export function pendingConsumption(
       }
       continue;
     }
+    // Démarrage d'une incubation (ECR-PRD-06) : les œufs à couver quittent leur emplacement de
+    // stockage ; leur entrée dans l'incubateur n'est pas créditée ici.
+    if (command.command_type === 'production.incubation.start') {
+      const start = command.payload as {
+        readonly sourceLocationId?: string;
+        readonly eggProductId?: string;
+        readonly eggsSet?: number;
+      };
+      if (start.sourceLocationId && start.eggProductId && start.eggsSet) {
+        const key = stockKey(start.sourceLocationId, start.eggProductId);
+        milli.set(key, (milli.get(key) ?? 0) + toMilli(start.eggsSet));
+      }
+      continue;
+    }
     // Entrée dans un lot de production (ECR-PRD-04) : les animaux quittent leur emplacement d'origine
     // (stock, réception d'achat, autre lot) ; leur arrivée dans l'élevage n'est pas créditée ici.
     if (command.command_type === 'production.lot.record_entry') {

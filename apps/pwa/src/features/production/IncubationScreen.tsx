@@ -1,0 +1,778 @@
+/**
+ * ECR-PRD-06 « Incubation » (responsable de ferme, responsable de production ; action `INCUBATIONS` ;
+ * hors ligne). Lots d'incubation en cours avec leurs compteurs et leur échéancier, étapes du jour
+ * (mirage, transfert vers l'éclosoir, éclosion) et démarrage d'un lot. Bilans contrôlés par le
+ * domaine partagé ; une étape sur un lot démarré ici attend son démarrage.
+ */
+import { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { clock } from '../../platform/composition.js';
+import { useOnline } from '../../platform/useOnline.js';
+import { useAuth } from '../auth/AuthContext.js';
+import { formatBusinessDay } from '../home/format-home.js';
+import { CommandResult } from '../sales/CommandResult.js';
+import { formatQuantity } from '../sales/format.js';
+import { useSalesReferences, type SalesReferences } from '../sales/references.js';
+import { submitCommand } from '../sales/submit.js';
+import {
+  batchViews,
+  candlingError,
+  chickProducts,
+  eggSources,
+  eggsRemaining,
+  hatchers,
+  hatchError,
+  hatchingEggProduct,
+  incubationFarms,
+  incubationSpecies,
+  incubators,
+  parseEggCount,
+  stepDependsOn,
+  type BatchView,
+} from './incubation.js';
+
+type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
+type Panel = 'CANDLING' | 'TRANSFER' | 'HATCH' | null;
+
+function NumberField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className="text-input"
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+function BatchCard({
+  batch,
+  refs,
+  send,
+  blocked,
+  userId,
+}: {
+  readonly batch: BatchView;
+  readonly refs: SalesReferences;
+  readonly send: Send;
+  readonly blocked: boolean;
+  readonly userId: string;
+}) {
+  const { t } = useTranslation();
+  const [panel, setPanel] = useState<Panel>(null);
+  const [counts, setCounts] = useState({
+    infertile: '',
+    earlyDead: '',
+    unhatched: '',
+    hatchedViable: '',
+    hatchedNonviable: '',
+  });
+  const [hatcherId, setHatcherId] = useState('');
+  const [outputId, setOutputId] = useState('');
+  const ids = {
+    infertile: useId(),
+    earlyDead: useId(),
+    hatcher: useId(),
+    unhatched: useId(),
+    viable: useId(),
+    nonviable: useId(),
+    output: useId(),
+  };
+  const products = new Map(refs.products.map((product) => [product.id, product]));
+  const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
+  const remaining = eggsRemaining(batch.counters);
+  const hatcherList = hatchers(refs.locations, batch.siteId);
+  const outputs = refs.locations
+    .filter(
+      (location) =>
+        location.site_id === batch.siteId && !location.is_virtual && location.status === 'ACTIVE',
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const parsed = {
+    infertile: parseEggCount(counts.infertile),
+    earlyDead: parseEggCount(counts.earlyDead),
+    unhatched: parseEggCount(counts.unhatched),
+    hatchedViable: parseEggCount(counts.hatchedViable),
+    hatchedNonviable: parseEggCount(counts.hatchedNonviable),
+  };
+  const candling =
+    parsed.infertile !== null && parsed.earlyDead !== null
+      ? { infertile: parsed.infertile, earlyDead: parsed.earlyDead }
+      : null;
+  const hatch =
+    parsed.unhatched !== null && parsed.hatchedViable !== null && parsed.hatchedNonviable !== null
+      ? {
+          unhatched: parsed.unhatched,
+          hatchedViable: parsed.hatchedViable,
+          hatchedNonviable: parsed.hatchedNonviable,
+        }
+      : null;
+  const candlingProblem = candling ? candlingError(batch, candling) : t('incubation.count_invalid');
+  const hatchProblem = hatch ? hatchError(batch, hatch) : t('incubation.count_invalid');
+  const step = (commandType: string, payload: Record<string, unknown>) =>
+    void send({
+      authorUserId: userId,
+      commandType,
+      aggregateType: 'INCUBATION_EVENT',
+      dependsOn: stepDependsOn(batch),
+      payload: { batchId: batch.id, ...payload },
+    }).then((ok) => {
+      if (ok) setPanel(null);
+    });
+  const set = (key: keyof typeof counts) => (value: string) =>
+    setCounts((current) => ({ ...current, [key]: value }));
+  const label = batch.batchCode ?? t('incubation.pending_batch');
+
+  return (
+    <li className="line-card" aria-label={label}>
+      <div className="line-head">
+        <strong>{label}</strong>
+        <span className="badge badge-info">
+          {t(`incubation.status.${batch.status}`, { defaultValue: batch.status })}
+        </span>
+      </div>
+      <p className="home-muted">
+        {[
+          products.get(batch.chickProductId)?.name,
+          locationNames.get(batch.hatcherLocationId ?? batch.incubatorLocationId),
+          batch.pendingSteps > 0 ? t('incubation.pending_steps') : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </p>
+      <p>
+        {t('incubation.counters', {
+          set: formatQuantity(batch.counters.eggsSet),
+          removed: formatQuantity(batch.counters.infertile + batch.counters.earlyDead),
+          lost: formatQuantity(batch.counters.accidentalLoss),
+          remaining: formatQuantity(remaining),
+        })}
+      </p>
+      {batch.expectedHatchDate ? (
+        <p className="home-muted">
+          {t('incubation.schedule', {
+            candling: batch.expectedCandlingDate
+              ? formatBusinessDay(batch.expectedCandlingDate)
+              : '—',
+            transfer: batch.expectedTransferDate
+              ? formatBusinessDay(batch.expectedTransferDate)
+              : '—',
+            hatch: formatBusinessDay(batch.expectedHatchDate),
+          })}
+        </p>
+      ) : null}
+
+      {panel === null && (batch.status === 'INCUBATING' || batch.status === 'IN_HATCHER') ? (
+        <div className="result-actions">
+          {batch.status === 'INCUBATING' ? (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={blocked}
+                onClick={() => setPanel('CANDLING')}
+              >
+                {t('incubation.candling')}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={blocked}
+                onClick={() => setPanel('TRANSFER')}
+              >
+                {t('incubation.transfer')}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="secondary"
+              disabled={blocked}
+              onClick={() => setPanel('HATCH')}
+            >
+              {t('incubation.hatch')}
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {panel === 'CANDLING' ? (
+        <div className="sale-block">
+          <div className="line-fields">
+            <NumberField
+              id={ids.infertile}
+              label={t('incubation.infertile_label')}
+              value={counts.infertile}
+              onChange={set('infertile')}
+            />
+            <NumberField
+              id={ids.earlyDead}
+              label={t('incubation.early_dead_label')}
+              value={counts.earlyDead}
+              onChange={set('earlyDead')}
+            />
+          </div>
+          {(counts.infertile || counts.earlyDead) && candlingProblem ? (
+            <p className="error-message">{candlingProblem}</p>
+          ) : null}
+          <div className="result-actions">
+            <button
+              type="button"
+              className="btn-block submit-sale"
+              disabled={
+                blocked ||
+                candlingProblem !== null ||
+                !candling ||
+                candling.infertile + candling.earlyDead === 0
+              }
+              onClick={() => candling && step('production.incubation.record_candling', candling)}
+            >
+              {t('incubation.save_candling')}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              {t('price_rules.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {panel === 'TRANSFER' ? (
+        <div className="sale-block">
+          {hatcherList.length === 0 ? (
+            <p className="alert alert-error">{t('incubation.no_hatcher')}</p>
+          ) : (
+            <div className="field">
+              <label htmlFor={ids.hatcher}>{t('incubation.hatcher_label')}</label>
+              <select
+                id={ids.hatcher}
+                className="text-input"
+                value={hatcherId}
+                onChange={(event) => setHatcherId(event.target.value)}
+              >
+                <option value="">{t('lot_setup.choose')}</option>
+                {hatcherList.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <p className="home-muted">
+            {t('incubation.transfer_hint', { remaining: formatQuantity(remaining) })}
+          </p>
+          <div className="result-actions">
+            <button
+              type="button"
+              className="btn-block submit-sale"
+              disabled={blocked || !hatcherId}
+              onClick={() =>
+                step('production.incubation.transfer_to_hatcher', { hatcherLocationId: hatcherId })
+              }
+            >
+              {t('incubation.save_transfer')}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              {t('price_rules.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {panel === 'HATCH' ? (
+        <div className="sale-block">
+          <div className="line-fields">
+            <NumberField
+              id={ids.viable}
+              label={t('incubation.viable_label')}
+              value={counts.hatchedViable}
+              onChange={set('hatchedViable')}
+            />
+            <NumberField
+              id={ids.nonviable}
+              label={t('incubation.nonviable_label')}
+              value={counts.hatchedNonviable}
+              onChange={set('hatchedNonviable')}
+            />
+            <NumberField
+              id={ids.unhatched}
+              label={t('incubation.unhatched_label')}
+              value={counts.unhatched}
+              onChange={set('unhatched')}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor={ids.output}>{t('incubation.output_label')}</label>
+            <select
+              id={ids.output}
+              className="text-input"
+              value={outputId}
+              onChange={(event) => setOutputId(event.target.value)}
+            >
+              <option value="">
+                {t('incubation.output_default', {
+                  name:
+                    locationNames.get(batch.hatcherLocationId ?? batch.incubatorLocationId) ?? '',
+                })}
+              </option>
+              {outputs.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="home-muted">
+            {t('incubation.hatch_hint', { remaining: formatQuantity(remaining) })}
+          </p>
+          {(counts.unhatched || counts.hatchedViable || counts.hatchedNonviable) && hatchProblem ? (
+            <p className="error-message">{hatchProblem}</p>
+          ) : null}
+          <div className="result-actions">
+            <button
+              type="button"
+              className="btn-block submit-sale"
+              disabled={blocked || hatchProblem !== null || !hatch}
+              onClick={() =>
+                hatch &&
+                step('production.incubation.record_hatch', {
+                  ...hatch,
+                  ...(outputId ? { outputLocationId: outputId } : {}),
+                })
+              }
+            >
+              {t('incubation.save_hatch')}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              {t('price_rules.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function StartBatch({
+  refs,
+  send,
+  blocked,
+  online,
+  userId,
+  onStarted,
+}: {
+  readonly refs: SalesReferences;
+  readonly send: Send;
+  readonly blocked: boolean;
+  readonly online: boolean;
+  readonly userId: string;
+  readonly onStarted: () => void;
+}) {
+  const { t } = useTranslation();
+  const now = clock.now();
+  const farms = incubationFarms(refs);
+  const configuredSpecies = incubationSpecies(refs.settings, now);
+  const configuredEgg = hatchingEggProduct(refs.products, refs.settings, now);
+  const [siteChoice, setSiteChoice] = useState('');
+  const [species, setSpecies] = useState('');
+  const [eggProductChoice, setEggProductChoice] = useState('');
+  const [chickProductId, setChickProductId] = useState('');
+  const [incubatorChoice, setIncubatorChoice] = useState('');
+  const [sourceId, setSourceId] = useState('');
+  const [sourceLotId, setSourceLotId] = useState('');
+  const [eggSource, setEggSource] = useState<'INTERNAL' | 'PURCHASED'>('INTERNAL');
+  const [eggsText, setEggsText] = useState('');
+  const ids = {
+    farm: useId(),
+    species: useId(),
+    egg: useId(),
+    chick: useId(),
+    incubator: useId(),
+    source: useId(),
+    lot: useId(),
+    eggs: useId(),
+  };
+  const siteId = siteChoice || farms[0]?.id || '';
+  const incubatorList = siteId ? incubators(refs.locations, siteId) : [];
+  const incubatorId = incubatorList.some((l) => l.id === incubatorChoice)
+    ? incubatorChoice
+    : (incubatorList[0]?.id ?? '');
+  const eggCandidates = configuredEgg
+    ? [configuredEgg]
+    : refs.products
+        .filter((product) => product.stock_family !== 'BIOLOGIQUE' && product.status === 'ACTIVE')
+        .filter((product) => siteId && eggSources(refs, siteId, product.id).length > 0)
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const eggProductId = configuredEgg?.id ?? eggProductChoice;
+  const sources = siteId && eggProductId ? eggSources(refs, siteId, eggProductId) : [];
+  const source = sources.find((candidate) => candidate.locationId === sourceId);
+  const chicks = chickProducts(refs.products);
+  const effectiveSpecies =
+    configuredSpecies.length > 0 && !configuredSpecies.includes(species) ? '' : species.trim();
+  const eggs = parseEggCount(eggsText);
+  const available = source
+    ? (source.lots.find((lot) => lot.lotId === sourceLotId)?.quantity ?? source.quantity)
+    : null;
+  const over = eggs !== null && available !== null && eggs > available;
+  const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
+  const ready =
+    siteId !== '' &&
+    effectiveSpecies !== '' &&
+    eggProductId !== '' &&
+    chickProductId !== '' &&
+    incubatorId !== '' &&
+    source !== undefined &&
+    eggs !== null &&
+    eggs > 0 &&
+    !(online && over) &&
+    !blocked;
+
+  const submit = () => {
+    if (!ready || !source || eggs === null) return;
+    void send({
+      authorUserId: userId,
+      commandType: 'production.incubation.start',
+      aggregateType: 'INCUBATION_BATCH',
+      payload: {
+        species: effectiveSpecies,
+        eggProductId,
+        chickProductId,
+        incubatorLocationId: incubatorId,
+        eggSource,
+        eggsSet: eggs,
+        sourceLocationId: source.locationId,
+        ...(sourceLotId ? { sourceStockLotId: sourceLotId } : {}),
+      },
+    }).then((ok) => {
+      if (ok) {
+        setEggsText('');
+        onStarted();
+      }
+    });
+  };
+
+  if (farms.length === 0) return <p className="home-muted">{t('incubation.no_incubator')}</p>;
+
+  return (
+    <>
+      <div className="field">
+        <label htmlFor={ids.farm}>{t('lot_setup.farm_label')}</label>
+        <select
+          id={ids.farm}
+          className="text-input"
+          value={siteId}
+          onChange={(event) => setSiteChoice(event.target.value)}
+        >
+          {farms.map((farm) => (
+            <option key={farm.id} value={farm.id}>
+              {farm.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor={ids.species}>{t('incubation.species_label')}</label>
+        {configuredSpecies.length > 0 ? (
+          <select
+            id={ids.species}
+            className="text-input"
+            value={effectiveSpecies}
+            onChange={(event) => setSpecies(event.target.value)}
+          >
+            <option value="">{t('lot_setup.choose')}</option>
+            {configuredSpecies.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <input
+              id={ids.species}
+              className="text-input"
+              maxLength={20}
+              value={species}
+              onChange={(event) => setSpecies(event.target.value)}
+            />
+            <p className="text-warn">{t('incubation.species_not_configured')}</p>
+          </>
+        )}
+      </div>
+      {configuredEgg ? (
+        <p className="home-muted">{t('incubation.egg_product', { name: configuredEgg.name })}</p>
+      ) : (
+        <div className="field">
+          <label htmlFor={ids.egg}>{t('incubation.egg_label')}</label>
+          <select
+            id={ids.egg}
+            className="text-input"
+            value={eggProductChoice}
+            onChange={(event) => setEggProductChoice(event.target.value)}
+          >
+            <option value="">{t('lot_setup.choose')}</option>
+            {eggCandidates.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="field">
+        <label htmlFor={ids.chick}>{t('incubation.chick_label')}</label>
+        <select
+          id={ids.chick}
+          className="text-input"
+          value={chickProductId}
+          onChange={(event) => setChickProductId(event.target.value)}
+        >
+          <option value="">{t('lot_setup.choose')}</option>
+          {chicks.map((product) => (
+            <option key={product.id} value={product.id}>
+              {product.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor={ids.incubator}>{t('incubation.incubator_label')}</label>
+        <select
+          id={ids.incubator}
+          className="text-input"
+          value={incubatorId}
+          onChange={(event) => setIncubatorChoice(event.target.value)}
+        >
+          {incubatorList.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {eggProductId && sources.length === 0 ? (
+        <p className="alert alert-error">{t('incubation.no_eggs')}</p>
+      ) : null}
+      {sources.length > 0 ? (
+        <div className="field">
+          <label htmlFor={ids.source}>{t('incubation.source_label')}</label>
+          <select
+            id={ids.source}
+            className="text-input"
+            value={source ? source.locationId : ''}
+            onChange={(event) => {
+              setSourceId(event.target.value);
+              setSourceLotId('');
+            }}
+          >
+            <option value="">{t('lot_setup.choose')}</option>
+            {sources.map((candidate) => (
+              <option key={candidate.locationId} value={candidate.locationId}>
+                {t('incubation.source', {
+                  place: locationNames.get(candidate.locationId) ?? '',
+                  quantity: formatQuantity(candidate.quantity),
+                })}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {source && source.lots.length > 0 ? (
+        <div className="field">
+          <label htmlFor={ids.lot}>{t('incubation.egg_lot_label')}</label>
+          <select
+            id={ids.lot}
+            className="text-input"
+            value={sourceLotId}
+            onChange={(event) => setSourceLotId(event.target.value)}
+          >
+            <option value="">{t('lot_setup.fifo')}</option>
+            {source.lots.map((lot) => (
+              <option key={lot.lotId} value={lot.lotId}>
+                {`${lot.lotCode} (${formatQuantity(lot.quantity)})`}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <fieldset className="choice-group">
+        <legend>{t('incubation.egg_source_label')}</legend>
+        {(['INTERNAL', 'PURCHASED'] as const).map((value) => (
+          <label key={value} className="choice">
+            <input
+              type="radio"
+              name="egg-source"
+              value={value}
+              checked={eggSource === value}
+              onChange={() => setEggSource(value)}
+            />
+            {t(`incubation.egg_source.${value}`)}
+          </label>
+        ))}
+      </fieldset>
+      <div className="field">
+        <label htmlFor={ids.eggs}>{t('incubation.eggs_label')}</label>
+        <input
+          id={ids.eggs}
+          className="text-input"
+          inputMode="numeric"
+          value={eggsText}
+          onChange={(event) => setEggsText(event.target.value)}
+        />
+        {eggsText && (eggs === null || eggs === 0) ? (
+          <p className="error-message">{t('incubation.count_invalid')}</p>
+        ) : null}
+      </div>
+      {over ? (
+        online ? (
+          <p className="error-message" role="alert">
+            {t('incubation.over_online')}
+          </p>
+        ) : (
+          <p className="text-warn">{t('incubation.over_offline')}</p>
+        )
+      ) : null}
+      <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
+        {t('incubation.start')}
+      </button>
+    </>
+  );
+}
+
+export function IncubationScreen() {
+  const { t } = useTranslation();
+  const { state } = useAuth();
+  const userId = state.status === 'unlocked' ? state.userId : undefined;
+  const refs = useSalesReferences();
+  const online = useOnline();
+  const [section, setSection] = useState<'BATCHES' | 'START'>('BATCHES');
+  const [last, setLast] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
+  if (!refs || !userId) {
+    return (
+      <section className="sale" aria-busy="true">
+        <h1>{t('nav.screens.incubation')}</h1>
+        <p className="home-muted">{t('sales.loading')}</p>
+      </section>
+    );
+  }
+
+  const settling =
+    last !== undefined && !refs.outbox.some((command) => command.command_id === last);
+  const blocked = busy || settling;
+  const batches = batchViews(refs);
+  const open = batches.filter(
+    (batch) => batch.status === 'INCUBATING' || batch.status === 'IN_HATCHER',
+  );
+  const done = batches.filter((batch) => batch.status === 'CLOSED' || batch.status === 'CANCELLED');
+
+  const send: Send = async (input) => {
+    if (blocked) return false;
+    setBusy(true);
+    setSaveError(false);
+    try {
+      const command = await submitCommand(input);
+      setLast(command.command_id);
+      return true;
+    } catch {
+      setSaveError(true);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="sale">
+      <h1>{t('nav.screens.incubation')}</h1>
+      {!online ? (
+        <p className="home-banner" role="status">
+          {t('incubation.offline_banner')}
+        </p>
+      ) : null}
+      {last ? <CommandResult commandId={last} messages="incubation.result" /> : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t('sales.error_local_save')}
+        </p>
+      ) : null}
+      <fieldset className="choice-group">
+        <legend>{t('incubation.section_label')}</legend>
+        {(['BATCHES', 'START'] as const).map((value) => (
+          <label key={value} className="choice">
+            <input
+              type="radio"
+              name="incubation-section"
+              value={value}
+              checked={section === value}
+              onChange={() => setSection(value)}
+            />
+            {t(`incubation.section.${value}`)}
+          </label>
+        ))}
+      </fieldset>
+      {section === 'BATCHES' ? (
+        <section className="sale-block" aria-label={t('incubation.section.BATCHES')}>
+          {open.length === 0 ? (
+            <p className="home-muted">{t('incubation.none')}</p>
+          ) : (
+            <ul className="line-list">
+              {open.map((batch) => (
+                <BatchCard
+                  key={batch.id}
+                  batch={batch}
+                  refs={refs}
+                  send={send}
+                  blocked={blocked}
+                  userId={userId}
+                />
+              ))}
+            </ul>
+          )}
+          {done.length > 0 ? (
+            <>
+              <h2>{t('incubation.done_title')}</h2>
+              <ul className="receipt-lines">
+                {done.map((batch) => (
+                  <li key={batch.id}>
+                    <span>{batch.batchCode ?? t('incubation.pending_batch')}</span>
+                    <span>
+                      {t(`incubation.status.${batch.status}`, { defaultValue: batch.status })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      ) : (
+        <section className="sale-block" aria-label={t('incubation.section.START')}>
+          <StartBatch
+            refs={refs}
+            send={send}
+            blocked={blocked}
+            online={online}
+            userId={userId}
+            onStarted={() => setSection('BATCHES')}
+          />
+        </section>
+      )}
+    </section>
+  );
+}

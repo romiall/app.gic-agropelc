@@ -38,6 +38,7 @@ export const ROUTES = {
   eggCollectionFor: (lotId: string) => `/production/collecte?lot=${encodeURIComponent(lotId)}`,
   productionOutput: '/production/sortie',
   lotSetup: '/production/nouveau-lot',
+  incubation: '/production/incubation',
   productionOutputFor: (lotId: string) => `/production/sortie?lot=${encodeURIComponent(lotId)}`,
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
@@ -164,6 +165,8 @@ export const ROLE_SETS = {
    * `production.daily.record`, mais l'inventaire des écrans réserve l'écran à la production).
    */
   lotSetup: ['RESP_PRODUCTION'],
+  /** ECR-PRD-06 (`production.incubation.record` : production ALL, ferme SITE). */
+  incubation: ['RESP_FERME', 'RESP_PRODUCTION'],
   /** ECR-APP-02 (`procurement.request.create`, 01-rbac.md) : tous les demandeurs et les achats. */
   purchaseRequest: [
     'DIRECTION',
@@ -516,6 +519,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'production',
     roles: ROLE_SETS.lotSetup,
     actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-PRD-06',
+    path: ROUTES.incubation,
+    labelKey: 'incubation',
+    group: 'production',
+    roles: ROLE_SETS.incubation,
+    actionCodes: ['INCUBATIONS'],
     offline: true,
   },
   {
