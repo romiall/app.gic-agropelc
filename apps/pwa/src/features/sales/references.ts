@@ -11,7 +11,7 @@ import { listProjected } from '../../storage/projections.js';
 import { deviceWorkSessions } from '../fieldwork/service.js';
 import { toPriceRules } from './pricing.js';
 import { stillInFlight } from './pending.js';
-import { pendingConsumption, stockKey } from './stock.js';
+import { pendingConsumption, pendingLotConsumption, stockKey } from './stock.js';
 import type {
   CashAccountData,
   CampaignData,
@@ -65,6 +65,10 @@ export interface SalesReferences {
   readonly stock: ReadonlyMap<string, StockBalanceData>;
   /** Quantités déjà retirées par l'appareil, en attente de confirmation, par `emplacement:produit`. */
   readonly pending: ReadonlyMap<string, number>;
+  /** Sorties seules de l'appareil en attente (sans les entrées), par `emplacement:produit`. */
+  readonly pendingOut: ReadonlyMap<string, number>;
+  /** Sorties en attente qui désignent un lot de stock, par `emplacement:produit:lot`. */
+  readonly pendingLots: ReadonlyMap<string, number>;
   readonly customers: readonly CustomerData[];
   readonly paymentMethods: readonly PaymentMethodData[];
   readonly reasonCodes: readonly ReasonCodeData[];
@@ -427,6 +431,20 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       transferMap,
       byId(productionLots),
       new Map(goodsReceipts.map((receipt) => [receipt.id, receipt.location_id])),
+    ),
+    pendingOut: pendingConsumption(
+      outbox,
+      stockCursor?.pulled_at,
+      transferMap,
+      byId(productionLots),
+      new Map(goodsReceipts.map((receipt) => [receipt.id, receipt.location_id])),
+      true,
+    ),
+    pendingLots: pendingLotConsumption(
+      outbox,
+      stockCursor?.pulled_at,
+      byId(productionLots),
+      transferMap,
     ),
     customers: [
       ...customers.filter((customer) => customer.merged_into_id === null),

@@ -11,8 +11,13 @@
  * - Étapes (`.record_candling`, `.transfer_to_hatcher`, `.record_hatch`, agrégat `INCUBATION_EVENT`) :
  *   mirage et transfert sur un lot en incubateur, éclosion sur un lot en éclosoir ; bilans contrôlés
  *   par `checkCandling` et `checkHatch` (packages/domain), sur les compteurs du serveur corrigés des
- *   étapes de l'appareil pas encore retéléchargées. Une étape sur un lot démarré sur l'appareil
- *   attend son démarrage (ADR-051 §11).
+ *   étapes de l'appareil pas encore retéléchargées (tous auteurs). Le restant est borné par le solde
+ *   réel du lot de stock du lot d'incubation (incubateur et éclosoir), net des mirages et pertes en
+ *   attente : une perte accidentelle déclarée sur le lot (BR-INC-003) n'est pas reportée dans le jeu
+ *   (S-38). Une étape attend le démarrage du lot sur l'appareil et les étapes encore en attente sur
+ *   le même lot, de tout utilisateur de l'appareil (ADR-051 §11).
+ * - Œufs à couver : disponible d'un lot désigné net de l'attente qui le désigne ; l'attente des lots
+ *   engagés n'est pas retranchée une seconde fois du stock libre.
  */
 import {
   checkCandling,
@@ -24,9 +29,10 @@ import {
   type IncubationCounters,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import { stillInFlight } from '../sales/pending.js';
+import { isWaiting, stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { settingValue, stockKey } from '../sales/stock.js';
+import { lotStockKey, pendingOnLots, settingValue, stockKey } from '../sales/stock.js';
+import { scopeSiteIds } from '../stock/stock-view.js';
 import type {
   IncubationBatchData,
   LocationData,
@@ -56,6 +62,10 @@ export interface BatchView {
   readonly pendingSteps: number;
   /** Commande de démarrage encore sur l'appareil : une étape en dépend. */
   readonly startCommandId: string | null;
+  /** Étapes du lot encore en attente sur l'appareil, de tout utilisateur : la suivante en dépend. */
+  readonly waitingStepIds: readonly string[];
+  /** Perte de l'appareil sur ce lot pas encore confirmée (l'éclosion peut être refusée). */
+  readonly pendingLoss: boolean;
 }
 
 /** Espèces aux durées d'incubation paramétrées (clés de `production.incubation_durations`). */
@@ -111,13 +121,29 @@ export const incubators = (locations: readonly LocationData[], siteId: string): 
 export const hatchers = (locations: readonly LocationData[], siteId: string): LocationData[] =>
   activeFarmLocations(locations, siteId).filter((location) => location.location_type === 'HATCHER');
 
-/** Fermes ayant au moins un incubateur actif. */
+/**
+ * Fermes ayant au moins un incubateur actif, celles du périmètre de l'appareil seulement quand il en
+ * compte (les jeux `site` et `location` sont globaux, S-32 ; le périmètre se tire des jeux bornés).
+ */
 export function incubationFarms(
-  refs: Pick<SalesReferences, 'sites' | 'locations'>,
+  refs: Pick<
+    SalesReferences,
+    | 'sites'
+    | 'locations'
+    | 'stock'
+    | 'purchaseRequests'
+    | 'purchaseOrders'
+    | 'productionLots'
+    | 'incubationBatches'
+  >,
+  userId: string,
 ): { readonly id: string; readonly name: string }[] {
-  return [...refs.sites.values()]
+  const scope = scopeSiteIds(refs, userId);
+  const all = [...refs.sites.values()]
     .filter((site) => site.site_type === 'FERME' && site.status === 'ACTIVE')
-    .filter((site) => incubators(refs.locations, site.id).length > 0)
+    .filter((site) => incubators(refs.locations, site.id).length > 0);
+  const scoped = all.filter((site) => scope.has(site.id));
+  return (scoped.length > 0 ? scoped : all)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
     .map((site) => ({ id: site.id, name: site.name }));
 }
@@ -145,7 +171,7 @@ export interface EggSource {
 export function eggSources(
   refs: Pick<
     SalesReferences,
-    'stock' | 'locations' | 'productionLots' | 'incubationBatches' | 'pending'
+    'stock' | 'locations' | 'productionLots' | 'incubationBatches' | 'pending' | 'pendingLots'
   >,
   siteId: string,
   eggProductId: string,
@@ -162,18 +188,25 @@ export function eggSources(
   const sources: EggSource[] = [];
   for (const balance of refs.stock.values()) {
     if (balance.product_id !== eggProductId || !storage.has(balance.location_id)) continue;
+    const onLot = (lotId: string) =>
+      refs.pendingLots.get(lotStockKey(balance.location_id, eggProductId, lotId)) ?? 0;
     const lots = (balance.lots ?? [])
       .filter((lot) => lot.lot_id !== null && !engaged.has(lot.lot_id))
       .map((lot) => ({
         lotId: lot.lot_id as string,
         lotCode: lot.lot_code ?? '',
-        quantity: Number(lot.qty_on_hand),
+        quantity: Math.round((Number(lot.qty_on_hand) - onLot(lot.lot_id as string)) * 1000) / 1000,
       }))
       .filter((lot) => lot.quantity > 0);
     const engagedQty = (balance.lots ?? [])
       .filter((lot) => lot.lot_id !== null && engaged.has(lot.lot_id))
       .reduce((sum, lot) => sum + Number(lot.qty_on_hand), 0);
-    const pending = refs.pending.get(stockKey(balance.location_id, eggProductId)) ?? 0;
+    // L'attente des lots engagés est déjà dans leur solde, retiré ci-dessus.
+    const pending =
+      (refs.pending.get(stockKey(balance.location_id, eggProductId)) ?? 0) -
+      pendingOnLots(refs.pendingLots, balance.location_id, eggProductId, (lotId) =>
+        engaged.has(lotId),
+      );
     const quantity = Math.round((Number(balance.qty_on_hand) - engagedQty - pending) * 1000) / 1000;
     if (quantity <= 0) continue;
     const fifo = engagedQty <= 0;
@@ -225,7 +258,10 @@ const isAccepted = (command: OutboxCommand) =>
  * utilisateur d'une tablette partagée).
  */
 export function batchViews(
-  refs: Pick<SalesReferences, 'incubationBatches' | 'outbox' | 'productionPulledAt' | 'locations'>,
+  refs: Pick<
+    SalesReferences,
+    'incubationBatches' | 'outbox' | 'productionPulledAt' | 'locations' | 'stock' | 'stockPulledAt'
+  >,
   authorUserId: string,
 ): BatchView[] {
   const sites = new Map(refs.locations.map((location) => [location.id, location.site_id]));
@@ -248,6 +284,8 @@ export function batchViews(
       counters: counterOf(batch),
       pendingSteps: 0,
       startCommandId: null,
+      waitingStepIds: [],
+      pendingLoss: false,
     });
   }
   const inFlight = refs.outbox.filter(
@@ -286,6 +324,8 @@ export function batchViews(
       },
       pendingSteps: 0,
       startCommandId: isAccepted(command) ? null : command.command_id,
+      waitingStepIds: [],
+      pendingLoss: false,
     });
   }
   for (const command of inFlight) {
@@ -322,18 +362,77 @@ export function batchViews(
     } else {
       continue;
     }
-    views.set(view.id, { ...next, pendingSteps: view.pendingSteps + 1 });
+    views.set(view.id, {
+      ...next,
+      pendingSteps: view.pendingSteps + 1,
+      waitingStepIds: isWaiting(command)
+        ? [...view.waitingStepIds, command.command_id]
+        : view.waitingStepIds,
+    });
+  }
+  // Restant borné par le solde réel du lot de stock (incubateur et éclosoir), net des mirages et
+  // pertes pas encore dans le stock téléchargé : une perte accidentelle sur le lot n'est pas
+  // reportée dans le jeu `production` (S-38), le serveur la compte (bilan de l'éclosion).
+  const stockLots = new Map(refs.incubationBatches.map((batch) => [batch.id, batch.stock_lot_id]));
+  for (const view of views.values()) {
+    if (view.status !== 'INCUBATING' && view.status !== 'IN_HATCHER') continue;
+    const lotId = stockLots.get(view.id);
+    if (!lotId) continue;
+    let known = false;
+    let physical = 0;
+    for (const locationId of new Set(
+      [view.incubatorLocationId, view.hatcherLocationId].filter((id): id is string => !!id),
+    )) {
+      const entry = refs.stock
+        .get(stockKey(locationId, view.eggProductId))
+        ?.lots?.find((lot) => lot.lot_id === lotId);
+      if (entry) {
+        known = true;
+        physical += Number(entry.qty_on_hand);
+      }
+    }
+    let candled = 0;
+    let lost = 0;
+    for (const command of refs.outbox) {
+      if (!stillInFlight(command, refs.stockPulledAt)) continue;
+      const payload = command.payload as StepPayload & {
+        readonly lotId?: string;
+        readonly quantityBase?: number;
+      };
+      if (
+        command.command_type === 'production.incubation.record_candling' &&
+        payload.batchId === view.id
+      ) {
+        candled += (payload.infertile ?? 0) + (payload.earlyDead ?? 0);
+      } else if (command.command_type === 'inventory.loss.declare' && payload.lotId === lotId) {
+        lost += payload.quantityBase ?? 0;
+      }
+    }
+    const remaining = eggsRemaining(view.counters);
+    const physicalRemaining = physical - candled - lost;
+    const extraLoss = known && physicalRemaining < remaining ? remaining - physicalRemaining : 0;
+    views.set(view.id, {
+      ...view,
+      counters: { ...view.counters, accidentalLoss: view.counters.accidentalLoss + extraLoss },
+      pendingLoss: lost > 0,
+    });
   }
   return [...views.values()].sort((a, b) => (a.batchCode ?? '~').localeCompare(b.batchCode ?? '~'));
 }
 
-/** Contrôle d'un mirage ou d'une éclosion par le domaine ; message du domaine si refusé. */
-export function stepError(check: () => void): string | null {
+/** Bilan d'un mirage ou d'une éclosion refusé par le domaine : œufs comptés et œufs restants. */
+export interface StepIssue {
+  readonly counted: number;
+  readonly remaining: number;
+}
+
+/** Contrôle d'une étape par le domaine (`INCUBATION_BALANCE_INVALID`) ; `null` si admise. */
+function stepIssue(check: () => void, counted: number, batch: BatchView): StepIssue | null {
   try {
     check();
     return null;
   } catch (error) {
-    if (error instanceof DomainError) return error.message;
+    if (error instanceof DomainError) return { counted, remaining: eggsRemaining(batch.counters) };
     throw error;
   }
 }
@@ -341,7 +440,12 @@ export function stepError(check: () => void): string | null {
 export const candlingError = (
   batch: BatchView,
   candling: { readonly infertile: number; readonly earlyDead: number },
-) => stepError(() => checkCandling(batch.counters, candling));
+) =>
+  stepIssue(
+    () => checkCandling(batch.counters, candling),
+    candling.infertile + candling.earlyDead,
+    batch,
+  );
 
 export const hatchError = (
   batch: BatchView,
@@ -350,7 +454,15 @@ export const hatchError = (
     readonly hatchedViable: number;
     readonly hatchedNonviable: number;
   },
-) => stepError(() => checkHatch(batch.counters, hatch));
+) =>
+  stepIssue(
+    () => checkHatch(batch.counters, hatch),
+    hatch.unhatched + hatch.hatchedViable + hatch.hatchedNonviable,
+    batch,
+  );
+
+/** Espèce saisie librement : code en majuscules, comme les clés des durées (`POULE`). */
+export const normalizeSpecies = (value: string): string => value.trim().toUpperCase();
 
 export { eggsRemaining, hatchRates };
 
@@ -363,5 +475,7 @@ export function parseEggCount(text: string): number | null {
   return value <= 1_000_000_000 ? value : null;
 }
 
-export const stepDependsOn = (batch: BatchView): string[] =>
-  batch.startCommandId ? [batch.startCommandId] : [];
+export const stepDependsOn = (batch: BatchView): string[] => [
+  ...(batch.startCommandId ? [batch.startCommandId] : []),
+  ...batch.waitingStepIds,
+];

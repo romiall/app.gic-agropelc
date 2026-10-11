@@ -26,6 +26,7 @@ import {
   incubationFarms,
   incubationSpecies,
   incubators,
+  normalizeSpecies,
   parseEggCount,
   stepDependsOn,
   type BatchView,
@@ -39,11 +40,14 @@ function NumberField({
   label,
   value,
   onChange,
+  errorId,
 }: {
   readonly id: string;
   readonly label: string;
   readonly value: string;
   readonly onChange: (value: string) => void;
+  /** Anomalie affichée qui porte sur ce champ (reliée et annoncée). */
+  readonly errorId?: string | undefined;
 }) {
   return (
     <div className="field">
@@ -53,11 +57,21 @@ function NumberField({
         className="text-input"
         inputMode="numeric"
         value={value}
+        aria-invalid={errorId ? true : undefined}
+        aria-describedby={errorId}
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
   );
 }
+
+const EMPTY_COUNTS = {
+  infertile: '',
+  earlyDead: '',
+  unhatched: '',
+  hatchedViable: '',
+  hatchedNonviable: '',
+};
 
 function BatchCard({
   batch,
@@ -74,13 +88,7 @@ function BatchCard({
 }) {
   const { t } = useTranslation();
   const [panel, setPanel] = useState<Panel>(null);
-  const [counts, setCounts] = useState({
-    infertile: '',
-    earlyDead: '',
-    unhatched: '',
-    hatchedViable: '',
-    hatchedNonviable: '',
-  });
+  const [counts, setCounts] = useState(EMPTY_COUNTS);
   const [hatcherId, setHatcherId] = useState('');
   const [outputId, setOutputId] = useState('');
   const ids = {
@@ -91,6 +99,8 @@ function BatchCard({
     viable: useId(),
     nonviable: useId(),
     output: useId(),
+    candlingError: useId(),
+    hatchError: useId(),
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
@@ -121,8 +131,31 @@ function BatchCard({
           hatchedNonviable: parsed.hatchedNonviable,
         }
       : null;
-  const candlingProblem = candling ? candlingError(batch, candling) : t('incubation.count_invalid');
-  const hatchProblem = hatch ? hatchError(batch, hatch) : t('incubation.count_invalid');
+  const candlingIssue = candling ? candlingError(batch, candling) : null;
+  const candlingProblem = !candling
+    ? t('incubation.count_invalid')
+    : candlingIssue
+      ? t('incubation.candling_over', {
+          counted: formatQuantity(candlingIssue.counted),
+          remaining: formatQuantity(candlingIssue.remaining),
+        })
+      : null;
+  const hatchIssue = hatch ? hatchError(batch, hatch) : null;
+  const hatchProblem = !hatch
+    ? t('incubation.count_invalid')
+    : hatchIssue
+      ? t('incubation.hatch_unbalanced', {
+          counted: formatQuantity(hatchIssue.counted),
+          remaining: formatQuantity(hatchIssue.remaining),
+        })
+      : null;
+  // Saisie remise à zéro à chaque ouverture et après un envoi (pas de second mirage à un clic).
+  const open = (next: Panel) => {
+    setCounts(EMPTY_COUNTS);
+    setHatcherId('');
+    setOutputId('');
+    setPanel(next);
+  };
   const step = (commandType: string, payload: Record<string, unknown>) =>
     void send({
       authorUserId: userId,
@@ -131,8 +164,12 @@ function BatchCard({
       dependsOn: stepDependsOn(batch),
       payload: { batchId: batch.id, ...payload },
     }).then((ok) => {
-      if (ok) setPanel(null);
+      if (ok) open(null);
     });
+  const candlingShown = Boolean((counts.infertile || counts.earlyDead) && candlingProblem);
+  const hatchShown = Boolean(
+    (counts.unhatched || counts.hatchedViable || counts.hatchedNonviable) && hatchProblem,
+  );
   const set = (key: keyof typeof counts) => (value: string) =>
     setCounts((current) => ({ ...current, [key]: value }));
   const label = batch.batchCode ?? t('incubation.pending_batch');
@@ -162,6 +199,7 @@ function BatchCard({
           remaining: formatQuantity(remaining),
         })}
       </p>
+      {batch.pendingLoss ? <p className="text-warn">{t('incubation.pending_loss')}</p> : null}
       {batch.expectedHatchDate ? (
         <p className="home-muted">
           {t('incubation.schedule', {
@@ -184,7 +222,7 @@ function BatchCard({
                 type="button"
                 className="secondary"
                 disabled={blocked}
-                onClick={() => setPanel('CANDLING')}
+                onClick={() => open('CANDLING')}
               >
                 {t('incubation.candling')}
               </button>
@@ -192,7 +230,7 @@ function BatchCard({
                 type="button"
                 className="secondary"
                 disabled={blocked}
-                onClick={() => setPanel('TRANSFER')}
+                onClick={() => open('TRANSFER')}
               >
                 {t('incubation.transfer')}
               </button>
@@ -202,7 +240,7 @@ function BatchCard({
               type="button"
               className="secondary"
               disabled={blocked}
-              onClick={() => setPanel('HATCH')}
+              onClick={() => open('HATCH')}
             >
               {t('incubation.hatch')}
             </button>
@@ -218,16 +256,20 @@ function BatchCard({
               label={t('incubation.infertile_label')}
               value={counts.infertile}
               onChange={set('infertile')}
+              errorId={candlingShown ? ids.candlingError : undefined}
             />
             <NumberField
               id={ids.earlyDead}
               label={t('incubation.early_dead_label')}
               value={counts.earlyDead}
               onChange={set('earlyDead')}
+              errorId={candlingShown ? ids.candlingError : undefined}
             />
           </div>
-          {(counts.infertile || counts.earlyDead) && candlingProblem ? (
-            <p className="error-message">{candlingProblem}</p>
+          {candlingShown ? (
+            <p id={ids.candlingError} className="error-message" role="alert">
+              {candlingProblem}
+            </p>
           ) : null}
           <div className="result-actions">
             <button
@@ -301,18 +343,21 @@ function BatchCard({
               label={t('incubation.viable_label')}
               value={counts.hatchedViable}
               onChange={set('hatchedViable')}
+              errorId={hatchShown ? ids.hatchError : undefined}
             />
             <NumberField
               id={ids.nonviable}
               label={t('incubation.nonviable_label')}
               value={counts.hatchedNonviable}
               onChange={set('hatchedNonviable')}
+              errorId={hatchShown ? ids.hatchError : undefined}
             />
             <NumberField
               id={ids.unhatched}
               label={t('incubation.unhatched_label')}
               value={counts.unhatched}
               onChange={set('unhatched')}
+              errorId={hatchShown ? ids.hatchError : undefined}
             />
           </div>
           <div className="field">
@@ -339,8 +384,10 @@ function BatchCard({
           <p className="home-muted">
             {t('incubation.hatch_hint', { remaining: formatQuantity(remaining) })}
           </p>
-          {(counts.unhatched || counts.hatchedViable || counts.hatchedNonviable) && hatchProblem ? (
-            <p className="error-message">{hatchProblem}</p>
+          {hatchShown ? (
+            <p id={ids.hatchError} className="error-message" role="alert">
+              {hatchProblem}
+            </p>
           ) : null}
           <div className="result-actions">
             <button
@@ -384,7 +431,7 @@ function StartBatch({
 }) {
   const { t } = useTranslation();
   const now = clock.now();
-  const farms = incubationFarms(refs);
+  const farms = incubationFarms(refs, userId);
   const configuredSpecies = incubationSpecies(refs.settings, now);
   const configuredEgg = hatchingEggProduct(refs.products, refs.settings, now);
   const [siteChoice, setSiteChoice] = useState('');
@@ -405,6 +452,8 @@ function StartBatch({
     source: useId(),
     lot: useId(),
     eggs: useId(),
+    eggsError: useId(),
+    speciesList: useId(),
   };
   const siteId = siteChoice || farms[0]?.id || '';
   const incubatorList = siteId ? incubators(refs.locations, siteId) : [];
@@ -421,8 +470,14 @@ function StartBatch({
   const sources = siteId && eggProductId ? eggSources(refs, siteId, eggProductId) : [];
   const source = sources.find((candidate) => candidate.locationId === sourceId);
   const chicks = chickProducts(refs.products);
+  // Saisie libre (durées non servies, S-07) : code en majuscules, comme les clés paramétrées.
   const effectiveSpecies =
-    configuredSpecies.length > 0 && !configuredSpecies.includes(species) ? '' : species.trim();
+    configuredSpecies.length > 0
+      ? configuredSpecies.includes(species)
+        ? species
+        : ''
+      : normalizeSpecies(species);
+  const knownSpecies = [...new Set(refs.incubationBatches.map((batch) => batch.species))].sort();
   const eggs = parseEggCount(eggsText);
   // Lot désigné revalidé contre la source du moment : la charge utile envoie ce qui s'affiche.
   const lotId = source?.lots.some((lot) => lot.lotId === sourceLotId) ? sourceLotId : '';
@@ -509,9 +564,17 @@ function StartBatch({
               id={ids.species}
               className="text-input"
               maxLength={20}
+              autoCapitalize="characters"
+              placeholder="POULE"
+              list={ids.speciesList}
               value={species}
               onChange={(event) => setSpecies(event.target.value)}
             />
+            <datalist id={ids.speciesList}>
+              {knownSpecies.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
             <p className="text-warn">{t('incubation.species_not_configured')}</p>
           </>
         )}
@@ -635,10 +698,14 @@ function StartBatch({
           className="text-input"
           inputMode="numeric"
           value={eggsText}
+          aria-invalid={eggsText && (eggs === null || eggs === 0) ? true : undefined}
+          aria-describedby={eggsText && (eggs === null || eggs === 0) ? ids.eggsError : undefined}
           onChange={(event) => setEggsText(event.target.value)}
         />
         {eggsText && (eggs === null || eggs === 0) ? (
-          <p className="error-message">{t('incubation.count_invalid')}</p>
+          <p id={ids.eggsError} className="error-message" role="alert">
+            {t('incubation.count_invalid')}
+          </p>
         ) : null}
       </div>
       {over ? (

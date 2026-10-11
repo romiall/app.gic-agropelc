@@ -68,8 +68,13 @@ export function pendingConsumption(
   productionLots: ReadonlyMap<string, Pick<ProductionLotData, 'product_id'>> = new Map(),
   /** Emplacement de chaque réception d'achat connue (mise en place depuis une réception). */
   receiptLocations: ReadonlyMap<string, string> = new Map(),
+  /** Sorties seulement : les entrées en attente (réceptions, collectes…) ne sont pas comptées. */
+  outgoingOnly = false,
 ): Map<string, number> {
   const milli = new Map<string, number>();
+  const credit = (key: string, quantityMilli: number) => {
+    if (!outgoingOnly) milli.set(key, (milli.get(key) ?? 0) - quantityMilli);
+  };
   for (const command of commands) {
     if (!stillPending(command, stockPulledAt)) continue;
     const payload = command.payload as StockPayloadLike;
@@ -95,7 +100,7 @@ export function pendingConsumption(
         for (const line of blind.lines ?? []) {
           if (!line.productId || !line.receivedQtyBase) continue;
           const key = stockKey(blind.toLocationId, line.productId);
-          milli.set(key, (milli.get(key) ?? 0) - toMilli(line.receivedQtyBase));
+          credit(key, toMilli(line.receivedQtyBase));
         }
         continue;
       }
@@ -107,7 +112,7 @@ export function pendingConsumption(
         );
         if (!transferLine || !line.receivedQtyBase) continue;
         const key = stockKey(transfer.to_location_id, transferLine.product_id);
-        milli.set(key, (milli.get(key) ?? 0) - toMilli(line.receivedQtyBase));
+        credit(key, toMilli(line.receivedQtyBase));
       }
       continue;
     }
@@ -121,7 +126,7 @@ export function pendingConsumption(
       for (const grade of collection.grades ?? []) {
         if (!grade.productId || !grade.quantity) continue;
         const key = stockKey(collection.storageLocationId, grade.productId);
-        milli.set(key, (milli.get(key) ?? 0) - toMilli(grade.quantity));
+        credit(key, toMilli(grade.quantity));
       }
       continue;
     }
@@ -150,7 +155,7 @@ export function pendingConsumption(
         const accepted = toMilli(line.qtyDeliveredBase) - toMilli(line.qtyRejectedBase ?? 0);
         if (accepted <= 0) continue;
         const key = stockKey(receipt.locationId, line.productId);
-        milli.set(key, (milli.get(key) ?? 0) - accepted);
+        credit(key, accepted);
       }
       continue;
     }
@@ -242,7 +247,7 @@ export function pendingConsumption(
         const from = stockKey(move.fromLocationId, line.productId);
         const to = stockKey(move.toLocationId, line.productId);
         milli.set(from, (milli.get(from) ?? 0) + toMilli(line.quantityBase));
-        milli.set(to, (milli.get(to) ?? 0) - toMilli(line.quantityBase));
+        credit(to, toMilli(line.quantityBase));
       }
       continue;
     }
@@ -267,6 +272,122 @@ export function pendingConsumption(
     }
   }
   return new Map([...milli].map(([key, value]) => [key, fromMilli(value)]));
+}
+
+/** Clé d'un lot de stock sur un emplacement : `emplacement:produit:lot`. */
+export const lotStockKey = (locationId: string, productId: string, lotId: string): string =>
+  `${locationId}:${productId}:${lotId}`;
+
+/**
+ * Sorties de l'appareil en attente qui désignent un lot de stock (lot fournisseur, de collecte,
+ * d'incubation, ou lot de stock d'un lot de production), par `emplacement:produit:lot` (unité de
+ * base) : mise en place depuis le stock avec lot, transfert ou sevrage depuis un lot, mortalité,
+ * démarrage d'incubation avec lot, perte, consommation ou intrant avec lot, expédition ou mouvement
+ * interne d'une ligne avec lot. Le disponible d'un lot désigné en est net ; le reste de l'attente
+ * d'un emplacement (sans lot désigné) se répartit au plus ancien, côté serveur.
+ */
+export function pendingLotConsumption(
+  commands: readonly OutboxCommand[],
+  stockPulledAt: string | undefined,
+  productionLots: ReadonlyMap<string, Pick<ProductionLotData, 'product_id' | 'stock_lot_id'>>,
+  transfers: ReadonlyMap<string, StockTransferData> = new Map(),
+): Map<string, number> {
+  const milli = new Map<string, number>();
+  const add = (locationId: string, productId: string, lotId: string, quantity: number) => {
+    const key = lotStockKey(locationId, productId, lotId);
+    milli.set(key, (milli.get(key) ?? 0) + toMilli(quantity));
+  };
+  for (const command of commands) {
+    if (!stillPending(command, stockPulledAt)) continue;
+    const p = command.payload as {
+      readonly sourceKind?: string;
+      readonly quantity?: number;
+      readonly quantityBase?: number;
+      readonly sourceLocationId?: string;
+      readonly sourceProductId?: string;
+      readonly sourceStockLotId?: string;
+      readonly sourceProductionLotId?: string;
+      readonly productionLotId?: string;
+      readonly locationId?: string;
+      readonly productId?: string;
+      readonly lotId?: string;
+      readonly eggProductId?: string;
+      readonly eggsSet?: number;
+      readonly transferId?: string;
+      readonly fromLocationId?: string;
+      readonly lines?: readonly {
+        readonly productId?: string;
+        readonly lotId?: string;
+        readonly quantityBase?: number;
+      }[];
+    };
+    switch (command.command_type) {
+      case 'production.lot.record_entry': {
+        if (!p.quantity || !p.sourceLocationId) break;
+        if (p.sourceKind === 'INTERNAL_STOCK' && p.sourceProductId && p.sourceStockLotId) {
+          add(p.sourceLocationId, p.sourceProductId, p.sourceStockLotId, p.quantity);
+        } else if (
+          (p.sourceKind === 'TRANSFER' || p.sourceKind === 'WEANING') &&
+          p.sourceProductionLotId
+        ) {
+          const lot = productionLots.get(p.sourceProductionLotId);
+          if (lot) add(p.sourceLocationId, lot.product_id, lot.stock_lot_id, p.quantity);
+        }
+        break;
+      }
+      case 'production.mortality.record': {
+        const lot = p.productionLotId ? productionLots.get(p.productionLotId) : undefined;
+        if (lot && p.locationId && p.quantity) {
+          add(p.locationId, lot.product_id, lot.stock_lot_id, p.quantity);
+        }
+        break;
+      }
+      case 'production.incubation.start': {
+        if (p.sourceLocationId && p.eggProductId && p.sourceStockLotId && p.eggsSet) {
+          add(p.sourceLocationId, p.eggProductId, p.sourceStockLotId, p.eggsSet);
+        }
+        break;
+      }
+      case 'inventory.loss.declare':
+      case 'inventory.consumption.record':
+      case 'production.input.record': {
+        if (p.locationId && p.productId && p.lotId && p.quantityBase) {
+          add(p.locationId, p.productId, p.lotId, p.quantityBase);
+        }
+        break;
+      }
+      case 'inventory.transfer.dispatch':
+      case 'inventory.transfer.move_internal': {
+        const from =
+          p.fromLocationId ?? transfers.get(p.transferId ?? '')?.from_location_id ?? undefined;
+        if (!from) break;
+        for (const line of p.lines ?? []) {
+          if (line.productId && line.lotId && line.quantityBase) {
+            add(from, line.productId, line.lotId, line.quantityBase);
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return new Map([...milli].map(([key, value]) => [key, fromMilli(value)]));
+}
+
+/** Somme de l'attente par lot sur un emplacement et un produit, pour les lots retenus. */
+export function pendingOnLots(
+  pendingLots: ReadonlyMap<string, number>,
+  locationId: string,
+  productId: string,
+  keep: (lotId: string) => boolean = () => true,
+): number {
+  const prefix = `${locationId}:${productId}:`;
+  let total = 0;
+  for (const [key, quantity] of pendingLots) {
+    if (key.startsWith(prefix) && keep(key.slice(prefix.length))) total += toMilli(quantity);
+  }
+  return fromMilli(total);
 }
 
 /** Disponible pour cet appareil sur l'emplacement, en unité de base (peut être négatif). */

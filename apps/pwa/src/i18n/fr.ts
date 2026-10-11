@@ -1314,12 +1314,18 @@ export const fr = {
     output_label: 'Poussins placés sur',
     output_default: 'L’éclosoir ({{name}})',
     hatch_hint: 'Viables + non viables + non éclos = {{remaining}} œufs restants.',
+    candling_over:
+      'Mirage : {{counted}} œufs retirés, mais il n’en reste que {{remaining}} dans l’incubateur.',
+    hatch_unbalanced:
+      'Éclosion : {{counted}} œufs comptés pour {{remaining}} restants ; le total doit être égal.',
+    pending_loss:
+      'Une perte de ce lot saisie sur ce téléphone n’est pas encore confirmée : si elle attend une validation, le serveur refusera l’éclosion jusqu’à la décision.',
     save_hatch: 'Enregistrer l’éclosion',
     count_invalid: 'Nombre entier attendu.',
     no_incubator: 'Aucune ferme avec un incubateur actif.',
     species_label: 'Espèce',
     species_not_configured:
-      'Durées d’incubation non servies au téléphone : saisissez l’espèce paramétrée ; le serveur refusera en ligne une espèce inconnue.',
+      'Durées d’incubation non servies au téléphone : saisissez le code de l’espèce paramétrée, en majuscules (par exemple POULE) ; le serveur refusera en ligne une espèce inconnue.',
     egg_product: 'Œufs à couver : {{name}}',
     egg_label: 'Œufs à couver',
     chick_label: 'Poussins produits',

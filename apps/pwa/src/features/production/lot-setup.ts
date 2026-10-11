@@ -32,7 +32,7 @@ import {
 } from '@gic/domain';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
-import { stockKey } from '../sales/stock.js';
+import { lotStockKey, pendingOnLots, stockKey } from '../sales/stock.js';
 import { locationHeadcount, rearingHeadcount, rearingLocations } from './daily.js';
 import type {
   GoodsReceiptData,
@@ -316,7 +316,10 @@ export interface StockSource {
 }
 
 export function stockSources(
-  refs: Pick<SalesReferences, 'stock' | 'locations' | 'products' | 'productionLots' | 'pending'>,
+  refs: Pick<
+    SalesReferences,
+    'stock' | 'locations' | 'products' | 'productionLots' | 'pending' | 'pendingLots'
+  >,
   lot: EntryLot,
 ): StockSource[] {
   const lotProduct = refs.products.find((product) => product.id === lot.productId);
@@ -342,18 +345,32 @@ export function stockSources(
   const sources: StockSource[] = [];
   for (const balance of refs.stock.values()) {
     if (!farm.has(balance.location_id) || !biological.has(balance.product_id)) continue;
+    // Attente désignant un lot de cet emplacement : retranchée de ce lot seulement.
+    const onLot = (lotId: string) =>
+      refs.pendingLots.get(lotStockKey(balance.location_id, balance.product_id, lotId)) ?? 0;
     const lots = (balance.lots ?? [])
       .filter((stockLot) => stockLot.lot_id !== null && !productionStockLots.has(stockLot.lot_id))
       .map((stockLot) => ({
         lotId: stockLot.lot_id as string,
         lotCode: stockLot.lot_code ?? '',
-        quantity: Number(stockLot.qty_on_hand),
+        quantity:
+          Math.round((Number(stockLot.qty_on_hand) - onLot(stockLot.lot_id as string)) * 1000) /
+          1000,
       }))
       .filter((stockLot) => stockLot.quantity > 0);
     const inProduction = (balance.lots ?? [])
       .filter((stockLot) => stockLot.lot_id !== null && productionStockLots.has(stockLot.lot_id))
       .reduce((sum, stockLot) => sum + Number(stockLot.qty_on_hand), 0);
-    const pending = refs.pending.get(stockKey(balance.location_id, balance.product_id)) ?? 0;
+    // L'attente sur les lots de production (mortalités, sorties, transferts) est déjà dans leurs
+    // têtes, retirées ci-dessus : elle ne se retranche pas une seconde fois du stock libre.
+    const engagedPending = pendingOnLots(
+      refs.pendingLots,
+      balance.location_id,
+      balance.product_id,
+      (lotId) => productionStockLots.has(lotId),
+    );
+    const pending =
+      (refs.pending.get(stockKey(balance.location_id, balance.product_id)) ?? 0) - engagedPending;
     const quantity =
       Math.round((Number(balance.qty_on_hand) - inProduction - pending) * 1000) / 1000;
     if (quantity <= 0) continue;
@@ -376,12 +393,13 @@ export function stockSources(
 
 /**
  * Têtes d'un produit d'une réception encore à mettre en place, comme les compte le serveur : sur chaque
- * ligne, l'accepté borné par le solde de son lot fournisseur à l'emplacement de réception (l'accepté
- * seul si l'appareil n'en détient pas le solde), moins les opérations de l'appareil en attente sur cet
- * emplacement.
+ * ligne, l'accepté borné par le solde de son lot fournisseur à l'emplacement de réception, net des
+ * sorties de l'appareil qui désignent ce lot (l'accepté seul si l'appareil ne connaît pas encore ce
+ * lot sur l'emplacement) ; puis moins les sorties en attente sans lot désigné (le serveur les prend au
+ * plus ancien). Les entrées en attente (une autre réception) ne regonflent jamais une réception.
  */
 export function receiptAvailable(
-  refs: Pick<SalesReferences, 'stock' | 'pending'>,
+  refs: Pick<SalesReferences, 'stock' | 'pendingOut' | 'pendingLots'>,
   receipt: Pick<GoodsReceiptData, 'location_id' | 'lines'>,
   productId: string,
 ): number {
@@ -393,19 +411,26 @@ export function receiptAvailable(
     const accepted = Number(line.qty_accepted_base);
     if (!(accepted > 0)) continue;
     const lotId = line.stock_lot_id ?? null;
-    const onLot =
-      lotId === null || balance === undefined
-        ? accepted
-        : Number(balance.lots?.find((stockLot) => stockLot.lot_id === lotId)?.qty_on_hand ?? 0);
-    total += Math.min(accepted, onLot);
+    const known =
+      lotId !== null ? balance?.lots?.find((stockLot) => stockLot.lot_id === lotId) : undefined;
+    const onLot = known
+      ? Number(known.qty_on_hand) -
+        (refs.pendingLots.get(lotStockKey(receipt.location_id, productId, lotId as string)) ?? 0)
+      : accepted;
+    total += Math.max(0, Math.min(accepted, onLot));
   }
-  const left = Math.round((total - (refs.pending.get(key) ?? 0)) * 1000) / 1000;
+  const unlotted = Math.max(
+    0,
+    (refs.pendingOut.get(key) ?? 0) -
+      pendingOnLots(refs.pendingLots, receipt.location_id, productId),
+  );
+  const left = Math.round((total - unlotted) * 1000) / 1000;
   return Math.max(0, left);
 }
 
 /** Produits d'une réception à mettre en place dans ce lot : animaux de son espèce encore disponibles. */
 export function receiptProducts(
-  refs: Pick<SalesReferences, 'products' | 'stock' | 'pending'>,
+  refs: Pick<SalesReferences, 'products' | 'stock' | 'pendingOut' | 'pendingLots'>,
   receipt: Pick<GoodsReceiptData, 'location_id' | 'lines'>,
   lot: Pick<EntryLot, 'productId'>,
 ): string[] {
@@ -425,7 +450,10 @@ export function receiptProducts(
 
 /** Réceptions comptabilisées de la ferme qui portent encore des animaux de l'espèce du lot. */
 export function placementReceipts(
-  refs: Pick<SalesReferences, 'goodsReceipts' | 'locations' | 'products' | 'stock' | 'pending'>,
+  refs: Pick<
+    SalesReferences,
+    'goodsReceipts' | 'locations' | 'products' | 'stock' | 'pendingOut' | 'pendingLots'
+  >,
   lot: EntryLot,
 ): GoodsReceiptData[] {
   const sites = new Map(

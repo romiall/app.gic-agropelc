@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { getDb } from '../../storage/db.js';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { IncubationScreen } from './IncubationScreen.js';
-import { batchViews, eggSources } from './incubation.js';
+import { batchViews, eggSources, stepDependsOn } from './incubation.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../platform/composition.js', async () => {
@@ -33,6 +33,63 @@ const CHICK = '01900000-0000-7000-8000-0000000008a6';
 const COLLECTION_LOT = '01900000-0000-7000-8000-0000000008a7';
 const BATCH_A = '01900000-0000-7000-8000-0000000008a8';
 const BATCH_B = '01900000-0000-7000-8000-0000000008a9';
+const COLLECTION_LOT_2 = '01900000-0000-7000-8000-0000000008b0';
+const OTHER_FARM = '01900000-0000-7000-8000-0000000008b1';
+const OTHER_INCUBATOR = '01900000-0000-7000-8000-0000000008b2';
+const OTHER_USER = '01900000-0000-7000-8000-0000000000e9';
+
+let seq = 100;
+/** Commande de l'outbox (en attente d'envoi). */
+function command(
+  commandType: string,
+  payload: object,
+  overrides: Partial<OutboxCommand> = {},
+): OutboxCommand {
+  seq += 1;
+  return {
+    command_id: `01900000-0000-7000-8000-000000000${seq}`,
+    device_seq: seq,
+    command_type: commandType,
+    command_version: 1,
+    author_user_id: IDS.user,
+    aggregate_type: 'INCUBATION_EVENT',
+    aggregate_id: `01900000-0000-7000-8000-000000001${seq}`,
+    base_version: null,
+    depends_on: [],
+    occurred_at: '2026-10-10T08:30:00.000Z',
+    client_created_at: '2026-10-10T08:30:00.000Z',
+    captured_offline: true,
+    backdated_reason: null,
+    attachment_ids: [],
+    payload,
+    status: 'LOCAL_ONLY',
+    attempts: 0,
+    next_attempt_at: null,
+    last_error: null,
+    server_refs: null,
+    ...overrides,
+  };
+}
+
+const eggBalance = (locationId: string, lots: { id: string; code: string; qty: number }[]) =>
+  projection(
+    'stock',
+    'STOCK_BALANCE',
+    HATCH_EGG,
+    {
+      location_id: locationId,
+      product_id: HATCH_EGG,
+      qty_on_hand: String(lots.reduce((sum, lot) => sum + lot.qty, 0)),
+      qty_reserved: '0',
+      qty_allocated: '0',
+      lots: lots.map((lot) => ({
+        lot_id: lot.id,
+        lot_code: lot.code,
+        qty_on_hand: String(lot.qty),
+      })),
+    },
+    `stock:STOCK_BALANCE:${locationId}:${HATCH_EGG}`,
+  );
 
 function projection(
   dataset: string,
@@ -293,7 +350,14 @@ describe('Incubation (ECR-PRD-06)', () => {
     const incubating = await screen.findByRole('listitem', { name: 'INC-MFO-2026-001' });
     await user.click(within(incubating).getByRole('button', { name: 'Mirage' }));
     await user.type(within(incubating).getByLabelText('Infertiles'), '600');
-    expect(within(incubating).getByText(/Mirage : 600 œufs retirés pour 500/)).toBeInTheDocument();
+    const tooMany = within(incubating).getByRole('alert');
+    expect(tooMany).toHaveTextContent(
+      'Mirage : 600 œufs retirés, mais il n’en reste que 500 dans l’incubateur.',
+    );
+    expect(within(incubating).getByLabelText('Infertiles')).toHaveAttribute(
+      'aria-describedby',
+      tooMany.id,
+    );
     await user.clear(within(incubating).getByLabelText('Infertiles'));
     await user.type(within(incubating).getByLabelText('Infertiles'), '30');
     await user.type(within(incubating).getByLabelText('Mortalité embryonnaire'), '5');
@@ -346,5 +410,140 @@ describe('Incubation (ECR-PRD-06)', () => {
     // Après l'éclosion en attente, le lot n'est plus proposé à l'éclosion.
     const refs = await loadSalesReferences(getDb());
     expect(batchViews(refs, IDS.user).find((view) => view.id === BATCH_B)?.status).toBe('CLOSED');
+  });
+
+  it('restant borné par le solde réel du lot : perte accidentelle reportée, perte en attente signalée', async () => {
+    const db = getDb();
+    // Lot B en éclosoir : 400 − 20 − 10 = 370 restants au jeu ; 355 œufs du lot dans l'éclosoir.
+    await db.projections.put(
+      eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 355 }]),
+    );
+    let refs = await loadSalesReferences(db);
+    expect(batchViews(refs, IDS.user).find((view) => view.id === BATCH_B)?.counters).toMatchObject({
+      accidentalLoss: 15,
+    });
+    // Une perte de 5 œufs du lot en attente sur l'appareil : retranchée et signalée.
+    await db.outbox.add(
+      command('inventory.loss.declare', {
+        locationId: HATCHER,
+        productId: HATCH_EGG,
+        lotId: `${BATCH_B}-lot`,
+        quantityBase: 5,
+      }),
+    );
+    refs = await loadSalesReferences(db);
+    const view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B);
+    expect(view?.counters.accidentalLoss).toBe(20);
+    expect(view?.pendingLoss).toBe(true);
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
+    expect(card).toHaveTextContent(/pertes 20 · restants 350/);
+    expect(within(card).getByText(/n’est pas encore confirmée/)).toBeInTheDocument();
+  });
+
+  it('lot d’œufs désigné net de l’attente ; étape d’un autre utilisateur en dépendance', async () => {
+    const db = getDb();
+    await db.projections.put(
+      eggBalance(STORE, [
+        { id: COLLECTION_LOT, code: 'COL-1', qty: 300 },
+        { id: COLLECTION_LOT_2, code: 'COL-2', qty: 300 },
+      ]),
+    );
+    await db.outbox.bulkAdd([
+      command(
+        'production.incubation.start',
+        {
+          species: 'POULE',
+          eggProductId: HATCH_EGG,
+          chickProductId: CHICK,
+          incubatorLocationId: INCUBATOR,
+          eggsSet: 300,
+          sourceLocationId: STORE,
+          sourceStockLotId: COLLECTION_LOT,
+        },
+        { aggregate_type: 'INCUBATION_BATCH' },
+      ),
+      command(
+        'production.incubation.record_candling',
+        { batchId: BATCH_A, infertile: 5, earlyDead: 0 },
+        { author_user_id: OTHER_USER },
+      ),
+    ]);
+    const refs = await loadSalesReferences(db);
+    // COL-1 entièrement pris par le démarrage en attente : seul COL-2 reste désignable.
+    expect(eggSources(refs, FARM, HATCH_EGG)).toEqual([
+      {
+        locationId: STORE,
+        quantity: 300,
+        lots: [{ lotId: COLLECTION_LOT_2, lotCode: 'COL-2', quantity: 300 }],
+        fifo: true,
+      },
+    ]);
+    // Le mirage d'un autre utilisateur, pas encore envoyé, compte et la prochaine étape en dépend.
+    const batchA = batchViews(refs, IDS.user).find((view) => view.id === BATCH_A);
+    expect(batchA?.counters.infertile).toBe(5);
+    const otherStep = (await db.outbox.toArray()).find(
+      (candidate) => candidate.author_user_id === OTHER_USER,
+    );
+    expect(batchA && stepDependsOn(batchA)).toEqual([otherStep?.command_id]);
+  });
+
+  it('saisie du mirage remise à zéro après l’envoi ; espèce libre en majuscules ; ferme du périmètre', async () => {
+    const db = getDb();
+    // Durées non servies : espèce saisie librement. Une autre ferme (hors périmètre) a un incubateur.
+    await db.projections.delete('setting:SETTING:production.incubation_durations');
+    await db.projections.bulkPut([
+      projection('site', 'SITE', OTHER_FARM, {
+        code: 'FERME-0',
+        name: 'Ferme Abong',
+        site_type: 'FERME',
+        zone_id: IDS.zone,
+        status: 'ACTIVE',
+      }),
+      projection('location', 'LOCATION', OTHER_INCUBATOR, {
+        site_id: OTHER_FARM,
+        code: 'INC-ABONG',
+        name: 'Incubateur Abong',
+        location_type: 'INCUBATOR',
+        is_virtual: false,
+        custody_mode: 'SHARED',
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      }),
+    ]);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderScreen();
+    const incubating = await screen.findByRole('listitem', { name: 'INC-MFO-2026-001' });
+    await user.click(within(incubating).getByRole('button', { name: 'Mirage' }));
+    await user.type(within(incubating).getByLabelText('Infertiles'), '12');
+    await user.click(within(incubating).getByRole('button', { name: 'Enregistrer le mirage' }));
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const reopen = within(incubating).getByRole('button', { name: 'Mirage' });
+    await waitFor(() => expect(reopen).toBeEnabled());
+    await user.click(reopen);
+    expect(within(incubating).getByLabelText('Infertiles')).toHaveValue('');
+    await user.click(within(incubating).getByRole('button', { name: 'Annuler' }));
+
+    await user.click(screen.getByRole('radio', { name: 'Démarrer un lot' }));
+    const start = within(screen.getByRole('region', { name: 'Démarrer un lot' }));
+    // La ferme du périmètre (stock, lots) est choisie, pas la première par ordre alphabétique.
+    expect(start.getByLabelText('Ferme')).toHaveDisplayValue('Ferme de Mfou');
+    expect(
+      within(start.getByLabelText('Ferme')).queryByText('Ferme Abong'),
+    ).not.toBeInTheDocument();
+    await user.type(start.getByLabelText('Espèce'), 'poule');
+    await user.selectOptions(start.getByLabelText('Poussins produits'), CHICK);
+    await user.selectOptions(start.getByLabelText('Œufs pris sur'), STORE);
+    await user.type(start.getByLabelText('Œufs mis à couver'), '100');
+    const go = start.getByRole('button', { name: 'Démarrer l’incubation' });
+    await waitFor(() => expect(go).toBeEnabled());
+    await user.click(go);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(2));
+    const started = (await getDb().outbox.toArray()).find(
+      (candidate) => candidate.command_type === 'production.incubation.start',
+    );
+    expect(started?.payload).toMatchObject({ species: 'POULE', eggsSet: 100 });
   });
 });

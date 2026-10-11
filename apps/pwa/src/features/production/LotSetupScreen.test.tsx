@@ -351,15 +351,76 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
           balance(STORE, CHICK, [{ id: SUPPLIER_LOT, qty: '400' }]).data as never,
         ],
       ]),
-      pending: new Map([[`${STORE}:${CHICK}`, 100]]),
+      // Une vente de 100 poussins en attente, sans lot désigné (le serveur la prend au plus ancien).
+      pendingOut: new Map([[`${STORE}:${CHICK}`, 100]]),
+      pendingLots: new Map<string, number>(),
     };
     expect(receiptAvailable(placed, receipt, CHICK)).toBe(300);
     // Sans le solde sur l'appareil : l'accepté, moins l'attente.
     expect(receiptAvailable({ ...placed, stock: new Map() }, receipt, CHICK)).toBe(900);
     // Les œufs ne sont pas des animaux de l'espèce du lot.
     expect(receiptProducts(placed, receipt, target)).toEqual([CHICK]);
-    const emptied = { ...placed, pending: new Map([[`${STORE}:${CHICK}`, 400]]) };
+    const emptied = { ...placed, pendingOut: new Map([[`${STORE}:${CHICK}`, 400]]) };
     expect(receiptProducts(emptied, receipt, target)).toEqual([]);
+    // Réception épuisée (lot fournisseur à 0) : une autre réception en attente sur le même
+    // emplacement (entrée) ne la regonfle pas.
+    const exhausted = {
+      ...placed,
+      stock: new Map([
+        [
+          `${STORE}:${CHICK}`,
+          balance(STORE, CHICK, [{ id: SUPPLIER_LOT, qty: '0' }]).data as never,
+        ],
+      ]),
+      pendingOut: new Map<string, number>(),
+    };
+    expect(receiptAvailable(exhausted, receipt, CHICK)).toBe(0);
+    // Mise en place en attente qui désigne le lot fournisseur : retranchée de ce lot seulement.
+    const designated = {
+      ...placed,
+      pendingOut: new Map([[`${STORE}:${CHICK}`, 150]]),
+      pendingLots: new Map([[`${STORE}:${CHICK}:${SUPPLIER_LOT}`, 150]]),
+    };
+    expect(receiptAvailable(designated, receipt, CHICK)).toBe(250);
+  });
+
+  it('stock libre : attente par lot désigné, et attente du lot de production non retirée deux fois', async () => {
+    const db = getDb();
+    // Bâtiment 1 : 100 têtes du lot A (production) et 50 du lot fournisseur 2.
+    await db.projections.put(
+      balance(BUILDING, BROILER, [
+        { id: STOCK_LOT_A, qty: '100' },
+        { id: SUPPLIER_LOT_2, qty: '50' },
+      ]),
+    );
+    // Magasin : deux lots fournisseurs de 500 poussins.
+    await db.projections.put(
+      balance(STORE, CHICK, [
+        { id: SUPPLIER_LOT, qty: '500' },
+        { id: SUPPLIER_LOT_2, qty: '500' },
+      ]),
+    );
+    const base = await loadSalesReferences(db);
+    const [target] = entryLots(base, IDS.user).filter((candidate) => candidate.id === LOT_B);
+    if (!target) throw new Error('lot B absent');
+    // 30 morts en attente sur le lot A au bâtiment 1 : le lot fournisseur 2 garde ses 50 têtes.
+    const deaths = {
+      ...base,
+      pending: new Map([[`${BUILDING}:${BROILER}`, 30]]),
+      pendingLots: new Map([[`${BUILDING}:${BROILER}:${STOCK_LOT_A}`, 30]]),
+    };
+    expect(
+      stockSources(deaths, target).find((source) => source.locationId === BUILDING),
+    ).toMatchObject({ quantity: 50, lots: [{ lotId: SUPPLIER_LOT_2, quantity: 50 }] });
+    // Mise en place de 500 en attente sur le lot fournisseur 1 : il disparaît, le 2 reste à 500.
+    const placedLot = {
+      ...base,
+      pending: new Map([[`${STORE}:${CHICK}`, 500]]),
+      pendingLots: new Map([[`${STORE}:${CHICK}:${SUPPLIER_LOT}`, 500]]),
+    };
+    expect(
+      stockSources(placedLot, target).find((source) => source.locationId === STORE)?.lots,
+    ).toEqual([{ lotId: SUPPLIER_LOT_2, lotCode: 'L-500', quantity: 500 }]);
   });
 
   it('lots créés sur une tablette partagée : seuls ceux de l’utilisateur reçoivent ses entrées', async () => {
