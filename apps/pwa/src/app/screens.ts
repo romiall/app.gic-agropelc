@@ -41,6 +41,7 @@ export const ROUTES = {
   productionOutputFor: (lotId: string) => `/production/sortie?lot=${encodeURIComponent(lotId)}`,
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
+  suppliers: '/achats/fournisseurs',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
   priceSimulator: '/prix/simulateur',
@@ -173,6 +174,8 @@ export const ROLE_SETS = {
   ],
   /** ECR-APP-04 (`procurement.receipt.record`, BC servis par site) : magasinier, responsable de ferme. */
   purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
+  /** ECR-APP-01 (`procurement.supplier.manage`, 01-rbac.md) : responsable des achats. */
+  suppliers: ['RESP_ACHATS'],
   /**
    * ECR-STK-08 (`inventory.consumption.record`, 01-rbac.md) : magasinier, responsable de ferme, et les
    * autres détenteurs de la permission, vendeur de PDV (emballages, UC-STK-10) et responsable de
@@ -454,6 +457,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     // « Demandes d'achat » du responsable des achats.
     actionCodes: ['REQUESTS'],
     offline: true,
+  },
+  {
+    id: 'ECR-APP-01',
+    path: ROUTES.suppliers,
+    labelKey: 'suppliers',
+    group: 'procurement',
+    roles: ROLE_SETS.suppliers,
+    actionCodes: ['SUPPLIERS'],
+    offline: false,
   },
   {
     id: 'ECR-APP-04',

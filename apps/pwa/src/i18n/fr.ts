@@ -112,6 +112,7 @@ export const fr = {
       stock_ledger: 'Registre des mouvements',
       production_output: 'Sortie vers commercialisation',
       lot_setup: 'Nouveau lot ou entrée',
+      suppliers: 'Fournisseurs',
       purchase_receipt: 'Réceptionner',
       purchase_request: 'Demande d’achat',
       production_lots: 'Lots actifs',
@@ -995,6 +996,55 @@ export const fr = {
       REJECTED: 'Réception refusée : {{reason}}',
     },
   },
+  suppliers: {
+    online_only:
+      'Écran en ligne seulement : les fournisseurs se lisent et se gèrent sur le serveur. Reconnectez-vous pour continuer.',
+    unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
+    none: 'Aucun fournisseur.',
+    new: 'Nouveau fournisseur',
+    new_title: 'Nouveau fournisseur',
+    edit_title: 'Modifier {{name}}',
+    edit: 'Modifier',
+    edit_hint:
+      'Seuls les champs changés et remplis sont envoyés : un champ ne s’efface pas. Adresse et note ne sont pas relues : laissées vides, elles ne changent pas.',
+    deactivate: 'Désactiver',
+    reactivate: 'Réactiver',
+    create: 'Créer le fournisseur',
+    save: 'Enregistrer les changements',
+    terms: 'paiement à {{days}} jours',
+    categories_label: 'Catégories fournies',
+    field: {
+      code: 'Code',
+      name: 'Raison sociale',
+      contactName: 'Contact (facultatif)',
+      phone: 'Téléphone (facultatif)',
+      email: 'Adresse électronique (facultatif)',
+      address: 'Adresse (facultatif)',
+      taxId: 'Numéro d’identifiant fiscal (facultatif)',
+      paymentTermsText: 'Délai de paiement en jours (facultatif)',
+      notes: 'Note (facultatif)',
+    },
+    status: {
+      ACTIVE: 'Actif',
+      INACTIVE: 'Inactif',
+    },
+    issue: {
+      CODE_REQUIRED: 'Le code est obligatoire.',
+      CODE_TAKEN: 'Ce code est déjà celui d’un autre fournisseur.',
+      NAME_REQUIRED: 'La raison sociale est obligatoire.',
+      EMAIL_INVALID: 'Adresse électronique invalide.',
+      TERMS_INVALID: 'Délai de paiement : nombre entier de jours.',
+    },
+    result: {
+      WAITING_offline:
+        'Opération enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Opération en cours d’envoi…',
+      DONE: 'Opération enregistrée.',
+      WARNING: 'Opération enregistrée, avec un signalement.',
+      CONFLICT: 'Opération mise en attente d’examen (conflit).',
+      REJECTED: 'Opération refusée : {{reason}}',
+    },
+  },
   lot_setup: {
     offline_banner:
       'Hors ligne : le lot et les entrées seront enregistrés sur ce téléphone et envoyés au retour du réseau ; le numéro du lot sera donné par le serveur.',
@@ -1033,7 +1083,8 @@ export const fr = {
       WEANING: 'Sevrage (porcelets du naissage)',
       BIRTH: 'Naissance',
     },
-    no_stock_source: 'Aucun animal de cette espèce en stock sur la ferme (hors lots de production).',
+    no_stock_source:
+      'Aucun animal de cette espèce en stock sur la ferme (hors lots de production).',
     stock_source_label: 'Animaux en stock',
     stock_source: '{{product}} — {{place}} ({{quantity}})',
     stock_lot_label: 'Lot de stock d’origine',
@@ -1069,7 +1120,8 @@ export const fr = {
       REJECTED: 'Création du lot refusée : {{reason}}',
     },
     entry_result: {
-      WAITING_offline: 'Entrée enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_offline:
+        'Entrée enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
       WAITING_online: 'Entrée en cours d’envoi…',
       DONE: 'Entrée enregistrée.',
       WARNING: 'Entrée enregistrée, avec un signalement.',
