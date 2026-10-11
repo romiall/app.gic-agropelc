@@ -1245,6 +1245,22 @@ export const fr = {
     end_confirm: 'Avancer la fin',
     activate: 'Activer',
     activation_by_direction: 'Activation par la Direction.',
+    activation_hint:
+      'La Direction active la règle au plus tard 5 minutes après sa date d’effet : prévoyez une date qui lui laisse le temps.',
+    codes_loading: 'Vérification des codes existants…',
+    codes_unavailable:
+      'Codes existants indisponibles : réessayez quand le serveur répond (un code déjà pris bloquerait l’envoi).',
+    campaign_kept:
+      'Règle de campagne commerciale : la nouvelle version reste rattachée à la même campagne.',
+    end_invalid:
+      'La fin doit être à venir, après la date d’effet de la règle et avant sa fin actuelle.',
+    resume: 'Reprendre la saisie',
+    product_read_only: '{{name}} (consultation seulement)',
+    read_only_hint:
+      'Produit désactivé ou non vendable : ses règles se consultent et se terminent, sans nouvelle rédaction.',
+    newer_version_exists: 'Une version plus récente existe déjà (brouillon compris).',
+    outside_superseded:
+      'Date d’effet hors de la période de la règle remplacée : l’activation échouerait. Rédigez une nouvelle version.',
     retroactive:
       'Date d’effet passée de plus de 5 minutes : la règle ne peut plus être activée ; rédigez-en une nouvelle.',
     conflict_warning_one:
@@ -1263,9 +1279,14 @@ export const fr = {
     any: 'Tous',
     issue: {
       CODE_REQUIRED: 'Le code de la règle est obligatoire.',
+      CODE_TAKEN: 'Ce code est déjà celui d’une autre règle.',
       PRICE_INVALID: 'Prix : nombre entier de francs supérieur à 0.',
-      MIN_QUANTITY_INVALID: 'Seuil de quantité : nombre positif, 3 décimales au plus.',
-      PRIORITY_INVALID: 'Priorité : nombre entier.',
+      MIN_QUANTITY_INVALID:
+        'Seuil de quantité : nombre positif, 3 décimales au plus, 99 999 999 999 au plus.',
+      PRIORITY_INVALID: 'Priorité : nombre entier entre −2 147 483 648 et 2 147 483 647.',
+      OUTSIDE_SUPERSEDED:
+        'La date d’effet doit suivre le début de la règle remplacée et ne pas dépasser sa fin.',
+      SITE_NOT_IN_ZONE: 'Le site choisi n’appartient pas à la zone choisie.',
       VALID_FROM_INVALID: 'Date d’effet invalide.',
       VALID_TO_INVALID: 'La fin doit suivre la date d’effet.',
     },
