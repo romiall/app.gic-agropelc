@@ -2,6 +2,7 @@
  * Lignes de marchandise saisies dans l'unité choisie (expédition directe, réception sans document) :
  * produit, quantité, unité ; quantité convertie en unité de base par `checkTransferLine`.
  */
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProductData } from '../sales/types.js';
 import type { LineRow, TransferLineDraft } from './transfer.js';
@@ -16,6 +17,8 @@ interface LinesEditorProps {
   readonly hint?: (product: ProductData) => string | null;
   /** Message propre à une ligne (ex. produit en double). */
   readonly lineIssue?: (row: LineRow) => string | null;
+  /** Champ supplémentaire d'une ligne (ex. choix du lot). */
+  readonly extra?: (row: LineRow) => ReactNode;
 }
 
 export function LinesEditor({
@@ -26,6 +29,7 @@ export function LinesEditor({
   onAdd,
   hint,
   lineIssue,
+  extra,
 }: LinesEditorProps) {
   const { t } = useTranslation();
   return (
@@ -90,6 +94,7 @@ export function LinesEditor({
                   </div>
                 ) : null}
               </div>
+              {extra ? extra(row) : null}
               {line.quantityText && check.issue === 'QUANTITY_INVALID' ? (
                 <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p>
               ) : null}

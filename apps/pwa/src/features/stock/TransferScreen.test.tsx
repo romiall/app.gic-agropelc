@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -22,6 +22,9 @@ const STORE = IDS.mobile;
 const REQUEST = '01900000-0000-7000-8000-0000000000c9';
 const REQUEST_LINE = '01900000-0000-7000-8000-0000000000ca';
 const OTHER_SITE_STORE = '01900000-0000-7000-8000-0000000000cb';
+const PAUL_MOBILE = '01900000-0000-7000-8000-0000000000cd';
+const LOT_1 = '01900000-0000-7000-8000-0000000000ce';
+const LOT_2 = '01900000-0000-7000-8000-0000000000cf';
 
 function renderAt(path: string) {
   return render(
@@ -177,14 +180,22 @@ describe('Transférer (ECR-STK-02)', () => {
     expect(await screen.findByText('Expédition en attente d’envoi')).toBeInTheDocument();
   });
 
-  it('demande reçue refusée avec un motif, puis signalée en attente sans nouvelle expédition', async () => {
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  it('demande reçue refusée en ligne avec un motif exigé, puis signalée en attente sans nouvelle expédition', async () => {
     const user = userEvent.setup();
     renderAt(`/stock/transferts/${REQUEST}`);
     await user.click(await screen.findByRole('button', { name: 'Refuser la demande' }));
-    await user.type(screen.getByLabelText('Motif du refus (facultatif)'), '  Rupture au PDV ');
+    // Focus porté sur le motif, exigé avant de confirmer.
+    const motif = screen.getByLabelText('Motif du refus');
+    expect(motif).toHaveFocus();
+    const confirm = screen.getByRole('button', { name: 'Confirmer le refus' });
+    expect(confirm).toBeDisabled();
+    // « Ne pas refuser » rend le focus au bouton d'ouverture.
+    await user.click(screen.getByRole('button', { name: 'Ne pas refuser' }));
+    expect(screen.getByRole('button', { name: 'Refuser la demande' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Refuser la demande' }));
+    await user.type(screen.getByLabelText('Motif du refus'), '  Rupture au PDV ');
     await user.click(screen.getByRole('button', { name: 'Confirmer le refus' }));
-    expect(await screen.findByText(/Refus enregistré sur ce téléphone/)).toBeInTheDocument();
+    expect(await screen.findByText(/Refus (en cours d’envoi|enregistré)/)).toBeInTheDocument();
 
     const [command] = await getDb().outbox.toArray();
     expect(command).toMatchObject({
@@ -202,6 +213,137 @@ describe('Transférer (ECR-STK-02)', () => {
     renderAt(`/stock/transferts/${REQUEST}`);
     expect(await screen.findByText(/déjà refusée depuis ce téléphone/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Expédier la demande' })).not.toBeInTheDocument();
+  });
+
+  it('hors ligne : refus d’une demande indisponible (décision en ligne)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderAt(`/stock/transferts/${REQUEST}`);
+    expect(await screen.findByRole('button', { name: 'Refuser la demande' })).toBeDisabled();
+    expect(screen.getByText(/Le refus d’une demande se fait en ligne/)).toBeInTheDocument();
+  });
+
+  it('expédition d’une demande refusée entre-temps : ressaisie en expédition directe préremplie', async () => {
+    const user = userEvent.setup();
+    renderAt(`/stock/transferts/${REQUEST}`);
+    await user.click(await screen.findByRole('button', { name: 'Expédier la demande' }));
+    await screen.findByText(/Expédition (en cours d’envoi|enregistrée)/);
+    const [sent] = await getDb().outbox.toArray();
+    await getDb().outbox.update(sent?.command_id as string, {
+      status: 'REJECTED',
+      last_error: {
+        code: 'TRANSFER_STATUS_INVALID',
+        message_fr: 'Le transfert doit être au statut REQUESTED.',
+      },
+    });
+    await user.click(
+      await screen.findByRole('button', { name: 'Ressaisir en expédition directe' }),
+    );
+    expect(await screen.findByText(/Expédition préremplie depuis une demande/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Vers')).toHaveValue(STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    expect(within(line).getByLabelText('Produit')).toHaveValue(IDS.eggs);
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('60');
+  });
+
+  it('mouvement interne : jamais le stock d’un autre détenteur ; lot désigné quand la source en a plusieurs', async () => {
+    const db = getDb();
+    await db.projections.bulkPut([
+      {
+        key: `location:LOCATION:${PAUL_MOBILE}`,
+        dataset: 'location',
+        entity_type: 'LOCATION',
+        entity_id: PAUL_MOBILE,
+        scope_type: 'GLOBAL',
+        scope_id: null,
+        row_version: 1,
+        seq: 1,
+        data: {
+          id: PAUL_MOBILE,
+          site_id: IDS.site,
+          code: 'MOB-PAUL',
+          name: 'Stock mobile de Paul',
+          location_type: 'MOBILE',
+          is_virtual: false,
+          custody_mode: 'EXCLUSIVE_USER',
+          custodian_user_id: '01900000-0000-7000-8000-0000000000e9',
+          designated_device_id: null,
+          status: 'ACTIVE',
+        },
+      },
+      {
+        key: `stock:STOCK_BALANCE:${PAUL_MOBILE}:${IDS.eggs}`,
+        dataset: 'stock',
+        entity_type: 'STOCK_BALANCE',
+        entity_id: IDS.eggs,
+        scope_type: 'LOCATION',
+        scope_id: PAUL_MOBILE,
+        row_version: 1,
+        seq: 1,
+        data: {
+          id: IDS.eggs,
+          location_id: PAUL_MOBILE,
+          product_id: IDS.eggs,
+          qty_on_hand: '90',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [],
+        },
+      },
+      {
+        key: `stock:STOCK_BALANCE:${IDS.pos}:${IDS.eggs}`,
+        dataset: 'stock',
+        entity_type: 'STOCK_BALANCE',
+        entity_id: IDS.eggs,
+        scope_type: 'LOCATION',
+        scope_id: IDS.pos,
+        row_version: 1,
+        seq: 1,
+        data: {
+          id: IDS.eggs,
+          location_id: IDS.pos,
+          product_id: IDS.eggs,
+          qty_on_hand: '300',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [
+            { lot_id: LOT_1, lot_code: 'COL-1', qty_on_hand: '200' },
+            { lot_id: LOT_2, lot_code: 'COL-2', qty_on_hand: '100' },
+          ],
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.click(await screen.findByRole('radio', { name: 'Déplacer dans le même site' }));
+    expect(
+      within(screen.getByLabelText('Depuis')).queryByRole('option', {
+        name: 'Stock mobile de Paul',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('Vers')).queryByRole('option', {
+        name: 'Stock mobile de Paul',
+      }),
+    ).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Vers'), STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '150');
+    expect(within(line).getByText(/choisissez le lot déplacé/)).toBeInTheDocument();
+    const move = screen.getByRole('button', { name: 'Déplacer' });
+    expect(move).toBeDisabled();
+    // Lot de 100 : 150 dépasse son solde (bloqué en ligne) ; lot de 200 : admis.
+    await user.selectOptions(within(line).getByLabelText('Lot déplacé'), LOT_2);
+    expect(screen.getByRole('alert')).toHaveTextContent(/le serveur refuserait le mouvement/);
+    expect(move).toBeDisabled();
+    await user.selectOptions(within(line).getByLabelText('Lot déplacé'), LOT_1);
+    await waitFor(() => expect(move).toBeEnabled());
+    await user.click(move);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    const [command] = await getDb().outbox.toArray();
+    expect(command?.payload).toMatchObject({
+      lines: [{ productId: IDS.eggs, quantityBase: 150, lotId: LOT_1 }],
+    });
   });
 
   it('hors ligne : mouvement interne vers un emplacement du même site, sortie et entrée aussitôt comptées', async () => {

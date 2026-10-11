@@ -7,13 +7,17 @@
  * - Expédition directe : source tenue par l'appareil, destination physique quelconque (dont
  *   l'emplacement mobile d'un commercial), lignes saisies dans l'unité choisie, converties en unité
  *   de base.
- * - Refus d'une demande reçue (`inventory.transfer.decline`, SM-TRANSFER `REQUESTED → DECLINED`),
- *   commentaire facultatif ; impossible tant qu'une expédition de la demande est en attente, et
- *   inversement.
- * - Mouvement interne (`inventory.transfer.move_internal`, UC-STK-04 : transfert `INTERNAL`,
- *   aussitôt `COMPLETED`) : d'un emplacement tenu par l'appareil vers un autre emplacement physique
- *   actif du même site. La sortie de la source et l'entrée sur la destination comptent aussitôt dans
- *   le disponible local.
+ * - Refus d'une demande reçue (`inventory.transfer.decline`, SM-TRANSFER `REQUESTED → DECLINED`), en
+ *   ligne seulement (SM-TRANSFER : « Refus et décisions sur écart sont en ligne »), motif exigé (le
+ *   serveur le remplace dans la note de la demande, S-40) ; impossible tant qu'une expédition de la
+ *   demande est en attente, et inversement.
+ * - Mouvement interne (`inventory.transfer.move_internal`, UC-STK-04, BR-STK-022 « même site, même
+ *   responsable » : transfert `INTERNAL`, aussitôt `COMPLETED`) : entre emplacements physiques actifs
+ *   du même site dont l'utilisateur ou l'appareil a la garde (partagés, exclusifs à lui ou à cet
+ *   appareil), jamais un stock mobile (l'affectation à un commercial est un transfert en deux temps,
+ *   BR-STK-023) ; le lot se désigne quand la source en compte plusieurs (sinon le serveur prendrait
+ *   le plus ancien, BR-STK-050). La sortie de la source et l'entrée sur la destination comptent
+ *   aussitôt dans le disponible local.
  * - Lot : le serveur prend le plus ancien (FIFO, BR-STK-050) ; l'appareil n'en impose pas.
  * - Au-delà du disponible : bloqué en ligne (le serveur refuserait, `INSUFFICIENT_STOCK`), fait
  *   accompli signalé hors ligne (BR-STK-018). La marchandise expédiée quitte aussitôt le disponible
@@ -29,6 +33,7 @@ import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import { MAX_QUANTITY, parseQuantity, saleUnitsOf, type SaleUnit } from '../sales/sale-form.js';
 import type { LocationData, ProductData, StockTransferData } from '../sales/types.js';
+import { lotStockKey, stockKey } from '../sales/stock.js';
 import { stockLocations } from './stock-view.js';
 
 export const MAX_TRANSFER_NOTES = 2000;
@@ -40,6 +45,8 @@ export interface TransferLineDraft {
   readonly productId: string;
   readonly unitCode: string;
   readonly quantityText: string;
+  /** Lot de stock désigné (mouvement interne d'une source à plusieurs lots). */
+  readonly lotId?: string;
 }
 
 export type TransferLineIssue = 'PRODUCT_REQUIRED' | 'QUANTITY_INVALID';
@@ -149,23 +156,49 @@ export function requestsToDispatch(
     .sort((a, b) => a.transfer.occurred_at.localeCompare(b.transfer.occurred_at));
 }
 
-/** Charge utile du refus d'une demande (`inventory.transfer.decline`). */
+/** Charge utile du refus d'une demande (`inventory.transfer.decline`), motif exigé. */
 export function declinePayload(transfer: Pick<StockTransferData, 'id'>, comment: string) {
-  const trimmed = comment.trim();
-  return { transferId: transfer.id, ...(trimmed ? { comment: trimmed } : {}) };
+  return { transferId: transfer.id, comment: comment.trim() };
+}
+
+/**
+ * Emplacement dont l'utilisateur ou l'appareil a la garde, hors stock mobile : partagé, exclusif à
+ * l'utilisateur, ou désigné pour cet appareil (BR-STK-022, « même responsable »).
+ */
+export function movableByHolder(
+  location: Pick<
+    LocationData,
+    'location_type' | 'custody_mode' | 'custodian_user_id' | 'designated_device_id'
+  >,
+  userId: string,
+  deviceId: string | undefined,
+): boolean {
+  if (location.location_type === 'MOBILE') return false;
+  switch (location.custody_mode) {
+    case 'EXCLUSIVE_USER':
+      return location.custodian_user_id === userId;
+    case 'EXCLUSIVE_DEVICE':
+      return deviceId !== undefined && location.designated_device_id === deviceId;
+    default:
+      return true;
+  }
 }
 
 /**
  * Destinations d'un mouvement interne : emplacements physiques actifs du site de la source, autres
- * qu'elle (INTERNAL_MOVE : même site, D06 §7.7), par nom.
+ * qu'elle (INTERNAL_MOVE : même site, D06 §7.7), sous la garde de l'utilisateur ou de l'appareil, par
+ * nom.
  */
 export function internalDestinations(
   locations: readonly LocationData[],
   source: Pick<LocationData, 'id' | 'site_id'>,
+  userId: string,
+  deviceId: string | undefined,
 ): LocationData[] {
   if (!source.site_id) return [];
   return destinations(locations, source.id).filter(
-    (location) => location.site_id === source.site_id,
+    (location) =>
+      location.site_id === source.site_id && movableByHolder(location, userId, deviceId),
   );
 }
 
@@ -184,9 +217,31 @@ export function internalMovePayload(input: {
       productId: line.draft.productId,
       unitCode: line.draft.unitCode,
       quantityBase: line.quantityBase as number,
+      ...(line.draft.lotId ? { lotId: line.draft.lotId } : {}),
     })),
     ...(notes ? { notes } : {}),
   };
+}
+
+/** Lots identifiés en stock d'un produit sur un emplacement, nets de l'attente qui les désigne. */
+export function lotsAt(
+  refs: Pick<SalesReferences, 'stock' | 'pendingLots'>,
+  locationId: string,
+  productId: string,
+): { readonly lotId: string; readonly lotCode: string; readonly quantity: number }[] {
+  return (refs.stock.get(stockKey(locationId, productId))?.lots ?? [])
+    .filter((lot) => lot.lot_id !== null)
+    .map((lot) => ({
+      lotId: lot.lot_id as string,
+      lotCode: lot.lot_code ?? '',
+      quantity:
+        Math.round(
+          (Number(lot.qty_on_hand) -
+            (refs.pendingLots.get(lotStockKey(locationId, productId, lot.lot_id as string)) ?? 0)) *
+            1000,
+        ) / 1000,
+    }))
+    .filter((lot) => lot.quantity > 0);
 }
 
 /** Destinations possibles : emplacements physiques actifs autres que la source, par nom. */

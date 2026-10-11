@@ -7,8 +7,8 @@
  * marchandise expédiée quitte aussitôt le disponible local et part en transit jusqu'à sa réception
  * (ECR-STK-03) ; celle d'un mouvement interne passe aussitôt sur la destination.
  */
-import { useId, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ROUTES } from '../../app/screens.js';
 import { idGenerator } from '../../platform/composition.js';
@@ -29,6 +29,8 @@ import {
   directDispatchPayload,
   internalDestinations,
   internalMovePayload,
+  lotsAt,
+  movableByHolder,
   MAX_CARRIER_NAME,
   MAX_DECLINE_COMMENT,
   MAX_TRANSFER_NOTES,
@@ -75,6 +77,17 @@ interface FormProps {
 
 /** Expédition directe ou mouvement interne. */
 type Mode = 'DISPATCH' | 'MOVE';
+
+/** Expédition directe préremplie (ressaisie d'une expédition de demande refusée par le serveur). */
+interface Prefill {
+  readonly fromLocationId: string | null;
+  readonly toLocationId: string | null;
+  readonly lines: readonly {
+    readonly productId: string;
+    readonly unitCode: string;
+    readonly quantityBase: number;
+  }[];
+}
 
 /** Transporteur et note, communs aux deux formes d'expédition. */
 /** Transporteur, et note pour une expédition directe (la note d'une demande n'est pas conservée). */
@@ -137,12 +150,38 @@ function OverAvailable({
   );
 }
 
-function DirectDispatchForm({ refs, userId, online, onDone, mode }: FormProps & { mode: Mode }) {
+function DirectDispatchForm({
+  refs,
+  userId,
+  deviceId,
+  online,
+  onDone,
+  mode,
+  prefill,
+}: FormProps & {
+  readonly mode: Mode;
+  readonly deviceId: string | undefined;
+  readonly prefill?: Prefill | undefined;
+}) {
   const { t } = useTranslation();
-  const sources = stockLocations(refs);
-  const [sourceChoice, setSourceChoice] = useState<string | null>(null);
-  const [destinationId, setDestinationId] = useState('');
-  const [lines, setLines] = useState<readonly TransferLineDraft[]>(() => [newLine()]);
+  // Mouvement interne : sources sous la garde de l'utilisateur ou de l'appareil, hors stock mobile.
+  const sources = stockLocations(refs).filter(
+    (location) => mode !== 'MOVE' || movableByHolder(location, userId, deviceId),
+  );
+  const [sourceChoice, setSourceChoice] = useState<string | null>(
+    () => prefill?.fromLocationId ?? null,
+  );
+  const [destinationId, setDestinationId] = useState(() => prefill?.toLocationId ?? '');
+  const [lines, setLines] = useState<readonly TransferLineDraft[]>(() =>
+    prefill && prefill.lines.length > 0
+      ? prefill.lines.map((line) => ({
+          ...newLine(),
+          productId: line.productId,
+          unitCode: line.unitCode,
+          quantityText: String(line.quantityBase),
+        }))
+      : [newLine()],
+  );
   const [carrier, setCarrier] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -155,7 +194,7 @@ function DirectDispatchForm({ refs, userId, online, onDone, mode }: FormProps & 
 
   const targets =
     mode === 'MOVE'
-      ? internalDestinations(refs.locations, source)
+      ? internalDestinations(refs.locations, source, userId, deviceId)
       : destinations(refs.locations, source.id);
   const products = refs.products
     .filter((product) => refs.stock.has(stockKey(source.id, product.id)))
@@ -168,10 +207,35 @@ function DirectDispatchForm({ refs, userId, online, onDone, mode }: FormProps & 
       quantityBase: check.quantityBase,
     })),
   );
-  const over = overAvailable(totals, (productId) => physicalAt(refs, source, productId));
+  // Mouvement interne : le lot se désigne quand la source en compte plusieurs (sinon le serveur
+  // déplacerait le plus ancien) ; la quantité se contrôle contre le solde de ce lot.
+  const lotChoices = (productId: string) =>
+    mode === 'MOVE' && productId ? lotsAt(refs, source.id, productId) : [];
+  const lotMissing = (draft: TransferLineDraft) =>
+    lotChoices(draft.productId).length > 1 &&
+    !lotChoices(draft.productId).some((lot) => lot.lotId === draft.lotId);
+  const lotTotals = new Map<string, number>();
+  for (const { check } of checks) {
+    if (!check.draft.lotId || check.quantityBase === null) continue;
+    const key = `${check.draft.productId}|${check.draft.lotId}`;
+    lotTotals.set(key, (lotTotals.get(key) ?? 0) + check.quantityBase);
+  }
+  const lotOver = [...lotTotals].filter(([key, quantity]) => {
+    const [productId = '', lotId] = key.split('|');
+    const lot = lotChoices(productId).find((candidate) => candidate.lotId === lotId);
+    return quantity > (lot?.quantity ?? 0);
+  });
+  // Dépassement du produit sur la source, ou du lot désigné : bloqué en ligne, signalé hors ligne.
+  const over = [
+    ...new Set([
+      ...overAvailable(totals, (productId) => physicalAt(refs, source, productId)),
+      ...lotOver.map(([key]) => key.split('|')[0] ?? ''),
+    ]),
+  ];
   const ready =
     destinationId !== '' &&
-    checks.every(({ check }) => check.issue === null) &&
+    targets.some((target) => target.id === destinationId) &&
+    checks.every(({ check }) => check.issue === null && !lotMissing(check.draft)) &&
     !(online && over.length > 0) &&
     !busy;
 
@@ -275,9 +339,43 @@ function DirectDispatchForm({ refs, userId, online, onDone, mode }: FormProps & 
             unit: product.base_unit_code,
           })
         }
+        lineIssue={(row) => (lotMissing(row.check.draft) ? t('transfer.lot_required') : null)}
+        extra={(row) => {
+          const lots = lotChoices(row.check.draft.productId);
+          if (lots.length <= 1) return null;
+          const lotFieldId = `${row.check.draft.key}-lot`;
+          return (
+            <div className="field">
+              <label htmlFor={lotFieldId}>{t('transfer.lot_label')}</label>
+              <select
+                id={lotFieldId}
+                className="text-input"
+                value={row.check.draft.lotId ?? ''}
+                onChange={(event) =>
+                  setLines((current) =>
+                    current.map((line) =>
+                      line.key === row.check.draft.key
+                        ? { ...line, lotId: event.target.value }
+                        : line,
+                    ),
+                  )
+                }
+              >
+                <option value="">{t('lot_setup.choose')}</option>
+                {lots.map((lot) => (
+                  <option key={lot.lotId} value={lot.lotId}>
+                    {`${lot.lotCode} (${formatQuantity(lot.quantity)})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        }}
       />
       {mode === 'MOVE' && targets.length === 0 ? (
-        <p className="alert alert-error">{t('transfer.move_no_destination')}</p>
+        <p className="alert alert-error" role="alert">
+          {t('transfer.move_no_destination')}
+        </p>
       ) : null}
       {mode === 'MOVE' ? (
         <NotesField notes={notes} onNotes={setNotes} />
@@ -331,18 +429,32 @@ function NotesField({ notes, onNotes }: { notes: string; onNotes: (value: string
 /** Refus d'une demande reçue, commentaire facultatif (SM-TRANSFER `REQUESTED → DECLINED`). */
 function DeclineBlock({
   userId,
+  online,
   onDone,
   transfer,
-}: Pick<FormProps, 'userId' | 'onDone'> & { readonly transfer: StockTransferData }) {
+}: Pick<FormProps, 'userId' | 'onDone' | 'online'> & { readonly transfer: StockTransferData }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const commentId = useId();
+  const commentRef = useRef<HTMLTextAreaElement>(null);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const opened = useRef(false);
+  // Focus porté sur le motif à l'ouverture, rendu au bouton à la fermeture.
+  useEffect(() => {
+    if (open) {
+      opened.current = true;
+      commentRef.current?.focus();
+    } else if (opened.current) {
+      openRef.current?.focus();
+    }
+  }, [open]);
+  const ready = online && comment.trim() !== '' && !busy;
 
   const submit = async () => {
-    if (busy) return;
+    if (!ready) return;
     setBusy(true);
     setSaveError(false);
     try {
@@ -363,25 +475,42 @@ function DeclineBlock({
 
   if (!open) {
     return (
-      <button type="button" className="secondary" onClick={() => setOpen(true)}>
-        {t('transfer.decline_open')}
-      </button>
+      <>
+        <button
+          ref={openRef}
+          type="button"
+          className="secondary"
+          disabled={!online}
+          onClick={() => setOpen(true)}
+        >
+          {t('transfer.decline_open')}
+        </button>
+        {!online ? <p className="home-muted">{t('transfer.decline_online_only')}</p> : null}
+      </>
     );
   }
   return (
     <section className="sale-block" aria-labelledby="transfer-decline-title">
       <h2 id="transfer-decline-title">{t('transfer.decline_title')}</h2>
+      <p className="home-muted">{t('transfer.decline_hint')}</p>
       <div className="field">
         <label htmlFor={commentId}>{t('transfer.decline_comment_label')}</label>
         <textarea
+          ref={commentRef}
           id={commentId}
           className="text-input"
           rows={2}
           maxLength={MAX_DECLINE_COMMENT}
+          aria-required="true"
           value={comment}
           onChange={(event) => setComment(event.target.value)}
         />
       </div>
+      {!online ? (
+        <p className="text-warn" role="status">
+          {t('transfer.decline_online_only')}
+        </p>
+      ) : null}
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
@@ -391,7 +520,7 @@ function DeclineBlock({
         <button type="button" className="secondary" onClick={() => setOpen(false)}>
           {t('transfer.decline_cancel')}
         </button>
-        <button type="button" disabled={busy} onClick={() => void submit()}>
+        <button type="button" disabled={!ready} onClick={() => void submit()}>
           {busy ? t('sales.submitting') : t('transfer.decline_submit')}
         </button>
       </div>
@@ -517,7 +646,7 @@ function RequestDispatchForm({
       >
         {busy ? t('sales.submitting') : t('transfer.submit_request')}
       </button>
-      <DeclineBlock userId={userId} onDone={onDone} transfer={transfer} />
+      <DeclineBlock userId={userId} online={online} onDone={onDone} transfer={transfer} />
     </section>
   );
 }
@@ -525,7 +654,10 @@ function RequestDispatchForm({
 export function TransferScreen() {
   const { t } = useTranslation();
   const { transferId } = useParams();
-  const { state } = useAuth();
+  const { state, deviceId } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prefill = (location.state as { prefill?: Prefill } | null)?.prefill;
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
@@ -546,6 +678,42 @@ export function TransferScreen() {
     );
   }
 
+  // Expédition d'une demande refusée par le serveur parce que la demande n'est plus à expédier
+  // (refusée, annulée, déjà expédiée) : le fait physique se ressaisit en expédition directe (S-40).
+  const submittedCommand = submitted
+    ? refs.outbox.find((command) => command.command_id === submitted.commandId)
+    : undefined;
+  const refusedPayload = submittedCommand?.payload as
+    | {
+        readonly transferId?: string;
+        readonly lines?: readonly {
+          readonly productId?: string;
+          readonly unitCode?: string;
+          readonly quantityBase?: number;
+        }[];
+      }
+    | undefined;
+  const refusedTransfer = refusedPayload?.transferId
+    ? refs.transfers.get(refusedPayload.transferId)
+    : undefined;
+  const refusedDispatch: Prefill | undefined =
+    submittedCommand?.command_type === 'inventory.transfer.dispatch' &&
+    submittedCommand.status === 'REJECTED' &&
+    submittedCommand.last_error?.code === 'TRANSFER_STATUS_INVALID' &&
+    refusedPayload?.transferId
+      ? {
+          fromLocationId: refusedTransfer?.from_location_id ?? null,
+          toLocationId: refusedTransfer?.to_location_id ?? null,
+          lines: (refusedPayload.lines ?? [])
+            .filter((line) => line.productId && line.quantityBase)
+            .map((line) => ({
+              productId: line.productId as string,
+              unitCode: line.unitCode ?? '',
+              quantityBase: line.quantityBase as number,
+            })),
+        }
+      : undefined;
+
   if (submitted && submitted.route === transferId) {
     return (
       <section className="sale">
@@ -558,6 +726,18 @@ export function TransferScreen() {
           >
             <span className="action-label">{t('transfer.another')}</span>
           </Link>
+          {refusedDispatch ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setSubmitted(undefined);
+                navigate(ROUTES.transfer, { state: { prefill: refusedDispatch } });
+              }}
+            >
+              {t('transfer.reenter_direct')}
+            </button>
+          ) : null}
         </CommandResult>
       </section>
     );
@@ -662,13 +842,16 @@ export function TransferScreen() {
           </label>
         ))}
       </fieldset>
+      {prefill ? <p className="home-muted">{t('transfer.reenter_hint')}</p> : null}
       <DirectDispatchForm
-        key={mode}
+        key={`${mode}:${location.key}`}
         refs={refs}
         userId={userId}
+        deviceId={deviceId}
         online={online}
         onDone={onDone}
         mode={mode}
+        prefill={mode === 'DISPATCH' ? prefill : undefined}
       />
     </section>
   );

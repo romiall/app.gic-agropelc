@@ -1969,7 +1969,16 @@ export const fr = {
     declining: 'Cette demande est déjà refusée depuis ce téléphone ; le refus attend l’envoi.',
     decline_open: 'Refuser la demande',
     decline_title: 'Refuser la demande',
-    decline_comment_label: 'Motif du refus (facultatif)',
+    decline_comment_label: 'Motif du refus',
+    decline_hint:
+      'Le motif est transmis au demandeur ; il remplace la note de la demande sur le document.',
+    decline_online_only:
+      'Le refus d’une demande se fait en ligne (il se décide sur l’état à jour de la demande).',
+    lot_label: 'Lot déplacé',
+    lot_required: 'Plusieurs lots sur la source : choisissez le lot déplacé.',
+    reenter_direct: 'Ressaisir en expédition directe',
+    reenter_hint:
+      'Expédition préremplie depuis une demande que le serveur n’a pas acceptée (refusée ou annulée entre-temps) : vérifiez puis expédiez.',
     decline_cancel: 'Ne pas refuser',
     decline_submit: 'Confirmer le refus',
     mode_label: 'Opération',
