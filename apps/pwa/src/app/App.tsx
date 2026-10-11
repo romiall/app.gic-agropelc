@@ -32,6 +32,7 @@ import { LedgerScreen } from '../features/stock/LedgerScreen.js';
 import { OutputScreen } from '../features/production/OutputScreen.js';
 import { LotSetupScreen } from '../features/production/LotSetupScreen.js';
 import { SuppliersScreen } from '../features/procurement/SuppliersScreen.js';
+import { OrdersScreen as PurchaseOrdersScreen } from '../features/procurement/OrdersScreen.js';
 import { PriceSimulatorScreen } from '../features/pricing/PriceSimulatorScreen.js';
 import { ReceiptScreen } from '../features/procurement/ReceiptScreen.js';
 import { RequestScreen } from '../features/procurement/RequestScreen.js';
@@ -128,6 +129,7 @@ function AppShell() {
             <Route path={ROUTES.productionOutput} element={<OutputScreen />} />
             <Route path={ROUTES.lotSetup} element={<LotSetupScreen />} />
             <Route path={ROUTES.suppliers} element={<SuppliersScreen />} />
+            <Route path={ROUTES.purchaseOrders} element={<PurchaseOrdersScreen />} />
             <Route path={ROUTES.productionLots} element={<LotsScreen />} />
             <Route path={ROUTES.dailyEntryPattern} element={<DailyEntryScreen />} />
             <Route path={ROUTES.eggCollection} element={<EggCollectionScreen />} />

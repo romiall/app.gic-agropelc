@@ -47,7 +47,10 @@ function renderScreen() {
   );
 }
 
-async function settleLast() {
+async function settleLast(expectedCount?: number) {
+  if (expectedCount !== undefined) {
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(expectedCount));
+  }
   const [command] = await getDb().outbox.orderBy('device_seq').reverse().limit(1).toArray();
   if (!command) throw new Error('aucune commande');
   await getDb().outbox.update(command.command_id, {
@@ -108,7 +111,7 @@ describe('Fournisseurs (ECR-APP-01)', () => {
     await user.clear(phone);
     await user.type(phone, '677112233');
     await user.click(screen.getByRole('button', { name: 'Enregistrer les changements' }));
-    await settleLast();
+    await settleLast(2);
 
     const card = await screen.findByRole('listitem', { name: 'Provenderie du Centre' });
     const deactivate = within(card).getByRole('button', { name: 'Désactiver' });

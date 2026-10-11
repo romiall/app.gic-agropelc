@@ -42,6 +42,7 @@ export const ROUTES = {
   purchaseRequests: '/achats/demandes',
   purchaseReceipts: '/achats/receptions',
   suppliers: '/achats/fournisseurs',
+  purchaseOrders: '/achats/bons-de-commande',
   purchaseReceiptPattern: '/achats/receptions/:orderId',
   purchaseReceipt: (orderId: string) => `/achats/receptions/${orderId}`,
   priceSimulator: '/prix/simulateur',
@@ -176,6 +177,8 @@ export const ROLE_SETS = {
   purchaseReceipt: ['MAGASINIER', 'RESP_FERME'],
   /** ECR-APP-01 (`procurement.supplier.manage`, 01-rbac.md) : responsable des achats. */
   suppliers: ['RESP_ACHATS'],
+  /** ECR-APP-03 (`procurement.order.manage`, 01-rbac.md) : responsable des achats. */
+  purchaseOrders: ['RESP_ACHATS'],
   /**
    * ECR-STK-08 (`inventory.consumption.record`, 01-rbac.md) : magasinier, responsable de ferme, et les
    * autres détenteurs de la permission, vendeur de PDV (emballages, UC-STK-10) et responsable de
@@ -465,6 +468,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'procurement',
     roles: ROLE_SETS.suppliers,
     actionCodes: ['SUPPLIERS'],
+    offline: false,
+  },
+  {
+    id: 'ECR-APP-03',
+    path: ROUTES.purchaseOrders,
+    labelKey: 'purchase_orders',
+    group: 'procurement',
+    roles: ROLE_SETS.purchaseOrders,
+    actionCodes: ['ORDERS'],
     offline: false,
   },
   {
