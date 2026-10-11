@@ -29,6 +29,9 @@ export const stockKey = (locationId: string, productId: string): string =>
 interface StockPayloadLike {
   readonly fromLocationId?: string;
   readonly fulfilmentLocationId?: string;
+  readonly locationId?: string;
+  readonly productId?: string;
+  readonly quantityBase?: number;
   readonly lines?: readonly { readonly productId?: string; readonly quantityBase?: number }[];
 }
 
@@ -60,6 +63,14 @@ export function pendingConsumption(
   for (const command of commands) {
     if (!stillPending(command, stockPulledAt)) continue;
     const payload = command.payload as StockPayloadLike;
+    // Perte déclarée sur l'appareil : sortie de l'emplacement (mise de côté si elle part en validation).
+    if (command.command_type === 'inventory.loss.declare') {
+      if (payload.locationId && payload.productId && payload.quantityBase) {
+        const key = stockKey(payload.locationId, payload.productId);
+        milli.set(key, (milli.get(key) ?? 0) + toMilli(payload.quantityBase));
+      }
+      continue;
+    }
     const locationId =
       command.command_type === 'sales.sale.record'
         ? payload.fromLocationId

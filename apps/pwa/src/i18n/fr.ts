@@ -97,6 +97,7 @@ export const fr = {
       collect: 'Encaisser une créance',
       stock: 'Stock par emplacement',
       new_prospect: '+ Prospect',
+      loss: 'Déclarer une perte',
     },
   },
   sales: {
@@ -445,6 +446,47 @@ export const fr = {
       WARNING: 'Prospect enregistré, signalé comme doublon possible d’un compte existant.',
       CONFLICT: 'Prospect mis en attente d’examen (conflit).',
       REJECTED: 'Prospect refusé : {{reason}}',
+    },
+  },
+  loss: {
+    offline_banner:
+      'Hors ligne : la perte sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+    product_label: 'Produit',
+    product_placeholder: 'Choisir le produit',
+    lot_label: 'Lot',
+    lot_fifo: 'Le plus ancien (choisi par le serveur)',
+    category_label: 'Nature de la perte',
+    categories: {
+      CASSE: 'Casse',
+      DETERIORATION: 'Détérioration',
+      IMPROPRE: 'Impropre à la vente',
+      DESTRUCTION: 'Destruction',
+      INEXPLIQUEE: 'Perte inexpliquée',
+      VOL_SUSPECTE: 'Vol suspecté',
+    },
+    reason_label: 'Motif',
+    reason_placeholder: 'Choisir un motif (facultatif)',
+    comment_label: 'Commentaire',
+    over_available:
+      'La quantité dépasse le disponible connu de l’appareil : la perte sera tout de même enregistrée.',
+    photo_hint:
+      'La photo justificative n’est pas encore prise par l’application : gardez-la sur le téléphone.',
+    issue: {
+      PRODUCT_REQUIRED: 'Choisissez le produit.',
+      QUANTITY_INVALID: 'Quantité invalide (au plus 3 décimales).',
+      CATEGORY_REQUIRED: 'Choisissez la nature de la perte.',
+      COMMENT_REQUIRED: 'Un commentaire est obligatoire pour cette perte.',
+    },
+    submit: 'Déclarer la perte',
+    another: 'Nouvelle déclaration',
+    result: {
+      WAITING_offline:
+        'Perte enregistrée sur ce téléphone, elle sera envoyée dès le retour du réseau.',
+      WAITING_online: 'Déclaration en cours d’envoi…',
+      DONE: 'Perte {{doc}} enregistrée.',
+      WARNING: 'Perte {{doc}} enregistrée, avec un avertissement à examiner.',
+      CONFLICT: 'Déclaration mise en attente d’examen (conflit).',
+      REJECTED: 'Déclaration refusée : {{reason}}',
     },
   },
   stock: {

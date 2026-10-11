@@ -177,6 +177,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       .filter(
         (command) =>
           command.command_type.startsWith('sales.') ||
+          command.command_type.startsWith('inventory.') ||
           command.command_type === 'crm.customer.create',
       )
       .toArray(),

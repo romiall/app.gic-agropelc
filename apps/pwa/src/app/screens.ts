@@ -29,6 +29,7 @@ export const ROUTES = {
   collect: '/encaisser',
   stock: '/stock',
   newProspect: '/clients/nouveau',
+  loss: '/stock/perte',
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
 } as const;
 
@@ -84,6 +85,8 @@ export const ROLE_SETS = {
     'VENDEUR_PDV',
     'RESP_FERME',
   ],
+  /** `inventory.loss.declare` : détenteurs de stock. */
+  lossDeclare: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_PRODUCTION', 'RESP_FERME', 'MAGASINIER'],
   /** `inventory.stock.read` : tous les rôles sauf l'administrateur. */
   stockRead: [
     'DIRECTION',
@@ -205,6 +208,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     // « Alertes de stock » du magasinier : l'écran s'ouvre sur les produits sous le seuil.
     actionCodes: ['STOCK_ALERTS'],
     actionQuery: { STOCK_ALERTS: '?alertes=1' },
+    offline: true,
+  },
+  {
+    id: 'ECR-STK-04',
+    path: ROUTES.loss,
+    labelKey: 'loss',
+    group: 'stock',
+    roles: ROLE_SETS.lossDeclare,
+    actionCodes: ['LOSS'],
     offline: true,
   },
   {

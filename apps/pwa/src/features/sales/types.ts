@@ -11,6 +11,8 @@ export interface ProductData {
   readonly name: string;
   readonly category_id: string;
   readonly base_unit_code: string;
+  /** `REQUIRED`, `OPTIONAL` ou `NONE` (BR-STK-050). */
+  readonly lot_tracking: string;
   /** `SERVICE` : aucun effet de stock (BR-VEN-031). */
   readonly stock_family: string;
   readonly is_sellable: boolean;
@@ -190,6 +192,8 @@ export interface ReasonCodeData {
   readonly category: string;
   readonly code: string;
   readonly label: string;
+  /** Pour un motif de perte (`LOSS`) : catégorie de perte liée, ou aucune. */
+  readonly loss_category: string | null;
   readonly requires_comment: boolean;
   readonly is_active: boolean;
 }
