@@ -1244,6 +1244,7 @@ export const fr = {
     closed_group: 'Lots clôturés',
     closed_unavailable: 'Lots clôturés indisponibles : réessayez quand le serveur répond.',
     more_closed: 'Afficher plus de lots clôturés',
+    more_failed: 'Lots clôturés suivants indisponibles : réessayez quand le serveur répond.',
     closed_on: 'clôturé le {{date}}',
     not_on_device:
       'Hors ligne : ce lot n’est pas sur le téléphone (lot clôturé ou hors de vos fermes) ; sa fiche se lit en ligne.',
@@ -1352,6 +1353,15 @@ export const fr = {
     other_author_waiting:
       'Une étape saisie par un autre utilisateur de ce téléphone attend sa synchronisation : l’éclosion attend.',
     pending_loss_hold: 'Éclosion suspendue jusqu’à la confirmation de la perte en attente.',
+    all_lost:
+      'Plus aucun œuf de ce lot en stock, ni poussin : perte totale. Le lot se clôt par annulation, pas par une éclosion.',
+    cancel_open: 'Clore par annulation (perte totale)',
+    cancel_hint:
+      'Le serveur vérifie que plus aucun œuf du lot n’est en stock ni en attente de validation d’une perte.',
+    cancel_comment_label: 'Motif de l’annulation',
+    cancel_online_only:
+      'L’annulation se fait en ligne (le serveur vérifie que le stock du lot est vide).',
+    save_cancel: 'Confirmer l’annulation',
     pending_loss:
       'Une perte de ce lot saisie sur ce téléphone n’est pas encore confirmée : si elle attend une validation, le serveur refusera l’éclosion jusqu’à la décision.',
     save_hatch: 'Enregistrer l’éclosion',
@@ -2168,6 +2178,8 @@ export const fr = {
     lot_choose: 'Choisir le lot',
     lot_required_incubation:
       'Incubateur ou éclosoir : désignez le lot d’incubation touché (sinon le bilan d’un autre lot serait faussé).',
+    lot_unknown_incubation:
+      'Un lot d’incubation récent de cet emplacement n’est pas encore connu du téléphone : synchronisez, puis attendez la mise à jour du stock avant de déclarer la perte (sinon elle serait imputée au mauvais lot).',
     category_label: 'Nature de la perte',
     categories: {
       CASSE: 'Casse',

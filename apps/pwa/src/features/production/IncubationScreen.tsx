@@ -26,6 +26,7 @@ import {
   incubationFarms,
   incubationSpecies,
   incubators,
+  MAX_CANCEL_COMMENT,
   normalizeSpecies,
   parseEggCount,
   stepDependsOn,
@@ -33,7 +34,7 @@ import {
 } from './incubation.js';
 
 type Send = (input: Parameters<typeof submitCommand>[0]) => Promise<boolean>;
-type Panel = 'CANDLING' | 'TRANSFER' | 'HATCH' | null;
+type Panel = 'CANDLING' | 'TRANSFER' | 'HATCH' | 'CANCEL' | null;
 
 function NumberField({
   id,
@@ -93,6 +94,7 @@ function BatchCard({
   const [counts, setCounts] = useState(EMPTY_COUNTS);
   const [hatcherId, setHatcherId] = useState('');
   const [outputId, setOutputId] = useState('');
+  const [comment, setComment] = useState('');
   const ids = {
     infertile: useId(),
     earlyDead: useId(),
@@ -103,6 +105,9 @@ function BatchCard({
     output: useId(),
     candlingError: useId(),
     hatchError: useId(),
+    hold: useId(),
+    cancelComment: useId(),
+    cancelOffline: useId(),
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
@@ -113,11 +118,13 @@ function BatchCard({
   // annonce des œufs (données périmées), ou perte en attente (en ligne, le serveur refuserait).
   const hatchHold = batch.otherAuthorWaiting
     ? 'incubation.other_author_waiting'
-    : batch.stockStale
-      ? 'incubation.stock_stale'
-      : online && batch.pendingLoss
-        ? 'incubation.pending_loss_hold'
-        : null;
+    : batch.allLost
+      ? 'incubation.all_lost'
+      : batch.stockStale
+        ? 'incubation.stock_stale'
+        : online && batch.pendingLoss
+          ? 'incubation.pending_loss_hold'
+          : null;
   const hatcherList = hatchers(refs.locations, batch.siteId);
   const outputs = refs.locations
     .filter(
@@ -167,6 +174,7 @@ function BatchCard({
     setCounts(EMPTY_COUNTS);
     setHatcherId('');
     setOutputId('');
+    setComment('');
     setPanel(next);
   };
   const step = (commandType: string, payload: Record<string, unknown>) =>
@@ -219,7 +227,7 @@ function BatchCard({
       ) : null}
       {batch.pendingLoss ? <p className="text-warn">{t('incubation.pending_loss')}</p> : null}
       {hatchHold ? (
-        <p className="text-warn" role="status">
+        <p id={ids.hold} className="text-warn" role="status">
           {t(hatchHold)}
         </p>
       ) : null}
@@ -268,6 +276,55 @@ function BatchCard({
               {t('incubation.hatch')}
             </button>
           )}
+          {batch.allLost ? (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={blocked || !online}
+                aria-describedby={!online ? ids.cancelOffline : undefined}
+                onClick={() => open('CANCEL')}
+              >
+                {t('incubation.cancel_open')}
+              </button>
+              {!online ? (
+                <p id={ids.cancelOffline} className="home-muted">
+                  {t('incubation.cancel_online_only')}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {panel === 'CANCEL' ? (
+        <div className="sale-block">
+          <p className="home-muted">{t('incubation.cancel_hint')}</p>
+          <div className="field">
+            <label htmlFor={ids.cancelComment}>{t('incubation.cancel_comment_label')}</label>
+            <textarea
+              id={ids.cancelComment}
+              className="text-input"
+              rows={2}
+              maxLength={MAX_CANCEL_COMMENT}
+              aria-required="true"
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+            />
+          </div>
+          <div className="result-actions">
+            <button
+              type="button"
+              className="btn-block submit-sale"
+              disabled={blocked || !online || !batch.allLost || comment.trim() === ''}
+              onClick={() => step('production.incubation.cancel', { comment: comment.trim() })}
+            >
+              {t('incubation.save_cancel')}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              {t('price_rules.cancel')}
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -416,7 +473,8 @@ function BatchCard({
             <button
               type="button"
               className="btn-block submit-sale"
-              disabled={blocked || hatchProblem !== null || !hatch}
+              disabled={blocked || hatchHold !== null || hatchProblem !== null || !hatch}
+              aria-describedby={hatchHold ? ids.hold : undefined}
               onClick={() =>
                 hatch &&
                 step('production.incubation.record_hatch', {

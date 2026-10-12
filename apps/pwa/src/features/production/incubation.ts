@@ -48,6 +48,9 @@ import type {
 
 const INCUBATION_TYPES: ReadonlySet<string> = new Set(['INCUBATOR', 'HATCHER']);
 
+/** Motif d'une annulation de lot d'incubation (perte totale), comme le serveur. */
+export const MAX_CANCEL_COMMENT = 2000;
+
 /** Lot d'incubation vu de l'appareil : téléchargé, ou démarré ici et pas encore retéléchargé. */
 export interface BatchView {
   readonly id: string;
@@ -72,8 +75,16 @@ export interface BatchView {
   readonly checkCounters: IncubationCounters;
   /** Écart entre le restant du jeu et le stock réel du lot (œufs), à confirmer. */
   readonly stockGap: number;
-  /** Plus aucun œuf du lot en stock alors que le jeu en annonce : données périmées. */
+  /**
+   * Plus aucun œuf du lot en stock alors que le jeu en annonce, avec des poussins du lot quelque part
+   * (éclosion faite ailleurs) : données périmées.
+   */
   readonly stockStale: boolean;
+  /**
+   * Plus aucun œuf du lot en stock, sans poussin du lot ni perte en attente : perte totale ; le lot se
+   * clôt par annulation (`production.incubation.cancel`), pas par une éclosion.
+   */
+  readonly allLost: boolean;
   /** Étape d'un autre utilisateur de l'appareil encore en attente sur ce lot. */
   readonly otherAuthorWaiting: boolean;
   /** Étapes de l'appareil comptées dans les compteurs, pas encore confirmées. */
@@ -248,14 +259,15 @@ export function eggSources(
       quantity,
       lots: lots.map((lot) => {
         const lotQuantity = Math.min(lot.quantity, quantity);
+        // Au pire, les sorties sans lot désigné tombent toutes sur ce lot ; `quantity` en est déjà
+        // net : elles ne se retranchent qu'une fois.
+        const unlotted = pendingWithoutLot(refs, balance.location_id, eggProductId);
         return {
           ...lot,
           quantity: lotQuantity,
           cautious: Math.max(
             0,
-            Math.round(
-              (lotQuantity - pendingWithoutLot(refs, balance.location_id, eggProductId)) * 1000,
-            ) / 1000,
+            Math.round(Math.min(lot.quantity - unlotted, quantity) * 1000) / 1000,
           ),
         };
       }),
@@ -329,6 +341,7 @@ export function batchViews(
       checkCounters: counterOf(batch),
       stockGap: 0,
       stockStale: false,
+      allLost: false,
       otherAuthorWaiting: false,
       pendingSteps: 0,
       startCommandId: null,
@@ -381,6 +394,7 @@ export function batchViews(
       },
       stockGap: 0,
       stockStale: false,
+      allLost: false,
       otherAuthorWaiting: false,
       pendingSteps: 0,
       startCommandId: isAccepted(command) ? null : command.command_id,
@@ -460,7 +474,14 @@ export function batchViews(
     // avant que le jeu `production` ne le dise).
     let known = false;
     let physical = 0;
+    let chicksSeen = false;
     for (const balance of refs.stock.values()) {
+      if (
+        balance.product_id === view.chickProductId &&
+        balance.lots?.some((lot) => lot.lot_id === lotId)
+      ) {
+        chicksSeen = true;
+      }
       if (balance.product_id !== view.eggProductId) continue;
       const entry = balance.lots?.find((lot) => lot.lot_id === lotId);
       if (entry) {
@@ -507,6 +528,10 @@ export function batchViews(
     const remaining = eggsRemaining(view.counters);
     const physicalRemaining = physical - candled - lost;
     const gap = known && physicalRemaining < remaining ? remaining - physicalRemaining : 0;
+    const empty = known && physical <= 0 && remaining > 0;
+    // Stock du lot vide sans poussins ni perte en attente : perte totale ; sinon éclosion faite
+    // ailleurs, à resynchroniser.
+    const allLost = empty && !chicksSeen && lost === 0 && !unlottedLoss;
     views.set(view.id, {
       ...view,
       checkCounters: {
@@ -514,7 +539,8 @@ export function batchViews(
         accidentalLoss: view.counters.accidentalLoss + gap,
       },
       stockGap: gap,
-      stockStale: known && physical <= 0 && remaining > 0,
+      stockStale: empty && !allLost,
+      allLost,
       pendingLoss: lost > 0 || unlottedLoss,
     });
   }

@@ -536,6 +536,80 @@ describe('Nouveau lot ou entrée (ECR-PRD-04)', () => {
     expect(withIncoming.pendingOut.get(`${STORE}:${CHICK}`)).toBe(100);
   });
 
+  it('réception dont le lot fournisseur n’est pas encore dans le stock : la mise en place en attente en est retranchée', async () => {
+    const db = getDb();
+    const RECEIPT = '01900000-0000-7000-8000-0000000006b3';
+    const NEW_LOT = '01900000-0000-7000-8000-0000000006b4';
+    await db.projections.bulkPut([
+      {
+        key: `procurement:GOODS_RECEIPT:${RECEIPT}`,
+        dataset: 'procurement',
+        entity_type: 'GOODS_RECEIPT',
+        entity_id: RECEIPT,
+        scope_type: 'SITE',
+        scope_id: FARM,
+        row_version: 1,
+        seq: 1,
+        data: {
+          id: RECEIPT,
+          doc_number: 'REC-B3',
+          purchase_order_id: null,
+          supplier_id: 'f1',
+          location_id: STORE,
+          supplier_delivery_note_ref: null,
+          status: 'POSTED',
+          occurred_at: '2026-10-09T08:00:00.000Z',
+          lines: [
+            {
+              id: `${RECEIPT}-l`,
+              po_line_id: null,
+              product_id: CHICK,
+              qty_delivered_base: '100',
+              qty_rejected_base: '0',
+              qty_accepted_base: '100',
+              stock_lot_id: NEW_LOT,
+            },
+          ],
+        },
+      },
+      // Stock de l'emplacement tiré avant la réception : le lot fournisseur n'y figure pas encore.
+      balance(STORE, CHICK, []),
+    ]);
+    await db.outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000006b5',
+      device_seq: 1,
+      command_type: 'production.lot.record_entry',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'LOT_ENTRY',
+      aggregate_id: '01900000-0000-7000-8000-0000000006b6',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {
+        productionLotId: LOT_B,
+        sourceKind: 'PURCHASE',
+        quantity: 60,
+        goodsReceiptId: RECEIPT,
+        sourceProductId: CHICK,
+      },
+      status: 'LOCAL_ONLY',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    const refs = await loadSalesReferences(db);
+    const receipt = refs.goodsReceipts.find((candidate) => candidate.id === RECEIPT);
+    if (!receipt) throw new Error('réception absente');
+    // 100 acceptés − 60 déjà mis en place sur l'appareil.
+    expect(receiptAvailable(refs, receipt, CHICK)).toBe(40);
+  });
+
   it('lots créés sur une tablette partagée : seuls ceux de l’utilisateur reçoivent ses entrées', async () => {
     const refs = await loadSalesReferences(getDb());
     const create = (author: string, id: string) =>

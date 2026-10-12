@@ -387,15 +387,15 @@ export function stockSources(
       productId: balance.product_id,
       lots: lots.map((stockLot) => {
         const lotQuantity = Math.min(stockLot.quantity, quantity);
+        // Au pire, les sorties sans lot désigné tombent toutes sur ce lot ; `quantity` en est déjà
+        // net : elles ne se retranchent qu'une fois.
+        const unlotted = pendingWithoutLot(refs, balance.location_id, balance.product_id);
         return {
           ...stockLot,
           quantity: lotQuantity,
           cautious: Math.max(
             0,
-            Math.round(
-              (lotQuantity - pendingWithoutLot(refs, balance.location_id, balance.product_id)) *
-                1000,
-            ) / 1000,
+            Math.round(Math.min(stockLot.quantity - unlotted, quantity) * 1000) / 1000,
           ),
         };
       }),
@@ -430,10 +430,13 @@ export function receiptAvailable(
     const lotId = line.stock_lot_id ?? null;
     const known =
       lotId !== null ? balance?.lots?.find((stockLot) => stockLot.lot_id === lotId) : undefined;
-    const onLot = known
-      ? Number(known.qty_on_hand) -
-        (refs.pendingLots.get(lotStockKey(receipt.location_id, productId, lotId as string)) ?? 0)
-      : accepted;
+    // Attente imputée au lot de la ligne, que l'appareil connaisse déjà ce lot sur l'emplacement ou
+    // non (son solde vaut alors l'accepté, comme pour l'imputation de l'attente).
+    const onLot =
+      (known ? Number(known.qty_on_hand) : accepted) -
+      (lotId !== null
+        ? (refs.pendingLots.get(lotStockKey(receipt.location_id, productId, lotId)) ?? 0)
+        : 0);
     total += Math.max(0, Math.min(accepted, onLot));
   }
   const unlotted = Math.max(

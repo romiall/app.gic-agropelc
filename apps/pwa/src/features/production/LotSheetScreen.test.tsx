@@ -281,6 +281,58 @@ describe('Fiche lot (ECR-PRD-03)', () => {
     expect(screen.queryByRole('region', { name: 'Indicateurs' })).not.toBeInTheDocument();
   });
 
+  it('lots clôturés : « Afficher plus » ne lit que la page suivante ; un échec garde les pages lues', async () => {
+    const closed = (id: string, code: string) => ({
+      id,
+      lotCode: code,
+      lotType: 'POULET_CHAIR',
+      status: 'CLOSED',
+    });
+    const pages: Record<string, { lots: object[]; next_cursor: string | null }> = {
+      '': { lots: [closed('c1', 'LOT-MFO-2025-001')], next_cursor: 'p2' },
+      p2: { lots: [closed('c2', 'LOT-MFO-2025-002')], next_cursor: 'p3' },
+      p3: { lots: [closed('c3', 'LOT-MFO-2025-003')], next_cursor: null },
+    };
+    let failP3 = true;
+    vi.mocked(authorizedRequest).mockImplementation(async (_db, path) => {
+      if (path.startsWith('/api/v1/production/lots?')) {
+        const cursor = new URL(path, 'http://local').searchParams.get('cursor') ?? '';
+        if (cursor === 'p3' && failP3) {
+          failP3 = false;
+          return { ok: false, reason: 'HTTP_ERROR', status: 503, body: null } as never;
+        }
+        return { ok: true, data: pages[cursor] } as never;
+      }
+      return { ok: true, data: { lot: SHEET } } as never;
+    });
+    const closedCalls = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter(([, path]) => String(path).startsWith('/api/v1/production/lots?'))
+        .map(([, path]) => new URL(String(path), 'http://local').searchParams.get('cursor'));
+    const user = userEvent.setup();
+    renderScreen();
+    await screen.findByRole('option', { name: 'LOT-MFO-2025-001 · Poulet de chair' });
+    await user.click(screen.getByRole('button', { name: 'Afficher plus de lots clôturés' }));
+    await screen.findByRole('option', { name: 'LOT-MFO-2025-002 · Poulet de chair' });
+    // Page suivante en échec : les lots déjà lus restent, l'échec est annoncé.
+    await user.click(screen.getByRole('button', { name: 'Afficher plus de lots clôturés' }));
+    expect(await screen.findByText(/Lots clôturés suivants indisponibles/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'LOT-MFO-2025-001 · Poulet de chair' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'LOT-MFO-2025-002 · Poulet de chair' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Afficher plus de lots clôturés' }));
+    await screen.findByRole('option', { name: 'LOT-MFO-2025-003 · Poulet de chair' });
+    expect(
+      screen.queryByRole('button', { name: 'Afficher plus de lots clôturés' }),
+    ).not.toBeInTheDocument();
+    // Chaque page n'est lue qu'une fois (la troisième deux fois, à cause de l'échec).
+    expect(closedCalls()).toEqual([null, 'p2', 'p3', 'p3']);
+  });
+
   it('lots clôturés indisponibles : annoncés, relus par « Réessayer »', async () => {
     vi.mocked(authorizedRequest).mockImplementation(
       async (_db, path) =>

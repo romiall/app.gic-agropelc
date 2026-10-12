@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDate, formatDateTime, formatMonthPeriod } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
-import { readPages, readPath, useOnlineRead, type Pages } from '../sales/online-read.js';
+import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { rearingHeadcount } from './daily.js';
 
@@ -86,6 +86,12 @@ interface ClosedLot {
   readonly status: string;
 }
 
+/** Page de lots clôturés et curseur de la suivante. */
+interface ClosedPage {
+  readonly lots?: readonly ClosedLot[];
+  readonly next_cursor?: string | null;
+}
+
 /** Lot proposé : de l'appareil (ouvert) ou lu en ligne (clôturé). */
 interface LotChoice {
   readonly id: string;
@@ -107,14 +113,33 @@ export function LotSheetScreen() {
   const refs = useSalesReferences();
   const online = useOnline();
   const [lotChoice, setLotChoice] = useState<string | null>(searchParams.get('lot'));
-  const [closedPages, setClosedPages] = useState(1);
   const lotId = useId();
-  const closed = useOnlineRead<Pages<ClosedLot>>(
-    `${CLOSED_LOTS_PATH}#${closedPages}`,
-    () => readPages<ClosedLot>([CLOSED_LOTS_PATH], 'lots', closedPages),
-    online,
-    '',
-  );
+  // Première page lue en ligne ; les suivantes, une à la fois, ajoutées sans relire les précédentes.
+  const closed = useOnlineRead<ClosedPage>(CLOSED_LOTS_PATH, readPath, online, '');
+  const [more, setMore] = useState<{
+    readonly items: readonly ClosedLot[];
+    readonly cursor: string | null;
+    readonly loaded: number;
+    readonly status: 'IDLE' | 'LOADING' | 'FAILED';
+  }>({ items: [], cursor: null, loaded: 0, status: 'IDLE' });
+  const nextCursor = more.loaded > 0 ? more.cursor : (closed.data?.next_cursor ?? null);
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setMore((current) => ({ ...current, status: 'LOADING' }));
+    const result = await readPath<ClosedPage>(
+      `${CLOSED_LOTS_PATH}&cursor=${encodeURIComponent(nextCursor)}`,
+    );
+    setMore((current) =>
+      result.ok
+        ? {
+            items: [...current.items, ...(result.data.lots ?? [])],
+            cursor: result.data.next_cursor ?? null,
+            loaded: current.loaded + 1,
+            status: 'IDLE',
+          }
+        : { ...current, status: 'FAILED' },
+    );
+  };
   const deviceLots = refs?.productionLots ?? [];
   const known = new Set(deviceLots.map((candidate) => candidate.id));
   const byCodeDesc = (a: LotChoice, b: LotChoice) => b.lotCode.localeCompare(a.lotCode, 'fr');
@@ -126,8 +151,13 @@ export function LotSheetScreen() {
       lotType: candidate.lot_type,
     }))
     .sort(byCodeDesc);
-  const closedLots: LotChoice[] = (closed.data?.items ?? [])
-    .filter((candidate) => !known.has(candidate.id))
+  const closedSeen = new Set<string>();
+  const closedLots: LotChoice[] = [...(closed.data?.lots ?? []), ...more.items]
+    .filter((candidate) => {
+      if (known.has(candidate.id) || closedSeen.has(candidate.id)) return false;
+      closedSeen.add(candidate.id);
+      return true;
+    })
     .map((candidate) => ({
       id: candidate.id,
       lotCode: candidate.lotCode,
@@ -226,12 +256,17 @@ export function LotSheetScreen() {
                 </optgroup>
               ) : null}
             </select>
-            {closed.data?.more ? (
+            {online && more.status === 'FAILED' ? (
+              <p className="error-message" role="alert">
+                {t('lot_sheet.more_failed')}
+              </p>
+            ) : null}
+            {online && nextCursor ? (
               <button
                 type="button"
                 className="secondary"
-                disabled={closed.stale}
-                onClick={() => setClosedPages((value) => value + 1)}
+                disabled={more.status === 'LOADING'}
+                onClick={() => void loadMore()}
               >
                 {t('lot_sheet.more_closed')}
               </button>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
@@ -469,14 +469,101 @@ describe('Incubation (ECR-PRD-06)', () => {
     view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_A);
     expect(view).toMatchObject({ stockGap: 0, stockStale: false });
     expect(view && view.checkCounters.accidentalLoss).toBe(0);
-    // Plus aucun œuf du lot nulle part : données périmées, éclosion suspendue.
+    // Plus aucun œuf du lot nulle part, ni poussin : perte totale (le lot se clôt par annulation).
     await db.projections.put(
       eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 0 }]),
     );
     refs = await loadSalesReferences(db);
-    expect(
-      batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B)?.stockStale,
-    ).toBe(true);
+    view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B);
+    expect(view).toMatchObject({ allLost: true, stockStale: false });
+    // Des poussins du lot quelque part : éclosion faite ailleurs, données périmées.
+    await db.projections.put(
+      projection(
+        'stock',
+        'STOCK_BALANCE',
+        CHICK,
+        {
+          location_id: STORE,
+          product_id: CHICK,
+          qty_on_hand: '300',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [{ lot_id: `${BATCH_B}-lot`, lot_code: 'INC-2', qty_on_hand: '300' }],
+        },
+        `stock:STOCK_BALANCE:${STORE}:${CHICK}`,
+      ),
+    );
+    refs = await loadSalesReferences(db);
+    view = batchViews(refs, IDS.user).find((candidate) => candidate.id === BATCH_B);
+    expect(view).toMatchObject({ allLost: false, stockStale: true });
+  });
+
+  it('perte totale : éclosion suspendue, clôture par annulation en ligne avec un motif ; hors ligne indisponible', async () => {
+    const db = getDb();
+    await db.projections.put(
+      eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 0 }]),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    let card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
+    expect(within(card).getByText(/ni poussin : perte totale/)).toBeInTheDocument();
+    expect(within(card).queryByText(/à resynchroniser/)).not.toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Éclosion' })).toBeDisabled();
+    await user.click(
+      within(card).getByRole('button', { name: 'Clore par annulation (perte totale)' }),
+    );
+    const confirm = within(card).getByRole('button', { name: 'Confirmer l’annulation' });
+    expect(confirm).toBeDisabled();
+    await user.type(within(card).getByLabelText('Motif de l’annulation'), ' Panne de l’éclosoir ');
+    await user.click(confirm);
+    await waitFor(async () => expect(await db.outbox.count()).toBe(1));
+    const [sent] = await db.outbox.toArray();
+    expect(sent).toMatchObject({
+      command_type: 'production.incubation.cancel',
+      aggregate_type: 'INCUBATION_EVENT',
+      payload: { batchId: BATCH_B, comment: 'Panne de l’éclosoir' },
+    });
+
+    cleanup();
+    await db.outbox.clear();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderScreen();
+    card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
+    const open = within(card).getByRole('button', { name: 'Clore par annulation (perte totale)' });
+    expect(open).toBeDisabled();
+    expect(open).toHaveAccessibleDescription(/L’annulation se fait en ligne/);
+  });
+
+  it('panneau d’éclosion ouvert hors ligne : la suspension qui apparaît en ligne bloque l’enregistrement', async () => {
+    const db = getDb();
+    await db.projections.put(
+      eggBalance(HATCHER, [{ id: `${BATCH_B}-lot`, code: 'INC-2', qty: 370 }]),
+    );
+    // Perte de 5 œufs du lot saisie sur l'appareil : elle ne suspend l'éclosion qu'en ligne.
+    await db.outbox.add(
+      command('inventory.loss.declare', {
+        locationId: HATCHER,
+        productId: HATCH_EGG,
+        lotId: `${BATCH_B}-lot`,
+        quantityBase: 5,
+      }),
+    );
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
+    await user.click(within(card).getByRole('button', { name: 'Éclosion' }));
+    await user.type(within(card).getByLabelText('Poussins viables'), '365');
+    await user.type(within(card).getByLabelText('Poussins non viables'), '0');
+    await user.type(within(card).getByLabelText('Non éclos'), '0');
+    const save = within(card).getByRole('button', { name: 'Enregistrer l’éclosion' });
+    expect(save).toBeEnabled();
+    online.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(save).toBeDisabled());
+    expect(save).toHaveAccessibleDescription(/Éclosion suspendue jusqu’à la confirmation/);
   });
 
   it('lot d’œufs désigné net de l’attente ; étape d’un autre utilisateur en dépendance', async () => {

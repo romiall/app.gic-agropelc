@@ -149,6 +149,10 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
     // Deux lots d'incubation : le lot se désigne avant de déclarer.
     expect(screen.getByText(/désignez le lot d’incubation touché/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Lot')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Lot')).toHaveAccessibleDescription(
+      /désignez le lot d’incubation touché/,
+    );
     const declare = screen.getByRole('button', { name: 'Déclarer la perte' });
     expect(declare).toBeDisabled();
     await user.selectOptions(screen.getByLabelText('Lot'), 'INC-2');
@@ -156,6 +160,91 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     expect(await screen.findByText(/Perte enregistrée sur ce téléphone/)).toBeInTheDocument();
     const [command] = await getDb().outbox.toArray();
     expect(command?.payload).toMatchObject({ locationId: HATCHER, lotId: 'INC-2' });
+  });
+
+  it('incubateur avec un lot démarré hors ligne : pas de présélection, perte bloquée jusqu’au stock à jour', async () => {
+    const db = getDb();
+    const INCUBATOR = '01900000-0000-7000-8000-0000000008f2';
+    const projection = (dataset: string, type: string, id: string, data: object, key?: string) => ({
+      key: key ?? `${dataset}:${type}:${id}`,
+      dataset,
+      entity_type: type,
+      entity_id: id,
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id, ...data } as Record<string, unknown>,
+    });
+    await db.projections.bulkPut([
+      projection('location', 'LOCATION', INCUBATOR, {
+        site_id: IDS.site,
+        code: 'INC-1',
+        name: 'Incubateur 1',
+        location_type: 'INCUBATOR',
+        is_virtual: false,
+        custody_mode: 'SHARED',
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      }),
+      // Lot A synchronisé : son lot de stock est connu de l'appareil.
+      projection(
+        'stock',
+        'STOCK_BALANCE',
+        IDS.eggs,
+        {
+          location_id: INCUBATOR,
+          product_id: IDS.eggs,
+          qty_on_hand: '200',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [{ lot_id: 'LOT-A', lot_code: 'INC-A', qty_on_hand: '200' }],
+        },
+        `stock:STOCK_BALANCE:${INCUBATOR}:${IDS.eggs}`,
+      ),
+    ]);
+    // Lot B démarré sur ce téléphone, pas encore envoyé : son lot de stock sera créé par le serveur.
+    await db.outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000008f3',
+      device_seq: 1,
+      command_type: 'production.incubation.start',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'INCUBATION_BATCH',
+      aggregate_id: '01900000-0000-7000-8000-0000000008f4',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { incubatorLocationId: INCUBATOR, eggProductId: IDS.eggs, eggsSet: 100 },
+      status: 'LOCAL_ONLY',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Emplacement'), INCUBATOR);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText('Quantité'), '10');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    // Le seul lot connu n'est pas présélectionné : la casse peut venir du lot récent.
+    expect(screen.getByLabelText('Lot')).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent(/pas encore connu du téléphone/);
+    const declare = screen.getByRole('button', { name: 'Déclarer la perte' });
+    await user.selectOptions(screen.getByLabelText('Lot'), 'LOT-A');
+    expect(declare).toBeDisabled();
   });
 
   it('au-delà du disponible : bloquée en ligne (BR-STK-017), signalée hors ligne (BR-STK-018)', async () => {
