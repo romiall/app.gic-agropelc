@@ -488,8 +488,14 @@ export function settingValue(
   const effective = settings
     .filter((setting) => setting.key === key && new Date(setting.valid_from) <= now)
     .sort((a, b) => b.valid_from.localeCompare(a.valid_from));
+  // Réglage du site, à défaut global, comme le serveur (une valeur nulle au site ne compte pas).
   const site = effective.find(
-    (setting) => setting.scope_type === 'SITE' && siteId && setting.scope_id === siteId,
+    (setting) =>
+      setting.scope_type === 'SITE' &&
+      siteId &&
+      setting.scope_id === siteId &&
+      setting.value !== null &&
+      setting.value !== undefined,
   );
   return (site ?? effective.find((setting) => setting.scope_type === 'GLOBAL'))?.value;
 }

@@ -22,10 +22,19 @@ export const KNOWN_DATASETS = [
   // Jeux d'exploitation d'abord : si un cycle s'interrompt, le stock et les ventes sont les plus
   // frais (le disponible local en dépend, ADR-051).
   'stock',
+  // Quotas de l'appareil (`STOCK_ALLOCATION`, ligne `DEVICE`, lecteur P5-18) : juste après le stock,
+  // la garde de vente hors ligne en dépend (AT-003).
+  'allocations',
   'orders',
   'sales_recent',
   'cash',
   'customers',
+  // P5-18 : PDV du site (`org`), paramètres visibles de l'appareil (`me`), politiques de contrôle
+  // (`policies`). Les anciens jeux `setting`, `control_policy` et `reason_code` restent tirés : le
+  // repli générique y publie encore les entités créées par commande (AV-196).
+  'org',
+  'me',
+  'policies',
   // P0 : identité, organisation, paramètres, validations, pièces (repli générique `GLOBAL`).
   'user',
   'device',
@@ -49,9 +58,7 @@ export const KNOWN_DATASETS = [
   'commercial_campaign',
   'supplier',
   'catalog',
-  // P2 : transferts et inventaires (`LOCATION`). Le jeu `allocations` (quotas de l'appareil) n'est
-  // pas tiré tant que le serveur ne le sert pas (lecteur `STOCK_ALLOCATION` prévu en P5-18, besoin
-  // S-05) : le curseur avancerait au-delà de lignes jamais servies, perdues pour l'appareil.
+  // P2 : transferts et inventaires (`LOCATION`).
   'transfers',
   'counts',
   // P3 : activité commerciale, pointage.

@@ -515,7 +515,97 @@ export interface CashAccountData {
   readonly site_id: string | null;
   readonly holder_user_id: string | null;
   readonly responsible_user_id: string;
+  /** Solde du registre au dernier mouvement servi (XAF entiers). */
+  readonly balance_xaf?: number;
   readonly status: string;
+  readonly version?: number;
+}
+
+/**
+ * (`allocations`, `STOCK_ALLOCATION`, ligne `DEVICE`) quota actif d'un détenteur sur cet appareil
+ * (ADR-033) : quantités en chaînes décimales ; un quota libéré ou révoqué sort du jeu (`SCOPE_EXIT`).
+ * Sur une tablette partagée, les quotas de tous ses utilisateurs sont servis (AV-194).
+ */
+export interface AllocationData {
+  readonly id: string;
+  readonly location_id: string;
+  readonly product_id: string;
+  /** Indicatif (AV-160) : le quota se consomme au grain emplacement × produit. */
+  readonly lot_id: string | null;
+  readonly holder_user_id: string | null;
+  readonly holder_device_id: string | null;
+  readonly quantity_granted: string;
+  readonly quantity_remaining: string;
+  readonly valid_until: string | null;
+  readonly status: string;
+  /** Signal de révocation posé (appareil bloqué ou perdu) : le quota ne se consomme plus. */
+  readonly revocation_pending: boolean;
+  readonly version: number;
+}
+
+/**
+ * (`cash`, `CASH_SESSION`, ligne `SITE`) session de caisse du PDV, ouverte ou à valider (ADR-032) ;
+ * une session validée sort du jeu. Montants en XAF entiers ; `current_*` comprennent les
+ * réévaluations par le delta.
+ */
+export interface CashSessionData {
+  readonly id: string;
+  readonly cash_account_id: string;
+  readonly site_id: string;
+  readonly business_date: string | null;
+  readonly status: string;
+  readonly opened_by: string;
+  readonly opened_at: string;
+  readonly opening_counted_xaf: number;
+  readonly opening_expected_xaf: number;
+  readonly opening_variance_xaf: number;
+  readonly closed_by: string | null;
+  readonly closed_at: string | null;
+  readonly closing_counted_xaf: number | null;
+  readonly closing_expected_xaf: number | null;
+  readonly variance_xaf: number | null;
+  readonly current_expected_xaf: number | null;
+  readonly current_variance_xaf: number | null;
+  readonly force_closed: boolean;
+  readonly version: number;
+}
+
+/** (`cash`, `CASH_TRANSFER`) remise de fonds envoyée ou en écart ; reçue, close ou annulée, elle sort. */
+export interface CashTransferData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly local_ref: string | null;
+  readonly from_account_id: string;
+  readonly to_account_id: string;
+  readonly amount_sent_xaf: number;
+  readonly amount_received_xaf: number | null;
+  readonly status: string;
+  readonly sent_by: string;
+  readonly sent_at: string;
+  readonly carrier_user_id: string | null;
+  readonly carrier_name: string | null;
+  readonly received_at: string | null;
+  readonly version: number;
+}
+
+/** (`cash`, `CASH_TRANSFER_TARGET`, ligne `GLOBAL`) destination de remise, sans solde (AV-197). */
+export interface CashTransferTargetData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly account_type: string;
+  readonly site_id: string | null;
+}
+
+/** (`org`, `POINT_OF_SALE`, ligne `SITE`, clé = le site) configuration du PDV (P5-05). */
+export interface PointOfSaleData {
+  readonly site_id: string;
+  readonly sales_location_id: string;
+  readonly replenishment_source_location_id: string | null;
+  readonly custody_mode: string;
+  readonly designated_device_id: string | null;
+  readonly opening_hours: unknown;
+  readonly version: number;
 }
 
 /** (`catalog`, `PAYMENT_METHOD`) */
@@ -647,5 +737,8 @@ export interface CustomerPaymentData {
   readonly external_reference: string | null;
   readonly received_by_user_id: string;
   readonly unallocated_xaf: number;
+  /** Compte crédité (caisse du PDV pour les espèces au PDV). */
+  readonly cash_account_id?: string | null;
+  readonly refunded_xaf?: number;
   readonly occurred_at: string;
 }

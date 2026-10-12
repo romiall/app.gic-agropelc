@@ -257,3 +257,31 @@ Fork clos le 12/10/2026.
 - **Vérification dans le navigateur : non faite.** Elle attend la connexion du porteur dans le panneau du navigateur (§ 7) et l'activation de cet appareil dans `gic_agropelc_dev` ; les rôles de démonstration à portée globale sont accordés depuis le 12/10/2026, avec son accord (§ 7). La base de développement n'ayant ni site, ni zone, ni équipe, les écrans de vente, de stock et de terrain y resteraient vides sans données d'organisation de démonstration.
 - **Fichiers touchés hors `apps/pwa`** : ce fichier de suivi, [`03-parcours-et-ecrans.md`](../01-functional/03-parcours-et-ecrans.md) (renvoi vers le § 2 de ce fichier), [ADR-050](../decisions/ADR-050-navigation-par-role-sur-l-appareil.md) et [ADR-051](../decisions/ADR-051-synchronisation-appareil-durcie.md) ; hors dépôt versionné, deux entrées locales dans `.claude/launch.json` du dépôt principal (§ 7).
 - **À reprendre à la fusion par la session principale** : besoins serveur S-01 à S-42 (§ 4) ; AV-300 à AV-302 à reporter dans [`A-VALIDER.md`](../A-VALIDER.md) (§ 5, références orphelines attendues d'ici là) ; lignes d'index d'ADR-050 et ADR-051 dans `docs/decisions/README.md` (§ 6) ; statut des écrans dans la matrice de traçabilité et le plan de développement, que le fork ne modifie pas.
+
+## 9. Phase des écrans de P5 (branche `claude/pwa-p5`)
+
+> Ouverte le 12/10/2026 à la demande de la session principale (pour le porteur), en parallèle de P5-22 et P5-23. Branche `claude/pwa-p5`, partie de `claude/pwa-ecrans` (`2900aee`), avec `claude/brave-pasteur-c7q4y7` fusionnée jusqu'à `701ffc8` (commit `9ba5cec`, sans conflit ; typage, ESLint et 366 tests verts après la fusion). Périmètre : ECR-DIS-01 à 04, ECR-STK-06, ECR-FIN-05, application des jeux hors ligne de P5 sur l'appareil, garde d'AT-003, tablette partagée (découpage proposé au porteur), lecture seule après 7 jours hors ligne. Mêmes règles que le fork ; plages réservées : AV-303 à AV-329, ADR-052 à ADR-059, besoins serveur S-43 et suivants.
+
+### 9.1 Incréments
+
+| Incr. | Objet | Commit | Contenu |
+|---|---|---|---|
+| F-56 | Jeux hors ligne de P5 sur l'appareil | _à venir_ | Jeux `allocations` (juste après `stock` : la garde de vente hors ligne en dépend), `org`, `me` et `policies` tirés (S-05 et S-11 levés côté serveur par P5-18) ; quotas (`STOCK_ALLOCATION`), sessions de caisse (`CASH_SESSION`), remises (`CASH_TRANSFER`), destinations de remise (`CASH_TRANSFER_TARGET`) et PDV (`POINT_OF_SALE`) lus avec les curseurs de leurs jeux ; solde et version des comptes de trésorerie, compte crédité et remboursé des paiements ; paramètres semés lus dans `me` et motifs dans `catalog`, réunis aux anciens jeux `setting` et `reason_code` (encore alimentés pour les entités créées par commande, AV-196) ; commandes `finance.` dans l'outbox lue par les écrans ; réglage de site nul retombant sur le réglage global, comme le serveur (DÉDUIT de `allocation-consumption.ts` : site, à défaut global, sans zone ni rôle) ; données de test partagées (quota, caisse du PDV, session, remise, PDV, paramètre de `me`) |
+
+### 9.2 Vérifications
+
+| Incr. | Tests (vitest) | Typage | ESLint | Prettier | Navigateur |
+|---|---|---|---|---|---|
+| F-56 | 369 verts (57 fichiers), dont référentiels de P5 (3 : quotas, sessions, remises, destinations et PDV lus avec leurs curseurs, commandes de caisse dans l'outbox ; paramètres de `me` et motifs de `catalog` réunis aux anciens jeux ; réglage de site nul) ; jeux tirés (quotas juste après le stock) ; tests vérifiés en retirant leur correctif | OK | OK | OK | Différé : connexion requise (voir § 7) |
+
+### 9.3 Besoins côté serveur (S-43 et suivants)
+
+Aucun à ce stade.
+
+### 9.4 AV proposés (AV-303 et suivants)
+
+Aucun à ce stade.
+
+### 9.5 ADR proposés (ADR-052 et suivants)
+
+Aucun à ce stade.
