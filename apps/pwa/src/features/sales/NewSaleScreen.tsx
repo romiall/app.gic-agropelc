@@ -235,18 +235,21 @@ export function NewSaleScreen() {
   const amount = payment.amountText === null ? (total ?? 0) : parseXaf(payment.amountText);
   // Vente au PDV (emplacement `POS`) : un encaissement en espèces exige une caisse ouverte
   // (BR-DIS-005, AV-305).
-  const cashSession =
-    location.location_type === 'POS'
-      ? cashSessionCoverage({
-          accounts: refs.cashAccounts,
-          sessions: refs.cashSessions,
-          outbox: refs.outbox,
-          cashPulledAt: refs.cashPulledAt,
-          siteId: location.site_id,
-          userId,
-          online,
-        })
-      : 'NONE';
+  const cashSession = cashSessionCoverage({
+    atPointOfSale: location.location_type === 'POS',
+    accounts: refs.cashAccounts,
+    sessions: refs.cashSessions,
+    outbox: refs.outbox,
+    cashPulledAt: refs.cashPulledAt,
+    siteId: location.site_id,
+    userId,
+    maxSessionsPerDay: settingValue(
+      refs.settings,
+      'finance.cash_sessions_per_day_max',
+      location.site_id,
+      now,
+    ),
+  });
   const paymentErrors: string[] = [];
   if (total === null) paymentErrors.push(t('sales.error_total_invalid'));
   else if (amount === null) paymentErrors.push(t('sales.error_amount_invalid'));
@@ -364,7 +367,9 @@ export function NewSaleScreen() {
       {pricesMayBeStale(refs.lastSyncAt, now) ? (
         <p className="home-banner">{t('sales.stale_prices')}</p>
       ) : null}
-      {cashSession === 'MISSING' ? <CashSessionPrompt online={online} /> : null}
+      {cashSession === 'MISSING' || cashSession === 'UNKNOWN' ? (
+        <CashSessionPrompt coverage={cashSession} online={online} userId={userId} />
+      ) : null}
 
       <div className="field">
         {locations.length > 1 ? (

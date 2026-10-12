@@ -146,6 +146,20 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
   });
 
+  it('site laissé au serveur : celui de la vente réglée, un PDV, espèces bloquées en ligne', async () => {
+    // Plus aucun stock de l'utilisateur : le site de l'encaissement n'est plus déduit de son PDV.
+    await getDb().projections.where('dataset').equals('stock').delete();
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(await screen.findByText(/VTE-2026-000123/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant reçu (F CFA)'), '1500');
+    expect(
+      screen.getByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
+  });
+
   it('en ligne : toutes les créances du client, lues sur le serveur', async () => {
     request.mockResolvedValue({
       ok: true,

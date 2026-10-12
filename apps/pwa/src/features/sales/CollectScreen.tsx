@@ -45,6 +45,7 @@ import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
 import { useSalesReferences } from './references.js';
 import { parseXaf, sellingLocations } from './sale-form.js';
+import { settingValue } from './stock.js';
 import { submitCommand } from './submit.js';
 import type { CustomerData } from './types.js';
 
@@ -231,16 +232,33 @@ export function CollectScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const amount = parseXaf(payment.amountText ?? '');
-  // Encaissement sur le site d'un PDV (caisse de PDV servie) : en espèces, il exige une caisse
-  // ouverte (BR-DIS-005, AV-305 ; DÉDUIT de `cashAccountFor` : site du PDV).
+  // Encaissement sur le site d'un PDV : en espèces, il exige une caisse ouverte (BR-DIS-005, AV-305 ;
+  // DÉDUIT de `cashAccountFor` : site de type `POINT_DE_VENTE`). Site laissé au serveur : celui qu'il
+  // retiendra, la vente de la première créance réglée, à défaut le site du client (DÉDUIT de
+  // `payment-commands.ts`).
+  const firstSaleId =
+    amount !== null && amount > 0
+      ? previewAllocation(amount, dues).lines[0]?.due.saleId
+      : undefined;
+  const cashSiteId =
+    siteId ??
+    (firstSaleId ? refs.sales.find((sale) => sale.id === firstSaleId)?.site_id : undefined) ??
+    customer?.home_site_id ??
+    undefined;
   const cashSession = cashSessionCoverage({
+    atPointOfSale: cashSiteId ? refs.sites.get(cashSiteId)?.site_type === 'POINT_DE_VENTE' : false,
     accounts: refs.cashAccounts,
     sessions: refs.cashSessions,
     outbox: refs.outbox,
     cashPulledAt: refs.cashPulledAt,
-    siteId,
+    siteId: cashSiteId,
     userId,
-    online,
+    maxSessionsPerDay: settingValue(
+      refs.settings,
+      'finance.cash_sessions_per_day_max',
+      cashSiteId,
+      clock.now(),
+    ),
   });
   const cashBlocked =
     method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
@@ -299,8 +317,9 @@ export function CollectScreen() {
           {t('collect.offline_banner')}
         </p>
       ) : null}
-      {method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE && cashSession === 'MISSING' ? (
-        <CashSessionPrompt online={online} />
+      {method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
+      (cashSession === 'MISSING' || cashSession === 'UNKNOWN') ? (
+        <CashSessionPrompt coverage={cashSession} online={online} userId={userId} />
       ) : null}
 
       <section className="sale-block" aria-labelledby="collect-customer-title">

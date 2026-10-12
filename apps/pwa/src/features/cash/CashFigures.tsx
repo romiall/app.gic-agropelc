@@ -5,6 +5,7 @@
  * la saisie (D05 §12), annoncé comme tel.
  */
 import { useTranslation } from 'react-i18next';
+import { formatDateTime } from '../home/format-home.js';
 import { formatMoney } from '../sales/format.js';
 import { phaseOf, useOutboxCommand } from '../sales/submit.js';
 
@@ -32,11 +33,18 @@ export function CashFigures({
   const command = useOutboxCommand(commandId);
   if (!command || phaseOf(command) === 'REJECTED') return null;
   const refs = command.server_refs ?? {};
+  const waiting = phaseOf(command) === 'WAITING';
   const expected = numberOf(kind === 'open' ? refs.openingExpectedXaf : refs.closingExpectedXaf);
   const variance = numberOf(kind === 'open' ? refs.openingVarianceXaf : refs.varianceXaf);
+  // Ouverture décalée à la clôture de la session précédente (AV-168) : heure retenue par le serveur.
+  const shifted =
+    kind === 'open' && !refs.mergedInto && refs.openedAt && refs.openedAt !== command.occurred_at
+      ? refs.openedAt
+      : null;
   if (expected !== null && variance !== null) {
     return (
       <section className="sale-block" aria-label={t('cash.figures_title')}>
+        {shifted ? <p>{t('cash.shifted', { date: formatDateTime(shifted) })}</p> : null}
         <p>{t('cash.expected_server', { amount: formatMoney(expected) })}</p>
         <p>{t('cash.variance_server', { amount: formatMoney(variance) })}</p>
         {kind === 'close' &&
@@ -45,6 +53,21 @@ export function CashFigures({
         ) : null}
       </section>
     );
+  }
+  // Réponse sans attendu : comptage rattaché à une session existante, ou clôture conservée comme
+  // constat ; aucun écart n'est posé, l'estimation de l'appareil ne vaut plus.
+  if (!waiting) {
+    const note =
+      kind === 'open' && refs.mergedInto
+        ? 'cash.merged_figures'
+        : kind === 'close'
+          ? 'cash.observed_figures'
+          : null;
+    return note ? (
+      <section className="sale-block" aria-label={t('cash.figures_title')}>
+        <p className="home-muted">{t(note)}</p>
+      </section>
+    ) : null;
   }
   if (!indicative) return null;
   return (

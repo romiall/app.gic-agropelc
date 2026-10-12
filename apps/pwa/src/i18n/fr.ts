@@ -2486,6 +2486,17 @@ export const fr = {
     closed_state: 'Caisse fermée.',
     closing_pending: 'Clôture de la caisse enregistrée sur ce téléphone, en attente d’envoi.',
     closed_to_validate: 'Dernière session close, en attente de validation par la Finance.',
+    closed_validated: 'Dernière session close et validée d’office.',
+    closed_last: 'Dernière session close.',
+    foreign_openings:
+      'Une ouverture saisie par un autre utilisateur de cette tablette attend sa reconnexion : elle sera rattachée à la session ouverte entre-temps.',
+    attached:
+      'Votre ouverture du {{date}} est rattachée à une session existante de la journée : aucune caisse n’est ouverte sur ce téléphone, votre comptage est conservé comme constat pour la Finance.',
+    shifted: 'Ouverture décalée au {{date}}, à la clôture de la session précédente.',
+    merged_figures:
+      'Comptage rattaché à une session existante de cette caisse : aucun attendu ni écart n’est calculé, il est conservé comme constat pour la Finance.',
+    observed_figures:
+      'Session déjà close au serveur : aucun attendu ni écart n’est calculé, votre comptage est conservé comme constat pour la Finance.',
     open_state: 'Caisse ouverte le {{date}} par {{who}}, fonds compté : {{amount}}.',
     opened_by_you: 'vous',
     opened_by_other: 'un autre utilisateur',
@@ -2519,6 +2530,8 @@ export const fr = {
     },
     back: 'Retour à la caisse',
     prompt: {
+      unknown:
+        'Encaissement en espèces au point de vente : la caisse du PDV doit être ouverte (ce téléphone ne la voit pas). Sans session ouverte, le serveur refusera l’encaissement en ligne et le signalera à la Finance hors ligne.',
       closed_online: 'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
       closed_offline:
         'Aucune caisse ouverte sur ce téléphone : un encaissement en espèces sera enregistré et signalé à la Finance. Ouvrez la caisse d’abord.',
@@ -2537,7 +2550,7 @@ export const fr = {
         DONE: 'Caisse ouverte.',
         WARNING: 'Caisse ouverte, avec un signalement.',
         WARNING_CASH_SESSION_CONCURRENT_OPEN:
-          'Une session de cette caisse était déjà ouverte : votre comptage y est rattaché et signalé à la Finance.',
+          'Ouverture signalée à la Finance : une autre session de cette caisse existait (ouverte, close dans la journée ou restée ouverte la veille).',
         CONFLICT: 'Ouverture mise en attente d’examen (conflit).',
         REJECTED: 'Ouverture refusée : {{reason}}',
       },

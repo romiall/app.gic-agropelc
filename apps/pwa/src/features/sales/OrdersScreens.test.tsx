@@ -145,6 +145,31 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
     expect(screen.getByRole('button', { name: 'Passer la commande' })).toBeDisabled();
   }, 20_000);
 
+  it('commercial sans la caisse du PDV : acompte en espèces au PDV rappelé, sans blocage ni lien', async () => {
+    await rememberNavigation(
+      getDb(),
+      new FixedClock(new Date('2026-10-10T08:00:00.000Z')),
+      IDS.user,
+      { user: { fullName: 'Paul', roles: ['COMMERCIAL_SEDENTAIRE'] }, sections: [] },
+    );
+    const user = userEvent.setup();
+    renderAt('/commandes/nouvelle');
+    await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
+    await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    await user.click(screen.getByRole('button', { name: '+ Ajouter un article' }));
+    await user.click(screen.getByRole('button', { name: /Poulet de chair/ }));
+    await user.click(screen.getByLabelText('Encaisser un acompte'));
+    await user.type(screen.getByLabelText('Montant de l’acompte (F CFA)'), '1000');
+    // La caisse du PDV n'est pas servie à ce rôle : son état est inconnu de l'appareil.
+    expect(
+      screen.getByText(/la caisse du PDV doit être ouverte \(ce téléphone ne la voit pas\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ouvrir la caisse' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Passer la commande' })).toBeEnabled(),
+    );
+  }, 20_000);
+
   it('liste : badges « À livrer » et « Attend du stock », filtre', async () => {
     const user = userEvent.setup();
     renderAt('/commandes');

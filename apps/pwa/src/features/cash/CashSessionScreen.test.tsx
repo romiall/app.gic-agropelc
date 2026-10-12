@@ -175,18 +175,134 @@ describe('Caisse du PDV (ECR-DIS-02)', () => {
     expect(screen.queryByText(/indicatif/)).not.toBeInTheDocument();
   });
 
-  it('tablette partagée : ouverture d’un autre utilisateur pas encore envoyée, clôture refusée', async () => {
+  it('tablette partagée : ouverture d’un autre utilisateur pas encore envoyée, l’utilisateur ouvre la sienne', async () => {
     await getDb().outbox.put(pendingOpen(OTHER_USER));
     const user = userEvent.setup();
     renderScreen();
+    // Inconnue du serveur jusqu'à la reconnexion de son auteur : elle ne fait pas une caisse ouverte.
+    expect(await screen.findByRole('heading', { name: 'Ouvrir la caisse' })).toBeInTheDocument();
     expect(
-      await screen.findByText(/Caisse ouverte le .* par un autre utilisateur/),
+      screen.getByText(/Une ouverture saisie par un autre utilisateur de cette tablette attend/),
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText('Montant compté (F CFA)'), '1000');
-    const close = screen.getByRole('button', { name: 'Clôturer la caisse' });
-    expect(close).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Ouvrir la caisse' })).toBeEnabled(),
+    );
+  });
+
+  it('tablette partagée : clôture d’un autre utilisateur pas encore envoyée, ouverture bloquée jusqu’à son envoi', async () => {
+    // Hors ligne et deux sessions par jour : seule la clôture en attente empêche l'ouverture.
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.bulkPut([
+      cashSessionRow(),
+      meSettingRow('finance.cash_sessions_per_day_max', 2, { type: 'SITE', id: IDS.site }),
+    ]);
+    await getDb().outbox.put({
+      ...pendingOpen(OTHER_USER),
+      command_id: '01900000-0000-7000-8000-0000000000f3',
+      command_type: 'finance.cash_session.close',
+      aggregate_id: CASH_SESSION_ID,
+      payload: { countedXaf: 18_000 },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    expect(
+      await screen.findByText(
+        'Clôture de la caisse enregistrée sur ce téléphone, en attente d’envoi.',
+      ),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant compté (F CFA)'), '18000');
+    const open = screen.getByRole('button', { name: 'Ouvrir la caisse' });
+    expect(open).toBeDisabled();
     const hint = screen.getByText(/Opération saisie sur cette tablette par un autre utilisateur/);
-    expect(close).toHaveAttribute('aria-describedby', hint.id);
+    expect(open).toHaveAttribute('aria-describedby', hint.id);
+  });
+
+  it('ouverture hors ligne au-delà de la limite du jour : rattachée, aucune caisse ouverte sur le téléphone', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      cashSessionRow({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00.000Z' }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '5000');
+    expect(screen.getByText(/votre comptage sera rattaché à cette session/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ouvrir la caisse' }));
+    await screen.findByText(/Ouverture de la caisse enregistrée sur ce téléphone/);
+    await user.click(screen.getByRole('button', { name: 'Retour à la caisse' }));
+    // Pas de « Clôturer la caisse » : l'ouverture ne crée aucune session.
+    expect(
+      await screen.findByText(/est rattachée à une session existante de la journée/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ouvrir la caisse' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Clôturer la caisse' })).not.toBeInTheDocument();
+  });
+
+  it('réponse du serveur sans attendu : rattachement ou constat, jamais l’écart indicatif', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '19000');
+    await user.click(screen.getByRole('button', { name: 'Ouvrir la caisse' }));
+    await screen.findByText('Ouverture de la caisse en cours d’envoi…');
+    // Pendant l'attente : estimation de l'appareil.
+    expect(await screen.findByText(/Écart indicatif : -1\s000 F CFA/)).toBeInTheDocument();
+    const [open] = await outboxOf('finance.cash_session.open');
+    await getDb().outbox.update(open!.command_id, {
+      status: 'SYNCED_WITH_WARNING',
+      synced_at: '2026-10-10T09:30:00.000Z',
+      warnings: ['CASH_SESSION_CONCURRENT_OPEN'],
+      server_refs: { cashSessionId: CASH_SESSION_ID, mergedInto: CASH_SESSION_ID },
+    });
+    expect(
+      await screen.findByText(/Comptage rattaché à une session existante de cette caisse/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Ouverture signalée à la Finance : une autre session/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Écart indicatif/)).not.toBeInTheDocument();
+  });
+
+  it('ouverture décalée par le serveur (AV-168) : heure retenue annoncée avec ses chiffres', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '20000');
+    await user.click(screen.getByRole('button', { name: 'Ouvrir la caisse' }));
+    await screen.findByText('Ouverture de la caisse en cours d’envoi…');
+    const [open] = await outboxOf('finance.cash_session.open');
+    await getDb().outbox.update(open!.command_id, {
+      status: 'SYNCED_WITH_WARNING',
+      synced_at: '2026-10-10T09:30:00.000Z',
+      warnings: ['CASH_SESSION_CONCURRENT_OPEN'],
+      server_refs: {
+        cashSessionId: open!.aggregate_id,
+        openedAt: '2026-10-10T09:20:00.000Z',
+        openingExpectedXaf: '20000',
+        openingVarianceXaf: '0',
+      },
+    });
+    expect(
+      await screen.findByText(/Ouverture décalée au .*, à la clôture de la session précédente\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Écart : 0 F CFA$/)).toBeInTheDocument();
+  });
+
+  it('dernière session validée d’office : pas annoncée « à valider »', async () => {
+    await getDb().projections.put(cashSessionRow());
+    await getDb().outbox.put({
+      ...pendingOpen(),
+      command_id: '01900000-0000-7000-8000-0000000000f4',
+      command_type: 'finance.cash_session.close',
+      aggregate_id: CASH_SESSION_ID,
+      payload: { countedXaf: 20_000 },
+      status: 'SYNCED',
+      synced_at: '2026-10-10T09:30:00.000Z',
+      server_refs: { cashSessionId: CASH_SESSION_ID, status: 'VALIDATED' },
+    });
+    renderScreen();
+    expect(
+      await screen.findByText('Dernière session close et validée d’office.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/en attente de validation/)).not.toBeInTheDocument();
   });
 
   it('limite de sessions du jour : refusée en ligne, rattachée hors ligne (AV-154)', async () => {

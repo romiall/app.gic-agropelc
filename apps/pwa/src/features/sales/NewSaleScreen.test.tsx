@@ -72,7 +72,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.getByLabelText('Montant encaissé (F CFA)')).toHaveValue('300');
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer la vente' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Vente en cours d’envoi');
+    expect(await screen.findByText(/Vente en cours d’envoi/)).toBeInTheDocument();
 
     const [command] = await getDb().outbox.toArray();
     expect(command).toMatchObject({

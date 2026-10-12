@@ -16,7 +16,6 @@ import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
-import { waitsForOtherUser } from '../sales/pending.js';
 import { useSalesReferences } from '../sales/references.js';
 import { parseXaf } from '../sales/sale-form.js';
 import { settingValue } from '../sales/stock.js';
@@ -24,7 +23,8 @@ import { submitCommand } from '../sales/submit.js';
 import {
   CASH_COUNT_BLIND,
   cashOpenPlan,
-  deviceCashSessions,
+  deviceCash,
+  foreignClose,
   indicativeBalanceXaf,
   indicativeSessionExpectedXaf,
   MAX_CASH_COMMENT,
@@ -105,13 +105,34 @@ export function CashSessionScreen() {
   }
 
   const now = clock.now();
-  const sessions = deviceCashSessions({
+  const maxSessionsPerDay = settingValue(
+    refs.settings,
+    'finance.cash_sessions_per_day_max',
+    account.site_id,
+    now,
+  );
+  const cash = deviceCash({
     cashAccountId: account.id,
     sessions: refs.cashSessions,
     outbox: refs.outbox,
     cashPulledAt: refs.cashPulledAt,
+    userId,
+    maxSessionsPerDay,
   });
-  const current = openSession(sessions);
+  const sessions = cash.sessions;
+  const current = openSession(cash);
+  // Ouvertures d'autres utilisateurs de la tablette en attente de leur reconnexion : inconnues du
+  // serveur, elles seront rattachées à la session ouverte entre-temps (AV-154, AV-167).
+  const foreignNote =
+    cash.foreignOpenings.length > 0 ? (
+      <p className="home-muted">{t('cash.foreign_openings')}</p>
+    ) : null;
+  // Ouverture de l'utilisateur rattachée à une session existante : aucune caisse ouverte (AV-154).
+  const attachedNote = cash.attached.at(-1) ? (
+    <p className="text-warn" role="status">
+      {t('cash.attached', { date: formatDateTime(cash.attached.at(-1)?.openedAt ?? '') })}
+    </p>
+  ) : null;
   const counted = parseXaf(countText);
   const countIssue = countText.trim() !== '' && counted === null;
   const trimmedComment = comment.trim();
@@ -211,12 +232,11 @@ export function CashSessionScreen() {
   );
 
   if (current) {
-    // Ouverture d'un autre utilisateur de la tablette, pas encore envoyée : la clôture en dépendrait
-    // et ne partirait qu'à sa reconnexion (ADR-052) ; elle attend son envoi.
-    const foreignPending = waitsForOtherUser(refs.outbox, [current.openCommandId], userId);
+    // La session ouverte n'est jamais l'ouverture d'un autre utilisateur pas encore envoyée
+    // (`deviceCash`) : la clôture ne dépend que d'une ouverture de l'utilisateur.
     const expected = indicativeSessionExpectedXaf({ ...movementsInput, session: current });
     const previousDay = businessDayOf(new Date(current.openedAt)) < businessDayOf(now);
-    const ready = counted !== null && !busy && !foreignPending;
+    const ready = counted !== null && !busy;
     const close = () =>
       void send(
         'close',
@@ -238,6 +258,7 @@ export function CashSessionScreen() {
       <section className="sale">
         <h1>{t('nav.screens.cash_session')}</h1>
         {accountPicker}
+        {foreignNote}
         <section className="sale-block" aria-labelledby="cash-close-title">
           <h2 id="cash-close-title">{t('cash.close.title')}</h2>
           <p>
@@ -260,18 +281,7 @@ export function CashSessionScreen() {
           ) : null}
           <p className="home-muted">{t('cash.close.hint')}</p>
           {countFields}
-          {foreignPending ? (
-            <p id={ids.blocked} className="home-muted">
-              {t('sync.foreign_pending')}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            className="btn-block submit-sale"
-            disabled={!ready}
-            aria-describedby={foreignPending ? ids.blocked : undefined}
-            onClick={close}
-          >
+          <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={close}>
             {busy ? t('sales.submitting') : t('cash.close.submit')}
           </button>
         </section>
@@ -280,21 +290,14 @@ export function CashSessionScreen() {
   }
 
   // Pas de session ouverte : ouverture, contrôlée par la règle partagée avec le serveur.
-  const plan = cashOpenPlan({
-    sessions,
-    openedAt: now,
-    online,
-    maxSessionsPerDay: settingValue(
-      refs.settings,
-      'finance.cash_sessions_per_day_max',
-      account.site_id,
-      now,
-    ),
-  });
+  const plan = cashOpenPlan({ cash, userId, openedAt: now, online, maxSessionsPerDay });
   const refused = plan.kind === 'REJECT';
-  const balance = indicativeBalanceXaf(movementsInput);
   const last = sessions.at(-1);
-  const ready = counted !== null && !busy && !refused;
+  const balance = indicativeBalanceXaf({ ...movementsInput, last });
+  // Clôture d'un autre utilisateur pas encore envoyée : la session reste ouverte au serveur jusqu'à
+  // sa reconnexion (ADR-052) ; une ouverture serait refusée en ligne, fusionnée hors ligne.
+  const blockedByForeignClose = foreignClose(cash, userId) !== undefined;
+  const ready = counted !== null && !busy && !refused && !blockedByForeignClose;
   const open = () =>
     void send(
       'open',
@@ -318,10 +321,20 @@ export function CashSessionScreen() {
       {last?.state === 'CLOSING' ? (
         <p className="home-muted">{t('cash.closing_pending')}</p>
       ) : last?.state === 'CLOSED' ? (
-        <p className="home-muted">{t('cash.closed_to_validate')}</p>
+        <p className="home-muted">
+          {t(
+            last.closedStatus === 'PENDING_VALIDATION'
+              ? 'cash.closed_to_validate'
+              : last.closedStatus === 'VALIDATED'
+                ? 'cash.closed_validated'
+                : 'cash.closed_last',
+          )}
+        </p>
       ) : (
         <p className="home-muted">{t('cash.closed_state')}</p>
       )}
+      {attachedNote}
+      {foreignNote}
       <section className="sale-block" aria-labelledby="cash-open-title">
         <h2 id="cash-open-title">{t('cash.open.title')}</h2>
         {!CASH_COUNT_BLIND && balance ? (
@@ -331,7 +344,11 @@ export function CashSessionScreen() {
         ) : null}
         <p className="home-muted">{t('cash.open.hint')}</p>
         {countFields}
-        {refused ? (
+        {blockedByForeignClose ? (
+          <p id={ids.blocked} className="home-muted">
+            {t('sync.foreign_pending')}
+          </p>
+        ) : refused ? (
           <p id={ids.blocked} className="error-message" role="status">
             {t(`cash.open_refused.${plan.code}`)}
           </p>
@@ -344,7 +361,7 @@ export function CashSessionScreen() {
           type="button"
           className="btn-block submit-sale"
           disabled={!ready}
-          aria-describedby={refused ? ids.blocked : undefined}
+          aria-describedby={refused || blockedByForeignClose ? ids.blocked : undefined}
           onClick={open}
         >
           {busy ? t('sales.submitting') : t('cash.open.submit')}

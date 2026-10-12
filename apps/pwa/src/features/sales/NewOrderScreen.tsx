@@ -46,6 +46,7 @@ import {
   type PricingContext,
 } from './sale-form.js';
 import { SaleLineEditor } from './SaleLineEditor.js';
+import { settingValue } from './stock.js';
 import { submitCommand } from './submit.js';
 import type { ProductData } from './types.js';
 
@@ -152,18 +153,21 @@ export function NewOrderScreen() {
   const advance = withAdvance ? parseXaf(advancePayment.amountText ?? '') : 0;
   // Commande servie au PDV (emplacement `POS`) : un acompte en espèces exige une caisse ouverte
   // (BR-DIS-005, AV-305).
-  const cashSession =
-    location?.location_type === 'POS'
-      ? cashSessionCoverage({
-          accounts: refs.cashAccounts,
-          sessions: refs.cashSessions,
-          outbox: refs.outbox,
-          cashPulledAt: refs.cashPulledAt,
-          siteId: location.site_id,
-          userId,
-          online,
-        })
-      : 'NONE';
+  const cashSession = cashSessionCoverage({
+    atPointOfSale: location?.location_type === 'POS',
+    accounts: refs.cashAccounts,
+    sessions: refs.cashSessions,
+    outbox: refs.outbox,
+    cashPulledAt: refs.cashPulledAt,
+    siteId: location?.site_id,
+    userId,
+    maxSessionsPerDay: settingValue(
+      refs.settings,
+      'finance.cash_sessions_per_day_max',
+      location?.site_id,
+      now,
+    ),
+  });
   const errors: string[] = [];
   if (total === null) errors.push(t('sales.error_total_invalid'));
   if (withAdvance) {
@@ -288,8 +292,8 @@ export function NewOrderScreen() {
       ) : null}
       {withAdvance &&
       method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
-      cashSession === 'MISSING' ? (
-        <CashSessionPrompt online={online} />
+      (cashSession === 'MISSING' || cashSession === 'UNKNOWN') ? (
+        <CashSessionPrompt coverage={cashSession} online={online} userId={userId} />
       ) : null}
 
       <section className="sale-block" aria-labelledby="order-customer-title">
