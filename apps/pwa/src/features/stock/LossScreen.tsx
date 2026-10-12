@@ -28,6 +28,7 @@ import {
   type LossDraft,
 } from './loss.js';
 import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
 import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { stockLocations } from './stock-view.js';
 
@@ -293,6 +294,8 @@ export function LossScreen() {
             id="loss-quantity"
             className="text-input"
             inputMode="decimal"
+            aria-invalid={product && guardBlocks(guard, product.id) ? true : undefined}
+            aria-describedby={product ? guardDescribedBy(guard, 'loss', product.id) : undefined}
             value={draft.quantityText}
             onChange={(event) => update({ quantityText: event.target.value })}
           />
@@ -404,11 +407,16 @@ export function LossScreen() {
       </div>
       <ExitGuardMessages
         guard={guard}
+        idPrefix="loss"
         productName={(productId) =>
           refs.products.find((candidate) => candidate.id === productId)?.name ?? ''
         }
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
       />
-      {overAvailable ? (
+      {/* Hors ligne, une perte que la garde signale déjà n'est pas annoncée deux fois. */}
+      {overAvailable && (online || guard.signals.length === 0) ? (
         online ? (
           <p className="error-message" role="alert">
             {t('loss.over_online')}

@@ -23,6 +23,7 @@ import {
   type ConsumptionCostType,
 } from './consumption.js';
 import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
 import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { stockLocations } from './stock-view.js';
 import { checkTransferLine, type TransferLineDraft } from './transfer.js';
@@ -236,6 +237,10 @@ export function ConsumptionScreen() {
             id={quantityId}
             className="text-input"
             inputMode="decimal"
+            aria-invalid={product && guardBlocks(guard, product.id) ? true : undefined}
+            aria-describedby={
+              product ? guardDescribedBy(guard, 'consumption', product.id) : undefined
+            }
             value={line.quantityText}
             onChange={(event) =>
               setLine((current) => ({ ...current, quantityText: event.target.value }))
@@ -301,11 +306,16 @@ export function ConsumptionScreen() {
       </div>
       <ExitGuardMessages
         guard={guard}
+        idPrefix="consumption"
         productName={(productId) =>
           refs.products.find((candidate) => candidate.id === productId)?.name ?? ''
         }
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
       />
-      {over ? (
+      {/* Hors ligne, une consommation refusée par la garde n'est pas annoncée « enregistrée ». */}
+      {over && (online || guard.blocks.length === 0) ? (
         online ? (
           <p className="error-message" role="alert">
             {t('consumption.over_online')}

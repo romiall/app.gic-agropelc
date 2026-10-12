@@ -24,6 +24,7 @@ import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import type { LocationData, StockTransferData } from '../sales/types.js';
 import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
 import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { LinesEditor } from './LinesEditor.js';
 import { stockLocations } from './stock-view.js';
@@ -284,11 +285,12 @@ function DirectDispatchForm({
       ...lotOver.map(([key]) => key.split('|')[0] ?? ''),
     ]),
   ];
-  // Garde hors ligne de la source (BR-STK-013, AV-303) : quota du détenteur, solde exclusif.
+  // Garde hors ligne de la source (BR-STK-013, AV-303) : quota du détenteur, solde exclusif. Le
+  // mouvement interne n'y est pas soumis : le serveur ne lui impute aucun quota (`INTERNAL_MOVE`).
   const guard = offlineExitGuard(refs, {
     kind: 'DISPATCH',
     location: source,
-    requested: online ? new Map() : totals,
+    requested: online || mode === 'MOVE' ? new Map() : totals,
     userId,
     deviceId,
     now: clock.now(),
@@ -425,6 +427,10 @@ function DirectDispatchForm({
           })
         }
         lineIssue={(row) => (lotMissing(row.check.draft) ? t('transfer.lot_required') : null)}
+        quantityDescribedBy={(row) =>
+          guardDescribedBy(guard, 'transfer-direct', row.check.draft.productId)
+        }
+        quantityBlocked={(row) => guardBlocks(guard, row.check.draft.productId)}
         extra={(row) => {
           const lots = lotChoices(row.check.draft.productId);
           if (lots.length <= 1) return null;
@@ -476,12 +482,18 @@ function DirectDispatchForm({
       )}
       <ExitGuardMessages
         guard={guard}
+        idPrefix="transfer-direct"
         productName={(productId) => productNames.get(productId) ?? productId}
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
       />
       <OverAvailable
         online={online}
         mode={mode}
-        names={over.map((productId) => productNames.get(productId) ?? productId)}
+        names={over
+          .filter((productId) => online || !guardBlocks(guard, productId))
+          .map((productId) => productNames.get(productId) ?? productId)}
       />
       {lotRisk ? <p className="text-warn">{t('transfer.lot_fifo_risk')}</p> : null}
       {saveError ? (
@@ -825,6 +837,8 @@ function RequestDispatchForm({
                   id={`dispatch-${line.id}`}
                   className="text-input"
                   inputMode="decimal"
+                  aria-invalid={guardBlocks(guard, line.product_id) ? true : undefined}
+                  aria-describedby={guardDescribedBy(guard, 'transfer-request', line.product_id)}
                   value={text}
                   onChange={(event) =>
                     setTexts((current) => ({ ...current, [line.id]: event.target.value }))
@@ -840,11 +854,15 @@ function RequestDispatchForm({
       <CarrierFields carrier={carrier} onCarrier={setCarrier} />
       <ExitGuardMessages
         guard={guard}
+        idPrefix="transfer-request"
         productName={(productId) => productNames.get(productId)?.name ?? productId}
+        unitOf={(productId) => productNames.get(productId)?.base_unit_code ?? ''}
       />
       <OverAvailable
         online={online}
-        names={over.map((productId) => productNames.get(productId)?.name ?? productId)}
+        names={over
+          .filter((productId) => online || !guardBlocks(guard, productId))
+          .map((productId) => productNames.get(productId)?.name ?? productId)}
       />
       {saveError ? (
         <p className="alert alert-error" role="alert">

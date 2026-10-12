@@ -488,16 +488,14 @@ export function settingValue(
   const effective = settings
     .filter((setting) => setting.key === key && new Date(setting.valid_from) <= now)
     .sort((a, b) => b.valid_from.localeCompare(a.valid_from));
-  // Réglage du site, à défaut global, comme le serveur (une valeur nulle au site ne compte pas).
+  // Réglage du site, à défaut global, comme le serveur (`siteSetting`) : la version de site la plus
+  // récente décide ; nulle, le réglage global s'applique (une version de site plus ancienne ne revit
+  // jamais).
   const site = effective.find(
-    (setting) =>
-      setting.scope_type === 'SITE' &&
-      siteId &&
-      setting.scope_id === siteId &&
-      setting.value !== null &&
-      setting.value !== undefined,
+    (setting) => setting.scope_type === 'SITE' && siteId && setting.scope_id === siteId,
   );
-  return (site ?? effective.find((setting) => setting.scope_type === 'GLOBAL'))?.value;
+  if (site && site.value !== null && site.value !== undefined) return site.value;
+  return effective.find((setting) => setting.scope_type === 'GLOBAL')?.value;
 }
 
 /** Décision locale pour une vente hors ligne de `requested` (unité de base) sur l'emplacement. */

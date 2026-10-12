@@ -4,10 +4,89 @@
  * stock libre ne s'y ajoute pas (seul le serveur le connaît). Le quota se lit dans le jeu
  * `allocations` (servi au seul appareil détenteur, de tous ses utilisateurs, AV-194).
  */
-import type { LocalConsumptionBlock } from '@gic/domain';
+import { isAllocationExpired, type LocalConsumptionBlock } from '@gic/domain';
+import type { OutboxCommand } from '../../storage/db.js';
+import { isWaiting } from './pending.js';
 import type { SalesReferences } from './references.js';
-import { localAvailable, offlineSaleDecision, settingValue, stockKey } from './stock.js';
-import type { AllocationData, LocationData } from './types.js';
+import {
+  localAvailable,
+  offlineSaleDecision,
+  pendingConsumption,
+  settingValue,
+  stockKey,
+} from './stock.js';
+import type {
+  AllocationData,
+  LocationData,
+  ProductionLotData,
+  StockTransferData,
+} from './types.js';
+
+/**
+ * Commandes dont le mouvement consomme un quota au serveur : types `SALE`, `LOSS`, `LOSS_PENDING`,
+ * `TRANSFER_DISPATCH` et `CONSUMPTION` passés avec `consumesAllocation` (`record-move.ts`). La
+ * confirmation d'une commande, la livraison, le mouvement interne, le démarrage d'incubation et la
+ * mise en place n'en consomment pas (BR-STK-013, ADR-033 §7).
+ */
+const QUOTA_COMMANDS: ReadonlySet<string> = new Set([
+  'sales.sale.record',
+  'inventory.loss.declare',
+  'inventory.consumption.record',
+  'inventory.transfer.dispatch',
+  'production.input.record',
+  'production.mortality.record',
+]);
+
+/**
+ * Indice local posé sur une annulation jugée directe à la saisie (vendeur, délai) : tant qu'elle
+ * attend sa réponse, le serveur rendra la quantité de la vente au quota encore actif (ADR-033 §8).
+ * Transformée en demande, la vente reste décomptée jusqu'au tirage des quotas.
+ */
+export const EXPECTED_DIRECT_CANCEL = 'EXPECTED_DIRECT_CANCEL';
+
+/**
+ * Sorties en attente qui réduiront un quota, par auteur puis par emplacement × produit, comptées
+ * jusqu'au tirage du jeu `allocations` qui les inclut (ADR-037 §3) : le quota appartient au couple
+ * (utilisateur, appareil), seules les sorties de son détenteur le réduisent.
+ */
+export function quotaPendingByAuthor(
+  outbox: readonly OutboxCommand[],
+  allocationsPulledAt: string | undefined,
+  transfers: ReadonlyMap<string, StockTransferData>,
+  productionLots: ReadonlyMap<string, ProductionLotData>,
+  receiptLocations: ReadonlyMap<string, string>,
+): ReadonlyMap<string, ReadonlyMap<string, number>> {
+  const cancelledDirect = new Set(
+    outbox
+      .filter(
+        (command) =>
+          command.command_type === 'sales.sale.cancel' &&
+          isWaiting(command) &&
+          command.local_flags?.includes(EXPECTED_DIRECT_CANCEL) === true,
+      )
+      .map((command) => (command.payload as { readonly saleId?: string }).saleId)
+      .filter((saleId): saleId is string => typeof saleId === 'string'),
+  );
+  const consuming = outbox.filter(
+    (command) =>
+      QUOTA_COMMANDS.has(command.command_type) &&
+      !(command.command_type === 'sales.sale.record' && cancelledDirect.has(command.aggregate_id)),
+  );
+  const authors = [...new Set(consuming.map((command) => command.author_user_id))];
+  return new Map(
+    authors.map((author) => [
+      author,
+      pendingConsumption(
+        consuming.filter((command) => command.author_user_id === author),
+        allocationsPulledAt,
+        transfers,
+        productionLots,
+        receiptLocations,
+        true,
+      ),
+    ]),
+  );
+}
 
 export interface DeviceQuota {
   readonly allocation: AllocationData;
@@ -57,7 +136,8 @@ export function deviceQuota(
     )
     .sort((a, b) => a.id.localeCompare(b.id))[0];
   if (!allocation) return null;
-  const pending = refs.quotaPending.get(stockKey(input.locationId, input.productId)) ?? 0;
+  const pending =
+    refs.quotaPending.get(input.userId)?.get(stockKey(input.locationId, input.productId)) ?? 0;
   return {
     allocation,
     remaining: Math.round((Number(allocation.quantity_remaining) - pending) * 1000) / 1000,
@@ -65,14 +145,15 @@ export function deviceQuota(
   };
 }
 
-/** Nature d'une sortie de stock soumise à la garde hors ligne. */
+/** Nature d'une sortie de stock soumise à la garde hors ligne (le mouvement interne n'en est pas). */
 export type ExitKind = 'SALE' | 'LOSS' | 'CONSUMPTION' | 'DISPATCH';
 
 /**
  * AV-303 (défaut) : hors ligne, au-delà du quota du détenteur (emplacement partagé) ou du solde d'un
  * emplacement exclusif, la vente (AV-025), la consommation et l'expédition sont bloquées
  * (BR-STK-013) ; la perte, fait constaté, est seulement signalée (BR-STK-018 : le serveur l'applique
- * et ouvre le conflit). `BLOCK` alignerait la perte sur les autres sorties.
+ * et ouvre le conflit), y compris sur un stock confié à un autre appareil. `BLOCK` alignerait la
+ * perte sur les autres sorties.
  */
 export const OFFLINE_LOSS_GUARD: 'BLOCK' | 'SIGNAL' = 'SIGNAL';
 
@@ -92,11 +173,15 @@ export interface ExitGuard {
 }
 
 /**
- * Garde hors ligne d'une sortie de stock (BR-STK-013, AV-025, AV-303) : emplacement confié à un autre
- * appareil (`EXCLUSIVE_DEVICE`) refusé ; sur un emplacement partagé, le détenteur d'un quota sort dans
- * son reste (sans quota : une vente est refusée, une autre sortie suit le contrôle habituel de
- * l'écran, BR-STK-013 ne visant que le détenteur) ; sur un emplacement exclusif, dans le solde local.
- * Dépassement autorisé par le site (`sales.offline_over_allocation_allowed`) : signalé.
+ * Garde hors ligne d'une sortie de stock (BR-STK-013, AV-025, AV-303). Emplacement confié à un autre
+ * appareil (`EXCLUSIVE_DEVICE`) : refusé (perte signalée) ; les autres gardes d'appareil du serveur
+ * (appareil principal du détenteur d'un emplacement `EXCLUSIVE_USER`, appareil rattaché à un autre
+ * site) ne sont pas contrôlées, faute de données servies à l'appareil (S-44). Sur un emplacement
+ * partagé, le détenteur d'un quota sort dans son reste ; sans quota utilisable (absent ou échu), une
+ * vente est refusée (AV-166), une autre sortie suit le contrôle habituel de l'écran : le serveur la
+ * prend sur le stock commun (BR-STK-013 ne vise que le détenteur, AV-161). Sur un emplacement
+ * exclusif, dans le solde local. Dépassement autorisé par le site
+ * (`sales.offline_over_allocation_allowed`) : signalé.
  */
 export function offlineExitGuard(
   refs: Pick<
@@ -120,11 +205,18 @@ export function offlineExitGuard(
   const wanted = [...input.requested].filter(([, quantity]) => quantity > 0);
   if (wanted.length === 0) return { blocks, signals };
   const { location } = input;
+  const lossSignalled = input.kind === 'LOSS' && OFFLINE_LOSS_GUARD === 'SIGNAL';
   if (
     location.custody_mode === 'EXCLUSIVE_DEVICE' &&
     location.designated_device_id !== input.deviceId
   ) {
-    blocks.push({ productId: '', code: 'CUSTODY_DEVICE_MISMATCH', available: 0, requested: 0 });
+    const issue = {
+      productId: '',
+      code: 'CUSTODY_DEVICE_MISMATCH' as const,
+      available: 0,
+      requested: 0,
+    };
+    (lossSignalled ? signals : blocks).push(issue);
     return { blocks, signals };
   }
   const overAllowed =
@@ -145,7 +237,13 @@ export function offlineExitGuard(
           productId,
         })
       : null;
-    if (shared && quota === null && input.kind !== 'SALE') continue;
+    if (
+      shared &&
+      input.kind !== 'SALE' &&
+      (quota === null || isAllocationExpired(quota.validUntil, input.now))
+    ) {
+      continue;
+    }
     const key = stockKey(location.id, productId);
     const decision = offlineSaleDecision({
       location,
@@ -166,8 +264,7 @@ export function offlineExitGuard(
         available: decision.available,
         requested: quantity,
       };
-      if (input.kind === 'LOSS' && OFFLINE_LOSS_GUARD === 'SIGNAL') signals.push(issue);
-      else blocks.push(issue);
+      (lossSignalled ? signals : blocks).push(issue);
     } else if (decision.signalled) {
       signals.push({ productId, code: decision.signalled, available: 0, requested: quantity });
     }

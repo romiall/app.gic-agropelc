@@ -203,7 +203,15 @@ export function NewSaleScreen() {
           overAllocationAllowed: overAllowed,
         });
         if (!decision.allowed) {
-          blocks.push(`${productsById.get(productId)?.name ?? ''} : ${decision.messageFr}`);
+          const product = productsById.get(productId);
+          blocks.push(
+            t(`sales.quota_block_message.${decision.code}`, {
+              product: product?.name ?? '',
+              available: formatQuantity(Math.max(0, decision.available)),
+              requested: formatQuantity(quantity),
+              unit: product?.base_unit_code ?? '',
+            }),
+          );
         } else if (decision.signalled) {
           signalled.push(
             t('sales.quota_signalled', {

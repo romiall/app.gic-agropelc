@@ -14,6 +14,7 @@ import { clock } from '../../platform/composition.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity } from './format.js';
@@ -75,6 +76,9 @@ function CancelSaleForm({
         authorUserId: userId,
         commandType: 'sales.sale.cancel',
         aggregateType: 'SALE_CANCELLATION',
+        // Annulation jugée directe à la saisie : tant qu'elle attend sa réponse, la vente ne réduit
+        // plus le quota de l'appareil (le serveur le lui rend, ADR-033 §8).
+        ...(direct ? { localFlags: [EXPECTED_DIRECT_CANCEL] } : {}),
         // Vente encore dans l'outbox : l'annulation attend son application (FIFO de l'appareil).
         ...(sale.commandId ? { dependsOn: [sale.commandId] } : {}),
         payload: {

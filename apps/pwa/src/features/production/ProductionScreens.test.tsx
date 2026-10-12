@@ -145,7 +145,7 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
         },
         `stock:STOCK_BALANCE:${STORE}:${FEED}`,
       ),
-      projection('setting', 'SETTING', 'set-grades', {
+      projection('me', 'SETTING', 'set-grades', {
         key: 'production.egg_grade_product_codes',
         value: ['OEUF'],
         scope_type: 'GLOBAL',

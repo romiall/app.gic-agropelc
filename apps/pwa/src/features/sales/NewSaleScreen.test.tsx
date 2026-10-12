@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { allocationRow, DEVICE_ID, IDS, meSettingRow, seedSalesFixtures } from './fixtures.js';
+import { allocationRow, IDS, meSettingRow, seedSalesFixtures } from './fixtures.js';
 import { NewSaleScreen } from './NewSaleScreen.js';
 import { FixedClock } from '@gic/domain';
 import { rememberNavigation } from '../navigation/navigation-store.js';
@@ -206,11 +206,15 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     renderScreen();
     expect(await screen.findByText(/Hors ligne : la vente sera enregistrée/)).toBeInTheDocument();
     await addEggs(user);
-    expect(screen.getByText(/Aucune allocation pour cet appareil/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Œufs de table : aucun quota pour ce téléphone sur cet emplacement ; la vente hors ligne n’est pas possible\./,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
   });
 
-  it('AT-003 : hors ligne, quota du téléphone affiché ; au-delà bloqué, dans le reste enregistré', async () => {
+  it('AT-003 : hors ligne, quota du téléphone affiché ; au-delà bloqué, dans le reste enregistré, puis épuisé', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await seedSalesFixtures(getDb());
     await getDb().projections.put(
@@ -224,7 +228,9 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     );
     await user.clear(quantity);
     await user.type(quantity, '31');
-    expect(screen.getByText(/il vous reste 30, 31 demandé\(s\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Œufs de table : quota dépassé, il vous reste 30 U, 31 demandé(s).'),
+    ).toBeInTheDocument();
     const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
     expect(record).toBeDisabled();
     const quotaBlock = screen.getByRole('region', { name: 'Quota de ce téléphone' });
@@ -234,7 +240,21 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await user.clear(quantity);
     await user.type(quantity, '30');
     await waitFor(() => expect(record).toBeEnabled());
-    expect(DEVICE_ID).toBe('01900000-0000-7000-8000-0000000000d0');
+    await user.click(record);
+    await waitFor(async () =>
+      expect((await getDb().outbox.toArray())[0]).toMatchObject({
+        command_type: 'sales.sale.record',
+        payload: { lines: [expect.objectContaining({ quantityBase: 30 })] },
+      }),
+    );
+
+    // La vente en attente réduit le reste : une unité de plus est refusée.
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle vente' }));
+    await addEggs(user);
+    expect(
+      await screen.findByText('Œufs de table : quota dépassé, il vous reste 0 U, 1 demandé(s).'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
   });
 
   it('AT-003 : dépassement du quota autorisé par le site : vente possible, signalée', async () => {
@@ -271,7 +291,11 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     );
     await user.clear(quantity);
     await user.type(quantity, '301');
-    expect(screen.getByText(/Stock insuffisant sur cet appareil/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 demandé(s).',
+      ),
+    ).toBeInTheDocument();
     await user.clear(quantity);
     await user.type(quantity, '2');
 

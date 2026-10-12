@@ -30,8 +30,10 @@ export const KNOWN_DATASETS = [
   'cash',
   'customers',
   // P5-18 : PDV du site (`org`), paramètres visibles de l'appareil (`me`), politiques de contrôle
-  // (`policies`). Les anciens jeux `setting`, `control_policy` et `reason_code` restent tirés : le
-  // repli générique y publie encore les entités créées par commande (AV-196).
+  // (`policies`). Les anciens jeux `setting` et `control_policy` ne sont plus tirés (AV-196 (6)) :
+  // le repli générique n'y reçoit jamais de retrait, une version remplacée y resterait en vigueur ;
+  // `me` publie toutes les versions visibles, celles créées par commande comprises. Le jeu
+  // `reason_code` reste tiré : les motifs créés par commande n'ont pas d'autre publication.
   'org',
   'me',
   'policies',
@@ -44,8 +46,6 @@ export const KNOWN_DATASETS = [
   'location',
   'team',
   'team_membership',
-  'setting',
-  'control_policy',
   'approval_request',
   'attachment',
   // P1 : catalogue, tarifs, fournisseurs (repli générique `GLOBAL`) ; moyens de paiement (P4-11).
@@ -220,11 +220,26 @@ export async function ensureDataOwner(db: GicDatabase, userId: string): Promise<
   return hasData;
 }
 
+/**
+ * Jeux qui ne sont plus tirés (AV-196 (6)) : leurs projections et curseurs restés sur l'appareil sont
+ * retirés, pour qu'aucune version périmée n'y reste en vigueur.
+ */
+const RETIRED_DATASETS = ['setting', 'control_policy'] as const;
+
+export async function purgeRetiredDatasets(db: GicDatabase): Promise<void> {
+  await db.projections
+    .where('dataset')
+    .anyOf([...RETIRED_DATASETS])
+    .delete();
+  await db.syncCursors.bulkDelete([...RETIRED_DATASETS]);
+}
+
 export async function runPullCycle(
   db: GicDatabase,
   deps: { readonly clock: Clock; readonly userId?: string },
 ): Promise<PullCycleResult> {
   if (deps.userId) await ensureDataOwner(db, deps.userId);
+  await purgeRetiredDatasets(db);
   let total = 0;
   let serverError = false;
   for (const dataset of KNOWN_DATASETS) {

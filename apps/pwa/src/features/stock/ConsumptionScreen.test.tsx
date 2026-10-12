@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures, stockRow } from '../sales/fixtures.js';
+import { allocationRow, IDS, seedSalesFixtures, stockRow } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { ConsumptionScreen } from './ConsumptionScreen.js';
 
@@ -15,6 +15,7 @@ vi.mock('../auth/AuthContext.js', () => ({
       userId: '01900000-0000-7000-8000-000000000001',
       deviceStatus: 'ACTIVE',
     },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
   }),
 }));
 
@@ -117,6 +118,51 @@ describe('Consommer un intrant (ECR-STK-08)', () => {
     });
     const refs = await loadSalesReferences(getDb());
     expect(refs.pending.get(`${IDS.pos}:${CARTON}`)).toBe(25);
+  });
+
+  it('hors ligne, détenteur d’un quota : au-delà du reste refusée, sans annonce « enregistrée » (BR-STK-013)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      allocationRow({ product_id: CARTON, quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Intrant'), CARTON);
+    await user.selectOptions(screen.getByLabelText('Nature du coût'), 'ALIMENT');
+    const quantity = screen.getByLabelText('Quantité');
+    await user.type(quantity, '31');
+    const refusal = screen.getByText(
+      'Carton de 30 œufs : quota dépassé, il vous reste 30 U, 31 demandé(s).',
+    );
+    expect(refusal).toHaveAttribute('role', 'status');
+    expect(quantity).toHaveAttribute('aria-invalid', 'true');
+    expect(quantity.getAttribute('aria-describedby')).toContain(refusal.id);
+    const submit = screen.getByRole('button', { name: 'Enregistrer la consommation' });
+    expect(submit).toBeDisabled();
+    // Au-delà du stock aussi : refusée, jamais annoncée « enregistrée ».
+    await user.clear(quantity);
+    await user.type(quantity, '101');
+    expect(screen.getByText(/quota dépassé, il vous reste 30 U, 101 demandé/)).toBeInTheDocument();
+    expect(screen.queryByText(/sera tout de même enregistrée/)).not.toBeInTheDocument();
+    await user.clear(quantity);
+    await user.type(quantity, '30');
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.queryByText(/quota dépassé/)).not.toBeInTheDocument();
+  });
+
+  it('en ligne, détenteur d’un quota : pas de garde hors ligne, seul le disponible compte', async () => {
+    await getDb().projections.put(
+      allocationRow({ product_id: CARTON, quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Intrant'), CARTON);
+    await user.selectOptions(screen.getByLabelText('Nature du coût'), 'ALIMENT');
+    await user.type(screen.getByLabelText('Quantité'), '31');
+    expect(screen.queryByText(/quota dépassé/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la consommation' })).toBeEnabled(),
+    );
   });
 
   it('en ligne : au-delà du stock, consommation bloquée', async () => {

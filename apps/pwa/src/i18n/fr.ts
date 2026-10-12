@@ -202,8 +202,18 @@ export const fr = {
     quota_line: '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota.',
     quota_line_until:
       '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota, jusqu’au {{until}}.',
+    quota_block_message: {
+      ALLOCATION_MISSING:
+        '{{product}} : aucun quota pour ce téléphone sur cet emplacement ; la vente hors ligne n’est pas possible.',
+      ALLOCATION_EXPIRED:
+        '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
+      ALLOCATION_EXCEEDED:
+        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
+      INSUFFICIENT_STOCK:
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
+    },
     quota_expired:
-      '{{product}} : votre quota a expiré le {{until}} ; synchronisez le téléphone pour le renouveler.',
+      '{{product}} : votre quota a expiré le {{until}} ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
     quota_signalled:
       '{{product}} : vente au-delà du quota autorisée sur ce site ({{code}}) ; le serveur la signalera.',
     quota_block: {
@@ -211,6 +221,7 @@ export const fr = {
       ALLOCATION_EXPIRED: 'quota expiré',
       ALLOCATION_EXCEEDED: 'quota dépassé',
       INSUFFICIENT_STOCK: 'stock insuffisant',
+      CUSTODY_DEVICE_MISMATCH: 'stock confié à un autre appareil',
     },
     error_anonymous_full:
       'Un client de passage paie la totalité : choisissez un client pour une vente à crédit.',
@@ -2251,11 +2262,11 @@ export const fr = {
       ALLOCATION_MISSING:
         '{{product}} : aucun quota pour ce téléphone sur cet emplacement ; la sortie hors ligne n’est pas possible.',
       ALLOCATION_EXPIRED:
-        '{{product}} : votre quota a expiré ; synchronisez le téléphone pour le renouveler.',
+        '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
       ALLOCATION_EXCEEDED:
-        '{{product}} : quota dépassé, il vous reste {{available}}, {{requested}} demandé(s).',
+        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
       INSUFFICIENT_STOCK:
-        '{{product}} : stock insuffisant sur cet appareil, {{available}} disponible(s), {{requested}} demandé(s).',
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
     },
     guard_signal:
       '{{product}} : au-delà de ce que permet la garde hors ligne ({{code}}) ; la sortie est enregistrée et le serveur la signalera.',

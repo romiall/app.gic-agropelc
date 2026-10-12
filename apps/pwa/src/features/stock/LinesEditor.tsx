@@ -19,6 +19,10 @@ interface LinesEditorProps {
   readonly lineIssue?: (row: LineRow) => string | null;
   /** Champ supplémentaire d'une ligne (ex. choix du lot). */
   readonly extra?: (row: LineRow) => ReactNode;
+  /** Message extérieur qui décrit la quantité de la ligne (ex. garde hors ligne). */
+  readonly quantityDescribedBy?: (row: LineRow) => string | undefined;
+  /** Quantité refusée par un contrôle extérieur (ex. garde hors ligne). */
+  readonly quantityBlocked?: (row: LineRow) => boolean;
 }
 
 export function LinesEditor({
@@ -30,6 +34,8 @@ export function LinesEditor({
   hint,
   lineIssue,
   extra,
+  quantityDescribedBy,
+  quantityBlocked,
 }: LinesEditorProps) {
   const { t } = useTranslation();
   return (
@@ -41,6 +47,11 @@ export function LinesEditor({
           const note = product && hint ? hint(product) : null;
           const issue = lineIssue ? lineIssue(row) : null;
           const quantityInvalid = line.quantityText !== '' && check.issue === 'QUANTITY_INVALID';
+          const outsideId = quantityDescribedBy ? quantityDescribedBy(row) : undefined;
+          const describedBy =
+            [quantityInvalid ? `${line.key}-quantity-issue` : null, outsideId ?? null]
+              .filter(Boolean)
+              .join(' ') || undefined;
           return (
             <li
               key={line.key}
@@ -73,8 +84,10 @@ export function LinesEditor({
                     id={`${line.key}-quantity`}
                     className="text-input"
                     inputMode="decimal"
-                    aria-invalid={quantityInvalid}
-                    aria-describedby={quantityInvalid ? `${line.key}-quantity-issue` : undefined}
+                    aria-invalid={
+                      quantityInvalid || (quantityBlocked ? quantityBlocked(row) : false)
+                    }
+                    aria-describedby={describedBy}
                     value={line.quantityText}
                     onChange={(event) => onUpdate(line.key, { quantityText: event.target.value })}
                   />

@@ -130,6 +130,8 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(cancel).toMatchObject({
       aggregate_type: 'SALE_CANCELLATION',
       depends_on: [],
+      // Annulation jugée directe : la vente ne réduit plus le quota en attendant la réponse.
+      local_flags: ['EXPECTED_DIRECT_CANCEL'],
       payload: {
         saleId: SALE_ID,
         comment: 'Erreur de saisie',

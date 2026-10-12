@@ -8,7 +8,7 @@ import {
   meSettingRow,
   seedSalesFixtures,
 } from './fixtures.js';
-import { deviceQuota, offlineExitGuard, type ExitKind } from './quota.js';
+import { deviceQuota, EXPECTED_DIRECT_CANCEL, offlineExitGuard, type ExitKind } from './quota.js';
 import { loadSalesReferences } from './references.js';
 
 const OTHER_USER = '01900000-0000-7000-8000-0000000000e9';
@@ -112,6 +112,107 @@ describe('Quota du téléphone (ADR-033, AT-003, AT-004)', () => {
     });
   });
 
+  it('tablette partagée : le reste ne dépend que des sorties de l’utilisateur, pas du détenteur des données', async () => {
+    const db = getDb();
+    // Les données de l'appareil appartiennent à un autre utilisateur (relève sans purge).
+    await db.syncMeta.update('device', { data_user_id: OTHER_USER });
+    await db.projections.put(allocationRow({ quantity_remaining: '40.000' }));
+    await db.outbox.bulkAdd([sale(8), sale(5, { author_user_id: OTHER_USER })]);
+    const refs = await loadSalesReferences(db);
+    expect(deviceQuota(refs, input)?.remaining).toBe(32);
+    // Quota de l'autre utilisateur sur ce même appareil : seules ses propres ventes le réduisent.
+    await db.projections.put(
+      allocationRow({
+        id: '01900000-0000-7000-8000-0000000000b9',
+        holder_user_id: OTHER_USER,
+        quantity_remaining: '20.000',
+      }),
+    );
+    const other = await loadSalesReferences(db);
+    expect(deviceQuota(other, { ...input, userId: OTHER_USER })?.remaining).toBe(15);
+  });
+
+  it('seules les sorties que le serveur impute au quota le réduisent (BR-STK-013, ADR-033 §7)', async () => {
+    const db = getDb();
+    await db.projections.put(allocationRow({ quantity_remaining: '40.000' }));
+    await db.outbox.bulkAdd([
+      // Commande passée : la vente du disponible au serveur ne consomme aucun quota.
+      command('sales.order.place', {
+        fulfilmentLocationId: IDS.pos,
+        lines: [{ productId: IDS.eggs, quantityBase: 7 }],
+      }),
+      // Mouvement interne, démarrage d'incubation : hors quota.
+      command('inventory.transfer.move_internal', {
+        fromLocationId: IDS.pos,
+        toLocationId: IDS.mobile,
+        lines: [{ productId: IDS.eggs, quantityBase: 6 }],
+      }),
+      command('production.incubation.start', {
+        sourceLocationId: IDS.pos,
+        eggProductId: IDS.eggs,
+        eggsSet: 5,
+      }),
+      // Perte et consommation : imputées au quota.
+      command('inventory.loss.declare', {
+        locationId: IDS.pos,
+        productId: IDS.eggs,
+        quantityBase: 3,
+      }),
+      command('inventory.consumption.record', {
+        locationId: IDS.pos,
+        productId: IDS.eggs,
+        quantityBase: 2,
+      }),
+    ]);
+    const refs = await loadSalesReferences(db);
+    expect(deviceQuota(refs, input)?.remaining).toBe(35);
+  });
+
+  it('une annulation directe en attente rend au quota la quantité de la vente (ADR-033 §8)', async () => {
+    const db = getDb();
+    await db.projections.put(allocationRow({ quantity_remaining: '40.000' }));
+    const recorded = sale(8);
+    const cancel = (flags: string[]) =>
+      command(
+        'sales.sale.cancel',
+        { saleId: recorded.aggregate_id, reasonCode: 'ERREUR' },
+        { aggregate_type: 'SALE_CANCELLATION', local_flags: flags },
+      );
+    await db.outbox.bulkAdd([recorded, cancel([])]);
+    // Annulation qui partira en demande : la vente reste décomptée.
+    expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(32);
+    await db.outbox.add(cancel([EXPECTED_DIRECT_CANCEL]));
+    expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(40);
+    // Réponse reçue : l'indice ne vaut plus, le tirage des quotas fera foi.
+    await db.outbox
+      .filter((candidate) => candidate.command_type === 'sales.sale.cancel')
+      .modify({ status: 'SYNCED', synced_at: '2026-10-10T08:30:00.000Z' });
+    expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(32);
+  });
+
+  it('quota échu : seule la vente est refusée, les autres sorties prennent le stock commun', async () => {
+    const db = getDb();
+    await db.projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: '2026-10-09T22:59:59.999Z' }),
+    );
+    const refs = await loadSalesReferences(db);
+    const pos = refs.locations.find((location) => location.id === IDS.pos);
+    if (!pos) throw new Error('PDV absent');
+    const guard = (kind: ExitKind) =>
+      offlineExitGuard(refs, {
+        kind,
+        location: pos,
+        requested: new Map([[IDS.eggs, 31]]),
+        userId: IDS.user,
+        deviceId: DEVICE_ID,
+        now: new Date('2026-10-10T09:00:00.000Z'),
+      });
+    for (const kind of ['DISPATCH', 'CONSUMPTION', 'LOSS'] as const) {
+      expect(guard(kind)).toEqual({ blocks: [], signals: [] });
+    }
+    expect(guard('SALE').blocks[0]?.code).toBe('ALLOCATION_EXPIRED');
+  });
+
   it('pas de quota : autre utilisateur ou autre appareil, signal de révocation, libération saisie', async () => {
     const db = getDb();
     // Quota d'un autre utilisateur de la tablette, puis quota de l'utilisateur sur un autre appareil.
@@ -185,7 +286,17 @@ describe('Quota du téléphone (ADR-033, AT-003, AT-004)', () => {
       custody_mode: 'EXCLUSIVE_DEVICE' as const,
       designated_device_id: '01900000-0000-7000-8000-0000000000d9',
     };
-    expect(guard('LOSS', 1, otherDevice).blocks[0]?.code).toBe('CUSTODY_DEVICE_MISMATCH');
+    // Perte sur un stock confié à un autre appareil : signalée (le serveur l'applique et ouvre le
+    // conflit) ; toute autre sortie y est refusée.
+    expect(guard('LOSS', 1, otherDevice)).toEqual({
+      blocks: [],
+      signals: [{ productId: '', code: 'CUSTODY_DEVICE_MISMATCH', available: 0, requested: 0 }],
+    });
+    expect(guard('DISPATCH', 1, otherDevice).blocks[0]?.code).toBe('CUSTODY_DEVICE_MISMATCH');
+    expect(guard('LOSS', 1, { ...otherDevice, designated_device_id: DEVICE_ID })).toEqual({
+      blocks: [],
+      signals: [],
+    });
     // Dépassement autorisé par le site (quota comme solde exclusif) : signalé.
     await db.projections.put(
       meSettingRow('sales.offline_over_allocation_allowed', true, { type: 'SITE', id: IDS.site }),

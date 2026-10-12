@@ -112,11 +112,19 @@ describe('Référentiels de l’appareil : jeux de P5-18', () => {
     );
   });
 
-  it('paramètres de `me` et motifs de `catalog` réunis aux anciens jeux, nouveaux d’abord', async () => {
+  it('paramètres du seul jeu `me` (l’ancien jeu `setting` est ignoré) ; motifs de `catalog` réunis', async () => {
     const db = getDb();
     await db.projections.bulkPut([
-      // Valeur semée publiée dans `me` (P5-18), absente de l'ancien jeu `setting`.
+      // Valeur semée publiée dans `me` (P5-18).
       meSettingRow('offline.max_autonomy_hours', 168),
+      // Reste de l'ancien jeu `setting` (jamais retiré par le serveur) : sans effet, même plus récent.
+      meSettingRow(
+        'offline.max_autonomy_hours',
+        24,
+        { type: 'GLOBAL', id: null },
+        '2026-06-01T00:00:00.000Z',
+        'setting',
+      ),
       meSettingRow('sales.offline_over_allocation_allowed', true, { type: 'SITE', id: IDS.site }),
       {
         key: 'catalog:REASON_CODE:r-catalog',
@@ -139,6 +147,7 @@ describe('Référentiels de l’appareil : jeux de P5-18', () => {
       },
     ]);
     const refs = await loadSalesReferences(db);
+    expect(refs.settings.every((setting) => setting.value !== 24)).toBe(true);
     expect(settingValue(refs.settings, 'offline.max_autonomy_hours', null, NOW)).toBe(168);
     expect(
       settingValue(refs.settings, 'sales.offline_over_allocation_allowed', IDS.site, NOW),
@@ -149,27 +158,25 @@ describe('Référentiels de l’appareil : jeux de P5-18', () => {
     );
   });
 
-  it('réglage du site nul : le réglage global s’applique, comme au serveur', () => {
-    const settings = [
-      {
-        id: 'g',
-        key: 'sales.offline_over_allocation_allowed',
-        value: true,
-        scope_type: 'GLOBAL',
-        scope_id: null,
-        valid_from: '2026-01-01T00:00:00.000Z',
-      },
-      {
-        id: 's',
-        key: 'sales.offline_over_allocation_allowed',
-        value: null,
-        scope_type: 'SITE',
-        scope_id: IDS.site,
-        valid_from: '2026-02-01T00:00:00.000Z',
-      },
-    ];
-    expect(settingValue(settings, 'sales.offline_over_allocation_allowed', IDS.site, NOW)).toBe(
-      true,
-    );
+  it('versions d’un réglage : la plus récente du site décide ; nulle, le global s’applique (`siteSetting`)', async () => {
+    const db = getDb();
+    const key = 'sales.offline_over_allocation_allowed';
+    const site = { type: 'SITE', id: IDS.site };
+    const read = async () =>
+      settingValue((await loadSalesReferences(db)).settings, key, IDS.site, NOW);
+    // Versions posées dans le désordre : la plus récente l'emporte, quel que soit l'ordre de lecture.
+    await db.projections.bulkPut([
+      meSettingRow(key, false, { type: 'GLOBAL', id: null }, '2026-01-01T00:00:00.000Z'),
+      meSettingRow(key, true, site, '2026-03-01T00:00:00.000Z'),
+      meSettingRow(key, false, site, '2026-02-01T00:00:00.000Z'),
+    ]);
+    expect(await read()).toBe(true);
+    // Version de site plus récente et nulle : le global (faux) s'applique, la version vraie de mars
+    // ne revit pas.
+    await db.projections.put(meSettingRow(key, null, site, '2026-04-01T00:00:00.000Z'));
+    expect(await read()).toBe(false);
+    // Version future : pas encore en vigueur.
+    await db.projections.put(meSettingRow(key, true, site, '2026-12-01T00:00:00.000Z'));
+    expect(await read()).toBe(false);
   });
 });

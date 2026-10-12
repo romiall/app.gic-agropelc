@@ -324,14 +324,22 @@ export function pointOfSaleRow(overrides: Record<string, unknown> = {}): Project
 }
 
 /** Paramètre visible de l'appareil (jeu `me`, ligne `GLOBAL`, portée dans la donnée). */
+let settingSeq = 0;
+
+/**
+ * Version d'un paramètre publiée dans `me`, identifiée comme au serveur par un UUID (une ligne par
+ * version, `organization.system_settings`).
+ */
 export function meSettingRow(
   key: string,
   value: unknown,
   scope: { readonly type: string; readonly id: string | null } = { type: 'GLOBAL', id: null },
   validFrom = '2026-01-01T00:00:00.000Z',
+  dataset = 'me',
 ): Projection {
-  const id = `${key}:${scope.type}:${scope.id ?? ''}:${validFrom}`;
-  return row('me', 'SETTING', id, {
+  settingSeq += 1;
+  const id = `01900000-0000-7000-8000-0000000f${String(settingSeq).padStart(4, '0')}`;
+  return row(dataset, 'SETTING', id, {
     id,
     key,
     value,

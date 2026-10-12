@@ -420,10 +420,18 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     await user.type(screen.getByLabelText('Quantité'), '31');
     await user.click(screen.getByLabelText('Casse'));
     await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    const signal = screen.getByText(/la sortie est enregistrée et le serveur la signalera/);
+    expect(signal).toHaveAttribute('role', 'status');
+    expect(screen.getByLabelText('Quantité').getAttribute('aria-describedby')).toContain(signal.id);
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
+    // Au-delà du stock aussi : un seul message, celui de la garde.
+    const quantity = screen.getByLabelText('Quantité');
+    await user.clear(quantity);
+    await user.type(quantity, '301');
     expect(
       screen.getByText(/la sortie est enregistrée et le serveur la signalera/),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
+    expect(screen.queryByText(/sera tout de même enregistrée et signalée/)).not.toBeInTheDocument();
   });
 
   it('en ligne, emplacement partagé entièrement alloué : la perte reste possible sur le physique', async () => {
