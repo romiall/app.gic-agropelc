@@ -18,6 +18,7 @@ import { LossScreen } from '../features/stock/LossScreen.js';
 import { ReceiveTransferScreen } from '../features/stock/ReceiveTransferScreen.js';
 import { BlindReceiptScreen } from '../features/stock/BlindReceiptScreen.js';
 import { ConsumptionScreen } from '../features/stock/ConsumptionScreen.js';
+import { CashSessionScreen } from '../features/cash/CashSessionScreen.js';
 import { CountScreen } from '../features/stock/CountScreen.js';
 import { TransferScreen } from '../features/stock/TransferScreen.js';
 import { CustomerScreen } from '../features/crm/CustomerScreen.js';
@@ -119,6 +120,7 @@ function AppShell() {
             <Route path={ROUTES.count} element={<CountScreen />} />
             <Route path={ROUTES.blindReceipt} element={<BlindReceiptScreen />} />
             <Route path={ROUTES.consumption} element={<ConsumptionScreen />} />
+            <Route path={ROUTES.cash} element={<CashSessionScreen />} />
             <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
             <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
             <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />

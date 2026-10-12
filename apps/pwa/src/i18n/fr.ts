@@ -122,6 +122,7 @@ export const fr = {
       production_lots: 'Lots actifs',
       daily_entry: 'Saisie du jour',
       egg_collection: 'Collecte d’œufs',
+      cash_session: 'Caisse',
     },
   },
   sales: {
@@ -2333,6 +2334,80 @@ export const fr = {
     title: 'Un problème est survenu sur cet écran.',
     help: 'Vos opérations déjà enregistrées sont conservées sur l’appareil.',
     reload: 'Recharger l’application',
+  },
+  cash: {
+    account_label: 'Caisse',
+    no_account:
+      'Aucune caisse de point de vente sur ce téléphone : elle arrive avec la synchronisation de votre point de vente.',
+    closed_state: 'Caisse fermée.',
+    closing_pending: 'Clôture de la caisse enregistrée sur ce téléphone, en attente d’envoi.',
+    closed_to_validate: 'Dernière session close, en attente de validation par la Finance.',
+    open_state: 'Caisse ouverte le {{date}} par {{who}}, fonds compté : {{amount}}.',
+    opened_by_you: 'vous',
+    opened_by_other: 'un autre utilisateur',
+    open_pending: 'Ouverture enregistrée sur ce téléphone, en attente d’envoi.',
+    previous_day: 'Caisse ouverte un jour précédent : clôturez-la avant d’en ouvrir une autre.',
+    counted_label: 'Montant compté (F CFA)',
+    count_invalid: 'Saisissez le montant compté en francs entiers.',
+    comment_label: 'Commentaire (facultatif)',
+    blind_hint:
+      'Comptez les espèces sans vous fier à un montant attendu : il s’affiche après l’enregistrement de votre comptage.',
+    figures_title: 'Attendu et écart',
+    expected_indicative: 'Attendu indicatif (calculé sur ce téléphone) : {{amount}}',
+    variance_indicative: 'Écart indicatif : {{amount}}',
+    indicative_hint:
+      'Estimation de ce téléphone : le serveur recalcule l’attendu sur toutes les opérations de la caisse, y compris celles des autres téléphones.',
+    expected_server: 'Attendu : {{amount}}',
+    variance_server: 'Écart : {{amount}}',
+    status_after_close: {
+      VALIDATED: 'Session validée d’office : écart dans la tolérance.',
+      PENDING_VALIDATION: 'Session à valider par la Finance.',
+    },
+    open_merge:
+      'Une session de cette caisse existe déjà ou la limite du jour est atteinte : hors ligne, votre comptage sera rattaché à cette session et signalé à la Finance.',
+    open_refused: {
+      CASH_SESSION_ALREADY_OPEN:
+        'Une session de cette caisse est déjà ouverte : clôturez-la d’abord.',
+      CASH_SESSION_OVERLAP:
+        'Une session de cette caisse couvre déjà cette heure : le serveur refuserait l’ouverture.',
+      CASH_SESSION_DAILY_LIMIT:
+        'Le nombre de sessions de caisse du jour est atteint : le serveur refuserait l’ouverture.',
+    },
+    back: 'Retour à la caisse',
+    open: {
+      title: 'Ouvrir la caisse',
+      hint: 'Comptez le fonds de caisse présent dans le tiroir.',
+      submit: 'Ouvrir la caisse',
+      result: {
+        WAITING_offline:
+          'Ouverture de la caisse enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+        WAITING_online: 'Ouverture de la caisse en cours d’envoi…',
+        DONE: 'Caisse ouverte.',
+        WARNING: 'Caisse ouverte, avec un signalement.',
+        WARNING_CASH_SESSION_CONCURRENT_OPEN:
+          'Une session de cette caisse était déjà ouverte : votre comptage y est rattaché et signalé à la Finance.',
+        CONFLICT: 'Ouverture mise en attente d’examen (conflit).',
+        REJECTED: 'Ouverture refusée : {{reason}}',
+      },
+    },
+    close: {
+      title: 'Clôturer la caisse',
+      hint: 'Comptez toutes les espèces de la caisse.',
+      submit: 'Clôturer la caisse',
+      result: {
+        WAITING_offline:
+          'Clôture de la caisse enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+        WAITING_online: 'Clôture de la caisse en cours d’envoi…',
+        DONE: 'Caisse clôturée.',
+        WARNING: 'Caisse clôturée, avec un signalement.',
+        WARNING_CASH_SESSION_CONCURRENT_CLOSE:
+          'La session était déjà close : votre comptage est conservé comme constat pour la Finance.',
+        WARNING_CASH_SESSION_CLOSE_BEFORE_MOVEMENTS:
+          'Clôture datée avant des opérations déjà enregistrées : la session sera validée par la Finance.',
+        CONFLICT: 'Clôture mise en attente d’examen (conflit).',
+        REJECTED: 'Clôture refusée : {{reason}}',
+      },
+    },
   },
   sync: {
     held_behind_failure:

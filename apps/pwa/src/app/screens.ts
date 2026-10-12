@@ -74,6 +74,7 @@ export const ROUTES = {
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
+  cash: '/caisse',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -240,6 +241,8 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'FINANCE',
   ],
+  /** `finance.cash_session.operate` (VEN SITE, FIN ALL) : ouverture et clôture de la caisse du PDV. */
+  cashSessionOperate: ['VENDEUR_PDV', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -563,6 +566,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'production',
     roles: ROLE_SETS.productionOutput,
     actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-02',
+    path: ROUTES.cash,
+    labelKey: 'cash_session',
+    group: 'sales',
+    roles: ROLE_SETS.cashSessionOperate,
+    actionCodes: ['CASH_OPEN', 'CASH_CLOSE'],
     offline: true,
   },
   {
