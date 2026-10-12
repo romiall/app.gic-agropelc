@@ -2245,6 +2245,20 @@ export const fr = {
     },
   },
   stock: {
+    guard: {
+      CUSTODY_DEVICE_MISMATCH:
+        'Ce stock est confié à un autre appareil : aucune sortie hors ligne n’est possible ici.',
+      ALLOCATION_MISSING:
+        '{{product}} : aucun quota pour ce téléphone sur cet emplacement ; la sortie hors ligne n’est pas possible.',
+      ALLOCATION_EXPIRED:
+        '{{product}} : votre quota a expiré ; synchronisez le téléphone pour le renouveler.',
+      ALLOCATION_EXCEEDED:
+        '{{product}} : quota dépassé, il vous reste {{available}}, {{requested}} demandé(s).',
+      INSUFFICIENT_STOCK:
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} disponible(s), {{requested}} demandé(s).',
+    },
+    guard_signal:
+      '{{product}} : au-delà de ce que permet la garde hors ligne ({{code}}) ; la sortie est enregistrée et le serveur la signalera.',
     location_label: 'Emplacement',
     no_location:
       'Aucun stock sur cet appareil : synchronisez, ou demandez une affectation à un emplacement.',

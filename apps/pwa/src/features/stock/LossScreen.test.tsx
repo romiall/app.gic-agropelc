@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { loadSalesReferences } from '../sales/references.js';
-import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { allocationRow, IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { checkLoss } from './loss.js';
 import { LossScreen } from './LossScreen.js';
 import { parseReceived } from './receive.js';
@@ -17,6 +17,7 @@ vi.mock('../auth/AuthContext.js', () => ({
       userId: '01900000-0000-7000-8000-000000000001',
       deviceStatus: 'ACTIVE',
     },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
   }),
 }));
 
@@ -401,6 +402,27 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     await user.type(screen.getByLabelText('Quantité'), '5');
     await user.click(screen.getByLabelText('Casse'));
     expect(screen.getByText(/sera tout de même enregistrée et signalée/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
+  });
+
+  it('hors ligne, détenteur d’un quota : perte au-delà du reste signalée, jamais refusée (AV-303)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText('Quantité'), '31');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    expect(
+      screen.getByText(/la sortie est enregistrée et le serveur la signalera/),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
   });
 

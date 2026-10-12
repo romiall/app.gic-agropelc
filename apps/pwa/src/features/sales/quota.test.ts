@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
-import { ALLOCATION_ID, allocationRow, DEVICE_ID, IDS, seedSalesFixtures } from './fixtures.js';
-import { deviceQuota } from './quota.js';
+import {
+  ALLOCATION_ID,
+  allocationRow,
+  DEVICE_ID,
+  IDS,
+  meSettingRow,
+  seedSalesFixtures,
+} from './fixtures.js';
+import { deviceQuota, offlineExitGuard, type ExitKind } from './quota.js';
 import { loadSalesReferences } from './references.js';
 
 const OTHER_USER = '01900000-0000-7000-8000-0000000000e9';
@@ -135,5 +142,58 @@ describe('Quota du téléphone (ADR-033, AT-003, AT-004)', () => {
     await db.outbox.toCollection().modify({ status: 'REJECTED' });
     refs = await loadSalesReferences(db);
     expect(deviceQuota(refs, input)).not.toBeNull();
+  });
+
+  it('garde hors ligne des sorties (BR-STK-013, AV-303) : quota du détenteur, solde exclusif, appareil désigné', async () => {
+    const db = getDb();
+    await db.projections.put(allocationRow({ quantity_remaining: '30.000', valid_until: null }));
+    const now = new Date('2026-10-10T09:00:00.000Z');
+    let refs = await loadSalesReferences(db);
+    const pos = refs.locations.find((location) => location.id === IDS.pos);
+    if (!pos) throw new Error('PDV absent');
+    const guard = (kind: ExitKind, quantity: number, location = pos, product: string = IDS.eggs) =>
+      offlineExitGuard(refs, {
+        kind,
+        location,
+        requested: new Map([[product, quantity]]),
+        userId: IDS.user,
+        deviceId: DEVICE_ID,
+        now,
+      });
+    // Détenteur d'un quota sur un emplacement partagé : expédition et consommation dans le reste.
+    expect(guard('DISPATCH', 30)).toEqual({ blocks: [], signals: [] });
+    expect(guard('DISPATCH', 31).blocks).toEqual([
+      { productId: IDS.eggs, code: 'ALLOCATION_EXCEEDED', available: 30, requested: 31 },
+    ]);
+    expect(guard('CONSUMPTION', 31).blocks).toHaveLength(1);
+    // Perte au-delà : signalée, jamais refusée (fait constaté).
+    expect(guard('LOSS', 31)).toEqual({
+      blocks: [],
+      signals: [{ productId: IDS.eggs, code: 'ALLOCATION_EXCEEDED', available: 30, requested: 31 }],
+    });
+    // Sans quota (le poulet) : une vente est refusée, une autre sortie suit le contrôle de l'écran.
+    expect(guard('SALE', 1, pos, IDS.chicken).blocks[0]?.code).toBe('ALLOCATION_MISSING');
+    expect(guard('DISPATCH', 1, pos, IDS.chicken)).toEqual({ blocks: [], signals: [] });
+    // Emplacement exclusif : solde local ; confié à un autre appareil : refusé.
+    const exclusive = { ...pos, custody_mode: 'EXCLUSIVE_USER' as const };
+    expect(guard('CONSUMPTION', 301, exclusive).blocks[0]).toMatchObject({
+      code: 'INSUFFICIENT_STOCK',
+      available: 300,
+    });
+    const otherDevice = {
+      ...pos,
+      custody_mode: 'EXCLUSIVE_DEVICE' as const,
+      designated_device_id: '01900000-0000-7000-8000-0000000000d9',
+    };
+    expect(guard('LOSS', 1, otherDevice).blocks[0]?.code).toBe('CUSTODY_DEVICE_MISMATCH');
+    // Dépassement autorisé par le site (quota comme solde exclusif) : signalé.
+    await db.projections.put(
+      meSettingRow('sales.offline_over_allocation_allowed', true, { type: 'SITE', id: IDS.site }),
+    );
+    refs = await loadSalesReferences(db);
+    expect(guard('DISPATCH', 31)).toEqual({
+      blocks: [],
+      signals: [{ productId: IDS.eggs, code: 'ALLOCATION_EXCEEDED', available: 0, requested: 31 }],
+    });
   });
 });

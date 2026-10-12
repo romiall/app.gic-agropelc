@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { allocationRow, IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import type { StockTransferData } from '../sales/types.js';
 import { lotsAt } from './transfer.js';
@@ -240,6 +240,27 @@ describe('Transférer (ECR-STK-02)', () => {
     vi.restoreAllMocks();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+  });
+
+  it('hors ligne, détenteur d’un quota : expédition au-delà du reste refusée, dans le reste possible (BR-STK-013)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.selectOptions(await screen.findByLabelText('Vers'), STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '31');
+    expect(
+      screen.getByText(/quota dépassé, il vous reste 30, 31 demandé\(s\)/),
+    ).toBeInTheDocument();
+    const dispatch = screen.getByRole('button', { name: 'Expédier' });
+    expect(dispatch).toBeDisabled();
+    await user.clear(within(line).getByLabelText('Quantité'));
+    await user.type(within(line).getByLabelText('Quantité'), '30');
+    await waitFor(() => expect(dispatch).toBeEnabled());
   });
 
   it('hors ligne : expédition directe en conditionnement, convertie, retirée aussitôt du disponible', async () => {
