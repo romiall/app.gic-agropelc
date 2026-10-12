@@ -358,7 +358,8 @@ export async function findConflict(
   options: { readonly lock?: boolean } = {},
 ): Promise<ConflictRecord | null> {
   let query = selectConflicts(executor).where('c.id', '=', toBin(id));
-  if (options.lock) query = query.forUpdate();
+  // Le conflit seul (ADR-038 §2) : l'inbox jointe de la commande d'origine n'est pas verrouillée.
+  if (options.lock) query = query.forUpdate('c');
   const row = await query.executeTakeFirst();
   return row ? toConflictRecord(row) : null;
 }

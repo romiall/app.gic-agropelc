@@ -27,7 +27,7 @@ import {
   xaf,
   type IdGenerator,
 } from '@gic/domain';
-import type { Selectable } from 'kysely';
+import { sql, type Selectable } from 'kysely';
 import type {
   SalesPaymentAllocations,
   SalesSaleLines,
@@ -267,6 +267,19 @@ export async function applyCancellation(
   const { sale, lines: saleLines } = input.locked;
   const byLine = new Map(saleLines.map((line) => [fromBin(line.id), line]));
 
+  // Instantané à jour des affectations de la vente ? Le payé est relu sous le verrou de la vente ; les
+  // affectations actives (lecture simple) le sont dans l'instantané de la transaction, qui a pu précéder un
+  // encaissement concurrent : la condition de session (AV-185) et la libération liraient un état périmé.
+  const snapshotPaid = await uow
+    .selectFrom('sales_payment_allocations')
+    .select(sql<string>`COALESCE(SUM(amount_xaf), 0)`.as('paid'))
+    .where('sale_id', '=', sale.id)
+    .where('status', '=', 'ACTIVE')
+    .executeTakeFirstOrThrow();
+  if (Number(snapshotPaid.paid) !== Number(sale.amount_paid_xaf)) {
+    throw new SaleAllocationsChangedDuringCancellation();
+  }
+
   // --- Capacité et montants recontrôlés sur l'état verrouillé (une demande peut dater) ----------
   let cancelledTotalXaf = 0;
   const canceledMilli = new Map<string, number>();
@@ -392,6 +405,7 @@ export async function applyCancellation(
   if (released > 0) {
     const freed = await releasePayments(uow, deps, {
       saleId: fromBin(sale.id),
+      paidXaf: Number(sale.amount_paid_xaf),
       amountXaf: released,
       treatment: input.treatment,
       cancellationId: input.cancellationId,
@@ -428,6 +442,17 @@ export async function applyCancellation(
 type AllocationRow = Selectable<SalesPaymentAllocations>;
 
 /**
+ * P5-23 (revue adverse) : une affectation a été posée sur la vente par une transaction concurrente, validée
+ * après l'instantané de l'annulation et avant le verrou de la vente. Erreur transitoire (étape 7 du pipeline :
+ * `RETRY_LATER`) : le renvoi identique relit toutes les affectations.
+ */
+export class SaleAllocationsChangedDuringCancellation extends Error {
+  constructor() {
+    super('Affectations de la vente modifiées pendant l’annulation : à renvoyer.');
+  }
+}
+
+/**
  * Libère `amountXaf` des affectations actives de la vente, la plus récente d'abord. Le registre
  * d'affectation est immuable (sauf `ACTIVE` → `REVERSED`) : une affectation partiellement libérée
  * est renversée en entier et sa part conservée est réaffectée par une nouvelle ligne (INV-FIN-04).
@@ -437,6 +462,8 @@ async function releasePayments(
   deps: { readonly idGenerator: IdGenerator },
   input: {
     readonly saleId: string;
+    /** Payé de la vente lu sous son verrou (`amount_paid_xaf`, dérivé des affectations actives). */
+    readonly paidXaf: number;
     readonly amountXaf: number;
     readonly treatment: PaymentTreatment | null;
     readonly cancellationId: string;
@@ -475,6 +502,12 @@ async function releasePayments(
             .forUpdate()
             .execute()
         ).filter((allocation) => allocation.status === 'ACTIVE');
+  // Les identifiants viennent de l'instantané de la transaction (lecture répétable) : une affectation
+  // validée entre cet instantané et le verrou de la vente n'y figure pas (encaissement concurrent). Le payé,
+  // relu sous le verrou de la vente, est la somme des affectations actives (INV-VEN-02) : s'ils diffèrent,
+  // l'annulation est renvoyée (ADR-038 §4) et le renvoi, dans un nouvel instantané, les voit toutes.
+  const activeXaf = allocations.reduce((sum, allocation) => sum + Number(allocation.amount_xaf), 0);
+  if (activeXaf !== input.paidXaf) throw new SaleAllocationsChangedDuringCancellation();
   const paymentIds = [...new Set(allocations.map((allocation) => allocation.payment_id))];
   const payments = paymentIds.length
     ? await uow

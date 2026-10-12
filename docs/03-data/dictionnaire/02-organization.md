@@ -177,6 +177,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `offline.max_autonomy_hours` / `warning_hours` | 168 / 48 | AV-009 |
 | `sync.clock_skew_flag_minutes` | 5 | BR-SYN-011 |
 | `sync.retry_hold_minutes` | 30 | AV-217 |
+| `sync.pull_settle_seconds` | 120 | AV-198 (fenêtre de stabilisation de la numérotation du flux) |
 | `sync.backdate_max_hours` / `justification_after_hours` | 72 / 24 | AV-078 |
 | `crm.inactive_after_days` | 30 | AV-013 |
 | `crm.visit.max_distance_m` | 500 | BR-CRM-015 |

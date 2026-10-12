@@ -97,6 +97,9 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // à renvoyer (dépendance en attente, erreur transitoire) ne suspend plus la suite de son lot ; elle
   // reste à renvoyer, jamais perdue, et le signal `SYNC_COMMAND_STALLED` est ouvert pour l'Admin.
   { key: 'sync.retry_hold_minutes', value: 30, isClientVisible: false, ref: 'AV-217' },
+  // P5-23 (AV-198) : fenêtre de stabilisation de la numérotation du flux — le curseur du pull ne dépasse
+  // jamais un numéro absent suivi d'une ligne plus récente (transaction peut-être encore ouverte).
+  { key: 'sync.pull_settle_seconds', value: 120, isClientVisible: false, ref: 'AV-198' },
   { key: 'sync.backdate_max_hours', value: 72, isClientVisible: true, ref: 'AV-078' },
   { key: 'sync.justification_after_hours', value: 24, isClientVisible: true, ref: 'AV-078' },
   { key: 'crm.inactive_after_days', value: 30, isClientVisible: false, ref: 'AV-013' },

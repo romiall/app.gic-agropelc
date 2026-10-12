@@ -563,12 +563,18 @@ export async function validateCashSession(
   }
   const included = await uow
     .selectFrom('finance_cash_session_adjustments')
-    .select(['id', 'delta_xaf'])
+    .select(['id', 'delta_xaf', 'created_by'])
     .where('session_id', '=', toBin(session.id))
     .where('treatment', '=', 'INCLUDED_IN_VALIDATION')
     .where('status', '=', 'PENDING')
     .forUpdate()
     .execute();
+  // D05 §15 : pour un ajustement, le valideur n'est pas non plus l'auteur de l'opération tardive — règle
+  // déjà tenue par la validation d'un ajustement seul ; un ajustement inclus dans la validation de sa
+  // session la suit aussi (P5-23, revue adverse : le contrôle dépendait de l'ordre des événements).
+  if (included.some((adjustment) => fromBin(adjustment.created_by) === input.validatorId)) {
+    return VALIDATOR_INVOLVED;
+  }
   const reason = input.reason?.trim() ?? '';
   const hasVariance =
     session.openingVarianceXaf !== 0 || (session.varianceXaf ?? 0) !== 0 || included.length > 0;

@@ -404,18 +404,31 @@ function registerDecision(decisionRegistry: SalesDecisionRegistry, idGenerator: 
       amountXaf: Number(line.amount_xaf),
     }));
     const option = PAYMENT_TREATMENTS.find((candidate) => candidate === ctx.decisionOption);
-    const result = await applyCancellation(uow, deps, {
-      cancellationId: ctx.subjectId,
-      locked,
-      lines,
-      appliedAt: ctx.decidedAt,
-      treatment: (option ?? null) as PaymentTreatment | null,
-      actorUserId: ctx.decidedBy,
-      deviceId: null,
-      commandId: null,
-      offline: false,
-      siteId: fromBin(doc.site_id),
-    });
+    let result: Awaited<ReturnType<typeof applyCancellation>>;
+    try {
+      result = await applyCancellation(uow, deps, {
+        cancellationId: ctx.subjectId,
+        locked,
+        lines,
+        appliedAt: ctx.decidedAt,
+        treatment: (option ?? null) as PaymentTreatment | null,
+        actorUserId: ctx.decidedBy,
+        deviceId: null,
+        commandId: null,
+        offline: false,
+        siteId: fromBin(doc.site_id),
+      });
+    } catch (error) {
+      // P5-23 (revue adverse) : un refus d'`inventory` ou de `finance` — caisse insuffisante pour le
+      // remboursement en ligne (BR-FIN-012), en particulier — refuse la décision, sans effet : la demande
+      // reste à décider (réapprovisionner la caisse, ou refuser). Levé tel quel, il était pris pour une
+      // erreur transitoire et la décision renvoyée sans fin.
+      const refusal = businessRejection(error);
+      throw new ApprovalDecisionRefused(
+        refusal.status === 'REJECTED' ? refusal.errorCode : 'CANCELLATION_REFUSED',
+        refusal.status === 'REJECTED' ? refusal.messageFr : 'Annulation impossible.',
+      );
+    }
     if (!result.ok) {
       const refusal = result.outcome.status === 'REJECTED' ? result.outcome : undefined;
       throw new ApprovalDecisionRefused(

@@ -373,6 +373,29 @@ describe('identity.role_assignment.{grant,revoke} (P0-10)', () => {
     expect(await hasPermissionAt(db, toBin(target), RBAC_CACHE_DEMO_PERMISSION, clock.now())).toBe(
       true,
     );
+
+    // P5-23 (revue adverse) : la révocation invalide aussi le cache, bien que sa charge utile ne porte
+    // que le motif — l'utilisateur est relu sur l'affectation. Avant, le droit révoqué restait servi.
+    await pipeline.handle(
+      buildEnvelope({
+        command_type: REVOKE_TYPE,
+        author_user_id: admin,
+        aggregate_id: assignmentId,
+        occurred_at: '2026-09-24T10:00:00.000Z',
+        payload: { reason: 'Changement de poste' },
+      }),
+      { authenticatedUserId: admin, authenticatedDeviceId: adminDevice, transport: 'ONLINE_API' },
+    );
+    const afterRevocation = new Date(clock.now().getTime() + 1);
+    expect(
+      await hasPermissionAt(db, toBin(target), RBAC_CACHE_DEMO_PERMISSION, afterRevocation),
+    ).toBe(true);
+    do {
+      batch = await runner.processOnce('identity.rbac_cache', { batchSize: 500 });
+    } while (batch.processed + batch.failed === 500);
+    expect(
+      await hasPermissionAt(db, toBin(target), RBAC_CACHE_DEMO_PERMISSION, afterRevocation),
+    ).toBe(false);
   });
 
   it('hasOtherActiveAdminAssignment (INV-ADM-01) : faux une fois toutes les autres affectations ADMIN exclues/révoquées', async () => {

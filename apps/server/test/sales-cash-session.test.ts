@@ -1019,4 +1019,109 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     ]);
     expect(subtotals!.otherMovements).toEqual([]);
   });
+
+  it('P5-23 (revue adverse) : décision SALE_CANCELLATION avec remboursement sur une caisse vide — refus CASH_INSUFFICIENT sans effet, la demande reste à décider', async () => {
+    const pos = await newPos();
+    const sessionId = await openSession(pos, at('08:00'));
+    const saleId = freshUuid();
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), saleBody(pos, 2));
+    // Clôture comptée à 0 : l'écart (−1 000) est porté au registre, la caisse est vide.
+    await ok(pos.seller, 'finance.cash_session.close', 'CASH_SESSION', sessionId, at('12:00'), {
+      countedXaf: 0,
+    });
+    const cancellationId = freshUuid();
+    const requested = await ok(
+      pos.seller,
+      'sales.sale.cancel',
+      'SALE_CANCELLATION',
+      cancellationId,
+      at('12:30'),
+      { saleId, comment: 'Client mécontent', paymentTreatment: 'REFUND' },
+    );
+    expect(warningsOf(requested)).toContain('CANCEL_WINDOW_EXCEEDED');
+    const request = await db
+      .selectFrom('approvals_approval_requests')
+      .select('id')
+      .where('subject_id', '=', toBin(cancellationId))
+      .where('operation_type', '=', 'SALE_CANCELLATION')
+      .executeTakeFirstOrThrow();
+    const decided = await run(
+      fin1,
+      'approvals.request.approve',
+      'APPROVAL_REQUEST',
+      fromBin(request.id),
+      at('13:00'),
+      { requestId: fromBin(request.id), decisionOption: 'REFUND' },
+    );
+    // Avant : `CashMovementError` levée telle quelle, prise pour une erreur transitoire (`RETRY_LATER`).
+    expect(decided.status).toBe('REJECTED');
+    expect(decided.error?.code).toBe('CASH_INSUFFICIENT');
+    const pending = await db
+      .selectFrom('approvals_approval_requests')
+      .select('status')
+      .where('id', '=', request.id)
+      .executeTakeFirstOrThrow();
+    expect(pending.status).toBe('PENDING');
+    expect((await sale(saleId)).status).toBe('CANCELLATION_REQUESTED');
+  });
+
+  it('P5-23 (revue adverse) : le valideur d’une session n’est pas l’auteur d’un ajustement inclus dans sa validation (D05 §15)', async () => {
+    const pos = await newPos();
+    const sessionId = await openSession(pos, at('08:00'));
+    const saleId = freshUuid();
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), saleBody(pos, 6));
+    const [payment] = await paymentsOf(saleId);
+    const paymentId = fromBin(payment!.id);
+    // Écart à la clôture : la session attend sa validation.
+    await ok(pos.seller, 'finance.cash_session.close', 'CASH_SESSION', sessionId, at('12:00'), {
+      countedXaf: 2_900,
+    });
+    expect((await session(sessionId)).status).toBe('PENDING_VALIDATION');
+    // fin1 décide l'annulation de l'encaissement : l'inverse, daté de l'original, tombe dans la session
+    // et y crée un ajustement inclus dans sa validation, dont fin1 est l'auteur.
+    await ok(
+      pos.seller,
+      'sales.payment.request_cancellation',
+      'CUSTOMER_PAYMENT',
+      paymentId,
+      at('13:00'),
+      { comment: 'Encaissement saisi deux fois' },
+    );
+    const request = await db
+      .selectFrom('approvals_approval_requests')
+      .select('id')
+      .where('subject_id', '=', toBin(paymentId))
+      .where('operation_type', '=', 'PAYMENT_CANCELLATION')
+      .executeTakeFirstOrThrow();
+    await ok(
+      fin1,
+      'approvals.request.approve',
+      'APPROVAL_REQUEST',
+      fromBin(request.id),
+      at('14:00'),
+      {
+        requestId: fromBin(request.id),
+      },
+    );
+    const [adjustment] = await adjustmentsOf(sessionId);
+    expect(adjustment).toMatchObject({ treatment: 'INCLUDED_IN_VALIDATION', status: 'PENDING' });
+    expect(fromBin(adjustment!.created_by)).toBe(fin1.userId);
+
+    const byAuthor = await run(
+      fin1,
+      'finance.cash_session.validate',
+      'CASH_SESSION',
+      sessionId,
+      at('15:00'),
+      {
+        reason: 'Écart et annulation d’encaissement',
+      },
+    );
+    expect(byAuthor.status).toBe('REJECTED');
+    expect(byAuthor.error?.code).toBe('CASH_VALIDATOR_INVOLVED');
+    await ok(fin2, 'finance.cash_session.validate', 'CASH_SESSION', sessionId, at('15:10'), {
+      reason: 'Écart et annulation d’encaissement',
+    });
+    expect((await session(sessionId)).status).toBe('VALIDATED');
+  });
 });

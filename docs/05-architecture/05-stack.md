@@ -162,7 +162,7 @@ Conformément à l'instruction reçue, cette conclusion **n'a nécessité aucun 
 | Élément écarté | Raison |
 |---|---|
 | **VPS, y compris chez Hostinger** | Contrainte ferme du porteur de projet (ADR-024) — non une préférence technique à arbitrer, une exclusion confirmée |
-| Redis ou autre cache distribué | Volumétrie H-06 ; file et verrous dans MySQL ; cache des droits en mémoire de processus avec invalidation par événement |
+| Redis ou autre cache distribué | Volumétrie H-06 ; file et verrous dans MySQL ; cache des droits en mémoire de processus avec invalidation par événement (octroi et révocation : l'utilisateur d'une révocation est relu sur l'affectation ; une lecture faite dans une transaction n'est jamais mise en cache — P5-23) |
 | Courtier de messages (Kafka, RabbitMQ) | Outbox + table de tâches maison (`SELECT … FOR UPDATE SKIP LOCKED`) suffisent à ~2 commandes/s en pointe (NFR-14) |
 | Microservices | Monolithe modulaire (ADR-011) : une équipe, un déploiement, des transactions locales |
 | GraphQL | API orientée commandes + lectures paginées (ADR-019) |

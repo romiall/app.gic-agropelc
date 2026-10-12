@@ -17,6 +17,11 @@
  * (numérotation, projections) sur un rythme qui tolère la latence ; ce cache-ci n'a de sens
  * que colocalisé avec les évaluations RBAC qu'il accélère, donc dans le processus qui les
  * fait (l'API, seule à recevoir `/commands` et `/auth/*`).
+ *
+ * P5-23 (revue adverse) : une lecture faite dans une transaction voit son instantané, qui peut précéder
+ * un octroi ou une révocation déjà invalidés : elle sert l'évaluation en cours mais n'est jamais mise en
+ * cache. Une lecture hors transaction n'est gardée que si aucune invalidation de l'utilisateur n'est
+ * survenue pendant qu'elle se faisait (génération par utilisateur).
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -41,6 +46,8 @@ export interface CachedGrant {
 }
 
 const grantsByUser = new Map<string, readonly CachedGrant[]>();
+/** Nombre d'invalidations par utilisateur : une lecture commencée avant la dernière n'est pas gardée. */
+const generationByUser = new Map<string, number>();
 
 /** Chargée à la demande (premier appel pour cet utilisateur dans ce processus), puis mise en cache. */
 export async function getUserGrants(
@@ -49,6 +56,7 @@ export async function getUserGrants(
 ): Promise<readonly CachedGrant[]> {
   const cached = grantsByUser.get(userId);
   if (cached) return cached;
+  const generation = generationByUser.get(userId) ?? 0;
 
   const rows = await executor
     .selectFrom('identity_user_role_assignments as ura')
@@ -83,7 +91,9 @@ export async function getUserGrants(
     validTo: row.valid_to,
     revokedAt: row.revoked_at,
   }));
-  grantsByUser.set(userId, grants);
+  if (!executor.isTransaction && (generationByUser.get(userId) ?? 0) === generation) {
+    grantsByUser.set(userId, grants);
+  }
   return grants;
 }
 
@@ -97,8 +107,12 @@ export function isGrantActiveAt(grant: CachedGrant, occurredAt: Date): boolean {
 
 export function invalidateUser(userId: string): void {
   grantsByUser.delete(userId);
+  generationByUser.set(userId, (generationByUser.get(userId) ?? 0) + 1);
 }
 
 export function invalidateAll(): void {
+  for (const userId of grantsByUser.keys()) {
+    generationByUser.set(userId, (generationByUser.get(userId) ?? 0) + 1);
+  }
   grantsByUser.clear();
 }

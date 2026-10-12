@@ -131,7 +131,9 @@ describe('SyncPushService / SyncPullService (P0-12)', () => {
     idGenerator = new Uuidv7Generator(clock);
     pipeline = new CommandPipelineService(db, buildRegistry(), clock, idGenerator);
     pushService = new SyncPushService(pipeline, db, clock);
-    pullService = new SyncPullService(db);
+    // Mécanique du curseur (pagination) : aucune retenue — un trou récent laissé par un autre fichier sur
+    // le flux partagé la retiendrait (AV-198, éprouvé par `p5-pull-cursor.test.ts`).
+    pullService = new SyncPullService(db, { settleSeconds: 0 });
 
     author = await createRealUser();
     device = await createRealDevice(author);

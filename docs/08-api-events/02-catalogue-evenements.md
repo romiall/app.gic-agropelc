@@ -208,7 +208,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | Aspect | Règle |
 |---|---|
 | Publication | Insertion dans `platform.domain_events` **dans la transaction** métier : pas d'événement sans fait, pas de fait sans événement |
-| Consommation | Le worker lit par `seq` croissant ; chaque consommateur a sa position (`event_consumer_offsets`) ; les réactions sont idempotentes (clé = `event_id` + consommateur, ou contrainte d'unicité métier) |
+| Consommation | Le worker lit par `seq` croissant ; chaque consommateur a sa position (`event_consumer_offsets`), qui ne dépasse jamais un trou récent de la numérotation (un numéro est attribué à l'insertion, pas à la validation : un événement validé après un numéro supérieur serait sauté ; P5-23, même règle que le curseur du pull, AV-198) ; les réactions sont idempotentes (clé = `event_id` + consommateur, ou contrainte d'unicité métier) |
 | Ordre | Garanti par `seq` à l'intérieur d'un consommateur ; les consommateurs n'exigent pas d'ordre global entre agrégats |
 | Échecs | 5 essais avec attente progressive ; ensuite le consommateur marque l'événement en erreur, continue avec les suivants (sauf dépendance d'ordre déclarée) et lève une alerte technique |
 | Délai | p95 < 10 s entre publication et réaction (NFR-15) |

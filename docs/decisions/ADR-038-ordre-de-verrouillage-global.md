@@ -74,6 +74,12 @@ Cycles relevés :
   - tours concurrents pour les autres paires (révocation contre vente, premières ventes d'un produit neuf depuis deux PDV, clôture contre encaissement, envoi contre annulation de remise) ;
   - par mutation : sans la passe des soldes, l'octroi du scénario 1a est renvoyé (interblocage) ; sans la relecture d'AV-185, l'annulation rembourse hors session ; sans le verrou des comptes avant la remise, l'annulation de remise est renvoyée.
 
+## Révision (P5-23, revue adverse)
+
+- **Lecture simple sous instantané** : lire des identifiants sans verrou, puis les verrouiller par clé primaire (cycle 5b) ne voit pas une ligne validée entre l'instantané de la transaction (première lecture simple, en lecture répétable) et le verrou du document. Pour les lignes d'une vente, l'ensemble ne change jamais ; pour ses **affectations**, si (encaissement concurrent). Le payé de la vente, relu sous son verrou, est comparé à la somme des affectations actives de l'instantané, puis à celle des affectations relues sous verrou : s'ils diffèrent, l'annulation est renvoyée (§4, `SaleAllocationsChangedDuringCancellation`). La revue l'a trouvé par lecture : l'encaissement restait affecté à une vente annulée, sans signal. Test déterministe dans `p5-lock-order.test.ts`.
+- **§2 appliqué à la lecture d'un conflit** : `findConflict` verrouillait aussi la ligne d'inbox jointe de la commande d'origine ; seul le conflit l'est désormais.
+- **§3 précisé** : la passe des soldes (`lockStockCouples`) et le pré-verrou de la destination lisent un couple (emplacement, produit) par le préfixe de la clé primaire, sans connaître le lot. Sur un couple qui n'a encore aucune ligne, cette lecture pose un verrou d'intervalle ; deux premières entrées concurrentes de produits nouveaux au même emplacement peuvent alors s'interbloquer. Garantir une ligne sans lot pour chaque couple créerait des soldes vides parasites pour les produits suivis par lot : **résidu assumé** (rare, `RETRY_LATER` sans perte).
+
 ## Résidus assumés
 
 Un interblocage résiduel reste détecté par MySQL et rendu `RETRY_LATER`, sans perte, signalé au-delà de `sync.retry_hold_minutes` (AV-217).

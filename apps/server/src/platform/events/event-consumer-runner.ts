@@ -14,6 +14,12 @@
  * entre les deux, l'événement est redélivré au prochain passage (« au moins une fois ») — la
  * **clé** (`event_id` + consommateur, ou contrainte d'unicité métier, à la charge du
  * gestionnaire) est ce qui rend cette redélivrance sans effet double.
+ *
+ * P5-23 (revue adverse, même défaut qu'AV-198) : `seq` est attribué à l'insertion de l'événement, pas à
+ * la validation de sa transaction. La position ne dépasse jamais un trou récent de la numérotation
+ * (`settledSequenceBound`) : les événements au-delà attendent le passage suivant, dans l'ordre. Sans
+ * cela, un événement validé après un numéro supérieur était sauté sans trace (invalidation du cache
+ * des droits, révocation des quotas d'un appareil perdu).
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { DATABASE, type Database } from '../kysely/database.provider.js';
@@ -22,10 +28,13 @@ import {
   type EventConsumerRegistry,
 } from './event-consumer-registry.provider.js';
 import { toDomainEvent } from './domain-event.js';
+import { settledSequenceBound } from '../kysely/settled-sequence.js';
 
 export interface EventConsumerRunOptions {
   readonly batchSize?: number;
   readonly maxAttempts?: number;
+  /** Fenêtre de stabilisation de la numérotation (valeur technique du protocole, pas un seuil métier). */
+  readonly settleSeconds?: number;
 }
 
 export interface EventConsumerRunResult {
@@ -36,6 +45,8 @@ export interface EventConsumerRunResult {
 
 const DEFAULT_BATCH_SIZE = 50;
 const DEFAULT_MAX_ATTEMPTS = 5;
+/** Même fenêtre que le pull des appareils (AV-198, `sync.pull_settle_seconds`). */
+export const EVENT_SETTLE_DEFAULT_SECONDS = 120;
 
 @Injectable()
 export class EventConsumerRunner {
@@ -62,13 +73,20 @@ export class EventConsumerRunner {
       .executeTakeFirst();
     let lastSeq = offset ? Number(offset.last_seq) : 0;
 
-    const rows = await this.db
+    const read = await this.db
       .selectFrom('platform_domain_events')
       .selectAll()
       .where('seq', '>', lastSeq)
       .orderBy('seq', 'asc')
       .limit(batchSize)
       .execute();
+    const bound = await settledSequenceBound(
+      this.db,
+      'platform_domain_events',
+      { from: lastSeq, upTo: read.length > 0 ? Number(read[read.length - 1]!.seq) : lastSeq },
+      options.settleSeconds ?? EVENT_SETTLE_DEFAULT_SECONDS,
+    );
+    const rows = read.filter((row) => Number(row.seq) <= bound);
 
     let processed = 0;
     let failed = 0;

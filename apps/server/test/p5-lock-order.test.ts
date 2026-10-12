@@ -264,6 +264,88 @@ describe('ordre de verrouillage global (P5-22, ADR-038)', { timeout: 300_000 }, 
     expect((await verifyCashSessions(db, { sessionIds: [session] })).breaches).toEqual([]);
   });
 
+  it('encaissement validé pendant une annulation directe (revue de P5-23) : la vente annulée ne garde aucune affectation active — renvoi, puis remboursement', async () => {
+    const day = '2026-10-03';
+    world.setNow(at(day, '08:00'));
+    const product = await world.product('Payé pendant l’annulation');
+    await world.stockIn(product.id, 10, at(day, '07:00'));
+    // Vente anonyme impayée, saisie hors ligne (seul cas admis, AV-137).
+    const saleId = freshUuid();
+    const tablet = world.tablet(seller);
+    tablet.enqueue(seller.userId, {
+      type: 'sales.sale.record',
+      aggregateType: 'SALE',
+      aggregateId: saleId,
+      occurredAt: at(day, '08:00'),
+      payload: { fromLocationId: world.counter, lines: [world.line(product, 2)] },
+    });
+    const [recorded] = await tablet.sync(seller.userId);
+    expect(recorded?.status, JSON.stringify(recorded)).toMatch(/^APPLIED/);
+
+    // La vente est retenue : l'encaissement s'y arrête le premier, puis l'annulation, qui a déjà lu (son
+    // instantané est pris avant l'encaissement), derrière lui.
+    const holder = await hold((trx) =>
+      trx
+        .selectFrom('sales_sales')
+        .select('id')
+        .where('id', '=', toBin(saleId))
+        .forUpdate()
+        .execute(),
+    );
+    world.setNow(at(day, '08:10'));
+    const payment = world.online(seller, {
+      type: 'sales.payment.record',
+      aggregateType: 'CUSTOMER_PAYMENT',
+      occurredAt: at(day, '08:05'),
+      payload: {
+        amountXaf: 2 * PRICE,
+        methodCode: 'MOBILE_MONEY_ORANGE',
+        reference: `OM${freshUuid().replace(/-/g, '').slice(-16)}`,
+        cashAccountId: world.mobileAcc,
+        allocations: [{ saleId, amountXaf: 2 * PRICE }],
+      },
+    });
+    await sleep(500);
+    const cancellation = envelopeOf(seller, {
+      type: 'sales.sale.cancel',
+      aggregateType: 'SALE_CANCELLATION',
+      occurredAt: at(day, '08:08'),
+      payload: { saleId, comment: 'Erreur de saisie', paymentTreatment: 'REFUND' },
+    });
+    const first = handle(seller, cancellation);
+    await sleep(500);
+    await holder.release();
+    const paid = await payment;
+    expect(paid.status, JSON.stringify(paid)).toMatch(/^APPLIED/);
+    // L'annulation voit le payé à jour (relu sous le verrou de la vente), pas l'affectation (instantané) :
+    // renvoyée, au lieu d'annuler la vente en laissant l'encaissement affecté.
+    const firstResult = await first;
+    expect(firstResult, JSON.stringify(firstResult)).toMatchObject({ status: 'RETRY_LATER' });
+
+    const second = await handle(seller, cancellation);
+    expect(second.status, JSON.stringify(second)).toMatch(/^APPLIED/);
+    const sale = await db
+      .selectFrom('sales_sales')
+      .select(['status', 'amount_paid_xaf'])
+      .where('id', '=', toBin(saleId))
+      .executeTakeFirstOrThrow();
+    expect([sale.status, Number(sale.amount_paid_xaf)]).toEqual(['CANCELLED', 0]);
+    const active = await db
+      .selectFrom('sales_payment_allocations')
+      .select('id')
+      .where('sale_id', '=', toBin(saleId))
+      .where('status', '=', 'ACTIVE')
+      .execute();
+    expect(active).toEqual([]);
+    const refunds = await db
+      .selectFrom('finance_cash_movements')
+      .select('amount_xaf')
+      .where('source_doc_id', '=', toBin(cancellation.aggregate_id))
+      .where('movement_type', '=', 'REFUND')
+      .execute();
+    expect(refunds.map((refund) => Number(refund.amount_xaf))).toEqual([2 * PRICE]);
+  });
+
   it('révocation contre vente du même couple (cycle 1b), en tours concurrents : jamais d’interblocage', async () => {
     const day = '2026-09-28';
     for (let round = 0; round < 5; round++) {

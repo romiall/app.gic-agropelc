@@ -7,10 +7,15 @@
  * n'enregistre jamais ce nom — seul `rbac-cache-poller.ts`, dans le processus API, l'appelle
  * (`rbac-cache.ts`, commentaire de tête : le cache n'a de sens que colocalisé avec les
  * évaluations qu'il accélère).
+ *
+ * P5-23 (revue adverse) : la charge utile de `identity.role_assignment.revoke` ne porte que le motif ;
+ * l'utilisateur est relu sur l'affectation (agrégat de l'événement). Sans cela, un rôle révoqué restait
+ * effectif dans le cache de l'API jusqu'à son redémarrage.
  */
 import type { EventConsumerRegistry } from '../../../../platform/events/event-consumer-registry.js';
 import type { DomainEvent } from '../../../../platform/events/domain-event.js';
 import { ROLE_ASSIGNMENT_EVENT_TYPES } from '../commands/role-assignment-commands.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { invalidateUser } from './rbac-cache.js';
 
 export const RBAC_CACHE_CONSUMER_NAME = 'identity.rbac_cache';
@@ -18,11 +23,18 @@ export const RBAC_CACHE_CONSUMER_NAME = 'identity.rbac_cache';
 const INVALIDATING_EVENT_TYPES: ReadonlySet<string> = new Set(ROLE_ASSIGNMENT_EVENT_TYPES);
 
 export function registerRbacCacheConsumer(registry: EventConsumerRegistry): void {
-  registry.register(RBAC_CACHE_CONSUMER_NAME, async (_uow, event: DomainEvent) => {
+  registry.register(RBAC_CACHE_CONSUMER_NAME, async (uow, event: DomainEvent) => {
     if (!INVALIDATING_EVENT_TYPES.has(event.eventType)) return;
     const payload = event.payload as { userId?: unknown };
     if (typeof payload.userId === 'string') {
       invalidateUser(payload.userId);
+      return;
     }
+    const assignment = await uow
+      .selectFrom('identity_user_role_assignments')
+      .select('user_id')
+      .where('id', '=', toBin(event.aggregateId))
+      .executeTakeFirst();
+    if (assignment) invalidateUser(fromBin(assignment.user_id));
   });
 }

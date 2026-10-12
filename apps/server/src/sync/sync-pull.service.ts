@@ -11,13 +11,15 @@
  * ligne de chaque (type d'entité, entité, portée) est servie — les précédentes projetteraient le même
  * état courant (un `UPSERT`) ou seraient annulées par elle (un `SCOPE_EXIT` ou un `DELETE` plus
  * récent) ; un quota consommé quarante fois n'occupe ainsi qu'une ligne. Entre deux pages, une
- * entité peut encore revenir (sans effet). `next_cursor` avance de manière strictement croissante,
- * jusqu'au dernier numéro lu. **Limite connue (AV-198, préexistante, à corriger en P5-23)** : `seq`
- * est attribué à l'insertion, pas à la validation ; une ligne d'une transaction encore ouverte,
- * validée après une ligne de numéro supérieur déjà servie, est sautée par ce curseur — une sortie
- * terminale (quota révoqué, session validée, remise reçue) peut alors manquer à l'appareil.
+ * entité peut encore revenir (sans effet). **Curseur retenu (P5-23, AV-198)** : `seq` est attribué à
+ * l'insertion, pas à la validation ; une ligne d'une transaction encore ouverte, validée après une ligne
+ * de numéro supérieur, serait sautée par un curseur posé sur le dernier numéro lu. `next_cursor` ne
+ * dépasse donc jamais un trou récent de la numérotation (`settledSequenceBound`, fenêtre
+ * `sync.pull_settle_seconds`) : la page est servie entière, ses lignes au-delà du curseur le seront de
+ * nouveau au pull suivant (sans effet : état courant), et `has_more` est faux tant que le curseur est
+ * retenu (l'appareil ne boucle pas ; il retire au prochain cycle).
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { sql, type ExpressionBuilder } from 'kysely';
 import type { Change, PullRequest, PullResponse } from '@gic/contracts';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
@@ -26,6 +28,16 @@ import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.j
 import { computeDeviceScope, type DeviceScopeEntry } from './device-scope.js';
 import { authorDataset, DEVICE_DATASET } from './sync-push.service.js';
 import { resolveEntityProjection } from './entity-projections.js';
+import { settledSequenceBound } from '../platform/kysely/settled-sequence.js';
+import { currentSettingValue } from '../modules/organization/application/public/index.js';
+
+/** Fenêtre de stabilisation de la numérotation du flux (AV-198) : valeur semée si le paramètre manque. */
+export const PULL_SETTLE_DEFAULT_SECONDS = 120;
+export const SYNC_PULL_OPTIONS = Symbol('SYNC_PULL_OPTIONS');
+export interface SyncPullOptions {
+  /** Remplace le paramètre (tests de la mécanique du curseur : 0 = aucune retenue). */
+  readonly settleSeconds?: number;
+}
 
 export interface SyncPullContext {
   readonly authenticatedUserId: string;
@@ -35,7 +47,10 @@ export interface SyncPullContext {
 
 @Injectable()
 export class SyncPullService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @Optional() @Inject(SYNC_PULL_OPTIONS) private readonly options?: SyncPullOptions,
+  ) {}
 
   async pull(request: PullRequest, ctx: SyncPullContext): Promise<PullResponse> {
     const scope = await computeDeviceScope(
@@ -93,9 +108,28 @@ export class SyncPullService {
       changes.push({ ...base, data });
     }
 
-    const nextCursor = page.length > 0 ? Number(page[page.length - 1]!.seq) : request.cursor;
+    const lastRead = page.length > 0 ? Number(page[page.length - 1]!.seq) : request.cursor;
+    const nextCursor = await settledSequenceBound(
+      this.db,
+      'sync_change_feed',
+      { from: request.cursor, upTo: lastRead },
+      await this.settleSeconds(ctx.now),
+    );
     await this.recordPull(ctx);
-    return { changes, next_cursor: nextCursor, has_more: hasMore };
+    return { changes, next_cursor: nextCursor, has_more: hasMore && nextCursor === lastRead };
+  }
+
+  private async settleSeconds(now: Date): Promise<number> {
+    if (this.options?.settleSeconds !== undefined) return this.options.settleSeconds;
+    const value = await currentSettingValue(this.db, {
+      key: 'sync.pull_settle_seconds',
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      at: now,
+    });
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : PULL_SETTLE_DEFAULT_SECONDS;
   }
 
   /**
