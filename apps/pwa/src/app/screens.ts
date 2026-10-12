@@ -77,6 +77,7 @@ export const ROUTES = {
   cash: '/caisse',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
+  posHome: '/pdv',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -247,6 +248,8 @@ export const ROLE_SETS = {
   cashSessionOperate: ['VENDEUR_PDV', 'FINANCE'],
   /** ECR-DIS-03 : demande de réapprovisionnement du PDV (`inventory.transfer.request`, VEN SITE). */
   replenishRequest: ['VENDEUR_PDV'],
+  /** ECR-DIS-01 : accueil du PDV (vendeur du PDV). */
+  posHome: ['VENDEUR_PDV'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
   distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
@@ -571,6 +574,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'production_output',
     group: 'production',
     roles: ROLE_SETS.productionOutput,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-01',
+    path: ROUTES.posHome,
+    labelKey: 'pos_home',
+    group: 'sales',
+    roles: ROLE_SETS.posHome,
     actionCodes: [],
     offline: true,
   },

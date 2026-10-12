@@ -125,6 +125,7 @@ export const fr = {
       cash_session: 'Caisse',
       replenish: 'Demander un réapprovisionnement',
       distribution: 'Distribution par point de vente',
+      pos_home: 'Mon point de vente',
     },
   },
   sales: {
@@ -2342,6 +2343,48 @@ export const fr = {
     title: 'Un problème est survenu sur cet écran.',
     help: 'Vos opérations déjà enregistrées sont conservées sur l’appareil.',
     reload: 'Recharger l’application',
+  },
+  pos_home: {
+    offline_banner:
+      'Hors ligne : chiffres de ce téléphone ; les opérations des autres téléphones arrivent avec la synchronisation.',
+    cash_title: 'Caisse',
+    cash_unknown: 'La caisse de ce point de vente n’est pas encore sur ce téléphone.',
+    cash_open: 'Caisse ouverte depuis le {{date}} par {{who}}.',
+    cash_closed: 'Caisse fermée : ouvrez-la avant d’encaisser en espèces.',
+    open_cash: 'Ouvrir la caisse',
+    close_cash: 'Clôturer la caisse',
+    sales_title: 'Ventes du jour',
+    sales_line_one: '{{count}} vente, {{net}} ; encaissé avec ces ventes : {{paid}}',
+    sales_line_other: '{{count}} ventes, {{net}} ; encaissé avec ces ventes : {{paid}}',
+    sales_pending_one: 'Dont {{count}} vente en attente d’envoi.',
+    sales_pending_other: 'Dont {{count}} ventes en attente d’envoi.',
+    sales_hint:
+      'Ventes connues de ce téléphone sur ce point de vente (annulées exclues) ; le tableau de distribution donne le chiffre de tous les téléphones.',
+    quota_title: 'Mes quotas sur ce téléphone',
+    quota_empty: 'Aucun quota sur ce téléphone pour ce point de vente.',
+    quota_line: 'Reste : {{remaining}} {{unit}}.',
+    quota_line_until: 'Reste : {{remaining}} {{unit}}, jusqu’au {{until}}.',
+    quota_expired: 'Quota échu : libérez-le pour rendre le reste au stock commun.',
+    quota_revoking:
+      'Ce téléphone est signalé : le quota ne se consomme plus et sera révoqué par le serveur.',
+    quota_releasing: 'Libération enregistrée, en attente d’envoi.',
+    release: 'Libérer le quota {{name}}',
+    release_confirm: 'Confirmer : rendre {{remaining}} {{unit}} au stock commun',
+    release_result: {
+      WAITING_offline:
+        'Libération enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Libération en cours d’envoi…',
+      DONE: 'Quota libéré.',
+      WARNING: 'Quota libéré, avec un signalement (reste différent de celui du serveur).',
+      CONFLICT: 'Libération mise en attente d’examen (conflit).',
+      REJECTED: 'Libération refusée : {{reason}}',
+    },
+    stock_title: 'Stock du point de vente',
+    stock_empty: 'Aucun stock connu de ce téléphone sur ce point de vente.',
+    stock_line: 'Disponible sur ce téléphone : {{available}} {{unit}}',
+    stock_line_shared:
+      'Stock physique : {{physical}} {{unit}} (hors ligne, la vente se fait dans vos quotas)',
+    actions_title: 'Opérations du point de vente',
   },
   distribution: {
     online_only:
