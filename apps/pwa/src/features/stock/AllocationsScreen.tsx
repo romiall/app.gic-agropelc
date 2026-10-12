@@ -7,19 +7,29 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { idGenerator } from '../../platform/composition.js';
+import { isAllocationExpired } from '@gic/domain';
+import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
+import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime } from '../home/format-home.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
-import { readPath, useOnlineRead } from '../sales/online-read.js';
+import { readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { stockKey } from '../sales/stock.js';
-import { isBlockingWait, phaseOf, submitCommand } from '../sales/submit.js';
+import {
+  isBlockingWait,
+  lastWaitingCommand,
+  phaseOf,
+  submitCommand,
+  waitingIds,
+} from '../sales/submit.js';
 import {
   activeQuotas,
   grantPayload,
+  heldProducts,
   holderKey,
   knownHolders,
   MAX_REVOKE_REASON,
@@ -40,11 +50,77 @@ const MANAGED_COMMANDS = new Set([
 
 type Kind = 'grant' | 'increase' | 'revoke';
 
+/** Taille d'une page de `GET /allocations` (`INVENTORY_LIST_MAX_LIMIT`). */
+const PAGE_LIMIT = 200;
+/** Pages lues au plus : quotas actifs (liste annoncée partielle au-delà), historique des détenteurs. */
+const ACTIVE_PAGES = 5;
+const HISTORY_PAGES = 2;
+
+interface QuotasRead {
+  /** Quotas actifs de l'emplacement, toutes pages lues (`status=ACTIVE`). */
+  readonly active: readonly AllocationItem[];
+  /** Quotas actifs au-delà des pages lues. */
+  readonly activeMore: boolean;
+  /** Restes actifs par produit (complets, servis avec chaque page). */
+  readonly totals: AllocationsPage['active_totals'];
+  /** Quotas les plus récents de tous statuts, pour les détenteurs connus (AV-310). */
+  readonly history: readonly AllocationItem[];
+  readonly historyMore: boolean;
+}
+
+/** Lit au plus `maxPages` pages d'une liste de quotas en suivant `next_cursor`. */
+async function readList(
+  path: string,
+  maxPages: number,
+): Promise<ReadResult<{ readonly pages: readonly AllocationsPage[]; readonly more: boolean }>> {
+  const pages: AllocationsPage[] = [];
+  let cursor: string | null = null;
+  do {
+    const result: ReadResult<AllocationsPage> = await readPath<AllocationsPage>(
+      cursor ? `${path}&cursor=${encodeURIComponent(cursor)}` : path,
+    );
+    if (!result.ok) return result;
+    pages.push(result.data);
+    cursor = result.data.next_cursor || null;
+  } while (cursor !== null && pages.length < maxPages);
+  return { ok: true, data: { pages, more: cursor !== null } };
+}
+
+/**
+ * Quotas d'un emplacement : les actifs à part, toutes pages lues (un quota échu reste actif tant que
+ * son détenteur ne l'a pas libéré : il ne doit pas sortir de la liste derrière les plus récents), et
+ * l'historique récent pour les détenteurs connus.
+ */
+async function readQuotas(locationId: string): Promise<ReadResult<QuotasRead>> {
+  const base = `/api/v1/allocations?location_id=${locationId}&limit=${PAGE_LIMIT}`;
+  const active = await readList(`${base}&status=ACTIVE`, ACTIVE_PAGES);
+  if (!active.ok) return active;
+  const history = await readList(base, HISTORY_PAGES);
+  if (!history.ok) return history;
+  return {
+    ok: true,
+    data: {
+      active: active.data.pages.flatMap((page) => page.allocations),
+      activeMore: active.data.more,
+      totals: active.data.pages[0]?.active_totals,
+      history: history.data.pages.flatMap((page) => page.allocations),
+      historyMore: history.data.more,
+    },
+  };
+}
+
+const KINDS: Readonly<Record<string, Kind>> = {
+  'inventory.allocation.grant': 'grant',
+  'inventory.allocation.increase': 'increase',
+  'inventory.allocation.revoke': 'revoke',
+};
+
 export function AllocationsScreen() {
   const { t } = useTranslation();
   const { state, deviceId } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
+  const navigation = useRememberedNavigation(userId);
   const online = useOnline();
   const [locationChoice, setLocationChoice] = useState<string | null>(null);
   const [holderChoice, setHolderChoice] = useState('');
@@ -61,22 +137,32 @@ export function AllocationsScreen() {
     product: useId(),
     quantity: useId(),
     hours: useId(),
+    hoursHelp: useId(),
     edit: useId(),
   };
 
+  // Emplacements où un quota s'accorde : partagés et actifs (sinon `ALLOCATION_LOCATION_INVALID` ou
+  // `ALLOCATION_LOCATION_NOT_SHARED`).
   const locations = refs
     ? stockLocations(refs).filter(
-        (location) =>
-          location.custody_mode !== 'EXCLUSIVE_USER' &&
-          location.custody_mode !== 'EXCLUSIVE_DEVICE',
+        (location) => location.status === 'ACTIVE' && location.custody_mode === 'SHARED',
       )
     : [];
   const location = locations.find((candidate) => candidate.id === locationChoice) ?? locations[0];
+  // Opérations de gestion de l'utilisateur seulement (la libération, du détenteur, n'en est pas).
+  const managed = (refs?.outbox ?? []).filter((command) =>
+    MANAGED_COMMANDS.has(command.command_type),
+  );
   const lastCommand = refs?.outbox.find((command) => command.command_id === last?.commandId);
-  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}`;
-  const read = useOnlineRead<AllocationsPage>(
-    online && location ? `/api/v1/allocations?location_id=${location.id}` : null,
-    (path) => readPath<AllocationsPage>(path),
+  // Relue à chaque réponse, y compris celle d'une opération saisie avant de quitter l'écran.
+  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(
+    managed,
+    'inventory.allocation.',
+    userId,
+  )}`;
+  const read = useOnlineRead<QuotasRead>(
+    online && location ? location.id : null,
+    readQuotas,
     online,
     reloadKey,
   );
@@ -106,18 +192,37 @@ export function AllocationsScreen() {
     );
   }
 
+  // Retour sur l'écran avec une opération en attente : son résultat est annoncé.
+  const adopt = last ? undefined : lastWaitingCommand(managed, 'inventory.allocation.', userId);
+  if (adopt) setLast({ commandId: adopt.command_id, kind: KINDS[adopt.command_type] ?? 'grant' });
+
+  const now = clock.now();
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const page = read.data;
-  const items = page?.allocations ?? [];
-  const active = activeQuotas(items);
-  const holders = knownHolders(items, deviceId ? { userId, deviceId } : null);
+  const active = activeQuotas(page?.active ?? []);
+  // Vous-même : seulement si votre rôle peut libérer le quota (AV-310, `inventory.allocation.release`).
+  const self =
+    deviceId && holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.allocationRelease)
+      ? { userId, deviceId }
+      : null;
+  const holders = knownHolders([...active, ...(page?.history ?? [])], self);
   const holder = holders.find((candidate) => holderKey(candidate) === holderChoice);
+  const held = heldProducts(active, holder);
   const stocked = [...refs.stock.values()]
     .filter((balance) => balance.location_id === location.id)
     .map((balance) => products.get(balance.product_id))
     .filter((product): product is NonNullable<typeof product> => product !== undefined)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const product = stocked.find((candidate) => candidate.id === productChoice);
+  const product = stocked.find(
+    (candidate) => candidate.id === productChoice && !held.has(candidate.id),
+  );
+  const room = product
+    ? unallocated(
+        Number(refs.stock.get(stockKey(location.id, product.id))?.qty_on_hand ?? 0),
+        page?.totals ? { active_totals: page.totals } : {},
+        product.id,
+      )
+    : null;
   const quantity = parsePositiveQuantity(quantityText);
   const hours = hoursText.trim() === '' ? null : parseValidityHours(hoursText);
   const hoursInvalid = hoursText.trim() !== '' && hours === null;
@@ -163,7 +268,7 @@ export function AllocationsScreen() {
     });
   };
 
-  const holderLabel = (item: Pick<AllocationItem, 'holderUserId' | 'holderDeviceId'>) =>
+  const holderLabel = (item: Pick<AllocationItem, 'holderUserId' | 'holderDeviceId'>): string =>
     t('quotas.holder', {
       user: item.holderUserId === userId ? t('quotas.you') : shortId(item.holderUserId ?? ''),
       device:
@@ -220,6 +325,11 @@ export function AllocationsScreen() {
         <>
           <section className="sale-block" aria-labelledby="quotas-active-title">
             <h2 id="quotas-active-title">{t('quotas.active_title')}</h2>
+            {page.activeMore ? (
+              <p className="text-warn" role="status">
+                {t('quotas.active_partial', { count: active.length })}
+              </p>
+            ) : null}
             {active.length === 0 ? (
               <p className="home-muted">{t('quotas.active_empty')}</p>
             ) : (
@@ -229,14 +339,21 @@ export function AllocationsScreen() {
                   const unit = products.get(item.productId)?.base_unit_code ?? '';
                   const open = editing?.id === item.id ? editing.kind : null;
                   const increase = open === 'increase' ? parsePositiveQuantity(editText) : null;
+                  const who = holderLabel(item);
+                  // Échu mais encore actif (le serveur ne libère jamais seul) : il ne se consomme
+                  // plus ; l'augmenter gèlerait du stock (SM-ALLOCATION).
+                  const expired = isAllocationExpired(
+                    item.validUntil ? new Date(item.validUntil) : null,
+                    now,
+                  );
                   return (
                     <li
                       key={item.id}
                       className="line-card"
-                      aria-label={`${name} ${shortId(item.id)}`}
+                      aria-label={t('quotas.row_label', { name, holder: who })}
                     >
                       <p>
-                        <strong>{name}</strong> · {holderLabel(item)}
+                        <strong>{name}</strong> · {who}
                       </p>
                       <p className="home-muted">
                         {t(item.validUntil ? 'quotas.remaining_until' : 'quotas.remaining', {
@@ -248,10 +365,12 @@ export function AllocationsScreen() {
                       </p>
                       {item.revocationPending ? (
                         <p className="text-warn">{t('quotas.revocation_pending')}</p>
+                      ) : expired ? (
+                        <p className="text-warn">{t('quotas.expired')}</p>
                       ) : null}
                       {open === null ? (
                         <div className="result-actions">
-                          {!item.revocationPending ? (
+                          {!item.revocationPending && !expired ? (
                             <button
                               type="button"
                               className="secondary"
@@ -261,7 +380,7 @@ export function AllocationsScreen() {
                                 setEditText('');
                               }}
                             >
-                              {t('quotas.increase_open', { name })}
+                              {t('quotas.increase_open', { name, holder: who })}
                             </button>
                           ) : null}
                           <button
@@ -273,7 +392,7 @@ export function AllocationsScreen() {
                               setEditText('');
                             }}
                           >
-                            {t('quotas.revoke_open', { name })}
+                            {t('quotas.revoke_open', { name, holder: who })}
                           </button>
                         </div>
                       ) : (
@@ -374,6 +493,11 @@ export function AllocationsScreen() {
                 ))}
               </select>
               <p className="home-muted">{t('quotas.holder_hint')}</p>
+              {page.historyMore ? (
+                <p className="home-muted">
+                  {t('quotas.holder_partial', { count: page.history.length })}
+                </p>
+              ) : null}
             </div>
             <div className="field">
               <label htmlFor={ids.product}>{t('quotas.product_label')}</label>
@@ -385,29 +509,37 @@ export function AllocationsScreen() {
               >
                 <option value="">{t('quotas.product_placeholder')}</option>
                 {stocked.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
+                  <option key={candidate.id} value={candidate.id} disabled={held.has(candidate.id)}>
+                    {held.has(candidate.id)
+                      ? t('quotas.product_held', { name: candidate.name })
+                      : candidate.name}
                   </option>
                 ))}
               </select>
-              {product ? (
-                <p className="home-muted">
-                  {t('quotas.unallocated', {
-                    quantity: formatQuantity(
-                      unallocated(
-                        Number(refs.stock.get(stockKey(location.id, product.id))?.qty_on_hand ?? 0),
-                        page,
-                        product.id,
-                      ),
-                    ),
-                    unit: product.base_unit_code,
-                  })}
-                </p>
+              {product && room ? (
+                <>
+                  <p className="home-muted">
+                    {t('quotas.unallocated', {
+                      quantity: formatQuantity(room.capacity),
+                      unit: product.base_unit_code,
+                    })}
+                  </p>
+                  {room.overcommitted > 0 ? (
+                    <p className="text-warn">
+                      {t('quotas.overcommitted', {
+                        quantity: formatQuantity(room.overcommitted),
+                        unit: product.base_unit_code,
+                      })}
+                    </p>
+                  ) : null}
+                </>
               ) : null}
             </div>
             <div className="field">
               <label htmlFor={ids.quantity}>
-                {t('quotas.quantity_label', { unit: product?.base_unit_code ?? '' })}
+                {product
+                  ? t('quotas.quantity_label', { unit: product.base_unit_code })
+                  : t('quotas.quantity_label_no_unit')}
               </label>
               <input
                 id={ids.quantity}
@@ -425,9 +557,10 @@ export function AllocationsScreen() {
                 inputMode="decimal"
                 value={hoursText}
                 aria-invalid={hoursInvalid}
+                aria-describedby={ids.hoursHelp}
                 onChange={(event) => setHoursText(event.target.value)}
               />
-              <p className={hoursInvalid ? 'error-message' : 'home-muted'}>
+              <p id={ids.hoursHelp} className={hoursInvalid ? 'error-message' : 'home-muted'}>
                 {t(hoursInvalid ? 'quotas.hours_invalid' : 'quotas.hours_hint')}
               </p>
             </div>

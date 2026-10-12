@@ -12,7 +12,7 @@ import { deviceWorkSessions } from '../fieldwork/service.js';
 import { toPriceRules } from './pricing.js';
 import { stillInFlight } from './pending.js';
 import { pendingConsumption, pendingLotConsumption, stockKey } from './stock.js';
-import { quotaPendingByAuthor } from './quota.js';
+import { quotaPendingByAuthor, type QuotaPendingEntry } from './quota.js';
 import type {
   AllocationData,
   CashAccountData,
@@ -139,10 +139,11 @@ export interface SalesReferences {
   readonly allocations: readonly AllocationData[];
   readonly allocationsPulledAt: string | undefined;
   /**
-   * Sorties en attente qui réduiront un quota, par auteur puis par emplacement × produit, comptées
-   * jusqu'au tirage du jeu `allocations` qui les inclut (`quotaPendingByAuthor`).
+   * Effets en attente sur les quotas (sorties datées, quantités rendues par une annulation directe),
+   * par auteur puis par emplacement × produit, comptés jusqu'au tirage du jeu `allocations` qui les
+   * inclut (`quotaPendingByAuthor`).
    */
-  readonly quotaPending: ReadonlyMap<string, ReadonlyMap<string, number>>;
+  readonly quotaPending: ReadonlyMap<string, ReadonlyMap<string, readonly QuotaPendingEntry[]>>;
   /** Sessions de caisse ouvertes ou à valider des sites de l'utilisateur (jeu `cash`). */
   readonly cashSessions: readonly CashSessionData[];
   /** Remises de fonds envoyées ou en écart, des comptes de l'utilisateur et de ses sites. */

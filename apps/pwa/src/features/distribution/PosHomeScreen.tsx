@@ -8,11 +8,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ROUTES } from '../../app/screens.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { deviceCash, openSession, posCashAccounts } from '../cash/cash-session.js';
+import { deviceCash, foreignClose, openSession, posCashAccounts } from '../cash/cash-session.js';
 import { formatDateTime } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
@@ -20,6 +20,7 @@ import { recentSales } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
+import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { stockRows } from '../stock/stock-view.js';
 import { canRelease, myQuotas, releasePayload, todaySales } from './pos-home.js';
 import { pointsOfSaleOf } from './replenish.js';
@@ -29,6 +30,7 @@ export function PosHomeScreen() {
   const { state, deviceId } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
+  const navigation = useRememberedNavigation(userId);
   const online = useOnline();
   const [posChoice, setPosChoice] = useState<string | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<string | null>(null);
@@ -45,7 +47,14 @@ export function PosHomeScreen() {
   }
 
   const points = pointsOfSaleOf(refs);
-  const pos = points.find((candidate) => candidate.siteId === posChoice) ?? points[0];
+  // Par défaut, le PDV dont ce téléphone est l'appareil désigné (BR-DIS-003), sinon le premier.
+  const pos =
+    points.find((candidate) => candidate.siteId === posChoice) ??
+    points.find(
+      (candidate) =>
+        deviceId !== undefined && candidate.salesLocation.designated_device_id === deviceId,
+    ) ??
+    points[0];
   if (!pos) {
     return (
       <section className="sale">
@@ -61,23 +70,27 @@ export function PosHomeScreen() {
   const account = posCashAccounts(refs.cashAccounts).find(
     (candidate) => candidate.site_id === pos.siteId,
   );
-  const session = account
-    ? openSession(
-        deviceCash({
-          cashAccountId: account.id,
-          sessions: refs.cashSessions,
-          outbox: refs.outbox,
-          cashPulledAt: refs.cashPulledAt,
-          userId,
-          maxSessionsPerDay: settingValue(
-            refs.settings,
-            'finance.cash_sessions_per_day_max',
-            pos.siteId,
-            now,
-          ),
-        }),
-      )
+  const cash = account
+    ? deviceCash({
+        cashAccountId: account.id,
+        sessions: refs.cashSessions,
+        outbox: refs.outbox,
+        cashPulledAt: refs.cashPulledAt,
+        userId,
+        maxSessionsPerDay: settingValue(
+          refs.settings,
+          'finance.cash_sessions_per_day_max',
+          pos.siteId,
+          now,
+        ),
+      })
     : undefined;
+  const session = cash ? openSession(cash) : undefined;
+  // Clôture saisie par un autre utilisateur de la tablette, pas encore envoyée : la session reste
+  // ouverte au serveur jusqu'à son envoi, et l'écran de caisse refuse une ouverture (ADR-052).
+  const closingElsewhere = cash && !session ? foreignClose(cash, userId) : undefined;
+  // Libération : permission `inventory.allocation.release` du détenteur (CTE, VEN).
+  const mayRelease = holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.allocationRelease);
   const sales = todaySales(recentSales(refs), location.id, now);
   const rows = stockRows(refs, location);
   const quotas = myQuotas(refs, { userId, deviceId, now }).filter(
@@ -85,13 +98,16 @@ export function PosHomeScreen() {
   );
   const products = new Map(refs.products.map((product) => [product.id, product]));
   // Emplacement partagé : hors ligne, seul le quota de l'utilisateur se vend (BR-STK-013) ; le stock
-  // montré est le physique, net des sorties en attente de l'appareil.
+  // montré est le physique, net des sorties en attente de l'appareil. Emplacement confié à un autre
+  // téléphone : physique aussi, aucune vente hors ligne de ce téléphone (`CUSTODY_DEVICE_MISMATCH`).
   const shared =
     location.custody_mode !== 'EXCLUSIVE_USER' && location.custody_mode !== 'EXCLUSIVE_DEVICE';
+  const otherDevice =
+    location.custody_mode === 'EXCLUSIVE_DEVICE' && location.designated_device_id !== deviceId;
 
   const release = async (quotaId: string) => {
     const quota = quotas.find((candidate) => candidate.allocation.id === quotaId);
-    if (!quota || !canRelease(quota) || busy) return;
+    if (!quota || !canRelease(quota) || !mayRelease || busy) return;
     setBusy(true);
     try {
       const command = await submitCommand({
@@ -140,6 +156,8 @@ export function PosHomeScreen() {
         <h2 id="pos-home-cash-title">{t('pos_home.cash_title')}</h2>
         {!account ? (
           <p className="home-muted">{t('pos_home.cash_unknown')}</p>
+        ) : closingElsewhere ? (
+          <p className="home-muted">{t('pos_home.cash_closing_elsewhere')}</p>
         ) : session ? (
           <p>
             {t('pos_home.cash_open', {
@@ -150,11 +168,13 @@ export function PosHomeScreen() {
         ) : (
           <p className="text-warn">{t('pos_home.cash_closed')}</p>
         )}
-        <Link to={ROUTES.cash} className="action action-compact">
-          <span className="action-label">
-            {t(session ? 'pos_home.close_cash' : 'pos_home.open_cash')}
-          </span>
-        </Link>
+        {closingElsewhere ? null : (
+          <Link to={ROUTES.cash} className="action action-compact">
+            <span className="action-label">
+              {t(session ? 'pos_home.close_cash' : 'pos_home.open_cash')}
+            </span>
+          </Link>
+        )}
       </section>
 
       <section className="sale-block" aria-labelledby="pos-home-sales-title">
@@ -186,6 +206,7 @@ export function PosHomeScreen() {
               const unit = product?.base_unit_code ?? '';
               const name = product?.name ?? '';
               const remaining = formatQuantity(Math.max(0, quota.remaining));
+              const armed = confirmRelease === quota.allocation.id;
               return (
                 <li key={quota.allocation.id} className="line-card" aria-label={name}>
                   <p>
@@ -205,23 +226,37 @@ export function PosHomeScreen() {
                   ) : quota.expired ? (
                     <p className="text-warn">{t('pos_home.quota_expired')}</p>
                   ) : null}
-                  {canRelease(quota) ? (
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => {
-                        if (confirmRelease !== quota.allocation.id) {
-                          setConfirmRelease(quota.allocation.id);
-                          return;
-                        }
-                        void release(quota.allocation.id);
-                      }}
-                    >
-                      {confirmRelease === quota.allocation.id
-                        ? t('pos_home.release_confirm', { remaining, unit })
-                        : t('pos_home.release', { name })}
-                    </button>
+                  {mayRelease && canRelease(quota) ? (
+                    <>
+                      {/* Le bouton qui arme reste en place, inactif : un double toucher ne confirme
+                          pas d'office ; la confirmation est un autre bouton, avec « Annuler ». */}
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy || armed}
+                        onClick={() => setConfirmRelease(quota.allocation.id)}
+                      >
+                        {t('pos_home.release', { name })}
+                      </button>
+                      {armed ? (
+                        <div className="result-actions">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void release(quota.allocation.id)}
+                          >
+                            {t('pos_home.release_confirm', { remaining, unit })}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setConfirmRelease(null)}
+                          >
+                            {t('pos_home.release_cancel')}
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </li>
               );
@@ -248,17 +283,24 @@ export function PosHomeScreen() {
                   ) : null}
                 </p>
                 <p className="home-muted">
-                  {shared
-                    ? t('pos_home.stock_line_shared', {
+                  {otherDevice
+                    ? t('pos_home.stock_line_other_device', {
                         physical: formatQuantity(
                           Math.round((row.onHand - row.pending) * 1000) / 1000,
                         ),
                         unit: row.product.base_unit_code,
                       })
-                    : t('pos_home.stock_line', {
-                        available: formatQuantity(row.available),
-                        unit: row.product.base_unit_code,
-                      })}
+                    : shared
+                      ? t('pos_home.stock_line_shared', {
+                          physical: formatQuantity(
+                            Math.round((row.onHand - row.pending) * 1000) / 1000,
+                          ),
+                          unit: row.product.base_unit_code,
+                        })
+                      : t('pos_home.stock_line', {
+                          available: formatQuantity(row.available),
+                          unit: row.product.base_unit_code,
+                        })}
                 </p>
               </li>
             ))}

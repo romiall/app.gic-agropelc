@@ -6,7 +6,7 @@
  */
 import { isAllocationExpired, type LocalConsumptionBlock } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import { isWaiting } from './pending.js';
+import { isAccepted, isWaiting, stillInFlight } from './pending.js';
 import type { SalesReferences } from './references.js';
 import {
   localAvailable,
@@ -45,9 +45,43 @@ const QUOTA_COMMANDS: ReadonlySet<string> = new Set([
 export const EXPECTED_DIRECT_CANCEL = 'EXPECTED_DIRECT_CANCEL';
 
 /**
- * Sorties en attente qui réduiront un quota, par auteur puis par emplacement × produit, comptées
- * jusqu'au tirage du jeu `allocations` qui les inclut (ADR-037 §3) : le quota appartient au couple
- * (utilisateur, appareil), seules les sorties de son détenteur le réduisent.
+ * Effet en attente d'une opération de l'appareil sur le quota de son auteur, pour un emplacement ×
+ * produit : sortie (quantité positive) ou quantité rendue par une annulation directe (négative). La
+ * date du fait décide, comme au serveur, si le quota la prend : un fait postérieur à l'échéance est
+ * pris sur le stock commun (`isAllocationExpired`, AV-161).
+ */
+export interface QuotaPendingEntry {
+  readonly occurredAt: string;
+  readonly quantity: number;
+}
+
+/**
+ * Annulation jugée directe à la saisie dont l'effet sur le quota n'est pas encore dans le jeu
+ * `allocations` : en attente, ou acceptée sans avertissement (le serveur l'a appliquée, ADR-033 §8)
+ * et pas encore ramenée par le tirage. Acceptée avec un avertissement, elle est devenue une demande
+ * (`CANCEL_WINDOW_EXCEEDED`, `CANCEL_SESSION_CLOSED`) : la vente reste décomptée (DÉDUIT de
+ * `cancel-commands.ts`).
+ */
+function directCancelInFlight(
+  command: OutboxCommand,
+  allocationsPulledAt: string | undefined,
+): boolean {
+  if (command.command_type !== 'sales.sale.cancel') return false;
+  if (command.local_flags?.includes(EXPECTED_DIRECT_CANCEL) !== true) return false;
+  if (isWaiting(command)) return true;
+  return (
+    isAccepted(command) &&
+    (command.warnings ?? []).length === 0 &&
+    stillInFlight(command, allocationsPulledAt)
+  );
+}
+
+/**
+ * Effets en attente sur les quotas, par auteur puis par emplacement × produit, comptés jusqu'au tirage
+ * du jeu `allocations` qui les inclut (ADR-037 §3) : le quota appartient au couple (utilisateur,
+ * appareil), seules les opérations de son détenteur le modifient. Une vente que son auteur annule
+ * directement ne le réduit plus ; déjà ramenée par le tirage, la quantité vendue lui est rendue
+ * (ADR-033 §8 : le serveur la rend au quota encore actif que la vente avait consommé).
  */
 export function quotaPendingByAuthor(
   outbox: readonly OutboxCommand[],
@@ -55,44 +89,93 @@ export function quotaPendingByAuthor(
   transfers: ReadonlyMap<string, StockTransferData>,
   productionLots: ReadonlyMap<string, ProductionLotData>,
   receiptLocations: ReadonlyMap<string, string>,
-): ReadonlyMap<string, ReadonlyMap<string, number>> {
+): ReadonlyMap<string, ReadonlyMap<string, readonly QuotaPendingEntry[]>> {
+  const entries = new Map<string, Map<string, QuotaPendingEntry[]>>();
+  const add = (author: string, key: string, entry: QuotaPendingEntry) => {
+    const byKey = entries.get(author) ?? new Map<string, QuotaPendingEntry[]>();
+    entries.set(author, byKey);
+    byKey.set(key, [...(byKey.get(key) ?? []), entry]);
+  };
   const cancelledDirect = new Set(
     outbox
-      .filter(
-        (command) =>
-          command.command_type === 'sales.sale.cancel' &&
-          isWaiting(command) &&
-          command.local_flags?.includes(EXPECTED_DIRECT_CANCEL) === true,
-      )
+      .filter((command) => directCancelInFlight(command, allocationsPulledAt))
       .map((command) => (command.payload as { readonly saleId?: string }).saleId)
       .filter((saleId): saleId is string => typeof saleId === 'string'),
   );
-  const consuming = outbox.filter(
-    (command) =>
-      QUOTA_COMMANDS.has(command.command_type) &&
-      !(command.command_type === 'sales.sale.record' && cancelledDirect.has(command.aggregate_id)),
+  for (const command of outbox) {
+    if (!QUOTA_COMMANDS.has(command.command_type)) continue;
+    const sale = command.command_type === 'sales.sale.record';
+    if (sale && cancelledDirect.has(command.aggregate_id)) {
+      // Vente ramenée par le tirage, puis annulée directement : le serveur rend au quota ce qu'elle
+      // y avait pris. Vente encore en vol : écartée (prise puis rendue au serveur).
+      if (isAccepted(command) && !stillInFlight(command, allocationsPulledAt)) {
+        const payload = command.payload as {
+          readonly fromLocationId?: string;
+          readonly lines?: readonly {
+            readonly productId?: string;
+            readonly quantityBase?: number;
+          }[];
+        };
+        for (const line of payload.lines ?? []) {
+          if (!payload.fromLocationId || !line.productId || !line.quantityBase) continue;
+          add(command.author_user_id, stockKey(payload.fromLocationId, line.productId), {
+            occurredAt: command.occurred_at,
+            quantity: -line.quantityBase,
+          });
+        }
+      }
+      continue;
+    }
+    if (!stillInFlight(command, allocationsPulledAt)) continue;
+    const exits = pendingConsumption(
+      [command],
+      allocationsPulledAt,
+      transfers,
+      productionLots,
+      receiptLocations,
+      true,
+    );
+    for (const [key, quantity] of exits) {
+      if (quantity > 0) {
+        add(command.author_user_id, key, { occurredAt: command.occurred_at, quantity });
+      }
+    }
+  }
+  return entries;
+}
+
+/**
+ * Reste d'un quota net des effets en attente de son détenteur sur (emplacement, produit) : seuls
+ * comptent les faits antérieurs à son échéance (au serveur, un fait postérieur ne consomme pas un
+ * quota échu, `allocation-consumption.ts`). Une quantité rendue par une annulation directe ne le
+ * porte jamais au-delà de l'accordé : l'appareil ignore la part de la vente prise sur le stock libre.
+ */
+export function quotaRemaining(
+  allocation: Pick<AllocationData, 'quantity_granted' | 'quantity_remaining' | 'valid_until'>,
+  entries: readonly QuotaPendingEntry[] | undefined,
+): number {
+  const validUntil = allocation.valid_until ? new Date(allocation.valid_until) : null;
+  let exitsMilli = 0;
+  let returnedMilli = 0;
+  for (const entry of entries ?? []) {
+    if (isAllocationExpired(validUntil, new Date(entry.occurredAt))) continue;
+    const milli = Math.round(entry.quantity * 1000);
+    if (milli > 0) exitsMilli += milli;
+    else returnedMilli -= milli;
+  }
+  const servedMilli = Math.round(Number(allocation.quantity_remaining) * 1000);
+  const consumedMilli = Math.max(
+    0,
+    Math.round(Number(allocation.quantity_granted) * 1000) - servedMilli,
   );
-  const authors = [...new Set(consuming.map((command) => command.author_user_id))];
-  return new Map(
-    authors.map((author) => [
-      author,
-      pendingConsumption(
-        consuming.filter((command) => command.author_user_id === author),
-        allocationsPulledAt,
-        transfers,
-        productionLots,
-        receiptLocations,
-        true,
-      ),
-    ]),
-  );
+  return (servedMilli + Math.min(returnedMilli, consumedMilli) - exitsMilli) / 1000;
 }
 
 export interface DeviceQuota {
   readonly allocation: AllocationData;
   /**
-   * Reste du quota net des sorties de l'utilisateur encore en attente sur (emplacement, produit),
-   * comptées jusqu'au tirage du jeu `allocations` qui les inclut (ADR-037 §3).
+   * Reste du quota net des effets de l'utilisateur encore en attente sur (emplacement, produit),
+   * comptés jusqu'au tirage du jeu `allocations` qui les inclut (ADR-037 §3, `quotaRemaining`).
    */
   readonly remaining: number;
   readonly validUntil: Date | null;
@@ -136,11 +219,12 @@ export function deviceQuota(
     )
     .sort((a, b) => a.id.localeCompare(b.id))[0];
   if (!allocation) return null;
-  const pending =
-    refs.quotaPending.get(input.userId)?.get(stockKey(input.locationId, input.productId)) ?? 0;
   return {
     allocation,
-    remaining: Math.round((Number(allocation.quantity_remaining) - pending) * 1000) / 1000,
+    remaining: quotaRemaining(
+      allocation,
+      refs.quotaPending.get(input.userId)?.get(stockKey(input.locationId, input.productId)),
+    ),
     validUntil: allocation.valid_until ? new Date(allocation.valid_until) : null,
   };
 }

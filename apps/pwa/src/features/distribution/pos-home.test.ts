@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
+import { EXPECTED_DIRECT_CANCEL, quotaPendingByAuthor } from '../sales/quota.js';
 import type { SaleView } from '../sales/recent-sales.js';
 import type { AllocationData } from '../sales/types.js';
 import { canRelease, myQuotas, releasePayload, todaySales } from './pos-home.js';
@@ -29,6 +30,23 @@ function sale(overrides: Partial<SaleView>): SaleView {
     ...overrides,
   } as SaleView;
 }
+
+function command(overrides: Partial<OutboxCommand>): OutboxCommand {
+  return {
+    command_id: 'c',
+    device_seq: 1,
+    command_type: 'sales.sale.record',
+    aggregate_id: 'vente',
+    author_user_id: 'moi',
+    status: 'LOCAL_ONLY',
+    occurred_at: '2026-10-10T08:30:00.000Z',
+    payload: {},
+    ...overrides,
+  } as OutboxCommand;
+}
+
+const pendingOf = (outbox: readonly OutboxCommand[], allocationsPulledAt?: string) =>
+  quotaPendingByAuthor(outbox, allocationsPulledAt, new Map(), new Map(), new Map());
 
 function allocation(overrides: Partial<AllocationData> = {}): AllocationData {
   return {
@@ -82,7 +100,7 @@ describe('Accueil du PDV : ventes du jour et quotas', () => {
         },
       } as unknown as OutboxCommand,
     ];
-    const pending = new Map([['moi', new Map([['pdv:oeuf', 8]])]]);
+    const pending = pendingOf(outbox);
     const refs = {
       allocations: [
         allocation(),
@@ -114,16 +132,111 @@ describe('Accueil du PDV : ventes du jour et quotas', () => {
             command_type: 'inventory.allocation.release',
             aggregate_id: 'q1',
             status: 'LOCAL_ONLY',
+            payload: { remainingBase: 32 },
           } as unknown as OutboxCommand,
         ],
       },
       { userId: 'moi', deviceId: 'tel', now: NOW },
     );
-    expect(released[0]).toMatchObject({ releasing: true });
+    // Le reste montré est celui que la libération déclare, pas le reste servi (40).
+    expect(released[0]).toMatchObject({ releasing: true, remaining: 32 });
     expect(canRelease(released[0]!)).toBe(false);
     expect(canRelease({ ...quotas[0]!, revocationPending: true })).toBe(false);
     expect(canRelease(quotas[0]!)).toBe(true);
     expect(releasePayload({ remaining: -2 })).toEqual({ remainingBase: 0 });
     expect(releasePayload({ remaining: 12.3456 })).toEqual({ remainingBase: 12.346 });
+  });
+
+  it('quota échu : seules les sorties antérieures à l’échéance le réduisent, comme au serveur', () => {
+    const loss = (id: string, occurredAt: string, quantityBase: number) =>
+      command({
+        command_id: id,
+        command_type: 'inventory.loss.declare',
+        occurred_at: occurredAt,
+        payload: { locationId: 'pdv', productId: 'oeuf', quantityBase },
+      });
+    const refs = {
+      allocations: [allocation({ valid_until: '2026-10-09T22:59:59.999Z' })],
+      outbox: [
+        // Avant l'échéance : prise sur le quota.
+        loss('avant', '2026-10-09T20:00:00.000Z', 3),
+        // Après l'échéance (le lendemain matin) : prise sur le stock commun.
+        loss('apres', '2026-10-10T06:00:00.000Z', 2),
+      ],
+      quotaPending: new Map(),
+    };
+    const [quota] = myQuotas(
+      { ...refs, quotaPending: pendingOf(refs.outbox) },
+      { userId: 'moi', deviceId: 'tel', now: NOW },
+    );
+    expect(quota).toMatchObject({ remaining: 37, expired: true });
+    expect(releasePayload(quota!)).toEqual({ remainingBase: 37 });
+  });
+
+  it('annulation directe d’une vente déjà relue : la quantité revient au quota, plafonnée à l’accordé', () => {
+    // Vente de 3 acceptée et ramenée par le tirage des quotas (reste servi : 37 sur 40).
+    const sold = command({
+      command_id: 'vente-cmd',
+      aggregate_id: 'vente',
+      status: 'SYNCED',
+      synced_at: '2026-10-10T08:31:00.000Z',
+      payload: { fromLocationId: 'pdv', lines: [{ productId: 'oeuf', quantityBase: 3 }] },
+    });
+    const cancel = (overrides: Partial<OutboxCommand>) =>
+      command({
+        command_id: 'annulation',
+        device_seq: 2,
+        command_type: 'sales.sale.cancel',
+        aggregate_id: 'annulation',
+        occurred_at: '2026-10-10T08:45:00.000Z',
+        local_flags: [EXPECTED_DIRECT_CANCEL],
+        payload: { saleId: 'vente' },
+        ...overrides,
+      });
+    const remainingWith = (outbox: readonly OutboxCommand[], pulledAt: string, served = '37.000') =>
+      myQuotas(
+        {
+          allocations: [allocation({ quantity_remaining: served })],
+          outbox,
+          quotaPending: pendingOf(outbox, pulledAt),
+        },
+        { userId: 'moi', deviceId: 'tel', now: NOW },
+      )[0]?.remaining;
+    const pulled = '2026-10-10T08:40:00.000Z';
+    // En attente : le serveur rendra 3 au quota encore actif (ADR-033 §8).
+    expect(remainingWith([sold, cancel({})], pulled)).toBe(40);
+    // Jamais au-delà de l'accordé : l'appareil ignore la part prise sur le stock libre.
+    expect(remainingWith([sold, cancel({})], pulled, '39.000')).toBe(40);
+    // Acceptée sans avertissement, pas encore relue : rendue ; relue : le reste servi l'inclut.
+    const applied = cancel({ status: 'SYNCED', synced_at: '2026-10-10T08:50:00.000Z' });
+    expect(remainingWith([sold, applied], pulled)).toBe(40);
+    expect(remainingWith([sold, applied], '2026-10-10T09:00:00.000Z', '40.000')).toBe(40);
+    // Devenue une demande (avertissement) : rien n'est rendu.
+    const requested = cancel({
+      status: 'SYNCED_WITH_WARNING',
+      synced_at: '2026-10-10T08:50:00.000Z',
+      warnings: ['CANCEL_WINDOW_EXCEEDED'],
+    });
+    expect(remainingWith([sold, requested], pulled)).toBe(37);
+    // Vente d'un autre utilisateur de la tablette : son quota à lui, pas celui-ci.
+    expect(remainingWith([{ ...sold, author_user_id: 'autre' }, cancel({})], pulled)).toBe(37);
+  });
+
+  it('quota signalé : le serveur le consomme encore, le reste montré est net des ventes en attente', () => {
+    const outbox = [
+      command({
+        payload: { fromLocationId: 'pdv', lines: [{ productId: 'oeuf', quantityBase: 8 }] },
+      }),
+    ];
+    const [quota] = myQuotas(
+      {
+        allocations: [allocation({ revocation_pending: true })],
+        outbox,
+        quotaPending: pendingOf(outbox),
+      },
+      { userId: 'moi', deviceId: 'tel', now: NOW },
+    );
+    expect(quota).toMatchObject({ remaining: 32, revocationPending: true });
+    expect(canRelease(quota!)).toBe(false);
   });
 });

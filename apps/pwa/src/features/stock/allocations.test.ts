@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeQuotas,
   grantPayload,
+  heldProducts,
   knownHolders,
   parsePositiveQuantity,
   parseValidityHours,
@@ -43,15 +44,28 @@ describe('Quotas d’un emplacement (ECR-STK-06)', () => {
       { userId: 'u2', deviceId: 'd2' },
     ]);
     expect(knownHolders(items, null)).toHaveLength(2);
+    // Couple signalé (quota actif sous signal de révocation) : jamais proposé, soi-même compris.
+    const flagged = [...items, item({ id: 'f', revocationPending: true })];
+    expect(knownHolders(flagged, { userId: 'u1', deviceId: 'd1' })).toEqual([
+      { userId: 'u2', deviceId: 'd2' },
+    ]);
+    // Produits déjà tenus par un détenteur (quota actif sans lot).
+    expect([...heldProducts(activeQuotas(items), { userId: 'u1', deviceId: 'd1' })]).toEqual([
+      'oeuf',
+      'poulet',
+    ]);
+    expect(heldProducts(activeQuotas(items), undefined).size).toBe(0);
   });
 
   it('non alloué indicatif, quantités et durée, charge utile de l’octroi', () => {
     const page = {
       active_totals: [{ productId: 'oeuf', activeCount: 2, quantityRemaining: 12.5 }],
     };
-    expect(unallocated(40, page, 'oeuf')).toBe(27.5);
-    expect(unallocated(40, page, 'poulet')).toBe(40);
-    expect(unallocated(40, {}, 'oeuf')).toBe(40);
+    expect(unallocated(40, page, 'oeuf')).toEqual({ capacity: 27.5, overcommitted: 0 });
+    expect(unallocated(40, page, 'poulet')).toEqual({ capacity: 40, overcommitted: 0 });
+    expect(unallocated(40, {}, 'oeuf')).toEqual({ capacity: 40, overcommitted: 0 });
+    // Restes actifs au-delà du physique : jamais de non alloué négatif (`checkGrantCapacity`).
+    expect(unallocated(10, page, 'oeuf')).toEqual({ capacity: 0, overcommitted: 2.5 });
     expect(parsePositiveQuantity('0')).toBeNull();
     expect(parsePositiveQuantity('2,5')).toBe(2.5);
     expect(parseValidityHours('744')).toBe(744);

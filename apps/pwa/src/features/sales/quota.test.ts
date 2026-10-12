@@ -183,10 +183,16 @@ describe('Quota du téléphone (ADR-033, AT-003, AT-004)', () => {
     expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(32);
     await db.outbox.add(cancel([EXPECTED_DIRECT_CANCEL]));
     expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(40);
-    // Réponse reçue : l'indice ne vaut plus, le tirage des quotas fera foi.
+    // Acceptée sans avertissement : annulation appliquée (vente prise puis rendue), jusqu'au tirage.
+    await db.outbox.toCollection().modify({
+      status: 'SYNCED',
+      synced_at: '2026-10-10T08:30:00.000Z',
+    });
+    expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(40);
+    // Acceptée avec un avertissement : devenue une demande, la vente reste décomptée.
     await db.outbox
-      .filter((candidate) => candidate.command_type === 'sales.sale.cancel')
-      .modify({ status: 'SYNCED', synced_at: '2026-10-10T08:30:00.000Z' });
+      .filter((candidate) => candidate.local_flags?.includes(EXPECTED_DIRECT_CANCEL) === true)
+      .modify({ status: 'SYNCED_WITH_WARNING', warnings: ['CANCEL_WINDOW_EXCEEDED'] });
     expect(deviceQuota(await loadSalesReferences(db), input)?.remaining).toBe(32);
   });
 

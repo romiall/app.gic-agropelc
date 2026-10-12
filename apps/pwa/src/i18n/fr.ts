@@ -2354,6 +2354,8 @@ export const fr = {
     failed: 'Quotas indisponibles : le serveur n’a pas répondu.',
     active_title: 'Quotas actifs',
     active_empty: 'Aucun quota actif sur cet emplacement.',
+    active_partial:
+      'Liste partielle : plus de {{count}} quotas actifs sur cet emplacement, seuls les plus récents sont montrés.',
     holder: 'utilisateur {{user}}, appareil {{device}}',
     you: 'vous',
     this_device: 'ce téléphone',
@@ -2362,8 +2364,11 @@ export const fr = {
       'Reste {{remaining}} {{unit}} sur {{granted}} {{unit}} accordé(s), jusqu’au {{until}}.',
     revocation_pending:
       'Appareil signalé : le quota ne se consomme plus, sa révocation est attendue.',
-    increase_open: 'Augmenter le quota {{name}}',
-    revoke_open: 'Révoquer le quota {{name}}',
+    expired:
+      'Quota échu : il ne se consomme plus et attend sa libération par le téléphone détenteur ; révoquez-le pour rendre son reste au stock commun.',
+    row_label: '{{name}}, {{holder}}',
+    increase_open: 'Augmenter le quota {{name}} ({{holder}})',
+    revoke_open: 'Révoquer le quota {{name}} ({{holder}})',
     increase_label: 'Quantité à ajouter ({{unit}})',
     reason_label: 'Motif de la révocation',
     increase_submit: 'Augmenter',
@@ -2373,14 +2378,19 @@ export const fr = {
     holder_label: 'Détenteur',
     holder_placeholder: 'Choisir le détenteur',
     holder_hint:
-      'Détenteurs déjà connus sur cet emplacement, ou vous-même sur ce téléphone : les utilisateurs et appareils ne sont pas encore servis au téléphone.',
+      'Détenteurs déjà connus sur cet emplacement, ou vous-même sur ce téléphone si votre rôle peut libérer un quota : les utilisateurs et appareils ne sont pas encore servis au téléphone. Un appareil signalé n’est pas proposé.',
+    holder_partial:
+      'Détenteurs tirés des {{count}} quotas les plus récents de cet emplacement : les plus anciens ne sont pas proposés.',
     product_label: 'Produit',
     product_placeholder: 'Choisir le produit',
+    product_held: '{{name}} (quota actif de ce détenteur : augmentez-le ou révoquez-le)',
     unallocated: 'Non alloué (indicatif) : {{quantity}} {{unit}} ; le serveur le recalcule.',
+    overcommitted: 'Quotas au-delà du stock : {{quantity}} {{unit}}.',
     quantity_label: 'Quantité accordée ({{unit}})',
+    quantity_label_no_unit: 'Quantité accordée',
     hours_label: 'Durée en heures (facultatif)',
     hours_hint: 'Vide : jusqu’à la fin du jour.',
-    hours_invalid: 'Durée invalide : de 1 à 744 heures.',
+    hours_invalid: 'Durée invalide : plus de 0 et au plus 744 heures.',
     grant_submit: 'Accorder le quota',
     grant_result: {
       WAITING_offline: 'Octroi enregistré ; il sera envoyé au retour du réseau.',
@@ -2414,15 +2424,17 @@ export const fr = {
     cash_unknown: 'La caisse de ce point de vente n’est pas encore sur ce téléphone.',
     cash_open: 'Caisse ouverte depuis le {{date}} par {{who}}.',
     cash_closed: 'Caisse fermée : ouvrez-la avant d’encaisser en espèces.',
+    cash_closing_elsewhere:
+      'Clôture saisie sur cette tablette par un autre utilisateur, pas encore envoyée : la caisse reste ouverte au serveur jusqu’à son envoi, à sa prochaine connexion avec le réseau.',
     open_cash: 'Ouvrir la caisse',
     close_cash: 'Clôturer la caisse',
     sales_title: 'Ventes du jour',
-    sales_line_one: '{{count}} vente, {{net}} ; encaissé avec ces ventes : {{paid}}',
-    sales_line_other: '{{count}} ventes, {{net}} ; encaissé avec ces ventes : {{paid}}',
+    sales_line_one: '{{count}} vente, {{net}} ; encaissé affecté à cette vente : {{paid}}',
+    sales_line_other: '{{count}} ventes, {{net}} ; encaissé affecté à ces ventes : {{paid}}',
     sales_pending_one: 'Dont {{count}} vente en attente d’envoi.',
     sales_pending_other: 'Dont {{count}} ventes en attente d’envoi.',
     sales_hint:
-      'Ventes connues de ce téléphone sur ce point de vente (annulées exclues) ; le tableau de distribution donne le chiffre de tous les téléphones.',
+      'Ventes connues de ce téléphone sur ce point de vente (annulées exclues) ; l’encaissé comprend les acomptes reportés et les règlements reçus plus tard. Le tableau de distribution donne le chiffre de tous les téléphones et l’encaissé du jour.',
     quota_title: 'Mes quotas sur ce téléphone',
     quota_empty: 'Aucun quota sur ce téléphone pour ce point de vente.',
     quota_line: 'Reste : {{remaining}} {{unit}}.',
@@ -2433,6 +2445,7 @@ export const fr = {
     quota_releasing: 'Libération enregistrée, en attente d’envoi.',
     release: 'Libérer le quota {{name}}',
     release_confirm: 'Confirmer : rendre {{remaining}} {{unit}} au stock commun',
+    release_cancel: 'Annuler',
     release_result: {
       WAITING_offline:
         'Libération enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
@@ -2447,6 +2460,8 @@ export const fr = {
     stock_line: 'Disponible sur ce téléphone : {{available}} {{unit}}',
     stock_line_shared:
       'Stock physique : {{physical}} {{unit}} (hors ligne, la vente se fait dans vos quotas)',
+    stock_line_other_device:
+      'Stock physique : {{physical}} {{unit}} (confié à un autre téléphone : pas de vente hors ligne depuis celui-ci)',
     actions_title: 'Opérations du point de vente',
   },
   distribution: {

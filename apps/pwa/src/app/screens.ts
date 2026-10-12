@@ -251,6 +251,8 @@ export const ROLE_SETS = {
   replenishRequest: ['VENDEUR_PDV'],
   /** ECR-DIS-01 : accueil du PDV (vendeur du PDV). */
   posHome: ['VENDEUR_PDV'],
+  /** `inventory.allocation.release` (CTE, VEN) : libération d'un quota par son détenteur. */
+  allocationRelease: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
