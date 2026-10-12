@@ -225,6 +225,12 @@ Classification (PM §45) :
 | AV-208 | Accueil Finance et magasinier : contenu de distribution | SECONDAIRE | P5 | Finance : caisses à valider, écarts du jour, remises en attente, appareils en retard, signaux `CASH_VARIANCE` (critique), `CASH_SESSION_OPEN_LONG`, `CASH_TRANSFER_NOT_RECEIVED`, `DEVICES_STALE` ; magasinier : réapprovisionnement, quotas à régulariser, appareils des PDV de ses sites ; anomalies d'un rôle de sites filtrées par site | OUVERT |
 | AV-209 | Chiffre d'affaires du jour : accueil contre tableau de distribution | SECONDAIRE | P5 | Le tableau suit D11 (vendu net par période d'activité) ; l'accueil garde le jour de la vente ; alignement avec AV-200 en P5-23, avec le porteur | OUVERT |
 | AV-210 | Ordre d'un lot après une commande à renvoyer ; dépendance reçue mais non réglée | IMPORTANTE | P5 | Lot suspendu après la première commande `RETRY_LATER` (`PRECEDING_COMMAND_PENDING`, rien d'enregistré) ; dépendance non réglée ⇒ `DEPENDENCY_PENDING` ; commande en attente reprenable au renvoi (`FAILED_RETRYABLE`), reprise réclamée sur le compteur de tentatives | OUVERT |
+| AV-211 | Faits antérieurs à la révocation d'un quota, synchronisés après : comparaison fait par fait | SECONDAIRE | P5 | Chaque fait comparé seul au reste du quota au moment de la révocation (entrée `REVOKE`) ; cumul recommandé en P5-23 | OUVERT |
+| AV-212 | Fenêtre de quarantaine d'un appareil débloqué ou retiré | IMPORTANTE | P5 | Statut courant et `status_changed_at` seuls (un déblocage ou un retrait rouvre la fenêtre hors service) ; historique des statuts recommandé | OUVERT |
+| AV-213 | Appareil révoqué : envoi de sa file et signal d'effacement local | IMPORTANTE | P5 | Envoi tant que le jeton d'accès vaut, quarantaine côté serveur ; pull non refusé ; effacement à coder dans la PWA | OUVERT |
+| AV-214 | Régularisation d'une vente mise en quarantaine (appareil révoqué) | SECONDAIRE | P5 | Inbox seule (aucune ligne de conflit), écart de caisse expliqué par l'inbox, inventaire, ressaisie | OUVERT |
+| AV-215 | Stock négatif après une sortie hors ligne autre qu'une vente | SECONDAIRE | P5 | Perte, consommation, expédition hors ligne : solde négatif sans conflit `STOCK_NEGATIVE` ; même conflit recommandé en P5-22 | OUVERT |
+| AV-216 | Horloge d'appareil suspecte : dates de référence, seuil et alerte | SECONDAIRE | P5 | Date déclarée partout (ADR-016), drapeau visible, seul le contrôle de date future corrigé ; seuil de 5 min constant (`sync.clock_skew_flag_minutes` non lu) ; alerte en P9 | OUVERT |
 
 ---
 
@@ -1480,6 +1486,54 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) dès la première réponse `RETRY_LATER` d'un lot, les commandes suivantes reçoivent `RETRY_LATER` (`PRECEDING_COMMAND_PENDING`), sans être traitées ni enregistrées, et l'appareil les renvoie dans l'ordre ; une dépendance inconnue, `RECEIVED` ou `FAILED_RETRYABLE` fait attendre la dépendante (`DEPENDENCY_PENDING`) ; la commande en attente passe `FAILED_RETRYABLE`, et le renvoi identique la reprend ; une reprise est **réclamée** sur le compteur de tentatives (de deux renvois simultanés, un seul traite) ; une ligne `RECEIVED` récente est « en cours » (`RETRY_LATER`, `SERVER_BUSY`), abandonnée depuis plus de 120 s elle est reprise (délai technique, lié aux 25 s de traitement d'un lot) ; (b) poursuivre le lot, l'ordre n'étant garanti qu'en l'absence d'incident ; (c) l'appareil n'envoie qu'une commande à la fois.
 - **Recommandation** : (a) : l'ordre du couple devient une garantie, sans coût en régime normal ; la PWA traite déjà `RETRY_LATER` par statut, sans distinguer les codes.
 - **Impact** : `apps/server/src/sync/sync-push.service.ts`, `apps/server/src/commands/command-pipeline.service.ts`, `packages/contracts/src/error-codes.ts` (nouveau code) ; 02-synchronisation.md §3.1 à §3.3 ; INV-SYN-04, BR-SYN-004 ; tests `sync-push-protocol.test.ts`, `p5-pdv-three-tablets.test.ts`. Défaut implémenté : (a) (P5-21). Non paramétrable (règle de protocole).
+
+### AV-211 — Faits antérieurs à la révocation d'un quota, synchronisés après : comparaison fait par fait — SECONDAIRE
+- **Question** : Un fait hors ligne antérieur à la révocation d'un quota, poussé après elle, se compare au reste du quota au moment de la révocation : chaque fait seul, ou leur cumul ?
+- **Pourquoi** : `allocation-consumption.ts` compare chaque fait au montant de l'entrée `REVOKE` (`revokedRemainingMilli`). Aucun fait antérieur appliqué après la révocation n'est rattaché au quota révoqué (aucune entrée ne s'écrit sur lui). Trois ventes de 10, avec un reste révoqué de 25, ne signalent donc rien, alors que leur total (30) dépasse. Le stock n'est jamais faussé (le stock commun absorbe), seul le signal `ALLOCATION_EXCEEDED` manque. Relevé par la cartographie de P5-21. **DÉDUIT** (12/10/2026).
+- **Choix** : (a) fait par fait (actuel) ; (b) cumul : tenir, par quota révoqué, la somme des faits antérieurs appliqués après lui (entrée de suivi sans effet sur le reste, ou lecture des mouvements du couple sur la fenêtre), et signaler dès que le cumul dépasse ; (c) aucun signal.
+- **Recommandation** : (b), avec la réconciliation des quotas (P5-23).
+- **Impact** : `inventory/application/allocation-consumption.ts`, `allocation-ledger.ts` ; INV-STK-20. Défaut implémenté : (a). Non paramétrable.
+
+### AV-212 — Fenêtre de quarantaine d'un appareil débloqué ou retiré — IMPORTANTE
+- **Question** : Une commande datée pendant que l'appareil était bloqué ou perdu, poussée après son déblocage ou son retrait, est-elle mise en quarantaine ?
+- **Pourquoi** : `checkDeviceActive` (`identity/application/public/device-check.ts`) ne lit que le statut courant et `status_changed_at`. Un appareil `ACTIVE` est toujours accepté ; sinon, seul un fait antérieur à `status_changed_at` passe. Or `unblock` et `retire` réécrivent `status_changed_at`. Après un déblocage, les faits datés pendant le blocage sont appliqués. Après `LOST` puis `RETIRED`, les faits datés entre la perte et le retrait le sont aussi. INV-ADM-03 n'est donc garanti que tant que l'appareil reste hors service. BR-ADM-006 parle de commandes « reçues après la date de blocage », INV-ADM-03 et AT-035 d'un `occurred_at` postérieur. Vérifié en lecture (P5-21), non testé : `it.todo` de `p5-pdv-lost-device.test.ts`. **DÉDUIT** (12/10/2026).
+- **Choix** : (a) statut courant (actuel) ; (b) historique des périodes de statut de l'appareil (`identity`) et quarantaine de tout fait daté dans une période hors service, quel que soit le statut courant ; (c) date de réception plutôt que date du fait.
+- **Recommandation** : (b) ; c'est une garde de sécurité, à faire avant la mise en production (P5-23 ou P10).
+- **Impact** : `identity` (historique des statuts, migration), `device-check.ts` ; SM-DEVICE ; AT-035. Défaut implémenté : (a). Non paramétrable.
+
+### AV-213 — Appareil révoqué : envoi de sa file et signal d'effacement local — IMPORTANTE
+- **Question** : Comment un appareil révoqué envoie-t-il sa file (pour quarantaine), et comment apprend-il qu'il doit effacer ses données ?
+- **Pourquoi** : 01-architecture-offline.md prévoit que l'application « tente d'envoyer » sa file, puis efface ses données téléchargées en gardant la file. Mais la perte ou le blocage révoquent les sessions : connexion et rafraîchissement sont refusés, seul un jeton d'accès encore valide (15 min) permet l'envoi. Le pull ne vérifie pas le statut de l'appareil (`sync/sync-pull.service.ts`) et aucun signal « effacer » n'existe. La PWA n'efface pas sur révocation (`wipeLocalSession` relève des échecs de PIN). Le harnais simule l'effacement (`OfflineDevice.wipeLocal`, P5-21). **DÉDUIT** (12/10/2026).
+- **Choix** : (a) actuel : envoi tant que le jeton vaut, quarantaine côté serveur, effacement à coder dans la PWA sur `DEVICE_REVOKED` ; (b) canal dédié pour déposer la file d'un appareil révoqué (décision d'architecture, ADR) ; (c) pull refusé à un appareil hors service, réponse qui déclenche l'effacement local.
+- **Recommandation** : (a) et (c), avec les écrans PWA ; (b) seulement si le porteur veut récupérer les faits d'un appareil retrouvé.
+- **Impact** : `sync/sync-pull.service.ts`, PWA (file, session) ; AT-035. Défaut implémenté : (a). Non paramétrable.
+
+### AV-214 — Régularisation d'une vente mise en quarantaine (appareil révoqué) — SECONDAIRE
+- **Question** : Une vente réelle d'un appareil perdu, mise en quarantaine (`DEVICE_REVOKED`), comment se régularise-t-elle ?
+- **Pourquoi** : la quarantaine n'écrit que l'inbox (`CONFLICT`, charge utile gardée), sans ligne `sync_sync_conflicts` : elle n'apparaît pas dans la file des conflits (`GET /sync/conflicts`), alors que la matrice des conflits lui donne l'Admin pour propriétaire. AV-190 a exclu le rejeu (`ACCEPT_CLIENT`). AT-035 × PDV (P5-21) montre l'espèce encaissée qui se retrouve en écart de clôture, explicable seulement par l'inbox ; le stock fantôme ne se corrige que par un inventaire (D01). Complète AV-190. **DÉDUIT** (12/10/2026).
+- **Choix** : (a) actuel : écart de caisse expliqué par l'inbox, inventaire du détenteur, ressaisie manuelle ; (b) ligne de conflit `DEVICE_REVOKED` (propriétaire Admin) dans la file, avec la charge utile, régularisée par `COMPENSATE` (références des commandes de ressaisie) ; (c) rejeu contrôlé, type par type.
+- **Recommandation** : (b).
+- **Impact** : `commands/command-pipeline.service.ts` (quarantaine), file des conflits ; AV-190. Défaut implémenté : (a). Non paramétrable.
+
+### AV-215 — Stock négatif après une sortie hors ligne autre qu'une vente — SECONDAIRE
+- **Question** : Une perte, une consommation ou une expédition saisie hors ligne qui rend un solde négatif ouvre-t-elle le conflit `STOCK_NEGATIVE` ?
+- **Pourquoi** : ces sorties passent `allowNegative` hors ligne (`loss-declaration.ts`, `consumption.ts`, `transfer-commands.ts`) : le solde devient négatif sans conflit. `STOCK_NEGATIVE` n'est ouvert que par la vente, la livraison de régularisation et la collecte d'œufs (`stock-negative-conflicts.ts`), alors que l'accueil l'annonce pour « une vente ou une sortie hors ligne au-delà du stock ». Relevé par la cartographie de P5-21. **DÉDUIT** (12/10/2026).
+- **Choix** : (a) actuel ; (b) le même conflit (propriétaire magasinier) pour toute sortie hors ligne qui rend le solde négatif, posé par `recordStockMove`.
+- **Recommandation** : (b), avec les invariants et la réconciliation (P5-22).
+- **Impact** : `inventory` (perte, consommation, expédition), `stock-negative-conflicts.ts` ; INV-STK-10. Défaut implémenté : (a). Non paramétrable.
+
+### AV-216 — Horloge d'appareil suspecte : dates de référence, seuil et alerte — SECONDAIRE
+- **Question** : Avec une horloge d'appareil fausse, quelle date fait foi (session de caisse, échéance et révocation d'un quota, jour métier, quarantaine) ? Le seuil de suspicion est-il paramétrable, et quand l'alerte est-elle levée ?
+- **Pourquoi** : ADR-016 ne corrige jamais `occurred_at`. AT-036 × PDV (P5-21, `p5-pdv-clock-skew.test.ts`) en montre les effets, tous jugés sur la date de la tablette :
+  - l'espèce d'une tablette en retard tombe avant l'ouverture de la caisse (`CASH_SESSION_MISSING`) ;
+  - le mouvement « futur » d'une tablette en avance empêche la clôture d'une autre d'être validée d'office (`CASH_SESSION_CLOSE_BEFORE_MOVEMENTS`) ;
+  - une vente faite après minuit reste au jour métier précédent, sur un quota pourtant échu ;
+  - la garde de la tablette en avance bloque deux heures trop tôt.
+
+  Le seuil de 5 min est une constante (`packages/domain/src/clock-skew.ts`), alors que `sync.clock_skew_flag_minutes` est semé et jamais lu (règle 8). L'alerte `CLOCK_SKEW` relève de P9 (D13), et le tableau de distribution n'expose pas le drapeau. **DÉDUIT** (12/10/2026).
+- **Choix** : (a) date déclarée partout (ADR-016), drapeau visible (`clock_suspect`, `CLOCK_SUSPECT`, `clock_skew_ms`), seul le contrôle de date future corrigé de l'écart (INV-GLO-02, corrigé en P5-21) ; (b) date corrigée de l'écart pour la caisse et les quotas (correction silencieuse, contraire à ADR-016).
+- **Recommandation** : (a). Lire le seuil dans `sync.clock_skew_flag_minutes` en P5-23 ; alerte et drapeau dans le tableau en P9.
+- **Impact** : `clock-skew.ts`, `sync/sync-push.service.ts`, `platform/sync/command-origin.ts` ; tableau de distribution. Défaut implémenté : (a). Seuil à rendre paramétrable.
 
 ---
 

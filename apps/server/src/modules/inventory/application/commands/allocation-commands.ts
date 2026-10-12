@@ -323,6 +323,16 @@ function increaseHandler(deps: {
     if (envelope.base_version !== allocation.version) {
       return quarantineStale(uow, deps, envelope, allocation, siteId);
     }
+    // Même condition de service que l'octroi (SM-ALLOCATION, DÉDUIT en P5-21 : un quota signalé
+    // n'appelle que la décision d'un responsable) : on n'augmente pas le quota d'un appareil ou d'un
+    // utilisateur hors service, ni un quota qui attend sa révocation — sans quoi du stock resterait
+    // promis à un appareil perdu.
+    if (allocation.revocationPending || !(await holderInService(uow, allocation))) {
+      return rejected(
+        'ALLOCATION_HOLDER_INVALID',
+        'Le détenteur ou son appareil est hors service : ce quota attend sa révocation.',
+      );
+    }
 
     const requestedMilli = quantityToMilli(envelope.payload.quantityBase);
     const capacity = checkGrantCapacity({
@@ -355,6 +365,24 @@ function increaseHandler(deps: {
     ]);
     return { status: 'APPLIED' };
   };
+}
+
+/** Détenteur et appareil du quota encore en service (`ACTIVE`) : références universelles d'`identity`. */
+async function holderInService(
+  uow: UnitOfWork,
+  allocation: { readonly holderUserId: string; readonly holderDeviceId: string },
+): Promise<boolean> {
+  const user = await uow
+    .selectFrom('identity_users')
+    .select('status')
+    .where('id', '=', toBin(allocation.holderUserId))
+    .executeTakeFirst();
+  const device = await uow
+    .selectFrom('identity_devices')
+    .select('status')
+    .where('id', '=', toBin(allocation.holderDeviceId))
+    .executeTakeFirst();
+  return user?.status === 'ACTIVE' && device?.status === 'ACTIVE';
 }
 
 /** Deux augmentations sur la même version : la seconde n'est pas appliquée (matrice des conflits). */
