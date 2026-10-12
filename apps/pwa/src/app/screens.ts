@@ -75,6 +75,7 @@ export const ROUTES = {
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
   cash: '/caisse',
+  replenish: '/pdv/reapprovisionnement',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -243,6 +244,8 @@ export const ROLE_SETS = {
   ],
   /** `finance.cash_session.operate` (VEN SITE, FIN ALL) : ouverture et clôture de la caisse du PDV. */
   cashSessionOperate: ['VENDEUR_PDV', 'FINANCE'],
+  /** ECR-DIS-03 : demande de réapprovisionnement du PDV (`inventory.transfer.request`, VEN SITE). */
+  replenishRequest: ['VENDEUR_PDV'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -575,6 +578,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: ROLE_SETS.cashSessionOperate,
     actionCodes: ['CASH_OPEN', 'CASH_CLOSE'],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-03',
+    path: ROUTES.replenish,
+    labelKey: 'replenish',
+    group: 'stock',
+    roles: ROLE_SETS.replenishRequest,
+    actionCodes: [],
     offline: true,
   },
   {

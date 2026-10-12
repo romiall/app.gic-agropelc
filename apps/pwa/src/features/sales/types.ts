@@ -175,6 +175,8 @@ export interface StockTransferData {
   readonly from_location_id: string;
   readonly to_location_id: string;
   readonly status: string;
+  /** Demandeur d'une demande de transfert (seul à pouvoir l'annuler). */
+  readonly requested_by?: string | null;
   readonly dispatched_at: string | null;
   readonly carrier_name: string | null;
   readonly notes: string | null;

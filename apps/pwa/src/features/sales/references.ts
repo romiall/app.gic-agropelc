@@ -152,6 +152,8 @@ export interface SalesReferences {
   readonly cashPulledAt: string | undefined;
   /** Configuration des PDV des sites de l'utilisateur, par site. */
   readonly pointsOfSale: ReadonlyMap<string, PointOfSaleData>;
+  /** Heure du dernier tirage complet du jeu `transfers` (ADR-037 §3). */
+  readonly transfersPulledAt: string | undefined;
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
   readonly lastSyncAt: string | null;
   /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
@@ -369,6 +371,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     pointsOfSale,
     meSettings,
     catalogReasonCodes,
+    transfersCursor,
     stockCursor,
     ordersCursor,
     customersCursor,
@@ -427,6 +430,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
     listProjected<SettingData>(db, 'me', 'SETTING'),
     listProjected<ReasonCodeData>(db, 'catalog', 'REASON_CODE'),
+    db.syncCursors.get('transfers'),
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
     db.syncCursors.get('customers'),
@@ -571,6 +575,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashTransferTargets,
     cashPulledAt: cashCursor?.pulled_at,
     pointsOfSale: new Map(pointsOfSale.map((pos) => [pos.site_id, pos])),
+    transfersPulledAt: transfersCursor?.pulled_at,
     lastSyncAt: meta?.last_sync_at ?? null,
     ordersPulledAt: ordersCursor?.pulled_at,
     customersPulledAt: customersCursor?.pulled_at,

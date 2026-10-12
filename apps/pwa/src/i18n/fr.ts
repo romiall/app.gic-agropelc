@@ -123,6 +123,7 @@ export const fr = {
       daily_entry: 'Saisie du jour',
       egg_collection: 'Collecte d’œufs',
       cash_session: 'Caisse',
+      replenish: 'Demander un réapprovisionnement',
     },
   },
   sales: {
@@ -2340,6 +2341,65 @@ export const fr = {
     title: 'Un problème est survenu sur cet écran.',
     help: 'Vos opérations déjà enregistrées sont conservées sur l’appareil.',
     reload: 'Recharger l’application',
+  },
+  replenish: {
+    offline_banner:
+      'Hors ligne : la demande sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+    no_pos:
+      'Aucun point de vente sur ce téléphone : il arrive avec la synchronisation de votre point de vente.',
+    pos_label: 'Point de vente',
+    destination: 'Pour : {{name}}',
+    source: 'Depuis : {{name}}',
+    source_label: 'Depuis le magasin',
+    source_placeholder: 'Choisir le magasin',
+    no_source_hint:
+      'Aucun magasin n’est configuré pour ce point de vente : choisissez celui qui l’approvisionne.',
+    no_source_blocked:
+      'Aucun magasin n’est configuré pour ce point de vente : la demande attend sa configuration.',
+    suggest_title: 'À réapprovisionner',
+    suggest_empty: 'Aucun produit sous sa cible connue de ce téléphone.',
+    suggest_line:
+      'Disponible : {{available}} {{unit}} · en route : {{transit}} {{unit}} · suggéré : {{suggested}} {{unit}}',
+    add_suggestion: 'Ajouter {{name}} à la demande',
+    state: {
+      STOCK_OUT: 'Rupture',
+      STOCK_LOW: 'Sous le minimum',
+    },
+    new_title: 'Nouvelle demande',
+    already_requested: 'Déjà demandé, pas encore expédié : {{quantity}} {{unit}}.',
+    already_requested_blocked:
+      'Produit déjà demandé vers ce point de vente : attendez son expédition ou annulez la demande.',
+    duplicate: 'Produit déjà présent dans la demande : regroupez les quantités.',
+    notes_label: 'Note pour le magasin (facultatif)',
+    submit: 'Envoyer la demande',
+    pending_title: 'Demandes en attente d’expédition',
+    pending_empty: 'Aucune demande en attente vers ce point de vente.',
+    pending_number: 'Demande en attente du numéro',
+    from: 'depuis {{name}}',
+    request_line: '{{name}} : {{quantity}} {{unit}}',
+    on_device: 'Enregistrée sur ce téléphone, en attente d’envoi.',
+    cancelling: 'Annulation en attente d’envoi.',
+    cancel: 'Annuler la demande {{doc}}',
+    cancel_confirm: 'Confirmer l’annulation de {{doc}}',
+    back: 'Retour aux demandes',
+    request_result: {
+      WAITING_offline:
+        'Demande enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Demande en cours d’envoi…',
+      DONE: 'Demande {{doc}} envoyée au magasin.',
+      WARNING: 'Demande {{doc}} envoyée, avec un signalement.',
+      CONFLICT: 'Demande mise en attente d’examen (conflit).',
+      REJECTED: 'Demande refusée : {{reason}}',
+    },
+    cancel_result: {
+      WAITING_offline:
+        'Annulation enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Annulation en cours d’envoi…',
+      DONE: 'Demande annulée.',
+      WARNING: 'Demande annulée, avec un signalement.',
+      CONFLICT: 'Annulation mise en attente d’examen (conflit).',
+      REJECTED: 'Annulation refusée : {{reason}}',
+    },
   },
   cash: {
     account_label: 'Caisse',
