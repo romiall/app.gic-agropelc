@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -162,7 +162,7 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     expect(command?.payload).toMatchObject({ locationId: HATCHER, lotId: 'INC-2' });
   });
 
-  it('incubateur avec un lot démarré hors ligne : pas de présélection, perte bloquée jusqu’au stock à jour', async () => {
+  it('incubateur avec un lot démarré par un autre utilisateur, en attente : pas de présélection, perte possible sur le lot choisi', async () => {
     const db = getDb();
     const INCUBATOR = '01900000-0000-7000-8000-0000000008f2';
     const projection = (dataset: string, type: string, id: string, data: object, key?: string) => ({
@@ -204,13 +204,14 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
         `stock:STOCK_BALANCE:${INCUBATOR}:${IDS.eggs}`,
       ),
     ]);
-    // Lot B démarré sur ce téléphone, pas encore envoyé : son lot de stock sera créé par le serveur.
+    // Lot B démarré sur ce téléphone par un autre utilisateur, pas encore envoyé (il ne part qu'à sa
+    // reconnexion) : son lot de stock sera créé par le serveur.
     await db.outbox.add({
       command_id: '01900000-0000-7000-8000-0000000008f3',
       device_seq: 1,
       command_type: 'production.incubation.start',
       command_version: 1,
-      author_user_id: IDS.user,
+      author_user_id: '01900000-0000-7000-8000-0000000000e9',
       aggregate_type: 'INCUBATION_BATCH',
       aggregate_id: '01900000-0000-7000-8000-0000000008f4',
       base_version: null,
@@ -240,11 +241,139 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     await user.click(screen.getByLabelText('Casse'));
     await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
     // Le seul lot connu n'est pas présélectionné : la casse peut venir du lot récent.
-    expect(screen.getByLabelText('Lot')).toHaveValue('');
-    expect(screen.getByRole('alert')).toHaveTextContent(/pas encore connu du téléphone/);
+    const lot = screen.getByLabelText('Lot');
+    expect(lot).toHaveValue('');
+    expect(screen.getByText(/n’a pas encore de lot de stock/)).toHaveAttribute('role', 'status');
+    expect(lot).toHaveAccessibleDescription(/n’a pas encore de lot de stock/);
     const declare = screen.getByRole('button', { name: 'Déclarer la perte' });
-    await user.selectOptions(screen.getByLabelText('Lot'), 'LOT-A');
     expect(declare).toBeDisabled();
+    // Lot choisi explicitement : la perte part (pas de blocage jusqu'au retour de l'autre utilisateur).
+    await user.selectOptions(lot, 'LOT-A');
+    expect(declare).toBeEnabled();
+    await user.click(declare);
+    expect(await screen.findByText(/Perte enregistrée sur ce téléphone/)).toBeInTheDocument();
+    const loss = (await getDb().outbox.toArray()).find(
+      (command) => command.command_type === 'inventory.loss.declare',
+    );
+    expect(loss?.payload).toMatchObject({ locationId: INCUBATOR, lotId: 'LOT-A' });
+  });
+
+  it('éclosoir : lot d’incubation transféré en attente proposé sous son numéro, sans présélection de l’autre lot', async () => {
+    const db = getDb();
+    const INCUBATOR = '01900000-0000-7000-8000-0000000008f5';
+    const HATCHER = '01900000-0000-7000-8000-0000000008f6';
+    const BATCH = '01900000-0000-7000-8000-0000000008f7';
+    const projection = (dataset: string, type: string, id: string, data: object, key?: string) => ({
+      key: key ?? `${dataset}:${type}:${id}`,
+      dataset,
+      entity_type: type,
+      entity_id: id,
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id, ...data } as Record<string, unknown>,
+    });
+    const place = (id: string, name: string, type: string) =>
+      projection('location', 'LOCATION', id, {
+        site_id: IDS.site,
+        code: name,
+        name,
+        location_type: type,
+        is_virtual: false,
+        custody_mode: 'SHARED',
+        custodian_user_id: null,
+        designated_device_id: null,
+        status: 'ACTIVE',
+      });
+    await db.projections.bulkPut([
+      place(INCUBATOR, 'Incubateur 2', 'INCUBATOR'),
+      place(HATCHER, 'Éclosoir 2', 'HATCHER'),
+      // L'éclosoir porte le lot A ; le lot B (téléchargé, en incubateur au jeu) y est transféré
+      // hors ligne : le stock de l'éclosoir ne le porte pas encore.
+      projection(
+        'stock',
+        'STOCK_BALANCE',
+        IDS.eggs,
+        {
+          location_id: HATCHER,
+          product_id: IDS.eggs,
+          qty_on_hand: '150',
+          qty_reserved: '0',
+          qty_allocated: '0',
+          lots: [{ lot_id: 'LOT-A', lot_code: 'INC-A', qty_on_hand: '150' }],
+        },
+        `stock:STOCK_BALANCE:${HATCHER}:${IDS.eggs}`,
+      ),
+      projection('production', 'INCUBATION_BATCH', BATCH, {
+        batch_code: 'INC-B',
+        stock_lot_id: 'LOT-B',
+        site_id: IDS.site,
+        species: 'POULE',
+        egg_product_id: IDS.eggs,
+        chick_product_id: IDS.chicken,
+        incubator_location_id: INCUBATOR,
+        hatcher_location_id: null,
+        egg_source: 'INTERNAL',
+        eggs_set_qty: 300,
+        set_at: '2026-09-20T08:00:00.000Z',
+        expected_candling_date: '2026-09-27',
+        expected_transfer_date: '2026-10-08',
+        expected_hatch_date: '2026-10-11',
+        infertile_qty: 0,
+        early_dead_qty: 0,
+        accidental_loss_qty: 0,
+        transferred_qty: null,
+        status: 'INCUBATING',
+      }),
+    ]);
+    await db.outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000008f8',
+      device_seq: 1,
+      command_type: 'production.incubation.transfer_to_hatcher',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'INCUBATION_EVENT',
+      aggregate_id: '01900000-0000-7000-8000-0000000008f9',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: true,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { batchId: BATCH, hatcherLocationId: HATCHER },
+      status: 'LOCAL_ONLY',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Emplacement'), HATCHER);
+    await user.selectOptions(screen.getByLabelText('Produit'), IDS.eggs);
+    const lot = screen.getByLabelText('Lot');
+    // Deux lots proposés : celui du solde, et le lot transféré en attente ; aucun présélectionné.
+    expect(lot).toHaveValue('');
+    expect(
+      within(lot).getByRole('option', { name: 'INC-B · stock à mettre à jour' }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Quantité'), '10');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    await user.selectOptions(lot, 'LOT-B');
+    await user.click(screen.getByRole('button', { name: 'Déclarer la perte' }));
+    expect(await screen.findByText(/Perte enregistrée sur ce téléphone/)).toBeInTheDocument();
+    const loss = (await getDb().outbox.toArray()).find(
+      (command) => command.command_type === 'inventory.loss.declare',
+    );
+    expect(loss?.payload).toMatchObject({ locationId: HATCHER, lotId: 'LOT-B' });
   });
 
   it('au-delà du disponible : bloquée en ligne (BR-STK-017), signalée hors ligne (BR-STK-018)', async () => {

@@ -526,12 +526,51 @@ describe('Incubation (ECR-PRD-06)', () => {
 
     cleanup();
     await db.outbox.clear();
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();
     card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-002' });
     const open = within(card).getByRole('button', { name: 'Clore par annulation (perte totale)' });
     expect(open).toBeDisabled();
     expect(open).toHaveAccessibleDescription(/L’annulation se fait en ligne/);
+    // Panneau ouvert en ligne, puis réseau perdu : la confirmation se bloque, motif relié.
+    online.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(open).toBeEnabled());
+    await user.click(open);
+    await user.type(within(card).getByLabelText('Motif de l’annulation'), 'Panne');
+    online.mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    const confirmOffline = within(card).getByRole('button', { name: 'Confirmer l’annulation' });
+    await waitFor(() => expect(confirmOffline).toBeDisabled());
+    expect(confirmOffline).toHaveAccessibleDescription(/L’annulation se fait en ligne/);
+  });
+
+  it('perte totale déjà reportée au jeu (restant nul) : reconnue ; mirage et transfert suspendus en incubateur', async () => {
+    const db = getDb();
+    // Lot A en incubateur : 500 œufs, tous perdus et reportés au jeu ; plus rien en stock.
+    await db.projections.bulkPut([
+      batch(BATCH_A, 'INC-MFO-2026-001', { accidental_loss_qty: 500 }),
+      eggBalance(INCUBATOR, [{ id: `${BATCH_A}-lot`, code: 'INC-1', qty: 0 }]),
+    ]);
+    const refs = await loadSalesReferences(db);
+    expect(batchViews(refs, IDS.user).find((view) => view.id === BATCH_A)).toMatchObject({
+      allLost: true,
+      stockStale: false,
+    });
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'INC-MFO-2026-001' });
+    for (const name of ['Mirage', 'Transférer vers l’éclosoir']) {
+      const button = within(card).getByRole('button', { name });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(/perte totale probable/);
+    }
+    expect(
+      within(card).getByRole('button', { name: 'Clore par annulation (perte totale)' }),
+    ).toBeEnabled();
   });
 
   it('panneau d’éclosion ouvert hors ligne : la suspension qui apparaît en ligne bloque l’enregistrement', async () => {

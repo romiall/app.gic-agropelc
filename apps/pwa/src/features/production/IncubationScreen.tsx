@@ -108,6 +108,7 @@ function BatchCard({
     hold: useId(),
     cancelComment: useId(),
     cancelOffline: useId(),
+    cancelPanelReason: useId(),
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const locationNames = new Map(refs.locations.map((location) => [location.id, location.name]));
@@ -252,7 +253,8 @@ function BatchCard({
               <button
                 type="button"
                 className="secondary"
-                disabled={blocked}
+                disabled={blocked || batch.allLost}
+                aria-describedby={batch.allLost ? ids.hold : undefined}
                 onClick={() => open('CANDLING')}
               >
                 {t('incubation.candling')}
@@ -260,7 +262,8 @@ function BatchCard({
               <button
                 type="button"
                 className="secondary"
-                disabled={blocked}
+                disabled={blocked || batch.allLost}
+                aria-describedby={batch.allLost ? ids.hold : undefined}
                 onClick={() => open('TRANSFER')}
               >
                 {t('incubation.transfer')}
@@ -312,11 +315,17 @@ function BatchCard({
               onChange={(event) => setComment(event.target.value)}
             />
           </div>
+          {!online || !batch.allLost ? (
+            <p id={ids.cancelPanelReason} className="text-warn" role="status">
+              {!online ? t('incubation.cancel_online_only') : t('incubation.cancel_no_longer')}
+            </p>
+          ) : null}
           <div className="result-actions">
             <button
               type="button"
               className="btn-block submit-sale"
               disabled={blocked || !online || !batch.allLost || comment.trim() === ''}
+              aria-describedby={!online || !batch.allLost ? ids.cancelPanelReason : undefined}
               onClick={() => step('production.incubation.cancel', { comment: comment.trim() })}
             >
               {t('incubation.save_cancel')}

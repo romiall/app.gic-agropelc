@@ -1354,7 +1354,9 @@ export const fr = {
       'Une étape saisie par un autre utilisateur de ce téléphone attend sa synchronisation : l’éclosion attend.',
     pending_loss_hold: 'Éclosion suspendue jusqu’à la confirmation de la perte en attente.',
     all_lost:
-      'Plus aucun œuf de ce lot en stock, ni poussin : perte totale. Le lot se clôt par annulation, pas par une éclosion.',
+      'Plus aucun œuf de ce lot en stock, ni poussin : perte totale probable (sauf si une perte attend une validation). Le lot se clôt par annulation, pas par une éclosion ; mirage et transfert sont suspendus.',
+    cancel_no_longer:
+      'Le lot n’est plus reconnu en perte totale (stock relu) : l’annulation n’est plus proposée.',
     cancel_open: 'Clore par annulation (perte totale)',
     cancel_hint:
       'Le serveur vérifie que plus aucun œuf du lot n’est en stock ni en attente de validation d’une perte.',
@@ -2181,7 +2183,8 @@ export const fr = {
     lot_required_incubation:
       'Incubateur ou éclosoir : désignez le lot d’incubation touché (sinon le bilan d’un autre lot serait faussé).',
     lot_unknown_incubation:
-      'Un lot d’incubation récent de cet emplacement n’est pas encore connu du téléphone : synchronisez, puis attendez la mise à jour du stock avant de déclarer la perte (sinon elle serait imputée au mauvais lot).',
+      'Un lot d’incubation démarré sur ce téléphone n’a pas encore de lot de stock (le serveur le crée à la synchronisation) : une perte de ses œufs ne peut pas lui être imputée avant. Aucun lot n’est présélectionné : choisissez le lot touché.',
+    lot_stock_pending: 'stock à mettre à jour',
     category_label: 'Nature de la perte',
     categories: {
       CASSE: 'Casse',

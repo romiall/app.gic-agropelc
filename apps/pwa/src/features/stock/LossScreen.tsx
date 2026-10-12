@@ -15,9 +15,9 @@ import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
-import { stillInFlight } from '../sales/pending.js';
+import { batchViews } from '../production/incubation.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
-import { submitCommand } from '../sales/submit.js';
+import { phaseOf, submitCommand } from '../sales/submit.js';
 import {
   checkLoss,
   DEVICE_LOSS_CATEGORIES,
@@ -109,32 +109,64 @@ export function LossScreen() {
         refs.pending.get(stockKey(location.id, product.id)) ?? 0,
       )
     : 0;
-  const lots = (balance?.lots ?? []).filter((lot) => lot.lot_id && Number(lot.qty_on_hand) > 0);
   const lotHintId = 'loss-lot-hint';
+  const lotUnknownId = 'loss-lot-unknown';
   // Incubateur, éclosoir : le lot d'incubation se désigne (une perte au plus ancien fausserait le
-  // bilan d'un autre lot, BR-INC-003) ; présélectionné s'il est seul.
+  // bilan d'un autre lot, BR-INC-003). Lots proposés : ceux du solde, et ceux des lots d'incubation
+  // que l'appareil place sur cet emplacement (transfert vers l'éclosoir en attente compris), même
+  // absents du solde téléchargé ; un démarrage pas encore accepté n'a pas de lot de stock (le serveur
+  // le crée) : aucun lot n'est alors présélectionné à sa place.
   const incubationPlace =
     location.location_type === 'INCUBATOR' || location.location_type === 'HATCHER';
-  const lotRequired = incubationPlace && lots.length > 0;
-  // Lots d'incubation de l'emplacement dont le lot de stock n'est pas encore connu du téléphone
-  // (démarrés ici hors ligne, ou stock pas encore retéléchargé) : la perte ne peut pas encore leur
-  // être imputée, ni à un autre lot à leur place.
-  const stockLotIds = new Set((balance?.lots ?? []).map((lot) => lot.lot_id));
-  const downloadedBatches = new Set(refs.incubationBatches.map((batch) => batch.id));
-  const unknownBatches =
+  const placeBatches =
     incubationPlace && product
-      ? refs.incubationBatches.filter(
-          (batch) =>
-            (batch.status === 'INCUBATING' || batch.status === 'IN_HATCHER') &&
-            batch.egg_product_id === product.id &&
-            (batch.incubator_location_id === location.id ||
-              batch.hatcher_location_id === location.id) &&
-            !stockLotIds.has(batch.stock_lot_id),
-        ).length +
-        refs.outbox.filter((command) => {
+      ? batchViews(refs, userId).filter(
+          (view) =>
+            (view.status === 'INCUBATING' || view.status === 'IN_HATCHER') &&
+            view.eggProductId === product.id &&
+            (view.status === 'IN_HATCHER' ? view.hatcherLocationId : view.incubatorLocationId) ===
+              location.id,
+        )
+      : [];
+  const balanceLots: { lot_id: string; lot_code: string; qty_on_hand: string | null }[] = (
+    balance?.lots ?? []
+  )
+    .filter((lot) => lot.lot_id && Number(lot.qty_on_hand) > 0)
+    .map((lot) => ({
+      lot_id: lot.lot_id as string,
+      lot_code: lot.lot_code ?? (lot.lot_id as string),
+      qty_on_hand: lot.qty_on_hand,
+    }));
+  // Lot de stock d'un lot d'incubation : du jeu téléchargé, ou de la réponse à son démarrage.
+  const stockLotOf = (batchId: string): { id: string; code: string } | null => {
+    const downloaded = refs.incubationBatches.find((batch) => batch.id === batchId);
+    if (downloaded) return { id: downloaded.stock_lot_id, code: downloaded.batch_code ?? '' };
+    const start = refs.outbox.find(
+      (command) =>
+        command.command_type === 'production.incubation.start' && command.aggregate_id === batchId,
+    );
+    const stockLotId = start?.server_refs?.stockLotId;
+    return stockLotId ? { id: stockLotId, code: start?.server_refs?.batchCode ?? '' } : null;
+  };
+  const inBalance = new Set((balance?.lots ?? []).map((lot) => lot.lot_id));
+  const extraLots = placeBatches
+    .map((view) => stockLotOf(view.id))
+    .filter(
+      (stockLot): stockLot is { id: string; code: string } =>
+        stockLot !== null && !inBalance.has(stockLot.id),
+    )
+    .map((stockLot) => ({ lot_id: stockLot.id, lot_code: stockLot.code, qty_on_hand: null }));
+  const lots = [...balanceLots, ...extraLots];
+  // Démarrages encore sans réponse sur cet incubateur, de tout utilisateur de l'appareil (celui d'un
+  // autre ne part qu'à sa reconnexion) : leur lot de stock n'existe pas encore.
+  const downloadedBatches = new Set(refs.incubationBatches.map((batch) => batch.id));
+  const unknownStarts =
+    incubationPlace && product
+      ? refs.outbox.filter((command) => {
           if (command.command_type !== 'production.incubation.start') return false;
-          if (downloadedBatches.has(command.aggregate_id)) return false;
-          if (!stillInFlight(command, refs.stockPulledAt)) return false;
+          if (phaseOf(command) !== 'WAITING' || downloadedBatches.has(command.aggregate_id)) {
+            return false;
+          }
           const payload = command.payload as {
             readonly incubatorLocationId?: string;
             readonly eggProductId?: string;
@@ -142,10 +174,9 @@ export function LossScreen() {
           return payload.incubatorLocationId === location.id && payload.eggProductId === product.id;
         }).length
       : 0;
-  // Un seul lot sur l'emplacement, encore inconnu : le serveur ne peut prendre que lui.
-  const unknownBlocks = unknownBatches > 0 && (lots.length > 0 || unknownBatches > 1);
+  const lotRequired = incubationPlace && lots.length > 0;
   const lotId =
-    lotRequired && !draft.lotId && lots.length === 1 && unknownBatches === 0
+    lotRequired && !draft.lotId && lots.length === 1 && unknownStarts === 0
       ? (lots[0]?.lot_id ?? '')
       : draft.lotId;
   const chosenLot = lots.find((lot) => lot.lot_id === lotId);
@@ -156,12 +187,13 @@ export function LossScreen() {
   const overAvailable =
     check.quantityBase !== null &&
     (check.quantityBase > physical ||
-      (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
+      (chosenLot !== undefined &&
+        chosenLot.qty_on_hand !== null &&
+        check.quantityBase > Number(chosenLot.qty_on_hand)));
   // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
   const ready =
     check.issues.length === 0 &&
     !(lotRequired && !chosenLot) &&
-    !unknownBlocks &&
     !(online && overAvailable) &&
     !busy;
 
@@ -279,13 +311,23 @@ export function LossScreen() {
             value={lotId}
             aria-required={lotRequired || undefined}
             aria-invalid={lotRequired && !chosenLot ? true : undefined}
-            aria-describedby={lotRequired && !chosenLot ? lotHintId : undefined}
+            aria-describedby={
+              [
+                lotRequired && !chosenLot ? lotHintId : null,
+                unknownStarts > 0 ? lotUnknownId : null,
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
             onChange={(event) => update({ lotId: event.target.value })}
           >
             <option value="">{lotRequired ? t('loss.lot_choose') : t('loss.lot_fifo')}</option>
             {lots.map((lot) => (
               <option key={lot.lot_id} value={lot.lot_id ?? ''}>
-                {lot.lot_code ?? lot.lot_id} · {formatQuantity(Number(lot.qty_on_hand))}
+                {lot.lot_code || lot.lot_id} ·{' '}
+                {lot.qty_on_hand === null
+                  ? t('loss.lot_stock_pending')
+                  : formatQuantity(Number(lot.qty_on_hand))}
               </option>
             ))}
           </select>
@@ -296,8 +338,8 @@ export function LossScreen() {
           ) : null}
         </div>
       ) : null}
-      {unknownBlocks ? (
-        <p className="alert alert-error" role="alert">
+      {unknownStarts > 0 ? (
+        <p id={lotUnknownId} className="text-warn" role="status">
           {t('loss.lot_unknown_incubation')}
         </p>
       ) : null}

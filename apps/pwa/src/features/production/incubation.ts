@@ -528,7 +528,9 @@ export function batchViews(
     const remaining = eggsRemaining(view.counters);
     const physicalRemaining = physical - candled - lost;
     const gap = known && physicalRemaining < remaining ? remaining - physicalRemaining : 0;
-    const empty = known && physical <= 0 && remaining > 0;
+    // Restant du jeu, ou pertes déjà reportées au jeu (un transfert ou un mirage après la perte les
+    // y fige, le restant tombe alors à zéro).
+    const empty = known && physical <= 0 && (remaining > 0 || view.counters.accidentalLoss > 0);
     // Stock du lot vide sans poussins ni perte en attente : perte totale ; sinon éclosion faite
     // ailleurs, à resynchroniser.
     const allLost = empty && !chicksSeen && lost === 0 && !unlottedLoss;
