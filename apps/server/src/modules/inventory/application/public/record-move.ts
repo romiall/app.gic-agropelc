@@ -56,6 +56,7 @@ import {
 import { findProductLotTracking } from '../../../catalog/application/public/index.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { stockBalanceChange } from '../sync-changes.js';
 import { lotHeadcount } from './lot-headcount.js';
 import {
@@ -70,6 +71,7 @@ import {
   checkOvercommitted,
   prepareQuotaConsumption,
   prepareQuotaRestoration,
+  stockOwnerRole,
   type AllocationWarning,
   type ConsumptionLocation,
   type QuotaConsumption,
@@ -241,7 +243,17 @@ export interface RecordMoveInput {
    * `TRANSFER_DISPATCH` et `CONSUMPTION`, et sans appareil connu.
    */
   readonly consumesAllocation?: boolean;
+  /**
+   * Sortie qui rend négatif un solde physique (possible seulement avec `allowNegative` : fait hors ligne,
+   * inventaire, inverse) — INV-STK-05, BR-STK-018, AV-215 : `RECORD` (défaut), `inventory` ouvre le
+   * conflit `STOCK_NEGATIVE` (un par appel) et renvoie l'avertissement ; `CALLER`, l'appelant l'ouvre
+   * lui-même (vente directe : un conflit par ligne de vente, P4-04).
+   */
+  readonly stockNegativeConflict?: 'RECORD' | 'CALLER';
 }
+
+/** Avertissements consignés par `inventory` sur un mouvement (conflits informatifs déjà ouverts). */
+export type StockMoveWarning = AllocationWarning | 'STOCK_NEGATIVE';
 
 export interface RecordedMove {
   readonly moveId: string;
@@ -253,8 +265,8 @@ export interface RecordedMove {
   readonly toBalanceAfter: number;
   /** Quota consommé par ce mouvement (part imputée au quota, ADR-033 §5) ; absent sinon. */
   readonly allocationId?: string;
-  /** Anomalies de quota et de garde consignées pour ce mouvement (conflits informatifs). */
-  readonly warnings?: readonly AllocationWarning[];
+  /** Anomalies de quota, de garde et de stock négatif consignées pour ce mouvement (conflits informatifs). */
+  readonly warnings?: readonly StockMoveWarning[];
 }
 
 export interface RecordMoveDeps {
@@ -1064,7 +1076,7 @@ export async function recordStockMove(
     results.push(...(await recordPiece(uow, deps, input, piece, quota, restoration)));
   }
 
-  const warnings = new Set<AllocationWarning>(quota?.warnings ?? []);
+  const warnings = new Set<StockMoveWarning>(quota?.warnings ?? []);
   if (source !== null && !source.isVirtual) {
     const overcommitted = await checkOvercommitted(uow, deps, {
       location: consumptionLocation(input.fromLocationId, source),
@@ -1080,10 +1092,66 @@ export async function recordStockMove(
       ),
     });
     if (overcommitted) warnings.add('ALLOCATION_OVERCOMMITTED');
+    // INV-STK-05, AV-215 : toute sortie physique qui laisse un solde négatif ouvre son conflit, quelle
+    // que soit l'opération (perte, consommation, expédition, mortalité, production, inventaire).
+    const negative = results.filter((move) => move.fromBalanceAfter < 0);
+    if (negative.length > 0 && input.stockNegativeConflict !== 'CALLER') {
+      await openStockNegative(
+        uow,
+        deps,
+        input,
+        consumptionLocation(input.fromLocationId, source),
+        negative,
+      );
+      warnings.add('STOCK_NEGATIVE');
+    }
   }
   if (warnings.size === 0 || results.length === 0) return results;
   const [first, ...others] = results;
   return [{ ...first!, warnings: [...warnings] }, ...others];
+}
+
+/**
+ * Conflit `STOCK_NEGATIVE` d'une sortie (INV-STK-05, AV-215) : appliqué (le fait reste), au nom du
+ * responsable du stock de l'emplacement (AV-142), rattaché au document source. Les identifiants de
+ * l'emplacement et du produit sont mis sous forme canonique (minuscules) : l'inventaire ferme les conflits
+ * du couple en les comparant au texte de `details` (`closeStockNegativeConflicts`), et la charge utile
+ * d'une commande peut les porter en majuscules.
+ */
+async function openStockNegative(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+  location: ConsumptionLocation,
+  negative: readonly RecordedMove[],
+): Promise<void> {
+  await recordConflict(uow, {
+    id: deps.idGenerator.newId(),
+    commandId: input.commandId ?? null,
+    conflictType: 'STOCK_NEGATIVE',
+    entityType: input.sourceDocType,
+    entityId: input.sourceDocId,
+    siteId: location.siteId,
+    ownerRole: stockOwnerRole(location.locationType, location.siteType),
+    applied: true,
+    details: {
+      locationId: fromBin(toBin(input.fromLocationId)),
+      productId: fromBin(toBin(input.productId)),
+      moveType: input.moveType,
+      sourceDocType: input.sourceDocType,
+      sourceDocId: input.sourceDocId,
+      sourceLineId: input.sourceLineId ?? null,
+      quantity: input.quantityBase,
+      balancesAfter: negative.map((move) => ({
+        lotId: move.lotId,
+        balanceAfter: move.fromBalanceAfter,
+      })),
+      occurredAt: input.occurredAt.toISOString(),
+      userId: input.createdBy,
+      deviceId: input.createdDeviceId ?? null,
+      capturedOffline: input.capturedOffline ?? false,
+    },
+  });
 }
 
 /** Un morceau d'une sortie : un lot (ou aucun) et la quantité qui en vient. */

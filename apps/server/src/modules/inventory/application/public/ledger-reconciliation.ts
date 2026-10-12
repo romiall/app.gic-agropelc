@@ -105,6 +105,18 @@ export interface OvercommitBreach {
   readonly allocatedRemaining: number;
 }
 
+/**
+ * INV-STK-05 (AV-215) : solde physique négatif (ligne de lot d'un emplacement non virtuel) sans conflit
+ * `STOCK_NEGATIVE` ouvert sur son couple (emplacement, produit).
+ */
+export interface NegativeBreach {
+  readonly locationId: string;
+  readonly productId: string;
+  /** Clé de lot de la ligne de solde (`lot_key`). */
+  readonly lotKey: string;
+  readonly qtyOnHand: number;
+}
+
 export interface LedgerVerification {
   readonly ok: boolean;
   readonly balancesChecked: number;
@@ -114,6 +126,7 @@ export interface LedgerVerification {
   readonly settlementBreaches: readonly SettlementBreach[];
   readonly allocationBreaches: readonly AllocationBreach[];
   readonly overcommitBreaches: readonly OvercommitBreach[];
+  readonly negativeBreaches: readonly NegativeBreach[];
 }
 
 interface LedgerRow {
@@ -243,6 +256,7 @@ export async function verifyStockLedger(
   const settlementBreaches = await findSettlementBreaches(trx, scope);
   const allocationBreaches = await findAllocationBreaches(trx, scope);
   const overcommitBreaches = await findOvercommitBreaches(trx, scope);
+  const negativeBreaches = await findNegativeBreaches(trx, scope);
 
   return {
     ok:
@@ -251,7 +265,8 @@ export async function verifyStockLedger(
       toDeliverBreaches.length === 0 &&
       settlementBreaches.length === 0 &&
       allocationBreaches.length === 0 &&
-      overcommitBreaches.length === 0,
+      overcommitBreaches.length === 0 &&
+      negativeBreaches.length === 0,
     balancesChecked: balances.length,
     mismatches,
     conservationBreaches,
@@ -259,7 +274,51 @@ export async function verifyStockLedger(
     settlementBreaches,
     allocationBreaches,
     overcommitBreaches,
+    negativeBreaches,
   };
+}
+
+/**
+ * INV-STK-05 (AV-215) : tout solde physique négatif est expliqué par un conflit `STOCK_NEGATIVE` ouvert
+ * sur son couple (emplacement, produit) — ouvert par la sortie qui l'a rendu négatif, fermé par
+ * l'inventaire qui le régularise (`closeStockNegativeConflicts`) ou par une décision tracée.
+ */
+async function findNegativeBreaches(
+  trx: Transaction<DB>,
+  scope: LedgerScope,
+): Promise<readonly NegativeBreach[]> {
+  const result = await sql<{
+    location_id: Buffer;
+    product_id: Buffer;
+    lot_key: Buffer;
+    qty_on_hand: string;
+  }>`
+    SELECT b.location_id, b.product_id, b.lot_key, b.qty_on_hand
+    FROM inventory_stock_balances b
+    JOIN organization_locations l ON l.id = b.location_id
+    WHERE l.is_virtual = FALSE AND b.qty_on_hand < 0 ${allocationFilter(scope, 'b.product_id')}
+  `.execute(trx);
+  if (result.rows.length === 0) return [];
+  const open = await trx
+    .selectFrom('sync_sync_conflicts')
+    .select(['details'])
+    .where('conflict_type', '=', 'STOCK_NEGATIVE')
+    .where('status', '=', 'OPEN')
+    .execute();
+  const explained = new Set(
+    open.map((row) => {
+      const details = row.details as Record<string, unknown>;
+      return `${String(details['locationId']).toLowerCase()}|${String(details['productId']).toLowerCase()}`;
+    }),
+  );
+  return result.rows
+    .filter((row) => !explained.has(`${fromBin(row.location_id)}|${fromBin(row.product_id)}`))
+    .map((row) => ({
+      locationId: fromBin(row.location_id),
+      productId: fromBin(row.product_id),
+      lotKey: fromBin(row.lot_key),
+      qtyOnHand: Number(row.qty_on_hand),
+    }));
 }
 
 function allocationFilter(scope: LedgerScope, column: string): RawBuilder<unknown> {

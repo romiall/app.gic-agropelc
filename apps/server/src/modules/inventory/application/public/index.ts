@@ -55,6 +55,9 @@ export type {
   ConservationBreach,
   ToDeliverBreach,
   SettlementBreach,
+  AllocationBreach,
+  OvercommitBreach,
+  NegativeBreach,
 } from './ledger-reconciliation.js';
 
 export {

@@ -1,7 +1,7 @@
 /**
  * P5-22 : invariants de la distribution balayés sur **toute la base** (même modèle que P3-08, P4-13 :
- * `sales-finance-invariants.test.ts`, `inventory-invariants.test.ts`) — INV-STK-10, 11, 19, 20 (quotas
- * d'appareil), INV-FIN-05, 06, 11 (sessions de caisse), INV-DIS-01 (configuration du PDV). Lecture seule.
+ * `sales-finance-invariants.test.ts`, `inventory-invariants.test.ts`) — INV-STK-05 (stock négatif
+ * expliqué, AV-215), INV-STK-10, 11, 19, 20 (quotas d'appareil), INV-FIN-05, 06, 11 (sessions de caisse), INV-DIS-01 (configuration du PDV). Lecture seule.
  *
  * Chaque balayage rend les identifiants fautifs (au plus 20), pas seulement leur nombre. La base est
  * partagée et persistante, l'ordre des fichiers n'est pas garanti : chaque requête doit valoir à tout
@@ -65,10 +65,12 @@ describe('P5-22 : invariants de la distribution sur toute la base', () => {
     ).toEqual([]);
   });
 
-  it('INV-STK-19 et INV-STK-20 : restes = registre, consommation = mouvements, quotas ≤ stock ou conflit ouvert (verifyStockLedger)', async () => {
+  it('INV-STK-05, 19 et 20 : soldes négatifs expliqués, restes = registre, consommation = mouvements, quotas ≤ stock ou conflit ouvert (verifyStockLedger)', async () => {
     const result = await db.transaction().execute((trx) => verifyStockLedger(trx));
     expect(result.allocationBreaches).toEqual([]);
     expect(result.overcommitBreaches).toEqual([]);
+    // INV-STK-05 (AV-215) : tout solde physique négatif a son conflit STOCK_NEGATIVE ouvert.
+    expect(result.negativeBreaches).toEqual([]);
   });
 
   it('INV-STK-20 : l’accordé est la somme des octrois et hausses ; chaque consommation ou restitution cite son mouvement', async () => {

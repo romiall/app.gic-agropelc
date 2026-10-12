@@ -59,6 +59,11 @@ export interface SoldStockInput {
    * (`createdBy`, `createdDeviceId` lu dans l'inbox). Jamais avec `strict` (opération du serveur).
    */
   readonly consumesAllocation?: boolean;
+  /**
+   * Vente directe : la vente ouvre elle-même le conflit `STOCK_NEGATIVE`, un par ligne (P4-04) ; sinon
+   * (livraison de régularisation, confirmation), `inventory` l'ouvre par mouvement (AV-215).
+   */
+  readonly stockNegativeByCaller?: boolean;
 }
 
 export type SoldStockResult =
@@ -105,6 +110,7 @@ export async function moveSoldStock(
     capturedOffline: input.offline,
     allowNegative: lenient,
     ...(consumesAllocation ? { consumesAllocation: true } : {}),
+    ...(input.stockNegativeByCaller === true ? { stockNegativeConflict: 'CALLER' as const } : {}),
   } satisfies Omit<RecordMoveInput, 'quantityBase' | 'lotId'>;
 
   if (!REARING_LOCATION_TYPES.includes(input.locationType)) {

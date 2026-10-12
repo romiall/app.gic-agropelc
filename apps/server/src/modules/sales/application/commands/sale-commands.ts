@@ -386,6 +386,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         // Fait de l'appareil : le quota du couple d'abord (ADR-033 §5) ; le couple vient de
         // l'enveloppe authentifiée et de l'inbox, jamais du contenu de la commande (INV-STK-11).
         consumesAllocation: true,
+        // La vente ouvre elle-même `STOCK_NEGATIVE`, un par ligne (ci-dessous) : pas de second conflit.
+        stockNegativeByCaller: true,
       });
       if (!result.ok) return result.outcome;
       const costXaf = result.moves.reduce((sum, move) => sum + move.valueXaf, 0);

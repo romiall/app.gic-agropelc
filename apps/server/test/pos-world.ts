@@ -591,6 +591,7 @@ export class PosWorld {
       .execute((trx) => verifyStockLedger(trx, { productIds }));
     expect(verification.allocationBreaches, JSON.stringify(verification)).toEqual([]);
     expect(verification.overcommitBreaches).toEqual([]);
+    expect(verification.negativeBreaches).toEqual([]);
     expect(verification.ok, JSON.stringify(verification)).toBe(true);
   }
 

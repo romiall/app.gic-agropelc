@@ -59,6 +59,13 @@ export class LedgerReconciliationJob implements OnModuleInit {
               (b) =>
                 `emplacement ${b.locationId} produit ${b.productId} : quotas ${b.allocatedRemaining} > stock ${b.stockOnHand}`,
             ),
+          // INV-STK-05 (AV-215) : solde physique négatif sans conflit STOCK_NEGATIVE ouvert.
+          ...result.negativeBreaches
+            .slice(0, DETAILED_MISMATCHES)
+            .map(
+              (b) =>
+                `emplacement ${b.locationId} produit ${b.productId} lot ${b.lotKey} : solde ${b.qtyOnHand} sans conflit STOCK_NEGATIVE`,
+            ),
         ].join(' ; ');
         const message =
           `LEDGER_MISMATCH : ${result.mismatches.length} solde(s) en écart, ` +
@@ -67,6 +74,7 @@ export class LedgerReconciliationJob implements OnModuleInit {
           `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
           `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
           `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit, ` +
+          `${result.negativeBreaches.length} solde(s) négatif(s) sans conflit, ` +
           `${transit.breaches.length} transfert(s) clos au transit non soldé` +
           (details ? ` — ${details}` : '') +
           '.';

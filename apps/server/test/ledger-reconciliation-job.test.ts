@@ -30,6 +30,7 @@ const CLEAN_LEDGER = {
   settlementBreaches: [],
   allocationBreaches: [],
   overcommitBreaches: [],
+  negativeBreaches: [],
 };
 
 function handler() {
