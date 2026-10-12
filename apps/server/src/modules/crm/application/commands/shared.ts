@@ -241,19 +241,19 @@ export function fieldVersionsOf(
 
 /**
  * Colonne `DATE` (jour métier, ex. prochaine action, période d'objectif) écrite depuis sa forme
- * `AAAA-MM-JJ` : MySQL convertit la chaîne, sans dépendre du fuseau du processus Node (un `Date`
- * serait converti en heure locale par mysql2).
+ * `AAAA-MM-JJ` : MySQL convertit la chaîne, sans dépendre d'aucun fuseau (un `Date` serait écrit à
+ * son instant UTC : minuit de Douala tomberait la veille).
  */
 export function dateColumn(value: string): RawBuilder<Date> {
   return sql<Date>`${value}`;
 }
 
-/** Forme `AAAA-MM-JJ` d'une colonne `DATE` lue (mysql2 : minuit local). */
+/** Forme `AAAA-MM-JJ` d'une colonne `DATE` lue (pilote en UTC : minuit UTC du jour). */
 export function formatDateColumn(value: Date | null): string | null {
   if (value === null) return null;
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(value.getUTCDate()).padStart(2, '0');
+  return `${value.getUTCFullYear()}-${month}-${day}`;
 }
 
 export const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

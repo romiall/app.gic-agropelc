@@ -10,7 +10,7 @@
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
-import { businessDayOf, businessDayStartUtc } from '@gic/domain';
+import { businessDayOf } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
@@ -75,7 +75,8 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       address: address ?? null,
       lat: lat ?? null,
       lng: lng ?? null,
-      opened_on: openedOn !== undefined ? businessDayStartUtc(openedOn) : null,
+      // Colonne `DATE` : le jour en chaîne (un `Date` serait écrit à son instant UTC, la veille à 23:00).
+      opened_on: openedOn !== undefined ? sql<Date>`${openedOn}` : null,
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
@@ -134,7 +135,7 @@ function closeHandler(guards: LocationDeactivationGuardRegistry): CommandHandler
     }
 
     const occurredAt = new Date(envelope.occurred_at);
-    const closedOn = businessDayStartUtc(businessDayOf(occurredAt));
+    const closedOn = sql<Date>`${businessDayOf(occurredAt)}`;
     await uow
       .updateTable('organization_sites')
       .set({

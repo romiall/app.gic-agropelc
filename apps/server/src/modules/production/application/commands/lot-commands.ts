@@ -191,9 +191,9 @@ async function rearingLocation(
 function lotPeriods(startDate: Date | null, at: Date): readonly string[] {
   const last = businessDayOf(at).slice(0, 7);
   if (startDate === null) return [last];
-  // Colonne `DATE` lue par mysql2 : minuit local.
-  let year = startDate.getFullYear();
-  let month = startDate.getMonth() + 1;
+  // Colonne `DATE` lue par le pilote, réglé en UTC : minuit UTC du jour.
+  let year = startDate.getUTCFullYear();
+  let month = startDate.getUTCMonth() + 1;
   const periods: string[] = [];
   for (;;) {
     const period = `${year}-${String(month).padStart(2, '0')}`;

@@ -6,6 +6,7 @@
  * (`listSettingHistory`).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
 import { FixedClock, Uuidv7Generator, type Clock, type IdGenerator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
@@ -330,6 +331,7 @@ describe('organization.* (P0-11)', () => {
             name: 'PDV Test',
             siteType: 'POINT_DE_VENTE',
             zoneId,
+            openedOn: '2026-09-20',
           },
         }),
         ctx(),
@@ -362,12 +364,19 @@ describe('organization.* (P0-11)', () => {
 
       const row = await db
         .selectFrom('organization_sites')
-        .select(['name', 'status', 'closed_on'])
+        .select([
+          'name',
+          'status',
+          sql<string>`DATE_FORMAT(opened_on, '%Y-%m-%d')`.as('opened_day'),
+          sql<string>`DATE_FORMAT(closed_on, '%Y-%m-%d')`.as('closed_day'),
+        ])
         .where('id', '=', toBin(siteId))
         .executeTakeFirstOrThrow();
       expect(row.name).toBe('PDV Test (renommé)');
       expect(row.status).toBe('CLOSED');
-      expect(row.closed_on).not.toBeNull();
+      // Colonnes `DATE` : le jour saisi, et le jour métier de la fermeture (Douala), jamais la veille.
+      expect(row.opened_day).toBe('2026-09-20');
+      expect(row.closed_day).toBe('2026-09-24');
 
       // Rejeu (déjà CLOSED) : APPLIED sans effet.
       const replay = await pipeline.handle(

@@ -20,12 +20,12 @@ import { pageOf, type Page } from './customer-query.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
-/** Colonne `DATE` lue (mysql2 : minuit local) → `AAAA-MM-JJ`. */
+/** Colonne `DATE` lue (pilote en UTC : minuit UTC du jour) → `AAAA-MM-JJ`. */
 function dateOnly(value: Date | null): string | null {
   if (value === null) return null;
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(value.getUTCDate()).padStart(2, '0');
+  return `${value.getUTCFullYear()}-${month}-${day}`;
 }
 
 function flagsOf(value: unknown): readonly string[] {

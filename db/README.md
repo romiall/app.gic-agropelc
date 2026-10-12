@@ -26,11 +26,15 @@ ouverte :
 & "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe" --defaults-file="<chemin du my.ini>" --console
 ```
 
-**Fuseau (ADR-016, ADR-023).** Toutes les connexions de l'application et du paquet `db` travaillent
-en **UTC**, quel que soit le fuseau de la machine : le pilote mysql2 convertit les `Date` en UTC
-(`timezone: 'Z'`) et chaque session passe en `time_zone = '+00:00'` (`CURRENT_TIMESTAMP`, `NOW()`).
-Sans ce réglage (avant le 12/10/2026), un poste réglé sur l'Afrique de l'Ouest (UTC+1) stockait
-l'heure locale : horodatages décalés d'une heure, jour métier faux après 23:00 UTC. Une base locale
+**Fuseau (ADR-016, ADR-023).** Les connexions du serveur (`createDatabase`) et du paquet `db`
+(seeds, tests : `connectUtc`, `poolUtc`, `seeds/connection.ts`) travaillent en **UTC**, quel que soit
+le fuseau de la machine : le pilote mysql2 convertit les `Date` en UTC (`timezone: 'Z'`) et chaque
+session passe en `time_zone = '+00:00'` (`CURRENT_TIMESTAMP`, `NOW()`). dbmate, `kysely-codegen` et les
+clients `mysql` en ligne de commande gardent le fuseau du serveur MySQL : sans effet sur les données
+(les migrations n'écrivent aucun horodatage hors valeurs par défaut). Sans ce réglage (avant le
+12/10/2026), un poste réglé sur l'Afrique de l'Ouest (UTC+1) stockait l'heure locale : horodatages
+décalés d'une heure, jour métier faux entre 22:00 et 23:00 UTC (23:00 à minuit à Douala). Une colonne
+`DATE` s'écrit depuis la chaîne du jour (`AAAA-MM-JJ`) et se relit par ses composantes UTC. Une base locale
 créée avant ce correctif garde ces horodatages en heure locale ; la vérification du chaînage d'audit
 (`audit.chain.verify_daily`) y voit une rupture sur les entrées antérieures. Recréer alors la base
 locale (migrations puis seeds) plutôt que de corriger les lignes (le journal d'audit est immuable).
