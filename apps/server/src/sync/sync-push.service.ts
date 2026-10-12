@@ -8,10 +8,12 @@
  * Verrou consultatif par appareil (INV-SYN-04, « traite séquentiellement... sous verrou
  * consultatif ») : approximé ici par l'attente séquentielle (jamais deux commandes du même
  * lot en vol à la fois — toujours vrai, un seul appareil par requête) plutôt qu'un verrou
- * SQL retenu across plusieurs transactions indépendantes (`command_id` PK + `(device_id,
- * device_seq)` UQ, INV-SYN-01/03, empêchent déjà toute double application entre deux
- * requêtes concurrentes du même appareil — un chevauchement produit un rejet `RETRY_LATER`
- * sur la commande en trop, jamais une corruption). Un vrai verrou inter-requêtes (verrou
+ * SQL retenu across plusieurs transactions indépendantes. Entre deux requêtes concurrentes du
+ * même appareil (renvoi pendant qu'un envoi précédent tourne encore), la double application est
+ * empêchée commande par commande : `command_id` PK et `(device_id, device_seq)` UQ (INV-SYN-01/03),
+ * et la réclamation par tentative du pipeline (P5-21, revue adverse : toute conclusion de l'inbox
+ * est conditionnée au numéro de tentative, la transaction métier verrouille d'abord la ligne
+ * d'inbox) — la commande en trop reçoit `RETRY_LATER`. Un vrai verrou inter-requêtes (verrou
  * nommé MySQL sur une connexion dédiée, hors du pool Kysely) reste un raffinement possible,
  * non nécessaire à la correction — DÉDUIT, paramétrable plus tard (règle CLAUDE.md #2).
  *
@@ -25,7 +27,7 @@
  * déclare ce qu'il lui reste à envoyer, par auteur (`pending_by_author`) : c'est ce que lit la
  * règle « l'ancien appareil a tout synchronisé » (BR-DIS-014).
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { isClockSkewSuspect, type Clock } from '@gic/domain';
 import type { CommandResult, PushRequest, PushResponse } from '@gic/contracts';
 import { sql } from 'kysely';
@@ -33,6 +35,17 @@ import { CommandPipelineService } from '../commands/command-pipeline.service.js'
 import { CLOCK } from '../platform/clock.provider.js';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+
+/**
+ * Délai maximal de traitement d'un lot (02-synchronisation.md §3.1) : au-delà, les commandes restantes
+ * ne sont ni traitées ni enregistrées et reçoivent `RETRY_LATER` (`SERVER_BUSY`). Valeur du protocole,
+ * pas un seuil métier ; réglable pour les tests.
+ */
+export const SYNC_BATCH_DEADLINE_MS = 25_000;
+export const SYNC_PUSH_OPTIONS = Symbol('SYNC_PUSH_OPTIONS');
+export interface SyncPushOptions {
+  readonly batchDeadlineMs?: number;
+}
 
 export interface SyncPushContext {
   readonly authenticatedUserId: string;
@@ -48,6 +61,7 @@ export class SyncPushService {
     @Inject(CommandPipelineService) private readonly pipeline: CommandPipelineService,
     @Inject(DATABASE) private readonly db: Database,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Optional() @Inject(SYNC_PUSH_OPTIONS) private readonly options?: SyncPushOptions,
   ) {}
 
   async push(request: PushRequest, ctx: SyncPushContext): Promise<PushResponse> {
@@ -66,10 +80,21 @@ export class SyncPushService {
     // (`RETRY_LATER` : dépendance pas encore reçue, erreur transitoire), les suivantes ne sont pas
     // traitées — sinon une libération de quota ou une clôture passerait avant la vente qu'elle suit.
     // Elles ne sont pas enregistrées (rien n'est « reçu ») et l'appareil les renvoie dans l'ordre.
+    // Exception (AV-217) : une commande bloquée depuis plus de `sync.retry_hold_minutes`
+    // (`COMMAND_STALLED`) ne retient plus la suite ; elle reste à renvoyer et elle est signalée.
     let held = false;
+    let overdue = false;
+    const startedAt = performance.now();
+    const deadlineMs = this.options?.batchDeadlineMs ?? SYNC_BATCH_DEADLINE_MS;
     for (const raw of ordered) {
       if (held) {
         results.push(heldResult(raw));
+        continue;
+      }
+      // §3.1 : délai du lot dépassé — la suite n'est ni traitée ni enregistrée, dans l'ordre.
+      if (overdue || performance.now() - startedAt > deadlineMs) {
+        overdue = true;
+        results.push(overdueResult(raw));
         continue;
       }
       const result = await this.pipeline.handle(raw, {
@@ -83,14 +108,18 @@ export class SyncPushService {
       });
       results.push(clockSuspect ? withClockSuspectWarning(result) : result);
       highestDeviceSeq = Math.max(highestDeviceSeq ?? raw.device_seq, raw.device_seq);
-      if (result.status === 'RETRY_LATER') held = true;
+      if (result.status === 'RETRY_LATER' && result.error?.code !== 'COMMAND_STALLED') held = true;
     }
 
+    // BR-DIS-014 : ce qui reste à envoyer comprend ce que ce lot n'a pas réglé (`RETRY_LATER` : à
+    // renvoyer, suspendu, hors délai), que l'appareil comptait comme parti (revue de P5-21).
+    const unsettled = results.filter((result) => result.status === 'RETRY_LATER').length;
     await this.recordDeviceSyncState(ctx, {
       lastPushAt: this.clock.now(),
       highestDeviceSeq,
       lastClockSkewMs: clockSkewMs,
       pendingByAuthor: request.pending_by_author,
+      unsettled,
     });
 
     return {
@@ -115,12 +144,21 @@ export class SyncPushService {
       readonly highestDeviceSeq: number | null;
       readonly lastClockSkewMs: number;
       readonly pendingByAuthor: Readonly<Record<string, number>> | undefined;
+      /** Commandes de ce lot que le serveur n'a pas réglées (`RETRY_LATER`), de l'auteur du lot. */
+      readonly unsettled: number;
     },
   ): Promise<void> {
     const deviceId = toBin(ctx.authenticatedDeviceId);
     const declared = fields.pendingByAuthor;
-    const total =
-      declared === undefined ? null : Object.values(declared).reduce((a, b) => a + b, 0);
+    // Sans déclaration, rien n'est supposé — sauf ce que le serveur sait encore à renvoyer.
+    const known = (count: number | null) =>
+      count === null && fields.unsettled === 0 ? null : (count ?? 0) + fields.unsettled;
+    const total = known(
+      declared === undefined ? null : Object.values(declared).reduce((a, b) => a + b, 0),
+    );
+    const authorPending = known(
+      declared === undefined ? null : (declared[ctx.authenticatedUserId] ?? 0),
+    );
     const maxSeq = (seq: number | null) =>
       seq === null
         ? sql<number>`last_device_seq`
@@ -152,13 +190,13 @@ export class SyncPushService {
         last_push_at: fields.lastPushAt,
         last_device_seq: fields.highestDeviceSeq,
         last_clock_skew_ms: fields.lastClockSkewMs,
-        pending_reported: declared?.[ctx.authenticatedUserId] ?? null,
+        pending_reported: authorPending,
       })
       .onDuplicateKeyUpdate({
         last_push_at: fields.lastPushAt,
         last_device_seq: maxSeq(fields.highestDeviceSeq),
         last_clock_skew_ms: fields.lastClockSkewMs,
-        pending_reported: declared?.[ctx.authenticatedUserId] ?? null,
+        pending_reported: authorPending,
       })
       .execute();
 
@@ -173,8 +211,9 @@ export class SyncPushService {
         .onDuplicateKeyUpdate({ pending_reported: pending })
         .execute();
     }
-    // Un auteur connu et absent de la déclaration n'a plus rien en attente.
-    const declaredDatasets = Object.keys(declared).map(authorDataset);
+    // Un auteur connu et absent de la déclaration n'a plus rien en attente (sauf l'auteur du lot, écrit
+    // ci-dessus avec ce que le serveur n'a pas réglé).
+    const declaredDatasets = [...Object.keys(declared), ctx.authenticatedUserId].map(authorDataset);
     let cleared = this.db
       .updateTable('sync_device_sync_state')
       .set({ pending_reported: 0 })
@@ -204,6 +243,18 @@ function heldResult(raw: PushRequest['commands'][number]): CommandResult {
     error: {
       code: 'PRECEDING_COMMAND_PENDING',
       message_fr: 'Une commande précédente de la file doit d’abord être renvoyée.',
+    },
+  };
+}
+
+/** Commande d'un lot dont le délai de traitement est dépassé : ni traitée, ni enregistrée (§3.1). */
+function overdueResult(raw: PushRequest['commands'][number]): CommandResult {
+  return {
+    command_id: raw.command_id,
+    status: 'RETRY_LATER',
+    error: {
+      code: 'SERVER_BUSY',
+      message_fr: 'Délai de traitement du lot dépassé : commande non traitée, à renvoyer.',
     },
   };
 }

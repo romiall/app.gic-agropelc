@@ -2141,6 +2141,7 @@ export interface SyncCommandInbox {
   base_version: number | null;
   batch_id: Buffer | null;
   captured_offline: Generated<number>;
+  claimed_at: Date | null;
   client_created_at: Date | null;
   clock_skew_ms: number | null;
   command_id: Buffer;
