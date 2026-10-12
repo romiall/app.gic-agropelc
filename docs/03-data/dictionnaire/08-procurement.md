@@ -15,12 +15,13 @@
 | `email` | varchar(200) | Oui | — | |
 | `address` | text | Oui | — | |
 | `tax_id` | varchar(40) | Oui | — | Identifiant fiscal (optionnel) |
-| `payment_terms_days` | smallint | Oui | — | |
+| `payment_terms_days` | smallint | Oui | — | 0 à 3 650 jours (même borne que la fiche client ; P5-23, S-37) |
 | `status` | enum(`ACTIVE`,`INACTIVE`) | Non | `ACTIVE` | |
 | `notes` | text | Oui | — | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `code`. **IX** plein texte `ngram` sur `name` (MySQL — ADR-023). **Suppr.** `DESACTIVATION`. **Audit** Toute modification. **Offline** DL (actifs : id, code, nom).
+- **PK** `id`. **UQ** `code` (contrôlé avant l'écriture : `CODE_EXISTS`, P5-23, S-30). **IX** plein texte `ngram` sur `name` (MySQL — ADR-023). **Suppr.** `DESACTIVATION`. **Audit** Toute modification. **Offline** DL (actifs : id, code, nom).
+- `procurement.supplier.update` : un champ facultatif absent est inchangé, reçu à `null` il est effacé ; `GET /suppliers` sert aussi `address` et `notes` (P5-23, S-30).
 
 ## procurement.purchase_requests
 

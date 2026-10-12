@@ -72,6 +72,15 @@ const createPayloadSchema = z
         message: 'Un produit de famille SERVICE ne peut avoir de suivi par lot (BR-CAT-005).',
       });
     }
+    // BR-PRD-001 : un produit biologique se suit par lot (aucun lot de production ne recevrait un
+    // produit sans suivi, définitif une fois créé) ; absent, le suivi vaut `REQUIRED` (S-31).
+    if (data.stockFamily === 'BIOLOGIQUE' && data.lotTracking === 'NONE') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lotTracking'],
+        message: 'Un produit BIOLOGIQUE se suit par lot (BR-PRD-001).',
+      });
+    }
     if (data.stockFamily === 'BIOLOGIQUE' && data.species === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -106,6 +115,14 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     species,
   } = envelope.payload;
 
+  // S-31 : un code pris est refusé, au lieu de lever la violation d'unicité (renvoi sans fin).
+  const codeTaken = await uow
+    .selectFrom('catalog_products')
+    .select('id')
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) return invalid('CODE_EXISTS', 'Un produit porte déjà ce code.');
+
   const category = await uow
     .selectFrom('catalog_product_categories')
     .select('id')
@@ -129,7 +146,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       category_id: toBin(categoryId),
       stock_family: stockFamily,
       base_unit_code: baseUnitCode,
-      lot_tracking: lotTracking ?? 'NONE',
+      lot_tracking: lotTracking ?? (stockFamily === 'BIOLOGIQUE' ? 'REQUIRED' : 'NONE'),
       expiry_tracking: toDbBool(expiryTracking ?? false),
       is_sellable: toDbBool(isSellable ?? false),
       is_purchasable: toDbBool(isPurchasable ?? false),
@@ -221,10 +238,13 @@ function setStatus(status: 'ACTIVE' | 'INACTIVE'): CommandHandler<Record<string,
 // ---------------------------------------------------------------------------------------
 // catalog.product_unit.set (BR-CAT-004, AV-080).
 // ---------------------------------------------------------------------------------------
+const FACTOR_TO_BASE_MAX = 99_999_999.999999;
+
 const productUnitSetSchema = z.object({
   productId: z.string().uuid(),
   unitCode: z.string().min(1).max(20),
-  factorToBase: z.number().positive(),
+  // Colonne `DECIMAL(14,6)` (S-31).
+  factorToBase: z.number().positive().max(FACTOR_TO_BASE_MAX),
   isSalesUnit: z.boolean().optional(),
   isPurchaseUnit: z.boolean().optional(),
   isCountUnit: z.boolean().optional(),
@@ -243,9 +263,10 @@ const productUnitSet: CommandHandler<ProductUnitSetPayload> = async (uow, envelo
   const { productId, unitCode, factorToBase, isSalesUnit, isPurchaseUnit, isCountUnit } =
     envelope.payload;
   const product = await uow
-    .selectFrom('catalog_products')
-    .select('id')
-    .where('id', '=', toBin(productId))
+    .selectFrom('catalog_products as p')
+    .innerJoin('catalog_units as u', 'u.code', 'p.base_unit_code')
+    .select(['p.id', 'u.is_count as baseIsCount'])
+    .where('p.id', '=', toBin(productId))
     .executeTakeFirst();
   if (!product) return notFound('Produit introuvable.');
   const unit = await uow
@@ -254,6 +275,14 @@ const productUnitSet: CommandHandler<ProductUnitSetPayload> = async (uow, envelo
     .where('code', '=', unitCode)
     .executeTakeFirst();
   if (!unit) return notFound('Unité introuvable.');
+  // BR-CAT-003 : sur une unité de base de comptage (tête, œuf, pièce), un conditionnement en contient
+  // un nombre entier — sinon une quantité saisie au conditionnement deviendrait fractionnaire.
+  if (Boolean(product.baseIsCount) && !Number.isInteger(factorToBase)) {
+    return invalid(
+      'PRODUCT_UNIT_FACTOR_INVALID',
+      'Sur une unité de base de comptage, le facteur de conversion est un nombre entier (BR-CAT-003).',
+    );
+  }
 
   const existingForPair = await uow
     .selectFrom('catalog_product_units')
@@ -289,7 +318,7 @@ const productUnitSet: CommandHandler<ProductUnitSetPayload> = async (uow, envelo
 // ---------------------------------------------------------------------------------------
 const standardCostSetSchema = z.object({
   productId: z.string().uuid(),
-  unitCostXaf: z.number().int().nonnegative(),
+  unitCostXaf: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   reason: z.string().max(500).optional(),
 });
 type StandardCostSetPayload = z.infer<typeof standardCostSetSchema>;
@@ -310,6 +339,20 @@ const standardCostSet: CommandHandler<StandardCostSetPayload> = async (uow, enve
     .where('id', '=', toBin(productId))
     .executeTakeFirst();
   if (!product) return notFound('Produit introuvable.');
+  // Une version par instant (`uq_catalog_product_standard_costs_version`) : deux coûts datés du même
+  // instant levaient la violation d'unicité (renvoi sans fin).
+  const sameInstant = await uow
+    .selectFrom('catalog_product_standard_costs')
+    .select('id')
+    .where('product_id', '=', toBin(productId))
+    .where('valid_from', '=', new Date(envelope.occurred_at))
+    .executeTakeFirst();
+  if (sameInstant) {
+    return invalid(
+      'STANDARD_COST_VERSION_EXISTS',
+      'Un coût standard de ce produit est déjà daté de cet instant.',
+    );
+  }
 
   await uow
     .insertInto('catalog_product_standard_costs')

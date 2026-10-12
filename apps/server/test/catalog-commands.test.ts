@@ -100,6 +100,14 @@ describe('catalog.* (P1-03)', () => {
   });
 
   async function createUnit(code: string, isCount: boolean): Promise<void> {
+    // Base partagée : une unité semée par un autre fichier sous un autre libellé serait refusée
+    // (`CODE_EXISTS`, P5-23) ; elle sert telle quelle.
+    const existing = await db
+      .selectFrom('catalog_units')
+      .select('code')
+      .where('code', '=', code)
+      .executeTakeFirst();
+    if (existing) return;
     const result = await pipeline.handle(
       buildEnvelope(admin, {
         command_type: 'catalog.unit.create',

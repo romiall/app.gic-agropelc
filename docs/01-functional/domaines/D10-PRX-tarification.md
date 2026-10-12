@@ -33,6 +33,7 @@ Chaque vendeur obtient **automatiquement le bon prix** selon le contexte (produi
 | UC-PRX-05 | Créer une campagne commerciale | `pricing.campaign.create` | RESP_COMMERCIAL, DIRECTION | Non |
 | UC-PRX-06 | Résoudre un prix (vente, commande, simulateur) | fonction partagée `resolvePrice(context)` | Moteur (appareil et serveur) | **Oui** |
 | UC-PRX-07 | Consulter la grille et l'historique des prix d'un produit | requête | Vendeurs (prix applicables), responsables (grille) | **Oui** (prix applicables) |
+| UC-PRX-08 | Abandonner un brouillon (SM-PRICE-RULE : `DRAFT` → `CANCELLED` ; P5-23) | `pricing.rule.cancel` | RESP_COMMERCIAL, DIRECTION | Non |
 
 ## 5. Entrées
 
@@ -68,8 +69,11 @@ Prix résolu avec : règle et version, prix catalogue, spécificité, motif de c
 | Contrôle | Erreur |
 |---|---|
 | Prix > 0, entier ; produit vendable ; unité valide pour le produit | `PRICE_RULE_INVALID` |
-| `valid_to` > `valid_from` ; `valid_from` ≥ maintenant − 5 minutes à l'activation (pas de règle rétroactive) | `PRICE_RULE_PERIOD_INVALID` |
-| Dimensions cohérentes : le site appartient à la zone si les deux sont renseignés ; campagne active sur la période | `PRICE_RULE_DIMENSIONS_INVALID` |
+| Code d'une nouvelle lignée déjà pris (`pricing.rule.draft`), code de campagne déjà pris (P5-23) | `CODE_EXISTS` |
+| Nouvelle version d'une règle qui en a déjà une vivante (brouillon ou active) : on remplace la dernière version ; une version abandonnée garde son numéro, la suivante prend le numéro d'après (P5-23) | `PRICE_RULE_ALREADY_SUPERSEDED` |
+| Bornes des colonnes : priorité sur 32 bits, seuil de quantité en `numeric(14,3)`, prix entier sûr (P5-23) | `VALIDATION_ERROR` |
+| `valid_to` > `valid_from` (dès le brouillon, P5-23) ; `valid_from` ≥ maintenant − 5 minutes à l'activation (pas de règle rétroactive) ; fin (`pricing.rule.end`) ≥ maintenant − 5 minutes et après la date d'effet (SM-PRICE-RULE ; P5-23) ; date d'effet d'une nouvelle version postérieure à celle de la version remplacée (P5-23) | `PRICE_RULE_PERIOD_INVALID` |
+| Dimensions cohérentes : le site appartient à la zone (ou à l'une de ses descendantes) si les deux sont renseignés (contrôlé depuis P5-23) ; une nouvelle version porte sur le produit de la règle remplacée (P5-23) ; campagne active sur la période | `PRICE_RULE_DIMENSIONS_INVALID` |
 | Conflit (BR-PRX-006) | `PRICE_RULE_CONFLICT` |
 
 ## 9. Dépendances
@@ -101,3 +105,5 @@ ADM (zones, sites), CAT (produits, unités, catégories de client, canaux de ven
 | Règle activée pendant qu'un appareil est hors ligne | Ventes hors ligne à l'ancien prix : acceptées, anomalie `PRICE_MISMATCH` (BR-VEN-029). |
 | Erreur de saisie d'un prix actif | Nouvelle règle de remplacement immédiate. Les ventes déjà faites au mauvais prix restent telles quelles ; la correction commerciale éventuelle passe par une annulation ou un geste client, à décider par un responsable. |
 | Deux campagnes simultanées sur un même produit | La priorité les départage ; à priorité égale sans dimension distinctive, activation refusée (BR-PRX-006). |
+| Nouvelle version dont la date d'effet suit la fin de la règle remplacée | Activée sans toucher la règle remplacée (sa fin n'est jamais reculée, `trg_pricing_price_rules_update_guard`) ; la période entre les deux reste sans cette règle. **DÉDUIT** (P5-23, AV-222). |
+| Brouillon devenu inactivable (conflit, date d'effet passée) | Abandonné (`pricing.rule.cancel`), jamais supprimé (INV-PRX-03) ; une nouvelle lignée ou une nouvelle version le remplace (P5-23). |

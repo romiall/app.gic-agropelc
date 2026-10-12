@@ -13,6 +13,12 @@
  * `valid_to` de l'ancienne règle à la date d'effet du remplaçant (BR-PRX-007) : la fenêtre de
  * dates suffit à elle seule à l'exclure des candidates après l'échéance, y compris pour un
  * prix résolu au passé alors que l'ancienne règle porte encore `status = ACTIVE`.
+ *
+ * P5-23 (S-29) : chaque contrainte de la base est d'abord contrôlée ici et refusée proprement —
+ * une violation levée en exception rendait la commande `RETRY_LATER`, renvoyée sans fin (code de
+ * lignée ou version en double, période, bornes des colonnes, fin passée, activation hors de la
+ * période de la règle remplacée) ; site contenu dans la zone (D10 §8) ; nouvelle version sur le
+ * produit de la règle remplacée ; abandon d'un brouillon (`pricing.rule.cancel`, SM-PRICE-RULE).
  */
 import { z } from 'zod';
 import type {
@@ -24,6 +30,9 @@ import { toBin, toBinOrNull, fromBin } from '../../../../platform/kysely/uuid-co
 import { findProductForPricing } from '../../../catalog/application/public/index.js';
 import { findConflicts, specificityOf, type PriceRule } from '@gic/domain';
 
+/** BR-PRX §8 (D10 §8) : `valid_from` ≥ maintenant − 5 min à l'activation ; même tolérance pour une fin. */
+const NOT_RETROACTIVE_TOLERANCE_MS = 5 * 60 * 1000;
+
 function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
 }
@@ -32,17 +41,26 @@ function invalid(errorCode: string, messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode, messageFr };
 }
 
+/** Bornes des colonnes (S-29) : `priority` en `INT`, `min_quantity` en `DECIMAL(14,3)`, prix entier sûr. */
+const PRIORITY_MAX = 2_147_483_647;
+const MIN_QUANTITY_MAX = 99_999_999_999.999;
+
 const dimensionsSchema = z.object({
   productId: z.string().uuid(),
-  unitPriceXaf: z.number().int().positive(),
+  unitPriceXaf: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   pricingUnitCode: z.string().min(1).max(20),
   zoneId: z.string().uuid().optional(),
   siteId: z.string().uuid().optional(),
   customerCategoryId: z.string().uuid().optional(),
   channelCode: z.string().min(1).max(20).optional(),
-  minQuantity: z.number().positive().optional(),
+  minQuantity: z.number().positive().max(MIN_QUANTITY_MAX).optional(),
   commercialCampaignId: z.string().uuid().optional(),
-  priority: z.number().int().optional(),
+  priority: z
+    .number()
+    .int()
+    .min(-PRIORITY_MAX - 1)
+    .max(PRIORITY_MAX)
+    .optional(),
   validFrom: z.string().datetime(),
   validTo: z.string().datetime().optional(),
   notes: z.string().max(2000).optional(),
@@ -52,6 +70,9 @@ async function validateDimensions(
   uow: Parameters<CommandHandler>[0],
   payload: z.infer<typeof dimensionsSchema>,
 ): Promise<{ readonly zoneDepth: number | null } | CommandHandlerOutcome> {
+  if (payload.validTo !== undefined && new Date(payload.validTo) <= new Date(payload.validFrom)) {
+    return invalid('PRICE_RULE_PERIOD_INVALID', 'La date de fin doit suivre la date d’effet.');
+  }
   const product = await findProductForPricing(uow, payload.productId);
   if (!product) return notFound('Produit introuvable.');
   if (product.status !== 'ACTIVE') {
@@ -82,6 +103,22 @@ async function validateDimensions(
       .where('id', '=', toBin(payload.siteId))
       .executeTakeFirst();
     if (!site) return notFound('Site introuvable.');
+    if (payload.zoneId !== undefined) {
+      // D10 §8 : le site appartient à la zone (ou à l'une de ses descendantes, fermeture transitive).
+      const inZone = await uow
+        .selectFrom('organization_sites as s')
+        .innerJoin('organization_zone_ancestors as a', 'a.zone_id', 's.zone_id')
+        .select('s.id')
+        .where('s.id', '=', toBin(payload.siteId))
+        .where('a.ancestor_id', '=', toBin(payload.zoneId))
+        .executeTakeFirst();
+      if (!inZone) {
+        return invalid(
+          'PRICE_RULE_DIMENSIONS_INVALID',
+          'Le site n’appartient pas à la zone de la règle.',
+        );
+      }
+    }
   }
   if (payload.customerCategoryId !== undefined) {
     const category = await uow
@@ -148,6 +185,15 @@ const draft: CommandHandler<DraftPayload> = async (uow, envelope) => {
     .executeTakeFirst();
   if (already) return { status: 'APPLIED' };
 
+  const codeTaken = await uow
+    .selectFrom('pricing_price_rules')
+    .select('id')
+    .where('code', '=', envelope.payload.code)
+    .executeTakeFirst();
+  if (codeTaken) {
+    return invalid('CODE_EXISTS', 'Une règle porte déjà ce code : préparer une nouvelle version.');
+  }
+
   const validated = await validateDimensions(uow, envelope.payload);
   if ('errorCode' in validated || 'status' in validated) return validated as CommandHandlerOutcome;
 
@@ -199,12 +245,35 @@ const supersede: CommandHandler<SupersedePayload> = async (uow, envelope) => {
   const { supersedesRuleId, ...dimensions } = envelope.payload;
   const previous = await uow
     .selectFrom('pricing_price_rules')
-    .select(['id', 'code', 'version', 'status'])
+    .select(['id', 'code', 'version', 'status', 'product_id'])
     .where('id', '=', toBin(supersedesRuleId))
     .executeTakeFirst();
   if (!previous) return notFound('Règle à remplacer introuvable.');
   if (previous.status !== 'ACTIVE') {
     return invalid('PRICE_RULE_NOT_ACTIVE', 'Seule une règle active peut être remplacée.');
+  }
+  if (!previous.product_id.equals(toBin(dimensions.productId))) {
+    return invalid(
+      'PRICE_RULE_DIMENSIONS_INVALID',
+      'Une nouvelle version porte sur le produit de la règle remplacée.',
+    );
+  }
+  // Une règle n'a qu'une version suivante vivante (brouillon ou active) : on remplace la dernière
+  // version de la lignée. Une version abandonnée garde son numéro (`uq_pricing_price_rules_code_version`) :
+  // la nouvelle prend le numéro suivant le plus grand de la lignée.
+  const later = await uow
+    .selectFrom('pricing_price_rules')
+    .select(['version', 'status'])
+    .where('code', '=', previous.code)
+    .where('version', '>', previous.version)
+    .execute();
+  const successor = later.find((row) => row.status !== 'CANCELLED');
+  const nextVersion = Math.max(previous.version, ...later.map((row) => row.version)) + 1;
+  if (successor) {
+    return invalid(
+      'PRICE_RULE_ALREADY_SUPERSEDED',
+      'Cette règle a déjà une version suivante (brouillon ou active) : remplacer la dernière version.',
+    );
   }
 
   const validated = await validateDimensions(uow, dimensions);
@@ -215,7 +284,7 @@ const supersede: CommandHandler<SupersedePayload> = async (uow, envelope) => {
     .values({
       id: ruleId,
       code: previous.code,
-      version: previous.version + 1,
+      version: nextVersion,
       supersedes_rule_id: toBin(supersedesRuleId),
       product_id: toBin(dimensions.productId),
       unit_price_xaf: dimensions.unitPriceXaf,
@@ -296,12 +365,32 @@ const activate: CommandHandler<ActivatePayload> = async (uow, envelope) => {
   }
 
   const now = new Date(envelope.occurred_at);
-  const NOT_RETROACTIVE_TOLERANCE_MS = 5 * 60 * 1000; // BR-PRX §8 : valid_from >= maintenant - 5 min.
   if (rule.valid_from.getTime() < now.getTime() - NOT_RETROACTIVE_TOLERANCE_MS) {
     return invalid(
       'PRICE_RULE_PERIOD_INVALID',
       "La date d'effet ne peut être rétroactive de plus de 5 minutes.",
     );
+  }
+
+  // Règle remplacée : l'activation fixe sa fin à la date d'effet de la nouvelle version (BR-PRX-007),
+  // ce que la base n'admet que si cette date suit son début (`ck_pricing_price_rules_period`) ; si
+  // la règle remplacée finit déjà avant, elle reste telle quelle (un recul de la fin est interdit).
+  let shortenPrevious = false;
+  if (rule.supersedes_rule_id) {
+    const previous = await uow
+      .selectFrom('pricing_price_rules')
+      .select(['valid_from', 'valid_to'])
+      .where('id', '=', rule.supersedes_rule_id)
+      .executeTakeFirst();
+    if (previous) {
+      if (rule.valid_from.getTime() <= previous.valid_from.getTime()) {
+        return invalid(
+          'PRICE_RULE_PERIOD_INVALID',
+          'La date d’effet d’une nouvelle version doit suivre celle de la version remplacée.',
+        );
+      }
+      shortenPrevious = previous.valid_to === null || rule.valid_from < previous.valid_to;
+    }
   }
 
   const activeSiblings = await uow
@@ -344,7 +433,7 @@ const activate: CommandHandler<ActivatePayload> = async (uow, envelope) => {
     .where('id', '=', ruleId)
     .execute();
 
-  if (rule.supersedes_rule_id) {
+  if (rule.supersedes_rule_id && shortenPrevious) {
     // `status` reste `ACTIVE` : la fenêtre `valid_from ≤ t < valid_to` suffit déjà à
     // l'exclure des candidates dès l'échéance (SM-PRICE-RULE) ; le passage formel à
     // `RETIRED` reste la tâche planifiée différée (voir commentaire d'en-tête) — y forcer
@@ -369,7 +458,7 @@ const end: CommandHandler<EndPayload> = async (uow, envelope) => {
   const ruleId = toBin(envelope.aggregate_id);
   const rule = await uow
     .selectFrom('pricing_price_rules')
-    .select(['id', 'status', 'valid_to'])
+    .select(['id', 'status', 'valid_from', 'valid_to'])
     .where('id', '=', ruleId)
     .executeTakeFirst();
   if (!rule) return notFound('Règle tarifaire introuvable.');
@@ -377,6 +466,15 @@ const end: CommandHandler<EndPayload> = async (uow, envelope) => {
     return invalid('PRICE_RULE_NOT_ACTIVE', 'Seule une règle active peut être terminée.');
   }
   const newValidTo = new Date(envelope.payload.validTo);
+  // SM-PRICE-RULE : nouvelle fin ≥ maintenant (même tolérance que l'activation : une fin dans le
+  // passé changerait le prix de ventes déjà faites) ; et après la date d'effet (base).
+  const now = new Date(envelope.occurred_at);
+  if (newValidTo.getTime() < now.getTime() - NOT_RETROACTIVE_TOLERANCE_MS) {
+    return invalid('PRICE_RULE_PERIOD_INVALID', 'La date de fin ne peut pas être dans le passé.');
+  }
+  if (newValidTo.getTime() <= rule.valid_from.getTime()) {
+    return invalid('PRICE_RULE_PERIOD_INVALID', 'La date de fin doit suivre la date d’effet.');
+  }
   if (rule.valid_to !== null && newValidTo.getTime() >= rule.valid_to.getTime()) {
     return invalid(
       'PRICE_RULE_PERIOD_INVALID',
@@ -386,6 +484,34 @@ const end: CommandHandler<EndPayload> = async (uow, envelope) => {
   await uow
     .updateTable('pricing_price_rules')
     .set({ valid_to: newValidTo })
+    .where('id', '=', ruleId)
+    .execute();
+  return { status: 'APPLIED' };
+};
+
+// ---------------------------------------------------------------------------------------
+// pricing.rule.cancel — abandon d'un brouillon (SM-PRICE-RULE : DRAFT → CANCELLED ; P5-23, S-29).
+// Un brouillon devenu inactivable (conflit, date d'effet passée) ne restait plus à vie.
+// ---------------------------------------------------------------------------------------
+const cancelSchema = z.object({});
+type CancelPayload = z.infer<typeof cancelSchema>;
+
+const cancel: CommandHandler<CancelPayload> = async (uow, envelope) => {
+  const ruleId = toBin(envelope.aggregate_id);
+  const rule = await uow
+    .selectFrom('pricing_price_rules')
+    .select(['id', 'status'])
+    .where('id', '=', ruleId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!rule) return notFound('Règle tarifaire introuvable.');
+  if (rule.status === 'CANCELLED') return { status: 'APPLIED' };
+  if (rule.status !== 'DRAFT') {
+    return invalid('PRICE_RULE_NOT_DRAFT', 'Seul un brouillon peut être abandonné.');
+  }
+  await uow
+    .updateTable('pricing_price_rules')
+    .set({ status: 'CANCELLED', updated_by: toBin(envelope.author_user_id) })
     .where('id', '=', ruleId)
     .execute();
   return { status: 'APPLIED' };
@@ -415,6 +541,12 @@ const campaignCreate: CommandHandler<CampaignCreatePayload> = async (uow, envelo
   if (new Date(validTo).getTime() <= new Date(validFrom).getTime()) {
     return invalid('CAMPAIGN_PERIOD_INVALID', 'valid_to doit être postérieure à valid_from.');
   }
+  const codeTaken = await uow
+    .selectFrom('pricing_commercial_campaigns')
+    .select('id')
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) return invalid('CODE_EXISTS', 'Une campagne porte déjà ce code.');
   await uow
     .insertInto('pricing_commercial_campaigns')
     .values({
@@ -458,6 +590,13 @@ export function registerPricingCommands(registry: CommandHandlerRegistry): void 
     payloadSchema: endSchema,
     permissionCode: 'pricing.rule.activate',
     handler: end,
+  });
+  registry.register({
+    commandType: 'pricing.rule.cancel',
+    version: 1,
+    payloadSchema: cancelSchema,
+    permissionCode: 'pricing.rule.draft',
+    handler: cancel,
   });
   registry.register({
     commandType: 'pricing.campaign.create',

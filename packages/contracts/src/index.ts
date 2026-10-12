@@ -141,3 +141,6 @@ export type {
   TransferBlindReceivePayload,
   TransferReturnToSourcePayload,
 } from './stock-transfer-commands.js';
+
+// Messages de validation en français (S-37, P5-23).
+export { describeIssueFr, describeIssuesFr } from './validation-messages.js';

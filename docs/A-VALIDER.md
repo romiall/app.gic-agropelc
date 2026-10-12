@@ -236,6 +236,7 @@ Classification (PM §45) :
 | AV-219 | Motif d'un écart d'inventaire exigé dès la saisie sur l'appareil | SECONDAIRE | Écrans PWA | Motif exigé par l'appareil sur un écart estimé non nul quand des motifs `INVENTORY_ADJUSTMENT` existent (`REQUIRE_VARIANCE_REASON` dans `apps/pwa/src/features/stock/count.ts`) ; sans motif paramétré, l'écart part sans motif | OUVERT |
 | AV-220 | Écran de consommation hors lot (ECR-STK-08) pour le vendeur de PDV et le responsable de production | SECONDAIRE | Écrans PWA | (a) : écran proposé aux quatre rôles, intrants et emballages consommables seulement | OUVERT |
 | AV-221 | Annulation directe pendant une clôture de caisse concurrente : condition relue sous verrou | SECONDAIRE | P5 | Condition d'AV-185 relue sous le verrou des caisses après l'annulation ; basculée, la transaction est annulée (`RETRY_LATER`) et le renvoi prend le chemin de la demande (`CANCEL_SESSION_CLOSED`) | OUVERT |
+| AV-222 | Gardes des référentiels : valeurs retenues là où une contrainte de la base levait une exception | SECONDAIRE | P5 | (a) : suivi `REQUIRED` par défaut d'un produit biologique, nouvelle version après la fin de la remplacée activée sans la toucher, fin tolérée à 5 min dans le passé, unité ou canal identique recréé sans effet | OUVERT |
 
 ---
 
@@ -1577,6 +1578,14 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) relire la condition sous le verrou des caisses, quand l'annulation l'atteint (après le stock) ; si elle a basculé, annuler la transaction par une erreur transitoire (`RETRY_LATER`), et le renvoi identique prend le chemin de la demande (`CANCEL_SESSION_CLOSED`) ; (b) verrouiller les caisses avant le stock pour toutes les opérations (ordre inversé, révision d'ADR-032 §10) ; (c) accepter la course et signaler le remboursement hors session par un conflit.
 - **Recommandation** : (a) : aucun ordre inversé, aucun remboursement hors session ; le coût d'un renvoi est rare.
 - **Impact** : `sales/application/commands/cancel-commands.ts` (`CashSessionClosedDuringCancellation`), `sale-cancellation.ts` ; ADR-038 §4 ; test `p5-lock-order.test.ts`. Défaut implémenté : (a) (P5-22). Non paramétrable (règle de concurrence).
+
+### AV-222 — Gardes des référentiels : valeurs retenues là où une contrainte de la base levait une exception — SECONDAIRE
+- **Question** : Les besoins serveur S-29 et S-31 (écrans) demandent de refuser proprement ce que la base refusait par exception. Quatre cas exigent une valeur, et pas seulement un refus : (1) un produit biologique créé sans suivi par lot ; (2) l'activation d'une nouvelle version dont la date d'effet suit la fin de la règle remplacée ; (3) la tolérance d'une fin « ≥ maintenant » ; (4) une unité ou un canal recréé sous un code existant.
+- **Pourquoi** : (1) BR-PRD-001 n'admet en lot qu'un produit suivi par lot, et le suivi est définitif ; (2) BR-PRX-007 fixe la fin de la remplacée à la date d'effet de la nouvelle, mais le déclencheur de garde n'admet qu'une réduction de la fin ; (3) SM-PRICE-RULE écrit « ≥ maintenant », l'activation tolère 5 minutes ; (4) la commande répondait `APPLIED` sans rien changer. **DÉDUIT** (P5-23, 12/10/2026).
+- **Choix** : (a) (1) `NONE` refusé, absent réglé à `REQUIRED` ; (2) activée sans toucher la remplacée (sa fin n'est jamais reculée), la période entre les deux restant sans cette règle ; (3) même tolérance de 5 minutes que l'activation (BR-PRX §8) ; (4) identique (libellé, et nature de comptage pour une unité) : sans effet, `APPLIED` ; différent : `CODE_EXISTS` ; (b) (1) `OPTIONAL` par défaut ; (2) refus `PRICE_RULE_PERIOD_INVALID` ; (3) aucune tolérance ; (4) toujours `CODE_EXISTS`.
+- **Recommandation** : (a) : la plus stricte pour le suivi, la plus permissive là où rien ne se perd.
+- **Impact** : `catalog.product.create`, `catalog.unit.create`, `catalog.sales_channel.create`, `pricing.rule.activate`, `pricing.rule.end` ; D10 §8 et §14, D16 §8 ; test `p5-reference-guards.test.ts`. Défaut implémenté : (a) (P5-23). La tolérance de 5 minutes est celle de BR-PRX §8, déjà codée à l'activation ; non paramétrable (règle de validité, non un seuil).
+
 ---
 
 ## 3. Journal des décisions

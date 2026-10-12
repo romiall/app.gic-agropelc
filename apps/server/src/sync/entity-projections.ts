@@ -643,21 +643,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
-  PRODUCT_STANDARD_COST: async (executor, entityId) => {
-    const row = await executor
-      .selectFrom('catalog_product_standard_costs')
-      .select(['id', 'product_id', 'unit_cost_xaf', 'valid_from', 'reason'])
-      .where('id', '=', toBin(entityId))
-      .executeTakeFirst();
-    if (!row) return undefined;
-    return {
-      id: fromBin(row.id),
-      product_id: fromBin(row.product_id),
-      unit_cost_xaf: row.unit_cost_xaf,
-      valid_from: row.valid_from,
-      reason: row.reason,
-    };
-  },
+  // PRODUCT_STANDARD_COST : jamais servi (P5-23, S-02) — aucun coût sur l'appareil (RC-05 ;
+  // dictionnaire « Offline SRV »). Les lignes du repli générique restent dans le flux, sans projection.
 
   REASON_CODE: async (executor, entityId) => {
     const row = await executor

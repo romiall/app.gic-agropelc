@@ -11,8 +11,11 @@ export interface SupplierSummary {
   readonly contactName: string | null;
   readonly phone: string | null;
   readonly email: string | null;
+  /** Servis depuis P5-23 (S-30) : la modification les relit. */
+  readonly address: string | null;
   readonly taxId: string | null;
   readonly paymentTermsDays: number | null;
+  readonly notes: string | null;
   readonly status: string;
 }
 
@@ -34,8 +37,10 @@ export async function listSuppliers(
     contactName: row.contact_name,
     phone: row.phone,
     email: row.email,
+    address: row.address,
     taxId: row.tax_id,
     paymentTermsDays: row.payment_terms_days,
+    notes: row.notes,
     status: row.status,
   }));
 }

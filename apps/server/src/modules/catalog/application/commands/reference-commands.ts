@@ -8,6 +8,10 @@
  * P5-18 (AV-196) : unités, canaux et motifs sont publiés dans le jeu `catalog` (`sync-changes.ts`) ;
  * la désactivation et la réactivation d'une unité ou d'un canal lisent le code dans la charge utile
  * (`code`) — l'`aggregate_id` est un UUIDv7 imposé par le contrat et ne vaut jamais un code.
+ *
+ * P5-23 (S-31) : un code déjà pris est refusé (`CODE_EXISTS`) au lieu de lever la violation d'unicité
+ * (renvoi sans fin) ; une unité ou un canal recréé sous un code existant n'est accepté que s'il est
+ * identique (sinon la commande répondait `APPLIED` sans rien changer).
  */
 import { z } from 'zod';
 import type {
@@ -27,6 +31,10 @@ import {
 
 function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
+}
+
+function codeExists(messageFr: string): CommandHandlerOutcome {
+  return { status: 'REJECTED', errorCode: 'CODE_EXISTS', messageFr };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -49,6 +57,12 @@ const categoryCreate: CommandHandler<CategoryCreatePayload> = async (uow, envelo
   if (already) return { status: 'APPLIED' };
 
   const { code, name, parentId } = envelope.payload;
+  const codeTaken = await uow
+    .selectFrom('catalog_product_categories')
+    .select('id')
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) return codeExists('Une catégorie de produit porte déjà ce code.');
   if (parentId !== undefined) {
     const parent = await uow
       .selectFrom('catalog_product_categories')
@@ -180,10 +194,15 @@ const unitCreate: CommandHandler<UnitCreatePayload> = async (uow, envelope) => {
   const { code, name, isCount } = envelope.payload;
   const already = await uow
     .selectFrom('catalog_units')
-    .select('code')
+    .select(['code', 'name', 'is_count'])
     .where('code', '=', code)
     .executeTakeFirst();
-  if (already) return { status: 'APPLIED' };
+  if (already) {
+    // Même unité (rejeu d'une création) : sans effet ; une autre sous ce code : refusée.
+    return already.name === name && Boolean(already.is_count) === isCount
+      ? { status: 'APPLIED' }
+      : codeExists('Une unité porte déjà ce code.');
+  }
   await uow
     .insertInto('catalog_units')
     .values({ code, name, is_count: toDbBool(isCount) })
@@ -283,6 +302,13 @@ const reasonCodeSet: CommandHandler<ReasonCodeSetPayload> = async (uow, envelope
     .executeTakeFirst();
   if (already) return { status: 'APPLIED' };
   const { category, code, label, lossCategory, requiresComment } = envelope.payload;
+  const codeTaken = await uow
+    .selectFrom('catalog_reason_codes')
+    .select('id')
+    .where('category', '=', category)
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) return codeExists('Un motif de cette catégorie porte déjà ce code.');
   await uow
     .insertInto('catalog_reason_codes')
     .values({
@@ -320,6 +346,12 @@ const customerCategoryCreate: CommandHandler<CustomerCategoryCreatePayload> = as
     .executeTakeFirst();
   if (already) return { status: 'APPLIED' };
   const { code, name } = envelope.payload;
+  const codeTaken = await uow
+    .selectFrom('catalog_customer_categories')
+    .select('id')
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) return codeExists('Une catégorie de client porte déjà ce code.');
   await uow
     .insertInto('catalog_customer_categories')
     .values({ id, code, name, created_by: toBin(envelope.author_user_id) })
@@ -340,10 +372,14 @@ const salesChannelCreate: CommandHandler<SalesChannelCreatePayload> = async (uow
   const { code, name } = envelope.payload;
   const already = await uow
     .selectFrom('catalog_sales_channels')
-    .select('code')
+    .select(['code', 'name'])
     .where('code', '=', code)
     .executeTakeFirst();
-  if (already) return { status: 'APPLIED' };
+  if (already) {
+    return already.name === name
+      ? { status: 'APPLIED' }
+      : codeExists('Un canal de vente porte déjà ce code.');
+  }
   await uow.insertInto('catalog_sales_channels').values({ code, name }).execute();
   await recordChanges(uow, [codeKeyedReferenceChange('SALES_CHANNEL', code)]);
   return { status: 'APPLIED' };

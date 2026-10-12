@@ -154,6 +154,7 @@
 
 - **PK** `id`. **UQ** `(code, version)`.
 - **CK** `unit_price_xaf > 0` ; `valid_to > valid_from` ; `approved_*` requis si `ACTIVE` ou `RETIRED` ; `min_quantity > 0` si renseigné.
+- **Contrôles applicatifs** (P5-23, S-29 ; D10 §8) : chaque contrainte est contrôlée avant l'écriture et refusée proprement (code de lignée, version suivante vivante, période, bornes, site dans la zone, produit de la version remplacée) ; `CANCELLED` posé par `pricing.rule.cancel` ; `supersedes_rule_id` servi par `GET /price-rules` (`supersedesRuleId`).
 - **IX** `(product_id, status, valid_from)`, `(zone_id)`, `(site_id)`.
 - **Suppr.** `VERSIONNEMENT` + `IMMUABLE` après activation (INV-PRX-01, INV-PRX-03).
 - **Audit** Création, activation, fin, remplacement, annulation.

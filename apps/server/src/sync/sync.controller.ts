@@ -14,8 +14,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { PullRequest, PullResponse, PushRequest, PushResponse } from '@gic/contracts';
-import { pullRequestSchema, pushRequestSchema } from '@gic/contracts';
+import { describeIssuesFr, pullRequestSchema, pushRequestSchema } from '@gic/contracts';
 import type { Clock } from '@gic/domain';
+import type { ZodIssue } from 'zod';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ApiError } from '../platform/http/api-error.exception.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
@@ -78,11 +79,11 @@ export class SyncController {
   }
 }
 
-function validationError(issues: readonly { message: string }[]): ApiError {
+function validationError(issues: readonly ZodIssue[]): ApiError {
   return new ApiError(
     400,
     'VALIDATION_ERROR',
-    `Corps de requête invalide : ${issues.map((i) => i.message).join(' ; ')}`,
+    `Corps de requête invalide : ${describeIssuesFr(issues)}`,
   );
 }
 

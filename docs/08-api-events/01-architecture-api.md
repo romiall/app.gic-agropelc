@@ -37,7 +37,7 @@ Alternatives écartées (détail dans ADR-019) :
 | Résultat d'une commande | Enveloppe de résultat identique pour `/commands` et `/sync/push` (synchronisation §3.1) |
 | Idempotence | **Obligatoire** sur toute commande (`command_id`) ; les lectures sont sans effet |
 | Compression | `gzip` accepté en requête (push) et en réponse |
-| Langue | Messages d'erreur en français ; codes stables en anglais |
+| Langue | Messages d'erreur en français ; codes stables en anglais. Les constats de validation des schémas (`VALIDATION_ERROR`) sont traduits par `describeIssuesFr` (`packages/contracts`, partagé avec l'appareil ; P5-23, S-37) : champ concerné, puis cause (« « paymentTermsDays » : valeur trop grande (au plus 3650). ») |
 
 ## 3. Enveloppe de commande et gestionnaires
 

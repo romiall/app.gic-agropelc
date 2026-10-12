@@ -42,7 +42,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import type { Clock, IdGenerator } from '@gic/domain';
-import { rawCommandEnvelopeSchema, type CommandResult } from '@gic/contracts';
+import { describeIssuesFr, rawCommandEnvelopeSchema, type CommandResult } from '@gic/contracts';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
 import { canonicalJsonStringify } from '../platform/canonical-json.js';
@@ -188,9 +188,7 @@ export class CommandPipelineService {
     // command_type) reste à l'étape 5, conformément à l'algorithme.
     const envelopeCheck = rawCommandEnvelopeSchema.safeParse(raw);
     if (!envelopeCheck.success) {
-      throw new EnvelopeValidationError(
-        envelopeCheck.error.issues.map((i) => i.message).join(' ; '),
-      );
+      throw new EnvelopeValidationError(describeIssuesFr(envelopeCheck.error.issues));
     }
     const envelope = envelopeCheck.data;
     const commandIdBin = toBin(envelope.command_id);
@@ -454,7 +452,8 @@ export class CommandPipelineService {
     // Étape 5 : validation du payload (schéma versionné, partagé avec l'appareil).
     const parsed = this.registry.parse(raw);
     if (!parsed.ok) {
-      const detail = parsed.issues?.map((i) => i.message).join(' ; ') ?? parsed.reason;
+      // Messages en français (S-37) : montrés tels quels à l'utilisateur.
+      const detail = parsed.issues ? describeIssuesFr(parsed.issues) : parsed.reason;
       return this.markAndReject(claim, `VALIDATION_ERROR:${parsed.reason}`, detail);
     }
 

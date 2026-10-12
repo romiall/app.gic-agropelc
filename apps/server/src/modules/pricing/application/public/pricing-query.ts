@@ -19,6 +19,8 @@ export interface PriceRuleView {
   readonly id: string;
   readonly code: string;
   readonly version: number;
+  /** Règle dont celle-ci est la nouvelle version (BR-PRX-007 ; servie depuis P5-23, S-29). */
+  readonly supersedesRuleId: string | null;
   readonly productId: string;
   readonly unitPriceXaf: number;
   readonly pricingUnitCode: string;
@@ -39,6 +41,7 @@ function toView(row: {
   id: Buffer;
   code: string;
   version: number;
+  supersedes_rule_id: Buffer | null;
   product_id: Buffer;
   unit_price_xaf: number;
   pricing_unit_code: string;
@@ -58,6 +61,7 @@ function toView(row: {
     id: fromBin(row.id),
     code: row.code,
     version: row.version,
+    supersedesRuleId: fromBinOrNull(row.supersedes_rule_id),
     productId: fromBin(row.product_id),
     unitPriceXaf: row.unit_price_xaf,
     pricingUnitCode: row.pricing_unit_code,

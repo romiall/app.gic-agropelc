@@ -2,6 +2,10 @@
  * Fiche fournisseur (procurement.suppliers, dictionnaire §suppliers ; CM §26). Depuis P6-07,
  * chaque écriture alimente aussi la liste courte des fournisseurs actifs du jeu hors ligne
  * `procurement` (`emitSupplierChange`).
+ *
+ * P5-23 (S-30, S-37) : un code déjà pris est refusé (`CODE_EXISTS`) au lieu de lever la violation
+ * d'unicité (renvoi sans fin) ; le délai de paiement est borné comme au CRM (colonne `SMALLINT`) ;
+ * la modification efface un champ facultatif reçu à `null`.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -18,6 +22,9 @@ function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
 }
 
+/** Délai de paiement en jours : même borne que la fiche client (`customer-commands.ts`). */
+const paymentTermsDaysSchema = z.number().int().nonnegative().max(3650);
+
 const createPayloadSchema = z.object({
   code: z.string().min(1).max(40),
   name: z.string().min(1).max(200),
@@ -27,7 +34,7 @@ const createPayloadSchema = z.object({
   email: z.string().email().max(200).optional(),
   address: z.string().max(2000).optional(),
   taxId: z.string().max(40).optional(),
-  paymentTermsDays: z.number().int().nonnegative().optional(),
+  paymentTermsDays: paymentTermsDaysSchema.optional(),
   notes: z.string().max(2000).optional(),
 });
 type CreatePayload = z.infer<typeof createPayloadSchema>;
@@ -54,6 +61,19 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     notes,
   } = envelope.payload;
 
+  const codeTaken = await uow
+    .selectFrom('procurement_suppliers')
+    .select('id')
+    .where('code', '=', code)
+    .executeTakeFirst();
+  if (codeTaken) {
+    return {
+      status: 'REJECTED',
+      errorCode: 'CODE_EXISTS',
+      messageFr: 'Un fournisseur porte déjà ce code.',
+    };
+  }
+
   await uow
     .insertInto('procurement_suppliers')
     .values({
@@ -75,16 +95,17 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
+// Un champ facultatif absent est inchangé ; reçu à `null`, il est effacé (S-30).
 const updatePayloadSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   suppliedCategories: z.array(z.string().min(1).max(40)).optional(),
-  contactName: z.string().max(200).optional(),
-  phone: z.string().max(20).optional(),
-  email: z.string().email().max(200).optional(),
-  address: z.string().max(2000).optional(),
-  taxId: z.string().max(40).optional(),
-  paymentTermsDays: z.number().int().nonnegative().optional(),
-  notes: z.string().max(2000).optional(),
+  contactName: z.string().max(200).nullable().optional(),
+  phone: z.string().max(20).nullable().optional(),
+  email: z.string().email().max(200).nullable().optional(),
+  address: z.string().max(2000).nullable().optional(),
+  taxId: z.string().max(40).nullable().optional(),
+  paymentTermsDays: paymentTermsDaysSchema.nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
 });
 type UpdatePayload = z.infer<typeof updatePayloadSchema>;
 

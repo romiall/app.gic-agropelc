@@ -57,6 +57,12 @@ Définir **une seule fois** ce qui peut être stocké, produit, acheté, consomm
 
 Code produit unique ; unité de base existante ; facteur > 0 ; catégorie existante ; famille `SERVICE` incompatible avec un suivi par lot ; libellé non vide.
 
+Contrôles du serveur (P5-23, besoin S-31) : une violation de la base levait une exception, donc un renvoi sans fin (`RETRY_LATER`) ; chaque cas est désormais refusé.
+- **Code déjà pris** (`CODE_EXISTS`) : produit, catégorie de produit, catégorie de client, motif (unique par catégorie). Une unité ou un canal de vente recréé sous un code existant n'est accepté (sans effet) que s'il est identique (libellé, et nature de comptage pour une unité) ; sinon `CODE_EXISTS` (la commande répondait `APPLIED` sans rien changer).
+- **Produit biologique** : suivi par lot exigé (BR-PRD-001 : un lot de production ne reçoit qu'un produit suivi par lot) ; `NONE` refusé (`VALIDATION_ERROR`), suivi absent réglé à `REQUIRED` (**DÉDUIT**, AV-222).
+- **Conditionnement** : facteur borné à la colonne (`numeric(14,6)`) ; entier sur une unité de base de comptage (BR-CAT-003 ; `PRODUCT_UNIT_FACTOR_INVALID`).
+- **Coût standard** : une seule version par instant (`STANDARD_COST_VERSION_EXISTS`) ; montant entier sûr. Le coût standard n'est servi à aucun appareil (RC-05 ; projection retirée, S-02).
+
 ## 9. Dépendances
 
 Aucune dépendance métier. Utilisé par PRX, VEN, STK, PRD, APP, FIN, ANA.
