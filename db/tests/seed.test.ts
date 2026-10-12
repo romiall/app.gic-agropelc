@@ -13,7 +13,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
+import { connectUtc } from '../seeds/connection.js';
 import {
   PERMISSIONS,
   ROLE_DISCOUNT_SETTINGS,
@@ -46,7 +47,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
 
   beforeAll(async () => {
     runSeed();
-    conn = await mysql.createConnection(process.env.DATABASE_URL!);
+    conn = await connectUtc(process.env.DATABASE_URL!);
   });
 
   afterAll(async () => {

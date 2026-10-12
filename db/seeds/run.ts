@@ -9,7 +9,8 @@
  * 20260924100100_create_identity_core.sql) : ce seed est la source de vérité courante de
  * la matrice, pas seulement son état initial.
  */
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
+import { connectUtc } from './connection.js';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
 import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
@@ -322,7 +323,7 @@ async function seedFinanceReferences(conn: mysql.Connection): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const conn = await mysql.createConnection(DATABASE_URL!);
+  const conn = await connectUtc(DATABASE_URL!);
   try {
     console.log('Seed P0-05 :');
     const systemUserId = await ensureSystemUser(conn);

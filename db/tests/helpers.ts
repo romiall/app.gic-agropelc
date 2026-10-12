@@ -3,7 +3,8 @@
 // vis-à-vis des déclencheurs BEFORE DELETE qui empêchent tout nettoyage a posteriori par
 // simple DELETE — voir db/README.md §5).
 import { randomInt } from 'node:crypto';
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
+import { poolUtc } from '../seeds/connection.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -12,7 +13,7 @@ if (!DATABASE_URL) {
   );
 }
 
-const pool = mysql.createPool(DATABASE_URL);
+const pool = poolUtc(DATABASE_URL);
 
 /** Exécute `fn(connection)` dans une transaction toujours annulée (ROLLBACK) à la fin. */
 export async function withRollback<T>(fn: (conn: mysql.PoolConnection) => Promise<T>): Promise<T> {
