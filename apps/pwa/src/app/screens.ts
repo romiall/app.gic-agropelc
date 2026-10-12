@@ -78,6 +78,7 @@ export const ROUTES = {
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
+  allocations: '/stock/quotas',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -250,6 +251,8 @@ export const ROLE_SETS = {
   replenishRequest: ['VENDEUR_PDV'],
   /** ECR-DIS-01 : accueil du PDV (vendeur du PDV). */
   posHome: ['VENDEUR_PDV'],
+  /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
+  allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
   distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
@@ -576,6 +579,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.productionOutput,
     actionCodes: [],
     offline: true,
+  },
+  {
+    id: 'ECR-STK-06',
+    path: ROUTES.allocations,
+    labelKey: 'allocations',
+    group: 'stock',
+    roles: ROLE_SETS.allocationManage,
+    actionCodes: [],
+    offline: false,
   },
   {
     id: 'ECR-DIS-01',
