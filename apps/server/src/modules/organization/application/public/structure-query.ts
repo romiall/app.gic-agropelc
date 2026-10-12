@@ -56,12 +56,12 @@ export interface PointOfSaleSummary {
   readonly version: number;
 }
 
-/** Jour `AAAA-MM-JJ` d'une colonne DATE (lue à minuit local par le pilote). */
+/** Jour `AAAA-MM-JJ` d'une colonne DATE (lue à minuit UTC par le pilote, réglé en UTC). */
 function dateOnly(value: Date | null): string | null {
   if (value === null) return null;
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(value.getUTCDate()).padStart(2, '0');
+  return `${value.getUTCFullYear()}-${month}-${day}`;
 }
 
 const numberOrNull = (value: unknown): number | null => (value === null ? null : Number(value));

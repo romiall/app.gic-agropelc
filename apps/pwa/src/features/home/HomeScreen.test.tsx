@@ -159,7 +159,7 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     expect(within(soon).getByText('Bientôt')).toBeInTheDocument();
   });
 
-  it('action sans route du serveur mais dont l’écran est livré : lien vers l’écran (ADR-050)', async () => {
+  it('action sans route du serveur mais dont l’écran est livré : lien vers l’écran (ADR-036)', async () => {
     const base = homeResponse();
     const section = base.sections[0]!;
     request.mockResolvedValue({
@@ -237,7 +237,7 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Pas de réseau et aucune donnée récente à afficher.',
     );
-    // ADR-050 : le menu par rôle reste accessible hors ligne.
+    // ADR-036 : le menu par rôle reste accessible hors ligne.
     expect(screen.getByRole('link', { name: /Ouvrir le menu/ })).toHaveAttribute('href', '/menu');
 
     request.mockResolvedValueOnce({ ok: true, data: homeResponse() });

@@ -4,7 +4,7 @@
  * au prix catalogue résolu sur l'appareil, encaissement prérempli au total. Utilisable hors ligne :
  * la vente est enregistrée dans l'outbox et envoyée au retour du réseau (UX-05).
  *
- * Hors ligne (serveur injoignable, ADR-051), la vente est bloquée localement au-delà de ce que
+ * Hors ligne (serveur injoignable, ADR-037), la vente est bloquée localement au-delà de ce que
  * l'appareil peut vendre (BR-VEN-018, AV-025 ; `decideLocalConsumption`) : stock local pour une garde
  * exclusive (et l'appareil désigné pour une garde d'appareil), quota d'appareil pour un emplacement
  * partagé ; une ligne de service n'a pas d'effet de stock (BR-VEN-031). En ligne, le serveur décide

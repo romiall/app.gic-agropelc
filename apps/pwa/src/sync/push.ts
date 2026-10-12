@@ -87,7 +87,7 @@ export async function runPushCycle(
     // prochain cycle) plutôt que SYNCING indéfiniment — reprise après coupure (§8). L'enveloppe
     // n'est jamais modifiée : le lot a pu atteindre le serveur avant la coupure, et son empreinte
     // (`payload_hash`, toute l'enveloppe) doit rester identique au renvoi, sans quoi le serveur
-    // refuserait la commande déjà appliquée (`COMMAND_ID_REUSED`, ADR-051 §2).
+    // refuserait la commande déjà appliquée (`COMMAND_ID_REUSED`, ADR-037 §2).
     await db.outbox
       .where('command_id')
       .anyOf(batch.map((c) => c.command_id))

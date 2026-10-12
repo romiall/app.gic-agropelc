@@ -93,6 +93,10 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'offline.max_autonomy_hours', value: 168, isClientVisible: true, ref: 'AV-009' },
   { key: 'offline.warning_hours', value: 48, isClientVisible: true, ref: 'AV-009' },
   { key: 'sync.clock_skew_flag_minutes', value: 5, isClientVisible: false, ref: 'BR-SYN-011' },
+  // P5-21 (revue adverse, AV-217) : au-delà de cette durée depuis sa première réception, une commande
+  // à renvoyer (dépendance en attente, erreur transitoire) ne suspend plus la suite de son lot ; elle
+  // reste à renvoyer, jamais perdue, et le signal `SYNC_COMMAND_STALLED` est ouvert pour l'Admin.
+  { key: 'sync.retry_hold_minutes', value: 30, isClientVisible: false, ref: 'AV-217' },
   { key: 'sync.backdate_max_hours', value: 72, isClientVisible: true, ref: 'AV-078' },
   { key: 'sync.justification_after_hours', value: 24, isClientVisible: true, ref: 'AV-078' },
   { key: 'crm.inactive_after_days', value: 30, isClientVisible: false, ref: 'AV-013' },

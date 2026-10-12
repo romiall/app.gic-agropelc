@@ -74,10 +74,10 @@ Règles :
 | Lot | ≤ 50 commandes et ≤ 256 Ko compressés (gzip) ; les commandes d'un même auteur sont groupées (session de l'auteur, BR-SYN-014) |
 | Ordre | Croissant de `device_seq` ; le serveur traite **séquentiellement** les commandes d'un lot, trié par `device_seq`. Un lot n'a qu'un auteur, celui de la session qui l'envoie (une commande d'un autre auteur est rejetée `FORBIDDEN`, sans effet sur les autres, INV-SYN-05). Sur une tablette partagée le compteur est commun à l'appareil : les lots de deux auteurs s'entrecroisent, l'ordre garanti est celui de chaque couple (appareil, auteur) (INV-SYN-04 reformulé) et rien ne doit dépendre de l'ordre d'arrivée entre auteurs |
 | Opérations en attente | `pending_by_author` (facultatif) : ce qui reste dans la file de l'appareil **après** le lot, par auteur. Le serveur en tire le total (ligne `_device` de `sync.device_sync_state`) et une ligne par auteur ; absent, rien n'est supposé (BR-DIS-014 n'y lit pas « tout est synchronisé ») |
-| Dépendances | Une commande dont une dépendance n'est pas encore connue du serveur reçoit `RETRY_LATER` (`DEPENDENCY_PENDING`) ; si la dépendance est rejetée, elle reçoit `REJECTED` (`DEPENDENCY_REJECTED`) |
-| Arrêt du lot | Après un **rejet** ou un **conflit** : aucun, chaque commande a son propre résultat ; un rejet n'arrête que les commandes qui en dépendent. Après une commande **à renvoyer** (`RETRY_LATER` : dépendance pas encore appliquée, erreur transitoire) : les commandes suivantes du lot ne sont ni traitées ni enregistrées, elles reçoivent `RETRY_LATER` (`PRECEDING_COMMAND_PENDING`) et l'appareil les renvoie dans l'ordre (INV-SYN-04 ; P5-21, AV-210) |
+| Dépendances | Une commande dont une dépendance est inconnue du serveur, ou reçue mais pas encore réglée (`RECEIVED`, `FAILED_RETRYABLE`), reçoit `RETRY_LATER` (`DEPENDENCY_PENDING`) ; si la dépendance est rejetée, elle reçoit `REJECTED` (`DEPENDENCY_REJECTED`) ; une dépendance réglée sans être appliquée (`CONFLICT`, quarantaine) laisse passer la dépendante (la faire attendre la bloquerait pour toujours) |
+| Arrêt du lot | Après un **rejet** ou un **conflit** : aucun, chaque commande a son propre résultat ; un rejet n'arrête que les commandes qui en dépendent. Après une commande **à renvoyer** (`RETRY_LATER` : dépendance pas encore appliquée, erreur transitoire) : les commandes suivantes du lot ne sont ni traitées ni enregistrées, elles reçoivent `RETRY_LATER` (`PRECEDING_COMMAND_PENDING`) et l'appareil les renvoie dans l'ordre (INV-SYN-04 ; P5-21, AV-210). Exception : une commande à renvoyer depuis plus de `sync.retry_hold_minutes` (30 min) après sa première réception reçoit `RETRY_LATER` (`COMMAND_STALLED`) — toujours à renvoyer, jamais perdue — et ne suspend plus la suite ; le signal `SYNC_COMMAND_STALLED` est ouvert pour l'Admin (AV-217) |
 | Réponse | `results[]` : `command_id`, `status` (`APPLIED`, `APPLIED_WITH_WARNINGS`, `CONFLICT`, `REJECTED`, `RETRY_LATER`), `server_refs` (numéros, identifiants), `warnings[]`, `error{code, message_fr}`, `conflict_id` ; `server_time` ; `clock_skew_ms` |
-| Délai de traitement | Délai maximal côté serveur de 25 s par lot ; les commandes non traitées dans ce délai reçoivent `RETRY_LATER` |
+| Délai de traitement | Délai maximal côté serveur de 25 s par lot ; les commandes non traitées dans ce délai ne sont ni traitées ni enregistrées et reçoivent `RETRY_LATER` (`SERVER_BUSY`), dans l'ordre (appliqué depuis la revue de P5-21) |
 
 ### 3.2 Algorithme serveur (par commande)
 
@@ -85,22 +85,31 @@ Règles :
 1. Si command_id ∈ command_inbox :
      si payload_hash différent → REJECTED COMMAND_ID_REUSED + alerte de sécurité
      si la commande est réglée → renvoyer le résultat enregistré (même statut)
-     si elle est à reprendre (FAILED_RETRYABLE, ou RECEIVED abandonnée depuis plus de 120 s) →
-       la réclamer sur son compteur de tentatives (un seul renvoi simultané la traite) et reprendre en 3
-     si elle est en cours de traitement (RECEIVED récente) → RETRY_LATER SERVER_BUSY
-2. Insérer command_inbox (RECEIVED) — la clé primaire garantit l'unicité même en concurrence
+     si elle est à reprendre (FAILED_RETRYABLE, ou RECEIVED réclamée depuis plus de 120 s : claimed_at) →
+       la réclamer : attempts + 1, claimed_at = maintenant, à condition que (statut, attempts) n'ait pas
+       changé (un seul renvoi simultané la traite) ; reprendre en 2b avec ce numéro de tentative
+     si elle est en cours de traitement (RECEIVED réclamée récemment) → RETRY_LATER SERVER_BUSY
+2. Insérer command_inbox (RECEIVED, tentative 1, claimed_at) — la clé primaire garantit l'unicité ;
+     un envoi simultané qui la trouve déjà prise → RETRY_LATER SERVER_BUSY
+   Toute écriture qui conclut l'inbox (étapes 2b à 7) est conditionnée à (RECEIVED, ce numéro de
+   tentative) : si un autre traitement l'a reprise entre-temps, celui-ci répond RETRY_LATER SERVER_BUSY
+   sans rien écrire ni affirmer
 2b. Dépendance (depends_on) inconnue, ou reçue mais pas encore réglée (RECEIVED, FAILED_RETRYABLE) →
      inbox = FAILED_RETRYABLE, RETRY_LATER DEPENDENCY_PENDING (reprise au renvoi) ;
-     dépendance REJECTED → REJECTED DEPENDENCY_REJECTED
+     dépendance REJECTED → REJECTED DEPENDENCY_REJECTED ; dépendance CONFLICT (quarantaine) → la suite
 3. Contrôles d'authenticité :
      appareil ACTIVE, ou bloqué après occurred_at → sinon CONFLICT DEVICE_REVOKED (quarantaine)
      utilisateur actif à occurred_at → sinon CONFLICT USER_DEACTIVATED
-     occurred_at ≤ now + 5 min (après correction de l'écart) → sinon REJECTED OCCURRED_AT_FUTURE
+     occurred_at ≤ now + 5 min (après correction de l'écart s'il est négatif : seule une horloge en
+       avance est excusée) → sinon REJECTED OCCURRED_AT_FUTURE
      fenêtre rétroactive (AV-078) → sinon REJECTED BACKDATE_EXCEEDED ou exigence de justification
      command_version supportée → sinon REJECTED UNSUPPORTED_VERSION
 4. RBAC évalué à occurred_at (BR-ADM-004) → sinon REJECTED FORBIDDEN (audit DENIED)
 5. Validation du schéma et des règles de validité → sinon REJECTED <CODE_METIER>
 6. BEGIN
+     ligne d'inbox verrouillée (FOR UPDATE) : toujours (RECEIVED, ce numéro de tentative) ? sinon
+       ROLLBACK et RETRY_LATER SERVER_BUSY (un renvoi l'a reprise) ; un renvoi qui veut la reprendre
+       pendant cette transaction attend son COMMIT, puis sa réclamation échoue
      gestionnaire métier : effets, contrôles d'état
        - intention sur état partagé + base_version obsolète → fusion automatique ou CONFLICT VERSION_CONFLICT
        - fait accompli + état incompatible → application + conflit informatif (APPLIED_WITH_WARNINGS)
@@ -108,8 +117,14 @@ Règles :
      audit_log, domain_events, change_feed, command_inbox = APPLIED(_WITH_WARNINGS), result
    COMMIT
 7. En cas d'erreur transitoire (verrou, délai) : ROLLBACK, inbox = FAILED_RETRYABLE, réponse RETRY_LATER
-8. Après une réponse RETRY_LATER, les commandes suivantes du lot reçoivent RETRY_LATER
-   PRECEDING_COMMAND_PENDING sans être traitées ni enregistrées (AV-210)
+   (2b et 7) Première réception il y a plus de sync.retry_hold_minutes → code COMMAND_STALLED au lieu de
+   DEPENDENCY_PENDING / SERVER_BUSY, signal SYNC_COMMAND_STALLED ouvert une fois (fermé quand elle se
+   règle) (AV-217)
+8. Après une réponse RETRY_LATER (sauf COMMAND_STALLED), les commandes suivantes du lot reçoivent
+   RETRY_LATER PRECEDING_COMMAND_PENDING sans être traitées ni enregistrées (AV-210) ; au-delà de 25 s de
+   traitement du lot, RETRY_LATER SERVER_BUSY, sans être traitées ni enregistrées (§3.1)
+9. Restes de l'appareil (sync.device_sync_state) : déclarés par l'appareil, plus les commandes du lot
+   que le serveur n'a pas réglées (RETRY_LATER), à l'auteur du lot (BR-DIS-014)
 ```
 
 ### 3.3 Catalogue des codes de résultat de synchronisation
@@ -130,10 +145,11 @@ Règles :
 | `TRANSFER_RETURN_CONFLICT` | CONFLICT | Non | Quarantaine (P5-16, AV-180) : réception d'un transfert retourné, retour d'un transfert reçu ou dont une réception sans document attend l'expédition ; aucun mouvement |
 | `TRANSFER_OVER_RECEIVED` | CONFLICT (hors ligne) / REJECTED (en ligne) | Non | Seconde réception d'un transfert déjà reçu, ou réception avec document d'un transfert qu'une réception sans document attend (quarantaine hors ligne) ; réception supérieure à l'expédié, sans document comprise, refusée en ligne |
 | `BLIND_RECEIPT_NOT_ALLOWED`, `TRANSFER_ID_TAKEN`, `UNIT_INVALID`, `LOT_REQUIRED` | REJECTED | Non | Réception sans document refusée en ligne (P5-16) : destination non exclusive (`CUSTODY_DEVICE_MISMATCH` hors ligne, raison `LOCATION_NOT_EXCLUSIVE`), identifiant déjà pris, unité inconnue, lot manquant d'un produit suivi par lot |
-| `DEPENDENCY_PENDING` | RETRY_LATER | Oui | Dépendance non reçue, ou reçue mais pas encore appliquée (AV-210) |
+| `DEPENDENCY_PENDING` | RETRY_LATER | Oui | Dépendance non reçue, ou reçue mais pas encore réglée (`RECEIVED`, `FAILED_RETRYABLE`) ; une dépendance en quarantaine (`CONFLICT`) est réglée (AV-210) |
 | `PRECEDING_COMMAND_PENDING` | RETRY_LATER | Oui | Une commande précédente du lot doit d'abord être renvoyée : celle-ci n'a pas été traitée (INV-SYN-04, AV-210) |
 | `DEPENDENCY_REJECTED` | REJECTED | Non | Dépendance rejetée |
-| `SERVER_BUSY` | RETRY_LATER | Oui | Erreur transitoire |
+| `SERVER_BUSY` | RETRY_LATER | Oui | Erreur transitoire ; commande en cours de traitement par une autre requête ; délai du lot dépassé |
+| `COMMAND_STALLED` | RETRY_LATER | Oui | À renvoyer depuis plus de `sync.retry_hold_minutes` après sa première réception (dépendance qui n'arrive pas, erreur répétée) : ne suspend plus la suite du lot ; signal `SYNC_COMMAND_STALLED` pour l'Admin (AV-217) |
 | Avertissements | APPLIED_WITH_WARNINGS | — | `STOCK_NEGATIVE`, `PRICE_MISMATCH`, `DUPLICATE_CUSTOMER`, `CREDIT_OVER_LIMIT`, `PRODUCT_INACTIVE`, `ALLOCATION_REVOKED_CONSUMED`, `ALLOCATION_RELEASE_MISMATCH`, `ALLOCATION_EXCEEDED`, `ALLOCATION_OVERCOMMITTED`, `CUSTODY_DEVICE_MISMATCH`, `ORDER_OVER_FULFILMENT`, `CANCEL_WINDOW_EXCEEDED`, `CANCEL_SESSION_CLOSED` (annulation directe dans le délai dont la session de caisse d'un encaissement de la vente est close ou absente à l'heure de l'annulation : transformée en demande, BR-VEN-028, P5-14), `CLOCK_SUSPECT`, `RECEIPT_QUARANTINED`, `PAYMENT_SUSPECT_DUPLICATE`, `LOT_CLOSED`, `TRANSFER_UNMATCHED` (réception sans document appliquée et non encore rapprochée, P5-16 ; le conflit de délai est ouvert plus tard par la tâche `inventory.transfers.unmatched_sweep`), `TRANSFER_OVER_RECEIVED` (réception hors ligne au-delà de l'expédié, appliquée, BR-STK-021, P5-16), `VERSION_CONFLICT` (collision de champs d'un compte client, fusionnée automatiquement ; conflit informatif — matrice des conflits), `OVER_RECEIPT` (réception hors ligne au-delà du reliquat, P6-05), `INCUBATION_BALANCE_ADJUSTED` (éclosion hors ligne complétée en œufs non éclos, P7-08), `ANONYMOUS_UNPAID` (vente anonyme hors ligne non intégralement payée, AV-137, P4-04), `LOT_NOT_SELLABLE` (animaux vendus depuis un lot qui n'était pas « en vente », BR-PRD-010, P4-04), `PRICE_OVERRIDE_EXCEEDS_LIMIT` (dérogation de prix au-delà du plafond ou sans prix catalogue : validation `PRICE_OVERRIDE` demandée, P4-04), `CASH_SESSION_CONCURRENT_OPEN` (ouverture de caisse hors ligne fusionnée dans une session existante ou décalée après la session de la veille close depuis, AV-154, AV-167, AV-168, P5-12), `CASH_SESSION_CONCURRENT_CLOSE` (clôture de caisse hors ligne d'une session qui n'est plus ouverte, ou datée avant son ouverture : comptage conservé comme observation, AV-169, P5-12), `CASH_ACCOUNT_INACTIVE` (ouverture hors ligne d'une caisse désactivée depuis, P5-12), `CASH_SESSION_SITE_CLOSED` (ouverture hors ligne sur un site fermé depuis, P5-12), `CASH_SESSION_CLOSE_BEFORE_MOVEMENTS` (clôture hors ligne datée avant un mouvement déjà enregistré : appliquée, jamais validée d'office, AV-171, P5-12), `CASH_NEGATIVE` (envoi de remise hors ligne qui rend une caisse négative, BR-FIN-012, P5-15), `CASH_TRANSFER_PAIR_NOT_ALLOWED` (envoi hors ligne entre deux types de comptes non admis, AV-158, P5-15), `CASH_TRANSFER_DISCREPANCY` (montant reçu différent de l'envoi : validation `CASH_TRANSFER_DISCREPANCY` demandée, P5-15), `CASH_TRANSFER_RECEIVED_AFTER_CANCEL`, `CASH_TRANSFER_CANCEL_AFTER_RECEIVE`, `CASH_TRANSFER_RECEIVED_TWICE` (courses hors ligne d'une remise conservées en observation, sans mouvement, AV-173, P5-15), `CASH_SESSION_MISSING` (encaissement en espèces au PDV saisi hors ligne sans session couvrant son heure, appliqué, BR-DIS-005, AV-184, P5-14) |
 
 ## 4. Reprise et attente progressive (appareil)
@@ -145,7 +161,7 @@ Règles :
 | HTTP 401 | Rafraîchissement du jeton, puis nouvel envoi ; échec → demande de reconnexion (l'outbox est conservée) |
 | `RETRY_LATER` par commande | La commande reste `PENDING_SYNC` ; elle est renvoyée au lot suivant |
 | `REJECTED` / `CONFLICT` | Pas de nouvel envoi automatique (BR-SYN-009) |
-| Nombre de tentatives | Illimité pour les erreurs transitoires ; au-delà de 20 tentatives en échec, l'alerte locale « problème de synchronisation » s'affiche et le serveur voit `SYNC_STALE` |
+| Nombre de tentatives | Illimité pour les erreurs transitoires ; au-delà de 20 tentatives en échec, l'alerte locale « problème de synchronisation » s'affiche et le serveur voit `SYNC_STALE`. Côté serveur, une commande à renvoyer depuis plus de `sync.retry_hold_minutes` est signalée (`COMMAND_STALLED`, `SYNC_COMMAND_STALLED`) et ne retient plus la file (AV-217) ; un `RETRY_LATER` partout dans un lot ne se renvoie pas aussitôt |
 
 ## 5. Pull
 
@@ -227,6 +243,7 @@ Le détail par entité est dans [`03-matrice-conflits.md`](03-matrice-conflits.m
 - À chaque push : `clock_skew_ms = server_time − device_sent_at` (latence négligée, la précision recherchée étant la minute).
 - |écart| > 5 min : indicateur `clock_suspect` sur les commandes du lot, alerte `CLOCK_SKEW`, et message à l'utilisateur « l'heure de votre téléphone est incorrecte ».
 - `occurred_at` n'est **jamais** corrigé silencieusement (ADR-016). Les rapports peuvent afficher une version corrigée (`occurred_at + skew`) pour les opérations marquées, avec mention.
+- Contrôle de date future (INV-GLO-02) : `occurred_at + min(0, skew)` — seule une horloge **en avance** à l'envoi est excusée ; une horloge en retard à l'envoi (qui a reculé depuis la saisie) ne rend jamais future une date qui ne l'était pas (revue de P5-21).
 
 ## 10. États visibles par l'utilisateur
 

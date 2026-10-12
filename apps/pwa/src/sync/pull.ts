@@ -20,7 +20,7 @@ import { authorizedRequest } from './api-client.js';
 
 export const KNOWN_DATASETS = [
   // Jeux d'exploitation d'abord : si un cycle s'interrompt, le stock et les ventes sont les plus
-  // frais (le disponible local en dépend, ADR-051).
+  // frais (le disponible local en dépend, ADR-037).
   'stock',
   // Quotas de l'appareil (`STOCK_ALLOCATION`, ligne `DEVICE`, lecteur P5-18) : juste après le stock,
   // la garde de vente hors ligne en dépend (AT-003).
@@ -193,7 +193,7 @@ async function pullDataset(
 }
 
 /**
- * Un appareil ne détient les jeux téléchargés que d'un utilisateur à la fois (ADR-051) : à la première
+ * Un appareil ne détient les jeux téléchargés que d'un utilisateur à la fois (ADR-037) : à la première
  * synchronisation d'un autre utilisateur, projections et curseurs sont effacés et retéléchargés dans
  * son périmètre (l'outbox n'est jamais touchée). Sans cela, l'utilisateur suivant verrait les clients
  * et les ventes du précédent, et ne recevrait pas les lignes de son propre périmètre plus anciennes

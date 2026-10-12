@@ -8025,6 +8025,7 @@ CREATE TABLE `sync_command_inbox` (
   `device_sent_at` datetime(6) DEFAULT NULL,
   `received_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `applied_at` datetime(6) DEFAULT NULL,
+  `claimed_at` datetime(6) DEFAULT NULL,
   `clock_skew_ms` int DEFAULT NULL,
   `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
   `batch_id` binary(16) DEFAULT NULL,
@@ -8032,7 +8033,7 @@ CREATE TABLE `sync_command_inbox` (
   `result` json DEFAULT NULL,
   `error_code` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `error_message` text COLLATE utf8mb4_0900_as_cs,
-  `attempts` smallint NOT NULL DEFAULT '1',
+  `attempts` int NOT NULL DEFAULT '1',
   PRIMARY KEY (`command_id`),
   UNIQUE KEY `uq_sync_command_inbox_device_seq` (`device_id`,`device_seq`),
   KEY `ix_sync_command_inbox_device_received` (`device_id`,`received_at`),
@@ -8280,5 +8281,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261008090200'),
   ('20261010092000'),
   ('20261010093000'),
-  ('20261010093100');
+  ('20261010093100'),
+  ('20261012090000');
 UNLOCK TABLES;

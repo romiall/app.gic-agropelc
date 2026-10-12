@@ -15,7 +15,7 @@ const MAX_PUSH_BATCHES_PER_CYCLE = 20; // borne de sécurité (outbox anormaleme
 
 /**
  * `OFFLINE` : serveur injoignable (réseau). `SERVER_ERROR` : le serveur a répondu par une erreur
- * HTTP, il est joignable (ADR-051) ; les opérations repartiront au prochain cycle.
+ * HTTP, il est joignable (ADR-037) ; les opérations repartiront au prochain cycle.
  */
 export type SyncCycleOutcome =
   'SYNCED' | 'OFFLINE' | 'SERVER_ERROR' | 'SESSION_INVALID' | 'NOTHING_TO_DO';
@@ -25,7 +25,7 @@ export interface SyncEngineDeps {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly deviceId: string;
-  /** Utilisateur de la session : titulaire des jeux téléchargés (ADR-051). */
+  /** Utilisateur de la session : titulaire des jeux téléchargés (ADR-037). */
   readonly userId?: string;
   readonly onSessionInvalid: () => void;
   /** Appelé après chaque cycle (ex. tenter l'activation d'un service worker en attente). */

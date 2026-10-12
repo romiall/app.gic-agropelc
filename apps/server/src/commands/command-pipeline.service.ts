@@ -17,9 +17,15 @@
  *
  * Rejet à toute étape avant 6 : aucune table métier touchée (INV-SYN-05) — seul `inbox`
  * (registre de synchronisation, pas une table métier) change de statut ; une commande qui
- * attend une dépendance (RETRY_LATER/DEPENDENCY_PENDING) n'est même pas mise à jour, elle
- * reste `RECEIVED` (aucun statut « en attente » distinct dans `sync_command_inbox`, seule
- * la réponse au client diffère — §3.2 point 3).
+ * attend une dépendance passe `FAILED_RETRYABLE` (`DEPENDENCY_PENDING`), reprise au renvoi.
+ *
+ * Réclamation (P5-21, revue adverse ; AV-210) : chaque traitement porte un numéro de tentative
+ * (`attempts`, 1 à l'insertion, +1 à chaque reprise). Toute écriture qui conclut l'inbox est
+ * conditionnée à `status = 'RECEIVED'` et à ce numéro, et la transaction métier verrouille d'abord la
+ * ligne d'inbox et vérifie qu'elle tient encore la réclamation : de deux traitements de la même
+ * commande (renvoi pendant qu'une requête précédente tourne encore), un seul conclut ; l'autre répond
+ * « réessayer » sans rien écrire. L'abandon d'une ligne `RECEIVED` se mesure depuis sa dernière
+ * réclamation (`claimed_at`), jamais depuis sa première réception (`received_at`, immuable).
  *
  * Hors périmètre P0-06, délibérément non traité ici (voir docs/10-development-plan/
  * 06-passage-au-developpement.md §3 et le plan de cette session) :
@@ -51,6 +57,10 @@ import {
   checkUserActive,
   hasPermissionAt,
 } from '../modules/identity/application/public/index.js';
+import { currentSettingValue } from '../modules/organization/application/public/index.js';
+import { recordConflict, resolveOpenConflicts } from '../platform/sync/conflicts.js';
+import type { UnitOfWork } from '../platform/unit-of-work.js';
+import { retryHoldMinutesFrom, STALLED_CONFLICT_TYPE, STALLED_ENTITY_TYPE } from './retry-hold.js';
 import { recordAudit } from '../audit/record-audit.js';
 import { recordDenied } from '../audit/record-denied.js';
 import { logStructured } from '../platform/observability/logger.js';
@@ -63,11 +73,33 @@ import type { CommandHandlerOutcome } from '../platform/sync/command-handler-reg
 /** INV-GLO-02, BR-SYN-011 : `occurred_at` au plus 5 min après l'heure serveur (après correction de l'écart). */
 const OCCURRED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 /**
- * Une ligne `RECEIVED` plus ancienne n'est plus en cours de traitement (un lot se traite en 25 s au plus,
- * 02-synchronisation.md §3.1) : arrêt brutal du serveur entre l'enregistrement et la conclusion. Le
- * renvoi identique la reprend (P5-21, AV-210). Délai technique, pas un seuil métier.
+ * Une ligne `RECEIVED` réclamée depuis plus longtemps n'est plus en cours de traitement : arrêt brutal
+ * du serveur entre la réclamation et la conclusion. Le renvoi identique la reprend (P5-21, AV-210). La
+ * sûreté n'en dépend pas — la réclamation par tentative empêche tout double traitement —, seulement
+ * l'économie d'un travail perdu. Délai technique, pas un seuil métier (bien au-delà du délai d'un lot,
+ * 25 s, et de l'attente d'un verrou, 50 s).
  */
-const STALE_RECEIVED_SECONDS = 120;
+const STALE_CLAIM_SECONDS = 120;
+/** Erreurs MySQL d'attente de verrou et d'interblocage : la ligne est tenue par un autre traitement. */
+const LOCK_ERRNOS = new Set([1205, 1213]);
+/** Clé primaire déjà prise : un envoi simultané de la même commande vient de l'enregistrer. */
+const DUPLICATE_ENTRY_ERRNO = 1062;
+
+/** Traitement en cours d'une commande : sa ligne d'inbox et le numéro de tentative qui la réclame. */
+interface Claim {
+  readonly commandIdBin: Buffer;
+  readonly commandId: string;
+  readonly authorUserId: string;
+  readonly commandType: string;
+  readonly attempt: number;
+  /** Secondes écoulées depuis la première réception (`received_at`) : 0 pour une commande neuve. */
+  readonly firstAgeSeconds: number;
+  /** Déjà signalée bloquée (`COMMAND_STALLED`) : le signal se ferme quand elle se règle. */
+  readonly wasStalled: boolean;
+}
+
+/** La ligne d'inbox a été réclamée par un autre traitement : celui-ci s'arrête sans rien écrire. */
+class ClaimLost extends Error {}
 
 export class EnvelopeValidationError extends ApiError {
   constructor(detail: string) {
@@ -191,7 +223,10 @@ export class CommandPipelineService {
         'error_code',
         'error_message',
         'attempts',
-        sql<number>`TIMESTAMPDIFF(SECOND, received_at, NOW(6))`.as('age_seconds'),
+        sql<number>`TIMESTAMPDIFF(SECOND, COALESCE(claimed_at, received_at), NOW(6))`.as(
+          'claim_age_seconds',
+        ),
+        sql<number>`TIMESTAMPDIFF(SECOND, received_at, NOW(6))`.as('first_age_seconds'),
       ])
       .where('command_id', '=', commandIdBin)
       .executeTakeFirst();
@@ -206,66 +241,104 @@ export class CommandPipelineService {
       };
     }
     // Reprenable : échec transitoire ou dépendance en attente (`FAILED_RETRYABLE`), ou ligne `RECEIVED`
-    // abandonnée. Une ligne `RECEIVED` récente est en cours de traitement ailleurs : « réessayer ».
+    // abandonnée (réclamée depuis plus de STALE_CLAIM_SECONDS). Une ligne `RECEIVED` récemment réclamée
+    // est en cours de traitement ailleurs : « réessayer ».
     const reclaimable =
       existing !== undefined &&
       (existing.status === 'FAILED_RETRYABLE' ||
-        (existing.status === 'RECEIVED' && Number(existing.age_seconds) >= STALE_RECEIVED_SECONDS));
+        (existing.status === 'RECEIVED' &&
+          Number(existing.claim_age_seconds) >= STALE_CLAIM_SECONDS));
     if (existing && !reclaimable) {
       return storedResult(envelope.command_id, existing);
     }
 
+    let claim: Claim;
     if (existing) {
       // Reprise : la ligne existe déjà (contrainte de clé primaire), on la remet à RECEIVED plutôt que
       // d'en insérer une seconde. La reprise est **réclamée** sur le compteur de tentatives : de deux
       // renvois simultanés de la même enveloppe, un seul la traite (P5-21, AV-210).
-      const claimed = await this.db
-        .updateTable('sync_command_inbox')
-        .set({
-          status: 'RECEIVED',
-          attempts: sql`attempts + 1`,
-          error_code: null,
-          error_message: null,
-        })
-        .where('command_id', '=', commandIdBin)
-        .where('status', '=', existing.status)
-        .where('attempts', '=', existing.attempts)
-        .executeTakeFirst();
-      if (Number(claimed.numUpdatedRows) !== 1) {
-        return inProgressResult(envelope.command_id);
+      try {
+        const claimed = await this.db
+          .updateTable('sync_command_inbox')
+          .set({
+            status: 'RECEIVED',
+            attempts: sql`attempts + 1`,
+            claimed_at: sql`NOW(6)`,
+            error_code: null,
+            error_message: null,
+          })
+          .where('command_id', '=', commandIdBin)
+          .where('status', '=', existing.status)
+          .where('attempts', '=', existing.attempts)
+          .executeTakeFirst();
+        if (Number(claimed.numUpdatedRows) !== 1) {
+          return inProgressResult(envelope.command_id);
+        }
+      } catch (error) {
+        // La ligne est verrouillée par la transaction d'un autre traitement de la même commande.
+        if (LOCK_ERRNOS.has(mysqlErrno(error))) return inProgressResult(envelope.command_id);
+        throw error;
       }
+      claim = {
+        commandIdBin,
+        commandId: envelope.command_id,
+        authorUserId: envelope.author_user_id,
+        commandType: envelope.command_type,
+        attempt: existing.attempts + 1,
+        firstAgeSeconds: Number(existing.first_age_seconds),
+        wasStalled: existing.error_code === 'COMMAND_STALLED',
+      };
     } else {
       // Étape 2 : insertion RECEIVED (la clé primaire command_id garantit l'unicité même en concurrence).
-      await this.db
-        .insertInto('sync_command_inbox')
-        .values({
-          command_id: commandIdBin,
-          device_id: toBin(ctx.authenticatedDeviceId),
-          user_id: toBin(envelope.author_user_id),
-          device_seq: ctx.transport === 'SYNC_PUSH' ? envelope.device_seq : null,
-          transport: ctx.transport,
-          command_type: envelope.command_type,
-          command_version: envelope.command_version,
-          aggregate_type: envelope.aggregate_type,
-          aggregate_id: toBin(envelope.aggregate_id),
-          base_version: envelope.base_version,
-          depends_on: jsonValue(envelope.depends_on),
-          payload: jsonValue(envelope.payload),
-          payload_hash: payloadHash,
-          occurred_at: new Date(envelope.occurred_at),
-          client_created_at: new Date(envelope.client_created_at),
-          device_sent_at: ctx.deviceSentAt ?? null,
-          batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
-          clock_skew_ms: ctx.clockSkewMs ?? null,
-          captured_offline: toDbBool(envelope.captured_offline),
-          status: 'RECEIVED',
-        })
-        .execute();
+      try {
+        await this.db
+          .insertInto('sync_command_inbox')
+          .values({
+            command_id: commandIdBin,
+            device_id: toBin(ctx.authenticatedDeviceId),
+            user_id: toBin(envelope.author_user_id),
+            device_seq: ctx.transport === 'SYNC_PUSH' ? envelope.device_seq : null,
+            transport: ctx.transport,
+            command_type: envelope.command_type,
+            command_version: envelope.command_version,
+            aggregate_type: envelope.aggregate_type,
+            aggregate_id: toBin(envelope.aggregate_id),
+            base_version: envelope.base_version,
+            depends_on: jsonValue(envelope.depends_on),
+            payload: jsonValue(envelope.payload),
+            payload_hash: payloadHash,
+            occurred_at: new Date(envelope.occurred_at),
+            client_created_at: new Date(envelope.client_created_at),
+            device_sent_at: ctx.deviceSentAt ?? null,
+            batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
+            clock_skew_ms: ctx.clockSkewMs ?? null,
+            captured_offline: toDbBool(envelope.captured_offline),
+            status: 'RECEIVED',
+            claimed_at: sql<Date>`NOW(6)`,
+          })
+          .execute();
+      } catch (error) {
+        // Un envoi simultané de la même commande vient de l'enregistrer : il la traite.
+        if (mysqlErrno(error) === DUPLICATE_ENTRY_ERRNO)
+          return inProgressResult(envelope.command_id);
+        throw error;
+      }
+      claim = {
+        commandIdBin,
+        commandId: envelope.command_id,
+        authorUserId: envelope.author_user_id,
+        commandType: envelope.command_type,
+        attempt: 1,
+        firstAgeSeconds: 0,
+        wasStalled: false,
+      };
     }
 
-    // Étape 3a : dépendances (BR-SYN-004). Une dépendance pas encore appliquée met la ligne en
+    // Étape 3a : dépendances (BR-SYN-004). Une dépendance pas encore réglée met la ligne en
     // `FAILED_RETRYABLE` (`DEPENDENCY_PENDING`) : le renvoi identique la reprend (P5-21, AV-210 — elle
     // restait `RECEIVED` et son renvoi rendait ce statut au lieu de la traiter : fait jamais appliqué).
+    // Une dépendance réglée sans être appliquée (`CONFLICT`, quarantaine) laisse passer la dépendante :
+    // la faire attendre la bloquerait pour toujours, une quarantaine ne s'appliquant jamais seule.
     if (envelope.depends_on.length > 0) {
       const deps = await this.db
         .selectFrom('sync_command_inbox')
@@ -282,29 +355,14 @@ export class CommandPipelineService {
         // P5-21 (AV-210) : une dépendance reçue mais pas encore réglée (`RECEIVED`, en cours ailleurs ;
         // `FAILED_RETRYABLE`, à renvoyer) n'est pas encore appliquée : la dépendante attend aussi.
         if (status === undefined || status === 'RECEIVED' || status === 'FAILED_RETRYABLE') {
-          const messageFr = 'Dépendance pas encore appliquée par le serveur.';
-          await this.db
-            .updateTable('sync_command_inbox')
-            .set({
-              status: 'FAILED_RETRYABLE',
-              error_code: 'DEPENDENCY_PENDING',
-              error_message: messageFr,
-            })
-            .where('command_id', '=', commandIdBin)
-            .execute();
-          return {
-            command_id: envelope.command_id,
-            status: 'RETRY_LATER',
-            error: { code: 'DEPENDENCY_PENDING', message_fr: messageFr },
-          };
+          return this.retryLater(
+            claim,
+            'DEPENDENCY_PENDING',
+            'Dépendance pas encore appliquée par le serveur.',
+          );
         }
         if (status === 'REJECTED') {
-          return this.markAndReject(
-            commandIdBin,
-            envelope.command_id,
-            'DEPENDENCY_REJECTED',
-            'Dépendance rejetée.',
-          );
+          return this.markAndReject(claim, 'DEPENDENCY_REJECTED', 'Dépendance rejetée.');
         }
       }
     }
@@ -319,8 +377,7 @@ export class CommandPipelineService {
     );
     if (!deviceCheck.ok) {
       return this.markAndConflict(
-        commandIdBin,
-        envelope.command_id,
+        claim,
         deviceCheck.reason,
         'Appareil bloqué, perdu ou retiré avant cette opération.',
       );
@@ -330,8 +387,7 @@ export class CommandPipelineService {
     const userCheck = await checkUserActive(this.db, toBin(envelope.author_user_id), occurredAt);
     if (!userCheck.ok) {
       return this.markAndConflict(
-        commandIdBin,
-        envelope.command_id,
+        claim,
         userCheck.reason,
         'Utilisateur désactivé avant cette opération.',
       );
@@ -340,22 +396,19 @@ export class CommandPipelineService {
     // Étape 3d : horodatage futur, **après correction de l'écart d'horloge mesuré** du lot (INV-GLO-02,
     // BR-SYN-011, 02-synchronisation.md §3.2, ADR-016) : une tablette en avance de deux heures n'a pas
     // saisi dans le futur ; son `occurred_at` est gardé tel quel (aucune correction silencieuse), seul
-    // ce contrôle le ramène à l'heure serveur. Sans écart mesuré (`/commands`), l'heure brute.
-    const correctedOccurredAt = occurredAt.getTime() + (ctx.clockSkewMs ?? 0);
+    // ce contrôle le ramène à l'heure serveur. La correction n'excuse qu'une horloge **en avance** (écart
+    // négatif) : une horloge en retard à l'envoi ne rend jamais future une date qui ne l'était pas (une
+    // horloge qui a reculé entre la saisie et l'envoi ferait rejeter des faits exacts, revue de P5-21).
+    // Sans écart mesuré (`/commands`), l'heure brute.
+    const correctedOccurredAt = occurredAt.getTime() + Math.min(0, ctx.clockSkewMs ?? 0);
     if (correctedOccurredAt > this.clock.now().getTime() + OCCURRED_AT_FUTURE_TOLERANCE_MS) {
-      return this.markAndReject(
-        commandIdBin,
-        envelope.command_id,
-        'OCCURRED_AT_FUTURE',
-        'Horodatage dans le futur.',
-      );
+      return this.markAndReject(claim, 'OCCURRED_AT_FUTURE', 'Horodatage dans le futur.');
     }
 
     // Étape 3e : version supportée.
     if (!this.registry.isVersionSupported(envelope.command_type, envelope.command_version)) {
       return this.markAndReject(
-        commandIdBin,
-        envelope.command_id,
+        claim,
         'UNSUPPORTED_VERSION',
         'Version de commande non prise en charge.',
       );
@@ -365,8 +418,7 @@ export class CommandPipelineService {
     const entry = this.registry.resolve(envelope.command_type, envelope.command_version);
     if (!entry) {
       return this.markAndReject(
-        commandIdBin,
-        envelope.command_id,
+        claim,
         'UNSUPPORTED_VERSION',
         'Aucun gestionnaire enregistré pour cette commande.',
       );
@@ -396,24 +448,14 @@ export class CommandPipelineService {
           correlationId: ctx.correlationId ?? null,
         },
       );
-      return this.markAndReject(
-        commandIdBin,
-        envelope.command_id,
-        'FORBIDDEN',
-        'Droit insuffisant pour cette opération.',
-      );
+      return this.markAndReject(claim, 'FORBIDDEN', 'Droit insuffisant pour cette opération.');
     }
 
     // Étape 5 : validation du payload (schéma versionné, partagé avec l'appareil).
     const parsed = this.registry.parse(raw);
     if (!parsed.ok) {
       const detail = parsed.issues?.map((i) => i.message).join(' ; ') ?? parsed.reason;
-      return this.markAndReject(
-        commandIdBin,
-        envelope.command_id,
-        `VALIDATION_ERROR:${parsed.reason}`,
-        detail,
-      );
+      return this.markAndReject(claim, `VALIDATION_ERROR:${parsed.reason}`, detail);
     }
 
     // Étape 6 : transaction métier.
@@ -424,6 +466,17 @@ export class CommandPipelineService {
           ? transaction.setIsolationLevel(entry.isolationLevel)
           : transaction
       ).execute(async (trx) => {
+        // La ligne d'inbox d'abord, sous verrou : ce traitement tient-il encore la réclamation ? Un
+        // renvoi simultané qui voudrait la reprendre attend la fin de cette transaction (sa réclamation
+        // échoue alors sur la tentative) ; s'il l'a reprise avant, celui-ci s'arrête sans effet.
+        const held = await trx
+          .selectFrom('sync_command_inbox')
+          .select(['status', 'attempts'])
+          .where('command_id', '=', commandIdBin)
+          .forUpdate()
+          .executeTakeFirst();
+        if (held?.status !== 'RECEIVED' || held.attempts !== claim.attempt) throw new ClaimLost();
+
         const handlerOutcome = await entry.handler(trx, parsed.envelope);
         if (handlerOutcome.status === 'REJECTED') {
           // Un rejet n'a aucun effet : l'exception annule la transaction, y compris une
@@ -492,72 +545,201 @@ export class CommandPipelineService {
             result: jsonValue(result),
           })
           .where('command_id', '=', commandIdBin)
+          .where('status', '=', 'RECEIVED')
+          .where('attempts', '=', claim.attempt)
           .execute();
+        if (claim.wasStalled) await this.closeStalledSignal(trx, claim, handlerOutcome.status);
 
         return handlerOutcome;
       });
       return commandResultOf(envelope.command_id, outcome);
     } catch (error) {
+      if (error instanceof ClaimLost) return inProgressResult(envelope.command_id);
       if (error instanceof HandlerRejection) {
-        return this.markAndReject(
-          commandIdBin,
-          envelope.command_id,
-          error.outcome.errorCode,
-          error.outcome.messageFr,
-        );
+        return this.markAndReject(claim, error.outcome.errorCode, error.outcome.messageFr);
       }
       // Étape 7 : erreur transitoire (verrou, délai, échec inattendu du gestionnaire) — la
       // transaction métier a déjà été annulée automatiquement (rejet de la promesse passée
       // à `transaction().execute`) ; seule la mise à jour de l'inbox, hors transaction,
-      // reste à faire.
-      await this.db
-        .updateTable('sync_command_inbox')
-        .set({ status: 'FAILED_RETRYABLE', error_message: errorMessageOf(error) })
-        .where('command_id', '=', commandIdBin)
-        .execute();
-      return {
-        command_id: envelope.command_id,
-        status: 'RETRY_LATER',
-        error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
-      };
+      // reste à faire, et seulement si ce traitement tient encore la réclamation.
+      return this.retryLater(
+        claim,
+        'SERVER_BUSY',
+        'Erreur transitoire, à réessayer.',
+        errorMessageOf(error),
+      );
     }
   }
 
+  /**
+   * Conclut l'inbox d'un traitement qui tient encore sa réclamation (`RECEIVED`, même tentative).
+   * `false` : un autre traitement l'a reprise entre-temps — celui-ci ne doit rien affirmer.
+   */
+  private async settleInbox(
+    claim: Claim,
+    values: {
+      readonly status: 'REJECTED' | 'CONFLICT' | 'FAILED_RETRYABLE';
+      readonly error_code: string;
+      readonly error_message: string;
+    },
+  ): Promise<boolean> {
+    const updated = await this.db
+      .updateTable('sync_command_inbox')
+      .set(values)
+      .where('command_id', '=', claim.commandIdBin)
+      .where('status', '=', 'RECEIVED')
+      .where('attempts', '=', claim.attempt)
+      .executeTakeFirst();
+    return Number(updated.numUpdatedRows) === 1;
+  }
+
   private async markAndReject(
-    commandIdBin: Buffer,
-    commandId: string,
+    claim: Claim,
     errorCode: string,
     messageFr: string,
   ): Promise<CommandResult> {
-    await this.db
-      .updateTable('sync_command_inbox')
-      .set({ status: 'REJECTED', error_code: errorCode, error_message: messageFr })
-      .where('command_id', '=', commandIdBin)
-      .execute();
+    const settled = await this.settleInbox(claim, {
+      status: 'REJECTED',
+      error_code: errorCode,
+      error_message: messageFr,
+    });
+    if (!settled) return inProgressResult(claim.commandId);
+    if (claim.wasStalled) {
+      await this.db.transaction().execute((trx) => this.closeStalledSignal(trx, claim, 'REJECTED'));
+    }
     return {
-      command_id: commandId,
+      command_id: claim.commandId,
       status: 'REJECTED',
       error: { code: errorCode, message_fr: messageFr },
     };
   }
 
   private async markAndConflict(
-    commandIdBin: Buffer,
-    commandId: string,
+    claim: Claim,
     errorCode: string,
     messageFr: string,
   ): Promise<CommandResult> {
-    await this.db
-      .updateTable('sync_command_inbox')
-      .set({ status: 'CONFLICT', error_code: errorCode, error_message: messageFr })
-      .where('command_id', '=', commandIdBin)
-      .execute();
+    const settled = await this.settleInbox(claim, {
+      status: 'CONFLICT',
+      error_code: errorCode,
+      error_message: messageFr,
+    });
+    if (!settled) return inProgressResult(claim.commandId);
+    if (claim.wasStalled) {
+      await this.db.transaction().execute((trx) => this.closeStalledSignal(trx, claim, 'CONFLICT'));
+    }
     return {
-      command_id: commandId,
+      command_id: claim.commandId,
       status: 'CONFLICT',
       error: { code: errorCode, message_fr: messageFr },
     };
   }
+
+  /**
+   * Commande à renvoyer (dépendance en attente, erreur transitoire) : `FAILED_RETRYABLE`, reprise au
+   * renvoi identique. Au-delà de `sync.retry_hold_minutes` depuis sa première réception (AV-217), elle
+   * est signalée bloquée (`COMMAND_STALLED`) : toujours à renvoyer, mais elle ne suspend plus la suite
+   * de son lot, et le signal `SYNC_COMMAND_STALLED` est ouvert (une fois) pour l'Admin.
+   */
+  private async retryLater(
+    claim: Claim,
+    reasonCode: 'DEPENDENCY_PENDING' | 'SERVER_BUSY',
+    messageFr: string,
+    detail?: string,
+  ): Promise<CommandResult> {
+    const holdMinutes =
+      claim.firstAgeSeconds > 0
+        ? retryHoldMinutesFrom(
+            await currentSettingValue(this.db, {
+              key: 'sync.retry_hold_minutes',
+              scopeType: 'GLOBAL',
+              scopeId: null,
+              at: this.clock.now(),
+            }),
+          )
+        : undefined;
+    const stalled = holdMinutes !== undefined && claim.firstAgeSeconds >= holdMinutes * 60;
+    const code = stalled ? 'COMMAND_STALLED' : reasonCode;
+    const message = stalled
+      ? `Commande bloquée depuis plus de ${holdMinutes} min (${reasonCode}) : toujours à renvoyer, elle ne retient plus la suite de la file.`
+      : messageFr;
+    const settled = await this.settleInbox(claim, {
+      status: 'FAILED_RETRYABLE',
+      error_code: code,
+      error_message: detail ?? message,
+    });
+    if (!settled) return inProgressResult(claim.commandId);
+    if (stalled) {
+      await this.openStalledSignal(claim, reasonCode, holdMinutes, detail ?? messageFr);
+    }
+    return {
+      command_id: claim.commandId,
+      status: 'RETRY_LATER',
+      error: { code, message_fr: message },
+    };
+  }
+
+  /** Signal `SYNC_COMMAND_STALLED` de la commande, ouvert une seule fois (file des conflits, Admin). */
+  private async openStalledSignal(
+    claim: Claim,
+    reason: string,
+    holdMinutes: number,
+    detail: string,
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      const open = await trx
+        .selectFrom('sync_sync_conflicts')
+        .select('id')
+        .where('conflict_type', '=', STALLED_CONFLICT_TYPE)
+        .where('entity_type', '=', STALLED_ENTITY_TYPE)
+        .where('entity_id', '=', claim.commandIdBin)
+        .where('status', '=', 'OPEN')
+        .executeTakeFirst();
+      if (open) return;
+      await recordConflict(trx, {
+        id: this.idGenerator.newId(),
+        commandId: claim.commandId,
+        conflictType: STALLED_CONFLICT_TYPE,
+        entityType: STALLED_ENTITY_TYPE,
+        entityId: claim.commandId,
+        siteId: null,
+        ownerRole: 'ADMIN',
+        applied: false,
+        details: {
+          commandType: claim.commandType,
+          reason,
+          detail,
+          attempts: claim.attempt,
+          stalledForMinutes: Math.floor(claim.firstAgeSeconds / 60),
+          holdMinutes,
+        },
+      });
+    });
+  }
+
+  /** La commande signalée bloquée s'est réglée au renvoi : le signal se ferme, avec son issue. */
+  private async closeStalledSignal(
+    executor: UnitOfWork,
+    claim: Claim,
+    status: string,
+  ): Promise<void> {
+    await resolveOpenConflicts(executor, {
+      conflictType: STALLED_CONFLICT_TYPE,
+      entityType: STALLED_ENTITY_TYPE,
+      entityIds: [claim.commandId],
+      resolution: status.startsWith('APPLIED') ? 'ACCEPT_CLIENT' : 'KEEP_SERVER',
+      resolvedBy: claim.authorUserId,
+      resolvedAt: this.clock.now(),
+      comment: `Commande réglée au renvoi : ${status}.`,
+    });
+  }
+}
+
+/** Numéro d'erreur MySQL d'une exception du pilote (`errno`), 0 sinon. */
+function mysqlErrno(error: unknown): number {
+  return typeof error === 'object' && error !== null && 'errno' in error
+    ? Number((error as { errno: unknown }).errno)
+    : 0;
 }
 
 /** Même enveloppe en cours de traitement par une autre requête : l'appareil la renverra. */

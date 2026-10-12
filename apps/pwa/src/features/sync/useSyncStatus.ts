@@ -17,7 +17,7 @@ export interface SyncStatus {
 }
 
 export function useSyncStatus(): SyncStatus | undefined {
-  // Joignabilité réelle du serveur (ADR-051), pas seulement l'interface réseau.
+  // Joignabilité réelle du serveur (ADR-037), pas seulement l'interface réseau.
   const online = useOnline();
   const snapshot = useLiveQuery(async () => {
     const db = getDb();

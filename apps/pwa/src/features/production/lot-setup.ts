@@ -8,7 +8,7 @@
  *   fournisseur, souche, dates prévues. Le numéro `LOT-…` est donné par le serveur.
  * - Entrée (`production.lot.record_entry`, agrégat `LOT_ENTRY`) sur un lot planifié, actif ou en vente,
  *   y compris un lot créé sur l'appareil et pas encore envoyé (la commande dépend alors de sa
- *   création, ADR-051 §11) : depuis le stock de la ferme, depuis une réception d'achat comptabilisée de
+ *   création, ADR-037 §11) : depuis le stock de la ferme, depuis une réception d'achat comptabilisée de
  *   la ferme, depuis un autre lot (transfert), par sevrage, ou naissance ; sortes admises selon
  *   `checkLotEntry` (packages/domain), comme le serveur. Têtes entières.
  * - Disponibles à l'origine, comme les contrôle le serveur et nets des opérations de l'appareil en

@@ -79,7 +79,7 @@ describe('sync/engine (runSyncCycle)', () => {
     expect(pullMock).not.toHaveBeenCalled();
   });
 
-  it('push réussi mais pull hors ligne : OFFLINE, le serveur n’est plus joignable (ADR-051)', async () => {
+  it('push réussi mais pull hors ligne : OFFLINE, le serveur n’est plus joignable (ADR-037)', async () => {
     pushMock
       .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1, settled: 1 })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });

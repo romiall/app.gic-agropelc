@@ -40,5 +40,7 @@
 | [ADR-033](ADR-033-quotas-d-appareil-apres-adr-028.md) | Quotas d'appareil après ADR-028 : consommation dans `inventory`, disponible par consommateur, source unique de la garde, restitution à l'annulation | ACCEPTÉ | — |
 | [ADR-034](ADR-034-isolation-par-commande.md) | Niveau d'isolation choisi par commande : lecture confirmée (`isolationLevel: 'read committed'`) réservée aux commandes sérialisées sous un verrou de ligne explicite (sessions de caisse) | ACCEPTÉ | — |
 | [ADR-035](ADR-035-tableaux-d-analyse-avant-p9.md) | Tableaux d'analyse avant P9 : composés dans la couche de transport (`distribution-api/`), périmètre tiré de la permission, mesures et détails masqués par droit, contrat repris sans changement par P9 | ACCEPTÉ | — |
+| [ADR-036](ADR-036-navigation-par-role-sur-l-appareil.md) | Navigation par rôle sur l'appareil : registre des écrans de la PWA, route complétée par l'appareil, navigation mémorisée hors ligne, menu `/menu` (fork « Écrans PWA », numéro de fork 050) | ACCEPTÉ | — |
+| [ADR-037](ADR-037-synchronisation-appareil-durcie.md) | Synchronisation de l'appareil durcie : joignabilité réelle du serveur, enveloppe immuable, décompte jusqu'au tirage, reprise des envois, un seul titulaire des données (fork « Écrans PWA », numéro de fork 051) | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

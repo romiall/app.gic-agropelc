@@ -1,5 +1,5 @@
 /**
- * Menu par rôle (ECR-ADM-03, UX-01 ; ADR-050) : les actions du jour de chaque rôle qui mènent à un
+ * Menu par rôle (ECR-ADM-03, UX-01 ; ADR-036) : les actions du jour de chaque rôle qui mènent à un
  * écran livré, puis tous les écrans proposés à l'utilisateur, regroupés par domaine. Construit à
  * partir de la navigation mémorisée sur l'appareil : utilisable hors ligne, contrairement à
  * l'accueil calculé par le serveur. La déconnexion se trouve ici, pour alléger l'en-tête mobile.

@@ -7,7 +7,7 @@
  * de l'utilisateur) et l'appareil n'en désigne aucune. Pour un autre moyen, le serveur ne sait choisir
  * que s'il n'existe qu'un compte actif du type du moyen ; sinon l'appareil doit désigner le compte,
  * parmi ceux que lui sert le jeu `cash`. Les comptes mobile money et bancaires de l'entreprise ne sont
- * aujourd'hui servis qu'à leurs responsables : un vendeur n'en connaît aucun (AV-300, besoin S-09).
+ * aujourd'hui servis qu'à leurs responsables : un vendeur n'en connaît aucun (AV-218, besoin S-09).
  *
  * L'appareil ne désigne jamais un compte d'office : « seul compte connu de l'appareil » ne veut pas dire
  * « seul compte de l'entreprise » (un paiement MTN pourrait être crédité au compte Orange). Le compte

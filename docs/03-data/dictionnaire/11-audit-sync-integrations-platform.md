@@ -77,13 +77,14 @@
 | `device_sent_at` | ts | Oui | — | |
 | `received_at` | ts | Non | `now()` | |
 | `applied_at` | ts | Oui | — | |
+| `claimed_at` | ts | Oui | — | Dernière réclamation du traitement (insertion ou reprise) ; l'abandon d'une ligne `RECEIVED` se mesure depuis elle (`received_at` reste la première réception). Modifiable (P5-21, AV-210) |
 | `clock_skew_ms` | int | Oui | — | |
 | `captured_offline` | boolean | Non | false | |
 | `batch_id` | uuid | Oui | — | Lot d'envoi |
 | `status` | enum(`RECEIVED`,`APPLIED`,`APPLIED_WITH_WARNINGS`,`CONFLICT`,`REJECTED`,`FAILED_RETRYABLE`) | Non | `RECEIVED` | |
 | `result` | json | Oui | — | Identifiants et numéros créés, avertissements |
 | `error_code`, `error_message` | varchar, text | Oui | — | |
-| `attempts` | smallint | Non | 1 | Tentatives d'application serveur |
+| `attempts` | int | Non | 1 | Tentatives d'application serveur ; numéro de la réclamation en cours : toute conclusion de l'inbox y est conditionnée (P5-21, AV-210, AV-217) |
 
 - **PK** `command_id`. **UQ** `(device_id, device_seq)` (INV-SYN-03).
 - **IX** `(device_id, received_at)`, `(user_id, received_at)`, `(status)` partiel non terminal.

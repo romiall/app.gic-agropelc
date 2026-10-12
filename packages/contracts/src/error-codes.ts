@@ -30,6 +30,11 @@ export const SYNC_PROTOCOL_ERROR_CODES = [
   /** P5-21 (AV-210) : une commande précédente du lot doit être renvoyée d'abord (INV-SYN-04). */
   'PRECEDING_COMMAND_PENDING',
   'SERVER_BUSY',
+  /**
+   * P5-21 (revue adverse, AV-217) : commande à renvoyer qui ne se règle pas depuis plus de
+   * `sync.retry_hold_minutes` — toujours `RETRY_LATER`, mais elle ne suspend plus la suite du lot.
+   */
+  'COMMAND_STALLED',
 ] as const;
 
 export type SyncProtocolErrorCode = (typeof SYNC_PROTOCOL_ERROR_CODES)[number];

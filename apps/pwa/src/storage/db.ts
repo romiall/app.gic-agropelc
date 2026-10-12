@@ -42,7 +42,7 @@ export interface OutboxCommand {
   readonly occurred_at: string;
   readonly client_created_at: string;
   /**
-   * État du réseau à la saisie (serveur joignable au dernier cycle, ADR-051). Jamais modifié après
+   * État du réseau à la saisie (serveur joignable au dernier cycle, ADR-037). Jamais modifié après
    * l'enregistrement : il fait partie de l'empreinte d'idempotence calculée par le serveur.
    */
   readonly captured_offline: boolean;
@@ -98,7 +98,7 @@ export interface SyncCursor {
   readonly cursor: number;
   /**
    * Heure de départ de la dernière requête d'un tirage complet du jeu (`has_more` faux) : tout ce
-   * que le serveur avait appliqué avant cette heure est sur l'appareil (ADR-051).
+   * que le serveur avait appliqué avant cette heure est sur l'appareil (ADR-037).
    */
   readonly pulled_at?: string;
 }
@@ -108,7 +108,7 @@ export interface SyncMeta {
   device_id: string;
   clock_skew_ms: number | null;
   last_sync_at: string | null;
-  /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-051). */
+  /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-037). */
   data_user_id?: string | null;
 }
 
@@ -129,7 +129,7 @@ export interface PinLock {
 }
 
 /**
- * Navigation mémorisée par utilisateur (ADR-050) : rôles et actions du jour de la dernière réponse
+ * Navigation mémorisée par utilisateur (ADR-036) : rôles et actions du jour de la dernière réponse
  * de l'accueil, pour proposer le menu par rôle sans réseau. Aucun indicateur ni montant : seul ce
  * qui sert à naviguer est conservé.
  */
@@ -169,7 +169,7 @@ export class GicDatabase extends Dexie {
       session: 'key',
       pinLocks: 'user_id',
     });
-    // Version 2 (fork « Écrans PWA ») : navigation par rôle mémorisée (ADR-050).
+    // Version 2 (fork « Écrans PWA ») : navigation par rôle mémorisée (ADR-036).
     this.version(2).stores({ navigation: 'user_id' });
   }
 }

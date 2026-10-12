@@ -15,7 +15,7 @@
  *   réel du lot de stock du lot d'incubation (incubateur et éclosoir), net des mirages et pertes en
  *   attente : une perte accidentelle déclarée sur le lot (BR-INC-003) n'est pas reportée dans le jeu
  *   (S-38). Une étape attend le démarrage du lot sur l'appareil et les étapes encore en attente sur
- *   le même lot, de tout utilisateur de l'appareil (ADR-051 §11).
+ *   le même lot, de tout utilisateur de l'appareil (ADR-037 §11).
  * - Œufs à couver : disponible d'un lot désigné net de l'attente qui le désigne ; l'attente des lots
  *   engagés n'est pas retranchée une seconde fois du stock libre.
  */
@@ -91,7 +91,7 @@ export interface BatchView {
   readonly pendingSteps: number;
   /** Commande de démarrage encore sur l'appareil : une étape en dépend. */
   readonly startCommandId: string | null;
-  /** Étapes du lot de cet utilisateur encore en attente : la suivante en dépend (ADR-051 §13). */
+  /** Étapes du lot de cet utilisateur encore en attente : la suivante en dépend (ADR-037 §13). */
   readonly waitingStepIds: readonly string[];
   /**
    * Perte de l'appareil pas encore confirmée sur ce lot, ou sans lot désigné sur son incubateur ou son
@@ -437,7 +437,7 @@ export function batchViews(
       continue;
     }
     // Une étape ne dépend que des étapes de son auteur : celles d'un autre utilisateur ne partent
-    // qu'à sa reconnexion (ADR-051 §13) ; elles suspendent l'éclosion sur l'écran.
+    // qu'à sa reconnexion (ADR-037 §13) ; elles suspendent l'éclosion sur l'écran.
     const own = command.author_user_id === authorUserId;
     views.set(view.id, {
       ...next,

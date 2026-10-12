@@ -77,12 +77,12 @@ function pageOf<R extends { readonly id: Buffer }>(
   };
 }
 
-/** Forme `AAAA-MM-JJ` d'une colonne `DATE` lue (mysql2 : minuit local). */
+/** Forme `AAAA-MM-JJ` d'une colonne `DATE` lue (pilote en UTC : minuit UTC du jour). */
 function formatDate(value: Date | null): string | null {
   if (value === null) return null;
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(value.getUTCDate()).padStart(2, '0');
+  return `${value.getUTCFullYear()}-${month}-${day}`;
 }
 
 const qty = (value: string | number | null): number | null =>

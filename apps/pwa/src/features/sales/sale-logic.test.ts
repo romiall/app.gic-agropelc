@@ -225,7 +225,7 @@ describe('ventes — saisie et montants', () => {
 });
 
 describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
-  it('une vente acceptée reste décomptée jusqu’au tirage du stock qui l’inclut (ADR-051)', () => {
+  it('une vente acceptée reste décomptée jusqu’au tirage du stock qui l’inclut (ADR-037)', () => {
     const accepted = {
       ...outbox(
         'sales.sale.record',

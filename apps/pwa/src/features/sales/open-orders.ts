@@ -84,7 +84,7 @@ function progress(ordered: number, sold: number, delivered: number) {
 
 /**
  * Quantités livrées sur l'appareil et pas encore retrouvées dans le jeu `orders`, par ligne de
- * commande : en attente d'envoi, ou acceptées mais pas encore retéléchargées (ADR-051 §3).
+ * commande : en attente d'envoi, ou acceptées mais pas encore retéléchargées (ADR-037 §3).
  */
 export function deliveringByLine(
   commands: readonly OutboxCommand[],

@@ -298,3 +298,19 @@ Application de la règle d'usage (en-tête) : pour chaque ligne de la phase, les
 | REQ-066 (part P4) | `sales-cancel-commands.test.ts`, `sales-order-cancel-commands.test.ts`, `sales-payment-commands.test.ts`, `sales-finance-invariants.test.ts` (INV-VEN-09, INV-FIN-01) | Vérifié |
 | REQ-073 (part P4) | `sales-read.e2e.test.ts` (AT-033 : 404 audité, 403, coût masqué), `scope-evaluation.test.ts` (`listConfinementAt`), `sales-sync-projections.test.ts` (portée d'appareil) | Vérifié |
 | REQ-081 (part P4) | `production-acceptance.test.ts` (AT-026 : lot → coût → vente → marge) | Partiel : paiement fournisseur et dépenses en P8 |
+
+### 17.6 Écrans PWA des phases au code serveur terminé (fork fusionné le 12/10/2026) — [`15-ecrans-pwa.md`](15-ecrans-pwa.md)
+
+Statut écran par écran au § 2 du suivi ; besoins serveur S-01 à S-42 au § 4. Tests unitaires et de composants de la PWA (vitest, 366 tests, 56 fichiers à la fusion) ; douze revues adverses. **La vérification dans le navigateur reste à faire** (connexion du porteur, appareil activé, données de démonstration).
+
+| Domaine | Écrans | Vérifié par | État à la fusion |
+|---|---|---|---|
+| Accueil et navigation | ECR-ADM-03 enrichi, menu par rôle (ADR-036) | `apps/pwa/src/features/home/`, `navigation/` | Livré |
+| Ventes | ECR-VEN-01 à 06 | `apps/pwa/src/features/sales/` | Livré ; ECR-FIN-01 en P8 |
+| Stock | ECR-STK-01 à 05, 07, 08 | `apps/pwa/src/features/stock/` | Livré ; ECR-STK-06 avec les écrans de P5 (fork en cours) |
+| CRM et terrain | ECR-CRM-01 à 05, 07, ECR-TER-01 | `apps/pwa/src/features/crm/`, `fieldwork/` | Livré ; ECR-CRM-06 et ECR-TER-02 attendent S-28 |
+| Achats | ECR-APP-01 à 04 | `apps/pwa/src/features/procurement/` | Livré ; ECR-APP-05 en P8 |
+| Production | ECR-PRD-01 à 04, 06, 07 | `apps/pwa/src/features/production/` | Livré ; coûts et marge de la fiche lot (ECR-PRD-03) en P8 |
+| Prix | ECR-PRX-01 à 03 | `apps/pwa/src/features/pricing/` | Livré |
+| Synchronisation de l'appareil | ADR-037 (joignabilité, enveloppe immuable, reprise des envois) | `apps/pwa/src/sync/*.test.ts` | Livré ; protocole d'envoi de P5-21 (AV-210, AV-217) à prendre en compte par la phase « Écrans PWA de P5 » |
+

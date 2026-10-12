@@ -1,5 +1,5 @@
 /**
- * Registre des écrans de la PWA et navigation par rôle (ECR-ADM-03, UX-01 ; ADR-050).
+ * Registre des écrans de la PWA et navigation par rôle (ECR-ADM-03, UX-01 ; ADR-036).
  *
  * L'accueil reçoit du serveur, pour chaque rôle, des actions identifiées par un code
  * (`apps/server/src/home-api/role-catalog.ts`). ADR-030 §8 veut que le serveur renseigne la route
