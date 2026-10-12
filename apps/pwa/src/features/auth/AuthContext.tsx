@@ -154,6 +154,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     clearSessionRuntime();
     await db.session.clear();
     await db.pinLocks.clear();
+    await db.navigation.clear();
     setState({ status: 'login_required' });
   }, [db]);
 

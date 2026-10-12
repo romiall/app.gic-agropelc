@@ -11,6 +11,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HomeResponse } from '@gic/contracts';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
+import { getSessionRuntime } from '../auth/session-runtime.js';
+import { clock } from '../../platform/composition.js';
+import { rememberNavigation } from '../navigation/navigation-store.js';
 
 export const HOME_REFRESH_MS = 60_000;
 
@@ -52,6 +55,12 @@ export function useHome(): HomeState {
     if (result.ok && isHomeResponse(result.data)) {
       setData(result.data);
       setError(undefined);
+      // Navigation par rôle utilisable hors ligne (ADR-050) ; un échec d'écriture locale n'empêche
+      // pas l'affichage de l'accueil.
+      const userId = getSessionRuntime()?.userId;
+      if (userId) {
+        void rememberNavigation(getDb(), clock, userId, result.data).catch(() => undefined);
+      }
     } else if (result.ok) {
       setError('SERVER_ERROR');
     } else if (result.reason === 'OFFLINE') {

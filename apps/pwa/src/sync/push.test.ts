@@ -85,7 +85,7 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'PUSHED', count: 1 });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 1, settled: 1 });
 
     const updated = await db.outbox.get(command.command_id);
     expect(updated?.status).toBe('SYNCED');
@@ -93,6 +93,52 @@ describe('sync/push (runPushCycle)', () => {
 
     const meta = await db.syncMeta.get('device');
     expect(meta?.clock_skew_ms).toBe(1234);
+  });
+
+  it('APPLIED_WITH_WARNINGS : avertissements conservés ; indices locaux jamais envoyés', async () => {
+    const command = await enqueueCommand(
+      db,
+      { clock, idGenerator },
+      {
+        authorUserId: 'user-1',
+        commandType: 'procurement.receipt.record',
+        commandVersion: 1,
+        aggregateType: 'GOODS_RECEIPT',
+        payload: { note: 'réception' },
+        capturedOffline: true,
+        localFlags: ['EXPECTED_QUARANTINE'],
+      },
+    );
+    expect(command.local_flags).toEqual(['EXPECTED_QUARANTINE']);
+    const response: PushResponse = {
+      results: [
+        {
+          command_id: command.command_id,
+          status: 'APPLIED_WITH_WARNINGS',
+          warnings: ['RECEIPT_QUARANTINED'],
+        },
+      ],
+      server_time: clock.now().toISOString(),
+      clock_skew_ms: 0,
+    };
+    const fetchSpy = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(JSON.stringify(response), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    const sent = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body)) as {
+      commands: Record<string, unknown>[];
+    };
+    expect(sent.commands[0]).not.toHaveProperty('local_flags');
+    expect(sent.commands[0]).not.toHaveProperty('warnings');
+    const updated = await db.outbox.get(command.command_id);
+    expect(updated).toMatchObject({
+      status: 'SYNCED_WITH_WARNING',
+      warnings: ['RECEIPT_QUARANTINED'],
+      local_flags: ['EXPECTED_QUARANTINE'],
+    });
   });
 
   it('déclare au serveur ce qui reste dans la file après le lot, par auteur (BR-DIS-014)', async () => {
@@ -109,6 +155,111 @@ describe('sync/push (runPushCycle)', () => {
     const init = fetchSpy.mock.calls[0] as unknown as [string, { body: string }];
     const body = JSON.parse(init[1].body) as { pending_by_author?: Record<string, number> };
     expect(body.pending_by_author).toEqual({ 'user-1': 0 });
+  });
+
+  it('RETRY_LATER, statut hors protocole ou résultat manquant : la commande repart, rien de réglé', async () => {
+    const retry = await enqueueOne(db, 'plus tard');
+    const odd = await enqueueOne(db, 'statut inconnu');
+    const missing = await enqueueOne(db, 'sans résultat');
+    await db.outbox.update(odd.command_id, {
+      last_error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: retry.command_id,
+                  status: 'RETRY_LATER',
+                  error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+                },
+                { command_id: odd.command_id, status: 'RECEIVED' },
+              ],
+              server_time: clock.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 0 });
+    for (const command of [retry, odd, missing]) {
+      const updated = await db.outbox.get(command.command_id);
+      expect(updated).toMatchObject({ status: 'PENDING_SYNC', attempts: 1 });
+      expect(updated?.synced_at).toBeUndefined();
+    }
+    expect((await db.outbox.get(odd.command_id))?.last_error).toEqual({
+      code: 'DEPENDENCY_PENDING',
+      message_fr: 'Dépendance attendue.',
+    });
+    expect((await db.outbox.get(retry.command_id))?.last_error?.code).toBe('DEPENDENCY_PENDING');
+  });
+
+  it('échec répété : renvois SERVER_BUSY consécutifs seulement, sans les coupures réseau', async () => {
+    const command = await enqueueOne(db, 'contrainte en base');
+    const busy = () =>
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              command_id: command.command_id,
+              status: 'RETRY_LATER',
+              error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+            },
+          ],
+          server_time: clock.now().toISOString(),
+          clock_skew_ms: 0,
+        }),
+        { status: 200 },
+      );
+    const run = () => runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    // Deux coupures puis un SERVER_BUSY : un seul renvoi compté.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error');
+      }),
+    );
+    await run();
+    await run();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => busy()),
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({ attempts: 3, busy_retries: 1 });
+    // Deux autres renvois consécutifs : échec répété (3).
+    await run();
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(3);
+    // Une attente de dépendance remet le compteur à zéro.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: command.command_id,
+                  status: 'RETRY_LATER',
+                  error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+                },
+              ],
+              server_time: clock.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
   });
 
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {
@@ -152,7 +303,7 @@ describe('sync/push (runPushCycle)', () => {
     expect(updated?.attempts).toBe(1);
   });
 
-  it('erreur HTTP du contrôleur (ex. 400) : reportée comme OFFLINE, pas de déconnexion forcée', async () => {
+  it('erreur HTTP du contrôleur (ex. 400) : SERVER_ERROR (serveur joignable), pas de déconnexion forcée', async () => {
     const command = await enqueueOne(db, 'malformée');
     vi.stubGlobal(
       'fetch',
@@ -163,8 +314,18 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'OFFLINE' });
+    expect(result).toEqual({ outcome: 'SERVER_ERROR' });
     expect((await db.outbox.get(command.command_id))?.status).toBe('PENDING_SYNC');
+  });
+
+  it('passerelle sans serveur (503) : OFFLINE', async () => {
+    await enqueueOne(db, 'passerelle');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 })),
+    );
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({ outcome: 'OFFLINE' });
   });
 
   it('session révoquée (rafraîchissement refusé) : SESSION_INVALID', async () => {

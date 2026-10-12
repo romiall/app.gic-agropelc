@@ -74,6 +74,8 @@ export async function ensureAccessToken(db: GicDatabase): Promise<AccessTokenRes
   return promise;
 }
 
+const SESSION_REFUSED_STATUSES: ReadonlySet<number> = new Set([400, 401, 403]);
+
 async function refreshAccessToken(
   db: GicDatabase,
   session: SessionRuntime,
@@ -91,10 +93,15 @@ async function refreshAccessToken(
   }
 
   if (!response.ok) {
-    // Jeton de rafraîchissement invalide, réutilisé, ou session révoquée : la session locale
-    // ne peut plus produire de jeton d'accès (BR-ADM-024 : reconnexion en ligne obligatoire).
-    clearSessionRuntime();
-    return { ok: false, reason: 'SESSION_INVALID' };
+    // Jeton de rafraîchissement invalide, réutilisé, ou session révoquée (400, 401, 403) : la
+    // session locale ne peut plus produire de jeton d'accès (BR-ADM-024 : reconnexion en ligne
+    // obligatoire). Toute autre réponse (429, 5xx, passerelle) est passagère : la session est
+    // gardée et le renouvellement sera retenté au prochain cycle.
+    if (SESSION_REFUSED_STATUSES.has(response.status)) {
+      clearSessionRuntime();
+      return { ok: false, reason: 'SESSION_INVALID' };
+    }
+    return { ok: false, reason: 'OFFLINE' };
   }
 
   const body = (await response.json()) as {

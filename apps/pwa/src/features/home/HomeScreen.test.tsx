@@ -159,6 +159,37 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     expect(within(soon).getByText('Bientôt')).toBeInTheDocument();
   });
 
+  it('action sans route du serveur mais dont l’écran est livré : lien vers l’écran (ADR-050)', async () => {
+    const base = homeResponse();
+    const section = base.sections[0]!;
+    request.mockResolvedValue({
+      ok: true,
+      data: {
+        ...base,
+        sections: [
+          {
+            ...section,
+            actions: [
+              {
+                code: 'SYNC_STATUS',
+                label: 'État de la synchro',
+                hint: null,
+                route: null,
+                primary: false,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    renderHome();
+    const region = await screen.findByRole('region', { name: 'Vendeur de point de vente' });
+    expect(within(region).getByRole('link', { name: 'État de la synchro' })).toHaveAttribute(
+      'href',
+      '/synchronisation',
+    );
+  });
+
   it('indicateurs : montant en francs CFA, valeur absente en tiret, variation et détail', async () => {
     request.mockResolvedValue({ ok: true, data: homeResponse() });
     renderHome();
@@ -206,6 +237,8 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Pas de réseau et aucune donnée récente à afficher.',
     );
+    // ADR-050 : le menu par rôle reste accessible hors ligne.
+    expect(screen.getByRole('link', { name: /Ouvrir le menu/ })).toHaveAttribute('href', '/menu');
 
     request.mockResolvedValueOnce({ ok: true, data: homeResponse() });
     await user.click(screen.getByRole('button', { name: 'Réessayer' }));

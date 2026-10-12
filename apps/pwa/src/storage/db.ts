@@ -41,6 +41,10 @@ export interface OutboxCommand {
   readonly depends_on: readonly string[];
   readonly occurred_at: string;
   readonly client_created_at: string;
+  /**
+   * État du réseau à la saisie (serveur joignable au dernier cycle, ADR-051). Jamais modifié après
+   * l'enregistrement : il fait partie de l'empreinte d'idempotence calculée par le serveur.
+   */
   readonly captured_offline: boolean;
   readonly backdated_reason: string | null;
   readonly attachment_ids: readonly string[];
@@ -50,16 +54,40 @@ export interface OutboxCommand {
   next_attempt_at: string | null;
   last_error: { readonly code: string; readonly message_fr: string } | null;
   server_refs: Record<string, string> | null;
+  /** Heure à laquelle le serveur a accepté la commande (`SYNCED`, `SYNCED_WITH_WARNING`). */
+  synced_at?: string | null;
+  /** Codes d'avertissement renvoyés avec l'acceptation (ex. `RECEIPT_QUARANTINED`), hors enveloppe. */
+  warnings?: readonly string[];
+  /**
+   * Indices posés sur l'appareil à la saisie, hors enveloppe et jamais envoyés (ex.
+   * `EXPECTED_QUARANTINE` : réception hors ligne que le serveur mettra en quarantaine).
+   */
+  readonly local_flags?: readonly string[];
+  /**
+   * Renvois consécutifs du serveur sans application (`RETRY_LATER` avec `SERVER_BUSY`), hors
+   * coupures réseau ; remis à zéro par toute autre réponse. Non indexé, hors enveloppe.
+   */
+  busy_retries?: number;
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */
 export interface Projection {
-  readonly key: string; // `${dataset}:${entity_type}:${entity_id}`
+  /** `${dataset}:${entity_type}:${entity_id}` ; solde de stock : `…:${scope_id}:${entity_id}` (`projectionKey`). */
+  readonly key: string;
   readonly dataset: string;
   readonly entity_type: string;
   readonly entity_id: string;
+  /** Périmètre de la dernière ligne reçue (conservé pour compatibilité ; voir `scopes`). */
   readonly scope_type: string;
   readonly scope_id: string | null;
+  /**
+   * Périmètres par lesquels l'appareil détient l'entité (`SCOPE_TYPE:scope_id`, `GLOBAL:` pour la
+   * portée globale) : une même commande arrive par son titulaire, son équipe et son emplacement de
+   * préparation (jeu `orders`). Un `SCOPE_EXIT` ne retire que son périmètre ; l'entité ne quitte
+   * l'appareil que lorsqu'il n'en reste aucun (02-synchronisation.md §5.3). Absent sur une ligne
+   * écrite avant ce champ : `scope_type`/`scope_id` en tiennent lieu.
+   */
+  readonly scopes?: readonly string[];
   readonly row_version: number;
   readonly data: Record<string, unknown>;
   readonly seq: number;
@@ -68,6 +96,11 @@ export interface Projection {
 export interface SyncCursor {
   readonly dataset: string; // clé primaire
   readonly cursor: number;
+  /**
+   * Heure de départ de la dernière requête d'un tirage complet du jeu (`has_more` faux) : tout ce
+   * que le serveur avait appliqué avant cette heure est sur l'appareil (ADR-051).
+   */
+  readonly pulled_at?: string;
 }
 
 export interface SyncMeta {
@@ -75,6 +108,8 @@ export interface SyncMeta {
   device_id: string;
   clock_skew_ms: number | null;
   last_sync_at: string | null;
+  /** Utilisateur dont l'appareil détient les jeux téléchargés (ADR-051). */
+  data_user_id?: string | null;
 }
 
 export interface SessionRecord {
@@ -93,6 +128,28 @@ export interface PinLock {
   failed_attempts: number;
 }
 
+/**
+ * Navigation mémorisée par utilisateur (ADR-050) : rôles et actions du jour de la dernière réponse
+ * de l'accueil, pour proposer le menu par rôle sans réseau. Aucun indicateur ni montant : seul ce
+ * qui sert à naviguer est conservé.
+ */
+export interface NavigationRecord {
+  readonly user_id: string; // clé primaire
+  readonly roles: readonly string[];
+  readonly sections: readonly {
+    readonly role: string;
+    readonly roleLabel: string;
+    readonly actions: readonly {
+      readonly code: string;
+      readonly label: string;
+      readonly hint: string | null;
+      readonly route: string | null;
+      readonly primary: boolean;
+    }[];
+  }[];
+  readonly saved_at: string;
+}
+
 export class GicDatabase extends Dexie {
   outbox!: EntityTable<OutboxCommand, 'command_id'>;
   projections!: EntityTable<Projection, 'key'>;
@@ -100,6 +157,7 @@ export class GicDatabase extends Dexie {
   syncMeta!: EntityTable<SyncMeta, 'key'>;
   session!: EntityTable<SessionRecord, 'key'>;
   pinLocks!: EntityTable<PinLock, 'user_id'>;
+  navigation!: EntityTable<NavigationRecord, 'user_id'>;
 
   constructor(name = 'gic-agropelc') {
     super(name);
@@ -111,6 +169,8 @@ export class GicDatabase extends Dexie {
       session: 'key',
       pinLocks: 'user_id',
     });
+    // Version 2 (fork « Écrans PWA ») : navigation par rôle mémorisée (ADR-050).
+    this.version(2).stores({ navigation: 'user_id' });
   }
 }
 

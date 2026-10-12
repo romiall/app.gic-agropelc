@@ -37,14 +37,23 @@ describe('sync/engine (runSyncCycle)', () => {
 
   it('vide l’outbox (plusieurs lots) puis tire, et rapporte SYNCED', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50 })
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50, settled: 50 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3, settled: 3 })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
 
     const outcome = await runSyncCycle(deps());
     expect(outcome).toBe('SYNCED');
     expect(pushMock).toHaveBeenCalledTimes(3);
+    expect(pullMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('lot sans rien de réglé (RETRY_LATER partout) : pas de renvoi immédiat, le tirage a lieu', async () => {
+    pushMock.mockResolvedValue({ outcome: 'PUSHED', count: 2, settled: 0 });
+    pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
+
+    expect(await runSyncCycle(deps())).toBe('SYNCED');
+    expect(pushMock).toHaveBeenCalledTimes(1);
     expect(pullMock).toHaveBeenCalledTimes(1);
   });
 
@@ -70,16 +79,25 @@ describe('sync/engine (runSyncCycle)', () => {
     expect(pullMock).not.toHaveBeenCalled();
   });
 
-  it('push réussi mais pull hors ligne : tout de même SYNCED (le push a eu un effet réel)', async () => {
+  it('push réussi mais pull hors ligne : OFFLINE, le serveur n’est plus joignable (ADR-051)', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1, settled: 1 })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'OFFLINE' });
 
-    expect(await runSyncCycle(deps())).toBe('SYNCED');
+    expect(await runSyncCycle(deps())).toBe('OFFLINE');
   });
 
-  it('SyncEngine.trigger() ne relance pas un cycle déjà en vol (un seul appel concurrent)', async () => {
+  it('erreur HTTP à l’envoi : le lot attend, le tirage a lieu, issue SERVER_ERROR', async () => {
+    pushMock.mockResolvedValueOnce({ outcome: 'SERVER_ERROR' });
+    pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 2 });
+
+    expect(await runSyncCycle(deps())).toBe('SERVER_ERROR');
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(pullMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('SyncEngine.trigger() pendant un cycle : même promesse, puis un seul cycle de plus', async () => {
     let resolvePush!: (value: PushCycleResult) => void;
     pushMock.mockImplementationOnce(
       () =>
@@ -89,13 +107,18 @@ describe('sync/engine (runSyncCycle)', () => {
     );
     pullMock.mockResolvedValue({ outcome: 'SYNCED', changeCount: 0 });
 
+    pushMock.mockResolvedValue({ outcome: 'NOTHING_TO_PUSH' });
     const engine = new SyncEngine(deps());
     const first = engine.trigger();
     const second = engine.trigger();
-    expect(first).toBe(second); // même promesse : pas de second cycle empilé
+    const third = engine.trigger();
+    expect(first).toBe(second); // même promesse : pas de cycle concurrent
+    expect(second).toBe(third);
 
     resolvePush({ outcome: 'NOTHING_TO_PUSH' });
     await first;
+    // Les déclenchements reçus pendant le cycle donnent un seul cycle de plus, aussitôt.
+    expect(pullMock).toHaveBeenCalledTimes(2);
   });
 
   it('onCycleComplete est appelé avec le résultat du cycle', async () => {

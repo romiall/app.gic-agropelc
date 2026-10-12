@@ -40,6 +40,42 @@ export function formatBusinessDay(day: string): string {
   }).format(new Date(Date.UTC(year, month - 1, date)));
 }
 
+/** « 8 octobre 2026 » depuis un jour métier `AAAA-MM-JJ` (listes qui couvrent plusieurs années). */
+export function formatBusinessDate(day: string): string {
+  const [year, month, date] = day.split('-').map(Number);
+  if (!year || !month || !date) return day;
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, date)));
+}
+
+/** « septembre 2026 » depuis une période `AAAA-MM`. */
+export function formatMonthPeriod(period: string): string {
+  const [year, month] = period.split('-').map(Number);
+  if (!year || !month) return period;
+  return new Intl.DateTimeFormat('fr-FR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+/** « 6 oct. 2026 14:32 » à l'heure de Douala (listes qui couvrent plusieurs années). */
+export function formatDateTime(iso: string): string {
+  const instant = new Date(iso);
+  if (Number.isNaN(instant.getTime())) return '';
+  const date = new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: BUSINESS_TIME_ZONE,
+  }).format(instant);
+  return plainSpaces(`${date} ${formatClockTime(iso)}`);
+}
+
 /** « 14:32 » à l'heure de Douala. */
 export function formatClockTime(iso: string): string {
   const instant = new Date(iso);
