@@ -76,6 +76,7 @@ export const ROUTES = {
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
   cash: '/caisse',
   replenish: '/pdv/reapprovisionnement',
+  distribution: '/pdv/distribution',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -246,6 +247,8 @@ export const ROLE_SETS = {
   cashSessionOperate: ['VENDEUR_PDV', 'FINANCE'],
   /** ECR-DIS-03 : demande de réapprovisionnement du PDV (`inventory.transfer.request`, VEN SITE). */
   replenishRequest: ['VENDEUR_PDV'],
+  /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
+  distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -588,6 +591,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.replenishRequest,
     actionCodes: [],
     offline: true,
+  },
+  {
+    id: 'ECR-DIS-04',
+    path: ROUTES.distribution,
+    labelKey: 'distribution',
+    group: 'sales',
+    roles: ROLE_SETS.distributionDashboard,
+    actionCodes: [],
+    offline: false,
   },
   {
     id: 'ECR-VEN-05',
