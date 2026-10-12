@@ -137,6 +137,11 @@ export interface SalesReferences {
   /** Quotas actifs servis à l'appareil, de tous ses détenteurs (AV-194). */
   readonly allocations: readonly AllocationData[];
   readonly allocationsPulledAt: string | undefined;
+  /**
+   * Sorties en attente de l'utilisateur détenteur des données, par emplacement × produit, comptées
+   * jusqu'au tirage du jeu `allocations` qui les inclut : elles réduisent le reste de son quota.
+   */
+  readonly quotaPending: ReadonlyMap<string, number>;
   /** Sessions de caisse ouvertes ou à valider des sites de l'utilisateur (jeu `cash`). */
   readonly cashSessions: readonly CashSessionData[];
   /** Remises de fonds envoyées ou en écart, des comptes de l'utilisateur et de ses sites. */
@@ -554,6 +559,14 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashAccounts,
     allocations,
     allocationsPulledAt: allocationsCursor?.pulled_at,
+    quotaPending: pendingConsumption(
+      ownOutbox,
+      allocationsCursor?.pulled_at,
+      transferMap,
+      byId(productionLots),
+      new Map(goodsReceipts.map((receipt) => [receipt.id, receipt.location_id])),
+      true,
+    ),
     cashSessions,
     cashTransfers,
     cashTransferTargets,

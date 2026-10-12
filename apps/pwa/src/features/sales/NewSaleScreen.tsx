@@ -25,7 +25,8 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
 import { localOutstanding } from './credit.js';
 import { CustomerPicker } from './CustomerPicker.js';
-import { formatMoney } from './format.js';
+import { formatMoney, formatQuantity } from './format.js';
+import { formatDateTime } from '../home/format-home.js';
 import {
   EMPTY_PAYMENT,
   paymentIssues,
@@ -51,6 +52,7 @@ import {
 } from './sale-form.js';
 import { SaleLineEditor } from './SaleLineEditor.js';
 import { localAvailable, offlineSaleDecision, settingValue } from './stock.js';
+import { deviceQuota } from './quota.js';
 import { submitCommand } from './submit.js';
 import type { LocationData, ProductData } from './types.js';
 
@@ -159,10 +161,27 @@ export function NewSaleScreen() {
   const total = totalOf(computed);
   const overrideReasons = refs.reasonCodes.filter((reason) => reason.category === 'PRICE_OVERRIDE');
 
+  // Quotas de l'utilisateur sur cet appareil (emplacement partagé) : reste et échéance affichés.
+  const requested = requestedByProduct(computed);
+  const quotas = new Map(
+    location.custody_mode === 'EXCLUSIVE_USER' || location.custody_mode === 'EXCLUSIVE_DEVICE'
+      ? []
+      : [...requested.keys()].flatMap((productId) => {
+          const quota = deviceQuota(refs, {
+            userId,
+            deviceId,
+            locationId: location.id,
+            productId,
+          });
+          return quota ? [[productId, quota] as const] : [];
+        }),
+  );
   // Blocage local hors ligne (AV-025) : par produit, toutes lignes confondues, hors services.
   const blocks: string[] = [];
+  // Dépassement autorisé par le site (`sales.offline_over_allocation_allowed`) : la vente part et le
+  // serveur le signale.
+  const signalled: string[] = [];
   if (!online) {
-    const requested = requestedByProduct(computed);
     if (
       requested.size > 0 &&
       location.custody_mode === 'EXCLUSIVE_DEVICE' &&
@@ -179,11 +198,19 @@ export function NewSaleScreen() {
           location,
           requested: quantity,
           available: availableAt(refs, location, productId),
+          quota: quotas.get(productId) ?? null,
           now,
           overAllocationAllowed: overAllowed,
         });
         if (!decision.allowed) {
           blocks.push(`${productsById.get(productId)?.name ?? ''} : ${decision.messageFr}`);
+        } else if (decision.signalled) {
+          signalled.push(
+            t('sales.quota_signalled', {
+              product: productsById.get(productId)?.name ?? '',
+              code: t(`sales.quota_block.${decision.signalled}`),
+            }),
+          );
         }
       }
     }
@@ -413,8 +440,36 @@ export function NewSaleScreen() {
         ) : null}
       </section>
 
+      {quotas.size > 0 ? (
+        <section className="sale-block" aria-labelledby="sale-quota-title">
+          <h2 id="sale-quota-title">{t('sales.quota_title')}</h2>
+          {[...quotas].map(([productId, quota]) => {
+            const product = productsById.get(productId);
+            const values = {
+              product: product?.name ?? '',
+              remaining: formatQuantity(Math.max(0, quota.remaining)),
+              unit: product?.base_unit_code ?? '',
+              until: quota.validUntil ? formatDateTime(quota.validUntil.toISOString()) : '',
+            };
+            return (
+              <p key={productId} className="home-muted">
+                {quota.validUntil && quota.validUntil.getTime() <= now.getTime()
+                  ? t('sales.quota_expired', values)
+                  : quota.validUntil
+                    ? t('sales.quota_line_until', values)
+                    : t('sales.quota_line', values)}
+              </p>
+            );
+          })}
+        </section>
+      ) : null}
       {[...paymentErrors, ...blocks].map((message) => (
         <p key={message} className="error-message" role="alert">
+          {message}
+        </p>
+      ))}
+      {signalled.map((message) => (
+        <p key={message} className="text-warn" role="status">
           {message}
         </p>
       ))}

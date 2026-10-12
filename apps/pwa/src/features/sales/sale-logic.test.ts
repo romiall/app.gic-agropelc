@@ -293,6 +293,7 @@ describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
         location: exclusive,
         requested: 2,
         available: 5,
+        quota: null,
         now: NOW,
         overAllocationAllowed: false,
       }),
@@ -302,6 +303,7 @@ describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
         location: exclusive,
         requested: 6,
         available: 5,
+        quota: null,
         now: NOW,
         overAllocationAllowed: false,
       }),
@@ -311,6 +313,7 @@ describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
         location: shared,
         requested: 1,
         available: 5,
+        quota: null,
         now: NOW,
         overAllocationAllowed: false,
       }),
@@ -320,10 +323,37 @@ describe('ventes — stock local et blocage hors ligne (AV-025)', () => {
         location: shared,
         requested: 1,
         available: 5,
+        quota: null,
         now: NOW,
         overAllocationAllowed: true,
       }),
     ).toEqual({ allowed: true, signalled: 'ALLOCATION_MISSING' });
+  });
+
+  it('AT-003 : quota du téléphone — reste, échéance, dépassement bloqué sauf option du site', () => {
+    const shared = { custody_mode: 'SHARED' as const };
+    const quota = { remaining: 30, validUntil: new Date('2026-10-10T22:59:59.999Z') };
+    const decide = (requested: number, overAllocationAllowed = false, at = NOW) =>
+      offlineSaleDecision({
+        location: shared,
+        requested,
+        available: 0,
+        quota,
+        now: at,
+        overAllocationAllowed,
+      });
+    expect(decide(30)).toEqual({ allowed: true, signalled: null });
+    expect(decide(31)).toMatchObject({
+      allowed: false,
+      code: 'ALLOCATION_EXCEEDED',
+      messageFr: 'Allocation dépassée : il vous reste 30, 31 demandé(s).',
+    });
+    expect(decide(31, true)).toEqual({ allowed: true, signalled: 'ALLOCATION_EXCEEDED' });
+    // Échéance passée : la vente hors ligne n'est plus possible.
+    expect(decide(1, false, new Date('2026-10-10T23:00:00.000Z'))).toMatchObject({
+      allowed: false,
+      code: 'ALLOCATION_EXPIRED',
+    });
   });
 
   it('paramètre : réglage du site, à défaut global, le plus récent en vigueur', () => {

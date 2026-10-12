@@ -505,6 +505,8 @@ export function offlineSaleDecision(input: {
   readonly location: Pick<LocationData, 'custody_mode'>;
   readonly requested: number;
   readonly available: number;
+  /** Quota utilisable de l'utilisateur sur cet appareil (`deviceQuota`), `null` sans quota. */
+  readonly quota: { readonly remaining: number; readonly validUntil: Date | null } | null;
   readonly now: Date;
   readonly overAllocationAllowed: boolean;
 }): LocalConsumptionDecision {
@@ -513,9 +515,9 @@ export function offlineSaleDecision(input: {
     custodyMode: input.location.custody_mode ?? 'SHARED',
     requested: input.requested,
     localBalance: Math.max(0, input.available),
-    holdsQuota: false,
-    quotaRemaining: 0,
-    quotaValidUntil: null,
+    holdsQuota: input.quota !== null,
+    quotaRemaining: input.quota?.remaining ?? 0,
+    quotaValidUntil: input.quota?.validUntil ?? null,
     now: input.now,
     overAllocationAllowed: input.overAllocationAllowed,
   });

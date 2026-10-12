@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from './fixtures.js';
+import { allocationRow, DEVICE_ID, IDS, meSettingRow, seedSalesFixtures } from './fixtures.js';
 import { NewSaleScreen } from './NewSaleScreen.js';
 import { FixedClock } from '@gic/domain';
 import { rememberNavigation } from '../navigation/navigation-store.js';
@@ -18,6 +18,7 @@ vi.mock('../auth/AuthContext.js', () => ({
       userId: '01900000-0000-7000-8000-000000000001',
       deviceStatus: 'ACTIVE',
     },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
   }),
 }));
 
@@ -207,6 +208,56 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await addEggs(user);
     expect(screen.getByText(/Aucune allocation pour cet appareil/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
+  });
+
+  it('AT-003 : hors ligne, quota du téléphone affiché ; au-delà bloqué, dans le reste enregistré', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb());
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: '2099-12-31T22:59:59.999Z' }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const quantity = within(screen.getByRole('listitem', { name: 'Œufs de table' })).getByLabelText(
+      'Quantité',
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '31');
+    expect(screen.getByText(/il vous reste 30, 31 demandé\(s\)/)).toBeInTheDocument();
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    expect(record).toBeDisabled();
+    const quotaBlock = screen.getByRole('region', { name: 'Quota de ce téléphone' });
+    expect(quotaBlock).toHaveTextContent(
+      /Œufs de table : 30 U restant\(s\) sur votre quota, jusqu’au/,
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '30');
+    await waitFor(() => expect(record).toBeEnabled());
+    expect(DEVICE_ID).toBe('01900000-0000-7000-8000-0000000000d0');
+  });
+
+  it('AT-003 : dépassement du quota autorisé par le site : vente possible, signalée', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb());
+    await getDb().projections.bulkPut([
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+      meSettingRow('sales.offline_over_allocation_allowed', true, { type: 'SITE', id: IDS.site }),
+    ]);
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const quantity = within(screen.getByRole('listitem', { name: 'Œufs de table' })).getByLabelText(
+      'Quantité',
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '31');
+    expect(
+      screen.getByText(/vente au-delà du quota autorisée sur ce site \(quota dépassé\)/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled(),
+    );
   });
 
   it('hors ligne sur un stock à garde exclusive : vente enregistrée sur le téléphone', async () => {

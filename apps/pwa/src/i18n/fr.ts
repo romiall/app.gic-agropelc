@@ -198,6 +198,20 @@ export const fr = {
       'Aucun prix catalogue pour ce produit ici : vente impossible sans dérogation, que votre rôle n’autorise pas.',
     custody_device_mismatch:
       'Ce stock est confié à un autre appareil : la vente hors ligne n’est pas possible ici.',
+    quota_title: 'Quota de ce téléphone',
+    quota_line: '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota.',
+    quota_line_until:
+      '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota, jusqu’au {{until}}.',
+    quota_expired:
+      '{{product}} : votre quota a expiré le {{until}} ; synchronisez le téléphone pour le renouveler.',
+    quota_signalled:
+      '{{product}} : vente au-delà du quota autorisée sur ce site ({{code}}) ; le serveur la signalera.',
+    quota_block: {
+      ALLOCATION_MISSING: 'sans quota',
+      ALLOCATION_EXPIRED: 'quota expiré',
+      ALLOCATION_EXCEEDED: 'quota dépassé',
+      INSUFFICIENT_STOCK: 'stock insuffisant',
+    },
     error_anonymous_full:
       'Un client de passage paie la totalité : choisissez un client pour une vente à crédit.',
     warning_credit_not_allowed:
