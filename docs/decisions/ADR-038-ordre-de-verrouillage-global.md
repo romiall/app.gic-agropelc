@@ -1,0 +1,98 @@
+# ADR-038 — Ordre de verrouillage global des transactions de commande
+
+- **Statut** : ACCEPTÉ (DÉDUIT, technique ; P5-22)
+- **Date** : 12/10/2026
+
+## Contexte
+
+Chaque commande s'exécute dans sa propre transaction (ADR-011), en lecture répétable par défaut et en lecture confirmée pour les sessions de caisse (ADR-034). Les règles d'ordre étaient écrites module par module :
+- soldes, puis quotas (ADR-033 §5, D04 §15) ;
+- commande, ventes, encaissements, compte, session, compteur (ADR-032 §10, D09) ;
+- site, caisse, sessions (D05 §15) ;
+- ligne-verrou de la paire de transfert d'abord (D06 §15).
+
+Aucun ordre global ne les reliait. La cartographie de P5-22 (lecture du code, sémantique d'InnoDB) a trouvé des cycles entre opérations ordinaires. Un interblocage n'abîme rien : MySQL en choisit une victime, que l'étape 7 du pipeline rend `RETRY_LATER`. Mais il coûte un renvoi, suspend la file de l'auteur (AV-210) et, s'il se répète, la fait signaler bloquée (AV-217).
+
+Cycles relevés :
+- **1a** : une vente de [P1, P2] tient les quotas de P1 (verrou d'intervalle de l'index des quotas) avant les soldes de P2 ; un octroi sur P2 tient ces soldes, puis attend l'intervalle.
+- **1b** : une révocation ou une libération verrouille le quota sans les soldes, puis met à jour son statut (indexé), alors qu'une vente du couple tient l'entrée d'index et attend le quota.
+- **1c** : le consommateur de révocation verrouillait aussi l'emplacement, l'utilisateur et l'appareil joints.
+- **5a** : un retour verrouille `V_CUSTOMER`, puis l'emplacement, quand la vente fait l'inverse.
+- **5b** : le verrou par plage des lignes de la vente annulée (la plus récente) bloque l'insertion des lignes de toute vente nouvelle.
+- **5c** : les remboursements prennent les comptes dans l'ordre des encaissements, et non dans celui des comptes.
+- **5d** : l'annulation prend le client après la vente, quand la vente nouvelle du même client fait l'inverse.
+- **5f** : deux premières sorties concurrentes d'un lot neuf vers `V_CUSTOMER` (ligne absente : verrous de plage, puis insertions).
+- **AV-185** : la condition de l'annulation directe (« session de caisse encore ouverte ») était lue sans verrou ; une clôture validée entre-temps laissait passer un remboursement hors session.
+- **Remises de fonds** (révélé par les tests de concurrence de P5-22, alors que la lecture du code le jugeait impossible) : l'annulation d'une remise prend la remise, puis son compte ; l'envoi d'une autre remise depuis la même caisse prend les comptes, puis insère sa remise en fin d'index, là où l'annulation de la plus récente tenait un verrou.
+- **Annulation d'une commande contre annulation de sa vente** : une fois le client pris avant la vente annulée, l'annulation de la commande (commande, puis client de la conversion annulée) formait un nouveau cycle avec elle (test existant de P4-06).
+
+## Décision
+
+1. **Ordre global.** Une transaction de commande prend ses verrous dans cet ordre de rangs ; une ressource d'un rang inférieur n'est jamais demandée après une ressource d'un rang supérieur :
+
+| Rang | Ressource | Règle |
+|---|---|---|
+| N0 | ligne d'inbox de la commande | toujours la première (pipeline, étape 6) |
+| N1 | site | partagé, par les commandes de caisse ; ailleurs, implicitement par clé étrangère |
+| N2 | documents racines | ligne-verrou de la paire de transfert, transfert, document d'annulation |
+| N3 | comptes clients | identifiants croissants ; **avant** les commandes et les ventes du client |
+| N4 | commandes, puis ventes existantes | identifiants croissants ; lignes **par clé primaire** (identifiants lus sous le verrou du document) |
+| N5 | soldes physiques | tous les couples (emplacement, produit) de l'opération, triés par produit, **avant la première lecture de quota** (`lockStockCouples`) |
+| N6 | quotas | sous-ressource : seulement par une transaction qui tient déjà les soldes de leur couple |
+| N7 | soldes virtuels | après les soldes physiques, y compris pour une entrée depuis un emplacement virtuel (retour, réception de transit) |
+| N8 | affectations, puis encaissements | par clé primaire, identifiants croissants |
+| N9 | comptes de trésorerie | tous ceux de l'opération, en une passe triée, avant le premier mouvement (`lockCashAccounts`) |
+| N10 | remises de fonds ; sessions de caisse, puis ajustements | sous-ressources : seulement sous le verrou de leurs comptes (une remise : ses deux comptes, ordre croissant, comme l'envoi) |
+| N11 | demandes de validation, conflits, événements | insertions |
+| N12 | compteur de numéros | juste avant l'insertion du document ; exceptions documentées `ANV`, `TRF`, `VTE` (chaque compteur n'est disputé que par des opérations qui le prennent au même rang : aucun cycle) |
+| N13 | demande de validation décidée | mise à jour en fin de décision |
+| N14 | tête de chaîne d'audit | toujours la dernière |
+
+2. **Verrous restreints.** Un `FOR UPDATE` sur une jointure ne verrouille que la table visée (`forUpdate('table')`) : la ligne de lot (partagée par tous les emplacements), l'emplacement, l'utilisateur et l'appareil joints ne sont pas verrouillés.
+3. **Ligne absente.** Une ligne qui peut ne pas exister encore (solde, compteur) est d'abord garantie par un upsert sans effet, qui prend son verrou d'écriture, jamais par un `SELECT … FOR UPDATE` sur une clé absente (verrou de plage).
+4. **Condition relue sous verrou.** Une condition qui décide du chemin d'une commande sans verrouiller sa ressource, pour ne pas inverser l'ordre ci-dessus, est relue sous ce verrou quand la commande l'atteint. Si elle a basculé, la transaction est annulée par une erreur transitoire et le renvoi identique prend l'autre chemin. Application : annulation directe et session de caisse (AV-185, AV-221).
+
+## Changements (P5-22)
+
+- **`inventory`** :
+  - `lockStockCouples` (public) ;
+  - soldes avant quota dans `revoke` et `release` ;
+  - contrôle de doublon de l'octroi sous verrou ;
+  - soldes physiques avant virtuels dans `recordStockMove` ;
+  - upsert sans effet dans l'écriture d'un solde ;
+  - `forUpdate('…')` dans la sélection FIFO, les lots d'un couple et le consommateur de révocation.
+- **`sales`** :
+  - passe des soldes dans la vente directe, la confirmation de commande et l'annulation ;
+  - lignes et affectations d'une vente annulée verrouillées par clé primaire ;
+  - client(s) avant la vente annulée (annulation directe et décision) ;
+  - comptes de remboursement triés ;
+  - condition d'AV-185 relue sous le verrou des caisses (`CashSessionClosedDuringCancellation`).
+- **`sales`, commandes** : toute commande portant sur une commande (`loadOrderForCommand` : annulation, clôture du reste, modification, livraison) verrouille le client de la commande, et le compte conservé s'il a été fusionné, avant la commande.
+- **`finance`** : `lockCashAccounts` exposée par l'API publique ; une remise (réception, annulation, décision d'écart) verrouille ses deux comptes avant sa ligne (`lockTransfer`).
+- **Tests** (`p5-lock-order.test.ts`) :
+  - deux scénarios déterministes (1a, AV-185) ;
+  - tours concurrents pour les autres paires (révocation contre vente, premières ventes d'un produit neuf depuis deux PDV, clôture contre encaissement, envoi contre annulation de remise) ;
+  - par mutation : sans la passe des soldes, l'octroi du scénario 1a est renvoyé (interblocage) ; sans la relecture d'AV-185, l'annulation rembourse hors session ; sans le verrou des comptes avant la remise, l'annulation de remise est renvoyée.
+
+## Résidus assumés
+
+Un interblocage résiduel reste détecté par MySQL et rendu `RETRY_LATER`, sans perte, signalé au-delà de `sync.retry_hold_minutes` (AV-217).
+- **Fermeture de site ou désactivation d'emplacement** contre une écriture : le site est pris en exclusif, puis les soldes ; les écritures le touchent par clé étrangère. Opération rare.
+- **Reconstructions de maintenance** (`rebuildStockBalances`) : elles verrouillent dans l'ordre de la clé primaire, et non dans celui de N5 à N7. Elles sont lancées à la main, après analyse.
+- **Verrous implicites** des clés étrangères et des déclencheurs : partagés, sur des lignes de référence (emplacements, utilisateurs, appareils, sites). Ils ne forment de cycle qu'avec une transaction qui verrouille ces lignes en exclusif, cas que le §2 retire du consommateur de révocation.
+- **Lecture confirmée pour l'annulation** : écartée. Le verrou des lignes par clé primaire suffit au cycle 5b et ne demande pas de réviser ADR-034.
+
+## Alternatives
+
+- **Comptes de trésorerie avant les soldes**, pour toutes les opérations : cette option règle AV-185 sans relecture, mais elle allonge la tenue de la caisse du PDV pendant tout le traitement du stock et contredit ADR-032 §10. Écartée.
+- **Verrou consultatif par auteur ou par appareil** (verrou nommé MySQL, connexion dédiée) : il sérialise trop et ne couvre pas les opérations de plusieurs auteurs. Écarté.
+
+## Justification
+
+L'ordre suit le plan (« soldes, quotas, compte, session, numéros ») et les décisions existantes (ADR-032 §10, ADR-033 §5, ADR-034), qu'il relie. Les règles de sous-ressource (N6, N10) rendent indifférent l'entrelacement des quotas, des remises et des sessions entre opérations. La lecture du code n'a pas suffi : un cycle jugé impossible (envoi contre annulation de remise) est apparu en concurrence réelle ; chaque paire de cet ADR a donc son test.
+
+## Conséquences
+
+- Toute nouvelle commande qui touche plusieurs de ces ressources respecte l'ordre ; une revue de code le vérifie.
+- Un verrou de plus par entrée depuis un emplacement virtuel (soldes de la destination) et par opération multi-produits (passe des soldes) : coût négligeable devant les écritures.
+- D04 §15, D05 §15, D06 §15 et D09 §15 renvoient à cet ADR.

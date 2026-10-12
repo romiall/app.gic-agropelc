@@ -232,7 +232,9 @@ function grantHandler(deps: {
       p.lotId !== undefined
         ? duplicate.where('lot_id', '=', toBin(p.lotId))
         : duplicate.where('lot_id', 'is', null);
-    if (await duplicate.executeTakeFirst()) {
+    // Lecture verrouillante (ADR-038) : l'instantané de la transaction pouvait ignorer un octroi concurrent
+    // validé avant le verrou du couple, qui heurtait alors la contrainte d'unicité (rejouée sans fin).
+    if (await duplicate.forUpdate().executeTakeFirst()) {
       return rejected(
         'ALLOCATION_ALREADY_ACTIVE',
         'Ce détenteur a déjà un quota actif sur ce produit à cet emplacement : l’augmenter.',
@@ -442,6 +444,10 @@ function revokeHandler(deps: {
       return FORBIDDEN_SCOPE;
     }
 
+    // ADR-038, ADR-033 §5 : les soldes du couple, puis le quota — l'ordre de toute sortie qui consomme. Sans
+    // eux, une vente du couple (soldes, index des quotas, quota) et la révocation (quota, puis mise à jour
+    // de son statut, indexé) s'interbloquaient.
+    await stockOnHandMilli(uow, peek.locationId, peek.productId, { lock: true });
     const allocation = await loadAllocation(uow, envelope.aggregate_id, { lock: true });
     if (!allocation) return rejected('NOT_FOUND', 'Quota introuvable.');
     if (allocation.status === 'REVOKED') return { status: 'APPLIED' }; // rejeu
@@ -522,6 +528,8 @@ function releaseHandler(deps: {
       return FORBIDDEN_SCOPE;
     }
 
+    // ADR-038 : les soldes du couple, puis le quota (même raison que la révocation).
+    await stockOnHandMilli(uow, peek.locationId, peek.productId, { lock: true });
     const allocation = await loadAllocation(uow, envelope.aggregate_id, { lock: true });
     if (!allocation) return rejected('NOT_FOUND', 'Quota introuvable.');
     // Déjà libéré, consommé ou révoqué par le serveur : le fait de l'appareil n'a plus rien à fermer.

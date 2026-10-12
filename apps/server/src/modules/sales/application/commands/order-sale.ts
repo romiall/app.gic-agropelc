@@ -54,6 +54,7 @@ import { findWorkSessionAt } from '../../../fieldwork/application/public/index.j
 import {
   listLotBalances,
   lockSellableQuantity,
+  lockStockCouples,
   type StockLocationRef,
 } from '../../../inventory/application/public/index.js';
 import { ensureToDeliverLocation } from '../../../organization/application/public/index.js';
@@ -218,6 +219,9 @@ export async function confirmOrderPending(
         .map((candidate) => fromBin(candidate.line.product_id)),
     ),
   ].sort((a, b) => a.localeCompare(b));
+  // ADR-038 : les soldes de tous les produits d'abord, puis le disponible (qui lit les quotas) produit par
+  // produit — jamais les quotas d'un produit avant les soldes du suivant.
+  await lockStockCouples(uow, { locationId: location.id, productIds: storedProductIds });
   for (const productId of storedProductIds) {
     availableByProduct.set(productId, await availableForSale(uow, location, productId));
   }

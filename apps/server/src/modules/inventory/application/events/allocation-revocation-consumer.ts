@@ -78,7 +78,9 @@ async function flagQuotas(
     .where(holderColumn, '=', toBin(event.aggregateId))
     .where('a.status', '=', 'ACTIVE')
     .where('a.revocation_pending', '=', 0)
-    .forUpdate()
+    // Les quotas seuls (ADR-038) : l'emplacement joint n'est pas verrouillé (une vente qui l'attend en
+    // clé étrangère pendant qu'elle tient un quota formait un cycle).
+    .forUpdate('a')
     .execute();
   for (const quota of quotas) {
     await uow
@@ -131,7 +133,8 @@ async function clearFlags(uow: UnitOfWork, event: DomainEvent, by: HolderKind): 
     .where('a.revocation_pending', '=', 1)
     .where('u.status', '=', 'ACTIVE')
     .where('d.status', '=', 'ACTIVE')
-    .forUpdate()
+    // Les quotas seuls (ADR-038), pas l'utilisateur ni l'appareil joints.
+    .forUpdate('a')
     .execute();
   for (const quota of flagged) {
     await uow

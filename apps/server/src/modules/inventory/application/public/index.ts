@@ -4,6 +4,7 @@
  * transport `inventory-api/` (lectures HTTP, P2-05). */
 export {
   recordStockMove,
+  lockStockCouples,
   biologicalLotUnitCostXaf,
   biologicalLotRemainingCostXaf,
   InventoryMoveError,

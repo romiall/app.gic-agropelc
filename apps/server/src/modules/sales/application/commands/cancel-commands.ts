@@ -34,6 +34,7 @@ import {
 import {
   findCashAccount,
   findCashSessionCovering,
+  lockCashAccounts,
 } from '../../../finance/application/public/index.js';
 import { findReasonCode } from '../../../catalog/application/public/index.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
@@ -52,6 +53,7 @@ import {
   PAYMENT_TREATMENTS,
   applyCancellation,
   lockSale,
+  lockSaleCustomers,
   planFullCancellation,
   type CancellationLine,
   type PaymentTreatment,
@@ -104,10 +106,15 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
    * ne couvre (saisi hors ligne, `CASH_SESSION_MISSING`) ne remplit pas la condition ; une session
    * ouverte après `at` non plus (remboursement daté de `at`, dans la fenêtre d'une autre session ou hors
    * session). Une vente sans espèces au PDV (crédit, mobile money, caisse personnelle) la remplit.
-   * Lecture sans verrou (limite connue, AV-185) : une clôture concurrente validée pendant l'annulation
-   * n'est pas vue ; le verrouillage, sans inverser l'ordre des verrous de D04 §15, relève de P5-22.
+   * Lue d'abord sans verrou (choix du chemin) ; relue sous le verrou des caisses après l'annulation
+   * (P5-22, AV-221) : une clôture concurrente validée entre-temps la fait basculer, la transaction est
+   * alors annulée et le renvoi prend le chemin de la demande — sans inverser l'ordre des verrous (les
+   * comptes après le stock, ADR-038).
    */
-  async function saleCashSessionOpenAt(uow: Uow, saleId: Buffer, at: Date): Promise<boolean> {
+  async function saleCashPayments(
+    uow: Uow,
+    saleId: Buffer,
+  ): Promise<readonly { readonly accountId: string; readonly occurredAt: Date }[]> {
     const payments = await uow
       .selectFrom('sales_payment_allocations as a')
       .innerJoin('sales_customer_payments as p', 'p.id', 'a.payment_id')
@@ -116,11 +123,35 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .where('a.status', '=', 'ACTIVE')
       .where('p.status', 'in', ['RECORDED', 'CANCELLATION_REQUESTED'])
       .execute();
+    const atPos: { accountId: string; occurredAt: Date }[] = [];
     for (const payment of payments) {
       const accountId = fromBin(payment.cash_account_id);
       const account = await findCashAccount(uow, accountId);
-      if (account?.accountType !== 'CAISSE_PDV') continue;
-      const session = await findCashSessionCovering(uow, accountId, payment.occurred_at);
+      if (account?.accountType === 'CAISSE_PDV') {
+        atPos.push({ accountId, occurredAt: payment.occurred_at });
+      }
+    }
+    return atPos;
+  }
+
+  async function cashSessionsOpenAt(
+    uow: Uow,
+    payments: readonly { readonly accountId: string; readonly occurredAt: Date }[],
+    at: Date,
+    options: { readonly lock?: boolean } = {},
+  ): Promise<boolean> {
+    if (options.lock)
+      await lockCashAccounts(
+        uow,
+        payments.map((payment) => payment.accountId),
+      );
+    for (const payment of payments) {
+      const session = await findCashSessionCovering(
+        uow,
+        payment.accountId,
+        payment.occurredAt,
+        options.lock ? { lock: 'share' } : {},
+      );
       if (!session) return false;
       if (session.openedAt.getTime() > at.getTime()) return false;
       if (session.closedAt !== null && session.closedAt.getTime() <= at.getTime()) return false;
@@ -140,7 +171,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const offline = envelope.captured_offline;
     const origin = await loadCommandOrigin(uow, envelope.command_id);
 
-    // Ordre de verrous commun : la commande d'une vente sur commande avant la vente (order-adjust.ts).
+    // Ordre de verrous commun (ADR-038) : le client de la vente, puis la commande d'une vente sur commande,
+    // puis la vente (order-adjust.ts).
+    await lockSaleCustomers(uow, p.saleId);
     await lockOrderOfSale(uow, p.saleId);
     const locked = await lockSale(uow, p.saleId);
     if (!locked) return NOT_FOUND;
@@ -179,7 +212,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       author === sellerId &&
       withinCancellationWindow({ saleOccurredAt, cancelAt: at, windowMinutes });
     // BR-VEN-028 : évaluée à l'`occurred_at` de l'annulation (un rejeu hors ligne reste juste).
-    const sessionOpen = sellerInWindow ? await saleCashSessionOpenAt(uow, sale.id, at) : false;
+    const cashPayments = sellerInWindow ? await saleCashPayments(uow, sale.id) : [];
+    const sessionOpen = sellerInWindow ? await cashSessionsOpenAt(uow, cashPayments, at) : false;
     const direct = sellerInWindow && sessionOpen;
 
     const docNumber = await documentSequences.next(uow, {
@@ -239,6 +273,11 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         siteId: site.id,
       });
       if (!applied.ok) return applied.outcome;
+      // AV-185, AV-221 : la condition relue sous le verrou des caisses. Une clôture validée depuis la
+      // première lecture l'a fait basculer : tout est annulé, le renvoi prend le chemin de la demande.
+      if (!(await cashSessionsOpenAt(uow, cashPayments, at, { lock: true }))) {
+        throw new CashSessionClosedDuringCancellation();
+      }
       await uow
         .insertInto('sales_sale_cancellations')
         .values({
@@ -330,6 +369,8 @@ function registerDecision(decisionRegistry: SalesDecisionRegistry, idGenerator: 
         'Cette annulation a déjà été décidée.',
       );
     }
+    // ADR-038 : document, client de la vente, commande, vente (même ordre que l'annulation directe).
+    await lockSaleCustomers(uow, fromBin(doc.sale_id));
     await lockOrderOfSale(uow, fromBin(doc.sale_id));
     const locked = await lockSale(uow, fromBin(doc.sale_id));
     if (!locked) throw new ApprovalDecisionRefused('NOT_FOUND', 'Vente introuvable.');
@@ -411,6 +452,17 @@ function registerDecision(decisionRegistry: SalesDecisionRegistry, idGenerator: 
       );
     }
   });
+}
+
+/**
+ * AV-185, AV-221 (P5-22) : la session de caisse de la vente a été close par une transaction concurrente
+ * entre la première lecture de la condition et l'annulation. Erreur transitoire (étape 7 du pipeline :
+ * `RETRY_LATER`) : le renvoi relit la clôture validée et prend le chemin de la demande.
+ */
+export class CashSessionClosedDuringCancellation extends Error {
+  constructor() {
+    super('Session de caisse close pendant l’annulation : à renvoyer.');
+  }
 }
 
 export function registerCancelCommands(

@@ -65,6 +65,7 @@ import {
 } from '../../../identity/application/public/index.js';
 import {
   findStockLocation,
+  lockStockCouples,
   virtualLocationId,
 } from '../../../inventory/application/public/index.js';
 import { customerOutstandingXaf } from '../public/receivables.js';
@@ -368,6 +369,12 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const stockOrder = [...lines].sort(
       (a, b) => a.productId.localeCompare(b.productId) || a.lineNo - b.lineNo,
     );
+    // ADR-038 : les soldes de tous les produits stockés, avant le premier quota (une vente de plusieurs
+    // produits tenait les quotas du premier avant les soldes du second : cycle avec un octroi concurrent).
+    await lockStockCouples(uow, {
+      locationId: location.id,
+      productIds: stockOrder.filter((line) => !line.isService).map((line) => line.productId),
+    });
     for (const line of stockOrder) {
       if (line.isService) continue;
       const result = await moveSoldStock(uow, deps, {

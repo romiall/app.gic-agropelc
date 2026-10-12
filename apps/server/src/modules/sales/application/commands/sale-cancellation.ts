@@ -36,9 +36,17 @@ import type {
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { findProduct } from '../../../catalog/application/public/index.js';
-import { getCustomer, markConversionReverted } from '../../../crm/application/public/index.js';
-import { recordCashMovement } from '../../../finance/application/public/index.js';
-import { findStockLot, returnSoldGoods } from '../../../inventory/application/public/index.js';
+import {
+  getCustomer,
+  lockCustomerAccount,
+  markConversionReverted,
+} from '../../../crm/application/public/index.js';
+import { lockCashAccounts, recordCashMovement } from '../../../finance/application/public/index.js';
+import {
+  findStockLot,
+  lockStockCouples,
+  returnSoldGoods,
+} from '../../../inventory/application/public/index.js';
 import { rejected, type Uow } from './shared.js';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 
@@ -53,7 +61,14 @@ export interface LockedSale {
   readonly lines: readonly LineRow[];
 }
 
-/** Vente et lignes verrouillées pour la durée de la transaction (ordre constant : vente, lignes). */
+/**
+ * Vente et lignes verrouillées pour la durée de la transaction (ordre constant : vente, lignes). Les
+ * lignes sont verrouillées par leur clé primaire (ADR-038) : leurs identifiants sont lus simplement sous
+ * le verrou de la vente — les lignes d'une vente ne changent plus après sa création. Un verrou par plage
+ * de `(sale_id, line_no)` couvrait l'intervalle qui suit la vente, jusqu'à la fin de l'index pour la vente
+ * la plus récente, et bloquait l'insertion des lignes de toute nouvelle vente (cycle avec une vente en
+ * cours qui tenait déjà un solde virtuel attendu par l'annulation).
+ */
 export async function lockSale(uow: Uow, saleId: string): Promise<LockedSale | undefined> {
   const sale = await uow
     .selectFrom('sales_sales')
@@ -62,14 +77,45 @@ export async function lockSale(uow: Uow, saleId: string): Promise<LockedSale | u
     .forUpdate()
     .executeTakeFirst();
   if (!sale) return undefined;
-  const lines = await uow
+  const lineIds = await uow
     .selectFrom('sales_sale_lines')
-    .selectAll()
+    .select('id')
     .where('sale_id', '=', sale.id)
-    .orderBy('line_no', 'asc')
-    .forUpdate()
     .execute();
+  const lines =
+    lineIds.length === 0
+      ? []
+      : await uow
+          .selectFrom('sales_sale_lines')
+          .selectAll()
+          .where(
+            'id',
+            'in',
+            lineIds.map((line) => line.id),
+          )
+          .orderBy('line_no', 'asc')
+          .forUpdate()
+          .execute();
   return { sale, lines };
+}
+
+/**
+ * ADR-038 : le client de la vente (et le compte conservé s'il a été fusionné) est verrouillé **avant** la
+ * vente annulée. Une vente nouvelle du même client tient son compte, puis lit ses ventes sous verrou
+ * partagé (encours) ; l'annulation tenait la vente, puis le compte (conversion annulée) : cycle.
+ */
+export async function lockSaleCustomers(uow: Uow, saleId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('sales_sales')
+    .select('customer_id')
+    .where('id', '=', toBin(saleId))
+    .executeTakeFirst();
+  if (!row?.customer_id) return;
+  const customerId = fromBin(row.customer_id);
+  const customer = await getCustomer(uow, customerId);
+  const ids = [customerId];
+  if (customer?.stage === 'MERGED' && customer.mergedIntoId) ids.push(customer.mergedIntoId);
+  for (const id of [...new Set(ids)].sort()) await lockCustomerAccount(uow, id);
 }
 
 export interface CancellationLine {
@@ -259,6 +305,14 @@ export async function applyCancellation(
   }
 
   // --- Stock : retours rattachés à la vente d'origine ------------------------------------------------
+  // ADR-038 : les soldes de tous les produits retournés, triés, avant le premier retour (une annulation de
+  // plusieurs lignes les prenait dans l'ordre des lignes, une vente dans l'ordre des produits).
+  if (sale.from_location_id) {
+    await lockStockCouples(uow, {
+      locationId: fromBin(sale.from_location_id),
+      productIds: input.lines.map((planned) => fromBin(byLine.get(planned.saleLineId)!.product_id)),
+    });
+  }
   for (const planned of input.lines) {
     const line = byLine.get(planned.saleLineId)!;
     const product = await findProduct(uow, fromBin(line.product_id));
@@ -396,15 +450,31 @@ async function releasePayments(
   | { readonly ok: true; readonly treatment: PaymentTreatment }
   | { readonly ok: false; readonly outcome: CommandHandlerOutcome }
 > {
-  const allocations: readonly AllocationRow[] = await uow
+  // Affectations verrouillées par clé primaire (ADR-038), comme les lignes : identifiants lus simplement
+  // sous le verrou de la vente (une affectation nouvelle passe par ce verrou), statut relu sous verrou.
+  const allocationIds = await uow
     .selectFrom('sales_payment_allocations')
-    .selectAll()
+    .select('id')
     .where('sale_id', '=', toBin(input.saleId))
     .where('status', '=', 'ACTIVE')
-    .orderBy('allocated_at', 'desc')
-    .orderBy('id', 'desc')
-    .forUpdate()
     .execute();
+  const allocations: readonly AllocationRow[] =
+    allocationIds.length === 0
+      ? []
+      : (
+          await uow
+            .selectFrom('sales_payment_allocations')
+            .selectAll()
+            .where(
+              'id',
+              'in',
+              allocationIds.map((allocation) => allocation.id),
+            )
+            .orderBy('allocated_at', 'desc')
+            .orderBy('id', 'desc')
+            .forUpdate()
+            .execute()
+        ).filter((allocation) => allocation.status === 'ACTIVE');
   const paymentIds = [...new Set(allocations.map((allocation) => allocation.payment_id))];
   const payments = paymentIds.length
     ? await uow
@@ -506,6 +576,18 @@ export async function settleReleasedPayments(
       ),
     };
   }
+  // ADR-038 : tous les comptes à rembourser, dans l'ordre de leur identifiant, avant le premier mouvement
+  // (une vente encaissée sur deux comptes les prend dans cet ordre ; les encaissements, dans le leur).
+  await lockCashAccounts(
+    uow,
+    input.payments
+      .filter(
+        (payment) =>
+          (input.takenByPayment.get(fromBin(payment.id)) ?? 0) > 0 &&
+          (payment.customer_id === null || input.treatment === 'REFUND'),
+      )
+      .map((payment) => fromBin(payment.cash_account_id)),
+  );
   for (const payment of input.payments) {
     const id = fromBin(payment.id);
     const taken = input.takenByPayment.get(id) ?? 0;

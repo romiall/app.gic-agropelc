@@ -108,7 +108,21 @@ interface TransferRow {
   readonly cancelledBy: string | null;
 }
 
+/**
+ * ADR-038 : une remise est une sous-ressource de ses comptes. Les deux comptes (ordre croissant, comme
+ * l'envoi) sont verrouillés d'abord — leurs identifiants, immuables, lus simplement —, puis la remise.
+ * Pris dans l'autre ordre, l'annulation d'une remise et l'envoi d'une autre depuis la même caisse
+ * s'interbloquaient : l'envoi tient les comptes, puis insère sa remise en fin d'index, là où l'annulation
+ * de la remise la plus récente tenait un verrou avant d'attendre le compte (test p5-lock-order).
+ */
 async function lockTransfer(uow: Uow, transferId: string): Promise<TransferRow | undefined> {
+  const accounts = await uow
+    .selectFrom('finance_cash_transfers')
+    .select(['from_account_id', 'to_account_id'])
+    .where('id', '=', toBin(transferId))
+    .executeTakeFirst();
+  if (!accounts) return undefined;
+  await lockCashAccounts(uow, [fromBin(accounts.from_account_id), fromBin(accounts.to_account_id)]);
   const row = await uow
     .selectFrom('finance_cash_transfers')
     .selectAll()

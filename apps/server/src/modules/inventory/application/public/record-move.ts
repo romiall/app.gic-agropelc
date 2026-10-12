@@ -365,6 +365,23 @@ async function upsertBalance(
 ): Promise<number> {
   const locationIdBin = toBin(key.locationId);
   const productIdBin = toBin(key.productId);
+  // ADR-038 : la ligne est d'abord garantie par un upsert sans effet, qui prend son verrou d'écriture en un
+  // aller-retour (même patron que les compteurs de numéros). Un `SELECT … FOR UPDATE` sur une clé absente
+  // ne posait qu'un verrou de plage : deux premières sorties concurrentes d'un lot neuf vers le même
+  // emplacement virtuel (`V_CUSTOMER`, global) s'interbloquaient à l'insertion.
+  await uow
+    .insertInto('inventory_stock_balances')
+    .values({
+      location_id: locationIdBin,
+      product_id: productIdBin,
+      lot_key: key.lotKey,
+      qty_on_hand: '0',
+      value_xaf: 0,
+      last_move_at: lastMoveAt,
+      row_version: 0,
+    })
+    .onDuplicateKeyUpdate({ row_version: sql`row_version` })
+    .execute();
   const existing = await uow
     .selectFrom('inventory_stock_balances')
     .select(['qty_on_hand', 'value_xaf'])
@@ -1037,6 +1054,22 @@ async function recordSingleMove(
 }
 
 /**
+ * ADR-038 : verrouille les soldes de tous les couples (emplacement, produit) d'une opération de plusieurs
+ * produits — dans l'ordre des identifiants de produit, tous lots — **avant** la première lecture de quota.
+ * Sans cette passe, une vente de [P1, P2] tenait les quotas de P1 avant les soldes de P2, et un octroi
+ * concurrent sur P2 (soldes de P2, puis verrou d'intervalle de l'index des quotas) formait un cycle.
+ */
+export async function lockStockCouples(
+  uow: Transaction<DB>,
+  input: { readonly locationId: string; readonly productIds: readonly string[] },
+): Promise<void> {
+  const productIds = [...new Set(input.productIds.map((id) => id.toLowerCase()))].sort();
+  for (const productId of productIds) {
+    await stockOnHandMilli(uow, input.locationId, productId, { lock: true });
+  }
+}
+
+/**
  * Point d'entrée principal : résout automatiquement le lot par FIFO (BR-STK-050) quand
  * `lotId` est omis et que la source est un emplacement physique (une sortie réelle) — peut
  * alors produire **plusieurs** mouvements (un par lot traversé). Sinon, un seul mouvement.
@@ -1048,6 +1081,16 @@ export async function recordStockMove(
 ): Promise<readonly RecordedMove[]> {
   const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
   const fromIsPhysicalOutflow = endpoints.from.length === 1 && endpoints.from[0] === 'PHYSICAL';
+  // ADR-038 : soldes physiques avant soldes virtuels. Une entrée depuis un emplacement virtuel (retour de
+  // `V_CUSTOMER`, réception de `V_TRANSIT`, régularisation) verrouille d'abord les soldes du couple de
+  // destination, comme une sortie verrouille ceux de sa source : une vente (emplacement, puis `V_CUSTOMER`)
+  // et un retour (`V_CUSTOMER`, puis emplacement) du même produit s'interbloquaient.
+  if (!fromIsPhysicalOutflow) {
+    const destination = await loadLocation(uow, input.toLocationId).catch(() => null);
+    if (destination !== null && !destination.isVirtual) {
+      await stockOnHandMilli(uow, input.toLocationId, input.productId, { lock: true });
+    }
+  }
   // Retour, inverse ou libération d'une perte : rend d'abord un quota encore actif (ADR-033 §8).
   const restoration = await prepareRestoration(uow, input);
   if (input.lotId === undefined && !fromIsPhysicalOutflow && restoration === null) {
@@ -1191,8 +1234,9 @@ async function pieceList(
     .where('inventory_stock_lots.status', '=', 'OPEN')
     .orderBy('inventory_stock_lots.fifo_rank_at', 'asc')
     // Lecture verrouillante : une lecture simple verrait l'instantané de la transaction (isolation
-    // répétable) et non le solde laissé par une vente concurrente validée entre-temps.
-    .forUpdate()
+    // répétable) et non le solde laissé par une vente concurrente validée entre-temps. Les soldes seuls
+    // (ADR-038) : la ligne de lot, partagée par tous les emplacements, n'est pas verrouillée.
+    .forUpdate('inventory_stock_balances')
     .execute();
 
   if (lotRows.length === 0) {

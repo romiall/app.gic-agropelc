@@ -69,6 +69,8 @@ export type {
   CashTransfersInTransit,
   CashTransferVerification,
 } from './cash-transfer-query.js';
+// P5-22 (ADR-038) : verrou des comptes de trésorerie d'une opération, dans l'ordre de leur identifiant.
+export { lockCashAccounts } from '../cash-transfer-support.js';
 // P5-22 : balayage des sessions de caisse (INV-FIN-05, 06, 11), sans verrou.
 export { verifyCashSessions } from './cash-session-verification.js';
 export type {

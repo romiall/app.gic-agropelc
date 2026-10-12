@@ -54,8 +54,8 @@ Un harnais crée N appareils virtuels (clients de la bibliothèque de synchronis
 | INV-SYN-01 à 06 | Scénarios de synchronisation + propriété (rejeu arbitraire) |
 | INV-STK-01, 03, 04 | Propriété (séquences aléatoires de mouvements ; reconstruction des soldes) + réconciliation |
 | INV-STK-02, 06, 07, 08, 12 à 16 | Intégration |
-| INV-STK-05, 09, 10, 11 | Scénarios de synchronisation |
-| INV-VEN-*, INV-FIN-* | Intégration + propriété (montants, affectations) |
+| INV-STK-05, 09, 10, 11 | Scénarios de synchronisation ; INV-STK-05, 10, 11, 19, 20 aussi balayés sur toute la base (`p5-invariants.test.ts`, P5-22) |
+| INV-VEN-*, INV-FIN-* | Intégration + propriété (montants, affectations) ; INV-FIN-05, 06, 11 balayés sur toute la base (`verifyCashSessions`, P5-22) |
 | INV-CRM-*, INV-TER-* | Intégration (exclusions, unicités) |
 | INV-PRD-*, INV-OEU-01, INV-INC-01 | Unitaire + intégration |
 | INV-APP-* | Intégration + scénario (réception en double) |
@@ -63,6 +63,8 @@ Un harnais crée N appareils virtuels (clients de la bibliothèque de synchronis
 | INV-ADM-*, INV-AUD-*, INV-KOM-*, INV-NOT-01, INV-CAT-01 | Intégration |
 
 Règle (NFR-31) : un invariant sans test est un défaut bloquant pour la mise en production de la phase qui le concerne.
+
+Ordre de verrouillage (ADR-038, P5-22) : chaque paire d'opérations concurrentes de l'ADR a son test (`p5-lock-order.test.ts`), déterministe quand une transaction de test peut retenir la ressource où arrêter la première opération, sinon en tours concurrents ; un interblocage s'y voit comme un `RETRY_LATER`.
 
 ## 5. Tests RBAC générés
 

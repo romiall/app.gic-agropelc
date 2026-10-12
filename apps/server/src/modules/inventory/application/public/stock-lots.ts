@@ -240,8 +240,9 @@ export async function listLotBalances(
     .where('inventory_stock_lots.status', '=', 'OPEN')
     .orderBy('inventory_stock_lots.fifo_rank_at', 'asc')
     .orderBy('inventory_stock_lots.id', 'asc')
-    // Même raison que la sélection FIFO de `recordStockMove` : état courant, pas l'instantané.
-    .forUpdate()
+    // Même raison que la sélection FIFO de `recordStockMove` : état courant, pas l'instantané ; les soldes
+    // seuls (ADR-038), pas la ligne de lot partagée par tous les emplacements.
+    .forUpdate('inventory_stock_balances')
     .execute();
   return rows.map((row) => ({
     lotId: fromBin(row.lot_id),

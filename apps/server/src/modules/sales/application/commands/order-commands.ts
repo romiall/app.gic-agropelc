@@ -680,7 +680,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { ok: true, confirmation, warnings, paymentDocs };
   }
 
-  /** Verrou de la commande, puis portée de l'**auteur** de la commande (ou son responsable). */
+  /**
+   * Verrou du client de la commande (et du compte conservé s'il a été fusionné), puis de la commande,
+   * puis portée de l'**auteur** de la commande (ou son responsable). ADR-038 : les clients avant les
+   * commandes et les ventes du client — l'annulation d'une vente de la commande, une vente nouvelle et la
+   * modification de la commande prennent le client en premier ; prise après la commande, une conversion
+   * annulée formait un cycle avec elles.
+   */
   async function loadOrderForCommand(
     uow: Uow,
     input: {
@@ -690,6 +696,18 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       readonly permissionCode: string;
     },
   ) {
+    const owner = await uow
+      .selectFrom('sales_sales_orders')
+      .select('customer_id')
+      .where('id', '=', toBin(input.orderId))
+      .executeTakeFirst();
+    if (owner?.customer_id) {
+      const customerId = fromBin(owner.customer_id);
+      const customer = await getCustomer(uow, customerId);
+      const ids = [customerId];
+      if (customer?.stage === 'MERGED' && customer.mergedIntoId) ids.push(customer.mergedIntoId);
+      for (const id of [...new Set(ids)].sort()) await lockCustomerAccount(uow, id);
+    }
     const locked = await lockOrder(uow, input.orderId);
     if (!locked) return { ok: false as const, outcome: NOT_FOUND };
     const site = await loadSite(uow, fromBin(locked.order.site_id));
