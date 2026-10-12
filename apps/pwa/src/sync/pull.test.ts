@@ -57,6 +57,51 @@ describe('sync/pull (runPullCycle)', () => {
     expect(meta?.last_sync_at).toBe(clock.now().toISOString());
   });
 
+  it('relève sur la tablette : rien n’est effacé ni tiré pour l’utilisateur précédent', async () => {
+    await db.syncMeta.update('device', { data_user_id: 'user-1' });
+    await db.projections.put({
+      key: 'me:SETTING:x',
+      dataset: 'me',
+      entity_type: 'SETTING',
+      entity_id: 'x',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id: 'x' },
+    });
+    vi.stubGlobal('fetch', vi.fn());
+    // Ancien moteur (user-0) dont le cycle continue après la connexion de user-1.
+    expect(await runPullCycle(db, { clock, userId: 'user-0' })).toEqual({
+      outcome: 'SESSION_CHANGED',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await db.projections.count()).toBe(1);
+    expect((await db.syncMeta.get('device'))?.data_user_id).toBe('user-1');
+
+    // Relève pendant le tirage : le jeu suivant n'est pas demandé.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        setSessionRuntime({
+          userId: 'user-2',
+          deviceId: 'device-1',
+          deviceStatus: 'ACTIVE',
+          refreshToken: 'refresh-token-2',
+          accessToken: 'access-token-2',
+          accessTokenExpiresAt: Date.now() + 60_000,
+          pinKey: {} as CryptoKey,
+        });
+        return new Response(JSON.stringify(emptyPullResponse()), { status: 200 });
+      }),
+    );
+    expect(await runPullCycle(db, { clock, userId: 'user-1' })).toEqual({
+      outcome: 'SESSION_CHANGED',
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((await db.syncMeta.get('device'))?.last_sync_at).toBeNull();
+  });
+
   it('anciens jeux `setting` et `control_policy` : plus tirés, purgés de l’appareil (AV-196)', async () => {
     expect(KNOWN_DATASETS).not.toContain('setting');
     expect(KNOWN_DATASETS).not.toContain('control_policy');

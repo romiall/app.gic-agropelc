@@ -9,12 +9,16 @@
  * réponse prouve que le serveur est joignable et reste une erreur HTTP.
  */
 import type { GicDatabase } from '../storage/db.js';
-import { ensureAccessToken } from '../features/auth/session-runtime.js';
+import { ensureAccessToken, getSessionRuntime } from '../features/auth/session-runtime.js';
 import { apiUrl } from '../platform/env.js';
 
 export type ApiResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' }
+  /**
+   * `SESSION_CHANGED` : la session n'est plus celle de l'utilisateur attendu (`expectedUserId`,
+   * relève sur une tablette partagée) ; rien n'a été envoyé.
+   */
+  | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'SESSION_CHANGED' }
   | {
       readonly ok: false;
       readonly reason: 'HTTP_ERROR';
@@ -30,12 +34,25 @@ const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 export async function authorizedRequest<T>(
   db: GicDatabase,
   path: string,
-  init: RequestInit & { readonly timeoutMs?: number },
+  init: RequestInit & {
+    readonly timeoutMs?: number;
+    /**
+     * Utilisateur pour le compte duquel l'appel est fait (moteur de synchronisation) : si la session
+     * a changé entre-temps, l'appel n'est pas fait, sans quoi les commandes d'un utilisateur
+     * partiraient avec le jeton du suivant et seraient refusées définitivement (`FORBIDDEN`).
+     */
+    readonly expectedUserId?: string;
+  },
 ): Promise<ApiResult<T>> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, expectedUserId, ...requestInit } = init;
   const token = await ensureAccessToken(db);
   if (!token.ok) return { ok: false, reason: token.reason };
+  // Vérifié après l'obtention du jeton (un renouvellement peut durer) et juste avant l'appel : le
+  // jeton obtenu est alors celui de la session de cet utilisateur.
+  if (expectedUserId !== undefined && getSessionRuntime()?.userId !== expectedUserId) {
+    return { ok: false, reason: 'SESSION_CHANGED' };
+  }
 
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestInit } = init;
   let response: Response;
   try {
     response = await fetch(apiUrl(path), {

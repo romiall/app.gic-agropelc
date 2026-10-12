@@ -189,7 +189,8 @@ export function SuppliersScreen() {
   }
 
   const waiting =
-    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
+    (last !== undefined &&
+      (lastCommand === undefined || isBlockingWait(lastCommand, refs.outbox))) ||
     pendingOps.length > 0;
   const blocked = busy || waiting || !online || read.stale;
   // Retour sur l'écran : la dernière opération encore en attente redevient « la dernière », pour que

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
@@ -155,6 +155,21 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     );
     expect(cancel?.depends_on).toEqual(['01900000-0000-7000-8000-0000000000d1']);
     expect(cancel?.payload).toEqual({ saleId: PENDING_SALE, comment: 'Client parti' });
+  });
+
+  it('tablette partagée : vente d’un autre utilisateur pas encore envoyée, annulation refusée jusqu’à son envoi', async () => {
+    await getDb().outbox.put({
+      ...pendingSaleCommand(),
+      author_user_id: '01900000-0000-7000-8000-0000000000e8',
+    });
+    renderAt(`/ventes/${PENDING_SALE}`);
+    const cancel = await screen.findByRole('button', { name: 'Annuler la vente' });
+    expect(cancel).toBeDisabled();
+    const hint = screen.getByText(/Opération saisie sur cette tablette par un autre utilisateur/);
+    expect(cancel).toHaveAttribute('aria-describedby', hint.id);
+    // Envoyée (même sans retour du tirage) : l'annulation redevient possible.
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000000d1', { status: 'SYNCED' });
+    await waitFor(() => expect(cancel).toBeEnabled());
   });
 
   it('vente d’un compte absorbé depuis : au nom du compte conservé, encaissement sur lui', async () => {

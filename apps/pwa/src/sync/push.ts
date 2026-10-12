@@ -26,10 +26,20 @@ export type PushCycleResult =
   | { readonly outcome: 'OFFLINE' }
   /** Le serveur a répondu par une erreur HTTP : joignable, nouvel essai au prochain cycle. */
   | { readonly outcome: 'SERVER_ERROR' }
-  | { readonly outcome: 'SESSION_INVALID' };
+  | { readonly outcome: 'SESSION_INVALID' }
+  /** La session n'est plus celle de l'utilisateur du moteur (relève) : rien n'est parti. */
+  | { readonly outcome: 'SESSION_CHANGED' };
 
 /** Délai d'envoi d'un lot (jusqu'à 50 commandes, chacune dans sa transaction côté serveur). */
-const PUSH_TIMEOUT_MS = 60_000;
+export const PUSH_TIMEOUT_MS = 60_000;
+
+/**
+ * Après un envoi resté sans réponse, durée pendant laquelle un `SERVER_BUSY` peut signifier « en cours
+ * de traitement » (le serveur tient la commande réclamée 120 s, `STALE_CLAIM_SECONDS`, DÉDUIT de
+ * `command-pipeline.service.ts`) : il n'est pas compté comme un échec (S-45). Constante du protocole,
+ * pas un seuil métier.
+ */
+export const IN_PROGRESS_GRACE_MS = 120_000;
 
 function toEnvelope(command: OutboxCommand): RawCommandEnvelope {
   return {
@@ -72,7 +82,7 @@ export async function runPushCycle(
   await db.outbox
     .where('command_id')
     .anyOf(batch.map((c) => c.command_id))
-    .modify({ status: 'SYNCING' });
+    .modify({ status: 'SYNCING', sent_at: deps.clock.now().toISOString() });
 
   const request: PushRequest = {
     device_id: deps.deviceId,
@@ -87,8 +97,17 @@ export async function runPushCycle(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),
     timeoutMs: PUSH_TIMEOUT_MS,
+    ...(deps.userId !== undefined ? { expectedUserId: deps.userId } : {}),
   });
 
+  if (!result.ok && result.reason === 'SESSION_CHANGED') {
+    // Relève sur la tablette : le lot n'est pas parti, il attend la reconnexion de son auteur.
+    await db.outbox
+      .where('command_id')
+      .anyOf(batch.map((c) => c.command_id))
+      .modify({ status: 'PENDING_SYNC' });
+    return { outcome: 'SESSION_CHANGED' };
+  }
   if (!result.ok) {
     // Pas de résultat serveur : les commandes redeviennent PENDING_SYNC (repartent au
     // prochain cycle) plutôt que SYNCING indéfiniment — reprise après coupure (§8). L'enveloppe
@@ -101,6 +120,8 @@ export async function runPushCycle(
       .modify((c) => {
         c.status = 'PENDING_SYNC';
         c.attempts += 1;
+        // Le lot a pu atteindre le serveur : sa réponse au renvoi peut être « en cours » (S-45).
+        if (result.reason !== 'SESSION_INVALID') c.unanswered_at = deps.clock.now().toISOString();
       });
     // Seul un jeton de rafraîchissement invalide (session révoquée) force la déconnexion
     // locale. Une erreur HTTP du contrôleur (ex. 400 sur une enveloppe malformée) prouve que le
@@ -112,6 +133,7 @@ export async function runPushCycle(
   await db.syncMeta.update('device', { clock_skew_ms: result.data.clock_skew_ms });
 
   const syncedAt = deps.clock.now().toISOString();
+  const nowMs = deps.clock.now().getTime();
   const answered = new Set<string>();
   const stalled: string[] = [];
   let settled = 0;
@@ -149,7 +171,15 @@ export async function runPushCycle(
           c.status = 'PENDING_SYNC';
           c.attempts += 1;
           c.last_error = commandResult.error ?? c.last_error;
-          c.busy_retries = nextBusyRetries(code, c.busy_retries ?? 0);
+          // `SERVER_BUSY` peu après un envoi sans réponse : sans doute la commande encore en cours de
+          // traitement au serveur (S-45), pas un échec.
+          const inProgress =
+            code === 'SERVER_BUSY' &&
+            !!c.unanswered_at &&
+            nowMs - Date.parse(c.unanswered_at) < IN_PROGRESS_GRACE_MS;
+          c.busy_retries = inProgress
+            ? (c.busy_retries ?? 0)
+            : nextBusyRetries(code, c.busy_retries ?? 0);
         });
       continue;
     }
@@ -174,6 +204,7 @@ export async function runPushCycle(
       .modify((c) => {
         c.status = 'PENDING_SYNC';
         c.attempts += 1;
+        c.unanswered_at = syncedAt;
       });
   }
 

@@ -20,6 +20,7 @@ import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
+import { waitsForOtherUser } from './pending.js';
 import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
@@ -209,6 +210,9 @@ export function SaleDetailScreen() {
     (sale.status === 'CONFIRMED' || sale.status === 'PENDING') &&
     !sale.cancellationPending &&
     !cancelCommandId;
+  // Vente d'un autre utilisateur de la tablette, pas encore envoyée : l'annulation en dépendrait et
+  // ne partirait qu'à sa reconnexion (ADR-052) ; elle attend son envoi.
+  const foreignPending = waitsForOtherUser(refs.outbox, [sale.commandId], userId);
 
   return (
     <section className="sale">
@@ -293,11 +297,22 @@ export function SaleDetailScreen() {
           </Link>
         ) : null}
         {cancellable && !cancelling ? (
-          <button type="button" className="secondary" onClick={() => setCancelling(true)}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={foreignPending}
+            aria-describedby={foreignPending ? 'sale-foreign-pending' : undefined}
+            onClick={() => setCancelling(true)}
+          >
             {t('sales.cancel.open')}
           </button>
         ) : null}
       </div>
+      {cancellable && foreignPending ? (
+        <p id="sale-foreign-pending" className="home-muted">
+          {t('sync.foreign_pending')}
+        </p>
+      ) : null}
 
       {cancelCommandId ? (
         <CommandResult commandId={cancelCommandId} messages="sales.cancel.result" />

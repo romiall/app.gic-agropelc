@@ -7,7 +7,7 @@
  * saisie », 01-architecture-offline.md §5).
  */
 export type SyncOutcome =
-  'SYNCED' | 'OFFLINE' | 'SERVER_ERROR' | 'SESSION_INVALID' | 'NOTHING_TO_DO';
+  'SYNCED' | 'OFFLINE' | 'SERVER_ERROR' | 'SESSION_INVALID' | 'NOTHING_TO_DO' | 'STOPPED';
 
 type Listener = () => void;
 
@@ -20,6 +20,8 @@ function notify(): void {
 
 /** Seul un échec réseau rend le serveur injoignable ; une erreur HTTP prouve qu'il répond. */
 export function reportSyncOutcome(outcome: SyncOutcome): void {
+  // Cycle interrompu (moteur arrêté, relève) : il ne dit rien de la joignabilité.
+  if (outcome === 'STOPPED') return;
   const unreachable = outcome === 'OFFLINE';
   if (unreachable === serverUnreachable) return;
   serverUnreachable = unreachable;

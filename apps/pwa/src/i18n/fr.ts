@@ -2335,6 +2335,10 @@ export const fr = {
     reload: 'Recharger l’application',
   },
   sync: {
+    held_behind_failure:
+      'Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer ({{reason}}). Elle partira dès que celle-ci passera, ou au plus tard quand le serveur l’aura écartée.',
+    foreign_pending:
+      'Opération saisie sur cette tablette par un autre utilisateur, pas encore envoyée : la suite sera possible après son envoi, à sa prochaine connexion avec le réseau.',
     repeated_failure:
       'Le serveur renvoie cette opération sans l’appliquer ({{reason}}). Elle est réessayée automatiquement ; signalez-la à l’administrateur si cela dure.',
     screen_title: 'Synchronisation',

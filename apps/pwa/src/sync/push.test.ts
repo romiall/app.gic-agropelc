@@ -3,7 +3,7 @@ import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import type { PushResponse } from '@gic/contracts';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
 import { enqueueCommand } from './outbox.js';
-import { runPushCycle } from './push.js';
+import { IN_PROGRESS_GRACE_MS, runPushCycle } from './push.js';
 import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session-runtime.js';
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
@@ -217,8 +217,10 @@ describe('sync/push (runPushCycle)', () => {
         }),
         { status: 200 },
       );
-    const run = () => runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    // Deux coupures puis un SERVER_BUSY : un seul renvoi compté.
+    const now = new FixedClock(clock.now());
+    const run = () => runPushCycle(db, { clock: now, idGenerator, deviceId: DEVICE_ID });
+    // Deux coupures puis un SERVER_BUSY (hors du délai « en cours de traitement ») : un seul renvoi
+    // compté.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -227,6 +229,7 @@ describe('sync/push (runPushCycle)', () => {
     );
     await run();
     await run();
+    now.advance(IN_PROGRESS_GRACE_MS);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => busy()),
@@ -277,6 +280,82 @@ describe('sync/push (runPushCycle)', () => {
     answer('AUTRE_MOTIF', 'À renvoyer.');
     await run();
     expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+  });
+
+  it('SERVER_BUSY peu après un envoi sans réponse : commande en cours de traitement, pas un échec (S-45)', async () => {
+    const command = await enqueueOne(db, 'lot coupé en plein traitement');
+    const now = new FixedClock(clock.now());
+    const run = () => runPushCycle(db, { clock: now, idGenerator, deviceId: DEVICE_ID });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error');
+      }),
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      sent_at: now.now().toISOString(),
+      unanswered_at: now.now().toISOString(),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: command.command_id,
+                  status: 'RETRY_LATER',
+                  error: {
+                    code: 'SERVER_BUSY',
+                    message_fr: 'Commande en cours de traitement, à réessayer.',
+                  },
+                },
+              ],
+              server_time: now.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    // Renvois rapprochés pendant que le serveur la tient encore : rien n'est compté.
+    for (const step of [30_000, 30_000, 30_000, IN_PROGRESS_GRACE_MS - 90_001]) {
+      now.advance(step);
+      await run();
+    }
+    expect((await db.outbox.get(command.command_id))?.busy_retries ?? 0).toBe(0);
+    // Au-delà du délai : un vrai renvoi sans succès.
+    now.advance(2);
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(1);
+  });
+
+  it('relève sur la tablette : le lot ne part pas avec le jeton du suivant, aucune commande refusée', async () => {
+    const command = await enqueueOne(db, 'vente de user-1');
+    // La session est désormais celle de user-2 (déconnexion de user-1, connexion de user-2).
+    setSessionRuntime({
+      userId: 'user-2',
+      deviceId: DEVICE_ID,
+      deviceStatus: 'ACTIVE',
+      refreshToken: 'refresh-token-2',
+      accessToken: 'access-token-2',
+      accessTokenExpiresAt: Date.now() + 60_000,
+      pinKey: {} as CryptoKey,
+    });
+    vi.stubGlobal('fetch', vi.fn());
+    const result = await runPushCycle(db, {
+      clock,
+      idGenerator,
+      deviceId: DEVICE_ID,
+      userId: 'user-1',
+    });
+    expect(result).toEqual({ outcome: 'SESSION_CHANGED' });
+    expect(fetch).not.toHaveBeenCalled();
+    const after = await db.outbox.get(command.command_id);
+    expect(after).toMatchObject({ status: 'PENDING_SYNC', attempts: 0, last_error: null });
+    expect(after?.busy_retries ?? 0).toBe(0);
   });
 
   it('commande bloquée (COMMAND_STALLED) : aussitôt signalée en échec répété, rapportée au cycle', async () => {

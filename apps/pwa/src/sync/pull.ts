@@ -17,6 +17,7 @@ import type { Change, PullResponse } from '@gic/contracts';
 import type { Clock } from '@gic/domain';
 import type { GicDatabase, Projection } from '../storage/db.js';
 import { authorizedRequest } from './api-client.js';
+import { getSessionRuntime } from '../features/auth/session-runtime.js';
 
 export const KNOWN_DATASETS = [
   // Jeux d'exploitation d'abord : si un cycle s'interrompt, le stock et les ventes sont les plus
@@ -146,16 +147,22 @@ export type PullCycleResult =
   /** Au moins un jeu a répondu par une erreur HTTP ; les autres ont été tirés. */
   | { readonly outcome: 'SERVER_ERROR'; readonly changeCount: number }
   | { readonly outcome: 'OFFLINE' }
-  | { readonly outcome: 'SESSION_INVALID' };
+  | { readonly outcome: 'SESSION_INVALID' }
+  /** La session n'est plus celle de l'utilisateur du moteur (relève) : rien n'est tiré pour lui. */
+  | { readonly outcome: 'SESSION_CHANGED' };
 
 type PullDatasetResult =
   | { readonly ok: true; readonly changeCount: number }
-  | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'HTTP_ERROR' };
+  | {
+      readonly ok: false;
+      readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'SESSION_CHANGED' | 'HTTP_ERROR';
+    };
 
 async function pullDataset(
   db: GicDatabase,
   clock: Clock,
   dataset: string,
+  userId: string | undefined,
 ): Promise<PullDatasetResult> {
   let changeCount = 0;
   for (;;) {
@@ -165,7 +172,7 @@ async function pullDataset(
     const result = await authorizedRequest<PullResponse>(
       db,
       `/api/v1/sync/pull?dataset=${encodeURIComponent(dataset)}&cursor=${cursor}&limit=${PAGE_LIMIT}`,
-      { method: 'GET' },
+      { method: 'GET', ...(userId !== undefined ? { expectedUserId: userId } : {}) },
     );
     if (!result.ok) {
       // Seul un jeton de rafraîchissement invalide force la déconnexion locale (même choix que
@@ -238,12 +245,17 @@ export async function runPullCycle(
   db: GicDatabase,
   deps: { readonly clock: Clock; readonly userId?: string },
 ): Promise<PullCycleResult> {
+  // Relève sur la tablette pendant le cycle : les jeux ne sont ni effacés ni tirés pour l'utilisateur
+  // précédent (ils appartiennent désormais au suivant).
+  if (deps.userId && getSessionRuntime()?.userId !== deps.userId) {
+    return { outcome: 'SESSION_CHANGED' };
+  }
   if (deps.userId) await ensureDataOwner(db, deps.userId);
   await purgeRetiredDatasets(db);
   let total = 0;
   let serverError = false;
   for (const dataset of KNOWN_DATASETS) {
-    const result = await pullDataset(db, deps.clock, dataset);
+    const result = await pullDataset(db, deps.clock, dataset, deps.userId);
     if (!result.ok) {
       if (result.reason === 'HTTP_ERROR') {
         serverError = true;

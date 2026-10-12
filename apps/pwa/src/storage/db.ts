@@ -68,6 +68,17 @@ export interface OutboxCommand {
    * coupures réseau ; remis à zéro par toute autre réponse. Non indexé, hors enveloppe.
    */
   busy_retries?: number;
+  /**
+   * Heure du dernier passage à `SYNCING` : une commande restée `SYNCING` au-delà du délai d'un lot est
+   * tenue pour interrompue (onglet fermé, appareil éteint) et repart. Non indexé, hors enveloppe.
+   */
+  sent_at?: string | null;
+  /**
+   * Heure du dernier envoi resté sans réponse (réseau coupé, délai dépassé, commande absente de la
+   * réponse) : le serveur a pu commencer à la traiter, un `SERVER_BUSY` reçu peu après n'est pas un
+   * échec (S-45). Non indexé, hors enveloppe.
+   */
+  unanswered_at?: string | null;
 }
 
 /** Une ligne par `(dataset, entity_type, entity_id)` : projection de l'état courant reçu. */

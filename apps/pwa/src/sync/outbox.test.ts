@@ -195,13 +195,42 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
     expect(await ids()).toContain(sale.command_id);
 
     // Dépendance à une commande d'un autre utilisateur de la tablette, encore en file : elle ne part
-    // qu'à sa reconnexion ; le lot s'arrête avant la dépendante.
+    // qu'à sa reconnexion. La dépendante part quand même (le serveur la fait attendre au plus
+    // `sync.retry_hold_minutes`, puis libère la suite) : la file de l'utilisateur n'est pas bloquée
+    // sans fin.
     await db.outbox.clear();
     const other = await enqueue([], 'user-2');
     const first = await enqueue([]);
     const dependent = await enqueue([other.command_id]);
-    await enqueue([]);
-    expect(await ids()).toEqual([first.command_id]);
-    expect(dependent.depends_on).toEqual([other.command_id]);
+    const next = await enqueue([]);
+    expect(await ids()).toEqual([first.command_id, dependent.command_id, next.command_id]);
+  });
+
+  it('commande de l’auteur encore en vol (SYNCING) : rien de plus récent ne part avant sa réponse', async () => {
+    const enqueue = (authorUserId = 'user-1') =>
+      enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId,
+          commandType: 'sales.sale.record',
+          commandVersion: 1,
+          aggregateType: 'SALE',
+          payload: {},
+          capturedOffline: true,
+        },
+      );
+    const inFlight = await enqueue();
+    const later = await enqueue();
+    await db.outbox.update(inFlight.command_id, { status: 'SYNCING' });
+    expect(await pendingOutbox(db, 50, 'user-1')).toEqual([]);
+    // Lot d'un autre utilisateur en vol : sans effet sur la file de celui-ci.
+    await db.outbox.update(inFlight.command_id, { status: 'PENDING_SYNC' });
+    const otherInFlight = await enqueue('user-2');
+    await db.outbox.update(otherInFlight.command_id, { status: 'SYNCING' });
+    expect((await pendingOutbox(db, 50, 'user-1')).map((c) => c.command_id)).toEqual([
+      inFlight.command_id,
+      later.command_id,
+    ]);
   });
 });

@@ -64,7 +64,7 @@ export function waitingCommands(
     (command) =>
       command.command_type.startsWith(prefix) &&
       command.author_user_id === userId &&
-      isBlockingWait(command),
+      isBlockingWait(command, outbox),
   );
 }
 
@@ -125,11 +125,64 @@ export function waitingIds(
 }
 
 /**
- * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
- * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce).
+ * Commande qui retient la suite de son auteur : en échec répété, mais pas encore déclarée bloquée par
+ * le serveur (`COMMAND_STALLED` ne retient plus la suite, AV-217).
  */
-export function isBlockingWait(command: Pick<OutboxCommand, 'status' | 'busy_retries'>): boolean {
-  return phaseOf(command) === 'WAITING' && !inRepeatedFailure(command);
+function holdsFollowing(
+  command: Pick<OutboxCommand, 'status' | 'busy_retries' | 'last_error'>,
+): boolean {
+  return inRepeatedFailure(command) && command.last_error?.code !== 'COMMAND_STALLED';
+}
+
+type Queued = Pick<
+  OutboxCommand,
+  'status' | 'busy_retries' | 'last_error' | 'author_user_id' | 'device_seq'
+>;
+
+/**
+ * Commande plus ancienne du même auteur, en échec répété, qui retient celle-ci : le serveur suspend la
+ * suite de son lot (`PRECEDING_COMMAND_PENDING`) tant qu'elle ne passe pas ou n'est pas déclarée
+ * bloquée (au plus `sync.retry_hold_minutes`).
+ */
+export function heldBehindFailure<T extends Queued>(
+  command: Pick<OutboxCommand, 'status' | 'author_user_id' | 'device_seq'>,
+  outbox: readonly T[],
+): T | undefined {
+  if (phaseOf(command) !== 'WAITING') return undefined;
+  return outbox.find(
+    (candidate) =>
+      candidate.author_user_id === command.author_user_id &&
+      candidate.device_seq < command.device_seq &&
+      holdsFollowing(candidate),
+  );
+}
+
+/** Commande en échec répété qui retient celle-ci, suivie en direct (voir `heldBehindFailure`). */
+export function useHeldBehindFailure(
+  command: OutboxCommand | undefined,
+): OutboxCommand | undefined {
+  return useLiveQuery(async () => {
+    if (!command || phaseOf(command) !== 'WAITING') return undefined;
+    const earlier = await getDb().outbox.where('device_seq').below(command.device_seq).toArray();
+    return heldBehindFailure(command, earlier);
+  }, [command?.command_id, command?.status, command?.device_seq, command?.author_user_id]);
+}
+
+/**
+ * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
+ * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce),
+ * et hors commande retenue derrière une commande plus ancienne en échec répété (`outbox` fourni) : elle
+ * attendrait jusqu'à ce que le serveur déclare celle-ci bloquée.
+ */
+export function isBlockingWait(
+  command: Pick<OutboxCommand, 'status' | 'busy_retries' | 'author_user_id' | 'device_seq'>,
+  outbox?: readonly Queued[],
+): boolean {
+  return (
+    phaseOf(command) === 'WAITING' &&
+    !inRepeatedFailure(command) &&
+    !(outbox && heldBehindFailure(command, outbox))
+  );
 }
 
 /** Message du serveur pour une commande rejetée (`error.message_fr`), s'il existe. */
