@@ -35,6 +35,11 @@ export const SYNC_PROTOCOL_ERROR_CODES = [
    * `sync.retry_hold_minutes` — toujours `RETRY_LATER`, mais elle ne suspend plus la suite du lot.
    */
   'COMMAND_STALLED',
+  /**
+   * P5-23 (revue adverse, AV-225) : commande bloquée écartée par la résolution de son signal
+   * `SYNC_COMMAND_STALLED` (`sync.conflict.resolve`) — définitive : jamais appliquée après coup.
+   */
+  'COMMAND_DISCARDED',
 ] as const;
 
 export type SyncProtocolErrorCode = (typeof SYNC_PROTOCOL_ERROR_CODES)[number];

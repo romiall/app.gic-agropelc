@@ -15,8 +15,9 @@
  *   session = compté − attendu courant (fonds compté + flux de la fenêtre `[ouverture, clôture[`, hors
  *   écarts et soldes d'ouverture), et = écart enregistré + Σ des deltas d'ajustement ;
  * - INV-FIN-05 : tout `SESSION_VARIANCE` qui cite la session est l'écart d'ouverture, celui de clôture ou
- *   le mouvement d'un ajustement, chacun du montant enregistré ; un ajustement n'existe que sur une session
- *   close, dans le traitement que permet son statut.
+ *   le mouvement d'un ajustement, chacun du montant enregistré ; un ajustement de clôture n'existe que sur
+ *   une session close, un ajustement d'ouverture (AV-224, P5-23) aussi sur une session ouverte, chacun dans
+ *   le traitement que permet son statut ; un ajustement d'ouverture ne compte jamais dans l'écart de clôture.
  * Ne sont pas contrôlés (valeurs figées par construction, faux positifs légitimes) : l'attendu instantané
  * à l'ouverture et à la clôture (un fait antidaté les déplace), l'index `cash_session_id` du registre.
  */
@@ -26,6 +27,9 @@ import { cashSessionWindowsOverlap } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { isOpeningVarianceMovement } from '../cash-session-variance-rule.js';
+
+/** Cause d'un ajustement de l'écart d'ouverture (AV-224 ; même valeur que `cash-session-validation.ts`). */
+const OPENING_ADJUSTMENT_CAUSE = 'LATE_BEFORE_OPENING';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -263,7 +267,7 @@ export async function verifyCashSessions(
     .execute();
   const adjustments = await executor
     .selectFrom('finance_cash_session_adjustments')
-    .select(['id', 'session_id', 'movement_id', 'delta_xaf', 'treatment', 'status'])
+    .select(['id', 'session_id', 'movement_id', 'delta_xaf', 'treatment', 'status', 'cause'])
     .where('session_id', 'in', sessionIds)
     .execute();
   const movesBySession = new Map<string, typeof varianceMoves>();
@@ -301,7 +305,7 @@ export async function verifyCashSessions(
       }
       const adjustment = adjustmentByMove.get(moveId);
       if (adjustment) {
-        adjustmentMovesXaf += amount;
+        if (adjustment.cause !== OPENING_ADJUSTMENT_CAUSE) adjustmentMovesXaf += amount;
         if (amount !== Number(adjustment.delta_xaf)) {
           breach(
             session,
@@ -343,12 +347,14 @@ export async function verifyCashSessions(
           `Ajustement ${fromBin(adjustment.id)} sans son mouvement d'écart.`,
         );
       }
+      const opening = adjustment.cause === OPENING_ADJUSTMENT_CAUSE;
       const allowed =
-        session.status !== 'OPEN' &&
+        (session.status !== 'OPEN' || opening) &&
         !(
           adjustment.treatment === 'INCLUDED_IN_VALIDATION' &&
           adjustment.status === 'PENDING' &&
-          session.status !== 'PENDING_VALIDATION'
+          session.status !== 'PENDING_VALIDATION' &&
+          !(opening && session.status === 'OPEN')
         ) &&
         !(adjustment.treatment === 'OWN_APPROVAL' && session.status !== 'VALIDATED');
       if (!allowed) {
@@ -392,7 +398,9 @@ export async function verifyCashSessions(
     const posted = closingXaf + adjustmentMovesXaf;
     const recorded =
       (session.varianceXaf ?? 0) +
-      sessionAdjustments.reduce((sum, adjustment) => sum + Number(adjustment.delta_xaf), 0);
+      sessionAdjustments
+        .filter((adjustment) => adjustment.cause !== OPENING_ADJUSTMENT_CAUSE)
+        .reduce((sum, adjustment) => sum + Number(adjustment.delta_xaf), 0);
     if (posted !== target) {
       breach(
         session,

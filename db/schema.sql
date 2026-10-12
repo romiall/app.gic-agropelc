@@ -1965,7 +1965,7 @@ CREATE TABLE `finance_cash_session_adjustments` (
   CONSTRAINT `fk_finance_cash_session_adjustments_trigger` FOREIGN KEY (`trigger_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_finance_cash_session_adjustments_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_finance_cash_session_adjustments_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_finance_cash_session_adjustments_cause` CHECK ((`cause` in (_utf8mb4'LATE_OPERATION',_utf8mb4'REVERSAL'))),
+  CONSTRAINT `ck_finance_cash_session_adjustments_cause` CHECK ((`cause` in (_utf8mb4'LATE_OPERATION',_utf8mb4'REVERSAL',_utf8mb4'LATE_BEFORE_OPENING'))),
   CONSTRAINT `ck_finance_cash_session_adjustments_delta` CHECK (((`delta_xaf` <> 0) and (`delta_xaf` = (`variance_after_xaf` - `variance_before_xaf`)))),
   CONSTRAINT `ck_finance_cash_session_adjustments_status` CHECK ((`status` in (_utf8mb4'PENDING',_utf8mb4'VALIDATED'))),
   CONSTRAINT `ck_finance_cash_session_adjustments_treatment` CHECK ((`treatment` in (_utf8mb4'INCLUDED_IN_VALIDATION',_utf8mb4'OWN_APPROVAL'))),
@@ -8282,5 +8282,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261010092000'),
   ('20261010093000'),
   ('20261010093100'),
-  ('20261012090000');
+  ('20261012090000'),
+  ('20261012100000');
 UNLOCK TABLES;

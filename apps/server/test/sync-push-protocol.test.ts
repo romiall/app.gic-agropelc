@@ -31,9 +31,11 @@ import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { registerSettingCommands } from '../src/modules/organization/application/commands/setting-commands.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { DEVICE_DATASET, authorDataset } from '../src/sync/sync-push.service.js';
 import { OfflineDevice, type CommandSpec } from './device-harness.js';
+import { newActor, type Actor } from './cash-transfer-fixtures.js';
+import { registerSyncConflictCommands } from '../src/sync/conflict-commands.js';
 import { SETTING_PERMISSION } from './sync-harness.js';
 import {
   assignTestRole,
@@ -55,12 +57,15 @@ describe('protocole d’envoi : date future et ordre d’un lot (P5-21)', () => 
   let services: { push: SyncPushService; pull: SyncPullService };
   let userA: string;
   let userB: string;
+  let root: string;
+  let administrator: Actor;
   /** Appels du gestionnaire-sonde, par étiquette : une commande appliquée deux fois s'y verrait. */
   const probeCalls = new Map<string, number>();
 
   beforeAll(async () => {
     const registry = new CommandHandlerRegistry();
     registerSettingCommands(registry);
+    registerSyncConflictCommands(registry, { idGenerator: new Uuidv7Generator(clock) });
     // Sonde lente (droit des paramètres) : compte ses appels, attend, n'écrit rien de métier.
     registry.register({
       commandType: 'organization.probe.run',
@@ -84,7 +89,10 @@ describe('protocole d’envoi : date future et ordre d’un lot (P5-21)', () => 
       userB = await insertTestUser(trx);
       await assignTestRole(trx, userA, role, admin);
       await assignTestRole(trx, userB, role, admin);
+      root = admin;
     });
+    // Propriétaire du signal `SYNC_COMMAND_STALLED` : l'Admin (rôle semé, AV-191).
+    administrator = await newActor('ADMIN', root);
   });
 
   afterAll(closeTestDb);
@@ -381,6 +389,69 @@ describe('protocole d’envoi : date future et ordre d’un lot (P5-21)', () => 
     expect(settled.at(-1)).toMatchObject({ command_id: stuck.command_id, status: 'APPLIED' });
     expect(await stalledSignals(stuck.command_id)).toEqual([
       { status: 'RESOLVED', resolution: 'ACCEPT_CLIENT', owner_role: 'ADMIN', applied: 0 },
+    ]);
+  });
+
+  it('AV-225 : résoudre le signal d’une commande bloquée l’écarte — le renvoi reçoit COMMAND_DISCARDED, elle ne s’applique jamais après la régularisation', async () => {
+    const a = await tablet(userA);
+    const b = await tablet(userB);
+    const awaited = b.enqueue(userB, setting(key('dependance-ecartee')));
+    const stuck = a.enqueue(userA, setting(key('ecartee'), [awaited.command_id]));
+    await seedInbox(a, stuck, {
+      status: 'FAILED_RETRYABLE',
+      errorCode: 'DEPENDENCY_PENDING',
+      receivedMinutesAgo: 120,
+    });
+    await a.sync(userA);
+    const signal = await db
+      .selectFrom('sync_sync_conflicts')
+      .select('id')
+      .where('conflict_type', '=', 'SYNC_COMMAND_STALLED')
+      .where('entity_id', '=', toBin(stuck.command_id))
+      .executeTakeFirstOrThrow();
+    // L'Admin a fait ressaisir le fait par un autre document, puis résout le signal.
+    const resolved = await pipeline.handle(
+      {
+        command_id: freshUuid(),
+        device_seq: 1,
+        command_version: 1,
+        command_type: 'sync.conflict.resolve',
+        aggregate_type: 'SYNC_CONFLICT',
+        aggregate_id: fromBin(signal.id),
+        author_user_id: administrator.userId,
+        base_version: null,
+        depends_on: [],
+        occurred_at: clock.now().toISOString(),
+        client_created_at: clock.now().toISOString(),
+        captured_offline: false,
+        backdated_reason: null,
+        attachment_ids: [],
+        payload: {
+          resolution: 'COMPENSATE',
+          comment: 'Ressaisi par le siège',
+          refs: [freshUuid()],
+        },
+      },
+      {
+        authenticatedUserId: administrator.userId,
+        authenticatedDeviceId: administrator.deviceId,
+        transport: 'ONLINE_API',
+      },
+    );
+    expect(resolved.status, JSON.stringify(resolved)).toBe('APPLIED');
+    expect(await inboxOf(stuck.command_id)).toMatchObject({
+      status: 'REJECTED',
+      error_code: 'COMMAND_DISCARDED',
+    });
+    // La dépendance arrive enfin : la commande écartée ne s'applique pas (sinon : double comptage).
+    await b.sync(userB);
+    const after = await a.syncUntilSettled(userA);
+    expect(after.find((r) => r.command_id === stuck.command_id)).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'COMMAND_DISCARDED' },
+    });
+    expect(await stalledSignals(stuck.command_id)).toEqual([
+      { status: 'RESOLVED', resolution: 'COMPENSATE', owner_role: 'ADMIN', applied: 0 },
     ]);
   });
 

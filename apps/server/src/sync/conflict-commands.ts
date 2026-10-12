@@ -16,6 +16,12 @@
  *   (`CONFLICT_MANAGED_ELSEWHERE` : `PAYMENT_REFERENCE_DUPLICATE`, décision `PAYMENT_DUPLICATE`) ;
  * - conflit inconnu ⇒ `NOT_FOUND` ; hors rôle propriétaire ou hors portée ⇒ `FORBIDDEN_SCOPE` (AV-191) ;
  *   déjà clos (par une autre personne ou par sa régularisation) ⇒ `CONFLICT_ALREADY_CLOSED`.
+ * - P5-23 (revue adverse, AV-225) : résoudre le signal `SYNC_COMMAND_STALLED` d'une commande bloquée
+ *   (`KEEP_SERVER` : le fait est écarté ; `COMPENSATE` : il a été ressaisi par d'autres documents)
+ *   **écarte la commande** : sa ligne d'inbox passe `REJECTED` (`COMMAND_DISCARDED`), le renvoi suivant
+ *   reçoit ce refus définitif — sinon elle restait rejouable et s'appliquait après la régularisation
+ *   (double comptage). L'inbox de la commande est verrouillée avant le conflit (ordre du pipeline,
+ *   ADR-038 : un renvoi tient son inbox, puis clôt le signal).
  * - revue de P5-17 : un conflit sur un fait appliqué n'est jamais clos par l'auteur de ce fait
  *   (`CONFLICT_SELF_RESOLUTION_FORBIDDEN`, AV-192) ; `ALLOCATION_OVERCOMMITTED` et `STOCK_NEGATIVE` ne se
  *   closent qu'une fois l'anomalie régularisée (`CONFLICT_CONDITION_PERSISTS`).
@@ -49,6 +55,7 @@ import {
   isAllocationOvercommitted,
 } from '../modules/inventory/application/public/index.js';
 import { CONFLICT_RESOLVE, conflictVisible } from './conflict-access.js';
+import { STALLED_CONFLICT_TYPE } from '../commands/retry-hold.js';
 
 /** Conflits dont la clôture appartient à une décision propre (jamais clos par `sync.conflict.*`). */
 export const CONFLICTS_MANAGED_ELSEWHERE: ReadonlySet<string> = new Set([
@@ -229,6 +236,18 @@ export function registerSyncConflictCommands(
 ): void {
   const resolve: CommandHandler<ResolvePayload> = async (uow, envelope) => {
     const at = new Date(envelope.occurred_at);
+    // Signal d'une commande bloquée : l'inbox de la commande d'abord, puis le conflit (AV-225).
+    const peek = await findConflict(uow, envelope.aggregate_id);
+    const stalledCommand =
+      peek?.conflictType === STALLED_CONFLICT_TYPE ? toBin(peek.entityId) : null;
+    if (stalledCommand !== null) {
+      await uow
+        .selectFrom('sync_command_inbox')
+        .select('status')
+        .where('command_id', '=', stalledCommand)
+        .forUpdate()
+        .executeTakeFirst();
+    }
     const check = await openConflictFor(uow, envelope, at);
     if (!check.ok) return check.outcome;
     const p = envelope.payload;
@@ -244,6 +263,19 @@ export function registerSyncConflictCommands(
         'CONFLICT_REFS_REQUIRED',
         'Citer le ou les documents de régularisation (refs).',
       );
+    }
+    if (stalledCommand !== null && check.conflict.conflictType === STALLED_CONFLICT_TYPE) {
+      // La commande ne s'appliquera plus : refus définitif rendu à son prochain renvoi.
+      await uow
+        .updateTable('sync_command_inbox')
+        .set({
+          status: 'REJECTED',
+          error_code: 'COMMAND_DISCARDED',
+          error_message: `Commande écartée à la résolution de son blocage (${p.resolution}) : ${p.comment}`,
+        })
+        .where('command_id', '=', stalledCommand)
+        .where('status', 'in', ['RECEIVED', 'FAILED_RETRYABLE'])
+        .execute();
     }
     return finish(uow, deps, {
       envelope,

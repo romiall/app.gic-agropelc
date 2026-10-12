@@ -94,6 +94,8 @@ import {
 } from '../cash-session-ledger.js';
 import { publishCashSessionEvent } from '../cash-session-events.js';
 import {
+  hasPendingIncludedAdjustment,
+  openingAdjustmentsXaf,
   registerCashVarianceDecisions,
   requestCashVarianceValidation,
   resolveCashValidationTarget,
@@ -677,12 +679,17 @@ async function closeSession(
     await cashSetting(uow, 'varianceToleranceXaf', session.siteId, closedAt),
     0,
   );
+  // AV-224 (P5-23) : écart d'ouverture effectif, corrigé des opérations antérieures à l'ouverture
+  // appliquées depuis ; un ajustement inclus encore en attente exige la validation.
+  const openingVarianceXaf =
+    session.openingVarianceXaf + (await openingAdjustmentsXaf(uow, session.id));
   const { status, autoValidated } = sessionStatusAfterClose({
-    openingVarianceXaf: session.openingVarianceXaf,
+    openingVarianceXaf,
     closingVarianceXaf: varianceXaf,
     toleranceXaf,
     forced,
     precedesMovements: precedesMovementAt !== null,
+    pendingAdjustments: await hasPendingIncludedAdjustment(uow, session.id),
   });
   if (varianceXaf !== 0) {
     await postVariance(uow, deps, {
@@ -705,10 +712,10 @@ async function closeSession(
           subjectType: 'CASH_SESSION',
           subjectId: session.id,
           siteId: session.siteId,
-          amountXaf: Math.abs(session.openingVarianceXaf) + Math.abs(varianceXaf),
+          amountXaf: Math.abs(openingVarianceXaf) + Math.abs(varianceXaf),
           summary:
             `Session de caisse du ${businessDayOf(session.openedAt)} : écart d'ouverture ` +
-            `${session.openingVarianceXaf} XAF, écart de clôture ${varianceXaf} XAF` +
+            `${openingVarianceXaf} XAF, écart de clôture ${varianceXaf} XAF` +
             (forced ? ' (clôture forcée)' : '') +
             (precedesMovementAt !== null ? ' (clôture datée avant un mouvement)' : ''),
           requestedBy: author,

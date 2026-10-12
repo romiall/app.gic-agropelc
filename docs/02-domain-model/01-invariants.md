@@ -87,7 +87,7 @@
 | INV-FIN-08 | Le registre de coûts est en ajout seul ; coût d'un objet = Σ de ses écritures. | Coût de lot modifié arbitrairement | DB | I |
 | INV-FIN-09 | Un encaissement `SUSPECT_DUPLICATE` ou `REJECTED` n'a aucun mouvement de trésorerie ni affectation active. | Doublon comptabilisé | TX | S |
 | INV-FIN-10 | Toute affectation active porte sur une vente non annulée ou une commande non annulée. | Argent affecté à une vente annulée | TX | I |
-| INV-FIN-11 | Pour toute session de caisse, Σ signée des `SESSION_VARIANCE` de clôture et d'ajustement qui citent la session (datés à sa clôture) = compté − attendu courant (attendu calculé par fenêtre de temps) ; l'écart d'ouverture, posé à la période précédente, est exclu de l'attendu (ADR-032). | Écart de caisse compté deux fois ou jamais | TX, JOB (`verifyCashSessions` dans `finance.cash.reconcile_daily`, balayage de toute la base, P5-22) | I |
+| INV-FIN-11 | Pour toute session de caisse, Σ signée des `SESSION_VARIANCE` de clôture et d'ajustement qui citent la session (datés à sa clôture) = compté − attendu courant (attendu calculé par fenêtre de temps) ; l'écart d'ouverture, posé à la période précédente, est exclu de l'attendu (ADR-032), comme ses ajustements (`LATE_BEFORE_OPENING`, AV-224, P5-23 : une opération datée entre deux sessions, appliquée après l'ouverture de la suivante, corrige l'écart d'ouverture de celle-ci au lieu d'être comptée deux fois). | Écart de caisse compté deux fois ou jamais | TX, JOB (`verifyCashSessions` dans `finance.cash.reconcile_daily`, balayage de toute la base, P5-22) | I |
 
 ## 5 bis. Distribution et points de vente (DIS)
 

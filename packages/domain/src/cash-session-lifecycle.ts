@@ -306,12 +306,18 @@ export function sessionStatusAfterClose(input: {
   readonly toleranceXaf: number;
   readonly forced: boolean;
   readonly precedesMovements?: boolean;
+  /**
+   * Un ajustement inclus dans la validation de la session attend encore (P5-23, AV-224 : ajustement de
+   * l'écart d'ouverture) : la session ne se valide jamais d'office, l'ajustement se valide avec elle.
+   */
+  readonly pendingAdjustments?: boolean;
 }): { readonly status: CashSessionStatus; readonly autoValidated: boolean } {
   const opening = statusAfterClose(input.openingVarianceXaf, input.toleranceXaf);
   const closing = statusAfterClose(input.closingVarianceXaf, input.toleranceXaf);
   if (
     !input.forced &&
     input.precedesMovements !== true &&
+    input.pendingAdjustments !== true &&
     opening === 'VALIDATED' &&
     closing === 'VALIDATED'
   ) {

@@ -151,6 +151,8 @@ export async function postedVarianceXaf(uow: UnitOfWork, session: CashSessionRow
     .selectFrom('finance_cash_session_adjustments')
     .select(sql<string | null>`SUM(delta_xaf)`.as('total'))
     .where('session_id', '=', toBin(session.id))
+    // L'écart de clôture seul : un ajustement d'ouverture (AV-224) corrige l'écart d'ouverture.
+    .where('cause', '<>', OPENING_ADJUSTMENT_CAUSE)
     // Lecture verrouillante : un ajustement concurrent déjà validé doit être compté (le compte, verrouillé
     // par l'appelant, sérialise les réévaluations d'une session ; l'instantané peut lui être antérieur).
     .forShare()
@@ -191,14 +193,26 @@ export async function verifyCashSessionVariance(
     .executeTakeFirstOrThrow();
   const rows = await uow
     .selectFrom('finance_cash_movements')
-    .select(['direction', 'amount_xaf', 'command_id', 'occurred_at'])
+    .select(['id', 'direction', 'amount_xaf', 'command_id', 'occurred_at'])
     .where('cash_account_id', '=', toBin(session.cashAccountId))
     .where('movement_type', '=', 'SESSION_VARIANCE')
     .where('source_doc_type', '=', 'CASH_SESSION')
     .where('source_doc_id', '=', toBin(session.id))
     .execute();
   const openingCommand = fromBinOrNull(openingMovement.command_id);
+  // Les mouvements des ajustements d'ouverture (AV-224) corrigent l'écart d'ouverture, pas celui de clôture.
+  const openingAdjustmentMoves = new Set(
+    (
+      await uow
+        .selectFrom('finance_cash_session_adjustments')
+        .select('movement_id')
+        .where('session_id', '=', toBin(session.id))
+        .where('cause', '=', OPENING_ADJUSTMENT_CAUSE)
+        .execute()
+    ).map((row) => fromBin(row.movement_id)),
+  );
   const postedMovementsXaf = rows
+    .filter((row) => !openingAdjustmentMoves.has(fromBin(row.id)))
     // Hors l'écart d'ouverture (règle partagée avec le balayage `verifyCashSessions`).
     .filter(
       (row) =>
@@ -431,6 +445,182 @@ export async function reevaluateClosedSession(
       opened_by: session.openedBy,
       closed_by: session.closedBy,
       forced: session.forceClosed,
+    },
+  });
+  return { sessionId: session.id, adjustmentId, deltaXaf, treatment, approvalRequestId };
+}
+
+// --- Ajustement de l'écart d'ouverture (P5-23, revue adverse ; AV-224) ----------------------------------------
+
+/** Cause d'un ajustement de l'écart d'**ouverture** d'une session (AV-224). */
+export const OPENING_ADJUSTMENT_CAUSE = 'LATE_BEFORE_OPENING';
+
+/** Σ des deltas des ajustements d'ouverture d'une session (lecture verrouillante partagée, comme l'écart posté). */
+export async function openingAdjustmentsXaf(uow: UnitOfWork, sessionId: string): Promise<number> {
+  const row = await uow
+    .selectFrom('finance_cash_session_adjustments')
+    .select(sql<string | null>`SUM(delta_xaf)`.as('total'))
+    .where('session_id', '=', toBin(sessionId))
+    .where('cause', '=', OPENING_ADJUSTMENT_CAUSE)
+    .forShare()
+    .executeTakeFirst();
+  return Number(row?.total ?? 0);
+}
+
+/** Un ajustement inclus dans la validation de la session attend-il encore (à la clôture : validation exigée) ? */
+export async function hasPendingIncludedAdjustment(
+  uow: UnitOfWork,
+  sessionId: string,
+): Promise<boolean> {
+  const row = await uow
+    .selectFrom('finance_cash_session_adjustments')
+    .select('id')
+    .where('session_id', '=', toBin(sessionId))
+    .where('treatment', '=', 'INCLUDED_IN_VALIDATION')
+    .where('status', '=', 'PENDING')
+    .forShare()
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+/**
+ * Réaction à une opération d'une caisse de PDV datée **entre deux sessions** (après la clôture de l'une,
+ * avant l'ouverture de la suivante), appliquée après cette ouverture (AV-224) : l'écart d'ouverture de la
+ * session suivante (ADR-032 §4 : fonds compté − solde du registre à l'ouverture) a été figé sans elle, et
+ * le registre la compterait une seconde fois — un manque imputé à tort à l'ouvreur, puis un surplus à
+ * l'ouverture d'après. L'écart d'ouverture est corrigé de l'opération (delta = −montant signé), par un
+ * mouvement `SESSION_VARIANCE` daté de l'ouverture et un ajustement de cause `LATE_BEFORE_OPENING` :
+ * inclus dans la validation de la session (ouverte ou à valider), à demande propre si elle est validée.
+ * Appelée par `recordCashMovement` quand aucune session close ne couvre l'opération ; renvoie `null` si
+ * une session la couvre, ou si aucune ne s'est ouverte après elle (l'ouverture suivante la comptera).
+ */
+export async function reevaluateNextOpening(
+  uow: UnitOfWork,
+  deps: Deps,
+  trigger: {
+    readonly movementId: string;
+    readonly cashAccountId: string;
+    readonly direction: 'IN' | 'OUT';
+    readonly amountXaf: number;
+    readonly occurredAt: Date;
+    readonly createdBy: string;
+    readonly createdDeviceId?: string;
+    readonly commandId?: string;
+    readonly capturedOffline: boolean;
+  },
+  post: PostCashMovement,
+): Promise<CashSessionReevaluation | null> {
+  // Compte déjà verrouillé par l'appelant : lectures partagées (l'instantané peut lui être antérieur).
+  const covering = await uow
+    .selectFrom('finance_cash_sessions')
+    .select('id')
+    .where('cash_account_id', '=', toBin(trigger.cashAccountId))
+    .where('opened_at', '<=', trigger.occurredAt)
+    .where((eb) => eb.or([eb('closed_at', 'is', null), eb('closed_at', '>', trigger.occurredAt)]))
+    .limit(1)
+    .forShare()
+    .executeTakeFirst();
+  if (covering) return null;
+  const next = await uow
+    .selectFrom('finance_cash_sessions')
+    .select('id')
+    .where('cash_account_id', '=', toBin(trigger.cashAccountId))
+    .where('opened_at', '>', trigger.occurredAt)
+    .orderBy('opened_at', 'asc')
+    .limit(1)
+    .forShare()
+    .executeTakeFirst();
+  if (!next) return null;
+  const session = (await loadCashSession(uow, fromBin(next.id), { lock: true }))!;
+
+  const deltaXaf = trigger.direction === 'IN' ? -trigger.amountXaf : trigger.amountXaf;
+  const varianceBeforeXaf =
+    session.openingVarianceXaf + (await openingAdjustmentsXaf(uow, session.id));
+  const varianceAfterXaf = varianceBeforeXaf + deltaXaf;
+  const expectedAfterXaf = session.openingCountedXaf - varianceAfterXaf;
+  const treatment: CashSessionReevaluation['treatment'] =
+    session.status === 'VALIDATED' ? 'OWN_APPROVAL' : 'INCLUDED_IN_VALIDATION';
+
+  const { amount, direction } = varianceMovement(deltaXaf);
+  const compensation = await post(uow, deps, {
+    cashAccountId: session.cashAccountId,
+    direction,
+    amountXaf: amount,
+    movementType: 'SESSION_VARIANCE',
+    sourceDocType: 'CASH_SESSION',
+    sourceDocId: session.id,
+    cashSessionId: session.id,
+    occurredAt: session.openedAt,
+    createdBy: trigger.createdBy,
+    ...(trigger.createdDeviceId !== undefined ? { createdDeviceId: trigger.createdDeviceId } : {}),
+    ...(trigger.commandId !== undefined ? { commandId: trigger.commandId } : {}),
+    capturedOffline: trigger.capturedOffline,
+    allowNegative: true,
+    pastFact: true,
+  });
+
+  const adjustmentId = deps.idGenerator.newId();
+  const approvalRequestId =
+    treatment === 'OWN_APPROVAL'
+      ? await requestCashVarianceValidation(uow, deps, {
+          subjectType: 'CASH_SESSION_ADJUSTMENT',
+          subjectId: adjustmentId,
+          siteId: session.siteId,
+          amountXaf: Math.abs(deltaXaf),
+          summary:
+            `Ajustement de l'ouverture de la session de caisse du ${session.openedAt.toISOString().slice(0, 10)} : ` +
+            `opération antérieure à l'ouverture, écart d'ouverture ${varianceBeforeXaf} → ${varianceAfterXaf} XAF (delta ${deltaXaf} XAF)`,
+          requestedBy: trigger.createdBy,
+          requestedAt: trigger.occurredAt,
+          policyFallbackAt: new Date(),
+        })
+      : null;
+  await uow
+    .insertInto('finance_cash_session_adjustments')
+    .values({
+      id: toBin(adjustmentId),
+      session_id: toBin(session.id),
+      movement_id: toBin(compensation.movementId),
+      trigger_movement_id: toBin(trigger.movementId),
+      cause: OPENING_ADJUSTMENT_CAUSE,
+      variance_before_xaf: varianceBeforeXaf,
+      variance_after_xaf: varianceAfterXaf,
+      delta_xaf: deltaXaf,
+      expected_after_xaf: expectedAfterXaf,
+      treatment,
+      status: 'PENDING',
+      applied_at: sql<Date>`CURRENT_TIMESTAMP(6)`,
+      approval_request_id: toBinOrNull(approvalRequestId),
+      command_id: toBinOrNull(trigger.commandId ?? null),
+      created_by: toBin(trigger.createdBy),
+    })
+    .execute();
+  if (session.status !== 'VALIDATED') await emitCashSessionChange(uow, session.id);
+
+  await recordConflict(uow, {
+    id: deps.idGenerator.newId(),
+    commandId: trigger.commandId ?? null,
+    conflictType: CASH_SESSION_REEVALUATED,
+    entityType: 'CASH_SESSION',
+    entityId: session.id,
+    siteId: session.siteId,
+    ownerRole: 'FINANCE',
+    applied: true,
+    details: {
+      adjustmentId,
+      triggerMovementId: trigger.movementId,
+      cause: OPENING_ADJUSTMENT_CAUSE,
+      triggerOccurredAt: trigger.occurredAt.toISOString(),
+      sessionStatus: session.status,
+      treatment,
+      varianceBeforeXaf,
+      varianceAfterXaf,
+      deltaXaf,
+      expectedAfterXaf,
+      approvalRequestId,
+      capturedOffline: trigger.capturedOffline,
+      deviceId: trigger.createdDeviceId ?? null,
+      authorUserId: trigger.createdBy,
     },
   });
   return { sessionId: session.id, adjustmentId, deltaXaf, treatment, approvalRequestId };

@@ -89,10 +89,10 @@
 | `session_id` | uuid → cash_sessions | Non | — | |
 | `movement_id` | uuid → cash_movements | Non | — | Mouvement compensatoire `SESSION_VARIANCE` (unique) |
 | `trigger_movement_id` | uuid → cash_movements | Oui | — | Mouvement tardif déclencheur |
-| `cause` | enum(`LATE_OPERATION`,`REVERSAL`) | Non | — | |
+| `cause` | enum(`LATE_OPERATION`,`REVERSAL`,`LATE_BEFORE_OPENING`) | Non | — | `LATE_BEFORE_OPENING` (P5-23, AV-224, migration `20261012100000`) : ajustement de l'écart d'**ouverture** — opération datée entre la clôture de la session précédente et l'ouverture de celle-ci, appliquée après l'ouverture ; mouvement compensatoire daté de l'ouverture ; jamais compté dans l'écart de clôture (INV-FIN-11) |
 | `variance_before_xaf`, `variance_after_xaf`, `delta_xaf` | bigint | Non | — | Σ des écarts posés avant, écart courant après ; `delta = après − avant ≠ 0` (INV-FIN-11) |
 | `expected_after_xaf` | bigint | Non | — | Attendu recalculé |
-| `treatment` | enum(`INCLUDED_IN_VALIDATION`,`OWN_APPROVAL`) | Non | — | Session `PENDING_VALIDATION` : validé avec elle ; `VALIDATED` : demande propre |
+| `treatment` | enum(`INCLUDED_IN_VALIDATION`,`OWN_APPROVAL`) | Non | — | Session `PENDING_VALIDATION` (ou `OPEN`, pour un ajustement d'ouverture) : validé avec elle — une session qui en porte un en attente ne se valide jamais d'office ; `VALIDATED` : demande propre |
 | `status` | enum(`PENDING`,`VALIDATED`) | Non | `PENDING` | |
 | `applied_at` | ts | Non | — | |
 | `approval_request_id`, `validated_by`, `validated_at`, `variance_reason` | | Oui | — | Validation |

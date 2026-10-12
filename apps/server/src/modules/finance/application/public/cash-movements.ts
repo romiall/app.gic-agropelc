@@ -33,6 +33,7 @@ import { emitCashAccountChange } from '../sync-changes.js';
 import { findCashSessionCovering } from './cash-sessions.js';
 import {
   reevaluateClosedSession,
+  reevaluateNextOpening,
   type CashSessionReevaluation,
 } from '../cash-session-validation.js';
 
@@ -272,17 +273,42 @@ export async function recordCashMovement(
   // P5-13, ADR-032 §6 : une opération tardive dans la fenêtre d'une session close est réévaluée par le
   // delta (compte déjà verrouillé : ordre compte puis session). Les écarts de session eux-mêmes
   // (`SESSION_VARIANCE`, `OPENING_BALANCE`) ne comptent jamais dans l'attendu : pas de réévaluation.
-  const reevaluation =
+  const reevaluates =
     account.account_type === 'CAISSE_PDV' &&
-    !CASH_EXPECTED_EXCLUDED_TYPES.includes(input.movementType)
-      ? await reevaluateClosedSession(
+    !CASH_EXPECTED_EXCLUDED_TYPES.includes(input.movementType);
+  const closedReevaluation = reevaluates
+    ? await reevaluateClosedSession(
+        uow,
+        deps,
+        {
+          movementId,
+          cashAccountId: input.cashAccountId,
+          occurredAt: input.occurredAt,
+          isReversal: input.reversesMovementId !== undefined,
+          createdBy: input.createdBy,
+          ...(input.createdDeviceId !== undefined
+            ? { createdDeviceId: input.createdDeviceId }
+            : {}),
+          ...(input.commandId !== undefined ? { commandId: input.commandId } : {}),
+          capturedOffline: input.capturedOffline ?? false,
+        },
+        recordCashMovement,
+      )
+    : null;
+  // P5-23 (AV-224) : opération datée entre deux sessions, appliquée après l'ouverture de la suivante —
+  // l'écart d'ouverture de celle-ci est corrigé (sinon l'opération serait comptée deux fois).
+  const reevaluation =
+    closedReevaluation ??
+    (reevaluates
+      ? await reevaluateNextOpening(
           uow,
           deps,
           {
             movementId,
             cashAccountId: input.cashAccountId,
+            direction: input.direction,
+            amountXaf: input.amountXaf,
             occurredAt: input.occurredAt,
-            isReversal: input.reversesMovementId !== undefined,
             createdBy: input.createdBy,
             ...(input.createdDeviceId !== undefined
               ? { createdDeviceId: input.createdDeviceId }
@@ -292,7 +318,7 @@ export async function recordCashMovement(
           },
           recordCashMovement,
         )
-      : null;
+      : null);
 
   return {
     movementId,
