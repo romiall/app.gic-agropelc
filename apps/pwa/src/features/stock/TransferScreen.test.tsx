@@ -49,9 +49,12 @@ function History() {
   );
 }
 
-function renderAt(path: string) {
+function renderAt(
+  path: string,
+  entries: readonly (string | { pathname: string; state: unknown })[] = [path],
+) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[...entries]} initialIndex={entries.length - 1}>
       <History />
       <Routes>
         <Route path="/stock/transferts" element={<TransferScreen key="liste" />} />
@@ -74,10 +77,10 @@ async function setRequest(patch: Partial<StockTransferData>) {
 }
 
 /** Expédition de la demande refusée par le serveur (demande plus à expédier, S-40). */
-async function addRejectedDispatch() {
+async function addRejectedDispatch(commandId = REJECTED_DISPATCH, seq = 1) {
   await getDb().outbox.add({
-    command_id: REJECTED_DISPATCH,
-    device_seq: 1,
+    command_id: commandId,
+    device_seq: seq,
     command_type: 'inventory.transfer.dispatch',
     command_version: 1,
     author_user_id: IDS.user,
@@ -639,6 +642,67 @@ describe('Transférer (ECR-STK-02)', () => {
       { lotId: LOT_1, lotCode: 'COL-1', quantity: 200, cautious: 200 },
       { lotId: LOT_2, lotCode: 'COL-2', quantity: 100, cautious: 100 },
     ]);
+    // 8 œufs de COL-1 désignés et 5 sans lot en attente : COL-2 garde au pire 100 − 5 = 95 (les
+    // sorties sans lot ne se retranchent qu'une fois du disponible du produit).
+    const mixed = {
+      ...refs,
+      pending: new Map([[`${IDS.pos}:${IDS.eggs}`, 13]]),
+      pendingOut: new Map([[`${IDS.pos}:${IDS.eggs}`, 13]]),
+      pendingLots: new Map([[`${IDS.pos}:${IDS.eggs}:${LOT_1}`, 8]]),
+    };
+    expect(lotsAt(mixed, IDS.pos, IDS.eggs)).toEqual([
+      { lotId: LOT_1, lotCode: 'COL-1', quantity: 192, cautious: 187 },
+      { lotId: LOT_2, lotCode: 'COL-2', quantity: 100, cautious: 95 },
+    ]);
+  });
+
+  it('préremplissage resté dans une entrée d’historique plus ancienne : pas repris une fois ressaisi', async () => {
+    await addRejectedDispatch();
+    await setRequest({ status: 'DECLINED' });
+    await getDb().outbox.update(REJECTED_DISPATCH, { local_flags: ['REENTERED'] });
+    const prefill = {
+      fromLocationId: IDS.pos,
+      toLocationId: STORE,
+      lines: [{ productId: IDS.eggs, quantityBase: 60 }],
+      originCommandIds: [REJECTED_DISPATCH],
+    };
+    const user = userEvent.setup();
+    // Entrée plus ancienne qui porte le préremplissage, puis la page courante.
+    renderAt('/stock/transferts', [
+      { pathname: '/stock/transferts', state: { prefill } },
+      '/stock/transferts/autre',
+    ]);
+    await screen.findByText(/n’est plus à expédier/);
+    await user.click(screen.getByRole('button', { name: 'Retour arrière' }));
+    const line = await screen.findByRole('listitem', { name: 'Ligne 1' });
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('');
+    expect(screen.queryByText(/quantités en unité de base/)).not.toBeInTheDocument();
+  });
+
+  it('deux expéditions refusées de la même demande : une seule carte, écartées ensemble ; fiche sans nouvel envoi', async () => {
+    const SECOND = '01900000-0000-7000-8000-0000000000d6';
+    await addRejectedDispatch();
+    await addRejectedDispatch(SECOND, 2);
+    const user = userEvent.setup();
+    // Demande encore « à expédier » sur l'appareil (relecture en échec) : la fiche n'en propose plus
+    // l'expédition, le serveur l'a refusée.
+    renderAt(`/stock/transferts/${REQUEST}`);
+    expect(
+      await screen.findByRole('listitem', { name: 'Expédition non acceptée TRF-2026-000012' }),
+    ).toHaveTextContent(/paraît encore à expédier/);
+    expect(screen.queryByRole('button', { name: 'Expédier la demande' })).not.toBeInTheDocument();
+    cleanup();
+    await setRequest({ status: 'DECLINED' });
+    renderAt('/stock/transferts');
+    const cards = await screen.findAllByRole('listitem', { name: /Expédition non acceptée/ });
+    expect(cards).toHaveLength(1);
+    await user.click(within(cards[0] as HTMLElement).getByRole('button', { name: 'Ignorer' }));
+    await waitFor(async () => {
+      const flags = (await getDb().outbox.bulkGet([REJECTED_DISPATCH, SECOND])).map(
+        (command) => command?.local_flags,
+      );
+      expect(flags).toEqual([['DISMISSED'], ['DISMISSED']]);
+    });
   });
 
   it('hors ligne : mouvement interne vers un emplacement du même site, sortie et entrée aussitôt comptées', async () => {

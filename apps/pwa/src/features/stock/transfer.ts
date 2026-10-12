@@ -249,11 +249,16 @@ export function lotsAt(
         Number(lot.qty_on_hand) -
         (refs.pendingLots.get(lotStockKey(locationId, productId, lot.lot_id as string)) ?? 0);
       const quantity = Math.round(Math.min(designated, productLeft) * 1000) / 1000;
+      // Au pire, les sorties sans lot désigné tombent toutes sur ce lot (l'appareil ne connaît pas
+      // l'ordre des lots au serveur, S-42) ; `productLeft` en est déjà net : une seule soustraction.
       return {
         lotId: lot.lot_id as string,
         lotCode: lot.lot_code ?? '',
         quantity,
-        cautious: Math.max(0, Math.round((quantity - unlotted) * 1000) / 1000),
+        cautious: Math.max(
+          0,
+          Math.round(Math.min(designated - unlotted, productLeft) * 1000) / 1000,
+        ),
       };
     })
     .filter((lot) => lot.quantity > 0);
@@ -265,8 +270,8 @@ export interface TransferPrefill {
   readonly toLocationId: string | null;
   /** Lignes en unité de base (l'unité de la demande n'est pas reprise). */
   readonly lines: readonly { readonly productId: string; readonly quantityBase: number }[];
-  /** Expédition refusée d'origine, marquée ressaisie à l'envoi. */
-  readonly originCommandId: string;
+  /** Expéditions refusées d'origine (même demande), marquées ressaisies à l'envoi. */
+  readonly originCommandIds: readonly string[];
 }
 
 /** Indices posés sur une expédition refusée : ressaisie, ou écartée par l'utilisateur. */
@@ -281,7 +286,10 @@ export const DISMISSED_FLAG = 'DISMISSED';
 export type RefusedKind = 'NOT_DISPATCHABLE' | 'ALREADY_DISPATCHED' | 'NOT_REREAD' | 'UNKNOWN';
 
 export interface RefusedDispatch {
+  /** La plus récente des expéditions refusées de la demande. */
   readonly commandId: string;
+  /** Toutes les expéditions refusées de la demande encore à traiter, marquées ensemble. */
+  readonly commandIds: readonly string[];
   readonly transferId: string;
   readonly docNumber: string | null;
   readonly kind: RefusedKind;
@@ -321,6 +329,7 @@ export function refusedDispatchOf(
         : 'ALREADY_DISPATCHED';
   return {
     commandId: command.command_id,
+    commandIds: [command.command_id],
     transferId: payload.transferId,
     docNumber: transfer?.doc_number ?? null,
     kind,
@@ -333,21 +342,47 @@ export function refusedDispatchOf(
           productId: line.productId as string,
           quantityBase: line.quantityBase as number,
         })),
-      originCommandId: command.command_id,
+      originCommandIds: [command.command_id],
     },
   };
 }
 
-/** Expéditions refusées de l'utilisateur encore à traiter, la plus récente d'abord. */
+/**
+ * Expéditions refusées de l'utilisateur encore à traiter, une par demande (la plus récente porte la
+ * carte ; toutes se marquent ensemble), la plus récente d'abord.
+ */
 export function refusedDispatches(
   refs: Pick<SalesReferences, 'outbox' | 'transfers'>,
   userId: string,
 ): RefusedDispatch[] {
-  return refs.outbox
-    .filter((command) => command.author_user_id === userId)
-    .map((command) => refusedDispatchOf(command, refs.transfers))
-    .filter((entry): entry is RefusedDispatch => entry !== null)
-    .reverse();
+  const byTransfer = new Map<string, RefusedDispatch>();
+  for (const command of refs.outbox) {
+    if (command.author_user_id !== userId) continue;
+    const entry = refusedDispatchOf(command, refs.transfers);
+    if (!entry) continue;
+    const commandIds = [...(byTransfer.get(entry.transferId)?.commandIds ?? []), entry.commandId];
+    byTransfer.delete(entry.transferId);
+    byTransfer.set(entry.transferId, {
+      ...entry,
+      commandIds,
+      prefill: { ...entry.prefill, originCommandIds: commandIds },
+    });
+  }
+  return [...byTransfer.values()].reverse();
+}
+
+/**
+ * Préremplissage encore valable : une de ses expéditions refusées d'origine n'est ni ressaisie ni
+ * écartée (une entrée d'historique plus ancienne peut encore le porter).
+ */
+export function prefillStillRefused(
+  refs: Pick<SalesReferences, 'outbox' | 'transfers'>,
+  prefill: TransferPrefill,
+): boolean {
+  return prefill.originCommandIds.some((id) => {
+    const command = refs.outbox.find((candidate) => candidate.command_id === id);
+    return command !== undefined && refusedDispatchOf(command, refs.transfers) !== null;
+  });
 }
 
 /** Destinations possibles : emplacements physiques actifs autres que la source, par nom. */

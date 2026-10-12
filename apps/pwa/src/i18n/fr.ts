@@ -2033,6 +2033,8 @@ export const fr = {
       UNKNOWN: 'La marchandise est bien partie',
     },
     refused_dismiss: 'Ignorer',
+    reentry_done:
+      'Cette expédition refusée a déjà été ressaisie ou écartée : rien n’est envoyé, pour ne pas expédier deux fois la même marchandise.',
     decline_cancel: 'Ne pas refuser',
     decline_submit: 'Confirmer le refus',
     mode_label: 'Opération',

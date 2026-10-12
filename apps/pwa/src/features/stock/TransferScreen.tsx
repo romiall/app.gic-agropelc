@@ -40,9 +40,9 @@ import {
   MAX_TRANSFER_NOTES,
   overAvailable,
   parseDispatched,
+  prefillStillRefused,
   REENTERED_FLAG,
   refusedDispatches,
-  refusedDispatchOf,
   requestDispatchPayload,
   requestsToDispatch,
   totalsByProduct,
@@ -81,14 +81,27 @@ function withoutLot(line: TransferLineDraft): TransferLineDraft {
   return rest;
 }
 
-/** Pose un indice local sur une expédition refusée : ressaisie, ou écartée par l'utilisateur. */
-async function flagRefused(commandId: string, flag: string): Promise<void> {
+/** Pose un indice local sur des expéditions refusées : ressaisies, ou écartées par l'utilisateur. */
+async function flagRefused(commandIds: readonly string[], flag: string): Promise<void> {
   const db = getDb();
   await db.transaction('rw', db.outbox, async () => {
-    const command = await db.outbox.get(commandId);
-    if (!command || command.local_flags?.includes(flag)) return;
-    await db.outbox.update(commandId, { local_flags: [...(command.local_flags ?? []), flag] });
+    for (const commandId of commandIds) {
+      const command = await db.outbox.get(commandId);
+      if (!command || command.local_flags?.includes(flag)) continue;
+      await db.outbox.update(commandId, { local_flags: [...(command.local_flags ?? []), flag] });
+    }
   });
+}
+
+/** Vrai si une des expéditions refusées d'origine n'est encore ni ressaisie ni écartée. */
+async function originsStillOpen(commandIds: readonly string[]): Promise<boolean> {
+  const origins = await getDb().outbox.bulkGet([...commandIds]);
+  return origins.some(
+    (command) =>
+      command !== undefined &&
+      !command.local_flags?.includes(REENTERED_FLAG) &&
+      !command.local_flags?.includes(DISMISSED_FLAG),
+  );
 }
 
 /** Messages du résultat selon l'opération. */
@@ -202,6 +215,7 @@ function DirectDispatchForm({
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [reentryDone, setReentryDone] = useState(false);
   const sourceSelectId = useId();
   const destinationSelectId = useId();
 
@@ -275,6 +289,12 @@ function DirectDispatchForm({
     setBusy(true);
     setSaveError(false);
     try {
+      // Expédition refusée ressaisie ou écartée entre-temps (autre onglet) : pas de seconde
+      // expédition pour la même sortie physique.
+      if (mode === 'DISPATCH' && prefill && !(await originsStillOpen(prefill.originCommandIds))) {
+        setReentryDone(true);
+        return;
+      }
       // Un lot désigné qui n'est plus proposé n'est pas envoyé (le serveur prend le plus ancien).
       const lineChecks = checks.map(({ check }) =>
         check.draft.lotId && !lotValid(check.draft)
@@ -310,7 +330,7 @@ function DirectDispatchForm({
       if (mode === 'DISPATCH' && prefill) {
         // Expédition refusée d'origine marquée ressaisie ; en cas d'échec elle reste proposée, et
         // l'utilisateur peut l'écarter.
-        await flagRefused(prefill.originCommandId, REENTERED_FLAG).catch(() => undefined);
+        await flagRefused(prefill.originCommandIds, REENTERED_FLAG).catch(() => undefined);
       }
       onDone(command.command_id, mode === 'MOVE' ? 'transfer.move_result' : 'transfer.result');
     } catch {
@@ -448,10 +468,15 @@ function DirectDispatchForm({
           {t('sales.error_local_save')}
         </p>
       ) : null}
+      {reentryDone ? (
+        <p className="alert alert-error" role="alert">
+          {t('transfer.reentry_done')}
+        </p>
+      ) : null}
       <button
         type="button"
         className="btn-block submit-sale"
-        disabled={!ready}
+        disabled={!ready || reentryDone}
         onClick={() => void submit()}
       >
         {busy
@@ -614,7 +639,7 @@ function RefusedDispatchCard({
     setBusy(true);
     setSaveError(false);
     try {
-      await flagRefused(refused.commandId, DISMISSED_FLAG);
+      await flagRefused(refused.commandIds, DISMISSED_FLAG);
     } catch {
       setSaveError(true);
     } finally {
@@ -812,7 +837,7 @@ export function TransferScreen() {
   const { state, deviceId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const prefill = (location.state as { prefill?: TransferPrefill } | null)?.prefill;
+  const statePrefill = (location.state as { prefill?: TransferPrefill } | null)?.prefill;
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
@@ -837,14 +862,22 @@ export function TransferScreen() {
   // (S-40), tirées de l'outbox : proposées à la ressaisie tant qu'elles ne sont ni ressaisies ni
   // écartées, même après avoir quitté l'écran de résultat.
   const refused = refusedDispatches(refs, userId);
-  const submittedCommand = submitted
-    ? refs.outbox.find((command) => command.command_id === submitted.commandId)
-    : undefined;
-  const refusedHere = submittedCommand ? refusedDispatchOf(submittedCommand, refs.transfers) : null;
+  const refusedHere = submitted
+    ? (refused.find((entry) => entry.commandIds.includes(submitted.commandId)) ?? null)
+    : null;
+  // Préremplissage encore valable seulement : une entrée d'historique plus ancienne peut porter celui
+  // d'une expédition déjà ressaisie.
+  const prefill =
+    statePrefill && prefillStillRefused(refs, statePrefill) ? statePrefill : undefined;
   const reenter = (next: TransferPrefill) => {
     setSubmitted(undefined);
     setMode('DISPATCH');
-    navigate(ROUTES.transfer, { state: { prefill: next } });
+    // Depuis la page Transférer, la ressaisie remplace l'entrée courante (pas d'entrées préremplies
+    // empilées par deux touchers).
+    navigate(ROUTES.transfer, {
+      state: { prefill: next },
+      replace: location.pathname === ROUTES.transfer,
+    });
   };
 
   if (submitted && submitted.route === transferId) {
@@ -868,7 +901,7 @@ export function TransferScreen() {
   const onDone = (commandId: string, messages: ResultMessages) => {
     setSubmitted({ commandId, route: transferId, messages });
     // Préremplissage consommé : un retour arrière ne repropose pas la même expédition.
-    if (prefill) navigate(location.pathname, { replace: true, state: null });
+    if (statePrefill) navigate(location.pathname, { replace: true, state: null });
   };
   const requests = requestsToDispatch(refs);
   const locations = new Map(refs.locations.map((location) => [location.id, location]));
@@ -886,15 +919,15 @@ export function TransferScreen() {
             {t('transfer.offline_banner')}
           </p>
         ) : null}
-        {!entry ? (
-          refused.some((candidate) => candidate.transferId === transferId) ? (
-            <RefusedDispatchList
-              refused={refused.filter((candidate) => candidate.transferId === transferId)}
-              onReenter={reenter}
-            />
-          ) : (
-            <p className="alert alert-error">{t('transfer.not_found')}</p>
-          )
+        {refused.some((candidate) => candidate.transferId === transferId) ? (
+          // Le serveur a refusé une expédition de cette demande : elle n'est plus à expédier, même
+          // si l'appareil ne l'a pas encore relue.
+          <RefusedDispatchList
+            refused={refused.filter((candidate) => candidate.transferId === transferId)}
+            onReenter={reenter}
+          />
+        ) : !entry ? (
+          <p className="alert alert-error">{t('transfer.not_found')}</p>
         ) : entry.dispatching ? (
           <p className="home-muted">{t('transfer.dispatching')}</p>
         ) : entry.declining ? (
