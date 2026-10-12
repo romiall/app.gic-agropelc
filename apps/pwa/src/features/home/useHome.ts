@@ -55,7 +55,7 @@ export function useHome(): HomeState {
     if (result.ok && isHomeResponse(result.data)) {
       setData(result.data);
       setError(undefined);
-      // Navigation par rôle utilisable hors ligne (ADR-050) ; un échec d'écriture locale n'empêche
+      // Navigation par rôle utilisable hors ligne (ADR-036) ; un échec d'écriture locale n'empêche
       // pas l'affichage de l'accueil.
       const userId = getSessionRuntime()?.userId;
       if (userId) {

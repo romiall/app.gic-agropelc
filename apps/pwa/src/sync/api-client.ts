@@ -4,7 +4,7 @@
  * « hors ligne / session absente » (pas d'effet, réessai plus tard, principe O2) d'une
  * vraie erreur HTTP (le serveur a répondu).
  *
- * Est « hors ligne » (ADR-051) : un échec de connexion, une requête sans réponse dans le délai
+ * Est « hors ligne » (ADR-037) : un échec de connexion, une requête sans réponse dans le délai
  * (`AbortSignal.timeout`), ou une passerelle qui ne joint pas le serveur (502, 503, 504). Toute autre
  * réponse prouve que le serveur est joignable et reste une erreur HTTP.
  */

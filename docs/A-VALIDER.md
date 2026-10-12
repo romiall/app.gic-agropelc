@@ -232,6 +232,9 @@ Classification (PM §45) :
 | AV-215 | Stock négatif après une sortie hors ligne autre qu'une vente | SECONDAIRE | P5 | Perte, consommation, expédition hors ligne : solde négatif sans conflit `STOCK_NEGATIVE` ; même conflit recommandé en P5-22 | OUVERT |
 | AV-216 | Horloge d'appareil suspecte : dates de référence, seuil et alerte | SECONDAIRE | P5 | Date déclarée partout (ADR-016), drapeau visible, seul le contrôle de date future corrigé ; seuil de 5 min constant (`sync.clock_skew_flag_minutes` non lu) ; alerte en P9 | OUVERT |
 | AV-217 | Commande à renvoyer qui ne se règle jamais : suspension du lot bornée | IMPORTANTE | P5 | Au-delà de `sync.retry_hold_minutes` (30 min) depuis la première réception : toujours à renvoyer, ne suspend plus la suite (`COMMAND_STALLED`), signal `SYNC_COMMAND_STALLED` pour l'Admin, fermé quand elle se règle | OUVERT |
+| AV-218 | Compte de réception d'un encaissement mobile money ou bancaire quand l'entreprise a plusieurs comptes du type | IMPORTANTE | Écrans PWA | Compte jamais désigné d'office (« seul compte connu de l'appareil » n'est pas « seul compte de l'entreprise ») : choix proposé dès que l'appareil connaît un compte du type, obligatoire s'il en connaît plusieurs ; sinon aucun compte envoyé et avertissement affiché (`payment.ts`) | OUVERT |
+| AV-219 | Motif d'un écart d'inventaire exigé dès la saisie sur l'appareil | SECONDAIRE | Écrans PWA | Motif exigé par l'appareil sur un écart estimé non nul quand des motifs `INVENTORY_ADJUSTMENT` existent (`REQUIRE_VARIANCE_REASON` dans `apps/pwa/src/features/stock/count.ts`) ; sans motif paramétré, l'écart part sans motif | OUVERT |
+| AV-220 | Écran de consommation hors lot (ECR-STK-08) pour le vendeur de PDV et le responsable de production | SECONDAIRE | Écrans PWA | (a) : écran proposé aux quatre rôles, intrants et emballages consommables seulement | OUVERT |
 
 ---
 
@@ -1544,6 +1547,27 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) au-delà d'une durée paramétrée depuis la première réception, la commande, toujours à renvoyer (jamais perdue, BR-SYN-007), ne suspend plus la suite (`COMMAND_STALLED`), et le signal `SYNC_COMMAND_STALLED` (Admin) est ouvert une fois, fermé quand elle se règle ; (b) mise en quarantaine (`CONFLICT`) au-delà de la durée : débloque aussi, mais le fait n'est plus rejoué (AV-190) ; (c) classer les erreurs : seules les erreurs vraiment transitoires (interblocage, attente de verrou, connexion) sont renvoyées, les autres mises en quarantaine aussitôt — plus fin, mais une erreur mal classée retire un fait accompli du rejeu.
 - **Recommandation** : (a), avec (c) à étudier une fois les erreurs déterministes inventoriées. L'ordre du couple n'est plus garanti pour la seule commande bloquée (les suivantes passent devant elle) : le signal le rend visible.
 - **Impact** : `commands/command-pipeline.service.ts`, `commands/retry-hold.ts`, `sync/sync-push.service.ts`, contrat (`COMMAND_STALLED`), migration `20261012090000` (`attempts` en INT), paramètre `sync.retry_hold_minutes` ; 02-synchronisation.md §3.1 à §3.3, §4 ; INV-SYN-04, BR-SYN-004 ; matrice des conflits ; côté PWA, renvois sans boucle serrée (fork des écrans). Défaut implémenté : (a), 30 min, paramétrable (`sync.retry_hold_minutes`).
+
+### AV-218 — Compte de réception d'un encaissement mobile money ou bancaire quand l'entreprise a plusieurs comptes du type — IMPORTANTE
+- **Question** : Quel compte reçoit un encaissement mobile money ou bancaire quand l'entreprise a plusieurs comptes du type (Orange et MTN) et que l'appareil du vendeur n'en connaît aucun ?
+- **Pourquoi** : BR-FIN-002 et AV-139 laissent l'appareil désigner le compte, mais le jeu `cash` ne sert ces comptes qu'à leurs responsables ; le serveur refuse alors l'encaissement (`CASH_ACCOUNT_AMBIGUOUS`), y compris une vente faite hors ligne. **DÉDUIT** (fork « Écrans PWA », reporté à la fusion le 12/10/2026 ; numéro de fork 300).
+- **Choix** : (a) publier les comptes d'entreprise à tous les appareils qui encaissent ; (b) rattacher chaque moyen de paiement à un compte (Orange → compte Orange) ; (c) laisser l'appareil sans compte et accepter l'encaissement en attente d'affectation par la Finance.
+- **Recommandation** : (b), simple et sans saisie de plus pour le vendeur ; (c) pour les faits hors ligne.
+- **Impact** : serveur (`cash-account-resolution.ts`, jeu `cash`), PWA (bloc d'encaissement). Défaut implémenté : Compte jamais désigné d'office (« seul compte connu de l'appareil » n'est pas « seul compte de l'entreprise ») : choix proposé dès que l'appareil connaît un compte du type, obligatoire s'il en connaît plusieurs ; sinon aucun compte envoyé et avertissement affiché (`payment.ts`)
+
+### AV-219 — Motif d'un écart d'inventaire exigé dès la saisie sur l'appareil — SECONDAIRE
+- **Question** : Un écart d'inventaire doit-il être justifié par un motif dès la saisie, alors que l'écart réel n'est connu qu'à la soumission ?
+- **Pourquoi** : BR-STK-042 veut un écart « justifié par un code motif », le dictionnaire le dit requis si l'écart est non nul, mais le serveur ne l'exige pas (`count.record_lines`) et calcule l'écart à `counted_at` ; l'appareil ne peut qu'estimer l'écart (compté − physique connu − opérations en attente). **DÉDUIT** (fork « Écrans PWA », reporté à la fusion le 12/10/2026 ; numéro de fork 301).
+- **Choix** : (a) motif exigé sur un écart estimé non nul ; (b) motif facultatif, demandé à la validation ; (c) contrôle au serveur à la soumission.
+- **Recommandation** : (a) sur l'appareil et (c) au serveur
+- **Impact** : PWA. Défaut implémenté : Motif exigé par l'appareil sur un écart estimé non nul quand des motifs `INVENTORY_ADJUSTMENT` existent (`REQUIRE_VARIANCE_REASON` dans `apps/pwa/src/features/stock/count.ts`) ; sans motif paramétré, l'écart part sans motif
+
+### AV-220 — Écran de consommation hors lot (ECR-STK-08) pour le vendeur de PDV et le responsable de production — SECONDAIRE
+- **Question** : Le vendeur de PDV et le responsable de production doivent-ils disposer de l'écran ECR-STK-08 « Consommation d'intrants hors lot » ?
+- **Pourquoi** : la matrice RBAC leur donne `inventory.consumption.record` (vendeur SITE, responsable de production ALL ; UC-STK-10 pour les emballages du PDV), l'inventaire des écrans (03-parcours-et-ecrans.md) ne cite que le magasinier et le responsable de ferme. **DÉDUIT** (fork « Écrans PWA », reporté à la fusion le 12/10/2026 ; numéro de fork 302).
+- **Choix** : (a) l'écran suit la permission ; (b) l'écran suit l'inventaire.
+- **Recommandation** : (a), et aligner l'inventaire.
+- **Impact** : menu des deux rôles. Défaut implémenté : (a) : écran proposé aux quatre rôles, intrants et emballages consommables seulement
 
 ---
 

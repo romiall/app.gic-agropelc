@@ -160,7 +160,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await getDb().navigation.clear();
   });
 
-  it('mobile money avec deux comptes connus : compte de réception à choisir (AV-300)', async () => {
+  it('mobile money avec deux comptes connus : compte de réception à choisir (AV-218)', async () => {
     await seedSalesFixtures(getDb());
     for (const id of ['om', 'mtn']) {
       await getDb().projections.put({

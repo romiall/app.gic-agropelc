@@ -45,7 +45,7 @@ interface StockPayloadLike {
  * Une opération acceptée par le serveur reste décomptée jusqu'à ce qu'un tirage complet du jeu
  * `stock`, commencé après son acceptation, ait ramené le solde qui l'inclut (01-architecture-offline.md
  * §4 : « le delta est retiré quand le pull a ramené l'état serveur qui l'inclut ») ; sinon un envoi
- * réussi suivi d'un tirage interrompu ferait réapparaître la quantité vendue (ADR-051).
+ * réussi suivi d'un tirage interrompu ferait réapparaître la quantité vendue (ADR-037).
  */
 function stillPending(command: OutboxCommand, stockPulledAt: string | undefined): boolean {
   return stillInFlight(command, stockPulledAt);

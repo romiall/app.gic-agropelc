@@ -161,7 +161,7 @@ export function ServiceScreen() {
         ? 'REJECTED_OUT_OF_ZONE'
         : 'NO_POSITION';
     // Pas de dépendance vers la prise : l'ordre du lot suffit, et les visites saisies après la fin
-    // ne doivent pas partir avant elle (ADR-051 §11).
+    // ne doivent pas partir avant elle (ADR-037 §11).
     void send('END', {
       authorUserId: userId,
       commandType: 'fieldwork.checkin.record',

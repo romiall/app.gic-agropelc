@@ -38,7 +38,7 @@ function command(
 
 const ACCEPTED_AT = '2026-10-10T09:00:00.000Z';
 
-describe('opérations en vol jusqu’au tirage du jeu qui les porte (ADR-051 §3)', () => {
+describe('opérations en vol jusqu’au tirage du jeu qui les porte (ADR-037 §3)', () => {
   it('en attente : en vol ; acceptée : en vol tant que le jeu n’est pas retiré après ; refusée : non', () => {
     expect(stillInFlight({ status: 'LOCAL_ONLY', synced_at: null }, undefined)).toBe(true);
     const accepted = { status: 'SYNCED' as const, synced_at: ACCEPTED_AT };

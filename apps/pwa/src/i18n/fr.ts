@@ -183,7 +183,7 @@ export const fr = {
     account_placeholder: 'Choisir le compte',
     account_server_choice: 'Laisser le serveur choisir',
     account_unknown_hint:
-      'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance (AV-300).',
+      'Le compte de réception sera choisi par le serveur. S’il en existe plusieurs de ce type, l’encaissement sera refusé : faites-le désigner par la Finance (AV-218).',
     payment_issue: {
       AMOUNT_INVALID: 'Montant encaissé invalide (francs entiers).',
       REFERENCE_REQUIRED:

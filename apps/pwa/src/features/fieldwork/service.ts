@@ -194,7 +194,7 @@ export function overrideAllowed(
 
 /**
  * Sessions de travail vues par l'appareil : celles du jeu `fieldwork`, complétées par les prises,
- * fins de service et dérogations saisies sur l'appareil et pas encore retéléchargées (ADR-051 §3).
+ * fins de service et dérogations saisies sur l'appareil et pas encore retéléchargées (ADR-037 §3).
  * Une session sans fin se termine à 23:59 du jour où elle a commencé (BR-TER-008) ; une nouvelle prise
  * clôt la précédente (INV-TER-01).
  */

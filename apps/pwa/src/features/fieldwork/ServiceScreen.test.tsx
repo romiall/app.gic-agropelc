@@ -251,7 +251,7 @@ describe('Pointage (ECR-TER-01, écran)', () => {
     expect(await screen.findByRole('button', { name: 'PRENDRE SERVICE' })).toBeInTheDocument();
     const end = (await getDb().outbox.orderBy('device_seq').toArray())[1];
     expect(end).toMatchObject({
-      // Pas de dépendance vers la prise : l'ordre du lot suffit (ADR-051 §11).
+      // Pas de dépendance vers la prise : l'ordre du lot suffit (ADR-037 §11).
       depends_on: [],
       payload: { checkinType: 'END_SERVICE', sessionId, clientResult: 'ACCEPTED' },
     });

@@ -1,5 +1,5 @@
 /**
- * Joignabilité réelle du serveur (ADR-051). `navigator.onLine` ne dit que si l'appareil a une
+ * Joignabilité réelle du serveur (ADR-037). `navigator.onLine` ne dit que si l'appareil a une
  * interface réseau : sur un Wi-Fi sans accès Internet, il reste vrai. Le moteur de synchronisation
  * rapporte ici l'issue de chaque cycle ; l'appareil est tenu pour hors ligne dès qu'un cycle n'a pas
  * pu joindre le serveur, jusqu'au cycle suivant qui y parvient. Cet état décide du blocage local de la

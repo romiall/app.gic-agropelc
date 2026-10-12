@@ -1,5 +1,5 @@
 /**
- * Opérations de l'appareil encore « en vol » pour un jeu téléchargé (ADR-051 §3) : en attente
+ * Opérations de l'appareil encore « en vol » pour un jeu téléchargé (ADR-037 §3) : en attente
  * d'envoi, ou acceptées par le serveur mais pas encore ramenées par un tirage complet du jeu qui porte
  * leur effet (01-architecture-offline.md §4 : « le delta est retiré quand le pull a ramené l'état
  * serveur qui l'inclut »). Logique pure, partagée par le disponible local (jeu `stock`), les

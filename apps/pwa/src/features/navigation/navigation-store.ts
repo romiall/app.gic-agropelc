@@ -1,5 +1,5 @@
 /**
- * Navigation par rôle mémorisée sur l'appareil (ADR-050) : à chaque réponse de l'accueil, les rôles
+ * Navigation par rôle mémorisée sur l'appareil (ADR-036) : à chaque réponse de l'accueil, les rôles
  * et les actions du jour de l'utilisateur sont conservés ; le menu les relit sans réseau. Un vendeur
  * qui ouvre l'application hors ligne garde ainsi accès à « + VENTE » (WF-J2), même si l'accueil,
  * calculé par le serveur, ne peut pas s'afficher.

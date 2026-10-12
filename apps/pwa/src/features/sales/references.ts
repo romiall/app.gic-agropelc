@@ -131,7 +131,7 @@ export interface SalesReferences {
   readonly cashAccounts: readonly CashAccountData[];
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
   readonly lastSyncAt: string | null;
-  /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-051 §3). */
+  /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
   readonly ordersPulledAt: string | undefined;
   readonly customersPulledAt: string | undefined;
   /** Commandes de vente de l'outbox, tous statuts (affichage des opérations en attente). */
@@ -178,7 +178,7 @@ interface CreatePayload {
 
 /**
  * Comptes créés sur l'appareil que le jeu `customers` ne sert pas encore (en attente d'envoi, ou
- * acceptés mais pas encore retéléchargés, ADR-051 §3) : proposés à la vente, à la commande et à
+ * acceptés mais pas encore retéléchargés, ADR-037 §3) : proposés à la vente, à la commande et à
  * l'encaissement, qui dépendront de leur création.
  */
 export function pendingCustomers(
@@ -231,7 +231,7 @@ interface ActivityPayload {
   readonly nextActionNote?: string | null;
 }
 
-/** Commandes d'activité de l'appareil que le jeu `crm_activity` ne sert pas encore (ADR-051 §3). */
+/** Commandes d'activité de l'appareil que le jeu `crm_activity` ne sert pas encore (ADR-037 §3). */
 function pendingActivity(
   outbox: readonly OutboxCommand[],
   commandType: string,

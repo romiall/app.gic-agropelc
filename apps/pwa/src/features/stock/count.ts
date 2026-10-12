@@ -4,12 +4,12 @@
  * - Un inventaire porte sur un emplacement (`inventory.count.open`) ; un seul en cours par emplacement.
  * - Chaque ligne donne le produit, et le lot quand le solde en porte, et la quantité comptée à
  *   `counted_at` (`inventory.count.record_lines`, ressaisie = correction).
- * - Sur une tablette partagée, seules les saisies de l'utilisateur sont reprises (ADR-051 §13).
+ * - Sur une tablette partagée, seules les saisies de l'utilisateur sont reprises (ADR-037 §13).
  * - L'appareil estime l'écart (compté − physique connu − opérations en attente) pour aider le
  *   compteur ; le serveur calcule l'écart réel à la soumission (`inventory.count.submit`), puis
  *   comptabilise ou demande une validation (BR-STK-043).
  * - BR-STK-042 : un écart est justifié par un motif `INVENTORY_ADJUSTMENT`. Le serveur ne l'exige pas ;
- *   l'appareil l'exige sur un écart estimé non nul quand des motifs existent (AV-301, paramétrable :
+ *   l'appareil l'exige sur un écart estimé non nul quand des motifs existent (AV-219, paramétrable :
  *   `REQUIRE_VARIANCE_REASON`).
  * - Tout passe hors ligne ; la validation des écarts reste en ligne, hors de cet écran.
  */
@@ -20,7 +20,7 @@ import { MAX_QUANTITY } from '../sales/sale-form.js';
 import { physicalLeft, stockKey } from '../sales/stock.js';
 import type { InventoryCountData, LocationData } from '../sales/types.js';
 
-/** AV-301 : motif exigé sur un écart estimé non nul (si des motifs `INVENTORY_ADJUSTMENT` existent). */
+/** AV-219 : motif exigé sur un écart estimé non nul (si des motifs `INVENTORY_ADJUSTMENT` existent). */
 export const REQUIRE_VARIANCE_REASON = true;
 export const MAX_COUNT_COMMENT = 2000;
 export const COUNT_TYPES = ['FULL', 'PARTIAL', 'SPOT'] as const;

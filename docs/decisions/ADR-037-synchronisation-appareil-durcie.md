@@ -1,6 +1,6 @@
-# ADR-051 — Synchronisation de l'appareil : joignabilité réelle du serveur, décompte jusqu'au tirage, reprise des envois, un seul titulaire des données, enveloppe immuable
+# ADR-037 — Synchronisation de l'appareil : joignabilité réelle du serveur, décompte jusqu'au tirage, reprise des envois, un seul titulaire des données, enveloppe immuable
 
-- **Statut** : PROPOSÉ (fork « Écrans PWA », à accepter à la fusion ; DÉDUIT, technique)
+- **Statut** : ACCEPTÉ (fork « Écrans PWA », accepté à la fusion le 12/10/2026, numéros de fork 050 et 051, renumérotés ; DÉDUIT, technique)
 - **Date** : 10/10/2026 (révisé le même jour après la seconde revue adverse du fork : §2 retiré et remplacé, §7 à §10 ajoutés ; §11 à §13 ajoutés le 11/10/2026 après la troisième revue, précisés après la cinquième)
 
 ## Contexte

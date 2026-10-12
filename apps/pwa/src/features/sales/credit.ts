@@ -1,7 +1,7 @@
 /**
  * Encours d'un client vu par l'appareil, pour l'avertissement de crédit (BR-VEN-025, `creditCheck`) :
  * l'encours téléchargé (`outstanding_xaf`, jeu `customers`) corrigé des opérations de l'appareil pas
- * encore retrouvées dans ce jeu (ADR-051 §3) — ventes avec un reste dû et commandes passées (total
+ * encore retrouvées dans ce jeu (ADR-037 §3) — ventes avec un reste dû et commandes passées (total
  * estimé moins acompte) l'augmentent, encaissements le diminuent. Logique pure, indicative : le
  * serveur reste juge du crédit.
  */

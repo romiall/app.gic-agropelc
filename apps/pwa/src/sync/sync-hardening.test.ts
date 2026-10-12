@@ -45,7 +45,7 @@ async function enqueueSale(db: GicDatabase, capturedOffline = false) {
 
 const emptyPull = (): PullResponse => ({ changes: [], next_cursor: 0, has_more: false });
 
-describe('synchronisation durcie (ADR-051)', () => {
+describe('synchronisation durcie (ADR-037)', () => {
   let db: GicDatabase;
 
   beforeEach(async () => {

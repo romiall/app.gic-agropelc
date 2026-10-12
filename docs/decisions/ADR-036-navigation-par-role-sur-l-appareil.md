@@ -1,6 +1,6 @@
-# ADR-050 — Navigation par rôle sur l'appareil : registre des écrans de la PWA et navigation mémorisée hors ligne
+# ADR-036 — Navigation par rôle sur l'appareil : registre des écrans de la PWA et navigation mémorisée hors ligne
 
-- **Statut** : PROPOSÉ (fork « Écrans PWA », à accepter à la fusion ; DÉDUIT, technique)
+- **Statut** : ACCEPTÉ (fork « Écrans PWA », accepté à la fusion le 12/10/2026, numéros de fork 050 et 051, renumérotés ; DÉDUIT, technique)
 - **Date** : 10/10/2026
 
 ## Contexte

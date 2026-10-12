@@ -77,7 +77,7 @@ export function CountScreen() {
   }
 
   const today = businessDayOf(clock.now());
-  // Tablette partagée : seules les saisies de l'utilisateur (ADR-051 §13).
+  // Tablette partagée : seules les saisies de l'utilisateur (ADR-037 §13).
   const counts = deviceCounts(
     refs.counts,
     refs.outbox.filter((command) => command.author_user_id === userId),
@@ -337,7 +337,7 @@ export function CountScreen() {
       commandType: 'inventory.count.submit',
       aggregateType: 'INVENTORY_COUNT',
       aggregateId: count.id,
-      // La fin attend l'ouverture et toutes les saisies de l'appareil (ADR-051 §11).
+      // La fin attend l'ouverture et toutes les saisies de l'appareil (ADR-037 §11).
       dependsOn: [...opening, ...count.lineCommandIds],
       payload: { countId: count.id },
     }).then((ok) => {

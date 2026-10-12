@@ -30,7 +30,7 @@ const ACCOUNTS = [
   account('mtn', 'MOBILE_MONEY'),
 ];
 
-describe('encaissement : compte de réception et référence (AV-300)', () => {
+describe('encaissement : compte de réception et référence (AV-218)', () => {
   it('espèces : jamais de compte désigné, le serveur déduit la caisse', () => {
     expect(receivingAccounts(ACCOUNTS, CASH)).toEqual([]);
     expect(
