@@ -78,8 +78,11 @@ export function ReplenishScreen() {
           <button
             type="button"
             onClick={() => {
-              setLines([emptyLine()]);
-              setNotes('');
+              // Après une annulation, la demande en cours de saisie est gardée.
+              if (submitted.kind === 'request') {
+                setLines([emptyLine()]);
+                setNotes('');
+              }
               setSubmitted(undefined);
             }}
           >
@@ -102,9 +105,11 @@ export function ReplenishScreen() {
   }
 
   const destination = pos.salesLocation;
-  const sources = pos.source ? [pos.source] : candidateSources(refs.locations, destination.id);
-  const source = pos.source ?? sources.find((candidate) => candidate.id === sourceChoice) ?? null;
-  const sourceBlocked = !pos.source && REPLENISH_WITHOUT_SOURCE === 'BLOCK';
+  // Source configurée (même pas encore tirée du jeu `location`), sinon choisie (AV-306).
+  const sources = candidateSources(refs.locations, destination.id);
+  const sourceId =
+    pos.sourceId ?? sources.find((candidate) => candidate.id === sourceChoice)?.id ?? null;
+  const sourceBlocked = pos.sourceId === null && REPLENISH_WITHOUT_SOURCE === 'BLOCK';
   const requests = pendingRequests(refs, destination.id);
   const requested = requestedByProduct(requests);
   const suggestions = replenishSuggestions(refs, destination.id, requested);
@@ -120,7 +125,7 @@ export function ReplenishScreen() {
   const alreadyRequested = (productId: string) =>
     DUPLICATE_REQUEST === 'BLOCK' && (requested.get(productId) ?? 0) > 0;
   const ready =
-    source !== null &&
+    sourceId !== null &&
     !sourceBlocked &&
     filled.length > 0 &&
     filled.every((row) => row.check.issue === null) &&
@@ -158,14 +163,14 @@ export function ReplenishScreen() {
     });
 
   const submit = () => {
-    if (!ready || !source) return;
+    if (!ready || !sourceId) return;
     void send('request', {
       authorUserId: userId,
       commandType: 'inventory.transfer.request',
       aggregateType: 'STOCK_TRANSFER',
       aggregateId: idGenerator.newId(),
       payload: replenishPayload({
-        fromLocationId: source.id,
+        fromLocationId: sourceId,
         toLocationId: destination.id,
         lines: filled.map((row) => row.check),
         notes,
@@ -203,8 +208,12 @@ export function ReplenishScreen() {
         </div>
       ) : null}
       <p>{t('replenish.destination', { name: destination.name })}</p>
-      {pos.source ? (
-        <p>{t('replenish.source', { name: pos.source.name })}</p>
+      {pos.sourceId ? (
+        <p>
+          {pos.source
+            ? t('replenish.source', { name: pos.source.name })
+            : t('replenish.source_unknown')}
+        </p>
       ) : sourceBlocked ? (
         <p id={ids.blocked} className="error-message" role="status">
           {t('replenish.no_source_blocked')}
@@ -215,7 +224,7 @@ export function ReplenishScreen() {
           <select
             id={ids.source}
             className="text-input"
-            value={source?.id ?? ''}
+            value={sourceId ?? ''}
             onChange={(event) => setSourceChoice(event.target.value)}
           >
             <option value="">{t('replenish.source_placeholder')}</option>
@@ -362,10 +371,18 @@ export function ReplenishScreen() {
                     })}
                   </ul>
                   {request.onDevice ? (
-                    <p className="home-muted">{t('replenish.on_device')}</p>
+                    <p className="home-muted">
+                      {t(request.accepted ? 'replenish.sent_awaiting_pull' : 'replenish.on_device')}
+                    </p>
                   ) : null}
                   {request.cancelling ? (
-                    <p className="home-muted">{t('replenish.cancelling')}</p>
+                    <p className="home-muted">
+                      {t(
+                        request.cancelling === 'SENT'
+                          ? 'replenish.cancel_sent'
+                          : 'replenish.cancelling',
+                      )}
+                    </p>
                   ) : null}
                   {cancellable(request, userId) ? (
                     <button

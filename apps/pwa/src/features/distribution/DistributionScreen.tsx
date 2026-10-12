@@ -18,6 +18,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDay, formatDateTime } from '../home/format-home.js';
 import { formatMoney, formatQuantity } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
+import { useSalesReferences } from '../sales/references.js';
 
 /** Périodes proposées (`period`) ; une période libre (`from`, `to`) n'est pas proposée ici. */
 const DISTRIBUTION_PERIODS: readonly Exclude<DistributionPeriodCode, 'CUSTOM'>[] = [
@@ -37,6 +38,11 @@ export function DistributionScreen() {
   const [period, setPeriod] = useState<(typeof DISTRIBUTION_PERIODS)[number]>('TODAY');
   const [siteChoice, setSiteChoice] = useState('');
   const ids = { period: useId(), site: useId() };
+  // Libellés des moyens de paiement du catalogue de l'appareil (le tableau ne sert que le code).
+  const refs = useSalesReferences();
+  const methodLabels = new Map(
+    (refs?.paymentMethods ?? []).map((method) => [method.code, method.label]),
+  );
   const read = useOnlineRead<DistributionDashboardResponse>(
     online ? distributionPath(period) : null,
     (path) => readPath<DistributionDashboardResponse>(path),
@@ -55,7 +61,10 @@ export function DistributionScreen() {
 
   const data = read.data;
   const points = data?.pointsOfSale ?? [];
-  const shown = siteChoice ? points.filter((pos) => pos.siteId === siteChoice) : points;
+  // Choix d'un PDV qui n'est plus servi (périmètre changé) : tous les PDV.
+  const site = points.some((pos) => pos.siteId === siteChoice) ? siteChoice : '';
+  const shown = site ? points.filter((pos) => pos.siteId === site) : points;
+  const periodOnly = data?.period.code !== 'TODAY';
 
   return (
     <section className="sale">
@@ -118,7 +127,7 @@ export function DistributionScreen() {
                   <select
                     id={ids.site}
                     className="text-input"
-                    value={siteChoice}
+                    value={site}
                     onChange={(event) => setSiteChoice(event.target.value)}
                   >
                     <option value="">{t('distribution.all_sites')}</option>
@@ -131,7 +140,12 @@ export function DistributionScreen() {
                 </div>
               ) : null}
               {shown.map((pos) => (
-                <PointOfSaleCard key={pos.siteId} pos={pos} />
+                <PointOfSaleCard
+                  key={pos.siteId}
+                  pos={pos}
+                  methodLabels={methodLabels}
+                  periodOnly={periodOnly}
+                />
               ))}
             </>
           )}
@@ -206,7 +220,15 @@ function Totals({ data }: { readonly data: DistributionDashboardResponse }) {
   );
 }
 
-function PointOfSaleCard({ pos }: { readonly pos: DistributionPointOfSale }) {
+function PointOfSaleCard({
+  pos,
+  methodLabels,
+  periodOnly,
+}: {
+  readonly pos: DistributionPointOfSale;
+  readonly methodLabels: ReadonlyMap<string, string>;
+  readonly periodOnly: boolean;
+}) {
   const { t } = useTranslation();
   const titleId = `distribution-pos-${pos.siteId}`;
   return (
@@ -238,7 +260,7 @@ function PointOfSaleCard({ pos }: { readonly pos: DistributionPointOfSale }) {
           {pos.cashed.byMethod.map((method) => (
             <li key={method.paymentMethodCode}>
               {t('distribution.by_method', {
-                method: method.paymentMethodCode,
+                method: methodLabels.get(method.paymentMethodCode) ?? method.paymentMethodCode,
                 amount: formatMoney(method.amountXaf),
                 count: method.paymentsCount,
               })}
@@ -267,7 +289,7 @@ function PointOfSaleCard({ pos }: { readonly pos: DistributionPointOfSale }) {
       ) : (
         <ul className="line-list">
           {pos.products.map((row) => (
-            <ProductItem key={row.productId} row={row} />
+            <ProductItem key={row.productId} row={row} periodOnly={periodOnly} />
           ))}
         </ul>
       )}
@@ -330,27 +352,51 @@ function DevicesBlock({ pos }: { readonly pos: DistributionPointOfSale }) {
         <p className="home-muted">{t('distribution.no_devices')}</p>
       ) : (
         <ul className="home-muted">
-          {devices.items.map((device) => (
-            <li key={device.deviceId} className={device.stale ? 'text-warn' : undefined}>
-              {t(device.stale ? 'distribution.device_stale' : 'distribution.device', {
-                name: device.label ?? device.shortCode,
-                at: device.lastContactAt
-                  ? formatDateTime(device.lastContactAt)
-                  : t('distribution.never'),
-                pending: device.pendingReported ?? '—',
-              })}
-            </li>
-          ))}
+          {devices.items.map((device) => {
+            const name = device.label ?? device.shortCode;
+            // Un appareil bloqué, perdu ou retiré reste listé mais n'est pas « en retard » (AV-202).
+            const active = device.status === 'ACTIVE';
+            const late = active && device.stale;
+            const text = !active
+              ? t('distribution.device_inactive', {
+                  name,
+                  status: t(`distribution.device_status.${device.status}`, {
+                    defaultValue: device.status,
+                  }),
+                })
+              : device.lastContactAt
+                ? t(late ? 'distribution.device_stale' : 'distribution.device', {
+                    name,
+                    at: formatDateTime(device.lastContactAt),
+                  })
+                : t('distribution.device_never', { name });
+            return (
+              <li key={device.deviceId} className={late ? 'text-warn' : undefined}>
+                {text}
+                {device.pendingReported !== null && device.pendingReported > 0
+                  ? t('distribution.device_pending', { count: device.pendingReported })
+                  : ''}
+              </li>
+            );
+          })}
         </ul>
       )}
     </>
   );
 }
 
-function ProductItem({ row }: { readonly row: DistributionProductRow }) {
+function ProductItem({
+  row,
+  periodOnly,
+}: {
+  readonly row: DistributionProductRow;
+  readonly periodOnly: boolean;
+}) {
   const { t } = useTranslation();
   const unit = row.baseUnitCode;
   const q = (value: number | null) => (value === null ? '—' : `${formatQuantity(value)} ${unit}`);
+  // Mesures lues à l'instant de lecture (ADR-035 §5) : séparées de celles de la période.
+  const nowMeasures = row.toDeliverQty > 0 || (row.allocatedQty !== null && row.allocatedQty > 0);
   return (
     <li className="line-card" aria-label={row.productName}>
       <p>
@@ -375,16 +421,31 @@ function ProductItem({ row }: { readonly row: DistributionProductRow }) {
         {row.stocked ? (
           <>
             <dt>{t('distribution.lost')}</dt>
-            <dd>
-              {q(row.lostQty)}
-              {row.lostPendingQty
-                ? ` ${t('distribution.pending_part', { quantity: q(row.lostPendingQty) })}`
-                : ''}
-            </dd>
+            <dd>{q(row.lostQty)}</dd>
+            {/* Flux de la période, signé : une décision dans la période le rend négatif (AV-199). */}
+            {row.lostPendingQty !== null && row.lostPendingQty !== 0 ? (
+              <>
+                <dt>{t('distribution.lost_pending')}</dt>
+                <dd>{q(row.lostPendingQty)}</dd>
+              </>
+            ) : null}
+            {row.transitPendingQty !== null && row.transitPendingQty !== 0 ? (
+              <>
+                <dt>{t('distribution.transit_pending')}</dt>
+                <dd>{q(row.transitPendingQty)}</dd>
+              </>
+            ) : null}
             <dt>{t('distribution.remaining')}</dt>
             <dd>{q(row.remainingQty)}</dd>
           </>
         ) : null}
+      </dl>
+      {nowMeasures ? (
+        <p className="home-muted">
+          {t(periodOnly ? 'distribution.now_caption_past' : 'distribution.now_caption')}
+        </p>
+      ) : null}
+      <dl className="receipt-totals">
         {row.toDeliverQty > 0 ? (
           <>
             <dt>{t('distribution.to_deliver')}</dt>
@@ -413,6 +474,9 @@ function ProductItem({ row }: { readonly row: DistributionProductRow }) {
         <p className="text-warn">
           {t('distribution.residual', { quantity: q(row.reconciliation.residualQty) })}
         </p>
+      ) : null}
+      {row.reconciliation && !row.reconciliation.salesMatchLedger ? (
+        <p className="text-warn">{t('distribution.sales_mismatch')}</p>
       ) : null}
     </li>
   );

@@ -6,7 +6,7 @@
  * `inventory.transfer.request`. La suggestion ne crée jamais de demande (BR-DIS-011).
  */
 import { evaluateStockThreshold, type StockThresholdState } from '@gic/domain';
-import { isWaiting, stillInFlight } from '../sales/pending.js';
+import { isAccepted, isWaiting, stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import { stockKey } from '../sales/stock.js';
 import type { LocationData, ProductData } from '../sales/types.js';
@@ -31,7 +31,9 @@ export const DUPLICATE_REQUEST: 'ANNOUNCE' | 'BLOCK' = 'ANNOUNCE';
 export interface PointOfSaleView {
   readonly siteId: string;
   readonly salesLocation: LocationData;
-  /** Source configurée du PDV, si elle est connue de l'appareil. */
+  /** Identifiant de la source configurée du PDV (`replenishment_source_location_id`), même inconnue. */
+  readonly sourceId: string | null;
+  /** Source configurée du PDV, si elle est connue de l'appareil (jeu `location`). */
   readonly source: LocationData | null;
 }
 
@@ -47,7 +49,12 @@ export function pointsOfSaleOf(
     const source = pos.replenishment_source_location_id
       ? (locations.get(pos.replenishment_source_location_id) ?? null)
       : null;
-    views.push({ siteId: pos.site_id, salesLocation, source });
+    views.push({
+      siteId: pos.site_id,
+      salesLocation,
+      sourceId: pos.replenishment_source_location_id,
+      source,
+    });
   }
   return views.sort((a, b) => a.salesLocation.name.localeCompare(b.salesLocation.name, 'fr'));
 }
@@ -103,7 +110,8 @@ export function replenishSuggestions(
   for (const threshold of refs.thresholds) {
     if (threshold.location_id !== salesLocationId || !threshold.is_active) continue;
     const product = products.get(threshold.product_id);
-    if (!product) continue;
+    // Produit désactivé ou service : rien à demander (l'éditeur de lignes ne le propose pas).
+    if (!product || product.status !== 'ACTIVE' || product.stock_family === 'SERVICE') continue;
     const key = stockKey(salesLocationId, product.id);
     const onHand = num(refs.stock.get(key)?.qty_on_hand);
     const available = round3(onHand - (refs.pending.get(key) ?? 0));
@@ -132,10 +140,12 @@ export interface PendingRequest {
   readonly requestedBy: string | null;
   /** Saisie sur l'appareil et pas encore connue du jeu `transfers`. */
   readonly onDevice: boolean;
+  /** Saisie sur l'appareil, acceptée par le serveur, pas encore relue. */
+  readonly accepted: boolean;
   /** Demande saisie sur l'appareil encore sans réponse (dépendance d'une annulation). */
   readonly commandId: string | null;
-  /** Annulation saisie sur l'appareil, pas encore relue. */
-  readonly cancelling: boolean;
+  /** Annulation saisie sur l'appareil, pas encore relue : en attente d'envoi, ou envoyée. */
+  readonly cancelling: 'WAITING' | 'SENT' | null;
 }
 
 interface RequestPayloadLike {
@@ -153,14 +163,14 @@ export function pendingRequests(
   refs: Pick<SalesReferences, 'transfers' | 'outbox' | 'transfersPulledAt'>,
   salesLocationId: string,
 ): PendingRequest[] {
-  const cancelling = new Set(
+  const cancelling = new Map<string, 'WAITING' | 'SENT'>(
     refs.outbox
       .filter(
         (command) =>
           command.command_type === 'inventory.transfer.cancel' &&
           stillInFlight(command, refs.transfersPulledAt),
       )
-      .map((command) => command.aggregate_id),
+      .map((command) => [command.aggregate_id, isWaiting(command) ? 'WAITING' : 'SENT']),
   );
   const requests: PendingRequest[] = [];
   for (const transfer of refs.transfers.values()) {
@@ -175,8 +185,9 @@ export function pendingRequests(
       })),
       requestedBy: transfer.requested_by ?? null,
       onDevice: false,
+      accepted: false,
       commandId: null,
-      cancelling: cancelling.has(transfer.id),
+      cancelling: cancelling.get(transfer.id) ?? null,
     });
   }
   for (const command of refs.outbox) {
@@ -197,8 +208,9 @@ export function pendingRequests(
         })),
       requestedBy: command.author_user_id,
       onDevice: true,
+      accepted: isAccepted(command),
       commandId: isWaiting(command) ? command.command_id : null,
-      cancelling: cancelling.has(command.aggregate_id),
+      cancelling: cancelling.get(command.aggregate_id) ?? null,
     });
   }
   return requests;
@@ -239,7 +251,14 @@ export function replenishPayload(input: {
   };
 }
 
-/** Annulation possible : demande connue du serveur, de l'utilisateur, sans annulation en cours. */
+/**
+ * Annulation possible : demande connue du serveur (servie, ou acceptée et pas encore relue), de
+ * l'utilisateur, sans annulation en cours.
+ */
 export function cancellable(request: PendingRequest, userId: string): boolean {
-  return !request.onDevice && !request.cancelling && request.requestedBy === userId;
+  return (
+    (!request.onDevice || request.accepted) &&
+    request.cancelling === null &&
+    request.requestedBy === userId
+  );
 }

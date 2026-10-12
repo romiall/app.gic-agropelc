@@ -244,6 +244,69 @@ describe('Demande de réapprovisionnement (ECR-DIS-03)', () => {
     expect(within(other).queryByRole('button', { name: /Annuler/ })).not.toBeInTheDocument();
   });
 
+  it('magasin configuré pas encore synchronisé : la demande le vise, sans choix proposé', async () => {
+    const UNKNOWN_STORE = '01900000-0000-7000-8000-0000000000c7';
+    await getDb().projections.put(
+      pointOfSaleRow({ replenishment_source_location_id: UNKNOWN_STORE }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    expect(
+      await screen.findByText(
+        /magasin configuré du point de vente \(en attente de synchronisation\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Depuis le magasin')).not.toBeInTheDocument();
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.chicken);
+    await user.type(within(line).getByLabelText('Quantité'), '4');
+    await user.click(screen.getByRole('button', { name: 'Envoyer la demande' }));
+    await screen.findByText('Demande en cours d’envoi…');
+    const [request] = await outboxOf('inventory.transfer.request');
+    expect(request?.payload).toMatchObject({ fromLocationId: UNKNOWN_STORE });
+  });
+
+  it('demande acceptée pas encore relue : envoyée, annulable ; une annulation garde la saisie en cours', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    // Une demande envoyée puis acceptée (pas encore relue du jeu `transfers`).
+    const line = await screen.findByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.chicken);
+    await user.type(within(line).getByLabelText('Quantité'), '4');
+    await user.click(screen.getByRole('button', { name: 'Envoyer la demande' }));
+    await screen.findByText('Demande en cours d’envoi…');
+    const [request] = await outboxOf('inventory.transfer.request');
+    await getDb().outbox.update(request!.command_id, {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T09:30:00.000Z',
+    });
+    expect(
+      await screen.findByText(
+        'Demande envoyée au magasin ; son numéro apparaîtra à la prochaine synchronisation.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retour aux demandes' }));
+    const card = await screen.findByRole('listitem', { name: 'Demande en attente du numéro' });
+    expect(
+      within(card).getByText('Envoyée ; son numéro apparaîtra à la prochaine synchronisation.'),
+    ).toBeInTheDocument();
+    // Nouvelle demande en cours de saisie, puis annulation de la demande envoyée.
+    const draft = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(draft).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(draft).getByLabelText('Quantité'), '12');
+    await user.type(screen.getByLabelText('Note pour le magasin (facultatif)'), 'Urgent');
+    await user.click(within(card).getByRole('button', { name: /^Annuler la demande/ }));
+    await user.click(within(card).getByRole('button', { name: /^Confirmer l’annulation/ }));
+    await screen.findByText('Annulation en cours d’envoi…');
+    const [cancel] = await outboxOf('inventory.transfer.cancel');
+    expect(cancel).toMatchObject({ aggregate_id: request!.aggregate_id });
+    await user.click(screen.getByRole('button', { name: 'Retour aux demandes' }));
+    const kept = await screen.findByRole('listitem', { name: 'Ligne 1' });
+    expect(within(kept).getByLabelText('Produit')).toHaveValue(IDS.eggs);
+    expect(within(kept).getByLabelText('Quantité')).toHaveValue('12');
+    expect(screen.getByLabelText('Note pour le magasin (facultatif)')).toHaveValue('Urgent');
+  });
+
   it('aucun PDV servi : message, pas de formulaire', async () => {
     await getDb().projections.delete(`org:POINT_OF_SALE:${IDS.site}`);
     renderScreen();

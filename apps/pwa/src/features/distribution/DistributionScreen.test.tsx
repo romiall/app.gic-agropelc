@@ -6,6 +6,8 @@ import type { DistributionDashboardResponse, DistributionPointOfSale } from '@gi
 import { authorizedRequest } from '../../sync/api-client.js';
 import { resetConnectivityForTests } from '../../platform/connectivity.js';
 import { DistributionScreen } from './DistributionScreen.js';
+import { getDb } from '../../storage/db.js';
+import { seedSalesFixtures } from '../sales/fixtures.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../sync/api-client.js', () => ({ authorizedRequest: vi.fn() }));
@@ -180,24 +182,94 @@ describe('Distribution par point de vente (ECR-DIS-04)', () => {
     ).toBeInTheDocument();
 
     expect(
-      within(pos).getByText(/Écart de rapprochement : le stock ne se reconstitue pas/),
+      within(pos).getByText(/Écart de rapprochement sur au moins un produit/),
     ).toBeInTheDocument();
     expect(within(pos).getByText(/45\s000 F CFA net \(2\s000 F CFA annulé\)/)).toBeInTheDocument();
     expect(within(pos).getByText(/ESPECES : 40\s000 F CFA \(9\)/)).toBeInTheDocument();
     expect(
       within(pos).getByText(/Session ouverte depuis le .*\(ouverte\), écart courant : -500 F CFA/),
     ).toBeInTheDocument();
-    expect(
-      within(pos).getByText(/Tablette du comptoir : sans contact depuis le .*, 3 opération\(s\)/),
-    ).toBeInTheDocument();
+    const tablet = within(pos).getByText(
+      /Tablette du comptoir : sans contact depuis le .*, 3 opérations en attente déclarées/,
+    );
+    expect(tablet).toHaveClass('text-warn');
     const product = within(pos).getByRole('listitem', { name: 'Œufs de table' });
     expect(within(product).getByText('600 U')).toBeInTheDocument();
     expect(within(product).getByText(/450 U \(45\s000 F CFA\)/)).toBeInTheDocument();
-    expect(within(product).getByText(/12 U \(\+ 6 U en attente\)/)).toBeInTheDocument();
+    expect(within(product).getByText('12 U')).toBeInTheDocument();
+    // Flux de la période, à part (BR-DIS-010) : pertes et écarts de transfert en attente.
+    expect(
+      within(product).getByText('Pertes en attente (variation sur la période)').nextSibling,
+    ).toHaveTextContent('6 U');
+    expect(
+      within(product).getByText('Écarts de transfert en attente (variation sur la période)')
+        .nextSibling,
+    ).toHaveTextContent('30 U');
+    // Période du jour : les mesures de l'instant de lecture sont annoncées comme telles.
+    expect(within(product).getByText('À l’instant de lecture :')).toBeInTheDocument();
     expect(within(product).getByText('202 U')).toBeInTheDocument();
     expect(within(product).getByText('90 U alloué, 112 U libre')).toBeInTheDocument();
     expect(within(product).getByText('À réapprovisionner : 398 U')).toBeInTheDocument();
     expect(within(product).getByText('Écart de rapprochement : -6 U')).toBeInTheDocument();
+  });
+
+  it('variations signées, appareils inactifs ou jamais connectés, écart ventes/registre, pluriel, période passée', async () => {
+    const base = pointOfSale();
+    const row = base.products[0]!;
+    request.mockResolvedValue({
+      ok: true,
+      data: {
+        ...response([
+          pointOfSale({
+            cashed: { ...base.cashed, amountXaf: 5_000, paymentsCount: 1 },
+            products: [
+              {
+                ...row,
+                // Perte déclarée hier, confirmée aujourd'hui : variation négative.
+                lostPendingQty: -5,
+                transitPendingQty: 0,
+                reconciliation: { residualQty: 0, reconciled: true, salesMatchLedger: false },
+              },
+            ],
+            devices: {
+              ...base.devices,
+              items: [
+                { ...base.devices.items[0]!, status: 'LOST', stale: true },
+                {
+                  ...base.devices.items[0]!,
+                  deviceId: '01900000-0000-7000-8000-0000000000d9',
+                  label: 'Tablette neuve',
+                  lastContactAt: null,
+                  stale: true,
+                  pendingReported: null,
+                },
+              ],
+            },
+          }),
+        ]),
+        period: { code: 'YESTERDAY', fromDay: '2026-10-09', toDay: '2026-10-09' },
+      },
+    });
+    renderScreen();
+    const pos = await screen.findByRole('region', { name: 'PDV de Yaoundé' });
+    expect(within(pos).getByText(/5\s000 F CFA \(1 encaissement\)$/)).toBeInTheDocument();
+    const product = within(pos).getByRole('listitem', { name: 'Œufs de table' });
+    expect(
+      within(product).getByText('Pertes en attente (variation sur la période)').nextSibling,
+    ).toHaveTextContent('-5 U');
+    expect(within(product).queryByText(/Écarts de transfert en attente/)).not.toBeInTheDocument();
+    expect(within(product).queryByText(/en attente\)/)).not.toBeInTheDocument();
+    expect(
+      within(product).getByText('Vendu : ventes et registre de stock divergent.'),
+    ).toBeInTheDocument();
+    expect(within(product).queryByText(/Écart de rapprochement :/)).not.toBeInTheDocument();
+    expect(
+      within(product).getByText('Maintenant (pas sur la période choisie) :'),
+    ).toBeInTheDocument();
+    // Appareil perdu : statut, pas « en retard » ; appareil jamais connecté.
+    const lost = within(pos).getByText(/Tablette du comptoir : déclaré perdu/);
+    expect(lost).not.toHaveClass('text-warn');
+    expect(within(pos).getByText('Tablette neuve : jamais connecté')).toBeInTheDocument();
   });
 
   it('changement de période : nouvelle lecture ; plusieurs PDV filtrés sur l’appareil', async () => {
@@ -221,6 +293,38 @@ describe('Distribution par point de vente (ECR-DIS-04)', () => {
         { method: 'GET' },
       ),
     );
+  });
+
+  it('moyen de paiement nommé par le catalogue du téléphone ; PDV filtré qui n’est plus servi', async () => {
+    await seedSalesFixtures(getDb());
+    try {
+      request.mockResolvedValue({
+        ok: true,
+        data: response([
+          pointOfSale(),
+          pointOfSale({ siteId: OTHER_SITE, siteCode: 'PDV-DLA', siteName: 'PDV de Douala' }),
+        ]),
+      });
+      const user = userEvent.setup();
+      renderScreen();
+      const yaounde = await screen.findByRole('region', { name: 'PDV de Yaoundé' });
+      expect(await within(yaounde).findByText(/Espèces : 40\s000 F CFA \(9\)/)).toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText('Point de vente'), OTHER_SITE);
+      // Le PDV choisi quitte le périmètre : tous les PDV servis s'affichent.
+      request.mockResolvedValue({
+        ok: true,
+        data: response([
+          pointOfSale(),
+          pointOfSale({ siteId: '01900000-0000-7000-8000-000000000022', siteName: 'PDV de Kribi' }),
+        ]),
+      });
+      await user.selectOptions(screen.getByLabelText('Période'), 'MONTH');
+      expect(await screen.findByRole('region', { name: 'PDV de Kribi' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'PDV de Yaoundé' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Point de vente')).toHaveValue('');
+    } finally {
+      await getDb().projections.clear();
+    }
   });
 
   it('hors ligne : tableau en ligne seulement, aucune lecture', () => {

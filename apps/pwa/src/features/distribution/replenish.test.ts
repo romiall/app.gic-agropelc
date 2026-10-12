@@ -148,15 +148,22 @@ describe('Réapprovisionnement d’un PDV (ECR-DIS-03)', () => {
       location('chambre', { location_type: 'COLD_ROOM' }),
     ];
     expect(pointsOfSaleOf({ pointsOfSale: new Map([['site', pos]]), locations })).toEqual([
-      { siteId: 'site', salesLocation: locations[0], source: locations[1] },
+      { siteId: 'site', salesLocation: locations[0], sourceId: STORE, source: locations[1] },
     ]);
-    // Source non configurée, ou emplacement de vente inconnu de l'appareil.
+    // Source non configurée : ni identifiant ni emplacement.
     expect(
       pointsOfSaleOf({
         pointsOfSale: new Map([['site', { ...pos, replenishment_source_location_id: null }]]),
         locations,
-      })[0]?.source,
-    ).toBeNull();
+      })[0],
+    ).toMatchObject({ sourceId: null, source: null });
+    // Source configurée mais pas encore tirée du jeu `location` : l'identifiant reste connu.
+    expect(
+      pointsOfSaleOf({
+        pointsOfSale: new Map([['site', { ...pos, replenishment_source_location_id: 'neuf' }]]),
+        locations,
+      })[0],
+    ).toMatchObject({ sourceId: 'neuf', source: null });
     expect(
       pointsOfSaleOf({
         pointsOfSale: new Map([['site', { ...pos, sales_location_id: 'inconnu' }]]),
@@ -172,6 +179,9 @@ describe('Réapprovisionnement d’un PDV (ECR-DIS-03)', () => {
       product('poulet', 'Poulet'),
       product('sel', 'Sel'),
       product('riz', 'Riz'),
+      // Produit désactivé et service, seuils restés actifs : jamais suggérés.
+      { ...product('ancien', 'Ancien'), status: 'INACTIVE' },
+      { ...product('livraison', 'Livraison'), stock_family: 'SERVICE' } as ProductData,
     ];
     const refs = {
       products,
@@ -181,6 +191,8 @@ describe('Réapprovisionnement d’un PDV (ECR-DIS-03)', () => {
         threshold('sel', '1', '5'),
         // Seuil désactivé : sans effet, même en rupture.
         threshold('riz', '1', '9', false),
+        threshold('ancien', '1', '9'),
+        threshold('livraison', '1', '9'),
         { ...threshold('oeuf', '1', '999'), location_id: 'ailleurs' },
       ],
       stock: new Map([
@@ -267,20 +279,49 @@ describe('Réapprovisionnement d’un PDV (ECR-DIS-03)', () => {
       { transfers, outbox, transfersPulledAt: '2026-10-10T08:00:00.000Z' },
       POS,
     );
-    expect(requests.map((r) => [r.id, r.docNumber, r.onDevice, r.commandId, r.cancelling])).toEqual(
-      [
-        ['serveur', 'TRF-serveur', false, null, true],
-        [own.aggregate_id, null, true, own.command_id, false],
-      ],
-    );
+    expect(
+      requests.map((r) => [r.id, r.docNumber, r.onDevice, r.accepted, r.commandId, r.cancelling]),
+    ).toEqual([
+      ['serveur', 'TRF-serveur', false, false, null, 'WAITING'],
+      [own.aggregate_id, null, true, false, own.command_id, null],
+    ]);
     // La demande annulée ne compte plus dans le déjà demandé.
     expect(requestedByProduct(requests)).toEqual(new Map([['oeuf', 7]]));
     // Seul le demandeur annule une demande connue du serveur, sans annulation en cours.
-    const server = { ...requests[0]!, cancelling: false };
+    const server = { ...requests[0]!, cancelling: null };
     expect(cancellable(server, 'moi')).toBe(true);
     expect(cancellable(server, 'autre')).toBe(false);
     expect(cancellable(requests[0]!, 'moi')).toBe(false);
     expect(cancellable(requests[1]!, 'moi')).toBe(false);
+
+    // Demande acceptée mais pas encore relue (jeu `transfers` tiré avant l'acceptation) : connue du
+    // serveur, donc annulable ; son annulation acceptée est « envoyée ».
+    const sent = command(
+      'inventory.transfer.request',
+      { fromLocationId: STORE, toLocationId: POS, lines: [] },
+      { status: 'SYNCED', synced_at: '2026-10-10T09:30:00.000Z' },
+    );
+    const [accepted] = pendingRequests(
+      { transfers: new Map(), outbox: [sent], transfersPulledAt: '2026-10-10T08:00:00.000Z' },
+      POS,
+    );
+    expect(accepted).toMatchObject({ onDevice: true, accepted: true, commandId: null });
+    expect(cancellable(accepted!, 'moi')).toBe(true);
+    const cancelSent = command(
+      'inventory.transfer.cancel',
+      { transferId: sent.aggregate_id },
+      { aggregate_id: sent.aggregate_id, status: 'SYNCED', synced_at: '2026-10-10T09:40:00.000Z' },
+    );
+    expect(
+      pendingRequests(
+        {
+          transfers: new Map(),
+          outbox: [sent, cancelSent],
+          transfersPulledAt: '2026-10-10T08:00:00.000Z',
+        },
+        POS,
+      )[0]?.cancelling,
+    ).toBe('SENT');
   });
 
   it('charge utile : lignes sans lot, note rognée ou absente', () => {
