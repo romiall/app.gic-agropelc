@@ -143,6 +143,35 @@ puisque ce fichier **est** la source de vérité courante de la matrice, pas seu
 `CAST(? AS JSON)` avec un paramètre `JSON.stringify`-é côté Node : `mysql2` n'encode pas
 automatiquement une valeur JS pour une colonne `JSON`.
 
+### Données de démonstration (développement local)
+
+```bash
+pnpm run demo:data
+```
+
+[`apps/server/scripts/demo-data.ts`](../apps/server/scripts/demo-data.ts) prépare la base de
+`apps/server/.env` (`SERVER_DATABASE_URL`, hôte local exigé, refus si `NODE_ENV=production`)
+pour parcourir la PWA :
+
+- un **compte de démonstration** qui détient tous les rôles métier (globaux, de site et de zone) ;
+  identifiant : le téléphone `DEMO_PHONE` du script, affiché en fin d'exécution. **Aucun mot de passe
+  n'est écrit dans le code** : lancé dans un terminal, le script demande de le choisir (saisie masquée,
+  8 caractères minimum ; pour un compte existant, Entrée conserve l'actuel). Sans terminal interactif, il
+  lit `DEMO_PASSWORD` dans l'environnement (fichier local non suivi, par exemple `apps/server/.env`), ou
+  conserve le mot de passe d'un compte existant ;
+- zone, ferme, magasin central, point de vente configuré, unités, canaux, produits, prix actifs,
+  caisses, clients (dont un à crédit), fournisseur, stock, transfert expédié et bon de commande
+  envoyé (à réceptionner à l'écran), session de caisse ouverte, ventes et commande à livrer.
+
+Tout passe par les vraies commandes (pipeline, audit, flux de synchronisation), sauf le stock initial
+(`recordStockMove`, comme les tests) et le compte (insertion directe, comme `db:create-local-admin`).
+Rejouable : chaque référentiel est retrouvé par son code, chaque étape d'activité n'est jouée que si sa
+trace manque. Un navigateur qui se connecte crée un appareil **en attente** : il lit, mais ce qu'il
+enregistre part en conflit (BR-ADM-005). Se connecter une première fois, **relancer le script** (il
+approuve les appareils en attente du compte), puis recharger la page. Un compte qui cumule tous les
+rôles reste soumis à la séparation des tâches (validation par un autre utilisateur) et au pointage du
+commercial terrain : ses ventes sans « prise de service » portent l'indicateur `OUT_OF_SESSION`.
+
 ## 6. Tests
 
 `pnpm --filter @gic/db run test` (intégration, MySQL réel — voir
