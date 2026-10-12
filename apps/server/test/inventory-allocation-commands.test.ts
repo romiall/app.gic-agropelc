@@ -602,6 +602,49 @@ describe('quotas d’appareil (P5-08, ADR-033)', () => {
         'ALLOCATION_NOT_ACTIVE',
       );
     });
+
+    it('appareil bloqué, détenteur suspendu ou révocation en attente, chacun seul -> ALLOCATION_HOLDER_INVALID, quota inchangé (P5-21)', async () => {
+      const productId = await newProduct(100);
+      const causes: Record<string, (holder: Holder, id: string) => Promise<unknown>> = {
+        // Le consommateur de révocation n'a pas encore tourné : le drapeau n'est pas posé.
+        'appareil bloqué': (holder) =>
+          db
+            .updateTable('identity_devices')
+            .set({ status: 'BLOCKED' })
+            .where('id', '=', toBin(holder.deviceId))
+            .execute(),
+        'détenteur suspendu': (holder) =>
+          db
+            .updateTable('identity_users')
+            .set({ status: 'SUSPENDED', status_reason: 'Test' })
+            .where('id', '=', toBin(holder.userId))
+            .execute(),
+        // Drapeau encore posé, détenteur et appareil de nouveau en service (déblocage non consommé).
+        'révocation en attente': (_holder, id) =>
+          db
+            .updateTable('inventory_stock_allocations')
+            .set({ revocation_pending: 1 })
+            .where('id', '=', toBin(id))
+            .execute(),
+      };
+      for (const [cause, apply] of Object.entries(causes)) {
+        const holder = await newHolder();
+        const id = await grantOk(holder, productId, 10);
+        await apply(holder, id);
+        const before = await quota(id);
+        expect(
+          rejectionCode(await pipeline.handle(increase(id, 5, before.version), managerCtx())),
+          cause,
+        ).toBe('ALLOCATION_HOLDER_INVALID');
+        const after = await quota(id);
+        expect(after.version, cause).toBe(before.version);
+        expect(Number(after.quantity_granted), cause).toBe(10);
+        expect(
+          (await entries(id)).map((e) => e.entry_type),
+          cause,
+        ).toEqual(['GRANT']);
+      }
+    });
   });
 
   describe('révocation', () => {

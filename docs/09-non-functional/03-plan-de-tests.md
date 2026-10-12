@@ -36,7 +36,8 @@ Un harnais crée N appareils virtuels (clients de la bibliothèque de synchronis
 - la perte de réponse (la commande est appliquée mais la réponse est perdue, ce qui teste l'idempotence) ;
 - le rejeu d'un lot ;
 - l'inversion d'ordre de lots ;
-- l'avance ou le retard d'horloge ;
+- l'avance ou le retard d'horloge, propre à chaque appareil (`OfflineDevice.setClockOffset`, P5-21 : `device_sent_at` et heures de saisie suivent l'horloge de l'appareil) ;
+- la boucle de reprise d'un vrai appareil (`syncUntilSettled`), la lecture de la file (`outbox`), l'effacement local d'un appareil révoqué qui garde sa file (`wipeLocal`) et le curseur de départ d'un jeu sur la base partagée (`setCursor`) (P5-21) ;
 - la révocation d'appareil ou d'utilisateur pendant une période hors ligne ;
 - la réaffectation de portefeuille ;
 - les changements de prix ;
@@ -82,7 +83,7 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-001 | Vente hors ligne au PDV à 11:47, synchronisée à 14:22 | Vente datée de 11:47 ; stock, caisse, CA et audit corrects ; `captured_offline` vrai ; délai de synchronisation tracé | WF-01, REQ-062, REQ-063 |
 | AT-002 | Même lot de synchronisation envoyé deux fois (réponse perdue) | Une seule vente, un seul encaissement, un seul mouvement | INV-SYN-01, REQ-202 |
 | AT-003 | Vendeur hors ligne qui tente de dépasser son allocation | Blocage sur l'appareil avec message clair | AV-025, REQ-064 |
-| AT-004 | Trois tablettes d'un PDV partagé, hors ligne, avec quotas | Aucun solde négatif ; quotas consommés ; libération en fin de journée | WF-18, INV-STK-10 |
+| AT-004 | Trois tablettes d'un PDV partagé, hors ligne, avec quotas | Aucun solde négatif ; quotas consommés ; libération en fin de journée. Automatisé (P5-21) : `p5-pdv-three-tablets.test.ts` — vecteur de WF-18 (garde de la tablette `decideLocalConsumption`, jeu `allocations` du seul détenteur), synchronisation entrelacée lot par lot (invariants à chaque pas), inverse et concurrente : même état final écrit en clair ; appareil modifié (étape 5), ventes en ligne quotas actifs (étape 6 : au-delà du quota dans la limite du non-alloué, vendeur sans quota, puis hors ligne malgré le blocage : `ALLOCATION_MISSING`, `ALLOCATION_OVERCOMMITTED`), hausse pendant la journée hors ligne (`ALLOCATION_RELEASE_MISMATCH`), réponse perdue ; état local égal au serveur | WF-18, INV-STK-10 |
 | AT-005 | Vente hors ligne à un prix devenu obsolète | Vente acceptée au prix figé ; anomalie `PRICE_MISMATCH` | AV-063, WF-14 |
 | AT-006 | Règle à date d'effet future téléchargée, puis appareil hors ligne à la date d'effet | Nouveau prix appliqué automatiquement | BR-PRX-011, REQ-049 |
 | AT-007 | Changement du prix de 4 500 à 4 800 | La vente antérieure reste à 4 500, avec sa règle et sa version | REQ-050, INV-VEN-05 |
@@ -109,18 +110,18 @@ Chaque test d'acceptation est rattaché aux exigences dans la matrice de traçab
 | AT-028 | Collecte : 1 850 = 25 + 15 + 1 690 + 120 | Seuls 1 690 et 120 entrent en stock ; déséquilibre refusé | REQ-031, INV-OEU-01 |
 | AT-029 | Incubation de 600 œufs | Bilan juste ; taux d'éclosion 83 % | WF-12, REQ-033 |
 | AT-030 | Même référence mobile money saisie deux fois | Second encaissement `SUSPECT_DUPLICATE`, sans effet de trésorerie | INV-FIN-03 |
-| AT-031 | Clôture de caisse avec un écart de −500, puis vente tardive | Écart validé ; réévaluation de la session | WF-15, SM-CASH-SESSION |
+| AT-031 | Clôture de caisse avec un écart de −500, puis vente tardive | Écart validé ; réévaluation de la session (vente hors ligne d'un second vendeur, datée dans la fenêtre : ajustement du delta à demande propre, session validée figée, INV-FIN-11 ; sous-totaux par vendeur) — automatisé en P5-14 (`sales-cash-session.test.ts`) | WF-15, SM-CASH-SESSION |
 | AT-032 | Créance échue | Alerte `OVERDUE_RECEIVABLE` ; règlement affecté aux plus anciennes | BR-FIN-004, BR-FIN-007 |
 | AT-033 | Commercial A qui tente de lire un client de B ; magasinier sur un écran de stock | 404 ; valeurs masquées pour le magasinier | REQ-073, RC-05 |
 | AT-034 | Utilisateur désactivé avec des commandes hors ligne avant et après la désactivation | Avant : appliquées ; après : quarantaine | BR-ADM-002 |
-| AT-035 | Appareil déclaré perdu | Quarantaine des commandes postérieures ; effacement local sauf outbox | SM-DEVICE, INV-ADM-03 |
-| AT-036 | Horloge d'appareil décalée de 2 h | `clock_suspect` ; alerte ; `occurred_at` non corrigé | ADR-016, REQ-063 |
+| AT-035 | Appareil déclaré perdu | Quarantaine des commandes postérieures ; effacement local sauf outbox. Croisé avec le PDV (P5-21) : `p5-pdv-lost-device.test.ts` — quota en révocation par le vrai consommateur, faits antérieurs appliqués, postérieurs (ventes, libération) en quarantaine sans effet et rejouables, pull encore servi à l'appareil perdu (défaut actuel, figé : AV-213 ; l'effacement local n'est simulé que par le harnais et reste à coder dans la PWA), révocation par le magasinier, écart de caisse égal aux espèces en quarantaine (AV-212 à AV-214) | SM-DEVICE, INV-ADM-03 |
+| AT-036 | Horloge d'appareil décalée de 2 h | `clock_suspect` ; alerte ; `occurred_at` non corrigé. Croisé avec le PDV (P5-21) : `p5-pdv-clock-skew.test.ts` — tablettes à ±2 h, écart mesuré et drapeau, date future jugée après correction de l'écart, caisse, quota, jour métier et garde jugés sur la date de la tablette, fraîcheur en heure serveur ; l'alerte relève de P9 (AV-216) | ADR-016, REQ-063 |
 | AT-037 | 7 jours hors ligne puis reconnexion | Lecture seule à J7 ; envoi complet ; rejets expliqués | WF-16, AV-009 |
 | AT-038 | « Combien de poulets réellement disponibles à Douala ? » | Somme correcte (zone et sous-zones, réservations déduites) | REQ-084, stratégie stock §4 |
 | AT-039 | « Combien vendu cette semaine, par quel commercial, à quels clients ? » | Tableau de bord = explorateur = documents | REQ-084, BR-ANA-009 |
 | AT-040 | « Combien réellement encaissé ? » | Encaissé distinct du CA ; créances cohérentes | REQ-084, REQ-051 |
 | AT-041 | « Quelles pertes ? Combien a coûté cette production ? » | Pertes par produit, lot et motif ; coût du lot | REQ-084, REQ-053 |
-| AT-042 | « Quelle quantité envoyée à ce PDV ? » | Envoyé, reçu, vendu, perdu, restant, encaissé | REQ-024, BR-DIS-010 |
+| AT-042 | « Quelle quantité envoyée à ce PDV ? » | Envoyé, reçu, vendu, perdu, restant, encaissé. Automatisé (P5-20) : `p5-distribution-metrics.test.ts` (« AT-042 ») — `GET /analytics/dashboards/distribution` rend les mêmes valeurs que les fonctions des modules sur la période et jour par jour, identité de rapprochement vraie chaque jour ; masquage par droit ; refus (403, 404 audité, réponse vide) ; périmètre d'une zone et de ses sous-zones ; paramètres de période | REQ-024, BR-DIS-010 |
 | AT-043 | « Pourquoi manque-t-il 5 unités ? » | Remontée du registre jusqu'aux documents, auteurs et appareils | REQ-083, REQ-084 |
 | AT-044 | Lead Kommo qualifié → client → vente | Compte GIC créé et lié ; CA cumulé dans Kommo ; écho ignoré | WF-17, REQ-071 |
 | AT-045 | Enquête d'audit sur une vente annulée | Qui, quand (réel et serveur), appareil, hors ligne, validateur, avant et après ; chaîne vérifiée | REQ-065, INV-AUD-01 |

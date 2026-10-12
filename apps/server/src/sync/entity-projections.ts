@@ -326,6 +326,37 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
+  // P5-18 — configuration du PDV (jeu `org`, clé = le site) : au site du PDV seulement (ligne `SITE`),
+  // jamais par une autre portée (repli `GLOBAL` compris). Mode de garde et appareil désigné tels que
+  // l'emplacement de vente les porte (source unique, ADR-033 §2) ; un changement d'appareil désigné
+  // arrive par cette mise à jour (AV-195).
+  POINT_OF_SALE: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId !== entityId) return undefined;
+    const row = await executor
+      .selectFrom('organization_points_of_sale')
+      .select([
+        'site_id',
+        'sales_location_id',
+        'replenishment_source_location_id',
+        'custody_mode',
+        'designated_device_id',
+        'opening_hours',
+        'version',
+      ])
+      .where('site_id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      site_id: fromBin(row.site_id),
+      sales_location_id: fromBin(row.sales_location_id),
+      replenishment_source_location_id: fromBinOrNull(row.replenishment_source_location_id),
+      custody_mode: row.custody_mode,
+      designated_device_id: fromBinOrNull(row.designated_device_id),
+      opening_hours: row.opening_hours,
+      version: row.version,
+    };
+  },
+
   TEAM: async (executor, entityId) => {
     const row = await executor
       .selectFrom('organization_teams')
@@ -493,13 +524,38 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       superseded_by_id: fromBinOrNull(row.superseded_by_id),
     };
   },
-  // P1-06 : `catalog.unit.create` et `catalog.sales_channel.create` n'ont **pas** de
-  // projection ici — leur clé primaire réelle est `code` (dictionnaire), alors que
-  // `sync_change_feed.entity_id` ne peut porter qu'un UUID (`aggregate_id`, sans rapport
-  // avec `code`). Aucune valeur de repli ne serait correcte : signalé, pas comblé en
-  // silence (CLAUDE.md règle #2) — ces deux référentiels restent accessibles hors ligne
-  // uniquement via `GET /units` et `GET /sales-channels` en ligne jusqu'à ce qu'une vraie
-  // solution existe (clé de projection alternative, ou `id` UUID au lieu de `code`).
+  // P5-18 — unités et canaux de vente (jeu `catalog`, ligne `GLOBAL`) : leur clé primaire est leur
+  // `code` ; la ligne du flux porte la clé dérivée de ce code (ADR-031), retrouvée en recalculant
+  // celle de chaque ligne (tables courtes). La ligne du repli générique (jeux `unit`,
+  // `sales_channel`, `aggregate_id` sans rapport avec le code) ne correspond à aucune ligne.
+  UNIT: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const units = await executor
+      .selectFrom('catalog_units')
+      .select(['code', 'name', 'is_count', 'is_active'])
+      .execute();
+    const row = units.find((unit) => codeEntityId('UNIT', unit.code) === entityId);
+    if (!row) return undefined;
+    return {
+      id: entityId,
+      code: row.code,
+      name: row.name,
+      is_count: Boolean(row.is_count),
+      is_active: Boolean(row.is_active),
+    };
+  },
+  SALES_CHANNEL: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const channels = await executor
+      .selectFrom('catalog_sales_channels')
+      .select(['code', 'name', 'is_active'])
+      .execute();
+    const row = channels.find(
+      (channel) => codeEntityId('SALES_CHANNEL', channel.code) === entityId,
+    );
+    if (!row) return undefined;
+    return { id: entityId, code: row.code, name: row.name, is_active: Boolean(row.is_active) };
+  },
 
   PRODUCT_CATEGORY: async (executor, entityId) => {
     const row = await executor
@@ -621,6 +677,44 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
+  // P5-18 — étapes du pipeline et sources de prospects (jeu `catalog`, ligne `GLOBAL`, AV-196) :
+  // référentiels de vente, actifs ou non (l'appareil affiche l'étape d'un prospect existant).
+  PIPELINE_STEP: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const row = await executor
+      .selectFrom('crm_pipeline_steps')
+      .select(['id', 'code', 'label', 'sort_order', 'is_active', 'is_system', 'version'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      label: row.label,
+      sort_order: row.sort_order,
+      is_active: Boolean(row.is_active),
+      is_system: Boolean(row.is_system),
+      version: row.version,
+    };
+  },
+  LEAD_SOURCE: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const row = await executor
+      .selectFrom('crm_lead_sources')
+      .select(['id', 'code', 'label', 'sort_order', 'is_active', 'is_system', 'version'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      label: row.label,
+      sort_order: row.sort_order,
+      is_active: Boolean(row.is_active),
+      is_system: Boolean(row.is_system),
+      version: row.version,
+    };
+  },
   CUSTOMER_CATEGORY: async (executor, entityId) => {
     const row = await executor
       .selectFrom('catalog_customer_categories')
@@ -2099,7 +2193,8 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
   },
 
   // Compte de trésorerie actif, pour son détenteur (à défaut son responsable) et son site, avec son
-  // solde projeté ; la session de caisse ouverte viendra avec les sessions (P5).
+  // solde projeté ; la session de caisse du PDV et les remises en cours sont des entités du même jeu
+  // (`CASH_SESSION`, `CASH_TRANSFER`, P5-18).
   CASH_ACCOUNT: async (executor, entityId, context) => {
     const scope = recentScopeOf(context);
     if (scope === undefined) return undefined;
@@ -2135,6 +2230,194 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       responsible_user_id: fromBin(row.responsible_user_id),
       balance_xaf: Number(row.balance_xaf),
       status: row.status,
+      version: row.version,
+    };
+  },
+
+  // P5-18 — quota d'appareil (jeu `allocations`, ADR-033) : servi au seul appareil détenteur (ligne
+  // `DEVICE`), jamais par une autre portée (repli `GLOBAL` du pipeline compris). Un quota terminé sort
+  // du jeu (`SCOPE_EXIT`, AV-193) ; le lecteur ne sert donc que les quotas actifs. Le détenteur est
+  // projeté : sur une tablette partagée, l'appareil n'applique que les quotas de l'utilisateur connecté
+  // (AV-194). Aucun motif de révocation ni registre (`entries`) : lecture de gestion, en ligne.
+  STOCK_ALLOCATION: async (executor, entityId, context) => {
+    if (context.scopeType !== 'DEVICE' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('inventory_stock_allocations')
+      .select([
+        'id',
+        'location_id',
+        'product_id',
+        'lot_id',
+        'holder_user_id',
+        'holder_device_id',
+        'quantity_granted',
+        'quantity_remaining',
+        'valid_until',
+        'status',
+        'revocation_pending',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE') return undefined;
+    if (fromBinOrNull(row.holder_device_id) !== context.scopeId) return undefined;
+    return {
+      id: fromBin(row.id),
+      location_id: fromBin(row.location_id),
+      product_id: fromBin(row.product_id),
+      lot_id: fromBinOrNull(row.lot_id),
+      holder_user_id: fromBinOrNull(row.holder_user_id),
+      holder_device_id: fromBinOrNull(row.holder_device_id),
+      quantity_granted: row.quantity_granted,
+      quantity_remaining: row.quantity_remaining,
+      valid_until: row.valid_until === null ? null : row.valid_until.toISOString(),
+      status: row.status,
+      revocation_pending: Boolean(row.revocation_pending),
+      version: row.version,
+    };
+  },
+
+  // P5-18 — destination de remise (jeu `cash`, ligne `GLOBAL`, AV-197) : compte actif sans détenteur
+  // personnel, **sans solde, responsable ni version** (la version avance à chaque mouvement) ; jamais
+  // par une autre portée.
+  CASH_TRANSFER_TARGET: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const row = await executor
+      .selectFrom('finance_cash_accounts')
+      .select(['id', 'code', 'name', 'account_type', 'site_id', 'holder_user_id', 'status'])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || row.status !== 'ACTIVE' || row.holder_user_id !== null) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      name: row.name,
+      account_type: row.account_type,
+      site_id: fromBinOrNull(row.site_id),
+    };
+  },
+
+  // P5-18 — session de caisse du PDV (jeu `cash`) : au site de la session seulement (ligne `SITE`),
+  // ouverte ou à valider (une session validée sort du jeu, AV-193). Montants entiers en XAF, aucun motif.
+  CASH_SESSION: async (executor, entityId, context) => {
+    if (context.scopeType !== 'SITE' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('finance_cash_sessions')
+      .select([
+        'id',
+        'cash_account_id',
+        'site_id',
+        'status',
+        'opened_by',
+        'opened_at',
+        'opening_counted_xaf',
+        'opening_expected_xaf',
+        'opening_variance_xaf',
+        'closed_by',
+        'closed_at',
+        'closing_counted_xaf',
+        'closing_expected_xaf',
+        'variance_xaf',
+        'force_closed',
+        'version',
+      ])
+      .select(sql<string | null>`DATE_FORMAT(business_date, '%Y-%m-%d')`.as('business_day'))
+      // Σ des deltas des ajustements de réévaluation (P5-13) : l'écart courant d'une session à valider.
+      .select(
+        sql<string | null>`(SELECT SUM(a.delta_xaf) FROM finance_cash_session_adjustments a
+          WHERE a.session_id = finance_cash_sessions.id)`.as('adjustments_xaf'),
+      )
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || (row.status !== 'OPEN' && row.status !== 'PENDING_VALIDATION')) return undefined;
+    if (fromBin(row.site_id) !== context.scopeId) return undefined;
+    const xafOrNull = (value: number | null) => (value === null ? null : Number(value));
+    // Valeurs de clôture jamais réécrites (dictionnaire) ; l'écart et l'attendu **courants** ajoutent
+    // les réévaluations par le delta d'une opération tardive (AV-193).
+    const currentVariance =
+      row.variance_xaf === null
+        ? null
+        : Number(row.variance_xaf) + Number(row.adjustments_xaf ?? 0);
+    const currentExpected =
+      currentVariance === null || row.closing_counted_xaf === null
+        ? null
+        : Number(row.closing_counted_xaf) - currentVariance;
+    return {
+      id: fromBin(row.id),
+      cash_account_id: fromBin(row.cash_account_id),
+      site_id: fromBin(row.site_id),
+      business_date: row.business_day,
+      status: row.status,
+      opened_by: fromBin(row.opened_by),
+      opened_at: row.opened_at.toISOString(),
+      opening_counted_xaf: Number(row.opening_counted_xaf),
+      opening_expected_xaf: Number(row.opening_expected_xaf),
+      opening_variance_xaf: Number(row.opening_variance_xaf),
+      closed_by: fromBinOrNull(row.closed_by),
+      closed_at: row.closed_at === null ? null : row.closed_at.toISOString(),
+      closing_counted_xaf: xafOrNull(row.closing_counted_xaf),
+      closing_expected_xaf: xafOrNull(row.closing_expected_xaf),
+      variance_xaf: xafOrNull(row.variance_xaf),
+      current_expected_xaf: currentExpected,
+      current_variance_xaf: currentVariance,
+      force_closed: Boolean(row.force_closed),
+      version: row.version,
+    };
+  },
+
+  // P5-18 — remise de fonds en cours (jeu `cash`) : au détenteur, à défaut au responsable, ou au site
+  // de l'un de ses deux comptes ; envoyée ou en écart seulement (sortie du jeu sinon, AV-193). Ni
+  // imputation ni demande de validation (gestion de la Finance, en ligne).
+  CASH_TRANSFER: async (executor, entityId, context) => {
+    const scope = recentScopeOf(context);
+    if (scope === undefined) return undefined;
+    const row = await executor
+      .selectFrom('finance_cash_transfers')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'from_account_id',
+        'to_account_id',
+        'amount_sent_xaf',
+        'amount_received_xaf',
+        'status',
+        'sent_by',
+        'sent_at',
+        'carrier_user_id',
+        'carrier_name',
+        'received_at',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row || (row.status !== 'SENT' && row.status !== 'DISCREPANCY_PENDING')) return undefined;
+    const accounts = await executor
+      .selectFrom('finance_cash_accounts')
+      .select(['holder_user_id', 'responsible_user_id', 'site_id'])
+      .where('id', 'in', [row.from_account_id, row.to_account_id])
+      .execute();
+    const inScope = accounts.some((account) =>
+      scope.type === 'USER'
+        ? fromBin(account.holder_user_id ?? account.responsible_user_id) === scope.id
+        : fromBinOrNull(account.site_id) === scope.id,
+    );
+    if (!inScope) return undefined;
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      from_account_id: fromBin(row.from_account_id),
+      to_account_id: fromBin(row.to_account_id),
+      amount_sent_xaf: Number(row.amount_sent_xaf),
+      amount_received_xaf:
+        row.amount_received_xaf === null ? null : Number(row.amount_received_xaf),
+      status: row.status,
+      sent_by: fromBin(row.sent_by),
+      sent_at: row.sent_at.toISOString(),
+      carrier_user_id: fromBinOrNull(row.carrier_user_id),
+      carrier_name: row.carrier_name,
+      received_at: row.received_at === null ? null : row.received_at.toISOString(),
       version: row.version,
     };
   },

@@ -8,6 +8,18 @@ import type { DB } from '../../../../platform/kysely/database.js';
 import type { CatalogProducts } from '../../../../platform/kysely/schema.generated.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
+/**
+ * Canaux de vente que le serveur déduit lui-même (AV-018 ; ventes et commandes) : non désactivables
+ * (dictionnaire `04-crm-fieldwork.md`, `is_system` — colonne absente de `catalog.sales_channels`, liste
+ * tenue ici ; P5-18, AV-196).
+ */
+export const SYSTEM_SALES_CHANNEL_CODES: readonly string[] = [
+  'POINT_DE_VENTE',
+  'TERRAIN',
+  'SEDENTAIRE',
+  'DIRECT',
+];
+
 export interface ProductSummary {
   readonly id: string;
   readonly code: string;

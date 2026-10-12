@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 async function insertAdmin(conn: PoolConnection): Promise<Buffer> {
   const id = randomId();
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Admin', ?, 'x', 'ACTIVE', ?)`,
-    [id, `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`, id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }

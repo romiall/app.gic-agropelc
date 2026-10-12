@@ -26,7 +26,7 @@
 | `is_count` | boolean | Non | — | Unité comptée (quantités entières, BR-CAT-003) |
 | `is_active` | boolean | Non | true | |
 
-- **PK** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL.
+- **PK** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL — jeu `catalog` (P5-18, AV-196) : `UNIT`, ligne `GLOBAL`, sous la clé dérivée du code (ADR-031), à la création, à la désactivation et à la réactivation (code dans la charge utile).
 
 ## catalog.products
 
@@ -88,7 +88,7 @@
 | `is_active` | boolean | Non | true | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `(category, code)`. **Suppr.** `DESACTIVATION` (BR-CAT-010). **Offline** DL.
+- **PK** `id`. **UQ** `(category, code)`. **Suppr.** `DESACTIVATION` (BR-CAT-010). **Offline** DL — jeu `catalog` (P5-18, AV-196) : `REASON_CODE`, ligne `GLOBAL` ; motifs semés publiés par le seed.
 
 ## catalog.product_standard_costs
 

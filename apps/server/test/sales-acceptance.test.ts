@@ -62,6 +62,8 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  openTestCashSession,
+  freshPhone,
 } from './helpers.js';
 
 const DAY = '2026-10-20';
@@ -230,7 +232,7 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
           stage: 'PROSPECT',
           pipeline_step_id: toBin(stepId),
           display_name: 'Restaurant du port',
-          phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+          phone_primary: await freshPhone(),
           zone_id: toBin(zoneId),
           source_code: sourceCode,
           acquired_by_user_id: toBin(owner.userId),
@@ -461,6 +463,13 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
       sedCash = await account({ type: 'CAISSE_UTILISATEUR', holder: sed });
       terrainCash = await account({ type: 'CAISSE_UTILISATEUR', holder: terrain });
       posCash = await account({ type: 'CAISSE_PDV', site: siteId });
+      // P5-14 (BR-DIS-005) : un encaissement en espèces au PDV exige une session de caisse ouverte.
+      await openTestCashSession(trx, {
+        cashAccountId: posCash,
+        siteId,
+        openedBy: rootId,
+        openedAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
       momoAccount = await account({ type: 'MOBILE_MONEY' });
     });
     // Politiques du test (la plus récente l'emporte) : annulation de vente et doublon d'encaissement.

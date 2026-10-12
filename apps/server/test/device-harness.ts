@@ -18,6 +18,12 @@
  * `RETRY_LATER` ; la révocation de l'appareil en cours de journée se pilote côté test, avec la
  * commande d'administration voulue sur le même pipeline (c'est le serveur qui décide, selon
  * l'`occurred_at` de chaque commande, RC-02).
+ *
+ * Ajouts de P5-21 (E2E du PDV) : horloge propre à l'appareil (`setClockOffset`, `deviceNow` : AT-036,
+ * `device_sent_at` et les dates de saisie suivent l'horloge de l'appareil), envoi jusqu'au règlement
+ * (`syncUntilSettled`), lecture de la file (`outbox`), effacement local d'un appareil révoqué qui garde
+ * sa file (`wipeLocal`, 01-architecture-offline.md : « effacement local sauf outbox ») et curseur de
+ * départ d'un jeu (`setCursor` : jeux `GLOBAL` de la base partagée).
  */
 import type { Clock } from '@gic/domain';
 import type { CommandResult, PushRequest, RawCommandEnvelope } from '@gic/contracts';
@@ -64,6 +70,8 @@ export class OfflineDevice {
   private networkUp = true;
   private readonly queue: QueuedCommand[] = [];
   private readonly cursors = new Map<string, number>();
+  /** Écart de l'horloge de l'appareil sur l'horloge fournie, en millisecondes (positif : en avance). */
+  private clockOffsetMs = 0;
   readonly localProjection = new Map<string, Record<string, unknown>>();
 
   constructor(
@@ -71,6 +79,18 @@ export class OfflineDevice {
     readonly deviceId: string,
     private readonly clock: Clock,
   ) {}
+
+  // --- Horloge de l'appareil ----------------------------------------------------------------------
+
+  /** Décale l'horloge de l'appareil (AT-036) : `+7_200_000` = en avance de deux heures. */
+  setClockOffset(ms: number): void {
+    this.clockOffsetMs = ms;
+  }
+
+  /** Heure lue par l'appareil : horloge fournie plus son écart. */
+  deviceNow(): Date {
+    return new Date(this.clock.now().getTime() + this.clockOffsetMs);
+  }
 
   // --- File d'attente ---------------------------------------------------------------------------
 
@@ -121,6 +141,11 @@ export class OfflineDevice {
   /** Dernière réponse reçue pour une commande, `undefined` tant qu'elle n'en a pas eu. */
   resultOf(commandId: string): CommandResult | undefined {
     return this.queue.find((q) => q.envelope.command_id === commandId)?.result;
+  }
+
+  /** La file telle que l'appareil la garde (commandes réglées comprises), en ordre de `device_seq`. */
+  outbox(): readonly Readonly<QueuedCommand>[] {
+    return [...this.queue].sort((a, b) => a.envelope.device_seq - b.envelope.device_seq);
   }
 
   // --- Réseau -----------------------------------------------------------------------------------
@@ -183,6 +208,32 @@ export class OfflineDevice {
     return received;
   }
 
+  /**
+   * Envoie la part de `author` jusqu'à ce qu'il ne reste rien (un `RETRY_LATER` est renvoyé au cycle
+   * suivant), au plus `maxCycles` cycles : la boucle de reprise d'un vrai appareil.
+   */
+  async syncUntilSettled(
+    author: string,
+    options: { readonly batchSize?: number; readonly maxCycles?: number } = {},
+  ): Promise<CommandResult[]> {
+    const received: CommandResult[] = [];
+    const maxCycles = options.maxCycles ?? 20;
+    for (let cycle = 0; cycle < maxCycles && this.pending(author) > 0; cycle++) {
+      received.push(
+        ...(await this.sync(
+          author,
+          options.batchSize !== undefined ? { batchSize: options.batchSize } : {},
+        )),
+      );
+    }
+    if (this.pending(author) > 0) {
+      throw new Error(
+        `File non réglée après ${maxCycles} cycles (${this.pending(author)} en attente).`,
+      );
+    }
+    return received;
+  }
+
   /** Chaque auteur ayant quelque chose à envoyer pousse sa part, dans l'ordre de sa première commande. */
   async syncAll(options: { readonly batchSize?: number } = {}): Promise<CommandResult[]> {
     const authors = [
@@ -213,13 +264,27 @@ export class OfflineDevice {
     return {
       device_id: this.deviceId,
       batch_id: freshUuid(),
-      device_sent_at: this.clock.now().toISOString(),
+      device_sent_at: this.deviceNow().toISOString(),
       commands: batch.map((q) => q.envelope),
       pending_by_author: remaining,
     };
   }
 
   // --- Téléchargement ---------------------------------------------------------------------------
+
+  /** Curseur de départ d'un jeu : sur la base partagée, ne relire que les lignes du scénario. */
+  setCursor(dataset: string, cursor: number): void {
+    this.cursors.set(dataset, cursor);
+  }
+
+  /**
+   * Appareil révoqué (AT-035) : les données téléchargées et les curseurs sont effacés, la file est
+   * gardée pour être envoyée (et mise en quarantaine par le serveur).
+   */
+  wipeLocal(): void {
+    this.localProjection.clear();
+    this.cursors.clear();
+  }
 
   /** Vide un jeu de données jusqu'à `has_more = false` pour `author`, met à jour la projection locale. */
   async pullAll(dataset: string, author: string, now: Date): Promise<void> {

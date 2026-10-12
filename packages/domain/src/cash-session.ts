@@ -171,6 +171,45 @@ export function isAllowedCashValidator(
   );
 }
 
+/** Sous-total des encaissements en espèces d'une session reçus par un vendeur (AV-155, AV-187). */
+export interface SellerCashSubtotal {
+  readonly userId: string;
+  /** Σ signée des encaissements reçus, nette de leurs inverses (annulations d'encaissement). */
+  readonly receivedXaf: number;
+  readonly paymentsCount: number;
+}
+
+/**
+ * P5-14 (AV-155, AV-187) : sous-totaux par vendeur des encaissements en espèces de la fenêtre d'une
+ * session, pour l'enquête sur un écart. Chaque encaissement (montant signé, net de son inverse) est
+ * rapporté à celui qui l'a reçu ; un encaissement dont le vendeur est inconnu reste « non attribué ».
+ * Les remboursements, remises et dépenses ne sont pas attribués (listés à part par l'appelant) : ces
+ * sous-totaux ne se somment donc pas à l'attendu. Tri : montant décroissant, puis identifiant.
+ */
+export function sellerCashSubtotals(
+  payments: readonly { readonly paymentId: string; readonly signedXaf: number }[],
+  receiverOf: (paymentId: string) => string | null,
+): { readonly sellers: readonly SellerCashSubtotal[]; readonly unattributedReceivedXaf: number } {
+  const bySeller = new Map<string, { receivedXaf: number; paymentsCount: number }>();
+  let unattributedReceivedXaf = 0;
+  for (const payment of payments) {
+    const amount = int(payment.signedXaf, 'signedXaf');
+    const seller = receiverOf(payment.paymentId);
+    if (seller === null) {
+      unattributedReceivedXaf = int(unattributedReceivedXaf + amount, 'unattributedReceivedXaf');
+      continue;
+    }
+    const current = bySeller.get(seller) ?? { receivedXaf: 0, paymentsCount: 0 };
+    current.receivedXaf = int(current.receivedXaf + amount, 'receivedXaf');
+    current.paymentsCount += 1;
+    bySeller.set(seller, current);
+  }
+  const sellers = [...bySeller.entries()]
+    .map(([userId, totals]) => ({ userId, ...totals }))
+    .sort((a, b) => b.receivedXaf - a.receivedXaf || a.userId.localeCompare(b.userId));
+  return { sellers, unattributedReceivedXaf };
+}
+
 // --- Remises de fonds ---------------------------------------------------------------------------------------
 
 export const CASH_TRANSFER_IMPUTATIONS = ['SENDER', 'CARRIER', 'RECEIVER', 'COMPANY'] as const;

@@ -62,7 +62,16 @@ export class SyncPushService {
 
     const results: CommandResult[] = [];
     let highestDeviceSeq: number | null = null;
+    // INV-SYN-04 (P5-21, AV-210) : le lot n'a qu'un auteur ; dès qu'une commande doit être renvoyée
+    // (`RETRY_LATER` : dépendance pas encore reçue, erreur transitoire), les suivantes ne sont pas
+    // traitées — sinon une libération de quota ou une clôture passerait avant la vente qu'elle suit.
+    // Elles ne sont pas enregistrées (rien n'est « reçu ») et l'appareil les renvoie dans l'ordre.
+    let held = false;
     for (const raw of ordered) {
+      if (held) {
+        results.push(heldResult(raw));
+        continue;
+      }
       const result = await this.pipeline.handle(raw, {
         authenticatedUserId: ctx.authenticatedUserId,
         authenticatedDeviceId: ctx.authenticatedDeviceId,
@@ -74,6 +83,7 @@ export class SyncPushService {
       });
       results.push(clockSuspect ? withClockSuspectWarning(result) : result);
       highestDeviceSeq = Math.max(highestDeviceSeq ?? raw.device_seq, raw.device_seq);
+      if (result.status === 'RETRY_LATER') held = true;
     }
 
     await this.recordDeviceSyncState(ctx, {
@@ -184,6 +194,18 @@ const AUTHOR_DATASET_LIKE = String.raw`\_a:%`;
 
 export function authorDataset(userId: string): string {
   return `${AUTHOR_DATASET_PREFIX}${userId.replace(/-/g, '')}`;
+}
+
+/** Commande d'un lot suspendu derrière une commande à renvoyer : ni traitée, ni enregistrée. */
+function heldResult(raw: PushRequest['commands'][number]): CommandResult {
+  return {
+    command_id: raw.command_id,
+    status: 'RETRY_LATER',
+    error: {
+      code: 'PRECEDING_COMMAND_PENDING',
+      message_fr: 'Une commande précédente de la file doit d’abord être renvoyée.',
+    },
+  };
 }
 
 function withClockSuspectWarning(result: CommandResult): CommandResult {

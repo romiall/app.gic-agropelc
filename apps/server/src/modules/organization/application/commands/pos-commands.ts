@@ -25,6 +25,7 @@ import type {
 import { sql } from 'kysely';
 import { fromBinOrNull, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
+import { emitPointOfSaleChange } from '../sync-changes.js';
 
 const custodyModeSchema = z.enum(['EXCLUSIVE_DEVICE', 'SHARED']);
 
@@ -243,6 +244,8 @@ const configure: CommandHandler<ConfigurePayload> = async (uow, envelope) => {
     })
     .where('id', '=', toBin(salesLocationId))
     .execute();
+  // P5-18 : la configuration et l'emplacement de vente atteignent les appareils (jeu `org`, AV-195).
+  await emitPointOfSaleChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

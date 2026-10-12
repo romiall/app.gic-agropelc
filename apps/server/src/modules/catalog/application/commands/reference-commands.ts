@@ -4,6 +4,10 @@
  * même cycle : créé, puis désactivé/réactivé (`DESACTIVATION`, jamais de suppression
  * physique, INV-GLO-03) — sauf `reason_code`, dont le dictionnaire ne prévoit qu'un `set`
  * (création ; la désactivation n'est pas un cas d'usage séparé documenté, BR-CAT-010).
+ *
+ * P5-18 (AV-196) : unités, canaux et motifs sont publiés dans le jeu `catalog` (`sync-changes.ts`) ;
+ * la désactivation et la réactivation d'une unité ou d'un canal lisent le code dans la charge utile
+ * (`code`) — l'`aggregate_id` est un UUIDv7 imposé par le contrat et ne vaut jamais un code.
  */
 import { z } from 'zod';
 import type {
@@ -13,6 +17,13 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
+import { recordChanges } from '../../../../platform/sync/change-feed.js';
+import { SYSTEM_SALES_CHANNEL_CODES } from '../public/catalog-query.js';
+import {
+  codeKeyedReferenceChange,
+  reasonCodeChange,
+  type CodeKeyedReference,
+} from '../sync-changes.js';
 
 function notFound(messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr };
@@ -177,59 +188,59 @@ const unitCreate: CommandHandler<UnitCreatePayload> = async (uow, envelope) => {
     .insertInto('catalog_units')
     .values({ code, name, is_count: toDbBool(isCount) })
     .execute();
+  await recordChanges(uow, [codeKeyedReferenceChange('UNIT', code)]);
   return { status: 'APPLIED' };
 };
 
 function registerCodeKeyedSetActive(
   registry: CommandHandlerRegistry,
   table: 'catalog_units' | 'catalog_sales_channels',
+  entityType: CodeKeyedReference,
   commandPrefix: string,
   notFoundMessageFr: string,
+  systemCodes: readonly string[] = [],
 ): void {
-  const emptySchema = z.object({});
-  const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) => {
-    const code = envelope.aggregate_id;
-    const row = await uow
-      .selectFrom(table)
-      .select('code')
-      .where('code', '=', code)
-      .executeTakeFirst();
-    if (!row) return notFound(notFoundMessageFr);
-    await uow
-      .updateTable(table)
-      .set({ is_active: toDbBool(false) })
-      .where('code', '=', code)
-      .execute();
-    return { status: 'APPLIED' };
-  };
-  const reactivate: CommandHandler<Record<string, never>> = async (uow, envelope) => {
-    const code = envelope.aggregate_id;
-    const row = await uow
-      .selectFrom(table)
-      .select('code')
-      .where('code', '=', code)
-      .executeTakeFirst();
-    if (!row) return notFound(notFoundMessageFr);
-    await uow
-      .updateTable(table)
-      .set({ is_active: toDbBool(true) })
-      .where('code', '=', code)
-      .execute();
-    return { status: 'APPLIED' };
-  };
+  // Le code est dans la charge utile (P5-18) : l'agrégat est un UUIDv7 du contrat, jamais un code.
+  const codeSchema = z.object({ code: z.string().min(1).max(20) });
+  const setActive =
+    (active: boolean): CommandHandler<{ code: string }> =>
+    async (uow, envelope) => {
+      const { code } = envelope.payload;
+      // Valeur utilisée par les règles du serveur : jamais désactivée (dictionnaire, `is_system`).
+      if (!active && systemCodes.includes(code)) {
+        return {
+          status: 'REJECTED',
+          errorCode: 'SYSTEM_REFERENCE',
+          messageFr: 'Valeur système : elle ne peut pas être désactivée.',
+        };
+      }
+      const row = await uow
+        .selectFrom(table)
+        .select('code')
+        .where('code', '=', code)
+        .executeTakeFirst();
+      if (!row) return notFound(notFoundMessageFr);
+      await uow
+        .updateTable(table)
+        .set({ is_active: toDbBool(active) })
+        .where('code', '=', code)
+        .execute();
+      await recordChanges(uow, [codeKeyedReferenceChange(entityType, code)]);
+      return { status: 'APPLIED' };
+    };
   registry.register({
     commandType: `${commandPrefix}.deactivate`,
     version: 1,
-    payloadSchema: emptySchema,
+    payloadSchema: codeSchema,
     permissionCode: 'catalog.reference.manage',
-    handler: deactivate,
+    handler: setActive(false),
   });
   registry.register({
     commandType: `${commandPrefix}.reactivate`,
     version: 1,
-    payloadSchema: emptySchema,
+    payloadSchema: codeSchema,
     permissionCode: 'catalog.reference.manage',
-    handler: reactivate,
+    handler: setActive(true),
   });
 }
 
@@ -284,6 +295,7 @@ const reasonCodeSet: CommandHandler<ReasonCodeSetPayload> = async (uow, envelope
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+  await recordChanges(uow, [reasonCodeChange(envelope.aggregate_id, 1)]);
   return { status: 'APPLIED' };
 };
 
@@ -333,6 +345,7 @@ const salesChannelCreate: CommandHandler<SalesChannelCreatePayload> = async (uow
     .executeTakeFirst();
   if (already) return { status: 'APPLIED' };
   await uow.insertInto('catalog_sales_channels').values({ code, name }).execute();
+  await recordChanges(uow, [codeKeyedReferenceChange('SALES_CHANNEL', code)]);
   return { status: 'APPLIED' };
 };
 
@@ -353,7 +366,13 @@ export function registerReferenceCommands(registry: CommandHandlerRegistry): voi
     permissionCode: 'catalog.reference.manage',
     handler: unitCreate,
   });
-  registerCodeKeyedSetActive(registry, 'catalog_units', 'catalog.unit', 'Unité introuvable.');
+  registerCodeKeyedSetActive(
+    registry,
+    'catalog_units',
+    'UNIT',
+    'catalog.unit',
+    'Unité introuvable.',
+  );
 
   registry.register({
     commandType: 'catalog.reason_code.set',
@@ -382,7 +401,9 @@ export function registerReferenceCommands(registry: CommandHandlerRegistry): voi
   registerCodeKeyedSetActive(
     registry,
     'catalog_sales_channels',
+    'SALES_CHANNEL',
     'catalog.sales_channel',
     'Canal de vente introuvable.',
+    SYSTEM_SALES_CHANNEL_CODES,
   );
 }

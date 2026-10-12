@@ -34,6 +34,7 @@ La forme vient du porteur. Le reste applique les règles du dépôt : calcul à 
 - Quand `analytics` existera (P9), l'accueil continue d'appeler les fonctions des modules, ou celles d'`analytics` si elles les enveloppent, **sans changer `HomeResponse`** : la PWA n'est pas touchée.
 - La lecture est en ligne. Hors ligne, la PWA affichera sa dernière réponse avec sa fraîcheur (`generatedAt`) ; le comportement exact se précise avec les écrans (aucun écran métier n'existe encore).
 - Le contenu de chaque rôle (quels indicateurs, quelles actions, dans quel ordre) est DÉDUIT de `04-acteurs-et-roles.md` §2 ; il se relit avec le porteur à la première démonstration d'écran.
+- **P5-20** ([ADR-035](ADR-035-tableaux-d-analyse-avant-p9.md)) : les tableaux d'analyse livrés avant P9 suivent le même patron, mais leur périmètre se tire de la **permission**, non du rôle ; l'accueil de la Finance et du magasinier en réutilise les fonctions (AV-208), et les anomalies d'un rôle de sites ne portent plus que sur ses sites.
 
 ## Risques
 

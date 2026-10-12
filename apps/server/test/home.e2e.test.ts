@@ -28,6 +28,8 @@ import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { recordStockMove } from '../src/modules/inventory/application/public/index.js';
+import { recordConflict } from '../src/platform/sync/conflicts.js';
+import { jsonValue } from '../src/platform/kysely/json-value.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -38,6 +40,8 @@ import {
   insertTestLocation,
   insertTestRole,
   insertTestSite,
+  insertTestTeam,
+  insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
 } from './helpers.js';
@@ -302,6 +306,10 @@ describe('Accueil par rôle (ADR-030)', () => {
     expect(out?.detail).toBe('0 sous le seuil · 1 suivis');
     expect(body.signals.map((signal) => signal.code)).not.toContain('STOCK_OUT');
     expect(body.signals.map((signal) => signal.code)).not.toContain('STOCK_LOW');
+    // Site sans PDV : aucun bloc de distribution (P5-20, AV-208).
+    for (const code of ['KPI-DIS-07', 'KPI-DIS-QUOTAS', 'KPI-OPS-01']) {
+      expect(section!.kpis.map((kpi) => kpi.code)).not.toContain(code);
+    }
   });
 
   it('magasinier du site B : voit la rupture de son site, pas le seuil respecté du site A', async () => {
@@ -350,5 +358,165 @@ describe('Accueil par rôle (ADR-030)', () => {
     // Le magasinier n'a, à ce stade, aucun écran métier : toutes ses actions sont « bientôt ».
     expect(actions.every((action) => action.route === null)).toBe(true);
     expect(actions.filter((action) => action.primary)).toHaveLength(1);
+  });
+
+  describe('responsable commercial : anomalies et validations de son seul périmètre', () => {
+    let manager: string;
+    const requestIds: string[] = [];
+    let memberSummary = '';
+
+    beforeAll(async () => {
+      const respCommercial = await seededRole('RESP_COMMERCIAL');
+      const at = new Date(THRESHOLD_AT);
+      await db.transaction().execute(async (trx) => {
+        manager = await insertTestUser(trx);
+        const member = await insertTestUser(trx);
+        const outsider = await insertTestUser(trx);
+        const team = await insertTestTeam(trx, manager, admin);
+        await insertTestTeamMembership(trx, team, member, admin, {
+          validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        });
+        await assignTestRole(trx, manager, respCommercial, admin, {
+          scopeType: 'TEAM',
+          scopeTeamId: team,
+        });
+
+        for (const [person, label] of [
+          [member, 'membre'],
+          [outsider, 'hors équipe'],
+        ] as const) {
+          // Anomalie produite par une commande de la personne (auteur lu dans l'inbox).
+          const deviceId = await insertTestDevice(trx, person, { status: 'ACTIVE' });
+          const commandId = freshUuid();
+          await trx
+            .insertInto('sync_command_inbox')
+            .values({
+              command_id: toBin(commandId),
+              device_id: toBin(deviceId),
+              user_id: toBin(person),
+              device_seq: 1,
+              transport: 'SYNC_PUSH',
+              command_type: 'sales.sale.record',
+              payload: jsonValue({}),
+              payload_hash: '0'.repeat(64),
+              occurred_at: at,
+            })
+            .execute();
+          await recordConflict(trx, {
+            id: freshUuid(),
+            commandId,
+            conflictType: 'PRICE_MISMATCH',
+            entityType: 'SALE',
+            entityId: freshUuid(),
+            siteId: null,
+            ownerRole: 'RESP_COMMERCIAL',
+            applied: true,
+            details: { label },
+          });
+          // Anomalie système sur le stock mobile dont la personne est titulaire.
+          const mobileId = freshUuid();
+          await trx
+            .insertInto('organization_locations')
+            .values({
+              id: toBin(mobileId),
+              site_id: toBin(siteA),
+              code: mobileId.replace(/-/g, '').slice(-8).toUpperCase(),
+              name: `Stock mobile (${label})`,
+              location_type: 'MOBILE',
+              custody_mode: 'EXCLUSIVE_USER',
+              custodian_user_id: toBin(person),
+              created_by: toBin(admin),
+            })
+            .execute();
+          await recordConflict(trx, {
+            id: freshUuid(),
+            commandId: null,
+            conflictType: 'DUPLICATE_CUSTOMER',
+            entityType: 'LOCATION',
+            entityId: mobileId,
+            siteId: null,
+            ownerRole: 'RESP_COMMERCIAL',
+            applied: true,
+            details: { locationId: mobileId },
+          });
+          // Demande d'annulation en attente, décidée par `sales.sale_cancel.approve` (TEAM pour le
+          // responsable) ; politique retirée dès sa création : elle ne s'applique à rien d'autre.
+          const policyId = freshUuid();
+          await trx
+            .insertInto('approvals_control_policies')
+            .values({
+              id: toBin(policyId),
+              code: `P5_HOME_${policyId.slice(-12)}`,
+              version: 1,
+              operation_type: 'SALE_CANCELLATION',
+              condition: jsonValue({}),
+              requires_photo: 0,
+              requires_comment: 0,
+              requires_approval: 1,
+              approver_permission: 'sales.sale_cancel.approve',
+              approver_scope: 'TEAM',
+              valid_from: new Date('2026-01-01T00:00:00.000Z'),
+              valid_to: new Date('2026-01-01T00:00:00.000Z'),
+              status: 'RETIRED',
+              created_by: toBin(admin),
+            })
+            .execute();
+          const requestId = freshUuid();
+          const summary = `Annulation demandée par le ${label} (${requestId.slice(-6)})`;
+          if (person === member) memberSummary = summary;
+          await trx
+            .insertInto('approvals_approval_requests')
+            .values({
+              id: toBin(requestId),
+              operation_type: 'SALE_CANCELLATION',
+              subject_type: 'SALE',
+              subject_id: toBin(freshUuid()),
+              subject_summary: summary,
+              requested_by: toBin(person),
+              requested_at: at,
+              policy_id: toBin(policyId),
+              policy_version: 1,
+              created_by: toBin(person),
+            })
+            .execute();
+          requestIds.push(requestId);
+        }
+      });
+      tokens[manager] = await signAccessToken(
+        app.get(JWT_KEYS).privateKey,
+        { sub: manager, device_id: adminDevice, session_id: freshUuid() },
+        clock.now(),
+      );
+    });
+
+    afterAll(async () => {
+      // Hygiène de la base partagée : aucune demande de ce test ne reste en attente.
+      if (requestIds.length === 0) return;
+      await db
+        .updateTable('approvals_approval_requests')
+        .set({ status: 'CANCELLED' })
+        .where(
+          'id',
+          'in',
+          requestIds.map((id) => toBin(id)),
+        )
+        .execute();
+    });
+
+    it('anomalies : celles dont l’auteur ou le titulaire du stock mobile est de l’équipe (règle de GET /sync/conflicts)', async () => {
+      const body = await home(manager);
+      expect(body.user.roles).toEqual(['RESP_COMMERCIAL']);
+      const conflicts = body.signals.find((signal) => signal.code === 'SYNC_CONFLICTS');
+      expect(conflicts?.count).toBe(2);
+      expect(conflicts?.detail).toContain('price mismatch ×1');
+      expect(conflicts?.detail).toContain('duplicate customer ×1');
+    });
+
+    it('validations : seulement celles que le responsable peut décider (portée de la permission d’approbation)', async () => {
+      const body = await home(manager);
+      const approvals = body.signals.find((signal) => signal.code === 'APPROVALS_PENDING');
+      expect(approvals?.count).toBe(1);
+      expect(approvals?.detail).toBe(`La plus ancienne : ${memberSummary}`);
+    });
   });
 });

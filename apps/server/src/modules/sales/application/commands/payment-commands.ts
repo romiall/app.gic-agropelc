@@ -62,7 +62,7 @@ import {
   type SiteRef,
   type Uow,
 } from './shared.js';
-import { planPayments } from './sale-payments.js';
+import { cashSessionLostOnline, flagCashSessionMissing, planPayments } from './sale-payments.js';
 import {
   applyCounterDeltas,
   compareByDue,
@@ -142,7 +142,7 @@ const requestCancellationSchema = z.object({
 type RequestCancellationPayload = z.infer<typeof requestCancellationSchema>;
 
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
-type Warning = 'PAYMENT_SUSPECT_DUPLICATE' | 'PAYMENT_UNALLOCATED';
+type Warning = 'PAYMENT_SUSPECT_DUPLICATE' | 'PAYMENT_UNALLOCATED' | 'CASH_SESSION_MISSING';
 type PaymentRow = Awaited<ReturnType<typeof lockPayment>>;
 
 const NOT_FOUND = rejected('PAYMENT_NOT_FOUND', 'Encaissement inconnu.');
@@ -485,6 +485,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       capturedOffline: offline,
       allowNegative: offline,
     });
+    // P5-14 (BR-DIS-005, revue adverse) : contrôle en ligne repris sous le verrou du compte.
+    const lost = cashSessionLostOnline({
+      offline,
+      accountType: payment.accountType,
+      cashSessionId: movement.cashSessionId,
+    });
+    if (lost) return lost;
     const docNumber = await nextNumber();
     await uow
       .insertInto('sales_customer_payments')
@@ -492,6 +499,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         ...base,
         doc_number: docNumber,
         cash_movement_id: toBin(movement.movementId),
+        cash_session_id: toBinOrNull(movement.cashSessionId),
         status: 'RECORDED',
         unallocated_xaf: unallocatedXaf,
       })
@@ -543,6 +551,24 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         details: { divertedXaf, requested: explicit, applied: planned },
       });
       warnings.add('PAYMENT_UNALLOCATED');
+    }
+    // P5-14 (AV-184) : encaissement en espèces au PDV saisi hors ligne sans session couvrant sa date.
+    if (
+      offline &&
+      (await flagCashSessionMissing(uow, deps, {
+        accountType: payment.accountType,
+        cashSessionId: movement.cashSessionId,
+        paymentId,
+        cashAccountId: payment.accountId,
+        amountXaf: p.amountXaf,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        siteId: site.id,
+        deviceId: origin.deviceId,
+        documentRef: {},
+      }))
+    ) {
+      warnings.add('CASH_SESSION_MISSING');
     }
     return warnings.size > 0
       ? { status: 'APPLIED_WITH_WARNINGS', warnings: [...warnings], serverRefs: { docNumber } }
@@ -1057,7 +1083,9 @@ function registerDecisions(
       );
       await applyCounterDeltas(uow, deltas);
       // Correction, non sortie physique : appliquée même si la caisse passe en négatif ou si le
-      // compte a été désactivé depuis (DÉDUIT, D09 §15).
+      // compte a été désactivé depuis (DÉDUIT, D09 §15). P5-14 (ADR-032 §2, AV-157 (a)) : l'inverse
+      // corrige un fait passé et porte la date de l'original ; il retombe dans la session de celui-ci,
+      // réévaluée par le delta si elle est close (P5-13).
       await recordCashMovement(uow, deps, {
         cashAccountId: fromBin(payment.cash_account_id),
         direction: 'OUT',
@@ -1065,7 +1093,7 @@ function registerDecisions(
         movementType: 'CUSTOMER_PAYMENT',
         sourceDocType: 'CUSTOMER_PAYMENT',
         sourceDocId: ctx.subjectId,
-        occurredAt: ctx.decidedAt,
+        occurredAt: payment.occurred_at,
         createdBy: ctx.decidedBy,
         allowNegative: true,
         reversesMovementId: fromBin(payment.cash_movement_id!),
@@ -1204,6 +1232,9 @@ function registerDecisions(
         .set({
           status: 'RECORDED',
           cash_movement_id: toBin(movement.movementId),
+          // P5-14 (revue adverse, AV-184) : index de session du mouvement recopié, comme à l'insertion ;
+          // la décision n'est soumise à aucune session (sans session couvrante : index nul, sans constat).
+          cash_session_id: toBinOrNull(movement.cashSessionId),
           unallocated_xaf: unallocated,
           ...(corrected !== undefined
             ? { external_reference: corrected, reference_normalized: normalized }

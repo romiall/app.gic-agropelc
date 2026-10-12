@@ -8,7 +8,8 @@
  * Usage : `DATABASE_URL=... pnpm --filter @gic/db run create-local-admin -- <téléphone> <mot de passe>`
  * (valeurs par défaut si omises — voir ci-dessous).
  */
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
+import { connectUtc } from './connection.js';
 import { hash } from '@node-rs/argon2';
 import { newUuidv7Bytes as newId } from './uuidv7.js';
 
@@ -28,7 +29,7 @@ const phone = args[0] ?? '+237600000001';
 const password = args[1] ?? 'ChangeMe123!';
 
 async function main(): Promise<void> {
-  const conn = await mysql.createConnection(DATABASE_URL!);
+  const conn = await connectUtc(DATABASE_URL!);
   try {
     const passwordHash = await hash(password, ARGON2ID_OPTIONS);
 

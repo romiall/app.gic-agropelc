@@ -25,14 +25,14 @@ import { JobRunner } from '../src/platform/jobs/job-runner.js';
 import { verifyChainRange } from '../src/audit/verify-chain.js';
 import { recordAudit } from '../src/audit/record-audit.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
-import { closeTestDb, db } from './helpers.js';
+import { closeTestDb, db, freshPhone } from './helpers.js';
 
 const realIdGenerator = new Uuidv7Generator(new SystemClock());
 
 /** Utilisateur réellement commité (FK `audit_audit_log.actor_user_id`), comme record-audit.test.ts. */
 async function createRealTestUser(): Promise<string> {
   const id = realIdGenerator.newId();
-  const phone = `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`;
+  const phone = await freshPhone();
   await db
     .insertInto('identity_users')
     .values({

@@ -5,7 +5,7 @@
 // Insertions directes qui contournent l'application : chaque refus est prouvé par la base elle-même.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 const T0 = '2026-10-09 08:00:00.000000';
 
@@ -25,7 +25,7 @@ async function setup(conn: PoolConnection): Promise<Refs> {
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-    [admin, `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, admin],
+    [admin, await freshPhone(conn), admin],
   );
   const zoneId = randomId();
   await conn.query(

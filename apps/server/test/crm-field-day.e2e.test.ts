@@ -43,6 +43,7 @@ import {
   insertTestZone,
   recentBusinessDay,
   shiftBusinessDay,
+  freshLocalPhone,
 } from './helpers.js';
 
 // Jour récent (heure réelle) : la fenêtre de 90 jours du jeu `crm_activity` est évaluée par la base.
@@ -168,7 +169,7 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
           displayName: 'Épicerie du Carrefour',
           zoneId,
           sourceCode: 'PROSPECTION_TERRAIN',
-          phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+          phonePrimary: await freshLocalPhone(),
           position: { ...CENTER, accuracyM: 10 },
         },
       ),
@@ -180,7 +181,7 @@ describe('P3-08 : journée d’un commercial terrain hors ligne (WF-J1, WF-13 sa
       displayName: 'Restaurant Chez Mama',
       zoneId,
       sourceCode: 'PROSPECTION_TERRAIN',
-      phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+      phonePrimary: await freshLocalPhone(),
       position: { ...north(120), accuracyM: 15 },
     });
     queue = [

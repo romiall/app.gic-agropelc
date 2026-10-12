@@ -52,6 +52,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  freshPhone,
 } from './helpers.js';
 
 const NOW = '2026-10-12T18:00:00.000Z';
@@ -210,7 +211,7 @@ describe('créances, CA et marges (P4-09)', () => {
         stage: 'PROSPECT',
         pipeline_step_id: toBin(stepId),
         display_name: 'Restaurant du port',
-        phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+        phone_primary: await freshPhone(),
         zone_id: toBin(zoneId),
         source_code: sourceCode,
         acquired_by_user_id: toBin(admin.userId),
@@ -611,7 +612,9 @@ describe('créances, CA et marges (P4-09)', () => {
 
   // --- 3. Créances par ancienneté et tâche des retards (BR-FIN-007) --------------------------------
 
-  it('créances : échéance, jours de retard et tranches ; la tâche publie un événement par vente et par jour', async () => {
+  // La tâche des créances balaie toutes les ventes ouvertes de la base partagée (persistante, qui
+  // grossit à chaque exécution) : délai explicite plutôt que les 20 s par défaut.
+  it('créances : échéance, jours de retard et tranches ; la tâche publie un événement par vente et par jour', { timeout: 60_000 }, async () => {
     const customer = await newCustomer({ credit: true });
     const product = await sellable(1000);
     await stock(product.id, 5, 600);

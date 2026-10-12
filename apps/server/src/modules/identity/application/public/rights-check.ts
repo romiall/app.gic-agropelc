@@ -56,6 +56,11 @@ export interface EvaluateAccessInput {
   readonly permissionCode: string;
   readonly occurredAt: Date;
   readonly resource: ResourceLocator;
+  /**
+   * Restreint l'évaluation aux octrois des affectations de ces rôles (P5-17, AV-191 : la portée d'une
+   * décision vient de l'affectation du rôle qui la fonde, jamais d'un autre rôle cumulé). Absent : tous.
+   */
+  readonly roleCodes?: readonly string[];
 }
 
 export async function evaluateAccess(
@@ -65,7 +70,9 @@ export async function evaluateAccess(
   const grants = await getUserGrants(executor, input.userId);
   const activeGrants = grants.filter(
     (grant) =>
-      grant.permissionCode === input.permissionCode && isGrantActiveAt(grant, input.occurredAt),
+      grant.permissionCode === input.permissionCode &&
+      isGrantActiveAt(grant, input.occurredAt) &&
+      (input.roleCodes === undefined || input.roleCodes.includes(grant.roleCode)),
   );
   if (activeGrants.length === 0) {
     return { allowed: false, reason: 'NO_PERMISSION' };

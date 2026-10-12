@@ -14,6 +14,7 @@ import type {
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
+import { emitSettingChange } from '../sync-changes.js';
 
 const settingScopeTypeSchema = z.enum(['GLOBAL', 'SITE', 'ZONE', 'ROLE']);
 
@@ -91,6 +92,8 @@ const set: CommandHandler<SetPayload> = async (uow, envelope) => {
       reason: reason ?? null,
     })
     .execute();
+  // P5-18 : la version visible atteint les appareils, les précédentes en sortent (jeu `me`, AV-196).
+  await emitSettingChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

@@ -111,4 +111,4 @@ Parcours de bout en bout du plan : WF-01 hors caisse PDV (AT-001, vente hors lig
 - **Sessions de caisse, quotas d'appareil, caisse du PDV** : P5 (le jeu `cash` portera la session ouverte ; le blocage sur l'appareil au-delà de l'allocation, AV-025, est appliqué par la PWA).
 - **Alertes** `OVERDUE_RECEIVABLE`, vente non livrée (AV-132), stock négatif : P9 (les événements existent).
 - **Finance opérationnelle** (dépenses, factures, dettes, rapprochement) : P8.
-- **Référentiels du seed** autres que les moyens de paiement (motifs, sources, étapes, paramètres), unités et canaux : pas encore publiés dans le flux de synchronisation (écart relevé en P4-11, ADR-031 « Conséquences »).
+- **Référentiels du seed** autres que les moyens de paiement (motifs, sources, étapes, paramètres), unités et canaux : pas encore publiés dans le flux de synchronisation (écart relevé en P4-11, ADR-031 « Conséquences ») — **refermé en P5-18** (AV-196, `db/seeds/publish-references.ts`).

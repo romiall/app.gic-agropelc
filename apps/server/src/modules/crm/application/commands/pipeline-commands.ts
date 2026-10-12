@@ -13,6 +13,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { rejected } from './shared.js';
+import { emitPipelineStepChange } from '../sync-changes.js';
 
 const configurePayloadSchema = z.object({
   code: z
@@ -88,6 +89,8 @@ const configure: CommandHandler<ConfigurePayload> = async (uow, envelope) => {
       })
       .execute();
   }
+  // P5-18 : l'étape atteint les appareils (jeu `catalog`, AV-196).
+  await emitPipelineStepChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

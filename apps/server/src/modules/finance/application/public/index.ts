@@ -52,6 +52,9 @@ export type { CashMovementLine } from './cash-account-query.js';
 
 // P5-12 : sessions de caisse — session couvrant un instant (index `cash_session_id`, ADR-032 §2).
 export { findCashSessionCovering } from './cash-sessions.js';
+// P5-14 : lectures d'une session pour la couche de transport (sous-totaux par vendeur).
+export { cashSessionWindowFlows, findCashSessionSummary } from './cash-session-query.js';
+export type { CashSessionSummary, CashSessionWindowFlows } from './cash-session-query.js';
 export type { CoveringCashSession } from './cash-sessions.js';
 // P5-15 : remises de fonds — résumé, indicateur « en transit », cohérence avec le registre.
 export {
@@ -66,3 +69,28 @@ export type {
   CashTransfersInTransit,
   CashTransferVerification,
 } from './cash-transfer-query.js';
+// P5-17 : lectures HTTP des sessions de caisse et des remises de fonds.
+export {
+  findCashSessionDetail,
+  listCashSessionAdjustments,
+  listCashSessions,
+} from './cash-session-query.js';
+export type { CashSessionAdjustmentLine, CashSessionDetail } from './cash-session-query.js';
+export {
+  CASH_TRANSFER_STATUSES,
+  cashTransferMovements,
+  listCashTransfers,
+} from './cash-transfer-query.js';
+export type { CashTransferMovementLine } from './cash-transfer-query.js';
+// P5-19 : métriques de distribution partagées (sessions des PDV, remises en attente ; BR-ANA-009).
+export {
+  cashSessionThresholdsAt,
+  cashSessionsOverview,
+  pendingCashTransfers,
+} from './distribution-metrics.js';
+export type {
+  CashSessionBrief,
+  CashSessionThresholds,
+  CashSessionsOverview,
+  PendingCashTransfers,
+} from './distribution-metrics.js';

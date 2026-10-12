@@ -82,6 +82,26 @@ export type {
   HomeResponse,
 } from './home.js';
 
+// Tableau de distribution (P5-20, ADR-035).
+export {
+  DISTRIBUTION_PERIOD_CODES,
+  distributionPeriodCodeSchema,
+  distributionReplenishmentSchema,
+  distributionProductRowSchema,
+  distributionCashSessionSchema,
+  distributionDeviceSchema,
+  distributionPointOfSaleSchema,
+  distributionDashboardResponseSchema,
+} from './distribution-dashboard.js';
+export type {
+  DistributionPeriodCode,
+  DistributionProductRow,
+  DistributionCashSession,
+  DistributionDevice,
+  DistributionPointOfSale,
+  DistributionDashboardResponse,
+} from './distribution-dashboard.js';
+
 // Commandes de la distribution (P5 ; ADR-021, ADR-032, ADR-033).
 export {
   cashSessionOpenPayloadSchema,

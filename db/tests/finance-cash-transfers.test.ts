@@ -4,7 +4,7 @@
 // annulée. Chaque test crée ses données dans une transaction annulée.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 const T = (hhmm: string) => `2026-10-08 ${hhmm}:00.000000`;
 const code = (prefix: string) => `${prefix}${Math.floor(Math.random() * 1_000_000_000)}`;
@@ -22,7 +22,7 @@ async function user(conn: PoolConnection): Promise<Buffer> {
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-    [id, `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, id],
+    [id, await freshPhone(conn), id],
   );
   return id;
 }

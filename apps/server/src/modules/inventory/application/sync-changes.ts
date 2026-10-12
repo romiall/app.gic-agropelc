@@ -62,14 +62,15 @@ export function transferChanges(
 
 /**
  * Quota d'appareil (P5-08 ; ADR-033, jeu `allocations`) : une ligne par quota, au périmètre de
- * l'**appareil détenteur** (`DEVICE`) — seule la tablette concernée le télécharge. La projection
- * (jeu et type d'entité) est ajoutée avec les jeux hors ligne de P5 (P5-18) ; les lignes émises dès
- * maintenant lui servent d'historique.
+ * l'**appareil détenteur** (`DEVICE`) — seule la tablette concernée le télécharge (projection
+ * `STOCK_ALLOCATION`, P5-18). Un quota terminé (libéré `CLOSED` ou révoqué `REVOKED`) **sort du
+ * périmètre** (`SCOPE_EXIT`, AV-193) : l'appareil le retire et ne vend plus que sur le stock commun.
  */
 export function allocationChange(
   allocationId: string,
   holderDeviceId: string,
   rowVersion: number,
+  changeType: 'UPSERT' | 'SCOPE_EXIT' = 'UPSERT',
 ): ChangeFeedEntry {
   return {
     dataset: ALLOCATIONS_DATASET,
@@ -77,6 +78,7 @@ export function allocationChange(
     entityId: allocationId,
     scopeType: 'DEVICE',
     scopeId: holderDeviceId,
+    changeType,
     rowVersion,
   };
 }

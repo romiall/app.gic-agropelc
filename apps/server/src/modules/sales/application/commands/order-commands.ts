@@ -77,7 +77,7 @@ import {
 import { saleLineSchema, salePaymentSchema, type SaleLineInput } from './sale-payload.js';
 import { discountCeilingPct } from './sale-pricing.js';
 import { checkLineQuantity, resolveSaleLines, type ResolvedLine } from './sale-lines.js';
-import { planPayments } from './sale-payments.js';
+import { planPayments, type PaymentWarning } from './sale-payments.js';
 import { writeAdvancePayments } from './advance-payments.js';
 import {
   confirmOrderPending,
@@ -158,7 +158,11 @@ type RetirePayload = z.infer<typeof retireSchema>;
 
 const NOT_FOUND = rejected('NOT_FOUND', 'Commande introuvable.');
 
-type Warning = 'PRICE_MISMATCH' | 'PRICE_OVERRIDE_EXCEEDS_LIMIT' | 'PAYMENT_SUSPECT_DUPLICATE';
+type Warning =
+  | 'PRICE_MISMATCH'
+  | 'PRICE_OVERRIDE_EXCEEDS_LIMIT'
+  | 'PAYMENT_SUSPECT_DUPLICATE'
+  | 'CASH_SESSION_MISSING';
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
 
 const milliOf = (value: string | number): number =>
@@ -581,7 +585,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     | {
         readonly ok: true;
         readonly confirmation: Extract<OrderConfirmationResult, { ok: true }>;
-        readonly warnings: ReadonlySet<'PAYMENT_SUSPECT_DUPLICATE'>;
+        readonly warnings: ReadonlySet<PaymentWarning>;
         readonly paymentDocs: ReadonlyMap<number, string>;
       }
     | { readonly ok: false; readonly outcome: ReturnType<typeof rejected> }
@@ -601,7 +605,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     const origin = await loadCommandOrigin(uow, envelope.command_id);
 
     // Acomptes joints : planifiés (références, comptes, doublons) puis écrits, affectés à la commande.
-    const warnings = new Set<'PAYMENT_SUSPECT_DUPLICATE'>();
+    const warnings = new Set<PaymentWarning>();
     let paymentDocs: ReadonlyMap<number, string> = new Map();
     if (input.advance !== undefined && input.advance.length > 0) {
       const plan = await planPayments(

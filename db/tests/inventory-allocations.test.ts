@@ -5,20 +5,12 @@
 // directes qui contournent l'application : chaque refus est prouvé par la base elle-même.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone, freshShortCode } from './helpers.js';
 
 const T0 = '2026-10-08 08:00:00.000000';
 
 function randomCode(prefix: string): string {
   return `${prefix}${Math.floor(Math.random() * 1_000_000_000)}`;
-}
-
-/** Code court d'appareil : 4 caractères alphanumériques (unique en base). */
-function shortCode(): string {
-  return Math.floor(Math.random() * 36 ** 4)
-    .toString(36)
-    .toUpperCase()
-    .padStart(4, '0');
 }
 
 interface Refs {
@@ -38,7 +30,7 @@ async function setup(conn: PoolConnection): Promise<Refs> {
     await conn.query(
       `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
        VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-      [id, `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, id],
+      [id, await freshPhone(conn), id],
     );
     return id;
   };
@@ -102,8 +94,8 @@ async function setup(conn: PoolConnection): Promise<Refs> {
   return {
     admin,
     holder,
-    deviceA: await device(shortCode()),
-    deviceB: await device(shortCode()),
+    deviceA: await device(await freshShortCode(conn)),
+    deviceB: await device(await freshShortCode(conn)),
     locationId,
     customerId,
     productId: await product(),

@@ -60,7 +60,14 @@ import {
 } from '../platform/sync/command-handler-registry.provider.js';
 import type { CommandHandlerOutcome } from '../platform/sync/command-handler-registry.js';
 
+/** INV-GLO-02, BR-SYN-011 : `occurred_at` au plus 5 min après l'heure serveur (après correction de l'écart). */
 const OCCURRED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+/**
+ * Une ligne `RECEIVED` plus ancienne n'est plus en cours de traitement (un lot se traite en 25 s au plus,
+ * 02-synchronisation.md §3.1) : arrêt brutal du serveur entre l'enregistrement et la conclusion. Le
+ * renvoi identique la reprend (P5-21, AV-210). Délai technique, pas un seuil métier.
+ */
+const STALE_RECEIVED_SECONDS = 120;
 
 export class EnvelopeValidationError extends ApiError {
   constructor(detail: string) {
@@ -177,7 +184,15 @@ export class CommandPipelineService {
     // dehors de cette reprise) — au lieu de ça, l'enveloppe identique relance les étapes 3 à 6.
     const existing = await this.db
       .selectFrom('sync_command_inbox')
-      .select(['payload_hash', 'status', 'result', 'error_code', 'error_message'])
+      .select([
+        'payload_hash',
+        'status',
+        'result',
+        'error_code',
+        'error_message',
+        'attempts',
+        sql<number>`TIMESTAMPDIFF(SECOND, received_at, NOW(6))`.as('age_seconds'),
+      ])
       .where('command_id', '=', commandIdBin)
       .executeTakeFirst();
     if (existing && existing.payload_hash !== payloadHash) {
@@ -190,18 +205,35 @@ export class CommandPipelineService {
         },
       };
     }
-    if (existing && existing.status !== 'FAILED_RETRYABLE') {
+    // Reprenable : échec transitoire ou dépendance en attente (`FAILED_RETRYABLE`), ou ligne `RECEIVED`
+    // abandonnée. Une ligne `RECEIVED` récente est en cours de traitement ailleurs : « réessayer ».
+    const reclaimable =
+      existing !== undefined &&
+      (existing.status === 'FAILED_RETRYABLE' ||
+        (existing.status === 'RECEIVED' && Number(existing.age_seconds) >= STALE_RECEIVED_SECONDS));
+    if (existing && !reclaimable) {
       return storedResult(envelope.command_id, existing);
     }
 
     if (existing) {
-      // Reprise après échec transitoire : la ligne existe déjà (contrainte de clé primaire),
-      // on la remet à RECEIVED plutôt que d'en insérer une seconde.
-      await this.db
+      // Reprise : la ligne existe déjà (contrainte de clé primaire), on la remet à RECEIVED plutôt que
+      // d'en insérer une seconde. La reprise est **réclamée** sur le compteur de tentatives : de deux
+      // renvois simultanés de la même enveloppe, un seul la traite (P5-21, AV-210).
+      const claimed = await this.db
         .updateTable('sync_command_inbox')
-        .set({ status: 'RECEIVED', attempts: sql`attempts + 1`, error_message: null })
+        .set({
+          status: 'RECEIVED',
+          attempts: sql`attempts + 1`,
+          error_code: null,
+          error_message: null,
+        })
         .where('command_id', '=', commandIdBin)
-        .execute();
+        .where('status', '=', existing.status)
+        .where('attempts', '=', existing.attempts)
+        .executeTakeFirst();
+      if (Number(claimed.numUpdatedRows) !== 1) {
+        return inProgressResult(envelope.command_id);
+      }
     } else {
       // Étape 2 : insertion RECEIVED (la clé primaire command_id garantit l'unicité même en concurrence).
       await this.db
@@ -231,8 +263,9 @@ export class CommandPipelineService {
         .execute();
     }
 
-    // Étape 3a : dépendances (BR-SYN-004) — aucun statut « en attente » propre à inbox :
-    // une dépendance non connue laisse la ligne RECEIVED, seule la réponse diffère.
+    // Étape 3a : dépendances (BR-SYN-004). Une dépendance pas encore appliquée met la ligne en
+    // `FAILED_RETRYABLE` (`DEPENDENCY_PENDING`) : le renvoi identique la reprend (P5-21, AV-210 — elle
+    // restait `RECEIVED` et son renvoi rendait ce statut au lieu de la traiter : fait jamais appliqué).
     if (envelope.depends_on.length > 0) {
       const deps = await this.db
         .selectFrom('sync_command_inbox')
@@ -246,14 +279,23 @@ export class CommandPipelineService {
       const knownStatus = new Map(deps.map((d) => [fromBin(d.command_id), d.status]));
       for (const depId of envelope.depends_on) {
         const status = knownStatus.get(depId);
-        if (status === undefined) {
+        // P5-21 (AV-210) : une dépendance reçue mais pas encore réglée (`RECEIVED`, en cours ailleurs ;
+        // `FAILED_RETRYABLE`, à renvoyer) n'est pas encore appliquée : la dépendante attend aussi.
+        if (status === undefined || status === 'RECEIVED' || status === 'FAILED_RETRYABLE') {
+          const messageFr = 'Dépendance pas encore appliquée par le serveur.';
+          await this.db
+            .updateTable('sync_command_inbox')
+            .set({
+              status: 'FAILED_RETRYABLE',
+              error_code: 'DEPENDENCY_PENDING',
+              error_message: messageFr,
+            })
+            .where('command_id', '=', commandIdBin)
+            .execute();
           return {
             command_id: envelope.command_id,
             status: 'RETRY_LATER',
-            error: {
-              code: 'DEPENDENCY_PENDING',
-              message_fr: 'Dépendance pas encore connue du serveur.',
-            },
+            error: { code: 'DEPENDENCY_PENDING', message_fr: messageFr },
           };
         }
         if (status === 'REJECTED') {
@@ -295,8 +337,12 @@ export class CommandPipelineService {
       );
     }
 
-    // Étape 3d : horodatage futur.
-    if (occurredAt.getTime() > this.clock.now().getTime() + OCCURRED_AT_FUTURE_TOLERANCE_MS) {
+    // Étape 3d : horodatage futur, **après correction de l'écart d'horloge mesuré** du lot (INV-GLO-02,
+    // BR-SYN-011, 02-synchronisation.md §3.2, ADR-016) : une tablette en avance de deux heures n'a pas
+    // saisi dans le futur ; son `occurred_at` est gardé tel quel (aucune correction silencieuse), seul
+    // ce contrôle le ramène à l'heure serveur. Sans écart mesuré (`/commands`), l'heure brute.
+    const correctedOccurredAt = occurredAt.getTime() + (ctx.clockSkewMs ?? 0);
+    if (correctedOccurredAt > this.clock.now().getTime() + OCCURRED_AT_FUTURE_TOLERANCE_MS) {
       return this.markAndReject(
         commandIdBin,
         envelope.command_id,
@@ -514,6 +560,15 @@ export class CommandPipelineService {
   }
 }
 
+/** Même enveloppe en cours de traitement par une autre requête : l'appareil la renverra. */
+function inProgressResult(commandId: string): CommandResult {
+  return {
+    command_id: commandId,
+    status: 'RETRY_LATER',
+    error: { code: 'SERVER_BUSY', message_fr: 'Commande en cours de traitement, à réessayer.' },
+  };
+}
+
 function storedResult(
   commandId: string,
   existing: {
@@ -526,6 +581,8 @@ function storedResult(
   if (existing.result !== null && typeof existing.result === 'object') {
     return existing.result as CommandResult;
   }
+  // `RECEIVED` n'est pas un résultat : la commande est en cours de traitement ailleurs.
+  if (existing.status === 'RECEIVED') return inProgressResult(commandId);
   const status = existing.status as CommandResult['status'];
   if (existing.error_code) {
     return {

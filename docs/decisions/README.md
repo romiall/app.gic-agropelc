@@ -39,5 +39,6 @@
 | [ADR-032](ADR-032-sessions-de-caisse-et-remises-de-fonds.md) | Sessions de caisse et remises de fonds : un écart n'est compté qu'une fois (attendu tiré du registre, rattachement à l'insertion, réévaluation par delta, remise sans second mouvement) | ACCEPTÉ | — |
 | [ADR-033](ADR-033-quotas-d-appareil-apres-adr-028.md) | Quotas d'appareil après ADR-028 : consommation dans `inventory`, disponible par consommateur, source unique de la garde, restitution à l'annulation | ACCEPTÉ | — |
 | [ADR-034](ADR-034-isolation-par-commande.md) | Niveau d'isolation choisi par commande : lecture confirmée (`isolationLevel: 'read committed'`) réservée aux commandes sérialisées sous un verrou de ligne explicite (sessions de caisse) | ACCEPTÉ | — |
+| [ADR-035](ADR-035-tableaux-d-analyse-avant-p9.md) | Tableaux d'analyse avant P9 : composés dans la couche de transport (`distribution-api/`), périmètre tiré de la permission, mesures et détails masqués par droit, contrat repris sans changement par P9 | ACCEPTÉ | — |
 
 Règle : toute nouvelle décision structurante pendant le développement fait l'objet d'un nouvel ADR (numérotation continue). Une décision remplacée n'est pas supprimée : elle passe au statut REMPLACÉ, avec un lien vers la remplaçante.

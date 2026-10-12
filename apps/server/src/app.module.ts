@@ -32,6 +32,7 @@ import { SalesApiModule } from './sales-api/sales-api.module.js';
 import { FinanceApiModule } from './finance-api/finance-api.module.js';
 import { HomeApiModule } from './home-api/home-api.module.js';
 import { InventoryApiModule } from './inventory-api/inventory-api.module.js';
+import { DistributionApiModule } from './distribution-api/distribution-api.module.js';
 import { CrmApiModule } from './crm-api/crm-api.module.js';
 import { FieldworkApiModule } from './fieldwork-api/fieldwork-api.module.js';
 import { SyncModule } from './sync/sync.module.js';
@@ -71,6 +72,7 @@ import { RootController } from './health/root.controller.js';
     FinanceApiModule,
     HomeApiModule,
     InventoryApiModule,
+    DistributionApiModule,
     CrmApiModule,
     FieldworkApiModule,
     SyncModule,

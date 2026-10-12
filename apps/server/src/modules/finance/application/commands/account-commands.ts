@@ -25,7 +25,11 @@ import {
   toBinOrNull,
 } from '../../../../platform/kysely/uuid-columns.js';
 import { CASH_ACCOUNT_TYPES } from '../public/cash-accounts.js';
-import { emitCashAccountChange } from '../sync-changes.js';
+import {
+  emitCashAccountChange,
+  emitCashTransferTargetChange,
+  emitCashTransfersOfAccountChange,
+} from '../sync-changes.js';
 import { hasCashTransferInTransit } from '../cash-transfer-support.js';
 
 const PERMISSION = 'finance.cash_account.manage';
@@ -147,6 +151,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     })
     .execute();
   await emitCashAccountChange(uow, envelope.aggregate_id);
+  await emitCashTransferTargetChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -173,9 +178,15 @@ const update: CommandHandler<UpdatePayload> = async (uow, envelope) => {
     })
     .where('id', '=', accountId)
     .execute();
-  await emitCashAccountChange(uow, envelope.aggregate_id, {
-    previousOwnerId: fromBinOrNull(account.holder_user_id) ?? fromBin(account.responsible_user_id),
-  });
+  const previousOwnerId =
+    fromBinOrNull(account.holder_user_id) ?? fromBin(account.responsible_user_id);
+  await emitCashAccountChange(uow, envelope.aggregate_id, { previousOwnerId });
+  await emitCashTransferTargetChange(uow, envelope.aggregate_id);
+  // P5-18 : les remises en cours suivent le nouveau titulaire (jeu `cash`).
+  const newOwnerId = fromBinOrNull(account.holder_user_id) ?? responsibleUserId ?? previousOwnerId;
+  if (newOwnerId !== previousOwnerId) {
+    await emitCashTransfersOfAccountChange(uow, envelope.aggregate_id, previousOwnerId);
+  }
   return { status: 'APPLIED' };
 };
 
@@ -236,6 +247,7 @@ const deactivate: CommandHandler<Record<string, never>> = async (uow, envelope) 
     .where('id', '=', accountId)
     .execute();
   await emitCashAccountChange(uow, envelope.aggregate_id);
+  await emitCashTransferTargetChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

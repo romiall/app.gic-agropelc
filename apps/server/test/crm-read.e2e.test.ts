@@ -33,6 +33,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  freshLocalPhone,
 } from './helpers.js';
 
 const DAY = '2026-09-20';
@@ -67,7 +68,7 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
   let v2: string;
   let session1: string;
   let target1: string;
-  const phone1 = `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+  let phone1: string;
 
   async function get(actor: Actor, url: string) {
     return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${actor.token}` } });
@@ -112,14 +113,14 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
     actor: Actor,
     occurredAt: string,
     displayName: string,
-    phone = `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+    phone?: string,
   ): Promise<string> {
     const id = freshUuid();
     await command(actor, 'crm.customer.create', 'CUSTOMER', id, occurredAt, {
       displayName,
       zoneId,
       sourceCode: 'PROSPECTION_TERRAIN',
-      phonePrimary: phone,
+      phonePrimary: phone ?? (await freshLocalPhone()),
       position: { ...CENTER, accuracyM: 10 },
     });
     return id;
@@ -137,6 +138,7 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
   const idsOf = (items: readonly { id: string }[]) => items.map((item) => item.id).sort();
 
   beforeAll(async () => {
+    phone1 = await freshLocalPhone();
     process.env.SERVER_DATABASE_URL ??=
       'mysql://gic_app:gic_app_password@127.0.0.1:3306/gic_agropelc_test';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -219,7 +221,7 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
       displayName: 'Client comptoir',
       zoneId,
       sourceCode: 'VISITE_SPONTANEE',
-      phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+      phonePrimary: await freshLocalPhone(),
     });
     c4 = venCustomer;
     session1 = freshUuid();

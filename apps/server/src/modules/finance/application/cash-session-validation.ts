@@ -54,6 +54,7 @@ import {
   type CashSessionRow,
 } from './cash-session-ledger.js';
 import { publishCashSessionEvent } from './cash-session-events.js';
+import { emitCashSessionChange } from './sync-changes.js';
 
 type Deps = { readonly idGenerator: IdGenerator };
 
@@ -366,6 +367,9 @@ export async function reevaluateClosedSession(
       created_by: toBin(trigger.createdBy),
     })
     .execute();
+  // P5-18 : la session à valider est republiée avec son écart courant (jeu `cash`, AV-193) ; une
+  // session validée est déjà sortie du jeu.
+  if (session.status === 'PENDING_VALIDATION') await emitCashSessionChange(uow, session.id);
 
   const details = {
     adjustmentId,
@@ -579,6 +583,7 @@ export async function validateCashSession(
     })
     .where('id', '=', toBin(session.id))
     .execute();
+  await emitCashSessionChange(uow, session.id);
   if (included.length > 0) {
     await uow
       .updateTable('finance_cash_session_adjustments')

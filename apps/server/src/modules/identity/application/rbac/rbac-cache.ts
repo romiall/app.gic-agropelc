@@ -26,6 +26,8 @@ export type MaxScope = 'OWN' | 'TEAM' | 'SITE' | 'ZONE' | 'ALL';
 export type AffectationScopeType = 'GLOBAL' | 'SITE' | 'ZONE' | 'TEAM';
 
 export interface CachedGrant {
+  /** Rôle de l'affectation qui porte l'octroi (P5-17 : rattacher une décision au rôle qui la fonde). */
+  readonly roleCode: string;
   readonly permissionCode: string;
   readonly maxScope: MaxScope;
   readonly limits: Record<string, unknown> | null;
@@ -51,7 +53,9 @@ export async function getUserGrants(
   const rows = await executor
     .selectFrom('identity_user_role_assignments as ura')
     .innerJoin('identity_role_permissions as rp', 'rp.role_id', 'ura.role_id')
+    .innerJoin('identity_roles as r', 'r.id', 'ura.role_id')
     .select([
+      'r.code as role_code',
       'rp.permission_code',
       'rp.max_scope',
       'rp.limits',
@@ -67,6 +71,7 @@ export async function getUserGrants(
     .execute();
 
   const grants: CachedGrant[] = rows.map((row) => ({
+    roleCode: row.role_code,
     permissionCode: row.permission_code,
     maxScope: row.max_scope as MaxScope,
     limits: (row.limits as Record<string, unknown> | null) ?? null,

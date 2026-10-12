@@ -37,6 +37,8 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  openTestCashSession,
+  freshPhone,
 } from './helpers.js';
 
 const NOW = '2026-10-06T18:00:00.000Z';
@@ -328,7 +330,7 @@ describe('sales.sale.record (P4-04)', () => {
         ...(merged ? { merged_into_id: toBin(options.mergedInto!) } : {}),
         ...(options.stage === 'CUSTOMER' ? { first_sale_id: toBin(freshUuid()) } : {}),
         display_name: 'Boutique de test',
-        phone_primary: `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+        phone_primary: await freshPhone(),
         zone_id: toBin(zoneId),
         source_code: sourceCode,
         acquired_by_user_id: toBin(admin.userId),
@@ -635,6 +637,13 @@ describe('sales.sale.record (P4-04)', () => {
           })
           .execute();
       }
+    });
+    // P5-14 (BR-DIS-005) : un encaissement en espèces au PDV exige une session de caisse ouverte.
+    await openTestCashSession(db, {
+      cashAccountId: pdvCashId,
+      siteId: pdvSiteId,
+      openedBy: admin.userId,
+      openedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     for (const [operationType, approverPermission] of [

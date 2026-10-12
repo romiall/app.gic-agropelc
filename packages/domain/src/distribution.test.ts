@@ -1,20 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { distributionResidual, isDistributionReconciled } from './distribution.js';
 
-describe('identité de rapprochement de la distribution (BR-DIS-012, AT-042)', () => {
+describe('identité de rapprochement de la distribution (BR-DIS-010, AT-042, AV-199)', () => {
   const flows = {
     openingBalance: 100,
     received: 50,
     otherIn: 2,
     soldNet: 120,
     lost: 3,
+    lostPending: 0,
     otherOut: 4,
     closingBalance: 25,
   };
 
-  it('solde fin − solde début = reçu + autres entrées − vendu net − perdu − autres sorties', () => {
+  it('solde fin − solde début = reçu + autres entrées − vendu net − perdu − en attente − autres sorties', () => {
     expect(distributionResidual(flows)).toBe(0);
     expect(isDistributionReconciled(flows)).toBe(true);
+  });
+
+  it('retranche les pertes en attente, nettes de leurs libérations', () => {
+    expect(distributionResidual({ ...flows, lostPending: 2, closingBalance: 23 })).toBe(0);
+    expect(distributionResidual({ ...flows, lostPending: -1, closingBalance: 26 })).toBe(0);
   });
 
   it('un écart non expliqué ressort avec son signe', () => {
@@ -31,6 +37,7 @@ describe('identité de rapprochement de la distribution (BR-DIS-012, AT-042)', (
         otherIn: 0,
         soldNet: 0,
         lost: 0,
+        lostPending: 0,
         otherOut: 0,
         closingBalance: 0.3,
       }),

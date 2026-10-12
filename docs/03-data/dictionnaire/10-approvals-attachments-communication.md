@@ -24,7 +24,7 @@
 - **PK** `id`. **UQ** `(code, version)`.
 - **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois en P4-02 pour `PAYMENT_CANCELLATION` et `PAYMENT_DUPLICATE`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
 - **Suppr.** `VERSIONNEMENT` (INV : la version en vigueur à `occurred_at` est figée sur l'opération, BR-ADM-016).
-- **Audit** Chaque version. **Offline** DL (politiques actives, pour l'évaluation indicative sur l'appareil).
+- **Audit** Chaque version. **Offline** DL (politiques actives, pour l'évaluation indicative sur l'appareil) — jeu `policies`, ligne `GLOBAL` (P5-18, AV-196) : la nouvelle version active est publiée et la version retirée supprimée (`DELETE`) ; politiques semées publiées par le seed.
 - Le schéma de `condition` est validé par l'application (JSON Schema versionné) ; il n'est **jamais** interrogé comme donnée métier.
 - **Politiques par défaut des ventes** (P4-02, seed `db/seeds/sales-references.ts`). Le seed n'insère que les codes absents et ne réécrit jamais une politique modifiée depuis (versionnement, BR-ADM-016). Sans politique, l'opération est refusée (`CONTROL_POLICY_MISSING`). Toutes ont `condition = {}`, `requires_photo = false`, `requires_approval = true` et `approver_scope = ALL` : chaque opération de ces types est soumise à validation, les seuils éventuels se règlent ensuite dans la politique (DÉDUIT).
 

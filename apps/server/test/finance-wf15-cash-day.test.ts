@@ -7,9 +7,10 @@
  * 2. ventes en espèces 175 500 + 4 500 = 180 000 (`sales.sale.record`) ; annulation directe de la
  *    seconde avec remboursement 4 500 (`sales.sale.cancel`, AT-009) ;
  * 3. petite dépense de 2 000 **injectée** (mouvement `EXPENSE` : les dépenses relèvent de P8) ;
- * 4. attendu 20 000 + 180 000 − 4 500 − 2 000 = 193 500 ; compté 193 000 → écart −500, posé par un
- *    `SESSION_VARIANCE` **injecté** (la clôture de session relève de P5-12 ; l'intégration remplacera
- *    l'injection par `finance.cash_session.open` et `.close`, la validation par P5-13) ;
+ * 4. vraie session de caisse (P5-14) : ouverte par le vendeur à 08:00 (`finance.cash_session.open`),
+ *    clôturée à 19:00 (`.close`) ; le serveur calcule l'attendu 20 000 + 180 000 − 4 500 − 2 000 =
+ *    193 500 ; compté 193 000 → écart −500 (`SESSION_VARIANCE`), session `PENDING_VALIDATION` avec sa
+ *    demande `CASH_VARIANCE`, validée par la Finance (`.validate`, P5-13) ;
  * 5. remise de 173 000 envoyée **hors ligne** après la clôture (19:30), reçue en ligne par la Finance
  *    (20:00) : PDV à 20 000 (fonds conservé), centrale à +173 000, rien en transit, aucun second
  *    mouvement, remise hors de la fenêtre close (l'attendu de [08:00, 19:00[ reste 193 500), audit de
@@ -34,6 +35,7 @@ import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/applic
 import { registerSaleCommands } from '../src/modules/sales/application/commands/sale-commands.js';
 import { registerCancelCommands } from '../src/modules/sales/application/commands/cancel-commands.js';
 import { registerCashTransferCommands } from '../src/modules/finance/application/commands/cash-transfer-commands.js';
+import { registerCashSessionCommands } from '../src/modules/finance/application/commands/cash-session-commands.js';
 import {
   cashTransfersInTransit,
   recordCashMovement,
@@ -162,6 +164,7 @@ describe(
       registerSaleCommands(registry, idGenerator, sequences);
       registerCancelCommands(registry, decisions, idGenerator, sequences);
       registerCashTransferCommands(registry, decisions, idGenerator, sequences);
+      registerCashSessionCommands(registry, idGenerator, decisions);
       pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
       services = { push: new SyncPushService(pipeline, db, clock), pull: new SyncPullService(db) };
 
@@ -286,6 +289,11 @@ describe(
       });
       expect(await transferRow(fundId)).toMatchObject({ status: 'RECEIVED' });
       expect(openingVarianceXaf(20_000, await ledgerBalanceBefore(OPENED_AT))).toBe(0);
+      const sessionId = freshUuid();
+      await ok(seller, 'finance.cash_session.open', 'CASH_SESSION', sessionId, OPENED_AT, {
+        cashAccountId: pos,
+        countedXaf: 20_000,
+      });
 
       // 2. Ventes en espèces 175 500 et 4 500 ; annulation directe de la seconde, remboursée.
       await ok(seller, 'sales.sale.record', 'SALE', freshUuid(), at('09:00'), {
@@ -324,29 +332,37 @@ describe(
         ),
       );
 
-      // 4. Clôture : attendu sur le registre par fenêtre, compté 193 000, écart −500 posé (injecté).
+      // 4. Clôture : le serveur calcule l'attendu sur le registre par fenêtre ; compté 193 000.
       const expected = expectedCashXaf(20_000, await windowMovements(OPENED_AT, CLOSED_AT));
       expect(expected).toBe(193_500);
-      const variance = cashVarianceXaf(193_000, expected);
-      expect(variance).toBe(-500);
-      await tx((trx) =>
-        recordCashMovement(
-          trx,
-          { idGenerator },
-          {
-            cashAccountId: pos,
-            direction: 'OUT',
-            amountXaf: 500,
-            movementType: 'SESSION_VARIANCE',
-            sourceDocType: 'CASH_SESSION',
-            sourceDocId: freshUuid(),
-            occurredAt: new Date(CLOSED_AT),
-            createdBy: seller.userId,
-            allowNegative: false,
-          },
-        ),
+      expect(cashVarianceXaf(193_000, expected)).toBe(-500);
+      const closed = await ok(
+        seller,
+        'finance.cash_session.close',
+        'CASH_SESSION',
+        sessionId,
+        CLOSED_AT,
+        {
+          countedXaf: 193_000,
+        },
       );
+      expect(closed.status === 'APPLIED' ? closed.server_refs : undefined).toMatchObject({
+        closingExpectedXaf: '193500',
+        varianceXaf: '-500',
+        status: 'PENDING_VALIDATION',
+      });
       expect(await balanceOf(pos)).toBe(193_000);
+      // La Finance valide l'écart (P5-13), avec son motif.
+      await ok(fin1, 'finance.cash_session.validate', 'CASH_SESSION', sessionId, at('19:15'), {
+        reason: 'Manque de 500 : erreur de rendu de monnaie',
+      });
+      const session = await db
+        .selectFrom('finance_cash_sessions')
+        .select(['status', 'variance_xaf', 'closing_expected_xaf'])
+        .where('id', '=', toBin(sessionId))
+        .executeTakeFirstOrThrow();
+      expect(session).toMatchObject({ status: 'VALIDATED' });
+      expect(Number(session.variance_xaf)).toBe(-500);
 
       // 5. Remise de 173 000 envoyée hors ligne après la clôture, reçue en ligne par la Finance.
       const tablet = new OfflineDevice(services, seller.deviceId, clock);

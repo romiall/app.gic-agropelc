@@ -9,7 +9,8 @@
  * 20260924100100_create_identity_core.sql) : ce seed est la source de vérité courante de
  * la matrice, pas seulement son état initial.
  */
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
+import { connectUtc } from './connection.js';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
 import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
@@ -17,7 +18,7 @@ import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
 import { FINANCE_CONTROL_POLICIES, PAYMENT_METHODS } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
-import { codeEntityId } from './code-entity-id.js';
+import { publishReferenceFeeds } from './publish-references.js';
 
 import { newUuidv7Bytes as newId } from './uuidv7.js';
 
@@ -319,37 +320,10 @@ async function seedFinanceReferences(conn: mysql.Connection): Promise<void> {
     inserted++;
   }
   console.log(`  + finance_payment_methods (${inserted} nouveau(x) sur ${PAYMENT_METHODS.length})`);
-
-  // P4-11 (ADR-031) : chaque moyen de paiement, dans sa version courante, est publié une fois dans le
-  // flux de synchronisation (jeu `catalog`, ligne `GLOBAL`) pour être téléchargé par les appareils.
-  const [methods] = await conn.query<mysql.RowDataPacket[]>(
-    'SELECT code, version FROM finance_payment_methods',
-  );
-  let published = 0;
-  for (const method of methods) {
-    const entityId = Buffer.from(
-      codeEntityId('PAYMENT_METHOD', method.code as string).replace(/-/g, ''),
-      'hex',
-    );
-    const [existing] = await conn.query<mysql.RowDataPacket[]>(
-      `SELECT seq FROM sync_change_feed
-        WHERE dataset = 'catalog' AND entity_type = 'PAYMENT_METHOD' AND entity_id = ?
-          AND row_version = ? LIMIT 1`,
-      [entityId, method.version],
-    );
-    if (existing.length > 0) continue;
-    await conn.query(
-      `INSERT INTO sync_change_feed (dataset, entity_type, entity_id, change_type, scope_type, scope_id, row_version)
-       VALUES ('catalog', 'PAYMENT_METHOD', ?, 'UPSERT', 'GLOBAL', NULL, ?)`,
-      [entityId, method.version],
-    );
-    published++;
-  }
-  console.log(`  + sync_change_feed catalog/PAYMENT_METHOD (${published} publication(s))`);
 }
 
 async function main(): Promise<void> {
-  const conn = await mysql.createConnection(DATABASE_URL!);
+  const conn = await connectUtc(DATABASE_URL!);
   try {
     console.log('Seed P0-05 :');
     const systemUserId = await ensureSystemUser(conn);
@@ -361,6 +335,8 @@ async function main(): Promise<void> {
     await seedCrmReferences(conn, systemUserId);
     await seedProductionReferences(conn, systemUserId);
     await seedFinanceReferences(conn);
+    // P4-11 puis P5-18 (ADR-031, AV-196) : référentiels semés publiés dans le flux de synchronisation.
+    await publishReferenceFeeds(conn);
     console.log('Terminé.');
   } finally {
     await conn.end();

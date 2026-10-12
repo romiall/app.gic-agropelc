@@ -112,6 +112,104 @@ export async function findCashTransfer(
   return row ? toSummary(row) : undefined;
 }
 
+// --- P5-17 : liste et mouvements pour `GET /cash-transfers`, `/cash-transfers/{id}` ------------------
+
+export const CASH_TRANSFER_STATUSES = [
+  'SENT',
+  'RECEIVED',
+  'DISCREPANCY_PENDING',
+  'CLOSED',
+  'CANCELLED',
+] as const;
+
+/**
+ * Remises de fonds, de la plus récente à la plus ancienne (`id`). `accountIds` : remises dont l'un des
+ * deux comptes en fait partie (comptes visibles de l'appelant ; liste vide ⇒ aucune) ; absent ⇒ toutes.
+ * Période sur l'heure d'envoi (`sent_at`).
+ */
+export async function listCashTransfers(
+  executor: Executor,
+  filter: {
+    readonly accountIds?: readonly string[];
+    readonly status?: CashTransferSummary['status'];
+    readonly fromUtc?: Date;
+    readonly toUtc?: Date;
+    readonly beforeId?: string;
+    readonly limit: number;
+  },
+): Promise<{ readonly items: readonly CashTransferSummary[]; readonly nextCursor: string | null }> {
+  if (filter.accountIds !== undefined && filter.accountIds.length === 0) {
+    return { items: [], nextCursor: null };
+  }
+  const accounts = filter.accountIds?.map((id) => toBin(id));
+  const rows = await executor
+    .selectFrom('finance_cash_transfers')
+    .selectAll()
+    .$if(accounts !== undefined, (qb) =>
+      qb.where((eb) =>
+        eb.or([eb('from_account_id', 'in', accounts!), eb('to_account_id', 'in', accounts!)]),
+      ),
+    )
+    .$if(filter.status !== undefined, (qb) => qb.where('status', '=', filter.status!))
+    .$if(filter.fromUtc !== undefined, (qb) => qb.where('sent_at', '>=', filter.fromUtc!))
+    .$if(filter.toUtc !== undefined, (qb) => qb.where('sent_at', '<', filter.toUtc!))
+    .$if(filter.beforeId !== undefined, (qb) => qb.where('id', '<', toBin(filter.beforeId!)))
+    .orderBy('id', 'desc')
+    .limit(filter.limit + 1)
+    .execute();
+  const hasMore = rows.length > filter.limit;
+  const page = hasMore ? rows.slice(0, filter.limit) : rows;
+  return {
+    items: page.map(toSummary),
+    nextCursor: hasMore ? fromBin(page[page.length - 1]!.id) : null,
+  };
+}
+
+export interface CashTransferMovementLine {
+  readonly id: string;
+  readonly cashAccountId: string;
+  readonly direction: 'IN' | 'OUT';
+  readonly amountXaf: number;
+  readonly movementType: string;
+  readonly occurredAt: string;
+  readonly isReversal: boolean;
+  readonly reversesMovementId: string | null;
+}
+
+/** Mouvements de trésorerie d'une remise (sortie, entrée, inverse d'annulation), dans l'ordre. */
+export async function cashTransferMovements(
+  executor: Executor,
+  transferId: string,
+): Promise<readonly CashTransferMovementLine[]> {
+  const rows = await executor
+    .selectFrom('finance_cash_movements')
+    .select([
+      'id',
+      'cash_account_id',
+      'direction',
+      'amount_xaf',
+      'movement_type',
+      'occurred_at',
+      'is_reversal',
+      'reverses_movement_id',
+    ])
+    .where('source_doc_type', '=', 'CASH_TRANSFER')
+    .where('source_doc_id', '=', toBin(transferId))
+    .orderBy('occurred_at', 'asc')
+    .orderBy('id', 'asc')
+    .execute();
+  return rows.map((row) => ({
+    id: fromBin(row.id),
+    cashAccountId: fromBin(row.cash_account_id),
+    direction: row.direction as 'IN' | 'OUT',
+    amountXaf: Number(row.amount_xaf),
+    movementType: row.movement_type,
+    occurredAt: row.occurred_at.toISOString(),
+    isReversal: Boolean(row.is_reversal),
+    reversesMovementId: fromBinOrNull(row.reverses_movement_id),
+  }));
+}
+
 // --- Indicateur « en transit » ------------------------------------------------------------------------
 
 export interface CashTransferAccountTotal {

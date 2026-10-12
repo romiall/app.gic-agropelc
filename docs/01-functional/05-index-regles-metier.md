@@ -120,7 +120,7 @@ Fichier : [`domaines/D04-VEN-commandes-ventes.md`](domaines/D04-VEN-commandes-ve
 | BR-VEN-025 | Une vente à crédit exige un client autorisé au crédit, avec un encours après vente ≤ plafond. Hors ligne, le contrôle porte sur l'encours c… | AV-028 |
 | BR-VEN-026 | Le statut de paiement (`UNPAID`, `PARTIALLY_PAID`, `PAID`) est dérivé des affectations actives de paiement et n'est jamais saisi. | D (C-05) |
 | BR-VEN-027 | Annuler une vente, en tout ou en partie, est un document d'annulation (`ANV`) ; la vente reste immuable. Ses effets, à l'heure de l'annulat… | C (CM §41) / D (ADR-028 §5, ADR-029, ADR-033 §8) / AV-146, AV-149 |
-| BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at`, et si la session d… | AV-030 |
+| BR-VEN-028 | L'annulation directe (sans validation) n'est permise qu'au vendeur de la vente, moins de 15 minutes après `occurred_at` (`sales.direct_canc… | AV-030, AV-185 |
 | BR-VEN-029 | Pour une vente hors ligne, si le prix figé diffère du prix que le serveur aurait résolu à `occurred_at` avec les règles alors actives, la v… | AV-063 |
 | BR-VEN-030 | Une vente d'un produit désactivé est acceptée si elle a été capturée hors ligne avant la réception de la désactivation, avec une anomalie ;… | AV-083 |
 | BR-VEN-031 | Une ligne de produit de type `SERVICE` (ex. frais de livraison) n'a aucun effet de stock. | AV-085 |
@@ -141,7 +141,7 @@ Fichier : [`domaines/D05-DIS-distribution-points-de-vente.md`](domaines/D05-DIS-
 | BR-DIS-007 | À la clôture, le vendeur compte les espèces. Solde attendu = fonds compté à l'ouverture + Σ entrées − Σ sorties des mouvements du registre… | C (CM §54 « anomalie de caisse ») / D (ADR-032) / AV-057 |
 | BR-DIS-008 | Une session validée est immuable. Une vente hors ligne tardive rattachée à une session validée ouvre un écart complémentaire, lui aussi à v… | D |
 | BR-DIS-009 | La remise de fonds se fait en deux temps : envoi (sortie `TRANSFER_OUT` du montant envoyé de la caisse du PDV) puis réception (entrée `TRAN… | D (ADR-032 §7) / AV-153, AV-172, AV-175 |
-| BR-DIS-010 | Indicateurs de distribution par PDV × produit × période (sur `occurred_at`) : envoyé = Σ quantités expédiées vers le PDV ; reçu = Σ quantit… | C (CM §12, §2/Distribution) / D (formules) |
+| BR-DIS-010 | Indicateurs de distribution d'un PDV, calculés à la demande (BR-ANA-001) par emplacement de vente du PDV × produit × période de jours métie… | C (CM §12, §2/Distribution) pour les notions / D (formules) |
 | BR-DIS-011 | La suggestion de réapprovisionnement ne crée jamais de transfert automatiquement : un humain crée la demande ou l'expédition. | D (CM §54 « provoquer une action ») |
 | BR-DIS-012 | Les retours vers le magasin et les transferts entre PDV sont des transferts ordinaires (BR-STK-020). | C (CM §22) |
 | BR-DIS-013 | Les petites dépenses payées depuis la caisse du PDV sont permises pour les catégories autorisées et sous un plafond. Elles diminuent le sol… | AV-058 |

@@ -120,7 +120,7 @@ Réécrit en P5-11 (ADR-028 §5, ADR-029, ADR-033 §8 ; AT-009) : une annulation
 | Au-delà du délai, ou par une autre personne autorisée | `sales.sale.cancel` transformée en demande (`CANCEL_WINDOW_EXCEEDED`), ou `sales.sale.request_cancellation` → validation `SALE_CANCELLATION` | Idem, **à la décision** (`applied_at`) ; quota restitué s'il est encore actif à ce moment | Idem ; sort de la part payée choisi par l'approbateur (`decisionOption`) | Demande + décision |
 | Vente sur commande | Idem | Limitée au **non-livré** (ADR-029 §10) : retour de « à livrer » vers la préparation ; aucune restitution de quota (la confirmation n'en consomme aucun) ; les quantités annulées sont retirées de la commande (AV-149) | Idem ; la part payée suit le même choix | Idem |
 
-CA : contre-écriture datée de `applied_at` (BR-FIN-042). Condition « session de caisse de la vente encore ouverte » (BR-VEN-028) : P5-14. Sync : annulation directe possible hors ligne dans le délai, au-delà transformée en demande ; la décision est en ligne.
+CA : contre-écriture datée de `applied_at` (BR-FIN-042). Condition « session de caisse de la vente encore ouverte » (BR-VEN-028, P5-14) : chaque encaissement (`RECORDED` ou `CANCELLATION_REQUESTED`) de la vente sur la caisse du PDV appartient à une session qui couvre l'heure de l'encaissement et l'heure de l'annulation ; sinon, demande (`CANCEL_SESSION_CLOSED`, AV-185). Sync : annulation directe possible hors ligne dans le délai, au-delà transformée en demande ; la décision est en ligne.
 
 ---
 
@@ -305,7 +305,7 @@ Toutes ces étapes fonctionnent hors ligne ; la conversion est déterminée par 
 6. **Audit** : chaque étape.
 7. **Sync** : ouverture, clôture et envoi possibles hors ligne ; validation en ligne. La remise peut être envoyée hors ligne et reçue en ligne par la Finance.
 
-**Vecteur automatisé** (P5-15, `apps/server/test/finance-wf15-cash-day.test.ts`) pour le **volet remise** : fonds de 20 000 envoyé par une vraie remise de la caisse centrale et reçu avant l'ouverture (écart d'ouverture nul), ventes et remboursement par les vraies commandes de vente, remise de 173 000 envoyée hors ligne puis reçue en ligne ; sont **injectés** en attendant leur incrément : la dépense de 2 000 (P8), l'écart de clôture de −500 (`SESSION_VARIANCE`, à remplacer par `finance.cash_session.open` et `.close` à l'intégration de P5-12) ; l'alerte et la validation de la session relèvent de P5-13 et P9.
+**Vecteur automatisé** (P5-15, `apps/server/test/finance-wf15-cash-day.test.ts`) pour le **volet remise** : fonds de 20 000 envoyé par une vraie remise de la caisse centrale et reçu avant l'ouverture (écart d'ouverture nul), ventes et remboursement par les vraies commandes de vente, remise de 173 000 envoyée hors ligne puis reçue en ligne ; seule la dépense de 2 000 est encore **injectée** (P8). Depuis P5-14, la session est la vraie : ouverture (`finance.cash_session.open`), clôture (`.close` : attendu 193 500 calculé par le serveur, écart −500, `PENDING_VALIDATION`), validation par la Finance (`.validate`, motif) ; l'alerte relève de P9. La suite d'AT-031 (vente tardive dans la session validée) est dans `apps/server/test/sales-cash-session.test.ts`.
 
 ---
 
@@ -357,6 +357,8 @@ Situation : PDV Mboppi, 3 tablettes, emplacement `SHARED`, solde de 100 poulets.
 1. À l'ouverture (en ligne), le responsable accorde : A 40, B 30, C 20. Il reste 10 non alloués, vendables seulement en ligne.
 2. Journée hors ligne : A vend 38, B tente 31 (bloqué à 30), C vend 12.
 3. Synchronisation : ventes appliquées ; allocations consommées.
-4. Fin de journée : chaque tablette émet `inventory.allocation.release` pour son reste (A 2, C 8). Le solde se reconstitue.
+4. Fin de journée : chaque tablette émet `inventory.allocation.release` pour son reste (A 2, B 0, C 8). Les quotas se ferment (`RELEASED`) : le solde (20) ne bouge pas (ni l'octroi ni la libération ne font de mouvement de stock, ADR-033 §3) et le non-alloué remonte de 10 à 20.
 5. Si B avait vendu 31 malgré le blocage (appareil modifié) : la vente est appliquée avec un solde qui reste positif ; le quota de B est ramené à 0, l'unité en trop est prise sur le stock commun et l'anomalie `ALLOCATION_EXCEEDED` est ouverte pour enquête (fraude possible ; `signalled` vrai si le site autorise le dépassement, AV-025). Vérifié par AT-003 côté serveur (P5-11).
 6. En ligne, B peut vendre au-delà de ses 30 dans la limite des 10 non alloués, sans anomalie ; au-delà, refus `ALLOCATION_EXCEEDED`. Un vendeur sans quota ne vend en ligne que le stock non alloué (`INSUFFICIENT_STOCK` au-delà) ; s'il vend hors ligne malgré le blocage (`ALLOCATION_MISSING` sur l'appareil), la vente est appliquée sur le stock commun et signalée `ALLOCATION_EXCEEDED` (motif `ALLOCATION_MISSING`, AV-166) ; si elle entame la part d'une autre tablette, `ALLOCATION_OVERCOMMITTED` est aussi ouvert.
+
+Vecteur automatisé (P5-21, AT-004) : `apps/server/test/p5-pdv-three-tablets.test.ts`. Mêmes chiffres, synchronisation entrelacée, inverse ou concurrente des trois tablettes : même état final ; étape 5 (appareil modifié) ; étape 6 en variante, quotas actifs (B en ligne au-delà de ses 30 dans la limite du non-alloué puis refus `ALLOCATION_EXCEEDED`, vendeur sans quota sur le non-alloué puis `INSUFFICIENT_STOCK`, vente hors ligne malgré le blocage signalée `ALLOCATION_EXCEEDED` motif `ALLOCATION_MISSING` avec `ALLOCATION_OVERCOMMITTED`) ; vente en ligne du stock libéré en fin de journée.

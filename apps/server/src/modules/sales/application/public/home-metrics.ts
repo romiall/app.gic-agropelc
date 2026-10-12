@@ -129,24 +129,77 @@ export interface CashedSummary {
   readonly amountXaf: number;
 }
 
+/**
+ * Encaissements retenus par l'« encaissé » (KPI-FIN-01, KPI-DIS-06) : confirmés (`RECORDED`), au jour
+ * métier du paiement — **une seule définition** pour l'accueil et le tableau de distribution
+ * (BR-ANA-009 ; datation des annulations : AV-200).
+ */
+function cashedPayments(
+  executor: Executor,
+  scope: ReadScope,
+  period: { readonly fromDay: string; readonly toDay: string },
+) {
+  return executor
+    .selectFrom('sales_customer_payments')
+    .where('status', '=', 'RECORDED')
+    .where(sql`business_date`, '>=', sql<Date>`${period.fromDay}`)
+    .where(sql`business_date`, '<=', sql<Date>`${period.toDay}`)
+    .where(scopeSql(scope, PAYMENT_SCOPE));
+}
+
 /** Encaissements confirmés (`RECORDED`) dont le jour métier est dans la période (KPI-FIN-01). */
 export async function cashedSummary(
   executor: Executor,
   scope: ReadScope,
   period: { readonly fromDay: string; readonly toDay: string },
 ): Promise<CashedSummary> {
-  const row = await executor
-    .selectFrom('sales_customer_payments')
+  const row = await cashedPayments(executor, scope, period)
     .select([
       sql<string>`COUNT(*)`.as('count'),
       sql<string>`COALESCE(SUM(amount_xaf), 0)`.as('amount'),
     ])
-    .where('status', '=', 'RECORDED')
-    .where(sql`business_date`, '>=', sql<Date>`${period.fromDay}`)
-    .where(sql`business_date`, '<=', sql<Date>`${period.toDay}`)
-    .where(scopeSql(scope, PAYMENT_SCOPE))
     .executeTakeFirstOrThrow();
   return { paymentsCount: Number(row.count), amountXaf: Number(row.amount) };
+}
+
+export interface CashedGroup {
+  readonly siteId: string;
+  readonly paymentMethodCode: string;
+  readonly receivedByUserId: string;
+  readonly paymentsCount: number;
+  readonly amountXaf: number;
+}
+
+/**
+ * Encaissé ventilé par site, moyen de paiement et receveur (P5-19 ; KPI-DIS-06 « encaissé du PDV »,
+ * ADR-032 §9 : tous moyens du site, distinct de l'attendu de caisse). Même filtre que `cashedSummary` :
+ * la somme des groupes égale le total (BR-ANA-009).
+ */
+export async function cashedByGroup(
+  executor: Executor,
+  scope: ReadScope,
+  period: { readonly fromDay: string; readonly toDay: string },
+): Promise<readonly CashedGroup[]> {
+  const rows = await cashedPayments(executor, scope, period)
+    .select([
+      'site_id',
+      'payment_method_code',
+      'received_by_user_id',
+      sql<string>`COUNT(*)`.as('count'),
+      sql<string>`COALESCE(SUM(amount_xaf), 0)`.as('amount'),
+    ])
+    .groupBy(['site_id', 'payment_method_code', 'received_by_user_id'])
+    .orderBy('site_id')
+    .orderBy('payment_method_code')
+    .orderBy('received_by_user_id')
+    .execute();
+  return rows.map((row) => ({
+    siteId: fromBin(row.site_id),
+    paymentMethodCode: row.payment_method_code,
+    receivedByUserId: fromBin(row.received_by_user_id),
+    paymentsCount: Number(row.count),
+    amountXaf: Number(row.amount),
+  }));
 }
 
 /** Encaissements mis de côté comme doublons, en attente de décision de la Finance (AV-056). */

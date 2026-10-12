@@ -636,10 +636,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     );
     if (written.rejection) return written.rejection;
     for (const warning of written.warnings) warnings.add(warning);
-    if (written.paidXaf > 0) {
+    // P5-14 : index de session de la vente (celui de son premier encaissement en espèces au PDV, posé
+    // par `recordCashMovement`) et drapeau d'un encaissement hors ligne sans session (AV-184).
+    if (written.cashSessionMissing) flags.add('CASH_SESSION_MISSING');
+    if (written.paidXaf > 0 || written.cashSessionId !== null || written.cashSessionMissing) {
       await uow
         .updateTable('sales_sales')
-        .set({ amount_paid_xaf: written.paidXaf })
+        .set({
+          ...(written.paidXaf > 0 ? { amount_paid_xaf: written.paidXaf } : {}),
+          ...(written.cashSessionId !== null
+            ? { cash_session_id: toBin(written.cashSessionId) }
+            : {}),
+          ...(written.cashSessionMissing ? { flags: jsonValue([...flags]) } : {}),
+        })
         .where('id', '=', toBin(saleId))
         .execute();
     }

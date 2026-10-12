@@ -129,6 +129,12 @@ export interface RecordedCashMovement {
   /** Hors ligne : le solde d'une caisse physique est devenu négatif (anomalie `CASH_NEGATIVE`). */
   readonly negativeBalance: boolean;
   /**
+   * Index `cash_session_id` posé sur le mouvement (ADR-032 §2) : session dont la fenêtre couvre sa
+   * date au moment de l'écriture, pour une caisse de PDV ; `null` sinon. P5-14 : `sales` le reporte
+   * sur l'encaissement et la vente, et en déduit `CASH_SESSION_MISSING` hors ligne.
+   */
+  readonly cashSessionId: string | null;
+  /**
    * P5-13 (ADR-032 §6) : mouvement tardif tombé dans la fenêtre d'une session close d'une caisse de
    * PDV — ajustement du delta posé (conflit `CASH_SESSION_REEVALUATED` pour la Finance) ; sinon `null`.
    */
@@ -295,6 +301,7 @@ export async function recordCashMovement(
     amountXaf: input.amountXaf,
     balanceAfterXaf,
     negativeBalance,
+    cashSessionId,
     reevaluation,
   };
 }

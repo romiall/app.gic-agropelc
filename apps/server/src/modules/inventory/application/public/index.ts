@@ -178,4 +178,40 @@ export type {
 
 // Accueil par rôle (ADR-030).
 export { stockHealth, recentLosses } from './home-metrics.js';
+
+// P5-19 : métriques de distribution partagées (tableau de P5-20, accueil ; BR-ANA-009, AV-199).
+export {
+  allocationPositions,
+  distributionFlowsOf,
+  distributionKpisOf,
+  locationFlows,
+  sentByDestination,
+} from './distribution-metrics.js';
+export type {
+  AllocationPosition,
+  BusinessPeriod,
+  DistributionKpis,
+  LocationProductFlows,
+  SentByDestinationLine,
+} from './distribution-metrics.js';
+// P5-20 : seuils de plusieurs emplacements (KPI-DIS-07).
+export { stockThresholdsOf } from './document-query.js';
 export type { StockHealth, RecentLosses } from './home-metrics.js';
+
+// P5-17 : lectures des quotas d'appareil (`GET /allocations`, `/allocations/{id}`).
+export {
+  ALLOCATION_STATUSES,
+  activeAllocationHolderDevices,
+  activeAllocationTotals,
+  findAllocation,
+  listAllocationEntries,
+  listAllocations,
+} from './allocation-query.js';
+export type {
+  ActiveAllocationTotal,
+  AllocationEntryLine,
+  AllocationStatus,
+  AllocationSummary,
+} from './allocation-query.js';
+// P5-17 (AV-190) : anomalies de stock encore présentes, avant la clôture manuelle de leur conflit.
+export { hasNegativeStock, isAllocationOvercommitted } from './stock-conflict-conditions.js';

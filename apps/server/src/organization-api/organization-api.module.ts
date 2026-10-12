@@ -8,9 +8,10 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../modules/identity/identity.module.js';
 import { SettingsController } from './settings.controller.js';
+import { StructureReadController } from './structure-read.controller.js';
 
 @Module({
   imports: [IdentityModule],
-  controllers: [SettingsController],
+  controllers: [SettingsController, StructureReadController],
 })
 export class OrganizationApiModule {}

@@ -43,6 +43,7 @@ import {
   insertTestZone,
   monthEndOf,
   recentBusinessDay,
+  freshLocalPhone,
 } from './helpers.js';
 
 // Jour récent (heure réelle) : la fenêtre de 90 jours du jeu `crm_activity` est évaluée par la base.
@@ -138,7 +139,7 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
       displayName: 'Compte synchronisé',
       zoneId,
       sourceCode: 'PROSPECTION_TERRAIN',
-      phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+      phonePrimary: await freshLocalPhone(),
       position: { ...CENTER, accuracyM: 10 },
     });
     return id;
@@ -260,7 +261,7 @@ describe('projections /sync/pull du CRM et du pointage (P3-07)', () => {
       displayName: 'Client comptoir',
       zoneId,
       sourceCode: 'VISITE_SPONTANEE',
-      phonePrimary: `6${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
+      phonePrimary: await freshLocalPhone(),
     });
 
     const forOwner = latest(await pull(cte1, 'customers'), 'CUSTOMER', own);

@@ -11,9 +11,21 @@
  * sites de leur affectation (un site ou les sites d'une zone). Les montants de valeur (stock) exigent
  * `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide de données reste affichée : un
  * indicateur à zéro est une information.
+ *
+ * Distribution (P5-20, AV-208) : avec `analytics.dashboard.distribution`, la Finance lit les sessions de
+ * caisse des PDV, les remises en attente et les appareils en retard ; le magasinier, les produits à
+ * réapprovisionner, les quotas à régulariser et les appareils des PDV de **ses** sites. Mêmes fonctions
+ * que le tableau de distribution (BR-ANA-009). Les anomalies d'un rôle de sites ne portent que sur ses
+ * sites.
  */
 import type { Kysely, Transaction } from 'kysely';
-import { businessDayOf, businessDayStartUtc, type Clock } from '@gic/domain';
+import {
+  businessDayOf,
+  businessDayStartUtc,
+  cashSessionOpenLongerThan,
+  varianceSeverity,
+  type Clock,
+} from '@gic/domain';
 import type {
   HomeAction,
   HomeActivity,
@@ -24,7 +36,12 @@ import type {
 } from '@gic/contracts';
 import type { DB } from '../platform/kysely/database.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { openConflictSummary } from '../platform/sync/conflicts.js';
+import {
+  listConflicts,
+  openConflictSummary,
+  type OpenConflictSummary,
+} from '../platform/sync/conflicts.js';
+import { conflictResource } from '../sync/conflict-resource.js';
 import { ALL_SCOPE, type ReadScope } from '../platform/read-scope.js';
 import {
   activeRoleAssignmentsAt,
@@ -34,13 +51,25 @@ import {
   userFullNames,
 } from '../modules/identity/application/public/index.js';
 import {
+  listPointsOfSale,
   listSiteIdsInZones,
   listManagedTeamMembersAt,
 } from '../modules/organization/application/public/index.js';
 import { findWorkSessionAt } from '../modules/fieldwork/application/public/index.js';
 import { pendingApprovalsFor } from '../modules/approvals/application/public/index.js';
-import { cashPosition } from '../modules/finance/application/public/index.js';
-import { recentLosses, stockHealth } from '../modules/inventory/application/public/index.js';
+import {
+  cashPosition,
+  cashSessionThresholdsAt,
+  cashSessionsOverview,
+  listCashAccounts,
+  pendingCashTransfers,
+} from '../modules/finance/application/public/index.js';
+import {
+  allocationPositions,
+  recentLosses,
+  stockHealth,
+  stockThresholdsOf,
+} from '../modules/inventory/application/public/index.js';
 import { productionOverview } from '../modules/production/application/public/index.js';
 import { procurementOverview } from '../modules/procurement/application/public/index.js';
 import {
@@ -56,6 +85,11 @@ import {
   salesPeriodSummary,
   suspectPaymentsCount,
 } from '../modules/sales/application/public/index.js';
+import { deviceFreshness, devicesOfSites } from '../sync/device-freshness.js';
+import {
+  distributionTargetsOf,
+  type DistributionTargets,
+} from '../read-api/distribution-targets.js';
 import { ROLE_CATALOG, ROLE_ORDER, type RoleDefinition } from './role-catalog.js';
 import {
   formatXaf,
@@ -72,6 +106,7 @@ import {
 type Executor = Kysely<DB> | Transaction<DB>;
 
 const VALUATION_READ = 'inventory.valuation.read';
+const DISTRIBUTION_READ = 'analytics.dashboard.distribution';
 /** Un client sans vente depuis ce nombre de jours est inactif (AV-013). */
 const INACTIVE_DAYS = 30;
 const RECENT_SALES = 6;
@@ -83,6 +118,8 @@ interface Context {
   readonly day: string;
   readonly roles: readonly string[];
   readonly canReadValuation: boolean;
+  /** `analytics.dashboard.distribution` (P5-20) : blocs de distribution de la Finance et du magasinier. */
+  readonly canReadDistribution: boolean;
 }
 
 interface Built {
@@ -354,6 +391,42 @@ async function productionBlock(ctx: Context, scope: ReadScope): Promise<Built> {
   return built;
 }
 
+/**
+ * Rôle d'équipe (ou de personne) : les anomalies ouvertes de ses rôles propriétaires dont le titulaire
+ * est l'une de ses personnes — l'auteur de la commande, ou pour un conflit système le détenteur du
+ * stock mobile en cause (`conflictResource`) : la règle de la portée `TEAM` de `GET /sync/conflicts`.
+ */
+async function peopleConflictSummary(
+  ctx: Context,
+  ownerRoles: readonly string[],
+  people: readonly string[],
+): Promise<OpenConflictSummary> {
+  if (ownerRoles.length === 0 || people.length === 0) return { total: 0, byType: {} };
+  const members = new Set(people);
+  const byType: Record<string, number> = {};
+  let total = 0;
+  let beforeId: string | undefined;
+  for (;;) {
+    const page = await listConflicts(ctx.executor, {
+      status: 'OPEN',
+      ownerRoles,
+      // Pré-filtre sûr : conflits produits par ces personnes, ou conflits système (évalués ensuite).
+      confinement: { siteIds: [], authorUserIds: people },
+      limit: 200,
+      ...(beforeId !== undefined ? { beforeId } : {}),
+    });
+    for (const conflict of page.items) {
+      const { ownerUserId } = await conflictResource(ctx.executor, conflict);
+      if (ownerUserId === undefined || !members.has(ownerUserId)) continue;
+      byType[conflict.conflictType] = (byType[conflict.conflictType] ?? 0) + 1;
+      total += 1;
+    }
+    if (page.nextCursor === null) break;
+    beforeId = page.nextCursor;
+  }
+  return { total, byType };
+}
+
 async function coordinationBlock(
   ctx: Context,
   scope: ReadScope,
@@ -374,10 +447,14 @@ async function coordinationBlock(
       }),
     );
   }
-  const conflicts = await openConflictSummary(
-    ctx.executor,
-    role.conflictRoles === 'ALL' ? {} : { ownerRoles: role.conflictRoles },
-  );
+  const conflicts =
+    role.conflictRoles !== 'ALL' && scope.userIds !== undefined
+      ? await peopleConflictSummary(ctx, role.conflictRoles, scope.userIds)
+      : await openConflictSummary(ctx.executor, {
+          ...(role.conflictRoles === 'ALL' ? {} : { ownerRoles: role.conflictRoles }),
+          // Rôle de sites : les anomalies de ses seuls sites (P5-20).
+          ...(scope.siteIds !== undefined ? { siteIds: scope.siteIds } : {}),
+        });
   if (conflicts.total > 0) {
     const critical = (conflicts.byType['STOCK_NEGATIVE'] ?? 0) > 0;
     const types = Object.entries(conflicts.byType)
@@ -395,7 +472,6 @@ async function coordinationBlock(
       }),
     );
   }
-  void scope;
   return built;
 }
 
@@ -500,6 +576,228 @@ async function portfolioBlock(ctx: Context, owners: readonly string[] | undefine
   return built;
 }
 
+// --- Distribution (P5-20, AV-208) : les fonctions du tableau de distribution (BR-ANA-009) ---------------
+
+/** PDV configurés du périmètre et leurs cibles ; un périmètre vide n'en a aucun (ADR-030 §5). */
+async function distributionTargetsFor(
+  ctx: Context,
+  scope: ReadScope,
+): Promise<DistributionTargets> {
+  const points = await listPointsOfSale(
+    ctx.executor,
+    scope.siteIds !== undefined ? { siteIds: scope.siteIds } : {},
+  );
+  return distributionTargetsOf(ctx.executor, points);
+}
+
+/**
+ * Appareils des PDV **ouverts** sans contact au-delà de `analytics.freshness_warning_hours` (BR-ANA-005,
+ * AV-202, AV-208) : la tablette restée désignée d'un site fermé n'est pas une vente en attente.
+ */
+async function devicesBlock(ctx: Context, targets: DistributionTargets): Promise<Built> {
+  const built = empty();
+  const siteIds = targets.pointsOfSale
+    .filter((pos) => pos.siteStatus === 'ACTIVE')
+    .map((pos) => pos.siteId);
+  const bySite = await devicesOfSites(ctx.executor, siteIds);
+  const deviceIds = [...new Set([...bySite.values()].flat())];
+  if (deviceIds.length === 0) return built;
+  const report = await deviceFreshness(ctx.executor, { deviceIds, now: ctx.at });
+  const inService = report.devices.filter((device) => device.status === 'ACTIVE').length;
+  built.kpis.push(
+    kpi({
+      code: 'KPI-OPS-01',
+      label: 'Appareils en retard',
+      value: report.staleCount,
+      unit: 'COUNT',
+      detail: `sur ${plural(inService, 'appareil de PDV', 'appareils de PDV')} · seuil ${report.warningHours} h`,
+      tone: report.staleCount > 0 ? 'warn' : 'good',
+    }),
+  );
+  if (report.staleCount > 0) {
+    // Distinct de `SYNC_STALE` (D13, 24 h, P9) : seuil d'affichage de BR-ANA-005 (AV-208).
+    built.signals.push(
+      signal({
+        code: 'DEVICES_STALE',
+        severity: 'WARNING',
+        title: `${plural(report.staleCount, 'appareil sans contact', 'appareils sans contact')} depuis plus de ${report.warningHours} h`,
+        detail:
+          'Des ventes ou des encaissements peuvent attendre sur l’appareil : le faire synchroniser.',
+        count: report.staleCount,
+      }),
+    );
+  }
+  return built;
+}
+
+/**
+ * Finance : sessions de caisse des PDV (à valider, écarts du jour, ouvertes trop longtemps), remises de
+ * fonds en attente sur tous les comptes, appareils des PDV. Pas de signal « sessions à valider » :
+ * `APPROVALS_PENDING` porte déjà les demandes `CASH_VARIANCE` (AV-208).
+ */
+async function distributionFinanceBlock(ctx: Context): Promise<Built> {
+  const built = empty();
+  const targets = await distributionTargetsFor(ctx, ALL_SCOPE);
+  const accounts = await listCashAccounts(ctx.executor);
+  const [overview, transfers, thresholds, devices] = await Promise.all([
+    cashSessionsOverview(ctx.executor, { accountIds: targets.cashAccountIds, day: ctx.day }),
+    pendingCashTransfers(ctx.executor, {
+      accountIds: accounts.map((account) => account.id),
+      now: ctx.at,
+    }),
+    cashSessionThresholdsAt(ctx.executor, { siteIds: targets.siteIds, at: ctx.at }),
+    devicesBlock(ctx, targets),
+  ]);
+  let varianceCount = 0;
+  let shortXaf = 0;
+  let overXaf = 0;
+  let critical = 0;
+  let openLong = 0;
+  for (const account of overview.accounts) {
+    const limits = account.siteId !== null ? thresholds.get(account.siteId) : undefined;
+    // Toutes les sessions du jour (plusieurs par jour si `finance.cash_sessions_per_day_max` > 1).
+    for (const session of account.sessionsOfDay) {
+      const variance = session.currentVarianceXaf;
+      if (variance === null || variance === 0) continue;
+      varianceCount += 1;
+      if (variance < 0) shortXaf -= variance;
+      else overXaf += variance;
+      if (
+        limits !== undefined &&
+        Math.abs(variance) > limits.varianceToleranceXaf &&
+        varianceSeverity(variance, limits.varianceCriticalXaf) === 'CRITICAL'
+      ) {
+        critical += 1;
+      }
+    }
+    if (
+      account.openSession !== null &&
+      limits !== undefined &&
+      cashSessionOpenLongerThan(account.openSession.openedAt, ctx.at, limits.forceCloseHours)
+    ) {
+      openLong += 1;
+    }
+  }
+  const inTransit = transfers.inTransit;
+  built.kpis.push(
+    kpi({
+      code: 'KPI-FIN-CS-PENDING',
+      label: 'Caisses à valider',
+      value: overview.pendingValidationCount,
+      unit: 'COUNT',
+      detail:
+        overview.pendingAdjustmentsCount > 0
+          ? `+ ${plural(overview.pendingAdjustmentsCount, 'ajustement', 'ajustements')} à valider`
+          : null,
+      tone:
+        overview.pendingValidationCount + overview.pendingAdjustmentsCount > 0 ? 'warn' : 'good',
+    }),
+    kpi({
+      code: 'KPI-FIN-CS-VAR',
+      label: 'Écarts de caisse du jour',
+      value: varianceCount,
+      unit: 'COUNT',
+      detail:
+        varianceCount > 0
+          ? `manquant ${formatXaf(shortXaf)} · excédent ${formatXaf(overXaf)}`
+          : null,
+      tone: critical > 0 ? 'bad' : varianceCount > 0 ? 'warn' : 'good',
+    }),
+    kpi({
+      code: 'KPI-FIN-TRANSFERS',
+      label: 'Remises en attente',
+      value: transfers.pendingCount,
+      unit: 'COUNT',
+      detail: `${formatXaf(inTransit.totalXaf)} en route · ${inTransit.overdueCount} en retard${
+        transfers.discrepancyPending.count > 0
+          ? ` · ${plural(transfers.discrepancyPending.count, 'écart', 'écarts')} à décider`
+          : ''
+      }`,
+      tone: inTransit.overdueCount + transfers.discrepancyPending.count > 0 ? 'warn' : 'neutral',
+    }),
+  );
+  if (critical > 0) {
+    built.signals.push(
+      signal({
+        code: 'CASH_VARIANCE',
+        severity: 'CRITICAL',
+        title: `${plural(critical, 'écart de caisse critique', 'écarts de caisse critiques')} aujourd’hui`,
+        detail: 'Écart courant au-delà du seuil critique du site : vérifier le comptage.',
+        count: critical,
+      }),
+    );
+  }
+  if (openLong > 0) {
+    built.signals.push(
+      signal({
+        code: 'CASH_SESSION_OPEN_LONG',
+        severity: 'WARNING',
+        title: plural(
+          openLong,
+          'caisse ouverte depuis trop longtemps',
+          'caisses ouvertes depuis trop longtemps',
+        ),
+        detail: 'Faire clôturer la session, ou la clôturer d’office.',
+        count: openLong,
+      }),
+    );
+  }
+  if (inTransit.overdueCount > 0) {
+    built.signals.push(
+      signal({
+        code: 'CASH_TRANSFER_NOT_RECEIVED',
+        severity: 'WARNING',
+        title: `${plural(inTransit.overdueCount, 'remise de fonds non reçue', 'remises de fonds non reçues')} après ${inTransit.unreceivedHours} h`,
+        detail: `${formatXaf(inTransit.overdueXaf)} en route : relancer le destinataire.`,
+        count: inTransit.overdueCount,
+      }),
+    );
+  }
+  return merge(built, devices);
+}
+
+/**
+ * Magasinier : produits à réapprovisionner (BR-STK-051) et quotas à régulariser sur les emplacements de
+ * vente des PDV de ses sites, appareils de ces PDV. Ni caisse ni vente (AV-208). Aucun PDV : aucun bloc.
+ */
+async function distributionStoreBlock(ctx: Context, scope: ReadScope): Promise<Built> {
+  const targets = await distributionTargetsFor(ctx, scope);
+  if (targets.pointsOfSale.length === 0) return empty();
+  const built = empty();
+  const [thresholds, positions, devices] = await Promise.all([
+    stockThresholdsOf(ctx.executor, { locationIds: targets.salesLocationIds }),
+    allocationPositions(ctx.executor, { locationIds: targets.salesLocationIds, now: ctx.at }),
+    devicesBlock(ctx, targets),
+  ]);
+  if (thresholds.length > 0) {
+    const toReplenish = thresholds.filter((line) => line.suggestedQty > 0).length;
+    built.kpis.push(
+      kpi({
+        code: 'KPI-DIS-07',
+        label: 'Produits à réapprovisionner',
+        value: toReplenish,
+        unit: 'COUNT',
+        detail: `sur ${plural(thresholds.length, 'seuil suivi', 'seuils suivis')} des PDV`,
+        tone: toReplenish > 0 ? 'warn' : 'good',
+      }),
+    );
+  }
+  const toSettle = positions.reduce((sum, line) => sum + line.toSettleAllocations, 0);
+  if (toSettle > 0) {
+    built.kpis.push(
+      kpi({
+        code: 'KPI-DIS-QUOTAS',
+        label: 'Quotas à régulariser',
+        value: toSettle,
+        unit: 'COUNT',
+        detail: 'échus ou en cours de révocation : restituer le reste',
+        tone: 'warn',
+      }),
+    );
+  }
+  return merge(built, devices);
+}
+
 function merge(...parts: readonly Built[]): Built {
   return {
     kpis: parts.flatMap((part) => part.kpis),
@@ -552,11 +850,12 @@ async function buildRole(
       );
     }
     case 'FINANCE': {
-      const [sales, receivables, cash, suspects, base] = await Promise.all([
+      const [sales, receivables, cash, suspects, distribution, base] = await Promise.all([
         salesBlock(ctx, scope, { cashed: true, period: 'DAY' }),
         receivablesBlock(ctx, scope),
         cashPosition(ctx.executor),
         suspectPaymentsCount(ctx.executor, scope),
+        ctx.canReadDistribution ? distributionFinanceBlock(ctx) : Promise.resolve(empty()),
         coordination,
       ]);
       const extra = empty();
@@ -613,6 +912,7 @@ async function buildRole(
         { ...sales, activity: [await recentSalesActivity(ctx, scope)] },
         receivables,
         extra,
+        distribution,
         base,
       );
     }
@@ -674,11 +974,12 @@ async function buildRole(
       return merge({ ...sales, activity: [await recentSalesActivity(ctx, scope)] }, stock, base);
     }
     case 'MAGASINIER': {
-      const [stock, base] = await Promise.all([
+      const [stock, distribution, base] = await Promise.all([
         stockBlock(ctx, scope, { value: true }),
+        ctx.canReadDistribution ? distributionStoreBlock(ctx, scope) : Promise.resolve(empty()),
         coordination,
       ]);
-      return merge(stock, base);
+      return merge(stock, distribution, base);
     }
     case 'RESP_FERME':
     case 'RESP_PRODUCTION': {
@@ -808,6 +1109,12 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
       input.executor,
       toBin(input.userId),
       VALUATION_READ,
+      at,
+    ),
+    canReadDistribution: await hasPermissionAt(
+      input.executor,
+      toBin(input.userId),
+      DISTRIBUTION_READ,
       at,
     ),
   };

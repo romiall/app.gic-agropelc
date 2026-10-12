@@ -11,7 +11,7 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { hashPassword } from '../src/modules/identity/application/auth/password.js';
-import { closeTestDb, db, freshUuid } from './helpers.js';
+import { closeTestDb, db, freshUuid, freshPhone } from './helpers.js';
 
 const KNOWN_PASSWORD = 'correct horse battery staple';
 
@@ -31,10 +31,6 @@ async function createLoginableUser(phone: string): Promise<string> {
     })
     .execute();
   return id;
-}
-
-function freshPhone(): string {
-  return `+2376${Math.floor(1_000_0000 + Math.random() * 8_999_9999)}`;
 }
 
 /**
@@ -67,7 +63,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('connexion réussie : jeton émis, appareil neuf enrôlé PENDING (§5, BR-ADM-005)', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     await createLoginableUser(phone);
     const deviceId = freshUuid();
 
@@ -93,7 +89,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('mot de passe incorrect : 401, aucune session créée', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     await createLoginableUser(phone);
     const response = await app.inject({
       method: 'POST',
@@ -110,13 +106,13 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
       method: 'POST',
       url: '/api/v1/auth/login',
       remoteAddress: freshIp(),
-      payload: { phone: freshPhone(), password: 'peu importe', device_id: freshUuid() },
+      payload: { phone: await freshPhone(), password: 'peu importe', device_id: freshUuid() },
     });
     expect(response.statusCode).toBe(401);
   });
 
   it('compte désactivé : 401', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     const userId = await createLoginableUser(phone);
     await db
       .updateTable('identity_users')
@@ -134,7 +130,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('verrouillage progressif : 5 échecs → 429 (§2)', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     const ip = freshIp();
     await createLoginableUser(phone);
     for (let i = 0; i < 5; i++) {
@@ -156,7 +152,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('rafraîchissement : rotation, l’ancien jeton devient invalide', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     await createLoginableUser(phone);
     const login = await app.inject({
       method: 'POST',
@@ -195,7 +191,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('déconnexion : révoque la session, jeton d’accès sans effet sur /audit après (session-based logout)', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     await createLoginableUser(phone);
     const login = await app.inject({
       method: 'POST',
@@ -222,7 +218,7 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
   });
 
   it('changement de mot de passe : ancien refusé ensuite, must_change_password ne bloque rien côté serveur', async () => {
-    const phone = freshPhone();
+    const phone = await freshPhone();
     await createLoginableUser(phone);
     const ip = freshIp();
     const login = await app.inject({

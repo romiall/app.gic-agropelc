@@ -9,7 +9,7 @@ import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../kysely/database.js';
 import type { UnitOfWork } from '../unit-of-work.js';
 import { jsonValue } from '../kysely/json-value.js';
-import { toBin, toBinOrNull } from '../kysely/uuid-columns.js';
+import { fromBin, toBin, toBinOrNull } from '../kysely/uuid-columns.js';
 
 export interface ConflictInput {
   readonly id: string;
@@ -196,4 +196,203 @@ export async function latestConflictDetails(
     .orderBy('created_at', 'desc')
     .executeTakeFirst();
   return row?.details ?? null;
+}
+
+// --- P5-17 : lecture et clôture manuelle (`GET /sync/conflicts`, `sync.conflict.resolve`/`.dismiss`) --
+
+export const CONFLICT_STATUSES = ['OPEN', 'RESOLVED', 'DISMISSED'] as const;
+export type ConflictStatus = (typeof CONFLICT_STATUSES)[number];
+export const CONFLICT_RESOLUTIONS = [
+  'ACCEPT_CLIENT',
+  'KEEP_SERVER',
+  'MERGE',
+  'COMPENSATE',
+] as const;
+export type ConflictResolution = (typeof CONFLICT_RESOLUTIONS)[number];
+
+export interface ConflictRecord {
+  readonly id: string;
+  readonly conflictType: string;
+  readonly entityType: string;
+  readonly entityId: string;
+  readonly siteId: string | null;
+  readonly ownerRole: string;
+  /** Vrai : fait appliqué, conflit informatif ; faux : commande en quarantaine, sans effet. */
+  readonly applied: boolean;
+  readonly details: unknown;
+  readonly status: ConflictStatus;
+  readonly resolution: ConflictResolution | null;
+  readonly resolutionRefs: readonly string[];
+  readonly resolvedBy: string | null;
+  readonly resolvedAt: string | null;
+  readonly resolutionComment: string | null;
+  readonly createdAt: string;
+  readonly commandId: string | null;
+  /** Auteur et appareil de la commande à l'origine du conflit (inbox) ; nuls pour un conflit système. */
+  readonly authorUserId: string | null;
+  readonly deviceId: string | null;
+}
+
+const parseJson = (value: unknown): unknown =>
+  typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+
+function selectConflicts(executor: Kysely<DB> | Transaction<DB>) {
+  return executor
+    .selectFrom('sync_sync_conflicts as c')
+    .leftJoin('sync_command_inbox as i', 'i.command_id', 'c.command_id')
+    .selectAll('c')
+    .select(['i.user_id as author_user_id', 'i.device_id as author_device_id']);
+}
+
+type ConflictRow = Awaited<ReturnType<ReturnType<typeof selectConflicts>['execute']>>[number];
+
+function toConflictRecord(row: ConflictRow): ConflictRecord {
+  const refs = parseJson(row.resolution_refs);
+  return {
+    id: fromBin(row.id),
+    conflictType: row.conflict_type,
+    entityType: row.entity_type,
+    entityId: fromBin(row.entity_id),
+    siteId: row.site_id === null ? null : fromBin(row.site_id),
+    ownerRole: row.owner_role,
+    applied: Boolean(row.applied),
+    details: parseJson(row.details),
+    status: row.status as ConflictStatus,
+    resolution: row.resolution as ConflictResolution | null,
+    resolutionRefs: Array.isArray(refs) ? (refs as string[]) : [],
+    resolvedBy: row.resolved_by === null ? null : fromBin(row.resolved_by),
+    resolvedAt: row.resolved_at === null ? null : row.resolved_at.toISOString(),
+    resolutionComment: row.resolution_comment,
+    createdAt: row.created_at.toISOString(),
+    commandId: row.command_id === null ? null : fromBin(row.command_id),
+    authorUserId: row.author_user_id === null ? null : fromBin(row.author_user_id),
+    deviceId: row.author_device_id === null ? null : fromBin(row.author_device_id),
+  };
+}
+
+/**
+ * Conflits, du plus récent au plus ancien (`id`, UUIDv7). `ownerRoles` / `siteIds` : filtres (liste
+ * vide ⇒ aucun conflit ; un conflit sans site n'apparaît pas sous un filtre de site). `confinement` :
+ * pré-filtre sûr de la couche de transport (sur-ensemble) — conflits d'un de ces sites, **ou** produits
+ * par l'un de ces auteurs, **ou** conflits système (sans commande), évalués ensuite un par un. Aucune
+ * décision d'autorisation ici (RC-04 : `sync/` évalue chaque conflit).
+ */
+export async function listConflicts(
+  executor: Kysely<DB> | Transaction<DB>,
+  filter: {
+    readonly status?: ConflictStatus;
+    readonly ownerRoles?: readonly string[];
+    readonly siteIds?: readonly string[];
+    readonly confinement?: {
+      readonly siteIds: readonly string[];
+      readonly authorUserIds: readonly string[];
+    };
+    readonly conflictType?: string;
+    readonly entityId?: string;
+    readonly beforeId?: string;
+    readonly limit: number;
+  },
+): Promise<{ readonly items: readonly ConflictRecord[]; readonly nextCursor: string | null }> {
+  const confinement = filter.confinement;
+  if (filter.ownerRoles?.length === 0 || filter.siteIds?.length === 0) {
+    return { items: [], nextCursor: null };
+  }
+  const rows = await selectConflicts(executor)
+    .$if(filter.status !== undefined, (qb) => qb.where('c.status', '=', filter.status!))
+    .$if(filter.ownerRoles !== undefined, (qb) =>
+      qb.where('c.owner_role', 'in', [...filter.ownerRoles!]),
+    )
+    .$if(filter.siteIds !== undefined, (qb) =>
+      qb.where(
+        'c.site_id',
+        'in',
+        filter.siteIds!.map((id) => toBin(id)),
+      ),
+    )
+    .$if(confinement !== undefined, (qb) =>
+      qb.where((eb) =>
+        eb.or([
+          eb('c.command_id', 'is', null),
+          ...(confinement!.siteIds.length > 0
+            ? [
+                eb(
+                  'c.site_id',
+                  'in',
+                  confinement!.siteIds.map((id) => toBin(id)),
+                ),
+              ]
+            : []),
+          ...(confinement!.authorUserIds.length > 0
+            ? [
+                eb(
+                  'i.user_id',
+                  'in',
+                  confinement!.authorUserIds.map((id) => toBin(id)),
+                ),
+              ]
+            : []),
+        ]),
+      ),
+    )
+    .$if(filter.conflictType !== undefined, (qb) =>
+      qb.where('c.conflict_type', '=', filter.conflictType!),
+    )
+    .$if(filter.entityId !== undefined, (qb) =>
+      qb.where('c.entity_id', '=', toBin(filter.entityId!)),
+    )
+    .$if(filter.beforeId !== undefined, (qb) => qb.where('c.id', '<', toBin(filter.beforeId!)))
+    .orderBy('c.id', 'desc')
+    .limit(filter.limit + 1)
+    .execute();
+  const hasMore = rows.length > filter.limit;
+  const page = hasMore ? rows.slice(0, filter.limit) : rows;
+  return {
+    items: page.map(toConflictRecord),
+    nextCursor: hasMore ? fromBin(page[page.length - 1]!.id) : null,
+  };
+}
+
+export async function findConflict(
+  executor: Kysely<DB> | Transaction<DB>,
+  id: string,
+  options: { readonly lock?: boolean } = {},
+): Promise<ConflictRecord | null> {
+  let query = selectConflicts(executor).where('c.id', '=', toBin(id));
+  if (options.lock) query = query.forUpdate();
+  const row = await query.executeTakeFirst();
+  return row ? toConflictRecord(row) : null;
+}
+
+/**
+ * Clôture manuelle d'un conflit **ouvert** (SM-CONFLICT) : `RESOLVED` avec une résolution, ou
+ * `DISMISSED` (conflit informatif écarté, sans résolution). Renvoie faux si le conflit n'est plus
+ * ouvert (déjà clos par un autre acteur ou par sa régularisation) : le déclencheur d'immuabilité n'est
+ * jamais atteint.
+ */
+export async function closeConflict(
+  uow: UnitOfWork,
+  input: {
+    readonly id: string;
+    readonly status: 'RESOLVED' | 'DISMISSED';
+    readonly resolution: ConflictResolution | null;
+    readonly refs: readonly string[];
+    readonly comment: string;
+    readonly closedBy: string;
+    readonly closedAt: Date;
+  },
+): Promise<boolean> {
+  const result = await uow
+    .updateTable('sync_sync_conflicts')
+    .set({
+      status: input.status,
+      resolution: input.resolution,
+      resolution_refs: jsonValue(input.refs),
+      resolved_by: toBin(input.closedBy),
+      resolved_at: input.closedAt,
+      resolution_comment: input.comment,
+    })
+    .where('id', '=', toBin(input.id))
+    .where('status', '=', 'OPEN')
+    .executeTakeFirst();
+  return Number(result.numUpdatedRows) === 1;
 }

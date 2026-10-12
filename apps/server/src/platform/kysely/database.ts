@@ -12,8 +12,20 @@ import type { DB } from './schema.generated.js';
 export type { DB } from './schema.generated.js';
 export type Database = Kysely<DB>;
 
+/** Session MySQL en UTC (`CURRENT_TIMESTAMP`, `NOW()`, `UTC_TIMESTAMP()`), quel que soit l'hôte. */
+const UTC_SESSION = "SET time_zone = '+00:00'";
+
+/**
+ * Pool **en UTC** (ADR-016, ADR-023 : `DATETIME(6)` toujours écrit et lu en UTC) : sans `timezone: 'Z'`,
+ * mysql2 écrit et lit les `Date` dans le fuseau local de la machine (une heure de décalage sur un poste
+ * réglé sur l'Afrique de l'Ouest, d'où un `business_date` faux après 23:00 UTC) ; la session passe aussi
+ * en UTC pour les valeurs par défaut `CURRENT_TIMESTAMP` et les comparaisons à `NOW()` (P5-21).
+ */
 export function createDatabase(connectionUri: string): { db: Database; pool: Pool } {
-  const pool = createPool(connectionUri);
+  const pool = createPool({ uri: connectionUri, timezone: 'Z' });
+  pool.on('connection', (connection) => {
+    connection.query(UTC_SESSION);
+  });
   const db = new Kysely<DB>({ dialect: new MysqlDialect({ pool }) });
   return { db, pool };
 }

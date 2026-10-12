@@ -86,7 +86,7 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-STK-04 | Écarts d'inventaire | Σ écarts nets comptabilisés, en quantité et en valeur | `f_stock_moves` | C (CM §25) |
 | KPI-STK-05 | Couverture | Disponible ÷ ventes moyennes journalières des 14 derniers jours | dérivé | D |
 | KPI-STK-06 | Ruptures | Nombre de couples emplacement × produit à disponible ≤ 0 alors qu'un seuil existe | `f_stock_balance` | C (CM §54) |
-| KPI-DIS-01..07 | Envoyé, reçu, vendu, perdu, restant, encaissé, à réapprovisionner par PDV | BR-DIS-010 | `f_stock_moves`, `f_sales_line`, `f_payments` | C (CM §12) |
+| KPI-DIS-01..07 | Envoyé, reçu, vendu, perdu, restant, encaissé, à réapprovisionner par PDV | BR-DIS-010 : emplacement de vente du PDV × produit × période de jours métier ; restant et valeurs à la fin de la période ; à livrer, à réapprovisionner, quotas, caisse et fraîcheur à l'instant de lecture (AV-207) | avant P9 : fonctions publiques des modules (`locationFlows`, `soldByLocation`, `toDeliverByLocation`, `cashedByGroup`, `stockThresholdsOf`, `allocationPositions`, `cashSessionsOverview`, `pendingCashTransfers` ; ADR-035) ; P9 : `f_stock_moves`, `f_sales_line`, `f_payments` | C (CM §12) / D (granularité et instants : AV-207) |
 | KPI-PRD-01 | Effectif | BR-PRD-003 (en élevage / non vendu) | `f_stock_balance` | C (CM §2) |
 | KPI-PRD-02 | Mortalité | Σ quantités des pertes `MORTALITE` reconnues ou en attente | `f_losses` | C (CM §16) |
 | KPI-PRD-03 | Taux de mortalité cumulé | Mortalité cumulée ÷ (effectif initial + entrées) | dérivé | D / AV-049 |
@@ -107,8 +107,10 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-FIN-08 | Valeur des pertes | BR-FIN-044 | `f_losses` | C (CM §32) |
 | KPI-APP-01 | Taux de service fournisseur | Σ acceptées ÷ Σ commandées (BC clôturés dans P) | `f_purchases` | C (CM §26) / D |
 | KPI-APP-02 | Taux de rejet | Σ rejetées ÷ Σ livrées | `f_purchases` | C (CM §28) / D |
-| KPI-OPS-01 | Fraîcheur de synchronisation | Délai depuis la dernière synchronisation réussie de chaque appareil | `sync.device_sync_state` | C (CM §36) |
+| KPI-OPS-01 | Fraîcheur de synchronisation | Délai depuis le dernier contact de chaque appareil (connexion, envoi ou pull, AV-202) ; résumé de l'accueil et du tableau de distribution : nombre d'appareils en service sans contact depuis plus de `analytics.freshness_warning_hours` | `sync.device_sync_state` | C (CM §36) / D (dernier contact, résumé : AV-202, AV-208) |
 | KPI-OPS-02 | Opérations en attente et conflits ouverts | Comptage | `sync.*` | C (PM §29) |
+
+**Codes locaux de l'accueil liés à la distribution** (ADR-030 §7, P5-20, AV-208 ; DÉDUIT) : `KPI-FIN-CS-PENDING` (sessions de caisse de PDV à valider, ajustements en attente en détail), `KPI-FIN-CS-VAR` (toutes les sessions ouvertes le jour métier dont l'écart courant est non nul, manquant et excédent en détail), `KPI-FIN-TRANSFERS` (remises de fonds en transit ou en écart, tous comptes), `KPI-DIS-QUOTAS` (quotas actifs échus ou en révocation, chacun compté une fois, sur les emplacements de vente des PDV du magasinier). Chacun est calculé par la fonction que le tableau de distribution appelle (BR-ANA-009).
 
 ### 7.2 Contenu de la tour de contrôle (ECR-ANA-01)
 

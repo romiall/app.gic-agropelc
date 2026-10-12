@@ -66,8 +66,12 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { loadCommandOrigin, type CommandOrigin } from '../../../../platform/sync/command-origin.js';
-import { latestConflictDetails, recordConflict } from '../../../../platform/sync/conflicts.js';
-import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  latestConflictDetails,
+  recordConflict,
+  resolveOpenConflicts,
+} from '../../../../platform/sync/conflicts.js';
+import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import {
@@ -96,6 +100,7 @@ import {
   validateCashSession,
   validateCashSessionAdjustment,
 } from '../cash-session-validation.js';
+import { emitCashSessionChange } from '../sync-changes.js';
 
 export const CASH_SESSION_OPERATE = 'finance.cash_session.operate';
 export const CASH_SESSION_VALIDATE = 'finance.cash_session.validate';
@@ -373,6 +378,7 @@ async function createSession(
       created_by: toBin(author),
     })
     .execute();
+  await emitCashSessionChange(uow, sessionId);
   const session = { id: sessionId, cashAccountId: account.id, siteId, openedBy: author };
   if (openingVarianceXaf !== 0) {
     await postVariance(uow, deps, {
@@ -407,6 +413,31 @@ async function createSession(
       comment: p.comment ?? null,
     },
   });
+  // P5-14 (AV-184) : une ouverture appliquée après coup (saisie hors ligne, synchronisée plus tard)
+  // couvre, par le temps, les encaissements en espèces de la caisse saisis hors ligne sans session
+  // depuis son heure d'ouverture : leurs conflits CASH_SESSION_MISSING sont résolus (l'index des
+  // mouvements n'est jamais réécrit, ADR-032 §2 : la lecture se fait par la fenêtre).
+  const uncovered = await uow
+    .selectFrom('finance_cash_movements')
+    .select('source_doc_id')
+    .where('cash_account_id', '=', toBin(account.id))
+    .where('movement_type', '=', 'CUSTOMER_PAYMENT')
+    .where('source_doc_type', '=', 'CUSTOMER_PAYMENT')
+    .where('is_reversal', '=', 0)
+    .where('cash_session_id', 'is', null)
+    .where('occurred_at', '>=', openedAt)
+    .execute();
+  await resolveOpenConflicts(uow, {
+    conflictType: 'CASH_SESSION_MISSING',
+    entityType: 'CUSTOMER_PAYMENT',
+    entityIds: uncovered.map((row) => fromBin(row.source_doc_id)),
+    resolution: 'MERGE',
+    resolvedBy: author,
+    resolvedAt: openedAt,
+    comment: 'Encaissement couvert par une session de caisse ouverte après coup (AV-184).',
+    refs: [sessionId],
+  });
+
   if (openingVarianceXaf !== 0) {
     await publishVariance(uow, deps, {
       session,
@@ -708,6 +739,7 @@ async function closeSession(
     })
     .where('id', '=', toBin(session.id))
     .execute();
+  await emitCashSessionChange(uow, session.id);
 
   await publishCashSessionEvent(uow, deps, {
     eventType: 'CashSessionClosed',

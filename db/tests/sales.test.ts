@@ -5,7 +5,7 @@
 // (INV-FIN-04). Chaque test crée ses propres référentiels dans une transaction annulée.
 import { describe, expect, it } from 'vitest';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { randomId, withRollback } from './helpers.js';
+import { randomId, withRollback, freshPhone } from './helpers.js';
 
 const T0 = '2026-10-01 08:00:00.000000';
 const T1 = '2026-10-01 09:00:00.000000';
@@ -34,7 +34,7 @@ async function setup(conn: PoolConnection): Promise<Refs> {
   await conn.query(
     `INSERT INTO identity_users (id, full_name, phone, password_hash, status, created_by)
      VALUES (?, 'Test', ?, 'x', 'ACTIVE', ?)`,
-    [admin, `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, admin],
+    [admin, await freshPhone(conn), admin],
   );
   const zoneId = randomId();
   await conn.query(
@@ -71,17 +71,7 @@ async function setup(conn: PoolConnection): Promise<Refs> {
     `INSERT INTO crm_customers (id, stage, pipeline_step_id, display_name, phone_primary, zone_id, source_code,
        acquired_by_user_id, acquired_at, occurred_at, created_by)
      VALUES (?, 'PROSPECT', ?, 'Boutique test', ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      customerId,
-      stepId,
-      `+2376${Math.floor(10_000_000 + Math.random() * 89_999_999)}`,
-      zoneId,
-      sourceCode,
-      admin,
-      T0,
-      T0,
-      admin,
-    ],
+    [customerId, stepId, await freshPhone(conn), zoneId, sourceCode, admin, T0, T0, admin],
   );
   const channel = randomCode('CH').slice(0, 20);
   await conn.query(`INSERT INTO catalog_sales_channels (code, name) VALUES (?, 'Test')`, [channel]);

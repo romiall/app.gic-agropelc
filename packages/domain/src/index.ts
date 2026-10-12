@@ -59,7 +59,11 @@ export {
   addBusinessDays,
   businessMonthDays,
   periodOfBusinessDay,
+  BUSINESS_PERIOD_CODES,
+  businessPeriodOf,
+  businessPeriodDays,
 } from './business-day.js';
+export type { BusinessPeriodCode } from './business-day.js';
 
 export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';
 
@@ -263,6 +267,7 @@ export {
   varianceSeverity,
   adjustmentTreatment,
   isAllowedCashValidator,
+  sellerCashSubtotals,
   transferDiscrepancyXaf,
   transferStatusAfterReceive,
   cashInTransitXaf,
@@ -273,6 +278,7 @@ export type {
   CashSessionStatus,
   CashSessionWindow,
   CashTransferImputation,
+  SellerCashSubtotal,
 } from './cash-session.js';
 // P5-12 : cycle de vie d'une session de caisse (ouverture, clôture, statut, imputation).
 export {

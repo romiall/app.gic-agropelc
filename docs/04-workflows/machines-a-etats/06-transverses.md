@@ -46,8 +46,8 @@ stateDiagram-v2
 | `RECEIVED` | Refus | Invalide, non autorisé, dépendance rejetée | `REJECTED` | Audit `DENIED` / `FAILED` |
 | `RECEIVED` | Quarantaine | Version obsolète non fusionnable ; utilisateur ou appareil révoqué à `occurred_at` | `CONFLICT` | `sync_conflicts` ouvert |
 | `RECEIVED` | Erreur transitoire | Verrou, indisponibilité | `FAILED_RETRYABLE` | Réponse `RETRY_LATER` |
-| `CONFLICT` | `sync.conflict.resolve` (accepter) | Décision tracée | `APPLIED` | Application avec l'état courant |
-| `CONFLICT` | `sync.conflict.resolve` (écarter) | Décision tracée | `REJECTED` | — |
+| `CONFLICT` | `sync.conflict.resolve` (accepter) | Décision tracée | `APPLIED` | Application avec l'état courant. **Non implémentée** (P5-17, AV-190 (b)) : la commande en quarantaine reste `CONFLICT` dans l'inbox ; `sync.conflict.resolve` refuse `ACCEPT_CLIENT` et `MERGE` sur une quarantaine (`CONFLICT_REPLAY_NOT_SUPPORTED`) |
+| `CONFLICT` | `sync.conflict.resolve` (écarter) | Décision tracée | `REJECTED` | **Non implémentée** (P5-17, AV-190) : `KEEP_SERVER` clôt le conflit (`RESOLVED`), la commande reste `CONFLICT` dans l'inbox |
 
 ---
 
@@ -65,8 +65,10 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | Détection (application d'une commande) | Type de conflit de la matrice | `OPEN` | `SyncConflictDetected` ; alerte au rôle responsable | Selon le type (ex. solde négatif déjà appliqué) | Selon le type | `system` |
-| `OPEN` | `sync.conflict.resolve` | Décision parmi `ACCEPT_CLIENT`, `KEEP_SERVER`, `MERGE`, `COMPENSATE` ; motif | `RESOLVED` | `SyncConflictResolved` ; commande en conflit appliquée ou rejetée ; documents compensatoires créés si `COMPENSATE` (ex. inventaire, transfert manquant) | Selon la décision | Selon la décision | `sync.conflict.resolve` (portée du domaine) |
-| `OPEN` | `sync.conflict.dismiss` | Conflit informatif (ex. `PRICE_MISMATCH` accepté) | `DISMISSED` | Tracé | — | — | `sync.conflict.resolve` |
+| `OPEN` | `sync.conflict.resolve` | En ligne ; conflit visible de l'auteur : rôle propriétaire puis portée sur le site et l'auteur de la commande d'origine (AV-191) ; décision parmi `ACCEPT_CLIENT`, `KEEP_SERVER`, `MERGE`, `COMPENSATE` ; motif obligatoire ; `refs` (20 au plus), obligatoires pour `COMPENSATE` ; hors `PAYMENT_REFERENCE_DUPLICATE` ; sur une quarantaine (`applied = false`), `ACCEPT_CLIENT` et `MERGE` refusés | `RESOLVED` | `SyncConflictResolved` ; `resolution`, `resolved_by`, `resolved_at` (heure de la décision), `resolution_comment`, `resolution_refs`. **Clôture administrative tracée** (P5-17, AV-190) : la commande en quarantaine n'est ni rejouée ni rejetée et le serveur ne crée aucun document ; les documents de régularisation (inventaire, transfert manquant…) passent par les commandes ordinaires et sont cités dans `refs` | Aucun du fait de la clôture | Aucun du fait de la clôture | `sync.conflict.resolve` (portée du site et de l'auteur) |
+| `OPEN` | `sync.conflict.dismiss` | En ligne ; conflit visible (AV-191) ; conflit **informatif** seulement (`applied = true`) ; motif obligatoire ; mêmes exclusions que `resolve` (`PAYMENT_REFERENCE_DUPLICATE`) | `DISMISSED` | `SyncConflictResolved` ; `resolution` nulle, `resolved_by`, `resolved_at`, `resolution_comment` (P5-17) | — | — | `sync.conflict.resolve` |
+
+**Livré en P5-17** (`apps/server/src/sync/conflict-commands.ts`, `conflict-access.ts`) : refus `ONLINE_REQUIRED`, `NOT_FOUND`, `FORBIDDEN_SCOPE` (hors rôle propriétaire ou hors portée), `CONFLICT_ALREADY_CLOSED`, `CONFLICT_MANAGED_ELSEWHERE` (la clôture de `PAYMENT_REFERENCE_DUPLICATE` appartient à la décision `PAYMENT_DUPLICATE`), `CONFLICT_NOT_INFORMATIVE` (`dismiss` d'une quarantaine), `CONFLICT_REPLAY_NOT_SUPPORTED`, `CONFLICT_REFS_REQUIRED`, `CONFLICT_CONDITION_PERSISTS` (`ALLOCATION_OVERCOMMITTED`, `STOCK_NEGATIVE` non régularisés), `CONFLICT_SELF_RESOLUTION_FORBIDDEN` (auteur du fait signalé, AV-192). Classement : **DÉDUIT** ; le sens de la résolution (AV-190) et la visibilité (AV-191) restent **À VALIDER**. L'événement `SyncConflictResolved` est produit à la clôture manuelle ; `SyncConflictDetected` n'est pas produit.
 
 ---
 

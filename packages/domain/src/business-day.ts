@@ -111,3 +111,61 @@ export function periodOfBusinessDay(businessDay: string): string {
   parseBusinessDay(businessDay);
   return businessDay.slice(0, 7);
 }
+
+/** Périodes nommées des tableaux de bord (BR-ANA-002 ; P5-20, AV-207). */
+export const BUSINESS_PERIOD_CODES = ['TODAY', 'YESTERDAY', 'WEEK', 'MONTH', 'YEAR'] as const;
+export type BusinessPeriodCode = (typeof BUSINESS_PERIOD_CODES)[number];
+
+/**
+ * Bornes (jours métier **inclus**) d'une période nommée, relative au jour métier `today` : aujourd'hui,
+ * hier, cette semaine (du lundi au dimanche, BR-ANA-002), ce mois, cette année. Les jours postérieurs à
+ * `today` d'une semaine, d'un mois ou d'une année n'ont encore aucune opération.
+ */
+export function businessPeriodOf(
+  code: BusinessPeriodCode,
+  today: string,
+): { readonly fromDay: string; readonly toDay: string } {
+  const { year, month, day } = parseBusinessDay(today);
+  switch (code) {
+    case 'TODAY':
+      return { fromDay: today, toDay: today };
+    case 'YESTERDAY': {
+      const yesterday = addBusinessDays(today, -1);
+      return { fromDay: yesterday, toDay: yesterday };
+    }
+    case 'WEEK': {
+      // Lundi = 0 … dimanche = 6.
+      const fromMonday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+      const monday = addBusinessDays(today, -fromMonday);
+      return { fromDay: monday, toDay: addBusinessDays(monday, 6) };
+    }
+    case 'MONTH': {
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const mm = String(month).padStart(2, '0');
+      return {
+        fromDay: `${year}-${mm}-01`,
+        toDay: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+      };
+    }
+    case 'YEAR':
+      return { fromDay: `${year}-01-01`, toDay: `${year}-12-31` };
+  }
+}
+
+/** Nombre de jours métier d'une période, bornes incluses (≥ 1 ; `toDay` avant `fromDay` : erreur). */
+export function businessPeriodDays(period: {
+  readonly fromDay: string;
+  readonly toDay: string;
+}): number {
+  const days = Math.round(
+    (businessDayStartUtc(period.toDay).getTime() - businessDayStartUtc(period.fromDay).getTime()) /
+      86_400_000,
+  );
+  if (days < 0) {
+    throw new DomainError(
+      `Période inversée : ${period.fromDay} après ${period.toDay}`,
+      'PERIOD_INVALID',
+    );
+  }
+  return days + 1;
+}
