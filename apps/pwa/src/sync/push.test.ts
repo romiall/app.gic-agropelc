@@ -85,7 +85,7 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'PUSHED', count: 1, settled: 1 });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 1, settled: 1, stalled: [] });
 
     const updated = await db.outbox.get(command.command_id);
     expect(updated?.status).toBe('SYNCED');
@@ -187,7 +187,7 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 0 });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 0, stalled: [] });
     for (const command of [retry, odd, missing]) {
       const updated = await db.outbox.get(command.command_id);
       expect(updated).toMatchObject({ status: 'PENDING_SYNC', attempts: 1 });
@@ -237,7 +237,50 @@ describe('sync/push (runPushCycle)', () => {
     await run();
     await run();
     expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(3);
-    // Une attente de dépendance remet le compteur à zéro.
+    const answer = (code: string, message: string) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                results: [
+                  {
+                    command_id: command.command_id,
+                    status: 'RETRY_LATER',
+                    error: { code, message_fr: message },
+                  },
+                ],
+                server_time: clock.now().toISOString(),
+                clock_skew_ms: 0,
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+    // Suspendue derrière une commande précédente (AV-210) : pas traitée, ni le compteur ni le motif
+    // réel ne changent.
+    answer(
+      'PRECEDING_COMMAND_PENDING',
+      'Une commande précédente de la file doit d’abord être renvoyée.',
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      busy_retries: 3,
+      last_error: { code: 'SERVER_BUSY' },
+    });
+    // Une attente de dépendance compte aussi (une dépendance qui ne vient pas finit signalée).
+    answer('DEPENDENCY_PENDING', 'Dépendance attendue.');
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(4);
+    // Tout autre motif remet le compteur à zéro.
+    answer('AUTRE_MOTIF', 'À renvoyer.');
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+  });
+
+  it('commande bloquée (COMMAND_STALLED) : aussitôt signalée en échec répété, rapportée au cycle', async () => {
+    const command = await enqueueOne(db, 'bloquée');
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -248,7 +291,11 @@ describe('sync/push (runPushCycle)', () => {
                 {
                   command_id: command.command_id,
                   status: 'RETRY_LATER',
-                  error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+                  error: {
+                    code: 'COMMAND_STALLED',
+                    message_fr:
+                      'Commande bloquée depuis plus de 30 min (DEPENDENCY_PENDING) : toujours à renvoyer, elle ne retient plus la suite de la file.',
+                  },
                 },
               ],
               server_time: clock.now().toISOString(),
@@ -258,8 +305,26 @@ describe('sync/push (runPushCycle)', () => {
           ),
       ),
     );
-    await run();
-    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({
+      outcome: 'PUSHED',
+      count: 1,
+      settled: 0,
+      stalled: [command.command_id],
+    });
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      status: 'PENDING_SYNC',
+      busy_retries: 3,
+      last_error: { code: 'COMMAND_STALLED' },
+    });
+    // Écartée du lot suivant du même cycle.
+    expect(
+      await runPushCycle(
+        db,
+        { clock, idGenerator, deviceId: DEVICE_ID },
+        { skip: new Set([command.command_id]) },
+      ),
+    ).toEqual({ outcome: 'NOTHING_TO_PUSH' });
   });
 
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {

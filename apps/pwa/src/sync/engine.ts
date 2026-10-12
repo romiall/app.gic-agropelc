@@ -35,8 +35,11 @@ export interface SyncEngineDeps {
 export async function runSyncCycle(deps: SyncEngineDeps): Promise<SyncCycleOutcome> {
   let pushed = false;
   let serverError = false;
+  // Commandes bloquées (`COMMAND_STALLED`) déjà renvoyées pendant ce cycle : elles ne retiennent plus
+  // la suite, mais ne repartent qu'au cycle suivant (pas de renvoi en boucle serrée, AV-217).
+  const stalled = new Set<string>();
   for (let i = 0; i < MAX_PUSH_BATCHES_PER_CYCLE; i++) {
-    const result = await runPushCycle(deps.db, deps);
+    const result = await runPushCycle(deps.db, deps, { skip: stalled });
     if (result.outcome === 'NOTHING_TO_PUSH') break;
     if (result.outcome === 'OFFLINE') return 'OFFLINE';
     if (result.outcome === 'SESSION_INVALID') {
@@ -49,6 +52,7 @@ export async function runSyncCycle(deps: SyncEngineDeps): Promise<SyncCycleOutco
       break;
     }
     pushed = true;
+    for (const commandId of result.stalled) stalled.add(commandId);
     // Rien de réglé (`RETRY_LATER` partout) : renvoyer aussitôt le même lot ne servirait à rien.
     if (result.settled === 0) break;
   }

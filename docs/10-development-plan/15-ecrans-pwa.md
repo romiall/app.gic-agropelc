@@ -218,6 +218,7 @@ Constats faits en construisant les écrans, sans modification du serveur ni des 
 | S-40 | Transferts (suite de S-36) : une expédition saisie hors ligne d'une demande refusée, annulée ou déjà expédiée est rejetée (`TRANSFER_STATUS_INVALID`) au lieu d'être appliquée en expédition directe ou mise en quarantaine (contraire à BR-SYN-007 : le fait physique est perdu) ; `inventory.transfer.decline` écrase la note du demandeur par le motif (ou la remet à vide sans motif), sans colonne dédiée, et accepte un refus sans motif alors que SM-TRANSFER le pose en condition ; `inventory.transfer.move_internal` ne contrôle ni le responsable (BR-STK-022) ni la garde d'appareil, et peut viser le stock mobile d'un commercial | Marchandise partie mais revenue au disponible de l'expéditeur ; raison de la demande perdue ; stock mobile d'un commercial rempli ou vidé à son insu | Ressaisie proposée en expédition directe, tirée de l'outbox (et sur confirmation quand la demande est déjà expédiée ailleurs ou inconnue de l'appareil) ; motif exigé et annoncé ; mouvement interne limité aux emplacements sous la garde de l'utilisateur ou de l'appareil |
 | S-41 | Portées et lectures : l'appareil ne sait pas quel rôle porte une permission (le jeu `role_assignment` donne le rôle, pas ses permissions) : l'équipe de l'affectation TEAM du responsable commercial ne peut pas être reprise parmi les cibles d'objectif ; `GET /production/lots` calcule l'effectif de chaque lot listé (deux calculs par lot), coûteux pour remplir un simple sélecteur de lots clôturés | Cibles d'objectif plus étroites que la portée du serveur ; lecture lourde à l'ouverture de la fiche lot | Cibles limitées à l'utilisateur et aux équipes qu'il dirige ; lots clôturés lus 50 par 50 à la demande |
 | S-42 | Ordre des lots : le jeu `stock` sert les lots d'un solde triés par clé de lot, sans leur rang « le plus ancien d'abord » (`fifo_rank_at`) que le serveur suit pour imputer une sortie sans lot désigné | L'appareil ne peut pas dire sur quel lot tomberont les sorties en attente sans lot : sa marge de prudence suppose qu'elles tombent toutes sur le lot désigné (avertissement parfois inutile) | Avertissement au pire cas, sans blocage ; servir le rang FIFO de chaque lot dans le jeu `stock` |
+| S-43 | Protocole d'envoi : le délai de 25 s par lot (`b3d5dc0`) renvoie `SERVER_BUSY`, le même code qu'une vraie erreur du serveur, pour des commandes **non traitées** | L'appareil ne distingue pas une commande non traitée d'une commande en échec : un lot lent pendant trois cycles la signale à tort « en échec répété » | Compté comme une erreur du serveur ; un code distinct (ex. `BATCH_DEADLINE_EXCEEDED`, neutre comme `PRECEDING_COMMAND_PENDING`) lèverait l'ambiguïté |
 
 ## 5. AV proposés
 
@@ -264,17 +265,19 @@ Fork clos le 12/10/2026.
 
 | Incr. | Objet | Commit | Contenu |
 |---|---|---|---|
-| F-56 | Jeux hors ligne de P5 sur l'appareil | _à venir_ | Jeux `allocations` (juste après `stock` : la garde de vente hors ligne en dépend), `org`, `me` et `policies` tirés (S-05 et S-11 levés côté serveur par P5-18) ; quotas (`STOCK_ALLOCATION`), sessions de caisse (`CASH_SESSION`), remises (`CASH_TRANSFER`), destinations de remise (`CASH_TRANSFER_TARGET`) et PDV (`POINT_OF_SALE`) lus avec les curseurs de leurs jeux ; solde et version des comptes de trésorerie, compte crédité et remboursé des paiements ; paramètres semés lus dans `me` et motifs dans `catalog`, réunis aux anciens jeux `setting` et `reason_code` (encore alimentés pour les entités créées par commande, AV-196) ; commandes `finance.` dans l'outbox lue par les écrans ; réglage de site nul retombant sur le réglage global, comme le serveur (DÉDUIT de `allocation-consumption.ts` : site, à défaut global, sans zone ni rôle) ; données de test partagées (quota, caisse du PDV, session, remise, PDV, paramètre de `me`) |
+| F-56 | Jeux hors ligne de P5 sur l'appareil | `53b8c39` | Jeux `allocations` (juste après `stock` : la garde de vente hors ligne en dépend), `org`, `me` et `policies` tirés (S-05 et S-11 levés côté serveur par P5-18) ; quotas (`STOCK_ALLOCATION`), sessions de caisse (`CASH_SESSION`), remises (`CASH_TRANSFER`), destinations de remise (`CASH_TRANSFER_TARGET`) et PDV (`POINT_OF_SALE`) lus avec les curseurs de leurs jeux ; solde et version des comptes de trésorerie, compte crédité et remboursé des paiements ; paramètres semés lus dans `me` et motifs dans `catalog`, réunis aux anciens jeux `setting` et `reason_code` (encore alimentés pour les entités créées par commande, AV-196) ; commandes `finance.` dans l'outbox lue par les écrans ; réglage de site nul retombant sur le réglage global, comme le serveur (DÉDUIT de `allocation-consumption.ts` : site, à défaut global, sans zone ni rôle) ; données de test partagées (quota, caisse du PDV, session, remise, PDV, paramètre de `me`) |
+| F-57 | Protocole d'envoi aligné sur le § 3 de la synchronisation | _à venir_ | Ordre strict par `device_seq`, dépendantes comprises (S-17 levé côté serveur, `e07a608`) : le lot ne s'arrête qu'avant une commande dont la dépendance attend sans partir dans ce lot (autre utilisateur de la tablette, commande bloquée écartée du cycle) ; `PRECEDING_COMMAND_PENDING` neutre (ni compteur ni motif réel changés) ; `SERVER_BUSY` et `DEPENDENCY_PENDING` comptent un renvoi sans succès ; `COMMAND_STALLED` (AV-217, `b3d5dc0`) aussitôt signalé en échec répété, avec le motif du serveur, et renvoyé une fois par cycle ; ADR-052 (révise ADR-037 § 11) |
 
 ### 9.2 Vérifications
 
 | Incr. | Tests (vitest) | Typage | ESLint | Prettier | Navigateur |
 |---|---|---|---|---|---|
 | F-56 | 369 verts (57 fichiers), dont référentiels de P5 (3 : quotas, sessions, remises, destinations et PDV lus avec leurs curseurs, commandes de caisse dans l'outbox ; paramètres de `me` et motifs de `catalog` réunis aux anciens jeux ; réglage de site nul) ; jeux tirés (quotas juste après le stock) ; tests vérifiés en retirant leur correctif | OK | OK | OK | Différé : connexion requise (voir § 7) |
+| F-57 | 371 verts (57 fichiers), dont envoi (1 réécrit et 1 de plus : ordre strict, dépendante dans le même lot, arrêt avant la dépendance d'un autre utilisateur ou d'une commande écartée ; motifs de renvoi distingués ; commande bloquée signalée et écartée du lot suivant), moteur (1 de plus : renvoi unique par cycle) ; chaque nouveau test vérifié en retirant son correctif | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 ### 9.3 Besoins côté serveur (S-43 et suivants)
 
-Ajoutés au § 4, à la suite de S-42 (le statut de S-01 à S-42 est tenu par la session principale dans [`16-besoins-serveur-des-ecrans.md`](16-besoins-serveur-des-ecrans.md)). Aucun à ce stade.
+Ajoutés au § 4, à la suite de S-42 (le statut de S-01 à S-42 est tenu par la session principale dans [`16-besoins-serveur-des-ecrans.md`](16-besoins-serveur-des-ecrans.md)) : S-43 (code distinct pour le délai du lot, F-57).
 
 ### 9.4 AV proposés (plage 303 à 329)
 
@@ -282,4 +285,6 @@ Aucun à ce stade.
 
 ### 9.5 ADR proposés (plage 052 à 059)
 
-Aucun à ce stade.
+| ADR | Décision |
+|---|---|
+| [ADR-052](../decisions/ADR-052-envoi-strict-dans-l-ordre-de-l-appareil.md) | Envoi de l'appareil dans l'ordre strict de `device_seq`, dépendantes comprises ; renvois distingués par motif (`PRECEDING_COMMAND_PENDING` neutre, `COMMAND_STALLED` signalé et renvoyé une fois par cycle) ; révise ADR-037 § 11. Ligne d'index à ajouter à l'intégration |

@@ -37,8 +37,8 @@ describe('sync/engine (runSyncCycle)', () => {
 
   it('vide l’outbox (plusieurs lots) puis tire, et rapporte SYNCED', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50, settled: 50 })
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3, settled: 3 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50, settled: 50, stalled: [] })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3, settled: 3, stalled: [] })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
 
@@ -49,12 +49,29 @@ describe('sync/engine (runSyncCycle)', () => {
   });
 
   it('lot sans rien de réglé (RETRY_LATER partout) : pas de renvoi immédiat, le tirage a lieu', async () => {
-    pushMock.mockResolvedValue({ outcome: 'PUSHED', count: 2, settled: 0 });
+    pushMock.mockResolvedValue({ outcome: 'PUSHED', count: 2, settled: 0, stalled: [] });
     pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
 
     expect(await runSyncCycle(deps())).toBe('SYNCED');
     expect(pushMock).toHaveBeenCalledTimes(1);
     expect(pullMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('commande bloquée (COMMAND_STALLED) : écartée des lots suivants du même cycle (AV-217)', async () => {
+    pushMock
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 50, settled: 49, stalled: ['bloquee'] })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 3, settled: 3, stalled: [] })
+      .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
+    pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 0 });
+
+    expect(await runSyncCycle(deps())).toBe('SYNCED');
+    expect(pushMock).toHaveBeenCalledTimes(3);
+    // Les lots suivants du cycle ne la renvoient pas ; elle repart au cycle suivant.
+    const skipped = pushMock.mock.calls.map((call) => [
+      ...((call as unknown[])[2] as { skip: ReadonlySet<string> }).skip,
+    ]);
+    expect(skipped[1]).toEqual(['bloquee']);
+    expect(skipped[2]).toEqual(['bloquee']);
   });
 
   it('rien à pousser ni à tirer : NOTHING_TO_DO', async () => {
@@ -81,7 +98,7 @@ describe('sync/engine (runSyncCycle)', () => {
 
   it('push réussi mais pull hors ligne : OFFLINE, le serveur n’est plus joignable (ADR-037)', async () => {
     pushMock
-      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1, settled: 1 })
+      .mockResolvedValueOnce({ outcome: 'PUSHED', count: 1, settled: 1, stalled: [] })
       .mockResolvedValueOnce({ outcome: 'NOTHING_TO_PUSH' });
     pullMock.mockResolvedValueOnce({ outcome: 'OFFLINE' });
 

@@ -7,7 +7,7 @@ import type { PushRequest, PushResponse, RawCommandEnvelope } from '@gic/contrac
 import { deviceStateAfterResult, syncResultStatusSchema } from '@gic/contracts';
 import type { Clock, IdGenerator } from '@gic/domain';
 import type { GicDatabase, OutboxCommand } from '../storage/db.js';
-import { pendingAfterBatch, pendingOutbox } from './outbox.js';
+import { pendingAfterBatch, pendingOutbox, REPEATED_FAILURE_ATTEMPTS } from './outbox.js';
 import { authorizedRequest } from './api-client.js';
 
 export type PushCycleResult =
@@ -16,7 +16,13 @@ export type PushCycleResult =
    * `count` : résultats reçus ; `settled` : commandes qui ont reçu une réponse définitive (appliquée,
    * en conflit ou refusée). Aucune (`RETRY_LATER` partout) : inutile de renvoyer aussitôt.
    */
-  | { readonly outcome: 'PUSHED'; readonly count: number; readonly settled: number }
+  | {
+      readonly outcome: 'PUSHED';
+      readonly count: number;
+      readonly settled: number;
+      /** Commandes bloquées (`COMMAND_STALLED`) : renvoyées une fois par cycle (AV-217). */
+      readonly stalled: readonly string[];
+    }
   | { readonly outcome: 'OFFLINE' }
   /** Le serveur a répondu par une erreur HTTP : joignable, nouvel essai au prochain cycle. */
   | { readonly outcome: 'SERVER_ERROR' }
@@ -58,8 +64,9 @@ export async function runPushCycle(
      */
     readonly userId?: string;
   },
+  options: { readonly skip?: ReadonlySet<string> } = {},
 ): Promise<PushCycleResult> {
-  const batch = await pendingOutbox(db, 50, deps.userId);
+  const batch = await pendingOutbox(db, 50, deps.userId, options.skip);
   if (batch.length === 0) return { outcome: 'NOTHING_TO_PUSH' };
 
   await db.outbox
@@ -106,6 +113,7 @@ export async function runPushCycle(
 
   const syncedAt = deps.clock.now().toISOString();
   const answered = new Set<string>();
+  const stalled: string[] = [];
   let settled = 0;
   for (const commandResult of result.data.results) {
     answered.add(commandResult.command_id);
@@ -126,6 +134,14 @@ export async function runPushCycle(
     const nextStatus = deviceStateAfterResult(known.data);
     const accepted = nextStatus === 'SYNCED' || nextStatus === 'SYNCED_WITH_WARNING';
     if (nextStatus === 'PENDING_SYNC') {
+      const code = commandResult.error?.code;
+      if (code === 'PRECEDING_COMMAND_PENDING') {
+        // Pas traitée : une commande précédente du lot doit d'abord être renvoyée (AV-210). Ni le
+        // compteur ni le motif réel de la commande ne changent.
+        await db.outbox.update(commandResult.command_id, { status: 'PENDING_SYNC' });
+        continue;
+      }
+      if (code === 'COMMAND_STALLED') stalled.push(commandResult.command_id);
       await db.outbox
         .where('command_id')
         .equals(commandResult.command_id)
@@ -133,10 +149,7 @@ export async function runPushCycle(
           c.status = 'PENDING_SYNC';
           c.attempts += 1;
           c.last_error = commandResult.error ?? c.last_error;
-          // Renvois consécutifs pour erreur du serveur (exception en base, S-29 à S-31, S-37) ;
-          // une attente de dépendance remet le compteur à zéro.
-          c.busy_retries =
-            commandResult.error?.code === 'SERVER_BUSY' ? (c.busy_retries ?? 0) + 1 : 0;
+          c.busy_retries = nextBusyRetries(code, c.busy_retries ?? 0);
         });
       continue;
     }
@@ -164,5 +177,17 @@ export async function runPushCycle(
       });
   }
 
-  return { outcome: 'PUSHED', count: result.data.results.length, settled };
+  return { outcome: 'PUSHED', count: result.data.results.length, settled, stalled };
+}
+
+/**
+ * Renvois consécutifs sans succès d'une commande (`busy_retries`), selon le motif du `RETRY_LATER` :
+ * erreur du serveur (exception en base, S-29 à S-31, S-37 ; délai du lot dépassé, S-43) et attente de
+ * dépendance comptent ; une commande bloquée (`COMMAND_STALLED`, AV-217) est aussitôt signalée en
+ * échec répété ; tout autre motif remet le compteur à zéro.
+ */
+export function nextBusyRetries(code: string | undefined, current: number): number {
+  if (code === 'COMMAND_STALLED') return Math.max(current + 1, REPEATED_FAILURE_ATTEMPTS);
+  if (code === 'SERVER_BUSY' || code === 'DEPENDENCY_PENDING') return current + 1;
+  return 0;
 }

@@ -79,23 +79,29 @@ const UNSETTLED: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'S
  * commandes de `authorUserId` s'il est donné (le serveur n'accepte que celles de l'utilisateur
  * authentifié).
  *
- * Une commande dont une dépendance (`depends_on`) attend encore sa réponse sur l'appareil reste en
- * file : elle part au lot suivant, une fois la dépendance appliquée. Le serveur accepte aujourd'hui
- * une dépendance seulement reçue ou en échec passager, et la commande dépendante serait alors
- * refusée définitivement (S-17). Une dépendance refusée ou en conflit n'arrête pas l'envoi : le
- * serveur refuse alors la dépendante normalement (`DEPENDENCY_REJECTED`).
+ * Ordre strict par `device_seq`, dépendantes comprises (INV-SYN-04, AV-210, ADR-052) : le serveur
+ * fait attendre une dépendance reçue mais pas encore réglée (`DEPENDENCY_PENDING`, S-17 levé) et
+ * suspend la suite du lot après elle (`PRECEDING_COMMAND_PENDING`). Le lot s'arrête seulement avant une
+ * commande dont une dépendance attend encore sur l'appareil sans partir dans ce lot (commande d'un
+ * autre utilisateur de la tablette, qui ne part qu'à sa reconnexion, ou commande bloquée écartée de ce
+ * cycle) : l'envoyer ne ferait que suspendre la suite. Une dépendance refusée ou en conflit n'arrête
+ * pas l'envoi : le serveur refuse la dépendante (`DEPENDENCY_REJECTED`). `skip` : commandes bloquées
+ * (`COMMAND_STALLED`) déjà renvoyées pendant ce cycle, qui ne retiennent plus la suite (AV-217).
  */
 export async function pendingOutbox(
   db: GicDatabase,
   limit = 50,
   authorUserId?: string,
+  skip?: ReadonlySet<string>,
 ): Promise<OutboxCommand[]> {
   const rows = await db.outbox
     .where('status')
     .anyOf(['LOCAL_ONLY', 'PENDING_SYNC'])
     .sortBy('device_seq');
   const candidates = rows.filter(
-    (row) => authorUserId === undefined || row.author_user_id === authorUserId,
+    (row) =>
+      (authorUserId === undefined || row.author_user_id === authorUserId) &&
+      !skip?.has(row.command_id),
   );
   const dependencyIds = [...new Set(candidates.flatMap((row) => row.depends_on))];
   const dependencies =
@@ -107,10 +113,26 @@ export async function pendingOutbox(
       .filter((dependency) => UNSETTLED.has(dependency.status))
       .map((dependency) => dependency.command_id),
   );
-  return candidates
-    .filter((row) => row.depends_on.every((dependency) => !unsettled.has(dependency)))
-    .slice(0, limit);
+  const batch: OutboxCommand[] = [];
+  const inBatch = new Set<string>();
+  for (const row of candidates) {
+    if (batch.length >= limit) break;
+    if (
+      row.depends_on.some((dependency) => unsettled.has(dependency) && !inBatch.has(dependency))
+    ) {
+      break;
+    }
+    batch.push(row);
+    inBatch.add(row.command_id);
+  }
+  return batch;
 }
+
+/**
+ * Renvois consécutifs sans succès au-delà desquels une commande est signalée « en échec répété » :
+ * elle reste réessayée, mais ne bloque plus l'écran qui l'a émise (`busy_retries`).
+ */
+export const REPEATED_FAILURE_ATTEMPTS = 3;
 
 /**
  * Ce qui restera à envoyer **après** un lot, par auteur (tablette partagée, AV-007) : le serveur

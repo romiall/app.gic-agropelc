@@ -6,7 +6,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
-import { enqueueCommand, type EnqueueInput } from '../../sync/outbox.js';
+import { enqueueCommand, REPEATED_FAILURE_ATTEMPTS, type EnqueueInput } from '../../sync/outbox.js';
 import { getSyncEngine } from '../sync/sync-engine-instance.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
 
@@ -93,7 +93,7 @@ export function lastWaitingCommand(
  * lève une exception, S-29 à S-31, S-37) au-delà desquels une commande en attente est tenue pour en
  * échec répété. Les coupures réseau ne comptent pas (`busy_retries`, tenu par `push.ts`).
  */
-export const REPEATED_FAILURE_ATTEMPTS = 3;
+export { REPEATED_FAILURE_ATTEMPTS };
 
 /** Commande que le serveur renvoie sans l'appliquer (`RETRY_LATER`, `SERVER_BUSY`) à chaque essai. */
 export function inRepeatedFailure(
