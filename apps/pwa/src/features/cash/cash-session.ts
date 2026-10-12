@@ -38,6 +38,15 @@ import type {
  */
 export const CASH_COUNT_BLIND: boolean = true;
 
+/**
+ * AV-305 (défaut) : encaissement en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran
+ * propose d'abord « Ouvrir la caisse » (BR-DIS-005) ; en ligne, l'encaissement est bloqué (le serveur
+ * le refuserait, `CASH_SESSION_REQUIRED`) ; hors ligne, `WARN` : enregistré, le serveur l'applique et
+ * le signale à la Finance (`CASH_SESSION_MISSING`, AV-184, BR-SYN-007). `BLOCK` : bloqué hors ligne
+ * aussi.
+ */
+export const OFFLINE_CASH_WITHOUT_SESSION: 'WARN' | 'BLOCK' = 'WARN';
+
 /** Longueur maximale du commentaire d'une ouverture ou d'une clôture (`cashSessionOpenPayloadSchema`). */
 export const MAX_CASH_COMMENT = 500;
 
@@ -269,6 +278,49 @@ export function indicativeBalanceXaf(input: {
   if (input.account.balance_xaf === undefined) return null;
   const pending = pendingCashMovements(input);
   return { expectedXaf: input.account.balance_xaf + pending.netXaf, pendingCount: pending.count };
+}
+
+/**
+ * Session exigée par un encaissement en espèces au PDV du site (BR-DIS-005) : `NONE`, aucune caisse
+ * de PDV servie pour ce site (rien à exiger) ; `MISSING`, aucune session ouverte vue par l'appareil,
+ * ou, en ligne, seulement l'ouverture d'un autre utilisateur de la tablette pas encore envoyée (le
+ * serveur ne la connaît pas) ; `COVERED` sinon (l'ouverture de l'utilisateur encore sur l'appareil part
+ * avant l'encaissement, dans l'ordre de la file).
+ */
+export function cashSessionCoverage(input: {
+  readonly accounts: readonly CashAccountData[];
+  readonly sessions: readonly CashSessionData[];
+  readonly outbox: readonly OutboxCommand[];
+  readonly cashPulledAt: string | undefined;
+  readonly siteId: string | null | undefined;
+  readonly userId: string;
+  readonly online: boolean;
+}): 'NONE' | 'MISSING' | 'COVERED' {
+  const account = posCashAccounts(input.accounts).find(
+    (candidate) => candidate.site_id === input.siteId,
+  );
+  if (!input.siteId || !account) return 'NONE';
+  const current = openSession(
+    deviceCashSessions({
+      cashAccountId: account.id,
+      sessions: input.sessions,
+      outbox: input.outbox,
+      cashPulledAt: input.cashPulledAt,
+    }),
+  );
+  if (!current) return 'MISSING';
+  if (input.online && current.openCommandId !== null && current.openedBy !== input.userId) {
+    return 'MISSING';
+  }
+  return 'COVERED';
+}
+
+/** Encaissement en espèces refusé sur l'appareil faute de caisse ouverte (AV-305). */
+export function cashPaymentBlocked(
+  coverage: 'NONE' | 'MISSING' | 'COVERED',
+  online: boolean,
+): boolean {
+  return coverage === 'MISSING' && (online || OFFLINE_CASH_WITHOUT_SESSION === 'BLOCK');
 }
 
 /**

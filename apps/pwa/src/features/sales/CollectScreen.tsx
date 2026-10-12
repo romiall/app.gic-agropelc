@@ -34,11 +34,14 @@ import { CommandResult } from './CommandResult.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
 import {
+  CASH_METHOD_ACCOUNT_TYPE,
   EMPTY_PAYMENT,
   paymentIssues,
   paymentPayload,
   type PaymentFieldsValue,
 } from './payment.js';
+import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
 import { useSalesReferences } from './references.js';
 import { parseXaf, sellingLocations } from './sale-form.js';
@@ -228,6 +231,22 @@ export function CollectScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const amount = parseXaf(payment.amountText ?? '');
+  // Encaissement sur le site d'un PDV (caisse de PDV servie) : en espèces, il exige une caisse
+  // ouverte (BR-DIS-005, AV-305 ; DÉDUIT de `cashAccountFor` : site du PDV).
+  const cashSession = cashSessionCoverage({
+    accounts: refs.cashAccounts,
+    sessions: refs.cashSessions,
+    outbox: refs.outbox,
+    cashPulledAt: refs.cashPulledAt,
+    siteId,
+    userId,
+    online,
+  });
+  const cashBlocked =
+    method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
+    amount !== null &&
+    amount > 0 &&
+    cashPaymentBlocked(cashSession, online);
   const issues = customer
     ? paymentIssues(
         { method, amountXaf: amount, reference: payment.reference, accountId: payment.accountId },
@@ -235,7 +254,8 @@ export function CollectScreen() {
       )
     : [];
   const preview = amount !== null && amount > 0 ? previewAllocation(amount, dues) : null;
-  const ready = customer !== undefined && method !== undefined && issues.length === 0 && !busy;
+  const ready =
+    customer !== undefined && method !== undefined && issues.length === 0 && !cashBlocked && !busy;
   const today = businessDayOf(clock.now());
 
   const submit = async () => {
@@ -278,6 +298,9 @@ export function CollectScreen() {
         <p className="home-banner" role="status">
           {t('collect.offline_banner')}
         </p>
+      ) : null}
+      {method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE && cashSession === 'MISSING' ? (
+        <CashSessionPrompt online={online} />
       ) : null}
 
       <section className="sale-block" aria-labelledby="collect-customer-title">
@@ -420,6 +443,11 @@ export function CollectScreen() {
                 </p>
               ))
             : null}
+          {cashBlocked ? (
+            <p className="error-message" role="alert">
+              {t('cash.prompt.blocked')}
+            </p>
+          ) : null}
           {saveError ? (
             <p className="alert alert-error" role="alert">
               {t('sales.error_local_save')}

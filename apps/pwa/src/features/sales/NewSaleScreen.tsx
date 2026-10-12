@@ -55,6 +55,9 @@ import { localAvailable, offlineSaleDecision, settingValue } from './stock.js';
 import { deviceQuota } from './quota.js';
 import { submitCommand } from './submit.js';
 import type { LocationData, ProductData } from './types.js';
+import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
+import { CASH_METHOD_ACCOUNT_TYPE } from './payment.js';
 
 const DEFAULT_METHOD = 'ESPECES';
 
@@ -230,6 +233,20 @@ export function NewSaleScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const amount = payment.amountText === null ? (total ?? 0) : parseXaf(payment.amountText);
+  // Vente au PDV (emplacement `POS`) : un encaissement en espèces exige une caisse ouverte
+  // (BR-DIS-005, AV-305).
+  const cashSession =
+    location.location_type === 'POS'
+      ? cashSessionCoverage({
+          accounts: refs.cashAccounts,
+          sessions: refs.cashSessions,
+          outbox: refs.outbox,
+          cashPulledAt: refs.cashPulledAt,
+          siteId: location.site_id,
+          userId,
+          online,
+        })
+      : 'NONE';
   const paymentErrors: string[] = [];
   if (total === null) paymentErrors.push(t('sales.error_total_invalid'));
   else if (amount === null) paymentErrors.push(t('sales.error_amount_invalid'));
@@ -242,6 +259,12 @@ export function NewSaleScreen() {
         refs.cashAccounts,
       )) {
         paymentErrors.push(t(`sales.payment_issue.${issue}`));
+      }
+      if (
+        method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
+        cashPaymentBlocked(cashSession, online)
+      ) {
+        paymentErrors.push(t('cash.prompt.blocked'));
       }
     }
   }
@@ -341,6 +364,7 @@ export function NewSaleScreen() {
       {pricesMayBeStale(refs.lastSyncAt, now) ? (
         <p className="home-banner">{t('sales.stale_prices')}</p>
       ) : null}
+      {cashSession === 'MISSING' ? <CashSessionPrompt online={online} /> : null}
 
       <div className="field">
         {locations.length > 1 ? (

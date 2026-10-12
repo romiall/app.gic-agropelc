@@ -4,7 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { DeliverScreen } from './DeliverScreen.js';
-import { IDS, ORDER_ID, ORDER_LINE_ID, orderRow, seedSalesFixtures } from './fixtures.js';
+import {
+  IDS,
+  ORDER_ID,
+  ORDER_LINE_ID,
+  orderRow,
+  posCashAccountRow,
+  seedSalesFixtures,
+} from './fixtures.js';
 import { NewOrderScreen } from './NewOrderScreen.js';
 import { OrderDetailScreen } from './OrderDetailScreen.js';
 import { OrdersScreen } from './OrdersScreen.js';
@@ -117,6 +124,25 @@ describe('Commandes (ECR-VEN-02, 03, 04)', () => {
       },
     });
     // Saisie longue (une vingtaine d'interactions) : marge contre la lenteur d'une machine chargée.
+  }, 20_000);
+
+  it('commande servie au PDV, caisse fermée : en ligne, acompte en espèces bloqué (BR-DIS-005)', async () => {
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderAt('/commandes/nouvelle');
+    await user.type(await screen.findByPlaceholderText(/Rechercher un client/), 'Mvog');
+    await user.click(screen.getByRole('button', { name: /Boutique Mvog-Mbi/ }));
+    await user.click(screen.getByRole('button', { name: '+ Ajouter un article' }));
+    await user.click(screen.getByRole('button', { name: /Poulet de chair/ }));
+    await user.click(screen.getByLabelText('Encaisser un acompte'));
+    expect(
+      screen.getByText('Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.'),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant de l’acompte (F CFA)'), '1000');
+    expect(
+      screen.getByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Passer la commande' })).toBeDisabled();
   }, 20_000);
 
   it('liste : badges « À livrer » et « Attend du stock », filtre', async () => {

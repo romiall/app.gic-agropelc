@@ -239,6 +239,8 @@ export const fr = {
       WAITING_online: 'Vente en cours d’envoi…',
       DONE: 'Vente {{doc}} enregistrée.',
       WARNING: 'Vente {{doc}} enregistrée, avec un avertissement à examiner.',
+      WARNING_CASH_SESSION_MISSING:
+        'Vente {{doc}} enregistrée sans caisse ouverte : l’encaissement en espèces est signalé à la Finance.',
       CONFLICT: 'Vente mise en attente d’examen (conflit).',
       REJECTED: 'Vente refusée : {{reason}}',
     },
@@ -440,6 +442,8 @@ export const fr = {
       WAITING_online: 'Commande en cours d’envoi…',
       DONE: 'Commande {{doc}} confirmée.',
       WARNING: 'Commande {{doc}} confirmée, avec un avertissement à examiner.',
+      WARNING_CASH_SESSION_MISSING:
+        'Commande {{doc}} confirmée sans caisse ouverte : l’acompte en espèces est signalé à la Finance.',
       CONFLICT: 'Commande mise en attente d’examen (conflit).',
       REJECTED: 'Commande refusée : {{reason}}',
     },
@@ -2326,6 +2330,8 @@ export const fr = {
       DONE: 'Encaissement {{doc}} enregistré.',
       WARNING:
         'Encaissement {{doc}} enregistré, avec un avertissement à examiner (doublon possible ou part non affectée).',
+      WARNING_CASH_SESSION_MISSING:
+        'Encaissement {{doc}} enregistré sans caisse ouverte : il est signalé à la Finance.',
       CONFLICT: 'Encaissement mis en attente d’examen (conflit).',
       REJECTED: 'Encaissement refusé : {{reason}}',
     },
@@ -2374,6 +2380,14 @@ export const fr = {
         'Le nombre de sessions de caisse du jour est atteint : le serveur refuserait l’ouverture.',
     },
     back: 'Retour à la caisse',
+    prompt: {
+      closed_online: 'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
+      closed_offline:
+        'Aucune caisse ouverte sur ce téléphone : un encaissement en espèces sera enregistré et signalé à la Finance. Ouvrez la caisse d’abord.',
+      open_link: 'Ouvrir la caisse',
+      blocked:
+        'Encaissement en espèces impossible sans caisse ouverte : ouvrez la caisse ou choisissez un autre moyen de paiement.',
+    },
     open: {
       title: 'Ouvrir la caisse',
       hint: 'Comptez le fonds de caisse présent dans le tiroir.',

@@ -12,7 +12,7 @@ import {
   previewAllocation,
   sortDues,
 } from './collect.js';
-import { IDS, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
+import { IDS, posCashAccountRow, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
 import type { SaleData } from './types.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -128,6 +128,22 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       captured_offline: true,
       payload: { customerId: IDS.customer, methodCode: 'ESPECES', amountXaf: 1500 },
     });
+  });
+
+  it('site du PDV, caisse fermée : en ligne, encaissement en espèces bloqué, invite « Ouvrir la caisse »', async () => {
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(
+      await screen.findByText(
+        'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
+      ),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant reçu (F CFA)'), '1500');
+    expect(
+      screen.getByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
   });
 
   it('en ligne : toutes les créances du client, lues sur le serveur', async () => {

@@ -3,7 +3,14 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { allocationRow, IDS, meSettingRow, seedSalesFixtures } from './fixtures.js';
+import {
+  allocationRow,
+  cashSessionRow,
+  IDS,
+  meSettingRow,
+  posCashAccountRow,
+  seedSalesFixtures,
+} from './fixtures.js';
 import { NewSaleScreen } from './NewSaleScreen.js';
 import { FixedClock } from '@gic/domain';
 import { rememberNavigation } from '../navigation/navigation-store.js';
@@ -197,6 +204,59 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect((command?.payload as { payments: unknown[] }).payments).toEqual([
       { methodCode: 'MOBILE_MONEY_ORANGE', amountXaf: 100, reference: 'OM-1', cashAccountId: 'om' },
     ]);
+  });
+
+  it('caisse du PDV fermée : « Ouvrir la caisse » proposé d’abord ; en ligne, espèces bloquées (BR-DIS-005)', async () => {
+    await seedSalesFixtures(getDb());
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    const { unmount } = renderScreen();
+    const prompt = await screen.findByText(
+      'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
+    );
+    expect(prompt).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ouvrir la caisse' })).toHaveAttribute(
+      'href',
+      '/caisse',
+    );
+    await addEggs(user);
+    expect(
+      screen.getByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).toBeInTheDocument();
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    expect(record).toBeDisabled();
+    // Autre moyen de paiement : la vente reste possible.
+    await user.selectOptions(screen.getByLabelText('Moyen de paiement'), 'MOBILE_MONEY_ORANGE');
+    await user.type(screen.getByLabelText('Référence de la transaction'), 'OM-9');
+    await waitFor(() => expect(record).toBeEnabled());
+    unmount();
+
+    // Caisse ouverte : ni invite ni blocage.
+    await getDb().projections.put(cashSessionRow());
+    renderScreen();
+    await addEggs(user);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled(),
+    );
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+  });
+
+  it('hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-305)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb(), { posCustody: 'EXCLUSIVE_USER' });
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderScreen();
+    expect(
+      await screen.findByText(
+        /Aucune caisse ouverte sur ce téléphone : un encaissement en espèces/,
+      ),
+    ).toBeInTheDocument();
+    await addEggs(user);
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    await waitFor(() => expect(record).toBeEnabled());
+    await user.click(record);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
   });
 
   it('hors ligne sur un emplacement partagé sans quota : vente bloquée sur l’appareil (AV-025)', async () => {

@@ -3,6 +3,8 @@ import type { OutboxCommand } from '../../storage/db.js';
 import type { CashAccountData, CashSessionData } from '../sales/types.js';
 import {
   cashOpenPlan,
+  cashPaymentBlocked,
+  cashSessionCoverage,
   deviceCashSessions,
   indicativeSessionExpectedXaf,
   pendingCashMovements,
@@ -258,6 +260,43 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     expect(
       indicativeSessionExpectedXaf({ ...base, account: withoutBalance, session: known }),
     ).toBeNull();
+  });
+
+  it('encaissement en espèces au PDV : caisse ouverte exigée, bloqué en ligne seulement (BR-DIS-005, AV-305)', () => {
+    const coverage = (overrides: Partial<Parameters<typeof cashSessionCoverage>[0]> = {}) =>
+      cashSessionCoverage({
+        accounts: [account],
+        sessions: [],
+        outbox: [],
+        cashPulledAt: PULLED,
+        siteId: SITE,
+        userId: USER,
+        online: true,
+        ...overrides,
+      });
+    // Site sans caisse de PDV servie (ou inconnu) : rien à exiger.
+    expect(coverage({ siteId: 'site-dla' })).toBe('NONE');
+    expect(coverage({ siteId: null })).toBe('NONE');
+    expect(coverage({ accounts: [{ ...account, status: 'INACTIVE' }] })).toBe('NONE');
+    expect(coverage()).toBe('MISSING');
+    expect(coverage({ sessions: [session()] })).toBe('COVERED');
+    expect(
+      coverage({
+        sessions: [session({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00Z' })],
+      }),
+    ).toBe('MISSING');
+    // Ouverture de l'utilisateur encore sur l'appareil : elle part avant l'encaissement.
+    const ownOpen = command('finance.cash_session.open', { cashAccountId: ACCOUNT, countedXaf: 0 });
+    expect(coverage({ outbox: [ownOpen] })).toBe('COVERED');
+    // Ouverture d'un autre utilisateur pas encore envoyée : inconnue du serveur en ligne.
+    const otherOpen = { ...ownOpen, author_user_id: 'autre-vendeur' };
+    expect(coverage({ outbox: [otherOpen] })).toBe('MISSING');
+    expect(coverage({ outbox: [otherOpen], online: false })).toBe('COVERED');
+
+    expect(cashPaymentBlocked('MISSING', true)).toBe(true);
+    expect(cashPaymentBlocked('MISSING', false)).toBe(false);
+    expect(cashPaymentBlocked('NONE', true)).toBe(false);
+    expect(cashPaymentBlocked('COVERED', true)).toBe(false);
   });
 
   it('ouverture : règle partagée avec le serveur, refus en ligne, fusion hors ligne', () => {
