@@ -36,6 +36,8 @@ vi.mock('../auth/AuthContext.js', () => ({
 }));
 
 const NOW = new Date('2026-10-10T09:00:00.000Z');
+/** Autre utilisateur de la tablette. */
+const OTHER_AUTHOR = '01900000-0000-7000-8000-0000000000e9';
 /** Lendemain 0 h à Douala. */
 const TOMORROW = '2026-10-10T23:00:00.000Z';
 
@@ -378,9 +380,10 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     const user = userEvent.setup();
     renderScreen();
     await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
-    expect(
-      await screen.findByText('Une nouvelle version de cette règle attend l’envoi.'),
-    ).toBeInTheDocument();
+    // Nouvelle version de l'utilisateur en échec répété : annoncée comme telle, pas de second
+    // remplacement.
+    expect(await screen.findByText(/renvoyée sans succès au serveur/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nouvelle version' })).not.toBeInTheDocument();
     // Réponse à la dernière opération : relue, l'écran se débloque.
     await getDb().outbox.update(OTHER, { status: 'SYNCED' });
     await waitFor(() =>
@@ -396,6 +399,54 @@ describe('Règles tarifaires (ECR-PRX-02)', () => {
     expect(await screen.findByRole('listitem', { name: 'OEUF-GEN v2' })).toBeInTheDocument();
     expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(calls);
     expect(screen.queryByRole('button', { name: 'Nouvelle version' })).not.toBeInTheDocument();
+  });
+
+  it('version plus récente relue : elle prime sur un remplacement en attente ; celui d’un autre utilisateur annoncé à part', async () => {
+    await rememberRoles(['RESP_COMMERCIAL']);
+    const supersede = (id: string, seq: number, author: string): OutboxCommand => ({
+      command_id: id,
+      device_seq: seq,
+      command_type: 'pricing.rule.supersede',
+      command_version: 1,
+      author_user_id: author,
+      aggregate_type: 'PRICE_RULE',
+      aggregate_id: `${id.slice(0, -2)}b${seq}`,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:59:00.000Z',
+      client_created_at: '2026-10-10T08:59:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { supersedesRuleId: 'r-actif', unitPriceXaf: 105 },
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    // Remplacement de v1 saisi par un autre utilisateur de la tablette, pas encore parti.
+    await getDb().outbox.add(supersede('01900000-0000-7000-8000-0000000000f3', 1, OTHER_AUTHOR));
+    const user = userEvent.setup();
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    expect(
+      await screen.findByText(/saisie par un autre utilisateur de ce téléphone/),
+    ).toBeInTheDocument();
+    cleanup();
+    await getDb().outbox.clear();
+    // Remplacement de l'utilisateur en attente, mais une v2 a été créée ailleurs et relue.
+    await getDb().outbox.add(supersede('01900000-0000-7000-8000-0000000000f4', 1, IDS.user));
+    rules = [
+      rule({}),
+      rule({ id: 'v2', version: 2, status: 'DRAFT', unitPriceXaf: 110, validFrom: TOMORROW }),
+    ];
+    renderScreen();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    expect(await screen.findByText(/ne pourra pas être enregistrée/)).toHaveTextContent(
+      /Une version plus récente existe déjà/,
+    );
+    expect(screen.queryByText('Une nouvelle version de cette règle attend l’envoi.')).toBeNull();
   });
 
   it('relecture lente après une opération : liste gardée mais actions bloquées jusqu’à la réponse', async () => {

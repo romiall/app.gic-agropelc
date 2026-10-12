@@ -679,6 +679,42 @@ describe('Transférer (ECR-STK-02)', () => {
     expect(screen.queryByText(/quantités en unité de base/)).not.toBeInTheDocument();
   });
 
+  it('ressaisie faite entre-temps dans un autre onglet : rien n’est envoyé, formulaire vidé, annoncé', async () => {
+    await addRejectedDispatch();
+    await setRequest({ status: 'DECLINED' });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const prefill = {
+      fromLocationId: IDS.pos,
+      toLocationId: STORE,
+      lines: [{ productId: IDS.eggs, quantityBase: 60 }],
+      originCommandIds: [REJECTED_DISPATCH],
+    };
+    const user = userEvent.setup();
+    renderAt('/stock/transferts', [{ pathname: '/stock/transferts', state: { prefill } }]);
+    expect(await screen.findByText(/quantités en unité de base/)).toBeInTheDocument();
+    // L'autre onglet ressaisit la même expédition : le préremplissage disparaît de l'écran, le
+    // formulaire le porte encore.
+    await getDb().outbox.update(REJECTED_DISPATCH, { local_flags: ['REENTERED'] });
+    await waitFor(() =>
+      expect(screen.queryByText(/quantités en unité de base/)).not.toBeInTheDocument(),
+    );
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('60');
+    await user.click(screen.getByRole('button', { name: 'Expédier' }));
+    expect(await screen.findByText(/déjà été ressaisie ou écartée/)).toBeInTheDocument();
+    expect(
+      (await getDb().outbox.toArray()).filter(
+        (command) => command.command_type === 'inventory.transfer.dispatch',
+      ),
+    ).toHaveLength(1);
+    // Formulaire remonté vide : une expédition légitime reste possible.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('listitem', { name: 'Ligne 1' })).getByLabelText('Quantité'),
+      ).toHaveValue(''),
+    );
+  });
+
   it('deux expéditions refusées de la même demande : une seule carte, écartées ensemble ; fiche sans nouvel envoi', async () => {
     const SECOND = '01900000-0000-7000-8000-0000000000d6';
     await addRejectedDispatch();

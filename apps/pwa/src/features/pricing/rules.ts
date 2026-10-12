@@ -14,7 +14,7 @@
  */
 import { businessDayEndUtc, businessDayOf, findConflicts, xaf, type PriceRule } from '@gic/domain';
 import { MAX_QUANTITY } from '../sales/sale-form.js';
-import { phaseOf } from '../sales/submit.js';
+import { inRepeatedFailure, phaseOf } from '../sales/submit.js';
 import type { OutboxCommand } from '../../storage/db.js';
 import type { SiteData, ZoneData } from '../sales/types.js';
 
@@ -97,22 +97,39 @@ export function predecessorOf(rule: RuleView, rules: readonly RuleView[]): RuleV
   );
 }
 
+/** Remplacement d'une règle encore sans réponse dans l'outbox de l'appareil. */
+export interface PendingSupersede {
+  /** Saisi par l'utilisateur connecté (celui d'un autre ne part qu'à sa reconnexion). */
+  readonly mine: boolean;
+  /** Renvoyé sans succès par le serveur (échec répété), toujours réessayé. */
+  readonly repeated: boolean;
+}
+
 /**
  * Règles visées par un remplacement encore sans réponse dans l'outbox de l'appareil (échec répété
- * compris) : un second remplacement de la même version serait refusé par la base (S-29).
+ * compris), de tout utilisateur : un second remplacement de la même version serait refusé par la
+ * base (S-29).
  */
 export function supersedesPending(
-  outbox: readonly Pick<OutboxCommand, 'command_type' | 'status' | 'payload'>[],
-): ReadonlySet<string> {
-  return new Set(
-    outbox
-      .filter(
-        (command) =>
-          command.command_type === 'pricing.rule.supersede' && phaseOf(command) === 'WAITING',
-      )
-      .map((command) => (command.payload as { supersedesRuleId?: string }).supersedesRuleId)
-      .filter((id): id is string => typeof id === 'string'),
-  );
+  outbox: readonly Pick<
+    OutboxCommand,
+    'command_type' | 'status' | 'payload' | 'author_user_id' | 'busy_retries'
+  >[],
+  userId: string | undefined,
+): ReadonlyMap<string, PendingSupersede> {
+  const pending = new Map<string, PendingSupersede>();
+  for (const command of outbox) {
+    if (command.command_type !== 'pricing.rule.supersede' || phaseOf(command) !== 'WAITING') {
+      continue;
+    }
+    const ruleId = (command.payload as { supersedesRuleId?: string }).supersedesRuleId;
+    if (typeof ruleId !== 'string') continue;
+    const mine = command.author_user_id === userId;
+    // La commande de l'utilisateur l'emporte sur celle d'un autre pour l'annonce.
+    if (pending.get(ruleId)?.mine && !mine) continue;
+    pending.set(ruleId, { mine, repeated: mine && inRepeatedFailure(command) });
+  }
+  return pending;
 }
 
 /** Vrai si aucune version plus récente de la lignée n'existe (brouillon compris). */

@@ -1079,7 +1079,9 @@ export const fr = {
     suppliers_unavailable: 'Fournisseurs indisponibles : réessayez quand le serveur répond.',
     suppliers_denied: 'Lecture des fournisseurs refusée : droit insuffisant.',
     create_retrying:
-      'Le bon envoyé est toujours réessayé automatiquement par le téléphone : ne le ressaisissez pas, il serait créé deux fois.',
+      'Le bon envoyé est toujours réessayé automatiquement par le téléphone : la saisie reste pour le corriger s’il est refusé, mais ne le renvoyez pas tel quel, il serait créé deux fois.',
+    requests_refreshing:
+      'Relecture des demandes d’achat… une ligne tirée d’une demande attend sa fin.',
     request_line_label: 'Ligne d’une demande approuvée',
     request_line: '{{doc}} — {{product}} ({{quantity}} {{unit}} à commander)',
     add_request_line: 'Ajouter la ligne de demande',
@@ -1791,6 +1793,12 @@ export const fr = {
       'Produit désactivé ou non vendable : ses règles se consultent et se terminent, sans nouvelle rédaction.',
     newer_version_exists: 'Une version plus récente existe déjà (brouillon compris).',
     supersede_pending: 'Une nouvelle version de cette règle attend l’envoi.',
+    supersede_retrying:
+      'Une nouvelle version de cette règle, saisie sur ce téléphone, est renvoyée sans succès au serveur ; elle reste réessayée.',
+    supersede_pending_other:
+      'Une nouvelle version de cette règle, saisie par un autre utilisateur de ce téléphone, attend son envoi (à sa reconnexion).',
+    supersede_blocked:
+      'Votre nouvelle version de cette règle, en attente, ne pourra pas être enregistrée.',
     outside_superseded:
       'Date d’effet hors de la période de la règle remplacée : l’activation échouerait. Rédigez une nouvelle version.',
     retroactive:

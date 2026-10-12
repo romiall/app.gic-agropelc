@@ -185,10 +185,13 @@ function DirectDispatchForm({
   onDone,
   mode,
   prefill,
+  onReentryDone,
 }: FormProps & {
   readonly mode: Mode;
   readonly deviceId: string | undefined;
   readonly prefill?: TransferPrefill | undefined;
+  /** Expédition d'origine ressaisie ou écartée entre-temps : rien n'est envoyé. */
+  readonly onReentryDone: () => void;
 }) {
   const { t } = useTranslation();
   // Mouvement interne : sources sous la garde de l'utilisateur ou de l'appareil, hors stock mobile.
@@ -215,7 +218,9 @@ function DirectDispatchForm({
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const [reentryDone, setReentryDone] = useState(false);
+  // Expéditions d'origine figées au montage : le préremplissage peut disparaître de l'écran (autre
+  // onglet) alors que le formulaire le porte encore.
+  const [origins] = useState(() => prefill?.originCommandIds ?? null);
   const sourceSelectId = useId();
   const destinationSelectId = useId();
 
@@ -291,8 +296,8 @@ function DirectDispatchForm({
     try {
       // Expédition refusée ressaisie ou écartée entre-temps (autre onglet) : pas de seconde
       // expédition pour la même sortie physique.
-      if (mode === 'DISPATCH' && prefill && !(await originsStillOpen(prefill.originCommandIds))) {
-        setReentryDone(true);
+      if (mode === 'DISPATCH' && origins && !(await originsStillOpen(origins))) {
+        onReentryDone();
         return;
       }
       // Un lot désigné qui n'est plus proposé n'est pas envoyé (le serveur prend le plus ancien).
@@ -327,10 +332,10 @@ function DirectDispatchForm({
               }),
             },
       );
-      if (mode === 'DISPATCH' && prefill) {
+      if (mode === 'DISPATCH' && origins) {
         // Expédition refusée d'origine marquée ressaisie ; en cas d'échec elle reste proposée, et
         // l'utilisateur peut l'écarter.
-        await flagRefused(prefill.originCommandIds, REENTERED_FLAG).catch(() => undefined);
+        await flagRefused(origins, REENTERED_FLAG).catch(() => undefined);
       }
       onDone(command.command_id, mode === 'MOVE' ? 'transfer.move_result' : 'transfer.result');
     } catch {
@@ -468,15 +473,10 @@ function DirectDispatchForm({
           {t('sales.error_local_save')}
         </p>
       ) : null}
-      {reentryDone ? (
-        <p className="alert alert-error" role="alert">
-          {t('transfer.reentry_done')}
-        </p>
-      ) : null}
       <button
         type="button"
         className="btn-block submit-sale"
-        disabled={!ready || reentryDone}
+        disabled={!ready}
         onClick={() => void submit()}
       >
         {busy
@@ -848,6 +848,8 @@ export function TransferScreen() {
     messages: ResultMessages;
   }>();
   const [mode, setMode] = useState<Mode>('DISPATCH');
+  // Ressaisie arrêtée à l'envoi (expédition d'origine ressaisie ou écartée entre-temps).
+  const [reentryNotice, setReentryNotice] = useState(false);
 
   if (!refs || !userId) {
     return (
@@ -871,6 +873,7 @@ export function TransferScreen() {
     statePrefill && prefillStillRefused(refs, statePrefill) ? statePrefill : undefined;
   const reenter = (next: TransferPrefill) => {
     setSubmitted(undefined);
+    setReentryNotice(false);
     setMode('DISPATCH');
     // Depuis la page Transférer, la ressaisie remplace l'entrée courante (pas d'entrées préremplies
     // empilées par deux touchers).
@@ -900,6 +903,7 @@ export function TransferScreen() {
 
   const onDone = (commandId: string, messages: ResultMessages) => {
     setSubmitted({ commandId, route: transferId, messages });
+    setReentryNotice(false);
     // Préremplissage consommé : un retour arrière ne repropose pas la même expédition.
     if (statePrefill) navigate(location.pathname, { replace: true, state: null });
   };
@@ -1008,6 +1012,11 @@ export function TransferScreen() {
           </label>
         ))}
       </fieldset>
+      {reentryNotice ? (
+        <p className="alert alert-error" role="alert">
+          {t('transfer.reentry_done')}
+        </p>
+      ) : null}
       {mode === 'DISPATCH' && prefill ? (
         <p className="home-muted">{t('transfer.reenter_hint')}</p>
       ) : null}
@@ -1020,6 +1029,11 @@ export function TransferScreen() {
         onDone={onDone}
         mode={mode}
         prefill={mode === 'DISPATCH' ? prefill : undefined}
+        onReentryDone={() => {
+          // Formulaire remonté vide (préremplissage consommé), annonce au-dessus.
+          setReentryNotice(true);
+          navigate(location.pathname, { replace: true, state: null });
+        }}
       />
     </section>
   );

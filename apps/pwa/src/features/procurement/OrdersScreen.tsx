@@ -437,7 +437,12 @@ function NewOrder({
   const [lines, setLines] = useState<readonly OrderLineDraft[]>([]);
   // Création envoyée depuis cette saisie, et charge utile envoyée (comparée à la saisie courante).
   const [sent, setSent] = useState<{ readonly commandId: string; readonly payload: string }>();
-  const [retrying, setRetrying] = useState<string>();
+  // Création en échec répété et contenu envoyé : la saisie reste (à corriger si le bon est refusé),
+  // mais elle ne se renvoie pas telle quelle tant qu'il est réessayé (second bon).
+  const [retrying, setRetrying] = useState<{
+    readonly commandId: string;
+    readonly payload: string;
+  }>();
   const [requestPick, setRequestPick] = useState('');
   const [productPick, setProductPick] = useState('');
   const ids = {
@@ -447,6 +452,7 @@ function NewOrder({
     request: useId(),
     product: useId(),
     requestsWait: useId(),
+    retrying: useId(),
   };
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const activeSuppliers = suppliers
@@ -505,18 +511,22 @@ function NewOrder({
       DEFAULT_APPROVAL_THRESHOLD_XAF,
   );
   const fromRequest = lines.some((line) => line.requestLineId !== null);
-  const ready =
-    issues.length === 0 &&
-    linesValid &&
-    total !== null &&
-    !blocked &&
-    !(requestsStale && fromRequest);
   const payload = createOrderPayload({
     supplierId,
     deliveryLocationId: locationId,
     expectedDeliveryDate: date,
     lines: checks,
   });
+  const stillRetrying = retrying !== undefined && retrying.commandId === retryingCreateId;
+  const sameAsRetrying = stillRetrying && JSON.stringify(payload) === retrying.payload;
+  const requestsRefreshing = requests !== undefined && requests !== null && requestsStale;
+  const ready =
+    issues.length === 0 &&
+    linesValid &&
+    total !== null &&
+    !blocked &&
+    !sameAsRetrying &&
+    !(requestsStale && fromRequest);
   const clear = () => {
     setSupplierId('');
     setLocationId('');
@@ -524,15 +534,17 @@ function NewOrder({
     setLines([]);
   };
   // Bon accepté : la saisie se vide si elle est toujours celle qui a été envoyée (sinon l'utilisateur
-  // l'a reprise : elle reste). Bon en échec répété : la saisie se vide aussi (il est toujours
-  // réessayé ; le renvoyer créerait un second bon).
+  // l'a reprise : elle reste). Bon en échec répété : la saisie reste, pour la corriger s'il est
+  // finalement refusé, mais ne se renvoie pas telle quelle ; acceptée plus tard, elle se vide de même.
   if (sent && acceptedCreateId === sent.commandId) {
     setSent(undefined);
     if (JSON.stringify(payload) === sent.payload) clear();
   } else if (sent && retryingCreateId === sent.commandId) {
     setSent(undefined);
-    setRetrying(sent.commandId);
-    clear();
+    setRetrying(sent);
+  } else if (retrying && acceptedCreateId === retrying.commandId) {
+    setRetrying(undefined);
+    if (JSON.stringify(payload) === retrying.payload) clear();
   }
   const update = (key: string, patch: Partial<OrderLineDraft>) =>
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -588,8 +600,8 @@ function NewOrder({
           )}
         </div>
       ) : null}
-      {retrying && retrying === retryingCreateId ? (
-        <p className="text-warn" role="status">
+      {stillRetrying ? (
+        <p id={ids.retrying} className="text-warn" role="status">
           {t('orders_po.create_retrying')}
         </p>
       ) : null}
@@ -720,6 +732,11 @@ function NewOrder({
         })}
       </ul>
 
+      {requestsRefreshing && !requestsFailed ? (
+        <p id={ids.requestsWait} className="home-muted" role="status">
+          {t('orders_po.requests_refreshing')}
+        </p>
+      ) : null}
       {lines.length < MAX_ORDER_LINES ? (
         <>
           {requestsFailed ? (
@@ -761,6 +778,9 @@ function NewOrder({
                 type="button"
                 className="secondary"
                 disabled={!requestPick || requestsStale}
+                aria-describedby={
+                  requestsRefreshing && !requestsFailed ? ids.requestsWait : undefined
+                }
                 onClick={addFromRequest}
               >
                 {t('orders_po.add_request_line')}
@@ -814,7 +834,20 @@ function NewOrder({
             {t(`orders_po.issue.${issue}`)}
           </p>
         ))}
-      <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
+      <button
+        type="button"
+        className="btn-block submit-sale"
+        disabled={!ready}
+        aria-describedby={
+          [
+            sameAsRetrying ? ids.retrying : null,
+            requestsRefreshing && !requestsFailed && fromRequest ? ids.requestsWait : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
+        onClick={submit}
+      >
         {t('orders_po.create')}
       </button>
     </>

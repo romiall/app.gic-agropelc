@@ -526,7 +526,7 @@ export function PriceRulesScreen() {
   );
   const rules = productRules.rules;
   // Règles dont une nouvelle version attend l'envoi (échec répété compris) : pas de second remplacement.
-  const pendingSupersede = supersedesPending(refs?.outbox ?? []);
+  const pendingSupersede = supersedesPending(refs?.outbox ?? [], userId);
   // Codes de toutes les lignées, pour une nouvelle règle seulement (unicité du code).
   const allRules = useRules(
     editing && editing.superseded === null ? '/api/v1/price-rules' : null,
@@ -814,9 +814,24 @@ export function PriceRulesScreen() {
                   ruleRow(
                     rule,
                     <div className="result-actions">
-                      {canDraft(product) && pendingSupersede.has(rule.id) ? (
-                        <p className="home-muted">{t('price_rules.supersede_pending')}</p>
-                      ) : canDraft(product) && isLatestVersion(rule, rules) ? (
+                      {canDraft(product) && !isLatestVersion(rule, rules) ? (
+                        // Version plus récente relue : un remplacement de l'appareil encore en
+                        // attente ne pourra pas être enregistré.
+                        <p className="home-muted">
+                          {t('price_rules.newer_version_exists')}
+                          {pendingSupersede.get(rule.id)?.mine
+                            ? ` ${t('price_rules.supersede_blocked')}`
+                            : ''}
+                        </p>
+                      ) : canDraft(product) && pendingSupersede.has(rule.id) ? (
+                        <p className="home-muted">
+                          {pendingSupersede.get(rule.id)?.mine
+                            ? pendingSupersede.get(rule.id)?.repeated
+                              ? t('price_rules.supersede_retrying')
+                              : t('price_rules.supersede_pending')
+                            : t('price_rules.supersede_pending_other')}
+                        </p>
+                      ) : canDraft(product) ? (
                         <button
                           type="button"
                           className="secondary"
@@ -825,8 +840,6 @@ export function PriceRulesScreen() {
                         >
                           {t('price_rules.supersede')}
                         </button>
-                      ) : canDraft(product) ? (
-                        <p className="home-muted">{t('price_rules.newer_version_exists')}</p>
                       ) : null}
                       {endControls(rule)}
                     </div>,

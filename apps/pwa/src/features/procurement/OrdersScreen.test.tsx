@@ -322,7 +322,7 @@ describe('Bons de commande (ECR-APP-03)', () => {
     ).toHaveLength(0);
   });
 
-  it('nouveau bon en échec répété : saisie vidée, annoncée, aucun second bon', async () => {
+  it('nouveau bon en échec répété : saisie gardée, pas de renvoi à l’identique, annoncé ; refusé, elle se corrige', async () => {
     const user = userEvent.setup();
     renderScreen();
     await user.click(await screen.findByRole('radio', { name: 'Nouveau bon de commande' }));
@@ -336,10 +336,23 @@ describe('Bons de commande (ECR-APP-03)', () => {
       busy_retries: 3,
       last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
     });
-    expect(await form.findByText(/ne le ressaisissez pas/)).toBeInTheDocument();
-    expect(form.queryAllByRole('listitem')).toHaveLength(0);
-    expect(form.getByRole('button', { name: 'Créer le bon de commande' })).toBeDisabled();
+    expect(await form.findByText(/ne le renvoyez pas tel quel/)).toBeInTheDocument();
+    // La saisie reste (pour la corriger s'il est refusé) ; renvoyée telle quelle, un second bon
+    // serait créé : le bouton se bloque, motif relié.
+    const line = form.getByRole('listitem', { name: 'Aliment démarrage' });
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('10');
+    const create = form.getByRole('button', { name: 'Créer le bon de commande' });
+    await waitFor(() => expect(create).toBeDisabled());
+    expect(create).toHaveAccessibleDescription(/ne le renvoyez pas tel quel/);
     expect(await getDb().outbox.count()).toBe(1);
+    // Le serveur finit par refuser : la saisie se corrige et se renvoie.
+    await getDb().outbox.update(sent?.command_id as string, {
+      status: 'REJECTED',
+      busy_retries: 0,
+      last_error: { code: 'SUPPLIER_INACTIVE', message_fr: 'Fournisseur désactivé.' },
+    });
+    await waitFor(() => expect(create).toBeEnabled());
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('10');
   });
 
   it('création en échec répété puis acceptée : la saisie d’un autre bon reste affichée', async () => {
@@ -355,9 +368,10 @@ describe('Bons de commande (ECR-APP-03)', () => {
       busy_retries: 3,
       last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
     });
-    expect(await form.findByText(/ne le ressaisissez pas/)).toBeInTheDocument();
-    // L'utilisateur commence un autre bon ; la première création est enfin acceptée.
-    await user.selectOptions(form.getByLabelText('Fournisseur'), SUPPLIER);
+    expect(await form.findByText(/ne le renvoyez pas tel quel/)).toBeInTheDocument();
+    // L'utilisateur reprend la saisie pour un autre bon ; la première création est enfin acceptée.
+    const line = form.getByRole('listitem', { name: 'Aliment démarrage' });
+    await user.type(within(line).getByLabelText('Quantité'), '0');
     const calls = vi.mocked(authorizedRequest).mock.calls.length;
     await getDb().outbox.update(sent?.command_id as string, {
       status: 'SYNCED',
@@ -370,7 +384,9 @@ describe('Bons de commande (ECR-APP-03)', () => {
       expect(vi.mocked(authorizedRequest).mock.calls.length).toBeGreaterThan(calls),
     );
     expect(screen.getByRole('region', { name: 'Nouveau bon de commande' })).toBeVisible();
+    // Saisie modifiée depuis l'envoi : elle reste.
     expect(form.getByLabelText('Fournisseur')).toHaveValue(SUPPLIER);
+    expect(within(line).getByLabelText('Quantité')).toHaveValue('100');
   });
 
   it('relecture des demandes en échec après une création : annoncée dans « Nouveau bon », « Réessayer » sur place', async () => {
