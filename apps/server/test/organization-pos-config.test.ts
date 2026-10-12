@@ -561,24 +561,43 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
           created_by: toBin(admin),
         })
         .execute();
-      const result = await send('organization.location.deactivate', 'LOCATION', store, {});
-      expect(result).toMatchObject({
-        status: 'REJECTED',
-        error: { code: 'LOCATION_HAS_ALLOCATIONS' },
-      });
-      // Le quota de ce montage n'a ni stock ni registre : il est révoqué pour que la réconciliation de
-      // toute la base (INV-STK-19, INV-STK-20) ne le voie pas comme une anomalie.
-      await db
-        .updateTable('inventory_stock_allocations')
-        .set({
-          status: 'REVOKED',
-          quantity_remaining: '0',
-          revoked_at: new Date(OCCURRED_AT),
-          revoked_by: toBin(admin),
-          revoke_reason: 'Montage de test',
-        })
-        .where('id', '=', toBin(quotaId))
-        .execute();
+      // Registre du quota tenu comme par les commandes (INV-STK-20 : accordé = Σ octrois, reste = Σ
+      // entrées), pour que le balayage de toute la base (p5-invariants.test.ts) ne le voie pas.
+      const entry = (entryType: 'GRANT' | 'REVOKE', quantity: string) =>
+        db
+          .insertInto('inventory_stock_allocation_entries')
+          .values({
+            id: toBin(freshUuid()),
+            allocation_id: toBin(quotaId),
+            entry_type: entryType,
+            quantity,
+            occurred_at: new Date(OCCURRED_AT),
+            created_by: toBin(admin),
+          })
+          .execute();
+      await entry('GRANT', '10');
+      try {
+        const result = await send('organization.location.deactivate', 'LOCATION', store, {});
+        expect(result).toMatchObject({
+          status: 'REJECTED',
+          error: { code: 'LOCATION_HAS_ALLOCATIONS' },
+        });
+      } finally {
+        // Le quota de ce montage n'a pas de stock : il est révoqué, même si l'assertion échoue, pour que
+        // la réconciliation de toute la base (INV-STK-19, INV-STK-20) ne le voie pas comme une anomalie.
+        await entry('REVOKE', '-10');
+        await db
+          .updateTable('inventory_stock_allocations')
+          .set({
+            status: 'REVOKED',
+            quantity_remaining: '0',
+            revoked_at: new Date(OCCURRED_AT),
+            revoked_by: toBin(admin),
+            revoke_reason: 'Montage de test',
+          })
+          .where('id', '=', toBin(quotaId))
+          .execute();
+      }
     });
 
     it('refuse un emplacement partie à un transfert ouvert (LOCATION_HAS_OPEN_TRANSFER)', async () => {

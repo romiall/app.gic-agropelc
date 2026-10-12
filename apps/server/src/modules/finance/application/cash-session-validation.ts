@@ -55,6 +55,7 @@ import {
 } from './cash-session-ledger.js';
 import { publishCashSessionEvent } from './cash-session-events.js';
 import { emitCashSessionChange } from './sync-changes.js';
+import { isOpeningVarianceMovement } from './cash-session-variance-rule.js';
 
 type Deps = { readonly idGenerator: IdGenerator };
 
@@ -161,7 +162,8 @@ export async function postedVarianceXaf(uow: UnitOfWork, session: CashSessionRow
  * INV-FIN-11 pour une session close : Σ signée des mouvements `SESSION_VARIANCE` de clôture et
  * d'ajustement (ceux qui citent la session, hors l'écart d'ouverture, posé à `opened_at` par sa
  * commande d'ouverture) = compté − attendu courant ; et ces mouvements correspondent aux écarts
- * enregistrés (session et ajustements). Sert aux tests et, en P5-22, à la réconciliation quotidienne.
+ * enregistrés (session et ajustements). Sert aux tests (avec verrous partagés : lecture à jour) ; le
+ * balayage de toutes les sessions, sans verrou, est `verifyCashSessions` (P5-22).
  */
 export async function verifyCashSessionVariance(
   uow: UnitOfWork,
@@ -197,12 +199,13 @@ export async function verifyCashSessionVariance(
     .execute();
   const openingCommand = fromBinOrNull(openingMovement.command_id);
   const postedMovementsXaf = rows
-    // L'écart d'ouverture est posé par la commande d'ouverture, à `opened_at` ; à défaut de commande,
-    // tout écart antérieur à la clôture est celui de l'ouverture (clôture et ajustements sont à `closed_at`).
-    .filter((row) =>
-      openingCommand !== null
-        ? fromBinOrNull(row.command_id) !== openingCommand
-        : row.occurred_at.getTime() >= session.closedAt!.getTime(),
+    // Hors l'écart d'ouverture (règle partagée avec le balayage `verifyCashSessions`).
+    .filter(
+      (row) =>
+        !isOpeningVarianceMovement(
+          { commandId: fromBinOrNull(row.command_id), occurredAt: row.occurred_at },
+          { commandId: openingCommand, closedAt: session.closedAt },
+        ),
     )
     .reduce(
       (sum, row) =>

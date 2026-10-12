@@ -49,18 +49,29 @@ export class LedgerReconciliationJob implements OnModuleInit {
                 `projection ${m.projectedQty} ≠ registre ${m.ledgerQty}`,
             ),
           ...transit.breaches.slice(0, DETAILED_MISMATCHES).map(describeTransitBreach),
+          // P5-22 : quotas fautifs nommés (INV-STK-19, INV-STK-20), pas seulement comptés.
+          ...result.allocationBreaches
+            .slice(0, DETAILED_MISMATCHES)
+            .map((b) => `quota ${b.allocationId} : ${b.reason} (reste ${b.remaining})`),
+          ...result.overcommitBreaches
+            .slice(0, DETAILED_MISMATCHES)
+            .map(
+              (b) =>
+                `emplacement ${b.locationId} produit ${b.productId} : quotas ${b.allocatedRemaining} > stock ${b.stockOnHand}`,
+            ),
         ].join(' ; ');
-        throw new Error(
+        const message =
           `LEDGER_MISMATCH : ${result.mismatches.length} solde(s) en écart, ` +
-            `${result.conservationBreaches.length} produit(s) hors conservation, ` +
-            `${result.toDeliverBreaches.length} solde(s) « à livrer » négatif(s), ` +
-            `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
-            `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
-            `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit, ` +
-            `${transit.breaches.length} transfert(s) clos au transit non soldé` +
-            (details ? ` — ${details}` : '') +
-            '.',
-        );
+          `${result.conservationBreaches.length} produit(s) hors conservation, ` +
+          `${result.toDeliverBreaches.length} solde(s) « à livrer » négatif(s), ` +
+          `${result.settlementBreaches.length} vente(s) au règlement incohérent, ` +
+          `${result.allocationBreaches.length} quota(s) au registre incohérent, ` +
+          `${result.overcommitBreaches.length} emplacement(s) dont les quotas dépassent le stock sans conflit, ` +
+          `${transit.breaches.length} transfert(s) clos au transit non soldé` +
+          (details ? ` — ${details}` : '') +
+          '.';
+        this.logger.error(message);
+        throw new Error(message);
       }
       this.logger.log(
         `Registre de stock réconcilié : ${result.balancesChecked} solde(s), ` +

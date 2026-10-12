@@ -1,9 +1,13 @@
 /**
- * `finance.cash.reconcile_daily` (P4-03 ; INV-FIN-02 : « solde d'un compte = Σ `IN` − Σ `OUT` ;
- * la projection est exacte »). Même patron que `inventory.ledger.reconcile_daily` : un écart fait
- * échouer la tâche (`JobRunner` marque l'échec, `last_error` rempli) ; l'alerte réelle
- * `CASH_MISMATCH` n'existe pas encore (alertes : P9). La correction n'est jamais automatique :
- * `rebuildCashBalances` reste une procédure de maintenance déclenchée après analyse.
+ * `finance.cash.reconcile_daily` (P4-03, étendu en P5-22) : dans une seule transaction, donc sur un même
+ * instantané —
+ * - INV-FIN-02 : solde projeté de chaque compte = Σ `IN` − Σ `OUT` du registre (`verifyCashLedger`) ;
+ * - remises de fonds ↔ registre (`verifyCashTransfers`, P5-15) ;
+ * - sessions de caisse : INV-FIN-05, 06, 11, BR-DIS-006 (`verifyCashSessions`, lectures sans verrou).
+ * Même patron que `inventory.ledger.reconcile_daily` : un écart fait échouer la tâche (`JobRunner` marque
+ * l'échec, `last_error` rempli), après journalisation ; l'alerte réelle `CASH_MISMATCH` n'existe pas encore
+ * (alertes : P9). La correction n'est jamais automatique : `rebuildCashBalances` reste une procédure de
+ * maintenance déclenchée après analyse, et le registre, les sessions et les ajustements sont immuables.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
@@ -11,10 +15,12 @@ import {
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
 import { verifyCashLedger } from '../public/cash-accounts.js';
+import { verifyCashSessions } from '../public/cash-session-verification.js';
+import { verifyCashTransfers } from '../public/cash-transfer-query.js';
 
 export const CASH_LEDGER_RECONCILIATION_JOB_TYPE = 'finance.cash.reconcile_daily';
 
-/** Nombre d'écarts détaillés dans le message d'échec (le reste est compté, jamais tu). */
+/** Nombre d'écarts détaillés par section dans le message d'échec (le reste est compté, jamais tu). */
 const DETAILED_MISMATCHES = 5;
 
 @Injectable()
@@ -25,23 +31,53 @@ export class CashLedgerReconciliationJob implements OnModuleInit {
 
   onModuleInit(): void {
     this.registry.register(CASH_LEDGER_RECONCILIATION_JOB_TYPE, async (uow) => {
-      const result = await verifyCashLedger(uow);
-      if (!result.ok) {
-        const details = result.mismatches
-          .slice(0, DETAILED_MISMATCHES)
-          .map(
-            (m) => `compte ${m.cashAccountId} : solde ${m.projectedXaf} ≠ registre ${m.ledgerXaf}`,
-          )
-          .join(' ; ');
-        throw new Error(
-          `CASH_MISMATCH : ${result.mismatches.length} compte(s) en écart` +
-            (details ? ` — ${details}` : '') +
-            '.',
-        );
+      const ledger = await verifyCashLedger(uow);
+      const transfers = await verifyCashTransfers(uow);
+      const sessions = await verifyCashSessions(uow);
+      if (!ledger.ok || !transfers.ok || !sessions.ok) {
+        const sections: string[] = [];
+        if (!ledger.ok) {
+          sections.push(
+            `${ledger.mismatches.length} compte(s) en écart` +
+              detail(
+                ledger.mismatches.map(
+                  (m) =>
+                    `compte ${m.cashAccountId} : solde ${m.projectedXaf} ≠ registre ${m.ledgerXaf}`,
+                ),
+              ),
+          );
+        }
+        if (!transfers.ok) {
+          sections.push(
+            `${transfers.mismatches.length} remise(s) incohérente(s)` +
+              detail(transfers.mismatches.map((m) => `${m.docNumber} ${m.issue} : ${m.detail}`)),
+          );
+        }
+        if (!sessions.ok) {
+          sections.push(
+            `${sessions.breaches.length} rupture(s) de session de caisse` +
+              detail(
+                sessions.breaches.map(
+                  (b) => `session ${b.sessionId} ${b.invariant} ${b.issue} : ${b.detail}`,
+                ),
+              ),
+          );
+        }
+        const message = `CASH_MISMATCH : ${sections.join(' ; ')}.`;
+        this.logger.error(message);
+        throw new Error(message);
       }
       this.logger.log(
-        `Registre de trésorerie réconcilié : ${result.accountsChecked} compte(s), aucun écart.`,
+        `Trésorerie réconciliée : ${ledger.accountsChecked} compte(s), ${transfers.transfersChecked} remise(s), ` +
+          `${sessions.sessionsChecked} session(s), aucun écart.`,
       );
     });
   }
+}
+
+function detail(lines: readonly string[]): string {
+  if (lines.length === 0) return '';
+  const shown = lines.slice(0, DETAILED_MISMATCHES).join(' | ');
+  const rest = lines.length - DETAILED_MISMATCHES;
+  return ` — ${shown}${rest > 0 ? ` | et ${rest} autre(s)` : ''}`;
 }

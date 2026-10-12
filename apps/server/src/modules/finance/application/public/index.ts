@@ -69,6 +69,13 @@ export type {
   CashTransfersInTransit,
   CashTransferVerification,
 } from './cash-transfer-query.js';
+// P5-22 : balayage des sessions de caisse (INV-FIN-05, 06, 11), sans verrou.
+export { verifyCashSessions } from './cash-session-verification.js';
+export type {
+  CashSessionBreach,
+  CashSessionScope,
+  CashSessionVerification,
+} from './cash-session-verification.js';
 // P5-17 : lectures HTTP des sessions de caisse et des remises de fonds.
 export {
   findCashSessionDetail,
