@@ -32,6 +32,7 @@
  * plutôt que de l'appliquer sans contrôle ou de sauter la validation.
  */
 import { z } from 'zod';
+import { receivedQuantitySchema } from '@gic/contracts';
 import { sql, type Transaction } from 'kysely';
 import type { IdGenerator } from '@gic/domain';
 import { roundCmupToXaf, businessDayOf } from '@gic/domain';
@@ -58,12 +59,19 @@ import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import {
   biologicalLotUnitCostXaf,
+  lockPhysicalStockCouples,
   recordStockMove,
   type RecordMoveDeps,
 } from '../public/record-move.js';
 import { inventoryCountChange } from '../sync-changes.js';
 import { closeStockNegativeConflicts } from '../stock-negative-conflicts.js';
-import { loadCommandOrigin, loadLocationSite, virtualLocationId } from './shared.js';
+import {
+  loadCommandOrigin,
+  loadLocationSite,
+  virtualLocationId,
+  documentLocation,
+  withStockScope,
+} from './shared.js';
 
 const COUNT_APPROVAL_THRESHOLD_KEY = 'inventory.count_approval_threshold_xaf';
 /** AV-039 : repli documenté, utilisé seulement si la clé n'existe pas encore dans la base. */
@@ -82,7 +90,8 @@ const countLineInputSchema = z.object({
   productId: z.string().uuid(),
   lotId: z.string().uuid().optional(),
   countedAt: z.string().datetime({ offset: true }),
-  countedQtyBase: z.number().nonnegative(),
+  // Bornée à `numeric(14,3)` (P5-23).
+  countedQtyBase: receivedQuantitySchema,
   varianceReasonCodeId: z.string().uuid().optional(),
   comment: z.string().max(2000).optional(),
 });
@@ -343,6 +352,11 @@ function buildCountCommands(
       readonly unitCostXaf: number;
     }> = [];
 
+    // ADR-038 N5 : soldes de tous les produits comptés, triés, avant le premier mouvement.
+    await lockPhysicalStockCouples(
+      uow,
+      lines.map((line) => ({ locationId, productId: fromBin(line.product_id) })),
+    );
     for (const line of lines) {
       const lotId = fromBinOrNull(line.lot_id);
       const theoretical = await computeTheoreticalQtyBase(uow, {
@@ -509,6 +523,10 @@ function registerInventoryAdjustmentDecisionHandler(
           .selectAll()
           .where('count_id', '=', row.id)
           .execute();
+        await lockPhysicalStockCouples(
+          uow,
+          lines.map((line) => ({ locationId, productId: fromBin(line.product_id) })),
+        );
         for (const line of lines) {
           const variance = line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0;
           await applyLineAdjustment(uow, deps, {
@@ -585,28 +603,48 @@ export function registerCountCommands(
     version: 1,
     payloadSchema: openPayloadSchema,
     permissionCode: 'inventory.count.perform',
-    handler: handlers.open,
+    // AV-182 (P5-23) : portée de l'emplacement compté.
+    handler: withStockScope(
+      'inventory.count.perform',
+      async (_uow, envelope) => [envelope.payload.locationId],
+      handlers.open,
+    ),
   });
   registry.register({
     commandType: 'inventory.count.record_lines',
     version: 1,
     payloadSchema: recordLinesPayloadSchema,
     permissionCode: 'inventory.count.perform',
-    handler: handlers.recordLines,
+    handler: withStockScope(
+      'inventory.count.perform',
+      (uow, envelope) =>
+        documentLocation(uow, 'inventory_inventory_counts', envelope.payload.countId),
+      handlers.recordLines,
+    ),
   });
   registry.register({
     commandType: 'inventory.count.submit',
     version: 1,
     payloadSchema: submitPayloadSchema,
     permissionCode: 'inventory.count.perform',
-    handler: handlers.submit,
+    handler: withStockScope(
+      'inventory.count.perform',
+      (uow, envelope) =>
+        documentLocation(uow, 'inventory_inventory_counts', envelope.payload.countId),
+      handlers.submit,
+    ),
   });
   registry.register({
     commandType: 'inventory.count.cancel',
     version: 1,
     payloadSchema: cancelPayloadSchema,
     permissionCode: 'inventory.count.perform',
-    handler: handlers.cancel,
+    handler: withStockScope(
+      'inventory.count.perform',
+      (uow, envelope) =>
+        documentLocation(uow, 'inventory_inventory_counts', envelope.payload.countId),
+      handlers.cancel,
+    ),
   });
   registerInventoryAdjustmentDecisionHandler(decisionRegistry, idGenerator);
 }

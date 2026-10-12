@@ -74,7 +74,12 @@ import {
   requestApproval,
   type ActiveControlPolicy,
 } from '../../approvals/application/public/index.js';
-import { InventoryMoveError, recordStockMove, type RecordMoveDeps } from './public/record-move.js';
+import {
+  InventoryMoveError,
+  lockPhysicalStockCouples,
+  recordStockMove,
+  type RecordMoveDeps,
+} from './public/record-move.js';
 import { virtualLocationId } from './commands/shared.js';
 import { milliToText, quantityToMilli } from './allocation-ledger.js';
 import { stockOwnerRole } from './allocation-consumption.js';
@@ -384,6 +389,14 @@ export async function reverseTransferMoves(
     readonly capturedOffline: boolean;
   },
 ): Promise<void> {
+  // ADR-038 N5 : soldes physiques de l'opération (l'extrémité non virtuelle de chaque mouvement), triés.
+  await lockPhysicalStockCouples(
+    uow,
+    moves.flatMap((move) => [
+      { locationId: move.fromLocationId, productId: move.productId },
+      { locationId: move.toLocationId, productId: move.productId },
+    ]),
+  );
   for (const move of moves) {
     try {
       await recordStockMove(uow, deps, {
@@ -544,6 +557,11 @@ export async function applyTransferReceipt(
   const dispatchMoves = await activeDocumentMoves(uow, transfer.id, 'TRANSFER_DISPATCH');
 
   const products = [...new Set(input.lines.map((line) => line.productId))];
+  // ADR-038 N5 : soldes de tous les produits de la destination, triés, avant le premier mouvement.
+  await lockPhysicalStockCouples(
+    uow,
+    products.map((productId) => ({ locationId: transfer.toLocationId, productId })),
+  );
   for (const productId of products) {
     const pieces: DispatchPiece[] = dispatchMoves
       .filter((move) => move.productId === productId)
@@ -806,11 +824,17 @@ export interface DeferredMatchInput {
 }
 
 /**
- * Rapprochement **différé** (la réception est arrivée avant l'expédition) : contre-passation exacte
- * des réceptions sans document imputées sur le transit de la paire, puis réception du transfert
- * expédié au lot et à la valeur de l'expédition, datée de la réception et à son auteur (AV-179) ;
- * réception `MATCHED` ; conflit de délai éventuel clos (`MERGE`, référence du transfert) ; excédent
- * signalé. Les écritures sont celles d'une réception, dans le même ordre de verrouillage.
+ * Rapprochement **différé** (la réception est arrivée avant l'expédition) : réception du transfert
+ * expédié au lot et à la valeur de l'expédition, datée de la réception et à son auteur (AV-179), puis
+ * contre-passation exacte des réceptions sans document imputées sur le transit de la paire ; réception
+ * `MATCHED` ; conflit de délai éventuel clos (`MERGE`, référence du transfert) ; excédent signalé. Les
+ * écritures sont celles d'une réception, dans le même ordre de verrouillage.
+ *
+ * Les entrées d'abord (P5-23, revue adverse) : contre-passée la première, la réception sans document
+ * faisait passer un instant le solde de la destination en négatif dès que des ventes l'avaient entamé,
+ * ce qui ouvrait un faux `STOCK_NEGATIVE` (AV-215), voire un faux `ALLOCATION_OVERCOMMITTED`. Le transit,
+ * virtuel, peut, lui, passer un instant en négatif. Seul un solde qui reste négatif (lot requalifié,
+ * AV-179) ouvre encore son conflit.
  */
 export async function applyDeferredMatch(
   uow: Uow,
@@ -819,14 +843,6 @@ export async function applyDeferredMatch(
 ): Promise<ReceiptOutcome> {
   const { receipt, dispatch } = input;
   const unmatchedMoves = await activeDocumentMoves(uow, receipt.header.id, 'TRANSFER_RECEIPT');
-  await reverseTransferMoves(uow, deps, unmatchedMoves, {
-    reverseType: 'TRANSFER_DISPATCH',
-    documentId: receipt.header.id,
-    occurredAt: receipt.header.occurredAt,
-    createdBy: receipt.header.createdBy,
-    commandId: input.triggerCommandId,
-    capturedOffline: receipt.header.capturedOffline,
-  });
   const receivedByLine = blindReceiptAllocation(receipt, dispatch);
   const outcome = await applyTransferReceipt(uow, deps, {
     transfer: dispatch.header,
@@ -838,6 +854,14 @@ export async function applyDeferredMatch(
     capturedOffline: receipt.header.capturedOffline,
     deviceId: receipt.header.createdDeviceId,
     policy: input.policy,
+  });
+  await reverseTransferMoves(uow, deps, unmatchedMoves, {
+    reverseType: 'TRANSFER_DISPATCH',
+    documentId: receipt.header.id,
+    occurredAt: receipt.header.occurredAt,
+    createdBy: receipt.header.createdBy,
+    commandId: input.triggerCommandId,
+    capturedOffline: receipt.header.capturedOffline,
   });
   await markMatched(uow, receipt.header, dispatch.header.id, input.matchedAt);
   await resolveOpenConflicts(uow, {

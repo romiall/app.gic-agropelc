@@ -18,6 +18,7 @@
  * non couvert par cette session, pas un oubli silencieux (CLAUDE.md règle 2).
  */
 import { z } from 'zod';
+import { positiveQuantitySchema } from '@gic/contracts';
 import { sql } from 'kysely';
 import type {
   CommandHandler,
@@ -38,7 +39,7 @@ import {
   declareLoss,
   registerLossDecisionHandlers,
 } from '../public/loss-declaration.js';
-import { virtualLocationId, tryRecordMove } from './shared.js';
+import { virtualLocationId, tryRecordMove, documentLocation, withStockScope } from './shared.js';
 
 const declarePayloadSchema = z
   .object({
@@ -48,9 +49,10 @@ const declarePayloadSchema = z
     /** Réf. sans FK (dictionnaire) : lot de production, ou lot d'incubation (AV-113). */
     productionLotId: z.string().uuid().optional(),
     incubationBatchId: z.string().uuid().optional(),
-    quantityBase: z.number().positive(),
+    // Bornées à `numeric(14,3)` (P5-23, S-20).
+    quantityBase: positiveQuantitySchema,
     unitCode: z.string().min(1).max(20),
-    quantity: z.number().positive(),
+    quantity: positiveQuantitySchema,
     category: z.enum(LOSS_CATEGORIES),
     reasonCodeId: z.string().uuid().optional(),
     comment: z.string().max(2000).optional(),
@@ -214,14 +216,24 @@ export function registerLossCommands(
     version: 1,
     payloadSchema: declarePayloadSchema,
     permissionCode: 'inventory.loss.declare',
-    handler: handlers.declare,
+    // AV-182 (P5-23) : portée de l'emplacement.
+    handler: withStockScope(
+      'inventory.loss.declare',
+      async (_uow, envelope) => [envelope.payload.locationId],
+      handlers.declare,
+    ),
   });
   registry.register({
     commandType: 'inventory.loss.withdraw',
     version: 1,
     payloadSchema: withdrawPayloadSchema,
     permissionCode: 'inventory.loss.declare',
-    handler: handlers.withdraw,
+    handler: withStockScope(
+      'inventory.loss.declare',
+      (uow, envelope) =>
+        documentLocation(uow, 'inventory_loss_declarations', envelope.payload.lossId),
+      handlers.withdraw,
+    ),
   });
   registerLossDecisionHandlers(decisionRegistry, idGenerator);
 }

@@ -188,6 +188,8 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `production.incubation.record` | — | — | — | — | — | — | ALL | SITE | — | — | — |
 | `production.overhead.allocate` (répartition des frais généraux d'une ferme, AV-106) | — | — | — | — | — | — | ALL | — | — | — | ALL |
 
+**Portée des commandes de stock** (P5-23, AV-182) : la portée de la permission est contrôlée, pas seulement sa présence. La ressource est l'emplacement — son site, et son titulaire pour un stock sous garde exclusive (portée `OWN` : stock mobile). Une commande à deux extrémités (transfert) est permise dès qu'**une** d'elles est dans la portée ; les emplacements virtuels ne font pas ressource. Refus `FORBIDDEN_SCOPE`, en ligne comme hors ligne (RC-01).
+
 ### 5.5 Approvisionnement, finance, analytics
 
 | Permission | DIR | ADM | RCO | CTE | CSE | VEN | RPR | RFE | MAG | ACH | FIN |

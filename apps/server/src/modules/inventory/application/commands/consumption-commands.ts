@@ -17,6 +17,7 @@
  * mouvement, jamais une écriture agrégée).
  */
 import { z } from 'zod';
+import { positiveQuantitySchema } from '@gic/contracts';
 import { sql } from 'kysely';
 import type {
   CommandHandler,
@@ -33,7 +34,7 @@ import {
 import { emitLotConsumptionChange } from '../sync-changes.js';
 import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
 import { recordConsumption } from '../public/consumption.js';
-import { virtualLocationId, tryRecordMove } from './shared.js';
+import { virtualLocationId, tryRecordMove, documentLocation, withStockScope } from './shared.js';
 
 const COST_OBJECT_TYPES = ['PRODUCTION_LOT', 'INCUBATION_BATCH', 'SITE'] as const;
 const COST_TYPES = [
@@ -50,9 +51,10 @@ const recordPayloadSchema = z.object({
   locationId: z.string().uuid(),
   productId: z.string().uuid(),
   lotId: z.string().uuid().optional(),
-  quantityBase: z.number().positive(),
+  // Bornées à `numeric(14,3)` (P5-23, S-20).
+  quantityBase: positiveQuantitySchema,
   unitCode: z.string().min(1).max(20),
-  quantity: z.number().positive(),
+  quantity: positiveQuantitySchema,
   costObjectType: z.enum(COST_OBJECT_TYPES),
   /** Réf. sans FK (dictionnaire : lot de production/incubation, table propriétaire P7). */
   costObjectId: z.string().uuid(),
@@ -222,13 +224,23 @@ export function registerConsumptionCommands(
     version: 1,
     payloadSchema: recordPayloadSchema,
     permissionCode: 'inventory.consumption.record',
-    handler: handlers.record,
+    // AV-182 (P5-23) : portée de l'emplacement.
+    handler: withStockScope(
+      'inventory.consumption.record',
+      async (_uow, envelope) => [envelope.payload.locationId],
+      handlers.record,
+    ),
   });
   registry.register({
     commandType: 'inventory.consumption.cancel',
     version: 1,
     payloadSchema: cancelPayloadSchema,
     permissionCode: 'inventory.consumption.record',
-    handler: handlers.cancel,
+    handler: withStockScope(
+      'inventory.consumption.record',
+      (uow, envelope) =>
+        documentLocation(uow, 'inventory_consumptions', envelope.payload.consumptionId),
+      handlers.cancel,
+    ),
   });
 }

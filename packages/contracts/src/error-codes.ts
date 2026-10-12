@@ -133,6 +133,9 @@ export const WARNING_CODES = [
   // demande soumise à validation.
   'CASH_SESSION_MISSING',
   'CANCEL_SESSION_CLOSED',
+  // P5-23 (S-40, AV-223) : expédition saisie hors ligne d'une demande refusée ou annulée depuis — appliquée
+  // en expédition directe (fait accompli), conflit informatif pour le magasinier du site expéditeur.
+  'TRANSFER_REQUEST_CLOSED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

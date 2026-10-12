@@ -52,6 +52,7 @@ import {
   milliToText,
   quantityToMilli,
   revokedRemainingMilli,
+  lateFactsBeforeRevocationMilli,
   stockOnHandMilli,
   type AllocationState,
 } from './allocation-ledger.js';
@@ -164,6 +165,19 @@ async function openConflict(
     },
   });
 }
+
+/**
+ * Types de mouvement qui consomment le quota de leur auteur (ADR-033 §5) ; le mouvement interne depuis
+ * P5-23 (S-40). Une seule liste, lue par `recordStockMove` et par le cumul d'AV-211.
+ */
+export const QUOTA_CONSUMING_TYPES = [
+  'SALE',
+  'LOSS',
+  'LOSS_PENDING',
+  'TRANSFER_DISPATCH',
+  'CONSUMPTION',
+  'INTERNAL_MOVE',
+] as const;
 
 /**
  * Raison d'un conflit `CUSTODY_DEVICE_MISMATCH` : appareil hors garde (P5-09) ou, pour une réception
@@ -290,7 +304,9 @@ export async function prepareQuotaConsumption(
       userId: request.userId,
       deviceId: request.deviceId,
     },
-    { lock: true },
+    // Hors ligne, le quota en vigueur à l'instant du fait : un fait antérieur à l'octroi du quota actif
+    // (révoquer puis réaccorder) ne le consomme pas (P5-23, revue adverse).
+    { lock: true, ...(request.capturedOffline ? { inForceAt: request.occurredAt } : {}) },
   );
 
   // Un quota échu n'est plus consommé : le fait est pris sur le stock commun (AV-161) ; une vente
@@ -307,6 +323,7 @@ export async function prepareQuotaConsumption(
   // signalé que s'il dépassait le reste du quota au moment de la révocation (AT-003, plus bas).
   const revoked = usable === undefined && expired === undefined ? quotas.lastRevoked : undefined;
   let revokedRemaining = 0;
+  let revokedEarlier = 0;
   let revokedExceeded = false;
   if (request.capturedOffline && revoked?.revokedAt != null) {
     if (isConsumedAfterRevocation(request.occurredAt, revoked.revokedAt)) {
@@ -323,7 +340,12 @@ export async function prepareQuotaConsumption(
       });
     } else {
       revokedRemaining = await revokedRemainingMilli(uow, revoked.id);
-      revokedExceeded = request.quantityMilli > revokedRemaining;
+      // AV-211 (P5-23) : en cumul avec les faits antérieurs à la révocation déjà appliqués après elle.
+      revokedEarlier = await lateFactsBeforeRevocationMilli(uow, {
+        allocation: revoked,
+        moveTypes: QUOTA_CONSUMING_TYPES,
+      });
+      revokedExceeded = revokedEarlier + request.quantityMilli > revokedRemaining;
     }
   }
 
@@ -408,8 +430,14 @@ export async function prepareQuotaConsumption(
           usable !== undefined
             ? plan.excessOverQuota.toFixed(3)
             : revoked !== undefined
-              ? milliToText(request.quantityMilli - revokedRemaining)
+              ? milliToText(
+                  Math.min(
+                    request.quantityMilli,
+                    revokedEarlier + request.quantityMilli - revokedRemaining,
+                  ),
+                )
               : milliToText(request.quantityMilli),
+        ...(revoked !== undefined ? { earlierAfterRevocation: milliToText(revokedEarlier) } : {}),
         takenFromFreeStock: plan.fromFreeStock.toFixed(3),
         shortfall: plan.shortfall.toFixed(3),
         signalled: await overAllocationAllowed(uow, location.siteId, request.occurredAt),
@@ -460,13 +488,16 @@ export async function checkOvercommitted(
   if (onHand >= activeAll) return false;
   // Écart (Σ restes − solde) inchangé par une sortie couverte par le quota de son auteur.
   if (input.fromFreeStockMilli <= 0) return false;
+  // Identifiant sous forme canonique (P5-23, revue adverse) : la charge utile peut le porter en majuscules,
+  // et le conflit existant, comme la réconciliation (INV-STK-19), le comparent au texte de `details`.
+  const productId = fromBin(toBin(input.productId));
   const already = await uow
     .selectFrom('sync_sync_conflicts')
     .select('id')
     .where('conflict_type', '=', 'ALLOCATION_OVERCOMMITTED')
     .where('status', '=', 'OPEN')
     .where('entity_id', '=', toBin(input.location.id))
-    .where(sql<boolean>`JSON_UNQUOTE(JSON_EXTRACT(details, '$.productId')) = ${input.productId}`)
+    .where(sql<boolean>`LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.productId'))) = ${productId}`)
     .executeTakeFirst();
   if (!already) {
     await recordConflict(uow, {
@@ -479,7 +510,7 @@ export async function checkOvercommitted(
       ownerRole: stockOwnerRole(input.location.locationType, input.location.siteType),
       applied: true,
       details: {
-        productId: input.productId,
+        productId,
         stockOnHand: milliToText(onHand),
         allocatedRemaining: milliToText(activeAll),
         sourceDocType: input.sourceDocType,

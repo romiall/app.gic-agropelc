@@ -11,6 +11,7 @@
  * (`verifyTransferTransit`), conservation et projection (INV-STK-01, INV-STK-03 : `verifyStockLedger`).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { registerPosCommands } from '../src/modules/organization/application/commands/pos-commands.js';
@@ -95,15 +96,20 @@ describe('AT-017 — réception sans document au PDV hors ligne, puis arrivée d
         const tablet = await insertTestDevice(trx, world.seller.userId, { status: 'ACTIVE' });
         // Un appareil neuf du magasinier par scène : chaque harnais compte ses `device_seq` depuis 1.
         const keeperDevice = await insertTestDevice(trx, world.keeper.userId, { status: 'ACTIVE' });
-        // Le vendeur lit le stock du PDV (périmètre du jeu `transfers`).
+        // Le vendeur lit le stock du PDV (périmètre du jeu `transfers`) et y reçoit la marchandise : la
+        // portée des commandes de stock est contrôlée depuis P5-23 (AV-182), ce PDV est neuf à chaque scène.
         const role = await insertTestRole(trx, world.admin.userId, { allowedScopeTypes: ['SITE'] });
-        await grantTestPermission(trx, role, 'inventory.stock.read', world.admin.userId, {
-          maxScope: 'SITE',
-        });
+        for (const permission of ['inventory.stock.read', 'inventory.transfer.receive']) {
+          await grantTestPermission(trx, role, permission, world.admin.userId, {
+            maxScope: 'SITE',
+          });
+        }
         await assignTestRole(trx, world.seller.userId, role, world.admin.userId, {
           scopeType: 'SITE',
           scopeSiteId: site,
         });
+        // Affectation écrite sans commande : le cache des droits n'en reçoit pas l'événement d'invalidation.
+        invalidateUser(world.seller.userId);
         return {
           pdvSite: site,
           salesLocation: location,

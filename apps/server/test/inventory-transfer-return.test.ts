@@ -13,7 +13,13 @@ import {
   verifyTransferTransit,
 } from '../src/modules/inventory/application/public/index.js';
 import { fromBin, fromBinOrNull, toBin } from '../src/platform/kysely/uuid-columns.js';
-import { closeTestDb, db, freshUuid, withoutActivePolicies } from './helpers.js';
+import {
+  closeTestDb,
+  db,
+  freshUuid,
+  insertTestLocation,
+  withoutActivePolicies,
+} from './helpers.js';
 import {
   at,
   balanceOf,
@@ -230,12 +236,19 @@ describe('retour à la source et courses (P5-16, BR-STK-025, AV-180)', () => {
       lines: [{ productId, unitCode: 'TETE', quantityBase: 2 }],
     });
     expect(codeOf(await returnToSource(requested))).toBe('TRANSFER_STATUS_INVALID');
+    // Un mouvement interne relie deux emplacements du même site (BR-STK-022, contrôlé depuis P5-23).
+    const backRoom = await db
+      .transaction()
+      .execute((trx) =>
+        insertTestLocation(trx, world.admin.userId, world.storeSite, { locationType: 'STORE' }),
+      );
     const internal = freshUuid();
-    await send(world, world.keeper, 'inventory.transfer.move_internal', internal, {
+    const moved = await send(world, world.keeper, 'inventory.transfer.move_internal', internal, {
       fromLocationId: pair.store,
-      toLocationId: pair.pos,
+      toLocationId: backRoom,
       lines: [{ productId, unitCode: 'TETE', quantityBase: 1 }],
     });
+    expect(moved.status, JSON.stringify(moved)).toMatch(/^APPLIED/);
     expect(codeOf(await returnToSource(internal))).toBe('TRANSFER_STATUS_INVALID');
     const blind = await blindReceive(world, pair, [{ productId, receivedQtyBase: 1 }]);
     expect(codeOf(await returnToSource(blind.receiptId))).toBe('TRANSFER_STATUS_INVALID');

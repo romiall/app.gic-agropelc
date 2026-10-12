@@ -8,6 +8,8 @@
  * même en cas de concurrence réelle (contrainte UNIQUE, filet de sécurité).
  */
 import { z } from 'zod';
+import { withStockScope } from './shared.js';
+import { receivedQuantitySchema } from '@gic/contracts';
 import { sql } from 'kysely';
 import type {
   CommandHandler,
@@ -22,8 +24,9 @@ const setPayloadSchema = z
   .object({
     locationId: z.string().uuid(),
     productId: z.string().uuid(),
-    minQtyBase: z.number().nonnegative(),
-    targetQtyBase: z.number().nonnegative(),
+    // Bornés à `numeric(14,3)` (P5-23).
+    minQtyBase: receivedQuantitySchema,
+    targetQtyBase: receivedQuantitySchema,
   })
   .superRefine((data, ctx) => {
     if (data.targetQtyBase < data.minQtyBase) {
@@ -95,6 +98,11 @@ export function registerThresholdCommands(registry: CommandHandlerRegistry): voi
     version: 1,
     payloadSchema: setPayloadSchema,
     permissionCode: 'inventory.threshold.manage',
-    handler: set,
+    // AV-182 (P5-23) : portée de l'emplacement.
+    handler: withStockScope(
+      'inventory.threshold.manage',
+      async (_uow, envelope) => [envelope.payload.locationId],
+      set,
+    ),
   });
 }

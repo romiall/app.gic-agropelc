@@ -220,7 +220,10 @@ function grantHandler(deps: {
     // Soldes puis quotas, sous verrou : deux octrois (ou un octroi et une sortie) du même couple
     // se sérialisent ici, et le contrôle de doublon ci-dessous ne peut plus être dépassé.
     const couple = await lockCouple(uow, p.locationId, p.productId);
-    let duplicate = uow
+    // Grain du quota : (emplacement, produit), le lot n'étant qu'indicatif (AV-160, ADR-033 §4). Un second
+    // quota actif du même couple sur un autre lot (P5-23, revue adverse) ne serait jamais consommé — seul
+    // le premier l'est — tout en retranchant son reste du stock libre.
+    const duplicate = uow
       .selectFrom('inventory_stock_allocations')
       .select('id')
       .where('holder_user_id', '=', toBin(p.holderUserId))
@@ -228,10 +231,6 @@ function grantHandler(deps: {
       .where('location_id', '=', toBin(p.locationId))
       .where('product_id', '=', toBin(p.productId))
       .where('status', '=', 'ACTIVE');
-    duplicate =
-      p.lotId !== undefined
-        ? duplicate.where('lot_id', '=', toBin(p.lotId))
-        : duplicate.where('lot_id', 'is', null);
     // Lecture verrouillante (ADR-038) : l'instantané de la transaction pouvait ignorer un octroi concurrent
     // validé avant le verrou du couple, qui heurtait alors la contrainte d'unicité (rejouée sans fin).
     if (await duplicate.forUpdate().executeTakeFirst()) {

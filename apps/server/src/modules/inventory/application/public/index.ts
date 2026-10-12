@@ -5,6 +5,7 @@
 export {
   recordStockMove,
   lockStockCouples,
+  lockPhysicalStockCouples,
   biologicalLotUnitCostXaf,
   biologicalLotRemainingCostXaf,
   InventoryMoveError,

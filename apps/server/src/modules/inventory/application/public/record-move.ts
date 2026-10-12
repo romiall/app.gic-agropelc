@@ -69,6 +69,7 @@ import {
 import {
   AllocationRefusal,
   checkOvercommitted,
+  QUOTA_CONSUMING_TYPES,
   prepareQuotaConsumption,
   prepareQuotaRestoration,
   stockOwnerRole,
@@ -157,13 +158,8 @@ const MOVE_TYPE_ENDPOINTS: Record<
  * Faits d'un appareil qui réduisent le stock et consomment donc un quota (BR-STK-013) : vente, perte
  * (déclarée ou en attente de validation), transfert sortant, consommation.
  */
-const QUOTA_CONSUMING_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>([
-  'SALE',
-  'LOSS',
-  'LOSS_PENDING',
-  'TRANSFER_DISPATCH',
-  'CONSUMPTION',
-]);
+// P5-23 (S-40) : le mouvement interne sort aussi la marchandise de l'emplacement partagé.
+const QUOTA_CONSUMING_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>(QUOTA_CONSUMING_TYPES);
 
 /** Types dont chaque mouvement consomme une part d'un `SALE` d'origine (ADR-029). */
 const SETTLEMENT_MOVE_TYPES: ReadonlySet<MoveType> = new Set<MoveType>([
@@ -1066,6 +1062,48 @@ export async function lockStockCouples(
   const productIds = [...new Set(input.productIds.map((id) => id.toLowerCase()))].sort();
   for (const productId of productIds) {
     await stockOnHandMilli(uow, input.locationId, productId, { lock: true });
+  }
+}
+
+/**
+ * ADR-038 N5 pour les opérations de stock de plusieurs produits ou de deux emplacements (expédition,
+ * réception, mouvement interne, contre-passation, inventaire ; P5-23, revue adverse) : soldes de tous
+ * les couples **physiques** de l'opération, triés par emplacement puis par produit, avant le premier
+ * mouvement. Les emplacements virtuels (transit, pertes en attente…) sont pris ensuite par chaque
+ * mouvement (N7). Sans cette passe, une réception [P2, P1] et une vente [P1, P2] au même emplacement
+ * s'interbloquaient.
+ */
+export async function lockPhysicalStockCouples(
+  uow: Transaction<DB>,
+  couples: readonly { readonly locationId: string; readonly productId: string }[],
+): Promise<void> {
+  const locationIds = [...new Set(couples.map((couple) => couple.locationId.toLowerCase()))];
+  if (locationIds.length === 0) return;
+  const physical = new Set(
+    (
+      await uow
+        .selectFrom('organization_locations')
+        .select(['id', 'is_virtual'])
+        .where(
+          'id',
+          'in',
+          locationIds.map((id) => toBin(id)),
+        )
+        .execute()
+    )
+      .filter((row) => !row.is_virtual)
+      .map((row) => fromBin(row.id)),
+  );
+  const keys = [
+    ...new Set(
+      couples
+        .filter((couple) => physical.has(couple.locationId.toLowerCase()))
+        .map((couple) => `${couple.locationId.toLowerCase()}|${couple.productId.toLowerCase()}`),
+    ),
+  ].sort();
+  for (const key of keys) {
+    const [locationId, productId] = key.split('|') as [string, string];
+    await stockOnHandMilli(uow, locationId, productId, { lock: true });
   }
 }
 

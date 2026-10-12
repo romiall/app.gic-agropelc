@@ -17,12 +17,17 @@ const uuid = z.string().uuid();
 const MAX_QUANTITY = 99_999_999_999.999;
 const hasAtMostThreeDecimals = (value: number): boolean =>
   Math.abs(Math.round(value * 1000) / 1000 - value) < 1e-9;
-const positiveQuantity = z
+/**
+ * Quantité strictement positive d'une commande de stock, bornée à `numeric(14,3)` (P5-23, S-20 : partagée
+ * par la demande, l'expédition, le mouvement interne, la perte et la consommation).
+ */
+export const positiveQuantitySchema = z
   .number()
   .positive()
   .finite()
   .max(MAX_QUANTITY)
   .refine(hasAtMostThreeDecimals, 'Trois décimales au plus.');
+const positiveQuantity = positiveQuantitySchema;
 
 /**
  * Quantité reçue d'une ligne de **réception avec document** : nulle permise (ligne expédiée non

@@ -33,6 +33,7 @@ import {
 } from '@gic/domain';
 import type { IdGenerator } from '@gic/domain';
 import {
+  positiveQuantitySchema,
   receivedQuantitySchema,
   transferBlindReceivePayloadSchema,
   transferReturnToSourcePayloadSchema,
@@ -56,7 +57,11 @@ import { findProductLotTracking, findUnit } from '../../../catalog/application/p
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { recordStockMove, type RecordMoveDeps } from '../public/record-move.js';
+import {
+  lockPhysicalStockCouples,
+  recordStockMove,
+  type RecordMoveDeps,
+} from '../public/record-move.js';
 import { transferChanges } from '../sync-changes.js';
 import { custodyMismatch, stockOwnerRole, type CustodyReason } from '../allocation-consumption.js';
 import {
@@ -93,12 +98,15 @@ import {
   loadLocationSite,
   virtualLocationId,
   tryRecordMove,
+  transferLocations,
+  withStockScope,
 } from './shared.js';
 
 const lineInputSchema = z.object({
   productId: z.string().uuid(),
   unitCode: z.string().min(1).max(20),
-  quantityBase: z.number().positive(),
+  // Bornée à `numeric(14,3)` (P5-23, S-20) : au-delà, l'écriture échouait et la commande était rejouée sans fin.
+  quantityBase: positiveQuantitySchema,
   lotId: z.string().uuid().optional(),
 });
 
@@ -110,9 +118,10 @@ const requestPayloadSchema = z.object({
 });
 type RequestPayload = z.infer<typeof requestPayloadSchema>;
 
+// SM-TRANSFER : un refus porte son motif (P5-23, S-40 : il était facultatif).
 const declinePayloadSchema = z.object({
   transferId: z.string().uuid(),
-  comment: z.string().max(2000).optional(),
+  comment: z.string().trim().min(1).max(2000),
 });
 type DeclinePayload = z.infer<typeof declinePayloadSchema>;
 
@@ -191,6 +200,40 @@ function rejected(errorCode: string, messageFr: string): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode, messageFr };
 }
 const LOCATION_INVALID = rejected('LOCATION_INVALID', 'Source et destination doivent différer.');
+const INTERNAL_MOVE_OTHER_SITE = rejected(
+  'LOCATION_INVALID',
+  'Un mouvement interne relie deux emplacements du même site (BR-STK-022) ; sinon, un transfert.',
+);
+const INTERNAL_MOVE_CUSTODY = rejected(
+  'INTERNAL_MOVE_CUSTODY',
+  'Mouvement interne : emplacement sous la garde d’un autre détenteur (BR-STK-022, « même responsable ») ; passer par un transfert.',
+);
+
+/**
+ * Garde d'un emplacement pour un mouvement interne (P5-23, S-40 ; BR-STK-022 « même responsable ») : un
+ * emplacement exclusif à un autre utilisateur (stock mobile d'un commercial compris) ou désigné pour un
+ * autre appareil n'est pas sous la garde de l'auteur.
+ */
+async function otherCustody(
+  uow: UnitOfWork,
+  locationId: string,
+  author: { readonly userId: string; readonly deviceId: string | null },
+): Promise<boolean> {
+  const row = await uow
+    .selectFrom('organization_locations')
+    .select(['custody_mode', 'custodian_user_id', 'designated_device_id'])
+    .where('id', '=', toBin(locationId))
+    .executeTakeFirst();
+  if (!row) return false;
+  const custodian = fromBinOrNull(row.custodian_user_id);
+  const designated = fromBinOrNull(row.designated_device_id);
+  if (row.custody_mode === 'EXCLUSIVE_USER')
+    return custodian !== null && custodian !== author.userId.toLowerCase();
+  if (row.custody_mode === 'EXCLUSIVE_DEVICE') {
+    return designated !== null && designated !== author.deviceId?.toLowerCase();
+  }
+  return false;
+}
 const TRANSFER_ID_TAKEN = rejected(
   'TRANSFER_ID_TAKEN',
   'Cet identifiant désigne déjà un autre transfert.',
@@ -293,7 +336,8 @@ function buildTransferCommands(
     uow: UnitOfWork,
     envelope: CommandEnvelope<unknown>,
     transfer: TransferHeader,
-    conflictType: 'TRANSFER_OVER_RECEIVED' | 'TRANSFER_RETURN_CONFLICT',
+    conflictType:
+      'TRANSFER_OVER_RECEIVED' | 'TRANSFER_RETURN_CONFLICT' | 'TRANSFER_DISPATCH_CONFLICT',
     details: Record<string, unknown>,
   ): Promise<CommandHandlerOutcome> {
     const conflictId = idGenerator.newId();
@@ -377,17 +421,22 @@ function buildTransferCommands(
   const decline: CommandHandler<DeclinePayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_stock_transfers')
-      .select(['id', 'status', 'from_location_id', 'to_location_id'])
+      .select(['id', 'status', 'from_location_id', 'to_location_id', 'notes'])
       .where('id', '=', toBin(envelope.payload.transferId))
       .executeTakeFirst();
     if (!row) return notFound();
     if (row.status !== 'REQUESTED') return badStatus('REQUESTED');
 
+    // La note du demandeur est gardée ; le motif du refus la suit (aucune colonne dédiée).
+    const refusal = `Refus : ${envelope.payload.comment}`;
     await uow
       .updateTable('inventory_stock_transfers')
       .set({
         status: 'DECLINED',
-        notes: envelope.payload.comment ?? null,
+        notes: row.notes
+          ? `${row.notes}
+${refusal}`
+          : refusal,
         updated_by: toBin(envelope.author_user_id),
         version: sql`version + 1`,
       })
@@ -446,10 +495,28 @@ function buildTransferCommands(
 
     let transfer: TransferRow;
     let receipts: readonly PendingBlindReceipt[];
+    // P5-23 (S-40, AV-223) : hors ligne, la marchandise d'une demande refusée ou annulée depuis est partie —
+    // fait accompli (BR-SYN-007), appliqué en expédition directe de la même paire, avec un conflit ; une
+    // demande déjà expédiée (une expédition existe) est mise en quarantaine pour arbitrage, sans effet.
+    let requestRow: TransferHeader | undefined;
+    let closedRequest: TransferHeader | undefined;
     if (transferId !== undefined) {
       const row = await lockTransferById(uow, transferId);
       if (!row) return notFound();
-      if (row.kind !== 'STANDARD' || row.status !== 'REQUESTED') return badStatus('REQUESTED');
+      if (row.kind !== 'STANDARD' || row.status !== 'REQUESTED') {
+        if (!envelope.captured_offline || row.kind !== 'STANDARD') return badStatus('REQUESTED');
+        if (row.status !== 'DECLINED' && row.status !== 'CANCELLED') {
+          return quarantine(uow, envelope, row, 'TRANSFER_DISPATCH_CONFLICT', {
+            reason: 'REQUEST_ALREADY_DISPATCHED',
+          });
+        }
+        closedRequest = row;
+      } else {
+        requestRow = row;
+      }
+    }
+    if (requestRow !== undefined) {
+      const row = requestRow;
       receipts = await pendingBlindReceipts(uow, pair);
       transfer = {
         id: toBin(row.id),
@@ -473,10 +540,16 @@ function buildTransferCommands(
         .where('id', '=', transfer.id)
         .execute();
     } else {
-      if (await transferExists(uow, envelope.aggregate_id)) return TRANSFER_ID_TAKEN;
+      if (closedRequest === undefined && (await transferExists(uow, envelope.aggregate_id))) {
+        return TRANSFER_ID_TAKEN;
+      }
       receipts = await pendingBlindReceipts(uow, pair);
-      const newTransferId = toBin(envelope.aggregate_id);
-      const { siteId, codeSite } = await loadLocationSite(uow, fromLocationId!);
+      // L'agrégat d'une expédition de demande est la demande : l'expédition directe qui la remplace a son
+      // propre identifiant.
+      const newTransferId = toBin(
+        closedRequest !== undefined ? idGenerator.newId() : envelope.aggregate_id,
+      );
+      const { siteId, codeSite } = await loadLocationSite(uow, pair.fromLocationId);
       const docNumber = await documentSequences.next(uow, {
         docType: 'TRF',
         siteId,
@@ -490,14 +563,22 @@ function buildTransferCommands(
           doc_number: docNumber,
           site_id: toBin(siteId),
           transfer_kind: 'STANDARD',
-          from_location_id: toBin(fromLocationId!),
-          to_location_id: toBin(toLocationId!),
+          from_location_id: toBin(pair.fromLocationId),
+          to_location_id: toBin(pair.toLocationId),
           status: 'DISPATCHED',
           dispatched_by: toBin(envelope.author_user_id),
           dispatched_at: occurredAt,
           carrier_user_id: toBinOrNull(carrierUserId ?? null),
           carrier_name: carrierName ?? null,
-          notes: envelope.payload.notes ?? null,
+          notes:
+            closedRequest !== undefined
+              ? [
+                  `Expédition hors ligne de la demande ${closedRequest.id} (${closedRequest.status} depuis).`,
+                  envelope.payload.notes,
+                ]
+                  .filter((part) => part !== undefined)
+                  .join(' ')
+              : (envelope.payload.notes ?? null),
           occurred_at: occurredAt,
           client_created_at: new Date(envelope.client_created_at),
           command_id: toBin(envelope.command_id),
@@ -510,14 +591,23 @@ function buildTransferCommands(
       transfer = {
         id: newTransferId,
         status: 'DISPATCHED',
-        from_location_id: toBin(fromLocationId!),
-        to_location_id: toBin(toLocationId!),
+        from_location_id: toBin(pair.fromLocationId),
+        to_location_id: toBin(pair.toLocationId),
         requested_by: null,
       };
     }
+    const asRequest = requestRow !== undefined;
 
     const transitLocationId = await virtualLocationId(uow, 'V_TRANSIT');
     const dispatchWarnings = new Set<WarningCode>();
+    // ADR-038 N5 : soldes de tous les produits de la source, triés, avant le premier mouvement.
+    await lockPhysicalStockCouples(
+      uow,
+      lines.map((line) => ({
+        locationId: fromBin(transfer.from_location_id),
+        productId: line.productId,
+      })),
+    );
     for (const line of lines) {
       const moveResult = await tryRecordMove(() =>
         recordStockMove(uow, deps, {
@@ -542,7 +632,7 @@ function buildTransferCommands(
       for (const warning of allocationWarnings(moveResult.moves)) dispatchWarnings.add(warning);
       const dispatchedLotId = moveResult.moves[0]?.lotId ?? null;
 
-      if (transferId !== undefined && line.transferLineId !== undefined) {
+      if (asRequest && line.transferLineId !== undefined) {
         await uow
           .updateTable('inventory_stock_transfer_lines')
           .set({
@@ -551,7 +641,7 @@ function buildTransferCommands(
           })
           .where('id', '=', toBin(line.transferLineId))
           .execute();
-      } else if (transferId !== undefined) {
+      } else if (asRequest) {
         await uow
           .updateTable('inventory_stock_transfer_lines')
           .set({
@@ -578,8 +668,30 @@ function buildTransferCommands(
 
     await recordTransferChanges(uow, transfer);
 
-    // Rapprochement différé : une réception sans document de la paire attendait cette expédition.
     const serverRefs: Record<string, string> = {};
+    if (closedRequest !== undefined) {
+      serverRefs['transferId'] = fromBin(transfer.id);
+      dispatchWarnings.add('TRANSFER_REQUEST_CLOSED');
+      await recordConflict(uow, {
+        id: idGenerator.newId(),
+        commandId: envelope.command_id,
+        conflictType: 'TRANSFER_REQUEST_CLOSED',
+        entityType: 'STOCK_TRANSFER',
+        entityId: fromBin(transfer.id),
+        siteId: closedRequest.siteId,
+        ownerRole: await transferOwnerRole(uow, pair.fromLocationId),
+        applied: true,
+        details: {
+          requestId: closedRequest.id,
+          requestStatus: closedRequest.status,
+          transferId: fromBin(transfer.id),
+          occurredAt: envelope.occurred_at,
+          authorUserId: envelope.author_user_id,
+        },
+      });
+    }
+
+    // Rapprochement différé : une réception sans document de la paire attendait cette expédition.
     if (receipts.length > 0) {
       const header = await lockTransferById(uow, fromBin(transfer.id));
       const dispatched: DispatchedTransfer = {
@@ -928,6 +1040,13 @@ function buildTransferCommands(
       // Transit non rapproché de la paire (BR-STK-024) : `V_TRANSIT` (produit, lot indiqué ou aucun)
       // peut devenir négatif ; la valeur est celle du solde de `V_TRANSIT`, sinon le CMUP.
       const transit = await virtualLocationId(uow, 'V_TRANSIT');
+      await lockPhysicalStockCouples(
+        uow,
+        receiptLines.map((line) => ({
+          locationId: payload.toLocationId,
+          productId: line.productId,
+        })),
+      );
       for (const line of receiptLines) {
         await recordStockMove(uow, deps, {
           productId: line.productId,
@@ -1079,6 +1198,16 @@ function buildTransferCommands(
     const occurredAt = new Date(envelope.occurred_at);
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     const { siteId, codeSite } = await loadLocationSite(uow, fromLocationId);
+    // P5-23 (S-40) : même site (règle de validité, hors ligne compris) ; garde des deux emplacements —
+    // refus en ligne, fait appliqué avec `CUSTODY_DEVICE_MISMATCH` hors ligne (BR-SYN-007).
+    if ((await loadLocationSite(uow, toLocationId)).siteId !== siteId)
+      return INTERNAL_MOVE_OTHER_SITE;
+    const author = { userId: envelope.author_user_id, deviceId: origin.deviceId };
+    const foreign: string[] = [];
+    for (const locationId of [fromLocationId, toLocationId]) {
+      if (await otherCustody(uow, locationId, author)) foreign.push(locationId);
+    }
+    if (foreign.length > 0 && !envelope.captured_offline) return INTERNAL_MOVE_CUSTODY;
     const docNumber = await documentSequences.next(uow, {
       docType: 'TRF',
       siteId,
@@ -1112,6 +1241,15 @@ function buildTransferCommands(
       })
       .execute();
 
+    const moveWarnings = new Set<WarningCode>();
+    // ADR-038 N5 : soldes des deux emplacements, triés, avant le premier mouvement.
+    await lockPhysicalStockCouples(
+      uow,
+      lines.flatMap((line) => [
+        { locationId: fromLocationId, productId: line.productId },
+        { locationId: toLocationId, productId: line.productId },
+      ]),
+    );
     for (const line of lines) {
       const moveResult = await tryRecordMove(() =>
         recordStockMove(uow, deps, {
@@ -1129,9 +1267,12 @@ function buildTransferCommands(
           commandId: envelope.command_id,
           capturedOffline: envelope.captured_offline,
           allowNegative: envelope.captured_offline,
+          // P5-23 (S-40) : garde d'appareil et quota de l'auteur sur la source partagée, comme une expédition.
+          consumesAllocation: true,
         }),
       );
       if (!moveResult.ok) return moveResult.outcome;
+      for (const warning of allocationWarnings(moveResult.moves)) moveWarnings.add(warning);
 
       await uow
         .insertInto('inventory_stock_transfer_lines')
@@ -1147,8 +1288,33 @@ function buildTransferCommands(
         .execute();
     }
 
+    for (const locationId of foreign) {
+      moveWarnings.add('CUSTODY_DEVICE_MISMATCH');
+      await recordConflict(uow, {
+        id: idGenerator.newId(),
+        commandId: envelope.command_id,
+        conflictType: 'CUSTODY_DEVICE_MISMATCH',
+        entityType: 'LOCATION',
+        entityId: locationId,
+        siteId,
+        ownerRole: await transferOwnerRole(uow, fromLocationId),
+        applied: true,
+        details: {
+          reason: 'LOCATION_OTHER_CUSTODY',
+          locationId,
+          sourceDocType: 'TRANSFER',
+          sourceDocId: transferId,
+          userId: envelope.author_user_id,
+          deviceId: origin.deviceId,
+          occurredAt: envelope.occurred_at,
+        },
+      });
+    }
+
     await recordChanges(uow, transferChanges(transferId, fromLocationId, toLocationId));
-    return { status: 'APPLIED' };
+    return moveWarnings.size > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: [...moveWarnings] }
+      : { status: 'APPLIED' };
   };
 
   return { request, decline, cancel, dispatch, receive, returnToSource, moveInternal };
@@ -1172,6 +1338,10 @@ function registerTransferDiscrepancyDecisionHandler(
     const toLocationId = fromBin(transferRow.to_location_id);
     const pendingLoss = await virtualLocationId(uow, 'V_PENDING_LOSS');
     const discrepancies = await activeDocumentMoves(uow, ctx.subjectId, 'TRANSFER_DISCREPANCY');
+    await lockPhysicalStockCouples(
+      uow,
+      discrepancies.map((move) => ({ locationId: toLocationId, productId: move.productId })),
+    );
 
     for (const move of discrepancies) {
       const moveInput = {
@@ -1224,49 +1394,84 @@ export function registerTransferCommands(
     version: 1,
     payloadSchema: requestPayloadSchema,
     permissionCode: 'inventory.transfer.request',
-    handler: handlers.request,
+    // AV-182 (P5-23) : portée sur l'une des extrémités.
+    handler: withStockScope(
+      'inventory.transfer.request',
+      async (_uow, envelope) => [envelope.payload.fromLocationId, envelope.payload.toLocationId],
+      handlers.request,
+    ),
   });
   registry.register({
     commandType: 'inventory.transfer.decline',
     version: 1,
     payloadSchema: declinePayloadSchema,
     permissionCode: 'inventory.transfer.dispatch',
-    handler: handlers.decline,
+    handler: withStockScope(
+      'inventory.transfer.dispatch',
+      (uow, envelope) => transferLocations(uow, envelope.payload.transferId),
+      handlers.decline,
+    ),
   });
   registry.register({
     commandType: 'inventory.transfer.cancel',
     version: 1,
     payloadSchema: cancelPayloadSchema,
     permissionCode: 'inventory.transfer.request',
-    handler: handlers.cancel,
+    handler: withStockScope(
+      'inventory.transfer.request',
+      (uow, envelope) => transferLocations(uow, envelope.payload.transferId),
+      handlers.cancel,
+    ),
   });
   registry.register({
     commandType: 'inventory.transfer.dispatch',
     version: 1,
     payloadSchema: dispatchPayloadSchema,
     permissionCode: 'inventory.transfer.dispatch',
-    handler: handlers.dispatch,
+    handler: withStockScope(
+      'inventory.transfer.dispatch',
+      async (uow, envelope) =>
+        envelope.payload.transferId !== undefined
+          ? transferLocations(uow, envelope.payload.transferId)
+          : [envelope.payload.fromLocationId!, envelope.payload.toLocationId!],
+      handlers.dispatch,
+    ),
   });
   registry.register<ReceivePayload>({
     commandType: 'inventory.transfer.receive',
     version: 1,
     payloadSchema: receivePayloadSchema,
     permissionCode: 'inventory.transfer.receive',
-    handler: handlers.receive,
+    handler: withStockScope<ReceivePayload>(
+      'inventory.transfer.receive',
+      async (uow, envelope) =>
+        'transferId' in envelope.payload
+          ? transferLocations(uow, envelope.payload.transferId)
+          : [envelope.payload.fromLocationId, envelope.payload.toLocationId],
+      handlers.receive,
+    ),
   });
   registry.register({
     commandType: 'inventory.transfer.return_to_source',
     version: 1,
     payloadSchema: transferReturnToSourcePayloadSchema,
     permissionCode: 'inventory.transfer.dispatch',
-    handler: handlers.returnToSource,
+    handler: withStockScope(
+      'inventory.transfer.dispatch',
+      (uow, envelope) => transferLocations(uow, envelope.payload.transferId),
+      handlers.returnToSource,
+    ),
   });
   registry.register({
     commandType: 'inventory.transfer.move_internal',
     version: 1,
     payloadSchema: moveInternalPayloadSchema,
     permissionCode: 'inventory.transfer.dispatch',
-    handler: handlers.moveInternal,
+    handler: withStockScope(
+      'inventory.transfer.dispatch',
+      async (_uow, envelope) => [envelope.payload.fromLocationId, envelope.payload.toLocationId],
+      handlers.moveInternal,
+    ),
   });
   registerTransferDiscrepancyDecisionHandler(decisionRegistry, idGenerator);
 }

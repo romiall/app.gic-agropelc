@@ -406,7 +406,8 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
       .where('id', '=', toBin(transferId))
       .executeTakeFirstOrThrow();
     expect(row.status).toBe('DECLINED');
-    expect(row.notes).toBe('Stock indisponible côté A.');
+    // P5-23 (S-40) : le motif suit la note du demandeur (aucune ici), préfixé.
+    expect(row.notes).toBe('Refus : Stock indisponible côté A.');
   });
 
   it('annulation (CANCELLED) : seul le demandeur peut annuler sa demande REQUESTED', async () => {

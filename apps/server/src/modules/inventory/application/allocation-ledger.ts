@@ -156,6 +156,11 @@ export async function activeRemainingMilli(
  * Reste d'un quota **au moment de sa révocation** : la quantité de son entrée `REVOKE` (0 si le quota
  * était épuisé, aucune entrée n'étant alors écrite). Sert à juger un fait hors ligne antérieur à la
  * révocation, synchronisé après elle (AV-161).
+ *
+ * Lecture partagée verrouillante (P5-23, revue adverse) : l'appelant tient le quota, relu sous verrou
+ * et déjà `REVOKED` ; une lecture simple, dans l'instantané de la transaction, ne voyait pas l'entrée
+ * d'une révocation validée entre-temps (reste lu à 0, faux `ALLOCATION_EXCEEDED`). Un quota révoqué ne
+ * reçoit plus d'entrée : le verrou ne retient personne.
  */
 export async function revokedRemainingMilli(
   uow: UnitOfWork,
@@ -166,8 +171,49 @@ export async function revokedRemainingMilli(
     .select('quantity')
     .where('allocation_id', '=', toBin(allocationId))
     .where('entry_type', '=', 'REVOKE')
+    .forShare()
     .execute();
   return rows.reduce((total, row) => total - quantityToMilli(row.quantity), 0);
+}
+
+/**
+ * AV-211 (P5-23) : quantité déjà prise, sur le couple (emplacement, produit), par des faits du détenteur
+ * **antérieurs** à la révocation du quota mais **appliqués après elle** (synchronisés plus tard). Un fait
+ * de cette sorte se compare au reste révoqué en **cumul** avec eux : trois ventes de 10 sur un reste de
+ * 25 dépassent, même si chacune seule ne dépasse pas. Lecture partagée verrouillante, comme le reste
+ * révoqué : les sorties du couple se sérialisent déjà sur ses soldes.
+ */
+export async function lateFactsBeforeRevocationMilli(
+  uow: UnitOfWork,
+  input: {
+    readonly allocation: AllocationState;
+    readonly moveTypes: readonly string[];
+  },
+): Promise<number> {
+  const { allocation } = input;
+  if (allocation.revokedAt === null) return 0;
+  const revoke = await uow
+    .selectFrom('inventory_stock_allocation_entries')
+    .select('created_at')
+    .where('allocation_id', '=', toBin(allocation.id))
+    .where('entry_type', '=', 'REVOKE')
+    .forShare()
+    .executeTakeFirst();
+  if (!revoke) return 0;
+  const row = await uow
+    .selectFrom('inventory_stock_moves')
+    .select(sql<string>`COALESCE(SUM(quantity), 0)`.as('taken'))
+    .where('from_location_id', '=', toBin(allocation.locationId))
+    .where('product_id', '=', toBin(allocation.productId))
+    .where('occurred_at', '<=', allocation.revokedAt)
+    .where('recorded_at', '>', revoke.created_at)
+    .where('created_by', '=', toBin(allocation.holderUserId))
+    .where('created_device_id', '=', toBin(allocation.holderDeviceId))
+    .where('move_type', 'in', [...input.moveTypes])
+    .where('is_reversal', '=', 0)
+    .forShare()
+    .executeTakeFirstOrThrow();
+  return quantityToMilli(row.taken);
 }
 
 /**
@@ -223,7 +269,14 @@ export async function loadConsumerAllocations(
     readonly userId: string;
     readonly deviceId: string;
   },
-  options: { readonly lock?: boolean } = {},
+  options: {
+    readonly lock?: boolean;
+    /**
+     * Instant du fait (hors ligne) : un quota actif accordé **après** lui n'était pas en vigueur — le fait
+     * est jugé sur le dernier quota révoqué du couple (P5-23, revue adverse ; BR-STK-014, AV-161).
+     */
+    readonly inForceAt?: Date;
+  } = {},
 ): Promise<{
   readonly active: AllocationState | undefined;
   readonly lastRevoked: AllocationState | undefined;
@@ -241,7 +294,13 @@ export async function loadConsumerAllocations(
   const activeRow = await activeQuery.executeTakeFirst();
   const lock = options.lock === true;
   const active = activeRow ? await loadAllocation(uow, fromBin(activeRow.id), { lock }) : undefined;
-  if (active) return { active, lastRevoked: undefined };
+  if (
+    active &&
+    (options.inForceAt === undefined ||
+      (await grantedNoLaterThan(uow, active.id, options.inForceAt)))
+  ) {
+    return { active, lastRevoked: undefined };
+  }
   let revokedQuery = base().where('status', '=', 'REVOKED').orderBy('revoked_at', 'desc').limit(1);
   if (lock) revokedQuery = revokedQuery.forUpdate();
   const revokedRow = await revokedQuery.executeTakeFirst();
@@ -249,6 +308,24 @@ export async function loadConsumerAllocations(
     ? await loadAllocation(uow, fromBin(revokedRow.id), { lock })
     : undefined;
   return { active: undefined, lastRevoked };
+}
+
+/**
+ * Le quota a-t-il été accordé au plus tard à `at` ? Date de son entrée `GRANT`. Invisible dans
+ * l'instantané de la transaction, l'octroi est si récent qu'il suit un fait saisi hors ligne : non.
+ */
+async function grantedNoLaterThan(
+  uow: UnitOfWork,
+  allocationId: string,
+  at: Date,
+): Promise<boolean> {
+  const grant = await uow
+    .selectFrom('inventory_stock_allocation_entries')
+    .select('occurred_at')
+    .where('allocation_id', '=', toBin(allocationId))
+    .where('entry_type', '=', 'GRANT')
+    .executeTakeFirst();
+  return grant !== undefined && grant.occurred_at.getTime() <= at.getTime();
 }
 
 /**

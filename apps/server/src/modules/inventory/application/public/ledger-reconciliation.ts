@@ -435,7 +435,7 @@ async function findOvercommitBreaches(
   const explained = new Set(
     open.map(
       (row) =>
-        `${fromBin(row.entity_id)}|${String((row.details as Record<string, unknown>)['productId'])}`,
+        `${fromBin(row.entity_id)}|${String((row.details as Record<string, unknown>)['productId']).toLowerCase()}`,
     ),
   );
   return over
