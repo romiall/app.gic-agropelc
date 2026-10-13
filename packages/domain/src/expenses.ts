@@ -201,3 +201,20 @@ export function expenseCostLine(input: {
   }
   return { costType: 'DEPENSE_DIRECTE', speciesGroup: null };
 }
+
+/**
+ * Plafond d'approbation d'une dépense (RC-06, AV-350) : `limits` des droits `finance.expense.approve`
+ * de l'approbateur dans la portée de la dépense (`evaluateAccessLimits`), un élément par rôle. Le plus
+ * permissif l'emporte : un droit sans limite, ou sans `maxAmountXaf` numérique, n'a pas de plafond.
+ * Aucun droit : refus.
+ */
+export function expenseApprovalWithinLimits(
+  amountXaf: number,
+  limits: readonly (Readonly<Record<string, unknown>> | null)[],
+): boolean {
+  return limits.some((limit) => {
+    if (limit === null) return true;
+    const max = limit.maxAmountXaf;
+    return typeof max !== 'number' || amountXaf <= max;
+  });
+}

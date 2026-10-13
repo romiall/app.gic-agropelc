@@ -132,6 +132,8 @@ export {
   SPECIES_GROUPS,
   recordCostEntry,
   costObjectBalance,
+  lotCostObjectStatus,
+  siteOverheadMonthAllocated,
 } from './cost-entries.js';
 export type {
   CostObjectType,

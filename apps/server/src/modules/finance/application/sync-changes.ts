@@ -236,3 +236,27 @@ export async function emitExpenseCategoryChange(
     },
   ]);
 }
+
+/**
+ * P8-05 (ADR-060 §11) : dépense de l'auteur, jeu `cash`, ligne `USER` (l'auteur seul, à la version de
+ * la ligne) ; la fenêtre de 30 jours est tenue par la projection (P8-10). Émis à chaque écriture de la
+ * dépense : enregistrement, paiement, décision, annulation.
+ */
+export async function emitExpenseChange(uow: Transaction<DB>, expenseId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('finance_expenses')
+    .select(['created_by', 'version'])
+    .where('id', '=', toBin(expenseId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: CASH_DATASET,
+      entityType: 'EXPENSE',
+      entityId: expenseId,
+      scopeType: 'USER',
+      scopeId: fromBin(row.created_by),
+      rowVersion: row.version,
+    },
+  ]);
+}

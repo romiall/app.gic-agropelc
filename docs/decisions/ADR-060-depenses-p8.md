@@ -51,7 +51,7 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
    - `SITE` avec une espèce : `FRAIS_GENERAUX` de cette espèce, qui alimente la masse répartie par `production.overhead.allocate` (ADR-026) ;
    - `SITE` sans espèce : `DEPENSE_DIRECTE` du site (PDV compris), hors répartition.
 
-   L'existence et le statut de l'objet se lisent par une nouvelle lecture publique d'`inventory` (`costObjectStatus`), qui s'appuie sur les lots de stock d'origine : `finance` n'importe pas `production`. Annuler une dépense contrepasse son écriture (`reverseCostEntries`). C'est refusé si le mois de frais généraux de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`, même garde qu'`inventory.overhead.cancel`).
+   L'existence et le statut d'un lot se lisent par une nouvelle lecture publique d'`inventory` (`lotCostObjectStatus`), qui s'appuie sur le lot de stock d'origine : `finance` n'importe pas `production`. Un site est contrôlé par `finance` (existence). Un objet inconnu est refusé, même hors ligne (validité, BR-SYN-007). Annuler une dépense contrepasse son écriture (`reverseCostEntries`). C'est refusé si le mois de frais généraux de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`, même garde qu'`inventory.overhead.cancel`).
 9. **Catégories** (AV-058, AV-357) :
    - `finance.expense_categories` a un identifiant UUIDv7, semé une fois, comme les motifs (`REASON_CODE`). Ce n'est pas une clé dérivée du code (ADR-031) : l'enveloppe d'une commande exige un UUIDv7 comme `aggregate_id`, et une catégorie semée doit pouvoir être modifiée ou désactivée par commande. La clé naturelle reste le code (unique) ;
    - elle est publiée dans le jeu `catalog` (`EXPENSE_CATEGORY`) et rattrapée par le seed (`publish-references`) ;

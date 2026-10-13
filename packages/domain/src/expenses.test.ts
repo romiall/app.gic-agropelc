@@ -3,6 +3,7 @@ import {
   EXPENSE_REVIEW_ERROR_CODES,
   EXPENSE_REVIEW_REASONS,
   EXPENSE_STATUSES,
+  expenseApprovalWithinLimits,
   expenseCarriesCost,
   expenseCostLine,
   expensePhotoRequired,
@@ -218,5 +219,20 @@ describe('écriture de coût (BR-FIN-022, INV-FIN-08)', () => {
         categoryCostType: null,
       }),
     ).toThrow(expect.objectContaining({ code: 'COST_OBJECT_INVALID' }));
+  });
+});
+
+describe('plafond d’approbation (RC-06, AV-350)', () => {
+  it('le plus permissif des rôles l’emporte ; sans droit, refus', () => {
+    expect(expenseApprovalWithinLimits(80_000, [])).toBe(false);
+    expect(expenseApprovalWithinLimits(80_000, [null])).toBe(true);
+    expect(expenseApprovalWithinLimits(80_000, [{ maxAmountXaf: 50_000 }])).toBe(false);
+    expect(expenseApprovalWithinLimits(50_000, [{ maxAmountXaf: 50_000 }])).toBe(true);
+    expect(
+      expenseApprovalWithinLimits(80_000, [{ maxAmountXaf: 50_000 }, { maxAmountXaf: 100_000 }]),
+    ).toBe(true);
+    expect(expenseApprovalWithinLimits(80_000, [{ maxAmountXaf: 50_000 }, { autre: 1 }])).toBe(
+      true,
+    );
   });
 });

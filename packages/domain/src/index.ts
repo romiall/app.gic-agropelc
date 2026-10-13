@@ -394,6 +394,7 @@ export {
   expenseTransition,
   expenseCarriesCost,
   expenseCostLine,
+  expenseApprovalWithinLimits,
 } from './expenses.js';
 export type {
   ExpenseStatus,

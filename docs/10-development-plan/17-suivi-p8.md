@@ -23,8 +23,10 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | `b48ea93` | Fait |
 | P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | `290f88a` | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
 | P8-03 | `db` : migration `20261101090000`, seed, `schema.sql`, types Kysely, dictionnaires | `b588b23` | Fait : `db` 200 tests (11 nouveaux), six mutations du schéma détectées sur `gic_agropelc_p8m` ; serveur RBAC et validations 36 tests ; typage vert |
-| P8-04 | Catégories de dépense : commandes, publication `catalog`, projection | _à venir_ | Fait : 5 tests serveur, 7 mutations détectées ; seed 12 tests |
-| P8-05 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-04 | Catégories de dépense : commandes, publication `catalog`, projection | `cc09f77` | Fait : 5 tests serveur, 7 mutations détectées ; seed 12 tests |
+| P8-05 | Dépenses : enregistrement (en ligne, hors ligne, PDV, revue a posteriori), paiement, annulation | _à venir_ | Fait : 10 tests serveur, 15 mutations détectées ; non-régression de 7 fichiers voisins verte (101 tests) |
+| P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | _à venir_ | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
+| P8-07 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -34,8 +36,11 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 |---|---|---|---|
 | P8-03 | `approvals` : `operation-types.ts`, CHECK `ck_approvals_control_policies_operation_type` | ajout de `INVOICE_MISMATCH` | SM-SUPPLIER-INVOICE |
 | P8-03 | `db/seeds/rbac-data.ts`, `db/tests/seed.test.ts` | permission `finance.expense_category.manage` (Finance, Administrateur) ; `finance.expense.record` OWN du Resp. commercial (matrice RBAC l.237) | AV-357 ; alignement prévu en P8 |
-| P8-05 | `inventory/application/public` | lecture `costObjectStatus` (existence et statut d'un objet de coût) | ADR-060 §8 |
-| P8-06 | `finance` (P5) : résolution des conflits à l'ouverture de session | type `EXPENSE` en plus de `CUSTOMER_PAYMENT` | ADR-060 §5 |
+| P8-05 | `inventory/application/public` (`cost-entries.ts`, `index.ts`) | lectures `lotCostObjectStatus` (état d'un lot par son lot de stock) et `siteOverheadMonthAllocated` (mois de frais généraux déjà réparti) | ADR-060 §8 |
+| P8-05 | `finance` (P5) : `cash-session-commands.ts` (résolution des conflits à l'ouverture) | type `EXPENSE` en plus de `CUSTOMER_PAYMENT` | ADR-060 §5, AV-354 |
+| P8-05 | `finance` (P5) : `cash-transfer-support.ts` | `canActOnCashAccount` : permission optionnelle (défaut inchangé) | ADR-060 §4 |
+| P8-05 | `procurement/application/public` (`supplier-query.ts`, `index.ts`) | `findSupplier` (avancé de P8-07) | ADR-061 |
+| P8-05 | `packages/contracts` (`error-codes.ts`) | `EXPENSE_REVIEW_REQUIRED` en fin de `WARNING_CODES` | R8 |
 | P8-07 | `procurement/application/public` | `findSupplier`, `applyInvoicedQuantities` | ADR-061 §3 |
 | P8-09 | `procurement-api` (rapprochement) | payé (`paidXaf`) composé depuis `finance` | ADR-061 §3 |
 | P8-11 | `production/application/public`, `production-api` | `lotStockLotIds`, CA de la marge de lot avec les produits d'abattage | ADR-062 §1, AV-366 |

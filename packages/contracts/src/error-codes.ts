@@ -143,6 +143,10 @@ export const WARNING_CODES = [
   // P5-23 (S-40, AV-223) : expédition saisie hors ligne d'une demande refusée ou annulée depuis — appliquée
   // en expédition directe (fait accompli), conflit informatif pour le magasinier du site expéditeur.
   'TRANSFER_REQUEST_CLOSED',
+  // P8-05 (ADR-060 §6, AV-352) : dépense saisie hors ligne qui enfreint une règle que seul le serveur
+  // juge (catégorie, caisse du PDV, justificatif, objet de coût clos) : appliquée, placée en validation
+  // a posteriori, motifs dans `review_reasons`.
+  'EXPENSE_REVIEW_REQUIRED',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);
