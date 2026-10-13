@@ -76,6 +76,7 @@ export const ROUTES = {
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
   cash: '/caisse',
   cashTransfers: '/caisse/remises',
+  treasury: '/finance/tresorerie',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -266,6 +267,11 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'FINANCE',
   ],
+  /**
+   * ECR-FIN-05 : `finance.cash.read` ALL et `finance.cash_session.validate` (FIN, DIR) ; la Direction
+   * valide et décide, sans recevoir (`finance.cash_transfer.record`) (AV-313).
+   */
+  treasury: ['FINANCE', 'DIRECTION'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
@@ -621,6 +627,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.cashSessionOperate,
     actionCodes: ['CASH_OPEN', 'CASH_CLOSE'],
     offline: true,
+  },
+  {
+    id: 'ECR-FIN-05',
+    path: ROUTES.treasury,
+    labelKey: 'treasury',
+    group: 'sales',
+    roles: ROLE_SETS.treasury,
+    actionCodes: ['CASH_SESSIONS'],
+    offline: false,
   },
   {
     // Hors inventaire des écrans (AV-311) : code du cas d'usage.

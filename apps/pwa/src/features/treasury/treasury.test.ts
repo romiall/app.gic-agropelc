@@ -1,0 +1,93 @@
+import { describe, expect, it } from 'vitest';
+import {
+  canValidateSession,
+  currentVarianceXaf,
+  decisionPayload,
+  imputationOptions,
+  sessionReasonRequired,
+  transferDecisionBlock,
+  userLabel,
+  validatePayload,
+} from './treasury.js';
+
+const ME = 'finance-1';
+
+describe('Trésorerie (ECR-FIN-05)', () => {
+  it('écart courant, motif exigé et valideur admis, comme le serveur', () => {
+    const session = {
+      status: 'PENDING_VALIDATION',
+      openedBy: 'vendeur',
+      closedBy: 'vendeur-2',
+      forcedBy: null,
+      openingVarianceXaf: 0,
+      varianceXaf: -500,
+    };
+    const included = { treatment: 'INCLUDED_IN_VALIDATION', status: 'PENDING', deltaXaf: 300 };
+    expect(currentVarianceXaf(session, [included])).toBe(-200);
+    expect(currentVarianceXaf({ varianceXaf: null }, [])).toBe(0);
+    // Motif : écart de clôture, d'ouverture, ou ajustement inclus en attente.
+    expect(sessionReasonRequired(session, [])).toBe(true);
+    expect(sessionReasonRequired({ ...session, varianceXaf: 0 }, [])).toBe(false);
+    expect(sessionReasonRequired({ ...session, varianceXaf: 0, openingVarianceXaf: 100 }, [])).toBe(
+      true,
+    );
+    expect(sessionReasonRequired({ ...session, varianceXaf: 0 }, [included])).toBe(true);
+    expect(
+      sessionReasonRequired({ ...session, varianceXaf: 0 }, [
+        { ...included, status: 'VALIDATED' },
+        { ...included, treatment: 'OWN_APPROVAL' },
+      ]),
+    ).toBe(false);
+    // Valideur : ni l'ouvreur, ni le clôtureur, ni l'auteur de la clôture forcée.
+    expect(canValidateSession(session, ME)).toBe(true);
+    expect(canValidateSession(session, 'vendeur')).toBe(false);
+    expect(canValidateSession(session, 'vendeur-2')).toBe(false);
+    expect(canValidateSession({ ...session, forcedBy: ME }, ME)).toBe(false);
+    expect(canValidateSession({ ...session, status: 'VALIDATED' }, ME)).toBe(false);
+    expect(validatePayload('  Erreur de rendu ')).toEqual({ reason: 'Erreur de rendu' });
+    expect(validatePayload('  ')).toEqual({});
+  });
+
+  it('écart de remise : décideur hors expéditeur, porteur et récepteur ; imputation ; charge utile', () => {
+    const transfer = {
+      status: 'DISCREPANCY_PENDING',
+      sentBy: 'vendeur',
+      receivedBy: 'finance-2',
+      carrierUserId: 'porteur',
+      carrierName: null,
+      approvalRequestId: 'demande',
+    };
+    expect(transferDecisionBlock(transfer, ME)).toBeNull();
+    expect(transferDecisionBlock(transfer, 'vendeur')).toBe('INVOLVED');
+    expect(transferDecisionBlock(transfer, 'finance-2')).toBe('INVOLVED');
+    expect(transferDecisionBlock(transfer, 'porteur')).toBe('INVOLVED');
+    expect(transferDecisionBlock({ ...transfer, approvalRequestId: null }, ME)).toBe('NO_REQUEST');
+    expect(transferDecisionBlock({ ...transfer, status: 'CLOSED' }, ME)).toBe('NOT_PENDING');
+    expect(imputationOptions(transfer).map((choice) => [choice.option, choice.disabled])).toEqual([
+      ['SENDER', false],
+      ['CARRIER', false],
+      ['RECEIVER', false],
+      ['COMPANY', false],
+    ]);
+    // Porteur inconnu (ni utilisateur, ni nom) : l'écart ne peut pas lui être imputé.
+    expect(
+      imputationOptions({ carrierUserId: null, carrierName: null }).find(
+        (choice) => choice.option === 'CARRIER',
+      )?.disabled,
+    ).toBe(true);
+    expect(
+      imputationOptions({ carrierUserId: null, carrierName: 'Paul' }).find(
+        (choice) => choice.option === 'CARRIER',
+      )?.disabled,
+    ).toBe(false);
+    expect(
+      decisionPayload({ requestId: 'demande', option: 'COMPANY', reason: ' Vol ', comment: ' ' }),
+    ).toEqual({ requestId: 'demande', decisionOption: 'COMPANY', decisionData: { reason: 'Vol' } });
+    expect(
+      decisionPayload({ requestId: 'demande', option: 'SENDER', reason: 'Erreur', comment: 'Vu' }),
+    ).toMatchObject({ comment: 'Vu' });
+    expect(userLabel(ME, ME, 'vous')).toBe('vous');
+    expect(userLabel('01900000-0000-7000-8000-0000000000e1', ME, 'vous')).toBe('…00e1');
+    expect(userLabel(null, ME, 'vous')).toBe('');
+  });
+});

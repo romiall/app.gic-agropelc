@@ -18,6 +18,7 @@ import { useSalesReferences } from '../sales/references.js';
 import { parseXaf } from '../sales/sale-form.js';
 import { submitCommand } from '../sales/submit.js';
 import { pendingCashMovements } from './cash-session.js';
+import { TransferReceiveForm } from './TransferReceiveForm.js';
 import {
   cancelPayload,
   canCancel,
@@ -52,7 +53,6 @@ export function CashTransfersScreen() {
   const [commentText, setCommentText] = useState('');
   const [editing, setEditing] = useState<{ id: string; kind: 'cancel' | 'receive' } | null>(null);
   const [editText, setEditText] = useState('');
-  const [editComment, setEditComment] = useState('');
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -64,9 +64,6 @@ export function CashTransfersScreen() {
     carrier: useId(),
     comment: useId(),
     edit: useId(),
-    editIssue: useId(),
-    editComment: useId(),
-    preview: useId(),
   };
 
   if (!refs || !userId) {
@@ -167,7 +164,6 @@ export function CashTransfersScreen() {
   const closeEdit = () => {
     setEditing(null);
     setEditText('');
-    setEditComment('');
   };
 
   const cancel = async (view: TransferView) => {
@@ -184,13 +180,13 @@ export function CashTransfersScreen() {
     if (done) closeEdit();
   };
 
-  const receive = async (view: TransferView, receivedXaf: number) => {
+  const receive = async (view: TransferView, receivedXaf: number, comment: string) => {
     const done = await submit('receive', {
       authorUserId: userId,
       commandType: 'finance.cash_transfer.receive',
       aggregateType: 'CASH_TRANSFER',
       aggregateId: view.id,
-      payload: receivePayload({ receivedXaf, comment: editComment }),
+      payload: receivePayload({ receivedXaf, comment }),
     });
     if (done) closeEdit();
   };
@@ -230,63 +226,6 @@ export function CashTransfersScreen() {
     </li>
   );
 
-  const receiveForm = (view: TransferView) => {
-    const received = parseXaf(editText);
-    const issue = editText.trim() !== '' && received === null;
-    const gap = received === null ? null : received - view.amountSentXaf;
-    return (
-      <div className="field">
-        <label htmlFor={ids.edit}>{t('cash_transfer.received_label')}</label>
-        <input
-          id={ids.edit}
-          className="text-input"
-          inputMode="numeric"
-          autoComplete="off"
-          value={editText}
-          aria-invalid={issue}
-          aria-describedby={issue ? ids.editIssue : gap !== null ? ids.preview : undefined}
-          onChange={(event) => setEditText(event.target.value)}
-        />
-        {issue ? (
-          <p id={ids.editIssue} className="error-message">
-            {t('cash_transfer.received_invalid')}
-          </p>
-        ) : gap === null ? null : (
-          <p id={ids.preview} className={gap === 0 ? 'home-muted' : 'text-warn'} role="status">
-            {received === 0
-              ? t('cash_transfer.lost')
-              : gap === 0
-                ? t('cash_transfer.match')
-                : t('cash_transfer.discrepancy', {
-                    amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
-                  })}
-          </p>
-        )}
-        <label htmlFor={ids.editComment}>{t('cash_transfer.comment_label')}</label>
-        <textarea
-          id={ids.editComment}
-          className="text-input"
-          rows={2}
-          maxLength={MAX_TRANSFER_COMMENT}
-          value={editComment}
-          onChange={(event) => setEditComment(event.target.value)}
-        />
-        <div className="result-actions">
-          <button
-            type="button"
-            disabled={busy || received === null}
-            onClick={() => (received === null ? undefined : void receive(view, received))}
-          >
-            {t('cash_transfer.receive_submit', { amount: formatMoney(received ?? 0) })}
-          </button>
-          <button type="button" className="secondary" onClick={closeEdit}>
-            {t('cash_transfer.close_form')}
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const cancelForm = (view: TransferView) => (
     <div className="field">
       <label htmlFor={ids.edit}>{t('cash_transfer.reason_label')}</label>
@@ -316,7 +255,6 @@ export function CashTransfersScreen() {
   const open = (id: string, kind: 'cancel' | 'receive') => {
     setEditing({ id, kind });
     setEditText('');
-    setEditComment('');
   };
 
   return (
@@ -344,7 +282,12 @@ export function CashTransfersScreen() {
               card(
                 view,
                 editing?.id === view.id && editing.kind === 'receive' ? (
-                  receiveForm(view)
+                  <TransferReceiveForm
+                    sentXaf={view.amountSentXaf}
+                    busy={busy}
+                    onSubmit={(received, comment) => void receive(view, received, comment)}
+                    onClose={closeEdit}
+                  />
                 ) : (
                   <button
                     type="button"
