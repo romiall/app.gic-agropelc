@@ -20,7 +20,7 @@ Classification (PM §45) :
 | AV-003 | Hiérarchie des zones et géométrie des zones de pointage | IMPORTANTE | P0/P1 | Zones hiérarchiques ; géorepère = centre + rayon | OUVERT |
 | AV-004 | Rôles non listés au CM : opérateur de ferme, livreur, caissier | IMPORTANTE | P0 | Aucun rôle supplémentaire au lancement | **TRANCHÉ** (voir journal §3) |
 | AV-005 | Répartition Responsable ferme / Responsable production | IMPORTANTE | P7 | Ferme = son site (saisies, stock) ; Production = toutes les fermes (lots, validations, indicateurs) | **TRANCHÉ** (voir journal §3) |
-| AV-006 | Politique d'enrôlement des appareils | IMPORTANTE | P0 | Appareil `PENDING` jusqu'à approbation | OUVERT |
+| AV-006 | Politique d'enrôlement des appareils | IMPORTANTE | P0 | Appareil `PENDING` jusqu'à approbation par l'Admin ou un responsable (portée : AV-247) | **TRANCHÉ** (voir journal §3) |
 | AV-007 | Appareils partagés entre plusieurs utilisateurs | IMPORTANTE | P0/P5 | Autorisés ; session et allocation par couple utilisateur/appareil | OUVERT |
 | AV-008 | Mode d'authentification des utilisateurs terrain | IMPORTANTE | P0 | Téléphone + mot de passe à l'enrôlement ; PIN local | OUVERT |
 | AV-009 | Autonomie maximale hors connexion | IMPORTANTE | P0 | 7 jours puis écritures bloquées | OUVERT |
@@ -31,7 +31,7 @@ Classification (PM §45) :
 | AV-014 | Visibilité des prospects entre commerciaux et doublons | IMPORTANTE | P3 | Portefeuille propre ; contrôle de doublon par téléphone | OUVERT |
 | AV-015 | Règles de réaffectation de clients | IMPORTANTE | P3 | Resp. commercial / Direction ; historique conservé | OUVERT |
 | AV-016 | Structure des objectifs commerciaux | SECONDAIRE | P3 | Objectif par utilisateur ou équipe, période, métrique | OUVERT |
-| AV-017 | Catégories de clients | SECONDAIRE | P1 | 5 catégories initiales configurables | OUVERT |
+| AV-017 | Catégories de clients | SECONDAIRE | P1 | 5 catégories initiales semées, configurables | **TRANCHÉ** (voir journal §3) |
 | AV-018 | Sources de prospects et canaux de vente | SECONDAIRE | P1 | Référentiels configurables | OUVERT |
 | AV-019 | Interactions des canaux Kommo stockées dans GIC | SECONDAIRE | P10 | Non : lien et compteurs seulement | OUVERT |
 | AV-020 | Commissions commerciales | SECONDAIRE | Futur | Hors MVP ; attribution conservée | OUVERT |
@@ -168,7 +168,7 @@ Classification (PM §45) :
 | AV-151 | Annulation d'un encaissement dont une part a déjà été remboursée au client | SECONDAIRE | P4 | Refusée ; la Finance corrige par une réaffectation ou une régularisation | OUVERT |
 | AV-152 | Mort d'animaux vivants hors d'un lot de production (stock mobile, marchandise vivante achetée) | SECONDAIRE | P4 | Mortalité du lot quand les animaux en viennent ; sinon perte simple `DETERIORATION` | OUVERT |
 | AV-153 | Écart d'une remise de fonds : imputation et excédent | IMPORTANTE | P5 | Aucun second mouvement ; imputation choisie par la Finance ; excédent admis | OUVERT |
-| AV-154 | Cycle quotidien de la session de caisse (seconde session, ouverture concurrente, veille non clôturée) | IMPORTANTE | P5 | Une session par jour (paramètre) ; ouvertures concurrentes fusionnées ; clôture forcée par la Finance | OUVERT |
+| AV-154 | Cycle quotidien de la session de caisse (seconde session, ouverture concurrente, veille non clôturée) | IMPORTANTE | P5 | Sessions sans limite par jour (paramètre, 0 = sans limite) ; ouvertures concurrentes fusionnées ; clôture forcée par la Finance | **TRANCHÉ** (voir journal §3) |
 | AV-155 | Responsabilité d'un écart de caisse avec plusieurs vendeurs et identité du valideur | IMPORTANTE | P5 | Écart imputé à celui qui clôture, sous-totaux par vendeur ; valideur différent de l'ouvreur et du clôtureur | OUVERT |
 | AV-156 | Fonds de caisse initial et écart d'ouverture | SECONDAIRE | P5 | Écart d'ouverture posé et validé par la Finance, motif « fonds initial » admis | OUVERT |
 | AV-157 | Mouvements d'espèces hors session ou décidés après coup (encaissement, remboursement, inverse) | IMPORTANTE | P5 | Appliqué avec avertissement hors ligne ; rattaché à la session couvrant sa date ; l'inverse hérite de la session d'origine | OUVERT |
@@ -260,6 +260,18 @@ Classification (PM §45) :
 | AV-243 | Fait hors ligne antérieur au rattachement de l'appareil à un autre site | SECONDAIRE | P5 | Pas de `DEVICE_OTHER_SITE` pour un fait antérieur au dernier rattachement (`designation_changed_at`) | OUVERT |
 | AV-244 | Encaissé : remboursements et doublons approuvés | SECONDAIRE | P5 | Remboursements non retranchés de l'encaissé (lus dans la trésorerie) ; doublon approuvé compté à sa date d'origine | OUVERT |
 | AV-245 | Chiffre d'affaires d'un PDV : site entier (accueil) ou emplacement de vente (tableau) | SECONDAIRE | P5 | Deux périmètres, une définition : l'accueil compte le site, le tableau l'emplacement de vente | OUVERT |
+| AV-246 | Réception d'achat au-delà du seuil de photo, tant que l'application ne joint pas de photo | IMPORTANTE | MP | Acceptée et marquée « photo manquante », signalée aux Achats ; exigence rétablie avec la photo | **TRANCHÉ** (voir journal §3) |
+| AV-247 | Approbation d'un appareil neuf par un responsable : quelle portée ? | IMPORTANTE | MP | Portée déduite des affectations actives de l'utilisateur qui a connecté l'appareil | **TRANCHÉ** (voir journal §3) |
+| AV-248 | Motifs de départ : résultats de visite, perte d'un prospect, annulation | IMPORTANTE | MP | Listes semées, désactivables ; « Autre » exige un commentaire | **TRANCHÉ** (voir journal §3) |
+| AV-249 | Affichage des unités dans la PWA | SECONDAIRE | MP | Libellés courts au singulier et au pluriel ; repli sur le nom du catalogue puis sur le code | **TRANCHÉ** (voir journal §3) |
+| AV-250 | Diagnostic « Tester la synchronisation » de l'application livrée | SECONDAIRE | MP | Bouton retiré | **TRANCHÉ** (voir journal §3) |
+| AV-251 | Changement du mot de passe provisoire | IMPORTANTE | MP | Imposé par l'écran à la connexion ; aucun refus serveur | **TRANCHÉ** (voir journal §3) |
+| AV-252 | Réinitialisation du mot de passe d'un utilisateur par l'administrateur | IMPORTANTE | MP | Mot de passe provisoire saisi par l'administrateur ; changement imposé à la connexion | **TRANCHÉ** (voir journal §3) |
+| AV-253 | Connexion depuis un appareil bloqué, perdu ou retiré | IMPORTANTE | MP | Mot de passe correct : message distinct pour l'appareil ; compte suspendu : message générique, motif à l'audit | **TRANCHÉ** (voir journal §3) |
+| AV-254 | Approbation du premier appareil d'administration d'une installation neuve | IMPORTANTE | MP | Commande d'installation lancée sur le serveur, tracée ; aucune exception dans l'application | **TRANCHÉ** (voir journal §3) |
+| AV-255 | Ventes signalées de l'accueil : quels drapeaux comptent comme anomalie ? | SECONDAIRE | MP | Tous comptés, ventilés par type dans le détail ; avertissement réservé aux drapeaux de contrôle | OUVERT |
+| AV-256 | Valeur du stock de l'entreprise : la marchandise en transit compte-t-elle ? | SECONDAIRE | MP | Comprise pour toute l'entreprise (« dont X en transit ») ; hors transit pour un site | OUVERT |
+| AV-257 | Permissions des rôles modifiables depuis l'application ? | SECONDAIRE | MP | Rôles figés par le seed versionné au MVP ; seules les affectations se gèrent à l'écran | OUVERT |
 
 ---
 
@@ -307,13 +319,14 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 - **Références** : CM §47 ; C-11.
 - **Décision** (porteur du projet, 27/09/2026) : Recommandation retenue : le Responsable ferme agit sur **son site** (saisies, stock de la ferme) ; le Responsable production agit sur **toutes les fermes** (création et clôture des lots, validations, indicateurs).
 
-### AV-006 — Enrôlement des appareils — IMPORTANTE
+### AV-006 — Enrôlement des appareils — IMPORTANTE — **TRANCHÉ**
 - **Question** : un nouvel appareil peut-il synchroniser immédiatement, ou doit-il être approuvé ?
 - **Pourquoi** : PM §37 (« appareils autorisés ») ; risque d'usurpation.
 - **Choix** : (a) libre ; (b) approbation par Admin ; (c) approbation par Admin ou par le responsable hiérarchique.
 - **Recommandation** : (c). L'appareil reste `PENDING` : il peut consulter mais ne peut pas pousser d'opérations tant qu'il n'est pas `ACTIVE`.
 - **Impact** : friction au démarrage ; sécurité.
 - **Références** : PM §37 ; SM-DEVICE.
+- **Décision** (porteur du projet, 13/10/2026) : (c), approbation par l'Admin ou par le responsable du site ou de l'équipe de la personne qui a connecté l'appareil (portée : AV-247) ; écran ECR-ADM-05 dans le lot de mise en pilote (MP-06).
 
 ### AV-007 — Appareils partagés — IMPORTANTE
 - **Question** : une tablette de point de vente peut-elle être utilisée par plusieurs vendeurs ?
@@ -366,8 +379,9 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
 ### AV-016 — Objectifs commerciaux — SECONDAIRE
 - **Recommandation** : un objectif est défini par une cible (utilisateur, équipe ou point de vente), une période, une métrique (`CA`, `QTE_PRODUIT`, `NOUVEAUX_CLIENTS`, `VISITES`, `PROSPECTS_CREES`) et une valeur.
 
-### AV-017 — Catégories de clients — SECONDAIRE
+### AV-017 — Catégories de clients — SECONDAIRE — **TRANCHÉ**
 - **Recommandation** : référentiel configurable. Valeurs initiales : `PARTICULIER`, `REVENDEUR`, `RESTAURATION_HOTELLERIE`, `GROSSISTE`, `INSTITUTION`.
+- **Décision** (porteur du projet, 13/10/2026) : les cinq catégories sont semées dès l'installation (rejouable, désactivables), sans attendre la liste réelle de GIC ; lot de mise en pilote (MP-02).
 
 ### AV-018 — Sources et canaux — SECONDAIRE
 - **Recommandation** : canaux de vente (CM §11) `TERRAIN`, `DIRECT`, `POINT_DE_VENTE`, `SEDENTAIRE`, `DIGITAL`, `WHATSAPP`, `KOMMO`. Sources de prospect : `PROSPECTION_TERRAIN`, `RECOMMANDATION`, `KOMMO`, `RESEAU_SOCIAL`, `VISITE_SPONTANEE`, `AUTRE`.
@@ -1111,12 +1125,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a) : la retenue éventuelle sur la personne relève d'une dépense ou créance dédiée (P8).
 - **Impact** : `finance.cash_transfer.receive`, décision `CASH_TRANSFER_DISCREPANCY`, `finance_cash_transfers` (écart signé, imputation, motif) ; ADR-032. Défaut implémenté : (a).
 
-### AV-154 — Cycle quotidien de la session de caisse — IMPORTANTE
+### AV-154 — Cycle quotidien de la session de caisse — IMPORTANTE — **TRANCHÉ**
 - **Question** : AV-057 retient une session par PDV et par jour. Que fait-on d'une seconde session le même jour (relève d'équipe, ouverture par erreur), d'une ouverture saisie hors ligne alors que la session de la veille n'est pas clôturée, et de deux tablettes qui ouvrent chacune « la » session hors ligne ?
 - **Pourquoi** : BR-DIS-006 interdit seulement deux sessions ouvertes ; D05 §14 interdit d'ouvrir avant la clôture de la précédente, mais la clôture forcée exige la Finance en ligne : un PDV hors ligne pourrait être bloqué. Une ouverture est un comptage physique, un fait accompli qui ne se rejette pas (BR-SYN-007).
 - **Choix** : (a) une session par PDV et par jour (paramètre `finance.cash_sessions_per_day_max`, défaut 1) ; en ligne, refus `CASH_SESSION_ALREADY_OPEN` ; hors ligne, la seconde ouverture est fusionnée dans la session la plus ancienne (comptage conservé, conflit informatif `CASH_SESSION_CONCURRENT_OPEN`) ; la Finance force la clôture d'une session de plus de 24 h ; (b) plusieurs sessions par jour sans limite ; (c) ouverture refusée tant que la précédente n'est pas close, même hors ligne.
 - **Recommandation** : (a).
 - **Impact** : `finance.cash_session.open` ; INV-FIN-06 ; matrice des conflits. Défaut implémenté : (a) (P5-12 : `planCashSessionOpen`, refus en ligne `CASH_SESSION_ALREADY_OPEN`, `_OVERLAP`, `_DAILY_LIMIT`, fusion hors ligne ; AV-167 et AV-168 précisent la fusion ; limite comptée par caisse ; clôture forcée `finance.cash_session.force_close`).
+- **Décision** (porteur du projet, 13/10/2026, après la vérification des écrans : une fois la caisse clôturée, le PDV ne pouvait plus encaisser d'espèces avant le lendemain) : **sans limite** de sessions par jour ; chaque session est comptée et validée par la Finance. Le paramètre `finance.cash_sessions_per_day_max` reste, avec 0 pour « sans limite » (nouveau défaut) ; un site peut encore être borné. Le reste de (a) est inchangé : une seule session ouverte à la fois (BR-DIS-006, INV-FIN-06), fusion hors ligne des ouvertures concurrentes, clôture forcée. Lot de mise en pilote (MP-03).
 
 ### AV-155 — Responsabilité d'un écart de caisse avec plusieurs vendeurs, et valideur — IMPORTANTE
 - **Question** : Une tablette de PDV est partagée (AV-007) mais le PDV n'a qu'une caisse et une session par jour. À qui impute-t-on l'écart, et que signifie « le valideur n'est pas le vendeur » quand plusieurs vendeurs ont encaissé ?
@@ -1773,6 +1788,99 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) garder les deux périmètres, sous des libellés distincts (« chiffre du site », « vendu du PDV ») ; (b) étendre le vendu du tableau à tous les emplacements du site, hors rapprochement ; (c) réduire l'accueil à l'emplacement de vente.
 - **Recommandation** : (a) : le rapprochement du tableau n'a de sens que sur l'emplacement dont il suit le stock ; l'accueil répond à « combien le site a-t-il vendu ».
 - **Impact** : libellés de la PWA (fork « Écrans PWA ») ; aucune donnée. Défaut implémenté : (a) (P5-23). Non paramétrable. Test : `p5-distribution-metrics.test.ts` (vente d'un autre emplacement du site, comptée par l'accueil, pas par le tableau).
+
+### AV-246 — Réception d'achat au-delà du seuil de photo, tant que l'application ne joint pas de photo — IMPORTANTE — **TRANCHÉ**
+- **Question** : BR-APP-014 exige la photo du bon de livraison au-delà de `procurement.receipt_photo_threshold_xaf` (100 000 XAF) ; la PWA ne sait pas encore joindre de photo. Que fait une réception de cette valeur ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : la réception de 480 kg d'aliment (168 000 XAF) est refusée `PHOTO_REQUIRED` ; aucune livraison fournisseur importante n'est réceptionnable depuis l'application. **CONFIRMÉ** (navigateur).
+- **Choix** : (a) acceptée et marquée « photo manquante », signalée aux Achats pour régularisation ; (b) seuil relevé tant que la photo n'existe pas ; (c) refus maintenu.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). La réception est appliquée en ligne comme hors ligne, avec l'avertissement `RECEIPT_PHOTO_MISSING` et un signal pour les Achats ; la photo jointe plus tard la régularise (MP-10). Précise BR-APP-014 et AV-037 pour la période sans photo.
+- **Impact** : `procurement.receipt.record` (P6), signal de l'accueil et du suivi des réceptions ; lot de mise en pilote (MP-04).
+
+### AV-247 — Approbation d'un appareil neuf par un responsable : quelle portée ? — IMPORTANTE — **TRANCHÉ**
+- **Question** : AV-006 (c) permet l'approbation par un responsable, et `identity.device.approve` est semée en portée SITE ou TEAM ; un appareil `PENDING` n'a pourtant encore ni site ni équipe. Quels appareils un responsable voit-il et approuve-t-il ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : aucun écran n'approuve un appareil ; la portée doit être définie pour ECR-ADM-05. **DÉDUIT**.
+- **Choix** : (a) portée déduite des affectations actives de l'utilisateur qui a connecté l'appareil (`enrolled_by_user_id`) : site, zone, équipe ; (b) Admin seul.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a), avec l'Admin toujours habilité.
+- **Impact** : lecture `GET /devices`, commandes `identity.device.*` (contrôle de portée), écran ECR-ADM-05 ; lot de mise en pilote (MP-06).
+
+### AV-248 — Motifs de départ : résultats de visite, perte d'un prospect, annulation — IMPORTANTE — **TRANCHÉ**
+- **Question** : quelles listes de motifs fournir à l'installation pour `VISIT_OUTCOME`, `PROSPECT_LOST` et `CANCELLATION` ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : sans résultat de visite (BR-CRM-012, obligatoire), aucune visite n'est possible sur une base neuve ; S-15. **CONFIRMÉ** (navigateur).
+- **Choix** : (a) listes proposées ; (b) résultats de visite seulement ; (c) aucune, saisie par l'administrateur.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). Visite : `COMMANDE_PRISE` (code figé, lu par KPI-COM-12), `VENTE_REALISEE`, `A_RELANCER`, `PAS_INTERESSE`, `ABSENT`, `AUTRE`. Prospect perdu : `PRIX_TROP_ELEVE`, `CONCURRENT`, `PAS_DE_BESOIN`, `INJOIGNABLE`, `HORS_ZONE`, `AUTRE`. Annulation : `ERREUR_SAISIE`, `DOUBLON`, `DEMANDE_CLIENT`, `AUTRE`. `AUTRE` exige un commentaire ; libellés ajustables au catalogue.
+- **Impact** : `db/seeds` (rejouable : insertion des seuls absents, jamais de réécriture d'un motif modifié), publication dans `catalog` ; S-15 ; lot de mise en pilote (MP-02).
+
+### AV-249 — Affichage des unités dans la PWA — SECONDAIRE — **TRANCHÉ**
+- **Question** : comment afficher une quantité et son unité (« 27 PLATEAU » aujourd'hui) ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : les codes d'unité s'affichent tels quels sur une vingtaine d'écrans (contournement S-07). **CONFIRMÉ** (navigateur).
+- **Choix** : (a) libellés courts au singulier et au pluriel dans la PWA pour les codes connus, repli sur le nom du catalogue puis sur le code ; (b) nom du catalogue tel quel ; (c) abréviations saisies au catalogue (migration).
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a), sans changement de la base (« 27 plateaux », « 1 pièce », « 500 kg », « 12 têtes »).
+- **Impact** : fonction unique de formatage dans la PWA et ses appels ; lot de mise en pilote (MP-09).
+
+### AV-250 — Diagnostic « Tester la synchronisation » de l'application livrée — SECONDAIRE — **TRANCHÉ**
+- **Question** : garder le bouton qui enregistre un paramètre système de test (`organization.setting.set`) ?
+- **Pourquoi** : les versions de paramètres sont immuables (BR-ADM-015) : chaque essai pollue définitivement les paramètres ; un navigateur dont l'appareil n'est pas approuvé renvoyait ce test toutes les 30 s depuis des jours (vérification des écrans, 13/10/2026). **CONFIRMÉ**.
+- **Choix** : (a) réservé à l'administrateur ; (b) remplacé par un test sans écriture ; (c) retiré.
+- **Recommandation** : (b).
+- **Décision** (porteur du projet, 13/10/2026) : (c), retiré de l'application ; l'écran de synchronisation garde « Forcer la synchronisation » et les listes d'opérations.
+- **Impact** : écran ECR-SYN-01 ; lot de mise en pilote (MP-09).
+
+### AV-251 — Changement du mot de passe provisoire — IMPORTANTE — **TRANCHÉ**
+- **Question** : un compte créé ou réinitialisé avec un mot de passe provisoire (`must_change_password`) doit-il être bloqué tant qu'il ne l'a pas changé ?
+- **Pourquoi** : la PWA reçoit `must_change_password` à la connexion sans le lire ; aucun écran de changement n'existe (vérification des écrans, 13/10/2026). **CONFIRMÉ**.
+- **Choix** : (a) refus serveur de toute opération (`PASSWORD_CHANGE_REQUIRED`) et écran de changement ; (b) écran de changement imposé par la PWA seulement.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (b), différente de la recommandation : la PWA affiche l'écran de changement juste après la connexion et n'ouvre rien d'autre avant ; le serveur ne refuse rien.
+- **Impact** : écran de changement du mot de passe, route de changement ; lot de mise en pilote (MP-08).
+
+### AV-252 — Réinitialisation du mot de passe d'un utilisateur par l'administrateur — IMPORTANTE — **TRANCHÉ**
+- **Question** : la réinitialisation par l'Admin (02-securite.md) génère-t-elle le mot de passe provisoire ou le fait-elle saisir ?
+- **Pourquoi** : la réinitialisation n'existe pas ; un utilisateur qui oublie son mot de passe est bloqué (vérification des écrans, 13/10/2026). **DÉDUIT**.
+- **Choix** : (a) généré par le serveur, affiché une fois ; (b) saisi par l'administrateur.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (b), différente de la recommandation. Le mot de passe saisi ne transite que par une route en ligne hors du journal des commandes, n'est ni journalisé ni audité en clair, révoque les sessions de l'utilisateur et pose `must_change_password` (AV-251).
+- **Impact** : route de réinitialisation, écran d'administration des utilisateurs ; lot de mise en pilote (MP-08).
+
+### AV-253 — Connexion depuis un appareil bloqué, perdu ou retiré — IMPORTANTE — **TRANCHÉ**
+- **Question** : après un mot de passe correct, faut-il dire à l'utilisateur que son appareil est bloqué, perdu ou retiré, ou que son compte est suspendu ?
+- **Pourquoi** : aujourd'hui tout répond « Identifiants invalides », même avec le bon mot de passe (vérification des écrans, 13/10/2026). **CONFIRMÉ** (code).
+- **Choix** : (a) message distinct pour l'appareil, générique pour le compte ; (b) générique dans tous les cas.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). « Cet appareil est bloqué (perdu, retiré) : contactez votre responsable » ; un compte suspendu ou désactivé garde le message générique, le motif est écrit dans l'audit.
+- **Impact** : `POST /auth/login` (code d'erreur distinct), écran de connexion ; lot de mise en pilote (MP-05).
+
+### AV-254 — Approbation du premier appareil d'administration d'une installation neuve — IMPORTANTE — **TRANCHÉ**
+- **Question** : sur une installation neuve, personne ne peut approuver le premier téléphone de l'administrateur depuis l'application. Comment l'approuver ?
+- **Pourquoi** : ECR-ADM-05 (MP-06) exige un appareil actif ; l'amorçage n'est couvert ni par AV-006 ni par AV-228. **DÉDUIT**.
+- **Choix** : (a) commande d'installation sur le serveur, avec le code court de l'appareil ; (b) exception d'amorçage dans l'application.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). Commande `pnpm run db:approve-device -- <code court>` (acteur système, `approved_by`, audit), documentée dans le runbook de mise en service.
+- **Impact** : script d'exploitation, runbook ; lot de mise en pilote (MP-06).
+
+### AV-255 — Ventes signalées de l'accueil : quels drapeaux comptent comme anomalie ? — SECONDAIRE
+- **Question** : le signal « N ventes du jour portent une anomalie » compte toute vente dont la liste de drapeaux est non vide, y compris `OUT_OF_SESSION` (déjà couvert par le signal de prise de service). Faut-il distinguer les drapeaux informatifs des drapeaux de contrôle ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : quatre ventes signalées pour la seule absence de prise de service, avec un texte générique (prix, stock, vente anonyme) qui ne nomme pas la cause et sans lien vers les ventes. **CONFIRMÉ**.
+- **Choix** : (a) tous comptés, ventilés par type dans le détail, gravité « avertissement » pour les seuls drapeaux de contrôle (prix, stock, crédit, caisse), lien vers les ventes ; (b) drapeaux informatifs exclus du signal.
+- **Recommandation** : (a).
+- **Impact** : `home-service.ts` (signal `SALES_FLAGGED`), PWA. Défaut retenu pour le lot de mise en pilote : (a) (MP-09). Non paramétrable.
+
+### AV-256 — Valeur du stock de l'entreprise : la marchandise en transit compte-t-elle ? — SECONDAIRE
+- **Question** : KPI-STK-02 (« Σ solde × coût unitaire courant ») exclut aujourd'hui les emplacements virtuels, donc le transit : une marchandise expédiée, qui appartient encore au GIC, disparaît de la valeur jusqu'à sa réception. Faut-il l'inclure ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : la valeur du stock de la Direction a baissé de 98 000 XAF le temps d'un transfert. **CONFIRMÉ** (code).
+- **Choix** : (a) comprise pour la portée de toute l'entreprise, montrée dans le détail ; hors transit pour un site ; pertes en attente exclues mais affichées à part ; (b) inchangé.
+- **Recommandation** : (a).
+- **Impact** : `inventory` (lecture de l'accueil), D11 KPI-STK-02. Défaut retenu pour le lot de mise en pilote : (a). Non paramétrable.
+
+### AV-257 — Permissions des rôles modifiables depuis l'application ? — SECONDAIRE
+- **Question** : l'écran d'administration des utilisateurs (ECR-ADM-04) doit-il permettre de modifier les permissions d'un rôle (`identity.role.set_permissions`), ou seulement d'affecter des rôles ?
+- **Pourquoi** : la commande est annoncée par l'architecture de l'API sans être enregistrée ; ADR-008 fige les rôles par un seed versionné. **DÉDUIT** (vérification des écrans, 13/10/2026).
+- **Choix** : (a) rôles figés au MVP, affectations seulement ; (b) permissions modifiables par l'Admin.
+- **Recommandation** : (a).
+- **Impact** : ECR-ADM-04 (lot suivant). Défaut : (a). Non paramétrable.
 ---
 
 ## 3. Journal des décisions
@@ -1836,3 +1944,15 @@ Politique par défaut, paramétrable :
 | 30/09/2026 | AV-128 | Reste non livré annulé par l'auteur ou le Resp. commercial, sans validation | Porteur du projet |
 | 30/09/2026 | AV-129 | Échéance d'une vente sur commande depuis la confirmation | Porteur du projet |
 | 30/09/2026 | AV-130 | Commande confirmée modifiable : contre-écriture et vente complémentaire automatiques | Porteur du projet |
+| 13/10/2026 | AV-006 | Approbation d'un appareil par l'Admin ou par le responsable du site ou de l'équipe de l'utilisateur qui l'a connecté (AV-247) | Porteur du projet |
+| 13/10/2026 | AV-017 | Cinq catégories de clients semées dès l'installation, configurables | Porteur du projet |
+| 13/10/2026 | AV-154 | Sessions de caisse sans limite par jour (paramètre `finance.cash_sessions_per_day_max`, 0 = sans limite) ; une seule ouverte à la fois | Porteur du projet |
+| 13/10/2026 | AV-246 | Réception d'achat au-delà du seuil de photo acceptée sans photo, marquée « photo manquante » et signalée, tant que l'application ne joint pas de photo | Porteur du projet |
+| 13/10/2026 | AV-247 | Portée d'approbation d'un appareil neuf déduite des affectations de l'utilisateur qui l'a connecté | Porteur du projet |
+| 13/10/2026 | AV-248 | Motifs de départ semés : résultats de visite, perte d'un prospect, annulation ; « Autre » avec commentaire | Porteur du projet |
+| 13/10/2026 | AV-249 | Unités affichées en libellés courts au singulier et au pluriel | Porteur du projet |
+| 13/10/2026 | AV-250 | Diagnostic « Tester la synchronisation » retiré de l'application | Porteur du projet |
+| 13/10/2026 | AV-251 | Mot de passe provisoire : changement imposé par l'écran seulement, sans refus serveur (différent de la recommandation) | Porteur du projet |
+| 13/10/2026 | AV-252 | Réinitialisation par l'Admin : mot de passe provisoire saisi par l'administrateur (différent de la recommandation) | Porteur du projet |
+| 13/10/2026 | AV-253 | Appareil bloqué, perdu ou retiré : message distinct après un mot de passe correct ; compte suspendu : message générique | Porteur du projet |
+| 13/10/2026 | AV-254 | Premier appareil d'administration approuvé par une commande d'installation sur le serveur | Porteur du projet |
