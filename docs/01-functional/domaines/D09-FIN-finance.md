@@ -253,3 +253,12 @@ Commandes `finance.cash_transfer.send`, `.receive`, `.cancel` (`cash-transfer-co
 - **Lectures** : `GET /expenses`, `/supplier-invoices`, `/supplier-payments`, `/payables` (`finance.payable.read`, AV-365), `/finance/overview` (AT-040), `/losses/summary` (AT-041).
 - **Cohérence** (P8-12) : `verifyExpenses` (mouvement `EXPENSE` de la dépense payée, coût net de la dépense = montant si elle porte son coût, zéro sinon — INV-FIN-08 —, reclassement du rejet après paiement) et `verifySupplierLedger` (payé d'une facture = Σ affectations actives — INV-FIN-07 —, paiement = affectations + avance, mouvement du décaissement et de son annulation), lecture seule, branchées dans `finance.cash.reconcile_daily` (échec `CASH_MISMATCH` par section). Le balayage `p8-invariants.test.ts` ajoute le facturé des BC (Σ des factures approuvées) et l'accord entre documents en attente et demandes de validation.
 - **Ordre des verrous** (ADR-038, ADR-061 §3) : paiement, puis factures par identifiant croissant, puis dépense, en-tête et lignes du BC ; ensuite comptes de trésorerie, session, demandes, compteur. Éprouvé en concurrence (`p8-lock-order.test.ts`) : deux paiements d'une facture, deux factures d'une ligne de BC, décision d'une facture en écart contre nouvelle facture du BC, paiement contre annulation d'une facture, décision contre annulation d'un paiement, paiement contre annulation d'une dépense — aucun interblocage.
+- **Revue adverse de P8-14** (quatre axes, puis vérificateurs sceptiques ; constats et suites dans `17-suivi-p8.md`) :
+  - **Lectures** : liste des dépenses pré-filtrée par le périmètre ; dates au calendrier ; blocs de la vue d'ensemble selon le droit de leur lecture ; payé d'un BC réservé aux lecteurs des dettes ; jeu `cash` étendu aux dépenses en attente ou modifiées.
+  - **Fournisseurs** :
+    - un complément d'avance sur la même facture est regroupé ;
+    - une approbation d'écart qui dépasserait l'accepté sans le savoir est refusée (`INVOICE_MATCHING_CHANGED`) ;
+    - l'auteur ne valide jamais son propre document, même par la commande générique ;
+    - références comparées sans casse ni ponctuation ; produit et réception comptabilisée contrôlés.
+  - **Dépenses** : un site comme objet de coût est celui de la dépense, et une ferme pour des frais généraux d'une espèce.
+  - **Cohérence** : le compte payeur, l'objet de coût, le mouvement d'origine d'un paiement annulé et le facturé des BC (`INVOICED_QTY_DRIFT`) sont contrôlés ; aucun plafond sur le nombre d'écarts rapportés.

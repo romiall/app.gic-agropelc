@@ -16,6 +16,7 @@
  */
 import {
   matchSupplierInvoice,
+  normalizedInvoiceRef,
   quantityFromDecimal,
   supplierInvoiceDueDate,
   supplierInvoiceTransition,
@@ -65,6 +66,7 @@ import {
   loadSupplierInvoice,
   nextSupplierDocNumber,
   numberSettingAt,
+  quantityExcessSinceRequest,
   settingAt,
 } from '../supplier-ledger-support.js';
 
@@ -138,14 +140,26 @@ export function registerSupplierInvoiceCommands(
           'Une ligne de réception citée n’appartient pas à ce fournisseur ou à cette ligne de bon de commande.',
         );
       }
+      // Revue de P8-14 : seule une réception comptabilisée se facture.
+      if (receiptLine.receiptStatus !== 'POSTED') {
+        return rejected(
+          'PO_LINE_MISMATCH',
+          `Une ligne de réception citée n’est pas comptabilisée (réception ${receiptLine.receiptStatus}).`,
+        );
+      }
     }
 
-    // Référence unique parmi les factures non annulées (BR-FIN-030, AV-359).
+    // Référence unique parmi les factures non annulées (BR-FIN-030, AV-359), comparée sans la casse
+    // ni la ponctuation : « FA-0012 », « fa 0012 » et « FA0012 » sont la même facture (revue de P8-14).
     const duplicate = await uow
       .selectFrom('finance_supplier_invoices')
       .select('doc_number')
       .where('supplier_id', '=', toBin(p.supplierId))
-      .where('supplier_invoice_ref', '=', p.supplierInvoiceRef)
+      .where(
+        sql<string>`REGEXP_REPLACE(UPPER(supplier_invoice_ref), '[^A-Z0-9]', '')`,
+        '=',
+        normalizedInvoiceRef(p.supplierInvoiceRef),
+      )
       .where('status', '<>', 'CANCELLED')
       .executeTakeFirst();
     if (duplicate) {
@@ -168,6 +182,7 @@ export function registerSupplierInvoiceCommands(
         : 'REVIEW';
     const lines = p.lines.map((line) => ({
       poLineId: line.poLineId ?? null,
+      productId: line.productId ?? null,
       quantity: line.quantity !== undefined ? quantityFromDecimal(line.quantity) : null,
       unitPriceXaf: line.unitPriceXaf ?? null,
       lineTotalXaf: line.lineTotalXaf,
@@ -179,6 +194,7 @@ export function registerSupplierInvoiceCommands(
             supplierId: order.supplierId,
             lines: order.lines.map((line): MatchedOrderLine => ({
               poLineId: line.poLineId,
+              productId: line.productId,
               unitPriceXaf: line.unitPriceXaf,
               accepted: quantityFromDecimal(line.acceptedQtyBase),
               invoiced: quantityFromDecimal(line.invoicedQtyBase),
@@ -461,6 +477,21 @@ export function registerSupplierInvoiceCommands(
       );
     }
     if (ctx.decision === 'APPROVED') {
+      // Revue de P8-14 (ADR-061 §5) : approbateur ≠ auteur, même par la commande générique.
+      if (ctx.decidedBy === ctx.requestedBy) {
+        throw new ApprovalDecisionRefused(
+          'SELF_APPROVAL_FORBIDDEN',
+          'Celui qui a saisi la facture ne peut pas approuver son écart.',
+        );
+      }
+      // Revue de P8-14 (ADR-061 §3) : une décision informée — l'écart ne s'est pas aggravé depuis.
+      const excess = await quantityExcessSinceRequest(uow, invoice, ctx.decidedAt);
+      if (excess.length > 0) {
+        throw new ApprovalDecisionRefused(
+          'INVOICE_MATCHING_CHANGED',
+          `Depuis la demande, une autre facture approuvée porte le facturé de ${excess.length} ligne(s) du bon de commande au-delà de l’accepté : rejetez la demande, puis approuvez directement la facture contestée en motivant.`,
+        );
+      }
       await approveSupplierInvoice(uow, idGenerator, {
         invoice,
         approvedBy: ctx.decidedBy,

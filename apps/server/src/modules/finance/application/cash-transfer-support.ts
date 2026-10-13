@@ -121,13 +121,18 @@ export const CASH_ACCOUNT_FORBIDDEN = rejected(
 export async function loadSiteRef(
   uow: Uow,
   siteId: string,
-): Promise<{ readonly id: string; readonly code: string; readonly zoneId: string } | undefined> {
+): Promise<
+  | { readonly id: string; readonly code: string; readonly zoneId: string; readonly siteType: string }
+  | undefined
+> {
   const row = await uow
     .selectFrom('organization_sites')
-    .select(['id', 'code', 'zone_id'])
+    .select(['id', 'code', 'zone_id', 'site_type'])
     .where('id', '=', toBin(siteId))
     .executeTakeFirst();
-  return row ? { id: fromBin(row.id), code: row.code, zoneId: fromBin(row.zone_id) } : undefined;
+  return row
+    ? { id: fromBin(row.id), code: row.code, zoneId: fromBin(row.zone_id), siteType: row.site_type }
+    : undefined;
 }
 
 /**

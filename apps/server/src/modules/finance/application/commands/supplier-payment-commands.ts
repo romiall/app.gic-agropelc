@@ -491,6 +491,13 @@ export function registerSupplierPaymentCommands(
         `Paiement ${payment.status} : aucune décision attendue.`,
       );
     }
+    // Revue de P8-14 (ADR-061 §6) : approbateur ≠ auteur, même par la commande générique.
+    if (ctx.decision === 'APPROVED' && ctx.decidedBy === ctx.requestedBy) {
+      throw new ApprovalDecisionRefused(
+        'SELF_APPROVAL_FORBIDDEN',
+        'Celui qui a saisi le paiement ne peut pas le valider.',
+      );
+    }
     const planned = await allocationsOf(uow, payment.id, 'PLANNED');
     if (ctx.decision === 'REJECTED') {
       for (const allocation of planned) {
@@ -614,14 +621,36 @@ export function registerSupplierPaymentCommands(
         invoices: payableOf(invoices),
         advanceAllowed: true,
       });
+      const active = new Map(
+        (await allocationsOf(uow, payment.id, 'ACTIVE')).map((allocation) => [
+          allocation.invoiceId,
+          allocation,
+        ]),
+      );
       for (const allocation of envelope.payload.allocations) {
+        // Revue de P8-14 : un complément sur une facture déjà affectée par ce paiement regroupe les
+        // deux montants (affectation immuable, une seule active par facture et par paiement) — la
+        // précédente est contrepassée, la nouvelle porte le cumul ; le payé n'augmente que du complément.
+        const previous = active.get(allocation.invoiceId);
+        if (previous !== undefined) {
+          await uow
+            .updateTable('finance_supplier_payment_allocations')
+            .set({
+              status: 'REVERSED',
+              reversed_at: at,
+              reversed_by: toBin(author),
+              reversal_reason: 'Regroupée avec un complément de la même facture',
+            })
+            .where('id', '=', toBin(previous.id))
+            .execute();
+        }
         await uow
           .insertInto('finance_supplier_payment_allocations')
           .values({
             id: toBin(idGenerator.newId()),
             payment_id: toBin(payment.id),
             invoice_id: toBin(allocation.invoiceId),
-            amount_xaf: allocation.amountXaf,
+            amount_xaf: allocation.amountXaf + (previous?.amountXaf ?? 0),
             status: 'ACTIVE',
             activated_at: at,
             created_by: toBin(author),

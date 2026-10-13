@@ -415,6 +415,8 @@ export {
   INVOICE_MISMATCH_REASONS,
   invoicedQuantitiesByOrderLine,
   matchSupplierInvoice,
+  normalizedInvoiceRef,
+  quantityExcessSince,
   supplierInvoiceDueDate,
   supplierInvoiceTransition,
   supplierInvoiceStatusFromPaid,

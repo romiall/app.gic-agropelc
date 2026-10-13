@@ -3,7 +3,9 @@ import { quantityFromDecimal, quantityToDecimal } from './quantity.js';
 import {
   invoicedQuantitiesByOrderLine,
   matchSupplierInvoice,
+  normalizedInvoiceRef,
   planSupplierPayment,
+  quantityExcessSince,
   supplierInvoiceDueDate,
   supplierInvoiceStatusFromPaid,
   supplierInvoiceTransition,
@@ -327,5 +329,34 @@ describe('paiement fournisseur (BR-FIN-032, 033, AV-362)', () => {
     expect(codeOf(() => supplierPaymentTransition('CANCELLED', 'CANCEL'))).toBe(
       'SUPPLIER_PAYMENT_STATUS_INVALID',
     );
+  });
+});
+
+describe('revue de P8-14 : produit, écart apparu depuis la demande, référence normalisée', () => {
+  it('produit saisi différent de celui de la ligne de BC : PRODUCT_MISMATCH ; même produit, quelle que soit la casse : conforme', () => {
+    const withProduct = (productId: string) =>
+      match({
+        order: { supplierId: 'fournisseur', lines: [{ ...order().lines[0]!, productId: 'aliment' }] },
+        lines: [{ ...line(95), productId }],
+      });
+    expect(withProduct('autre').details).toEqual([
+      { reason: 'PRODUCT_MISMATCH', lineIndex: 0, poLineId: 'ligne-bc', expected: null, actual: null },
+    ]);
+    expect(withProduct('ALIMENT').conforming).toBe(true);
+  });
+
+  it('dépassement de l’accepté apparu depuis la saisie : signalé ; déjà connu de la demande : non', () => {
+    const atRecord = match({ lines: [line(95, 15_500)] });
+    expect(atRecord.details.map((detail) => detail.reason)).toEqual(['PRICE_MISMATCH']);
+    const now = match({ order: order({ invoiced: 95 }), lines: [line(95, 15_500)] });
+    expect(quantityExcessSince(atRecord.details, now)).toEqual(['ligne-bc']);
+    expect(quantityExcessSince(now.details, now)).toEqual([]);
+    expect(quantityExcessSince(atRecord.details, atRecord)).toEqual([]);
+  });
+
+  it('référence fournisseur sans casse ni ponctuation', () => {
+    expect(normalizedInvoiceRef('fa-0012')).toBe('FA0012');
+    expect(normalizedInvoiceRef(' FA 0012 ')).toBe('FA0012');
+    expect(normalizedInvoiceRef('FA/0012')).toBe(normalizedInvoiceRef('fa.0012'));
   });
 });

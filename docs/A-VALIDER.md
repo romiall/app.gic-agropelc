@@ -1810,7 +1810,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : une dépense payée est un fait financier accompli (BR-SYN-007). SM-EXPENSE (l.183) admet la saisie hors ligne « payée ou non », D09 §12 seulement « payée immédiatement », et le dictionnaire indique `CR`. **DÉDUIT**
 - **Choix** : (a) appliquée puis placée en validation a posteriori (`PAID_PENDING_APPROVAL` ou `PENDING_APPROVAL`), motif dans `review_reasons`, avertissement `EXPENSE_REVIEW_REQUIRED` ; (b) appliquée avec un conflit dédié ; (c) refusée. Pour la saisie non payée : (a) admise hors ligne ; (b) réservée au mode en ligne.
 - **Recommandation** : (a) et (a) : un seul circuit de décision par la Finance, prévu par la machine à états ; un rejet reclasse la dépense (AV-355).
-- **Impact** : `finance.expense.record` ([ADR-060](decisions/ADR-060-depenses-p8.md) §6). Défaut implémenté : (a), (a) (P8). Non paramétrable.
+- **Impact** : `finance.expense.record` ([ADR-060](decisions/ADR-060-depenses-p8.md) §6). Défaut implémenté : (a), (a) (P8). Non paramétrable. Revue de P8-14 : un objet de coût introuvable reste refusé, même hors ligne (ADR-060 §8, validité) ; seul un lot clos est un motif de revue.
 
 ### AV-353 — Plafond d'une petite dépense au PDV — SECONDAIRE
 - **Question** : Quel montant maximal pour une dépense payée depuis la caisse d'un PDV (BR-DIS-013) ?
@@ -1873,7 +1873,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : `procurement` ne peut pas consulter `finance` ; il lit seulement sa colonne `invoiced_qty_base`. Une décision de Finance peut avoir approuvé une facture au-delà de l'accepté (AT-025). **DÉDUIT**
 - **Choix** : (a) aucune garde côté achats ; l'écart « facturé > accepté » est signalé par la réconciliation des fournisseurs et corrigé par avoir (AV-359) ; (b) refus de l'annulation si le facturé dépasserait l'accepté.
 - **Recommandation** : (a) : P6 reste inchangé et l'écart reste visible.
-- **Impact** : `verifySupplierLedger`, rapprochement ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md), Conséquences). Défaut implémenté : (a) (P8). Non paramétrable.
+- **Impact** : `verifySupplierLedger`, rapprochement ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md), Conséquences). Défaut implémenté : (a) (P8). Non paramétrable. Revue de P8-14 : l'écart se lit dans le rapprochement du BC, pas dans la réconciliation (une décision de la Finance peut l'avoir voulu). La réconciliation contrôle que le facturé vaut Σ des factures approuvées (`INVOICED_QTY_DRIFT`), et une approbation qui dépasserait l'accepté sans que la demande le dise est refusée (`INVOICE_MATCHING_CHANGED`).
 
 ### AV-362 — Avances fournisseurs et affectation ultérieure — SECONDAIRE
 - **Question** : Une avance (paiement non affecté, AV-055) est-elle admise, et comment l'affecter ensuite à une facture ?

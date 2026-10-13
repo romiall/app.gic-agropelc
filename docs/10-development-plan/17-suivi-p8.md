@@ -33,7 +33,8 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage, valeur des pertes, vue d'ensemble financière | `4dcc4a7` | Fait : 5 tests (2 unitaires, 3 HTTP), 8 mutations détectées ; le câblage de bout en bout de la marge d'un lot abattu est vérifié en P8-13 |
 | P8-12 | Invariants et réconciliation : `verifyExpenses`, `verifySupplierLedger` dans la réconciliation quotidienne ; balayage de toute la base ; ordre des verrous en concurrence | `2914381` | Fait : 5 tests de balayage, 7 tests de concurrence et de détection, 1 test de la tâche ; 12 mutations détectées sur `gic_agropelc_p8m`, 1 équivalente (verrou de l'en-tête du BC seul retiré : les lignes du BC, verrouillées aussi, sérialisent déjà les paires testées ; l'en-tête reste verrouillé pour l'ordre global d'ADR-038) |
 | P8-13 | Acceptation : AT-025 (WF-09 de bout en bout), AT-040, AT-041, AT-026 avec la dépense directe de 140 000, lot abattu dont les produits sont vendus, journée de PDV hors ligne avec dépenses | _à venir_ | Fait : 3 tests de bout en bout (`p8-acceptance.e2e.test.ts`), 1 test d'acceptation de la production ; 6 mutations détectées sur `gic_agropelc_p8m` |
-| P8-14 et P8-15 | Voir le backlog du plan | — | À faire |
+| P8-14 | Revue adverse : quatre axes (dépenses, fournisseurs, lectures et synchronisation, schéma et vérifications), deux vérificateurs sceptiques ; correctifs | `b38c6be` (lectures) et _à venir_ | Fait : 28 constats (aucun critique), 11 confirmés, 11 partiels, 6 réfutés ou acceptés ; 27 mutations détectées (11 lectures, 16 fournisseurs, dépenses et vérifications) ; voir §6 |
+| P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -58,6 +59,8 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-13 | `production-acceptance.test.ts` (P7, P4) | `run` accepte des justificatifs ; commandes et décisions de dépense enregistrées ; un test de plus en fin de fichier (AT-026 avec dépense, AT-041, lot abattu vendu) | ADR-062 §5 |
 | P8-14 | `procurement-api/procurement-read.controller.ts`, `test/procurement-read.e2e.test.ts` (P6) | payé du BC (`paidXaf`) seulement pour un lecteur des dettes (`finance.payable.read`) ; l'attente du test de P6 passe de `null` (valeur d'attente d'avant P8) à 0 pour l'acheteur — elle échouait depuis P8-09 sans avoir été relancée | AV-365, revue de P8-14 |
 | P8-14 | `inventory-api/loss-summary-read.controller.ts`, `sync/entity-projections.ts` | dates au calendrier, ordre sans valorisation ; fenêtre des dépenses du jeu `cash` | revue de P8-14 |
+| P8-14 | `finance` (P5) : `cash-transfer-support.ts` (`loadSiteRef`) | type du site rendu (sans changement pour les appelants existants) | revue de P8-14 (A3) |
+| P8-14 | `test/supplier-ledger-fixtures.ts` (assistants de P8) | l'accepté d'une ligne de BC vient d'une réception comptabilisée avec son entrée en stock et sa valeur acceptée : les anciens assistants écrivaient l'accepté seul et violaient les invariants de P6 balayés sur toute la base (`procurement-invariants.test.ts`, 322 lignes sur `gic_agropelc_p8`) | INV-APP-02, INV-STK-12 |
 
 ## 4. Écarts de documentation relevés (pour la session principale)
 
@@ -71,3 +74,45 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 ## 5. Bases de données
 
 - **Mutations sur la base de développement (13/10/2026).** Jusqu'à P8-11, les tests de mutation de P8-04 à P8-08 ont tourné sur `gic_agropelc_p8` au lieu de la base jetable. Le code volontairement faux y a laissé 32 lignes incohérentes, toutes datées des passes de mutation et toutes de données de test : 19 factures dont le payé ne suit pas les affectations, 7 paiements, 6 dépenses dont le coût net ne suit pas l'état. Le balayage `p8-invariants.test.ts` les signale sur cette base ; aucune n'est corrigée à la main (ce serait fabriquer des données). Depuis P8-12, les mutations tournent sur `gic_agropelc_p8m`, et la suite de clôture tournera sur une base neuve.
+
+## 6. Revue adverse de P8-14
+
+Quatre chercheurs (Sonnet, lecture seule), un par axe, puis deux vérificateurs sceptiques chargés de réfuter chaque constat, code à l'appui. Corrigés, chacun avec son test et sa mutation :
+
+- **Lectures** (`b38c6be`) :
+  - C1 : liste des dépenses pré-filtrée avant la pagination ;
+  - C3 : dates impossibles en 400 ;
+  - C2 et C7 : blocs de la vue d'ensemble selon le droit de leur lecture, créances par tranche ;
+  - C4 : payé du BC réservé aux lecteurs des dettes ;
+  - C6 : ordre des pertes sans valorisation ;
+  - C8 : solde nul avant approbation ;
+  - D6 : dettes de solde nul exclues ;
+  - C5 : jeu `cash` étendu.
+- **Fournisseurs** :
+  - B1 : complément d'avance regroupé, au lieu d'une erreur prise pour transitoire et rejouée sans fin ;
+  - B2 : décision d'écart refusée si l'accepté serait dépassé depuis la demande ;
+  - B3 : l'auteur ne valide pas son document par la commande générique ;
+  - B5 : références comparées sans casse ni ponctuation ;
+  - B6 : produit et réception comptabilisée contrôlés ;
+  - B8 : identifiants de facture en minuscules pour l'ordre des verrous.
+- **Dépenses** : A3, un site comme objet de coût est celui de la dépense, et une ferme pour des frais d'une espèce.
+- **Vérifications** :
+  - D2 : facturé des BC (`INVOICED_QTY_DRIFT`) dans la réconciliation quotidienne ;
+  - D3 : aucun plafond sur les écarts rapportés ;
+  - D5 : compte payeur, objet de coût, mouvement d'origine d'un paiement annulé, comparaison sûre en présence de `NULL`.
+
+D3 n'a pas de mutation détectable sans 51 écarts du même contrôle : c'est le retrait d'un plafond, vérifié à la lecture.
+
+Alignés dans la documentation sans changement de code :
+- A1 : objet de coût inconnu refusé même hors ligne (ADR-060 §6 aligné sur §8 et AV-352) ;
+- A2 : sans politique `EXPENSE` active, aucune demande (ADR-060 §6 aligné sur AV-351) ;
+- A4 : une politique `EXPENSE` doit nommer `finance.expense.approve` ;
+- A5 : site de la dépense = site de la saisie (ADR-060 §10 aligné sur le dictionnaire).
+
+Réfutés : B7 (accepté par ADR-061 §6 : la décision est refusée proprement, AV-363) et la moitié de B5 (l'appareil d'une commande n'est jamais nul).
+
+**Pour la session principale (hors de P8, non corrigés ici)** :
+- B4 : `approvals.request.approve` n'a aucune garde hors ligne. Une décision saisie hors ligne ou antidatée décaisse un paiement à la date de l'appareil, alors que les machines à états disent « aucune décision hors ligne ». Le correctif est générique (`buildDecisionCommandHandler`) et touche tous les types de décision.
+- A7 : l'annulation d'une dépense de frais généraux et `production.overhead.allocate` ne partagent aucun verrou. Le même trou existe déjà dans `inventory.overhead.cancel` (P7). Le correctif est un verrou partagé sur la répartition du mois.
+- A6 : un justificatif exigé entre 10 000 et 50 000 n'est jamais vérifié à l'arrivée du fichier. Cela relève d'une alerte asynchrone, en P9.
+

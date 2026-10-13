@@ -15,9 +15,12 @@ import {
   quantityFromDecimal,
   quantityToDecimal,
   invoicedQuantitiesByOrderLine,
+  matchSupplierInvoice,
+  quantityExcessSince,
   supplierInvoiceStatusFromPaid,
   supplierInvoiceTransition,
   type IdGenerator,
+  type InvoiceMismatchDetail,
   type SupplierInvoiceStatus,
 } from '@gic/domain';
 import { sql } from 'kysely';
@@ -259,6 +262,60 @@ export async function approveSupplierInvoice(
   });
 }
 
+/**
+ * Revue de P8-14 (ADR-061 §3, AV-361) : lignes de BC dont l'approbation de cette facture porterait le
+ * facturé au-delà de l'accepté sans que l'écart de la demande le dise — une autre facture des mêmes
+ * lignes a été approuvée depuis la saisie. Rapprochement refait sous le verrou du BC, aux tolérances
+ * en vigueur à la décision.
+ */
+export async function quantityExcessSinceRequest(
+  uow: Uow,
+  invoice: SupplierInvoiceRow,
+  at: Date,
+): Promise<readonly string[]> {
+  if (invoice.purchaseOrderId === null) return [];
+  const order = await lockOrderForInvoicing(uow, invoice.purchaseOrderId);
+  if (!order) return [];
+  const stored = await uow
+    .selectFrom('finance_supplier_invoices')
+    .select('mismatch_details')
+    .where('id', '=', toBin(invoice.id))
+    .executeTakeFirstOrThrow();
+  const raw: unknown = stored.mismatch_details;
+  const recorded = (typeof raw === 'string' ? JSON.parse(raw) : (raw ?? [])) as
+    readonly InvoiceMismatchDetail[];
+  const lines = await uow
+    .selectFrom('finance_supplier_invoice_lines')
+    .select(['po_line_id', 'quantity_base', 'unit_price_xaf', 'line_total_xaf'])
+    .where('invoice_id', '=', toBin(invoice.id))
+    .orderBy('line_no')
+    .execute();
+  const current = matchSupplierInvoice({
+    supplierId: invoice.supplierId,
+    order: {
+      supplierId: order.supplierId,
+      lines: order.lines.map((line) => ({
+        poLineId: line.poLineId,
+        unitPriceXaf: line.unitPriceXaf,
+        accepted: quantityFromDecimal(line.acceptedQtyBase),
+        invoiced: quantityFromDecimal(line.invoicedQtyBase),
+      })),
+    },
+    lines: lines.map((line) => ({
+      poLineId: fromBinOrNull(line.po_line_id),
+      quantity:
+        line.quantity_base === null ? null : quantityFromDecimal(Number(line.quantity_base)),
+      unitPriceXaf: line.unit_price_xaf === null ? null : Number(line.unit_price_xaf),
+      lineTotalXaf: Number(line.line_total_xaf),
+    })),
+    printedTotalXaf: null,
+    qtyTolerancePct: await numberSettingAt(uow, 'finance.invoice_match_qty_tolerance_pct', at, 0),
+    priceToleranceXaf: await numberSettingAt(uow, 'finance.invoice_match_price_tolerance_xaf', at, 0),
+    withoutOrderMode: 'REVIEW',
+  });
+  return quantityExcessSince(recorded, current);
+}
+
 /** Contestation d'une facture en écart (`MISMATCH` → `DISPUTED`). Facture déjà verrouillée. */
 export async function disputeSupplierInvoice(
   uow: Uow,
@@ -290,7 +347,8 @@ export async function lockSupplierInvoices(
   invoiceIds: readonly string[],
 ): Promise<ReadonlyMap<string, SupplierInvoiceRow>> {
   const locked = new Map<string, SupplierInvoiceRow>();
-  for (const id of [...new Set(invoiceIds)].sort()) {
+  // Ordre binaire de MySQL = ordre des chaînes en minuscules (revue de P8-14).
+  for (const id of [...new Set(invoiceIds.map((value) => value.toLowerCase()))].sort()) {
     const invoice = await loadSupplierInvoice(uow, id, { lock: 'update' });
     if (invoice) locked.set(id, invoice);
   }

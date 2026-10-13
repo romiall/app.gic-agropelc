@@ -4,10 +4,12 @@
  * invariants. Lecture seule, sur toute la base ou sur des identifiants donnés.
  *
  * Dépenses :
- * - `EXPENSE_MOVEMENT` : une dépense payée a son mouvement `EXPENSE` sortant, de même montant ;
+ * - `EXPENSE_MOVEMENT` : une dépense payée a son mouvement `EXPENSE` sortant, de même montant, sur le
+ *   compte payeur ;
  * - `EXPENSE_COST` (INV-FIN-08, BR-FIN-022) : le coût net de la dépense (écritures source `EXPENSE` moins
  *   leurs contrepassations) vaut son montant si elle porte son coût (imputée et enregistrée sans
- *   validation, approuvée ou payée), zéro sinon ;
+ *   validation, approuvée ou payée), zéro sinon ; `EXPENSE_COST_OBJECT` : chaque écriture d'origine porte
+ *   l'objet de coût et l'espèce de la dépense ;
  * - `EXPENSE_RECLASSIFICATION` (AV-355) : une dépense rejetée après paiement est reclassée dans la
  *   catégorie système.
  *
@@ -16,11 +18,18 @@
  * - `PAYMENT_ALLOCATION` : un paiement décaissé vaut Σ affectations actives + avance ; en attente, Σ
  *   affectations prévues + avance ; rejeté ou annulé, aucune affectation prévue ni active ;
  * - `PAYMENT_MOVEMENT` : un paiement décaissé a son mouvement `SUPPLIER_PAYMENT` sortant de même
- *   montant ; annulé après décaissement, son mouvement inverse.
+ *   montant, sur le compte payeur ; annulé après décaissement, ce mouvement d'origine et son inverse ;
+ * - `INVOICED_QTY_DRIFT` (ADR-061 §3) : le facturé d'une ligne de BC, écrit par `procurement`, vaut Σ
+ *   des lignes des factures approuvées, partiellement payées ou payées (lu par l'API publique de
+ *   `procurement`, BC par BC).
+ *
+ * Revue de P8-14 : aucun plafond sur le nombre d'écarts rapportés ; contrôles du compte, de l'objet de
+ * coût, du mouvement d'origine d'un paiement annulé et du facturé des BC ajoutés.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { invoicedQuantitiesOfOrder } from '../../../procurement/application/public/index.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -66,8 +75,8 @@ export async function verifyExpenses(
         LEFT JOIN finance_cash_movements m ON m.id = e.cash_movement_id
        WHERE ${where} AND e.paid_at IS NOT NULL
          AND (m.id IS NULL OR m.movement_type <> 'EXPENSE' OR m.direction <> 'OUT' OR m.amount_xaf <> e.amount_xaf
-              OR m.source_doc_id <> e.id)
-       LIMIT 50`,
+              OR m.source_doc_id <> e.id OR NOT (m.cash_account_id <=> e.paid_from_account_id))
+`,
   )) {
     breaches.push({ ref: row.ref, invariant: 'EXPENSE_MOVEMENT', detail: row.detail });
   }
@@ -86,7 +95,7 @@ export async function verifyExpenses(
        WHERE ${where}
        GROUP BY e.id, e.doc_number, e.cost_object_type, e.status, e.amount_xaf
       HAVING net <> expected
-       LIMIT 50`,
+`,
   )) {
     breaches.push({
       ref: row.ref,
@@ -101,9 +110,26 @@ export async function verifyExpenses(
         FROM finance_expenses e
         LEFT JOIN finance_expense_categories c ON c.id = e.reclassified_category_id
        WHERE ${where} AND e.status = 'PAID_REJECTED' AND (c.id IS NULL OR c.is_system = FALSE)
-       LIMIT 50`,
+`,
   )) {
     breaches.push({ ref: row.ref, invariant: 'EXPENSE_RECLASSIFICATION', detail: 'catégorie système absente' });
+  }
+  for (const row of await rowsOf<{ ref: string }>(
+    executor,
+    sql<{ ref: string }>`
+      SELECT DISTINCT e.doc_number AS ref
+        FROM finance_expenses e
+        JOIN inventory_cost_entries o
+          ON o.source_type = 'EXPENSE' AND o.source_id = e.id AND o.reverses_entry_id IS NULL
+       WHERE ${where}
+         AND NOT (o.cost_object_type <=> e.cost_object_type AND o.cost_object_id <=> e.cost_object_id
+                  AND o.species_group <=> e.species_group)`,
+  )) {
+    breaches.push({
+      ref: row.ref,
+      invariant: 'EXPENSE_COST_OBJECT',
+      detail: 'écriture de coût sur un autre objet que celui de la dépense',
+    });
   }
   return { ok: breaches.length === 0, checked: Number(counted[0]?.n ?? 0), breaches };
 }
@@ -129,7 +155,7 @@ export async function verifySupplierLedger(
        WHERE ${invoices}
        GROUP BY i.id, i.doc_number, i.paid_xaf
       HAVING paid <> allocated
-       LIMIT 50`,
+`,
   )) {
     breaches.push({
       ref: row.ref,
@@ -150,7 +176,7 @@ export async function verifySupplierLedger(
       HAVING (status = 'RECORDED' AND (amount <> active + unallocated OR planned <> 0))
           OR (status = 'PENDING_APPROVAL' AND (amount <> planned + unallocated OR active <> 0))
           OR (status IN ('REJECTED', 'CANCELLED') AND (active <> 0 OR planned <> 0))
-       LIMIT 50`,
+`,
   )) {
     breaches.push({
       ref: row.ref,
@@ -167,13 +193,49 @@ export async function verifySupplierLedger(
         LEFT JOIN finance_cash_movements m ON m.id = p.cash_movement_id
         LEFT JOIN finance_cash_movements c ON c.id = p.cancel_movement_id
        WHERE ${payments}
-         AND ((p.status = 'RECORDED' AND (m.id IS NULL OR m.movement_type <> 'SUPPLIER_PAYMENT' OR m.direction <> 'OUT'
-                                          OR m.amount_xaf <> p.amount_xaf OR m.source_doc_id <> p.id))
+         AND (((p.status = 'RECORDED' OR (p.status = 'CANCELLED' AND p.cash_movement_id IS NOT NULL))
+               AND (m.id IS NULL OR m.movement_type <> 'SUPPLIER_PAYMENT' OR m.direction <> 'OUT'
+                    OR m.amount_xaf <> p.amount_xaf OR m.source_doc_id <> p.id
+                    OR NOT (m.cash_account_id <=> p.from_account_id)))
            OR (p.status = 'CANCELLED' AND p.cash_movement_id IS NOT NULL
-               AND (c.id IS NULL OR c.direction <> 'IN' OR c.amount_xaf <> p.amount_xaf OR c.reverses_movement_id <> p.cash_movement_id)))
-       LIMIT 50`,
+               AND (c.id IS NULL OR c.direction <> 'IN' OR c.amount_xaf <> p.amount_xaf
+                    OR NOT (c.reverses_movement_id <=> p.cash_movement_id))))
+`,
   )) {
     breaches.push({ ref: row.ref, invariant: 'PAYMENT_MOVEMENT', detail: row.detail });
+  }
+  // Facturé des BC des factures du périmètre : Σ de toutes les factures qui le portent, comparé ligne à
+  // ligne à ce que `procurement` a écrit.
+  const expected = await rowsOf<{ order_id: Buffer; po_line_id: Buffer; quantity: string }>(
+    executor,
+    sql<{ order_id: Buffer; po_line_id: Buffer; quantity: string }>`
+      SELECT i.purchase_order_id AS order_id, il.po_line_id AS po_line_id,
+             SUM(CASE WHEN i.status IN ('APPROVED', 'PARTIALLY_PAID', 'PAID') THEN il.quantity_base ELSE 0 END)
+               AS quantity
+        FROM finance_supplier_invoice_lines il
+        JOIN finance_supplier_invoices i ON i.id = il.invoice_id
+       WHERE il.po_line_id IS NOT NULL
+         AND i.purchase_order_id IN (SELECT i.purchase_order_id FROM finance_supplier_invoices i WHERE ${invoices})
+       GROUP BY i.purchase_order_id, il.po_line_id`,
+  );
+  const byOrder = new Map<string, Map<string, number>>();
+  for (const row of expected) {
+    const orderId = fromBin(row.order_id);
+    const lines = byOrder.get(orderId) ?? new Map<string, number>();
+    lines.set(fromBin(row.po_line_id), Math.round(Number(row.quantity) * 1000));
+    byOrder.set(orderId, lines);
+  }
+  for (const [orderId, lines] of byOrder) {
+    for (const [poLineId, invoiced] of await invoicedQuantitiesOfOrder(executor, orderId)) {
+      const sum = lines.get(poLineId) ?? 0;
+      if (Math.round(invoiced * 1000) !== sum) {
+        breaches.push({
+          ref: poLineId,
+          invariant: 'INVOICED_QTY_DRIFT',
+          detail: `facturé ${invoiced} ≠ factures approuvées ${sum / 1000} (BC ${orderId})`,
+        });
+      }
+    }
   }
   return { ok: breaches.length === 0, checked: Number(counted[0]?.n ?? 0), breaches };
 }

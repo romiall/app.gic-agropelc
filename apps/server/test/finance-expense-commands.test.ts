@@ -26,6 +26,7 @@ import {
   grantTestPermission,
   insertTestDevice,
   insertTestRole,
+  insertTestSite,
   insertTestUser,
   insertTestZone,
   neutralizePolicy,
@@ -205,6 +206,10 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
   }
 
   /** Lot de production simulé par son lot de stock de traçabilité (origine `PRODUCTION_LOT`). */
+  /** Ferme neuve (frais généraux d'une espèce, ADR-026). */
+  const newFarm = () =>
+    tx((trx) => insertTestSite(trx, root.userId, zoneId, { siteType: 'FERME' }));
+
   async function newLot(status: 'OPEN' | 'CLOSED' = 'OPEN'): Promise<string> {
     const lotId = freshUuid();
     await db
@@ -506,7 +511,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
   });
 
   it('au-delà du seuil : PENDING_APPROVAL, demande avec justificatif, sans coût ; non payable ; annulée par l’auteur, demande retirée', async () => {
-    const site = await newPosSite(root.userId, zoneId);
+    const site = await newFarm();
     const photo = freshUuid();
     const { id, result } = await record(
       fin,
@@ -571,7 +576,7 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
     ]);
 
     // Frais généraux d'une espèce : le mois déjà réparti interdit l'annulation (ADR-026).
-    const farm = await newPosSite(root.userId, zoneId);
+    const farm = await newFarm();
     const overhead = await record(fin, {
       categoryId: category.DIVERS,
       amountXaf: 4_000,
@@ -697,5 +702,33 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
       'LOCAL_REF_DUPLICATE',
     ]);
     expect((await expenseRow(offline.id))?.local_ref).toBeNull();
+  });
+
+  it('revue de P8-14 : un site comme objet de coût est le site de la dépense ; frais généraux d’une espèce sur une ferme seulement', async () => {
+    const shop = await newPosSite(root.userId, zoneId);
+    const farm = await newFarm();
+    const attempt = (siteId: string, costObject: Record<string, unknown>) =>
+      record(fin, {
+        categoryId: category.DIVERS,
+        amountXaf: 3_000,
+        description: 'Petit matériel',
+        siteId,
+        costObject,
+        paidNow: false,
+      });
+    // Saisie sur un site, imputée à un autre : refusée (la portée vérifiée est celle de la saisie).
+    expect(codeOf((await attempt(shop, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' })).result)).toBe(
+      'COST_OBJECT_INVALID',
+    );
+    // Frais généraux d'une espèce sur un point de vente : aucune répartition possible, refusés.
+    expect(codeOf((await attempt(shop, { type: 'SITE', id: shop, speciesGroup: 'VOLAILLE' })).result)).toBe(
+      'SITE_NOT_FARM',
+    );
+    // Sur la ferme elle-même : acceptés, FRAIS_GENERAUX de l'espèce.
+    const ok = await attempt(farm, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' });
+    expect(codeOf(ok.result)).toBe('APPLIED');
+    expect(await costsOf(ok.id)).toEqual([
+      expect.objectContaining({ object: 'SITE', objectId: farm, costType: 'FRAIS_GENERAUX', species: 'VOLAILLE' }),
+    ]);
   });
 });

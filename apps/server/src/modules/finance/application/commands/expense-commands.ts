@@ -211,6 +211,22 @@ export function registerExpenseCommands(
         'Objet de coût inconnu (lot, lot d’incubation ou site).',
       );
     }
+    // Revue de P8-14 (ADR-060 §8) : un site comme objet de coût est le site de la dépense, dont la
+    // portée vient d'être vérifiée ; des frais généraux d'une espèce se répartissent sur une ferme.
+    if (p.costObject?.type === 'SITE') {
+      if (p.costObject.id.toLowerCase() !== site.id) {
+        return rejected(
+          'COST_OBJECT_INVALID',
+          'Les frais d’un site s’imputent au site de la dépense.',
+        );
+      }
+      if (p.costObject.speciesGroup !== undefined && site.siteType !== 'FERME') {
+        return rejected(
+          'SITE_NOT_FARM',
+          'Les frais généraux d’une espèce se saisissent sur une ferme.',
+        );
+      }
+    }
     let account: CashAccountSummary | undefined;
     if (p.paidNow) {
       account = await findCashAccount(uow, p.paidFromAccountId!);

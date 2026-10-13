@@ -22,7 +22,7 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
    - Les deux sont visibles de l'appareil (jeu `me`), qui les applique hors ligne.
    - La politique `EXPENSE_DEFAULT` dit seulement qui approuve (`finance.expense.approve`).
    - Sans politique active : pas de validation, comme pour les pertes (AV-351).
-   - La limite d'un rôle (`role_permissions.limits.maxAmountXaf`, RC-06) est vérifiée par le gestionnaire de décision : mécanisme prêt, aucune valeur semée (AV-350).
+   - La limite d'un rôle (`role_permissions.limits.maxAmountXaf`, RC-06) est vérifiée par le gestionnaire de décision : mécanisme prêt, aucune valeur semée (AV-350). Elle se lit sur `finance.expense.approve` : une politique `EXPENSE` doit donc nommer cet approbateur (revue de P8-14 : une autre permission ferait refuser toute approbation, `APPROVAL_LIMIT_EXCEEDED`).
 3. **Statuts** (SM-EXPENSE) :
    - à payer : `RECORDED` (sous le seuil) ou `PENDING_APPROVAL` ;
    - payée immédiatement : `PAID` ou `PAID_PENDING_APPROVAL` ;
@@ -42,22 +42,24 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
    - catégorie désactivée ou non autorisée au PDV ;
    - plafond du PDV dépassé ;
    - justificatif manquant ;
-   - objet de coût clos ou introuvable.
+   - objet de coût clos.
 
-   Le motif est gardé dans `review_reasons`, avec l'avertissement `EXPENSE_REVIEW_REQUIRED`. Sans politique `EXPENSE` active, ces motifs ouvrent quand même une demande sous la politique de repli `EXPENSE_DEFAULT` du seed ; s'il n'en existe aucune, la dépense reste appliquée avec ses motifs et l'avertissement. En ligne, les mêmes règles refusent la commande.
+   Un objet de coût introuvable n'est pas un motif de revue : il est refusé, même hors ligne (§8). Précision de la revue de P8-14, qui aligne ce paragraphe sur le §8, AV-352 et le dictionnaire : un appareil ne cite que des objets qu'il a tirés, et une création hors ligne sur le même appareil précède la dépense dans sa file (`depends_on`).
+
+   Le motif est gardé dans `review_reasons`, avec l'avertissement `EXPENSE_REVIEW_REQUIRED`. Sans politique `EXPENSE` active, aucune demande n'est ouverte (AV-351) : la dépense reste appliquée avec ses motifs et l'avertissement, et son coût est écrit. La politique semée `EXPENSE_DEFAULT` est toujours active, sauf si la Direction l'a retirée. Précision de la revue de P8-14 : la phrase d'origine annonçait un repli sur `EXPENSE_DEFAULT` même retirée, ce que le code ne fait pas. En ligne, les mêmes règles refusent la commande.
 7. **Rejet après paiement** (BR-FIN-022, AV-355). Le décaissement reste. La dépense passe `PAID_REJECTED`, est reclassée dans la catégorie système `NON_JUSTIFIEE` (`reclassified_category_id`) et imputée à son déclarant (`responsibility_user_id`), comme une perte non justifiée (AV-038). Aucune écriture de coût. Le recouvrement auprès de la personne se fait hors de l'application au MVP.
 8. **Coût des objets** (BR-FIN-022, AV-356, AV-357). L'écriture de coût passe par `recordCostEntry` d'`inventory` (source `EXPENSE`, `source_id` = id de la dépense). Elle est écrite dès l'enregistrement sans validation, ou à l'approbation ; jamais pour une dépense rejetée. Le type de coût suit l'objet :
    - `PRODUCTION_LOT` ou `INCUBATION_BATCH` : le `default_cost_type` de la catégorie, parmi `VETERINAIRE`, `ALIMENT`, `AUTRE_INTRANT`, `DEPENSE_DIRECTE`, sinon `DEPENSE_DIRECTE` ;
    - `SITE` avec une espèce : `FRAIS_GENERAUX` de cette espèce, qui alimente la masse répartie par `production.overhead.allocate` (ADR-026) ;
    - `SITE` sans espèce : `DEPENSE_DIRECTE` du site (PDV compris), hors répartition.
 
-   L'existence et le statut d'un lot se lisent par une nouvelle lecture publique d'`inventory` (`lotCostObjectStatus`), qui s'appuie sur le lot de stock d'origine : `finance` n'importe pas `production`. Un site est contrôlé par `finance` (existence). Un objet inconnu est refusé, même hors ligne (validité, BR-SYN-007). Annuler une dépense contrepasse son écriture (`reverseCostEntries`). C'est refusé si le mois de frais généraux de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`, même garde qu'`inventory.overhead.cancel`).
+   L'existence et le statut d'un lot se lisent par une nouvelle lecture publique d'`inventory` (`lotCostObjectStatus`), qui s'appuie sur le lot de stock d'origine : `finance` n'importe pas `production`. Un site est contrôlé par `finance` : il existe, c'est le site de la dépense, dont la portée vient d'être vérifiée (`COST_OBJECT_INVALID` sinon), et avec une espèce c'est une ferme (`SITE_NOT_FARM`, comme `inventory.overhead.record`). Précision de la revue de P8-14 : un vendeur ne peut plus imputer des frais généraux à une autre ferme. Un objet inconnu est refusé, même hors ligne (validité, BR-SYN-007). Annuler une dépense contrepasse son écriture (`reverseCostEntries`). C'est refusé si le mois de frais généraux de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`, même garde qu'`inventory.overhead.cancel`).
 9. **Catégories** (AV-058, AV-357) :
    - `finance.expense_categories` a un identifiant UUIDv7, semé une fois, comme les motifs (`REASON_CODE`). Ce n'est pas une clé dérivée du code (ADR-031) : l'enveloppe d'une commande exige un UUIDv7 comme `aggregate_id`, et une catégorie semée doit pouvoir être modifiée ou désactivée par commande. La clé naturelle reste le code (unique) ;
    - elle est publiée dans le jeu `catalog` (`EXPENSE_CATEGORY`) et rattrapée par le seed (`publish-references`) ;
    - commandes `finance.expense_category.create`, `.update`, `.deactivate` (nouvelle permission `finance.expense_category.manage`, FINANCE et ADMIN) ;
    - `NON_JUSTIFIEE` est une catégorie système (`is_system`), refusée à la saisie.
-10. **Numérotation et site**. `DEP-{site}-{AAAA}-{seq6}`, avec pour site celui du compte payeur, sinon celui de la saisie (`siteId` de la charge utile). Le site porte la portée (`finance.expense.read`, `SITE`) ; la propriété `OWN` est celle de l'auteur.
+10. **Numérotation et site**. `DEP-{site}-{AAAA}-{seq6}`, avec pour site celui de la saisie (`siteId` de la charge utile), comme le dit le dictionnaire. Précision de la revue de P8-14 : le texte d'origine disait « celui du compte payeur, sinon celui de la saisie », ce que le code ne fait pas. Le site porte la portée (`finance.expense.read`, `SITE`) ; la propriété `OWN` est celle de l'auteur.
 11. **Jeux hors ligne**. Les dépenses de l'auteur des 30 derniers jours vont dans le jeu `cash` (`EXPENSE`, portée `USER`). Les catégories vont dans `catalog`. Les seuils vont dans `me`.
 
     Précision de la revue de P8-14 : la fenêtre comprend aussi les dépenses modifiées dans les 30 derniers jours et celles qui attendent une décision. Sinon, la décision sur une dépense plus ancienne n'arriverait jamais sur l'appareil de son auteur.

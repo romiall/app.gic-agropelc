@@ -157,7 +157,13 @@ export type SupplierInvoiceDecisionPayload = z.infer<typeof supplierInvoiceDecis
 // --- Paiements fournisseurs (finance.supplier_payment.*) ----------------------------------------
 
 const allocationsSchema = z
-  .array(z.object({ invoiceId: uuid, amountXaf: positiveXaf }))
+  // Minuscules : l'ordre des verrous des factures compare les identifiants (revue de P8-14).
+  .array(
+    z.object({
+      invoiceId: uuid.transform((id) => id.toLowerCase()),
+      amountXaf: positiveXaf,
+    }),
+  )
   .max(SUPPLIER_PAYMENT_MAX_ALLOCATIONS)
   .refine(
     (allocations) =>

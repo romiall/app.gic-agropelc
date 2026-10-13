@@ -56,6 +56,7 @@ export const INVOICE_MISMATCH_REASONS = [
   'PRICE_MISMATCH',
   'LINE_AMOUNT_MISMATCH',
   'TOTAL_MISMATCH',
+  'PRODUCT_MISMATCH',
 ] as const;
 export type InvoiceMismatchReason = (typeof INVOICE_MISMATCH_REASONS)[number];
 
@@ -71,6 +72,8 @@ export interface InvoiceMismatchDetail {
 
 export interface InvoiceLineInput {
   readonly poLineId: string | null;
+  /** Produit facturé, s'il est saisi : comparé à celui de la ligne de BC (revue de P8-14). */
+  readonly productId?: string | null;
   readonly quantity: Quantity | null;
   readonly unitPriceXaf: number | null;
   readonly lineTotalXaf: number;
@@ -78,6 +81,8 @@ export interface InvoiceLineInput {
 
 export interface MatchedOrderLine {
   readonly poLineId: string;
+  /** Produit de la ligne de BC, s'il est connu. */
+  readonly productId?: string;
   readonly unitPriceXaf: number;
   /** Accepté de la ligne de BC (réceptions comptabilisées). */
   readonly accepted: Quantity;
@@ -183,6 +188,14 @@ export function matchSupplierInvoice(input: {
           'INVOICE_LINE_INVALID',
         );
       }
+      if (
+        line.productId !== undefined &&
+        line.productId !== null &&
+        orderLine.productId !== undefined &&
+        line.productId.toLowerCase() !== orderLine.productId.toLowerCase()
+      ) {
+        details.push(detail('PRODUCT_MISMATCH', { lineIndex: index, poLineId: line.poLineId }));
+      }
       assertAmount(line.unitPriceXaf, `Ligne ${index + 1}`);
       if (Math.abs(line.unitPriceXaf - orderLine.unitPriceXaf) > input.priceToleranceXaf) {
         details.push(
@@ -226,6 +239,30 @@ export function matchSupplierInvoice(input: {
     details.push(detail('TOTAL_MISMATCH', { expected: totalXaf, actual: input.printedTotalXaf }));
   }
   return { conforming: details.length === 0, totalXaf, details };
+}
+
+/**
+ * Lignes de BC dont le facturé dépasse désormais l'accepté sans que l'écart enregistré à la saisie le
+ * dise (revue de P8-14, ADR-061 §3) : une autre facture des mêmes lignes a été approuvée depuis. La
+ * décision d'approuver l'écart ne serait plus informée.
+ */
+export function quantityExcessSince(
+  recorded: readonly InvoiceMismatchDetail[],
+  current: SupplierInvoiceMatch,
+): readonly string[] {
+  const known = new Set(
+    recorded
+      .filter((detail) => detail.reason === 'QUANTITY_ABOVE_ACCEPTED')
+      .map((detail) => detail.poLineId),
+  );
+  return current.details
+    .filter((detail) => detail.reason === 'QUANTITY_ABOVE_ACCEPTED' && !known.has(detail.poLineId))
+    .map((detail) => detail.poLineId as string);
+}
+
+/** Référence fournisseur comparée sans casse ni ponctuation (BR-FIN-030 ; revue de P8-14). */
+export function normalizedInvoiceRef(ref: string): string {
+  return ref.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 /** Échéance d'une facture (AV-360) : saisie, sinon date + délai du fournisseur, sinon la date. */

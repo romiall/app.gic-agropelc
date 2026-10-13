@@ -24,6 +24,7 @@ import { registerExpenseCommands } from '../src/modules/finance/application/comm
 import { registerSupplierInvoiceCommands } from '../src/modules/finance/application/commands/supplier-invoice-commands.js';
 import { registerSupplierPaymentCommands } from '../src/modules/finance/application/commands/supplier-payment-commands.js';
 import {
+  recordCashMovement,
   verifyExpenses,
   verifySupplierLedger,
 } from '../src/modules/finance/application/public/index.js';
@@ -37,6 +38,7 @@ import {
   grantTestPermission,
   insertTestDevice,
   insertTestRole,
+  insertTestSite,
   insertTestUser,
   insertTestZone,
   neutralizePolicy,
@@ -490,7 +492,7 @@ describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeou
     ).toEqual(['PAYMENT_ALLOCATION', 'PAYMENT_MOVEMENT']);
     // Dépense payée sur un mouvement qui n'est pas le sien.
     expect(await breached((trx) => paidExpense(trx))).toEqual(['EXPENSE_MOVEMENT']);
-    // Coût écrit pour une dépense non imputée (INV-FIN-08).
+    // Coût écrit pour une dépense non imputée (INV-FIN-08), sur un objet qui n'est pas le sien.
     expect(
       await breached((trx) =>
         trx
@@ -509,7 +511,7 @@ describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeou
           })
           .execute(),
       ),
-    ).toEqual(['EXPENSE_COST']);
+    ).toEqual(['EXPENSE_COST', 'EXPENSE_COST_OBJECT']);
     // Rejetée après paiement sans la catégorie système (AV-355).
     expect(
       await breached((trx) =>
@@ -523,5 +525,236 @@ describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeou
     // Rien n'est resté.
     expect((await verifySupplierLedger(db, scope)).breaches).toEqual([]);
     expect((await verifyExpenses(db, { expenseIds: [expenseId] })).breaches).toEqual([]);
+  });
+
+  it('revue de P8-14 : compte payeur, objet de coût, mouvement d’origine d’un paiement annulé et facturé des BC sont contrôlés (écart posé dans une transaction annulée)', async () => {
+    const paid = await approvedInvoice(40);
+    const paymentId = freshUuid();
+    await ok(pay(fin1, payment(paid.supplierId, paid.invoiceId, 100_000), paymentId));
+    const waiting = await approvedInvoice(60);
+    const pendingId = freshUuid();
+    await ok(pay(fin1, payment(waiting.supplierId, waiting.invoiceId, 600_000), pendingId));
+    // Frais généraux de volaille d'une ferme : écriture de coût sur le site, avec l'espèce.
+    const farm = await tx((trx) => insertTestSite(trx, root.userId, zoneId, { siteType: 'FERME' }));
+    const otherFarm = await tx((trx) =>
+      insertTestSite(trx, root.userId, zoneId, { siteType: 'FERME' }),
+    );
+    const expenseId = freshUuid();
+    await ok(
+      run(fin1, 'finance.expense.record', expenseId, at('09:00'), {
+        categoryId: transportCategory,
+        amountXaf: 8_000,
+        description: 'Transport des poussins',
+        siteId: farm,
+        costObject: { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' },
+        paidNow: false,
+      }),
+    );
+    const otherBank = await newAccount({ type: 'BANQUE', responsible: fin1.userId });
+    await fund(idGenerator, otherBank, 1_000_000, at('05:00', '2026-10-05'), root.userId);
+    const scope = {
+      invoiceIds: [paid.invoiceId, waiting.invoiceId],
+      paymentIds: [paymentId, pendingId],
+    };
+    expect((await verifySupplierLedger(db, scope)).breaches).toEqual([]);
+    expect((await verifyExpenses(db, { expenseIds: [expenseId] })).breaches).toEqual([]);
+
+    class Rollback extends Error {}
+    const breached = async (
+      corrupt: (trx: Transaction<DB>) => Promise<unknown>,
+    ): Promise<string[]> => {
+      let found: string[] = [];
+      await db
+        .transaction()
+        .execute(async (trx) => {
+          await corrupt(trx);
+          const suppliers = await verifySupplierLedger(trx, scope);
+          const expenses = await verifyExpenses(trx, { expenseIds: [expenseId] });
+          found = [...suppliers.breaches, ...expenses.breaches].map((b) => b.invariant).sort();
+          throw new Rollback();
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof Rollback)) throw error;
+        });
+      return found;
+    };
+    const movement = (
+      trx: Transaction<DB>,
+      input: { account: string; direction: 'OUT'; amount: number; source: string },
+    ) =>
+      recordCashMovement(
+        trx,
+        { idGenerator },
+        {
+          cashAccountId: input.account,
+          direction: input.direction,
+          amountXaf: input.amount,
+          movementType: 'SUPPLIER_PAYMENT',
+          sourceDocType: 'SUPPLIER_PAYMENT',
+          sourceDocId: input.source,
+          occurredAt: new Date(at('16:00')),
+          createdBy: fin1.userId,
+          allowNegative: true,
+        },
+      );
+
+    // Décaissé sur un autre compte que le compte payeur.
+    expect(
+      await breached(async (trx) => {
+        const out = await movement(trx, {
+          account: otherBank,
+          direction: 'OUT',
+          amount: 600_000,
+          source: pendingId,
+        });
+        await trx
+          .updateTable('finance_supplier_payments')
+          .set({
+            status: 'RECORDED',
+            cash_movement_id: toBin(out.movementId),
+            disbursed_at: new Date(at('16:00')),
+          })
+          .where('id', '=', toBin(pendingId))
+          .execute();
+      }),
+    ).toEqual(['PAYMENT_ALLOCATION', 'PAYMENT_MOVEMENT']);
+    // Annulé avec une simple entrée (pas l'inverse de la sortie d'origine).
+    expect(
+      await breached(async (trx) => {
+        // Une simple entrée de même montant, pas l'inverse de la sortie d'origine.
+        const back = await recordCashMovement(
+          trx,
+          { idGenerator },
+          {
+            cashAccountId: bank,
+            direction: 'IN',
+            amountXaf: 100_000,
+            movementType: 'OPENING_BALANCE',
+            sourceDocType: 'CASH_SESSION',
+            sourceDocId: freshUuid(),
+            occurredAt: new Date(at('16:00')),
+            createdBy: fin1.userId,
+            allowNegative: false,
+          },
+        );
+        await trx
+          .updateTable('finance_supplier_payments')
+          .set({
+            status: 'CANCELLED',
+            cancel_movement_id: toBin(back.movementId),
+            cancelled_at: new Date(at('16:00')),
+            cancelled_by: toBin(dir.userId),
+            cancel_reason: 'Essai',
+          })
+          .where('id', '=', toBin(paymentId))
+          .execute();
+      }),
+    ).toContain('PAYMENT_MOVEMENT');
+    // Annulé avec l'inverse exact d'une sortie faite depuis un autre compte : l'origine est contrôlée.
+    expect(
+      await breached(async (trx) => {
+        const out = await movement(trx, {
+          account: otherBank,
+          direction: 'OUT',
+          amount: 600_000,
+          source: pendingId,
+        });
+        const back = await recordCashMovement(
+          trx,
+          { idGenerator },
+          {
+            cashAccountId: otherBank,
+            direction: 'IN',
+            amountXaf: 600_000,
+            movementType: 'SUPPLIER_PAYMENT',
+            sourceDocType: 'SUPPLIER_PAYMENT',
+            sourceDocId: pendingId,
+            occurredAt: new Date(at('16:00')),
+            createdBy: fin1.userId,
+            allowNegative: false,
+            reversesMovementId: out.movementId,
+          },
+        );
+        await trx
+          .updateTable('finance_supplier_payments')
+          .set({
+            status: 'CANCELLED',
+            cash_movement_id: toBin(out.movementId),
+            disbursed_at: new Date(at('16:00')),
+            cancel_movement_id: toBin(back.movementId),
+            cancelled_at: new Date(at('16:00')),
+            cancelled_by: toBin(dir.userId),
+            cancel_reason: 'Essai',
+          })
+          .where('id', '=', toBin(pendingId))
+          .execute();
+      }),
+    ).toEqual(['PAYMENT_ALLOCATION', 'PAYMENT_MOVEMENT']);
+    // Dépense payée par un mouvement EXPENSE juste, mais d'un autre compte que le compte payeur.
+    expect(
+      await breached(async (trx) => {
+        const out = await recordCashMovement(
+          trx,
+          { idGenerator },
+          {
+            cashAccountId: otherBank,
+            direction: 'OUT',
+            amountXaf: 8_000,
+            movementType: 'EXPENSE',
+            sourceDocType: 'EXPENSE',
+            sourceDocId: expenseId,
+            occurredAt: new Date(at('16:00')),
+            createdBy: fin1.userId,
+            allowNegative: false,
+          },
+        );
+        await trx
+          .updateTable('finance_expenses')
+          .set({
+            status: 'PAID',
+            paid_at: new Date(at('16:00')),
+            paid_from_account_id: toBin(bank),
+            paid_by: toBin(fin1.userId),
+            cash_movement_id: toBin(out.movementId),
+          })
+          .where('id', '=', toBin(expenseId))
+          .execute();
+      }),
+    ).toEqual(['EXPENSE_MOVEMENT']);
+    // Coût contrepassé puis réimputé à une autre ferme : net juste, objet faux.
+    expect(
+      await breached(async (trx) => {
+        const original = await trx
+          .selectFrom('inventory_cost_entries')
+          .selectAll()
+          .where('source_type', '=', 'EXPENSE')
+          .where('source_id', '=', toBin(expenseId))
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto('inventory_cost_entries')
+          .values({
+            ...original,
+            id: toBin(freshUuid()),
+            direction: 'CREDIT',
+            source_id: toBin(freshUuid()),
+            reverses_entry_id: original.id,
+          })
+          .execute();
+        await trx
+          .insertInto('inventory_cost_entries')
+          .values({ ...original, id: toBin(freshUuid()), cost_object_id: toBin(otherFarm) })
+          .execute();
+      }),
+    ).toEqual(['EXPENSE_COST_OBJECT']);
+    // Facturé d'une ligne de BC écrit à côté des factures.
+    expect(
+      await breached((trx) =>
+        trx
+          .updateTable('procurement_purchase_order_lines')
+          .set({ invoiced_qty_base: sql`invoiced_qty_base + 1` })
+          .where('id', '=', toBin(paid.poLineId))
+          .execute(),
+      ),
+    ).toEqual(['INVOICED_QTY_DRIFT']);
   });
 });

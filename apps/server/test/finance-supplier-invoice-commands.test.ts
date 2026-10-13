@@ -17,6 +17,7 @@ import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/applic
 import { registerSupplierInvoiceCommands } from '../src/modules/finance/application/commands/supplier-invoice-commands.js';
 import { registerSupplierPaymentCommands } from '../src/modules/finance/application/commands/supplier-payment-commands.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { supplierPayables } from '../src/modules/finance/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -24,6 +25,7 @@ import {
   freshUuid,
   grantTestPermission,
   insertTestDevice,
+  insertTestProduct,
   insertTestRole,
   insertTestUser,
   insertTestZone,
@@ -388,17 +390,8 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
       ),
     ).toBe('NOT_FOUND');
     const other = await wf09();
-    const foreignReceiptLine = await newReceiptLine({
-      createdBy: root.userId,
-      siteId: other.siteId,
-      supplierId: other.supplierId,
-      order: other.order,
-      poLineId: other.poLineId,
-      delivered: 95,
-      rejected: 0,
-      unitCostXaf: 15_000,
-      occurredAt: at('08:00', '2026-10-05'),
-    });
+    // Ligne de la réception comptabilisée d'un autre BC (et d'un autre fournisseur).
+    const foreignReceiptLine = other.order.receiptLineIds[0]!;
     const payload = invoicePayload(s, 95);
     expect(
       codeOf(
@@ -445,5 +438,122 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
       ],
     });
     expect((await invoiceRow(service.id))!.due_date.toISOString().slice(0, 10)).toBe('2026-10-20');
+  });
+
+  it('revue de P8-14 : écart aggravé depuis la demande → décision refusée, contestation puis approbation directe ; auto-approbation refusée ; référence normalisée ; produit et réception vérifiés ; facture à total nul hors des dettes', async () => {
+    const decide = (actor: Actor, verb: 'approve' | 'reject', requestId: string, extra = {}) =>
+      run(actor, `approvals.request.${verb}`, requestId, at('14:00'), {
+        requestId,
+        comment: 'Décision motivée',
+        ...extra,
+      });
+    const requestIdOf = async (invoiceId: string) => fromBin((await requestOf(invoiceId))!.id);
+
+    // Deux factures des mêmes 95 sacs, chacune en écart de prix seulement (rien de facturé à la saisie).
+    const s = await wf09();
+    const overPriced = () => ({
+      ...invoicePayload(s, 95),
+      printedTotalXaf: 95 * 15_500,
+      lines: [
+        {
+          poLineId: s.poLineId,
+          description: 'Aliment démarrage',
+          quantity: 95,
+          unitPriceXaf: 15_500,
+          lineTotalXaf: 95 * 15_500,
+        },
+      ],
+    });
+    const first = await recordInvoice(fin1, overPriced());
+    const second = await recordInvoice(fin1, overPriced());
+    expect((await invoiceRow(first.id))?.status).toBe('MISMATCH');
+    expect((await invoiceRow(second.id))?.status).toBe('MISMATCH');
+    expect(codeOf(await decide(dir, 'approve', await requestIdOf(first.id)))).toBe('APPLIED');
+    expect(await invoicedOf(s.poLineId)).toBe(95);
+    // La seconde dépasserait désormais l'accepté : la décision n'est plus informée, elle est refusée.
+    const secondRequest = await requestIdOf(second.id);
+    expect(codeOf(await decide(dir, 'approve', secondRequest))).toBe('INVOICE_MATCHING_CHANGED');
+    expect((await invoiceRow(second.id))?.status).toBe('MISMATCH');
+    expect(codeOf(await decide(dir, 'reject', secondRequest))).toBe('APPLIED');
+    expect((await invoiceRow(second.id))?.status).toBe('DISPUTED');
+    expect(
+      codeOf(
+        await run(fin2, 'finance.supplier_invoice.approve', second.id, at('15:00'), {
+          reason: 'Seconde livraison hors bon confirmée par le magasin',
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect(await invoicedOf(s.poLineId)).toBe(190);
+
+    // Auto-approbation par la commande générique (drapeau selfApproved) : refusée.
+    const s2 = await wf09();
+    const own = await recordInvoice(fin1, invoicePayload(s2, 98));
+    expect(
+      codeOf(await decide(fin1, 'approve', await requestIdOf(own.id), { selfApproved: true })),
+    ).toBe('SELF_APPROVAL_FORBIDDEN');
+    expect((await invoiceRow(own.id))?.status).toBe('MISMATCH');
+
+    // Référence comparée sans casse ni ponctuation.
+    const s3 = await wf09();
+    expect(codeOf((await recordInvoice(fin1, invoicePayload(s3, 10, 'FA-0012'))).result)).toBe(
+      'APPLIED',
+    );
+    expect(codeOf((await recordInvoice(fin1, invoicePayload(s3, 10, 'fa 0012'))).result)).toBe(
+      'INVOICE_DUPLICATE',
+    );
+
+    // Produit d'une autre ligne : écart PRODUCT_MISMATCH ; réception non comptabilisée : refus.
+    const otherProduct = await tx((trx) => insertTestProduct(trx, root.userId));
+    const base = invoicePayload(s3, 5);
+    const wrong = await recordInvoice(fin1, {
+      ...base,
+      lines: [{ ...base.lines[0]!, productId: otherProduct }],
+    });
+    expect((await invoiceRow(wrong.id))?.status).toBe('MISMATCH');
+    expect(JSON.stringify((await invoiceRow(wrong.id))?.mismatch_details)).toContain(
+      'PRODUCT_MISMATCH',
+    );
+    const quarantined = await newReceiptLine({
+      createdBy: root.userId,
+      siteId: s3.siteId,
+      supplierId: s3.supplierId,
+      order: s3.order,
+      poLineId: s3.poLineId,
+      delivered: 5,
+      rejected: 0,
+      unitCostXaf: 15_000,
+      occurredAt: at('07:00'),
+      status: 'QUARANTINED',
+    });
+    const cited = invoicePayload(s3, 5);
+    expect(
+      codeOf(
+        (
+          await recordInvoice(fin1, {
+            ...cited,
+            lines: [{ ...cited.lines[0]!, receiptLineId: quarantined }],
+          })
+        ).result,
+      ),
+    ).toBe('PO_LINE_MISMATCH');
+
+    // Facture approuvée de total nul : pas une dette.
+    const s4 = await wf09();
+    const zero = await recordInvoice(fin1, {
+      ...invoicePayload(s4, 1),
+      printedTotalXaf: 0,
+      lines: [
+        { poLineId: s4.poLineId, description: 'Sac offert', quantity: 1, unitPriceXaf: 0, lineTotalXaf: 0 },
+      ],
+    });
+    expect(
+      codeOf(
+        await run(fin2, 'finance.supplier_invoice.approve', zero.id, at('15:00'), {
+          reason: 'Geste commercial',
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect((await invoiceRow(zero.id))?.status).toBe('APPROVED');
+    expect(await supplierPayables(db, { supplierId: s4.supplierId, today: DAY })).toEqual([]);
   });
 });

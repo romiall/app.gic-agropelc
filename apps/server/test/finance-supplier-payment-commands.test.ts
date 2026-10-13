@@ -17,6 +17,7 @@ import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/applic
 import { registerSupplierInvoiceCommands } from '../src/modules/finance/application/commands/supplier-invoice-commands.js';
 import { registerSupplierPaymentCommands } from '../src/modules/finance/application/commands/supplier-payment-commands.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { verifySupplierLedger } from '../src/modules/finance/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -469,5 +470,71 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
         ).result,
       ),
     ).toBe('CASH_INSUFFICIENT');
+  });
+
+  it('revue de P8-14 : complément d’avance sur une facture déjà affectée, regroupé ; annulation intacte ; identifiant en majuscules ; validation par son auteur refusée', async () => {
+    const supplierId = await newSupplier(root.userId);
+    const invoiceId = await approvedInvoice(supplierId, 10, 20_000);
+    // 150 000 dont 50 000 affectés (identifiant en majuscules) : 100 000 d'avance.
+    const { id, result } = await pay(
+      fin1,
+      transfer(supplierId, 150_000, [{ invoiceId: invoiceId.toUpperCase(), amountXaf: 50_000 }]),
+    );
+    expect(codeOf(result)).toBe('APPLIED');
+    expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'PARTIALLY_PAID', paid_xaf: 50_000 });
+    // Complément de 100 000 sur la même facture : une seule affectation active, de 150 000.
+    expect(
+      codeOf(
+        await run(fin1, 'finance.supplier_payment.allocate', id, at('11:00'), {
+          allocations: [{ invoiceId, amountXaf: 100_000 }],
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'PARTIALLY_PAID', paid_xaf: 150_000 });
+    expect(
+      (await allocationsOf(id)).map((allocation) => [allocation.amount_xaf, allocation.status]),
+    ).toEqual([
+      [50_000, 'REVERSED'],
+      [150_000, 'ACTIVE'],
+    ]);
+    expect((await paymentRow(id)).unallocated_xaf).toBe(0);
+    expect(
+      (await verifySupplierLedger(db, { invoiceIds: [invoiceId], paymentIds: [id] })).breaches,
+    ).toEqual([]);
+    // Annulation du paiement : la facture revient à zéro, tout reste cohérent.
+    expect(
+      codeOf(await run(dir, 'finance.supplier_payment.cancel', id, at('13:00'), { reason: 'Erreur' })),
+    ).toBe('APPLIED');
+    expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'APPROVED', paid_xaf: 0 });
+    expect(
+      (await verifySupplierLedger(db, { invoiceIds: [invoiceId], paymentIds: [id] })).breaches,
+    ).toEqual([]);
+
+    // Un directeur qui saisit aussi les paiements ne valide pas le sien (drapeau selfApproved).
+    const both = await newActor('DIRECTION', root.userId);
+    await tx(async (trx) => {
+      const role = await insertTestRole(trx, root.userId);
+      await grantTestPermission(trx, role, 'finance.supplier_payment.record', root.userId);
+      await assignTestRole(trx, both.userId, role, root.userId);
+    });
+    const ownBank = await newAccount({ type: 'BANQUE', responsible: both.userId });
+    await fund(idGenerator, ownBank, 2_000_000, FUNDED_AT, root.userId);
+    const big = await approvedInvoice(supplierId, 60, 15_000);
+    const pending = await pay(both, {
+      ...transfer(supplierId, 900_000, [{ invoiceId: big, amountXaf: 900_000 }]),
+      fromAccountId: ownBank,
+    });
+    expect(codeOf(pending.result)).toBe('APPLIED');
+    const request = (await requestOf(pending.id))!;
+    expect(
+      codeOf(
+        await run(both, 'approvals.request.approve', fromBin(request.id), at('16:00'), {
+          requestId: fromBin(request.id),
+          selfApproved: true,
+          comment: 'Urgence',
+        }),
+      ),
+    ).toBe('SELF_APPROVAL_FORBIDDEN');
+    expect((await paymentRow(pending.id)).status).toBe('PENDING_APPROVAL');
   });
 });

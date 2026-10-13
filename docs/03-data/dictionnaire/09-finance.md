@@ -192,7 +192,7 @@
 | `supplier_id` | uuid → procurement.suppliers | Oui | — | |
 | `description` | varchar(1000) | Non | — | |
 | `cost_object_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SITE`) | Oui | — | |
-| `cost_object_id` | uuid | Oui | — | Lot de production, lot d'incubation ou site (sans clé étrangère, comme le registre de coûts) |
+| `cost_object_id` | uuid | Oui | — | Lot de production, lot d'incubation ou site (sans clé étrangère, comme le registre de coûts) ; un site est celui de la dépense (`COST_OBJECT_INVALID`), et une ferme s'il porte une espèce (`SITE_NOT_FARM`), revue de P8-14 |
 | `species_group` | enum(`VOLAILLE`,`PORC`) | Oui | — | Site seulement : frais généraux de cette espèce (AV-356) |
 | `paid_now` | boolean | Non | — | Payée à l'enregistrement |
 | `paid_from_account_id` | uuid → cash_accounts | Oui | — | Compte payeur |
@@ -225,7 +225,7 @@
 | `doc_number` | varchar(40) | Non | — | Type `FF`, série globale `finance.supplier_series_code` (ADR-061 §10) |
 | `site_id` | uuid → organization.sites | Oui | — | Site du BC, s'il existe |
 | `supplier_id` | uuid → procurement.suppliers | Non | — | |
-| `supplier_invoice_ref` | varchar(60) | Non | — | Numéro du fournisseur |
+| `supplier_invoice_ref` | varchar(60) | Non | — | Numéro du fournisseur ; doublon contrôlé sans casse ni ponctuation (revue de P8-14) |
 | `invoice_date` | date | Non | — | |
 | `due_date` | date | Non | — | Saisie, sinon date + délai du fournisseur, sinon date (AV-360) ; ≥ `invoice_date` |
 | `purchase_order_id` | uuid → procurement.purchase_orders | Oui | — | |
@@ -234,7 +234,7 @@
 | `tax_total_xaf` | money_xaf | Non | 0 | AV-041 |
 | `paid_xaf` | money_xaf | Non | 0 | Σ affectations actives, dénormalisé (INV-FIN-07) |
 | `status` | enum(`MISMATCH`,`DISPUTED`,`APPROVED`,`PARTIALLY_PAID`,`PAID`,`CANCELLED`) | Non | — | |
-| `mismatch_details` | json | Oui | — | Écarts de rapprochement (`matchSupplierInvoice`) |
+| `mismatch_details` | json | Oui | — | Écarts de rapprochement (`matchSupplierInvoice`), dont `PRODUCT_MISMATCH` depuis la revue de P8-14 |
 | `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande `INVOICE_MISMATCH` |
 | `approved_by`, `approved_at`, `approval_reason` | | Oui | — | Approbation (rapprochement conforme ou décision) |
 | `disputed_by`, `disputed_at`, `dispute_reason` | | Oui | — | Contestation |
@@ -315,7 +315,7 @@
 | `active_invoice_key` | uuid | Oui | généré | Facture d'une affectation non contrepassée |
 | `created_at`, `created_by` | | | | |
 
-- **PK** `id`. **UQ** `(payment_id, active_invoice_key)`. **IX** `(invoice_id, status)`. **CK** montant > 0 ; `REVERSED` ⇔ contrepassation motivée ; `ACTIVE` ⇒ date d'activation.
+- **PK** `id`. **UQ** `(payment_id, active_invoice_key)`. **IX** `(invoice_id, status)`. **CK** montant > 0 ; `REVERSED` ⇔ contrepassation motivée ; `ACTIVE` ⇒ date d'activation. Un complément d'avance sur une facture déjà affectée par le même paiement contrepasse l'affectation active et en crée une du cumul (revue de P8-14).
 - **Déclencheurs** : données immuables ; seuls `PLANNED` → `ACTIVE` → `REVERSED` (ou `PLANNED` → `REVERSED`) ; `no_delete`. **Suppr.** `IMMUABLE` sauf `REVERSED`. **Intégrité** INV-FIN-07.
 
 ## finance.v_payables (vue)

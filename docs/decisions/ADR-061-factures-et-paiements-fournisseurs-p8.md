@@ -34,22 +34,25 @@ P6 a livré bons de commande et réceptions. Le rapprochement (`GET /purchase-or
 
    Les autres écarts suivent :
    - une ligne hors BC, un fournisseur différent de celui du BC, ou un total imprimé différent de la somme des lignes, sont des écarts ;
-   - une facture sans BC est mise en revue (`finance.invoice_without_po_mode` = `REVIEW`, AV-358).
+   - une facture sans BC est mise en revue (`finance.invoice_without_po_mode` = `REVIEW`, AV-358) ;
+   - revue de P8-14 : un produit saisi différent de celui de la ligne de BC est un écart (`PRODUCT_MISMATCH`) ; une ligne de réception citée doit être comptabilisée (`POSTED`), sinon `PO_LINE_MISMATCH`.
 
    Résultat : `APPROVED` si conforme. Sinon `MISMATCH`, avec le détail dans `mismatch_details` et une demande `INVOICE_MISMATCH` sous la politique `INVOICE_MISMATCH_DEFAULT` (`finance.supplier_invoice.approve`). Une facture arrivée avant la réception est donc en `MISMATCH` (D09 l.192).
 3. **Quantités facturées : écrites par `procurement`, appelé par `finance`** (option A ; tranche D08 l.93 contre D09 l.171).
    - `procurement` expose `lockOrderForInvoicing(uow, orderId)` (en-tête puis lignes du BC verrouillés, prix, accepté, déjà facturé) et `applyInvoicedQuantities(uow, {orderId, lines:[{poLineId, deltaBase}]})`, qui met à jour `invoiced_qty_base` (les lignes de BC n'ont pas de version). Le propriétaire écrit donc sa table. Le rapprochement se fait sous ce verrou : deux factures concurrentes sur les mêmes lignes se rapprochent l'une après l'autre (P8-07).
    - `finance` l'appelle dans sa transaction : `+` quand une facture devient `APPROVED`, `−` quand une facture approuvée est annulée.
    - Une facture en `MISMATCH` ou `DISPUTED` ne compte pas. Deux factures pour la même quantité ne passent donc jamais sans décision.
+   - Précision de la revue de P8-14 : la décision doit être informée. À l'approbation d'une demande `INVOICE_MISMATCH`, le rapprochement est refait sous le verrou du BC, avec le facturé courant. Si l'accepté serait dépassé sur une ligne où l'écart enregistré à la saisie ne le disait pas (une autre facture approuvée entre-temps), la décision est refusée (`INVOICE_MATCHING_CHANGED`). Le chemin est alors : rejet de la demande, puis approbation directe et motivée de la facture contestée.
    - Le rapprochement de P6 affiche ainsi le facturé réel (en quantité). Le payé (`paidXaf`) est composé dans la couche de transport, par une lecture publique de `finance` : `procurement` n'importe pas `finance`.
 4. **Avoir** (WF-09, AV-359, en lien avec AV-054). L'avoir est l'annulation motivée de la facture contestée (`.cancel`), suivie de la facture rectificative du fournisseur.
-   - La référence fournisseur est unique parmi les factures non annulées (unicité partielle par colonne générée). La rectificative peut donc reprendre la même référence.
+   - La référence fournisseur est unique parmi les factures non annulées (unicité partielle par colonne générée). La rectificative peut donc reprendre la même référence. Revue de P8-14 : le contrôle compare les références sans casse ni ponctuation (« FA-0012 », « fa 0012 » et « FA0012 » sont la même facture). L'unicité en base reste exacte.
    - L'historique « facturé 98 puis 95 » reste lisible : deux documents, dont un annulé avec son motif.
    - Un avoir sur une facture déjà payée passe d'abord par l'annulation du paiement.
    - Pas d'entité « avoir » au MVP.
 5. **Décision sur un écart.**
    - `approvals.request.approve`, ou la façade `finance.supplier_invoice.approve` (sur la demande en cours ou sur une facture `DISPUTED`) : la facture passe `APPROVED`, la dette vaut le montant facturé, les quantités facturées sont appliquées. Un motif est exigé et l'approbateur doit être différent de l'auteur.
    - `.dispute`, ou le rejet de la demande : la facture passe `DISPUTED`, la demande en cours étant retirée.
+   - Revue de P8-14 : par la commande générique `approvals.request.approve`, même avec `selfApproved`, l'auteur de la facture ne peut pas approuver son écart (`SELF_APPROVAL_FORBIDDEN`). La règle vaut aussi pour la validation d'un paiement (§6).
    - `.cancel` : depuis `MISMATCH`, `DISPUTED` ou `APPROVED` sans paiement affecté, avec un motif.
 6. **Paiement** (BR-FIN-033, AV-055, AV-362, AV-363).
    - Au-delà de `finance.supplier_payment_approval_xaf` (500 000, strict) : le paiement passe `PENDING_APPROVAL`, avec une demande `SUPPLIER_PAYMENT` sous la politique `SUPPLIER_PAYMENT_DEFAULT` (`finance.supplier_payment.approve`, Direction). Aucun décaissement à ce stade.
@@ -60,7 +63,7 @@ P6 a livré bons de commande et réceptions. Le rapprochement (`GET /purchase-or
 7. **Affectations et avances** (INV-FIN-07, BR-FIN-032).
    - Σ affectations `ACTIVE` d'une facture ≤ son total. `paid_xaf` est la somme dénormalisée, avec la contrainte `paid_xaf ≤ total_xaf`.
    - Le reste d'un paiement est une avance (`unallocated_xaf`), admise si `finance.supplier_advance_allowed` (vrai par défaut, AV-055) ; sinon `SUPPLIER_PAYMENT_EXCEEDS`.
-   - `finance.supplier_payment.allocate` affecte plus tard une avance à une facture approuvée.
+   - `finance.supplier_payment.allocate` affecte plus tard une avance à une facture approuvée. Revue de P8-14 : un complément sur une facture déjà affectée par ce paiement regroupe les deux montants. L'affectation précédente est contrepassée et la nouvelle porte le cumul (une seule affectation active par facture et par paiement), et le payé n'augmente que du complément. Avant ce correctif, l'unicité refusait le complément par une erreur prise pour transitoire.
    - Une affectation est immuable sauf son passage à `REVERSED` (date, auteur, motif).
    - `.cancel` d'un paiement enregistré passe par la Direction, sans demande séparée (AV-364) : mouvement inverse, affectations `REVERSED`, factures recalculées.
 8. **Dettes** (KPI-FIN-05).
@@ -77,7 +80,7 @@ P6 a livré bons de commande et réceptions. Le rapprochement (`GET /purchase-or
 ## Conséquences
 
 - Le rapprochement de P6 devient complet (commandé, livré, rejeté, accepté, facturé, payé) sans que `procurement` connaisse `finance`. Seules deux additions touchent P6 : une fonction publique et une composition dans `procurement-api`.
-- Une réception annulée ou un BC annulé après facturation ne sont pas bloqués par les achats. L'écart « facturé > accepté » est signalé par la réconciliation des fournisseurs (`verifySupplierLedger`), et se corrige par un avoir (AV-361).
+- Une réception annulée ou un BC annulé après facturation ne sont pas bloqués par les achats. L'écart « facturé > accepté » se lit dans le rapprochement du BC (`/purchase-orders/{id}/matching`) et se corrige par un avoir (AV-361). Précision de la revue de P8-14 : ce n'est pas une rupture de la réconciliation, puisqu'une décision de la Finance peut l'avoir voulu (AT-025). `verifySupplierLedger` contrôle en revanche que le facturé écrit par `procurement` vaut Σ des factures approuvées (`INVOICED_QTY_DRIFT`), et une décision qui l'aggraverait sans le savoir est refusée (§3).
 - AT-025 se rejoue de bout en bout. Ordre : facture 98, `MISMATCH`, contestation, annulation motivée, rectificative 95 conforme, paiement de 1 425 000, `PENDING_APPROVAL`, approbation de la Direction, décaissement, dette nulle.
 - Tests : `finance-supplier-invoice-commands.test.ts`, `finance-supplier-payment-commands.test.ts`, `p8-acceptance.test.ts`, `p8-lock-order.test.ts`.
 
