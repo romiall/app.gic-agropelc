@@ -28,8 +28,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | `eb036be` | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
 | P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | `3558d5c` | Fait : 6 tests serveur, 12 mutations détectées |
 | P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | `21b9851` | Fait : 5 tests serveur, 14 mutations détectées |
-| P8-09 | Lectures HTTP : dépenses (portée), factures, paiements, dettes ; payé du rapprochement de P6 | _à venir_ | Fait : 5 tests HTTP de bout en bout, 6 mutations détectées |
-| P8-10 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-09 | Lectures HTTP : dépenses (portée), factures, paiements, dettes ; payé du rapprochement de P6 | `3d316bd` | Fait : 5 tests HTTP de bout en bout, 6 mutations détectées |
+| P8-10 | Jeux hors ligne : dépenses de l'auteur (`cash`, 30 jours), catégories (`catalog`), seuils (`me`) | _à venir_ | Fait : 3 tests par le pull réel ; 3 mutations détectées, 1 équivalente (la garde de portée `USER` double la vérification de l'auteur) |
+| P8-11 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 

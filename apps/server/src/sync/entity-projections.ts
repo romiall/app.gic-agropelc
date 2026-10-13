@@ -143,6 +143,9 @@ function recentScopeOf(
 /** Fenêtre du jeu `sales_recent` (01-architecture-offline.md §3.1 : « des 7 derniers jours »). */
 const RECENT_7_DAYS = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 7 DAY)`;
 
+/** Fenêtre des dépenses du jeu `cash` (dictionnaire `finance.expenses` : « DL (30 j) », ADR-060 §11). */
+const EXPENSE_WINDOW = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)`;
+
 /** Fenêtre du jeu `crm_activity` (01-architecture-offline.md §3.1 : « des 90 derniers jours »). */
 const ACTIVITY_WINDOW = sql<boolean>`a.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 90 DAY)`;
 
@@ -707,6 +710,62 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       allowed_on_pos: Boolean(row.allowed_on_pos),
       is_system: Boolean(row.is_system),
       is_active: Boolean(row.is_active),
+      version: row.version,
+    };
+  },
+
+  // P8-10 — dépenses de l'auteur (jeu `cash`, ligne `USER`, 30 derniers jours, ADR-060 §11) : la ligne
+  // de repli `GLOBAL` du pipeline n'est jamais servie. Aucun coût ni décision : statut, motifs de revue.
+  EXPENSE: async (executor, entityId, context) => {
+    if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
+    const row = await executor
+      .selectFrom('finance_expenses')
+      .select([
+        'id',
+        'doc_number',
+        'local_ref',
+        'site_id',
+        'category_id',
+        'amount_xaf',
+        'payee_name',
+        'description',
+        'cost_object_type',
+        'cost_object_id',
+        'species_group',
+        'paid_now',
+        'paid_from_account_id',
+        'status',
+        'review_reasons',
+        'occurred_at',
+        'created_by',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .where(EXPENSE_WINDOW)
+      .executeTakeFirst();
+    if (!row || fromBin(row.created_by) !== context.scopeId) return undefined;
+    return {
+      id: fromBin(row.id),
+      doc_number: row.doc_number,
+      local_ref: row.local_ref,
+      site_id: fromBin(row.site_id),
+      category_id: fromBin(row.category_id),
+      amount_xaf: Number(row.amount_xaf),
+      payee_name: row.payee_name,
+      description: row.description,
+      cost_object_type: row.cost_object_type,
+      cost_object_id: fromBinOrNull(row.cost_object_id),
+      species_group: row.species_group,
+      paid_now: Boolean(row.paid_now),
+      paid_from_account_id: fromBinOrNull(row.paid_from_account_id),
+      status: row.status,
+      review_reasons:
+        row.review_reasons === null
+          ? []
+          : typeof row.review_reasons === 'string'
+            ? JSON.parse(row.review_reasons)
+            : row.review_reasons,
+      occurred_at: row.occurred_at.toISOString(),
       version: row.version,
     };
   },
