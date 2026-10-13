@@ -322,7 +322,21 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 |---|---|---|---|
 | Distribution | ECR-DIS-01 (accueil du PDV, libération des quotas, AV-236, AV-237), ECR-DIS-02 (caisse, comptage à l'aveugle, AV-232, AV-233), ECR-DIS-03 (réapprovisionnement, AV-234, AV-235), ECR-DIS-04 (tableau, en ligne) | `apps/pwa/src/features/distribution/`, `cash/` | Livré |
 | Stock | ECR-STK-06 (quotas des téléphones, en ligne ; AV-238) | `apps/pwa/src/features/stock/` | Livré |
-| Trésorerie | ECR-FIN-05 (sessions à valider, écarts de remise, remises en transit, comptes ; AV-241) | `apps/pwa/src/features/treasury/` | Livré ; à adapter : décision d'un écart de remise par `finance.cash_transfer.close_discrepancy` (AV-183, P5-23) ; ajustements tardifs non listés (S-51) ; dépenses et paiements en P8 |
-| Remises de fonds | ECR-FIN-07 (créé à l'intégration ; envoi, annulation, réception hors ligne ; AV-239, AV-240) | `apps/pwa/src/features/cash/` | Livré ; à adapter : plus de refus d'un écart sans politique (AV-183) |
-| Socle hors ligne | Jeux de P5 sur l'appareil, envoi strict (ADR-039), garde d'AT-003 (AV-231), lecture seule après l'autonomie (AV-242) | `apps/pwa/src/sync/`, `features/sync/`, `features/sales/quota.ts` | Livré ; à adapter : appareil en attente (`DEVICE_PENDING`, AV-228), annulation d'un encaissement d'une vente anonyme (`PAYMENT_ANONYMOUS_SALE`, AV-188) |
+| Trésorerie | ECR-FIN-05 (sessions à valider, écarts de remise, remises en transit, comptes ; AV-241) | `apps/pwa/src/features/treasury/` | Livré ; écart de remise clos par `finance.cash_transfer.close_discrepancy` (AV-183, adapté en F-76) ; ajustements tardifs non listés (S-51) ; dépenses et paiements en P8 |
+| Remises de fonds | ECR-FIN-07 (créé à l'intégration ; envoi, annulation, réception hors ligne ; AV-239, AV-240) | `apps/pwa/src/features/cash/` | Livré ; écart sans politique admis (AV-183, adapté en F-76) |
+| Socle hors ligne | Jeux de P5 sur l'appareil, envoi strict (ADR-039), garde d'AT-003 (AV-231), lecture seule après l'autonomie (AV-242) | `apps/pwa/src/sync/`, `features/sync/`, `features/sales/quota.ts` | Livré ; appareil en attente (`DEVICE_PENDING`, AV-228) adapté en F-76 et F-77 ; AV-188 sans objet sur l'appareil (aucune demande d'annulation d'encaissement n'y est saisie) |
 
+
+
+### 17.8 Phase P5 (13/10/2026) — [`14-demonstration-p5.md`](14-demonstration-p5.md)
+
+| REQ | Vérifié par | État à la fin de P5 |
+|---|---|---|
+| REQ-023 | `p5-pdv-offline-day.test.ts` (journée hors ligne : trois tablettes, caisse, remise, annulation, réception, perte, quotas), `p5-pdv-three-tablets.test.ts` (AT-004), `finance-cash-session-commands.test.ts`, `finance-cash-session-validation.test.ts`, `sales-cash-session.test.ts` (AT-031), remises de fonds (`finance-cash-transfer-commands.test.ts`) | Vérifié par appareils virtuels ; pilote réel avec les écrans |
+| REQ-024 | `p5-distribution-metrics.test.ts` (AT-042 ; identité de rapprochement ; accueil et tableau égaux jour par jour, ADR-041) | Vérifié ; ECR-DIS-04 livré, non vérifié dans le navigateur |
+| REQ-039 (part P5) | `inventory-transfer-acceptance.test.ts` (AT-017), `inventory-blind-receipt.test.ts` (rapprochement, retour à la source, garde jugée à la date du fait) | Vérifié |
+| REQ-063 (part P5) | `p5-pdv-clock-skew.test.ts` (AT-036 croisé), `sync-clock-skew-setting.test.ts` (seuil et tolérance paramétrés, écart borné) | Vérifié |
+| REQ-064 | `packages/domain/src/allocations.test.ts`, `sales-allocations.test.ts`, `inventory-allocation-consumption.test.ts` (AT-003, AT-049 ; garde jugée à la date du fait, ADR-040), `p5-pdv-three-tablets.test.ts` (AT-004), garde de la PWA (`apps/pwa/src/features/sales/quota.test.ts`) | Vérifié ; blocage à l'écran non vérifié dans le navigateur |
+| REQ-080 (part P5) | DoD de P5 : journée de PDV rejouée hors ligne par des appareils virtuels, écarts de caisse expliqués par le registre (`p5-pdv-offline-day.test.ts`) | Vérifié par appareils virtuels ; pilote réel à mener |
+| REQ-201, REQ-203 (part P5) | `p5-sync-projections.test.ts` (jeux de P5), `p5-pull-cursor.test.ts` (AV-198), `p5-pdv-offline-day.test.ts` ; jeux appliqués par la PWA (F-56) | Vérifié côté serveur ; PWA livrée, non vérifiée dans le navigateur |
+| REQ-204 (part P5) | `p5-pdv-three-tablets.test.ts`, `inventory-stock-negative.test.ts` (AV-215), balayage `p5-invariants.test.ts` (INV-STK-05, 10, 11, 20 ; INV-DIS-01 à 03 ; INV-FIN-05, 11) | Vérifié |
