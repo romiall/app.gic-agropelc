@@ -147,3 +147,33 @@ export type {
 
 // Messages de validation en français (S-37, P5-23).
 export { describeIssueFr, describeIssuesFr } from './validation-messages.js';
+
+// Commandes de la finance opérationnelle (P8 ; ADR-060, ADR-061).
+export {
+  SUPPLIER_INVOICE_MAX_LINES,
+  SUPPLIER_PAYMENT_MAX_ALLOCATIONS,
+  expenseCategoryCreatePayloadSchema,
+  expenseCategoryUpdatePayloadSchema,
+  expenseCategoryStatusPayloadSchema,
+  expenseRecordPayloadSchema,
+  expensePayPayloadSchema,
+  expenseCancelPayloadSchema,
+  supplierInvoiceRecordPayloadSchema,
+  supplierInvoiceDecisionPayloadSchema,
+  supplierPaymentRecordPayloadSchema,
+  supplierPaymentAllocatePayloadSchema,
+  supplierPaymentCancelPayloadSchema,
+} from './finance-operations-commands.js';
+export type {
+  ExpenseCategoryCreatePayload,
+  ExpenseCategoryUpdatePayload,
+  ExpenseCategoryStatusPayload,
+  ExpenseRecordPayload,
+  ExpensePayPayload,
+  ExpenseCancelPayload,
+  SupplierInvoiceRecordPayload,
+  SupplierInvoiceDecisionPayload,
+  SupplierPaymentRecordPayload,
+  SupplierPaymentAllocatePayload,
+  SupplierPaymentCancelPayload,
+} from './finance-operations-commands.js';

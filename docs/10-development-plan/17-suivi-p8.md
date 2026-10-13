@@ -20,8 +20,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 
 | Incr. | Objet | Commit | État |
 |---|---|---|---|
-| P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | _à venir_ | Fait |
-| P8-02 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | `b48ea93` | Fait |
+| P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | _à venir_ | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
+| P8-03 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 

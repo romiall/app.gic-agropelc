@@ -377,3 +377,61 @@ export type {
 // Récurrence des tâches planifiées, heure locale de Douala (P5-16).
 export { nextRecurringRun, assertRecurringSchedule, localTimeMinutes } from './recurrence.js';
 export type { RecurringSchedule } from './recurrence.js';
+
+// Dépenses (P8 ; ADR-060 ; SM-EXPENSE ; BR-FIN-020 à 022, BR-DIS-013).
+export {
+  EXPENSE_STATUSES,
+  EXPENSE_COST_OBJECT_TYPES,
+  EXPENSE_SPECIES_GROUPS,
+  EXPENSE_LOT_COST_TYPES,
+  EXPENSE_REVIEW_REASONS,
+  EXPENSE_REVIEW_ERROR_CODES,
+  UNJUSTIFIED_EXPENSE_CATEGORY_CODE,
+  expenseRequiresApproval,
+  expensePhotoRequired,
+  expenseReviewReasons,
+  expenseStatusAtRecord,
+  expenseTransition,
+  expenseCarriesCost,
+  expenseCostLine,
+} from './expenses.js';
+export type {
+  ExpenseStatus,
+  ExpenseCostObjectType,
+  ExpenseSpeciesGroup,
+  ExpenseLotCostType,
+  ExpenseReviewReason,
+  ExpenseCostObjectState,
+  ExpenseAction,
+} from './expenses.js';
+
+// Factures et paiements fournisseurs (P8 ; ADR-061 ; BR-FIN-030 à 033, INV-FIN-07).
+export {
+  SUPPLIER_INVOICE_STATUSES,
+  SUPPLIER_PAYMENT_STATUSES,
+  SUPPLIER_ALLOCATION_STATUSES,
+  INVOICE_WITHOUT_PO_MODES,
+  INVOICE_MISMATCH_REASONS,
+  invoicedQuantitiesByOrderLine,
+  matchSupplierInvoice,
+  supplierInvoiceDueDate,
+  supplierInvoiceTransition,
+  supplierInvoiceStatusFromPaid,
+  supplierPaymentRequiresApproval,
+  planSupplierPayment,
+  supplierPaymentTransition,
+} from './supplier-ledger.js';
+export type {
+  SupplierInvoiceStatus,
+  SupplierPaymentStatus,
+  SupplierAllocationStatus,
+  InvoiceWithoutPoMode,
+  InvoiceMismatchReason,
+  InvoiceMismatchDetail,
+  InvoiceLineInput,
+  MatchedOrderLine,
+  SupplierInvoiceMatch,
+  SupplierInvoiceAction,
+  PayableInvoice,
+  SupplierPaymentAction,
+} from './supplier-ledger.js';
