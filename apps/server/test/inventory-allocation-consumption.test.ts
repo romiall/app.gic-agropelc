@@ -942,7 +942,8 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
       expect(within[0]?.warnings).toBeUndefined();
       expect(await conflicts(id, 'ALLOCATION_EXCEEDED')).toHaveLength(0);
 
-      // Au-delà (11 pour un reste de 10) : appliqué sur le stock commun et signalé, comme sur la tablette.
+      // Au-delà : 11 de plus, après les 10 déjà appliqués, pour un reste de 10 — en cumul (AV-211, P5-23),
+      // tout le second fait dépasse. Appliqué sur le stock commun et signalé, comme sur la tablette.
       const beyond = await sell(holder, productId, 11, {
         capturedOffline: true,
         occurredAt: new Date('2026-10-08T09:45:00.000Z'),
@@ -958,7 +959,8 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
         revokedAt: '2026-10-08T10:00:00.000Z',
         requested: '11.000',
         quotaRemaining: '10.000',
-        excess: '1.000',
+        earlierAfterRevocation: '10.000',
+        excess: '11.000',
         signalled: false,
       });
       // Antérieur à la révocation : jamais ALLOCATION_REVOKED_CONSUMED, et le registre reste intact.

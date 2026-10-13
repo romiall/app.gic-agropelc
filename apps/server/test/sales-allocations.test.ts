@@ -1824,12 +1824,14 @@ describe('vente et quotas d’appareil (P5-11)', () => {
       const [conflict] = await conflictsOf('ALLOCATION_EXCEEDED', beyond.id);
       expect(conflict).toMatchObject({ entity_type: 'STOCK_ALLOCATION', applied: 1 });
       expect(fromBin(conflict!.entity_id)).toBe(id);
+      // En cumul (AV-211, P5-23) : 4 déjà appliqués + 31 pour un reste de 30 → 5 de trop dans ce fait.
       expect(details(conflict)).toMatchObject({
         reason: 'ALLOCATION_EXCEEDED',
         allocationId: id,
         requested: '31.000',
         quotaRemaining: '30.000',
-        excess: '1.000',
+        earlierAfterRevocation: '4.000',
+        excess: '5.000',
       });
       expect(await conflictsOf('ALLOCATION_REVOKED_CONSUMED', beyond.id)).toHaveLength(0);
       expect((await saleMoves(beyond.id)).every((m) => m.allocation_id === null)).toBe(true);
