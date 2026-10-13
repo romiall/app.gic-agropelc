@@ -3,8 +3,8 @@
  * Logique pure sur les lectures en ligne : sessions de caisse à valider (`GET /cash-sessions`, détail
  * avec flux par vendeur et ajustements), remises en transit et écarts à décider (`GET /cash-transfers`),
  * comptes et mouvements (`GET /cash-accounts`). Contrôles de l'appareil alignés sur le serveur
- * (valideur, motif, imputation) et charges utiles de `finance.cash_session.validate` et de la décision
- * d'un écart de remise (`approvals.request.approve`).
+ * (valideur, motif, imputation) et charges utiles de `finance.cash_session.validate` et de la clôture
+ * d'un écart de remise (`finance.cash_transfer.close_discrepancy`, avec ou sans demande liée).
  */
 import {
   CASH_TRANSFER_IMPUTATIONS,
@@ -132,10 +132,9 @@ export interface CashMovementsPage {
   readonly next_cursor: string | null;
 }
 
-/** Longueurs maximales : motif de validation (500), donnée d'une décision (200), commentaire (2 000). */
+/** Longueurs maximales des motifs : validation d'une session, clôture d'un écart de remise (500). */
 export const MAX_SESSION_REASON = 500;
-export const MAX_DECISION_REASON = 200;
-export const MAX_DECISION_COMMENT = 2000;
+export const MAX_DECISION_REASON = 500;
 
 /** Écart courant d'une session : écart de clôture plus les ajustements (réévaluation, ADR-032 §6). */
 export function currentVarianceXaf(
@@ -193,18 +192,17 @@ export function validatePayload(reason: string) {
   return trimmed ? { reason: trimmed } : {};
 }
 
-/** Pourquoi un écart de remise ne peut pas être décidé ici ; `null` s'il le peut (AV-174). */
-export type TransferDecisionBlock = 'INVOLVED' | 'NO_REQUEST' | 'NOT_PENDING';
+/**
+ * Pourquoi un écart de remise ne peut pas être clos ici ; `null` s'il le peut (AV-174). Avec ou sans
+ * demande de validation liée, la même commande le clôt (AV-183 harmonisé).
+ */
+export type TransferDecisionBlock = 'INVOLVED' | 'NOT_PENDING';
 
 export function transferDecisionBlock(
-  transfer: Pick<
-    CashTransferItem,
-    'status' | 'sentBy' | 'receivedBy' | 'carrierUserId' | 'approvalRequestId'
-  >,
+  transfer: Pick<CashTransferItem, 'status' | 'sentBy' | 'receivedBy' | 'carrierUserId'>,
   userId: string,
 ): TransferDecisionBlock | null {
   if (transfer.status !== 'DISCREPANCY_PENDING') return 'NOT_PENDING';
-  if (transfer.approvalRequestId === null) return 'NO_REQUEST';
   return isAllowedTransferValidator(userId, transfer) ? null : 'INVOLVED';
 }
 
@@ -219,20 +217,15 @@ export function imputationOptions(
   }));
 }
 
-/** Charge utile de la décision d'un écart (`approvals.request.approve`, agrégat de la demande). */
-export function decisionPayload(input: {
-  readonly requestId: string;
+/**
+ * Charge utile de `finance.cash_transfer.close_discrepancy` (agrégat de la remise ; en ligne
+ * seulement) : imputation et motif (`cashTransferCloseDiscrepancyPayloadSchema`).
+ */
+export function closeDiscrepancyPayload(input: {
   readonly option: CashTransferImputation;
   readonly reason: string;
-  readonly comment: string;
 }) {
-  const comment = input.comment.trim();
-  return {
-    requestId: input.requestId,
-    decisionOption: input.option,
-    decisionData: { reason: input.reason.trim() },
-    ...(comment ? { comment } : {}),
-  };
+  return { imputation: input.option, reason: input.reason.trim() };
 }
 
 /** Libellé court d'un utilisateur (les noms ne sont pas servis, S-28) : « vous » ou `…abcd`. */

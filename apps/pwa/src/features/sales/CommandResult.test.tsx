@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { CommandResult } from './CommandResult.js';
+import { behindDeviceApproval } from './pending.js';
 import { isBlockingWait, waitingCommands } from './submit.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -81,6 +82,50 @@ describe('Opération retenue derrière une opération plus ancienne en échec r�
       /Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer \(Erreur transitoire, à réessayer\.\)/,
     );
     expect(result.closest('.result')).toHaveClass('result-warn');
+  });
+});
+
+describe('Résultat d’une opération : appareil en attente d’approbation (AV-228)', () => {
+  afterEach(async () => {
+    cleanup();
+    await getDb().outbox.clear();
+  });
+
+  it('annoncée comme une attente d’approbation, pas comme un échec', async () => {
+    await getDb().outbox.put({
+      ...waiting('vente', 1, 0),
+      last_error: { code: 'DEVICE_PENDING', message_fr: 'Appareil en attente d’approbation.' },
+    });
+    render(<CommandResult commandId="vente" messages="sales.result" />);
+    const text = await screen.findByText(
+      'Enregistrée sur ce téléphone, qui attend son approbation (par l’administrateur ou un responsable habilité) : l’opération partira après l’approbation.',
+    );
+    expect(text.closest('.result')).not.toHaveClass('result-error');
+  });
+
+  it('opération suivante, suspendue derrière la première : annoncée de même', async () => {
+    await getDb().outbox.bulkPut([
+      {
+        ...waiting('premiere', 1, 0),
+        last_error: { code: 'DEVICE_PENDING', message_fr: 'Appareil en attente d’approbation.' },
+      },
+      // Suspendue par le serveur (`PRECEDING_COMMAND_PENDING`) : sans motif propre.
+      waiting('suivante', 2, 0),
+      // Autre auteur de la tablette : rien ne la retient derrière la première.
+      waiting('autre', 3, 0, 'SERVER_BUSY', 'v'),
+    ]);
+    render(<CommandResult commandId="suivante" messages="sales.result" />);
+    expect(
+      await screen.findByText(/qui attend son approbation \(par l’administrateur/),
+    ).toBeInTheDocument();
+    // Règle pure : seule une commande plus ancienne du même auteur la retient.
+    const [premiere, suivante, autre] = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(behindDeviceApproval(suivante!, [premiere!])).toBe(true);
+    expect(behindDeviceApproval(autre!, [premiere!, suivante!])).toBe(false);
+    cleanup();
+    render(<CommandResult commandId="autre" messages="sales.result" />);
+    expect(await screen.findByText(/en cours d’envoi|dès le retour du réseau/)).toBeInTheDocument();
+    expect(screen.queryByText(/attend son approbation/)).toBeNull();
   });
 });
 

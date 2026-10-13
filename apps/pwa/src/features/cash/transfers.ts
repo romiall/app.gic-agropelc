@@ -19,7 +19,6 @@ import type {
   CashSessionData,
   CashTransferData,
   CashTransferTargetData,
-  ControlPolicyData,
   LocationData,
   PaymentMethodData,
   SettingData,
@@ -283,29 +282,6 @@ export function receivePayload(input: { readonly receivedXaf: number; readonly c
 
 export function cancelPayload(reason: string) {
   return { reason: reason.trim() };
-}
-
-/**
- * Politique de validation des écarts de remise en vigueur à `at`, comme le serveur
- * (`transferDiscrepancyPolicy`) : `CASH_TRANSFER_DISCREPANCY`, validation exigée, approbateur nommé.
- * Sans elle, une réception avec écart (perte comprise) est refusée, en ligne comme hors ligne
- * (`CONTROL_POLICY_MISSING`). `UNKNOWN` : aucune politique sur l'appareil (jeu `policies` pas encore
- * tiré).
- */
-export function discrepancyPolicyState(
-  policies: readonly ControlPolicyData[],
-  at: Date,
-): 'APPLIES' | 'MISSING' | 'UNKNOWN' {
-  if (policies.length === 0) return 'UNKNOWN';
-  const applies = policies.some(
-    (policy) =>
-      policy.operation_type === 'CASH_TRANSFER_DISCREPANCY' &&
-      policy.requires_approval &&
-      policy.approver_permission !== null &&
-      new Date(policy.valid_from) <= at &&
-      (policy.valid_to === null || new Date(policy.valid_to) > at),
-  );
-  return applies ? 'APPLIES' : 'MISSING';
 }
 
 /** Solde d'une caisse source tel que l'écran des remises le montre. */

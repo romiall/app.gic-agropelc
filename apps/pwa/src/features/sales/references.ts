@@ -19,7 +19,6 @@ import type {
   CashSessionData,
   CashTransferData,
   CashTransferTargetData,
-  ControlPolicyData,
   PointOfSaleData,
   CampaignData,
   CustomerCategoryData,
@@ -151,8 +150,6 @@ export interface SalesReferences {
   readonly cashTransfers: readonly CashTransferData[];
   /** Destinations de remise : comptes actifs sans détenteur personnel. */
   readonly cashTransferTargets: readonly CashTransferTargetData[];
-  /** Politiques de contrôle actives (jeu `policies`). */
-  readonly controlPolicies: readonly ControlPolicyData[];
   readonly cashPulledAt: string | undefined;
   /** Configuration des PDV des sites de l'utilisateur, par site. */
   readonly pointsOfSale: ReadonlyMap<string, PointOfSaleData>;
@@ -371,7 +368,6 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashSessions,
     cashTransfers,
     cashTransferTargets,
-    controlPolicies,
     cashCursor,
     pointsOfSale,
     meSettings,
@@ -431,7 +427,6 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<CashSessionData>(db, 'cash', 'CASH_SESSION'),
     listProjected<CashTransferData>(db, 'cash', 'CASH_TRANSFER'),
     listProjected<CashTransferTargetData>(db, 'cash', 'CASH_TRANSFER_TARGET'),
-    listProjected<ControlPolicyData>(db, 'policies', 'CONTROL_POLICY'),
     db.syncCursors.get('cash'),
     listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
     listProjected<SettingData>(db, 'me', 'SETTING'),
@@ -579,7 +574,6 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashSessions,
     cashTransfers,
     cashTransferTargets,
-    controlPolicies,
     cashPulledAt: cashCursor?.pulled_at,
     pointsOfSale: new Map(pointsOfSale.map((pos) => [pos.site_id, pos])),
     transfersPulledAt: transfersCursor?.pulled_at,

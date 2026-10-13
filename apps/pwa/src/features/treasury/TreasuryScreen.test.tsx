@@ -409,7 +409,7 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     );
     await user.selectOptions(within(card).getByLabelText('Imputation de l’écart'), 'SENDER');
     await user.type(
-      within(card).getByLabelText('Motif (obligatoire, 200 caractères au plus)'),
+      within(card).getByLabelText('Motif (obligatoire, 500 caractères au plus)'),
       'Erreur de comptage',
     );
     await user.click(within(card).getByRole('button', { name: 'Clore l’écart' }));
@@ -440,7 +440,7 @@ describe('Trésorerie (ECR-FIN-05)', () => {
         next_cursor: null,
       },
     });
-    const [decision] = await outboxOf('approvals.request.approve');
+    const [decision] = await outboxOf('finance.cash_transfer.close_discrepancy');
     await getDb().outbox.update(decision!.command_id, {
       status: 'SYNCED',
       synced_at: '2026-10-10T19:30:00.000Z',
@@ -604,20 +604,47 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     await user.selectOptions(imputation, 'COMPANY');
     expect(submit).toBeDisabled();
     await user.type(
-      within(card).getByLabelText('Motif (obligatoire, 200 caractères au plus)'),
+      within(card).getByLabelText('Motif (obligatoire, 500 caractères au plus)'),
       'Billet abîmé refusé',
     );
     await user.click(submit);
     expect(await screen.findByText('Décision en cours d’envoi…')).toBeInTheDocument();
-    const [decision] = await outboxOf('approvals.request.approve');
+    const [decision] = await outboxOf('finance.cash_transfer.close_discrepancy');
     expect(decision).toMatchObject({
-      aggregate_type: 'APPROVAL_REQUEST',
-      aggregate_id: REQUEST,
-      payload: {
-        requestId: REQUEST,
-        decisionOption: 'COMPANY',
-        decisionData: { reason: 'Billet abîmé refusé' },
+      aggregate_type: 'CASH_TRANSFER',
+      aggregate_id: GAP,
+      captured_offline: false,
+      payload: { imputation: 'COMPANY', reason: 'Billet abîmé refusé' },
+    });
+  });
+
+  it('écart sans demande de validation liée : clos par la même commande (AV-183)', async () => {
+    serve({
+      ...baseRoutes(),
+      '/api/v1/cash-transfers?status=DISCREPANCY_PENDING&limit=200': {
+        cash_transfers: [transfer({ approvalRequestId: null })],
+        next_cursor: null,
       },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const gaps = await screen.findByRole('region', { name: 'Écarts de remise à décider' });
+    const card = within(gaps).getByRole('listitem', { name: 'RMF-YDE-2026-000007' });
+    await user.click(
+      within(card).getByRole('button', {
+        name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+      }),
+    );
+    await user.selectOptions(within(card).getByLabelText('Imputation de l’écart'), 'SENDER');
+    const reason = within(card).getByLabelText('Motif (obligatoire, 500 caractères au plus)');
+    expect(reason).toHaveAttribute('maxLength', '500');
+    await user.type(reason, 'Erreur de comptage');
+    await user.click(within(card).getByRole('button', { name: 'Clore l’écart' }));
+    await screen.findByText('Décision en cours d’envoi…');
+    const [decision] = await outboxOf('finance.cash_transfer.close_discrepancy');
+    expect(decision).toMatchObject({
+      aggregate_id: GAP,
+      payload: { imputation: 'SENDER', reason: 'Erreur de comptage' },
     });
   });
 

@@ -1,8 +1,8 @@
 /**
  * ECR-FIN-05 « Trésorerie » (Finance ; Direction : AV-241). En ligne seulement (`ONLINE_ONLY` sinon) :
  * sessions de caisse à valider (détail des flux, validation motivée, `finance.cash_session.validate`),
- * écarts de remise à décider (imputation et motif, `approvals.request.approve` sur la demande
- * `CASH_TRANSFER_DISCREPANCY`, AV-174), remises en transit (réception par la Finance), comptes et leurs
+ * écarts de remise à clore (imputation et motif, `finance.cash_transfer.close_discrepancy`, avec ou
+ * sans demande liée, AV-174, AV-183), remises en transit (réception par la Finance), comptes et leurs
  * mouvements. Les ajustements tardifs des sessions déjà validées ne sont pas listés (S-51).
  */
 import { useEffect, useId, useRef, useState } from 'react';
@@ -10,12 +10,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import type { CashTransferImputation } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
-import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { TransferReceiveForm } from '../cash/TransferReceiveForm.js';
-import { discrepancyPolicyState, receivePayload } from '../cash/transfers.js';
+import { receivePayload } from '../cash/transfers.js';
 import { formatBusinessDay, formatClockTime, formatDateTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -33,9 +32,8 @@ import {
 import { AccountMovements } from './AccountMovements.js';
 import { SessionDetail } from './SessionDetail.js';
 import {
-  decisionPayload,
+  closeDiscrepancyPayload,
   imputationOptions,
-  MAX_DECISION_COMMENT,
   MAX_DECISION_REASON,
   transferDecisionBlock,
   userLabel,
@@ -48,7 +46,7 @@ import {
 
 const MANAGED_COMMANDS = new Set([
   'finance.cash_session.validate',
-  'approvals.request.approve',
+  'finance.cash_transfer.close_discrepancy',
   'finance.cash_transfer.receive',
 ]);
 
@@ -56,7 +54,7 @@ type Kind = 'validate' | 'decide' | 'receive';
 
 const KINDS: Readonly<Record<string, Kind>> = {
   'finance.cash_session.validate': 'validate',
-  'approvals.request.approve': 'decide',
+  'finance.cash_transfer.close_discrepancy': 'decide',
   'finance.cash_transfer.receive': 'receive',
 };
 
@@ -122,13 +120,11 @@ export function TreasuryScreen() {
   } | null>(null);
   const [option, setOption] = useState<CashTransferImputation | ''>('');
   const [reason, setReason] = useState('');
-  const [comment, setComment] = useState('');
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const ids = { option: useId(), reason: useId(), comment: useId() };
-  // Commandes gérées lues dans la base locale : les décisions (`approvals.`) ne sont pas dans les
-  // référentiels de vente.
+  const ids = { option: useId(), reason: useId() };
+  // Commandes gérées lues dans la base locale, indépendamment des référentiels de vente.
   const managed =
     useLiveQuery(
       () =>
@@ -155,12 +151,11 @@ export function TreasuryScreen() {
   const opener = (kind: string, id: string) => (element: HTMLButtonElement | null) => {
     openers.current.set(`${kind}:${id}`, element);
   };
-  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${[
+  const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(
+    managed,
     'finance.',
-    'approvals.',
-  ]
-    .map((prefix) => waitingIds(managed, prefix, userId))
-    .join('|')}`;
+    userId,
+  )}`;
   const read = useOnlineRead<TreasuryRead>(
     online ? 'treasury' : null,
     () => readTreasury(),
@@ -186,10 +181,7 @@ export function TreasuryScreen() {
   }
 
   // Retour sur l'écran avec une opération en attente : son résultat est annoncé.
-  const adopt = last
-    ? undefined
-    : (lastWaitingCommand(managed, 'finance.', userId) ??
-      lastWaitingCommand(managed, 'approvals.', userId));
+  const adopt = last ? undefined : lastWaitingCommand(managed, 'finance.', userId);
   if (adopt)
     setLast({ commandId: adopt.command_id, kind: KINDS[adopt.command_type] ?? 'validate' });
 
@@ -204,13 +196,11 @@ export function TreasuryScreen() {
   const blocked = busy || waiting || read.stale || !data;
   // Réception par la Finance : `finance.cash_transfer.record` (la Direction ne l'a pas).
   const mayReceive = holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.cashTransferRecord);
-  const policy = discrepancyPolicyState(refs.controlPolicies, clock.now());
 
   const toggle = (id: string, kind: 'session' | 'decide' | 'receive' | 'account') => {
     setOpen((current) => (current?.id === id && current.kind === kind ? null : { id, kind }));
     setOption('');
     setReason('');
-    setComment('');
   };
 
   const send = async (kind: Kind, input: Parameters<typeof submitCommand>[0]) => {
@@ -238,18 +228,13 @@ export function TreasuryScreen() {
     });
 
   const decide = (transfer: CashTransferItem) => {
-    if (!option || reason.trim() === '' || transfer.approvalRequestId === null) return;
+    if (!option || reason.trim() === '') return;
     void send('decide', {
       authorUserId: userId,
-      commandType: 'approvals.request.approve',
-      aggregateType: 'APPROVAL_REQUEST',
-      aggregateId: transfer.approvalRequestId,
-      payload: decisionPayload({
-        requestId: transfer.approvalRequestId,
-        option,
-        reason,
-        comment,
-      }),
+      commandType: 'finance.cash_transfer.close_discrepancy',
+      aggregateType: 'CASH_TRANSFER',
+      aggregateId: transfer.id,
+      payload: closeDiscrepancyPayload({ option, reason }),
     });
   };
 
@@ -467,15 +452,6 @@ export function TreasuryScreen() {
                             value={reason}
                             onChange={(event) => setReason(event.target.value)}
                           />
-                          <label htmlFor={ids.comment}>{t('treasury.decision_comment')}</label>
-                          <textarea
-                            id={ids.comment}
-                            className="text-input"
-                            rows={2}
-                            maxLength={MAX_DECISION_COMMENT}
-                            value={comment}
-                            onChange={(event) => setComment(event.target.value)}
-                          />
                           <div className="result-actions">
                             <button
                               type="button"
@@ -531,7 +507,6 @@ export function TreasuryScreen() {
                       {!receivable ? null : expanded ? (
                         <TransferReceiveForm
                           sentXaf={transfer.amountSentXaf}
-                          policy={policy}
                           busy={blocked}
                           onSubmit={(received, text) => receive(transfer, received, text)}
                           onClose={() => setOpen(null)}

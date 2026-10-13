@@ -14,6 +14,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
 import { enqueueCommand } from '../../sync/outbox.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { awaitsDeviceApproval } from '../sales/pending.js';
 import { saveErrorKey } from '../sales/submit.js';
 import { getSyncEngine } from './sync-engine-instance.js';
 import { useSyncStatus } from './useSyncStatus.js';
@@ -75,6 +76,15 @@ export function SyncScreen() {
         {syncing ? t('sync.syncing') : t('sync.force_sync')}
       </button>
 
+      {/* Opérations de l'utilisateur seulement : sur une tablette partagée, celles d'un autre
+          attendent sa reconnexion, pas l'approbation de l'appareil. */}
+      {status.pending.some(
+        (command) => command.author_user_id === state.userId && awaitsDeviceApproval(command),
+      ) ? (
+        <p className="home-banner" role="status">
+          {t('sync.device_pending_notice')}
+        </p>
+      ) : null}
       <h2>{t('sync.pending_operations')}</h2>
       {status.pending.length === 0 ? (
         <p>{t('sync.no_pending')}</p>

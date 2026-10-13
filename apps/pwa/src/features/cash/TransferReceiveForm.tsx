@@ -12,14 +12,11 @@ import { MAX_TRANSFER_COMMENT } from './transfers.js';
 
 export function TransferReceiveForm({
   sentXaf,
-  policy,
   busy,
   onSubmit,
   onClose,
 }: {
   readonly sentXaf: number;
-  /** Politique de validation des écarts (`discrepancyPolicyState`) : sans elle, écart refusé. */
-  readonly policy: 'APPLIES' | 'MISSING' | 'UNKNOWN';
   readonly busy: boolean;
   readonly onSubmit: (receivedXaf: number, comment: string) => void;
   readonly onClose: () => void;
@@ -56,17 +53,13 @@ export function TransferReceiveForm({
         </p>
       ) : gap === null ? null : (
         <p id={ids.preview} className={gap === 0 ? 'home-muted' : 'text-warn'} role="status">
-          {gap !== 0 && policy === 'MISSING'
-            ? t('cash_transfer.discrepancy_refused', {
-                amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
-              })
-            : received === 0
-              ? t('cash_transfer.lost')
-              : gap === 0
-                ? t('cash_transfer.match')
-                : t('cash_transfer.discrepancy', {
-                    amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
-                  })}
+          {received === 0
+            ? t('cash_transfer.lost')
+            : gap === 0
+              ? t('cash_transfer.match')
+              : t('cash_transfer.discrepancy', {
+                  amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
+                })}
         </p>
       )}
       <label htmlFor={ids.comment}>{t('cash_transfer.comment_label')}</label>

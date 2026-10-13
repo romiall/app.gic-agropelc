@@ -215,7 +215,8 @@ export async function runPushCycle(
  * Renvois consécutifs sans succès d'une commande (`busy_retries`), selon le motif du `RETRY_LATER` :
  * erreur du serveur (exception en base, S-29 à S-31, S-37 ; délai du lot dépassé, S-43) et attente de
  * dépendance comptent ; une commande bloquée (`COMMAND_STALLED`, AV-217) est aussitôt signalée en
- * échec répété ; tout autre motif remet le compteur à zéro.
+ * échec répété ; tout autre motif remet le compteur à zéro, dont l'appareil en attente d'approbation
+ * (`DEVICE_PENDING`, AV-228 : une attente, pas un échec).
  */
 export function nextBusyRetries(code: string | undefined, current: number): number {
   if (code === 'COMMAND_STALLED') return Math.max(current + 1, REPEATED_FAILURE_ATTEMPTS);

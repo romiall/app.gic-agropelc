@@ -148,6 +148,45 @@ describe('Autonomie hors connexion (AV-009)', () => {
     expect(await getDb().outbox.count()).toBe(0);
   });
 
+  it('écran de synchronisation : appareil en attente d’approbation annoncé (AV-228)', async () => {
+    await lastSync(ago(1));
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000000ac',
+      device_seq: 1,
+      command_type: 'sales.sale.record',
+      command_version: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      aggregate_type: 'SALE',
+      aggregate_id: '01900000-0000-7000-8000-0000000000ad',
+      base_version: null,
+      depends_on: [],
+      occurred_at: NOW.toISOString(),
+      client_created_at: NOW.toISOString(),
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {},
+      status: 'PENDING_SYNC',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: { code: 'DEVICE_PENDING', message_fr: 'Appareil en attente d’approbation.' },
+      server_refs: null,
+    });
+    const { unmount } = render(<SyncScreen />);
+    expect(await screen.findByText(/Ce téléphone attend son approbation/)).toHaveAttribute(
+      'role',
+      'status',
+    );
+    unmount();
+    // Opération d'un autre utilisateur de la tablette : elle attend sa reconnexion, pas l'approbation.
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000000ac', {
+      author_user_id: '01900000-0000-7000-8000-000000000002',
+    });
+    render(<SyncScreen />);
+    await screen.findByRole('heading', { name: /Opérations en attente/ });
+    expect(screen.queryByText(/Ce téléphone attend son approbation/)).toBeNull();
+  });
+
   it('bandeau : avertissement, lecture seule, puis disparu après une synchronisation (sans remontage)', async () => {
     await lastSync(ago(50));
     const { container } = render(<AutonomyBanner />);

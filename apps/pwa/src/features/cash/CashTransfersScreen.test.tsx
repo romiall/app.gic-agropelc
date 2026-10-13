@@ -78,30 +78,6 @@ function outboxCommand(overrides: Partial<OutboxCommand>): OutboxCommand {
   };
 }
 
-/** Politique de contrôle servie par le jeu `policies`. */
-function policyRow(id: string, data: Record<string, unknown>) {
-  return {
-    key: `policies:CONTROL_POLICY:${id}`,
-    dataset: 'policies',
-    entity_type: 'CONTROL_POLICY',
-    entity_id: id,
-    scope_type: 'GLOBAL',
-    scope_id: null,
-    data: {
-      id,
-      code: 'POLITIQUE',
-      version: 1,
-      requires_approval: true,
-      approver_permission: 'finance.cash_session.validate',
-      valid_from: '2026-01-01T00:00:00.000Z',
-      valid_to: null,
-      ...data,
-    },
-    seq: 1,
-    row_version: 1,
-  };
-}
-
 describe('Remises de fonds (UC-FIN-07)', () => {
   beforeEach(async () => {
     const db = getDb();
@@ -389,40 +365,6 @@ describe('Remises de fonds (UC-FIN-07)', () => {
     expect(
       within(card).queryByRole('button', { name: /^Recevoir la remise/ }),
     ).not.toBeInTheDocument();
-  });
-
-  it('sans politique de validation des écarts en vigueur : un écart est annoncé refusé', async () => {
-    await getDb().projections.bulkPut([
-      cashTransferRow({
-        id: INCOMING,
-        doc_number: 'RMF-SIEGE-2026-000004',
-        from_account_id: CENTRAL_CASH_ACCOUNT,
-        to_account_id: POS_CASH_ACCOUNT,
-        amount_sent_xaf: 50_000,
-        sent_by: OTHER_USER,
-      }),
-      // Politiques servies : aucune pour les écarts de remise (une autre opération, une échue).
-      policyRow('01900000-0000-7000-8000-0000000000e1', { operation_type: 'SALE_CANCELLATION' }),
-      policyRow('01900000-0000-7000-8000-0000000000e2', {
-        operation_type: 'CASH_TRANSFER_DISCREPANCY',
-        valid_to: '2026-06-01T00:00:00.000Z',
-      }),
-    ]);
-    const user = userEvent.setup();
-    renderScreen();
-    const incoming = await screen.findByRole('region', { name: 'À recevoir' });
-    const card = within(incoming).getByRole('listitem', { name: 'RMF-SIEGE-2026-000004' });
-    await user.click(
-      within(card).getByRole('button', { name: 'Recevoir la remise RMF-SIEGE-2026-000004' }),
-    );
-    const received = within(card).getByLabelText('Montant reçu, compté (F CFA)');
-    await user.type(received, '49500');
-    expect(
-      within(card).getByText(/aucune politique de validation des écarts n’est en vigueur/),
-    ).toBeInTheDocument();
-    await user.clear(received);
-    await user.type(received, '50000');
-    expect(within(card).getByText('Montant conforme à l’envoi.')).toBeInTheDocument();
   });
 
   it('aucune caisse de l’appareil : rien à remettre', async () => {
