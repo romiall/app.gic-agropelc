@@ -3,9 +3,16 @@
  * finance §6.2-6.3 ; ADR-062 §1 ; AV-366) : ventes du lot et de ses produits d'abattage, résultat
  * mensuel (coûts et CA), « marge de lot » (CA net − coût net du lot) et « marge brute des ventes »
  * (CA net − coût figé des ventes). La quantité vendue reste celle du lot (têtes) ; le CA des produits
- * est détaillé à part. Fonction pure, sans entrée-sortie.
+ * est détaillé à part. `composeLotSales` est pure ; `lotWithSales` lit les ventes (lot de stock du lot
+ * et lots de ses abattages) et compose le détail rendu par `GET /production/lots/:id`.
  */
-import type { LotRevenue } from '../modules/sales/application/public/index.js';
+import type { Kysely, Transaction } from 'kysely';
+import type { DB } from '../platform/kysely/database.js';
+import { lotRevenue, type LotRevenue } from '../modules/sales/application/public/index.js';
+import {
+  slaughterStockLotIds,
+  type ProductionLotDetail,
+} from '../modules/production/application/public/index.js';
 
 export interface LotCostsForMargin {
   readonly netXaf: number;
@@ -53,4 +60,22 @@ export function composeLotSales(
       grossMarginXaf: netRevenueXaf - costOfSalesXaf,
     },
   };
+}
+
+/**
+ * Détail d'un lot avec son CA et ses marges (P4-09, P8-11) : ventes de son lot de stock et des lots de
+ * stock de ses abattages enregistrés (`slaughterStockLotIds`), coûts mensuels complétés du CA.
+ */
+export async function lotWithSales(
+  executor: Kysely<DB> | Transaction<DB>,
+  lot: ProductionLotDetail,
+) {
+  const productLots = await slaughterStockLotIds(executor, lot.id);
+  const revenues = await lotRevenue(executor, [lot.stockLotId, ...productLots]);
+  const composed = composeLotSales(
+    lot.costs,
+    revenues.get(lot.stockLotId)!,
+    productLots.map((stockLotId) => revenues.get(stockLotId)!),
+  );
+  return { ...lot, costs: { ...lot.costs, monthly: composed.monthly }, sales: composed.sales };
 }

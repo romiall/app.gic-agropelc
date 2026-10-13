@@ -52,7 +52,7 @@ Depuis P4, la « marge de lot » se compose dans `production-api` : CA net des v
 - La marge d'un lot abattu devient juste, sans toucher aux règles de valorisation. Seules deux additions touchent P7 et P4 : une lecture publique de `production` et la composition dans `production-api`. Elles sont signalées à la session principale.
 - Le CA d'un lot sur les écrans existants change pour les lots abattus, et seulement pour eux.
 - AT-040 et AT-041 se lisent chacun en une requête, sur les définitions de D11.
-- Tests : `production-acceptance.test.ts` (variante dépense), `p8-acceptance.test.ts` (AT-040, AT-041, lot abattu), `inventory-loss-summary.test.ts`.
+- Tests : `production-acceptance.test.ts` (AT-026 avec la dépense de 140 000, AT-041 sur le même lot, lot abattu dont les produits sont vendus, par `lotWithSales`, la composition de `GET /production/lots/:id`), `p8-acceptance.e2e.test.ts` (AT-025, AT-040, journée de PDV hors ligne avec dépenses), `p8-costs.e2e.test.ts` (`GET /losses/summary`, `GET /finance/overview`), `p8-lot-margin.test.ts` (`composeLotSales`).
 
 ## Alternatives
 

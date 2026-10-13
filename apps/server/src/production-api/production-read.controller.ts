@@ -39,8 +39,7 @@ import {
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
-import { lotRevenue } from '../modules/sales/application/public/index.js';
-import { composeLotSales } from './lot-margin.js';
+import { lotWithSales } from './lot-margin.js';
 import {
   PRODUCTION_DAILY_MAX_DAYS,
   PRODUCTION_LIST_DEFAULT_LIMIT,
@@ -59,9 +58,7 @@ import {
   type IncubationBatchSummary,
   type LotDay,
   type OverheadAllocationSummary,
-  type ProductionLotDetail,
   type SlaughterSummary,
-  slaughterStockLotIds,
 } from '../modules/production/application/public/index.js';
 
 const LOT_READ = 'production.lot.read';
@@ -302,27 +299,7 @@ export class ProductionReadController {
       entity,
       await getProductionLot(this.db, id),
     );
-    return { lot: await this.valued(request, now, await this.withSales(lot)) };
-  }
-
-  /**
-   * P4-09 : chiffre d'affaires et marges du lot (stratégie finance §6.2-6.3), composés ici à partir
-   * de l'API publique de `sales` (le module `production` ne peut pas l'importer) : CA mensuel du
-   * résultat (AV-109), « marge de lot » (CA net − coût du lot) et « marge brute des ventes »
-   * (CA net − coût figé des ventes), masqués comme tout montant sans droit de valorisation.
-   * P8-11 (ADR-062 §1, AV-366) : le CA comprend les ventes des produits de ses abattages (lots de
-   * stock `TRANSFORMATION`) ; la quantité vendue reste celle du lot (têtes), le CA des produits est
-   * détaillé à part.
-   */
-  private async withSales(lot: ProductionLotDetail) {
-    const productLots = await slaughterStockLotIds(this.db, lot.id);
-    const revenues = await lotRevenue(this.db, [lot.stockLotId, ...productLots]);
-    const composed = composeLotSales(
-      lot.costs,
-      revenues.get(lot.stockLotId)!,
-      productLots.map((stockLotId) => revenues.get(stockLotId)!),
-    );
-    return { ...lot, costs: { ...lot.costs, monthly: composed.monthly }, sales: composed.sales };
+    return { lot: await this.valued(request, now, await lotWithSales(this.db, lot)) };
   }
 
   @Get('lots/:id/daily')
