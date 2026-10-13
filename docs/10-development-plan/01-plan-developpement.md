@@ -32,7 +32,7 @@
 | **P5** Distribution et PDV (M, 3 sem.) | PDV autonomes et pilotés | Configuration PDV (mode de garde), allocations, sessions de caisse, remises de fonds, réapprovisionnement suggéré, tableau de distribution | P4 | Un PDV fonctionne toute la journée hors ligne, avec une caisse contrôlée | INV-FIN-05, 06 ; AT-003, 004, 031, 042 | **Code terminé** (P5-01 à P5-24, 13/10/2026) — [`14-demonstration-p5.md`](14-demonstration-p5.md) ; écrans de P5 (ECR-DIS-01 à 04, ECR-STK-06, ECR-FIN-05, ECR-FIN-07) livrés par le fork et intégrés le 13/10/2026 ; vérification dans le navigateur à faire |
 | **P6** Approvisionnement (M, 3 sem.) | Achats contrôlés | Demandes d'achat, validations, bons de commande, réceptions (livré, rejeté, accepté), quarantaine, réception sans BC, reliquats | P2 | Chaîne Besoin → Réception opérationnelle | INV-APP-* ; AT-023, 024 | Code terminé (P6-01 à P6-08, 27/09/2026 ; avancée avant P4 et P5, bloquées) ; écrans PWA ECR-APP-01 à 04 livrés par le fork « Écrans PWA », fusionné le 12/10/2026 ([`15-ecrans-pwa.md`](15-ecrans-pwa.md)), ECR-APP-05 avec P8 ; facture et paiement (P8), alerte de réception incomplète (P9) et dérogation d'emplacement (AV-096) hors périmètre — démonstration [`11-demonstration-p6.md`](11-demonstration-p6.md) |
 | **P7** Production (L, 4 sem.) | Production suivie par lot | Lots (chair, pondeuses, porcs), mise en place (stock interne ou achat direct), saisie du jour, mortalité avec seuils, consommations imputées, pesées, collectes d'œufs, incubation, sortie vers commercialisation, clôture, coût par tête | P2, P6 | Fermes équipées ; indicateurs de lot | INV-PRD-*, INV-OEU-01, INV-INC-01 ; AT-026 à 029, 052, 053 | Code terminé (P7-01 à P7-13, 30/09/2026 ; périmètre élargi des 27 et 28/09/2026) ; écrans PWA ECR-PRD-01 à 04, 06 et 07 livrés par le fork « Écrans PWA », fusionné le 12/10/2026 ([`15-ecrans-pwa.md`](15-ecrans-pwa.md)) ; dépenses directes (P8), alertes (P9) restent ; CA et marge des lots livrés en P4 — voir [`12-demonstration-p7.md`](12-demonstration-p7.md) |
-| **P8** Finance opérationnelle (M, 3 sem.) | Coûts, marges, dettes | Dépenses (imputées), factures fournisseurs et rapprochement, paiements fournisseurs, dettes, coûts de lot complets, marges, valeur des pertes | P4, P6, P7 | Vue financière opérationnelle complète | INV-FIN-07, 08 ; AT-025, 040, 041 | Non commencée |
+| **P8** Finance opérationnelle (M, 3 sem.) | Coûts, marges, dettes | Dépenses (imputées), factures fournisseurs et rapprochement, paiements fournisseurs, dettes, coûts de lot complets, marges, valeur des pertes | P4, P6, P7 | Vue financière opérationnelle complète | INV-FIN-07, 08 ; AT-025, 040, 041 | En cours (depuis le 13/10/2026, en parallèle de la session principale) |
 | **P9** Analytics et direction (L, 4 sem.) | Tour de contrôle et analyse flexible | Couche sémantique, jeux de faits, tour de contrôle, tableaux par rôle complets, explorateur, vues sauvegardées, exports, catalogue complet d'alertes, notes de direction | P4 à P8 | Direction autonome sur ses questions (CM §62) | AT-038, 039, 043, 045, 046, 048, 054 ; NFR-12, 13 | Non commencée |
 | **P10** Intégration Kommo (M, 2 à 3 sem.) | Parcours digital continu | Liens externes, webhooks entrants, messages sortants, anti-boucle, supervision, rejeu | P3, P4 ; AV-068 tranché | Leads qualifiés convertis en clients GIC ; enrichissement Kommo | INV-KOM-* ; AT-044 | Non commencée |
 
@@ -300,6 +300,37 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 | Prérequis | AV-041, AV-042, AV-043, AV-055, AV-058, AV-059, AV-088 |
 | Risques | RISK-24 |
 | DoD | Marge d'un lot pilote validée par la Direction |
+
+**Conception arrêtée le 13/10/2026** ([ADR-060](../decisions/ADR-060-depenses-p8.md), [ADR-061](../decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md), [ADR-062](../decisions/ADR-062-couts-complets-et-marges-p8.md), AV-350 à AV-366) :
+- une dépense payée suit la caisse de P5 (session exigée au PDV, conflit `CASH_SESSION_MISSING` hors ligne) ;
+- une dépense hors ligne non conforme est appliquée puis validée a posteriori, jamais rejetée (BR-SYN-007) ;
+- le coût des objets passe par l'API d'`inventory` ;
+- les quantités facturées sont écrites par `procurement` (fonction publique appelée par `finance`), ce qui tranche D08 contre D09 ;
+- l'avoir est une annulation motivée suivie d'une facture rectificative ;
+- un paiement au-delà du seuil n'est décaissé qu'à la validation de la Direction (affectations `PLANNED`) ;
+- la marge d'un lot abattu compte les ventes de ses produits.
+
+P8 est menée **en parallèle de la session principale** (branche `claude/p8-finance`, base `gic_agropelc_p8`, migrations `20261101xxxxxx`, numéros provisoires AV-350 à 399 et ADR-060 à 069, renumérotés à l'intégration), avec un suivi propre : [`17-suivi-p8.md`](17-suivi-p8.md). Les écrans (ECR-FIN-02 à 06, ECR-APP-05) forment un lot séparé, après le serveur et sur feu vert de la session principale.
+
+**Backlog P8** (DÉDUIT de la cartographie du 13/10/2026 ; ordre d'exécution ; chaque incrément est commité avec ses tests et ses documents ; les codes d'avertissement rejoignent `WARNING_CODES` dans l'incrément qui les produit, règle R8) :
+
+| Incrément | Contenu |
+|---|---|
+| P8-01 | `docs` : ADR-060 à 062, AV-350 à AV-366, D09 §17, ce backlog, suivi `17-suivi-p8.md` |
+| P8-02 | Domaine partagé (`packages/domain`) : statut d'une dépense à l'enregistrement, motifs de revue et règles du PDV (ADR-060 §2, 5, 6), type de coût d'une imputation, rapprochement d'une facture (`matchSupplierInvoice`), affectations et avance d'un paiement, statut payé d'une facture, échéance par défaut ; schémas des commandes dans `packages/contracts` ; couverture ≥ 90 % |
+| P8-03 | `db` : migration `20261101090000` (catégories, dépenses, factures et lignes, paiements, affectations, vue `finance_v_payables`, CHECK des politiques avec `INVOICE_MISMATCH`), déclencheurs d'immuabilité, `schema.sql`, types Kysely ; seed : catégories à identifiant dérivé du code, paramètres (`finance.expense_*`, `finance.pos_expense_max_xaf`, `finance.invoice_*`, `finance.supplier_*`), politiques `EXPENSE_DEFAULT`, `INVOICE_MISMATCH_DEFAULT`, `SUPPLIER_PAYMENT_DEFAULT`, RBAC (`finance.expense_category.manage`, `finance.expense.record` OWN du Resp. commercial), publication des catégories ; dictionnaire `09-finance.md` |
+| P8-04 | `finance` : catégories de dépense (`finance.expense_category.create`, `.update`, `.deactivate`), projection `EXPENSE_CATEGORY` du jeu `catalog` |
+| P8-05 | `finance` : dépenses — `finance.expense.record` (payée ou non, en ligne ou hors ligne, caisse du PDV et session, justificatif, revue a posteriori), `.pay`, `.cancel` ; écriture et contrepassation du coût par `inventory` (nouvelle lecture publique `costObjectStatus`) ; ordre des verrous |
+| P8-06 | `finance` et `approvals` : décisions `EXPENSE` (approbation, rejet, `NON_JUSTIFIEE`, limite par rôle) ; résolution de `CASH_SESSION_MISSING` d'une dépense à l'ouverture de session (code de P5, signalé) |
+| P8-07 | `procurement` (API publique : `findSupplier`, `applyInvoicedQuantities`) et `finance` : factures fournisseurs — `.record` (rapprochement), `.dispute`, `.approve`, `.cancel`, décisions `INVOICE_MISMATCH` |
+| P8-08 | `finance` : paiements fournisseurs — `.record` (seuil, affectations `PLANNED`, avance), décisions `SUPPLIER_PAYMENT` (décaissement à la validation), `.allocate`, `.cancel` |
+| P8-09 | Lectures HTTP : `GET /expenses`, `/supplier-invoices`, `/supplier-payments`, `/payables` (ancienneté, avances), payé dans `/purchase-orders/{id}/matching` (composition de transport) ; couverture des routes |
+| P8-10 | Jeux hors ligne : catégories dans `catalog` (rattrapage du seed), dépenses de l'auteur sur 30 jours dans `cash` (`EXPENSE`, portée `USER`), seuils visibles dans `me` |
+| P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage (`lotStockLotIds`, `production-api` ; code de P4 et P7, signalé), valeur des pertes (`GET /inventory/losses/summary`), vue d'ensemble `GET /finance/overview` |
+| P8-12 | Invariants et réconciliation : INV-FIN-07, INV-FIN-08 (dépenses et registre de coûts), dépenses contre trésorerie, facturé contre lignes de BC ; `verifyExpenses`, `verifySupplierLedger` dans la réconciliation quotidienne ; balayage `p8-invariants.test.ts` ; verrous en concurrence `p8-lock-order.test.ts` |
+| P8-13 | Acceptation : AT-025 (WF-09 complet), AT-040, AT-041, AT-026 avec la dépense directe de 140 000 (stratégie finance §6.2), journée de PDV hors ligne avec dépenses |
+| P8-14 | Revue adverse (chercheurs puis vérificateurs sceptiques) et correctifs |
+| P8-15 | Clôture : démonstration `18-demonstration-p8.md`, matrice §17.x, plan ; suite complète verte sur une base neuve |
 
 ### P9 — Analytics et direction
 

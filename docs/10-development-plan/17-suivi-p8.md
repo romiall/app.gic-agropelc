@@ -1,0 +1,46 @@
+# Suivi de la phase P8 — Finance opérationnelle (menée en parallèle)
+
+> Ouvert le 13/10/2026. P8 est développée en parallèle de la session principale, qui vérifie et corrige les écrans de P1 à P5. La session principale intègre ce travail : elle fusionne `claude/p8-finance`, renumérote sans trou les AV et les ADR, et met à jour `CLAUDE.md` et `PROMPT-DE-REPRISE.md`. Fiche, conception et backlog : [plan §4, P8](01-plan-developpement.md#p8--finance-opérationnelle).
+
+## 1. Espace réservé
+
+| Élément | Valeur |
+|---|---|
+| Branche | `claude/p8-finance`, partie de `claude/brave-pasteur-c7q4y7` (`9a5b315`) |
+| Worktree | `.claude/worktrees/p8-finance` |
+| Bases | `gic_agropelc_p8` (développement et tests), `gic_agropelc_p8m` (base jetable : mutations, scénarios destructifs) |
+| Migrations | versions `20261101xxxxxx` |
+| AV | numéros 350 à 399 (provisoires) ; utilisés : AV-350 à AV-366 |
+| ADR | numéros 060 à 069 (provisoires) ; utilisés : ADR-060 à ADR-062 |
+| Démonstration de sortie | `18-demonstration-p8.md` (à la clôture) |
+
+Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agropelc_p8` neuve, **1 111 tests verts** (127 fichiers). Un premier passage a donné un dépassement de délai sous charge dans `sales-allocations.test.ts`, vert à la relance (33 sur 33).
+
+## 2. Avancement
+
+| Incr. | Objet | Commit | État |
+|---|---|---|---|
+| P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | _à venir_ | Fait |
+| P8-02 à P8-15 | Voir le backlog du plan | — | À faire |
+
+## 3. Code existant touché (hors des fichiers nouveaux de P8)
+
+Ces modifications sont signalées à la session principale à chaque fin de lot. Elle peut corriger les mêmes fichiers en parallèle : chaque changement reste petit et localisé.
+
+| Incr. | Module ou fichier | Changement | Raison |
+|---|---|---|---|
+| P8-03 | `approvals` : `operation-types.ts`, CHECK `ck_approvals_control_policies_operation_type` | ajout de `INVOICE_MISMATCH` | SM-SUPPLIER-INVOICE |
+| P8-03 | `db/seeds/rbac-data.ts`, `db/tests/seed.test.ts` | permission `finance.expense_category.manage` (Finance, Administrateur) ; `finance.expense.record` OWN du Resp. commercial (matrice RBAC l.237) | AV-357 ; alignement prévu en P8 |
+| P8-05 | `inventory/application/public` | lecture `costObjectStatus` (existence et statut d'un objet de coût) | ADR-060 §8 |
+| P8-06 | `finance` (P5) : résolution des conflits à l'ouverture de session | type `EXPENSE` en plus de `CUSTOMER_PAYMENT` | ADR-060 §5 |
+| P8-07 | `procurement/application/public` | `findSupplier`, `applyInvoicedQuantities` | ADR-061 §3 |
+| P8-09 | `procurement-api` (rapprochement) | payé (`paidXaf`) composé depuis `finance` | ADR-061 §3 |
+| P8-11 | `production/application/public`, `production-api` | `lotStockLotIds`, CA de la marge de lot avec les produits d'abattage | ADR-062 §1, AV-366 |
+| P8-11 | `inventory` : lecture et route | `lossValueSummary`, `GET /inventory/losses/summary` | ADR-062 §3 |
+
+## 4. Écarts de documentation relevés (pour la session principale)
+
+- `CLAUDE.md` §1 (ligne P6) et `11-demonstration-p6.md` disent AV-095 et AV-096 « ouverts » ; ils sont tranchés le 27/09/2026 dans le registre. AV-096 (dérogation d'emplacement de réception, option c) n'est pas construit : le code refuse toujours `RECEIPT_LOCATION_INVALID`. C'est hors du périmètre de P8.
+- Le lancement de P8 demandait la section « §15 de D09 » pour les choix de P8, mais §15 (P4-08) et §16 (P5-15) existent déjà. Les choix de P8 sont en §17.
+- D09 BR-FIN-040 liste six types de coût ; le schéma en compte neuf (`OEUFS`, `FRAIS_GENERAUX`, `PRODUCTION_TRANSFEREE`). La correction est faite dans l'incrément qui écrit les coûts (P8-05).
+- Le dictionnaire `10-approvals-attachments-communication.md` (énumération `operation_type`) ne contient pas `CASH_TRANSFER_DISCREPANCY` ; il est complété avec `INVOICE_MISMATCH` en P8-03.

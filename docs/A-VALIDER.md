@@ -260,6 +260,23 @@ Classification (PM §45) :
 | AV-243 | Fait hors ligne antérieur au rattachement de l'appareil à un autre site | SECONDAIRE | P5 | Pas de `DEVICE_OTHER_SITE` pour un fait antérieur au dernier rattachement (`designation_changed_at`) | OUVERT |
 | AV-244 | Encaissé : remboursements et doublons approuvés | SECONDAIRE | P5 | Remboursements non retranchés de l'encaissé (lus dans la trésorerie) ; doublon approuvé compté à sa date d'origine | OUVERT |
 | AV-245 | Chiffre d'affaires d'un PDV : site entier (accueil) ou emplacement de vente (tableau) | SECONDAIRE | P5 | Deux périmètres, une définition : l'accueil compte le site, le tableau l'emplacement de vente | OUVERT |
+| AV-350 | Plafond d'approbation des dépenses par rôle (Resp. production « ≤ seuil, fermes », RC-06) | SECONDAIRE | P8 | Limite `maxAmountXaf` du droit de l'approbateur vérifiée à la décision ; aucune valeur semée | OUVERT |
+| AV-351 | Dépense au-delà du seuil sans politique `EXPENSE` active | SECONDAIRE | P8 | Pas de validation (comme les pertes) ; politique `EXPENSE_DEFAULT` semée | OUVERT |
+| AV-352 | Dépense hors ligne non conforme, dépense hors ligne non payée | IMPORTANTE | P8 | Appliquée puis placée en validation a posteriori avec motif ; la saisie hors ligne non payée est admise | OUVERT |
+| AV-353 | Plafond d'une petite dépense payée par la caisse du PDV (BR-DIS-013) | SECONDAIRE | P8 | `finance.pos_expense_max_xaf` = 50 000 | OUVERT |
+| AV-354 | Session de caisse pour une dépense payée par la caisse du PDV | IMPORTANTE | P8 | Exigée comme pour un encaissement : refus en ligne, conflit `CASH_SESSION_MISSING` hors ligne | OUVERT |
+| AV-355 | Dépense rejetée après paiement : « imputée au déclarant » | SECONDAIRE | P8 | Reclassée `NON_JUSTIFIEE`, responsabilité du déclarant enregistrée ; recouvrement hors application | OUVERT |
+| AV-356 | Dépense imputée à un site | SECONDAIRE | P8 | Avec espèce : frais généraux répartis ; sans espèce : dépense directe du site (PDV compris) ; une espèce par dépense | OUVERT |
+| AV-357 | Catégories de dépense : type de coût, PDV, administration | SECONDAIRE | P8 | Type de coût par catégorie (défaut `DEPENSE_DIRECTE`) ; catégories du PDV : transport, carburant, fournitures, entretien, divers ; `NON_JUSTIFIEE` système ; gérées par Finance et Administrateur | OUVERT |
+| AV-358 | Facture fournisseur sans bon de commande | SECONDAIRE | P8 | Mise en revue (`MISMATCH`) ; paramètre `finance.invoice_without_po_mode` | OUVERT |
+| AV-359 | Avoir fournisseur | IMPORTANTE | P8 | Annulation motivée de la facture contestée puis facture rectificative (même référence admise) ; pas d'entité avoir | OUVERT |
+| AV-360 | Échéance par défaut d'une facture fournisseur | SECONDAIRE | P8 | Saisie, sinon date de facture + délai du fournisseur, sinon date de facture | OUVERT |
+| AV-361 | Réception ou bon de commande annulé après facturation | SECONDAIRE | P8 | Pas de garde côté achats ; écart « facturé > accepté » signalé par la réconciliation, corrigé par avoir | OUVERT |
+| AV-362 | Avances fournisseurs et affectation ultérieure | SECONDAIRE | P8 | Avance admise (`finance.supplier_advance_allowed`) ; affectation ultérieure par `finance.supplier_payment.allocate` | OUVERT |
+| AV-363 | Paiement fournisseur validé : date du décaissement, factures payées entre-temps | SECONDAIRE | P8 | Décaissement daté de la décision ; décision refusée si une affectation dépasse le solde | OUVERT |
+| AV-364 | Annulation d'un paiement fournisseur enregistré | SECONDAIRE | P8 | Par la Direction, avec motif, sans demande séparée | OUVERT |
+| AV-365 | Lecture des factures, paiements fournisseurs et de la vue d'ensemble financière | SECONDAIRE | P8 | `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` | OUVERT |
+| AV-366 | Chiffre d'affaires d'un lot de production | IMPORTANTE | P8 | Ventes du lot et de ses produits d'abattage ; œufs exclus (déjà valorisés par le crédit au coût standard) | OUVERT |
 
 ---
 
@@ -1773,6 +1790,126 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) garder les deux périmètres, sous des libellés distincts (« chiffre du site », « vendu du PDV ») ; (b) étendre le vendu du tableau à tous les emplacements du site, hors rapprochement ; (c) réduire l'accueil à l'emplacement de vente.
 - **Recommandation** : (a) : le rapprochement du tableau n'a de sens que sur l'emplacement dont il suit le stock ; l'accueil répond à « combien le site a-t-il vendu ».
 - **Impact** : libellés de la PWA (fork « Écrans PWA ») ; aucune donnée. Défaut implémenté : (a) (P5-23). Non paramétrable. Test : `p5-distribution-metrics.test.ts` (vente d'un autre emplacement du site, comptée par l'accueil, pas par le tableau).
+
+### AV-350 — Plafond d'approbation des dépenses par rôle — SECONDAIRE
+- **Question** : Le Resp. production approuve les dépenses « ≤ seuil, fermes » (matrice RBAC §5.5) : quel plafond, et faut-il le borner aux sites de type ferme ?
+- **Pourquoi** : la matrice le dit sans chiffre ; RC-06 range ce type de plafond dans `role_permissions.limits`, que `decideApprovalRequest` ne lit pas. Le seed donne à RESP_PRODUCTION `finance.expense.approve` en `ALL` sans limite (AV-058). **DÉDUIT**
+- **Choix** : (a) mécanisme prêt (`limits.maxAmountXaf` vérifié par le gestionnaire de décision `EXPENSE`, refus `APPROVAL_LIMIT_EXCEEDED`), aucune valeur semée ; (b) plafond semé (par exemple 200 000) ; (c) restriction aux fermes en plus du plafond.
+- **Recommandation** : (a), puis (b) dès que le porteur donne le chiffre ; (c) suit les sites affectés au rôle.
+- **Impact** : gestionnaire de décision `EXPENSE` ([ADR-060](decisions/ADR-060-depenses-p8.md) §2). Défaut implémenté : (a) (P8). Paramétrable par `role_permissions.limits`.
+
+### AV-351 — Dépense au-delà du seuil sans politique `EXPENSE` — SECONDAIRE
+- **Question** : Une dépense au-delà du seuil de validation, alors qu'aucune politique `EXPENSE` n'est active, est-elle refusée ou enregistrée sans validation ?
+- **Pourquoi** : les ventes refusent `CONTROL_POLICY_MISSING` ; les pertes s'enregistrent sans validation. Une dépense payée hors ligne ne peut pas être refusée (BR-SYN-007). **DÉDUIT**
+- **Choix** : (a) pas de validation, comme les pertes ; (b) refus en ligne, validation forcée hors ligne.
+- **Recommandation** : (a) : la politique `EXPENSE_DEFAULT` est semée ; la retirer est un choix explicite de la Direction.
+- **Impact** : `finance.expense.record` ([ADR-060](decisions/ADR-060-depenses-p8.md) §2). Défaut implémenté : (a) (P8). Paramétrable par les politiques de contrôle.
+
+### AV-352 — Dépense hors ligne non conforme, dépense hors ligne non payée — IMPORTANTE
+- **Question** : Une dépense saisie hors ligne qui enfreint une règle vérifiable seulement au serveur (catégorie désactivée ou non autorisée au PDV, plafond du PDV dépassé, justificatif manquant, lot clos ou introuvable) est-elle refusée, mise en conflit ou appliquée ? Une dépense non payée peut-elle être saisie hors ligne ?
+- **Pourquoi** : une dépense payée est un fait financier accompli (BR-SYN-007). SM-EXPENSE (l.183) admet la saisie hors ligne « payée ou non », D09 §12 seulement « payée immédiatement », et le dictionnaire indique `CR`. **DÉDUIT**
+- **Choix** : (a) appliquée puis placée en validation a posteriori (`PAID_PENDING_APPROVAL` ou `PENDING_APPROVAL`), motif dans `review_reasons`, avertissement `EXPENSE_REVIEW_REQUIRED` ; (b) appliquée avec un conflit dédié ; (c) refusée. Pour la saisie non payée : (a) admise hors ligne ; (b) réservée au mode en ligne.
+- **Recommandation** : (a) et (a) : un seul circuit de décision par la Finance, prévu par la machine à états ; un rejet reclasse la dépense (AV-355).
+- **Impact** : `finance.expense.record` ([ADR-060](decisions/ADR-060-depenses-p8.md) §6). Défaut implémenté : (a), (a) (P8). Non paramétrable.
+
+### AV-353 — Plafond d'une petite dépense au PDV — SECONDAIRE
+- **Question** : Quel montant maximal pour une dépense payée depuis la caisse d'un PDV (BR-DIS-013) ?
+- **Pourquoi** : BR-DIS-013 parle d'un plafond sans le chiffrer ; AV-058 ne le donne pas. **DÉDUIT**
+- **Choix** : (a) 50 000 XAF, comme le seuil de validation ; (b) un montant plus bas (par exemple 20 000) ; (c) aucun plafond, la validation suffit.
+- **Recommandation** : (a) : une petite dépense de caisse ne demande jamais de validation.
+- **Impact** : paramètre `finance.pos_expense_max_xaf` ([ADR-060](decisions/ADR-060-depenses-p8.md) §5). Défaut implémenté : (a) (P8). Paramétrable.
+
+### AV-354 — Session de caisse pour une dépense payée par la caisse du PDV — IMPORTANTE
+- **Question** : Une dépense payée en espèces depuis la caisse d'un PDV exige-t-elle une session de caisse ouverte ?
+- **Pourquoi** : la dépense diminue l'attendu de la session (BR-DIS-013, ADR-032) ; l'encaissement en espèces au PDV exige une session (BR-DIS-005, P5-14). Rien n'est écrit pour une sortie. **DÉDUIT**
+- **Choix** : (a) exigée comme un encaissement : `CASH_SESSION_REQUIRED` en ligne, conflit `CASH_SESSION_MISSING` hors ligne résolu à l'ouverture ; (b) non exigée, la dépense hors session reste sans session.
+- **Recommandation** : (a) : la caisse du PDV ne bouge qu'en session, l'écart reste explicable.
+- **Impact** : `finance.expense.record`, `finance.expense.pay`, `finance.supplier_payment.record` ; résolution à l'ouverture de session ([ADR-060](decisions/ADR-060-depenses-p8.md) §5). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-355 — Dépense rejetée après paiement — SECONDAIRE
+- **Question** : Que signifie concrètement « imputée au déclarant » (BR-FIN-022) pour une dépense payée puis rejetée ?
+- **Pourquoi** : l'application n'a pas de créance sur le personnel ; ADR-032 §7 renvoie aussi à P8 la retenue sur la personne responsable d'un écart de remise. Pour les pertes, la décision AV-038 enregistre la responsabilité du déclarant. **DÉDUIT**
+- **Choix** : (a) reclassement en catégorie système `NON_JUSTIFIEE`, responsabilité du déclarant enregistrée (`responsibility_user_id`), aucune écriture de coût, recouvrement hors application ; (b) créance du personnel (nouvelle entité).
+- **Recommandation** : (a) au MVP, aligné sur les pertes ; (b) avec la paie, si elle entre un jour dans le périmètre.
+- **Impact** : gestionnaire de décision `EXPENSE` ([ADR-060](decisions/ADR-060-depenses-p8.md) §7). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-356 — Dépense imputée à un site — SECONDAIRE
+- **Question** : Une dépense imputée à un site (électricité de la ferme, loyer d'un PDV) alimente-t-elle les frais généraux répartis sur les lots (ADR-026) ou reste-t-elle un coût du site ?
+- **Pourquoi** : AV-043 relie les frais généraux « aux dépenses en P8 » ; l'objet de coût `SITE` est aussi celui des frais généraux, qui exigent une espèce. BR-FIN-020 cite le PDV comme objet de coût, absent de la liste des objets. **DÉDUIT**
+- **Choix** : (a) avec espèce : frais généraux de cette espèce, répartis ; sans espèce : dépense directe du site, non répartie (PDV = son site) ; une seule espèce par dépense ; (b) toute dépense de site est un frais général ; (c) ventilation d'une dépense sur deux espèces.
+- **Recommandation** : (a) : le choix reste explicite à la saisie ; une charge commune se saisit en deux dépenses ou par `inventory.overhead.record`.
+- **Impact** : `finance.expense.record` ([ADR-060](decisions/ADR-060-depenses-p8.md) §8). L'appartenance d'un lot au site de la dépense n'est pas contrôlée (`finance` ne lit pas `production`). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-357 — Catégories de dépense : type de coût, PDV, administration — SECONDAIRE
+- **Question** : Quel type de coût porte chaque catégorie initiale (AV-058), lesquelles sont permises au PDV, et qui les administre ?
+- **Pourquoi** : le dictionnaire prévoit `default_cost_type` et `allowed_on_pos` sans les remplir ; aucune permission n'existe pour administrer les catégories. **DÉDUIT**
+- **Choix** : (a) `VETERINAIRE` → `VETERINAIRE`, `ALIMENT_HORS_STOCK` → `ALIMENT`, les autres → `DEPENSE_DIRECTE` ; au PDV : `TRANSPORT`, `CARBURANT`, `FOURNITURES`, `ENTRETIEN`, `DIVERS` ; `NON_JUSTIFIEE` catégorie système non sélectionnable ; administration par une permission `finance.expense_category.manage` (Finance, Administrateur) ; (b) autre répartition.
+- **Recommandation** : (a).
+- **Impact** : seed `finance-references.ts`, commandes `finance.expense_category.*` ([ADR-060](decisions/ADR-060-depenses-p8.md) §9). Défaut implémenté : (a) (P8). Paramétrable par les commandes de catégorie.
+
+### AV-358 — Facture fournisseur sans bon de commande — SECONDAIRE
+- **Question** : Une facture sans bon de commande (service, frais) est-elle approuvée d'office ou mise en revue ?
+- **Pourquoi** : BR-FIN-031 rapproche facture, BC et réceptions ; sans BC, rien n'est rapprochable. **DÉDUIT**
+- **Choix** : (a) mise en revue : `MISMATCH`, motif `NO_PURCHASE_ORDER`, décision de la Finance ; (b) approuvée d'office.
+- **Recommandation** : (a) : une dette sans BC ni réception passe par un second regard.
+- **Impact** : paramètre `finance.invoice_without_po_mode` (`REVIEW` ou `APPROVE`) ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §2). Défaut implémenté : (a) (P8). Paramétrable.
+
+### AV-359 — Avoir fournisseur — IMPORTANTE
+- **Question** : Comment enregistrer l'avoir du fournisseur sur une facture contestée (WF-09 : « avoir 3 sacs → APPROVED (95) ») ?
+- **Pourquoi** : le dictionnaire n'a ni entité ni colonne d'avoir ; AV-054 renvoie « l'avoir sur facture » à P8. **DÉDUIT**
+- **Choix** : (a) annulation motivée de la facture contestée, puis facture rectificative du fournisseur, la même référence étant admise après annulation ; un avoir après paiement passe par l'annulation du paiement ; (b) entité « avoir » liée à la facture, qui en réduit le montant ; (c) modification des lignes d'une facture contestée.
+- **Recommandation** : (a) au MVP : rien ne disparaît, l'historique « 98 puis 95 » se lit en deux documents ; (b) quand les avoirs partiels deviendront fréquents.
+- **Impact** : unicité partielle de la référence fournisseur, `finance.supplier_invoice.cancel` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §4). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-360 — Échéance par défaut d'une facture fournisseur — SECONDAIRE
+- **Question** : Quelle échéance retenir quand la facture n'en porte pas ?
+- **Pourquoi** : `due_date` est facultative ; le fournisseur porte un délai de paiement facultatif (`payment_terms_days`). L'ancienneté des dettes en dépend. **DÉDUIT**
+- **Choix** : (a) date de facture + délai du fournisseur, sinon date de facture ; (b) date de facture + délai global paramétré.
+- **Recommandation** : (a).
+- **Impact** : `finance.supplier_invoice.record`, `GET /payables` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §8). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-361 — Réception ou bon de commande annulé après facturation — SECONDAIRE
+- **Question** : Faut-il empêcher l'annulation d'une réception ou d'un BC déjà facturés ?
+- **Pourquoi** : `procurement` ne peut pas consulter `finance` ; il lit seulement sa colonne `invoiced_qty_base`. Une décision de Finance peut avoir approuvé une facture au-delà de l'accepté (AT-025). **DÉDUIT**
+- **Choix** : (a) aucune garde côté achats ; l'écart « facturé > accepté » est signalé par la réconciliation des fournisseurs et corrigé par avoir (AV-359) ; (b) refus de l'annulation si le facturé dépasserait l'accepté.
+- **Recommandation** : (a) : P6 reste inchangé et l'écart reste visible.
+- **Impact** : `verifySupplierLedger`, rapprochement ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md), Conséquences). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-362 — Avances fournisseurs et affectation ultérieure — SECONDAIRE
+- **Question** : Une avance (paiement non affecté, AV-055) est-elle admise, et comment l'affecter ensuite à une facture ?
+- **Pourquoi** : AV-055 admet les avances sans dire comment elles rejoignent une facture ; D09 prévoit `SUPPLIER_PAYMENT_EXCEEDS` (« paiement ≤ dette + avance autorisée »). **DÉDUIT**
+- **Choix** : (a) avance admise (paramètre `finance.supplier_advance_allowed`, vrai par défaut), affectation ultérieure par `finance.supplier_payment.allocate` ; (b) avance interdite, paiement ≤ dette.
+- **Recommandation** : (a).
+- **Impact** : `finance.supplier_payment.record`, `.allocate` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §7). Défaut implémenté : (a) (P8). Paramétrable.
+
+### AV-363 — Paiement fournisseur validé : date et affectations — SECONDAIRE
+- **Question** : À quelle date se fait le décaissement d'un paiement validé par la Direction, et que faire si une facture a été payée entre la saisie et la décision ?
+- **Pourquoi** : BR-FIN-033 impose la validation avant le décaissement ; la saisie et la décision peuvent être séparées de plusieurs jours. **DÉDUIT**
+- **Choix** : (a) décaissement daté de la décision ; affectations revérifiées, décision refusée (`ALLOCATION_EXCEEDS`) si l'une dépasse le solde ; (b) décaissement daté de la saisie.
+- **Recommandation** : (a) : la trésorerie montre l'argent sorti au jour où il sort.
+- **Impact** : gestionnaire de décision `SUPPLIER_PAYMENT` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §6). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-364 — Annulation d'un paiement fournisseur enregistré — SECONDAIRE
+- **Question** : Qui annule un paiement fournisseur déjà décaissé, et faut-il une demande de validation ?
+- **Pourquoi** : SM-SUPPLIER-PAYMENT prévoit « annulation + validation » sans type de décision. **DÉDUIT**
+- **Choix** : (a) la Direction (`finance.supplier_payment.approve`) annule directement, avec motif ; (b) la Finance demande, la Direction valide (nouveau type de décision).
+- **Recommandation** : (a) : l'annulation est faite par celui qui aurait validé.
+- **Impact** : `finance.supplier_payment.cancel` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §7). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-365 — Lecture des factures, paiements fournisseurs et de la vue d'ensemble — SECONDAIRE
+- **Question** : Quel droit pour lire les factures et paiements fournisseurs, et la vue d'ensemble financière ?
+- **Pourquoi** : le catalogue n'a pas de permission de lecture propre ; `finance.payable.read` couvre les dettes. **DÉDUIT**
+- **Choix** : (a) `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` ; (b) permissions dédiées.
+- **Recommandation** : (a).
+- **Impact** : `GET /supplier-invoices`, `/supplier-payments`, `/payables`, `/finance/overview` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §10, [ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §4). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-366 — Chiffre d'affaires d'un lot de production — IMPORTANTE
+- **Question** : Le chiffre d'affaires de la marge d'un lot comprend-il les ventes des produits issus du lot (abattage, œufs) ?
+- **Pourquoi** : D07 (l.234) compte « les ventes des têtes et produits du lot », mais P4 ne compte que le lot de stock du lot : un lot abattu affiche une marge négative. Les œufs sortent déjà du lot pondeur au coût standard (ADR-027). **DÉDUIT**
+- **Choix** : (a) ventes du lot et de ses produits d'abattage ; œufs exclus ; (b) œufs inclus, crédit au coût standard retiré de la marge ; (c) inchangé.
+- **Recommandation** : (a) : aucune valeur n'est comptée deux fois.
+- **Impact** : `production-api` (marge de lot), lecture publique `lotStockLotIds` ([ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
+
 ---
 
 ## 3. Journal des décisions
