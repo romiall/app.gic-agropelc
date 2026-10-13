@@ -609,7 +609,8 @@ async function mergeOpening(
   return {
     status: 'APPLIED_WITH_WARNINGS',
     warnings: ['CASH_SESSION_CONCURRENT_OPEN'],
-    serverRefs: { cashSessionId: target.id, mergedInto: target.id },
+    // S-48 (P5-23) : le statut de la session retenue, pour que l'appareil sache si la caisse est ouverte.
+    serverRefs: { cashSessionId: target.id, mergedInto: target.id, targetStatus: target.status },
     audit: { after: { merged: true, ...details } },
   };
 }

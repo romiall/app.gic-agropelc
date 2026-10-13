@@ -586,7 +586,7 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(offline).toMatchObject({
         status: 'APPLIED_WITH_WARNINGS',
         warnings: ['CASH_SESSION_CONCURRENT_OPEN'],
-        server_refs: { cashSessionId: first },
+        server_refs: { cashSessionId: first, mergedInto: first, targetStatus: 'OPEN' }, // S-48
       });
       const rows = await sessionsOf(pos.accountId);
       expect(rows).toHaveLength(1);
@@ -627,7 +627,7 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       });
       expect(offline).toMatchObject({
         status: 'APPLIED_WITH_WARNINGS',
-        server_refs: { cashSessionId: first },
+        server_refs: { cashSessionId: first, targetStatus: 'VALIDATED' }, // S-48
       });
       expect((await conflicts(proposed, 'CASH_SESSION_CONCURRENT_OPEN'))[0]!.details).toMatchObject(
         { reason: 'OVERLAPS_CLOSED_SESSION', targetStatus: 'VALIDATED' },
