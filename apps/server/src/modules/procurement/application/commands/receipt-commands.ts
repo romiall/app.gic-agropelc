@@ -19,7 +19,9 @@
  * - Doublon suspecté (bon de livraison déjà comptabilisé pour ce fournisseur, BR-APP-012) :
  *   `QUARANTINED`, **aucun effet stock** jusqu'à décision (INV-APP-03).
  * - Photo du bon de livraison exigée sans BC ou au-delà du paramètre de valeur (BR-APP-014) :
- *   pièce jointe citée dans la commande (`attachment_ids`, `PHOTO_REQUIRED`).
+ *   pièce jointe citée dans la commande (`attachment_ids`). Sans photo (l'application ne sait pas
+ *   encore en joindre), la réception est appliquée, avec l'avertissement `RECEIPT_PHOTO_MISSING` et un
+ *   conflit informatif pour le Resp. achats (AV-246, tranché le 13/10/2026 ; MP-04).
  * - Annulation d'une réception comptabilisée : validation, puis inverses des entrées au coût
  *   d'origine — impossible si le stock a déjà été consommé (BR-APP-013, `STOCK_UNAVAILABLE`).
  */
@@ -37,6 +39,7 @@ import {
   type OrderLineProgress,
   businessDayOf,
 } from '@gic/domain';
+import type { WarningCode } from '@gic/contracts';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -510,16 +513,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       at,
       100_000,
     );
-    if (
+    // AV-246 (MP-04) : photo exigée mais absente — la réception est appliquée et signalée, jamais
+    // refusée, tant que l'application ne joint pas de photo ; la photo jointe ensuite la régularise.
+    const photoMissing =
       receiptPhotoRequired({
         withoutOrder: !order,
         acceptedValueXaf: acceptedValue,
         thresholdXaf: photoThreshold,
-      }) &&
-      envelope.attachment_ids.length === 0
-    ) {
-      return rejected('PHOTO_REQUIRED', 'Photo du bon de livraison requise (BR-APP-014).');
-    }
+      }) && envelope.attachment_ids.length === 0;
 
     const status =
       quarantineReasons.length > 0 ? 'QUARANTINED' : order ? 'POSTED' : 'POSTED_PENDING_REVIEW';
@@ -631,10 +632,32 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
     await emitGoodsReceiptChange(uow, receiptId);
 
+    const photoWarnings: WarningCode[] = [];
+    if (photoMissing) {
+      await recordConflict(uow, {
+        id: idGenerator.newId(),
+        commandId: envelope.command_id,
+        conflictType: 'RECEIPT_PHOTO_MISSING',
+        entityType: 'GOODS_RECEIPT',
+        entityId: receiptId,
+        siteId: location.site.id,
+        ownerRole: 'RESP_ACHATS',
+        applied: true,
+        details: {
+          docNumber,
+          purchaseOrderId: p.purchaseOrderId ?? null,
+          acceptedValueXaf: acceptedValue,
+          thresholdXaf: photoThreshold,
+          withoutOrder: !order,
+        },
+      });
+      photoWarnings.push('RECEIPT_PHOTO_MISSING');
+    }
+
     if (status === 'QUARANTINED') {
       return {
         status: 'APPLIED_WITH_WARNINGS',
-        warnings: ['RECEIPT_QUARANTINED'],
+        warnings: ['RECEIPT_QUARANTINED', ...photoWarnings],
         serverRefs: { docNumber },
       };
     }
@@ -657,11 +680,13 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
       return {
         status: 'APPLIED_WITH_WARNINGS',
-        warnings: ['OVER_RECEIPT'],
+        warnings: ['OVER_RECEIPT', ...photoWarnings],
         serverRefs: { docNumber },
       };
     }
-    return { status: 'APPLIED', serverRefs: { docNumber } };
+    return photoWarnings.length > 0
+      ? { status: 'APPLIED_WITH_WARNINGS', warnings: photoWarnings, serverRefs: { docNumber } }
+      : { status: 'APPLIED', serverRefs: { docNumber } };
   };
 
   /** BR-APP-013 : demande d'annulation d'une réception comptabilisée (validation). */

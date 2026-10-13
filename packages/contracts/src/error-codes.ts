@@ -143,6 +143,10 @@ export const WARNING_CODES = [
   // P5-23 (S-40, AV-223) : expédition saisie hors ligne d'une demande refusée ou annulée depuis — appliquée
   // en expédition directe (fait accompli), conflit informatif pour le magasinier du site expéditeur.
   'TRANSFER_REQUEST_CLOSED',
+  // MP-04 (AV-246, tranché le 13/10/2026) : réception d'achat au-delà du seuil de photo du bon de
+  // livraison, sans photo (l'application ne sait pas encore en joindre) : appliquée et signalée au
+  // Resp. achats (conflit informatif `RECEIPT_PHOTO_MISSING`), jamais refusée.
+  'RECEIPT_PHOTO_MISSING',
 ] as const;
 
 export const warningCodeSchema = z.enum(WARNING_CODES);

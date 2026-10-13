@@ -1030,7 +1030,7 @@ export const fr = {
     comment_required:
       'Un motif de rejet choisi exige une précision : décrivez-la dans les observations.',
     photo_hint:
-      'Au-delà de {{threshold}} acceptés, le serveur exige la photo du bon de livraison, que l’application ne sait pas encore joindre : la réception serait alors refusée.',
+      'Au-delà de {{threshold}} acceptés, la photo du bon de livraison est exigée ; l’application ne sait pas encore la joindre : la réception sera enregistrée « photo manquante » et signalée aux Achats.',
     submit: 'Enregistrer la réception',
     result: {
       WAITING_offline:
@@ -1039,6 +1039,8 @@ export const fr = {
       DONE: 'Réception enregistrée : {{doc}}.',
       WARNING: 'Réception {{doc}} enregistrée, avec un signalement.',
       WARNING_RECEIPT_QUARANTINED: 'Réception {{doc}} mise en quarantaine pour validation.',
+      WARNING_RECEIPT_PHOTO_MISSING:
+        'Réception {{doc}} enregistrée sans photo du bon de livraison : elle est signalée aux Achats ; gardez le bon pour la régularisation.',
       CONFLICT: 'Réception mise en attente d’examen (conflit).',
       REJECTED: 'Réception refusée : {{reason}}',
     },

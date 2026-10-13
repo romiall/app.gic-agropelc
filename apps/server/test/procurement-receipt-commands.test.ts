@@ -421,10 +421,8 @@ describe('procurement.receipt.* (P6-05)', () => {
     };
     const photo = freshUuid();
 
-    // BR-APP-014 : 95 × 15 000 ≥ 100 000 XAF → photo du bon de livraison exigée.
-    expect(
-      code((await receive({ purchaseOrderId: po.id, lines: [line] }, at('09:00:00'))).result),
-    ).toBe('PHOTO_REQUIRED');
+    // BR-APP-014 : 95 × 15 000 ≥ 100 000 XAF → photo du bon de livraison jointe (sans photo : test
+    // « AV-246 » ci-dessous).
     const withoutReason = { ...line, rejectionReasonCodeId: undefined };
     expect(
       code(
@@ -694,6 +692,89 @@ describe('procurement.receipt.* (P6-05)', () => {
     });
   });
 
+  it('AV-246 (MP-04) : photo exigée mais absente → réception appliquée, signalée « photo manquante » au Resp. achats, jamais refusée', async () => {
+    const conflictOf = (receiptId: string) =>
+      db
+        .selectFrom('sync_sync_conflicts')
+        .selectAll()
+        .where('entity_type', '=', 'GOODS_RECEIPT')
+        .where('entity_id', '=', toBin(receiptId))
+        .where('conflict_type', '=', 'RECEIPT_PHOTO_MISSING')
+        .execute();
+
+    // Avec BC, 20 × 15 000 = 300 000 ≥ 100 000 XAF : appliquée au stock, avertissement et conflit.
+    const productId = await newProduct();
+    const po = await sentOrder(productId, 20, 15_000);
+    const line = { poLineId: po.lineId, productId, qtyDeliveredBase: 20 };
+    const missing = await receive({ purchaseOrderId: po.id, lines: [line] }, at('09:00:00'));
+    expect(missing.result).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['RECEIPT_PHOTO_MISSING'],
+      server_refs: { docNumber: expect.stringMatching(/^REC-/) },
+    });
+    expect((await receiptRow(missing.id))!.status).toBe('POSTED');
+    expect(await stockAt(storeId, productId)).toBe(20);
+    const [conflict] = await conflictOf(missing.id);
+    expect(conflict).toMatchObject({ status: 'OPEN', applied: 1, owner_role: 'RESP_ACHATS' });
+
+    // Hors ligne, même issue (fait accompli, BR-SYN-007).
+    const offlineProduct = await newProduct();
+    const offlinePo = await sentOrder(offlineProduct, 10, 15_000);
+    const offline = await receive(
+      {
+        purchaseOrderId: offlinePo.id,
+        lines: [{ poLineId: offlinePo.lineId, productId: offlineProduct, qtyDeliveredBase: 10 }],
+      },
+      at('09:10:00'),
+      { offline: true },
+    );
+    expect(offline.result).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['RECEIPT_PHOTO_MISSING'],
+    });
+    expect(await conflictOf(offline.id)).toHaveLength(1);
+
+    // Sans BC (photo toujours exigée) : appliquée en revue, même signal.
+    const withoutPoProduct = await newProduct();
+    const withoutPo = await receive(
+      { lines: [{ productId: withoutPoProduct, qtyDeliveredBase: 1, unitCostXaf: 10 }] },
+      at('09:20:00'),
+    );
+    expect(withoutPo.result).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+      warnings: ['RECEIPT_PHOTO_MISSING'],
+    });
+    expect((await receiptRow(withoutPo.id))!.status).toBe('POSTED_PENDING_REVIEW');
+    expect(await stockAt(storeId, withoutPoProduct)).toBe(1);
+
+    // Avec la photo, ou sous le seuil : aucun signal.
+    const withPhotoProduct = await newProduct();
+    const withPhotoPo = await sentOrder(withPhotoProduct, 20, 15_000);
+    const withPhoto = await receive(
+      {
+        purchaseOrderId: withPhotoPo.id,
+        lines: [
+          { poLineId: withPhotoPo.lineId, productId: withPhotoProduct, qtyDeliveredBase: 20 },
+        ],
+      },
+      at('09:30:00'),
+      { attachmentIds: [freshUuid()] },
+    );
+    expect(withPhoto.result.status).toBe('APPLIED');
+    expect(await conflictOf(withPhoto.id)).toHaveLength(0);
+    const smallProduct = await newProduct();
+    const smallPo = await sentOrder(smallProduct, 5, 1_000);
+    const small = await receive(
+      {
+        purchaseOrderId: smallPo.id,
+        lines: [{ poLineId: smallPo.lineId, productId: smallProduct, qtyDeliveredBase: 5 }],
+      },
+      at('09:40:00'),
+    );
+    expect(small.result.status).toBe('APPLIED');
+    expect(await conflictOf(small.id)).toHaveLength(0);
+  });
+
   it('BR-APP-011 : réception sans BC — prix et photo exigés, stock immédiat, CMUP recalculé, revue du responsable des achats', async () => {
     const productId = await newProduct();
     const photo = freshUuid();
@@ -707,16 +788,6 @@ describe('procurement.receipt.* (P6-05)', () => {
         ).result,
       ),
     ).toBe('PRICE_REQUIRED');
-    expect(
-      code(
-        (
-          await receive(
-            { lines: [{ ...line, qtyDeliveredBase: 1, unitCostXaf: 10 }] },
-            at('09:00:00'),
-          )
-        ).result,
-      ),
-    ).toBe('PHOTO_REQUIRED');
     expect(
       code(
         (
