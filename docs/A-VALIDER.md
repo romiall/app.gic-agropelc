@@ -230,7 +230,7 @@ Classification (PM §45) :
 | AV-213 | Appareil révoqué : envoi de sa file et signal d'effacement local | IMPORTANTE | P5 | Envoi tant que le jeton d'accès vaut, quarantaine côté serveur ; pull non refusé ; effacement à coder dans la PWA | OUVERT |
 | AV-214 | Régularisation d'une vente mise en quarantaine (appareil révoqué) | SECONDAIRE | P5 | Inbox seule (aucune ligne de conflit), écart de caisse expliqué par l'inbox, inventaire, ressaisie | OUVERT |
 | AV-215 | Stock négatif après une sortie hors ligne autre qu'une vente | SECONDAIRE | P5 | Depuis P5-22 : toute sortie physique qui rend un solde négatif ouvre `STOCK_NEGATIVE` (posé par `recordStockMove`, un par sortie, responsable du stock), conformément à BR-STK-018 | OUVERT |
-| AV-216 | Horloge d'appareil suspecte : dates de référence, seuil et alerte | SECONDAIRE | P5 | Date déclarée partout (ADR-016), drapeau visible, seul le contrôle de date future corrigé ; seuil de 5 min constant (`sync.clock_skew_flag_minutes` non lu) ; alerte en P9 | OUVERT |
+| AV-216 | Horloge d'appareil suspecte : dates de référence, seuil et alerte | SECONDAIRE | P5 | Date déclarée partout (ADR-016), drapeau visible, seul le contrôle de date future corrigé ; seuil lu dans `sync.clock_skew_flag_minutes` à la réception (P5-23) ; alerte en P9 | OUVERT |
 | AV-217 | Commande à renvoyer qui ne se règle jamais : suspension du lot bornée | IMPORTANTE | P5 | Au-delà de `sync.retry_hold_minutes` (30 min) depuis la première réception : toujours à renvoyer, ne suspend plus la suite (`COMMAND_STALLED`), signal `SYNC_COMMAND_STALLED` pour l'Admin, fermé quand elle se règle | OUVERT |
 | AV-218 | Compte de réception d'un encaissement mobile money ou bancaire quand l'entreprise a plusieurs comptes du type | IMPORTANTE | Écrans PWA | Compte jamais désigné d'office (« seul compte connu de l'appareil » n'est pas « seul compte de l'entreprise ») : choix proposé dès que l'appareil connaît un compte du type, obligatoire s'il en connaît plusieurs ; sinon aucun compte envoyé et avertissement affiché (`payment.ts`) | OUVERT |
 | AV-219 | Motif d'un écart d'inventaire exigé dès la saisie sur l'appareil | SECONDAIRE | Écrans PWA | Motif exigé par l'appareil sur un écart estimé non nul quand des motifs `INVENTORY_ADJUSTMENT` existent (`REQUIRE_VARIANCE_REASON` dans `apps/pwa/src/features/stock/count.ts`) ; sans motif paramétré, l'écart part sans motif | OUVERT |
@@ -240,6 +240,8 @@ Classification (PM §45) :
 | AV-223 | Expédition hors ligne d'une demande qui n'est plus à expédier ; mouvement interne hors de la garde de l'auteur | SECONDAIRE | P5 | (a) : demande refusée ou annulée → expédition directe appliquée et conflit `TRANSFER_REQUEST_CLOSED` ; déjà expédiée → quarantaine `TRANSFER_DISPATCH_CONFLICT` ; mouvement interne au même site, refus `INTERNAL_MOVE_CUSTODY` en ligne et `CUSTODY_DEVICE_MISMATCH` hors ligne | OUVERT |
 | AV-224 | Opération de caisse datée entre deux sessions, appliquée après l'ouverture de la suivante | IMPORTANTE | P5 | (a) : l'écart d'ouverture de la session suivante est corrigé (ajustement `LATE_BEFORE_OPENING`, inclus dans sa validation ou à demande propre) | OUVERT |
 | AV-225 | Résolution manuelle du signal d'une commande bloquée : la commande reste-t-elle rejouable ? | IMPORTANTE | P5 | (a) : la résolution (`KEEP_SERVER` ou `COMPENSATE`) écarte la commande — inbox `REJECTED`, `COMMAND_DISCARDED` au renvoi | OUVERT |
+| AV-226 | Tolérance de date future du pipeline | SECONDAIRE | P5 | Paramètre propre `sync.occurred_at_future_tolerance_minutes` (5 min) | OUVERT |
+| AV-227 | Écart d'horloge hors des bornes de stockage | SECONDAIRE | P5 | Écart borné à ±2 147 483 647 ms avant stockage et réponse ; le drapeau reste levé | OUVERT |
 | AV-228 | Fait saisi par un appareil encore en attente d'approbation | IMPORTANTE | P5 | (c) : attente (`RETRY_LATER`, `DEVICE_PENDING`), appliqué après l'approbation ; appareil refusé sans approbation : quarantaine de tous ses faits | OUVERT |
 | AV-229 | Utilisateur suspendu puis réactivé : fenêtre de quarantaine | IMPORTANTE | P10 | Inchangé (statut courant et `status_changed_at`, comme les appareils avant AV-212) ; table jumelle des périodes recommandée avant la mise en production | OUVERT |
 
@@ -1546,7 +1548,7 @@ Politique par défaut, paramétrable :
   Le seuil de 5 min est une constante (`packages/domain/src/clock-skew.ts`), alors que `sync.clock_skew_flag_minutes` est semé et jamais lu (règle 8). L'alerte `CLOCK_SKEW` relève de P9 (D13), et le tableau de distribution n'expose pas le drapeau. **DÉDUIT** (12/10/2026).
 - **Choix** : (a) date déclarée partout (ADR-016), drapeau visible (`clock_suspect`, `CLOCK_SUSPECT`, `clock_skew_ms`), seul le contrôle de date future corrigé de l'écart (INV-GLO-02, corrigé en P5-21) ; (b) date corrigée de l'écart pour la caisse et les quotas (correction silencieuse, contraire à ADR-016).
 - **Recommandation** : (a). Lire le seuil dans `sync.clock_skew_flag_minutes` en P5-23 ; alerte et drapeau dans le tableau en P9.
-- **Impact** : `clock-skew.ts`, `sync/sync-push.service.ts`, `platform/sync/command-origin.ts` ; tableau de distribution. Défaut implémenté : (a). Seuil à rendre paramétrable.
+- **Impact** : `clock-skew.ts`, `sync/sync-push.service.ts`, `platform/sync/command-origin.ts` ; tableau de distribution. Défaut implémenté : (a). **Seuil paramétré en P5-23** : `sync.clock_skew_flag_minutes` (minutes > 0, repli 5 min pour une valeur absente ou absurde) est lu une fois par lot par le service d'envoi, à l'heure serveur de la réception (jamais à `occurred_at`, déclaré par l'horloge en cause) ; la décision est écrite dans l'inbox (`sync_command_inbox.clock_suspect`, migration `20261013090100`, figée par le déclencheur, rattrapée par l'ancienne règle) et relue par `loadCommandOrigin` et les pièces jointes — `platform/sync` ne peut pas lire un paramètre d'`organization` (frontières de modules). Suites : AV-226 (tolérance de date future), AV-227 (écart borné). Test : `sync-clock-skew-setting.test.ts`. Alerte et drapeau dans le tableau : P9.
 - **Revue adverse (12/10/2026)** : la correction de l'écart s'appliquait dans les deux sens ; une horloge qui recule entre la saisie et l'envoi faisait rejeter des faits exacts (`OCCURRED_AT_FUTURE`, définitif). Corrigé : `occurred_at + min(0, écart)` — seule une horloge en avance est excusée (INV-GLO-02, BR-SYN-011).
 
 ### AV-217 — Commande à renvoyer qui ne se règle jamais : suspension du lot bornée — IMPORTANTE
@@ -1614,6 +1616,20 @@ Politique par défaut, paramétrable :
 - **Impact** : `sync.conflict.resolve` (`sync/conflict-commands.ts`), contrat (`COMMAND_DISCARDED`), 02-synchronisation §3.3, matrice des conflits ; test `sync-push-protocol.test.ts`. Défaut implémenté : (a) (P5-23). Non paramétrable.
 
 
+### AV-226 — Tolérance de date future du pipeline — SECONDAIRE
+- **Question** : La tolérance au-delà de laquelle une date de fait postérieure à l'heure serveur est rejetée (`OCCURRED_AT_FUTURE`, INV-GLO-02) est-elle un paramètre, et lequel ?
+- **Pourquoi** : étude d'AV-216 (P5-23, 13/10/2026) : la tolérance était une constante de 5 min dans le pipeline (`OCCURRED_AT_FUTURE_TOLERANCE_MS`), seuil métier codé en dur contraire à la règle 8 du CLAUDE.md ; BR-SYN-011 et ADR-016 la rapprochent du seuil d'horloge suspecte. **DÉDUIT**.
+- **Choix** : (a) constante ; (b) même clé que le drapeau (`sync.clock_skew_flag_minutes`) ; (c) clé propre `sync.occurred_at_future_tolerance_minutes`, défaut 5.
+- **Recommandation** : (c) : élargir le drapeau (informatif) ne doit pas élargir une fenêtre de rejet.
+- **Impact** : pipeline (étape de date future, lecture seulement quand la date corrigée dépasse l'heure serveur ; `futureToleranceMsFrom` : minutes ≥ 0, repli 5 min), seed, dictionnaire 02-organization, BR-SYN-011, ADR-016. Défaut implémenté : (c) (P5-23). Test : `sync-clock-skew-setting.test.ts`.
+
+### AV-227 — Écart d'horloge hors des bornes de stockage — SECONDAIRE
+- **Question** : Que faire d'un écart d'horloge supérieur à ce que stockent `sync_command_inbox.clock_skew_ms` et `sync_device_sync_state.last_clock_skew_ms` (`INT`, ±2 147 483 647 ms, ≈ 24,8 jours) ?
+- **Pourquoi** : étude d'AV-216 (P5-23) : `device_sent_at` n'est borné que par son format ; une tablette remise à une date lointaine (batterie vidée, horloge à l'an 2000) faisait échouer l'insertion de l'inbox sous `STRICT_TRANS_TABLES`, et tout son lot était en erreur à chaque renvoi. **CONFIRMÉ** par le test (écart de 40 jours).
+- **Choix** : (a) borner l'écart à ±INT_MAX avant stockage et réponse (le drapeau reste levé) ; (b) colonnes en `BIGINT`.
+- **Recommandation** : (a), sans migration supplémentaire : au-delà de 24 jours, la valeur exacte n'apporte rien.
+- **Impact** : `clampClockSkewMs` (domaine), service d'envoi, pipeline ; dictionnaire 11. Défaut implémenté : (a) (P5-23). Test : `sync-clock-skew-setting.test.ts`.
+
 ### AV-228 — Fait saisi par un appareil encore en attente d'approbation — IMPORTANTE
 - **Question** : Une opération saisie sur un appareil `PENDING` (première connexion, BR-ADM-005), poussée avant ou après son approbation, est-elle appliquée, mise en quarantaine, ou mise en attente ?
 - **Pourquoi** : revue de P5-23 (13/10/2026, étude d'AV-212). Le contrôle d'appareil comparait seulement `status_changed_at` (la date d'enrôlement) : poussée pendant l'attente, l'opération finissait en `CONFLICT DEVICE_REVOKED` **définitif** (perdue, à ressaisir), sauf horloge en retard ; poussée après l'approbation, elle était appliquée ; après un refus (`block` depuis `PENDING`), une opération antérieure au refus était appliquée, alors que l'appareil n'a jamais été approuvé. Le sort dépendait d'une course entre l'envoi et l'approbation ; la PWA n'interdit pas la saisie sur un appareil en attente. **CONFIRMÉ** pour le constat (lecture et test) ; le choix est **À VALIDER**.
@@ -1627,6 +1643,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) inchangé ; (b) table jumelle des périodes de suspension closes (même mécanisme qu'AV-212, `closeOutOfServicePeriod` généralisé) ; (c) date de réception.
 - **Recommandation** : (b), avant la mise en production (P10 au plus tard).
 - **Impact** : `identity` (migration, `user-commands.ts`, `user-check.ts`) ; SM-USER ; AT-034. Défaut implémenté : (a). Non paramétrable.
+
 ---
 
 ## 3. Journal des décisions

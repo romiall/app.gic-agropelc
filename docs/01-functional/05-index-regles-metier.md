@@ -391,7 +391,7 @@ Fichier : [`domaines/D14-SYN-synchronisation.md`](domaines/D14-SYN-synchronisati
 | BR-SYN-008 | Une opération d'intention sur un état partagé (modifier une commande, changer une étape de pipeline, réaffecter) utilise la concurrence opt… | C (PM §29, §30) |
 | BR-SYN-009 | Quand une commande est `REJECTED` ou `CONFLICT`, l'appareil annule ses effets locaux (ex. le stock local est rétabli), conserve l'opération… | D (UX CM §3) |
 | BR-SYN-010 | Déclencheurs de synchronisation : ouverture de l'application, retour du réseau, après chaque commande si en ligne, toutes les 5 minutes qua… | D (CM §36) |
-| BR-SYN-011 | Le serveur mesure l'écart d'horloge de l'appareil à chaque envoi (heure serveur − heure d'envoi de l'appareil). Au-delà de 5 minutes, les c… | C (CM §38) / D (ADR-016) |
+| BR-SYN-011 | Le serveur mesure l'écart d'horloge de l'appareil à chaque envoi (heure serveur − heure d'envoi de l'appareil). Au-delà du seuil `sync.cloc… | C (CM §38) / D (ADR-016) ; AV-216, AV-226, AV-227 |
 | BR-SYN-012 | `occurred_at` ne peut précéder `client_created_at` que dans la fenêtre de saisie rétroactive (AV-078). Au-delà de 24 h, une justification e… | AV-078 |
 | BR-SYN-013 | Une commande en outbox n'est jamais supprimée automatiquement tant qu'elle n'est pas `SYNCED`, ou `REJECTED` et prise en compte. La déconne… | C (CM §40) |
 | BR-SYN-014 | Sur un appareil partagé, chaque commande garde son auteur. Les commandes d'un utilisateur sont envoyées avec la session de cet utilisateur.… | D (AV-007) |

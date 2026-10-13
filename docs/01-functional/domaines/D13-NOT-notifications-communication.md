@@ -79,7 +79,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
 | `SYNC_ERROR` | Commande `REJECTED` ou `CONFLICT` sur un appareil | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto (conflit résolu) |
 | `SYNC_STALE` | Appareil actif sans synchronisation depuis plus de 24 h | Planifiée (horaire) | WARNING | Responsable de l'utilisateur, ADMIN | Auto |
 | `DEVICE_SEQ_GAP` | Trou de séquence non comblé depuis plus de 24 h | Planifiée | CRITICAL | ADMIN, DIRECTION | Manuelle |
-| `CLOCK_SKEW` | Écart d'horloge d'un appareil > 5 min | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto |
+| `CLOCK_SKEW` | Écart d'horloge d'un appareil au-delà de `sync.clock_skew_flag_minutes` (5 min par défaut, AV-216) | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto |
 | `INACTIVE_COMMERCIAL` | BR-TER-013 | Planifiée (08:00) | WARNING | RESP_COMMERCIAL | Auto (nouvelle activité) |
 | `CHECKIN_SUSPICIOUS` | BR-TER-010 | Sur pointage | WARNING | RESP_COMMERCIAL | Manuelle |
 | `PRICE_MISMATCH` | BR-VEN-029 | Sur vente | INFO | RESP_COMMERCIAL | Manuelle |

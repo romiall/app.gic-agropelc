@@ -96,7 +96,7 @@ Le dictionnaire référence ces blocs au lieu de les répéter. Un bloc s'appliq
 | `command_id` | uuid | Oui | — | Commande de synchronisation d'origine (idempotence, audit) ; unique sur les tables racines, sauf exceptions documentées dans le dictionnaire (annulations de vente : unique par vente ; encaissements et affectations : un par moyen de paiement, INV-SYN-01) |
 | `created_device_id` | uuid → `identity.devices` | Oui | — | Appareil d'origine (nul pour les opérations serveur) |
 | `captured_offline` | boolean | Non | false | Saisie sans réseau |
-| `clock_suspect` | boolean | Non | false | Écart d'horloge au-delà du seuil (BR-SYN-011) |
+| `clock_suspect` | boolean | Non | false | Écart d'horloge au-delà du seuil (BR-SYN-011 ; `sync.clock_skew_flag_minutes`, décision de la réception relue dans l'inbox, AV-216) |
 | `backdated_reason` | text | Oui | — | Justification de saisie rétroactive (> 24 h, AV-078) |
 
 `applied_at` n'est pas répété sur chaque ligne : c'est `created_at` pour la ligne créée, et `sync.command_inbox.applied_at` pour la commande.

@@ -175,7 +175,8 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `fieldwork.override_min_attempts` / `override_min_minutes` | 3 / 2 | AV-021 |
 | `fieldwork.suspicion_max_speed_kmh` / `suspicion_repeated_accuracy_count` | 150 / 5 | BR-TER-010 |
 | `offline.max_autonomy_hours` / `warning_hours` | 168 / 48 | AV-009 |
-| `sync.clock_skew_flag_minutes` | 5 | BR-SYN-011 |
+| `sync.clock_skew_flag_minutes` | 5 | BR-SYN-011, AV-216 (minutes > 0 ; lu à la réception de chaque lot ; valeur absurde : 5) |
+| `sync.occurred_at_future_tolerance_minutes` | 5 | INV-GLO-02, AV-226 (minutes ≥ 0 ; tolérance d'une date de fait postérieure à l'heure serveur, après correction de l'écart ; valeur absurde : 5) |
 | `sync.retry_hold_minutes` | 30 | AV-217 |
 | `sync.pull_settle_seconds` | 120 | AV-198 (fenêtre de stabilisation de la numérotation du flux) |
 | `sync.backdate_max_hours` / `justification_after_hours` | 72 / 24 | AV-078 |

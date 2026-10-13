@@ -6,8 +6,8 @@
 ## Décision
 - Quatre instants distincts : `occurred_at` (réel, déclaré sur l'appareil), `client_created_at` (horloge de l'appareil), `received_at` (serveur), `applied_at` / `created_at` (serveur).
 - Tous les rapports, performances, caisses et soldes à date utilisent `occurred_at`, ramené au jour métier `Africa/Douala`.
-- Écart d'horloge mesuré à chaque push ; au-delà de 5 min, marquage `clock_suspect` et alerte. **Aucune correction silencieuse** de `occurred_at`.
-- Refus des dates futures (> 5 min après correction) ; saisie rétroactive limitée à 72 h, avec justification au-delà de 24 h (AV-078).
+- Écart d'horloge mesuré à chaque push ; au-delà de 5 min (paramètre `sync.clock_skew_flag_minutes` depuis P5-23, AV-216), marquage `clock_suspect` et alerte. **Aucune correction silencieuse** de `occurred_at`.
+- Refus des dates futures (> 5 min après correction ; paramètre `sync.occurred_at_future_tolerance_minutes` depuis P5-23, AV-226) ; saisie rétroactive limitée à 72 h, avec justification au-delà de 24 h (AV-078).
 - Stockage `DATETIME(6)` en UTC, toujours écrit et lu par le convertisseur unique de `packages/domain` (MySQL n'a pas de type conscient du fuseau, ADR-023) ; serveur synchronisé par NTP.
 
 ## Alternatives

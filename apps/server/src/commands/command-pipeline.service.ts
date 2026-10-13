@@ -34,14 +34,21 @@
  *   métier la décide dans son propre gestionnaire (ce pipeline reste générique).
  *
  * P0-12 (`sync/sync-push.service.ts`) : `HandleCommandContext` porte en plus, en option,
- * `deviceSentAt`/`batchId`/`clockSkewMs` — propres à `/sync/push` (un lot), absents pour
+ * `deviceSentAt`/`batchId`/`clockSkewMs`/`clockSuspect` — propres à `/sync/push` (un lot), absents pour
  * `/commands` (ONLINE_API, pas de lot ni d'horloge appareil à comparer par lot). L'avertissement
- * `CLOCK_SUSPECT` lui-même (§9, |écart| > 5 min) est ajouté par l'appelant sur le résultat
- * renvoyé, pas ici : ce pipeline reste agnostique du transport qui l'appelle.
+ * `CLOCK_SUSPECT` lui-même (§9, seuil `sync.clock_skew_flag_minutes`, AV-216) est ajouté par l'appelant
+ * sur le résultat renvoyé, pas ici : ce pipeline reste agnostique du transport qui l'appelle ; il écrit
+ * seulement la décision de l'appelant dans l'inbox (`clock_suspect`), d'où les documents la relisent.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
-import type { Clock, IdGenerator } from '@gic/domain';
+import {
+  clampClockSkewMs,
+  futureToleranceMsFrom,
+  isClockSkewSuspect,
+  type Clock,
+  type IdGenerator,
+} from '@gic/domain';
 import { describeIssuesFr, rawCommandEnvelopeSchema, type CommandResult } from '@gic/contracts';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
@@ -70,8 +77,6 @@ import {
 } from '../platform/sync/command-handler-registry.provider.js';
 import type { CommandHandlerOutcome } from '../platform/sync/command-handler-registry.js';
 
-/** INV-GLO-02, BR-SYN-011 : `occurred_at` au plus 5 min après l'heure serveur (après correction de l'écart). */
-const OCCURRED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 /**
  * Une ligne `RECEIVED` réclamée depuis plus longtemps n'est plus en cours de traitement : arrêt brutal
  * du serveur entre la réclamation et la conclusion. Le renvoi identique la reprend (P5-21, AV-210). La
@@ -117,6 +122,11 @@ export interface HandleCommandContext {
   readonly batchId?: string;
   /** `/sync/push` seulement : `server_time − device_sent_at`, calculé une fois par lot par l'appelant. */
   readonly clockSkewMs?: number;
+  /**
+   * `/sync/push` seulement (AV-216) : horloge suspecte, décidée une fois par lot par l'appelant au seuil
+   * `sync.clock_skew_flag_minutes` ; à défaut, le seuil de repli (5 min) sur `clockSkewMs`.
+   */
+  readonly clockSuspect?: boolean;
   /** Un par requête (`/commands`) ou par lot (`/sync/push`) — 09-non-functional/
    * 02-observabilite.md §1 : propagé à l'audit, aux événements et aux logs. */
   readonly correlationId?: string | undefined;
@@ -309,7 +319,10 @@ export class CommandPipelineService {
             client_created_at: new Date(envelope.client_created_at),
             device_sent_at: ctx.deviceSentAt ?? null,
             batch_id: ctx.batchId !== undefined ? toBin(ctx.batchId) : null,
-            clock_skew_ms: ctx.clockSkewMs ?? null,
+            clock_skew_ms: ctx.clockSkewMs === undefined ? null : clampClockSkewMs(ctx.clockSkewMs),
+            clock_suspect: toDbBool(
+              ctx.clockSuspect ?? isClockSkewSuspect(ctx.clockSkewMs ?? null),
+            ),
             captured_offline: toDbBool(envelope.captured_offline),
             status: 'RECEIVED',
             claimed_at: sql<Date>`NOW(6)`,
@@ -407,8 +420,14 @@ export class CommandPipelineService {
     // négatif) : une horloge en retard à l'envoi ne rend jamais future une date qui ne l'était pas (une
     // horloge qui a reculé entre la saisie et l'envoi ferait rejeter des faits exacts, revue de P5-21).
     // Sans écart mesuré (`/commands`), l'heure brute.
+    // Tolérance lue dans `sync.occurred_at_future_tolerance_minutes` (AV-226), seulement pour une date
+    // corrigée postérieure à l'heure serveur.
     const correctedOccurredAt = occurredAt.getTime() + Math.min(0, ctx.clockSkewMs ?? 0);
-    if (correctedOccurredAt > this.clock.now().getTime() + OCCURRED_AT_FUTURE_TOLERANCE_MS) {
+    const serverNow = this.clock.now();
+    if (
+      correctedOccurredAt > serverNow.getTime() &&
+      correctedOccurredAt > serverNow.getTime() + (await this.futureToleranceMs(serverNow))
+    ) {
       return this.markAndReject(claim, 'OCCURRED_AT_FUTURE', 'Horodatage dans le futur.');
     }
 
@@ -577,6 +596,18 @@ export class CommandPipelineService {
         errorMessageOf(error),
       );
     }
+  }
+
+  /** Tolérance de date future (INV-GLO-02) : `sync.occurred_at_future_tolerance_minutes`, repli 5 min (AV-226). */
+  private async futureToleranceMs(at: Date): Promise<number> {
+    return futureToleranceMsFrom(
+      await currentSettingValue(this.db, {
+        key: 'sync.occurred_at_future_tolerance_minutes',
+        scopeType: 'GLOBAL',
+        scopeId: null,
+        at,
+      }),
+    );
   }
 
   /**

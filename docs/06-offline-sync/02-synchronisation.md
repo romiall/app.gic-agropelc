@@ -102,8 +102,9 @@ Règles :
      fait daté dans une période hors service close → quarantaine même si l'appareil est redevenu ACTIVE
      (AV-212) ; appareil PENDING → RETRY_LATER DEVICE_PENDING (AV-228)
      utilisateur actif à occurred_at → sinon CONFLICT USER_DEACTIVATED
-     occurred_at ≤ now + 5 min (après correction de l'écart s'il est négatif : seule une horloge en
-       avance est excusée) → sinon REJECTED OCCURRED_AT_FUTURE
+     occurred_at ≤ now + tolérance (`sync.occurred_at_future_tolerance_minutes`, 5 min par défaut,
+       AV-226 ; après correction de l'écart s'il est négatif : seule une horloge en avance est excusée)
+       → sinon REJECTED OCCURRED_AT_FUTURE
      fenêtre rétroactive (AV-078) → sinon REJECTED BACKDATE_EXCEEDED ou exigence de justification
      command_version supportée → sinon REJECTED UNSUPPORTED_VERSION
 4. RBAC évalué à occurred_at (BR-ADM-004) → sinon REJECTED FORBIDDEN (audit DENIED)
@@ -245,7 +246,7 @@ Le détail par entité est dans [`03-matrice-conflits.md`](03-matrice-conflits.m
 ## 9. Horloge
 
 - À chaque push : `clock_skew_ms = server_time − device_sent_at` (latence négligée, la précision recherchée étant la minute).
-- |écart| > 5 min : indicateur `clock_suspect` sur les commandes du lot, alerte `CLOCK_SKEW`, et message à l'utilisateur « l'heure de votre téléphone est incorrecte ».
+- |écart| > seuil (`sync.clock_skew_flag_minutes`, 5 min par défaut, lu une fois par lot à l'heure serveur de la réception ; P5-23, AV-216) : indicateur `clock_suspect` sur les commandes du lot, décision figée dans l'inbox (`sync_command_inbox.clock_suspect`) et relue par tous les documents (`[STD-ORIGIN]`), alerte `CLOCK_SKEW`, et message à l'utilisateur « l'heure de votre téléphone est incorrecte ». L'écart est borné à ±2 147 483 647 ms (AV-227).
 - `occurred_at` n'est **jamais** corrigé silencieusement (ADR-016). Les rapports peuvent afficher une version corrigée (`occurred_at + skew`) pour les opérations marquées, avec mention.
 - Contrôle de date future (INV-GLO-02) : `occurred_at + min(0, skew)` — seule une horloge **en avance** à l'envoi est excusée ; une horloge en retard à l'envoi (qui a reculé depuis la saisie) ne rend jamais future une date qui ne l'était pas (revue de P5-21).
 

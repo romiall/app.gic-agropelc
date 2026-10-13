@@ -2155,6 +2155,7 @@ export interface SyncCommandInbox {
   claimed_at: Date | null;
   client_created_at: Date | null;
   clock_skew_ms: number | null;
+  clock_suspect: Generated<number>;
   command_id: Buffer;
   command_type: string;
   command_version: Generated<number>;

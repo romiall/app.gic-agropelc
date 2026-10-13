@@ -58,6 +58,38 @@ describe('sync_command_inbox', () => {
     });
   });
 
+  it('clock_suspect (P5-23, AV-216) : faux par défaut, écrit à la réception, puis figé', async () => {
+    await withRollback(async (conn) => {
+      const admin = await insertAdmin(conn);
+      const commandId = randomId();
+      const suspect = randomId();
+      await conn.query(
+        `INSERT INTO sync_command_inbox (command_id, user_id, transport, command_type, depends_on, payload, payload_hash, occurred_at)
+         VALUES (?, ?, 'SYNC_PUSH', 'sales.sale.record', JSON_ARRAY(), JSON_OBJECT(), REPEAT('a', 64), NOW(6))`,
+        [commandId, admin],
+      );
+      await conn.query(
+        `INSERT INTO sync_command_inbox (command_id, user_id, transport, command_type, depends_on, payload, payload_hash, occurred_at, clock_skew_ms, clock_suspect)
+         VALUES (?, ?, 'SYNC_PUSH', 'sales.sale.record', JSON_ARRAY(), JSON_OBJECT(), REPEAT('a', 64), NOW(6), -600000, TRUE)`,
+        [suspect, admin],
+      );
+      const [rows] = await conn.query(
+        'SELECT HEX(command_id) AS id, clock_suspect FROM sync_command_inbox WHERE command_id IN (?, ?)',
+        [commandId, suspect],
+      );
+      const byId = new Map(
+        (rows as Array<{ id: string; clock_suspect: number }>).map((r) => [r.id, r.clock_suspect]),
+      );
+      expect(byId.get(commandId.toString('hex').toUpperCase())).toBe(0);
+      expect(byId.get(suspect.toString('hex').toUpperCase())).toBe(1);
+      await expect(
+        conn.query('UPDATE sync_command_inbox SET clock_suspect = TRUE WHERE command_id = ?', [
+          commandId,
+        ]),
+      ).rejects.toThrow(/seuls status\/result/);
+    });
+  });
+
   it('refuse une seconde commande avec le même (device_id, device_seq) (INV-SYN-03)', async () => {
     await withRollback(async (conn) => {
       const admin = await insertAdmin(conn);

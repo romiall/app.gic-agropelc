@@ -92,7 +92,22 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'offline.max_autonomy_hours', value: 168, isClientVisible: true, ref: 'AV-009' },
   { key: 'offline.warning_hours', value: 48, isClientVisible: true, ref: 'AV-009' },
-  { key: 'sync.clock_skew_flag_minutes', value: 5, isClientVisible: false, ref: 'BR-SYN-011' },
+  // P5-23 (AV-216) : seuil (minutes, > 0) du drapeau d'horloge suspecte, lu par le service d'envoi à la
+  // réception de chaque lot ; décision figée dans l'inbox (`clock_suspect`).
+  {
+    key: 'sync.clock_skew_flag_minutes',
+    value: 5,
+    isClientVisible: false,
+    ref: 'BR-SYN-011, AV-216',
+  },
+  // P5-23 (AV-226) : tolérance (minutes, ≥ 0) d'une date de fait postérieure à l'heure serveur, après
+  // correction de l'écart d'horloge (INV-GLO-02) ; au-delà, `OCCURRED_AT_FUTURE`.
+  {
+    key: 'sync.occurred_at_future_tolerance_minutes',
+    value: 5,
+    isClientVisible: false,
+    ref: 'INV-GLO-02, AV-226',
+  },
   // P5-21 (revue adverse, AV-217) : au-delà de cette durée depuis sa première réception, une commande
   // à renvoyer (dépendance en attente, erreur transitoire) ne suspend plus la suite de son lot ; elle
   // reste à renvoyer, jamais perdue, et le signal `SYNC_COMMAND_STALLED` est ouvert pour l'Admin.

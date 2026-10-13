@@ -21,7 +21,6 @@
  * dans la transaction du gestionnaire (étape 6) au moment où ce gestionnaire s'exécute.
  */
 import { z } from 'zod';
-import { isClockSkewSuspect } from '@gic/domain';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -72,7 +71,7 @@ const register: CommandHandler<RegisterPayload> = async (uow, envelope) => {
 
   const inboxRow = await uow
     .selectFrom('sync_command_inbox')
-    .select(['device_id', 'received_at', 'clock_skew_ms'])
+    .select(['device_id', 'received_at', 'clock_suspect'])
     .where('command_id', '=', toBin(envelope.command_id))
     .executeTakeFirstOrThrow();
 
@@ -110,7 +109,8 @@ const register: CommandHandler<RegisterPayload> = async (uow, envelope) => {
       command_id: toBin(envelope.command_id),
       created_device_id: inboxRow.device_id,
       captured_offline: toDbBool(envelope.captured_offline),
-      clock_suspect: toDbBool(isClockSkewSuspect(inboxRow.clock_skew_ms)),
+      // Décision écrite à la réception (seuil `sync.clock_skew_flag_minutes`, P5-23, AV-216).
+      clock_suspect: toDbBool(Number(inboxRow.clock_suspect) === 1),
       backdated_reason: envelope.backdated_reason ?? null,
       created_by: toBin(envelope.author_user_id),
     })

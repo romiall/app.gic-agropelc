@@ -28,13 +28,19 @@
  * règle « l'ancien appareil a tout synchronisé » (BR-DIS-014).
  */
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { isClockSkewSuspect, type Clock } from '@gic/domain';
+import {
+  clampClockSkewMs,
+  clockSkewThresholdMsFrom,
+  isClockSkewSuspect,
+  type Clock,
+} from '@gic/domain';
 import type { CommandResult, PushRequest, PushResponse } from '@gic/contracts';
 import { sql } from 'kysely';
 import { CommandPipelineService } from '../commands/command-pipeline.service.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { currentSettingValue } from '../modules/organization/application/public/index.js';
 
 /**
  * Délai maximal de traitement d'un lot (02-synchronisation.md §3.1) : au-delà, les commandes restantes
@@ -67,8 +73,16 @@ export class SyncPushService {
   async push(request: PushRequest, ctx: SyncPushContext): Promise<PushResponse> {
     const receivedAt = this.clock.now();
     const deviceSentAt = new Date(request.device_sent_at);
-    const clockSkewMs = receivedAt.getTime() - deviceSentAt.getTime();
-    const clockSuspect = isClockSkewSuspect(clockSkewMs);
+    // AV-227 : borné à ce que stockent l'inbox et l'état de l'appareil (une tablette remise à une date
+    // lointaine faisait échouer tout son lot) ; le drapeau reste vrai.
+    const clockSkewMs = clampClockSkewMs(receivedAt.getTime() - deviceSentAt.getTime());
+    // AV-216 : seuil lu une fois par lot, à l'heure serveur de la réception (jamais à `occurred_at`,
+    // déclaré par l'horloge en cause) ; la décision est écrite dans l'inbox (`clock_suspect`), d'où
+    // tous les documents la relisent (`loadCommandOrigin`).
+    const clockSuspect = isClockSkewSuspect(
+      clockSkewMs,
+      await this.clockSkewThresholdMs(receivedAt),
+    );
 
     // Ordre croissant de device_seq (§3.1) : le lot peut arriver dans le désordre du
     // transport (HTTP ne le garantit pas), le serveur l'impose lui-même.
@@ -104,6 +118,7 @@ export class SyncPushService {
         deviceSentAt,
         batchId: request.batch_id,
         clockSkewMs,
+        clockSuspect,
         correlationId: ctx.correlationId,
       });
       results.push(clockSuspect ? withClockSuspectWarning(result) : result);
@@ -127,6 +142,18 @@ export class SyncPushService {
       server_time: this.clock.now().toISOString(),
       clock_skew_ms: clockSkewMs,
     };
+  }
+
+  /** Seuil du drapeau d'horloge suspecte (`sync.clock_skew_flag_minutes`, minutes > 0, repli 5 min ; AV-216). */
+  private async clockSkewThresholdMs(at: Date): Promise<number> {
+    return clockSkewThresholdMsFrom(
+      await currentSettingValue(this.db, {
+        key: 'sync.clock_skew_flag_minutes',
+        scopeType: 'GLOBAL',
+        scopeId: null,
+        at,
+      }),
+    );
   }
 
   /**

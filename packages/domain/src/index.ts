@@ -70,7 +70,15 @@ export { roundHalfUpMilliXafToFranc, lineAmountXaf } from './rounding.js';
 export type { Geofence, GeofenceInput } from './geofence.js';
 export { buildGeofence } from './geofence.js';
 
-export { CLOCK_SKEW_SUSPECT_MS, isClockSkewSuspect } from './clock-skew.js';
+export {
+  CLOCK_SKEW_STORED_MAX_MS,
+  CLOCK_SKEW_SUSPECT_MS,
+  OCCURRED_AT_FUTURE_TOLERANCE_DEFAULT_MS,
+  clampClockSkewMs,
+  clockSkewThresholdMsFrom,
+  futureToleranceMsFrom,
+  isClockSkewSuspect,
+} from './clock-skew.js';
 
 export type {
   PriceRule,

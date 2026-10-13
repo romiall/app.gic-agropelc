@@ -3,8 +3,9 @@
  * suspecte) : `sync_command_inbox` est déjà écrite quand le gestionnaire s'exécute
  * (command-pipeline.service.ts). Partagé par les modules dont les documents portent ce bloc
  * (inventory, fieldwork, crm…) — même lecture que le précédent `attachments/attachment-commands.ts`.
+ * L'horloge suspecte est la décision écrite à la réception (`clock_suspect`, seuil
+ * `sync.clock_skew_flag_minutes` lu par le service d'envoi, P5-23, AV-216), relue telle quelle.
  */
-import { isClockSkewSuspect } from '@gic/domain';
 import type { UnitOfWork } from '../unit-of-work.js';
 import { fromBin, toBin } from '../kysely/uuid-columns.js';
 
@@ -20,12 +21,12 @@ export async function loadCommandOrigin(
 ): Promise<CommandOrigin> {
   const row = await uow
     .selectFrom('sync_command_inbox')
-    .select(['device_id', 'received_at', 'clock_skew_ms'])
+    .select(['device_id', 'received_at', 'clock_suspect'])
     .where('command_id', '=', toBin(commandId))
     .executeTakeFirstOrThrow();
   return {
     deviceId: row.device_id ? fromBin(row.device_id) : null,
     receivedAt: row.received_at,
-    clockSuspect: isClockSkewSuspect(row.clock_skew_ms),
+    clockSuspect: Number(row.clock_suspect) === 1,
   };
 }

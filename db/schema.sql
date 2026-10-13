@@ -8086,6 +8086,7 @@ CREATE TABLE `sync_command_inbox` (
   `applied_at` datetime(6) DEFAULT NULL,
   `claimed_at` datetime(6) DEFAULT NULL,
   `clock_skew_ms` int DEFAULT NULL,
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
   `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
   `batch_id` binary(16) DEFAULT NULL,
   `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'RECEIVED',
@@ -8132,6 +8133,7 @@ DELIMITER ;;
     NEW.device_sent_at <=> OLD.device_sent_at AND
     NEW.received_at <=> OLD.received_at AND
     NEW.clock_skew_ms <=> OLD.clock_skew_ms AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
     NEW.captured_offline <=> OLD.captured_offline AND
     NEW.batch_id <=> OLD.batch_id
   ) THEN
@@ -8343,5 +8345,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261010093100'),
   ('20261012090000'),
   ('20261012100000'),
-  ('20261013090000');
+  ('20261013090000'),
+  ('20261013090100');
 UNLOCK TABLES;
