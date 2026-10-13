@@ -241,7 +241,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
   });
 
-  it('hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-305)', async () => {
+  it('hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-233)', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await seedSalesFixtures(getDb(), { posCustody: 'EXCLUSIVE_USER' });
     await getDb().projections.put(posCashAccountRow());

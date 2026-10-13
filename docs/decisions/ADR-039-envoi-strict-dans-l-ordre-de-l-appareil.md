@@ -1,6 +1,6 @@
-# ADR-052 — Envoi de l'appareil dans l'ordre strict, renvois distingués par motif
+# ADR-039 — Envoi de l'appareil dans l'ordre strict, renvois distingués par motif
 
-- **Statut** : PROPOSÉ (fork « Écrans PWA », phase des écrans de P5, numéro de fork à renuméroter à l'intégration ; DÉDUIT, technique)
+- **Statut** : ACCEPTÉ à l'intégration du 13/10/2026 (fork « Écrans PWA », phase des écrans de P5 ; numéro de fork 052, renuméroté ADR-039 ; DÉDUIT, technique)
 - **Date** : 12/10/2026
 - **Révise** : [ADR-037](ADR-037-synchronisation-appareil-durcie.md) §11 (« dépendance d'abord ») ; précise §12
 - **Révisé le 12/10/2026** (F-61, revue adverse de F-57) : dépendance d'un autre utilisateur de la tablette, commande en vol, relève pendant un cycle, verrou entre onglets, « en cours de traitement », commande retenue derrière un échec (décisions 4 à 8)

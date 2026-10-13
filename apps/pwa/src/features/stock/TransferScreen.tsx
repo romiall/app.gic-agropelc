@@ -285,7 +285,7 @@ function DirectDispatchForm({
       ...lotOver.map(([key]) => key.split('|')[0] ?? ''),
     ]),
   ];
-  // Garde hors ligne de la source (BR-STK-013, AV-303) : quota du détenteur, solde exclusif. Le
+  // Garde hors ligne de la source (BR-STK-013, AV-231) : quota du détenteur, solde exclusif. Le
   // mouvement interne n'y est pas soumis : le serveur ne lui impute aucun quota (`INTERNAL_MOVE`).
   const guard = offlineExitGuard(refs, {
     kind: 'DISPATCH',
@@ -771,7 +771,7 @@ function RequestDispatchForm({
     ? overAvailable(totals, (productId) => physicalAt(refs, source, productId))
     : [];
   const nothing = [...quantities.values()].every((value) => value === 0);
-  // Garde hors ligne de la source (BR-STK-013, AV-303).
+  // Garde hors ligne de la source (BR-STK-013, AV-231).
   const guard = source
     ? offlineExitGuard(refs, {
         kind: 'DISPATCH',

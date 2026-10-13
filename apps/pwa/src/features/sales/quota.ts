@@ -233,7 +233,7 @@ export function deviceQuota(
 export type ExitKind = 'SALE' | 'LOSS' | 'CONSUMPTION' | 'DISPATCH';
 
 /**
- * AV-303 (défaut) : hors ligne, au-delà du quota du détenteur (emplacement partagé) ou du solde d'un
+ * AV-231 (défaut) : hors ligne, au-delà du quota du détenteur (emplacement partagé) ou du solde d'un
  * emplacement exclusif, la vente (AV-025), la consommation et l'expédition sont bloquées
  * (BR-STK-013) ; la perte, fait constaté, est seulement signalée (BR-STK-018 : le serveur l'applique
  * et ouvre le conflit), y compris sur un stock confié à un autre appareil. `BLOCK` alignerait la
@@ -257,7 +257,7 @@ export interface ExitGuard {
 }
 
 /**
- * Garde hors ligne d'une sortie de stock (BR-STK-013, AV-025, AV-303). Emplacement confié à un autre
+ * Garde hors ligne d'une sortie de stock (BR-STK-013, AV-025, AV-231). Emplacement confié à un autre
  * appareil (`EXCLUSIVE_DEVICE`) : refusé (perte signalée) ; les autres gardes d'appareil du serveur
  * (appareil principal du détenteur d'un emplacement `EXCLUSIVE_USER`, appareil rattaché à un autre
  * site) ne sont pas contrôlées, faute de données servies à l'appareil (S-44). Sur un emplacement

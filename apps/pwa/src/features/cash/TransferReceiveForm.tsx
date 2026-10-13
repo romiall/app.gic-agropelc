@@ -2,7 +2,7 @@
  * Réception d'une remise de fonds (`finance.cash_transfer.receive`) : le montant envoyé est connu, le
  * reçu est compté et saisi (0 si rien n'est arrivé, AV-175) ; l'écart (reçu − envoyé) est annoncé
  * avant confirmation : il part en validation de la Finance, sans second mouvement (ADR-032 §7).
- * Partagé par l'écran des remises (AV-311) et la trésorerie (ECR-FIN-05).
+ * Partagé par l'écran des remises (AV-239) et la trésorerie (ECR-FIN-05).
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

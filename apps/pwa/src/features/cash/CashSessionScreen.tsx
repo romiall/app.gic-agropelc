@@ -2,7 +2,7 @@
  * ECR-DIS-02 « Ouverture et clôture de caisse » (UC-DIS-02 et 03, vendeur du PDV ; Finance). Hors ligne
  * : la caisse s'ouvre et se clôture sur l'appareil (commandes `finance.cash_session.open` et `.close`,
  * agrégat `CASH_SESSION`), le serveur calcule seul l'attendu et l'écart (BR-DIS-007) et les annonce
- * dans le résultat. Comptage à l'aveugle par défaut (AV-304) : l'attendu indicatif de l'appareil (D05
+ * dans le résultat. Comptage à l'aveugle par défaut (AV-232) : l'attendu indicatif de l'appareil (D05
  * §12) ne s'affiche qu'après l'enregistrement du comptage. En ligne, une ouverture que le serveur
  * refuserait (session ouverte, chevauchement, limite du jour) est bloquée ; hors ligne, elle est
  * enregistrée et le serveur la rattache à la session retenue (AV-154).
@@ -296,7 +296,7 @@ export function CashSessionScreen() {
   const last = sessions.at(-1);
   const balance = indicativeBalanceXaf({ ...movementsInput, last });
   // Clôture d'un autre utilisateur pas encore envoyée : la session reste ouverte au serveur jusqu'à
-  // sa reconnexion (ADR-052) ; une ouverture serait refusée en ligne, fusionnée hors ligne.
+  // sa reconnexion (ADR-039) ; une ouverture serait refusée en ligne, fusionnée hors ligne.
   const blockedByForeignClose = foreignClose(cash, userId) !== undefined;
   const ready = counted !== null && !busy && !refused && !blockedByForeignClose;
   const open = () =>

@@ -51,7 +51,7 @@ export function activeQuotas(items: readonly AllocationItem[]): AllocationItem[]
 }
 
 /**
- * AV-310 (défaut) : détenteurs proposés à l'octroi. Aucune lecture des utilisateurs ni des appareils
+ * AV-238 (défaut) : détenteurs proposés à l'octroi. Aucune lecture des utilisateurs ni des appareils
  * n'est servie (S-28) : seuls les couples déjà détenteurs d'un quota sur cet emplacement (lecture de
  * l'historique) et l'utilisateur lui-même sur ce téléphone sont proposés, jamais un identifiant saisi.
  * `self` n'est passé que si l'utilisateur peut libérer un quota (`inventory.allocation.release`, CTE

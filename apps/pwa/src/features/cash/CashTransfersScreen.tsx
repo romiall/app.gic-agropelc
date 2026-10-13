@@ -1,10 +1,10 @@
 /**
- * Écran des remises de fonds (UC-FIN-07, hors inventaire des écrans : AV-311). Hors ligne : remettre
+ * Écran des remises de fonds (ECR-FIN-07, UC-FIN-07 ; AV-239). Hors ligne : remettre
  * des fonds d'une caisse vers une destination admise (`finance.cash_transfer.send`, agrégat
  * `CASH_TRANSFER` dont l'identifiant est choisi par l'appareil), annuler une remise qu'on a envoyée et
  * qui n'est pas reçue (`.cancel`, motif obligatoire), recevoir une remise arrivée sur l'une de ses
  * caisses (`.receive`, montant reçu ; un écart part en validation de la Finance, sans second
- * mouvement : ADR-032 §7). Le solde de la caisse source est indicatif (AV-312).
+ * mouvement : ADR-032 §7). Le solde de la caisse source est indicatif (AV-240).
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';

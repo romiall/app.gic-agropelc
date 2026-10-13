@@ -14,14 +14,14 @@ import { inTransitTo, receivingTransferIds } from '../stock/stock-view.js';
 import type { TransferLineCheck } from '../stock/transfer.js';
 
 /**
- * AV-306 (défaut) : PDV sans source de réapprovisionnement configurée
+ * AV-234 (défaut) : PDV sans source de réapprovisionnement configurée
  * (`replenishment_source_location_id` nul). `CHOOSE` : le vendeur choisit un magasin (emplacement
  * `STORE` actif) ; `BLOCK` : la demande attend la configuration du PDV.
  */
 export const REPLENISH_WITHOUT_SOURCE: 'CHOOSE' | 'BLOCK' = 'CHOOSE';
 
 /**
- * AV-307 (défaut) : produit déjà demandé vers le PDV et pas encore expédié (autre téléphone, autre
+ * AV-235 (défaut) : produit déjà demandé vers le PDV et pas encore expédié (autre téléphone, autre
  * vendeur). `ANNOUNCE` : rappelé sous le produit, la suggestion en est diminuée, la demande reste
  * possible (complément) ; `BLOCK` : la ligne est refusée.
  */
@@ -59,7 +59,7 @@ export function pointsOfSaleOf(
   return views.sort((a, b) => a.salesLocation.name.localeCompare(b.salesLocation.name, 'fr'));
 }
 
-/** Magasins proposés quand le PDV n'a pas de source configurée (AV-306) : `STORE` actifs, par nom. */
+/** Magasins proposés quand le PDV n'a pas de source configurée (AV-234) : `STORE` actifs, par nom. */
 export function candidateSources(
   locations: readonly LocationData[],
   destinationId: string,

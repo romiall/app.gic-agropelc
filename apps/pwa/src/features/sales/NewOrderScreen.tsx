@@ -152,7 +152,7 @@ export function NewOrderScreen() {
     methods[0];
   const advance = withAdvance ? parseXaf(advancePayment.amountText ?? '') : 0;
   // Commande servie au PDV (emplacement `POS`) : un acompte en espèces exige une caisse ouverte
-  // (BR-DIS-005, AV-305).
+  // (BR-DIS-005, AV-233).
   const cashSession = cashSessionCoverage({
     atPointOfSale: location?.location_type === 'POS',
     accounts: refs.cashAccounts,

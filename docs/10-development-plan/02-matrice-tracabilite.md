@@ -307,10 +307,22 @@ Statut écran par écran au § 2 du suivi ; besoins serveur S-01 à S-42 au § 4
 |---|---|---|---|
 | Accueil et navigation | ECR-ADM-03 enrichi, menu par rôle (ADR-036) | `apps/pwa/src/features/home/`, `navigation/` | Livré |
 | Ventes | ECR-VEN-01 à 06 | `apps/pwa/src/features/sales/` | Livré ; ECR-FIN-01 en P8 |
-| Stock | ECR-STK-01 à 05, 07, 08 | `apps/pwa/src/features/stock/` | Livré ; ECR-STK-06 avec les écrans de P5 (fork en cours) |
+| Stock | ECR-STK-01 à 05, 07, 08 | `apps/pwa/src/features/stock/` | Livré ; ECR-STK-06 livré avec les écrans de P5 (§ 17.7) |
 | CRM et terrain | ECR-CRM-01 à 05, 07, ECR-TER-01 | `apps/pwa/src/features/crm/`, `fieldwork/` | Livré ; ECR-CRM-06 et ECR-TER-02 attendent S-28 |
 | Achats | ECR-APP-01 à 04 | `apps/pwa/src/features/procurement/` | Livré ; ECR-APP-05 en P8 |
 | Production | ECR-PRD-01 à 04, 06, 07 | `apps/pwa/src/features/production/` | Livré ; coûts et marge de la fiche lot (ECR-PRD-03) en P8 |
 | Prix | ECR-PRX-01 à 03 | `apps/pwa/src/features/pricing/` | Livré |
 | Synchronisation de l'appareil | ADR-037 (joignabilité, enveloppe immuable, reprise des envois) | `apps/pwa/src/sync/*.test.ts` | Livré ; protocole d'envoi de P5-21 (AV-210, AV-217) à prendre en compte par la phase « Écrans PWA de P5 » |
+
+### 17.7 Écrans PWA de P5 (fork fusionné le 13/10/2026) — [`15-ecrans-pwa.md`](15-ecrans-pwa.md) § 9
+
+Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à AV-242 et ADR-039 (numéros de fork 303 à 314 et 052) ; besoins serveur S-43 à S-52 ([`16-besoins-serveur-des-ecrans.md`](16-besoins-serveur-des-ecrans.md)). Tests de la PWA sur la branche intégrée : 72 fichiers, 503 tests verts, typage vert ; sept revues adverses dans le fork. **La vérification dans le navigateur reste à faire.**
+
+| Domaine | Écrans | Vérifié par | État à la fusion |
+|---|---|---|---|
+| Distribution | ECR-DIS-01 (accueil du PDV, libération des quotas, AV-236, AV-237), ECR-DIS-02 (caisse, comptage à l'aveugle, AV-232, AV-233), ECR-DIS-03 (réapprovisionnement, AV-234, AV-235), ECR-DIS-04 (tableau, en ligne) | `apps/pwa/src/features/distribution/`, `cash/` | Livré |
+| Stock | ECR-STK-06 (quotas des téléphones, en ligne ; AV-238) | `apps/pwa/src/features/stock/` | Livré |
+| Trésorerie | ECR-FIN-05 (sessions à valider, écarts de remise, remises en transit, comptes ; AV-241) | `apps/pwa/src/features/treasury/` | Livré ; à adapter : décision d'un écart de remise par `finance.cash_transfer.close_discrepancy` (AV-183, P5-23) ; ajustements tardifs non listés (S-51) ; dépenses et paiements en P8 |
+| Remises de fonds | ECR-FIN-07 (créé à l'intégration ; envoi, annulation, réception hors ligne ; AV-239, AV-240) | `apps/pwa/src/features/cash/` | Livré ; à adapter : plus de refus d'un écart sans politique (AV-183) |
+| Socle hors ligne | Jeux de P5 sur l'appareil, envoi strict (ADR-039), garde d'AT-003 (AV-231), lecture seule après l'autonomie (AV-242) | `apps/pwa/src/sync/`, `features/sync/`, `features/sales/quota.ts` | Livré ; à adapter : appareil en attente (`DEVICE_PENDING`, AV-228), annulation d'un encaissement d'une vente anonyme (`PAYMENT_ANONYMOUS_SALE`, AV-188) |
 

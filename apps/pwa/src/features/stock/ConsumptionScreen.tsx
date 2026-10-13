@@ -125,7 +125,7 @@ export function ConsumptionScreen() {
     (check.quantityBase > physicalLeft(balance, pending) ||
       (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
   const noSite = !location.site_id;
-  // Garde hors ligne (BR-STK-013, AV-303) : au-delà du quota du détenteur ou du solde exclusif, refusée.
+  // Garde hors ligne (BR-STK-013, AV-231) : au-delà du quota du détenteur ou du solde exclusif, refusée.
   const guard = offlineExitGuard(refs, {
     kind: 'CONSUMPTION',
     location,

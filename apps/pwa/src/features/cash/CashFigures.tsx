@@ -1,6 +1,6 @@
 /**
  * Chiffres d'une ouverture ou d'une clôture de caisse, après l'enregistrement du comptage (ECR-DIS-02,
- * comptage à l'aveugle, AV-304) : ceux du serveur dès sa réponse (`server_refs`, chaînes décimales :
+ * comptage à l'aveugle, AV-232) : ceux du serveur dès sa réponse (`server_refs`, chaînes décimales :
  * attendu, écart, statut de la session), sinon l'attendu indicatif calculé par l'appareil au moment de
  * la saisie (D05 §12), annoncé comme tel.
  */

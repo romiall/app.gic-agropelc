@@ -12,7 +12,7 @@ import { stockKey } from '../sales/stock.js';
 import type { AllocationData } from '../sales/types.js';
 
 /**
- * AV-308 (défaut) : ventes du jour de l'accueil du PDV, celles que l'appareil connaît (jeu
+ * AV-236 (défaut) : ventes du jour de l'accueil du PDV, celles que l'appareil connaît (jeu
  * `sales_recent` du site et ventes saisies en attente), sur l'emplacement de vente, au jour métier de
  * Douala, annulées exclues. Le chiffre du serveur (tableau, ECR-DIS-04) inclut les autres téléphones
  * pas encore synchronisés. L'encaissé est celui qui est affecté à ces ventes, quelle que soit sa date :
@@ -129,7 +129,7 @@ export function myQuotas(
 }
 
 /**
- * Libération possible (AV-309, défaut) : quota actif de l'utilisateur, ni déjà libéré sur l'appareil ni
+ * Libération possible (AV-237, défaut) : quota actif de l'utilisateur, ni déjà libéré sur l'appareil ni
  * frappé d'un signal de révocation (le serveur le révoque, BR-STK-014). Le reste déclaré est celui que
  * l'appareil calcule (BR-STK-013) ; un écart avec le serveur ouvre `ALLOCATION_RELEASE_MISMATCH`.
  */

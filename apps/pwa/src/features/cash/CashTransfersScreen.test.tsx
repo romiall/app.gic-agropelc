@@ -135,7 +135,7 @@ describe('Remises de fonds (UC-FIN-07)', () => {
     const user = userEvent.setup();
     renderScreen();
     expect(await screen.findByText('Caisse du PDV de Yaoundé')).toBeInTheDocument();
-    // Comptage à l'aveugle (AV-304) : ni solde ni dépassement pour la caisse du PDV.
+    // Comptage à l'aveugle (AV-232) : ni solde ni dépassement pour la caisse du PDV.
     expect(
       screen.getByText(/Solde de la caisse non affiché : comptage à l’aveugle/),
     ).toBeInTheDocument();

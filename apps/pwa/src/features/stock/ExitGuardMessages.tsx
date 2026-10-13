@@ -1,5 +1,5 @@
 /**
- * Messages de la garde hors ligne d'une sortie de stock (BR-STK-013, AV-303) : refus sur l'appareil,
+ * Messages de la garde hors ligne d'une sortie de stock (BR-STK-013, AV-231) : refus sur l'appareil,
  * puis sorties enregistrées que le serveur signalera. Chaque message porte un identifiant stable
  * (`guardIssueId`) que le champ de quantité concerné référence (`aria-describedby`) ; la région est
  * polie (`role="status"`) pour ne pas couper la saisie à chaque chiffre.

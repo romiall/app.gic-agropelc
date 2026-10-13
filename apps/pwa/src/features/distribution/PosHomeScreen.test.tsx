@@ -198,7 +198,7 @@ describe('Accueil du PDV (ECR-DIS-01)', () => {
     const cash = await screen.findByRole('region', { name: 'Caisse' });
     expect(within(cash).getByText(/Caisse ouverte depuis le .* par vous\./)).toBeInTheDocument();
     expect(within(cash).getByRole('link', { name: 'Clôturer la caisse' })).toBeInTheDocument();
-    // Jamais d'attendu de caisse sur l'accueil, même caisse ouverte (comptage à l'aveugle, AV-304).
+    // Jamais d'attendu de caisse sur l'accueil, même caisse ouverte (comptage à l'aveugle, AV-232).
     expect(within(cash).queryByText(/Attendu|F CFA/)).not.toBeInTheDocument();
     expect(
       screen.getByText('Quota échu : libérez-le pour rendre le reste au stock commun.'),

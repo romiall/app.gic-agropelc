@@ -1,5 +1,5 @@
 /**
- * Invite « Ouvrir la caisse » (BR-DIS-005, AV-305) : sur un écran d'encaissement au PDV, avant toute
+ * Invite « Ouvrir la caisse » (BR-DIS-005, AV-233) : sur un écran d'encaissement au PDV, avant toute
  * saisie. `MISSING` : aucune caisse ouverte vue par l'appareil ; en ligne, un encaissement en espèces
  * sera bloqué, hors ligne il sera enregistré et signalé à la Finance. `UNKNOWN` : la caisse du PDV
  * n'est pas servie à l'appareil (rôle sans `finance.cash.read` sur le site) : rappel sans blocage. Le

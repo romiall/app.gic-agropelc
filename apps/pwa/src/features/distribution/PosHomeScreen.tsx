@@ -1,8 +1,8 @@
 /**
  * ECR-DIS-01 « Accueil PDV » (vendeur du PDV ; WF-J2). Hors ligne : caisse du jour (ouverte ou non,
- * jamais l'attendu, comptage à l'aveugle AV-304), stock de l'emplacement de vente (disponible de
+ * jamais l'attendu, comptage à l'aveugle AV-232), stock de l'emplacement de vente (disponible de
  * l'appareil, seuil), quotas de l'utilisateur sur ce téléphone avec leur libération
- * (`inventory.allocation.release`, AV-309), ventes du jour connues du téléphone (AV-308) et accès
+ * (`inventory.allocation.release`, AV-237), ventes du jour connues du téléphone (AV-236) et accès
  * aux opérations du PDV.
  */
 import { useState } from 'react';
@@ -67,7 +67,7 @@ export function PosHomeScreen() {
 
   const now = clock.now();
   const location = pos.salesLocation;
-  // Caisse du PDV : ouverte ou non, jamais l'attendu (comptage à l'aveugle, AV-304).
+  // Caisse du PDV : ouverte ou non, jamais l'attendu (comptage à l'aveugle, AV-232).
   const account = posCashAccounts(refs.cashAccounts).find(
     (candidate) => candidate.site_id === pos.siteId,
   );
@@ -88,7 +88,7 @@ export function PosHomeScreen() {
     : undefined;
   const session = cash ? openSession(cash) : undefined;
   // Clôture saisie par un autre utilisateur de la tablette, pas encore envoyée : la session reste
-  // ouverte au serveur jusqu'à son envoi, et l'écran de caisse refuse une ouverture (ADR-052).
+  // ouverte au serveur jusqu'à son envoi, et l'écran de caisse refuse une ouverture (ADR-039).
   const closingElsewhere = cash && !session ? foreignClose(cash, userId) : undefined;
   // Libération : permission `inventory.allocation.release` du détenteur (CTE, VEN).
   const mayRelease = holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.allocationRelease);

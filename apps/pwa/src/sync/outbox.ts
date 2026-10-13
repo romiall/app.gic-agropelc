@@ -35,7 +35,7 @@ async function nextDeviceSeq(db: GicDatabase): Promise<number> {
 }
 
 /**
- * Enregistre une opération dans l'outbox. Au-delà de l'autonomie hors connexion (AV-009, AV-314),
+ * Enregistre une opération dans l'outbox. Au-delà de l'autonomie hors connexion (AV-009, AV-242),
  * l'appareil est en lecture seule : l'opération est refusée (`OfflineReadOnlyError`) et rien n'est
  * enregistré, quel que soit l'écran qui l'enregistre ; les opérations déjà dans l'outbox partent.
  */
@@ -88,7 +88,7 @@ const UNSETTLED: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'S
  * commandes de `authorUserId` s'il est donné (le serveur n'accepte que celles de l'utilisateur
  * authentifié).
  *
- * Ordre strict par `device_seq`, dépendantes comprises (INV-SYN-04, AV-210, ADR-052) : le serveur
+ * Ordre strict par `device_seq`, dépendantes comprises (INV-SYN-04, AV-210, ADR-039) : le serveur
  * fait attendre une dépendance reçue mais pas encore réglée (`DEPENDENCY_PENDING`, S-17 levé) et
  * suspend la suite du lot après elle (`PRECEDING_COMMAND_PENDING`). Le lot s'arrête avant une
  * commande dont une dépendance **du même auteur** attend sans partir dans ce lot (commande bloquée

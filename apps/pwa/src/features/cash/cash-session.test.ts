@@ -507,7 +507,7 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     });
   });
 
-  it('encaissement en espèces au PDV : caisse ouverte exigée, bloqué en ligne seulement (BR-DIS-005, AV-305)', () => {
+  it('encaissement en espèces au PDV : caisse ouverte exigée, bloqué en ligne seulement (BR-DIS-005, AV-233)', () => {
     const coverage = (overrides: Partial<Parameters<typeof cashSessionCoverage>[0]> = {}) =>
       cashSessionCoverage({
         atPointOfSale: true,

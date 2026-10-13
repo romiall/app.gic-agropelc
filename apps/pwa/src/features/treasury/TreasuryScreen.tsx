@@ -1,5 +1,5 @@
 /**
- * ECR-FIN-05 « Trésorerie » (Finance ; Direction : AV-313). En ligne seulement (`ONLINE_ONLY` sinon) :
+ * ECR-FIN-05 « Trésorerie » (Finance ; Direction : AV-241). En ligne seulement (`ONLINE_ONLY` sinon) :
  * sessions de caisse à valider (détail des flux, validation motivée, `finance.cash_session.validate`),
  * écarts de remise à décider (imputation et motif, `approvals.request.approve` sur la demande
  * `CASH_TRANSFER_DISCREPANCY`, AV-174), remises en transit (réception par la Finance), comptes et leurs

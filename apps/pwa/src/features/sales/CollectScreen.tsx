@@ -232,7 +232,7 @@ export function CollectScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const amount = parseXaf(payment.amountText ?? '');
-  // Encaissement sur le site d'un PDV : en espèces, il exige une caisse ouverte (BR-DIS-005, AV-305 ;
+  // Encaissement sur le site d'un PDV : en espèces, il exige une caisse ouverte (BR-DIS-005, AV-233 ;
   // DÉDUIT de `cashAccountFor` : site de type `POINT_DE_VENTE`). Site laissé au serveur : celui qu'il
   // retiendra, la vente de la première créance réglée, à défaut le site du client (DÉDUIT de
   // `payment-commands.ts`).

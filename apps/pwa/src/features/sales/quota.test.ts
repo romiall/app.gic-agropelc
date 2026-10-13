@@ -251,7 +251,7 @@ describe('Quota du téléphone (ADR-033, AT-003, AT-004)', () => {
     expect(deviceQuota(refs, input)).not.toBeNull();
   });
 
-  it('garde hors ligne des sorties (BR-STK-013, AV-303) : quota du détenteur, solde exclusif, appareil désigné', async () => {
+  it('garde hors ligne des sorties (BR-STK-013, AV-231) : quota du détenteur, solde exclusif, appareil désigné', async () => {
     const db = getDb();
     await db.projections.put(allocationRow({ quantity_remaining: '30.000', valid_until: null }));
     const now = new Date('2026-10-10T09:00:00.000Z');

@@ -156,7 +156,7 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
     expect(await countAttention(db)).toBe(1);
   });
 
-  it('pendingOutbox : ordre strict, dépendantes comprises ; arrêt avant une dépendance qui ne part pas (ADR-052)', async () => {
+  it('pendingOutbox : ordre strict, dépendantes comprises ; arrêt avant une dépendance qui ne part pas (ADR-039)', async () => {
     const enqueue = (dependsOn: readonly string[], authorUserId = 'user-1') =>
       enqueueCommand(
         db,

@@ -10,7 +10,7 @@
  *   lit l'alias), même après le tirage de l'ouverture. Une ouverture que le serveur rattache, ou
  *   rattachera, à une session existante n'ouvre aucune caisse sur l'appareil. L'ouverture d'un autre
  *   utilisateur de la tablette, pas encore envoyée, est inconnue du serveur jusqu'à la reconnexion de
- *   son auteur (ADR-052) : elle ne compte ni comme caisse ouverte, ni dans la décision d'ouverture.
+ *   son auteur (ADR-039) : elle ne compte ni comme caisse ouverte, ni dans la décision d'ouverture.
  * - **Attendu indicatif** (D05 §12) : le serveur seul calcule l'attendu et l'écart (BR-DIS-007).
  *   L'appareil en donne une estimation : le solde du compte servi par le jeu `cash` (republié à chaque
  *   mouvement ; après l'ouverture, il vaut le fonds compté plus les mouvements de la fenêtre, ADR-032
@@ -36,14 +36,14 @@ import type {
 } from '../sales/types.js';
 
 /**
- * AV-304 (défaut) : comptage à l'aveugle. L'attendu (indicatif, puis celui du serveur) ne s'affiche
+ * AV-232 (défaut) : comptage à l'aveugle. L'attendu (indicatif, puis celui du serveur) ne s'affiche
  * qu'après l'enregistrement du comptage, pour que le vendeur compte ce qu'il a, pas ce qu'on attend
  * de lui. `false` : l'attendu indicatif s'affiche sur le formulaire, avant la saisie.
  */
 export const CASH_COUNT_BLIND: boolean = true;
 
 /**
- * AV-305 (défaut) : encaissement en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran
+ * AV-233 (défaut) : encaissement en espèces au PDV sans caisse ouverte vue par l'appareil. L'écran
  * propose d'abord « Ouvrir la caisse » (BR-DIS-005) ; en ligne, l'encaissement est bloqué (le serveur
  * le refuserait, `CASH_SESSION_REQUIRED`) ; hors ligne, `WARN` : enregistré, le serveur l'applique et
  * le signale à la Finance (`CASH_SESSION_MISSING`, AV-184, BR-SYN-007). `BLOCK` : bloqué hors ligne
@@ -214,7 +214,7 @@ export function deviceCash(input: {
       closedStatus: null,
     };
     if (isWaiting(command) && command.author_user_id !== input.userId) {
-      // Inconnue du serveur jusqu'à la reconnexion de son auteur (ADR-052).
+      // Inconnue du serveur jusqu'à la reconnexion de son auteur (ADR-039).
       foreign.set(command.aggregate_id, view);
       continue;
     }
@@ -304,7 +304,7 @@ export function openSession(cash: Pick<DeviceCash, 'sessions'>): CashSessionView
 
 /**
  * Clôture d'un autre utilisateur de la tablette pas encore envoyée : la session reste ouverte au
- * serveur jusqu'à la reconnexion de son auteur (ADR-052).
+ * serveur jusqu'à la reconnexion de son auteur (ADR-039).
  */
 export function foreignClose(
   cash: Pick<DeviceCash, 'sessions'>,
@@ -596,7 +596,7 @@ export function cashSessionCoverage(input: {
 
 export type CashCoverage = 'NONE' | 'UNKNOWN' | 'MISSING' | 'COVERED';
 
-/** Encaissement en espèces refusé sur l'appareil faute de caisse ouverte (AV-305). */
+/** Encaissement en espèces refusé sur l'appareil faute de caisse ouverte (AV-233). */
 export function cashPaymentBlocked(coverage: CashCoverage, online: boolean): boolean {
   return coverage === 'MISSING' && (online || OFFLINE_CASH_WITHOUT_SESSION === 'BLOCK');
 }

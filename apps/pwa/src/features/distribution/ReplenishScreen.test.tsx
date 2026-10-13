@@ -177,7 +177,7 @@ describe('Demande de réapprovisionnement (ECR-DIS-03)', () => {
       IDS.eggs,
     );
     expect(screen.getByText('Déjà demandé, pas encore expédié : 300 U.')).toBeInTheDocument();
-    // Annoncé, pas bloqué (AV-307) : un complément reste possible.
+    // Annoncé, pas bloqué (AV-235) : un complément reste possible.
     await user.type(
       within(screen.getByRole('listitem', { name: 'Ligne 1' })).getByLabelText('Quantité'),
       '50',
@@ -187,7 +187,7 @@ describe('Demande de réapprovisionnement (ECR-DIS-03)', () => {
     );
   });
 
-  it('PDV sans magasin configuré : le vendeur choisit le magasin (AV-306) ; produit en double refusé', async () => {
+  it('PDV sans magasin configuré : le vendeur choisit le magasin (AV-234) ; produit en double refusé', async () => {
     await getDb().projections.put(pointOfSaleRow({ replenishment_source_location_id: null }));
     const user = userEvent.setup();
     renderScreen();

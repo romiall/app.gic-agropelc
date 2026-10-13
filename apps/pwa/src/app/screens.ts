@@ -257,7 +257,7 @@ export const ROLE_SETS = {
   allocationRelease: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV'],
   /**
    * `finance.cash_transfer.record` (RCO, CTE, CSE OWN ; VEN SITE ; RFE OWN ; FIN ALL) : remises de
-   * fonds, envoi, réception et annulation (UC-FIN-07, AV-311).
+   * fonds, envoi, réception et annulation (UC-FIN-07, AV-239).
    */
   cashTransferRecord: [
     'RESP_COMMERCIAL',
@@ -269,7 +269,7 @@ export const ROLE_SETS = {
   ],
   /**
    * ECR-FIN-05 : `finance.cash.read` ALL et `finance.cash_session.validate` (FIN, DIR) ; la Direction
-   * valide et décide, sans recevoir (`finance.cash_transfer.record`) (AV-313).
+   * valide et décide, sans recevoir (`finance.cash_transfer.record`) (AV-241).
    */
   treasury: ['FINANCE', 'DIRECTION'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
@@ -638,8 +638,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: false,
   },
   {
-    // Hors inventaire des écrans (AV-311) : code du cas d'usage.
-    id: 'UC-FIN-07',
+    // Remises de fonds sur l'appareil (UC-FIN-07, AV-239) : ECR-FIN-07, créé à l'intégration des écrans de P5.
+    id: 'ECR-FIN-07',
     path: ROUTES.cashTransfers,
     labelKey: 'cash_transfers',
     group: 'sales',

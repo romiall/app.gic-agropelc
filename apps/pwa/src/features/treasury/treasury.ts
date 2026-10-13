@@ -1,5 +1,5 @@
 /**
- * Trésorerie de la Finance (ECR-FIN-05 ; ADR-032 ; SM-CASH-SESSION, SM-CASH-TRANSFER ; AV-313).
+ * Trésorerie de la Finance (ECR-FIN-05 ; ADR-032 ; SM-CASH-SESSION, SM-CASH-TRANSFER ; AV-241).
  * Logique pure sur les lectures en ligne : sessions de caisse à valider (`GET /cash-sessions`, détail
  * avec flux par vendeur et ajustements), remises en transit et écarts à décider (`GET /cash-transfers`),
  * comptes et mouvements (`GET /cash-accounts`). Contrôles de l'appareil alignés sur le serveur

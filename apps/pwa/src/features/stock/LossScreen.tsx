@@ -194,7 +194,7 @@ export function LossScreen() {
         chosenLot.qty_on_hand !== null &&
         check.quantityBase > Number(chosenLot.qty_on_hand)));
   // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
-  // Garde hors ligne (BR-STK-013, AV-303) : quota du détenteur, appareil désigné ; la perte au-delà
+  // Garde hors ligne (BR-STK-013, AV-231) : quota du détenteur, appareil désigné ; la perte au-delà
   // est signalée, jamais refusée, sauf emplacement confié à un autre appareil.
   const guard = offlineExitGuard(refs, {
     kind: 'LOSS',

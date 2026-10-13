@@ -220,7 +220,7 @@ export function SaleDetailScreen() {
     !sale.cancellationPending &&
     !cancelCommandId;
   // Vente d'un autre utilisateur de la tablette, pas encore envoyée : l'annulation en dépendrait et
-  // ne partirait qu'à sa reconnexion (ADR-052) ; elle attend son envoi.
+  // ne partirait qu'à sa reconnexion (ADR-039) ; elle attend son envoi.
   const foreignPending = waitsForOtherUser(refs.outbox, [sale.commandId], userId);
 
   return (

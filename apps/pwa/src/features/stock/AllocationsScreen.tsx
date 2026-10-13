@@ -1,9 +1,9 @@
 /**
  * ECR-STK-06 « Quotas » (magasinier, responsable de ferme, responsable commercial, Direction :
  * `inventory.allocation.manage`). En ligne seulement : sur un emplacement partagé, accorder un quota à
- * un couple (utilisateur, appareil) déjà connu (AV-310, S-28), l'augmenter (version attendue,
+ * un couple (utilisateur, appareil) déjà connu (AV-238, S-28), l'augmenter (version attendue,
  * ADR-033 §9) ou le révoquer avec un motif (BR-STK-014). La libération est faite par le détenteur, sur
- * l'accueil du PDV (AV-309). Le serveur contrôle le disponible (`ALLOCATION_EXCEEDS_AVAILABLE`).
+ * l'accueil du PDV (AV-237). Le serveur contrôle le disponible (`ALLOCATION_EXCEEDS_AVAILABLE`).
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -64,7 +64,7 @@ interface QuotasRead {
   readonly activeMore: boolean;
   /** Restes actifs par produit (complets, servis avec chaque page). */
   readonly totals: AllocationsPage['active_totals'];
-  /** Quotas les plus récents de tous statuts, pour les détenteurs connus (AV-310). */
+  /** Quotas les plus récents de tous statuts, pour les détenteurs connus (AV-238). */
   readonly history: readonly AllocationItem[];
   readonly historyMore: boolean;
 }
@@ -202,7 +202,7 @@ export function AllocationsScreen() {
   const products = new Map(refs.products.map((product) => [product.id, product]));
   const page = read.data;
   const active = activeQuotas(page?.active ?? []);
-  // Vous-même : seulement si votre rôle peut libérer le quota (AV-310, `inventory.allocation.release`).
+  // Vous-même : seulement si votre rôle peut libérer le quota (AV-238, `inventory.allocation.release`).
   const self =
     deviceId && holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.allocationRelease)
       ? { userId, deviceId }

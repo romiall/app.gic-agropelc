@@ -105,7 +105,7 @@ export function ReplenishScreen() {
   }
 
   const destination = pos.salesLocation;
-  // Source configurée (même pas encore tirée du jeu `location`), sinon choisie (AV-306).
+  // Source configurée (même pas encore tirée du jeu `location`), sinon choisie (AV-234).
   const sources = candidateSources(refs.locations, destination.id);
   const sourceId =
     pos.sourceId ?? sources.find((candidate) => candidate.id === sourceChoice)?.id ?? null;
@@ -121,7 +121,7 @@ export function ReplenishScreen() {
   const rows = computeLines(lines, products, refs);
   const filled = rows.filter((row) => row.check.draft.productId !== '');
   const duplicates = duplicateProducts(filled.map((row) => row.check.draft.productId));
-  // Produit déjà demandé vers le PDV : refusé seulement si le paramètre le veut (AV-307).
+  // Produit déjà demandé vers le PDV : refusé seulement si le paramètre le veut (AV-235).
   const alreadyRequested = (productId: string) =>
     DUPLICATE_REQUEST === 'BLOCK' && (requested.get(productId) ?? 0) > 0;
   const ready =

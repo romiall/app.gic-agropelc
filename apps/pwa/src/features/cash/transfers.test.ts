@@ -364,7 +364,7 @@ describe('Remises de fonds vues par l’appareil (UC-FIN-07)', () => {
       transfers: [] as CashTransferData[],
       settings: [] as SettingData[],
     };
-    // Aucune session, ou session ouverte : jamais montré à l'aveugle (AV-304).
+    // Aucune session, ou session ouverte : jamais montré à l'aveugle (AV-232).
     expect(transferSourceBalance(base)).toEqual({ kind: 'BLIND' });
     expect(transferSourceBalance({ ...base, sessions: [session()] })).toEqual({ kind: 'BLIND' });
     // Clôture saisie par l'utilisateur sur l'appareil : le compté (le registre vaudra ce compté).

@@ -245,6 +245,18 @@ Classification (PM §45) :
 | AV-228 | Fait saisi par un appareil encore en attente d'approbation | IMPORTANTE | P5 | (c) : attente (`RETRY_LATER`, `DEVICE_PENDING`), appliqué après l'approbation ; appareil refusé sans approbation : quarantaine de tous ses faits | OUVERT |
 | AV-229 | Utilisateur suspendu puis réactivé : fenêtre de quarantaine | IMPORTANTE | P10 | Inchangé (statut courant et `status_changed_at`, comme les appareils avant AV-212) ; table jumelle des périodes recommandée avant la mise en production | OUVERT |
 | AV-230 | Quotas actifs d'un emplacement de vente qui passe en garde exclusive | SECONDAIRE | P5 | Refus `POS_ALLOCATIONS_ACTIVE` de la configuration tant qu'un quota est actif (le révoquer ou le libérer d'abord) | OUVERT |
+| AV-231 | Sorties de stock hors ligne au-delà du quota du détenteur ou du solde d'un emplacement exclusif | IMPORTANTE | Écrans PWA | Perte seulement signalée, autres sorties refusées sur l'appareil (`OFFLINE_LOSS_GUARD = 'SIGNAL'`) | OUVERT |
+| AV-232 | Comptage de la caisse à l'aveugle | IMPORTANTE | Écrans PWA | À l'aveugle : attendu et écart affichés après l'enregistrement du comptage (`CASH_COUNT_BLIND`) | OUVERT |
+| AV-233 | Encaissement en espèces au PDV sans caisse ouverte sur l'appareil | IMPORTANTE | Écrans PWA | Invite « Ouvrir la caisse », blocage en ligne, enregistrement signalé hors ligne (`OFFLINE_CASH_WITHOUT_SESSION = 'WARN'`) | OUVERT |
+| AV-234 | Demande de réapprovisionnement d'un PDV sans source configurée | SECONDAIRE | Écrans PWA | Le vendeur choisit un magasin actif (`REPLENISH_WITHOUT_SOURCE = 'CHOOSE'`) | OUVERT |
+| AV-235 | Demandes de réapprovisionnement en double vers un PDV | SECONDAIRE | Écrans PWA | Le déjà demandé est annoncé, sans blocage (`DUPLICATE_REQUEST = 'ANNOUNCE'`) | OUVERT |
+| AV-236 | Ventes et encaissé du jour de l'accueil du PDV | SECONDAIRE | Écrans PWA | Ce que connaît le téléphone, annoncé comme tel ; chiffre complet par le tableau | OUVERT |
+| AV-237 | Libération des quotas sur l'appareil | IMPORTANTE | Écrans PWA | Bouton par quota sur l'accueil du PDV, confirmé, reste calculé par l'appareil | OUVERT |
+| AV-238 | Détenteurs proposés à l'octroi d'un quota | IMPORTANTE | Écrans PWA | Couples déjà détenteurs sur l'emplacement et l'utilisateur lui-même, jamais d'identifiant saisi | OUVERT |
+| AV-239 | Remises de fonds sur l'appareil (UC-FIN-07) | IMPORTANTE | Écrans PWA | Écran hors ligne « Remises de fonds » (`/caisse/remises`) pour les détenteurs de `finance.cash_transfer.record` | OUVERT |
+| AV-240 | Remise au-delà du solde indicatif de la caisse | SECONDAIRE | Écrans PWA | Signalée sans blocage | OUVERT |
+| AV-241 | Rôles de l'écran de trésorerie (ECR-FIN-05) | SECONDAIRE | Écrans PWA | Finance et Direction | OUVERT |
+| AV-242 | Lecture seule au-delà de l'autonomie hors connexion (AV-009) | IMPORTANTE | Écrans PWA | Durée depuis la dernière synchronisation complète ; au-delà, nouvelle opération refusée, consultation et envoi intacts | OUVERT |
 
 ---
 
@@ -1653,6 +1665,90 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) refuser la configuration tant qu'un quota est actif (`POS_ALLOCATIONS_ACTIVE`) : le responsable le libère ou le révoque d'abord, avec sa permission et son motif ; (b) révoquer d'office les quotas au passage en garde exclusive (événement par quota, motif `POS_CUSTODY_CHANGED`, permission à trancher) ; (c) inchangé.
 - **Recommandation** : (a) : la révocation reste une décision motivée d'un responsable (ADR-033 §9, le serveur ne révoque jamais seul) ; la commande est en ligne, le refus ne rejette aucun fait accompli (BR-SYN-007).
 - **Impact** : `organization` (`PosConfigurationGuardRegistry`, `pos.configure` : emplacement de vente verrouillé en premier), `inventory` (`inventoryPosConfigurationGuard`, octroi : garde relue sous verrou partagé), INV-DIS-02, D05 §8 et §15, SM-ALLOCATION, ADR-038 (résidus). Défaut implémenté : (a) (P5-23). Non paramétrable. Tests : `organization-pos-config.test.ts`, `inventory-allocation-commands.test.ts` (octroi concurrent), `p5-invariants.test.ts` (INV-DIS-02). PWA : l'écran d'administration du PDV doit lister les quotas à fermer avant de réessayer.
+
+### AV-231 — Sorties de stock hors ligne au-delà du quota du détenteur ou du solde d'un emplacement exclusif — IMPORTANTE
+- **Question** : Hors ligne, au-delà du quota du détenteur (emplacement partagé) ou du solde d'un emplacement exclusif, faut-il refuser sur l'appareil toutes les sorties de stock, ou seulement certaines ?
+- **Pourquoi** : BR-STK-013 dit que l'appareil « refuse toute consommation au-delà de son allocation ou du solde de son emplacement exclusif » (vente, perte, transfert sortant, consommation) ; AV-025 ne tranche que la vente ; le fork signalait jusqu'ici la perte hors ligne au-delà du disponible (F-10, F-14, BR-STK-018), parce qu'une casse constatée existe qu'on la refuse ou non. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 303).
+- **Choix** : (a) tout refuser (lettre de BR-STK-013) ; (b) refuser les sorties décidées (vente, consommation, expédition) et seulement signaler la perte ; (c) tout signaler.
+- **Recommandation** : (b).
+- **Impact** : une perte réelle refusée hors ligne attendrait le réseau pour être déclarée, et le stock local resterait faux d'ici là. Défaut implémenté : (b) : `OFFLINE_LOSS_GUARD = 'SIGNAL'` (`apps/pwa/src/features/sales/quota.ts`), `'BLOCK'` pour (a).
+
+### AV-232 — Comptage de la caisse à l'aveugle — IMPORTANTE
+- **Question** : Comptage de la caisse à l'aveugle : l'attendu (indicatif sur l'appareil, D05 §12) s'affiche-t-il avant la saisie du comptage ?
+- **Pourquoi** : D05 §12 prévoit un attendu indicatif calculé sur l'appareil, sans dire quand le montrer ; affiché avant le comptage, il invite à « trouver » l'attendu plutôt qu'à compter, et un écart réel passerait inaperçu (RC-03). **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 304).
+- **Choix** : (a) à l'aveugle, attendu et écart affichés après l'enregistrement du comptage (serveur dès sa réponse, sinon indicatif) ; (b) attendu indicatif affiché sur le formulaire.
+- **Recommandation** : (a).
+- **Impact** : avec (b), l'écart d'une clôture tend vers zéro sans refléter la caisse. Défaut implémenté : (a) : `CASH_COUNT_BLIND = true` (`apps/pwa/src/features/cash/cash-session.ts`), `false` pour (b).
+
+### AV-233 — Encaissement en espèces au PDV sans caisse ouverte sur l'appareil — IMPORTANTE
+- **Question** : Encaissement en espèces au PDV sans caisse ouverte sur l'appareil : bloquer, avertir ou proposer « Ouvrir la caisse » ?
+- **Pourquoi** : BR-DIS-005 veut que l'écran « propose d'abord Ouvrir la caisse » ; en ligne le serveur refuse (`CASH_SESSION_REQUIRED`) ; hors ligne il applique le fait et ouvre `CASH_SESSION_MISSING` (AV-184, BR-SYN-007). **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 305).
+- **Choix** : (a) invite dès l'ouverture de l'écran, blocage en ligne, enregistrement signalé hors ligne ; (b) blocage hors ligne aussi ; (c) simple avertissement partout.
+- **Recommandation** : (a).
+- **Impact** : (b) empêcherait une vente réelle quand la caisse a été oubliée, (c) laisserait partir en ligne une vente que le serveur refuse. Défaut implémenté : (a) : `OFFLINE_CASH_WITHOUT_SESSION = 'WARN'` (`apps/pwa/src/features/cash/cash-session.ts`), `'BLOCK'` pour (b).
+
+### AV-234 — Demande de réapprovisionnement d'un PDV sans source configurée — SECONDAIRE
+- **Question** : PDV sans source de réapprovisionnement configurée (`replenishment_source_location_id` nul) : la demande est-elle possible ?
+- **Pourquoi** : la source d'une demande est celle du PDV (WF-05), mais le champ est facultatif et le serveur n'impose que `source ≠ destination`. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 306).
+- **Choix** : (a) le vendeur choisit un magasin (`STORE` actif) ; (b) la demande attend la configuration du PDV.
+- **Recommandation** : (a).
+- **Impact** : (b) bloque le réapprovisionnement d'un PDV mal configuré ; (a) peut viser un magasin qui ne sert pas ce PDV. Défaut implémenté : (a) : `REPLENISH_WITHOUT_SOURCE = 'CHOOSE'` (`apps/pwa/src/features/distribution/replenish.ts`), `'BLOCK'` pour (b).
+
+### AV-235 — Demandes de réapprovisionnement en double vers un PDV — SECONDAIRE
+- **Question** : Demandes en double vers un PDV (deux téléphones, même produit) : bloquer ou annoncer ?
+- **Pourquoi** : rien n'empêche deux vendeurs d'un PDV partagé de demander le même produit ; le serveur ne contrôle pas les doublons. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 307).
+- **Choix** : (a) annoncer le déjà demandé (rappel sous le produit, suggestion diminuée) sans bloquer ; (b) refuser un produit déjà demandé.
+- **Recommandation** : (a), le magasinier arbitre à l'expédition.
+- **Impact** : (b) empêcherait un complément légitime ; (a) laisse au magasin le soin de ne pas expédier deux fois. Défaut implémenté : (a) : `DUPLICATE_REQUEST = 'ANNOUNCE'` (`apps/pwa/src/features/distribution/replenish.ts`), `'BLOCK'` pour (b).
+
+### AV-236 — Ventes et encaissé du jour de l'accueil du PDV — SECONDAIRE
+- **Question** : Ventes et encaissé du jour de l'accueil du PDV : quelle source ?
+- **Pourquoi** : l'accueil doit fonctionner hors ligne (ECR-DIS-01 : Oui) ; le serveur calcule le vendu et l'encaissé du jour pour tous les téléphones (tableau, ECR-DIS-04), mais l'appareil ne connaît que ses ventes et le jeu `sales_recent` du site ; AV-200 et AV-209 notent déjà un écart entre l'accueil et le tableau. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 308).
+- **Choix** : (a) ce que connaît le téléphone (ventes du jour sur l'emplacement de vente, annulées exclues, encaissé avec ces ventes), annoncé comme tel ; (b) lecture en ligne du tableau, rien hors ligne.
+- **Recommandation** : (a), avec le renvoi au tableau pour le chiffre complet.
+- **Impact** : sur un PDV partagé, le chiffre de (a) manque les ventes des autres téléphones pas encore synchronisées. Défaut implémenté : (a) (`todaySales`, `apps/pwa/src/features/distribution/pos-home.ts`) ; (b) reste accessible par le lien du tableau. L'encaissé est celui qui est affecté à ces ventes, quelle que soit sa date (acompte reporté sur la vente d'une commande confirmée, règlement ultérieur) ; le tableau donne l'encaissé du jour (BR-DIS-010) (F-70).
+
+### AV-237 — Libération des quotas sur l'appareil — IMPORTANTE
+- **Question** : Libération des quotas : quel écran, quel déclencheur, quel reste ?
+- **Pourquoi** : SM-ALLOCATION fait émettre la libération par l'appareil détenteur après l'échéance, WF-18 étape 4 la veut en fin de journée, aucun écran de l'inventaire ne l'héberge (ECR-STK-06 est « hors ligne : Non ») ; le serveur ferme le quota sur son propre reste et signale un écart (`ALLOCATION_RELEASE_MISMATCH`). **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 309).
+- **Choix** : (a) bouton par quota sur l'accueil du PDV, confirmé, reste calculé par l'appareil (net de ses sorties en attente), quota échu signalé « à libérer » ; (b) libération automatique à l'échéance, sans geste ; (c) reste saisi par le vendeur.
+- **Recommandation** : (a).
+- **Impact** : (b) libérerait sans que le vendeur sache ce qui reste ; (c) multiplierait les écarts de saisie. Défaut implémenté : (a) (`releasePayload`, `canRelease`, `apps/pwa/src/features/distribution/pos-home.ts`). Le reste déclaré suit la règle du serveur : seuls les faits antérieurs à l'échéance le réduisent, une annulation directe lui rend la quantité vendue (`quotaRemaining`, `apps/pwa/src/features/sales/quota.ts`). Bouton réservé aux rôles qui détiennent `inventory.allocation.release` (CTE, VEN). Limite : un quota sur un emplacement partagé qui n'est pas l'emplacement de vente d'un PDV, ou détenu par un commercial terrain, n'a pas encore d'écran de libération ; il se ferme par une révocation (ECR-STK-06) (F-70).
+
+### AV-238 — Détenteurs proposés à l'octroi d'un quota — IMPORTANTE
+- **Question** : Octroi d'un quota : parmi quels détenteurs choisir ?
+- **Pourquoi** : l'octroi exige un couple (utilisateur, appareil) ; aucune lecture des utilisateurs ni des appareils n'est servie à l'appareil (S-28), le tableau ne donne les auteurs d'une tablette qu'avec `sync.monitor.read`. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 310).
+- **Choix** : (a) couples déjà détenteurs d'un quota sur l'emplacement (historique de `GET /allocations`) et l'utilisateur lui-même sur ce téléphone, jamais d'identifiant saisi ; (b) saisie libre des identifiants ; (c) attendre une lecture des utilisateurs et des appareils (S-28).
+- **Recommandation** : (a) jusqu'à (c).
+- **Impact** : (a) ne permet pas le premier octroi à un nouveau vendeur depuis l'écran ; (b) multiplie les refus `ALLOCATION_HOLDER_INVALID`. Défaut implémenté : (a) (`knownHolders`, `apps/pwa/src/features/stock/allocations.ts`). L'utilisateur lui-même n'est proposé que si son rôle peut libérer un quota (CTE, VEN) : sinon son quota ne se fermerait que par une révocation ; un couple dont un quota actif porte le signal de révocation n'est pas proposé ; l'historique est lu sur deux pages de 200 au plus, la liste est annoncée partielle au-delà (F-70).
+
+### AV-239 — Remises de fonds sur l'appareil (UC-FIN-07) — IMPORTANTE
+- **Question** : Remises de fonds sur l'appareil (UC-FIN-07) : quel écran, pour qui, sur quelles caisses ?
+- **Pourquoi** : l'envoi, l'annulation et la réception d'une remise se font hors ligne (D09, UC-FIN-07 ; WF-15 étape 7), mais l'inventaire des écrans n'en prévoit aucun hors d'ECR-FIN-05, réservé à la Finance et en ligne ; les droits par compte ne sont pas servis à l'appareil. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 311).
+- **Choix** : (a) écran hors ligne « Remises de fonds » (`/caisse/remises`, code du cas d'usage) proposé aux détenteurs de `finance.cash_transfer.record` (RCO, CTE, CSE, VEN, RFE, FIN) : envoi depuis une caisse servie sans détenteur ou dont l'utilisateur est le détenteur, vers les destinations admises par les paires ; annulation motivée de ses propres remises en transit ; réception des remises en transit vers l'une de ces caisses, jamais des siennes, l'envoyé affiché, le reçu saisi et l'écart annoncé avant confirmation ; le serveur contrôle la portée (`CASH_ACCOUNT_FORBIDDEN`) ; (b) remises dans ECR-FIN-05 seulement ; (c) dans l'écran de caisse ECR-DIS-02.
+- **Recommandation** : (a), avec un identifiant d'écran à créer dans l'inventaire.
+- **Impact** : (b) empêche la remise hors ligne ; (c) l'interdit aux commerciaux et aux caisses personnelles. Défaut implémenté : (a) (`CashTransfersScreen`, `transfers.ts`, `apps/pwa/src/features/cash/`). Le solde d'une caisse de PDV suit le registre et le comptage à l'aveugle (AV-232) : il n'est montré qu'après une clôture comptée par l'utilisateur lui-même (F-74).
+
+### AV-240 — Remise au-delà du solde indicatif de la caisse — SECONDAIRE
+- **Question** : Remise au-delà du solde de la caisse : la bloquer sur l'appareil ?
+- **Pourquoi** : le solde de l'appareil est indicatif (solde servi plus ses opérations en attente, sans celles des autres appareils) ; en ligne, le serveur refuse une sortie qui rendrait négative une caisse physique (`CASH_INSUFFICIENT`, BR-FIN-012) ; hors ligne, il l'applique et ouvre `CASH_NEGATIVE` pour la Finance (BR-SYN-007). **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 312).
+- **Choix** : (a) signaler sans bloquer ; (b) bloquer au-delà du solde indicatif.
+- **Recommandation** : (a).
+- **Impact** : (b) refuserait une remise réelle quand le solde de l'appareil est en retard. Défaut implémenté : (a) (`overIndicativeBalance`) ; signalé seulement quand le solde est montré (F-74).
+
+### AV-241 — Rôles de l'écran de trésorerie (ECR-FIN-05) — SECONDAIRE
+- **Question** : Trésorerie (ECR-FIN-05) : pour quels rôles ?
+- **Pourquoi** : l'inventaire la donne à la Finance ; la Direction détient aussi `finance.cash.read` (ALL) et `finance.cash_session.validate` (A·ALL), permission d'approbation des demandes `CASH_VARIANCE` et `CASH_TRANSFER_DISCREPANCY` (politiques semées), mais pas `finance.cash_transfer.record`. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 313).
+- **Choix** : (a) Finance et Direction, la Direction validant et décidant sans recevoir de remise ; (b) Finance seulement.
+- **Recommandation** : (a) : une Finance qui a clôturé une caisse ou reçu une remise ne peut pas valider son propre écart (RC-03) ; sans la Direction, il faut un second utilisateur Finance.
+- **Impact** : (b) laisse la Direction sans écran pour une validation qu'elle détient. Défaut implémenté : (a) (`ROLE_SETS.treasury`, `apps/pwa/src/app/screens.ts`).
+
+### AV-242 — Lecture seule au-delà de l'autonomie hors connexion (AV-009) — IMPORTANTE
+- **Question** : Lecture seule au-delà de l'autonomie hors connexion (AV-009) : quelle synchronisation fait foi, quel blocage ?
+- **Pourquoi** : AV-009 fixe 7 jours puis la lecture seule et un bandeau dès 48 h (06-offline-sync §8), avec les paramètres `offline.max_autonomy_hours` et `offline.warning_hours` servis à l'appareil ; restent la mesure et la forme du blocage. **DÉDUIT** (fork « Écrans PWA », phase des écrans de P5, reporté à la fusion le 13/10/2026 ; numéro de fork 314).
+- **Choix** : (a) durée depuis la dernière synchronisation complète (tous les jeux tirés, `last_sync_at`), à l'horloge de l'appareil ; au-delà, toute nouvelle opération refusée au point d'enregistrement unique (`submitCommand`), bandeau permanent, consultation et envoi de l'outbox intacts ; appareil jamais synchronisé non bloqué ; (b) mesurer depuis le dernier envoi accepté ; (c) fermer l'accès aux écrans de saisie.
+- **Recommandation** : (a).
+- **Impact** : une horloge reculée retarde la lecture seule (le serveur marque l'heure suspecte à la réception, `clock_suspect`) ; sous le bandeau, chaque écran garde son message d'échec d'enregistrement. Défaut implémenté : (a) (`autonomy.ts`, `AutonomyBanner.tsx`, `apps/pwa/src/features/sync/` ; garde dans `enqueueCommand`, chemin d'écriture unique, F-75 ; bandeau réévalué chaque minute et au retour au premier plan ; refus annoncé « rien n'a été enregistré » par les écrans qui l'interceptent, les autres gardant leur message d'échec d'enregistrement sous le bandeau).
 ---
 
 ## 3. Journal des décisions

@@ -1,6 +1,6 @@
 /**
  * Remises de fonds vues par l'appareil (UC-FIN-07 ; SM-CASH-TRANSFER ; BR-FIN-013 ; ADR-032 §7 ;
- * AV-311). Logique pure : remises servies par le jeu `cash` (envoyées ou en écart ; reçues, closes ou
+ * AV-239). Logique pure : remises servies par le jeu `cash` (envoyées ou en écart ; reçues, closes ou
  * annulées, elles en sortent) et envois de l'appareil pas encore relus ; comptes d'où l'utilisateur
  * remet, destinations admises (`finance.cash_transfer_allowed_pairs`, AV-158), remises qu'il peut
  * recevoir ou annuler ; charges utiles de `finance.cash_transfer.send`, `.receive` et `.cancel`.
@@ -163,7 +163,7 @@ export function transferPairs(settings: readonly SettingData[], now: Date): Cash
 }
 
 /**
- * Caisses où l'utilisateur agit (AV-311) : comptes actifs servis à l'appareil, sans détenteur (caisse
+ * Caisses où l'utilisateur agit (AV-239) : comptes actifs servis à l'appareil, sans détenteur (caisse
  * de PDV, centrale, banque, mobile money : le serveur contrôle la portée) ou dont il est le détenteur ;
  * jamais la caisse personnelle d'un autre (`CASH_ACCOUNT_FORBIDDEN`).
  */
@@ -243,7 +243,7 @@ export function mySentTransfers(views: readonly TransferView[], userId: string):
 }
 
 /**
- * AV-312 (défaut) : une remise au-delà du solde indicatif est signalée, jamais bloquée sur l'appareil :
+ * AV-240 (défaut) : une remise au-delà du solde indicatif est signalée, jamais bloquée sur l'appareil :
  * ce solde ignore les mouvements des autres appareils ; en ligne, le serveur refuse une sortie qui
  * rendrait négative une caisse physique (`CASH_INSUFFICIENT`, BR-FIN-012) ; hors ligne, il l'applique
  * et ouvre `CASH_NEGATIVE` pour la Finance.
@@ -311,7 +311,7 @@ export function discrepancyPolicyState(
 /** Solde d'une caisse source tel que l'écran des remises le montre. */
 export type SourceBalance =
   | { readonly kind: 'SHOWN'; readonly xaf: number }
-  /** Comptage à l'aveugle (AV-304) : solde d'une caisse de PDV non montré. */
+  /** Comptage à l'aveugle (AV-232) : solde d'une caisse de PDV non montré. */
   | { readonly kind: 'BLIND' }
   /** Solde non servi à l'appareil. */
   | { readonly kind: 'UNKNOWN' };
@@ -321,7 +321,7 @@ export type SourceBalance =
  * ouverte, l'attendu de la session (`indicativeSessionExpectedXaf`) ; caisse de PDV close, le compté
  * de la dernière clôture saisie sur l'appareil puis les mouvements postérieurs
  * (`indicativeBalanceXaf`) ; autre compte, solde servi plus les mouvements de l'appareil en attente.
- * Comptage à l'aveugle (`CASH_COUNT_BLIND`, AV-304) : le solde d'une caisse de PDV n'est montré
+ * Comptage à l'aveugle (`CASH_COUNT_BLIND`, AV-232) : le solde d'une caisse de PDV n'est montré
  * qu'après une clôture comptée par l'utilisateur lui-même, jamais pendant une session (il donnerait
  * l'attendu) ni avant une ouverture (le solde du registre que l'ouverture compare).
  */

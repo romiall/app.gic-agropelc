@@ -234,7 +234,7 @@ export function NewSaleScreen() {
     methods[0];
   const amount = payment.amountText === null ? (total ?? 0) : parseXaf(payment.amountText);
   // Vente au PDV (emplacement `POS`) : un encaissement en espèces exige une caisse ouverte
-  // (BR-DIS-005, AV-305).
+  // (BR-DIS-005, AV-233).
   const cashSession = cashSessionCoverage({
     atPointOfSale: location.location_type === 'POS',
     accounts: refs.cashAccounts,

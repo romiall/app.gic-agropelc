@@ -93,7 +93,7 @@ describe('Caisse du PDV (ECR-DIS-02)', () => {
     renderScreen();
     expect(await screen.findByRole('heading', { name: 'Ouvrir la caisse' })).toBeInTheDocument();
     expect(screen.getByText('Caisse fermée.')).toBeInTheDocument();
-    // Comptage à l'aveugle (AV-304) : aucun montant attendu avant l'enregistrement.
+    // Comptage à l'aveugle (AV-232) : aucun montant attendu avant l'enregistrement.
     expect(screen.queryByText(/Attendu/)).not.toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Ouvrir la caisse' });
     expect(submit).toBeDisabled();

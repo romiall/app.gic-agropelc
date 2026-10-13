@@ -1,5 +1,5 @@
 /**
- * Autonomie hors connexion (AV-009, défaut ; 06-offline-sync/01-architecture-offline.md §8 ; AV-314).
+ * Autonomie hors connexion (AV-009, défaut ; 06-offline-sync/01-architecture-offline.md §8 ; AV-242).
  * Durée depuis la dernière synchronisation complète (`last_sync_at` : tous les jeux tirés), mesurée
  * à l'horloge de l'appareil : au-delà de `offline.warning_hours` (48 h par défaut), bandeau permanent
  * « connectez-vous dès que possible » ; au-delà de `offline.max_autonomy_hours` (168 h, 7 jours),

@@ -405,7 +405,7 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
   });
 
-  it('hors ligne, détenteur d’un quota : perte au-delà du reste signalée, jamais refusée (AV-303)', async () => {
+  it('hors ligne, détenteur d’un quota : perte au-delà du reste signalée, jamais refusée (AV-231)', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await getDb().projections.put(
       allocationRow({ quantity_remaining: '30.000', valid_until: null }),

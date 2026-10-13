@@ -21,7 +21,7 @@ export function isWaiting(command: Pick<OutboxCommand, 'status'>): boolean {
  * Tablette partagée (AV-007) : vrai si l'une de ces commandes est celle d'un autre utilisateur et
  * attend encore son envoi. Elle ne part qu'à la reconnexion de son auteur (sa session envoie sa part
  * de la file) : une opération qui en dépendrait resterait suspendue au serveur, et la file de
- * l'utilisateur derrière elle (ADR-052). L'écran refuse de la créer.
+ * l'utilisateur derrière elle (ADR-039). L'écran refuse de la créer.
  */
 export function waitsForOtherUser(
   outbox: readonly Pick<OutboxCommand, 'command_id' | 'author_user_id' | 'status'>[],
