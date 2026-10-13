@@ -47,6 +47,24 @@ export function awaitsDeviceApproval(
   return isWaiting(command) && command.last_error?.code === 'DEVICE_PENDING';
 }
 
+/**
+ * Commande qui attend l'approbation de l'appareil, elle-même ou derrière une commande plus ancienne du
+ * même auteur renvoyée `DEVICE_PENDING` : le serveur suspend la suite du lot derrière celle-ci
+ * (`PRECEDING_COMMAND_PENDING`, sans motif propre sur les suivantes).
+ */
+export function behindDeviceApproval<
+  T extends Pick<OutboxCommand, 'status' | 'last_error' | 'author_user_id' | 'device_seq'>,
+>(command: T, outbox: readonly T[]): boolean {
+  if (!isWaiting(command)) return false;
+  if (awaitsDeviceApproval(command)) return true;
+  return outbox.some(
+    (candidate) =>
+      candidate.author_user_id === command.author_user_id &&
+      candidate.device_seq < command.device_seq &&
+      awaitsDeviceApproval(candidate),
+  );
+}
+
 export function isAccepted(command: Pick<OutboxCommand, 'status'>): boolean {
   return command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING';
 }

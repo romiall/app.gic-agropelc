@@ -9,10 +9,10 @@ import {
   inRepeatedFailure,
   phaseOf,
   rejectionMessage,
+  useBehindDeviceApproval,
   useHeldBehindFailure,
   useOutboxCommand,
 } from './submit.js';
-import { awaitsDeviceApproval } from './pending.js';
 
 interface CommandResultProps {
   readonly commandId: string;
@@ -26,6 +26,8 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
   const command = useOutboxCommand(commandId);
   // Retenue derrière une opération plus ancienne en échec répété : elle n'est pas traitée avant.
   const holder = useHeldBehindFailure(command);
+  // Appareil en attente d'approbation (AV-228), pour cette commande ou une plus ancienne de l'auteur.
+  const deviceApproval = useBehindDeviceApproval(command);
   if (!command) return null;
   const phase = phaseOf(command);
   // Numéro du document créé (vente, perte…) ; numéro du lot pour une création de lot.
@@ -41,7 +43,7 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
     text = t('sync.repeated_failure', { reason: rejectionMessage(command) ?? '' });
   } else if (holder) {
     text = t('sync.held_behind_failure', { reason: rejectionMessage(holder) ?? '' });
-  } else if (awaitsDeviceApproval(command)) {
+  } else if (deviceApproval) {
     // Appareil en attente d'approbation (AV-228) : l'opération partira après l'approbation.
     text = t('sync.device_pending');
   } else if (phase === 'WAITING') {

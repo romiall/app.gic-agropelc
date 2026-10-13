@@ -10,6 +10,7 @@ import { enqueueCommand, REPEATED_FAILURE_ATTEMPTS, type EnqueueInput } from '..
 import { getSyncEngine } from '../sync/sync-engine-instance.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
 import { OfflineReadOnlyError } from '../sync/autonomy.js';
+import { behindDeviceApproval } from './pending.js';
 
 /**
  * Enregistre une opération dans l'outbox et relance l'envoi. En lecture seule (AV-009), elle est
@@ -169,6 +170,23 @@ export function heldBehindFailure<T extends Queued>(
       candidate.author_user_id === command.author_user_id &&
       candidate.device_seq < command.device_seq &&
       holdsFollowing(candidate),
+  );
+}
+
+/** Commande qui attend l'approbation de l'appareil, elle-même ou derrière une plus ancienne (AV-228). */
+export function useBehindDeviceApproval(command: OutboxCommand | undefined): boolean {
+  return (
+    useLiveQuery(async () => {
+      if (!command || phaseOf(command) !== 'WAITING') return false;
+      const earlier = await getDb().outbox.where('device_seq').below(command.device_seq).toArray();
+      return behindDeviceApproval(command, earlier);
+    }, [
+      command?.command_id,
+      command?.status,
+      command?.device_seq,
+      command?.author_user_id,
+      command?.last_error?.code,
+    ]) ?? false
   );
 }
 

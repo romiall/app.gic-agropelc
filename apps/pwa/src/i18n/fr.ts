@@ -2941,9 +2941,9 @@ export const fr = {
   },
   sync: {
     device_pending:
-      'Enregistrée sur ce téléphone, qui attend l’approbation de l’administrateur : l’opération partira après l’approbation.',
+      'Enregistrée sur ce téléphone, qui attend son approbation (par l’administrateur ou un responsable habilité) : l’opération partira après l’approbation.',
     device_pending_notice:
-      'Ce téléphone attend l’approbation de l’administrateur : les opérations enregistrées partiront après l’approbation. Si l’attente dure, le serveur les signalera comme bloquées.',
+      'Ce téléphone attend son approbation (par l’administrateur ou un responsable habilité) : vos opérations enregistrées partiront après l’approbation. Si l’attente dure, le serveur les signalera comme bloquées.',
     read_only_refused:
       'Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise. Rien n’a été enregistré ; synchronisez ce téléphone avant toute nouvelle opération.',
     autonomy_warning:

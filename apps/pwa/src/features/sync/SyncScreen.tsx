@@ -76,7 +76,11 @@ export function SyncScreen() {
         {syncing ? t('sync.syncing') : t('sync.force_sync')}
       </button>
 
-      {status.pending.some(awaitsDeviceApproval) ? (
+      {/* Opérations de l'utilisateur seulement : sur une tablette partagée, celles d'un autre
+          attendent sa reconnexion, pas l'approbation de l'appareil. */}
+      {status.pending.some(
+        (command) => command.author_user_id === state.userId && awaitsDeviceApproval(command),
+      ) ? (
         <p className="home-banner" role="status">
           {t('sync.device_pending_notice')}
         </p>

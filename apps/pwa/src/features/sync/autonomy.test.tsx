@@ -172,10 +172,19 @@ describe('Autonomie hors connexion (AV-009)', () => {
       last_error: { code: 'DEVICE_PENDING', message_fr: 'Appareil en attente d’approbation.' },
       server_refs: null,
     });
+    const { unmount } = render(<SyncScreen />);
+    expect(await screen.findByText(/Ce téléphone attend son approbation/)).toHaveAttribute(
+      'role',
+      'status',
+    );
+    unmount();
+    // Opération d'un autre utilisateur de la tablette : elle attend sa reconnexion, pas l'approbation.
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000000ac', {
+      author_user_id: '01900000-0000-7000-8000-000000000002',
+    });
     render(<SyncScreen />);
-    expect(
-      await screen.findByText(/Ce téléphone attend l’approbation de l’administrateur/),
-    ).toHaveAttribute('role', 'status');
+    await screen.findByRole('heading', { name: /Opérations en attente/ });
+    expect(screen.queryByText(/Ce téléphone attend son approbation/)).toBeNull();
   });
 
   it('bandeau : avertissement, lecture seule, puis disparu après une synchronisation (sans remontage)', async () => {
