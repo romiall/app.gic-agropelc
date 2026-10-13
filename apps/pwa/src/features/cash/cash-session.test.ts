@@ -331,6 +331,59 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     });
   });
 
+  it('remises connues : annulation en entrée sur la source, réception en entrée sur la destination', () => {
+    const served = [
+      {
+        id: 'r-servie',
+        from_account_id: ACCOUNT,
+        to_account_id: 'centrale',
+        amount_sent_xaf: 5_000,
+      },
+      {
+        id: 'r-entrante',
+        from_account_id: 'centrale',
+        to_account_id: ACCOUNT,
+        amount_sent_xaf: 9_000,
+      },
+      { id: 'r-ailleurs', from_account_id: 'autre', to_account_id: 'centrale', amount_sent_xaf: 7 },
+    ];
+    const outbox = [
+      // Remise servie (déjà dans le solde) annulée : le montant revient à la source.
+      command('finance.cash_transfer.cancel', { reason: 'Erreur' }, { aggregate_id: 'r-servie' }),
+      // Envoi de l'appareil annulé avant d'être relu : la sortie et le retour s'annulent.
+      command(
+        'finance.cash_transfer.send',
+        { fromAccountId: ACCOUNT, toAccountId: 'centrale', amountXaf: 4_000 },
+        { aggregate_id: 'r-locale' },
+      ),
+      command('finance.cash_transfer.cancel', { reason: 'Erreur' }, { aggregate_id: 'r-locale' }),
+      // Remise reçue sur cette caisse : le montant compté entre.
+      command(
+        'finance.cash_transfer.receive',
+        { receivedXaf: 8_500 },
+        { aggregate_id: 'r-entrante' },
+      ),
+      // Envoi refusé puis annulé : ni la sortie ni le retour ne comptent.
+      command(
+        'finance.cash_transfer.send',
+        { fromAccountId: ACCOUNT, toAccountId: 'centrale', amountXaf: 600 },
+        { aggregate_id: 'r-refusee', status: 'REJECTED' },
+      ),
+      command('finance.cash_transfer.cancel', { reason: 'x' }, { aggregate_id: 'r-refusee' }),
+      // Autres caisses, remise inconnue : sans effet.
+      command('finance.cash_transfer.cancel', { reason: 'x' }, { aggregate_id: 'r-ailleurs' }),
+      command('finance.cash_transfer.receive', { receivedXaf: 7 }, { aggregate_id: 'r-ailleurs' }),
+      command('finance.cash_transfer.cancel', { reason: 'x' }, { aggregate_id: 'inconnue' }),
+    ];
+    const input = { account, outbox, cashPulledAt: PULLED, locations, paymentMethods };
+    expect(pendingCashMovements({ ...input, transfers: served })).toEqual({
+      netXaf: 13_500,
+      count: 4,
+    });
+    // Sans les remises servies : l'envoi seul (comportement des écrans qui ne les passent pas).
+    expect(pendingCashMovements(input)).toEqual({ netXaf: -4_000, count: 1 });
+  });
+
   it('attendu indicatif : solde servi si la session est connue, sinon fonds compté, plus l’attente', () => {
     const outbox = [sale('pdv', [{ methodCode: 'ESPECES', amountXaf: 3_000 }])];
     const base = { account, outbox, cashPulledAt: PULLED, locations, paymentMethods };

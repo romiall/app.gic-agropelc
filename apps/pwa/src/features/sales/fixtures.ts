@@ -308,6 +308,21 @@ export function cashTransferRow(overrides: Record<string, unknown> = {}): Projec
   return row('cash', 'CASH_TRANSFER', data.id as string, data, { type: 'SITE', id: IDS.site });
 }
 
+export const CENTRAL_CASH_ACCOUNT = '01900000-0000-7000-8000-0000000000b4';
+
+/** Destination de remise (jeu `cash`, ligne `GLOBAL`, sans solde, AV-197). */
+export function cashTransferTargetRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: CENTRAL_CASH_ACCOUNT,
+    code: 'CAISSE-CENTRALE',
+    name: 'Caisse centrale',
+    account_type: 'CAISSE_CENTRALE',
+    site_id: null,
+    ...overrides,
+  };
+  return row('cash', 'CASH_TRANSFER_TARGET', data.id as string, data);
+}
+
 /** Configuration du PDV du site (jeu `org`, ligne `SITE`, clé = le site). */
 export function pointOfSaleRow(overrides: Record<string, unknown> = {}): Projection {
   const data = {

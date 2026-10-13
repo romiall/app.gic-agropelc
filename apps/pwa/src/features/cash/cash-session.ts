@@ -29,6 +29,7 @@ import { CASH_METHOD_ACCOUNT_TYPE } from '../sales/payment.js';
 import { isAccepted, isWaiting, stillInFlight } from '../sales/pending.js';
 import type {
   CashAccountData,
+  CashTransferData,
   CashSessionData,
   LocationData,
   PaymentMethodData,
@@ -337,8 +338,11 @@ interface PaymentLike {
  * Mouvements de la caisse saisis sur l'appareil et pas encore dans le solde servi (en attente, ou
  * acceptés avant le tirage du jeu `cash` qui les inclut), datés à partir de `from` : encaissements en
  * espèces au point de vente (vente, acompte d'une commande, encaissement hors vente) en entrée,
- * remises de fonds en sortie. Un encaissement en espèces au PDV crédite la caisse du site (DÉDUIT de
- * `cashAccountFor` : emplacement de type `POS`, ou site du PDV pour un encaissement hors vente).
+ * remises de fonds envoyées en sortie ; avec les remises connues (`transfers`), l'annulation d'une
+ * remise en entrée sur sa source (fait nouveau daté de l'annulation, ADR-032 §2) et la réception en
+ * entrée sur la destination (montant reçu, BR-FIN-013). Un encaissement en espèces au PDV crédite la
+ * caisse du site (DÉDUIT de `cashAccountFor` : emplacement de type `POS`, ou site du PDV pour un
+ * encaissement hors vente).
  */
 export function pendingCashMovements(input: {
   readonly account: Pick<CashAccountData, 'id' | 'site_id'>;
@@ -347,6 +351,11 @@ export function pendingCashMovements(input: {
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
   readonly from?: string | null;
+  /** Remises servies par le jeu `cash` (source et destination d'une annulation ou d'une réception). */
+  readonly transfers?: readonly Pick<
+    CashTransferData,
+    'id' | 'from_account_id' | 'to_account_id' | 'amount_sent_xaf'
+  >[];
 }): { readonly netXaf: number; readonly count: number } {
   const cashMethods = new Set(
     input.paymentMethods
@@ -367,6 +376,37 @@ export function pendingCashMovements(input: {
           (payment.cashAccountId === undefined || payment.cashAccountId === input.account.id),
       )
       .reduce((sum, payment) => sum + (payment.amountXaf ?? 0), 0);
+  // Remise visée par une annulation ou une réception : servie, sinon envoyée par l'appareil.
+  const transferOf = (transferId: string) => {
+    const served = input.transfers?.find((transfer) => transfer.id === transferId);
+    if (served) {
+      return {
+        fromAccountId: served.from_account_id,
+        toAccountId: served.to_account_id,
+        amountXaf: served.amount_sent_xaf,
+      };
+    }
+    const send = input.outbox.find(
+      (command) =>
+        command.command_type === 'finance.cash_transfer.send' &&
+        command.aggregate_id === transferId &&
+        command.status !== 'REJECTED',
+    );
+    const payload = send?.payload as
+      | {
+          readonly fromAccountId?: string;
+          readonly toAccountId?: string;
+          readonly amountXaf?: number;
+        }
+      | undefined;
+    return payload?.fromAccountId && payload.toAccountId && payload.amountXaf
+      ? {
+          fromAccountId: payload.fromAccountId,
+          toAccountId: payload.toAccountId,
+          amountXaf: payload.amountXaf,
+        }
+      : undefined;
+  };
   let netXaf = 0;
   let count = 0;
   for (const command of input.outbox) {
@@ -395,6 +435,19 @@ export function pendingCashMovements(input: {
           amount = -((payload.amountXaf as number | undefined) ?? 0);
         }
         break;
+      case 'finance.cash_transfer.cancel':
+        if (
+          input.transfers &&
+          transferOf(command.aggregate_id)?.fromAccountId === input.account.id
+        ) {
+          amount = transferOf(command.aggregate_id)?.amountXaf ?? 0;
+        }
+        break;
+      case 'finance.cash_transfer.receive':
+        if (input.transfers && transferOf(command.aggregate_id)?.toAccountId === input.account.id) {
+          amount = (payload.receivedXaf as number | undefined) ?? 0;
+        }
+        break;
       default:
         break;
     }
@@ -418,6 +471,10 @@ export function indicativeSessionExpectedXaf(input: {
   readonly cashPulledAt: string | undefined;
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
+  readonly transfers?: readonly Pick<
+    CashTransferData,
+    'id' | 'from_account_id' | 'to_account_id' | 'amount_sent_xaf'
+  >[];
 }): { readonly expectedXaf: number; readonly pendingCount: number } | null {
   const base = input.session.known ? input.account.balance_xaf : input.session.openingCountedXaf;
   if (base === undefined) return null;
@@ -438,6 +495,10 @@ export function indicativeBalanceXaf(input: {
   readonly cashPulledAt: string | undefined;
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
+  readonly transfers?: readonly Pick<
+    CashTransferData,
+    'id' | 'from_account_id' | 'to_account_id' | 'amount_sent_xaf'
+  >[];
 }): { readonly expectedXaf: number; readonly pendingCount: number } | null {
   const last = input.last && input.last.state !== 'OPEN' ? input.last : undefined;
   const base =

@@ -321,6 +321,9 @@ export function PosHomeScreen() {
         <Link to={ROUTES.replenish} className="action action-compact">
           <span className="action-label">{t('nav.screens.replenish')}</span>
         </Link>
+        <Link to={ROUTES.cashTransfers} className="action action-compact">
+          <span className="action-label">{t('nav.screens.cash_transfers')}</span>
+        </Link>
         {online ? (
           <Link to={ROUTES.distribution} className="action action-compact">
             <span className="action-label">{t('nav.screens.distribution')}</span>

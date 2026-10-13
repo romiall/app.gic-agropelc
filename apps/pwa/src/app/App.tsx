@@ -19,6 +19,7 @@ import { ReceiveTransferScreen } from '../features/stock/ReceiveTransferScreen.j
 import { BlindReceiptScreen } from '../features/stock/BlindReceiptScreen.js';
 import { ConsumptionScreen } from '../features/stock/ConsumptionScreen.js';
 import { CashSessionScreen } from '../features/cash/CashSessionScreen.js';
+import { CashTransfersScreen } from '../features/cash/CashTransfersScreen.js';
 import { ReplenishScreen } from '../features/distribution/ReplenishScreen.js';
 import { DistributionScreen } from '../features/distribution/DistributionScreen.js';
 import { PosHomeScreen } from '../features/distribution/PosHomeScreen.js';
@@ -125,6 +126,7 @@ function AppShell() {
             <Route path={ROUTES.blindReceipt} element={<BlindReceiptScreen />} />
             <Route path={ROUTES.consumption} element={<ConsumptionScreen />} />
             <Route path={ROUTES.cash} element={<CashSessionScreen />} />
+            <Route path={ROUTES.cashTransfers} element={<CashTransfersScreen />} />
             <Route path={ROUTES.replenish} element={<ReplenishScreen />} />
             <Route path={ROUTES.distribution} element={<DistributionScreen />} />
             <Route path={ROUTES.posHome} element={<PosHomeScreen />} />

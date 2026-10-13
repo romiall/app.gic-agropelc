@@ -142,6 +142,7 @@ export function CashSessionScreen() {
     cashPulledAt: refs.cashPulledAt,
     locations: refs.locations,
     paymentMethods: refs.paymentMethods,
+    transfers: refs.cashTransfers,
   };
 
   const send = async (

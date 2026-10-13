@@ -75,6 +75,7 @@ export const ROUTES = {
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
   cash: '/caisse',
+  cashTransfers: '/caisse/remises',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -253,6 +254,18 @@ export const ROLE_SETS = {
   posHome: ['VENDEUR_PDV'],
   /** `inventory.allocation.release` (CTE, VEN) : libération d'un quota par son détenteur. */
   allocationRelease: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV'],
+  /**
+   * `finance.cash_transfer.record` (RCO, CTE, CSE OWN ; VEN SITE ; RFE OWN ; FIN ALL) : remises de
+   * fonds, envoi, réception et annulation (UC-FIN-07, AV-311).
+   */
+  cashTransferRecord: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
+    'FINANCE',
+  ],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
@@ -607,6 +620,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'sales',
     roles: ROLE_SETS.cashSessionOperate,
     actionCodes: ['CASH_OPEN', 'CASH_CLOSE'],
+    offline: true,
+  },
+  {
+    // Hors inventaire des écrans (AV-311) : code du cas d'usage.
+    id: 'UC-FIN-07',
+    path: ROUTES.cashTransfers,
+    labelKey: 'cash_transfers',
+    group: 'sales',
+    roles: ROLE_SETS.cashTransferRecord,
+    actionCodes: [],
     offline: true,
   },
   {
