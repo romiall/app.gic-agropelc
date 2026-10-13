@@ -144,6 +144,30 @@ describe('HomeScreen (ECR-ADM-03)', () => {
     );
   });
 
+  it('signal sans route du serveur mais dont l’écran est livré : lien vers l’écran (MP-06)', async () => {
+    request.mockResolvedValue({
+      ok: true,
+      data: homeResponse({
+        signals: [
+          {
+            code: 'DEVICES_PENDING',
+            severity: 'WARNING',
+            title: '2 appareils en attente d’approbation',
+            detail: null,
+            count: 2,
+            action: { label: 'Voir les appareils', route: null },
+          },
+        ],
+      }),
+    });
+    renderHome();
+    const list = await screen.findByRole('region', { name: 'À traiter en priorité' });
+    expect(within(list).getByRole('link', { name: 'Voir les appareils' })).toHaveAttribute(
+      'href',
+      '/administration/appareils',
+    );
+  });
+
   it('section du rôle : périmètre, action avec écran = lien, sans écran = bouton désactivé « Bientôt »', async () => {
     request.mockResolvedValue({ ok: true, data: homeResponse() });
     renderHome();

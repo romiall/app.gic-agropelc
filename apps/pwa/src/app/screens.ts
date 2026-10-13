@@ -81,6 +81,7 @@ export const ROUTES = {
   distribution: '/pdv/distribution',
   posHome: '/pdv',
   allocations: '/stock/quotas',
+  devices: '/administration/appareils',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -276,6 +277,18 @@ export const ROLE_SETS = {
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
   distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
+  /**
+   * ECR-ADM-05 : `identity.device.read` (DIR ALL, ADM ALL, RCO TEAM, RPR SITE depuis AV-261, RFE SITE,
+   * MAG SITE). Les actions de chaque appareil viennent du serveur (`actions`, BR-ADM-025).
+   */
+  deviceRead: [
+    'DIRECTION',
+    'ADMIN',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -300,6 +313,8 @@ export interface ScreenEntry {
   readonly actionQuery?: Readonly<Record<string, string>>;
   /** Utilisable sans réseau (colonne « hors ligne » de l'inventaire). */
   readonly offline: boolean;
+  /** Codes des signaux de l'accueil qui mènent à cet écran (à défaut d'une route du serveur). */
+  readonly signalCodes?: readonly string[];
 }
 
 export const SCREENS: readonly ScreenEntry[] = [
@@ -401,6 +416,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'crm',
     roles: ROLE_SETS.fieldwork,
     actionCodes: ['START_SERVICE'],
+    // MP-09 (constat C10) : le signal « Vous n'avez pas pris service » mène à la prise de service.
+    signalCodes: ['SERVICE_NOT_STARTED'],
     offline: true,
   },
   {
@@ -504,6 +521,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.catalog,
     // Aucune action de l'accueil de l'administrateur n'y mène encore (S-26) : menu seulement.
     actionCodes: [],
+    offline: false,
+  },
+  {
+    // MP-06 : appareils de la portée (BR-ADM-025), décisions en ligne.
+    id: 'ECR-ADM-05',
+    path: ROUTES.devices,
+    labelKey: 'devices',
+    group: 'general',
+    roles: ROLE_SETS.deviceRead,
+    actionCodes: ['DEVICES'],
+    signalCodes: ['DEVICES_PENDING'],
     offline: false,
   },
   {
@@ -702,6 +730,19 @@ export function routeOfAction(
       (role === undefined || candidate.roles === 'ALL' || candidate.roles.includes(role)),
   );
   return screen ? `${screen.path}${screen.actionQuery?.[action.code] ?? ''}` : null;
+}
+
+/**
+ * Route d'un signal de l'accueil : celle du serveur, à défaut celle de l'écran livré qui déclare ce
+ * signal (`signalCodes`, ADR-036 : la PWA connaît ses écrans, le serveur peut ne renseigner aucune route).
+ */
+export function routeOfSignal(signal: {
+  readonly code: string;
+  readonly action?: { readonly route: string | null } | null;
+}): string | null {
+  if (signal.action?.route) return signal.action.route;
+  const screen = SCREENS.find((candidate) => candidate.signalCodes?.includes(signal.code));
+  return screen ? screen.path : null;
 }
 
 /** Écrans proposés à un utilisateur selon ses rôles, dans l'ordre du registre. */

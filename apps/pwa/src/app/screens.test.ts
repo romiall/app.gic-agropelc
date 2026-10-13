@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { ROUTES, routeOfAction, SCREENS, screensForRoles } from './screens.js';
+import { ROUTES, routeOfAction, routeOfSignal, SCREENS, screensForRoles } from './screens.js';
 
 describe('app/screens — registre et navigation par rôle', () => {
   it('une route fournie par le serveur l’emporte ; à défaut, celle de l’écran livré', () => {
     expect(routeOfAction({ code: 'SYNC_STATUS', route: null })).toBe(ROUTES.sync);
     expect(routeOfAction({ code: 'SYNC_STATUS', route: '/autre' })).toBe('/autre');
+  });
+
+  it('signal : route du serveur, à défaut celle de l’écran qui déclare ce signal (MP-06, MP-09)', () => {
+    expect(routeOfSignal({ code: 'DEVICES_PENDING', action: { route: null } })).toBe(
+      ROUTES.devices,
+    );
+    expect(routeOfSignal({ code: 'SERVICE_NOT_STARTED', action: { route: null } })).toBe(
+      ROUTES.service,
+    );
+    expect(routeOfSignal({ code: 'DEVICES_PENDING', action: { route: '/autre' } })).toBe('/autre');
+    expect(routeOfSignal({ code: 'STOCK_OUT', action: { route: null } })).toBeNull();
+    expect(routeOfSignal({ code: 'STOCK_OUT', action: null })).toBeNull();
+    expect(routeOfAction({ code: 'DEVICES', route: null }, 'ADMIN')).toBe(ROUTES.devices);
+    // Un code de signal ne mène qu'à un seul écran.
+    const codes = SCREENS.flatMap((screen) => screen.signalCodes ?? []);
+    expect(new Set(codes).size).toBe(codes.length);
   });
 
   it('une action sans écran livré reste sans route (affichée « Bientôt »)', () => {

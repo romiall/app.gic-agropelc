@@ -22,6 +22,7 @@ import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { approveDeviceByShortCode } from '../src/modules/identity/application/bootstrap-device-approval.js';
+import { pendingDeviceApprovalsFor } from '../src/modules/identity/application/public/index.js';
 import {
   closeTestDb,
   db,
@@ -231,6 +232,30 @@ describe(
         designate: false,
       });
       expect(mag.has(devices.vendeurS3)).toBe(false);
+    });
+
+    it('accueil : appareils en attente comptés dans la portée du responsable, sans les siens (AV-247, AV-258)', async () => {
+      const pendingOf = (actor: Actor) =>
+        pendingDeviceApprovalsFor(db, { userId: actor.userId, at: clock.now() });
+      // Resp. ferme : vendeur de S1 et utilisateur de la zone ; pas son propre appareil, pas l'appareil actif.
+      expect(await pendingOf(respFerme)).toEqual({ count: 2, capped: false });
+      expect(await pendingOf(respCom)).toEqual({ count: 1, capped: false });
+      // Lecture seule ou aucun droit : rien à approuver.
+      expect(await pendingOf(magasinier)).toEqual({ count: 0, capped: false });
+      expect(await pendingOf(finance)).toEqual({ count: 0, capped: false });
+
+      const home = await get(respFerme, '/api/v1/home');
+      expect(home.statusCode, home.body).toBe(200);
+      const signals = (home.json() as { signals: { code: string; title: string; count: number }[] })
+        .signals;
+      expect(signals.find((entry) => entry.code === 'DEVICES_PENDING')).toMatchObject({
+        title: '2 appareils attendent votre approbation',
+        count: 2,
+      });
+      const magHome = await get(magasinier, '/api/v1/home');
+      expect(
+        (magHome.json() as { signals: { code: string }[] }).signals.map((entry) => entry.code),
+      ).not.toContain('DEVICES_PENDING');
     });
 
     it('lecture : fiche hors portée 404 auditée, sans droit 403, filtres par état et par code court', async () => {

@@ -58,3 +58,5 @@ export {
   withDesignatedSite,
 } from './device-scope.js';
 export type { DeviceScopeAnchor } from './device-scope.js';
+export { pendingDeviceApprovalsFor } from './pending-device-approvals.js';
+export type { PendingDeviceApprovals } from './pending-device-approvals.js';

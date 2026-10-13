@@ -34,6 +34,35 @@ describe('login (ECR-ADM-01)', () => {
     expect(await login(input)).toEqual({ ok: false, reason: 'UNKNOWN', status: 403 });
   });
 
+  it('200 : jetons, état de l’appareil et code court à afficher pendant l’attente (MP-06)', async () => {
+    const body = {
+      access_token: 'a',
+      refresh_token: 'r',
+      expires_in: 900,
+      must_change_password: false,
+      device_status: 'PENDING',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => reply(200, { ...body, device_short_code: '7KQ2' })),
+    );
+    expect(await login(input)).toEqual({
+      ok: true,
+      accessToken: 'a',
+      refreshToken: 'r',
+      expiresIn: 900,
+      mustChangePassword: false,
+      deviceStatus: 'PENDING',
+      deviceShortCode: '7KQ2',
+    });
+    // Serveur antérieur à MP-06 : pas de code, pas de champ inventé.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => reply(200, body)),
+    );
+    expect(await login(input)).not.toHaveProperty('deviceShortCode');
+  });
+
   it('401 : identifiants invalides, sans lire le corps', async () => {
     vi.stubGlobal(
       'fetch',

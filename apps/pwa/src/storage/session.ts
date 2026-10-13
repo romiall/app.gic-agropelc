@@ -35,6 +35,7 @@ export async function setupPin(
   input: {
     readonly userId: string;
     readonly deviceStatus: 'PENDING' | 'ACTIVE';
+    readonly deviceShortCode?: string;
     readonly refreshToken: string;
     readonly pin: string;
   },
@@ -56,6 +57,7 @@ export async function setupPin(
       key: 'current',
       user_id: input.userId,
       device_status: input.deviceStatus,
+      ...(input.deviceShortCode !== undefined ? { device_short_code: input.deviceShortCode } : {}),
       encrypted_refresh_token: encrypted.ciphertext,
       iv: encrypted.iv,
     });

@@ -25,7 +25,7 @@ import {
   sparklinePoints,
 } from './format-home.js';
 import { useHome } from './useHome.js';
-import { ROUTES, routeOfAction } from '../../app/screens.js';
+import { ROUTES, routeOfAction, routeOfSignal } from '../../app/screens.js';
 
 const SPARK_WIDTH = 100;
 const SPARK_HEIGHT = 28;
@@ -99,6 +99,7 @@ function ActionButton({ action, role }: { readonly action: HomeAction; readonly 
 function SignalItem({ signal }: { readonly signal: HomeSignal }) {
   const { t } = useTranslation();
   const severity = signal.severity.toLowerCase();
+  const route = routeOfSignal(signal);
   return (
     <li className={`signal signal-${severity}`} data-signal={signal.code}>
       <span className="signal-badge">{t(`home.severity_${severity}`)}</span>
@@ -107,8 +108,8 @@ function SignalItem({ signal }: { readonly signal: HomeSignal }) {
         {signal.detail ? <p className="signal-detail">{signal.detail}</p> : null}
       </div>
       {signal.action ? (
-        signal.action.route ? (
-          <Link to={signal.action.route} className="signal-action">
+        route ? (
+          <Link to={route} className="signal-action">
             {signal.action.label}
           </Link>
         ) : (

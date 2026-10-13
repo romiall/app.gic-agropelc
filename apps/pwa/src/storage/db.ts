@@ -127,6 +127,8 @@ export interface SessionRecord {
   readonly key: 'current'; // singleton
   user_id: string;
   device_status: 'PENDING' | 'ACTIVE';
+  /** Code court de l'appareil reçu à la connexion (MP-06), affiché pendant l'attente d'approbation. */
+  device_short_code?: string;
   /** `refresh_token` chiffré (AES-GCM, clé dérivée du PIN) ; jamais en clair au repos. */
   encrypted_refresh_token: string;
   iv: string;

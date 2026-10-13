@@ -398,3 +398,17 @@ Phase close le 13/10/2026.
 | F-78 | 507 verts (72 fichiers), dont ouverture rattachée (statut gardé, couverture d'une retenue ouverte et non d'une close, textes du résultat et de l'écran de caisse) ; 4 mutations, chacune détectée | OK | OK | OK | Différé : connexion requise (voir § 7) |
 
 **Décision du porteur (13/10/2026)** : le changement de vendeur sur une même tablette (sessions multiples de la PWA, changement d'utilisateur hors ligne avec son code PIN, jeux cloisonnés par utilisateur) est reporté à une phase dédiée ; le suivi par auteur des opérations et des quotas, déjà livré, reste le périmètre de P5. La vérification dans le navigateur est acceptée : connexion par le porteur, activation de l'appareil du navigateur dans `gic_agropelc_dev` seulement.
+
+## 10. Lot de mise en pilote (session principale)
+
+> Écrans du lot MP ([plan](01-plan-developpement.md) §4, « Lot de mise en pilote »), développés par la session principale sur `claude/brave-pasteur-c7q4y7`, hors du fork.
+
+| Écran | Route PWA | Incrément | Hors ligne | Notes |
+|---|---|---|---|---|
+| ECR-ADM-05 Appareils | `/administration/appareils` | MP-06 | Non (en ligne seulement, SM-DEVICE) | Lecture `GET /devices` (portée BR-ADM-025) ; actions proposées selon l'état et les droits rendus par le serveur (`actions`, AV-258) ; motif obligatoire pour bloquer ou refuser ; rattachement à un site actif (AV-259 vérifié par le serveur) ; action d'accueil `DEVICES`, signal `DEVICES_PENDING` |
+| Bandeau « appareil en attente » | toutes les routes | MP-06 | Oui | Code court reçu à la connexion (`device_short_code`), à défaut de la fiche publiée de l'appareil ; disparaît à l'approbation (jeu `device`) ; clôt le reste d'AV-228 |
+| ECR-ADM-03 Accueil : liens des signaux | `/` | MP-06 | — | Un signal sans route du serveur mène à l'écran livré qui le déclare (`signalCodes`, `routeOfSignal`, ADR-036) : `DEVICES_PENDING`, `SERVICE_NOT_STARTED` |
+
+| Incr. | Tests (vitest) | Typage | ESLint | Prettier | Navigateur |
+|---|---|---|---|---|---|
+| MP-06 | 531 verts (75 fichiers), dont écran des appareils (filtre d'attente, approbation, refus avec motif, rattachement, appareil connecté par soi-même, hors ligne, droit refusé, avertissement sur ce téléphone), bandeau (code, sans code, approbation, appareil actif), code court à la connexion, routes des signaux | OK | OK | OK | À faire en MP-11 |

@@ -12,6 +12,10 @@
  * `inventory.valuation.read` (RC-05, BR-ANA-004). Une section vide de données reste affichée : un
  * indicateur à zéro est une information.
  *
+ * Appareils (MP-06, AV-247) : l'Admin voit tous les appareils en attente ; un responsable qui approuve les
+ * appareils de sa portée reçoit le même signal, compté dans cette portée et sans ses propres appareils
+ * (AV-258), quel que soit le rôle qui lui donne ce droit.
+ *
  * Distribution (P5-20, AV-208) : avec `analytics.dashboard.distribution`, la Finance lit les sessions de
  * caisse des PDV, les remises en attente et les appareils en retard ; le magasinier, les produits à
  * réapprovisionner, les quotas à régulariser et les appareils des PDV de **ses** sites. Mêmes fonctions
@@ -47,6 +51,7 @@ import {
   activeRoleAssignmentsAt,
   deviceUserCounts,
   hasPermissionAt,
+  pendingDeviceApprovalsFor,
   userFullName,
   userFullNames,
 } from '../modules/identity/application/public/index.js';
@@ -1132,6 +1137,26 @@ export async function buildHome(input: BuildHomeInput): Promise<HomeResponse> {
     const built = await buildRole(ctx, role, resolved);
     sections.push(toSection(role, resolved, built));
     signals.push(...built.signals);
+  }
+  // L'Admin a déjà le signal de tous les appareils en attente (section ADMIN).
+  if (!roleCodes.includes('ADMIN')) {
+    const pending = await pendingDeviceApprovalsFor(input.executor, { userId: input.userId, at });
+    if (pending.count > 0) {
+      signals.push(
+        signal({
+          code: 'DEVICES_PENDING',
+          severity: 'WARNING',
+          title: `${pending.capped ? 'Au moins ' : ''}${plural(
+            pending.count,
+            'appareil attend votre approbation',
+            'appareils attendent votre approbation',
+          )}`,
+          detail: 'Un appareil non approuvé ne peut pas envoyer d’opérations.',
+          count: pending.count,
+          action: { label: 'Voir les appareils', route: null },
+        }),
+      );
+    }
   }
   return {
     generatedAt: at.toISOString(),

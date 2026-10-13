@@ -24,6 +24,8 @@ export type LoginResult =
       readonly expiresIn: number;
       readonly mustChangePassword: boolean;
       readonly deviceStatus: 'PENDING' | 'ACTIVE';
+      /** Code court de l'appareil, affiché pendant l'attente d'approbation (MP-06, BR-ADM-007). */
+      readonly deviceShortCode?: string;
     }
   | { readonly ok: false; readonly reason: 'OFFLINE' }
   | { readonly ok: false; readonly reason: 'INVALID_CREDENTIALS' }
@@ -68,6 +70,7 @@ export async function login(input: LoginInput): Promise<LoginResult> {
     expires_in: number;
     must_change_password: boolean;
     device_status: 'PENDING' | 'ACTIVE';
+    device_short_code?: string;
   };
   return {
     ok: true,
@@ -76,5 +79,8 @@ export async function login(input: LoginInput): Promise<LoginResult> {
     expiresIn: body.expires_in,
     mustChangePassword: body.must_change_password,
     deviceStatus: body.device_status,
+    ...(typeof body.device_short_code === 'string'
+      ? { deviceShortCode: body.device_short_code }
+      : {}),
   };
 }

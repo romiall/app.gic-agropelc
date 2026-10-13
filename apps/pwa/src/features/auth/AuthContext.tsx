@@ -30,6 +30,7 @@ interface StagedLogin {
   readonly accessToken: string;
   readonly expiresIn: number;
   readonly deviceStatus: 'PENDING' | 'ACTIVE';
+  readonly deviceShortCode?: string;
 }
 
 export type AuthState =
@@ -95,6 +96,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
         deviceStatus: result.deviceStatus,
+        ...(result.deviceShortCode !== undefined
+          ? { deviceShortCode: result.deviceShortCode }
+          : {}),
       });
       setState({ status: 'pin_setup_required' });
     },
@@ -107,6 +111,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       const pinKey = await persistPin(db, {
         userId: staged.userId,
         deviceStatus: staged.deviceStatus,
+        ...(staged.deviceShortCode !== undefined
+          ? { deviceShortCode: staged.deviceShortCode }
+          : {}),
         refreshToken: staged.refreshToken,
         pin,
       });
