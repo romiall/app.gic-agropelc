@@ -342,15 +342,20 @@ interface PaymentLike {
  * remise en entrée sur sa source (fait nouveau daté de l'annulation, ADR-032 §2) et la réception en
  * entrée sur la destination (montant reçu, BR-FIN-013). Un encaissement en espèces au PDV crédite la
  * caisse du site (DÉDUIT de `cashAccountFor` : emplacement de type `POS`, ou site du PDV pour un
- * encaissement hors vente).
+ * encaissement hors vente) ; ailleurs, il crédite la caisse personnelle de celui qui encaisse : pour
+ * une caisse personnelle, les espèces encaissées par son détenteur hors d'un emplacement `POS` (vente,
+ * acompte) ou hors d'un site point de vente (encaissement hors vente, site absent compris) entrent.
  */
 export function pendingCashMovements(input: {
-  readonly account: Pick<CashAccountData, 'id' | 'site_id'>;
+  readonly account: Pick<CashAccountData, 'id' | 'site_id'> &
+    Partial<Pick<CashAccountData, 'account_type' | 'holder_user_id'>>;
   readonly outbox: readonly OutboxCommand[];
   readonly cashPulledAt: string | undefined;
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
   readonly from?: string | null;
+  /** Type de chaque site connu (encaissement hors vente d'une caisse personnelle). */
+  readonly siteTypes?: ReadonlyMap<string, string>;
   /** Remises servies par le jeu `cash` (source et destination d'une annulation ou d'une réception). */
   readonly transfers?: readonly Pick<
     CashTransferData,
@@ -363,10 +368,23 @@ export function pendingCashMovements(input: {
       .map((method) => method.code),
   );
   const locations = new Map(input.locations.map((location) => [location.id, location]));
+  // Caisse personnelle : les espèces que son détenteur encaisse hors point de vente.
+  const holder =
+    input.account.account_type === 'CAISSE_UTILISATEUR'
+      ? (input.account.holder_user_id ?? null)
+      : null;
   const atPos = (locationId: string | undefined) => {
     const location = locationId ? locations.get(locationId) : undefined;
     return location?.location_type === 'POS' && location.site_id === input.account.site_id;
   };
+  const outsidePos = (command: OutboxCommand, locationId: string | undefined) =>
+    holder !== null &&
+    command.author_user_id === holder &&
+    (locationId ? locations.get(locationId)?.location_type : undefined) !== 'POS';
+  const outsidePosSite = (command: OutboxCommand, siteId: string | undefined) =>
+    holder !== null &&
+    command.author_user_id === holder &&
+    (siteId ? input.siteTypes?.get(siteId) : undefined) !== 'POINT_DE_VENTE';
   const cashIn = (payments: readonly PaymentLike[] | undefined) =>
     (payments ?? [])
       .filter(
@@ -415,21 +433,30 @@ export function pendingCashMovements(input: {
     const payload = command.payload as Record<string, unknown>;
     let amount = 0;
     switch (command.command_type) {
-      case 'sales.sale.record':
-        if (atPos(payload.fromLocationId as string | undefined)) {
+      case 'sales.sale.record': {
+        const locationId = payload.fromLocationId as string | undefined;
+        if (atPos(locationId) || outsidePos(command, locationId)) {
           amount = cashIn(payload.payments as PaymentLike[] | undefined);
         }
         break;
-      case 'sales.order.place':
-        if (atPos(payload.fulfilmentLocationId as string | undefined)) {
+      }
+      case 'sales.order.place': {
+        const locationId = payload.fulfilmentLocationId as string | undefined;
+        if (atPos(locationId) || outsidePos(command, locationId)) {
           amount = cashIn(payload.advancePayments as PaymentLike[] | undefined);
         }
         break;
-      case 'sales.payment.record':
-        if (payload.siteId === input.account.site_id) {
+      }
+      case 'sales.payment.record': {
+        const siteId = payload.siteId as string | undefined;
+        if (
+          (input.account.site_id !== null && siteId === input.account.site_id) ||
+          outsidePosSite(command, siteId)
+        ) {
           amount = cashIn([payload as PaymentLike]);
         }
         break;
+      }
       case 'finance.cash_transfer.send':
         if (payload.fromAccountId === input.account.id) {
           amount = -((payload.amountXaf as number | undefined) ?? 0);
@@ -471,6 +498,7 @@ export function indicativeSessionExpectedXaf(input: {
   readonly cashPulledAt: string | undefined;
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
+  readonly siteTypes?: ReadonlyMap<string, string>;
   readonly transfers?: readonly Pick<
     CashTransferData,
     'id' | 'from_account_id' | 'to_account_id' | 'amount_sent_xaf'
@@ -495,6 +523,7 @@ export function indicativeBalanceXaf(input: {
   readonly cashPulledAt: string | undefined;
   readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
   readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
+  readonly siteTypes?: ReadonlyMap<string, string>;
   readonly transfers?: readonly Pick<
     CashTransferData,
     'id' | 'from_account_id' | 'to_account_id' | 'amount_sent_xaf'

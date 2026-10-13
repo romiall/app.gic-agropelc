@@ -2424,11 +2424,14 @@ export const fr = {
       'Trésorerie en ligne seulement : reconnectez-vous. Les remises de fonds se font aussi hors ligne, depuis l’écran « Remises de fonds ».',
     denied: 'Trésorerie non accessible avec vos droits.',
     failed: 'Trésorerie indisponible : le serveur n’a pas répondu.',
+    failed_stale:
+      'Actualisation impossible : le serveur n’a pas répondu. Les chiffres ci-dessous peuvent être périmés ; les actions restent bloquées jusqu’à une relecture.',
+    refreshing: 'Actualisation en cours… Les actions reprennent à la réponse du serveur.',
     partial: 'Liste partielle : seules les {{count}} plus récentes sont montrées.',
     you: 'vous',
     sessions_title: 'Sessions de caisse à valider',
     sessions_empty: 'Aucune session de caisse en attente de validation.',
-    session_label: '{{account}} du {{date}}',
+    session_label: '{{account}} du {{date}}, {{from}}–{{to}}',
     session_people:
       'Ouverte par {{opened}} le {{openedAt}} ; clôturée par {{closed}} le {{closedAt}}.',
     opening_variance: 'Écart d’ouverture : {{amount}} (période précédente).',
@@ -2441,6 +2444,10 @@ export const fr = {
       'Les opérations tardives d’une session déjà validée forment des ajustements à valider à part : ils ne sont pas encore listés ici.',
     detail_denied: 'Détail de la session non accessible avec vos droits.',
     detail_failed: 'Détail de la session indisponible : le serveur n’a pas répondu.',
+    detail_failed_stale:
+      'Actualisation du détail impossible : le serveur n’a pas répondu ; les chiffres ci-dessous peuvent être périmés.',
+    session_not_pending: 'Cette session n’est plus en attente de validation.',
+    refresh_list: 'Relire la liste',
     flows_title: 'Flux de la session',
     window: 'Du {{from}} au {{to}}.',
     window_open: 'Depuis le {{from}}.',
@@ -2504,6 +2511,8 @@ export const fr = {
     movements_open: 'Mouvements de {{name}}',
     movements_close: 'Replier les mouvements de {{name}}',
     movements_failed: 'Mouvements indisponibles : le serveur n’a pas répondu.',
+    movements_failed_stale:
+      'Actualisation des mouvements impossible : le serveur n’a pas répondu ; la liste ci-dessous peut être périmée.',
     movements_empty: 'Aucun mouvement.',
     movements_more: 'Mouvements plus anciens',
     movement_line: '{{date}} · {{type}} : {{amount}}',
@@ -2552,13 +2561,14 @@ export const fr = {
   cash_transfer: {
     offline_banner:
       'Hors ligne : les remises sont enregistrées sur ce téléphone et partiront au retour du réseau.',
-    unknown_account: 'compte inconnu de ce téléphone',
-    unnumbered: 'Remise en attente du numéro',
+    personal_account: 'caisse personnelle',
+    pending_label: 'Remise de {{amount}} vers {{to}}, {{time}}',
+    you: 'vous',
     route: '{{from}} → {{to}}',
-    sent_at: 'Envoyée le {{date}}',
+    sent_at: 'Envoyée le {{date}} par {{who}}',
     carrier: 'porteur : {{name}}',
     state_waiting: 'Enregistrée sur ce téléphone, en attente d’envoi.',
-    state_unpulled: 'Envoyée ; son numéro apparaîtra à la prochaine synchronisation.',
+    state_unpulled: 'Envoyée au serveur ; en transit dès la prochaine synchronisation.',
     state_in_transit: 'En transit : pas encore reçue.',
     state_discrepancy: 'Reçue avec un écart : en attente de la décision de la Finance.',
     cancelling_WAITING: 'Annulation enregistrée, en attente d’envoi.',
@@ -2566,6 +2576,10 @@ export const fr = {
       'Annulation envoyée ; elle sortira de la liste à la prochaine synchronisation.',
     receiving_WAITING: 'Réception enregistrée, en attente d’envoi.',
     receiving_SENT: 'Réception envoyée ; elle sortira de la liste à la prochaine synchronisation.',
+    receiving_gap_WAITING:
+      'Réception enregistrée avec un écart de {{amount}}, en attente d’envoi ; la remise restera en attente de la décision de la Finance.',
+    receiving_gap_SENT:
+      'Réception envoyée avec un écart de {{amount}} : la remise reste en attente de la décision de la Finance.',
     incoming_title: 'À recevoir',
     receive_open: 'Recevoir la remise {{label}}',
     received_label: 'Montant reçu, compté (F CFA)',
@@ -2573,6 +2587,8 @@ export const fr = {
     match: 'Montant conforme à l’envoi.',
     discrepancy: 'Écart de {{amount}} : il sera soumis à la Finance, qui l’impute et le motive.',
     lost: 'Rien reçu : la remise sera déclarée perdue et soumise à la Finance.',
+    discrepancy_refused:
+      'Écart de {{amount}} : aucune politique de validation des écarts n’est en vigueur, le serveur refusera cette réception (en ligne comme hors ligne). Prévenez la Finance.',
     receive_submit: 'Confirmer la réception de {{amount}}',
     sent_title: 'Mes remises',
     sent_empty: 'Aucune remise envoyée en cours.',
@@ -2585,6 +2601,8 @@ export const fr = {
     source_label: 'Depuis la caisse',
     balance: 'Solde indicatif : {{amount}} (opérations de ce téléphone comprises).',
     balance_unknown: 'Solde de cette caisse non servi à ce téléphone.',
+    balance_blind:
+      'Solde de la caisse non affiché : comptage à l’aveugle (il s’affiche après votre clôture). En ligne, le serveur refuse une remise supérieure au solde.',
     target_label: 'Vers',
     target_placeholder: 'Choisir la destination',
     amount_label: 'Montant remis (F CFA)',

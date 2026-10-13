@@ -77,7 +77,8 @@ export interface OnlineRead<T> {
 /**
  * Lecture en ligne identifiée par `key` (le chemin, ou la liste des chemins) et relue à chaque
  * changement de `reloadKey` (réponse d'une opération), au retour du réseau et sur `retry`. `key` nul :
- * rien à lire.
+ * rien à lire. Après un retour du réseau ou un `retry`, la donnée d'avant reste « périmée » jusqu'à la
+ * réponse de la relecture (elle a pu changer pendant la coupure).
  */
 export function useOnlineRead<T>(
   key: string | null,
@@ -91,9 +92,19 @@ export function useOnlineRead<T>(
     loader.current = load;
   });
   const [attempt, setAttempt] = useState(0);
+  // Retours du réseau comptés pendant le rendu (état dérivé) : la donnée d'avant la coupure est
+  // périmée dès le premier rendu en ligne, avant même que la relecture parte.
+  const [connection, setConnection] = useState({ online, returns: 0 });
+  if (connection.online !== online) {
+    setConnection({ online, returns: connection.returns + (online ? 1 : 0) });
+  }
+  const returns =
+    connection.online !== online ? connection.returns + (online ? 1 : 0) : connection.returns;
+  const generation = `${returns}:${attempt}`;
   const [state, setState] = useState<{
     readonly key: string;
     readonly reloadKey: string;
+    readonly generation: string;
     readonly data: T | undefined;
     readonly failed: boolean;
     readonly denied: boolean;
@@ -105,10 +116,11 @@ export function useOnlineRead<T>(
       if (cancelled) return;
       setState((current) =>
         result.ok
-          ? { key, reloadKey, data: result.data, failed: false, denied: false }
+          ? { key, reloadKey, generation, data: result.data, failed: false, denied: false }
           : {
               key,
               reloadKey,
+              generation,
               data: current?.key === key ? current.data : undefined,
               failed: true,
               denied: result.denied,
@@ -118,11 +130,17 @@ export function useOnlineRead<T>(
     return () => {
       cancelled = true;
     };
-  }, [key, online, reloadKey, attempt]);
+  }, [key, online, reloadKey, generation]);
   const same = key !== null && state?.key === key;
   return {
     data: same ? state.data : undefined,
-    stale: key !== null && (!same || state.reloadKey !== reloadKey || state.failed || !online),
+    stale:
+      key !== null &&
+      (!same ||
+        state.reloadKey !== reloadKey ||
+        state.generation !== generation ||
+        state.failed ||
+        !online),
     failed: same && state.failed,
     denied: same && state.denied,
     retry: () => setAttempt((value) => value + 1),

@@ -384,6 +384,61 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     expect(pendingCashMovements(input)).toEqual({ netXaf: -4_000, count: 1 });
   });
 
+  it('caisse personnelle : espèces de son détenteur encaissées hors point de vente', () => {
+    const personal: CashAccountData = {
+      ...account,
+      id: 'perso',
+      account_type: 'CAISSE_UTILISATEUR',
+      site_id: null,
+      holder_user_id: USER,
+    };
+    const outbox = [
+      // Stock mobile ou magasin (hors POS) : la caisse personnelle de l'auteur.
+      sale('mobile', [{ methodCode: 'ESPECES', amountXaf: 30_000 }]),
+      sale('magasin', [{ methodCode: 'ESPECES', amountXaf: 2_000 }]),
+      // Au PDV : la caisse du PDV, pas celle-ci ; mobile money : pas une caisse.
+      sale('pdv', [{ methodCode: 'ESPECES', amountXaf: 9_000 }]),
+      sale('mobile', [{ methodCode: 'OM', amountXaf: 9_000 }]),
+      // Autre auteur (tablette partagée) : sa propre caisse.
+      sale('mobile', [{ methodCode: 'ESPECES', amountXaf: 9_000 }], { author_user_id: 'autre' }),
+      // Encaissement désignant un autre compte : pas celui-ci.
+      sale('mobile', [{ methodCode: 'ESPECES', amountXaf: 9_000, cashAccountId: 'autre-compte' }]),
+      command('sales.order.place', {
+        fulfilmentLocationId: 'mobile',
+        advancePayments: [{ methodCode: 'ESPECES', amountXaf: 500 }],
+      }),
+      // Hors vente : site absent ou non point de vente, oui ; site d'un PDV, non.
+      command('sales.payment.record', { methodCode: 'ESPECES', amountXaf: 100 }),
+      command('sales.payment.record', { siteId: 'ferme', methodCode: 'ESPECES', amountXaf: 10 }),
+      command('sales.payment.record', { siteId: SITE, methodCode: 'ESPECES', amountXaf: 7 }),
+    ];
+    const siteTypes = new Map([
+      [SITE, 'POINT_DE_VENTE'],
+      ['ferme', 'FERME'],
+    ]);
+    expect(
+      pendingCashMovements({
+        account: personal,
+        outbox,
+        cashPulledAt: PULLED,
+        locations,
+        paymentMethods,
+        siteTypes,
+      }),
+    ).toEqual({ netXaf: 32_610, count: 5 });
+    // La caisse du PDV garde sa règle : la vente au PDV et l'encaissement sur son site.
+    expect(
+      pendingCashMovements({
+        account,
+        outbox,
+        cashPulledAt: PULLED,
+        locations,
+        paymentMethods,
+        siteTypes,
+      }),
+    ).toEqual({ netXaf: 9_007, count: 2 });
+  });
+
   it('attendu indicatif : solde servi si la session est connue, sinon fonds compté, plus l’attente', () => {
     const outbox = [sale('pdv', [{ methodCode: 'ESPECES', amountXaf: 3_000 }])];
     const base = { account, outbox, cashPulledAt: PULLED, locations, paymentMethods };

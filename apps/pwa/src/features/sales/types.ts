@@ -590,6 +590,21 @@ export interface CashTransferData {
   readonly version: number;
 }
 
+/**
+ * (`policies`, `CONTROL_POLICY`, ligne `GLOBAL`) politique de contrôle active (P5-18) ; une politique
+ * retirée sort du jeu.
+ */
+export interface ControlPolicyData {
+  readonly id: string;
+  readonly code: string;
+  readonly version: number;
+  readonly operation_type: string;
+  readonly requires_approval: boolean;
+  readonly approver_permission: string | null;
+  readonly valid_from: string;
+  readonly valid_to: string | null;
+}
+
 /** (`cash`, `CASH_TRANSFER_TARGET`, ligne `GLOBAL`) destination de remise, sans solde (AV-197). */
 export interface CashTransferTargetData {
   readonly id: string;

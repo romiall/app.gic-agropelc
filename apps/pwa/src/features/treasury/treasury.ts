@@ -166,22 +166,26 @@ export function sessionReasonRequired(
   );
 }
 
+/** Pourquoi une session ne peut pas être validée ici ; `null` si elle le peut. */
+export type SessionValidationBlock = 'NOT_PENDING' | 'INVOLVED';
+
 /**
- * Valideur admis d'une session (AV-155, RC-03) : ni celui qui l'a ouverte, ni celui qui l'a clôturée,
- * ni l'auteur de la clôture forcée ; session en attente de validation.
+ * Comme le serveur (`validateCashSession`) : la session doit être en attente de validation
+ * (`CASH_SESSION_NOT_PENDING`), puis le valideur n'en est ni l'ouvreur, ni le clôtureur, ni l'auteur
+ * de la clôture forcée (`CASH_VALIDATOR_INVOLVED`, AV-155, RC-03).
  */
-export function canValidateSession(
+export function sessionValidationBlock(
   session: Pick<CashSessionItem, 'status' | 'openedBy' | 'closedBy' | 'forcedBy'>,
   userId: string,
-): boolean {
-  return (
-    session.status === 'PENDING_VALIDATION' &&
-    isAllowedCashValidator(userId, {
-      openedBy: session.openedBy,
-      closedBy: session.closedBy,
-      forcedBy: session.forcedBy,
-    })
-  );
+): SessionValidationBlock | null {
+  if (session.status !== 'PENDING_VALIDATION') return 'NOT_PENDING';
+  return isAllowedCashValidator(userId, {
+    openedBy: session.openedBy,
+    closedBy: session.closedBy,
+    forcedBy: session.forcedBy,
+  })
+    ? null
+    : 'INVOLVED';
 }
 
 export function validatePayload(reason: string) {

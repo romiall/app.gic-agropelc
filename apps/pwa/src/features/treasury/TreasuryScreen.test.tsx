@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -141,7 +141,16 @@ function baseRoutes(): Routes {
   return {
     '/api/v1/cash-accounts': { cash_accounts: accounts },
     '/api/v1/cash-sessions?status=PENDING_VALIDATION&limit=200': {
-      cash_sessions: [session(), session({ id: OWN_SESSION, closedBy: IDS.user })],
+      cash_sessions: [
+        session(),
+        // Même caisse, même jour, plus tard : nommée par ses heures.
+        session({
+          id: OWN_SESSION,
+          closedBy: IDS.user,
+          openedAt: '2026-10-10T11:00:00.000Z',
+          closedAt: '2026-10-10T16:00:00.000Z',
+        }),
+      ],
       next_cursor: null,
     },
     [`/api/v1/cash-sessions/${SESSION}`]: detail,
@@ -253,9 +262,15 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     const user = userEvent.setup();
     renderScreen();
     const sessions = await screen.findByRole('region', { name: 'Sessions de caisse à valider' });
-    const card = within(sessions)
-      .getAllByRole('listitem', { name: /^Caisse du PDV de Yaoundé du / })
-      .find((item) => !within(item).queryByText(/clôturée par vous/))!;
+    // Deux sessions de la même caisse le même jour : noms distincts par leurs heures (Douala).
+    const card = within(sessions).getByRole('listitem', {
+      name: /^Caisse du PDV de Yaoundé du .*, 07:00–18:00$/,
+    });
+    expect(
+      within(sessions).getByRole('listitem', {
+        name: /^Caisse du PDV de Yaoundé du .*, 12:00–17:00$/,
+      }),
+    ).toBeInTheDocument();
     expect(
       within(card).getByText(/Écart de clôture : .*500 F CFA \(compté 172\s500 F CFA/),
     ).toBeInTheDocument();
@@ -288,9 +303,15 @@ describe('Trésorerie (ECR-FIN-05)', () => {
   it('session clôturée par soi : validation impossible, raison donnée', async () => {
     serve({
       ...baseRoutes(),
+      // Sans écart : seul le valideur impliqué grise le bouton (aucun motif exigé).
       [`/api/v1/cash-sessions/${OWN_SESSION}`]: {
         ...detail,
-        cash_session: session({ id: OWN_SESSION, closedBy: IDS.user }),
+        cash_session: session({
+          id: OWN_SESSION,
+          closedBy: IDS.user,
+          varianceXaf: 0,
+          closingCountedXaf: 173_000,
+        }),
       },
     });
     const user = userEvent.setup();
@@ -304,7 +325,219 @@ describe('Trésorerie (ECR-FIN-05)', () => {
         'Vous avez ouvert, clôturé ou forcé cette session : un autre valideur doit la valider.',
       ),
     ).toBeInTheDocument();
-    expect(within(own!).getByRole('button', { name: 'Valider la session' })).toBeDisabled();
+    const validate = within(own!).getByRole('button', { name: 'Valider la session' });
+    expect(validate).toBeDisabled();
+    expect(validate).toHaveAccessibleDescription(
+      'Vous avez ouvert, clôturé ou forcé cette session : un autre valideur doit la valider.',
+    );
+  });
+
+  it('session déjà validée par un autre : annoncée comme telle, liste relue à la demande', async () => {
+    serve({
+      ...baseRoutes(),
+      [`/api/v1/cash-sessions/${SESSION}`]: {
+        ...detail,
+        cash_session: session({ status: 'VALIDATED' }),
+      },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const sessions = await screen.findByRole('region', { name: 'Sessions de caisse à valider' });
+    const card = within(sessions).getByRole('listitem', { name: /07:00–18:00$/ });
+    await user.click(within(card).getByRole('button', { name: /^Examiner la session/ }));
+    expect(
+      await within(card).findByText('Cette session n’est plus en attente de validation.'),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(/Vous avez ouvert, clôturé ou forcé/)).toBeNull();
+    expect(within(card).getByRole('button', { name: 'Valider la session' })).toBeDisabled();
+    const before = request.mock.calls.length;
+    await user.click(within(card).getByRole('button', { name: 'Relire la liste' }));
+    await waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('décision en attente : actions bloquées, reprise au retour sur l’écran, liste relue à sa réponse', async () => {
+    await rememberRoles(['FINANCE']);
+    const user = userEvent.setup();
+    const { unmount } = renderScreen();
+    const gaps = await screen.findByRole('region', { name: 'Écarts de remise à décider' });
+    const card = within(gaps).getByRole('listitem', { name: 'RMF-YDE-2026-000007' });
+    await user.click(
+      within(card).getByRole('button', {
+        name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+      }),
+    );
+    await user.selectOptions(within(card).getByLabelText('Imputation de l’écart'), 'SENDER');
+    await user.type(
+      within(card).getByLabelText('Motif (obligatoire, 200 caractères au plus)'),
+      'Erreur de comptage',
+    );
+    await user.click(within(card).getByRole('button', { name: 'Clore l’écart' }));
+    expect(await screen.findByText('Décision en cours d’envoi…')).toBeInTheDocument();
+    unmount();
+
+    // Retour sur l'écran : la décision en attente est reprise et bloque les actions.
+    renderScreen();
+    expect(await screen.findByText('Décision en cours d’envoi…')).toBeInTheDocument();
+    const again = await screen.findByRole('region', { name: 'Écarts de remise à décider' });
+    await waitFor(() =>
+      expect(
+        within(again).getByRole('button', {
+          name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+        }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Recevoir la remise RMF-YDE-2026-000009' }),
+    ).toBeDisabled();
+    // Réponse du serveur : la liste est relue, l'écart clos en sort.
+    serve({
+      ...baseRoutes(),
+      '/api/v1/cash-transfers?status=DISCREPANCY_PENDING&limit=200': {
+        cash_transfers: [
+          transfer({ id: GAP_MINE, docNumber: 'RMF-YDE-2026-000008', receivedBy: IDS.user }),
+        ],
+        next_cursor: null,
+      },
+    });
+    const [decision] = await outboxOf('approvals.request.approve');
+    await getDb().outbox.update(decision!.command_id, {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T19:30:00.000Z',
+    });
+    expect(await screen.findByText('Écart de remise clos.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(again).queryByRole('listitem', { name: 'RMF-YDE-2026-000007' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('relecture en échec après une opération : annoncée avec « Réessayer », puis débloquée', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const sessions = await screen.findByRole('region', { name: 'Sessions de caisse à valider' });
+    const card = within(sessions).getByRole('listitem', { name: /07:00–18:00$/ });
+    await user.click(within(card).getByRole('button', { name: /^Examiner la session/ }));
+    await user.type(
+      await within(card).findByLabelText(
+        'Motif de la validation (obligatoire : la session présente un écart)',
+      ),
+      'Erreur de rendu',
+    );
+    await user.click(within(card).getByRole('button', { name: 'Valider la session' }));
+    await screen.findByText('Validation en cours d’envoi…');
+    // Le serveur répond, mais la relecture échoue : la liste d'avant reste, annoncée périmée.
+    serve({});
+    const [validation] = await outboxOf('finance.cash_session.validate');
+    await getDb().outbox.update(validation!.command_id, {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T19:30:00.000Z',
+    });
+    expect(await screen.findByText(/Actualisation impossible/)).toBeInTheDocument();
+    expect(within(sessions).getByRole('listitem', { name: /07:00–18:00$/ })).toBeInTheDocument();
+    const decide = screen.getByRole('button', {
+      name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+    });
+    expect(decide).toBeDisabled();
+    serve(baseRoutes());
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    await waitFor(() => expect(screen.queryByText(/Actualisation impossible/)).toBeNull());
+    await waitFor(() => expect(decide).toBeEnabled());
+  });
+
+  it('mouvements ouverts et relecture en échec : annoncée, la liste d’avant gardée', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const accountsRegion = await screen.findByRole('region', { name: 'Comptes de trésorerie' });
+    const central = within(accountsRegion).getByRole('listitem', { name: 'Caisse centrale' });
+    await user.click(
+      within(central).getByRole('button', { name: 'Mouvements de Caisse centrale' }),
+    );
+    expect(await within(central).findByText(/Encaissement : \+5\s000 F CFA/)).toBeInTheDocument();
+    // Une opération gérée de l'utilisateur (saisie ailleurs) change la clé : relecture, en échec.
+    serve({});
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000000fa',
+      device_seq: 1,
+      command_type: 'finance.cash_session.validate',
+      command_version: 1,
+      author_user_id: IDS.user,
+      aggregate_type: 'CASH_SESSION',
+      aggregate_id: SESSION,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T19:00:00.000Z',
+      client_created_at: '2026-10-10T19:00:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: { reason: 'Vu' },
+      status: 'PENDING_SYNC',
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    expect(
+      await within(central).findByText(/Actualisation des mouvements impossible/),
+    ).toBeInTheDocument();
+    expect(within(central).getByText(/Encaissement : \+5\s000 F CFA/)).toBeInTheDocument();
+  });
+
+  it('retour du réseau : la liste d’avant la coupure reste bloquée jusqu’à sa relecture', async () => {
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    renderScreen();
+    const decide = await screen.findByRole('button', {
+      name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+    });
+    await waitFor(() => expect(decide).toBeEnabled());
+    online.mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    expect(await screen.findByText(/Trésorerie en ligne seulement/)).toBeInTheDocument();
+    // Relecture retenue jusqu'à `release` : la liste d'avant s'affiche, actions bloquées.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const routes = baseRoutes();
+    request.mockImplementation(async (_db, path) => {
+      await gate;
+      return { ok: true, data: routes[path] } as Awaited<ReturnType<typeof authorizedRequest>>;
+    });
+    online.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    const back = await screen.findByRole('button', {
+      name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+    });
+    expect(back).toBeDisabled();
+    expect(screen.getByText(/Actualisation en cours/)).toBeInTheDocument();
+    release();
+    await waitFor(() => expect(back).toBeEnabled());
+  });
+
+  it('formulaire de décision : focus sur l’imputation à l’ouverture, rendu au bouton à la fermeture', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const gaps = await screen.findByRole('region', { name: 'Écarts de remise à décider' });
+    const card = within(gaps).getByRole('listitem', { name: 'RMF-YDE-2026-000007' });
+    await user.click(
+      within(card).getByRole('button', {
+        name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+      }),
+    );
+    expect(within(card).getByLabelText('Imputation de l’écart')).toHaveFocus();
+    await user.click(within(card).getByRole('button', { name: 'Fermer' }));
+    await waitFor(() =>
+      expect(
+        within(card).getByRole('button', {
+          name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
+        }),
+      ).toHaveFocus(),
+    );
   });
 
   it('écart de remise : imputation et motif, décision sur la demande ; son propre écart exclu', async () => {

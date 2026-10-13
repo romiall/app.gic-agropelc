@@ -12,14 +12,26 @@ import {
   type CashTransferPairs,
 } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
-import { isWaiting, stillInFlight } from '../sales/pending.js';
+import { isAccepted, isWaiting, stillInFlight } from '../sales/pending.js';
 import { settingValue } from '../sales/stock.js';
 import type {
   CashAccountData,
+  CashSessionData,
   CashTransferData,
   CashTransferTargetData,
+  ControlPolicyData,
+  LocationData,
+  PaymentMethodData,
   SettingData,
 } from '../sales/types.js';
+import {
+  CASH_COUNT_BLIND,
+  deviceCash,
+  indicativeBalanceXaf,
+  indicativeSessionExpectedXaf,
+  openSession,
+  pendingCashMovements,
+} from './cash-session.js';
 
 /** Longueurs maximales (`cashTransferSendPayloadSchema`, `cashTransferCancelPayloadSchema`). */
 export const MAX_TRANSFER_COMMENT = 500;
@@ -31,7 +43,10 @@ export type TransferStep = 'WAITING' | 'SENT' | null;
 
 export interface TransferView {
   readonly id: string;
-  /** Numéro `RMF-…` ; `null` pour un envoi de l'appareil pas encore relu (S-50 : jamais promis). */
+  /**
+   * Numéro `RMF-…` : servi, ou renvoyé par le serveur à l'acceptation de l'envoi ; `null` pour un
+   * envoi encore en attente.
+   */
   readonly docNumber: string | null;
   readonly fromAccountId: string;
   readonly toAccountId: string;
@@ -47,6 +62,8 @@ export interface TransferView {
   readonly sendWaiting: boolean;
   readonly cancelling: TransferStep;
   readonly receiving: TransferStep;
+  /** Montant compté de la réception en cours sur l'appareil ; `null` sans réception en cours. */
+  readonly receivingXaf: number | null;
 }
 
 interface SendPayloadLike {
@@ -56,23 +73,24 @@ interface SendPayloadLike {
   readonly carrierName?: string;
 }
 
-/** Étape d'une opération de l'appareil sur la remise, jusqu'au tirage du jeu `cash` qui l'inclut. */
-function stepOf(
+/** Opération de l'appareil sur la remise, jusqu'au tirage du jeu `cash` qui l'inclut. */
+function inFlightOf(
   outbox: readonly OutboxCommand[],
   commandType: string,
   transferId: string,
   cashPulledAt: string | undefined,
-): TransferStep {
-  const command = outbox.find(
+): OutboxCommand | undefined {
+  return outbox.find(
     (candidate) =>
       candidate.command_type === commandType &&
       candidate.aggregate_id === transferId &&
       // Refusée : jamais en vol (`stillInFlight`).
       stillInFlight(candidate, cashPulledAt),
   );
-  if (!command) return null;
-  return isWaiting(command) ? 'WAITING' : 'SENT';
 }
+
+const stepOf = (command: OutboxCommand | undefined): TransferStep =>
+  command ? (isWaiting(command) ? 'WAITING' : 'SENT') : null;
 
 /**
  * Remises vues par l'appareil, de la plus récente à la plus ancienne : celles du jeu `cash`, puis
@@ -84,7 +102,18 @@ export function deviceTransfers(input: {
   readonly outbox: readonly OutboxCommand[];
   readonly cashPulledAt: string | undefined;
 }): TransferView[] {
-  const step = (type: string, id: string) => stepOf(input.outbox, type, id, input.cashPulledAt);
+  const pending = (type: string, id: string) =>
+    inFlightOf(input.outbox, type, id, input.cashPulledAt);
+  const operations = (id: string) => {
+    const receive = pending('finance.cash_transfer.receive', id);
+    const received = (receive?.payload as { readonly receivedXaf?: number } | undefined)
+      ?.receivedXaf;
+    return {
+      cancelling: stepOf(pending('finance.cash_transfer.cancel', id)),
+      receiving: stepOf(receive),
+      receivingXaf: receive && typeof received === 'number' ? received : null,
+    };
+  };
   const served = new Set(input.transfers.map((transfer) => transfer.id));
   const views: TransferView[] = input.transfers.map((transfer) => ({
     id: transfer.id,
@@ -98,8 +127,7 @@ export function deviceTransfers(input: {
     status: transfer.status,
     sendCommandId: null,
     sendWaiting: false,
-    cancelling: step('finance.cash_transfer.cancel', transfer.id),
-    receiving: step('finance.cash_transfer.receive', transfer.id),
+    ...operations(transfer.id),
   }));
   for (const command of input.outbox) {
     if (command.command_type !== 'finance.cash_transfer.send') continue;
@@ -110,7 +138,8 @@ export function deviceTransfers(input: {
     if (!payload.fromAccountId || !payload.toAccountId || !payload.amountXaf) continue;
     views.push({
       id: command.aggregate_id,
-      docNumber: null,
+      // Envoi accepté : le serveur a renvoyé son numéro (`serverRefs.docNumber`).
+      docNumber: isAccepted(command) ? (command.server_refs?.docNumber ?? null) : null,
       fromAccountId: payload.fromAccountId,
       toAccountId: payload.toAccountId,
       amountSentXaf: payload.amountXaf,
@@ -120,8 +149,7 @@ export function deviceTransfers(input: {
       status: null,
       sendCommandId: command.command_id,
       sendWaiting: isWaiting(command),
-      cancelling: step('finance.cash_transfer.cancel', command.aggregate_id),
-      receiving: step('finance.cash_transfer.receive', command.aggregate_id),
+      ...operations(command.aggregate_id),
     });
   }
   return views.sort((a, b) => b.sentAt.localeCompare(a.sentAt) || a.id.localeCompare(b.id));
@@ -255,4 +283,106 @@ export function receivePayload(input: { readonly receivedXaf: number; readonly c
 
 export function cancelPayload(reason: string) {
   return { reason: reason.trim() };
+}
+
+/**
+ * Politique de validation des écarts de remise en vigueur à `at`, comme le serveur
+ * (`transferDiscrepancyPolicy`) : `CASH_TRANSFER_DISCREPANCY`, validation exigée, approbateur nommé.
+ * Sans elle, une réception avec écart (perte comprise) est refusée, en ligne comme hors ligne
+ * (`CONTROL_POLICY_MISSING`). `UNKNOWN` : aucune politique sur l'appareil (jeu `policies` pas encore
+ * tiré).
+ */
+export function discrepancyPolicyState(
+  policies: readonly ControlPolicyData[],
+  at: Date,
+): 'APPLIES' | 'MISSING' | 'UNKNOWN' {
+  if (policies.length === 0) return 'UNKNOWN';
+  const applies = policies.some(
+    (policy) =>
+      policy.operation_type === 'CASH_TRANSFER_DISCREPANCY' &&
+      policy.requires_approval &&
+      policy.approver_permission !== null &&
+      new Date(policy.valid_from) <= at &&
+      (policy.valid_to === null || new Date(policy.valid_to) > at),
+  );
+  return applies ? 'APPLIES' : 'MISSING';
+}
+
+/** Solde d'une caisse source tel que l'écran des remises le montre. */
+export type SourceBalance =
+  | { readonly kind: 'SHOWN'; readonly xaf: number }
+  /** Comptage à l'aveugle (AV-304) : solde d'une caisse de PDV non montré. */
+  | { readonly kind: 'BLIND' }
+  /** Solde non servi à l'appareil. */
+  | { readonly kind: 'UNKNOWN' };
+
+/**
+ * Solde indicatif d'une caisse source, aligné sur le registre du serveur (ADR-032 §4) : caisse de PDV
+ * ouverte, l'attendu de la session (`indicativeSessionExpectedXaf`) ; caisse de PDV close, le compté
+ * de la dernière clôture saisie sur l'appareil puis les mouvements postérieurs
+ * (`indicativeBalanceXaf`) ; autre compte, solde servi plus les mouvements de l'appareil en attente.
+ * Comptage à l'aveugle (`CASH_COUNT_BLIND`, AV-304) : le solde d'une caisse de PDV n'est montré
+ * qu'après une clôture comptée par l'utilisateur lui-même, jamais pendant une session (il donnerait
+ * l'attendu) ni avant une ouverture (le solde du registre que l'ouverture compare).
+ */
+export function transferSourceBalance(input: {
+  readonly account: CashAccountData;
+  readonly userId: string;
+  readonly now: Date;
+  readonly sessions: readonly CashSessionData[];
+  readonly outbox: readonly OutboxCommand[];
+  readonly cashPulledAt: string | undefined;
+  readonly locations: readonly Pick<LocationData, 'id' | 'site_id' | 'location_type'>[];
+  readonly paymentMethods: readonly Pick<PaymentMethodData, 'code' | 'default_account_type'>[];
+  readonly siteTypes: ReadonlyMap<string, string>;
+  readonly transfers: readonly CashTransferData[];
+  readonly settings: readonly SettingData[];
+  readonly blind?: boolean;
+}): SourceBalance {
+  const { account } = input;
+  if (account.balance_xaf === undefined) return { kind: 'UNKNOWN' };
+  const movementsInput = {
+    account,
+    outbox: input.outbox,
+    cashPulledAt: input.cashPulledAt,
+    locations: input.locations,
+    paymentMethods: input.paymentMethods,
+    siteTypes: input.siteTypes,
+    transfers: input.transfers,
+  };
+  if (account.account_type !== 'CAISSE_PDV') {
+    return {
+      kind: 'SHOWN',
+      xaf: account.balance_xaf + pendingCashMovements(movementsInput).netXaf,
+    };
+  }
+  const cash = deviceCash({
+    cashAccountId: account.id,
+    sessions: input.sessions,
+    outbox: input.outbox,
+    cashPulledAt: input.cashPulledAt,
+    userId: input.userId,
+    maxSessionsPerDay: settingValue(
+      input.settings,
+      'finance.cash_sessions_per_day_max',
+      account.site_id,
+      input.now,
+    ),
+  });
+  const open = openSession(cash);
+  const last = cash.sessions.at(-1);
+  if (input.blind ?? CASH_COUNT_BLIND) {
+    const closedByUser =
+      last !== undefined &&
+      last.state !== 'OPEN' &&
+      ((last.closeOnDevice && last.closeAuthorId === input.userId) ||
+        input.sessions.some(
+          (session) => session.id === last.id && session.closed_by === input.userId,
+        ));
+    if (open || !closedByUser) return { kind: 'BLIND' };
+  }
+  const figures = open
+    ? indicativeSessionExpectedXaf({ ...movementsInput, session: open })
+    : indicativeBalanceXaf({ ...movementsInput, last });
+  return figures ? { kind: 'SHOWN', xaf: figures.expectedXaf } : { kind: 'UNKNOWN' };
 }

@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import type { OutboxCommand } from '../../storage/db.js';
 import type {
   CashAccountData,
+  CashSessionData,
   CashTransferData,
   CashTransferTargetData,
+  ControlPolicyData,
   SettingData,
 } from '../sales/types.js';
 import {
   cancelPayload,
   canCancel,
   deviceTransfers,
+  discrepancyPolicyState,
   mySentTransfers,
   overIndicativeBalance,
   ownAccounts,
@@ -19,6 +22,7 @@ import {
   targetsFor,
   toReceive,
   transferPairs,
+  transferSourceBalance,
 } from './transfers.js';
 
 const ME = 'moi';
@@ -262,6 +266,154 @@ describe('Remises de fonds vues par l’appareil (UC-FIN-07)', () => {
     );
     expect(targetsFor(account(), targets, sameType).map((item) => item.id)).toEqual(['banque']);
     expect(sourceAccounts(accounts, targets, narrowed, ME).map((item) => item.id)).toEqual(['pdv']);
+  });
+
+  it('numéro renvoyé à l’acceptation d’un envoi ; montant d’une réception en cours', () => {
+    const views = deviceTransfers({
+      transfers: [transfer({ id: 'r2', sent_by: OTHER, to_account_id: 'pdv' })],
+      outbox: [
+        command(
+          'finance.cash_transfer.send',
+          'r-acceptee',
+          { fromAccountId: 'pdv', toAccountId: 'banque', amountXaf: 1_000 },
+          {
+            status: 'SYNCED',
+            synced_at: '2026-10-10T09:30:00.000Z',
+            server_refs: { docNumber: 'RMF-YDE-2026-000012' },
+          },
+        ),
+        command('finance.cash_transfer.send', 'r-attente', {
+          fromAccountId: 'pdv',
+          toAccountId: 'banque',
+          amountXaf: 2_000,
+        }),
+        command('finance.cash_transfer.receive', 'r2', { receivedXaf: 140_000 }),
+      ],
+      cashPulledAt: PULLED,
+    });
+    const byId = new Map(views.map((view) => [view.id, view]));
+    expect(byId.get('r-acceptee')).toMatchObject({ docNumber: 'RMF-YDE-2026-000012' });
+    expect(byId.get('r-attente')).toMatchObject({ docNumber: null, receivingXaf: null });
+    expect(byId.get('r2')).toMatchObject({ receiving: 'WAITING', receivingXaf: 140_000 });
+  });
+
+  it('politique de validation des écarts en vigueur, comme le serveur', () => {
+    const at = new Date('2026-10-10T09:00:00.000Z');
+    const policy = (overrides: Partial<ControlPolicyData> = {}): ControlPolicyData => ({
+      id: 'p',
+      code: 'ECART',
+      version: 1,
+      operation_type: 'CASH_TRANSFER_DISCREPANCY',
+      requires_approval: true,
+      approver_permission: 'finance.cash_session.validate',
+      valid_from: '2026-01-01T00:00:00.000Z',
+      valid_to: null,
+      ...overrides,
+    });
+    expect(discrepancyPolicyState([], at)).toBe('UNKNOWN');
+    expect(discrepancyPolicyState([policy()], at)).toBe('APPLIES');
+    expect(discrepancyPolicyState([policy({ requires_approval: false })], at)).toBe('MISSING');
+    expect(discrepancyPolicyState([policy({ approver_permission: null })], at)).toBe('MISSING');
+    expect(discrepancyPolicyState([policy({ valid_to: '2026-10-10T09:00:00.000Z' })], at)).toBe(
+      'MISSING',
+    );
+    expect(discrepancyPolicyState([policy({ valid_from: '2026-10-11T00:00:00.000Z' })], at)).toBe(
+      'MISSING',
+    );
+    expect(discrepancyPolicyState([policy({ operation_type: 'EXPENSE' })], at)).toBe('MISSING');
+    // Une politique applicable parmi d'autres suffit (`.find` du serveur).
+    expect(
+      discrepancyPolicyState([policy({ requires_approval: false }), policy({ id: 'q' })], at),
+    ).toBe('APPLIES');
+  });
+
+  it('solde de la caisse source : registre du serveur, comptage à l’aveugle pour la caisse du PDV', () => {
+    const now = new Date('2026-10-10T18:00:00.000Z');
+    const session = (overrides: Partial<CashSessionData> = {}): CashSessionData => ({
+      id: 's1',
+      cash_account_id: 'pdv',
+      site_id: 'site',
+      business_date: '2026-10-10',
+      status: 'OPEN',
+      opened_by: ME,
+      opened_at: '2026-10-10T06:00:00.000Z',
+      opening_counted_xaf: 20_000,
+      opening_expected_xaf: 20_000,
+      opening_variance_xaf: 0,
+      closed_by: null,
+      closed_at: null,
+      closing_counted_xaf: null,
+      closing_expected_xaf: null,
+      variance_xaf: null,
+      current_expected_xaf: null,
+      current_variance_xaf: null,
+      force_closed: false,
+      version: 1,
+      ...overrides,
+    });
+    const base = {
+      account: account({ balance_xaf: 50_000 }),
+      userId: ME,
+      now,
+      sessions: [] as CashSessionData[],
+      outbox: [] as OutboxCommand[],
+      cashPulledAt: PULLED,
+      locations: [],
+      paymentMethods: [],
+      siteTypes: new Map<string, string>(),
+      transfers: [] as CashTransferData[],
+      settings: [] as SettingData[],
+    };
+    // Aucune session, ou session ouverte : jamais montré à l'aveugle (AV-304).
+    expect(transferSourceBalance(base)).toEqual({ kind: 'BLIND' });
+    expect(transferSourceBalance({ ...base, sessions: [session()] })).toEqual({ kind: 'BLIND' });
+    // Clôture saisie par l'utilisateur sur l'appareil : le compté (le registre vaudra ce compté).
+    const close = command(
+      'finance.cash_session.close',
+      's1',
+      { countedXaf: 45_000 },
+      { occurred_at: '2026-10-10T17:00:00.000Z' },
+    );
+    expect(transferSourceBalance({ ...base, sessions: [session()], outbox: [close] })).toEqual({
+      kind: 'SHOWN',
+      xaf: 45_000,
+    });
+    // Clôture d'un autre utilisateur de la tablette : masqué.
+    expect(
+      transferSourceBalance({
+        ...base,
+        sessions: [session()],
+        outbox: [{ ...close, author_user_id: OTHER }],
+      }),
+    ).toEqual({ kind: 'BLIND' });
+    // Session close servie, clôturée par l'utilisateur : le solde servi.
+    expect(
+      transferSourceBalance({
+        ...base,
+        sessions: [
+          session({
+            status: 'PENDING_VALIDATION',
+            closed_by: ME,
+            closed_at: '2026-10-10T17:00:00.000Z',
+            closing_counted_xaf: 50_000,
+          }),
+        ],
+      }),
+    ).toEqual({ kind: 'SHOWN', xaf: 50_000 });
+    // Sans comptage à l'aveugle : l'attendu de la session ouverte.
+    expect(transferSourceBalance({ ...base, sessions: [session()], blind: false })).toEqual({
+      kind: 'SHOWN',
+      xaf: 50_000,
+    });
+    // Autre compte : solde servi plus l'attente ; solde non servi : inconnu.
+    const bank = account({ id: 'banque', account_type: 'BANQUE', balance_xaf: 900_000 });
+    expect(transferSourceBalance({ ...base, account: bank })).toEqual({
+      kind: 'SHOWN',
+      xaf: 900_000,
+    });
+    expect(
+      transferSourceBalance({ ...base, account: { ...bank, balance_xaf: undefined } as never }),
+    ).toEqual({ kind: 'UNKNOWN' });
   });
 
   it('solde indicatif dépassé signalé pour une caisse physique ; charges utiles', () => {

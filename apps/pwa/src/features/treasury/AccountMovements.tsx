@@ -64,17 +64,17 @@ export function AccountMovements({
     });
   };
 
-  if (read.failed && !first) {
-    return (
-      <div className="alert alert-error" role="alert">
-        <p>{t('treasury.movements_failed')}</p>
-        <button type="button" className="secondary" onClick={read.retry}>
-          {t('distribution.retry')}
-        </button>
-      </div>
-    );
-  }
+  // Relecture en échec : annoncée avec « Réessayer », les mouvements d'avant restant affichés.
+  const failure = read.failed ? (
+    <div className="alert alert-error" role="alert">
+      <p>{t(first ? 'treasury.movements_failed_stale' : 'treasury.movements_failed')}</p>
+      <button type="button" className="secondary" onClick={read.retry}>
+        {t('distribution.retry')}
+      </button>
+    </div>
+  ) : null;
   if (!first) {
+    if (failure) return failure;
     return (
       <p className="home-muted" aria-busy="true">
         {t('sales.loading')}
@@ -83,6 +83,12 @@ export function AccountMovements({
   }
   return (
     <div className="sale-block">
+      {failure}
+      {read.stale && !read.failed ? (
+        <p className="home-muted" role="status">
+          {t('treasury.refreshing')}
+        </p>
+      ) : null}
       {items.length === 0 ? (
         <p className="home-muted">{t('treasury.movements_empty')}</p>
       ) : (

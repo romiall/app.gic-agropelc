@@ -5,15 +5,18 @@
  * `CASH_TRANSFER_DISCREPANCY`, AV-174), remises en transit (réception par la Finance), comptes et leurs
  * mouvements. Les ajustements tardifs des sessions déjà validées ne sont pas listés (S-51).
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import type { CashTransferImputation } from '@gic/domain';
 import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
+import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
+import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { TransferReceiveForm } from '../cash/TransferReceiveForm.js';
-import { receivePayload } from '../cash/transfers.js';
-import { formatBusinessDay, formatDateTime } from '../home/format-home.js';
+import { discrepancyPolicyState, receivePayload } from '../cash/transfers.js';
+import { formatBusinessDay, formatClockTime, formatDateTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
@@ -122,11 +125,34 @@ export function TreasuryScreen() {
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
   const ids = { option: useId(), reason: useId(), comment: useId() };
-
-  const managed = (refs?.outbox ?? []).filter((command) =>
-    MANAGED_COMMANDS.has(command.command_type),
-  );
-  const lastCommand = refs?.outbox.find((command) => command.command_id === last?.commandId);
+  // Commandes gérées lues dans la base locale : les décisions (`approvals.`) ne sont pas dans les
+  // référentiels de vente.
+  const managed =
+    useLiveQuery(
+      () =>
+        getDb()
+          .outbox.orderBy('device_seq')
+          .filter((command) => MANAGED_COMMANDS.has(command.command_type))
+          .toArray(),
+      [],
+    ) ?? [];
+  const lastCommand = managed.find((command) => command.command_id === last?.commandId);
+  // Focus porté sur le premier champ d'un formulaire ouvert, rendu au bouton qui l'a ouvert.
+  const openers = useRef(new Map<string, HTMLButtonElement | null>());
+  const optionRef = useRef<HTMLSelectElement>(null);
+  const lastOpened = useRef<string | null>(null);
+  useEffect(() => {
+    if (open) {
+      lastOpened.current = `${open.kind}:${open.id}`;
+      if (open.kind === 'decide') optionRef.current?.focus();
+    } else if (lastOpened.current) {
+      openers.current.get(lastOpened.current)?.focus();
+      lastOpened.current = null;
+    }
+  }, [open]);
+  const opener = (kind: string, id: string) => (element: HTMLButtonElement | null) => {
+    openers.current.set(`${kind}:${id}`, element);
+  };
   const reloadKey = `${last?.commandId ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${[
     'finance.',
     'approvals.',
@@ -176,6 +202,7 @@ export function TreasuryScreen() {
   const blocked = busy || waiting || read.stale || !data;
   // Réception par la Finance : `finance.cash_transfer.record` (la Direction ne l'a pas).
   const mayReceive = holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.cashTransferRecord);
+  const policy = discrepancyPolicyState(refs.controlPolicies, clock.now());
 
   const toggle = (id: string, kind: 'session' | 'decide' | 'receive' | 'account') => {
     setOpen((current) => (current?.id === id && current.kind === kind ? null : { id, kind }));
@@ -258,23 +285,33 @@ export function TreasuryScreen() {
       {last ? (
         <CommandResult commandId={last.commandId} messages={`treasury.${last.kind}_result`} />
       ) : null}
-      {read.denied ? (
-        <p className="alert alert-error" role="alert">
-          {t('treasury.denied')}
-        </p>
-      ) : read.failed && !data ? (
+      {read.failed && !read.denied ? (
+        // Relecture en échec : annoncée avec « Réessayer », la liste d'avant restant affichée comme
+        // périmée (les actions y restent bloquées).
         <div className="alert alert-error" role="alert">
-          <p>{t('treasury.failed')}</p>
+          <p>{t(data ? 'treasury.failed_stale' : 'treasury.failed')}</p>
           <button type="button" className="secondary" onClick={read.retry}>
             {t('distribution.retry')}
           </button>
         </div>
-      ) : !data ? (
-        <p className="home-muted" aria-busy="true">
-          {t('sales.loading')}
+      ) : null}
+      {read.denied ? (
+        <p className="alert alert-error" role="alert">
+          {t('treasury.denied')}
         </p>
+      ) : !data ? (
+        read.failed ? null : (
+          <p className="home-muted" aria-busy="true">
+            {t('sales.loading')}
+          </p>
+        )
       ) : (
         <>
+          {read.stale && !read.failed ? (
+            <p className="home-muted" role="status">
+              {t('treasury.refreshing')}
+            </p>
+          ) : null}
           <section className="sale-block" aria-labelledby="treasury-sessions-title">
             <h2 id="treasury-sessions-title">{t('treasury.sessions_title')}</h2>
             {data.sessionsMore ? (
@@ -287,11 +324,14 @@ export function TreasuryScreen() {
             ) : (
               <ul className="line-list">
                 {data.sessions.map((session) => {
+                  // Le compte, le jour et les heures : deux sessions d'un même jour se distinguent.
                   const label = t('treasury.session_label', {
                     account: nameOf(session.cashAccountId),
                     date: session.businessDate
                       ? formatBusinessDay(session.businessDate)
                       : formatDateTime(session.openedAt),
+                    from: formatClockTime(session.openedAt),
+                    to: session.closedAt ? formatClockTime(session.closedAt) : '…',
                   });
                   const expanded = open?.id === session.id && open.kind === 'session';
                   return (
@@ -330,6 +370,7 @@ export function TreasuryScreen() {
                       <button
                         type="button"
                         className="secondary"
+                        ref={opener('session', session.id)}
                         aria-expanded={expanded}
                         onClick={() => toggle(session.id, 'session')}
                       >
@@ -345,6 +386,7 @@ export function TreasuryScreen() {
                           reloadKey={reloadKey}
                           blocked={blocked}
                           onValidate={validate}
+                          onRefresh={read.retry}
                         />
                       ) : null}
                     </li>
@@ -388,6 +430,7 @@ export function TreasuryScreen() {
                           <label htmlFor={ids.option}>{t('treasury.imputation_label')}</label>
                           <select
                             id={ids.option}
+                            ref={optionRef}
                             className="text-input"
                             value={option}
                             onChange={(event) =>
@@ -444,6 +487,7 @@ export function TreasuryScreen() {
                         <button
                           type="button"
                           className="secondary"
+                          ref={opener('decide', transfer.id)}
                           disabled={blocked}
                           onClick={() => toggle(transfer.id, 'decide')}
                         >
@@ -477,6 +521,7 @@ export function TreasuryScreen() {
                       {!receivable ? null : expanded ? (
                         <TransferReceiveForm
                           sentXaf={transfer.amountSentXaf}
+                          policy={policy}
                           busy={blocked}
                           onSubmit={(received, text) => receive(transfer, received, text)}
                           onClose={() => setOpen(null)}
@@ -485,6 +530,7 @@ export function TreasuryScreen() {
                         <button
                           type="button"
                           className="secondary"
+                          ref={opener('receive', transfer.id)}
                           disabled={blocked}
                           onClick={() => toggle(transfer.id, 'receive')}
                         >
@@ -519,6 +565,7 @@ export function TreasuryScreen() {
                       <button
                         type="button"
                         className="secondary"
+                        ref={opener('account', account.id)}
                         aria-expanded={expanded}
                         onClick={() => toggle(account.id, 'account')}
                       >

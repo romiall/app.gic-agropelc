@@ -6,23 +6,23 @@
  * caisses (`.receive`, montant reçu ; un écart part en validation de la Finance, sans second
  * mouvement : ADR-032 §7). Le solde de la caisse source est indicatif (AV-312).
  */
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { formatDateTime } from '../home/format-home.js';
+import { formatClockTime, formatDateTime } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { parseXaf } from '../sales/sale-form.js';
 import { submitCommand } from '../sales/submit.js';
-import { pendingCashMovements } from './cash-session.js';
 import { TransferReceiveForm } from './TransferReceiveForm.js';
 import {
   cancelPayload,
   canCancel,
   deviceTransfers,
+  discrepancyPolicyState,
   MAX_CANCEL_REASON,
   MAX_CARRIER_NAME,
   MAX_TRANSFER_COMMENT,
@@ -35,6 +35,7 @@ import {
   targetsFor,
   toReceive,
   transferPairs,
+  transferSourceBalance,
   type TransferView,
 } from './transfers.js';
 
@@ -65,6 +66,19 @@ export function CashTransfersScreen() {
     comment: useId(),
     edit: useId(),
   };
+  // Focus porté sur le premier champ d'un formulaire ouvert, rendu au bouton qui l'a ouvert.
+  const openers = useRef(new Map<string, HTMLButtonElement | null>());
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const lastOpened = useRef<string | null>(null);
+  useEffect(() => {
+    if (editing) {
+      lastOpened.current = `${editing.kind}:${editing.id}`;
+      if (editing.kind === 'cancel') reasonRef.current?.focus();
+    } else if (lastOpened.current) {
+      openers.current.get(lastOpened.current)?.focus();
+      lastOpened.current = null;
+    }
+  }, [editing]);
 
   if (!refs || !userId) {
     return (
@@ -86,8 +100,19 @@ export function CashTransfersScreen() {
     ...refs.cashTransferTargets.map((target) => [target.id, target.name] as const),
     ...refs.cashAccounts.map((account) => [account.id, account.name] as const),
   ]);
-  const nameOf = (accountId: string) => names.get(accountId) ?? t('cash_transfer.unknown_account');
-  const labelOf = (view: TransferView) => view.docNumber ?? t('cash_transfer.unnumbered');
+  // Compte inconnu de l'appareil : une caisse personnelle (les comptes sans détenteur sont tous
+  // servis comme destinations de remise, AV-197 ; les noms des autres, S-52).
+  const nameOf = (accountId: string) => names.get(accountId) ?? t('cash_transfer.personal_account');
+  // Remise sans numéro : nommée par son montant, sa destination et son heure (noms distincts).
+  const labelOf = (view: TransferView) =>
+    view.docNumber ??
+    t('cash_transfer.pending_label', {
+      amount: formatMoney(view.amountSentXaf),
+      to: nameOf(view.toAccountId),
+      time: formatClockTime(view.sentAt),
+    });
+  const who = (id: string) => (id === userId ? t('cash_transfer.you') : `…${id.slice(-4)}`);
+  const policy = discrepancyPolicyState(refs.controlPolicies, now);
   const own = new Set(ownAccounts(refs.cashAccounts, userId).map((account) => account.id));
   const incoming = toReceive(views, refs.cashAccounts, userId);
   // Réceptions en cours ou écarts en attente de la Finance sur l'une de ses caisses : pour mémoire.
@@ -105,22 +130,26 @@ export function CashTransfersScreen() {
   const amount = parseXaf(amountText);
   const amountValid = amount !== null && amount > 0;
   const amountIssue = amountText.trim() !== '' && !amountValid;
-  const movements = source
-    ? pendingCashMovements({
+  const balance = source
+    ? transferSourceBalance({
         account: source,
+        userId,
+        now,
+        sessions: refs.cashSessions,
         outbox: refs.outbox,
         cashPulledAt: refs.cashPulledAt,
         locations: refs.locations,
         paymentMethods: refs.paymentMethods,
+        siteTypes: new Map([...refs.sites.values()].map((site) => [site.id, site.site_type])),
         transfers: refs.cashTransfers,
+        settings: refs.settings,
       })
     : null;
-  const balance =
-    source && source.balance_xaf !== undefined && movements
-      ? source.balance_xaf + movements.netXaf
-      : null;
   const over =
-    source !== undefined && amountValid && overIndicativeBalance(source, balance, amount ?? 0);
+    source !== undefined &&
+    amountValid &&
+    balance?.kind === 'SHOWN' &&
+    overIndicativeBalance(source, balance.xaf, amount ?? 0);
 
   const submit = async (kind: Kind, input: Parameters<typeof submitCommand>[0]) => {
     if (busy) return false;
@@ -193,7 +222,15 @@ export function CashTransfersScreen() {
 
   const stateText = (view: TransferView) => {
     if (view.cancelling) return t(`cash_transfer.cancelling_${view.cancelling}`);
-    if (view.receiving) return t(`cash_transfer.receiving_${view.receiving}`);
+    if (view.receiving) {
+      // Réception avec un écart (perte comprise) : la remise restera en attente de la Finance.
+      const gap = view.receivingXaf === null ? 0 : view.receivingXaf - view.amountSentXaf;
+      return gap === 0
+        ? t(`cash_transfer.receiving_${view.receiving}`)
+        : t(`cash_transfer.receiving_gap_${view.receiving}`, {
+            amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
+          });
+    }
     if (view.status === null) {
       return t(view.sendWaiting ? 'cash_transfer.state_waiting' : 'cash_transfer.state_unpulled');
     }
@@ -216,7 +253,7 @@ export function CashTransfersScreen() {
         })}
       </p>
       <p className="home-muted">
-        {t('cash_transfer.sent_at', { date: formatDateTime(view.sentAt) })}
+        {t('cash_transfer.sent_at', { date: formatDateTime(view.sentAt), who: who(view.sentBy) })}
         {view.carrierName ? ` · ${t('cash_transfer.carrier', { name: view.carrierName })}` : ''}
       </p>
       <p className={view.status === 'DISCREPANCY_PENDING' ? 'text-warn' : 'home-muted'}>
@@ -231,6 +268,7 @@ export function CashTransfersScreen() {
       <label htmlFor={ids.edit}>{t('cash_transfer.reason_label')}</label>
       <textarea
         id={ids.edit}
+        ref={reasonRef}
         className="text-input"
         rows={2}
         maxLength={MAX_CANCEL_REASON}
@@ -284,6 +322,7 @@ export function CashTransfersScreen() {
                 editing?.id === view.id && editing.kind === 'receive' ? (
                   <TransferReceiveForm
                     sentXaf={view.amountSentXaf}
+                    policy={policy}
                     busy={busy}
                     onSubmit={(received, comment) => void receive(view, received, comment)}
                     onClose={closeEdit}
@@ -292,6 +331,9 @@ export function CashTransfersScreen() {
                   <button
                     type="button"
                     className="secondary"
+                    ref={(element) => {
+                      openers.current.set(`receive:${view.id}`, element);
+                    }}
                     disabled={busy}
                     onClick={() => open(view.id, 'receive')}
                   >
@@ -321,6 +363,9 @@ export function CashTransfersScreen() {
                   <button
                     type="button"
                     className="secondary"
+                    ref={(element) => {
+                      openers.current.set(`cancel:${view.id}`, element);
+                    }}
                     disabled={busy}
                     onClick={() => open(view.id, 'cancel')}
                   >
@@ -362,9 +407,11 @@ export function CashTransfersScreen() {
               <p className="picked-title">{source.name}</p>
             )}
             <p className="home-muted">
-              {balance === null
-                ? t('cash_transfer.balance_unknown')
-                : t('cash_transfer.balance', { amount: formatMoney(balance) })}
+              {balance?.kind === 'SHOWN'
+                ? t('cash_transfer.balance', { amount: formatMoney(balance.xaf) })
+                : balance?.kind === 'BLIND'
+                  ? t('cash_transfer.balance_blind')
+                  : t('cash_transfer.balance_unknown')}
             </p>
             <div className="field">
               <label htmlFor={ids.target}>{t('cash_transfer.target_label')}</label>

@@ -4,7 +4,7 @@
  * avant confirmation : il part en validation de la Finance, sans second mouvement (ADR-032 §7).
  * Partagé par l'écran des remises (AV-311) et la trésorerie (ECR-FIN-05).
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatMoney } from '../sales/format.js';
 import { parseXaf } from '../sales/sale-form.js';
@@ -12,11 +12,14 @@ import { MAX_TRANSFER_COMMENT } from './transfers.js';
 
 export function TransferReceiveForm({
   sentXaf,
+  policy,
   busy,
   onSubmit,
   onClose,
 }: {
   readonly sentXaf: number;
+  /** Politique de validation des écarts (`discrepancyPolicyState`) : sans elle, écart refusé. */
+  readonly policy: 'APPLIES' | 'MISSING' | 'UNKNOWN';
   readonly busy: boolean;
   readonly onSubmit: (receivedXaf: number, comment: string) => void;
   readonly onClose: () => void;
@@ -25,6 +28,11 @@ export function TransferReceiveForm({
   const [text, setText] = useState('');
   const [comment, setComment] = useState('');
   const ids = { amount: useId(), issue: useId(), preview: useId(), comment: useId() };
+  // Focus porté sur le montant compté à l'ouverture du formulaire.
+  const amountRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    amountRef.current?.focus();
+  }, []);
   const received = parseXaf(text);
   const issue = text.trim() !== '' && received === null;
   const gap = received === null ? null : received - sentXaf;
@@ -33,6 +41,7 @@ export function TransferReceiveForm({
       <label htmlFor={ids.amount}>{t('cash_transfer.received_label')}</label>
       <input
         id={ids.amount}
+        ref={amountRef}
         className="text-input"
         inputMode="numeric"
         autoComplete="off"
@@ -47,13 +56,17 @@ export function TransferReceiveForm({
         </p>
       ) : gap === null ? null : (
         <p id={ids.preview} className={gap === 0 ? 'home-muted' : 'text-warn'} role="status">
-          {received === 0
-            ? t('cash_transfer.lost')
-            : gap === 0
-              ? t('cash_transfer.match')
-              : t('cash_transfer.discrepancy', {
-                  amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
-                })}
+          {gap !== 0 && policy === 'MISSING'
+            ? t('cash_transfer.discrepancy_refused', {
+                amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
+              })
+            : received === 0
+              ? t('cash_transfer.lost')
+              : gap === 0
+                ? t('cash_transfer.match')
+                : t('cash_transfer.discrepancy', {
+                    amount: `${gap > 0 ? '+' : ''}${formatMoney(gap)}`,
+                  })}
         </p>
       )}
       <label htmlFor={ids.comment}>{t('cash_transfer.comment_label')}</label>

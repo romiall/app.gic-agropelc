@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canValidateSession,
   currentVarianceXaf,
   decisionPayload,
   imputationOptions,
   sessionReasonRequired,
+  sessionValidationBlock,
   transferDecisionBlock,
   userLabel,
   validatePayload,
@@ -39,11 +39,15 @@ describe('Trésorerie (ECR-FIN-05)', () => {
       ]),
     ).toBe(false);
     // Valideur : ni l'ouvreur, ni le clôtureur, ni l'auteur de la clôture forcée.
-    expect(canValidateSession(session, ME)).toBe(true);
-    expect(canValidateSession(session, 'vendeur')).toBe(false);
-    expect(canValidateSession(session, 'vendeur-2')).toBe(false);
-    expect(canValidateSession({ ...session, forcedBy: ME }, ME)).toBe(false);
-    expect(canValidateSession({ ...session, status: 'VALIDATED' }, ME)).toBe(false);
+    expect(sessionValidationBlock(session, ME)).toBeNull();
+    expect(sessionValidationBlock(session, 'vendeur')).toBe('INVOLVED');
+    expect(sessionValidationBlock(session, 'vendeur-2')).toBe('INVOLVED');
+    expect(sessionValidationBlock({ ...session, forcedBy: ME }, ME)).toBe('INVOLVED');
+    // Déjà validée (par un autre) : le statut d'abord, comme le serveur.
+    expect(sessionValidationBlock({ ...session, status: 'VALIDATED' }, ME)).toBe('NOT_PENDING');
+    expect(sessionValidationBlock({ ...session, status: 'VALIDATED' }, 'vendeur')).toBe(
+      'NOT_PENDING',
+    );
     expect(validatePayload('  Erreur de rendu ')).toEqual({ reason: 'Erreur de rendu' });
     expect(validatePayload('  ')).toEqual({});
   });
