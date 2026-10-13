@@ -126,6 +126,66 @@ describe('identity_devices', () => {
   });
 });
 
+describe('identity_device_status_periods (P5-23, AV-212)', () => {
+  /** Appareil approuvé, puis une période close insérée comme le ferait `unblock`. */
+  async function devicePeriod(conn: PoolConnection) {
+    const admin = await insertBootstrapUser(conn);
+    const device = randomId();
+    await conn.query(
+      `INSERT INTO identity_devices (id, short_code, enrolled_by_user_id, status, approved_by, created_by)
+       VALUES (?, ?, ?, 'ACTIVE', ?, ?)`,
+      [device, await freshShortCode(conn), admin, admin, admin],
+    );
+    const insert = (values: { status?: string; from?: string; to?: string; device?: Buffer }) =>
+      conn.query(
+        `INSERT INTO identity_device_status_periods (command_id, device_id, status, valid_from, valid_to, reason, closed_by)
+         VALUES (?, ?, ?, ?, ?, 'Test', ?)`,
+        [
+          randomId(),
+          values.device ?? device,
+          values.status ?? 'BLOCKED',
+          values.from ?? '2026-09-24 09:00:00.000000',
+          values.to ?? '2026-09-24 10:00:00.000000',
+          admin,
+        ],
+      );
+    return { device, insert };
+  }
+
+  it('accepte une période close BLOCKED ou LOST ; refuse un autre statut, une période vide ou un appareil inconnu', async () => {
+    await withRollback(async (conn) => {
+      const { insert } = await devicePeriod(conn);
+      await insert({});
+      await insert({ status: 'LOST' });
+      await expect(insert({ status: 'ACTIVE' })).rejects.toThrow(
+        /ck_identity_device_status_periods_status/,
+      );
+      await expect(insert({ to: '2026-09-24 09:00:00.000000' })).rejects.toThrow(
+        /ck_identity_device_status_periods_bounds/,
+      );
+      await expect(insert({ device: randomId() })).rejects.toThrow(
+        /fk_identity_device_status_periods_device/,
+      );
+    });
+  });
+
+  it('ajout seul : modification et suppression refusées (INV-ADM-03, INV-GLO-03)', async () => {
+    await withRollback(async (conn) => {
+      const { device, insert } = await devicePeriod(conn);
+      await insert({});
+      await expect(
+        conn.query(
+          "UPDATE identity_device_status_periods SET reason = 'Autre' WHERE device_id = ?",
+          [device],
+        ),
+      ).rejects.toThrow(/aucune modification/);
+      await expect(
+        conn.query('DELETE FROM identity_device_status_periods WHERE device_id = ?', [device]),
+      ).rejects.toThrow(/suppression physique interdite/);
+    });
+  });
+});
+
 describe('identity_role_permissions', () => {
   it('autorise la suppression (retrait de droit, liaison de configuration)', async () => {
     await withRollback(async (conn) => {

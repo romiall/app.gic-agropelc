@@ -12,6 +12,13 @@
  * `status_changed_at` est fixé à `occurred_at` (pas l'heure de traitement) : c'est exactement
  * ce que compare `identity/application/public/device-check.ts` (RC-02) pour tolérer une
  * commande différée dont l'appareil n'était pas encore bloqué à `occurred_at`.
+ *
+ * P5-23 (AV-212) : `unblock`, et `retire` depuis `BLOCKED` ou `LOST`, consignent d'abord la période hors
+ * service qu'ils ferment (`identity_device_status_periods`) — sans quoi la réécriture de
+ * `status_changed_at` effaçait la fenêtre de quarantaine. Chaque transition lit l'appareil `FOR UPDATE` :
+ * deux transitions concurrentes ne se croisent pas (une période raccourcie ou perdue). `unblock` d'un
+ * appareil refusé avant toute approbation (`PENDING` → `BLOCKED`) l'approuve (`approved_by`, exigé par
+ * `ck_identity_devices_approved_by` pour un appareil `ACTIVE` : l'écriture échouait, rejouée sans fin).
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -23,6 +30,7 @@ import type {
 import { fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { findPosConfigByDesignatedDevice } from '../../../organization/application/public/index.js';
 import { revokeDeviceSessions } from './revoke-sessions.js';
+import { closeOutOfServicePeriod, isOutOfServiceStatus } from './device-status-periods.js';
 
 const emptyPayloadSchema = z.object({});
 const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
@@ -55,6 +63,7 @@ const approve: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     .selectFrom('identity_devices')
     .select('status')
     .where('id', '=', deviceId)
+    .forUpdate()
     .executeTakeFirst();
   if (!device) return notFound();
   if (device.status === 'ACTIVE') return { status: 'APPLIED' };
@@ -80,6 +89,7 @@ const block: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
     .selectFrom('identity_devices')
     .select('status')
     .where('id', '=', deviceId)
+    .forUpdate()
     .executeTakeFirst();
   if (!device) return notFound();
   if (device.status === 'BLOCKED') return { status: 'APPLIED' };
@@ -107,19 +117,33 @@ const unblock: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   const deviceId = toBin(envelope.aggregate_id);
   const device = await uow
     .selectFrom('identity_devices')
-    .select('status')
+    .select(['status', 'status_changed_at', 'status_reason', 'approved_by'])
     .where('id', '=', deviceId)
+    .forUpdate()
     .executeTakeFirst();
   if (!device) return notFound();
   if (device.status === 'ACTIVE') return { status: 'APPLIED' };
   if (device.status !== 'BLOCKED') return invalidTransition(device.status);
 
+  const occurredAt = new Date(envelope.occurred_at);
+  // AV-212 : la période de blocage close reste une fenêtre de quarantaine (INV-ADM-03).
+  await closeOutOfServicePeriod(uow, {
+    commandId: envelope.command_id,
+    deviceId: envelope.aggregate_id,
+    status: 'BLOCKED',
+    validFrom: device.status_changed_at,
+    closedAt: occurredAt,
+    reason: device.status_reason,
+    closedBy: envelope.author_user_id,
+  });
   await uow
     .updateTable('identity_devices')
     .set({
       status: 'ACTIVE',
-      status_changed_at: new Date(envelope.occurred_at),
+      status_changed_at: occurredAt,
       status_reason: null,
+      // Un appareil refusé avant toute approbation est approuvé par son déblocage.
+      ...(device.approved_by === null ? { approved_by: toBin(envelope.author_user_id) } : {}),
       updated_by: toBin(envelope.author_user_id),
       version: sql`version + 1`,
     })
@@ -134,6 +158,7 @@ const declareLost: CommandHandler<ReasonOptionalPayload> = async (uow, envelope)
     .selectFrom('identity_devices')
     .select('status')
     .where('id', '=', deviceId)
+    .forUpdate()
     .executeTakeFirst();
   if (!device) return notFound();
   if (device.status === 'LOST') return { status: 'APPLIED' };
@@ -159,8 +184,9 @@ const retire: CommandHandler<ReasonOptionalPayload> = async (uow, envelope) => {
   const deviceId = toBin(envelope.aggregate_id);
   const device = await uow
     .selectFrom('identity_devices')
-    .select('status')
+    .select(['status', 'status_changed_at', 'status_reason'])
     .where('id', '=', deviceId)
+    .forUpdate()
     .executeTakeFirst();
   if (!device) return notFound();
   if (device.status === 'RETIRED') return { status: 'APPLIED' };
@@ -172,6 +198,19 @@ const retire: CommandHandler<ReasonOptionalPayload> = async (uow, envelope) => {
   // explicite qui satisfait la condition.
   const occurredAt = new Date(envelope.occurred_at);
   const wasActiveOrPending = device.status === 'ACTIVE';
+  // AV-212 : la période de blocage ou de perte qui se ferme reste une fenêtre de quarantaine ; le retrait
+  // ouvre la sienne (ligne vivante, `RETIRED` depuis `occurred_at`).
+  if (isOutOfServiceStatus(device.status)) {
+    await closeOutOfServicePeriod(uow, {
+      commandId: envelope.command_id,
+      deviceId: envelope.aggregate_id,
+      status: device.status,
+      validFrom: device.status_changed_at,
+      closedAt: occurredAt,
+      reason: device.status_reason,
+      closedBy: envelope.author_user_id,
+    });
+  }
   await uow
     .updateTable('identity_devices')
     .set({

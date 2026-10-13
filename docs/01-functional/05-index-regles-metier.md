@@ -15,8 +15,8 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-002 | Un utilisateur désactivé ne peut plus s'authentifier. Ses opérations hors ligne dont `occurred_at` est antérieur à la désactivation restent… | D (CM §40 ; PM §30) |
 | BR-ADM-003 | Une affectation de rôle a une date de début, une date de fin optionnelle et un périmètre (`GLOBAL`, `SITE`, `ZONE`, `TEAM`). La révoquer re… | C (PM §17) / D |
 | BR-ADM-004 | Les droits d'une commande sont évalués à la date `occurred_at` : l'auteur devait détenir la permission et le périmètre à cet instant, et ni… | D (offline, ADR-008) |
-| BR-ADM-005 | Un appareil `PENDING` permet de se connecter mais pas de créer d'opérations. Seul un appareil `ACTIVE` peut pousser des commandes. | AV-006 |
-| BR-ADM-006 | Un appareil `BLOCKED` ou `LOST` voit toutes ses sessions révoquées. Les commandes reçues de cet appareil après la date de blocage sont mise… | D (PM §37) |
+| BR-ADM-005 | Un appareil `PENDING` permet de se connecter mais pas de créer d'opérations. Seul un appareil `ACTIVE` peut pousser des commandes. Depuis P… | AV-006 ; AV-228 |
+| BR-ADM-006 | Un appareil `BLOCKED` ou `LOST` voit toutes ses sessions révoquées. Les commandes reçues de cet appareil après la date de blocage sont mise… | D (PM §37) ; AV-212 |
 | BR-ADM-007 | Chaque appareil reçoit un code court unique (4 caractères alphanumériques), utilisé dans les références locales des documents. | D (ADR-002) |
 | BR-ADM-008 | Un site a un type parmi `FERME`, `MAGASIN`, `POINT_DE_VENTE`, `BUREAU`. Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations ; s… | C (CM §12, §22) / D |
 | BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) ; AV-163 |

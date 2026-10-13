@@ -374,10 +374,19 @@ export class CommandPipelineService {
       occurredAt,
     );
     if (!deviceCheck.ok) {
+      // AV-228 : un appareil en attente d'approbation n'est pas mis en quarantaine — la commande attend
+      // (`RETRY_LATER`), et s'applique au renvoi qui suit l'approbation.
+      if (deviceCheck.reason === 'DEVICE_PENDING') {
+        return this.retryLater(
+          claim,
+          'DEVICE_PENDING',
+          'Appareil en attente d’approbation : l’opération sera appliquée après son approbation.',
+        );
+      }
       return this.markAndConflict(
         claim,
         deviceCheck.reason,
-        'Appareil bloqué, perdu ou retiré avant cette opération.',
+        'Appareil hors service (bloqué, perdu, retiré ou refusé) à la date de cette opération.',
       );
     }
 
@@ -642,7 +651,7 @@ export class CommandPipelineService {
    */
   private async retryLater(
     claim: Claim,
-    reasonCode: 'DEPENDENCY_PENDING' | 'SERVER_BUSY',
+    reasonCode: 'DEPENDENCY_PENDING' | 'SERVER_BUSY' | 'DEVICE_PENDING',
     messageFr: string,
     detail?: string,
   ): Promise<CommandResult> {

@@ -98,7 +98,9 @@ Règles :
      inbox = FAILED_RETRYABLE, RETRY_LATER DEPENDENCY_PENDING (reprise au renvoi) ;
      dépendance REJECTED → REJECTED DEPENDENCY_REJECTED ; dépendance CONFLICT (quarantaine) → la suite
 3. Contrôles d'authenticité :
-     appareil ACTIVE, ou bloqué après occurred_at → sinon CONFLICT DEVICE_REVOKED (quarantaine)
+     appareil ACTIVE, ou bloqué après occurred_at → sinon CONFLICT DEVICE_REVOKED (quarantaine) ;
+     fait daté dans une période hors service close → quarantaine même si l'appareil est redevenu ACTIVE
+     (AV-212) ; appareil PENDING → RETRY_LATER DEVICE_PENDING (AV-228)
      utilisateur actif à occurred_at → sinon CONFLICT USER_DEACTIVATED
      occurred_at ≤ now + 5 min (après correction de l'écart s'il est négatif : seule une horloge en
        avance est excusée) → sinon REJECTED OCCURRED_AT_FUTURE
@@ -132,7 +134,8 @@ Règles :
 | Code | Statut | Retentable | Signification |
 |---|---|---|---|
 | `COMMAND_ID_REUSED` | REJECTED | Non | Même identifiant, contenu différent |
-| `DEVICE_REVOKED` | CONFLICT | Non | Appareil bloqué ou perdu avant `occurred_at` |
+| `DEVICE_REVOKED` | CONFLICT | Non | Appareil bloqué, perdu, retiré ou refusé avant `occurred_at`, ou `occurred_at` dans une période hors service close (AV-212) |
+| `DEVICE_PENDING` | RETRY_LATER | Oui | Appareil en attente d'approbation : appliquée au renvoi qui suit l'approbation (AV-228) |
 | `USER_DEACTIVATED` | CONFLICT | Non | Utilisateur désactivé avant `occurred_at` |
 | `SESSION_EXPIRED` | (HTTP 401) | Oui, après rafraîchissement | Session de l'auteur à renouveler |
 | `OCCURRED_AT_FUTURE` | REJECTED | Non | Horodatage dans le futur |

@@ -142,7 +142,7 @@
 | INV-CAT-01 | L'unité de base d'un produit ne change plus dès qu'un mouvement de stock existe pour ce produit. | Registre faussé par un changement d'unité (des « têtes » relues comme des « kg ») | TX + DB (déclencheur) | I |
 | INV-ADM-01 | Au moins un utilisateur `ADMIN` actif. | Système inadministrable | TX | U |
 | INV-ADM-02 | Approbateur ≠ demandeur, sauf `SELF_APPROVED` par un utilisateur `DIRECTION`. | Auto-validation frauduleuse (CM §5.3) | TX | U, I |
-| INV-ADM-03 | Aucune commande d'un appareil `BLOCKED`, `LOST` ou `RETIRED` dont `occurred_at` est postérieur au blocage n'est appliquée automatiquement. | Utilisation d'un appareil volé | TX | S |
+| INV-ADM-03 | Aucune commande d'un appareil `BLOCKED`, `LOST` ou `RETIRED` dont `occurred_at` est postérieur au blocage n'est appliquée automatiquement ; ni, depuis P5-23 (AV-212), aucune commande datée dans une période hors service **close** de l'appareil (`identity.device_status_periods`), même s'il a été débloqué ou retiré depuis. | Utilisation d'un appareil volé | TX | S |
 | INV-ADM-04 | Les affectations de rôle ne sont jamais supprimées (révocation datée). | Perte de l'historique des droits | DB | I |
 | INV-ADM-05 | Un emplacement `MOBILE` a exactement un détenteur ; un utilisateur a au plus un emplacement `MOBILE` actif. | Responsabilité de stock ambiguë (CM §23) | DB (index unique partiel) | I |
 | INV-AUD-01 | Le journal d'audit est en ajout seul ; le chaînage de hachage est vérifiable de bout en bout. | Falsification de l'audit | DB + JOB | I |

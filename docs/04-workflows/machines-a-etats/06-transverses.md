@@ -115,11 +115,13 @@ stateDiagram-v2
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
 | `[*]` | Première connexion (`/auth/login` avec empreinte d'appareil) | Utilisateur actif | `PENDING` | Code court attribué ; `DeviceEnrollmentRequested` | — | — | Tout utilisateur |
-| `PENDING` | `identity.device.approve` | — | `ACTIVE` | `DeviceApproved` ; l'appareil peut pousser des commandes | — | — | `identity.device.approve` |
+| `PENDING` | `identity.device.approve` | — | `ACTIVE` | `DeviceApproved` ; l'appareil peut pousser des commandes ; ses commandes en attente (`DEVICE_PENDING`) s'appliquent au renvoi (AV-228) | — | — | `identity.device.approve` |
 | `ACTIVE`, `PENDING` | `identity.device.block` | Motif | `BLOCKED` | Sessions révoquées ; commandes postérieures en quarantaine (BR-ADM-006) ; `DeviceBlocked` | Allocations marquées `REVOCATION_PENDING` | — | `identity.device.block` |
-| `BLOCKED` | `identity.device.unblock` | — | `ACTIVE` | Tracé | — | — | `identity.device.block` |
+| `BLOCKED` | `identity.device.unblock` | — | `ACTIVE` | Tracé ; la période de blocage close est consignée (`identity.device_status_periods`) : les faits datés pendant le blocage restent en quarantaine (AV-212) ; un appareil refusé avant toute approbation est approuvé (`approved_by`) | — | — | `identity.device.block` |
 | `ACTIVE` | `identity.device.declare_lost` | — | `LOST` | Comme le blocage ; `DeviceDeclaredLost` ; inventaire recommandé des stocks du détenteur | Idem | Caisse utilisateur à contrôler | `identity.device.block` |
-| `ACTIVE`, `BLOCKED`, `LOST` | `identity.device.retire` | Outbox vide confirmée, ou décision explicite | `RETIRED` | Code court jamais réattribué | — | — | `identity.device.block` |
+| `ACTIVE`, `BLOCKED`, `LOST` | `identity.device.retire` | Outbox vide confirmée, ou décision explicite | `RETIRED` | Code court jamais réattribué ; depuis `BLOCKED` ou `LOST`, la période close est consignée (AV-212) | — | — | `identity.device.block` |
+
+Chaque transition lit l'appareil `FOR UPDATE` (P5-23) : deux transitions concurrentes ne raccourcissent ni ne perdent une période. Contrôle du pipeline (RC-02, `checkDeviceActive`) : période close contenant `occurred_at` → quarantaine ; `ACTIVE` → appliqué ; `PENDING` → attente (`DEVICE_PENDING`, AV-228) ; refusé sans approbation → quarantaine ; hors service depuis une date postérieure au fait → appliqué (BR-SYN-007) ; sinon quarantaine.
 
 ---
 

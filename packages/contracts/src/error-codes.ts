@@ -26,6 +26,8 @@ export const SYNC_PROTOCOL_ERROR_CODES = [
   'FORBIDDEN_SCOPE',
   'VERSION_CONFLICT',
   'DEPENDENCY_PENDING',
+  /** Appareil en attente d'approbation : à renvoyer, appliquée après l'approbation (AV-228, P5-23). */
+  'DEVICE_PENDING',
   'DEPENDENCY_REJECTED',
   /** P5-21 (AV-210) : une commande précédente du lot doit être renvoyée d'abord (INV-SYN-04). */
   'PRECEDING_COMMAND_PENDING',

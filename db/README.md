@@ -167,8 +167,9 @@ Tout passe par les vraies commandes (pipeline, audit, flux de synchronisation), 
 (`recordStockMove`, comme les tests) et le compte (insertion directe, comme `db:create-local-admin`).
 Rejouable : chaque référentiel est retrouvé par son code, chaque étape d'activité n'est jouée que si sa
 trace manque. Un navigateur qui se connecte crée un appareil **en attente** : il lit, mais ce qu'il
-enregistre part en conflit (BR-ADM-005). Se connecter une première fois, **relancer le script** (il
-approuve les appareils en attente du compte), puis recharger la page. Un compte qui cumule tous les
+enregistre attend son approbation (BR-ADM-005, AV-228 : renvoyé, puis appliqué une fois l'appareil
+approuvé). Se connecter une première fois, **relancer le script** (il approuve les appareils en attente
+du compte), puis recharger la page. Un compte qui cumule tous les
 rôles reste soumis à la séparation des tâches (validation par un autre utilisateur) et au pointage du
 commercial terrain : ses ventes sans « prise de service » portent l'indicateur `OUT_OF_SESSION`.
 

@@ -688,6 +688,17 @@ export interface IdentityDevices {
   version: Generated<number>;
 }
 
+export interface IdentityDeviceStatusPeriods {
+  closed_by: Buffer;
+  command_id: Buffer;
+  created_at: Generated<Date>;
+  device_id: Buffer;
+  reason: string | null;
+  status: string;
+  valid_from: Date;
+  valid_to: Date;
+}
+
 export interface IdentityLoginAttempts {
   blocked_until: Date | null;
   failed_count: Generated<number>;
@@ -2229,6 +2240,7 @@ export interface DB {
   finance_payment_methods: FinancePaymentMethods;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
+  identity_device_status_periods: IdentityDeviceStatusPeriods;
   identity_login_attempts: IdentityLoginAttempts;
   identity_permissions: IdentityPermissions;
   identity_role_permissions: IdentityRolePermissions;

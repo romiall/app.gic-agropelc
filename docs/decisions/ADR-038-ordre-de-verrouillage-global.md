@@ -87,6 +87,7 @@ Un interblocage résiduel reste détecté par MySQL et rendu `RETRY_LATER`, sans
 - **Fermeture de site ou désactivation d'emplacement** contre une écriture : le site est pris en exclusif, puis les soldes ; les écritures le touchent par clé étrangère. Opération rare.
 - **Reconstructions de maintenance** (`rebuildStockBalances`) : elles verrouillent dans l'ordre de la clé primaire, et non dans celui de N5 à N7. Elles sont lancées à la main, après analyse.
 - **Verrous implicites** des clés étrangères et des déclencheurs : partagés, sur des lignes de référence (emplacements, utilisateurs, appareils, sites). Ils ne forment de cycle qu'avec une transaction qui verrouille ces lignes en exclusif, cas que le §2 retire du consommateur de révocation.
+- **Transitions d'un appareil** (P5-23, AV-212) : `identity.device.*` lit l'appareil `FOR UPDATE` — rang propre à `identity`, juste après N0 ; ces commandes ne prennent aucun autre rang, d'où aucun cycle. Le contrôle d'appareil du pipeline reste une lecture simple hors transaction : un fait daté après un blocage, reçu pendant les quelques millisecondes où la commande de blocage n'est pas encore validée, passe (la date est déclarée par l'appareil, ADR-016 : cette fenêtre n'ajoute rien au pouvoir d'un appareil volé).
 - **Lecture confirmée pour l'annulation** : écartée. Le verrou des lignes par clé primaire suffit au cycle 5b et ne demande pas de réviser ADR-034.
 
 ## Alternatives

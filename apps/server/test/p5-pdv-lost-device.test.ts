@@ -290,7 +290,61 @@ describe('AT-035 × PDV : appareil perdu avec un quota en cours', { timeout: 300
     await world.expectCashOk([session], []);
   });
 
-  it.todo(
-    'AV-212 : un fait daté pendant la perte, poussé après le retrait (ou après un déblocage), est aujourd’hui appliqué — fenêtre de quarantaine à garder dans un historique des statuts',
-  );
+  it('AV-212 : un fait daté pendant la perte, poussé après le retrait, et un fait daté pendant un blocage, poussé après le déblocage, restent en quarantaine', async () => {
+    // A, perdue depuis 12:00, est retirée à 18:05 : sa vente de 15:00, poussée ensuite, était appliquée
+    // (le retrait réécrivait la date de statut). C est bloquée de 18:06 à 18:10 : sa vente de 18:08 aussi.
+    world.setNow(at('18:05'));
+    await world.ok(world.admin, {
+      type: 'identity.device.retire',
+      aggregateType: 'DEVICE',
+      aggregateId: A.deviceId,
+      occurredAt: at('18:05'),
+      payload: { reason: 'Tablette jamais retrouvée' },
+    });
+    const tabletA = world.tablet(A);
+    const lateA = tabletA.enqueue(A.userId, cashSale(3, at('15:00')));
+    world.setNow(at('18:06'));
+    await world.ok(world.admin, {
+      type: 'identity.device.block',
+      aggregateType: 'DEVICE',
+      aggregateId: C.deviceId,
+      occurredAt: at('18:06'),
+      payload: { reason: 'Contrôle' },
+    });
+    const tabletC = world.tablet(C);
+    const blockedC = tabletC.enqueue(C.userId, cashSale(2, at('18:08')));
+    world.setNow(at('18:10'));
+    await world.ok(world.admin, {
+      type: 'identity.device.unblock',
+      aggregateType: 'DEVICE',
+      aggregateId: C.deviceId,
+      occurredAt: at('18:10'),
+      payload: {},
+    });
+    world.setNow(at('18:12'));
+    const stockBefore = await world.onHand(product.id);
+    const quotaC = await world.remainingOf(quotas.C);
+    await tabletA.syncUntilSettled(A.userId);
+    await tabletC.syncUntilSettled(C.userId);
+    for (const [tablet, envelope] of [
+      [tabletA, lateA],
+      [tabletC, blockedC],
+    ] as const) {
+      expect(tablet.resultOf(envelope.command_id)).toMatchObject({
+        status: 'CONFLICT',
+        error: { code: 'DEVICE_REVOKED' },
+      });
+      expect(
+        await db
+          .selectFrom('sales_sales')
+          .select('id')
+          .where('id', '=', toBin(envelope.aggregate_id))
+          .executeTakeFirst(),
+      ).toBeUndefined();
+    }
+    // INV-ADM-03 : aucun effet sur le stock ni sur le quota de C.
+    expect(await world.onHand(product.id)).toBe(stockBefore);
+    expect(await world.remainingOf(quotas.C)).toBe(quotaC);
+    await world.expectStockLedgerOk([product.id, other.id]);
+  });
 });

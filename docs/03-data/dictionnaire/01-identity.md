@@ -120,7 +120,7 @@
 | `label` | label | Oui | — | Nom lisible (« Tablette PDV Mboppi ») |
 | `enrolled_by_user_id` | uuid → users | Non | — | Utilisateur de l'enrôlement |
 | `status` | enum(`PENDING`,`ACTIVE`,`BLOCKED`,`LOST`,`RETIRED`) | Non | `PENDING` | SM-DEVICE |
-| `status_changed_at` | ts | Non | `now()` | Date d'effet (quarantaine, BR-ADM-006) |
+| `status_changed_at` | ts | Non | `now()` | Date d'effet du statut courant, `occurred_at` de la transition (quarantaine, BR-ADM-006) ; les périodes hors service closes sont dans `identity.device_status_periods` (AV-212) |
 | `status_reason` | text | Oui | — | |
 | `approved_by` | uuid → users | Oui | — | |
 | `platform` | varchar(100) | Oui | — | Système, navigateur, version (déclaratif) |
@@ -135,6 +135,26 @@
 - **IX** `(status)`, `(enrolled_by_user_id)`.
 - **Suppr.** `DESACTIVATION` (`RETIRED`) ; `short_code` jamais réattribué.
 - **Audit** Enrôlement, approbation, blocage, déblocage, perte, retrait. **Offline** DL (son propre enregistrement).
+- **Intégrité** INV-ADM-03.
+
+## identity.device_status_periods
+
+**Responsabilité** : périodes hors service **closes** d'un appareil (P5-23, AV-212 ; INV-ADM-03, BR-ADM-006). La ligne `identity.devices` porte la période ouverte ; `unblock`, et `retire` depuis `BLOCKED` ou `LOST`, consignent ici la période qu'ils ferment, dans leur transaction, avant de réécrire `status_changed_at`.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `command_id` | uuid | Non | — | Commande de fermeture (`unblock` ou `retire`) ; une période par commande |
+| `device_id` | uuid → devices | Non | — | |
+| `status` | enum(`BLOCKED`,`LOST`) | Non | — | Statut de la période close |
+| `valid_from` | ts | Non | — | Début inclus : `status_changed_at` de la période |
+| `valid_to` | ts | Non | — | Fin exclue : `occurred_at` de la commande de fermeture |
+| `reason` | text | Oui | — | Motif du statut (copie de `status_reason`, que le déblocage efface) |
+| `closed_by` | uuid → users | Non | — | Auteur de la fermeture |
+| `created_at` | ts | Non | `now()` | |
+
+- **PK** `command_id`. **CK** `status` ∈ {`BLOCKED`, `LOST`} ; `valid_to > valid_from` (une fermeture sans durée n'écrit rien). **IX** `(device_id, valid_from)`.
+- **Suppr.** `IMMUABLE` : ni modification ni suppression (déclencheurs). Amorçage : aucune ligne (les périodes antérieures à P5-23 n'étaient pas conservées).
+- **Lecture** : `checkDeviceActive` (une instruction avec la ligne vivante) — fait daté dans `[valid_from, valid_to)` → `CONFLICT DEVICE_REVOKED`, quel que soit le statut courant. Ni jeu hors ligne ni flux de changements.
 - **Intégrité** INV-ADM-03.
 
 ## identity.auth_sessions

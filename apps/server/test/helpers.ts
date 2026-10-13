@@ -217,7 +217,9 @@ export async function insertTestDevice(
           enrolled_by_user_id: toBin(enrolledByUserId),
           status,
           status_changed_at: options.statusChangedAt ?? new Date(),
-          approved_by: status === 'ACTIVE' ? toBin(enrolledByUserId) : null,
+          // Un appareil hors service a été approuvé avant (AV-228 : sans approbation, tous ses faits sont
+          // en quarantaine) ; seul un appareil `PENDING` n'a pas d'approbateur.
+          approved_by: status === 'PENDING' ? null : toBin(enrolledByUserId),
           created_by: toBin(enrolledByUserId),
         })
         .execute();

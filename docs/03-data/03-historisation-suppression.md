@@ -64,6 +64,7 @@ Codes : `IMMUABLE` (ni modification ni suppression, correction par écriture inv
 | `attachments.attachments` | IMMUABLE | Remplacement (`SUPERSEDED`) ; fichier purgé après la rétention, métadonnées conservées |
 | `audit.audit_log`, `platform.domain_events`, `platform.event_consumer_marks` (P0-08), `sync.command_inbox` | IMMUABLE | — |
 | `crm.customer_assignments`, `crm.customer_stage_history`, `identity.user_role_assignments`, `organization.team_memberships` | IMMUABLE (fermeture de période) | — |
+| `identity.device_status_periods` (P5-23, AV-212) | IMMUABLE | — (périodes hors service closes, en ajout seul) |
 | `pricing.price_rules`, `approvals.control_policies`, `organization.system_settings`, `catalog.product_standard_costs` | VERSIONNEMENT | Nouvelle version |
 | `identity.users`, `identity.devices`, `crm.customers`, `procurement.suppliers`, `catalog.*`, `organization.*` (hors historiques), `finance.cash_accounts`, `finance.payment_methods`, `finance.expense_categories`, référentiels CRM | DESACTIVATION | Statut ; fusion pour les doublons de clients |
 | `identity.role_permissions` | Modification autorisée, **auditée** | — |

@@ -15,9 +15,9 @@
  * (stock, transfert, bon de commande, session de caisse, ventes, commande) n'est jouée que si sa trace
  * n'existe pas encore. Relancé, il propose de changer le mot de passe (Entrée le conserve ; sans terminal
  * interactif ni `DEMO_PASSWORD`, il le conserve) et **approuve les appareils du compte encore en attente** :
- * un appareil se connecte d'abord en `PENDING` — il lit, mais ce qu'il enregistre est mis en conflit tant
- * qu'il n'est pas approuvé (BR-ADM-005). Se connecter une première fois, relancer le script, puis recharger
- * la page.
+ * un appareil se connecte d'abord en `PENDING` — il lit, mais ce qu'il enregistre attend son approbation
+ * (BR-ADM-005 ; `RETRY_LATER`, `DEVICE_PENDING`, appliqué au renvoi qui suit, AV-228). Se connecter une
+ * première fois, relancer le script, puis recharger la page.
  *
  * Écrans encore absents de la PWA (phase P5, en cours) : ouverture et clôture de caisse, quotas, validations,
  * appareils, utilisateurs, organisation, paramètres (« Bientôt ») — le script ouvre la session de caisse.

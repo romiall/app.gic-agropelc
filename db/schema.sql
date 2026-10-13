@@ -2481,6 +2481,65 @@ CREATE TABLE `identity_auth_sessions` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `identity_device_status_periods`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `identity_device_status_periods` (
+  `command_id` binary(16) NOT NULL,
+  `device_id` binary(16) NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `valid_from` datetime(6) NOT NULL,
+  `valid_to` datetime(6) NOT NULL,
+  `reason` text COLLATE utf8mb4_0900_as_cs,
+  `closed_by` binary(16) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`command_id`),
+  KEY `ix_identity_device_status_periods_device` (`device_id`,`valid_from`),
+  KEY `fk_identity_device_status_periods_closed_by` (`closed_by`),
+  CONSTRAINT `fk_identity_device_status_periods_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_identity_device_status_periods_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_identity_device_status_periods_bounds` CHECK ((`valid_to` > `valid_from`)),
+  CONSTRAINT `ck_identity_device_status_periods_status` CHECK ((`status` in (_utf8mb4'BLOCKED',_utf8mb4'LOST')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_identity_device_status_periods_no_update` BEFORE UPDATE ON `identity_device_status_periods` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'identity_device_status_periods : aucune modification (périodes en ajout seul, INV-ADM-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_identity_device_status_periods_no_delete` BEFORE DELETE ON `identity_device_status_periods` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'identity_device_status_periods : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `identity_devices`
 --
 
@@ -8283,5 +8342,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261010093000'),
   ('20261010093100'),
   ('20261012090000'),
-  ('20261012100000');
+  ('20261012100000'),
+  ('20261013090000');
 UNLOCK TABLES;
