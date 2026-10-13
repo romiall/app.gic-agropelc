@@ -23,6 +23,7 @@ import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
+import { IdentityApiModule } from './identity-api/identity-api.module.js';
 import { AttachmentsApiModule } from './attachments-api/attachments-api.module.js';
 import { CatalogApiModule } from './catalog-api/catalog-api.module.js';
 import { PricingApiModule } from './pricing-api/pricing-api.module.js';
@@ -63,6 +64,7 @@ import { RootController } from './health/root.controller.js';
     ChainVerificationModule,
     AuditApiModule,
     OrganizationApiModule,
+    IdentityApiModule,
     AttachmentsApiModule,
     CatalogApiModule,
     PricingApiModule,

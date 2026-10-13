@@ -60,9 +60,9 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 | Élément | Contenu |
 |---|---|
 | Responsabilités | Authentification, sessions, enrôlement et cycle de vie des appareils, utilisateurs, rôles, affectations |
-| Endpoints hors commandes | `POST /auth/login` (téléphone, mot de passe, empreinte d'appareil) → jetons + statut d'appareil ; 401 `INVALID_CREDENTIALS` générique (identifiant inconnu, mot de passe faux, compte non actif) ; 403 `DEVICE_BLOCKED`, `DEVICE_LOST` ou `DEVICE_RETIRED` après un mot de passe juste (AV-253) ; 429 `LOGIN_LOCKED` ; `POST /auth/refresh` ; `POST /auth/logout` |
+| Endpoints hors commandes | `POST /auth/login` (téléphone, mot de passe, empreinte d'appareil) → jetons + statut et code court d'appareil (`device_status`, `device_short_code`, MP-06) ; 401 `INVALID_CREDENTIALS` générique (identifiant inconnu, mot de passe faux, compte non actif) ; 403 `DEVICE_BLOCKED`, `DEVICE_LOST` ou `DEVICE_RETIRED` après un mot de passe juste (AV-253) ; 429 `LOGIN_LOCKED` ; `POST /auth/refresh` ; `POST /auth/logout` |
 | Commandes (I) | `identity.user.create`, `.update`, `.suspend`, `.deactivate`, `.reactivate` ; `identity.role.set_permissions` ; `identity.role_assignment.grant`, `.revoke` ; `identity.device.approve`, `.designate` (appareil partagé, site de rattachement, BR-DIS-003), `.block`, `.unblock`, `.declare_lost`, `.retire` ; `identity.session.revoke` |
-| Requêtes | `GET /users`, `/users/{id}`, `/me` (profil, droits effectifs), `/devices`, `/roles`, `/permissions` |
+| Requêtes | `GET /users`, `/users/{id}`, `/me` (profil, droits effectifs), `/devices`, `/roles`, `/permissions` — **Livré en MP-06** : `GET /devices?status=&q=&cursor=&limit=` et `GET /devices/{id}`, droit `identity.device.read`, portée BR-ADM-025 évaluée élément par élément (page possiblement plus courte que `limit`, suivre `next_cursor`), hors portée 404 audité ; chaque appareil porte noms, dernier contact (`lastPushAt`, `lastPullAt`, `stale`) et actions permises au lecteur (`approve`, `block`, `unblock`, `designate`) |
 | Événements | `UserCreated`, `UserDeactivated`, `RoleAssigned`, `DeviceApproved`, `DeviceBlocked`… |
 | Idempotence | `command_id` ; `/auth/login` n'est pas idempotent (rate limit) |
 | Permissions | `identity.*` |

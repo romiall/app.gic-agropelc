@@ -82,10 +82,21 @@ describe('POST /api/v1/auth/* (P0-09)', () => {
 
     const device = await db
       .selectFrom('identity_devices')
-      .select('status')
+      .select(['status', 'short_code'])
       .where('id', '=', toBin(deviceId))
       .executeTakeFirstOrThrow();
     expect(device.status).toBe('PENDING');
+    // MP-06 : le code court est rendu, pour l'afficher pendant l'attente d'approbation.
+    expect(body.device_short_code).toBe(device.short_code);
+    expect(body.device_short_code).toMatch(/^[A-Z0-9]{4}$/);
+    // Connexion suivante sur le même appareil : même code.
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: freshIp(),
+      payload: { phone, password: KNOWN_PASSWORD, device_id: deviceId },
+    });
+    expect(again.json().device_short_code).toBe(device.short_code);
   });
 
   it('mot de passe incorrect : 401, aucune session créée', async () => {

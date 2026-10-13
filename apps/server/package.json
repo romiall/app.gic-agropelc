@@ -13,6 +13,7 @@
     "dev:worker": "tsx watch src/worker.ts",
     "start:worker": "node dist/worker.js",
     "demo:data": "tsx --env-file=.env scripts/demo-data.ts",
+    "approve-device": "tsx scripts/approve-device.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

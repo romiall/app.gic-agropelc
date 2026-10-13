@@ -272,6 +272,10 @@ Classification (PM §45) :
 | AV-255 | Ventes signalées de l'accueil : quels drapeaux comptent comme anomalie ? | SECONDAIRE | MP | Tous comptés, ventilés par type dans le détail ; avertissement réservé aux drapeaux de contrôle | OUVERT |
 | AV-256 | Valeur du stock de l'entreprise : la marchandise en transit compte-t-elle ? | SECONDAIRE | MP | Comprise pour toute l'entreprise (« dont X en transit ») ; hors transit pour un site | OUVERT |
 | AV-257 | Permissions des rôles modifiables depuis l'application ? | SECONDAIRE | MP | Rôles figés par le seed versionné au MVP ; seules les affectations se gèrent à l'écran | OUVERT |
+| AV-258 | Auto-approbation d'un appareil par le responsable qui l'a connecté | IMPORTANTE | MP | Refusée (`SELF_APPROVAL_FORBIDDEN`) pour approuver et débloquer, sauf l'Admin | **TRANCHÉ** (voir journal §3) |
+| AV-259 | Rattachement d'un appareil à un site hors de la portée du responsable | SECONDAIRE | MP | Refusé : le site cible doit être dans la portée de l'auteur (`FORBIDDEN_SCOPE`) ; l'Admin rattache partout | **TRANCHÉ** (voir journal §3) |
+| AV-260 | Tablette rattachée à un site : relève-t-elle du responsable de ce site ? | SECONDAIRE | MP | Oui : le site de rattachement compte dans la portée, en plus des affectations de l'utilisateur qui l'a connectée | **TRANCHÉ** (voir journal §3) |
+| AV-261 | Lecture des appareils par le Responsable production | SECONDAIRE | MP | `identity.device.read` en portée `SITE` ajouté (il approuve et bloque déjà) | **TRANCHÉ** (voir journal §3) |
 
 ---
 
@@ -1804,6 +1808,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a), avec l'Admin toujours habilité.
 - **Impact** : lecture `GET /devices`, commandes `identity.device.*` (contrôle de portée), écran ECR-ADM-05 ; lot de mise en pilote (MP-06).
+- **Mise en œuvre** (MP-06) : `device-scope.ts` (`enrollerLocators`, `deviceInScope`), partagé par `GET /devices` et les commandes `identity.device.*` (`FORBIDDEN_SCOPE`) ; précisé par AV-258 à AV-260.
 
 ### AV-248 — Motifs de départ : résultats de visite, perte d'un prospect, annulation — IMPORTANTE — **TRANCHÉ**
 - **Question** : quelles listes de motifs fournir à l'installation pour `VISIT_OUTCOME`, `PROSPECT_LOST` et `CANCELLATION` ?
@@ -1860,6 +1865,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a). Commande `pnpm run db:approve-device -- <code court>` (acteur système, `approved_by`, audit), documentée dans le runbook de mise en service.
 - **Impact** : script d'exploitation, runbook ; lot de mise en pilote (MP-06).
+- **Mise en œuvre** (MP-06) : `apps/server/scripts/approve-device.ts` et `bootstrap-device-approval.ts` (gardes : code de 4 caractères, appareil en attente, utilisateur administrateur) ; mise en service : `db/README.md` §5.
 
 ### AV-255 — Ventes signalées de l'accueil : quels drapeaux comptent comme anomalie ? — SECONDAIRE
 - **Question** : le signal « N ventes du jour portent une anomalie » compte toute vente dont la liste de drapeaux est non vide, y compris `OUT_OF_SESSION` (déjà couvert par le signal de prise de service). Faut-il distinguer les drapeaux informatifs des drapeaux de contrôle ?
@@ -1881,6 +1887,38 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) rôles figés au MVP, affectations seulement ; (b) permissions modifiables par l'Admin.
 - **Recommandation** : (a).
 - **Impact** : ECR-ADM-04 (lot suivant). Défaut : (a). Non paramétrable.
+
+### AV-258 — Auto-approbation d'un appareil par le responsable qui l'a connecté — IMPORTANTE — **TRANCHÉ**
+- **Question** : un responsable peut-il approuver (ou débloquer) le téléphone qu'il a lui-même connecté, s'il est dans sa portée ?
+- **Pourquoi** : la portée d'AV-247 inclut l'utilisateur lui-même (portée `TEAM`) ; aucun texte ne traite l'auto-approbation d'un appareil (RC-03 vise les validations du module `approvals`). Relevé en concevant MP-06. **DÉDUIT**.
+- **Choix** : (a) refusée, sauf l'Admin ; (b) permise.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). Un déblocage approuve un appareil refusé avant toute approbation : même règle. Bloquer, déclarer perdu, retirer ou rattacher son propre appareil restent permis.
+- **Impact** : `device-commands.ts` (`withDeviceScope`), lecture `GET /devices` (actions permises) ; MP-06.
+
+### AV-259 — Rattachement d'un appareil à un site hors de la portée du responsable — SECONDAIRE — **TRANCHÉ**
+- **Question** : `identity.device.designate` vérifie-t-il que le site cible est dans la portée de l'auteur, en plus de l'appareil ?
+- **Pourquoi** : la commande ne contrôlait que l'existence et l'ouverture du site. **DÉDUIT** (MP-06).
+- **Choix** : (a) site cible dans la portée ; (b) tout site actif.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a).
+- **Impact** : `identity.device.designate` ; MP-06.
+
+### AV-260 — Tablette rattachée à un site : relève-t-elle du responsable de ce site ? — SECONDAIRE — **TRANCHÉ**
+- **Question** : une tablette rattachée à un site (`designated_site_id`, ex. celle d'un PDV), connectée par quelqu'un d'un autre site, est-elle vue et décidée par le responsable du site de rattachement ?
+- **Pourquoi** : AV-247 ne retient que les affectations de l'utilisateur qui a connecté l'appareil ; une tablette de PDV connectée par un administrateur ou un commercial d'une autre zone échapperait au responsable du site. **DÉDUIT** (MP-06).
+- **Choix** : (a) oui, le site de rattachement compte aussi ; (b) non, l'utilisateur seul.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a). Un appareil dont l'utilisateur n'a ni équipe, ni site, ni zone, et qui n'est rattaché à aucun site, ne relève que des portées `ALL` (Admin, Direction).
+- **Impact** : `device-scope.ts` (`withDesignatedSite`) ; MP-06.
+
+### AV-261 — Lecture des appareils par le Responsable production — SECONDAIRE — **TRANCHÉ**
+- **Question** : le Responsable production détient `identity.device.approve` et `identity.device.block` en `SITE` mais pas `identity.device.read` : il ne peut pas ouvrir la liste des appareils qu'il peut décider. Que fait-on ?
+- **Pourquoi** : écart de la matrice RBAC (§5.1) et du seed, relevé en concevant MP-06. **CONFIRMÉ** (lecture).
+- **Choix** : (a) lui donner la lecture en `SITE` ; (b) lui retirer approuver et bloquer.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 13/10/2026) : (a).
+- **Impact** : `db/seeds/rbac-data.ts` (501 octrois), matrice RBAC §5.1 ; MP-06.
 ---
 
 ## 3. Journal des décisions
@@ -1956,3 +1994,7 @@ Politique par défaut, paramétrable :
 | 13/10/2026 | AV-252 | Réinitialisation par l'Admin : mot de passe provisoire saisi par l'administrateur (différent de la recommandation) | Porteur du projet |
 | 13/10/2026 | AV-253 | Appareil bloqué, perdu ou retiré : message distinct après un mot de passe correct ; compte suspendu : message générique | Porteur du projet |
 | 13/10/2026 | AV-254 | Premier appareil d'administration approuvé par une commande d'installation sur le serveur | Porteur du projet |
+| 13/10/2026 | AV-258 | Un responsable n'approuve ni ne débloque l'appareil qu'il a connecté ; l'Admin le peut | Porteur du projet |
+| 13/10/2026 | AV-259 | Rattachement d'un appareil : site cible dans la portée de l'auteur | Porteur du projet |
+| 13/10/2026 | AV-260 | Le site de rattachement d'un appareil compte dans la portée de son responsable | Porteur du projet |
+| 13/10/2026 | AV-261 | Lecture des appareils accordée au Responsable production (portée SITE) | Porteur du projet |

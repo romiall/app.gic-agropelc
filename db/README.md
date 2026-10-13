@@ -173,6 +173,22 @@ du compte), puis recharger la page. Un compte qui cumule tous les
 rôles reste soumis à la séparation des tâches (validation par un autre utilisateur) et au pointage du
 commercial terrain : ses ventes sans « prise de service » portent l'indicateur `OUT_OF_SESSION`.
 
+
+### Mise en service : premier appareil d'administration (AV-254, MP-06)
+
+Sur une installation neuve, personne ne peut approuver depuis l'application le premier téléphone de
+l'administrateur. Après sa première connexion, ce téléphone affiche son **code court** (bandeau « appareil
+en attente d'approbation »). Sur le serveur, l'installateur lance :
+
+```bash
+pnpm run db:approve-device -- 7KQ2
+```
+
+La commande lit `SERVER_DATABASE_URL` (en local, `apps/server/.env`), refuse un code mal formé, un appareil
+inconnu, un appareil qui n'est pas en attente ou connecté par un non-administrateur, puis approuve
+l'appareil au nom de l'utilisateur système et l'écrit dans le journal d'audit. Les appareils suivants
+s'approuvent dans l'application (écran Appareils).
+
 ## 6. Tests
 
 `pnpm --filter @gic/db run test` (intégration, MySQL réel — voir

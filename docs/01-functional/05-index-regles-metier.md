@@ -3,7 +3,7 @@
 > Section 10 du format final (PM §48). **Fichier généré** par `python3 docs/_tools/check_refs.py --index` :
 > ne pas éditer à la main. La règle fait foi dans son fichier de domaine ; ce tableau n'en donne qu'un résumé tronqué.
 
-Nombre total de règles : **318**.
+Nombre total de règles : **319**.
 
 ## D01 — Core / Administration (ADM)
 
@@ -17,7 +17,7 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-004 | Les droits d'une commande sont évalués à la date `occurred_at` : l'auteur devait détenir la permission et le périmètre à cet instant, et ni… | D (offline, ADR-008) |
 | BR-ADM-005 | Un appareil `PENDING` permet de se connecter mais pas de créer d'opérations. Seul un appareil `ACTIVE` peut pousser des commandes. Depuis P… | AV-006 ; AV-228 |
 | BR-ADM-006 | Un appareil `BLOCKED` ou `LOST` voit toutes ses sessions révoquées. Les commandes reçues de cet appareil après la date de blocage sont mise… | D (PM §37) ; AV-212 |
-| BR-ADM-007 | Chaque appareil reçoit un code court unique (4 caractères alphanumériques), utilisé dans les références locales des documents. | D (ADR-002) |
+| BR-ADM-007 | Chaque appareil reçoit un code court unique (4 caractères alphanumériques), utilisé dans les références locales des documents. Il est attri… | D (ADR-002) |
 | BR-ADM-008 | Un site a un type parmi `FERME`, `MAGASIN`, `POINT_DE_VENTE`, `BUREAU`. Un site fermé (`CLOSED`) n'accepte plus de nouvelles opérations ; s… | C (CM §12, §22) / D |
 | BR-ADM-009 | Tout emplacement physique appartient à exactement un site. Un emplacement de type `MOBILE` a exactement un détenteur (`custodian_user_id`)… | D (CM §23, §39) ; AV-163 |
 | BR-ADM-010 | Les emplacements virtuels (`V_*`) sont créés par le système, uniques par type, et ne peuvent être ni modifiés ni désactivés. Les neuf types… | D (ADR-003 ; ADR-028 §1) |
@@ -35,6 +35,7 @@ Fichier : [`domaines/D01-ADM-core-administration.md`](domaines/D01-ADM-core-admi
 | BR-ADM-022 | La référence locale d'un document est attribuée par l'appareil : `{CODE_APPAREIL}-{seq}`, séquence strictement croissante par appareil. Ell… | D (ADR-002) |
 | BR-ADM-023 | L'autonomie hors ligne d'un appareil expire 7 jours après la dernière synchronisation réussie. L'application passe alors en lecture seule j… | AV-009 |
 | BR-ADM-024 | Le PIN local (6 chiffres) n'est jamais transmis au serveur. Après 5 échecs consécutifs, l'utilisateur doit se reconnecter en ligne avec son… | D (sécurité) |
+| BR-ADM-025 | Portée d'un appareil (lecture et décisions) : un décideur voit et décide un appareil si l'utilisateur qui l'a connecté relève de ses équipe… | D (AV-247, AV-254, AV-258 à AV-261 ; MP-06) |
 
 ## D02 — Commercial / CRM opérationnel (CRM)
 

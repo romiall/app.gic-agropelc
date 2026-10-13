@@ -121,6 +121,10 @@ stateDiagram-v2
 | `ACTIVE` | `identity.device.declare_lost` | — | `LOST` | Comme le blocage ; `DeviceDeclaredLost` ; inventaire recommandé des stocks du détenteur | Idem | Caisse utilisateur à contrôler | `identity.device.block` |
 | `ACTIVE`, `BLOCKED`, `LOST` | `identity.device.retire` | Outbox vide confirmée, ou décision explicite | `RETIRED` | Code court jamais réattribué ; depuis `BLOCKED` ou `LOST`, la période close est consignée (AV-212) | — | — | `identity.device.block` |
 
+Rattachement (`identity.device.designate`, permission `identity.device.approve`, hors machine : il ne change pas l'état ; refusé pour `LOST` et `RETIRED`). Motifs : obligatoire pour le blocage, facultatif pour la perte et le retrait. Code court attribué à l'**enrôlement** et affiché par l'appareil en attente (BR-ADM-007). Portée de chaque transition et auto-approbation : BR-ADM-025 (MP-06, `FORBIDDEN_SCOPE`, `SELF_APPROVAL_FORBIDDEN`) ; premier appareil d'administration : commande d'installation `db:approve-device` (AV-254).
+
+**Hors ligne** : aucune transition n'est saisie hors ligne ; l'écran ECR-ADM-05 est en ligne seulement.
+
 Chaque transition lit l'appareil `FOR UPDATE` (P5-23) : deux transitions concurrentes ne raccourcissent ni ne perdent une période. Contrôle du pipeline (RC-02, `checkDeviceActive`) : période close contenant `occurred_at` → quarantaine ; `ACTIVE` → appliqué ; `PENDING` → attente (`DEVICE_PENDING`, AV-228) ; refusé sans approbation → quarantaine ; hors service depuis une date postérieure au fait → appliqué (BR-SYN-007) ; sinon quarantaine.
 
 ---

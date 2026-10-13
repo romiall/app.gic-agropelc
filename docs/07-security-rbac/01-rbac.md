@@ -86,9 +86,11 @@ Valeurs : `ALL`, `ZONE`, `SITE`, `TEAM`, `OWN` = portée maximale ; `A·xxx` = p
 | `identity.user.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `identity.role.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
 | `identity.role_assignment.manage` | — | ALL | — | — | — | — | — | — | — | — | — |
-| `identity.device.read` | ALL | ALL | TEAM | — | — | — | — | SITE | SITE | — | — |
+| `identity.device.read` | ALL | ALL | TEAM | — | — | — | SITE | SITE | SITE | — | — |
 | `identity.device.approve` | — | ALL | A·TEAM | — | — | — | A·SITE | A·SITE | — | — | — |
 | `identity.device.block` | ALL | ALL | TEAM | — | — | — | SITE | SITE | — | — | — |
+
+> **Appareils** (MP-06, BR-ADM-025) : `identity.device.approve` porte aussi `identity.device.designate` ; `identity.device.block` porte `unblock`, `declare_lost` et `retire`. La portée d'un appareil se lit sur l'utilisateur qui l'a connecté (équipes, sites et zones de ses affectations actives) et sur son site de rattachement (AV-247, AV-260) ; nul n'approuve ni ne débloque l'appareil qu'il a connecté, sauf l'Admin (AV-258). Lecture du Resp. production : AV-261.
 | `identity.session.revoke` | ALL | ALL | — | — | — | — | — | — | — | — | — |
 | `org.structure.read` | ALL | ALL | ALL | ZONE | ALL | SITE | ALL | SITE | SITE | ALL | ALL |
 | `org.structure.manage` | — | ALL | — | — | — | — | — | — | — | — | — |

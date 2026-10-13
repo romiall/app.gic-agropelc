@@ -39,6 +39,7 @@ Toutes les commandes des modules métier (BR-AUD-003), avec le code d'action = t
 | Action | Déclencheur |
 |---|---|
 | `auth.login.succeeded`, `auth.login.failed`, `auth.pin.locked`, `auth.token.reuse_detected`, `auth.session.revoked` | Authentification |
+| Approbation d'installation d'un appareil (AV-254) | `identity.device.approve`, acteur système, motif « db:approve-device (AV-254) » |
 | `audit.log.read` | Consultation du journal (avec filtres) |
 | `analytics.export.requested`, `analytics.export.downloaded` | Exports |
 | `access.denied` | Tout refus d'autorisation (IDOR, permission absente) |

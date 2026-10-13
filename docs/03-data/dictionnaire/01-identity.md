@@ -137,6 +137,7 @@
 - **Suppr.** `DESACTIVATION` (`RETIRED`) ; `short_code` jamais réattribué.
 - **Audit** Enrôlement, approbation, blocage, déblocage, perte, retrait. **Offline** DL (son propre enregistrement) : jeu `device`, ligne de portée `DEVICE` écrite par chaque commande `identity.device.*` (`emitDeviceChange`, P5-23, AV-195 (3)) et republiée par le seed ; la projection sert `is_shared`, `designated_site_id` et `version` en plus du statut, à l'appareil seul (la ligne `GLOBAL` du repli du pipeline n'est servie à personne).
 - **Intégrité** INV-ADM-03.
+- **Lecture** (MP-06) : `GET /devices`, `/devices/{id}` (`identity-api/`, `device-query.ts`) ; portée BR-ADM-025 ancrée sur `enrolled_by_user_id` (affectations actives) et `designated_site_id`. `short_code` rendu par `POST /auth/login` (`device_short_code`). Approbation d'installation par `db:approve-device` : `approved_by` = utilisateur système (AV-254).
 
 ## identity.device_status_periods
 

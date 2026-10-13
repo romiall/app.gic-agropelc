@@ -43,3 +43,18 @@ export type {
 
 export { deviceUserCounts, userFullName, userFullNames } from './user-summary.js';
 export type { DeviceUserCounts } from './user-summary.js';
+
+// MP-06 (ECR-ADM-05 ; AV-247, AV-258 à AV-260) : lecture des appareils et portée partagée par la lecture
+// et les commandes `identity.device.*`.
+export { DEVICE_STATUSES, findDevice, listDevicesPage } from './device-query.js';
+export type { DeviceStatus, DeviceSummary } from './device-query.js';
+export {
+  deviceInScope,
+  deviceResourceLocators,
+  enrollerLocators,
+  isSelfApproval,
+  locatorsInScope,
+  siteInScope,
+  withDesignatedSite,
+} from './device-scope.js';
+export type { DeviceScopeAnchor } from './device-scope.js';

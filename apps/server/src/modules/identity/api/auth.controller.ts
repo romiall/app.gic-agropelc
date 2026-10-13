@@ -219,6 +219,8 @@ export class AuthController {
       expires_in: Math.floor(ACCESS_TOKEN_TTL_MS / 1000),
       must_change_password: Boolean(user.must_change_password),
       device_status: deviceResult.status,
+      // MP-06 : code court, affiché par l'appareil en attente d'approbation (BR-ADM-007).
+      device_short_code: deviceResult.shortCode,
     };
   }
 

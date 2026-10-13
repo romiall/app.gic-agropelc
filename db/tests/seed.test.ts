@@ -84,7 +84,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // + 2 octrois sales.payment.reallocate et .refund (Finance, P4-08) ;
     // + 2 octrois inventory.allocation.release (Commercial terrain, Vendeur PDV : portée propre, AV-162, P5-06) ;
     // + 1 octroi finance.cash_transfer.record OWN (Resp. commercial : alignement sur la matrice §5.5, P5-15).
-    expect(ROLE_PERMISSIONS.length).toBe(500);
+    expect(ROLE_PERMISSIONS.length).toBe(501); // + identity.device.read SITE du Resp. production (AV-261, MP-06)
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>

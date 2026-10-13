@@ -5,6 +5,12 @@
  * quand l'état courant est déjà l'état cible, traité comme un rejeu sans effet (BR-SYN-007,
  * « aucun fait accompli n'est rejeté pour une raison d'état »), pas comme une erreur.
  *
+ * MP-06 (décisions du porteur du 13/10/2026) : chaque commande vérifie la **portée** de l'auteur sur
+ * l'appareil (`deviceInScope` : équipes, sites et zones de l'utilisateur qui l'a connecté, site de
+ * rattachement ; AV-247, AV-260), refus `FORBIDDEN_SCOPE` sinon ; nul n'approuve ni ne débloque l'appareil
+ * qu'il a connecté, sauf l'Admin (AV-258, `SELF_APPROVAL_FORBIDDEN`) ; le site cible d'un rattachement est
+ * dans la portée de l'auteur (AV-259). La lecture `GET /devices` applique la même règle.
+ *
  * `designate` (P5-06, BR-DIS-003, AV-007) ne change pas l'état : il fixe le rattachement de l'appareil
  * (appareil partagé entre plusieurs utilisateurs, site de rattachement). C'est une commande en ligne
  * d'administration qui écrit l'état final demandé ; la rejouer est sans effet.
@@ -27,8 +33,10 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
-import { fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { findPosConfigByDesignatedDevice } from '../../../organization/application/public/index.js';
+import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
+import { deviceInScope, isSelfApproval, siteInScope } from '../public/device-scope.js';
 import { revokeDeviceSessions } from './revoke-sessions.js';
 import { closeOutOfServicePeriod, isOutOfServiceStatus } from './device-status-periods.js';
 import { emitDeviceChange } from '../sync-changes.js';
@@ -58,8 +66,15 @@ function notFound(): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr: 'Appareil introuvable.' };
 }
 
-const approve: CommandHandler<EmptyPayload> = async (uow, envelope) => {
-  const deviceId = toBin(envelope.aggregate_id);
+/**
+ * Approbation `PENDING` → `ACTIVE` (SM-DEVICE), partagée par la commande et par la commande d'installation
+ * `db:approve-device` (AV-254, acteur système) : verrou de la ligne, écriture et publication à l'appareil.
+ */
+export async function approveDevice(
+  uow: UnitOfWork,
+  input: { readonly deviceId: string; readonly authorUserId: string; readonly occurredAt: Date },
+): Promise<CommandHandlerOutcome> {
+  const deviceId = toBin(input.deviceId);
   const device = await uow
     .selectFrom('identity_devices')
     .select('status')
@@ -74,16 +89,23 @@ const approve: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     .updateTable('identity_devices')
     .set({
       status: 'ACTIVE',
-      status_changed_at: new Date(envelope.occurred_at),
-      approved_by: toBin(envelope.author_user_id),
-      updated_by: toBin(envelope.author_user_id),
+      status_changed_at: input.occurredAt,
+      approved_by: toBin(input.authorUserId),
+      updated_by: toBin(input.authorUserId),
       version: sql`version + 1`,
     })
     .where('id', '=', deviceId)
     .execute();
-  await emitDeviceChange(uow, envelope.aggregate_id);
+  await emitDeviceChange(uow, input.deviceId);
   return { status: 'APPLIED' };
-};
+}
+
+const approve: CommandHandler<EmptyPayload> = (uow, envelope) =>
+  approveDevice(uow, {
+    deviceId: envelope.aggregate_id,
+    authorUserId: envelope.author_user_id,
+    occurredAt: new Date(envelope.occurred_at),
+  });
 
 const block: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
   const deviceId = toBin(envelope.aggregate_id);
@@ -298,47 +320,111 @@ const designate: CommandHandler<DesignatePayload> = async (uow, envelope) => {
   return { status: 'APPLIED' };
 };
 
+function forbiddenScope(): CommandHandlerOutcome {
+  return {
+    status: 'REJECTED',
+    errorCode: 'FORBIDDEN_SCOPE',
+    messageFr: 'Cet appareil n’est pas dans votre portée.',
+  };
+}
+
+/**
+ * MP-06 : portée de l'auteur sur l'appareil (AV-247, AV-260), auto-approbation interdite pour `approve` et
+ * `unblock` (AV-258), site cible d'un rattachement dans la portée (AV-259). Lit la ligne `FOR UPDATE`, la
+ * même que le gestionnaire. Appareil inconnu : le gestionnaire répond `NOT_FOUND`.
+ */
+function withDeviceScope<P>(
+  permissionCode: string,
+  options: { readonly selfApproval?: boolean; readonly targetSite?: (payload: P) => string | null },
+  handler: CommandHandler<P>,
+): CommandHandler<P> {
+  return async (uow, envelope) => {
+    const device = await uow
+      .selectFrom('identity_devices')
+      .select(['enrolled_by_user_id', 'designated_site_id'])
+      .where('id', '=', toBin(envelope.aggregate_id))
+      .forUpdate()
+      .executeTakeFirst();
+    if (!device) return handler(uow, envelope);
+    const at = new Date(envelope.occurred_at);
+    const enrolledByUserId = fromBin(device.enrolled_by_user_id);
+    const anchor = { enrolledByUserId, designatedSiteId: fromBinOrNull(device.designated_site_id) };
+    const author = envelope.author_user_id;
+    if (!(await deviceInScope(uow, { userId: author, permissionCode, at, device: anchor }))) {
+      return forbiddenScope();
+    }
+    if (
+      options.selfApproval === true &&
+      (await isSelfApproval(uow, { authorUserId: author, enrolledByUserId, at }))
+    ) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'SELF_APPROVAL_FORBIDDEN',
+        messageFr:
+          'Vous avez connecté cet appareil : son approbation revient à l’Admin ou à un autre responsable.',
+      };
+    }
+    const target = options.targetSite?.(envelope.payload) ?? null;
+    if (
+      target !== null &&
+      !(await siteInScope(uow, { userId: author, permissionCode, at, siteId: target }))
+    ) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'FORBIDDEN_SCOPE',
+        messageFr: 'Ce site n’est pas dans votre portée.',
+      };
+    }
+    return handler(uow, envelope);
+  };
+}
+
 export function registerDeviceCommands(registry: CommandHandlerRegistry): void {
   registry.register({
     commandType: 'identity.device.approve',
     version: 1,
     payloadSchema: emptyPayloadSchema,
     permissionCode: 'identity.device.approve',
-    handler: approve,
+    handler: withDeviceScope('identity.device.approve', { selfApproval: true }, approve),
   });
   registry.register({
     commandType: 'identity.device.designate',
     version: 1,
     payloadSchema: designatePayloadSchema,
     permissionCode: 'identity.device.approve',
-    handler: designate,
+    handler: withDeviceScope<DesignatePayload>(
+      'identity.device.approve',
+      { targetSite: (payload) => payload.designatedSiteId },
+      designate,
+    ),
   });
   registry.register({
     commandType: 'identity.device.block',
     version: 1,
     payloadSchema: reasonRequiredSchema,
     permissionCode: 'identity.device.block',
-    handler: block,
+    handler: withDeviceScope('identity.device.block', {}, block),
   });
   registry.register({
     commandType: 'identity.device.unblock',
     version: 1,
     payloadSchema: emptyPayloadSchema,
     permissionCode: 'identity.device.block',
-    handler: unblock,
+    // Un déblocage approuve un appareil refusé avant toute approbation : même règle qu'approuver.
+    handler: withDeviceScope('identity.device.block', { selfApproval: true }, unblock),
   });
   registry.register({
     commandType: 'identity.device.declare_lost',
     version: 1,
     payloadSchema: reasonOptionalSchema,
     permissionCode: 'identity.device.block',
-    handler: declareLost,
+    handler: withDeviceScope('identity.device.block', {}, declareLost),
   });
   registry.register({
     commandType: 'identity.device.retire',
     version: 1,
     payloadSchema: reasonOptionalSchema,
     permissionCode: 'identity.device.block',
-    handler: retire,
+    handler: withDeviceScope('identity.device.block', {}, retire),
   });
 }

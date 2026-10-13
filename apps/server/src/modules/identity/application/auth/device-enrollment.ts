@@ -33,7 +33,12 @@ export interface DeviceLoginInput {
 export type DeviceLoginRefusal = 'DEVICE_BLOCKED' | 'DEVICE_LOST' | 'DEVICE_RETIRED';
 
 export type DeviceLoginCheck =
-  | { readonly ok: true; readonly status: 'PENDING' | 'ACTIVE' }
+  | {
+      readonly ok: true;
+      readonly status: 'PENDING' | 'ACTIVE';
+      /** Code court, à communiquer au responsable qui approuve (MP-06, BR-ADM-007). */
+      readonly shortCode: string;
+    }
   | { readonly ok: false; readonly reason: DeviceLoginRefusal };
 
 /** Idempotent par `deviceId` : rejoué, retrouve la même ligne plutôt que d'en recréer une. */
@@ -44,7 +49,7 @@ export async function findOrEnrollDevice(
   const deviceIdBin = toBin(input.deviceId);
   const existing = await uow
     .selectFrom('identity_devices')
-    .select('status')
+    .select(['status', 'short_code'])
     .where('id', '=', deviceIdBin)
     .executeTakeFirst();
 
@@ -57,16 +62,21 @@ export async function findOrEnrollDevice(
       .set({ last_seen_at: input.now })
       .where('id', '=', deviceIdBin)
       .execute();
-    return { ok: true, status: existing.status as 'PENDING' | 'ACTIVE' };
+    return {
+      ok: true,
+      status: existing.status as 'PENDING' | 'ACTIVE',
+      shortCode: existing.short_code,
+    };
   }
 
   for (let attempt = 1; attempt <= MAX_SHORT_CODE_ATTEMPTS; attempt++) {
+    const shortCode = randomShortCode();
     try {
       await uow
         .insertInto('identity_devices')
         .values({
           id: deviceIdBin,
-          short_code: randomShortCode(),
+          short_code: shortCode,
           label: input.label ?? null,
           enrolled_by_user_id: toBin(input.enrolledByUserId),
           status: 'PENDING',
@@ -76,7 +86,7 @@ export async function findOrEnrollDevice(
           created_by: toBin(input.enrolledByUserId),
         })
         .execute();
-      return { ok: true, status: 'PENDING' };
+      return { ok: true, status: 'PENDING', shortCode };
     } catch (error) {
       const isDuplicateShortCode =
         typeof error === 'object' &&

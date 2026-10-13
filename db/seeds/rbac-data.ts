@@ -1512,9 +1512,10 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.dashboard.distribution', 'SITE'],
   ]),
 
-  // RESP_PRODUCTION — 46
+  // RESP_PRODUCTION — 47 (+ identity.device.read SITE, AV-261, MP-06)
   ...grants('RESP_PRODUCTION', [
     ['identity.user.read', 'SITE'],
+    ['identity.device.read', 'SITE'],
     ['identity.device.approve', 'SITE'],
     ['identity.device.block', 'SITE'],
     ['org.structure.read', 'ALL'],
