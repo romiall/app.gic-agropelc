@@ -19,9 +19,12 @@ import {
 } from '../../../approvals/application/public/index.js';
 import {
   LOCATION_DEACTIVATION_GUARD_REGISTRY,
+  POS_CONFIGURATION_GUARD_REGISTRY,
   type LocationDeactivationGuardRegistry,
+  type PosConfigurationGuardRegistry,
 } from '../../../organization/application/public/index.js';
 import { inventoryLocationDeactivationGuard } from '../location-deactivation-guard.js';
+import { inventoryPosConfigurationGuard } from '../pos-configuration-guard.js';
 import { registerTransferCommands } from './transfer-commands.js';
 import { registerLossCommands } from './loss-commands.js';
 import { registerConsumptionCommands } from './consumption-commands.js';
@@ -38,6 +41,8 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
     private readonly decisionRegistry: ApprovalDecisionHandlerRegistry,
     @Inject(LOCATION_DEACTIVATION_GUARD_REGISTRY)
     private readonly deactivationGuards: LocationDeactivationGuardRegistry,
+    @Inject(POS_CONFIGURATION_GUARD_REGISTRY)
+    private readonly posGuards: PosConfigurationGuardRegistry,
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
     // `@Inject` explicite (comme sync.controller.ts) : sous vitest (esbuild), aucune
     // métadonnée de décorateur n'est émise — une injection par le seul type laissait
@@ -48,6 +53,8 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
 
   onModuleInit(): void {
     this.deactivationGuards.register('inventory', inventoryLocationDeactivationGuard);
+    // P5-23 (AV-230) : pas de passage en garde exclusive d'un emplacement qui porte un quota actif.
+    this.posGuards.register('inventory', inventoryPosConfigurationGuard);
     registerTransferCommands(
       this.registry,
       this.decisionRegistry,

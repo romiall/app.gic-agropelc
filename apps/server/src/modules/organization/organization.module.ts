@@ -4,11 +4,19 @@ import {
   LOCATION_DEACTIVATION_GUARD_REGISTRY,
   locationDeactivationGuardRegistryProvider,
 } from './application/deactivation-guard-registry.provider.js';
+import {
+  POS_CONFIGURATION_GUARD_REGISTRY,
+  posConfigurationGuardRegistryProvider,
+} from './application/pos-configuration-guard-registry.provider.js';
 
 @Module({
-  providers: [locationDeactivationGuardRegistryProvider, OrganizationCommandsRegistrar],
-  // Exporté : `inventory` (et plus tard d'autres modules) y enregistre ses gardes de désactivation d'un
-  // emplacement (INV-STK-07) — `imports: [OrganizationModule]` côté câblage NestJS.
-  exports: [LOCATION_DEACTIVATION_GUARD_REGISTRY],
+  providers: [
+    locationDeactivationGuardRegistryProvider,
+    posConfigurationGuardRegistryProvider,
+    OrganizationCommandsRegistrar,
+  ],
+  // Exportés : `inventory` (et plus tard d'autres modules) y enregistre ses gardes de désactivation d'un
+  // emplacement (INV-STK-07) et de configuration d'un PDV (AV-230) — `imports: [OrganizationModule]`.
+  exports: [LOCATION_DEACTIVATION_GUARD_REGISTRY, POS_CONFIGURATION_GUARD_REGISTRY],
 })
 export class OrganizationModule {}

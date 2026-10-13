@@ -94,6 +94,7 @@
 | ID | Invariant | Problème empêché | Application | Tests |
 |---|---|---|---|---|
 | INV-DIS-01 | Le mode de garde et l'appareil désigné de l'emplacement de vente d'un PDV sont ceux de sa configuration (`points_of_sale`) ; tout emplacement physique porte un mode de garde (ADR-033). | Deux sources de vérité de la garde, mode absent traité en silence comme partagé | TX, JOB | I |
+| INV-DIS-02 | Tout quota d'appareil actif porte sur un emplacement en garde partagée (`SHARED`) : un emplacement ne passe pas en garde exclusive tant qu'il en porte un, et un quota ne naît jamais sur un emplacement exclusif (P5-23, AV-230). | Quota orphelin jamais consommé qui retranche son reste du stock libre (INV-STK-19) | TX, JOB | S |
 
 ## 6. CRM et pointage (CRM, TER)
 

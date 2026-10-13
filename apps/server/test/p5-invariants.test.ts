@@ -135,4 +135,14 @@ describe('P5-22 : invariants de la distribution sur toute la base', () => {
         LIMIT 20`),
     ).toEqual([]);
   });
+
+  it('INV-DIS-02 : tout quota d’appareil actif porte sur un emplacement en garde partagée (P5-23, AV-230)', async () => {
+    expect(
+      await offenders(sql<{ ref: string }>`
+        SELECT BIN_TO_UUID(a.id) AS ref FROM inventory_stock_allocations a
+        JOIN organization_locations l ON l.id = a.location_id
+        WHERE a.status = 'ACTIVE' AND l.custody_mode <> 'SHARED'
+        LIMIT 20`),
+    ).toEqual([]);
+  });
 });

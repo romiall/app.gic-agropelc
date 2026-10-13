@@ -22,6 +22,8 @@ interface ReferenceFeed {
   readonly query: string;
   /** Clé de synchronisation dérivée du code (ADR-031) ; sinon `entity_key` est l'UUID binaire. */
   readonly codeKeyed?: boolean;
+  /** Ligne servie à l'entité elle-même (portée `DEVICE` = l'appareil), au lieu de `GLOBAL`. */
+  readonly selfDeviceScoped?: boolean;
 }
 
 const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
@@ -87,6 +89,15 @@ const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
     query: `SELECT id AS entity_key, version AS row_version
               FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL`,
   },
+  {
+    // P5-23 (AV-195 (3)) : fiche de chaque appareil encore en service, servie à lui seul (jeu `device`,
+    // portée `DEVICE`) — les commandes d'appareil la publient ensuite (`emitDeviceChange`).
+    dataset: 'device',
+    entityType: 'DEVICE',
+    query: `SELECT id AS entity_key, version AS row_version
+              FROM identity_devices WHERE status IN ('PENDING', 'ACTIVE')`,
+    selfDeviceScoped: true,
+  },
 ];
 
 function entityIdOf(feed: ReferenceFeed, key: unknown): Buffer {
@@ -101,17 +112,20 @@ export async function publishReferenceFeeds(conn: mysql.Connection): Promise<voi
     for (const row of rows) {
       const entityId = entityIdOf(feed, row.entity_key);
       const rowVersion = Number(row.row_version);
+      const scopeType = feed.selfDeviceScoped ? 'DEVICE' : 'GLOBAL';
+      const scopeId = feed.selfDeviceScoped ? entityId : null;
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT seq FROM sync_change_feed
-          WHERE dataset = ? AND entity_type = ? AND entity_id = ? AND row_version = ? LIMIT 1`,
-        [feed.dataset, feed.entityType, entityId, rowVersion],
+          WHERE dataset = ? AND entity_type = ? AND entity_id = ? AND row_version = ?
+            AND scope_type = ? LIMIT 1`,
+        [feed.dataset, feed.entityType, entityId, rowVersion, scopeType],
       );
       if (existing.length > 0) continue;
       await conn.query(
         `INSERT INTO sync_change_feed
            (dataset, entity_type, entity_id, change_type, scope_type, scope_id, row_version)
-         VALUES (?, ?, ?, 'UPSERT', 'GLOBAL', NULL, ?)`,
-        [feed.dataset, feed.entityType, entityId, rowVersion],
+         VALUES (?, ?, ?, 'UPSERT', ?, ?, ?)`,
+        [feed.dataset, feed.entityType, entityId, scopeType, scopeId, rowVersion],
       );
       if (feed.entityType === 'SETTING') {
         // Comme `emitSettingChange` : les versions visibles antérieures de la même clé et de la même

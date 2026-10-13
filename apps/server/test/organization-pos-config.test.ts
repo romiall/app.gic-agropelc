@@ -16,8 +16,10 @@ import {
   findPosConfigBySalesLocation,
   findPosConfigBySite,
   LocationDeactivationGuardRegistry,
+  PosConfigurationGuardRegistry,
 } from '../src/modules/organization/application/public/index.js';
 import { inventoryLocationDeactivationGuard } from '../src/modules/inventory/application/location-deactivation-guard.js';
+import { inventoryPosConfigurationGuard } from '../src/modules/inventory/application/pos-configuration-guard.js';
 import { recordStockMove } from '../src/modules/inventory/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
@@ -51,7 +53,9 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
     guards.register('inventory', inventoryLocationDeactivationGuard);
     const registry = new CommandHandlerRegistry();
     registerSiteCommands(registry, guards);
-    registerPosCommands(registry);
+    const posGuards = new PosConfigurationGuardRegistry();
+    posGuards.register('inventory', inventoryPosConfigurationGuard);
+    registerPosCommands(registry, posGuards);
     registerLocationCommands(registry, guards);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
@@ -694,6 +698,112 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
       const closed = await send('organization.site.close', 'SITE', siteId, {});
       expect(closed.status).toBe('APPLIED');
       expect(empty).toBeTruthy();
+    });
+  });
+
+  describe('passage en garde exclusive avec quotas actifs (P5-23, AV-195 (1), AV-230)', () => {
+    /** Quota inséré comme par les commandes (registre tenu, INV-STK-20). */
+    async function activeQuota(locationId: string, granted: number) {
+      const device = await newDevice();
+      const holder = await db.transaction().execute((trx) => insertTestUser(trx));
+      const productId = await db.transaction().execute((trx) => insertTestProduct(trx, admin));
+      const quotaId = freshUuid();
+      await db
+        .insertInto('inventory_stock_allocations')
+        .values({
+          id: toBin(quotaId),
+          allocation_type: 'DEVICE_QUOTA',
+          location_id: toBin(locationId),
+          product_id: toBin(productId),
+          holder_user_id: toBin(holder),
+          holder_device_id: toBin(device),
+          quantity_granted: String(granted),
+          quantity_remaining: String(granted),
+          granted_by: toBin(admin),
+          created_by: toBin(admin),
+        })
+        .execute();
+      const entry = (entryType: 'GRANT' | 'REVOKE', quantity: number) =>
+        db
+          .insertInto('inventory_stock_allocation_entries')
+          .values({
+            id: toBin(freshUuid()),
+            allocation_id: toBin(quotaId),
+            entry_type: entryType,
+            quantity: String(quantity),
+            occurred_at: new Date(OCCURRED_AT),
+            created_by: toBin(admin),
+          })
+          .execute();
+      await entry('GRANT', granted);
+      /** Révocation, comme `inventory.allocation.revoke` : le reste sort du registre (une seule fois). */
+      let revoked = false;
+      const revoke = async () => {
+        if (revoked) return;
+        revoked = true;
+        await entry('REVOKE', -granted);
+        await db
+          .updateTable('inventory_stock_allocations')
+          .set({
+            status: 'REVOKED',
+            quantity_remaining: '0',
+            revoked_at: new Date(OCCURRED_AT),
+            revoked_by: toBin(admin),
+            revoke_reason: 'Montage de test',
+          })
+          .where('id', '=', toBin(quotaId))
+          .execute();
+      };
+      return { quotaId, revoke };
+    }
+    const posRow = (siteId: string) =>
+      db
+        .selectFrom('organization_points_of_sale')
+        .select(['custody_mode', 'designated_device_id', 'version'])
+        .where('site_id', '=', toBin(siteId))
+        .executeTakeFirstOrThrow();
+
+    it('quota actif : refus POS_ALLOCATIONS_ACTIVE, rien n’est écrit, la garde partagée reste configurable ; après la révocation, appliqué', async () => {
+      const { siteId, salesLocationId } = await newPos();
+      expect((await configure(siteId, { salesLocationId, custodyMode: 'SHARED' })).status).toBe(
+        'APPLIED',
+      );
+      const before = await posRow(siteId);
+      const device = await newDevice();
+      const exclusive = {
+        salesLocationId,
+        custodyMode: 'EXCLUSIVE_DEVICE',
+        designatedDeviceId: device,
+      };
+      let live: Awaited<ReturnType<typeof activeQuota>> | undefined;
+      try {
+        live = await activeQuota(salesLocationId, 10);
+        const refused = await configure(siteId, exclusive);
+        expect(refused).toMatchObject({
+          status: 'REJECTED',
+          error: { code: 'POS_ALLOCATIONS_ACTIVE' },
+        });
+        expect(refused.status === 'REJECTED' && refused.error.message_fr).toContain('1 quota(s)');
+        expect(await posRow(siteId)).toEqual(before);
+        expect(await locationRow(salesLocationId)).toMatchObject({
+          custody_mode: 'SHARED',
+          designated_device_id: null,
+        });
+        // Le PDV reste configurable en garde partagée (horaires) malgré son quota.
+        const hours = await configure(siteId, {
+          salesLocationId,
+          custodyMode: 'SHARED',
+          openingHours: '7 h – 19 h',
+        });
+        expect(hours.status).toBe('APPLIED');
+      } finally {
+        await live?.revoke();
+      }
+      const applied = await configure(siteId, exclusive);
+      expect(applied.status, JSON.stringify(applied)).toBe('APPLIED');
+      expect(await locationRow(salesLocationId)).toMatchObject({
+        custody_mode: 'EXCLUSIVE_DEVICE',
+      });
     });
   });
 

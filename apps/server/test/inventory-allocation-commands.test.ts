@@ -1008,4 +1008,99 @@ describe('quotas d’appareil (P5-08, ADR-033)', () => {
       }
     });
   });
+  it('octroi pendant une configuration qui passe l’emplacement en garde exclusive : l’octroi attend le verrou, relit la garde et refuse (P5-23, AV-230)', async () => {
+    const holder = await newHolder();
+    const productId = await db.transaction().execute((trx) => insertTestProduct(trx, admin));
+    const counter = await db
+      .transaction()
+      .execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'POS' }));
+    const opening = await db
+      .selectFrom('organization_locations')
+      .select('id')
+      .where('location_type', '=', 'V_OPENING')
+      .executeTakeFirstOrThrow();
+    await db.transaction().execute((trx) =>
+      recordStockMove(trx, moveDeps, {
+        productId,
+        quantityBase: 20,
+        fromLocationId: fromBin(opening.id),
+        toLocationId: counter,
+        moveType: 'OPENING_BALANCE',
+        declaredUnitCostXaf: 500,
+        occurredAt: new Date(OCCURRED_AT),
+        sourceDocType: 'INVENTORY_COUNT',
+        sourceDocId: freshUuid(),
+        createdBy: admin,
+        allowNegative: false,
+      }),
+    );
+    // Une « configuration » tient l'emplacement en exclusif, puis le passe en garde exclusive.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockTaken = new Promise<void>((resolve) => (locked = resolve));
+    const configuration = db.transaction().execute(async (trx) => {
+      await trx
+        .selectFrom('organization_locations')
+        .select('id')
+        .where('id', '=', toBin(counter))
+        .forUpdate()
+        .execute();
+      locked();
+      await held;
+      await trx
+        .updateTable('organization_locations')
+        .set({ custody_mode: 'EXCLUSIVE_DEVICE', designated_device_id: toBin(holder.deviceId) })
+        .where('id', '=', toBin(counter))
+        .execute();
+    });
+    await lockTaken;
+    const { id, envelope } = grant(holder, productId, 5, { locationId: counter });
+    const pending = pipeline.handle(envelope, managerCtx());
+    await new Promise((resolve) => setTimeout(resolve, 400)); // l'octroi attend le verrou partagé
+    release();
+    await configuration;
+    const result = await pending;
+    try {
+      expect(rejectionCode(result), JSON.stringify(result)).toBe('ALLOCATION_LOCATION_NOT_SHARED');
+      expect(
+        await db
+          .selectFrom('inventory_stock_allocations')
+          .select('id')
+          .where('id', '=', toBin(id))
+          .executeTakeFirst(),
+      ).toBeUndefined();
+    } finally {
+      // Sous mutation, un quota serait né sur l'emplacement exclusif : révoqué pour la réconciliation.
+      const row = await db
+        .selectFrom('inventory_stock_allocations')
+        .select(['status', 'quantity_remaining'])
+        .where('id', '=', toBin(id))
+        .executeTakeFirst();
+      if (row?.status === 'ACTIVE') {
+        await db
+          .insertInto('inventory_stock_allocation_entries')
+          .values({
+            id: toBin(freshUuid()),
+            allocation_id: toBin(id),
+            entry_type: 'REVOKE',
+            quantity: String(-Number(row.quantity_remaining)),
+            occurred_at: new Date(OCCURRED_AT),
+            created_by: toBin(admin),
+          })
+          .execute();
+        await db
+          .updateTable('inventory_stock_allocations')
+          .set({
+            status: 'REVOKED',
+            quantity_remaining: '0',
+            revoked_at: new Date(OCCURRED_AT),
+            revoked_by: toBin(admin),
+            revoke_reason: 'Nettoyage du test',
+          })
+          .where('id', '=', toBin(id))
+          .execute();
+      }
+    }
+  });
 });

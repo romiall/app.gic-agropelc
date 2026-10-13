@@ -134,7 +134,7 @@
 - **CK** `approved_by` requis si `status = 'ACTIVE'`.
 - **IX** `(status)`, `(enrolled_by_user_id)`.
 - **Suppr.** `DESACTIVATION` (`RETIRED`) ; `short_code` jamais réattribué.
-- **Audit** Enrôlement, approbation, blocage, déblocage, perte, retrait. **Offline** DL (son propre enregistrement).
+- **Audit** Enrôlement, approbation, blocage, déblocage, perte, retrait. **Offline** DL (son propre enregistrement) : jeu `device`, ligne de portée `DEVICE` écrite par chaque commande `identity.device.*` (`emitDeviceChange`, P5-23, AV-195 (3)) et republiée par le seed ; la projection sert `is_shared`, `designated_site_id` et `version` en plus du statut, à l'appareil seul (la ligne `GLOBAL` du repli du pipeline n'est servie à personne).
 - **Intégrité** INV-ADM-03.
 
 ## identity.device_status_periods

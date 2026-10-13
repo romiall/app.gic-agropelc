@@ -860,4 +860,34 @@ describe('P5-18 : jeux hors ligne de P5', { timeout: 180_000 }, () => {
       });
     });
   });
+  describe('jeu device : fiche servie à l’appareil seul (P5-23, AV-195 (3))', () => {
+    it('designate : la fiche (is_shared, designated_site_id) n’est servie qu’à l’appareil ; un autre appareil ne reçoit rien', async () => {
+      const tablet = await newActor('VENDEUR_PDV', root, { scopeType: 'SITE', scopeSiteId: siteA });
+      await ok(admin, {
+        type: 'identity.device.designate',
+        aggregateType: 'DEVICE',
+        aggregateId: tablet.deviceId,
+        occurredAt: at('08:30'),
+        payload: { isShared: true, designatedSiteId: siteA },
+      });
+      const own = await pull(tablet, 'device');
+      expect(latest(own, 'DEVICE', tablet.deviceId)?.data).toMatchObject({
+        id: tablet.deviceId,
+        status: 'ACTIVE',
+        is_shared: true,
+        designated_site_id: siteA,
+      });
+      // Ni la ligne DEVICE (portée d'un autre appareil), ni la ligne GLOBAL du repli du pipeline.
+      const others = await pull(venA, 'device');
+      expect(others.filter((change) => change.entity_id === tablet.deviceId)).toEqual([]);
+      const fallback = await db
+        .selectFrom('sync_change_feed')
+        .select('seq')
+        .where('entity_type', '=', 'DEVICE')
+        .where('entity_id', '=', toBin(tablet.deviceId))
+        .where('scope_type', '=', 'GLOBAL')
+        .execute();
+      expect(fallback.length).toBeGreaterThan(0); // le repli existe, mais n'est servi à personne
+    });
+  });
 });

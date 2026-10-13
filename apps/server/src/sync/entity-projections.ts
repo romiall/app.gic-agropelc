@@ -173,10 +173,23 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
-  DEVICE: async (executor, entityId) => {
+  // P5-23 (AV-195 (3)) : la fiche d'un appareil n'est servie qu'à lui-même (ligne `DEVICE` de
+  // `emitDeviceChange`) ; la ligne `GLOBAL` du repli générique du pipeline n'est plus servie à personne.
+  DEVICE: async (executor, entityId, context) => {
+    if (context.scopeType !== 'DEVICE' || context.scopeId !== entityId) return undefined;
     const row = await executor
       .selectFrom('identity_devices')
-      .select(['id', 'short_code', 'label', 'status', 'platform', 'app_version'])
+      .select([
+        'id',
+        'short_code',
+        'label',
+        'status',
+        'platform',
+        'app_version',
+        'is_shared',
+        'designated_site_id',
+        'version',
+      ])
       .where('id', '=', toBin(entityId))
       .executeTakeFirst();
     if (!row) return undefined;
@@ -187,6 +200,9 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
       status: row.status,
       platform: row.platform,
       app_version: row.app_version,
+      is_shared: row.is_shared === 1,
+      designated_site_id: fromBinOrNull(row.designated_site_id),
+      version: row.version,
     };
   },
 

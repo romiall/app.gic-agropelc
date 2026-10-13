@@ -27,6 +27,16 @@ export type {
   LocationDeactivationGuard,
 } from '../deactivation-guard-registry.js';
 
+// P5-23 (AV-195, AV-230) : gardes de configuration d'un PDV, même inversion de dépendance.
+export { POS_CONFIGURATION_GUARD_REGISTRY } from '../pos-configuration-guard-registry.provider.js';
+export { PosConfigurationGuardRegistry } from '../pos-configuration-guard-registry.js';
+export type {
+  PosConfigurationBlock,
+  PosConfigurationChange,
+  PosConfigurationGuard,
+  PosCustody,
+} from '../pos-configuration-guard-registry.js';
+
 // P4-03 : emplacement « à livrer » d'un site (ADR-028 §1).
 export { ensureToDeliverLocation, ToDeliverLocationError } from './to-deliver-location.js';
 export type { ToDeliverLocation } from './to-deliver-location.js';

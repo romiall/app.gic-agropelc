@@ -31,6 +31,7 @@ import { fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.j
 import { findPosConfigByDesignatedDevice } from '../../../organization/application/public/index.js';
 import { revokeDeviceSessions } from './revoke-sessions.js';
 import { closeOutOfServicePeriod, isOutOfServiceStatus } from './device-status-periods.js';
+import { emitDeviceChange } from '../sync-changes.js';
 
 const emptyPayloadSchema = z.object({});
 const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
@@ -80,6 +81,7 @@ const approve: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -109,6 +111,7 @@ const block: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => {
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   await revokeDeviceSessions(uow, envelope.aggregate_id, 'DEVICE_BLOCKED', occurredAt);
   return { status: 'APPLIED' };
 };
@@ -149,6 +152,7 @@ const unblock: CommandHandler<EmptyPayload> = async (uow, envelope) => {
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 
@@ -176,6 +180,7 @@ const declareLost: CommandHandler<ReasonOptionalPayload> = async (uow, envelope)
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   await revokeDeviceSessions(uow, envelope.aggregate_id, 'DEVICE_BLOCKED', occurredAt);
   return { status: 'APPLIED' };
 };
@@ -222,6 +227,7 @@ const retire: CommandHandler<ReasonOptionalPayload> = async (uow, envelope) => {
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   if (wasActiveOrPending) {
     await revokeDeviceSessions(uow, envelope.aggregate_id, 'DEVICE_BLOCKED', occurredAt);
   }
@@ -284,6 +290,7 @@ const designate: CommandHandler<DesignatePayload> = async (uow, envelope) => {
     })
     .where('id', '=', deviceId)
     .execute();
+  await emitDeviceChange(uow, envelope.aggregate_id);
   return { status: 'APPLIED' };
 };
 

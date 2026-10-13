@@ -220,6 +220,24 @@ function grantHandler(deps: {
     // Soldes puis quotas, sous verrou : deux octrois (ou un octroi et une sortie) du même couple
     // se sérialisent ici, et le contrôle de doublon ci-dessous ne peut plus être dépassé.
     const couple = await lockCouple(uow, p.locationId, p.productId);
+    // P5-23 (AV-230) : mode de garde relu sous verrou partagé — une configuration du PDV concurrente qui passe
+    // l'emplacement en garde exclusive le tient en exclusif : l'octroi l'attend, puis la voit ; un quota ne
+    // naît jamais sur un emplacement exclusif (il n'y serait jamais consommé, INV-STK-19).
+    const custody = await uow
+      .selectFrom('organization_locations')
+      .select(['status', 'custody_mode'])
+      .where('id', '=', toBin(p.locationId))
+      .forShare()
+      .executeTakeFirst();
+    if (!custody || custody.status !== 'ACTIVE') {
+      return rejected('ALLOCATION_LOCATION_INVALID', 'L’emplacement doit être physique et actif.');
+    }
+    if (custody.custody_mode !== 'SHARED') {
+      return rejected(
+        'ALLOCATION_LOCATION_NOT_SHARED',
+        'Un quota ne se donne que sur un emplacement partagé : un emplacement exclusif n’en a pas besoin.',
+      );
+    }
     // Grain du quota : (emplacement, produit), le lot n'étant qu'indicatif (AV-160, ADR-033 §4). Un second
     // quota actif du même couple sur un autre lot (P5-23, revue adverse) ne serait jamais consommé — seul
     // le premier l'est — tout en retranchant son reste du stock libre.
