@@ -2,6 +2,7 @@
 
 - **Statut** : ACCEPTÉ (la forme — indicateurs, urgences, signaux, actions du jour propres à chaque utilisateur — est une demande du porteur du projet, CONFIRMÉE ; le reste est DÉDUIT, technique ; le contenu précis de chaque rôle reste DÉDUIT de `04-acteurs-et-roles.md` §2)
 - **Date** : 08/10/2026 (rédigé après coup : la décision a été appliquée par le code livré avec P4-04 et P4-05 ; le code la cite depuis lors)
+- **Précisé par** : [ADR-041](ADR-041-activite-par-periode-accueil-et-tableau.md) (P5-23) : le chiffre d'affaires et l'encaissé de l'accueil suivent la définition par période d'activité partagée avec le tableau de distribution
 
 ## Contexte
 

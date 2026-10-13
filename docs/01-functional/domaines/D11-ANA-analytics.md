@@ -68,10 +68,10 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-COM-04 | Contacts collectés | Prospects créés dans P avec un téléphone renseigné | `f_prospecting` | C (CM §9) / D |
 | KPI-COM-05 | Nouveaux clients | Conversions (`converted_at` dans P), par titulaire à la conversion | `f_prospecting` | C (CM §9) |
 | KPI-COM-06 | Commandes | Commandes confirmées dans P | `f_orders` | C (CM §9) |
-| KPI-COM-07 | Ventes | Nombre de ventes dans P | `f_sales_line` | C (CM §9) |
-| KPI-COM-08 | CA | Σ montants des ventes dans P − Σ montants des ventes annulées dans P (BR-FIN-042) | `f_sales_line` | C (CM §9) |
+| KPI-COM-07 | Ventes | Nombre de ventes datées de P non annulées en totalité à l'instant de lecture | `f_sales_line` | C (CM §9) / D (ADR-041) |
+| KPI-COM-08 | CA | Σ montants des lignes des ventes datées de P, quel que soit leur statut ultérieur − Σ montants des lignes annulées par les annulations appliquées dans P, chacune à sa date (BR-FIN-042, BR-ANA-003) ; négatif possible. Même fonction pour l'accueil et le tableau de distribution (`period-activity.ts`) | `f_sales_line` | C (CM §9) / D (datation : ADR-041, AV-209) |
 | KPI-COM-09 | Quantité vendue | Σ quantités (unité de base) nettes | `f_sales_line` | C (CM §9) |
-| KPI-COM-10 | Panier moyen | KPI-COM-08 ÷ KPI-COM-07 | dérivé | C (CM §9) |
+| KPI-COM-10 | Panier moyen | KPI-COM-08 ÷ KPI-COM-07, affiché seulement si les deux sont positifs | dérivé | C (CM §9) / D (ADR-041) |
 | KPI-COM-11 | Taux de conversion (cohorte) | Prospects créés dans P et convertis à ce jour ÷ prospects créés dans P | `f_prospecting` | C (CM §9) / D (formule) |
 | KPI-COM-12 | Taux visite → commande | Visites de résultat `COMMANDE_PRISE` ÷ visites | `f_prospecting` | D |
 | KPI-COM-13 | Clients actifs | Clients avec au moins une vente dans les N derniers jours à la fin de P (N = 30) | `f_sales_line` | C (CM §9) / AV-013 |
@@ -97,7 +97,7 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-PRD-08 | Taux d'éclosion | BR-INC-007 | `production.incubation_batches` | C (CM §18) |
 | KPI-PRD-09 | Coût par tête | BR-PRD-012 | `f_costs` | C (CM §33) |
 | KPI-PRD-10 | Marge du lot | BR-PRD-014 | `f_costs`, `f_sales_line` | C (CM §33) |
-| KPI-FIN-01 | Encaissé | Σ encaissements confirmés dans P − annulations dans P | `f_payments` | C (CM §31) |
+| KPI-FIN-01 | Encaissé | Σ encaissements confirmés dans P (enregistrés, en demande d'annulation ou annulés depuis), à leur date − Σ annulations décidées dans P, à leur date ; un doublon approuvé compte à sa date d'origine ; remboursements non retranchés (AV-244) ; négatif possible | `f_payments` | C (CM §31) / D (datation : ADR-041, AV-200) |
 | KPI-FIN-02 | Créances | Σ soldes dus à la fin de P, par âge (0-30, 31-60, 61-90, > 90 jours) | requête sur `sales.sales` (`balance_due_xaf`, `due_date`) | C (CM §31) |
 | KPI-FIN-03 | Créances en retard | Créances dont l'échéance est dépassée | requête sur `sales.sales` (`balance_due_xaf`, `due_date`) | C (CM §54) |
 | KPI-FIN-04 | Dépenses | Σ dépenses approuvées ou payées dans P, par catégorie et objet de coût | `f_expenses` | C (CM §31) |

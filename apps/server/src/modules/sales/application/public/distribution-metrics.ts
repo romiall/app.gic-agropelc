@@ -21,6 +21,7 @@ import { sql, type Kysely, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { saleActivityArms } from './period-activity.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -100,22 +101,7 @@ export async function soldByLocation(
     SELECT x.site_id, x.location_id, x.product_id,
       COALESCE(SUM(x.sold_qty), 0) AS sold_qty, COALESCE(SUM(x.cancelled_qty), 0) AS cancelled_qty,
       COALESCE(SUM(x.sold_xaf), 0) AS sold_xaf, COALESCE(SUM(x.cancelled_xaf), 0) AS cancelled_xaf
-    FROM (
-      SELECT s.site_id, s.from_location_id AS location_id, l.product_id,
-             l.quantity_base AS sold_qty, 0 AS cancelled_qty,
-             l.line_total_xaf AS sold_xaf, 0 AS cancelled_xaf
-        FROM sales_sale_lines l
-        JOIN sales_sales s ON s.id = l.sale_id
-       WHERE s.occurred_at >= ${start} AND s.occurred_at < ${end} ${filters}
-      UNION ALL
-      SELECT s.site_id, s.from_location_id AS location_id, l.product_id,
-             0 AS sold_qty, cl.quantity_base AS cancelled_qty,
-             0 AS sold_xaf, cl.amount_xaf AS cancelled_xaf
-        FROM sales_sale_cancellation_lines cl
-        JOIN sales_sale_cancellations c ON c.id = cl.cancellation_id
-        JOIN sales_sale_lines l ON l.id = cl.sale_line_id
-        JOIN sales_sales s ON s.id = l.sale_id
-       WHERE c.status = 'APPLIED' AND c.applied_at >= ${start} AND c.applied_at < ${end} ${filters}
+    FROM (${saleActivityArms(start, end, filters)}
     ) x
     GROUP BY x.site_id, x.location_id, x.product_id
     ORDER BY x.site_id, x.location_id, x.product_id

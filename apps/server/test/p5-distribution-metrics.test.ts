@@ -16,7 +16,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { businessDayOf, distributionResidual, type Clock, type IdGenerator } from '@gic/domain';
+import {
+  businessDayOf,
+  distributionResidual,
+  FixedClock,
+  type Clock,
+  type IdGenerator,
+} from '@gic/domain';
 import type { CommandResult } from '@gic/contracts';
 import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
@@ -44,9 +50,12 @@ import {
 import {
   cashedByGroup,
   cashedSummary,
+  salesActivityByDay,
   soldByLocation,
+  sumSalesActivity,
   toDeliverByLocation,
 } from '../src/modules/sales/application/public/index.js';
+import { buildHome } from '../src/home-api/home-service.js';
 import {
   cashSessionThresholdsAt,
   cashSessionsOverview,
@@ -1202,6 +1211,153 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
       overcommitted: true,
       holderRemainingQty: 0,
       availableToHolderQty: -3,
+    });
+  });
+
+  it('accueil et tableau, une seule définition : vendu net et encaissé par jour, annulation à sa date (AV-200, AV-209, ADR-041)', async () => {
+    // Encaissement mobile money du jour 4, annulé le jour 5 sur décision de la Finance : il compte le
+    // jour 4 et se retranche le jour 5, jamais rétroactivement.
+    const momo = freshUuid();
+    await ok(fin, {
+      type: 'finance.cash_account.create',
+      aggregateType: 'CASH_ACCOUNT',
+      aggregateId: momo,
+      occurredAt: at(D0, '05:40'),
+      payload: {
+        code: `P523-${momo.slice(-12)}`,
+        name: 'Mobile money P5-23',
+        accountType: 'MOBILE_MONEY',
+        responsibleUserId: fin.userId,
+      },
+    });
+    const payment = freshUuid();
+    await ok(venP, {
+      type: 'sales.payment.record',
+      aggregateType: 'CUSTOMER_PAYMENT',
+      aggregateId: payment,
+      occurredAt: at(D4, '15:00'),
+      payload: {
+        customerId: custV,
+        amountXaf: 3_000,
+        methodCode: 'MOBILE_MONEY_ORANGE',
+        cashAccountId: momo,
+        reference: `OM ${payment.slice(-8)}`,
+        siteId: siteP,
+      },
+    });
+    await ok(venP, {
+      type: 'sales.payment.request_cancellation',
+      aggregateType: 'CUSTOMER_PAYMENT',
+      aggregateId: payment,
+      occurredAt: at(D4, '16:00'),
+      payload: { comment: 'Saisi par erreur' },
+    });
+    const { cancel_approval_request_id: request } = await db
+      .selectFrom('sales_customer_payments')
+      .select('cancel_approval_request_id')
+      .where('id', '=', toBin(payment))
+      .executeTakeFirstOrThrow();
+    const requestId = fromBin(request!);
+    await ok(fin, {
+      type: 'approvals.request.approve',
+      aggregateType: 'APPROVAL_REQUEST',
+      aggregateId: requestId,
+      occurredAt: at(D5, '08:00'),
+      payload: { requestId },
+    });
+
+    const dirToken = await signAccessToken(
+      app.get(JWT_KEYS).privateKey,
+      { sub: dir.userId, device_id: dir.deviceId, session_id: freshUuid() },
+      clock.now(),
+    );
+    const scope = { siteIds: [siteP] };
+    const activity = await salesActivityByDay(db, scope, period(D1, D5));
+    // Site du PDV : D1 vend 15 et annule 4 ; la vente tardive de D4 (2) est annulée à 00:01 à Douala,
+    // donc le jour 5 ; l'encaissement de D1 (5 000), celui de D4 (3 000) annulé le jour 5.
+    const expected = [
+      [D1, 11 * PRICE, 5_000],
+      [D2, 0, 0],
+      [D3, 0, 0],
+      [D4, 2 * PRICE, 3_000],
+      [D5, -2 * PRICE, -3_000],
+    ] as const;
+    for (const [day, netXaf, cashedXaf] of expected) {
+      // Vendu : la somme par emplacement du site (fonction du tableau) = le jour de l'accueil.
+      const sold = await soldByLocation(db, { period: period(day, day), siteIds: [siteP] });
+      expect(
+        sold.reduce((sum, row) => sum + row.netXaf, 0),
+        day,
+      ).toBe(netXaf);
+      expect(sumSalesActivity(activity, day, day).netXaf, day).toBe(netXaf);
+      expect((await cashedSummary(db, scope, period(day, day))).amountXaf, day).toBe(cashedXaf);
+
+      // Accueil du vendeur du PDV ce jour-là (périmètre : son site).
+      const home = await buildHome({
+        executor: db,
+        userId: venP.userId,
+        clock: new FixedClock(new Date(`${day}T12:00:00.000Z`)),
+      });
+      const kpis = home.sections.find((section) => section.role === 'VENDEUR_PDV')!.kpis;
+      const kpi = (code: string) => kpis.find((entry) => entry.code === code);
+      expect(kpi('KPI-COM-08')?.value, day).toBe(netXaf);
+      expect(kpi('KPI-FIN-01')?.value, day).toBe(cashedXaf);
+
+      // Tableau du même jour : vendu de l'emplacement de vente, encaissé du site (tous moyens).
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/analytics/dashboards/distribution?from=${day}&to=${day}&site_id=${siteP}`,
+        headers: { authorization: `Bearer ${dirToken}` },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const [pos] = distributionDashboardResponseSchema.parse(response.json()).pointsOfSale;
+      const [counterSold] = await soldByLocation(db, {
+        period: period(day, day),
+        locationIds: [counter],
+      });
+      expect(pos!.sales.netXaf, day).toBe(counterSold?.netXaf ?? 0);
+      expect(pos!.cashed.amountXaf, day).toBe(cashedXaf);
+    }
+
+    // Le jour 1, tout est vendu à l'emplacement de vente : accueil et tableau identiques ; panier moyen
+    // sur les deux ventes non annulées.
+    const day1 = await buildHome({
+      executor: db,
+      userId: venP.userId,
+      clock: new FixedClock(new Date(`${D1}T12:00:00.000Z`)),
+    });
+    const day1Kpis = day1.sections.find((section) => section.role === 'VENDEUR_PDV')!.kpis;
+    expect(day1Kpis.find((entry) => entry.code === 'KPI-COM-08')).toMatchObject({
+      value: 11 * PRICE,
+      detail: '2 ventes',
+      tone: 'good',
+    });
+    expect(day1Kpis.find((entry) => entry.code === 'KPI-COM-10')?.value).toBe(5_500);
+
+    // Le jour 5 : chiffre et encaissé négatifs, signalés ; pas de panier moyen ; la semaine (lundi D0
+    // au samedi D5) et la courbe portent chaque jour à sa date.
+    const day5 = await buildHome({
+      executor: db,
+      userId: venP.userId,
+      clock: new FixedClock(new Date(`${D5}T12:00:00.000Z`)),
+    });
+    const day5Kpis = day5.sections.find((section) => section.role === 'VENDEUR_PDV')!.kpis;
+    const turnover = day5Kpis.find((entry) => entry.code === 'KPI-COM-08')!;
+    expect(turnover).toMatchObject({ value: -2 * PRICE, detail: '0 vente', tone: 'warn' });
+    expect(turnover.series?.map((point) => point.value)).toEqual([
+      0,
+      0,
+      11 * PRICE,
+      0,
+      0,
+      2 * PRICE,
+      -2 * PRICE,
+    ]);
+    expect(day5Kpis.find((entry) => entry.code === 'KPI-COM-08-S')?.value).toBe(11 * PRICE);
+    expect(day5Kpis.find((entry) => entry.code === 'KPI-COM-10')).toBeUndefined();
+    expect(day5Kpis.find((entry) => entry.code === 'KPI-FIN-01')).toMatchObject({
+      value: -3_000,
+      tone: 'warn',
     });
   });
 

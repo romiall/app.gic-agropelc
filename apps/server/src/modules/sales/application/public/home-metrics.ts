@@ -1,92 +1,20 @@
 /**
- * Chiffres de `sales` pour l'accueil par rôle (ECR-ADM-03 ; ADR-030) : chiffre d'affaires, créances,
- * encaissements, dernières ventes. Lecture seule, calculée à la demande sur les opérations
- * (BR-ANA-001) : jamais de valeur stockée. Le jour est le **jour métier** (`Africa/Douala`,
- * BR-ANA-002), colonne générée `business_date`. Une vente entièrement annulée est exclue ; le montant
- * annulé en partie est retranché (BR-ANA-003 : la contre-écriture à sa propre date viendra avec
- * `sales.sale.cancel`, P4-05).
+ * Chiffres de `sales` pour l'accueil par rôle (ECR-ADM-03 ; ADR-030) : créances, encaissements, dernières
+ * ventes. Lecture seule, calculée à la demande sur les opérations (BR-ANA-001) : jamais de valeur stockée.
+ * Le jour est le **jour métier** (`Africa/Douala`, BR-ANA-002). Le chiffre d'affaires et l'encaissé d'une
+ * période suivent la définition par période d'activité partagée avec le tableau de distribution
+ * (`period-activity.ts` ; P5-23, AV-200, AV-209, ADR-041).
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
+import { cashedActivity } from './period-activity.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
 const SALE_SCOPE = { site: 'sales_sales.site_id', users: ['seller_user_id', 'commercial_user_id'] };
 const PAYMENT_SCOPE = { site: 'sales_customer_payments.site_id', users: ['received_by_user_id'] };
-
-export interface SalesPeriodSummary {
-  readonly salesCount: number;
-  /** CA net : total des ventes − montants annulés. */
-  readonly netXaf: number;
-  readonly paidXaf: number;
-  readonly dueXaf: number;
-  /** Ventes portant au moins une anomalie (drapeau) sur la période. */
-  readonly flaggedCount: number;
-}
-
-/** Ventes du périmètre dont le jour métier est dans `[fromDay, toDay]` (inclus, `AAAA-MM-JJ`). */
-export async function salesPeriodSummary(
-  executor: Executor,
-  scope: ReadScope,
-  period: { readonly fromDay: string; readonly toDay: string },
-): Promise<SalesPeriodSummary> {
-  const row = await executor
-    .selectFrom('sales_sales')
-    .select([
-      sql<string>`COUNT(*)`.as('count'),
-      sql<string>`COALESCE(SUM(total_xaf - cancelled_xaf), 0)`.as('net'),
-      sql<string>`COALESCE(SUM(amount_paid_xaf), 0)`.as('paid'),
-      sql<string>`COALESCE(SUM(total_xaf - cancelled_xaf - amount_paid_xaf), 0)`.as('due'),
-      sql<string>`COALESCE(SUM(JSON_LENGTH(flags) > 0), 0)`.as('flagged'),
-    ])
-    .where('status', '<>', 'CANCELLED')
-    .where(sql`business_date`, '>=', sql<Date>`${period.fromDay}`)
-    .where(sql`business_date`, '<=', sql<Date>`${period.toDay}`)
-    .where(scopeSql(scope, SALE_SCOPE))
-    .executeTakeFirstOrThrow();
-  return {
-    salesCount: Number(row.count),
-    netXaf: Number(row.net),
-    paidXaf: Number(row.paid),
-    dueXaf: Number(row.due),
-    flaggedCount: Number(row.flagged),
-  };
-}
-
-export interface SalesDay {
-  readonly day: string;
-  readonly salesCount: number;
-  readonly netXaf: number;
-}
-
-/** CA net par jour métier sur la période (les jours sans vente sont complétés par l'appelant). */
-export async function salesDailySeries(
-  executor: Executor,
-  scope: ReadScope,
-  period: { readonly fromDay: string; readonly toDay: string },
-): Promise<readonly SalesDay[]> {
-  const rows = await executor
-    .selectFrom('sales_sales')
-    .select([
-      sql<string>`DATE_FORMAT(business_date, '%Y-%m-%d')`.as('day'),
-      sql<string>`COUNT(*)`.as('count'),
-      sql<string>`COALESCE(SUM(total_xaf - cancelled_xaf), 0)`.as('net'),
-    ])
-    .where('status', '<>', 'CANCELLED')
-    .where(sql`business_date`, '>=', sql<Date>`${period.fromDay}`)
-    .where(sql`business_date`, '<=', sql<Date>`${period.toDay}`)
-    .where(scopeSql(scope, SALE_SCOPE))
-    .groupBy(sql`business_date`)
-    .orderBy(sql`business_date`)
-    .execute();
-  return rows.map((row) => ({
-    day: row.day,
-    salesCount: Number(row.count),
-    netXaf: Number(row.net),
-  }));
-}
 
 export interface ReceivablesSummary {
   /** Σ soldes dus des ventes non annulées (KPI-FIN-02). */
@@ -125,41 +53,23 @@ export async function receivablesSummary(
 }
 
 export interface CashedSummary {
+  /** Encaissements confirmés de la période (KPI-FIN-01) ; jamais négatif. */
   readonly paymentsCount: number;
+  /** Encaissé net de la période : confirmés − annulations décidées dans la période (AV-200) ; négatif possible. */
   readonly amountXaf: number;
 }
 
-/**
- * Encaissements retenus par l'« encaissé » (KPI-FIN-01, KPI-DIS-06) : confirmés (`RECORDED`), au jour
- * métier du paiement — **une seule définition** pour l'accueil et le tableau de distribution
- * (BR-ANA-009 ; datation des annulations : AV-200).
- */
-function cashedPayments(
-  executor: Executor,
-  scope: ReadScope,
-  period: { readonly fromDay: string; readonly toDay: string },
-) {
-  return executor
-    .selectFrom('sales_customer_payments')
-    .where('status', '=', 'RECORDED')
-    .where(sql`business_date`, '>=', sql<Date>`${period.fromDay}`)
-    .where(sql`business_date`, '<=', sql<Date>`${period.toDay}`)
-    .where(scopeSql(scope, PAYMENT_SCOPE));
-}
-
-/** Encaissements confirmés (`RECORDED`) dont le jour métier est dans la période (KPI-FIN-01). */
+/** Encaissé de la période, par période d'activité (KPI-FIN-01 ; AV-200 (b), AV-244). */
 export async function cashedSummary(
   executor: Executor,
   scope: ReadScope,
   period: { readonly fromDay: string; readonly toDay: string },
 ): Promise<CashedSummary> {
-  const row = await cashedPayments(executor, scope, period)
-    .select([
-      sql<string>`COUNT(*)`.as('count'),
-      sql<string>`COALESCE(SUM(amount_xaf), 0)`.as('amount'),
-    ])
-    .executeTakeFirstOrThrow();
-  return { paymentsCount: Number(row.count), amountXaf: Number(row.amount) };
+  const groups = await cashedByGroup(executor, scope, period);
+  return {
+    paymentsCount: groups.reduce((sum, group) => sum + group.paymentsCount, 0),
+    amountXaf: groups.reduce((sum, group) => sum + group.amountXaf, 0),
+  };
 }
 
 export interface CashedGroup {
@@ -172,33 +82,21 @@ export interface CashedGroup {
 
 /**
  * Encaissé ventilé par site, moyen de paiement et receveur (P5-19 ; KPI-DIS-06 « encaissé du PDV »,
- * ADR-032 §9 : tous moyens du site, distinct de l'attendu de caisse). Même filtre que `cashedSummary` :
- * la somme des groupes égale le total (BR-ANA-009).
+ * ADR-032 §9 : tous moyens du site, distinct de l'attendu de caisse). Même définition que
+ * `cashedSummary`, dont il est la ventilation (BR-ANA-009) : par période d'activité (`cashedActivity`).
  */
 export async function cashedByGroup(
   executor: Executor,
   scope: ReadScope,
   period: { readonly fromDay: string; readonly toDay: string },
 ): Promise<readonly CashedGroup[]> {
-  const rows = await cashedPayments(executor, scope, period)
-    .select([
-      'site_id',
-      'payment_method_code',
-      'received_by_user_id',
-      sql<string>`COUNT(*)`.as('count'),
-      sql<string>`COALESCE(SUM(amount_xaf), 0)`.as('amount'),
-    ])
-    .groupBy(['site_id', 'payment_method_code', 'received_by_user_id'])
-    .orderBy('site_id')
-    .orderBy('payment_method_code')
-    .orderBy('received_by_user_id')
-    .execute();
+  const rows = await cashedActivity(executor, scope, period);
   return rows.map((row) => ({
-    siteId: fromBin(row.site_id),
-    paymentMethodCode: row.payment_method_code,
-    receivedByUserId: fromBin(row.received_by_user_id),
-    paymentsCount: Number(row.count),
-    amountXaf: Number(row.amount),
+    siteId: fromBin(row.siteId),
+    paymentMethodCode: row.paymentMethodCode,
+    receivedByUserId: fromBin(row.receivedByUserId),
+    paymentsCount: row.confirmedCount,
+    amountXaf: row.confirmedXaf - row.cancelledXaf,
   }));
 }
 

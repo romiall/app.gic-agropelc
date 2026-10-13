@@ -2,6 +2,7 @@
 
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; aucune décision métier nouvelle : les points métier sont les AV-153 à AV-159 et AV-165, à défaut paramétrable)
 - **Date** : 08/10/2026
+- **Précisé par** : [ADR-041](ADR-041-activite-par-periode-accueil-et-tableau.md) (P5-23) : §9 : l'encaissé est compté par période d'activité (confirmés à leur date, annulations à la leur)
 
 ## Contexte
 

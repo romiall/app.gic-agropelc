@@ -11,18 +11,9 @@ export {
   cashedSummary,
   receivablesSummary,
   recentSales,
-  salesDailySeries,
-  salesPeriodSummary,
   suspectPaymentsCount,
 } from './home-metrics.js';
-export type {
-  CashedGroup,
-  CashedSummary,
-  ReceivablesSummary,
-  RecentSale,
-  SalesDay,
-  SalesPeriodSummary,
-} from './home-metrics.js';
+export type { CashedGroup, CashedSummary, ReceivablesSummary, RecentSale } from './home-metrics.js';
 // P5-19 : métriques de distribution partagées (vendu par PDV, à livrer ; BR-ANA-009).
 export { soldByLocation, toDeliverByLocation } from './distribution-metrics.js';
 export type {
@@ -61,3 +52,12 @@ export type {
   ListScope,
   SalesResource,
 } from './sales-query.js';
+
+// P5-23 (AV-200, AV-209, ADR-041) : activité par période, définition unique de l'accueil et du tableau.
+export {
+  cashedActivity,
+  saleActivityArms,
+  salesActivityByDay,
+  sumSalesActivity,
+} from './period-activity.js';
+export type { ActivityPeriod, CashedActivityRow, SalesActivityDay } from './period-activity.js';

@@ -2,6 +2,7 @@
 
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; les notions affichées restent celles de BR-DIS-010, CONFIRMÉES par CM §12)
 - **Date** : 11/10/2026
+- **Précisé par** : [ADR-041](ADR-041-activite-par-periode-accueil-et-tableau.md) (P5-23) : le vendu et l'encaissé du tableau partagent leur définition avec l'accueil
 
 ## Contexte
 

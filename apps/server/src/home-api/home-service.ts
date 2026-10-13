@@ -81,8 +81,8 @@ import {
   cashedSummary,
   receivablesSummary,
   recentSales,
-  salesDailySeries,
-  salesPeriodSummary,
+  salesActivityByDay,
+  sumSalesActivity,
   suspectPaymentsCount,
 } from '../modules/sales/application/public/index.js';
 import { deviceFreshness, devicesOfSites } from '../sync/device-freshness.js';
@@ -196,16 +196,20 @@ async function salesBlock(
 ): Promise<Built> {
   const built = empty();
   const yesterday = shiftDay(ctx.day, -1);
-  const [today, before, week, series, cashed] = await Promise.all([
-    salesPeriodSummary(ctx.executor, scope, { fromDay: ctx.day, toDay: ctx.day }),
-    salesPeriodSummary(ctx.executor, scope, { fromDay: yesterday, toDay: yesterday }),
-    salesPeriodSummary(ctx.executor, scope, { fromDay: weekStart(ctx.day), toDay: ctx.day }),
-    salesDailySeries(ctx.executor, scope, { fromDay: shiftDay(ctx.day, -6), toDay: ctx.day }),
+  // Une lecture de sept jours (la semaine commence au plus six jours avant) : valeur, variation, semaine
+  // et courbe sont tirées des mêmes jours — définition par période d'activité partagée avec le tableau
+  // de distribution (P5-23, AV-200, AV-209, ADR-041 : une annulation compte à sa date).
+  const fromDay = shiftDay(ctx.day, -6);
+  const [days, cashed] = await Promise.all([
+    salesActivityByDay(ctx.executor, scope, { fromDay, toDay: ctx.day }),
     options.cashed
       ? cashedSummary(ctx.executor, scope, { fromDay: ctx.day, toDay: ctx.day })
       : Promise.resolve(null),
   ]);
-  const byDay = new Map(series.map((entry) => [entry.day, entry.netXaf]));
+  const today = sumSalesActivity(days, ctx.day, ctx.day);
+  const before = sumSalesActivity(days, yesterday, yesterday);
+  const week = sumSalesActivity(days, weekStart(ctx.day), ctx.day);
+  const byDay = new Map(days.map((entry) => [entry.day, entry.netXaf]));
   built.kpis.push(
     kpi({
       code: 'KPI-COM-08',
@@ -215,7 +219,7 @@ async function salesBlock(
       detail: plural(today.salesCount, 'vente', 'ventes'),
       delta: variation(today.netXaf, before.netXaf, 'vs hier'),
       series: lastDays(ctx.day, 7).map((day) => ({ day, value: byDay.get(day) ?? 0 })),
-      tone: today.netXaf > 0 ? 'good' : 'neutral',
+      tone: today.netXaf > 0 ? 'good' : today.netXaf < 0 ? 'warn' : 'neutral',
     }),
   );
   if (options.period === 'WEEK' || week.salesCount > today.salesCount) {
@@ -229,7 +233,7 @@ async function salesBlock(
       }),
     );
   }
-  if (today.salesCount > 0) {
+  if (today.salesCount > 0 && today.netXaf > 0) {
     built.kpis.push(
       kpi({
         code: 'KPI-COM-10',
@@ -248,7 +252,7 @@ async function salesBlock(
         value: cashed.amountXaf,
         unit: 'XAF',
         detail: plural(cashed.paymentsCount, 'encaissement', 'encaissements'),
-        tone: cashed.amountXaf > 0 ? 'good' : 'neutral',
+        tone: cashed.amountXaf > 0 ? 'good' : cashed.amountXaf < 0 ? 'warn' : 'neutral',
       }),
     );
   }
