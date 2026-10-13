@@ -57,6 +57,7 @@ import { OrderDetailScreen } from '../features/sales/OrderDetailScreen.js';
 import { OrdersScreen } from '../features/sales/OrdersScreen.js';
 import { SaleDetailScreen } from '../features/sales/SaleDetailScreen.js';
 import { SalesListScreen } from '../features/sales/SalesListScreen.js';
+import { AutonomyBanner } from '../features/sync/AutonomyBanner.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
@@ -104,6 +105,7 @@ function AppShell() {
         </nav>
       </header>
       <main className="app-main">
+        <AutonomyBanner />
         <ErrorBoundary resetKey={location.pathname}>
           <Routes>
             <Route path={ROUTES.home} element={<HomeScreen />} />

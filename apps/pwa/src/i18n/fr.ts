@@ -2927,6 +2927,10 @@ export const fr = {
     },
   },
   sync: {
+    autonomy_warning:
+      'Aucune synchronisation depuis {{hours}} h : connectez-vous dès que possible. Au-delà de {{max}} h, ce téléphone passera en lecture seule.',
+    autonomy_read_only:
+      'Lecture seule : aucune synchronisation depuis {{hours}} h (plus de {{max}} h). Les nouvelles opérations sont bloquées jusqu’à une synchronisation réussie ; celles déjà enregistrées restent sur ce téléphone et partiront au retour du réseau.',
     held_behind_failure:
       'Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer ({{reason}}). Elle partira dès que celle-ci passera, ou au plus tard quand le serveur l’aura écartée.',
     foreign_pending:
