@@ -217,8 +217,28 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     const cash = cashOf([merged]);
     expect(openSession(cash)).toBeUndefined();
     expect(cash.attached).toEqual([
-      { commandId: merged.command_id, openedAt: merged.occurred_at, reason: 'MERGED' },
+      {
+        commandId: merged.command_id,
+        openedAt: merged.occurred_at,
+        reason: 'MERGED',
+        targetStatus: null,
+      },
     ]);
+    // Statut de la session retenue renvoyé (S-48) : gardé sur le rattachement.
+    const mergedOpen = openCmd({
+      status: 'SYNCED_WITH_WARNING',
+      synced_at: '2026-10-10T09:30:00.000Z',
+      server_refs: {
+        cashSessionId: 'session-ouverte',
+        mergedInto: 'session-ouverte',
+        targetStatus: 'OPEN',
+      },
+    });
+    expect(cashOf([mergedOpen]).attached[0]).toMatchObject({
+      reason: 'MERGED',
+      targetStatus: 'OPEN',
+    });
+    expect(openSession(cashOf([mergedOpen]))).toBeUndefined();
     // Hors ligne, la session du jour déjà close et la limite à 1 : le serveur la rattachera.
     const closedToday = session({
       status: 'PENDING_VALIDATION',
@@ -527,6 +547,16 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     expect(coverage({ accounts: [{ ...account, status: 'INACTIVE' }] })).toBe('UNKNOWN');
     expect(coverage()).toBe('MISSING');
     expect(coverage({ sessions: [session()] })).toBe('COVERED');
+    // Ouverture rattachée par le serveur à une session ouverte, pas encore tirée (S-48) : couverte ;
+    // rattachée à une session close : non.
+    const merged = (targetStatus: string) =>
+      openCmd({
+        status: 'SYNCED_WITH_WARNING',
+        synced_at: '2026-10-10T09:30:00.000Z',
+        server_refs: { cashSessionId: 'retenue', mergedInto: 'retenue', targetStatus },
+      });
+    expect(coverage({ outbox: [merged('OPEN')] })).toBe('COVERED');
+    expect(coverage({ outbox: [merged('PENDING_VALIDATION')] })).toBe('MISSING');
     expect(
       coverage({
         sessions: [session({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00Z' })],

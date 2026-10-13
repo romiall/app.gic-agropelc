@@ -57,9 +57,14 @@ export function CashFigures({
   // Réponse sans attendu : comptage rattaché à une session existante, ou clôture conservée comme
   // constat ; aucun écart n'est posé, l'estimation de l'appareil ne vaut plus.
   if (!waiting) {
+    // Fusion : le statut de la session retenue (S-48) dit si la caisse est ouverte.
     const note =
       kind === 'open' && refs.mergedInto
-        ? 'cash.merged_figures'
+        ? refs.targetStatus === 'OPEN'
+          ? 'cash.merged_figures_open'
+          : refs.targetStatus === 'PENDING_VALIDATION' || refs.targetStatus === 'VALIDATED'
+            ? 'cash.merged_figures_closed'
+            : 'cash.merged_figures'
         : kind === 'close'
           ? 'cash.observed_figures'
           : null;

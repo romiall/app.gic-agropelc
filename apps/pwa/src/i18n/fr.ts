@@ -2857,9 +2857,22 @@ export const fr = {
       'Une ouverture saisie par un autre utilisateur de cette tablette attend sa reconnexion : elle sera rattachée à la session ouverte entre-temps.',
     attached:
       'Votre ouverture du {{date}} est rattachée à une session existante de la journée : aucune caisse n’est ouverte sur ce téléphone, votre comptage est conservé comme constat pour la Finance.',
+    attached_open:
+      'Votre ouverture du {{date}} est rattachée à la session déjà ouverte de cette caisse : la caisse est ouverte, elle s’affichera ici à la prochaine synchronisation. Votre comptage est conservé comme constat pour la Finance.',
+    attached_closed:
+      'Votre ouverture du {{date}} est rattachée à une session de la journée déjà close ({{status}}) : aucune caisse n’est ouverte. Votre comptage est conservé comme constat pour la Finance.',
+    target_status: {
+      OPEN: 'ouverte',
+      PENDING_VALIDATION: 'à valider',
+      VALIDATED: 'validée',
+    },
     shifted: 'Ouverture décalée au {{date}}, à la clôture de la session précédente.',
     merged_figures:
       'Comptage rattaché à une session existante de cette caisse : aucun attendu ni écart n’est calculé, il est conservé comme constat pour la Finance.',
+    merged_figures_open:
+      'Comptage rattaché à la session déjà ouverte de cette caisse : la caisse est ouverte ; aucun attendu ni écart n’est calculé, le comptage est conservé comme constat pour la Finance.',
+    merged_figures_closed:
+      'Comptage rattaché à une session de cette caisse déjà close : aucune caisse n’est ouverte ; aucun attendu ni écart n’est calculé, le comptage est conservé comme constat pour la Finance.',
     observed_figures:
       'Session déjà close au serveur : aucun attendu ni écart n’est calculé, votre comptage est conservé comme constat pour la Finance.',
     open_state: 'Caisse ouverte le {{date}} par {{who}}, fonds compté : {{amount}}.',

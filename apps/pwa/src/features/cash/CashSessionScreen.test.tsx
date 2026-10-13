@@ -262,6 +262,49 @@ describe('Caisse du PDV (ECR-DIS-02)', () => {
     expect(screen.queryByText(/Écart indicatif/)).not.toBeInTheDocument();
   });
 
+  it('ouverture rattachée à la session ouverte (S-48) : caisse annoncée ouverte ; close : aucune caisse', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '19000');
+    await user.click(screen.getByRole('button', { name: 'Ouvrir la caisse' }));
+    await screen.findByText('Ouverture de la caisse en cours d’envoi…');
+    const [open] = await outboxOf('finance.cash_session.open');
+    await getDb().outbox.update(open!.command_id, {
+      status: 'SYNCED_WITH_WARNING',
+      synced_at: '2026-10-10T09:30:00.000Z',
+      warnings: ['CASH_SESSION_CONCURRENT_OPEN'],
+      server_refs: {
+        cashSessionId: CASH_SESSION_ID,
+        mergedInto: CASH_SESSION_ID,
+        targetStatus: 'OPEN',
+      },
+    });
+    expect(
+      await screen.findByText(
+        /Comptage rattaché à la session déjà ouverte de cette caisse : la caisse est ouverte/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retour à la caisse' }));
+    expect(
+      await screen.findByText(
+        /est rattachée à la session déjà ouverte de cette caisse : la caisse est ouverte/,
+      ),
+    ).toBeInTheDocument();
+    // La session retenue est close (à valider) : aucune caisse ouverte.
+    await getDb().outbox.update(open!.command_id, {
+      server_refs: {
+        cashSessionId: CASH_SESSION_ID,
+        mergedInto: CASH_SESSION_ID,
+        targetStatus: 'PENDING_VALIDATION',
+      },
+    });
+    expect(
+      await screen.findByText(
+        /rattachée à une session de la journée déjà close \(à valider\) : aucune caisse n’est ouverte/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('ouverture décalée par le serveur (AV-168) : heure retenue annoncée avec ses chiffres', async () => {
     const user = userEvent.setup();
     renderScreen();

@@ -89,6 +89,11 @@ export interface AttachedOpening {
   readonly openedAt: string;
   /** `MERGED` : réponse du serveur ; `WILL_MERGE` : prévu par la règle partagée (hors ligne). */
   readonly reason: 'MERGED' | 'WILL_MERGE';
+  /**
+   * Statut de la session retenue, renvoyé par le serveur avec la fusion (`server_refs.targetStatus`,
+   * S-48) : `OPEN`, `PENDING_VALIDATION` ou `VALIDATED` ; `null` s'il n'est pas connu.
+   */
+  readonly targetStatus: string | null;
 }
 
 /** Caisse vue par l'appareil pour un utilisateur. */
@@ -219,9 +224,14 @@ export function deviceCash(input: {
       continue;
     }
     if (isAccepted(command) && refs.mergedInto) {
-      // Rattachée à une session existante absente du jeu : aucune caisse ouverte (S-48 : le statut de
-      // la session retenue n'est pas renvoyé).
-      attached.push({ commandId: command.command_id, openedAt: view.openedAt, reason: 'MERGED' });
+      // Rattachée à une session existante absente du jeu : aucune session sur l'appareil ; son statut
+      // (S-48) dit si la caisse est ouverte au serveur, jusqu'au tirage qui l'apporte.
+      attached.push({
+        commandId: command.command_id,
+        openedAt: view.openedAt,
+        reason: 'MERGED',
+        targetStatus: refs.targetStatus ?? null,
+      });
       attachedAggregates.add(command.aggregate_id);
       continue;
     }
@@ -237,6 +247,7 @@ export function deviceCash(input: {
           commandId: command.command_id,
           openedAt: command.occurred_at,
           reason: 'WILL_MERGE',
+          targetStatus: null,
         });
         attachedAggregates.add(command.aggregate_id);
         continue;
@@ -591,6 +602,12 @@ export function cashSessionCoverage(input: {
   if (!account) return 'UNKNOWN';
   const cash = deviceCash({ ...input, cashAccountId: account.id });
   if (openSession(cash) || foreignClose(cash, input.userId)) return 'COVERED';
+  // Ouverture rattachée par le serveur à une session ouverte, pas encore tirée (S-48).
+  if (
+    cash.attached.some((opening) => opening.reason === 'MERGED' && opening.targetStatus === 'OPEN')
+  ) {
+    return 'COVERED';
+  }
   return 'MISSING';
 }
 
