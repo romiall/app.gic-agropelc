@@ -53,7 +53,7 @@ P6 a livré bons de commande et réceptions. Le rapprochement (`GET /purchase-or
    - `.cancel` : depuis `MISMATCH`, `DISPUTED` ou `APPROVED` sans paiement affecté, avec un motif.
 6. **Paiement** (BR-FIN-033, AV-055, AV-362, AV-363).
    - Au-delà de `finance.supplier_payment_approval_xaf` (500 000, strict) : le paiement passe `PENDING_APPROVAL`, avec une demande `SUPPLIER_PAYMENT` sous la politique `SUPPLIER_PAYMENT_DEFAULT` (`finance.supplier_payment.approve`, Direction). Aucun décaissement à ce stade.
-   - Les affectations demandées sont enregistrées `PLANNED` et revérifiées à l'approbation : une facture payée entre-temps fait refuser la décision (`ALLOCATION_EXCEEDS`).
+   - Les affectations demandées sont enregistrées `PLANNED` et revérifiées à l'approbation : une facture payée ou annulée entre-temps fait refuser la décision (`ALLOCATION_EXCEEDS`, ou `ALLOCATION_INVALID` pour une facture soldée ou annulée). Sans politique `SUPPLIER_PAYMENT` active, un paiement au-delà du seuil est refusé (`CONTROL_POLICY_MISSING`) : la commande est en ligne, rien n'est encore décaissé.
    - À l'approbation : décaissement daté de la décision, affectations `ACTIVE`, statut des factures recalculé.
    - Sous le seuil : `RECORDED` tout de suite.
    - Le moyen de paiement doit être compatible avec le type du compte (`defaultAccountType` du moyen, `ESPECES` vers une caisse). En ligne, une caisse `CAISSE_*` ne devient jamais négative. Une caisse de PDV exige une session ouverte (ADR-060 §5).

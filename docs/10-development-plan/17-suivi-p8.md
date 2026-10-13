@@ -26,8 +26,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-04 | Catégories de dépense : commandes, publication `catalog`, projection | `cc09f77` | Fait : 5 tests serveur, 7 mutations détectées ; seed 12 tests |
 | P8-05 | Dépenses : enregistrement (en ligne, hors ligne, PDV, revue a posteriori), paiement, annulation | `eb036be` | Fait : 10 tests serveur, 15 mutations détectées ; non-régression de 7 fichiers voisins verte (101 tests) |
 | P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | `eb036be` | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
-| P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | _à venir_ | Fait : 6 tests serveur, 12 mutations détectées |
-| P8-08 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | `3558d5c` | Fait : 6 tests serveur, 12 mutations détectées |
+| P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | _à venir_ | Fait : 5 tests serveur, 14 mutations détectées |
+| P8-09 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
