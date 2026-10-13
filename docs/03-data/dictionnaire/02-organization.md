@@ -233,7 +233,15 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `finance.cash_transfer_allowed_pairs` | `{CAISSE_PDV: [CAISSE_CENTRALE, BANQUE], CAISSE_UTILISATEUR: [CAISSE_CENTRALE, BANQUE], CAISSE_CENTRALE: [CAISSE_PDV, BANQUE], BANQUE: [CAISSE_CENTRALE], MOBILE_MONEY: [CAISSE_CENTRALE, BANQUE]}` | AV-158 (P5-15) : paires de comptes admises pour une remise (type source → types destinataires) ; téléchargé sur l'appareil ; forme invalide → défaut du domaine |
 | `finance.cash_transfer_series_code` | `SIEGE` | AV-176 (P5-15) : code de la série globale `RMF-{CODE}-AAAA-nnnnnn` d'une remise entre comptes sans site (1 à 10 lettres majuscules ou chiffres) |
 | `finance.cash_holding_max_days` | 3 | D09 §14 : jours d'encaisse sans remise avant l'alerte `CASH_HOLDING_HIGH` |
-| `finance.supplier_payment_approval_xaf` | 500 000 | AV-055 |
+| `finance.supplier_payment_approval_xaf` | 500 000 | AV-055 ; BR-FIN-033 : au-delà (strictement), validation de la Direction avant décaissement (ADR-061 §6) |
+| `finance.expense_approval_threshold_xaf` | 50 000 (visible de l'appareil) | AV-058 : au-delà (strictement), la dépense attend une validation (ADR-060 §2) |
+| `finance.expense_photo_threshold_xaf` | 10 000 (visible de l'appareil) | AV-058 : au-delà (strictement), justificatif exigé |
+| `finance.pos_expense_max_xaf` | 50 000 (visible de l'appareil) | AV-353 : plafond d'une dépense payée par la caisse d'un PDV (BR-DIS-013) |
+| `finance.invoice_match_qty_tolerance_pct` | 0 | AV-053 : tolérance de quantité du rapprochement, en % de l'accepté |
+| `finance.invoice_match_price_tolerance_xaf` | 0 | AV-053 : tolérance de prix unitaire du rapprochement |
+| `finance.invoice_without_po_mode` | `REVIEW` | AV-358 : facture sans BC mise en revue (`REVIEW`) ou approuvée d'office (`APPROVE`) |
+| `finance.supplier_advance_allowed` | vrai | AV-362 : paiement non affecté admis comme avance |
+| `finance.supplier_series_code` | `SIEGE` | ADR-061 §10 : série globale des factures (`FF`) et paiements (`PF`) fournisseurs (1 à 10 lettres majuscules ou chiffres) |
 | `procurement.po_approval_threshold_xaf` | 500 000 | AV-051 |
 | `inventory.count_approval_threshold_xaf` | 25 000 | AV-039 |
 | `inventory.transfer_unmatched_hours` | 48 | BR-STK-024 |

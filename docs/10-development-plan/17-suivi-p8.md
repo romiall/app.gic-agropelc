@@ -21,8 +21,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | Incr. | Objet | Commit | État |
 |---|---|---|---|
 | P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | `b48ea93` | Fait |
-| P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | _à venir_ | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
-| P8-03 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | `290f88a` | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
+| P8-03 | `db` : migration `20261101090000`, seed, `schema.sql`, types Kysely, dictionnaires | _à venir_ | Fait : `db` 200 tests (11 nouveaux), six mutations du schéma détectées sur `gic_agropelc_p8m` ; serveur RBAC et validations 36 tests ; typage vert |
+| P8-04 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -44,4 +45,6 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 - `CLAUDE.md` §1 (ligne P6) et `11-demonstration-p6.md` disent AV-095 et AV-096 « ouverts » ; ils sont tranchés le 27/09/2026 dans le registre. AV-096 (dérogation d'emplacement de réception, option c) n'est pas construit : le code refuse toujours `RECEIPT_LOCATION_INVALID`. C'est hors du périmètre de P8.
 - Le lancement de P8 demandait la section « §15 de D09 » pour les choix de P8, mais §15 (P4-08) et §16 (P5-15) existent déjà. Les choix de P8 sont en §17.
 - D09 BR-FIN-040 liste six types de coût ; le schéma en compte neuf (`OEUFS`, `FRAIS_GENERAUX`, `PRODUCTION_TRANSFEREE`). La correction est faite dans l'incrément qui écrit les coûts (P8-05).
-- Le dictionnaire `10-approvals-attachments-communication.md` (énumération `operation_type`) ne contient pas `CASH_TRANSFER_DISCREPANCY` ; il est complété avec `INVOICE_MISMATCH` en P8-03.
+- Le dictionnaire `10-approvals-attachments-communication.md` (énumération `operation_type`) ne contient pas `CASH_TRANSFER_DISCREPANCY` ; complété avec `INVOICE_MISMATCH` en P8-03 (fait).
+- `PROMPT-DE-REPRISE.md` §1 annonce « 123 permissions et 500 attributions » vérifiées par `db/tests/seed.test.ts` : depuis P8-03, **124 et 503** (à reporter à l'intégration).
+- ADR-060 §9 corrigé en P8-03 : le lancement de P8 demandait des catégories à clé dérivée du code (ADR-031), mais l'enveloppe d'une commande exige un UUIDv7 comme `aggregate_id` ; une catégorie semée avec un UUID version 5 ne serait plus administrable. Les catégories ont donc un UUIDv7 semé une fois, synchronisé par son identifiant, comme les motifs.

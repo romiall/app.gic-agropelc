@@ -24,7 +24,7 @@ import {
 import { VIRTUAL_LOCATIONS } from '../seeds/virtual-locations.js';
 import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from '../seeds/crm-references.js';
-import { PAYMENT_METHODS } from '../seeds/finance-references.js';
+import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../seeds/finance-references.js';
 import { codeEntityId } from '../seeds/code-entity-id.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -54,7 +54,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     await conn.end();
   });
 
-  it('crée exactement les 11 rôles, 118 permissions et 483 octrois attendus', async () => {
+  it('crée exactement les 11 rôles, 124 permissions et 503 octrois attendus', async () => {
     const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
       'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
     );
@@ -65,7 +65,7 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
     );
     expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-    expect(PERMISSIONS.length).toBe(123); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06)
+    expect(PERMISSIONS.length).toBe(124); // + inventory.loss.read (AV-094, P2), production.overhead.allocate (P7-10), sales.payment.reallocate et .refund (P4-08), inventory.allocation.release (AV-162, P5-06), finance.expense_category.manage (AV-357, P8-03)
 
     const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
       `SELECT COUNT(*) AS c FROM identity_role_permissions rp
@@ -78,8 +78,16 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     // production.overhead.allocate (Resp. production, Finance : répartition, AV-106, P7-10) ;
     // + 2 octrois sales.payment.reallocate et .refund (Finance, P4-08) ;
     // + 2 octrois inventory.allocation.release (Commercial terrain, Vendeur PDV : portée propre, AV-162, P5-06) ;
-    // + 1 octroi finance.cash_transfer.record OWN (Resp. commercial : alignement sur la matrice §5.5, P5-15).
-    expect(ROLE_PERMISSIONS.length).toBe(500);
+    // + 1 octroi finance.cash_transfer.record OWN (Resp. commercial : alignement sur la matrice §5.5, P5-15) ;
+    // + 2 octrois finance.expense_category.manage (Finance, Administrateur : AV-357, P8-03) ;
+    // + 1 octroi finance.expense.record OWN (Resp. commercial : alignement sur la matrice §5.5, P8-03).
+    expect(ROLE_PERMISSIONS.length).toBe(503);
+    expect(
+      ROLE_PERMISSIONS.find(
+        (grant) =>
+          grant.roleCode === 'RESP_COMMERCIAL' && grant.permissionCode === 'finance.expense.record',
+      )?.maxScope,
+    ).toBe('OWN');
     expect(
       ROLE_PERMISSIONS.find(
         (grant) =>
@@ -121,6 +129,32 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect(methods.filter((m) => m.requires_reference === 0).map((m) => m.code)).toEqual([
       'ESPECES',
     ]);
+  });
+
+  it('crée les dix catégories de dépense (AV-058, AV-357), NON_JUSTIFIEE système, identifiants UUIDv7', async () => {
+    const [categories] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT code, BIN_TO_UUID(id) AS id, default_cost_type, allowed_on_pos, is_system
+       FROM finance_expense_categories WHERE code IN (?) ORDER BY code`,
+      [EXPENSE_CATEGORIES.map((c) => c.code)],
+    );
+    expect(categories).toHaveLength(10);
+    expect(categories.filter((c) => c.is_system === 1).map((c) => c.code)).toEqual([
+      'NON_JUSTIFIEE',
+    ]);
+    expect(categories.filter((c) => c.allowed_on_pos === 1).map((c) => c.code)).toEqual([
+      'CARBURANT',
+      'DIVERS',
+      'ENTRETIEN',
+      'FOURNITURES',
+      'TRANSPORT',
+    ]);
+    expect(categories.find((c) => c.code === 'VETERINAIRE')?.default_cost_type).toBe('VETERINAIRE');
+    // ADR-060 §9 : UUIDv7, administrable par commande (l'enveloppe exige un UUIDv7 d'agrégat).
+    for (const category of categories) {
+      expect(category.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    }
   });
 
   it('crée au moins les paramètres système par défaut documentés', async () => {

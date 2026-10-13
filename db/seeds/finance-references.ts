@@ -71,4 +71,118 @@ export const FINANCE_CONTROL_POLICIES: readonly ControlPolicySeed[] = [
     approverScope: 'ALL',
     ref: 'AV-153',
   },
+  // P8-03 (ADR-060 §2, ADR-061 §2 et §6) : les seuils sont des paramètres ; la politique dit qui
+  // approuve. Dépense : Direction, Finance, Resp. production (`finance.expense.approve`) ; écart de
+  // rapprochement : Direction et Finance ; paiement au-delà du seuil : Direction seule (BR-FIN-033).
+  {
+    code: 'EXPENSE_DEFAULT',
+    operationType: 'EXPENSE',
+    condition: {},
+    requiresPhoto: false,
+    requiresApproval: true,
+    approverPermission: 'finance.expense.approve',
+    approverScope: 'ALL',
+    ref: 'AV-058',
+  },
+  {
+    code: 'INVOICE_MISMATCH_DEFAULT',
+    operationType: 'INVOICE_MISMATCH',
+    condition: {},
+    requiresPhoto: false,
+    requiresApproval: true,
+    approverPermission: 'finance.supplier_invoice.approve',
+    approverScope: 'ALL',
+    ref: 'AV-053',
+  },
+  {
+    code: 'SUPPLIER_PAYMENT_DEFAULT',
+    operationType: 'SUPPLIER_PAYMENT',
+    condition: {},
+    requiresPhoto: false,
+    requiresApproval: true,
+    approverPermission: 'finance.supplier_payment.approve',
+    approverScope: 'ALL',
+    ref: 'AV-055',
+  },
+];
+
+export interface ExpenseCategorySeed {
+  readonly code: string;
+  readonly label: string;
+  readonly defaultCostType: 'VETERINAIRE' | 'ALIMENT' | 'AUTRE_INTRANT' | 'DEPENSE_DIRECTE' | null;
+  readonly allowedOnPos: boolean;
+  readonly isSystem: boolean;
+}
+
+/**
+ * Catégories de dépense initiales (AV-058 ; type de coût et PDV : AV-357 ; ADR-060 §9). Le seed
+ * n'insère que les codes absents, avec un identifiant UUIDv7 ; une catégorie se modifie ensuite par
+ * `finance.expense_category.*`. `NON_JUSTIFIEE` est la catégorie système d'une dépense rejetée après
+ * paiement (BR-FIN-022, AV-355), jamais saisie.
+ */
+export const EXPENSE_CATEGORIES: readonly ExpenseCategorySeed[] = [
+  {
+    code: 'ALIMENT_HORS_STOCK',
+    label: 'Aliment hors stock',
+    defaultCostType: 'ALIMENT',
+    allowedOnPos: false,
+    isSystem: false,
+  },
+  {
+    code: 'VETERINAIRE',
+    label: 'Vétérinaire',
+    defaultCostType: 'VETERINAIRE',
+    allowedOnPos: false,
+    isSystem: false,
+  },
+  {
+    code: 'TRANSPORT',
+    label: 'Transport',
+    defaultCostType: null,
+    allowedOnPos: true,
+    isSystem: false,
+  },
+  {
+    code: 'CARBURANT',
+    label: 'Carburant',
+    defaultCostType: null,
+    allowedOnPos: true,
+    isSystem: false,
+  },
+  {
+    code: 'ENERGIE_EAU',
+    label: 'Énergie et eau',
+    defaultCostType: null,
+    allowedOnPos: false,
+    isSystem: false,
+  },
+  {
+    code: 'MAIN_OEUVRE_OCCASIONNELLE',
+    label: "Main-d'œuvre occasionnelle",
+    defaultCostType: null,
+    allowedOnPos: false,
+    isSystem: false,
+  },
+  {
+    code: 'ENTRETIEN',
+    label: 'Entretien',
+    defaultCostType: null,
+    allowedOnPos: true,
+    isSystem: false,
+  },
+  {
+    code: 'FOURNITURES',
+    label: 'Fournitures',
+    defaultCostType: null,
+    allowedOnPos: true,
+    isSystem: false,
+  },
+  { code: 'DIVERS', label: 'Divers', defaultCostType: null, allowedOnPos: true, isSystem: false },
+  {
+    code: 'NON_JUSTIFIEE',
+    label: 'Dépense non justifiée',
+    defaultCostType: null,
+    allowedOnPos: false,
+    isSystem: true,
+  },
 ];

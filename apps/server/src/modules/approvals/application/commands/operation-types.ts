@@ -33,6 +33,9 @@ export const OPERATION_TYPES = [
   // P5-03 : écart d'une remise de fonds (reçu ≠ envoyé), validé par la Finance ; l'imputation et le
   // motif sont des données de la remise, sans second mouvement de trésorerie (ADR-032 §7, AV-153).
   'CASH_TRANSFER_DISCREPANCY',
+  // P8-03 : écart de rapprochement d'une facture fournisseur (BR-FIN-031, SM-SUPPLIER-INVOICE),
+  // décidé par la Finance ou la Direction (ADR-061 §2).
+  'INVOICE_MISMATCH',
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];

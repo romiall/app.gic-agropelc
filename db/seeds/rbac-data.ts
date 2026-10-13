@@ -1108,6 +1108,15 @@ export const PERMISSIONS: readonly PermissionSeed[] = [
     isApproval: true,
     isSensitive: false,
   },
+  // P8-03 (AV-357, ADR-060 §9) : administrer les catégories de dépense (Finance, Administrateur).
+  {
+    code: 'finance.expense_category.manage',
+    module: 'finance',
+    description: 'Créer, modifier, désactiver une catégorie de dépense',
+    supportedScopes: ['ALL'],
+    isApproval: false,
+    isSensitive: false,
+  },
 
   // analytics (9)
   {
@@ -1287,7 +1296,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // ADMIN — 28, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS)
+  // ADMIN — 29, toujours ALL (identity.device.approve inclus, voir commentaire PERMISSIONS ;
+  // + finance.expense_category.manage, P8-03)
   ...grants('ADMIN', [
     ['identity.user.read', 'ALL'],
     ['identity.user.manage', 'ALL'],
@@ -1317,9 +1327,11 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['crm.customer.merge', 'ALL'],
     ['crm.pipeline.configure', 'ALL'],
     ['inventory.opening.post', 'ALL'],
+    ['finance.expense_category.manage', 'ALL'],
   ]),
 
-  // RESP_COMMERCIAL — 60 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15)
+  // RESP_COMMERCIAL — 61 (+ finance.cash_transfer.record OWN, matrice §5.5, P5-15 ;
+  // + finance.expense.record OWN, matrice §5.5, P8-03)
   ...grants('RESP_COMMERCIAL', [
     ['identity.user.read', 'TEAM'],
     ['identity.device.read', 'TEAM'],
@@ -1375,6 +1387,8 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['inventory.count.approve', 'ZONE'],
     ['inventory.threshold.manage', 'ZONE'],
     ['finance.expense.read', 'TEAM'],
+    // Ses propres dépenses : la matrice §5.5 donne OWN, « reste à aligner en P8 » (P8-03).
+    ['finance.expense.record', 'OWN'],
     // Remise de ses propres espèces (caisse personnelle) : la matrice §5.5 donne OWN (P5-15).
     ['finance.cash_transfer.record', 'OWN'],
     ['analytics.dashboard.commercial', 'TEAM'],
@@ -1690,7 +1704,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['analytics.export', 'ALL'],
   ]),
 
-  // FINANCE — 57
+  // FINANCE — 58 (+ finance.expense_category.manage, P8-03)
   ...grants('FINANCE', [
     ['identity.user.read', 'ALL'],
     ['org.structure.read', 'ALL'],
@@ -1741,6 +1755,7 @@ export const ROLE_PERMISSIONS: readonly RolePermissionSeed[] = [
     ['finance.supplier_invoice.record', 'ALL'],
     ['finance.supplier_invoice.approve', 'ALL'],
     ['finance.supplier_payment.record', 'ALL'],
+    ['finance.expense_category.manage', 'ALL'],
     ['analytics.dashboard.commercial', 'ALL'],
     ['analytics.dashboard.distribution', 'ALL'],
     ['analytics.dashboard.stock', 'ALL'],

@@ -160,74 +160,90 @@
 
 ## finance.expense_categories
 
-**Responsabilité** : catégories de dépenses.
+**Responsabilité** : catégories de dépenses (AV-058, AV-357 ; ADR-060 §9).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| [STD-ID] | | | | |
-| `code` | code | Non | — | AV-058 |
+| [STD-ID] | | | | UUIDv7 semé une fois (administrable par commande, ADR-060 §9) |
+| `code` | code | Non | — | AV-058 ; immuable |
 | `label` | label | Non | — | |
-| `default_cost_type` | enum(types de coût) | Oui | — | Type de coût si imputée à un objet |
+| `default_cost_type` | enum(`VETERINAIRE`,`ALIMENT`,`AUTRE_INTRANT`,`DEPENSE_DIRECTE`) | Oui | — | Type de coût d'une dépense imputée à un lot ; vide = `DEPENSE_DIRECTE` (AV-357) |
 | `allowed_on_pos` | boolean | Non | false | Petite dépense de caisse PDV (BR-DIS-013) |
+| `is_system` | boolean | Non | false | Catégorie système (`NON_JUSTIFIEE`, BR-FIN-022), jamais saisie ; immuable |
 | `is_active` | boolean | Non | true | |
+| `status_reason` | varchar(500) | Oui | — | Motif de la dernière désactivation ou réactivation |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `code`. **Suppr.** `DESACTIVATION`. **Offline** DL.
+- **PK** `id`. **UQ** `code`. **CK** type de coût admis ; une catégorie système n'est pas permise au PDV. **Déclencheurs** : code et nature système immuables ; `no_delete`. **Suppr.** `DESACTIVATION`. **Offline** DL (jeu `catalog`, P8-10).
+- **Seed** (`finance-references.ts`, codes absents seulement) : `ALIMENT_HORS_STOCK` (`ALIMENT`), `VETERINAIRE` (`VETERINAIRE`), `TRANSPORT`, `CARBURANT`, `ENERGIE_EAU`, `MAIN_OEUVRE_OCCASIONNELLE`, `ENTRETIEN`, `FOURNITURES`, `DIVERS`, `NON_JUSTIFIEE` (système) ; permises au PDV : transport, carburant, entretien, fournitures, divers (AV-357).
 
 ## finance.expenses
 
-**Responsabilité** : dépense (SM-EXPENSE ; D09 §7.3).
+**Responsabilité** : dépense (SM-EXPENSE ; D09 §7.3 ; ADR-060).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| [STD-ID] | | | | |
-| [STD-DOC] | | | | Type `DEP` |
+| [STD-ID] | | | | Agrégat de la commande |
+| [STD-DOC] | | | | Type `DEP` ; site de la saisie (charge utile) |
 | `category_id` | uuid → expense_categories | Non | — | |
 | `amount_xaf` | money_xaf | Non | — | > 0 |
 | `payee_name` | label | Oui | — | Bénéficiaire |
 | `supplier_id` | uuid → procurement.suppliers | Oui | — | |
-| `description` | text | Non | — | |
+| `description` | varchar(1000) | Non | — | |
 | `cost_object_type` | enum(`PRODUCTION_LOT`,`INCUBATION_BATCH`,`SITE`) | Oui | — | |
-| `cost_object_id` | uuid | Oui | — | |
-| `paid_now` | boolean | Non | — | |
-| `paid_from_account_id` | uuid → cash_accounts | Oui | — | Requis si payée |
-| `paid_at` | ts | Oui | — | |
+| `cost_object_id` | uuid | Oui | — | Lot de production, lot d'incubation ou site (sans clé étrangère, comme le registre de coûts) |
+| `species_group` | enum(`VOLAILLE`,`PORC`) | Oui | — | Site seulement : frais généraux de cette espèce (AV-356) |
+| `paid_now` | boolean | Non | — | Payée à l'enregistrement |
+| `paid_from_account_id` | uuid → cash_accounts | Oui | — | Compte payeur |
+| `paid_at`, `paid_by` | ts, uuid → users | Oui | — | Paiement (à l'enregistrement ou par `finance.expense.pay`) |
+| `cash_movement_id` | uuid → cash_movements | Oui | — | Mouvement `EXPENSE` `OUT` |
 | `status` | enum(`RECORDED`,`PENDING_APPROVAL`,`APPROVED`,`REJECTED`,`PAID`,`PAID_PENDING_APPROVAL`,`PAID_REJECTED`,`CANCELLED`) | Non | — | |
-| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
-| `reclassified_category_id` | uuid → expense_categories | Oui | — | `NON_JUSTIFIEE` (BR-FIN-022) |
-| [STD-CANCEL] | | | | |
+| `review_reasons` | json | Oui | — | Motifs de revue d'une saisie hors ligne non conforme (ADR-060 §6, AV-352) |
+| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande `EXPENSE` |
+| `reclassified_category_id` | uuid → expense_categories | Oui | — | `NON_JUSTIFIEE` (BR-FIN-022, AV-355) |
+| `responsibility_user_id` | uuid → users | Oui | — | Déclarant tenu pour responsable d'une dépense rejetée après paiement |
+| `cancel_reason`, `cancelled_by`, `cancelled_at` | | Oui | — | [STD-CANCEL] (motif libre, comme les remises) |
+| `business_date` | date | Non | généré | Jour métier de `occurred_at` (UTC+1) |
 | [STD-ORIGIN] | | | | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `doc_number`, `command_id`. **CK** Objet de coût : type et identifiant ensemble ; payée ⇒ compte et date.
-- **IX** `(category_id, business_date)`, `(cost_object_type, cost_object_id)`.
-- **Suppr.** `ANNULATION`. **Audit** Toute transition. **Offline** DL (30 j), CR.
+- **PK** `id`. **UQ** `doc_number`, `(created_device_id, local_ref)`, `command_id`, `cash_movement_id`. **IX** `(category_id, business_date)`, `(cost_object_type, cost_object_id)`, `(site_id, business_date)`, `(created_by, business_date)`, `(status, business_date)`.
+- **CK** montant > 0 ; objet de coût : type et identifiant ensemble, espèce réservée au site ; payée ⇔ compte, date, auteur et mouvement ; `paid_now` ⇒ payée ; état : statuts payés ⇔ paiement, en attente ⇒ demande, `PAID_REJECTED` ⇔ reclassement et responsable, `CANCELLED` ⇔ annulation motivée.
+- **Déclencheurs** : saisie immuable (seuls décision, paiement et annulation évoluent) ; paiement immuable une fois posé ; `REJECTED`, `PAID`, `PAID_REJECTED`, `CANCELLED` terminaux ; `no_delete`.
+- **Suppr.** `ANNULATION`. **Audit** Toute transition. **Offline** DL (30 j, jeu `cash`, P8-10), CR.
 
 ## finance.supplier_invoices
 
-**Responsabilité** : facture fournisseur (SM-SUPPLIER-INVOICE).
+**Responsabilité** : facture fournisseur (SM-SUPPLIER-INVOICE ; ADR-061). En ligne seulement.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| [STD-ID] | | | | |
-| [STD-DOC] | | | | Type `FF` (numéro interne) |
+| [STD-ID] | | | | Agrégat de la commande |
+| `doc_number` | varchar(40) | Non | — | Type `FF`, série globale `finance.supplier_series_code` (ADR-061 §10) |
+| `site_id` | uuid → organization.sites | Oui | — | Site du BC, s'il existe |
 | `supplier_id` | uuid → procurement.suppliers | Non | — | |
 | `supplier_invoice_ref` | varchar(60) | Non | — | Numéro du fournisseur |
 | `invoice_date` | date | Non | — | |
-| `due_date` | date | Oui | — | |
+| `due_date` | date | Non | — | Saisie, sinon date + délai du fournisseur, sinon date (AV-360) ; ≥ `invoice_date` |
 | `purchase_order_id` | uuid → procurement.purchase_orders | Oui | — | |
-| `total_xaf` | money_xaf | Non | — | |
+| `total_xaf` | money_xaf | Non | — | Σ des lignes |
+| `printed_total_xaf` | money_xaf | Oui | — | Total imprimé, comparé à Σ des lignes (rapprochement) |
 | `tax_total_xaf` | money_xaf | Non | 0 | AV-041 |
-| `paid_xaf` | money_xaf | Non | 0 | Dénormalisé |
+| `paid_xaf` | money_xaf | Non | 0 | Σ affectations actives, dénormalisé (INV-FIN-07) |
 | `status` | enum(`MISMATCH`,`DISPUTED`,`APPROVED`,`PARTIALLY_PAID`,`PAID`,`CANCELLED`) | Non | — | |
-| `mismatch_details` | json | Oui | — | Écarts de rapprochement (technique, affichage) |
-| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
-| [STD-CANCEL] | | | | |
+| `mismatch_details` | json | Oui | — | Écarts de rapprochement (`matchSupplierInvoice`) |
+| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande `INVOICE_MISMATCH` |
+| `approved_by`, `approved_at`, `approval_reason` | | Oui | — | Approbation (rapprochement conforme ou décision) |
+| `disputed_by`, `disputed_at`, `dispute_reason` | | Oui | — | Contestation |
+| `comment` | varchar(500) | Oui | — | |
+| `cancel_reason`, `cancelled_by`, `cancelled_at` | | Oui | — | Annulation motivée (avoir, AV-359) |
+| `active_ref_key` | varchar(60) | Oui | généré | Référence d'une facture non annulée |
+| `occurred_at`, `command_id` | | | | Enregistrement |
 | [STD-AUDIT] | | | | |
-| `occurred_at` | ts | Non | — | Date d'enregistrement métier |
 
-- **PK** `id`. **UQ** `(supplier_id, supplier_invoice_ref)` ; `doc_number`. **CK** `paid_xaf ≤ total_xaf` (INV-FIN-07).
-- **Suppr.** `ANNULATION`. **Offline** SRV.
+- **PK** `id`. **UQ** `doc_number`, `(supplier_id, active_ref_key)` (référence unique parmi les factures non annulées, AV-359), `command_id`. **IX** `(supplier_id, status, due_date)`, `purchase_order_id`, `(status, due_date)`.
+- **CK** montants ≥ 0 et `paid_xaf ≤ total_xaf` (INV-FIN-07) ; échéance ≥ date ; état : approuvée ⇒ approbateur, contestée ⇒ date, `CANCELLED` ⇔ annulation motivée, payé cohérent avec `APPROVED` (0), `PARTIALLY_PAID`, `PAID` (total), nul ailleurs.
+- **Déclencheurs** : facture immuable (seuls décision, payé et annulation évoluent) ; `CANCELLED` terminal ; `no_delete`. **Suppr.** `ANNULATION`. **Offline** SRV.
 
 ## finance.supplier_invoice_lines
 
@@ -237,54 +253,68 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `invoice_id` | uuid → supplier_invoices | Non | — | |
+| `line_no` | smallint | Non | — | > 0 |
 | `po_line_id` | uuid → procurement.purchase_order_lines | Oui | — | |
 | `receipt_line_id` | uuid → procurement.goods_receipt_lines | Oui | — | |
 | `product_id` | uuid → catalog.products | Oui | — | Nul pour une ligne de service ou de frais |
-| `description` | label | Non | — | |
-| `quantity_base` | qty | Oui | — | |
-| `unit_price_xaf` | money_xaf | Oui | — | |
-| `line_total_xaf` | money_xaf | Non | — | |
+| `description` | varchar(200) | Non | — | |
+| `quantity_base` | qty | Oui | — | > 0 |
+| `unit_price_xaf` | money_xaf | Oui | — | Par unité de base |
+| `line_total_xaf` | money_xaf | Non | — | ≥ 0 |
+| `created_at` | ts | Non | — | |
 
-- **PK** `id`. **Suppr.** Suit la facture.
+- **PK** `id`. **UQ** `(invoice_id, line_no)`. **IX** `po_line_id`, `receipt_line_id`. **CK** ligne de BC ⇒ quantité et prix. **Déclencheurs** : `no_update`, `no_delete`. **Suppr.** Suit la facture.
 
 ## finance.supplier_payments
 
-**Responsabilité** : paiements fournisseurs.
+**Responsabilité** : paiements fournisseurs (SM-SUPPLIER-PAYMENT ; ADR-061 §6 et §7). En ligne seulement.
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
-| [STD-ID] | | | | |
-| [STD-DOC] | | | | Type `PF` |
+| [STD-ID] | | | | Agrégat de la commande |
+| `doc_number` | varchar(40) | Non | — | Type `PF`, série globale `finance.supplier_series_code` |
+| `site_id` | uuid → organization.sites | Oui | — | |
 | `supplier_id` | uuid → procurement.suppliers | Non | — | |
-| `amount_xaf` | money_xaf | Non | — | |
+| `amount_xaf` | money_xaf | Non | — | > 0 |
 | `payment_method_code` | code → payment_methods | Non | — | |
 | `from_account_id` | uuid → cash_accounts | Non | — | |
 | `external_reference` | varchar(80) | Oui | — | |
 | `status` | enum(`PENDING_APPROVAL`,`RECORDED`,`REJECTED`,`CANCELLED`) | Non | — | |
-| `cash_movement_id` | uuid → cash_movements | Oui | — | Après décaissement |
-| `unallocated_xaf` | money_xaf | Non | — | Avance |
-| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | |
-| [STD-CANCEL] | | | | |
+| `unallocated_xaf` | money_xaf | Non | — | Avance : montant − Σ affectations prévues ou actives (AV-362) |
+| `cash_movement_id`, `disbursed_at` | | Oui | — | Décaissement : à l'enregistrement, ou à la validation au-delà du seuil (AV-363) |
+| `cancel_movement_id` | uuid → cash_movements | Oui | — | Inverse de l'annulation |
+| `approval_request_id` | uuid → approvals.approval_requests | Oui | — | Demande `SUPPLIER_PAYMENT` |
+| `decided_by`, `decided_at` | | Oui | — | Décision de la Direction |
+| `comment` | varchar(500) | Oui | — | |
+| `cancel_reason`, `cancelled_by`, `cancelled_at` | | Oui | — | Annulation motivée (AV-364) |
+| `occurred_at`, `command_id` | | | | |
 | [STD-AUDIT] | | | | |
-| `occurred_at` | ts | Non | — | |
 
-- **PK** `id`. **UQ** `doc_number`. **Suppr.** `ANNULATION`. **Offline** SRV.
+- **PK** `id`. **UQ** `doc_number`, `command_id`, `cash_movement_id`, `cancel_movement_id`. **IX** `(supplier_id, status)`, `(status, occurred_at)`.
+- **CK** montant > 0, 0 ≤ non affecté ≤ montant ; mouvement ⇔ date de décaissement ; état : en attente ⇒ ni décaissement ni demande manquante, enregistré ⇒ décaissé, rejeté ⇒ non décaissé et décidé, `CANCELLED` ⇔ annulation motivée, annulation d'un paiement décaissé ⇒ inverse.
+- **Déclencheurs** : paiement immuable (seuls décision, affectations et annulation évoluent) ; décaissement immuable ; `REJECTED`, `CANCELLED` terminaux ; `no_delete`. **Suppr.** `ANNULATION`. **Offline** SRV.
 
 ## finance.supplier_payment_allocations
 
-**Responsabilité** : affectations aux factures.
+**Responsabilité** : affectations aux factures (INV-FIN-07).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `payment_id` | uuid → supplier_payments | Non | — | |
 | `invoice_id` | uuid → supplier_invoices | Non | — | |
-| `amount_xaf` | money_xaf | Non | — | |
-| `status` | enum(`ACTIVE`,`REVERSED`) | Non | `ACTIVE` | |
+| `amount_xaf` | money_xaf | Non | — | > 0 |
+| `status` | enum(`PLANNED`,`ACTIVE`,`REVERSED`) | Non | — | `PLANNED` : paiement en attente de validation (ADR-061 §6) |
+| `activated_at` | ts | Oui | — | |
+| `reversed_at`, `reversed_by`, `reversal_reason` | | Oui | — | Contrepassation |
+| `active_invoice_key` | uuid | Oui | généré | Facture d'une affectation non contrepassée |
 | `created_at`, `created_by` | | | | |
 
-- **PK** `id`. **Suppr.** `IMMUABLE` sauf `REVERSED`. **Intégrité** INV-FIN-07.
+- **PK** `id`. **UQ** `(payment_id, active_invoice_key)`. **IX** `(invoice_id, status)`. **CK** montant > 0 ; `REVERSED` ⇔ contrepassation motivée ; `ACTIVE` ⇒ date d'activation.
+- **Déclencheurs** : données immuables ; seuls `PLANNED` → `ACTIVE` → `REVERSED` (ou `PLANNED` → `REVERSED`) ; `no_delete`. **Suppr.** `IMMUABLE` sauf `REVERSED`. **Intégrité** INV-FIN-07.
 
 ## finance.v_payables (vue)
 
-Dette par facture et par fournisseur : `supplier_id`, `invoice_id`, `due_date`, `total_xaf`, `paid_xaf`, `balance_xaf`, `days_overdue`. Source : factures `APPROVED` et `PARTIALLY_PAID`.
+Dette par facture (BR-FIN-032, KPI-FIN-05) : `supplier_id`, `invoice_id`, `doc_number`, `supplier_invoice_ref`, `invoice_date`, `due_date`, `total_xaf`, `paid_xaf`, `balance_xaf`, `days_overdue` (jours de retard au jour métier de Douala, 0 avant l'échéance). Source : factures `APPROVED` et `PARTIALLY_PAID`. Vue `finance_v_payables`, `SQL SECURITY INVOKER` (droits du lecteur).
+
+- **Implémentation** (migration `20261101090000`, P8-03) : six tables et la vue ; type de validation `INVOICE_MISMATCH` ajouté au CHECK des politiques ; tests `db/tests/finance-operations.test.ts`.

@@ -2,7 +2,7 @@
 
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique BR-FIN-020 à 022, BR-DIS-013, SM-EXPENSE, BR-SYN-007 ; les choix métier sont AV-350 à AV-357, à confirmer par le porteur)
 - **Date** : 13/10/2026
-- **Précise** : [ADR-032](ADR-032-sessions-de-caisse-et-remises-de-fonds.md) (attendu de caisse, §7 retenue sur la personne), [ADR-038](ADR-038-ordre-de-verrouillage-global.md) (rangs des documents de P8 : [ADR-061](ADR-061-factures-et-paiements-fournisseurs-p8.md) §9), [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) (frais généraux « reliés aux dépenses en P8 »), [ADR-031](ADR-031-cle-de-synchronisation-des-referentiels-a-code.md) (catégories semées)
+- **Précise** : [ADR-032](ADR-032-sessions-de-caisse-et-remises-de-fonds.md) (attendu de caisse, §7 retenue sur la personne), [ADR-038](ADR-038-ordre-de-verrouillage-global.md) (rangs des documents de P8 : [ADR-061](ADR-061-factures-et-paiements-fournisseurs-p8.md) §9), [ADR-026](ADR-026-cout-de-lot-frais-generaux-coproduits.md) (frais généraux « reliés aux dépenses en P8 »), [ADR-031](ADR-031-cle-de-synchronisation-des-referentiels-a-code.md) (écarté pour les catégories, §9)
 - **Questions liées** : AV-058, AV-350 à AV-357
 
 ## Contexte
@@ -53,7 +53,7 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
 
    L'existence et le statut de l'objet se lisent par une nouvelle lecture publique d'`inventory` (`costObjectStatus`), qui s'appuie sur les lots de stock d'origine : `finance` n'importe pas `production`. Annuler une dépense contrepasse son écriture (`reverseCostEntries`). C'est refusé si le mois de frais généraux de l'espèce est déjà réparti (`OVERHEAD_ALREADY_ALLOCATED`, même garde qu'`inventory.overhead.cancel`).
 9. **Catégories** (AV-058, AV-357) :
-   - `finance.expense_categories` est semée avec un `id` dérivé du code (`codeEntityId('EXPENSE_CATEGORY', code)`, ADR-031), donc identique d'une base à l'autre ;
+   - `finance.expense_categories` a un identifiant UUIDv7, semé une fois, comme les motifs (`REASON_CODE`). Ce n'est pas une clé dérivée du code (ADR-031) : l'enveloppe d'une commande exige un UUIDv7 comme `aggregate_id`, et une catégorie semée doit pouvoir être modifiée ou désactivée par commande. La clé naturelle reste le code (unique) ;
    - elle est publiée dans le jeu `catalog` (`EXPENSE_CATEGORY`) et rattrapée par le seed (`publish-references`) ;
    - commandes `finance.expense_category.create`, `.update`, `.deactivate` (nouvelle permission `finance.expense_category.manage`, FINANCE et ADMIN) ;
    - `NON_JUSTIFIEE` est une catégorie système (`is_system`), refusée à la saisie.
@@ -72,4 +72,4 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
 - **Rejeter hors ligne les dépenses non conformes** : contraire à BR-SYN-007, puisque l'argent est déjà sorti. Écartée.
 - **Conflit dédié au lieu de la validation a posteriori** : il faudrait un second circuit de décision pour le même objet. Écartée : SM-EXPENSE prévoit déjà `PAID_PENDING_APPROVAL`.
 - **Écrire le coût du lot dans `production`** : `finance` n'importe pas `production`, et le registre de coûts appartient à `inventory` (BR-FIN-041). Écartée.
-- **Catégories à identifiant aléatoire** : sans gravité, mais l'identifiant semé diffère d'une base à l'autre. L'identifiant dérivé du code suit ADR-031.
+- **Catégories à identifiant dérivé du code** (ADR-031, UUID version 5) : identique d'une base à l'autre, mais refusé comme `aggregate_id` par l'enveloppe des commandes (UUIDv7 exigé). Une catégorie semée ne pourrait alors plus être administrée. Écartée : l'identifiant semé diffère d'une base à l'autre, sans conséquence, puisque l'appareil le reçoit par le jeu `catalog`.

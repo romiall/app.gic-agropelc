@@ -16,7 +16,11 @@ import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js'
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
 import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
 import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
-import { FINANCE_CONTROL_POLICIES, PAYMENT_METHODS } from './finance-references.js';
+import {
+  EXPENSE_CATEGORIES,
+  FINANCE_CONTROL_POLICIES,
+  PAYMENT_METHODS,
+} from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
 import { publishReferenceFeeds } from './publish-references.js';
 
@@ -322,6 +326,35 @@ async function seedFinanceReferences(conn: mysql.Connection): Promise<void> {
   console.log(`  + finance_payment_methods (${inserted} nouveau(x) sur ${PAYMENT_METHODS.length})`);
 }
 
+/** Finance opérationnelle (P8-03) : catégories de dépense (AV-058, AV-357), codes absents seulement. */
+async function seedExpenseCategories(conn: mysql.Connection, systemUserId: Buffer): Promise<void> {
+  let inserted = 0;
+  for (const category of EXPENSE_CATEGORIES) {
+    const [existing] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT id FROM finance_expense_categories WHERE code = ?',
+      [category.code],
+    );
+    if (existing.length > 0) continue;
+    await conn.query(
+      `INSERT INTO finance_expense_categories (id, code, label, default_cost_type, allowed_on_pos, is_system, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId(),
+        category.code,
+        category.label,
+        category.defaultCostType,
+        category.allowedOnPos,
+        category.isSystem,
+        systemUserId,
+      ],
+    );
+    inserted++;
+  }
+  console.log(
+    `  + finance_expense_categories (${inserted} nouvelle(s) sur ${EXPENSE_CATEGORIES.length})`,
+  );
+}
+
 async function main(): Promise<void> {
   const conn = await connectUtc(DATABASE_URL!);
   try {
@@ -335,6 +368,7 @@ async function main(): Promise<void> {
     await seedCrmReferences(conn, systemUserId);
     await seedProductionReferences(conn, systemUserId);
     await seedFinanceReferences(conn);
+    await seedExpenseCategories(conn, systemUserId);
     // P4-11 puis P5-18 (ADR-031, AV-196) : référentiels semés publiés dans le flux de synchronisation.
     await publishReferenceFeeds(conn);
     console.log('Terminé.');
