@@ -240,6 +240,9 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect(await missing('catalog', 'PIPELINE_STEP', 'SELECT id FROM crm_pipeline_steps')).toBe(0);
     expect(await missing('catalog', 'LEAD_SOURCE', 'SELECT id FROM crm_lead_sources')).toBe(0);
     expect(
+      await missing('catalog', 'EXPENSE_CATEGORY', 'SELECT id FROM finance_expense_categories'),
+    ).toBe(0);
+    expect(
       await missing(
         'policies',
         'CONTROL_POLICY',

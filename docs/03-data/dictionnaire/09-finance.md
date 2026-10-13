@@ -176,6 +176,7 @@
 
 - **PK** `id`. **UQ** `code`. **CK** type de coût admis ; une catégorie système n'est pas permise au PDV. **Déclencheurs** : code et nature système immuables ; `no_delete`. **Suppr.** `DESACTIVATION`. **Offline** DL (jeu `catalog`, P8-10).
 - **Seed** (`finance-references.ts`, codes absents seulement) : `ALIMENT_HORS_STOCK` (`ALIMENT`), `VETERINAIRE` (`VETERINAIRE`), `TRANSPORT`, `CARBURANT`, `ENERGIE_EAU`, `MAIN_OEUVRE_OCCASIONNELLE`, `ENTRETIEN`, `FOURNITURES`, `DIVERS`, `NON_JUSTIFIEE` (système) ; permises au PDV : transport, carburant, entretien, fournitures, divers (AV-357).
+- **Commandes** (P8-04, permission `finance.expense_category.manage`, en ligne, `ONLINE_REQUIRED` sinon) : `finance.expense_category.create` (code unique, `EXPENSE_CATEGORY_DUPLICATE` ; rejeu idempotent sur l'agrégat), `.update` (libellé, type de coût, PDV), `.deactivate` et `.reactivate` (motif `status_reason` ; état déjà atteint sans effet) ; une catégorie système ne se modifie ni ne se désactive (`EXPENSE_CATEGORY_SYSTEM`). Chaque écriture publie `EXPENSE_CATEGORY` au jeu `catalog` (ligne `GLOBAL`, version de la ligne) ; les catégories semées sont publiées par le seed (`publish-references.ts`).
 
 ## finance.expenses
 

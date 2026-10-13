@@ -207,3 +207,32 @@ export async function emitCashTransfersOfAccountChange(
     await emitCashTransferChange(uow, fromBin(transfer.id), { previousOwnerId });
   }
 }
+
+/**
+ * P8-04 (ADR-060 §9, AV-357) : catégories de dépense, jeu `catalog`, ligne `GLOBAL`, à leur
+ * identifiant et à leur version, actives ou non (l'appareil affiche la catégorie d'une dépense
+ * existante ; il ne propose que les actives non système). Même jeu que les référentiels de vente
+ * (`catalog/application/sync-changes.ts`, que `finance` n'importe pas). Les catégories semées sont
+ * publiées par le seed (`db/seeds/publish-references.ts`).
+ */
+export async function emitExpenseCategoryChange(
+  uow: Transaction<DB>,
+  categoryId: string,
+): Promise<void> {
+  const row = await uow
+    .selectFrom('finance_expense_categories')
+    .select('version')
+    .where('id', '=', toBin(categoryId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: 'catalog',
+      entityType: 'EXPENSE_CATEGORY',
+      entityId: categoryId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      rowVersion: row.version,
+    },
+  ]);
+}

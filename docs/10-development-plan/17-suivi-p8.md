@@ -22,8 +22,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 |---|---|---|---|
 | P8-01 | Conception : ADR-060 à 062, AV-350 à 366, D09 §17, backlog | `b48ea93` | Fait |
 | P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | `290f88a` | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
-| P8-03 | `db` : migration `20261101090000`, seed, `schema.sql`, types Kysely, dictionnaires | _à venir_ | Fait : `db` 200 tests (11 nouveaux), six mutations du schéma détectées sur `gic_agropelc_p8m` ; serveur RBAC et validations 36 tests ; typage vert |
-| P8-04 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-03 | `db` : migration `20261101090000`, seed, `schema.sql`, types Kysely, dictionnaires | `b588b23` | Fait : `db` 200 tests (11 nouveaux), six mutations du schéma détectées sur `gic_agropelc_p8m` ; serveur RBAC et validations 36 tests ; typage vert |
+| P8-04 | Catégories de dépense : commandes, publication `catalog`, projection | _à venir_ | Fait : 5 tests serveur, 7 mutations détectées ; seed 12 tests |
+| P8-05 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 

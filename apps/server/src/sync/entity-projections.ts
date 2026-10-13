@@ -680,6 +680,37 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
     };
   },
 
+  // P8-04 — catégories de dépense (jeu `catalog`, ligne `GLOBAL`, ADR-060 §9) : actives ou non (une
+  // dépense existante garde sa catégorie) ; l'appareil ne propose que les actives non système.
+  EXPENSE_CATEGORY: async (executor, entityId, context) => {
+    if (context.scopeType !== 'GLOBAL') return undefined;
+    const row = await executor
+      .selectFrom('finance_expense_categories')
+      .select([
+        'id',
+        'code',
+        'label',
+        'default_cost_type',
+        'allowed_on_pos',
+        'is_system',
+        'is_active',
+        'version',
+      ])
+      .where('id', '=', toBin(entityId))
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      id: fromBin(row.id),
+      code: row.code,
+      label: row.label,
+      default_cost_type: row.default_cost_type,
+      allowed_on_pos: Boolean(row.allowed_on_pos),
+      is_system: Boolean(row.is_system),
+      is_active: Boolean(row.is_active),
+      version: row.version,
+    };
+  },
+
   // P5-18 — étapes du pipeline et sources de prospects (jeu `catalog`, ligne `GLOBAL`, AV-196) :
   // référentiels de vente, actifs ou non (l'appareil affiche l'étape d'un prospect existant).
   PIPELINE_STEP: async (executor, entityId, context) => {

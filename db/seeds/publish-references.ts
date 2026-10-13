@@ -51,6 +51,12 @@ const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
     query: 'SELECT id AS entity_key, version AS row_version FROM catalog_reason_codes',
   },
   {
+    // P8-04 (ADR-060 §9) : catégories de dépense, à leur identifiant (UUIDv7) et leur version.
+    dataset: 'catalog',
+    entityType: 'EXPENSE_CATEGORY',
+    query: 'SELECT id AS entity_key, version AS row_version FROM finance_expense_categories',
+  },
+  {
     dataset: 'catalog',
     entityType: 'PIPELINE_STEP',
     query: 'SELECT id AS entity_key, version AS row_version FROM crm_pipeline_steps',
