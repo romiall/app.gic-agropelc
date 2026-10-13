@@ -3,7 +3,14 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from './fixtures.js';
+import {
+  allocationRow,
+  cashSessionRow,
+  IDS,
+  meSettingRow,
+  posCashAccountRow,
+  seedSalesFixtures,
+} from './fixtures.js';
 import { NewSaleScreen } from './NewSaleScreen.js';
 import { FixedClock } from '@gic/domain';
 import { rememberNavigation } from '../navigation/navigation-store.js';
@@ -18,6 +25,7 @@ vi.mock('../auth/AuthContext.js', () => ({
       userId: '01900000-0000-7000-8000-000000000001',
       deviceStatus: 'ACTIVE',
     },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
   }),
 }));
 
@@ -64,7 +72,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     expect(screen.getByLabelText('Montant encaissé (F CFA)')).toHaveValue('300');
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer la vente' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Vente en cours d’envoi');
+    expect(await screen.findByText(/Vente en cours d’envoi/)).toBeInTheDocument();
 
     const [command] = await getDb().outbox.toArray();
     expect(command).toMatchObject({
@@ -198,6 +206,59 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     ]);
   });
 
+  it('caisse du PDV fermée : « Ouvrir la caisse » proposé d’abord ; en ligne, espèces bloquées (BR-DIS-005)', async () => {
+    await seedSalesFixtures(getDb());
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    const { unmount } = renderScreen();
+    const prompt = await screen.findByText(
+      'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
+    );
+    expect(prompt).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ouvrir la caisse' })).toHaveAttribute(
+      'href',
+      '/caisse',
+    );
+    await addEggs(user);
+    expect(
+      screen.getByText(/Encaissement en espèces impossible sans caisse ouverte/),
+    ).toBeInTheDocument();
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    expect(record).toBeDisabled();
+    // Autre moyen de paiement : la vente reste possible.
+    await user.selectOptions(screen.getByLabelText('Moyen de paiement'), 'MOBILE_MONEY_ORANGE');
+    await user.type(screen.getByLabelText('Référence de la transaction'), 'OM-9');
+    await waitFor(() => expect(record).toBeEnabled());
+    unmount();
+
+    // Caisse ouverte : ni invite ni blocage.
+    await getDb().projections.put(cashSessionRow());
+    renderScreen();
+    await addEggs(user);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled(),
+    );
+    expect(screen.queryByText(/Caisse du point de vente fermée/)).not.toBeInTheDocument();
+  });
+
+  it('hors ligne, caisse fermée : la vente en espèces est enregistrée, l’invite l’annonce signalée (AV-305)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb(), { posCustody: 'EXCLUSIVE_USER' });
+    await getDb().projections.put(posCashAccountRow());
+    const user = userEvent.setup();
+    renderScreen();
+    expect(
+      await screen.findByText(
+        /Aucune caisse ouverte sur ce téléphone : un encaissement en espèces/,
+      ),
+    ).toBeInTheDocument();
+    await addEggs(user);
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    await waitFor(() => expect(record).toBeEnabled());
+    await user.click(record);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+  });
+
   it('hors ligne sur un emplacement partagé sans quota : vente bloquée sur l’appareil (AV-025)', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await seedSalesFixtures(getDb());
@@ -205,8 +266,78 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     renderScreen();
     expect(await screen.findByText(/Hors ligne : la vente sera enregistrée/)).toBeInTheDocument();
     await addEggs(user);
-    expect(screen.getByText(/Aucune allocation pour cet appareil/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Œufs de table : aucun quota pour ce téléphone sur cet emplacement ; la vente hors ligne n’est pas possible\./,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
+  });
+
+  it('AT-003 : hors ligne, quota du téléphone affiché ; au-delà bloqué, dans le reste enregistré, puis épuisé', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb());
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: '2099-12-31T22:59:59.999Z' }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const quantity = within(screen.getByRole('listitem', { name: 'Œufs de table' })).getByLabelText(
+      'Quantité',
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '31');
+    expect(
+      screen.getByText('Œufs de table : quota dépassé, il vous reste 30 U, 31 demandé(s).'),
+    ).toBeInTheDocument();
+    const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
+    expect(record).toBeDisabled();
+    const quotaBlock = screen.getByRole('region', { name: 'Quota de ce téléphone' });
+    expect(quotaBlock).toHaveTextContent(
+      /Œufs de table : 30 U restant\(s\) sur votre quota, jusqu’au/,
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '30');
+    await waitFor(() => expect(record).toBeEnabled());
+    await user.click(record);
+    await waitFor(async () =>
+      expect((await getDb().outbox.toArray())[0]).toMatchObject({
+        command_type: 'sales.sale.record',
+        payload: { lines: [expect.objectContaining({ quantityBase: 30 })] },
+      }),
+    );
+
+    // La vente en attente réduit le reste : une unité de plus est refusée.
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle vente' }));
+    await addEggs(user);
+    expect(
+      await screen.findByText('Œufs de table : quota dépassé, il vous reste 0 U, 1 demandé(s).'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
+  });
+
+  it('AT-003 : dépassement du quota autorisé par le site : vente possible, signalée', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await seedSalesFixtures(getDb());
+    await getDb().projections.bulkPut([
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+      meSettingRow('sales.offline_over_allocation_allowed', true, { type: 'SITE', id: IDS.site }),
+    ]);
+    const user = userEvent.setup();
+    renderScreen();
+    await addEggs(user);
+    const quantity = within(screen.getByRole('listitem', { name: 'Œufs de table' })).getByLabelText(
+      'Quantité',
+    );
+    await user.clear(quantity);
+    await user.type(quantity, '31');
+    expect(
+      screen.getByText(/vente au-delà du quota autorisée sur ce site \(quota dépassé\)/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeEnabled(),
+    );
   });
 
   it('hors ligne sur un stock à garde exclusive : vente enregistrée sur le téléphone', async () => {
@@ -220,7 +351,11 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     );
     await user.clear(quantity);
     await user.type(quantity, '301');
-    expect(screen.getByText(/Stock insuffisant sur cet appareil/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 demandé(s).',
+      ),
+    ).toBeInTheDocument();
     await user.clear(quantity);
     await user.type(quantity, '2');
 

@@ -211,6 +211,159 @@ export async function seedSalesFixtures(
   ]);
 }
 
+/** Appareil des tests (jeton de session) et caisse du PDV. */
+export const DEVICE_ID = '01900000-0000-7000-8000-0000000000d0';
+export const POS_CASH_ACCOUNT = '01900000-0000-7000-8000-0000000000b0';
+export const ALLOCATION_ID = '01900000-0000-7000-8000-0000000000b1';
+export const CASH_SESSION_ID = '01900000-0000-7000-8000-0000000000b2';
+export const CASH_TRANSFER_ID = '01900000-0000-7000-8000-0000000000b3';
+
+/** Quota actif de l'utilisateur des tests sur cet appareil (jeu `allocations`, ligne `DEVICE`). */
+export function allocationRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: ALLOCATION_ID,
+    location_id: IDS.pos,
+    product_id: IDS.eggs,
+    lot_id: null,
+    holder_user_id: IDS.user,
+    holder_device_id: DEVICE_ID,
+    quantity_granted: '40.000',
+    quantity_remaining: '40.000',
+    valid_until: '2026-10-10T22:59:59.999Z',
+    status: 'ACTIVE',
+    revocation_pending: false,
+    version: 1,
+    ...overrides,
+  };
+  return row('allocations', 'STOCK_ALLOCATION', data.id as string, data, {
+    type: 'DEVICE',
+    id: data.holder_device_id as string,
+  });
+}
+
+/** Caisse du PDV (jeu `cash`, ligne `SITE`). */
+export function posCashAccountRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: POS_CASH_ACCOUNT,
+    code: 'CAISSE-PDV-YDE',
+    name: 'Caisse du PDV de Yaoundé',
+    account_type: 'CAISSE_PDV',
+    site_id: IDS.site,
+    holder_user_id: null,
+    responsible_user_id: IDS.user,
+    balance_xaf: 20_000,
+    status: 'ACTIVE',
+    version: 3,
+    ...overrides,
+  };
+  return row('cash', 'CASH_ACCOUNT', data.id as string, data, { type: 'SITE', id: IDS.site });
+}
+
+/** Session de caisse ouverte du PDV (jeu `cash`, ligne `SITE`). */
+export function cashSessionRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: CASH_SESSION_ID,
+    cash_account_id: POS_CASH_ACCOUNT,
+    site_id: IDS.site,
+    business_date: '2026-10-10',
+    status: 'OPEN',
+    opened_by: IDS.user,
+    opened_at: '2026-10-10T06:00:00.000Z',
+    opening_counted_xaf: 20_000,
+    opening_expected_xaf: 20_000,
+    opening_variance_xaf: 0,
+    closed_by: null,
+    closed_at: null,
+    closing_counted_xaf: null,
+    closing_expected_xaf: null,
+    variance_xaf: null,
+    current_expected_xaf: null,
+    current_variance_xaf: null,
+    force_closed: false,
+    version: 1,
+    ...overrides,
+  };
+  return row('cash', 'CASH_SESSION', data.id as string, data, { type: 'SITE', id: IDS.site });
+}
+
+/** Remise de fonds envoyée depuis la caisse du PDV (jeu `cash`). */
+export function cashTransferRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: CASH_TRANSFER_ID,
+    doc_number: 'RMF-YDE-2026-000001',
+    local_ref: null,
+    from_account_id: POS_CASH_ACCOUNT,
+    to_account_id: IDS.momo,
+    amount_sent_xaf: 150_000,
+    amount_received_xaf: null,
+    status: 'SENT',
+    sent_by: IDS.user,
+    sent_at: '2026-10-10T17:00:00.000Z',
+    carrier_user_id: null,
+    carrier_name: 'Paul',
+    received_at: null,
+    version: 1,
+    ...overrides,
+  };
+  return row('cash', 'CASH_TRANSFER', data.id as string, data, { type: 'SITE', id: IDS.site });
+}
+
+export const CENTRAL_CASH_ACCOUNT = '01900000-0000-7000-8000-0000000000b4';
+
+/** Destination de remise (jeu `cash`, ligne `GLOBAL`, sans solde, AV-197). */
+export function cashTransferTargetRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: CENTRAL_CASH_ACCOUNT,
+    code: 'CAISSE-CENTRALE',
+    name: 'Caisse centrale',
+    account_type: 'CAISSE_CENTRALE',
+    site_id: null,
+    ...overrides,
+  };
+  return row('cash', 'CASH_TRANSFER_TARGET', data.id as string, data);
+}
+
+/** Configuration du PDV du site (jeu `org`, ligne `SITE`, clé = le site). */
+export function pointOfSaleRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    site_id: IDS.site,
+    sales_location_id: IDS.pos,
+    replenishment_source_location_id: null,
+    custody_mode: 'SHARED',
+    designated_device_id: null,
+    opening_hours: null,
+    version: 1,
+    ...overrides,
+  };
+  return row('org', 'POINT_OF_SALE', data.site_id as string, data, { type: 'SITE', id: IDS.site });
+}
+
+/** Paramètre visible de l'appareil (jeu `me`, ligne `GLOBAL`, portée dans la donnée). */
+let settingSeq = 0;
+
+/**
+ * Version d'un paramètre publiée dans `me`, identifiée comme au serveur par un UUID (une ligne par
+ * version, `organization.system_settings`).
+ */
+export function meSettingRow(
+  key: string,
+  value: unknown,
+  scope: { readonly type: string; readonly id: string | null } = { type: 'GLOBAL', id: null },
+  validFrom = '2026-01-01T00:00:00.000Z',
+  dataset = 'me',
+): Projection {
+  settingSeq += 1;
+  const id = `01900000-0000-7000-8000-0000000f${String(settingSeq).padStart(4, '0')}`;
+  return row(dataset, 'SETTING', id, {
+    id,
+    key,
+    value,
+    scope_type: scope.type,
+    scope_id: scope.id,
+    valid_from: validFrom,
+  });
+}
+
 export const SALE_ID = '01900000-0000-7000-8000-0000000000a1';
 
 /** Vente servie par le serveur (jeu `sales_recent`), payée en partie par un client identifié. */

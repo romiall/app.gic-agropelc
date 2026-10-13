@@ -156,13 +156,13 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
     expect(await countAttention(db)).toBe(1);
   });
 
-  it('pendingOutbox retient une commande dont la dépendance attend encore sa réponse (S-17)', async () => {
-    const enqueue = (dependsOn: readonly string[]) =>
+  it('pendingOutbox : ordre strict, dépendantes comprises ; arrêt avant une dépendance qui ne part pas (ADR-052)', async () => {
+    const enqueue = (dependsOn: readonly string[], authorUserId = 'user-1') =>
       enqueueCommand(
         db,
         { clock, idGenerator },
         {
-          authorUserId: 'user-1',
+          authorUserId,
           commandType: 'sales.sale.record',
           commandVersion: 1,
           aggregateType: 'SALE',
@@ -174,24 +174,63 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
     const creation = await enqueue([]);
     const sale = await enqueue([creation.command_id]);
     const unknownDependency = await enqueue(['01900000-0000-7000-8000-0000000000aa']);
+    const ids = async (skip?: ReadonlySet<string>) =>
+      (await pendingOutbox(db, 50, 'user-1', skip)).map((c) => c.command_id);
 
-    // Création et vente en attente : seule la création (et la commande à dépendance inconnue) part.
-    expect((await pendingOutbox(db)).map((c) => c.command_id)).toEqual([
+    // La vente part dans le même lot, après sa création : le serveur les traite dans l'ordre et fait
+    // attendre la vente si la création n'est pas encore réglée (S-17 levé, AV-210).
+    expect(await ids()).toEqual([
       creation.command_id,
-      unknownDependency.command_id,
-    ]);
-    await db.outbox.update(creation.command_id, { status: 'SYNCING' });
-    expect((await pendingOutbox(db)).map((c) => c.command_id)).toEqual([
-      unknownDependency.command_id,
-    ]);
-    // Création appliquée : la vente part au lot suivant.
-    await db.outbox.update(creation.command_id, { status: 'SYNCED' });
-    expect((await pendingOutbox(db)).map((c) => c.command_id)).toEqual([
       sale.command_id,
       unknownDependency.command_id,
     ]);
+    // Création écartée de ce cycle (bloquée, déjà renvoyée) : la vente qui en dépend ne part pas
+    // seule, ni rien après elle (l'ordre est gardé).
+    expect(await ids(new Set([creation.command_id]))).toEqual([]);
+    // Création appliquée : la vente part.
+    await db.outbox.update(creation.command_id, { status: 'SYNCED' });
+    expect(await ids()).toEqual([sale.command_id, unknownDependency.command_id]);
     // Création refusée : la vente part aussi, le serveur la refusera (DEPENDENCY_REJECTED).
     await db.outbox.update(creation.command_id, { status: 'REJECTED' });
-    expect((await pendingOutbox(db)).map((c) => c.command_id)).toContain(sale.command_id);
+    expect(await ids()).toContain(sale.command_id);
+
+    // Dépendance à une commande d'un autre utilisateur de la tablette, encore en file : elle ne part
+    // qu'à sa reconnexion. La dépendante part quand même (le serveur la fait attendre au plus
+    // `sync.retry_hold_minutes`, puis libère la suite) : la file de l'utilisateur n'est pas bloquée
+    // sans fin.
+    await db.outbox.clear();
+    const other = await enqueue([], 'user-2');
+    const first = await enqueue([]);
+    const dependent = await enqueue([other.command_id]);
+    const next = await enqueue([]);
+    expect(await ids()).toEqual([first.command_id, dependent.command_id, next.command_id]);
+  });
+
+  it('commande de l’auteur encore en vol (SYNCING) : rien de plus récent ne part avant sa réponse', async () => {
+    const enqueue = (authorUserId = 'user-1') =>
+      enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId,
+          commandType: 'sales.sale.record',
+          commandVersion: 1,
+          aggregateType: 'SALE',
+          payload: {},
+          capturedOffline: true,
+        },
+      );
+    const inFlight = await enqueue();
+    const later = await enqueue();
+    await db.outbox.update(inFlight.command_id, { status: 'SYNCING' });
+    expect(await pendingOutbox(db, 50, 'user-1')).toEqual([]);
+    // Lot d'un autre utilisateur en vol : sans effet sur la file de celui-ci.
+    await db.outbox.update(inFlight.command_id, { status: 'PENDING_SYNC' });
+    const otherInFlight = await enqueue('user-2');
+    await db.outbox.update(otherInFlight.command_id, { status: 'SYNCING' });
+    expect((await pendingOutbox(db, 50, 'user-1')).map((c) => c.command_id)).toEqual([
+      inFlight.command_id,
+      later.command_id,
+    ]);
   });
 });

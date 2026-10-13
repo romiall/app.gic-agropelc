@@ -7,6 +7,7 @@
  */
 import type { GicDatabase, OutboxCommand } from '../storage/db.js';
 import type { Clock, IdGenerator } from '@gic/domain';
+import { loadAutonomy, OfflineReadOnlyError } from '../features/sync/autonomy.js';
 
 export interface EnqueueInput {
   readonly authorUserId: string;
@@ -33,11 +34,19 @@ async function nextDeviceSeq(db: GicDatabase): Promise<number> {
   return (last?.device_seq ?? 0) + 1;
 }
 
+/**
+ * Enregistre une opération dans l'outbox. Au-delà de l'autonomie hors connexion (AV-009, AV-314),
+ * l'appareil est en lecture seule : l'opération est refusée (`OfflineReadOnlyError`) et rien n'est
+ * enregistré, quel que soit l'écran qui l'enregistre ; les opérations déjà dans l'outbox partent.
+ */
 export async function enqueueCommand(
   db: GicDatabase,
   deps: { readonly clock: Clock; readonly idGenerator: IdGenerator },
   input: EnqueueInput,
 ): Promise<OutboxCommand> {
+  // Hors de la transaction d'écriture : la mesure lit l'état de synchronisation et les paramètres.
+  const autonomy = await loadAutonomy(db, deps.clock.now());
+  if (autonomy.level === 'READ_ONLY') throw new OfflineReadOnlyError(autonomy.hours ?? 0);
   return db.transaction('rw', db.outbox, async () => {
     const now = deps.clock.now().toISOString();
     const deviceSeq = await nextDeviceSeq(db);
@@ -79,38 +88,72 @@ const UNSETTLED: ReadonlySet<string> = new Set(['LOCAL_ONLY', 'PENDING_SYNC', 'S
  * commandes de `authorUserId` s'il est donné (le serveur n'accepte que celles de l'utilisateur
  * authentifié).
  *
- * Une commande dont une dépendance (`depends_on`) attend encore sa réponse sur l'appareil reste en
- * file : elle part au lot suivant, une fois la dépendance appliquée. Le serveur accepte aujourd'hui
- * une dépendance seulement reçue ou en échec passager, et la commande dépendante serait alors
- * refusée définitivement (S-17). Une dépendance refusée ou en conflit n'arrête pas l'envoi : le
- * serveur refuse alors la dépendante normalement (`DEPENDENCY_REJECTED`).
+ * Ordre strict par `device_seq`, dépendantes comprises (INV-SYN-04, AV-210, ADR-052) : le serveur
+ * fait attendre une dépendance reçue mais pas encore réglée (`DEPENDENCY_PENDING`, S-17 levé) et
+ * suspend la suite du lot après elle (`PRECEDING_COMMAND_PENDING`). Le lot s'arrête avant une
+ * commande dont une dépendance **du même auteur** attend sans partir dans ce lot (commande bloquée
+ * écartée de ce cycle), et avant toute commande plus récente qu'une commande de l'auteur encore en vol
+ * (`SYNCING`). Une dépendance d'un autre utilisateur de la tablette n'arrête pas le lot (elle ne part
+ * qu'à sa reconnexion : le lot attendrait sans fin) ; les écrans évitent de la créer. Une dépendance
+ * refusée ou en conflit n'arrête pas l'envoi : le serveur refuse la dépendante
+ * (`DEPENDENCY_REJECTED`). `skip` : commandes bloquées (`COMMAND_STALLED`) déjà renvoyées pendant ce
+ * cycle, qui ne retiennent plus la suite (AV-217).
  */
 export async function pendingOutbox(
   db: GicDatabase,
   limit = 50,
   authorUserId?: string,
+  skip?: ReadonlySet<string>,
 ): Promise<OutboxCommand[]> {
   const rows = await db.outbox
     .where('status')
     .anyOf(['LOCAL_ONLY', 'PENDING_SYNC'])
     .sortBy('device_seq');
   const candidates = rows.filter(
-    (row) => authorUserId === undefined || row.author_user_id === authorUserId,
+    (row) =>
+      (authorUserId === undefined || row.author_user_id === authorUserId) &&
+      !skip?.has(row.command_id),
   );
   const dependencyIds = [...new Set(candidates.flatMap((row) => row.depends_on))];
   const dependencies =
     dependencyIds.length === 0
       ? []
       : await db.outbox.where('command_id').anyOf(dependencyIds).toArray();
-  const unsettled = new Set(
+  // Auteur de chaque dépendance encore sans réponse définitive sur l'appareil.
+  const unsettled = new Map(
     dependencies
       .filter((dependency) => UNSETTLED.has(dependency.status))
-      .map((dependency) => dependency.command_id),
+      .map((dependency) => [dependency.command_id, dependency.author_user_id]),
   );
-  return candidates
-    .filter((row) => row.depends_on.every((dependency) => !unsettled.has(dependency)))
-    .slice(0, limit);
+  // Commande de l'auteur encore en vol (lot d'un autre onglet, envoi interrompu) : rien de plus
+  // récent ne part avant sa réponse, sinon le serveur l'appliquerait après une commande qui la suit.
+  const inFlight = (await db.outbox.where('status').equals('SYNCING').toArray()).filter(
+    (row) => authorUserId === undefined || row.author_user_id === authorUserId,
+  );
+  const firstInFlight = Math.min(...inFlight.map((row) => row.device_seq));
+  const batch: OutboxCommand[] = [];
+  const inBatch = new Set<string>();
+  for (const row of candidates) {
+    if (batch.length >= limit || row.device_seq > firstInFlight) break;
+    // Dépendance de l'auteur écartée de ce lot (bloquée, déjà renvoyée) : la suite attend. Celle d'un
+    // autre utilisateur de la tablette ne part qu'à sa reconnexion : la dépendante part quand même,
+    // le serveur la fait attendre et suspend la suite au plus `sync.retry_hold_minutes`, puis la
+    // déclare bloquée (`COMMAND_STALLED`, AV-217) et libère la file.
+    const waitsOwn = row.depends_on.some(
+      (dependency) => unsettled.get(dependency) === row.author_user_id && !inBatch.has(dependency),
+    );
+    if (waitsOwn) break;
+    batch.push(row);
+    inBatch.add(row.command_id);
+  }
+  return batch;
 }
+
+/**
+ * Renvois consécutifs sans succès au-delà desquels une commande est signalée « en échec répété » :
+ * elle reste réessayée, mais ne bloque plus l'écran qui l'a émise (`busy_retries`).
+ */
+export const REPEATED_FAILURE_ATTEMPTS = 3;
 
 /**
  * Ce qui restera à envoyer **après** un lot, par auteur (tablette partagée, AV-007) : le serveur
@@ -138,10 +181,21 @@ export async function pendingAfterBatch(
 /**
  * Reprise après interruption : une commande restée `SYNCING` (onglet fermé ou appareil éteint pendant
  * l'envoi) n'a pas de réponse du serveur ; elle repart au prochain cycle. Le serveur est idempotent
- * (`command_id`) : un renvoi d'une commande déjà appliquée rend le même résultat.
+ * (`command_id`) : un renvoi d'une commande déjà appliquée rend le même résultat. `sentBefore` : seules
+ * les commandes envoyées avant cette heure (ou sans heure d'envoi) sont reprises, celles d'un lot
+ * encore en vol dans un autre onglet restent `SYNCING` (sans verrou entre onglets).
  */
-export async function resetInterruptedPushes(db: GicDatabase): Promise<number> {
-  return db.outbox.where('status').equals('SYNCING').modify({ status: 'PENDING_SYNC' });
+export async function resetInterruptedPushes(
+  db: GicDatabase,
+  sentBefore?: string,
+): Promise<number> {
+  return db.outbox
+    .where('status')
+    .equals('SYNCING')
+    .filter(
+      (command) => sentBefore === undefined || !command.sent_at || command.sent_at < sentBefore,
+    )
+    .modify({ status: 'PENDING_SYNC' });
 }
 
 export async function countPending(db: GicDatabase): Promise<number> {

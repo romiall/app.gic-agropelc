@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
@@ -24,6 +24,24 @@ vi.mock('../auth/AuthContext.js', () => ({
 }));
 
 const PENDING_SALE = '01900000-0000-7000-8000-0000000000c1';
+
+/** Appareil en lecture seule le temps de `run` : dernière synchronisation complète ancienne (AV-009). */
+async function whileReadOnly(run: () => Promise<void>) {
+  const db = getDb();
+  const saved = await db.syncMeta.get('device');
+  await db.syncMeta.put({
+    key: 'device',
+    device_id: saved?.device_id ?? '01900000-0000-7000-8000-0000000000d0',
+    clock_skew_ms: null,
+    last_sync_at: '2026-09-01T00:00:00.000Z',
+  });
+  try {
+    await run();
+  } finally {
+    if (saved) await db.syncMeta.put(saved);
+    else await db.syncMeta.delete('device');
+  }
+}
 
 function pendingSaleCommand(): OutboxCommand {
   return {
@@ -130,11 +148,32 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(cancel).toMatchObject({
       aggregate_type: 'SALE_CANCELLATION',
       depends_on: [],
+      // Annulation jugée directe : la vente ne réduit plus le quota en attendant la réponse.
+      local_flags: ['EXPECTED_DIRECT_CANCEL'],
       payload: {
         saleId: SALE_ID,
         comment: 'Erreur de saisie',
         paymentTreatment: 'CUSTOMER_CREDIT',
       },
+    });
+  });
+
+  it('lecture seule (AV-009) : annulation refusée et annoncée, rien n’est enregistré', async () => {
+    await whileReadOnly(async () => {
+      const user = userEvent.setup();
+      renderAt(`/ventes/${SALE_ID}`);
+      await user.click(await screen.findByRole('button', { name: 'Annuler la vente' }));
+      await user.type(screen.getByLabelText('Commentaire'), 'Erreur de saisie');
+      await user.click(screen.getByLabelText('Garder en avoir du client'));
+      await user.click(screen.getByRole('button', { name: 'Confirmer l’annulation' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise\. Rien n’a été enregistré/,
+      );
+      expect(
+        (await getDb().outbox.toArray()).some(
+          (command) => command.command_type === 'sales.sale.cancel',
+        ),
+      ).toBe(false);
     });
   });
 
@@ -153,6 +192,21 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     );
     expect(cancel?.depends_on).toEqual(['01900000-0000-7000-8000-0000000000d1']);
     expect(cancel?.payload).toEqual({ saleId: PENDING_SALE, comment: 'Client parti' });
+  });
+
+  it('tablette partagée : vente d’un autre utilisateur pas encore envoyée, annulation refusée jusqu’à son envoi', async () => {
+    await getDb().outbox.put({
+      ...pendingSaleCommand(),
+      author_user_id: '01900000-0000-7000-8000-0000000000e8',
+    });
+    renderAt(`/ventes/${PENDING_SALE}`);
+    const cancel = await screen.findByRole('button', { name: 'Annuler la vente' });
+    expect(cancel).toBeDisabled();
+    const hint = screen.getByText(/Opération saisie sur cette tablette par un autre utilisateur/);
+    expect(cancel).toHaveAttribute('aria-describedby', hint.id);
+    // Envoyée (même sans retour du tirage) : l'annulation redevient possible.
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000000d1', { status: 'SYNCED' });
+    await waitFor(() => expect(cancel).toBeEnabled());
   });
 
   it('vente d’un compte absorbé depuis : au nom du compte conservé, encaissement sur lui', async () => {

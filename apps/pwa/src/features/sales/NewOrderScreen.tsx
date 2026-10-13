@@ -21,11 +21,14 @@ import { localOutstanding } from './credit.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
 import {
+  CASH_METHOD_ACCOUNT_TYPE,
   EMPTY_PAYMENT,
   paymentIssues,
   paymentPayload,
   type PaymentFieldsValue,
 } from './payment.js';
+import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
+import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
 import { deduceChannel, openWorkSession } from './pricing.js';
 import { ProductPicker } from './ProductPicker.js';
@@ -43,6 +46,7 @@ import {
   type PricingContext,
 } from './sale-form.js';
 import { SaleLineEditor } from './SaleLineEditor.js';
+import { settingValue } from './stock.js';
 import { submitCommand } from './submit.js';
 import type { ProductData } from './types.js';
 
@@ -147,6 +151,23 @@ export function NewOrderScreen() {
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
   const advance = withAdvance ? parseXaf(advancePayment.amountText ?? '') : 0;
+  // Commande servie au PDV (emplacement `POS`) : un acompte en espèces exige une caisse ouverte
+  // (BR-DIS-005, AV-305).
+  const cashSession = cashSessionCoverage({
+    atPointOfSale: location?.location_type === 'POS',
+    accounts: refs.cashAccounts,
+    sessions: refs.cashSessions,
+    outbox: refs.outbox,
+    cashPulledAt: refs.cashPulledAt,
+    siteId: location?.site_id,
+    userId,
+    maxSessionsPerDay: settingValue(
+      refs.settings,
+      'finance.cash_sessions_per_day_max',
+      location?.site_id,
+      now,
+    ),
+  });
   const errors: string[] = [];
   if (total === null) errors.push(t('sales.error_total_invalid'));
   if (withAdvance) {
@@ -162,6 +183,14 @@ export function NewOrderScreen() {
       refs.cashAccounts,
     )) {
       if (issue !== 'AMOUNT_INVALID') errors.push(t(`sales.payment_issue.${issue}`));
+    }
+    if (
+      advance !== null &&
+      advance > 0 &&
+      method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
+      cashPaymentBlocked(cashSession, online)
+    ) {
+      errors.push(t('cash.prompt.blocked'));
     }
   }
   const warnings: string[] = [];
@@ -260,6 +289,11 @@ export function NewOrderScreen() {
       ) : null}
       {pricesMayBeStale(refs.lastSyncAt, now) ? (
         <p className="home-banner">{t('sales.stale_prices')}</p>
+      ) : null}
+      {withAdvance &&
+      method?.default_account_type === CASH_METHOD_ACCOUNT_TYPE &&
+      (cashSession === 'MISSING' || cashSession === 'UNKNOWN') ? (
+        <CashSessionPrompt coverage={cashSession} online={online} userId={userId} />
       ) : null}
 
       <section className="sale-block" aria-labelledby="order-customer-title">

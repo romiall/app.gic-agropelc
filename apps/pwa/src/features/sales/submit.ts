@@ -6,10 +6,15 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
-import { enqueueCommand, type EnqueueInput } from '../../sync/outbox.js';
+import { enqueueCommand, REPEATED_FAILURE_ATTEMPTS, type EnqueueInput } from '../../sync/outbox.js';
 import { getSyncEngine } from '../sync/sync-engine-instance.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
+import { OfflineReadOnlyError } from '../sync/autonomy.js';
 
+/**
+ * Enregistre une opération dans l'outbox et relance l'envoi. En lecture seule (AV-009), elle est
+ * refusée par `enqueueCommand` (`OfflineReadOnlyError`) et rien n'est enregistré.
+ */
 export async function submitCommand(
   input: Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> & {
     readonly commandVersion?: number;
@@ -22,6 +27,16 @@ export async function submitCommand(
   );
   void getSyncEngine()?.trigger();
   return command;
+}
+
+/**
+ * Message d'un échec d'enregistrement : lecture seule (autonomie dépassée, AV-009) ou échec de la base
+ * locale.
+ */
+export function saveErrorKey(error: unknown): string {
+  return error instanceof OfflineReadOnlyError
+    ? 'sync.read_only_refused'
+    : 'sales.error_local_save';
 }
 
 /** Commande de l'outbox suivie en direct (statut, références du serveur, erreur). */
@@ -64,7 +79,7 @@ export function waitingCommands(
     (command) =>
       command.command_type.startsWith(prefix) &&
       command.author_user_id === userId &&
-      isBlockingWait(command),
+      isBlockingWait(command, outbox),
   );
 }
 
@@ -93,7 +108,7 @@ export function lastWaitingCommand(
  * lève une exception, S-29 à S-31, S-37) au-delà desquels une commande en attente est tenue pour en
  * échec répété. Les coupures réseau ne comptent pas (`busy_retries`, tenu par `push.ts`).
  */
-export const REPEATED_FAILURE_ATTEMPTS = 3;
+export { REPEATED_FAILURE_ATTEMPTS };
 
 /** Commande que le serveur renvoie sans l'appliquer (`RETRY_LATER`, `SERVER_BUSY`) à chaque essai. */
 export function inRepeatedFailure(
@@ -125,11 +140,64 @@ export function waitingIds(
 }
 
 /**
- * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
- * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce).
+ * Commande qui retient la suite de son auteur : en échec répété, mais pas encore déclarée bloquée par
+ * le serveur (`COMMAND_STALLED` ne retient plus la suite, AV-217).
  */
-export function isBlockingWait(command: Pick<OutboxCommand, 'status' | 'busy_retries'>): boolean {
-  return phaseOf(command) === 'WAITING' && !inRepeatedFailure(command);
+function holdsFollowing(
+  command: Pick<OutboxCommand, 'status' | 'busy_retries' | 'last_error'>,
+): boolean {
+  return inRepeatedFailure(command) && command.last_error?.code !== 'COMMAND_STALLED';
+}
+
+type Queued = Pick<
+  OutboxCommand,
+  'status' | 'busy_retries' | 'last_error' | 'author_user_id' | 'device_seq'
+>;
+
+/**
+ * Commande plus ancienne du même auteur, en échec répété, qui retient celle-ci : le serveur suspend la
+ * suite de son lot (`PRECEDING_COMMAND_PENDING`) tant qu'elle ne passe pas ou n'est pas déclarée
+ * bloquée (au plus `sync.retry_hold_minutes`).
+ */
+export function heldBehindFailure<T extends Queued>(
+  command: Pick<OutboxCommand, 'status' | 'author_user_id' | 'device_seq'>,
+  outbox: readonly T[],
+): T | undefined {
+  if (phaseOf(command) !== 'WAITING') return undefined;
+  return outbox.find(
+    (candidate) =>
+      candidate.author_user_id === command.author_user_id &&
+      candidate.device_seq < command.device_seq &&
+      holdsFollowing(candidate),
+  );
+}
+
+/** Commande en échec répété qui retient celle-ci, suivie en direct (voir `heldBehindFailure`). */
+export function useHeldBehindFailure(
+  command: OutboxCommand | undefined,
+): OutboxCommand | undefined {
+  return useLiveQuery(async () => {
+    if (!command || phaseOf(command) !== 'WAITING') return undefined;
+    const earlier = await getDb().outbox.where('device_seq').below(command.device_seq).toArray();
+    return heldBehindFailure(command, earlier);
+  }, [command?.command_id, command?.status, command?.device_seq, command?.author_user_id]);
+}
+
+/**
+ * Attente qui bloque l'opération suivante d'un écran : sans réponse définitive, hors échec répété
+ * (sinon l'écran resterait figé à vie ; la commande est toujours réessayée et son résultat l'annonce),
+ * et hors commande retenue derrière une commande plus ancienne en échec répété (`outbox` fourni) : elle
+ * attendrait jusqu'à ce que le serveur déclare celle-ci bloquée.
+ */
+export function isBlockingWait(
+  command: Pick<OutboxCommand, 'status' | 'busy_retries' | 'author_user_id' | 'device_seq'>,
+  outbox?: readonly Queued[],
+): boolean {
+  return (
+    phaseOf(command) === 'WAITING' &&
+    !inRepeatedFailure(command) &&
+    !(outbox && heldBehindFailure(command, outbox))
+  );
 }
 
 /** Message du serveur pour une commande rejetée (`error.message_fr`), s'il existe. */

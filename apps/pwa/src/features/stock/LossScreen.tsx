@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { idGenerator } from '../../platform/composition.js';
+import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -27,6 +27,9 @@ import {
   type LossCategory,
   type LossDraft,
 } from './loss.js';
+import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
+import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { stockLocations } from './stock-view.js';
 
 const EMPTY: LossDraft = {
@@ -41,7 +44,7 @@ const EMPTY: LossDraft = {
 
 export function LossScreen() {
   const { t } = useTranslation();
-  const { state } = useAuth();
+  const { state, deviceId } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
@@ -191,9 +194,22 @@ export function LossScreen() {
         chosenLot.qty_on_hand !== null &&
         check.quantityBase > Number(chosenLot.qty_on_hand)));
   // En ligne, le serveur refuserait la perte (INSUFFICIENT_STOCK) ; hors ligne, fait accompli.
+  // Garde hors ligne (BR-STK-013, AV-303) : quota du détenteur, appareil désigné ; la perte au-delà
+  // est signalée, jamais refusée, sauf emplacement confié à un autre appareil.
+  const guard = offlineExitGuard(refs, {
+    kind: 'LOSS',
+    location,
+    requested: new Map(
+      !online && product && check.quantityBase !== null ? [[product.id, check.quantityBase]] : [],
+    ),
+    userId,
+    deviceId,
+    now: clock.now(),
+  });
   const ready =
     check.issues.length === 0 &&
     !(lotRequired && !chosenLot) &&
+    guard.blocks.length === 0 &&
     !(online && overAvailable) &&
     !busy;
 
@@ -278,6 +294,8 @@ export function LossScreen() {
             id="loss-quantity"
             className="text-input"
             inputMode="decimal"
+            aria-invalid={product && guardBlocks(guard, product.id) ? true : undefined}
+            aria-describedby={product ? guardDescribedBy(guard, 'loss', product.id) : undefined}
             value={draft.quantityText}
             onChange={(event) => update({ quantityText: event.target.value })}
           />
@@ -387,7 +405,18 @@ export function LossScreen() {
           onChange={(event) => update({ comment: event.target.value })}
         />
       </div>
-      {overAvailable ? (
+      <ExitGuardMessages
+        guard={guard}
+        idPrefix="loss"
+        productName={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.name ?? ''
+        }
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
+      />
+      {/* Hors ligne, une perte que la garde signale déjà n'est pas annoncée deux fois. */}
+      {overAvailable && (online || guard.signals.length === 0) ? (
         online ? (
           <p className="error-message" role="alert">
             {t('loss.over_online')}

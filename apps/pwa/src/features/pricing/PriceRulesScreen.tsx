@@ -552,7 +552,8 @@ export function PriceRulesScreen() {
   // l'utilisateur encore en attente (même après un retour sur l'écran) et la relecture qui la suit
   // avant d'en proposer une autre (pas de seconde activation ni de version en double).
   const waiting =
-    (last !== undefined && (lastCommand === undefined || isBlockingWait(lastCommand))) ||
+    (last !== undefined &&
+      (lastCommand === undefined || isBlockingWait(lastCommand, refs.outbox))) ||
     pendingPricing.length > 0;
   const blocked = busy || waiting || productRules.stale;
   const rejected = lastCommand !== undefined && phaseOf(lastCommand) === 'REJECTED';

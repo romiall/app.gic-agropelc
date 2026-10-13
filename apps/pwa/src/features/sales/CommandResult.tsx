@@ -5,7 +5,13 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { inRepeatedFailure, phaseOf, rejectionMessage, useOutboxCommand } from './submit.js';
+import {
+  inRepeatedFailure,
+  phaseOf,
+  rejectionMessage,
+  useHeldBehindFailure,
+  useOutboxCommand,
+} from './submit.js';
 
 interface CommandResultProps {
   readonly commandId: string;
@@ -17,6 +23,8 @@ interface CommandResultProps {
 export function CommandResult({ commandId, messages, children }: CommandResultProps) {
   const { t, i18n } = useTranslation();
   const command = useOutboxCommand(commandId);
+  // Retenue derrière une opération plus ancienne en échec répété : elle n'est pas traitée avant.
+  const holder = useHeldBehindFailure(command);
   if (!command) return null;
   const phase = phaseOf(command);
   // Numéro du document créé (vente, perte…) ; numéro du lot pour une création de lot.
@@ -30,6 +38,8 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
   if (repeated) {
     // Renvoyée sans succès : toujours réessayée, mais elle ne bloque plus l'écran.
     text = t('sync.repeated_failure', { reason: rejectionMessage(command) ?? '' });
+  } else if (holder) {
+    text = t('sync.held_behind_failure', { reason: rejectionMessage(holder) ?? '' });
   } else if (phase === 'WAITING') {
     text = t(`${messages}.WAITING_${command.captured_offline ? 'offline' : 'online'}`);
   } else if (phase === 'REJECTED') {
@@ -46,7 +56,7 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
   const tone =
     phase === 'REJECTED'
       ? 'error'
-      : repeated
+      : repeated || holder
         ? 'warn'
         : phase === 'WAITING'
           ? 'info'

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { FixedClock } from '@gic/domain';
@@ -24,6 +24,7 @@ const response: Pick<HomeResponse, 'user' | 'sections'> = {
       actions: [
         { code: 'CASH_OPEN', label: 'Ouvrir la caisse', hint: null, route: null, primary: false },
         { code: 'SYNC_STATUS', label: 'Synchronisation', hint: null, route: null, primary: false },
+        { code: 'EXPENSES', label: 'Dépenses de caisse', hint: null, route: null, primary: false },
       ],
       kpis: [],
       activity: [],
@@ -63,8 +64,13 @@ describe('MenuScreen (navigation par rôle, hors ligne)', () => {
     expect(await screen.findByText('Vendeur de point de vente')).toBeInTheDocument();
     const actions = screen.getByRole('region', { name: 'Actions du jour' });
     expect(actions).toHaveTextContent('Synchronisation');
-    // « Ouvrir la caisse » n'a pas d'écran (P5, hors du fork) : absente du menu.
-    expect(actions).not.toHaveTextContent('Ouvrir la caisse');
+    // « Ouvrir la caisse » mène à l'écran de la caisse (ECR-DIS-02).
+    expect(within(actions).getByRole('link', { name: /Ouvrir la caisse/ })).toHaveAttribute(
+      'href',
+      '/caisse',
+    );
+    // Les dépenses de caisse n'ont pas d'écran (P8) : absentes du menu.
+    expect(actions).not.toHaveTextContent('Dépenses de caisse');
   });
 
   it('la déconnexion se fait depuis le menu', async () => {

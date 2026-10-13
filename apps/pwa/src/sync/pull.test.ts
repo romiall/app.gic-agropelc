@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixedClock } from '@gic/domain';
 import type { PullResponse } from '@gic/contracts';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
-import { runPullCycle, KNOWN_DATASETS } from './pull.js';
+import { runPullCycle, KNOWN_DATASETS, purgeRetiredDatasets } from './pull.js';
 import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session-runtime.js';
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
@@ -55,6 +55,89 @@ describe('sync/pull (runPullCycle)', () => {
 
     const meta = await db.syncMeta.get('device');
     expect(meta?.last_sync_at).toBe(clock.now().toISOString());
+  });
+
+  it('relève sur la tablette : rien n’est effacé ni tiré pour l’utilisateur précédent', async () => {
+    await db.syncMeta.update('device', { data_user_id: 'user-1' });
+    await db.projections.put({
+      key: 'me:SETTING:x',
+      dataset: 'me',
+      entity_type: 'SETTING',
+      entity_id: 'x',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id: 'x' },
+    });
+    vi.stubGlobal('fetch', vi.fn());
+    // Ancien moteur (user-0) dont le cycle continue après la connexion de user-1.
+    expect(await runPullCycle(db, { clock, userId: 'user-0' })).toEqual({
+      outcome: 'SESSION_CHANGED',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await db.projections.count()).toBe(1);
+    expect((await db.syncMeta.get('device'))?.data_user_id).toBe('user-1');
+
+    // Relève pendant le tirage : le jeu suivant n'est pas demandé.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        setSessionRuntime({
+          userId: 'user-2',
+          deviceId: 'device-1',
+          deviceStatus: 'ACTIVE',
+          refreshToken: 'refresh-token-2',
+          accessToken: 'access-token-2',
+          accessTokenExpiresAt: Date.now() + 60_000,
+          pinKey: {} as CryptoKey,
+        });
+        return new Response(JSON.stringify(emptyPullResponse()), { status: 200 });
+      }),
+    );
+    expect(await runPullCycle(db, { clock, userId: 'user-1' })).toEqual({
+      outcome: 'SESSION_CHANGED',
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((await db.syncMeta.get('device'))?.last_sync_at).toBeNull();
+  });
+
+  it('anciens jeux `setting` et `control_policy` : plus tirés, purgés de l’appareil (AV-196)', async () => {
+    expect(KNOWN_DATASETS).not.toContain('setting');
+    expect(KNOWN_DATASETS).not.toContain('control_policy');
+    const projection = (dataset: string, type: string) => ({
+      key: `${dataset}:${type}:x`,
+      dataset,
+      entity_type: type,
+      entity_id: 'x',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: { id: 'x' },
+    });
+    await db.projections.bulkPut([
+      projection('setting', 'SETTING'),
+      projection('control_policy', 'CONTROL_POLICY'),
+      projection('me', 'SETTING'),
+    ]);
+    await db.syncCursors.bulkPut([
+      { dataset: 'setting', cursor: 4, pulled_at: '2026-09-01T00:00:00.000Z' },
+      { dataset: 'me', cursor: 2, pulled_at: '2026-09-01T00:00:00.000Z' },
+    ]);
+    // Purge faite par le cycle de tirage lui-même.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(emptyPullResponse()), { status: 200 })),
+    );
+    await runPullCycle(db, { clock });
+    expect((await db.projections.toArray()).map((row) => row.dataset)).toEqual(['me']);
+    const cursors = (await db.syncCursors.toArray()).map((row) => row.dataset);
+    expect(cursors).toContain('me');
+    expect(cursors).not.toContain('setting');
+    // Purge sans effet de bord quand il n'y a plus rien.
+    await purgeRetiredDatasets(db);
+    expect(await db.projections.count()).toBe(1);
   });
 
   it('UPSERT avec données : projeté, DELETE : retiré des projections', async () => {

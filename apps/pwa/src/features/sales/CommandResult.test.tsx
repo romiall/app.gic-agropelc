@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { CommandResult } from './CommandResult.js';
+import { isBlockingWait, waitingCommands } from './submit.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 
@@ -31,6 +32,57 @@ function accepted(id: string, warnings?: readonly string[]): OutboxCommand {
     ...(warnings ? { warnings } : {}),
   };
 }
+
+/** Commande en attente de `author`, au rang `seq`, renvoyée `busyRetries` fois sans succès. */
+function waiting(
+  id: string,
+  seq: number,
+  busyRetries: number,
+  code = 'SERVER_BUSY',
+  author = 'u',
+): OutboxCommand {
+  return {
+    ...accepted(id),
+    device_seq: seq,
+    author_user_id: author,
+    command_type: seq === 1 ? 'pricing.rule.create' : 'catalog.unit.create',
+    status: 'PENDING_SYNC',
+    server_refs: null,
+    synced_at: null,
+    busy_retries: busyRetries,
+    last_error: busyRetries > 0 ? { code, message_fr: 'Erreur transitoire, à réessayer.' } : null,
+  };
+}
+
+describe('Opération retenue derrière une opération plus ancienne en échec répété', () => {
+  afterEach(async () => {
+    cleanup();
+    await getDb().outbox.clear();
+  });
+
+  it('ne bloque plus son écran et l’annonce ; une opération déclarée bloquée ne retient rien', async () => {
+    const failing = waiting('regle', 1, 3);
+    const held = waiting('unite', 2, 0);
+    const outbox = [failing, held];
+    // Le catalogue n'attend plus l'unité, que le serveur suspend derrière la règle en échec.
+    expect(isBlockingWait(held)).toBe(true);
+    expect(isBlockingWait(held, outbox)).toBe(false);
+    expect(waitingCommands(outbox, 'catalog.', 'u')).toEqual([]);
+    // Autre auteur, ou commande plus récente que l'échec : rien ne la retient.
+    expect(isBlockingWait(waiting('autre', 3, 0, 'SERVER_BUSY', 'v'), outbox)).toBe(true);
+    expect(isBlockingWait(held, [{ ...failing, device_seq: 5 }, held])).toBe(true);
+    // Déclarée bloquée (`COMMAND_STALLED`) : elle ne retient plus la suite, qui part normalement.
+    const stalled = waiting('regle', 1, 3, 'COMMAND_STALLED');
+    expect(isBlockingWait(held, [stalled, held])).toBe(true);
+
+    await getDb().outbox.bulkPut(outbox);
+    render(<CommandResult commandId="unite" messages="sales.result" />);
+    const result = await screen.findByText(
+      /Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer \(Erreur transitoire, à réessayer\.\)/,
+    );
+    expect(result.closest('.result')).toHaveClass('result-warn');
+  });
+});
 
 describe('Résultat d’une opération : avertissement du serveur', () => {
   afterEach(async () => {

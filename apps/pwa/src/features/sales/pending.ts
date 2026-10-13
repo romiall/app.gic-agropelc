@@ -17,6 +17,25 @@ export function isWaiting(command: Pick<OutboxCommand, 'status'>): boolean {
   return WAITING_STATUSES.has(command.status);
 }
 
+/**
+ * Tablette partagée (AV-007) : vrai si l'une de ces commandes est celle d'un autre utilisateur et
+ * attend encore son envoi. Elle ne part qu'à la reconnexion de son auteur (sa session envoie sa part
+ * de la file) : une opération qui en dépendrait resterait suspendue au serveur, et la file de
+ * l'utilisateur derrière elle (ADR-052). L'écran refuse de la créer.
+ */
+export function waitsForOtherUser(
+  outbox: readonly Pick<OutboxCommand, 'command_id' | 'author_user_id' | 'status'>[],
+  commandIds: readonly (string | null | undefined)[],
+  userId: string | undefined,
+): boolean {
+  const ids = new Set(commandIds.filter((id): id is string => typeof id === 'string'));
+  if (ids.size === 0) return false;
+  return outbox.some(
+    (command) =>
+      ids.has(command.command_id) && command.author_user_id !== userId && isWaiting(command),
+  );
+}
+
 export function isAccepted(command: Pick<OutboxCommand, 'status'>): boolean {
   return command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING';
 }

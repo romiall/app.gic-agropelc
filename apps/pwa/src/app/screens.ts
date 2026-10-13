@@ -74,6 +74,13 @@ export const ROUTES = {
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
   collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
+  cash: '/caisse',
+  cashTransfers: '/caisse/remises',
+  treasury: '/finance/tresorerie',
+  replenish: '/pdv/reapprovisionnement',
+  distribution: '/pdv/distribution',
+  posHome: '/pdv',
+  allocations: '/stock/quotas',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -240,6 +247,35 @@ export const ROLE_SETS = {
     'RESP_FERME',
     'FINANCE',
   ],
+  /** `finance.cash_session.operate` (VEN SITE, FIN ALL) : ouverture et clôture de la caisse du PDV. */
+  cashSessionOperate: ['VENDEUR_PDV', 'FINANCE'],
+  /** ECR-DIS-03 : demande de réapprovisionnement du PDV (`inventory.transfer.request`, VEN SITE). */
+  replenishRequest: ['VENDEUR_PDV'],
+  /** ECR-DIS-01 : accueil du PDV (vendeur du PDV). */
+  posHome: ['VENDEUR_PDV'],
+  /** `inventory.allocation.release` (CTE, VEN) : libération d'un quota par son détenteur. */
+  allocationRelease: ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV'],
+  /**
+   * `finance.cash_transfer.record` (RCO, CTE, CSE OWN ; VEN SITE ; RFE OWN ; FIN ALL) : remises de
+   * fonds, envoi, réception et annulation (UC-FIN-07, AV-311).
+   */
+  cashTransferRecord: [
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_FERME',
+    'FINANCE',
+  ],
+  /**
+   * ECR-FIN-05 : `finance.cash.read` ALL et `finance.cash_session.validate` (FIN, DIR) ; la Direction
+   * valide et décide, sans recevoir (`finance.cash_transfer.record`) (AV-313).
+   */
+  treasury: ['FINANCE', 'DIRECTION'],
+  /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
+  allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
+  /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
+  distributionDashboard: ['DIRECTION', 'RESP_COMMERCIAL', 'VENDEUR_PDV', 'MAGASINIER', 'FINANCE'],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Rôles inconnus de l'appareil (accueil jamais ouvert en ligne) : l'action reste proposée. */
@@ -564,6 +600,70 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.productionOutput,
     actionCodes: [],
     offline: true,
+  },
+  {
+    id: 'ECR-STK-06',
+    path: ROUTES.allocations,
+    labelKey: 'allocations',
+    group: 'stock',
+    roles: ROLE_SETS.allocationManage,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    id: 'ECR-DIS-01',
+    path: ROUTES.posHome,
+    labelKey: 'pos_home',
+    group: 'sales',
+    roles: ROLE_SETS.posHome,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-02',
+    path: ROUTES.cash,
+    labelKey: 'cash_session',
+    group: 'sales',
+    roles: ROLE_SETS.cashSessionOperate,
+    actionCodes: ['CASH_OPEN', 'CASH_CLOSE'],
+    offline: true,
+  },
+  {
+    id: 'ECR-FIN-05',
+    path: ROUTES.treasury,
+    labelKey: 'treasury',
+    group: 'sales',
+    roles: ROLE_SETS.treasury,
+    actionCodes: ['CASH_SESSIONS'],
+    offline: false,
+  },
+  {
+    // Hors inventaire des écrans (AV-311) : code du cas d'usage.
+    id: 'UC-FIN-07',
+    path: ROUTES.cashTransfers,
+    labelKey: 'cash_transfers',
+    group: 'sales',
+    roles: ROLE_SETS.cashTransferRecord,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-03',
+    path: ROUTES.replenish,
+    labelKey: 'replenish',
+    group: 'stock',
+    roles: ROLE_SETS.replenishRequest,
+    actionCodes: [],
+    offline: true,
+  },
+  {
+    id: 'ECR-DIS-04',
+    path: ROUTES.distribution,
+    labelKey: 'distribution',
+    group: 'sales',
+    roles: ROLE_SETS.distributionDashboard,
+    actionCodes: [],
+    offline: false,
   },
   {
     id: 'ECR-VEN-05',

@@ -3,7 +3,7 @@ import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import type { PushResponse } from '@gic/contracts';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
 import { enqueueCommand } from './outbox.js';
-import { runPushCycle } from './push.js';
+import { IN_PROGRESS_GRACE_MS, runPushCycle } from './push.js';
 import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session-runtime.js';
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
@@ -85,7 +85,7 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'PUSHED', count: 1, settled: 1 });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 1, settled: 1, stalled: [] });
 
     const updated = await db.outbox.get(command.command_id);
     expect(updated?.status).toBe('SYNCED');
@@ -187,7 +187,7 @@ describe('sync/push (runPushCycle)', () => {
     );
 
     const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 0 });
+    expect(result).toEqual({ outcome: 'PUSHED', count: 2, settled: 0, stalled: [] });
     for (const command of [retry, odd, missing]) {
       const updated = await db.outbox.get(command.command_id);
       expect(updated).toMatchObject({ status: 'PENDING_SYNC', attempts: 1 });
@@ -217,8 +217,10 @@ describe('sync/push (runPushCycle)', () => {
         }),
         { status: 200 },
       );
-    const run = () => runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
-    // Deux coupures puis un SERVER_BUSY : un seul renvoi compté.
+    const now = new FixedClock(clock.now());
+    const run = () => runPushCycle(db, { clock: now, idGenerator, deviceId: DEVICE_ID });
+    // Deux coupures puis un SERVER_BUSY (hors du délai « en cours de traitement ») : un seul renvoi
+    // compté.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -227,6 +229,7 @@ describe('sync/push (runPushCycle)', () => {
     );
     await run();
     await run();
+    now.advance(IN_PROGRESS_GRACE_MS);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => busy()),
@@ -237,7 +240,63 @@ describe('sync/push (runPushCycle)', () => {
     await run();
     await run();
     expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(3);
-    // Une attente de dépendance remet le compteur à zéro.
+    const answer = (code: string, message: string) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                results: [
+                  {
+                    command_id: command.command_id,
+                    status: 'RETRY_LATER',
+                    error: { code, message_fr: message },
+                  },
+                ],
+                server_time: clock.now().toISOString(),
+                clock_skew_ms: 0,
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+    // Suspendue derrière une commande précédente (AV-210) : pas traitée, ni le compteur ni le motif
+    // réel ne changent.
+    answer(
+      'PRECEDING_COMMAND_PENDING',
+      'Une commande précédente de la file doit d’abord être renvoyée.',
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      busy_retries: 3,
+      last_error: { code: 'SERVER_BUSY' },
+    });
+    // Une attente de dépendance compte aussi (une dépendance qui ne vient pas finit signalée).
+    answer('DEPENDENCY_PENDING', 'Dépendance attendue.');
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(4);
+    // Tout autre motif remet le compteur à zéro.
+    answer('AUTRE_MOTIF', 'À renvoyer.');
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+  });
+
+  it('SERVER_BUSY peu après un envoi sans réponse : commande en cours de traitement, pas un échec (S-45)', async () => {
+    const command = await enqueueOne(db, 'lot coupé en plein traitement');
+    const now = new FixedClock(clock.now());
+    const run = () => runPushCycle(db, { clock: now, idGenerator, deviceId: DEVICE_ID });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error');
+      }),
+    );
+    await run();
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      sent_at: now.now().toISOString(),
+      unanswered_at: now.now().toISOString(),
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -248,7 +307,74 @@ describe('sync/push (runPushCycle)', () => {
                 {
                   command_id: command.command_id,
                   status: 'RETRY_LATER',
-                  error: { code: 'DEPENDENCY_PENDING', message_fr: 'Dépendance attendue.' },
+                  error: {
+                    code: 'SERVER_BUSY',
+                    message_fr: 'Commande en cours de traitement, à réessayer.',
+                  },
+                },
+              ],
+              server_time: now.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    // Renvois rapprochés pendant que le serveur la tient encore : rien n'est compté.
+    for (const step of [30_000, 30_000, 30_000, IN_PROGRESS_GRACE_MS - 90_001]) {
+      now.advance(step);
+      await run();
+    }
+    expect((await db.outbox.get(command.command_id))?.busy_retries ?? 0).toBe(0);
+    // Au-delà du délai : un vrai renvoi sans succès.
+    now.advance(2);
+    await run();
+    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(1);
+  });
+
+  it('relève sur la tablette : le lot ne part pas avec le jeton du suivant, aucune commande refusée', async () => {
+    const command = await enqueueOne(db, 'vente de user-1');
+    // La session est désormais celle de user-2 (déconnexion de user-1, connexion de user-2).
+    setSessionRuntime({
+      userId: 'user-2',
+      deviceId: DEVICE_ID,
+      deviceStatus: 'ACTIVE',
+      refreshToken: 'refresh-token-2',
+      accessToken: 'access-token-2',
+      accessTokenExpiresAt: Date.now() + 60_000,
+      pinKey: {} as CryptoKey,
+    });
+    vi.stubGlobal('fetch', vi.fn());
+    const result = await runPushCycle(db, {
+      clock,
+      idGenerator,
+      deviceId: DEVICE_ID,
+      userId: 'user-1',
+    });
+    expect(result).toEqual({ outcome: 'SESSION_CHANGED' });
+    expect(fetch).not.toHaveBeenCalled();
+    const after = await db.outbox.get(command.command_id);
+    expect(after).toMatchObject({ status: 'PENDING_SYNC', attempts: 0, last_error: null });
+    expect(after?.busy_retries ?? 0).toBe(0);
+  });
+
+  it('commande bloquée (COMMAND_STALLED) : aussitôt signalée en échec répété, rapportée au cycle', async () => {
+    const command = await enqueueOne(db, 'bloquée');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: command.command_id,
+                  status: 'RETRY_LATER',
+                  error: {
+                    code: 'COMMAND_STALLED',
+                    message_fr:
+                      'Commande bloquée depuis plus de 30 min (DEPENDENCY_PENDING) : toujours à renvoyer, elle ne retient plus la suite de la file.',
+                  },
                 },
               ],
               server_time: clock.now().toISOString(),
@@ -258,8 +384,26 @@ describe('sync/push (runPushCycle)', () => {
           ),
       ),
     );
-    await run();
-    expect((await db.outbox.get(command.command_id))?.busy_retries).toBe(0);
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toEqual({
+      outcome: 'PUSHED',
+      count: 1,
+      settled: 0,
+      stalled: [command.command_id],
+    });
+    expect(await db.outbox.get(command.command_id)).toMatchObject({
+      status: 'PENDING_SYNC',
+      busy_retries: 3,
+      last_error: { code: 'COMMAND_STALLED' },
+    });
+    // Écartée du lot suivant du même cycle.
+    expect(
+      await runPushCycle(
+        db,
+        { clock, idGenerator, deviceId: DEVICE_ID },
+        { skip: new Set([command.command_id]) },
+      ),
+    ).toEqual({ outcome: 'NOTHING_TO_PUSH' });
   });
 
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {

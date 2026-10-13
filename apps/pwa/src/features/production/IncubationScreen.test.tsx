@@ -149,7 +149,7 @@ const batch = (id: string, code: string, overrides: object) =>
   });
 
 const setting = (key: string, value: unknown) =>
-  projection('setting', 'SETTING', key, {
+  projection('me', 'SETTING', key, {
     key,
     value,
     scope_type: 'GLOBAL',
@@ -654,7 +654,7 @@ describe('Incubation (ECR-PRD-06)', () => {
   it('saisie du mirage remise à zéro après l’envoi ; espèce libre en majuscules ; ferme du périmètre', async () => {
     const db = getDb();
     // Durées non servies : espèce saisie librement. Une autre ferme (hors périmètre) a un incubateur.
-    await db.projections.delete('setting:SETTING:production.incubation_durations');
+    await db.projections.delete('me:SETTING:production.incubation_durations');
     await db.projections.bulkPut([
       projection('site', 'SITE', OTHER_FARM, {
         code: 'FERME-0',

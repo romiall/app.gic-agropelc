@@ -122,6 +122,13 @@ export const fr = {
       production_lots: 'Lots actifs',
       daily_entry: 'Saisie du jour',
       egg_collection: 'Collecte d’œufs',
+      cash_session: 'Caisse',
+      cash_transfers: 'Remises de fonds',
+      treasury: 'Trésorerie',
+      replenish: 'Demander un réapprovisionnement',
+      distribution: 'Distribution par point de vente',
+      pos_home: 'Mon point de vente',
+      allocations: 'Quotas des téléphones',
     },
   },
   sales: {
@@ -198,6 +205,31 @@ export const fr = {
       'Aucun prix catalogue pour ce produit ici : vente impossible sans dérogation, que votre rôle n’autorise pas.',
     custody_device_mismatch:
       'Ce stock est confié à un autre appareil : la vente hors ligne n’est pas possible ici.',
+    quota_title: 'Quota de ce téléphone',
+    quota_line: '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota.',
+    quota_line_until:
+      '{{product}} : {{remaining}} {{unit}} restant(s) sur votre quota, jusqu’au {{until}}.',
+    quota_block_message: {
+      ALLOCATION_MISSING:
+        '{{product}} : aucun quota pour ce téléphone sur cet emplacement ; la vente hors ligne n’est pas possible.',
+      ALLOCATION_EXPIRED:
+        '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
+      ALLOCATION_EXCEEDED:
+        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
+      INSUFFICIENT_STOCK:
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
+    },
+    quota_expired:
+      '{{product}} : votre quota a expiré le {{until}} ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
+    quota_signalled:
+      '{{product}} : vente au-delà du quota autorisée sur ce site ({{code}}) ; le serveur la signalera.',
+    quota_block: {
+      ALLOCATION_MISSING: 'sans quota',
+      ALLOCATION_EXPIRED: 'quota expiré',
+      ALLOCATION_EXCEEDED: 'quota dépassé',
+      INSUFFICIENT_STOCK: 'stock insuffisant',
+      CUSTODY_DEVICE_MISMATCH: 'stock confié à un autre appareil',
+    },
     error_anonymous_full:
       'Un client de passage paie la totalité : choisissez un client pour une vente à crédit.',
     warning_credit_not_allowed:
@@ -213,6 +245,8 @@ export const fr = {
       WAITING_online: 'Vente en cours d’envoi…',
       DONE: 'Vente {{doc}} enregistrée.',
       WARNING: 'Vente {{doc}} enregistrée, avec un avertissement à examiner.',
+      WARNING_CASH_SESSION_MISSING:
+        'Vente {{doc}} enregistrée sans caisse ouverte : l’encaissement en espèces est signalé à la Finance.',
       CONFLICT: 'Vente mise en attente d’examen (conflit).',
       REJECTED: 'Vente refusée : {{reason}}',
     },
@@ -414,6 +448,8 @@ export const fr = {
       WAITING_online: 'Commande en cours d’envoi…',
       DONE: 'Commande {{doc}} confirmée.',
       WARNING: 'Commande {{doc}} confirmée, avec un avertissement à examiner.',
+      WARNING_CASH_SESSION_MISSING:
+        'Commande {{doc}} confirmée sans caisse ouverte : l’acompte en espèces est signalé à la Finance.',
       CONFLICT: 'Commande mise en attente d’examen (conflit).',
       REJECTED: 'Commande refusée : {{reason}}',
     },
@@ -2231,6 +2267,20 @@ export const fr = {
     },
   },
   stock: {
+    guard: {
+      CUSTODY_DEVICE_MISMATCH:
+        'Ce stock est confié à un autre appareil : aucune sortie hors ligne n’est possible ici.',
+      ALLOCATION_MISSING:
+        '{{product}} : aucun quota pour ce téléphone sur cet emplacement ; la sortie hors ligne n’est pas possible.',
+      ALLOCATION_EXPIRED:
+        '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
+      ALLOCATION_EXCEEDED:
+        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
+      INSUFFICIENT_STOCK:
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
+    },
+    guard_signal:
+      '{{product}} : au-delà de ce que permet la garde hors ligne ({{code}}) ; la sortie est enregistrée et le serveur la signalera.',
     location_label: 'Emplacement',
     no_location:
       'Aucun stock sur cet appareil : synchronisez, ou demandez une affectation à un emplacement.',
@@ -2286,6 +2336,8 @@ export const fr = {
       DONE: 'Encaissement {{doc}} enregistré.',
       WARNING:
         'Encaissement {{doc}} enregistré, avec un avertissement à examiner (doublon possible ou part non affectée).',
+      WARNING_CASH_SESSION_MISSING:
+        'Encaissement {{doc}} enregistré sans caisse ouverte : il est signalé à la Finance.',
       CONFLICT: 'Encaissement mis en attente d’examen (conflit).',
       REJECTED: 'Encaissement refusé : {{reason}}',
     },
@@ -2295,7 +2347,614 @@ export const fr = {
     help: 'Vos opérations déjà enregistrées sont conservées sur l’appareil.',
     reload: 'Recharger l’application',
   },
+  quotas: {
+    online_only:
+      'Gestion des quotas en ligne seulement : reconnectez-vous. La libération d’un quota se fait sur l’accueil du point de vente du téléphone qui le détient.',
+    no_location: 'Aucun emplacement partagé connu de ce téléphone.',
+    location_label: 'Emplacement',
+    denied: 'Quotas de cet emplacement non accessibles avec vos droits.',
+    failed: 'Quotas indisponibles : le serveur n’a pas répondu.',
+    active_title: 'Quotas actifs',
+    active_empty: 'Aucun quota actif sur cet emplacement.',
+    active_partial:
+      'Liste partielle : plus de {{count}} quotas actifs sur cet emplacement, seuls les plus récents sont montrés.',
+    holder: 'utilisateur {{user}}, appareil {{device}}',
+    you: 'vous',
+    this_device: 'ce téléphone',
+    remaining: 'Reste {{remaining}} {{unit}} sur {{granted}} {{unit}} accordé(s).',
+    remaining_until:
+      'Reste {{remaining}} {{unit}} sur {{granted}} {{unit}} accordé(s), jusqu’au {{until}}.',
+    revocation_pending:
+      'Appareil signalé : le quota ne se consomme plus, sa révocation est attendue.',
+    expired:
+      'Quota échu : il ne se consomme plus et attend sa libération par le téléphone détenteur ; révoquez-le pour rendre son reste au stock commun.',
+    row_label: '{{name}}, {{holder}}',
+    increase_open: 'Augmenter le quota {{name}} ({{holder}})',
+    revoke_open: 'Révoquer le quota {{name}} ({{holder}})',
+    increase_label: 'Quantité à ajouter ({{unit}})',
+    reason_label: 'Motif de la révocation',
+    increase_submit: 'Augmenter',
+    revoke_submit: 'Confirmer la révocation',
+    cancel_edit: 'Annuler',
+    grant_title: 'Accorder un quota',
+    holder_label: 'Détenteur',
+    holder_placeholder: 'Choisir le détenteur',
+    holder_hint:
+      'Détenteurs déjà connus sur cet emplacement, ou vous-même sur ce téléphone si votre rôle peut libérer un quota : les utilisateurs et appareils ne sont pas encore servis au téléphone. Un appareil signalé n’est pas proposé.',
+    holder_partial:
+      'Détenteurs tirés des {{count}} quotas les plus récents de cet emplacement : les plus anciens ne sont pas proposés.',
+    product_label: 'Produit',
+    product_placeholder: 'Choisir le produit',
+    product_held: '{{name}} (quota actif de ce détenteur : augmentez-le ou révoquez-le)',
+    unallocated: 'Non alloué (indicatif) : {{quantity}} {{unit}} ; le serveur le recalcule.',
+    overcommitted: 'Quotas au-delà du stock : {{quantity}} {{unit}}.',
+    quantity_label: 'Quantité accordée ({{unit}})',
+    quantity_label_no_unit: 'Quantité accordée',
+    hours_label: 'Durée en heures (facultatif)',
+    hours_hint: 'Vide : jusqu’à la fin du jour.',
+    hours_invalid: 'Durée invalide : plus de 0 et au plus 744 heures.',
+    grant_submit: 'Accorder le quota',
+    grant_result: {
+      WAITING_offline: 'Octroi enregistré ; il sera envoyé au retour du réseau.',
+      WAITING_online: 'Octroi en cours d’envoi…',
+      DONE: 'Quota accordé.',
+      WARNING: 'Quota accordé, avec un signalement.',
+      CONFLICT: 'Octroi mis en attente d’examen (conflit).',
+      REJECTED: 'Octroi refusé : {{reason}}',
+    },
+    increase_result: {
+      WAITING_offline: 'Augmentation enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Augmentation en cours d’envoi…',
+      DONE: 'Quota augmenté.',
+      WARNING: 'Quota augmenté, avec un signalement.',
+      CONFLICT: 'Augmentation mise en attente d’examen (conflit).',
+      REJECTED: 'Augmentation refusée : {{reason}}',
+    },
+    revoke_result: {
+      WAITING_offline: 'Révocation enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Révocation en cours d’envoi…',
+      DONE: 'Quota révoqué.',
+      WARNING: 'Quota révoqué, avec un signalement.',
+      CONFLICT: 'Révocation mise en attente d’examen (conflit).',
+      REJECTED: 'Révocation refusée : {{reason}}',
+    },
+  },
+  treasury: {
+    online_only:
+      'Trésorerie en ligne seulement : reconnectez-vous. Les remises de fonds se font aussi hors ligne, depuis l’écran « Remises de fonds ».',
+    denied: 'Trésorerie non accessible avec vos droits.',
+    failed: 'Trésorerie indisponible : le serveur n’a pas répondu.',
+    failed_stale:
+      'Actualisation impossible : le serveur n’a pas répondu. Les chiffres ci-dessous peuvent être périmés ; les actions restent bloquées jusqu’à une relecture.',
+    refreshing: 'Actualisation en cours… Les actions reprennent à la réponse du serveur.',
+    partial: 'Liste partielle : seules les {{count}} plus récentes sont montrées.',
+    you: 'vous',
+    sessions_title: 'Sessions de caisse à valider',
+    sessions_empty: 'Aucune session de caisse en attente de validation.',
+    session_label: '{{account}} du {{date}}, {{from}}–{{to}}',
+    session_people:
+      'Ouverte par {{opened}} le {{openedAt}} ; clôturée par {{closed}} le {{closedAt}}.',
+    opening_variance: 'Écart d’ouverture : {{amount}} (période précédente).',
+    closing_variance: 'Écart de clôture : {{amount}} (compté {{counted}}, attendu {{expected}}).',
+    force_closed: 'Clôture forcée par la Finance.',
+    clock_suspect: 'Horloge de l’appareil suspecte à la saisie.',
+    session_open: 'Examiner la session {{label}}',
+    session_close: 'Replier la session {{label}}',
+    adjustments_hint:
+      'Les opérations tardives d’une session déjà validée forment des ajustements à valider à part : ils ne sont pas encore listés ici.',
+    detail_denied: 'Détail de la session non accessible avec vos droits.',
+    detail_failed: 'Détail de la session indisponible : le serveur n’a pas répondu.',
+    detail_failed_stale:
+      'Actualisation du détail impossible : le serveur n’a pas répondu ; les chiffres ci-dessous peuvent être périmés.',
+    session_not_pending: 'Cette session n’est plus en attente de validation.',
+    refresh_list: 'Relire la liste',
+    flows_title: 'Flux de la session',
+    window: 'Du {{from}} au {{to}}.',
+    window_open: 'Depuis le {{from}}.',
+    sellers_empty: 'Aucun encaissement en espèces dans la session.',
+    seller_line_one: '{{who}} : {{amount}} ({{count}} encaissement)',
+    seller_line_other: '{{who}} : {{amount}} ({{count}} encaissements)',
+    unattributed: 'Encaissé sans vendeur identifié : {{amount}}.',
+    other_line_one: '{{type}} : {{amount}} ({{count}} mouvement)',
+    other_line_other: '{{type}} : {{amount}} ({{count}} mouvements)',
+    net_flows: 'Flux nets : {{net}} ; attendu recalculé : {{expected}}.',
+    sellers_hint:
+      'Les encaissements par vendeur n’additionnent pas l’attendu : remboursements, remises et autres sorties s’y retranchent.',
+    adjustments_title: 'Ajustements',
+    adjustment_line: '{{cause}} du {{date}} : {{delta}}',
+    adjustment_cause: {
+      LATE_OPERATION: 'Opération tardive',
+      REVERSAL: 'Annulation',
+    },
+    current_variance: 'Écart courant : {{amount}}',
+    validator_involved:
+      'Vous avez ouvert, clôturé ou forcé cette session : un autre valideur doit la valider.',
+    reason_required: 'Motif de la validation (obligatoire : la session présente un écart)',
+    reason_optional: 'Motif de la validation (facultatif)',
+    validate_submit: 'Valider la session',
+    discrepancies_title: 'Écarts de remise à décider',
+    discrepancies_empty: 'Aucun écart de remise en attente.',
+    discrepancy_line: 'Reçu {{received}} par {{receiver}} : écart de {{gap}}.',
+    decision_block: {
+      INVOLVED:
+        'Vous avez envoyé, porté ou reçu cette remise : un autre valideur doit décider de l’écart.',
+      NO_REQUEST:
+        'Aucune demande de validation n’est liée à cet écart : signalez-le à l’administrateur.',
+      NOT_PENDING: 'Cet écart n’est plus en attente.',
+    },
+    decide_open: 'Décider de l’écart de la remise {{doc}}',
+    imputation_label: 'Imputation de l’écart',
+    imputation_placeholder: 'Choisir à qui l’écart est imputé',
+    imputation: {
+      SENDER: 'Expéditeur',
+      CARRIER: 'Porteur',
+      RECEIVER: 'Récepteur',
+      COMPANY: 'Entreprise',
+    },
+    decision_reason: 'Motif (obligatoire, 200 caractères au plus)',
+    decision_comment: 'Commentaire (facultatif)',
+    decide_submit: 'Clore l’écart',
+    transit_title: 'Remises en transit',
+    transit_empty: 'Aucune remise en transit.',
+    transfer_people: 'Envoyée le {{date}} par {{sender}} ; porteur : {{carrier}}.',
+    accounts_title: 'Comptes de trésorerie',
+    accounts_empty: 'Aucun compte de trésorerie dans votre périmètre.',
+    account_type: {
+      CAISSE_PDV: 'Caisse de PDV',
+      CAISSE_UTILISATEUR: 'Caisse personnelle',
+      CAISSE_CENTRALE: 'Caisse centrale',
+      MOBILE_MONEY: 'Mobile money',
+      BANQUE: 'Banque',
+    },
+    inactive: 'inactif',
+    balance: 'Solde : {{amount}}',
+    movements_open: 'Mouvements de {{name}}',
+    movements_close: 'Replier les mouvements de {{name}}',
+    movements_failed: 'Mouvements indisponibles : le serveur n’a pas répondu.',
+    movements_failed_stale:
+      'Actualisation des mouvements impossible : le serveur n’a pas répondu ; la liste ci-dessous peut être périmée.',
+    movements_empty: 'Aucun mouvement.',
+    movements_more: 'Mouvements plus anciens',
+    movement_line: '{{date}} · {{type}} : {{amount}}',
+    reversal: '(annulation)',
+    movement_type: {
+      CUSTOMER_PAYMENT: 'Encaissement',
+      REFUND: 'Remboursement',
+      SUPPLIER_PAYMENT: 'Paiement fournisseur',
+      EXPENSE: 'Dépense',
+      TRANSFER_OUT: 'Remise envoyée',
+      TRANSFER_IN: 'Remise reçue',
+      SESSION_VARIANCE: 'Écart de caisse',
+      OPENING_BALANCE: 'Solde d’ouverture',
+    },
+    validate_result: {
+      WAITING_offline: 'Validation enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Validation en cours d’envoi…',
+      DONE: 'Session de caisse validée.',
+      WARNING: 'Session validée, avec un signalement.',
+      CONFLICT: 'Validation mise en attente d’examen (conflit).',
+      REJECTED: 'Validation refusée : {{reason}}',
+    },
+    decide_result: {
+      WAITING_offline: 'Décision enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Décision en cours d’envoi…',
+      DONE: 'Écart de remise clos.',
+      WARNING: 'Écart clos, avec un signalement.',
+      CONFLICT: 'Décision mise en attente d’examen (conflit).',
+      REJECTED: 'Décision refusée : {{reason}}',
+    },
+    receive_result: {
+      WAITING_offline: 'Réception enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Réception en cours d’envoi…',
+      DONE: 'Remise reçue.',
+      WARNING: 'Réception enregistrée, avec un signalement.',
+      WARNING_CASH_TRANSFER_DISCREPANCY:
+        'Réception enregistrée avec un écart : il attend la décision d’un autre valideur.',
+      WARNING_CASH_TRANSFER_RECEIVED_AFTER_CANCEL:
+        'La remise avait été annulée : la réception est signalée, sans mouvement.',
+      WARNING_CASH_TRANSFER_RECEIVED_TWICE:
+        'La remise était déjà reçue : cette réception est signalée, sans mouvement.',
+      CONFLICT: 'Réception mise en attente d’examen (conflit).',
+      REJECTED: 'Réception refusée : {{reason}}',
+    },
+  },
+  cash_transfer: {
+    offline_banner:
+      'Hors ligne : les remises sont enregistrées sur ce téléphone et partiront au retour du réseau.',
+    personal_account: 'caisse personnelle',
+    pending_label: 'Remise de {{amount}} vers {{to}}, {{time}}',
+    you: 'vous',
+    route: '{{from}} → {{to}}',
+    sent_at: 'Envoyée le {{date}} par {{who}}',
+    carrier: 'porteur : {{name}}',
+    state_waiting: 'Enregistrée sur ce téléphone, en attente d’envoi.',
+    state_unpulled: 'Envoyée au serveur ; en transit dès la prochaine synchronisation.',
+    state_in_transit: 'En transit : pas encore reçue.',
+    state_discrepancy: 'Reçue avec un écart : en attente de la décision de la Finance.',
+    cancelling_WAITING: 'Annulation enregistrée, en attente d’envoi.',
+    cancelling_SENT:
+      'Annulation envoyée ; elle sortira de la liste à la prochaine synchronisation.',
+    receiving_WAITING: 'Réception enregistrée, en attente d’envoi.',
+    receiving_SENT: 'Réception envoyée ; elle sortira de la liste à la prochaine synchronisation.',
+    receiving_gap_WAITING:
+      'Réception enregistrée avec un écart de {{amount}}, en attente d’envoi ; la remise restera en attente de la décision de la Finance.',
+    receiving_gap_SENT:
+      'Réception envoyée avec un écart de {{amount}} : la remise reste en attente de la décision de la Finance.',
+    incoming_title: 'À recevoir',
+    receive_open: 'Recevoir la remise {{label}}',
+    received_label: 'Montant reçu, compté (F CFA)',
+    received_invalid: 'Montant invalide : un nombre entier de francs (0 si rien n’est arrivé).',
+    match: 'Montant conforme à l’envoi.',
+    discrepancy: 'Écart de {{amount}} : il sera soumis à la Finance, qui l’impute et le motive.',
+    lost: 'Rien reçu : la remise sera déclarée perdue et soumise à la Finance.',
+    discrepancy_refused:
+      'Écart de {{amount}} : aucune politique de validation des écarts n’est en vigueur, le serveur refusera cette réception (en ligne comme hors ligne). Prévenez la Finance.',
+    receive_submit: 'Confirmer la réception de {{amount}}',
+    sent_title: 'Mes remises',
+    sent_empty: 'Aucune remise envoyée en cours.',
+    cancel_open: 'Annuler la remise {{label}}',
+    reason_label: 'Motif de l’annulation',
+    cancel_submit: 'Confirmer l’annulation',
+    close_form: 'Fermer',
+    new_title: 'Nouvelle remise',
+    no_source: 'Aucune caisse de ce téléphone ne peut remettre des fonds.',
+    source_label: 'Depuis la caisse',
+    balance: 'Solde indicatif : {{amount}} (opérations de ce téléphone comprises).',
+    balance_unknown: 'Solde de cette caisse non servi à ce téléphone.',
+    balance_blind:
+      'Solde de la caisse non affiché : comptage à l’aveugle (il s’affiche après votre clôture). En ligne, le serveur refuse une remise supérieure au solde.',
+    target_label: 'Vers',
+    target_placeholder: 'Choisir la destination',
+    amount_label: 'Montant remis (F CFA)',
+    amount_invalid: 'Montant invalide : un nombre entier de francs, plus de 0.',
+    over_balance:
+      'Au-delà du solde indicatif : en ligne, le serveur refusera si la caisse n’a pas ce montant ; hors ligne, la remise sera enregistrée et signalée à la Finance.',
+    carrier_label: 'Porteur (facultatif)',
+    comment_label: 'Commentaire (facultatif)',
+    send_submit: 'Envoyer la remise',
+    send_result: {
+      WAITING_offline:
+        'Remise enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Remise en cours d’envoi…',
+      DONE: 'Remise {{doc}} envoyée.',
+      WARNING: 'Remise {{doc}} envoyée, avec un signalement.',
+      WARNING_CASH_NEGATIVE:
+        'Remise {{doc}} envoyée ; la caisse passe en négatif : la Finance est alertée.',
+      WARNING_CASH_TRANSFER_PAIR_NOT_ALLOWED:
+        'Remise {{doc}} envoyée vers une destination non admise : la Finance est alertée.',
+      WARNING_LOCAL_REF_DUPLICATE: 'Remise {{doc}} envoyée, sans sa référence locale (déjà prise).',
+      CONFLICT: 'Remise mise en attente d’examen (conflit).',
+      REJECTED: 'Remise refusée : {{reason}}',
+    },
+    cancel_result: {
+      WAITING_offline: 'Annulation enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Annulation en cours d’envoi…',
+      DONE: 'Remise annulée.',
+      WARNING: 'Annulation enregistrée, avec un signalement.',
+      WARNING_CASH_TRANSFER_CANCEL_AFTER_RECEIVE:
+        'La remise avait déjà été reçue : l’annulation est signalée à la Finance, sans mouvement.',
+      CONFLICT: 'Annulation mise en attente d’examen (conflit).',
+      REJECTED: 'Annulation refusée : {{reason}}',
+    },
+    receive_result: {
+      WAITING_offline: 'Réception enregistrée ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Réception en cours d’envoi…',
+      DONE: 'Remise reçue.',
+      WARNING: 'Réception enregistrée, avec un signalement.',
+      WARNING_CASH_TRANSFER_DISCREPANCY:
+        'Réception enregistrée avec un écart : il est soumis à la Finance.',
+      WARNING_CASH_TRANSFER_RECEIVED_AFTER_CANCEL:
+        'La remise avait été annulée : la réception est signalée à la Finance, sans mouvement.',
+      WARNING_CASH_TRANSFER_RECEIVED_TWICE:
+        'La remise était déjà reçue : cette réception est signalée à la Finance, sans mouvement.',
+      CONFLICT: 'Réception mise en attente d’examen (conflit).',
+      REJECTED: 'Réception refusée : {{reason}}',
+    },
+  },
+  pos_home: {
+    offline_banner:
+      'Hors ligne : chiffres de ce téléphone ; les opérations des autres téléphones arrivent avec la synchronisation.',
+    cash_title: 'Caisse',
+    cash_unknown: 'La caisse de ce point de vente n’est pas encore sur ce téléphone.',
+    cash_open: 'Caisse ouverte depuis le {{date}} par {{who}}.',
+    cash_closed: 'Caisse fermée : ouvrez-la avant d’encaisser en espèces.',
+    cash_closing_elsewhere:
+      'Clôture saisie sur cette tablette par un autre utilisateur, pas encore envoyée : la caisse reste ouverte au serveur jusqu’à son envoi, à sa prochaine connexion avec le réseau.',
+    open_cash: 'Ouvrir la caisse',
+    close_cash: 'Clôturer la caisse',
+    sales_title: 'Ventes du jour',
+    sales_line_one: '{{count}} vente, {{net}} ; encaissé affecté à cette vente : {{paid}}',
+    sales_line_other: '{{count}} ventes, {{net}} ; encaissé affecté à ces ventes : {{paid}}',
+    sales_pending_one: 'Dont {{count}} vente en attente d’envoi.',
+    sales_pending_other: 'Dont {{count}} ventes en attente d’envoi.',
+    sales_hint:
+      'Ventes connues de ce téléphone sur ce point de vente (annulées exclues) ; l’encaissé comprend les acomptes reportés et les règlements reçus plus tard. Le tableau de distribution donne le chiffre de tous les téléphones et l’encaissé du jour.',
+    quota_title: 'Mes quotas sur ce téléphone',
+    quota_empty: 'Aucun quota sur ce téléphone pour ce point de vente.',
+    quota_line: 'Reste : {{remaining}} {{unit}}.',
+    quota_line_until: 'Reste : {{remaining}} {{unit}}, jusqu’au {{until}}.',
+    quota_expired: 'Quota échu : libérez-le pour rendre le reste au stock commun.',
+    quota_revoking:
+      'Ce téléphone est signalé : le quota ne se consomme plus et sera révoqué par le serveur.',
+    quota_releasing: 'Libération enregistrée, en attente d’envoi.',
+    release: 'Libérer le quota {{name}}',
+    release_confirm: 'Confirmer : rendre {{remaining}} {{unit}} au stock commun',
+    release_cancel: 'Annuler',
+    release_result: {
+      WAITING_offline:
+        'Libération enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Libération en cours d’envoi…',
+      DONE: 'Quota libéré.',
+      WARNING: 'Quota libéré, avec un signalement (reste différent de celui du serveur).',
+      CONFLICT: 'Libération mise en attente d’examen (conflit).',
+      REJECTED: 'Libération refusée : {{reason}}',
+    },
+    stock_title: 'Stock du point de vente',
+    stock_empty: 'Aucun stock connu de ce téléphone sur ce point de vente.',
+    stock_line: 'Disponible sur ce téléphone : {{available}} {{unit}}',
+    stock_line_shared:
+      'Stock physique : {{physical}} {{unit}} (hors ligne, la vente se fait dans vos quotas)',
+    stock_line_other_device:
+      'Stock physique : {{physical}} {{unit}} (confié à un autre téléphone : pas de vente hors ligne depuis celui-ci)',
+    actions_title: 'Opérations du point de vente',
+  },
+  distribution: {
+    online_only:
+      'Tableau en ligne seulement : il est calculé par le serveur à la demande. Reconnectez-vous pour le consulter.',
+    period_label: 'Période',
+    period: {
+      TODAY: 'Aujourd’hui',
+      YESTERDAY: 'Hier',
+      WEEK: 'Cette semaine',
+      MONTH: 'Ce mois',
+      YEAR: 'Cette année',
+    },
+    period_range: 'Du {{from}} au {{to}} · calculé le {{at}}',
+    denied: 'Tableau non accessible avec vos droits.',
+    failed: 'Tableau indisponible : le serveur n’a pas répondu.',
+    retry: 'Réessayer',
+    stale_devices_one:
+      '{{count}} appareil sans contact depuis plus de {{hours}} h : ses opérations peuvent manquer.',
+    stale_devices_other:
+      '{{count}} appareils sans contact depuis plus de {{hours}} h : leurs opérations peuvent manquer.',
+    empty: 'Aucun point de vente dans votre périmètre.',
+    totals_title_one: 'Total ({{count}} point de vente)',
+    totals_title_other: 'Total ({{count}} points de vente)',
+    sold_net: 'Vendu net',
+    cashed: 'Encaissé',
+    cashed_value_one: '{{amount}} ({{count}} encaissement)',
+    cashed_value_other: '{{amount}} ({{count}} encaissements)',
+    remaining_value: 'Valeur du restant',
+    lost_value: 'Valeur des pertes',
+    to_validate: 'À valider',
+    to_validate_value: '{{sessions}} session(s) de caisse, {{adjustments}} ajustement(s)',
+    transfers: 'Remises en transit',
+    transfers_value: '{{count}} remise(s), {{amount}}',
+    transfers_overdue: '{{count}} remise(s) non reçue(s) depuis plus de {{hours}} h : {{amount}}.',
+    transfers_discrepancy: '{{count}} remise(s) en écart à trancher.',
+    site_label: 'Point de vente',
+    all_sites: 'Tous les points de vente',
+    not_reconciled: 'Écart de rapprochement sur au moins un produit : voir le détail ci-dessous.',
+    sales: 'Ventes',
+    sales_value: '{{net}} net ({{cancelled}} annulé)',
+    by_method: '{{method}} : {{amount}} ({{count}})',
+    by_receiver_title: 'Encaissé par vendeur',
+    by_receiver: '{{name}} : {{amount}} ({{count}})',
+    unknown_user: 'Utilisateur inconnu',
+    cash_title: 'Caisse',
+    session: {
+      open: 'Session ouverte depuis le {{since}} ({{status}}), écart courant : {{variance}}',
+      closed: 'Session du {{since}} ({{status}}), écart : {{variance}}',
+    },
+    session_status: {
+      OPEN: 'ouverte',
+      PENDING_VALIDATION: 'à valider',
+      VALIDATED: 'validée',
+    },
+    no_session: 'Aucune session de caisse aujourd’hui.',
+    session_open_long: 'Session ouverte depuis trop longtemps : à clôturer.',
+    devices_title: 'Appareils ({{count}})',
+    no_devices: 'Aucun appareil rattaché.',
+    device: '{{name}} : dernier contact le {{at}}',
+    device_stale: '{{name}} : sans contact depuis le {{at}}',
+    device_never: '{{name}} : jamais connecté',
+    device_inactive: '{{name}} : {{status}}',
+    device_status: {
+      PENDING: 'en attente d’activation',
+      BLOCKED: 'bloqué',
+      LOST: 'déclaré perdu',
+      RETIRED: 'retiré',
+    },
+    device_pending_one: ', {{count}} opération en attente déclarée',
+    device_pending_other: ', {{count}} opérations en attente déclarées',
+    products_title: 'Produits',
+    no_products: 'Aucun mouvement sur la période.',
+    sent: 'Envoyé',
+    received: 'Reçu',
+    sold: 'Vendu',
+    sold_value: '{{quantity}} ({{amount}})',
+    lost: 'Perdu',
+    lost_pending: 'Pertes en attente (variation sur la période)',
+    transit_pending: 'Écarts de transfert en attente (variation sur la période)',
+    now_caption: 'À l’instant de lecture :',
+    now_caption_past: 'Maintenant (pas sur la période choisie) :',
+    remaining: 'Restant',
+    to_deliver: 'Reste à livrer',
+    allocated: 'Quotas',
+    allocated_value: '{{allocated}} alloué, {{unallocated}} libre',
+    overcommitted: 'Quotas au-delà du stock : à régulariser.',
+    replenish: 'À réapprovisionner : {{quantity}}',
+    residual: 'Écart de rapprochement : {{quantity}}',
+    sales_mismatch: 'Vendu : ventes et registre de stock divergent.',
+  },
+  replenish: {
+    offline_banner:
+      'Hors ligne : la demande sera enregistrée sur ce téléphone et envoyée au retour du réseau.',
+    no_pos:
+      'Aucun point de vente sur ce téléphone : il arrive avec la synchronisation de votre point de vente.',
+    pos_label: 'Point de vente',
+    destination: 'Pour : {{name}}',
+    source: 'Depuis : {{name}}',
+    source_label: 'Depuis le magasin',
+    source_unknown: 'Depuis : magasin configuré du point de vente (en attente de synchronisation)',
+    source_placeholder: 'Choisir le magasin',
+    no_source_hint:
+      'Aucun magasin n’est configuré pour ce point de vente : choisissez celui qui l’approvisionne.',
+    no_source_blocked:
+      'Aucun magasin n’est configuré pour ce point de vente : la demande attend sa configuration.',
+    suggest_title: 'À réapprovisionner',
+    suggest_empty: 'Aucun produit sous sa cible connue de ce téléphone.',
+    suggest_line:
+      'Disponible : {{available}} {{unit}} · en route : {{transit}} {{unit}} · suggéré : {{suggested}} {{unit}}',
+    add_suggestion: 'Ajouter {{name}} à la demande',
+    state: {
+      STOCK_OUT: 'Rupture',
+      STOCK_LOW: 'Sous le minimum',
+    },
+    new_title: 'Nouvelle demande',
+    already_requested: 'Déjà demandé, pas encore expédié : {{quantity}} {{unit}}.',
+    already_requested_blocked:
+      'Produit déjà demandé vers ce point de vente : attendez son expédition ou annulez la demande.',
+    duplicate: 'Produit déjà présent dans la demande : regroupez les quantités.',
+    notes_label: 'Note pour le magasin (facultatif)',
+    submit: 'Envoyer la demande',
+    pending_title: 'Demandes en attente d’expédition',
+    pending_empty: 'Aucune demande en attente vers ce point de vente.',
+    pending_number: 'Demande en attente du numéro',
+    from: 'depuis {{name}}',
+    request_line: '{{name}} : {{quantity}} {{unit}}',
+    on_device: 'Enregistrée sur ce téléphone, en attente d’envoi.',
+    sent_awaiting_pull: 'Envoyée ; son numéro apparaîtra à la prochaine synchronisation.',
+    cancelling: 'Annulation en attente d’envoi.',
+    cancel_sent: 'Annulation envoyée ; elle apparaîtra à la prochaine synchronisation.',
+    cancel: 'Annuler la demande {{doc}}',
+    cancel_confirm: 'Confirmer l’annulation de {{doc}}',
+    back: 'Retour aux demandes',
+    request_result: {
+      WAITING_offline:
+        'Demande enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Demande en cours d’envoi…',
+      DONE: 'Demande envoyée au magasin ; son numéro apparaîtra à la prochaine synchronisation.',
+      WARNING: 'Demande envoyée au magasin, avec un signalement.',
+      CONFLICT: 'Demande mise en attente d’examen (conflit).',
+      REJECTED: 'Demande refusée : {{reason}}',
+    },
+    cancel_result: {
+      WAITING_offline:
+        'Annulation enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+      WAITING_online: 'Annulation en cours d’envoi…',
+      DONE: 'Demande annulée.',
+      WARNING: 'Demande annulée, avec un signalement.',
+      CONFLICT: 'Annulation mise en attente d’examen (conflit).',
+      REJECTED: 'Annulation refusée : {{reason}}',
+    },
+  },
+  cash: {
+    account_label: 'Caisse',
+    no_account:
+      'Aucune caisse de point de vente sur ce téléphone : elle arrive avec la synchronisation de votre point de vente.',
+    closed_state: 'Caisse fermée.',
+    closing_pending: 'Clôture de la caisse enregistrée sur ce téléphone, en attente d’envoi.',
+    closed_to_validate: 'Dernière session close, en attente de validation par la Finance.',
+    closed_validated: 'Dernière session close et validée d’office.',
+    closed_last: 'Dernière session close.',
+    foreign_openings:
+      'Une ouverture saisie par un autre utilisateur de cette tablette attend sa reconnexion : elle sera rattachée à la session ouverte entre-temps.',
+    attached:
+      'Votre ouverture du {{date}} est rattachée à une session existante de la journée : aucune caisse n’est ouverte sur ce téléphone, votre comptage est conservé comme constat pour la Finance.',
+    shifted: 'Ouverture décalée au {{date}}, à la clôture de la session précédente.',
+    merged_figures:
+      'Comptage rattaché à une session existante de cette caisse : aucun attendu ni écart n’est calculé, il est conservé comme constat pour la Finance.',
+    observed_figures:
+      'Session déjà close au serveur : aucun attendu ni écart n’est calculé, votre comptage est conservé comme constat pour la Finance.',
+    open_state: 'Caisse ouverte le {{date}} par {{who}}, fonds compté : {{amount}}.',
+    opened_by_you: 'vous',
+    opened_by_other: 'un autre utilisateur',
+    open_pending: 'Ouverture enregistrée sur ce téléphone, en attente d’envoi.',
+    previous_day: 'Caisse ouverte un jour précédent : clôturez-la avant d’en ouvrir une autre.',
+    counted_label: 'Montant compté (F CFA)',
+    count_invalid: 'Saisissez le montant compté en francs entiers.',
+    comment_label: 'Commentaire (facultatif)',
+    blind_hint:
+      'Comptez les espèces sans vous fier à un montant attendu : il s’affiche après l’enregistrement de votre comptage.',
+    figures_title: 'Attendu et écart',
+    expected_indicative: 'Attendu indicatif (calculé sur ce téléphone) : {{amount}}',
+    variance_indicative: 'Écart indicatif : {{amount}}',
+    indicative_hint:
+      'Estimation de ce téléphone : le serveur recalcule l’attendu sur toutes les opérations de la caisse, y compris celles des autres téléphones.',
+    expected_server: 'Attendu : {{amount}}',
+    variance_server: 'Écart : {{amount}}',
+    status_after_close: {
+      VALIDATED: 'Session validée d’office : écart dans la tolérance.',
+      PENDING_VALIDATION: 'Session à valider par la Finance.',
+    },
+    open_merge:
+      'Une session de cette caisse existe déjà ou la limite du jour est atteinte : hors ligne, votre comptage sera rattaché à cette session et signalé à la Finance.',
+    open_refused: {
+      CASH_SESSION_ALREADY_OPEN:
+        'Une session de cette caisse est déjà ouverte : clôturez-la d’abord.',
+      CASH_SESSION_OVERLAP:
+        'Une session de cette caisse couvre déjà cette heure : le serveur refuserait l’ouverture.',
+      CASH_SESSION_DAILY_LIMIT:
+        'Le nombre de sessions de caisse du jour est atteint : le serveur refuserait l’ouverture.',
+    },
+    back: 'Retour à la caisse',
+    prompt: {
+      unknown:
+        'Encaissement en espèces au point de vente : la caisse du PDV doit être ouverte (ce téléphone ne la voit pas). Sans session ouverte, le serveur refusera l’encaissement en ligne et le signalera à la Finance hors ligne.',
+      closed_online: 'Caisse du point de vente fermée : ouvrez-la avant d’encaisser en espèces.',
+      closed_offline:
+        'Aucune caisse ouverte sur ce téléphone : un encaissement en espèces sera enregistré et signalé à la Finance. Ouvrez la caisse d’abord.',
+      open_link: 'Ouvrir la caisse',
+      blocked:
+        'Encaissement en espèces impossible sans caisse ouverte : ouvrez la caisse ou choisissez un autre moyen de paiement.',
+    },
+    open: {
+      title: 'Ouvrir la caisse',
+      hint: 'Comptez le fonds de caisse présent dans le tiroir.',
+      submit: 'Ouvrir la caisse',
+      result: {
+        WAITING_offline:
+          'Ouverture de la caisse enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+        WAITING_online: 'Ouverture de la caisse en cours d’envoi…',
+        DONE: 'Caisse ouverte.',
+        WARNING: 'Caisse ouverte, avec un signalement.',
+        WARNING_CASH_SESSION_CONCURRENT_OPEN:
+          'Ouverture signalée à la Finance : une autre session de cette caisse existait (ouverte, close dans la journée ou restée ouverte la veille).',
+        CONFLICT: 'Ouverture mise en attente d’examen (conflit).',
+        REJECTED: 'Ouverture refusée : {{reason}}',
+      },
+    },
+    close: {
+      title: 'Clôturer la caisse',
+      hint: 'Comptez toutes les espèces de la caisse.',
+      submit: 'Clôturer la caisse',
+      result: {
+        WAITING_offline:
+          'Clôture de la caisse enregistrée sur ce téléphone ; elle sera envoyée au retour du réseau.',
+        WAITING_online: 'Clôture de la caisse en cours d’envoi…',
+        DONE: 'Caisse clôturée.',
+        WARNING: 'Caisse clôturée, avec un signalement.',
+        WARNING_CASH_SESSION_CONCURRENT_CLOSE:
+          'La session était déjà close : votre comptage est conservé comme constat pour la Finance.',
+        WARNING_CASH_SESSION_CLOSE_BEFORE_MOVEMENTS:
+          'Clôture datée avant des opérations déjà enregistrées : la session sera validée par la Finance.',
+        CONFLICT: 'Clôture mise en attente d’examen (conflit).',
+        REJECTED: 'Clôture refusée : {{reason}}',
+      },
+    },
+  },
   sync: {
+    read_only_refused:
+      'Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise. Rien n’a été enregistré ; synchronisez ce téléphone avant toute nouvelle opération.',
+    autonomy_warning:
+      'Aucune synchronisation depuis {{hours}} h : connectez-vous dès que possible. Au-delà de {{max}} h, ce téléphone passera en lecture seule.',
+    autonomy_read_only:
+      'Lecture seule : aucune synchronisation depuis {{hours}} h (plus de {{max}} h). Les nouvelles opérations sont bloquées jusqu’à une synchronisation réussie ; celles déjà enregistrées restent sur ce téléphone et partiront au retour du réseau.',
+    held_behind_failure:
+      'Cette opération attend une opération précédente que le serveur renvoie sans l’appliquer ({{reason}}). Elle partira dès que celle-ci passera, ou au plus tard quand le serveur l’aura écartée.',
+    foreign_pending:
+      'Opération saisie sur cette tablette par un autre utilisateur, pas encore envoyée : la suite sera possible après son envoi, à sa prochaine connexion avec le réseau.',
     repeated_failure:
       'Le serveur renvoie cette opération sans l’appliquer ({{reason}}). Elle est réessayée automatiquement ; signalez-la à l’administrateur si cela dure.',
     screen_title: 'Synchronisation',

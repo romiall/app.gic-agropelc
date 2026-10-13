@@ -14,14 +14,16 @@ import { clock } from '../../platform/composition.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
 import { formatMoney, formatQuantity } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
+import { waitsForOtherUser } from './pending.js';
 import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
-import { submitCommand } from './submit.js';
+import { saveErrorKey, submitCommand } from './submit.js';
 
 const DEFAULT_CANCEL_MINUTES = 15;
 
@@ -45,6 +47,7 @@ function CancelSaleForm({
   const [comment, setComment] = useState('');
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const now = clock.now();
   const configured = Number(
@@ -70,11 +73,15 @@ function CancelSaleForm({
   const submit = async () => {
     if (errors.length > 0 || busy) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const command = await submitCommand({
         authorUserId: userId,
         commandType: 'sales.sale.cancel',
         aggregateType: 'SALE_CANCELLATION',
+        // Annulation jugée directe à la saisie : tant qu'elle attend sa réponse, la vente ne réduit
+        // plus le quota de l'appareil (le serveur le lui rend, ADR-033 §8).
+        ...(direct ? { localFlags: [EXPECTED_DIRECT_CANCEL] } : {}),
         // Vente encore dans l'outbox : l'annulation attend son application (FIFO de l'appareil).
         ...(sale.commandId ? { dependsOn: [sale.commandId] } : {}),
         payload: {
@@ -85,6 +92,8 @@ function CancelSaleForm({
         },
       });
       onDone(command.command_id);
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -149,6 +158,11 @@ function CancelSaleForm({
           {message}
         </p>
       ))}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t(saveError)}
+        </p>
+      ) : null}
       <div className="result-actions">
         <button type="button" onClick={() => void submit()} disabled={errors.length > 0 || busy}>
           {t('sales.cancel.submit')}
@@ -205,6 +219,9 @@ export function SaleDetailScreen() {
     (sale.status === 'CONFIRMED' || sale.status === 'PENDING') &&
     !sale.cancellationPending &&
     !cancelCommandId;
+  // Vente d'un autre utilisateur de la tablette, pas encore envoyée : l'annulation en dépendrait et
+  // ne partirait qu'à sa reconnexion (ADR-052) ; elle attend son envoi.
+  const foreignPending = waitsForOtherUser(refs.outbox, [sale.commandId], userId);
 
   return (
     <section className="sale">
@@ -289,11 +306,22 @@ export function SaleDetailScreen() {
           </Link>
         ) : null}
         {cancellable && !cancelling ? (
-          <button type="button" className="secondary" onClick={() => setCancelling(true)}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={foreignPending}
+            aria-describedby={foreignPending ? 'sale-foreign-pending' : undefined}
+            onClick={() => setCancelling(true)}
+          >
             {t('sales.cancel.open')}
           </button>
         ) : null}
       </div>
+      {cancellable && foreignPending ? (
+        <p id="sale-foreign-pending" className="home-muted">
+          {t('sync.foreign_pending')}
+        </p>
+      ) : null}
 
       {cancelCommandId ? (
         <CommandResult commandId={cancelCommandId} messages="sales.cancel.result" />

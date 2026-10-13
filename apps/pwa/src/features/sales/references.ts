@@ -12,8 +12,15 @@ import { deviceWorkSessions } from '../fieldwork/service.js';
 import { toPriceRules } from './pricing.js';
 import { stillInFlight } from './pending.js';
 import { pendingConsumption, pendingLotConsumption, stockKey } from './stock.js';
+import { quotaPendingByAuthor, type QuotaPendingEntry } from './quota.js';
 import type {
+  AllocationData,
   CashAccountData,
+  CashSessionData,
+  CashTransferData,
+  CashTransferTargetData,
+  ControlPolicyData,
+  PointOfSaleData,
   CampaignData,
   CustomerCategoryData,
   InteractionData,
@@ -129,6 +136,28 @@ export interface SalesReferences {
   readonly thresholds: readonly StockThresholdData[];
   /** Comptes de trésorerie actifs servis à l'appareil (jeu `cash`). */
   readonly cashAccounts: readonly CashAccountData[];
+  /** Quotas actifs servis à l'appareil, de tous ses détenteurs (AV-194). */
+  readonly allocations: readonly AllocationData[];
+  readonly allocationsPulledAt: string | undefined;
+  /**
+   * Effets en attente sur les quotas (sorties datées, quantités rendues par une annulation directe),
+   * par auteur puis par emplacement × produit, comptés jusqu'au tirage du jeu `allocations` qui les
+   * inclut (`quotaPendingByAuthor`).
+   */
+  readonly quotaPending: ReadonlyMap<string, ReadonlyMap<string, readonly QuotaPendingEntry[]>>;
+  /** Sessions de caisse ouvertes ou à valider des sites de l'utilisateur (jeu `cash`). */
+  readonly cashSessions: readonly CashSessionData[];
+  /** Remises de fonds envoyées ou en écart, des comptes de l'utilisateur et de ses sites. */
+  readonly cashTransfers: readonly CashTransferData[];
+  /** Destinations de remise : comptes actifs sans détenteur personnel. */
+  readonly cashTransferTargets: readonly CashTransferTargetData[];
+  /** Politiques de contrôle actives (jeu `policies`). */
+  readonly controlPolicies: readonly ControlPolicyData[];
+  readonly cashPulledAt: string | undefined;
+  /** Configuration des PDV des sites de l'utilisateur, par site. */
+  readonly pointsOfSale: ReadonlyMap<string, PointOfSaleData>;
+  /** Heure du dernier tirage complet du jeu `transfers` (ADR-037 §3). */
+  readonly transfersPulledAt: string | undefined;
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
   readonly lastSyncAt: string | null;
   /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
@@ -300,6 +329,15 @@ export function pendingInteractions(
   }));
 }
 
+/** Réunion de deux listes par identifiant, la première l'emportant sur la seconde. */
+function unionById<T extends { readonly id: string }>(
+  first: readonly T[],
+  second: readonly T[],
+): T[] {
+  const ids = new Set(first.map((item) => item.id));
+  return [...first, ...second.filter((item) => !ids.has(item.id))];
+}
+
 export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferences> {
   const [
     users,
@@ -328,6 +366,17 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     customerCategories,
     thresholds,
     cashAccounts,
+    allocations,
+    allocationsCursor,
+    cashSessions,
+    cashTransfers,
+    cashTransferTargets,
+    controlPolicies,
+    cashCursor,
+    pointsOfSale,
+    meSettings,
+    catalogReasonCodes,
+    transfersCursor,
     stockCursor,
     ordersCursor,
     customersCursor,
@@ -345,7 +394,6 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     customers,
     paymentMethods,
     reasonCodes,
-    settings,
     workSessions,
     orders,
     sales,
@@ -378,6 +426,17 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<CustomerCategoryData>(db, 'customer_category', 'CUSTOMER_CATEGORY'),
     listProjected<StockThresholdData>(db, 'stock', 'STOCK_THRESHOLD'),
     listProjected<CashAccountData>(db, 'cash', 'CASH_ACCOUNT'),
+    listProjected<AllocationData>(db, 'allocations', 'STOCK_ALLOCATION'),
+    db.syncCursors.get('allocations'),
+    listProjected<CashSessionData>(db, 'cash', 'CASH_SESSION'),
+    listProjected<CashTransferData>(db, 'cash', 'CASH_TRANSFER'),
+    listProjected<CashTransferTargetData>(db, 'cash', 'CASH_TRANSFER_TARGET'),
+    listProjected<ControlPolicyData>(db, 'policies', 'CONTROL_POLICY'),
+    db.syncCursors.get('cash'),
+    listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
+    listProjected<SettingData>(db, 'me', 'SETTING'),
+    listProjected<ReasonCodeData>(db, 'catalog', 'REASON_CODE'),
+    db.syncCursors.get('transfers'),
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
     db.syncCursors.get('customers'),
@@ -395,7 +454,6 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<CustomerData>(db, 'customers', 'CUSTOMER'),
     listProjected<PaymentMethodData>(db, 'catalog', 'PAYMENT_METHOD'),
     listProjected<ReasonCodeData>(db, 'reason_code', 'REASON_CODE'),
-    listProjected<SettingData>(db, 'setting', 'SETTING'),
     listProjected<WorkSessionData>(db, 'fieldwork', 'WORK_SESSION'),
     listProjected<SalesOrderData>(db, 'orders', 'SALES_ORDER'),
     listProjected<SaleData>(db, 'sales_recent', 'SALE'),
@@ -410,7 +468,8 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
           command.command_type.startsWith('procurement.') ||
           command.command_type.startsWith('production.') ||
           command.command_type.startsWith('pricing.') ||
-          command.command_type.startsWith('catalog.'),
+          command.command_type.startsWith('catalog.') ||
+          command.command_type.startsWith('finance.'),
       )
       .toArray(),
   ]);
@@ -462,8 +521,11 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
       ...pendingCustomers(ownOutbox, customers, customersCursor?.pulled_at),
     ],
     paymentMethods: paymentMethods.filter((method) => method.is_active),
-    reasonCodes: reasonCodes.filter((reason) => reason.is_active),
-    settings,
+    // Motifs semés publiés dans `catalog` (P5-18), réunis à ceux créés par commande (`reason_code`),
+    // la version de `catalog` d'abord.
+    reasonCodes: unionById(catalogReasonCodes, reasonCodes).filter((reason) => reason.is_active),
+    // Paramètres du seul jeu `me` (retraits compris) : l'ancien jeu `setting` n'est plus tiré.
+    settings: meSettings,
     workSessions: deviceWorkSessions(workSessions, ownOutbox, fieldworkCursor?.pulled_at),
     orders: orderMap,
     sales,
@@ -505,6 +567,22 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     customerCategoryById: byId(customerCategories),
     thresholds: thresholds.filter((threshold) => threshold.is_active),
     cashAccounts,
+    allocations,
+    allocationsPulledAt: allocationsCursor?.pulled_at,
+    quotaPending: quotaPendingByAuthor(
+      outbox,
+      allocationsCursor?.pulled_at,
+      transferMap,
+      byId(productionLots),
+      new Map(goodsReceipts.map((receipt) => [receipt.id, receipt.location_id])),
+    ),
+    cashSessions,
+    cashTransfers,
+    cashTransferTargets,
+    controlPolicies,
+    cashPulledAt: cashCursor?.pulled_at,
+    pointsOfSale: new Map(pointsOfSale.map((pos) => [pos.site_id, pos])),
+    transfersPulledAt: transfersCursor?.pulled_at,
     lastSyncAt: meta?.last_sync_at ?? null,
     ordersPulledAt: ordersCursor?.pulled_at,
     customersPulledAt: customersCursor?.pulled_at,

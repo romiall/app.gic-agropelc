@@ -8,7 +8,7 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { idGenerator } from '../../platform/composition.js';
+import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
@@ -22,6 +22,9 @@ import {
   consumptionPayload,
   type ConsumptionCostType,
 } from './consumption.js';
+import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
+import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { stockLocations } from './stock-view.js';
 import { checkTransferLine, type TransferLineDraft } from './transfer.js';
 
@@ -34,7 +37,7 @@ const emptyLine = (): TransferLineDraft => ({
 
 export function ConsumptionScreen() {
   const { t } = useTranslation();
-  const { state } = useAuth();
+  const { state, deviceId } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
@@ -122,7 +125,24 @@ export function ConsumptionScreen() {
     (check.quantityBase > physicalLeft(balance, pending) ||
       (chosenLot !== undefined && check.quantityBase > Number(chosenLot.qty_on_hand)));
   const noSite = !location.site_id;
-  const ready = check.issue === null && costType !== '' && !noSite && !(online && over) && !busy;
+  // Garde hors ligne (BR-STK-013, AV-303) : au-delà du quota du détenteur ou du solde exclusif, refusée.
+  const guard = offlineExitGuard(refs, {
+    kind: 'CONSUMPTION',
+    location,
+    requested: new Map(
+      !online && product && check.quantityBase !== null ? [[product.id, check.quantityBase]] : [],
+    ),
+    userId,
+    deviceId,
+    now: clock.now(),
+  });
+  const ready =
+    check.issue === null &&
+    costType !== '' &&
+    !noSite &&
+    guard.blocks.length === 0 &&
+    !(online && over) &&
+    !busy;
 
   const submit = async () => {
     if (!ready || check.quantity === null || check.quantityBase === null || !location.site_id) {
@@ -217,6 +237,10 @@ export function ConsumptionScreen() {
             id={quantityId}
             className="text-input"
             inputMode="decimal"
+            aria-invalid={product && guardBlocks(guard, product.id) ? true : undefined}
+            aria-describedby={
+              product ? guardDescribedBy(guard, 'consumption', product.id) : undefined
+            }
             value={line.quantityText}
             onChange={(event) =>
               setLine((current) => ({ ...current, quantityText: event.target.value }))
@@ -280,7 +304,18 @@ export function ConsumptionScreen() {
           ))}
         </select>
       </div>
-      {over ? (
+      <ExitGuardMessages
+        guard={guard}
+        idPrefix="consumption"
+        productName={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.name ?? ''
+        }
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
+      />
+      {/* Hors ligne, une consommation refusée par la garde n'est pas annoncée « enregistrée ». */}
+      {over && (online || guard.blocks.length === 0) ? (
         online ? (
           <p className="error-message" role="alert">
             {t('consumption.over_online')}

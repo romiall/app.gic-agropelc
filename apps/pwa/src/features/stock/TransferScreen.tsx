@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ROUTES } from '../../app/screens.js';
-import { idGenerator } from '../../platform/composition.js';
+import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -23,6 +23,9 @@ import { useSalesReferences, type SalesReferences } from '../sales/references.js
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
 import type { LocationData, StockTransferData } from '../sales/types.js';
+import { offlineExitGuard } from '../sales/quota.js';
+import { guardBlocks, guardDescribedBy } from './exit-guard.js';
+import { ExitGuardMessages } from './ExitGuardMessages.js';
 import { LinesEditor } from './LinesEditor.js';
 import { stockLocations } from './stock-view.js';
 import {
@@ -282,10 +285,21 @@ function DirectDispatchForm({
       ...lotOver.map(([key]) => key.split('|')[0] ?? ''),
     ]),
   ];
+  // Garde hors ligne de la source (BR-STK-013, AV-303) : quota du détenteur, solde exclusif. Le
+  // mouvement interne n'y est pas soumis : le serveur ne lui impute aucun quota (`INTERNAL_MOVE`).
+  const guard = offlineExitGuard(refs, {
+    kind: 'DISPATCH',
+    location: source,
+    requested: online || mode === 'MOVE' ? new Map() : totals,
+    userId,
+    deviceId,
+    now: clock.now(),
+  });
   const ready =
     destinationId !== '' &&
     targets.some((target) => target.id === destinationId) &&
     checks.every(({ check }) => check.issue === null && !lotMissing(check.draft)) &&
+    guard.blocks.length === 0 &&
     !(online && over.length > 0) &&
     !busy;
 
@@ -413,6 +427,10 @@ function DirectDispatchForm({
           })
         }
         lineIssue={(row) => (lotMissing(row.check.draft) ? t('transfer.lot_required') : null)}
+        quantityDescribedBy={(row) =>
+          guardDescribedBy(guard, 'transfer-direct', row.check.draft.productId)
+        }
+        quantityBlocked={(row) => guardBlocks(guard, row.check.draft.productId)}
         extra={(row) => {
           const lots = lotChoices(row.check.draft.productId);
           if (lots.length <= 1) return null;
@@ -462,10 +480,20 @@ function DirectDispatchForm({
       ) : (
         <CarrierFields carrier={carrier} notes={notes} onCarrier={setCarrier} onNotes={setNotes} />
       )}
+      <ExitGuardMessages
+        guard={guard}
+        idPrefix="transfer-direct"
+        productName={(productId) => productNames.get(productId) ?? productId}
+        unitOf={(productId) =>
+          refs.products.find((candidate) => candidate.id === productId)?.base_unit_code ?? ''
+        }
+      />
       <OverAvailable
         online={online}
         mode={mode}
-        names={over.map((productId) => productNames.get(productId) ?? productId)}
+        names={over
+          .filter((productId) => online || !guardBlocks(guard, productId))
+          .map((productId) => productNames.get(productId) ?? productId)}
       />
       {lotRisk ? <p className="text-warn">{t('transfer.lot_fifo_risk')}</p> : null}
       {saveError ? (
@@ -711,10 +739,11 @@ function RefusedDispatchList({
 function RequestDispatchForm({
   refs,
   userId,
+  deviceId,
   online,
   onDone,
   transfer,
-}: FormProps & { readonly transfer: StockTransferData }) {
+}: FormProps & { readonly transfer: StockTransferData; readonly deviceId: string | undefined }) {
   const { t } = useTranslation();
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [carrier, setCarrier] = useState('');
@@ -742,7 +771,19 @@ function RequestDispatchForm({
     ? overAvailable(totals, (productId) => physicalAt(refs, source, productId))
     : [];
   const nothing = [...quantities.values()].every((value) => value === 0);
-  const ready = !invalid && !nothing && !(online && over.length > 0) && !busy;
+  // Garde hors ligne de la source (BR-STK-013, AV-303).
+  const guard = source
+    ? offlineExitGuard(refs, {
+        kind: 'DISPATCH',
+        location: source,
+        requested: online ? new Map() : totals,
+        userId,
+        deviceId,
+        now: clock.now(),
+      })
+    : { blocks: [], signals: [] };
+  const ready =
+    !invalid && !nothing && guard.blocks.length === 0 && !(online && over.length > 0) && !busy;
 
   const submit = async () => {
     if (!ready) return;
@@ -796,6 +837,8 @@ function RequestDispatchForm({
                   id={`dispatch-${line.id}`}
                   className="text-input"
                   inputMode="decimal"
+                  aria-invalid={guardBlocks(guard, line.product_id) ? true : undefined}
+                  aria-describedby={guardDescribedBy(guard, 'transfer-request', line.product_id)}
                   value={text}
                   onChange={(event) =>
                     setTexts((current) => ({ ...current, [line.id]: event.target.value }))
@@ -809,9 +852,17 @@ function RequestDispatchForm({
       {invalid ? <p className="error-message">{t('loss.issue.QUANTITY_INVALID')}</p> : null}
       {nothing && !invalid ? <p className="text-warn">{t('transfer.nothing')}</p> : null}
       <CarrierFields carrier={carrier} onCarrier={setCarrier} />
+      <ExitGuardMessages
+        guard={guard}
+        idPrefix="transfer-request"
+        productName={(productId) => productNames.get(productId)?.name ?? productId}
+        unitOf={(productId) => productNames.get(productId)?.base_unit_code ?? ''}
+      />
       <OverAvailable
         online={online}
-        names={over.map((productId) => productNames.get(productId)?.name ?? productId)}
+        names={over
+          .filter((productId) => online || !guardBlocks(guard, productId))
+          .map((productId) => productNames.get(productId)?.name ?? productId)}
       />
       {saveError ? (
         <p className="alert alert-error" role="alert">
@@ -940,6 +991,7 @@ export function TransferScreen() {
           <RequestDispatchForm
             refs={refs}
             userId={userId}
+            deviceId={deviceId}
             online={online}
             onDone={onDone}
             transfer={entry.transfer}

@@ -488,10 +488,14 @@ export function settingValue(
   const effective = settings
     .filter((setting) => setting.key === key && new Date(setting.valid_from) <= now)
     .sort((a, b) => b.valid_from.localeCompare(a.valid_from));
+  // Réglage du site, à défaut global, comme le serveur (`siteSetting`) : la version de site la plus
+  // récente décide ; nulle, le réglage global s'applique (une version de site plus ancienne ne revit
+  // jamais).
   const site = effective.find(
     (setting) => setting.scope_type === 'SITE' && siteId && setting.scope_id === siteId,
   );
-  return (site ?? effective.find((setting) => setting.scope_type === 'GLOBAL'))?.value;
+  if (site && site.value !== null && site.value !== undefined) return site.value;
+  return effective.find((setting) => setting.scope_type === 'GLOBAL')?.value;
 }
 
 /** Décision locale pour une vente hors ligne de `requested` (unité de base) sur l'emplacement. */
@@ -499,6 +503,8 @@ export function offlineSaleDecision(input: {
   readonly location: Pick<LocationData, 'custody_mode'>;
   readonly requested: number;
   readonly available: number;
+  /** Quota utilisable de l'utilisateur sur cet appareil (`deviceQuota`), `null` sans quota. */
+  readonly quota: { readonly remaining: number; readonly validUntil: Date | null } | null;
   readonly now: Date;
   readonly overAllocationAllowed: boolean;
 }): LocalConsumptionDecision {
@@ -507,9 +513,9 @@ export function offlineSaleDecision(input: {
     custodyMode: input.location.custody_mode ?? 'SHARED',
     requested: input.requested,
     localBalance: Math.max(0, input.available),
-    holdsQuota: false,
-    quotaRemaining: 0,
-    quotaValidUntil: null,
+    holdsQuota: input.quota !== null,
+    quotaRemaining: input.quota?.remaining ?? 0,
+    quotaValidUntil: input.quota?.validUntil ?? null,
     now: input.now,
     overAllocationAllowed: input.overAllocationAllowed,
   });

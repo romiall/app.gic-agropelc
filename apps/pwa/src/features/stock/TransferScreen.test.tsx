@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
-import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
+import { allocationRow, IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import type { StockTransferData } from '../sales/types.js';
 import { lotsAt } from './transfer.js';
@@ -240,6 +240,84 @@ describe('Transférer (ECR-STK-02)', () => {
     vi.restoreAllMocks();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+  });
+
+  it('hors ligne, détenteur d’un quota : expédition au-delà du reste refusée, dans le reste possible (BR-STK-013)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.selectOptions(await screen.findByLabelText('Vers'), STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '31');
+    const refusal = screen.getByText(/quota dépassé, il vous reste 30 U, 31 demandé\(s\)/);
+    expect(within(line).getByLabelText('Quantité').getAttribute('aria-describedby')).toContain(
+      refusal.id,
+    );
+    expect(within(line).getByLabelText('Quantité')).toHaveAttribute('aria-invalid', 'true');
+    const dispatch = screen.getByRole('button', { name: 'Expédier' });
+    expect(dispatch).toBeDisabled();
+    await user.clear(within(line).getByLabelText('Quantité'));
+    await user.type(within(line).getByLabelText('Quantité'), '30');
+    await waitFor(() => expect(dispatch).toBeEnabled());
+  });
+
+  it('hors ligne, détenteur d’un quota : le mouvement interne n’est pas gardé (aucun quota imputé)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().projections.put(
+      allocationRow({ quantity_remaining: '30.000', valid_until: null }),
+    );
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.click(await screen.findByRole('radio', { name: 'Déplacer dans le même site' }));
+    await user.selectOptions(screen.getByLabelText('Vers'), STORE);
+    const line = screen.getByRole('listitem', { name: 'Ligne 1' });
+    await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
+    await user.type(within(line).getByLabelText('Quantité'), '40');
+    expect(screen.queryByText(/quota dépassé/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Déplacer' })).toBeEnabled());
+  });
+
+  it('hors ligne : expédition d’une demande depuis un stock confié à cet appareil, dans le solde ; au-delà refusée', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const db = getDb();
+    const designate = async (device: string) => {
+      const pos = await db.projections.get(`location:LOCATION:${IDS.pos}`);
+      if (!pos) throw new Error('PDV absent');
+      await db.projections.put({
+        ...pos,
+        data: { ...pos.data, custody_mode: 'EXCLUSIVE_DEVICE', designated_device_id: device },
+      });
+    };
+    await designate(DEVICE);
+    const user = userEvent.setup();
+    renderAt('/stock/transferts');
+    await user.click(
+      await screen.findByRole('link', { name: 'Expédier la demande TRF-2026-000012' }),
+    );
+    const quantity = await screen.findByLabelText('Expédié (U)');
+    await user.clear(quantity);
+    await user.type(quantity, '301');
+    const refusal = screen.getByText(
+      'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 demandé(s).',
+    );
+    expect(quantity.getAttribute('aria-describedby')).toContain(refusal.id);
+    const send = screen.getByRole('button', { name: 'Expédier la demande' });
+    expect(send).toBeDisabled();
+    await user.clear(quantity);
+    await user.type(quantity, '60');
+    await waitFor(() => expect(send).toBeEnabled());
+    // Stock confié à un autre appareil : aucune expédition hors ligne.
+    await designate(OTHER_DEVICE);
+    expect(
+      await screen.findByText(
+        'Ce stock est confié à un autre appareil : aucune sortie hors ligne n’est possible ici.',
+      ),
+    ).toBeInTheDocument();
+    expect(send).toBeDisabled();
   });
 
   it('hors ligne : expédition directe en conditionnement, convertie, retirée aussitôt du disponible', async () => {
