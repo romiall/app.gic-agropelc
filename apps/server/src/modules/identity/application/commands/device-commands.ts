@@ -285,6 +285,10 @@ const designate: CommandHandler<DesignatePayload> = async (uow, envelope) => {
     .set({
       is_shared: isShared ? 1 : 0,
       designated_site_id: designatedSiteId === null ? null : toBin(designatedSiteId),
+      // P5-23 (AV-243) : date d'effet du rattachement, lue par la garde d'appareil des faits hors ligne.
+      ...(fromBinOrNull(device.designated_site_id) !== designatedSiteId
+        ? { designation_changed_at: new Date(envelope.occurred_at) }
+        : {}),
       updated_by: toBin(envelope.author_user_id),
       version: sql`version + 1`,
     })

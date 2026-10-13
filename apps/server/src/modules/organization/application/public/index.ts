@@ -27,6 +27,10 @@ export type {
   LocationDeactivationGuard,
 } from '../deactivation-guard-registry.js';
 
+// P5-23 (AV-195 (2), ADR-040) : garde d'un emplacement à un instant (historique des gardes).
+export { custodyAt } from './custody-query.js';
+export type { CustodyAt } from './custody-query.js';
+
 // P5-23 (AV-195, AV-230) : gardes de configuration d'un PDV, même inversion de dépendance.
 export { POS_CONFIGURATION_GUARD_REGISTRY } from '../pos-configuration-guard-registry.provider.js';
 export { PosConfigurationGuardRegistry } from '../pos-configuration-guard-registry.js';

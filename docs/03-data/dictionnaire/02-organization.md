@@ -115,6 +115,27 @@
   - *Mode de garde* (DÉDUIT) : `custody_mode` reste nul (obligatoire pour les seuls emplacements physiques, BR-STK-010 ; le `CHECK` `ck_organization_locations_custody_required` (P5-05) exempte tout virtuel).
   - *Solde* : jamais négatif, par site, produit et lot, en quantité et en valeur (INV-STK-18) ; les mouvements qui le soldent sont plafonnés en base par leur origine (INV-STK-17, ADR-029).
 
+## organization.location_custody_periods
+
+**Responsabilité** : historique de la garde d'un emplacement (P5-23, ADR-040, AV-195 (2)) : un fait hors ligne se juge sur la garde en vigueur à son `occurred_at` (`custodyAt`, API publique), pas sur la garde courante.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | |
+| `location_id` | uuid → locations | Non | — | |
+| `custody_mode` | enum(`EXCLUSIVE_USER`,`EXCLUSIVE_DEVICE`,`SHARED`) | Non | — | Mode de la période |
+| `designated_device_id` | uuid → identity.devices | Oui | — | Appareil désigné (exigé en `EXCLUSIVE_DEVICE`) |
+| `valid_from` | ts | Non | — | Début inclus : `occurred_at` de la commande, jamais avant le début de la période fermée |
+| `valid_to` | ts | Oui | — | Fin exclue ; nul pour la période ouverte ; égal au début pour une période vide (deux changements de même date), jamais retenue |
+| `command_id` | uuid | Oui | — | Commande qui a ouvert la période (nul pour l'amorçage) |
+| `created_by`, `created_at` | uuid, ts | Non | — | |
+
+- **PK** `id`. **IX** `(location_id, valid_from)`. **CK** mode admis ; appareil exigé en `EXCLUSIVE_DEVICE` ; `valid_to ≥ valid_from`.
+- **Écriture** : `organization.location.create` (période initiale), `organization.pos.configure` (une période seulement si le couple (mode, appareil) change ; la précédente est fermée sous le verrou de l'emplacement de vente). Un emplacement sans période (inséré avant l'historique) reçoit d'abord la période de son état d'avant, si elle a une durée.
+- **Suppr.** Ni modification (sauf la fermeture `valid_to`, une seule fois) ni suppression (déclencheurs). Amorçage par la migration `20261013090200` : une période ouverte par emplacement physique, depuis sa création.
+- **Lecture** : `custodyAt(executor, locationId, at)` — période couvrante `[valid_from, valid_to)`, à défaut la plus ancienne qui a une durée, à défaut aucune (garde courante).
+- **Intégrité** INV-DIS-03. Ni jeu hors ligne ni flux de changements.
+
 ## organization.teams
 
 **Responsabilité** : équipe commerciale et son responsable (CM §6, §48).

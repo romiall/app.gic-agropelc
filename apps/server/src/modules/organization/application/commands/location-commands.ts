@@ -24,6 +24,11 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { LocationDeactivationGuardRegistry } from '../deactivation-guard-registry.js';
+import { SystemClock, Uuidv7Generator } from '@gic/domain';
+import { recordCustodyPeriod } from '../custody-periods.js';
+
+/** Identifiants des périodes de garde (P5-23, ADR-040). */
+const locationIds = new Uuidv7Generator(new SystemClock());
 
 const physicalLocationTypeSchema = z.enum([
   'STORE',
@@ -159,6 +164,20 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
       created_by: toBin(envelope.author_user_id),
     })
     .execute();
+  // P5-23 (AV-195 (2), ADR-040) : période initiale de la garde, depuis la création.
+  const initial = {
+    custodyMode: custodyMode ?? defaultCustodyMode(locationType),
+    designatedDeviceId: designatedDeviceId ?? null,
+  };
+  await recordCustodyPeriod(uow, {
+    locationId: envelope.aggregate_id,
+    previous: { ...initial, since: new Date(envelope.occurred_at) },
+    next: initial,
+    at: new Date(envelope.occurred_at),
+    commandId: envelope.command_id,
+    createdBy: envelope.author_user_id,
+    newId: () => locationIds.newId(),
+  });
   return { status: 'APPLIED' };
 };
 

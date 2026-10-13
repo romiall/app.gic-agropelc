@@ -2558,6 +2558,7 @@ CREATE TABLE `identity_devices` (
   `app_version` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
   `is_shared` tinyint(1) NOT NULL DEFAULT '0',
   `designated_site_id` binary(16) DEFAULT NULL,
+  `designation_changed_at` datetime(6) DEFAULT NULL,
   `last_seen_at` datetime(6) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `created_by` binary(16) NOT NULL,
@@ -4172,6 +4173,81 @@ CREATE TABLE `inventory_transfer_pair_locks` (
   PRIMARY KEY (`from_location_id`,`to_location_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `organization_location_custody_periods`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `organization_location_custody_periods` (
+  `id` binary(16) NOT NULL,
+  `location_id` binary(16) NOT NULL,
+  `custody_mode` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `designated_device_id` binary(16) DEFAULT NULL,
+  `valid_from` datetime(6) NOT NULL,
+  `valid_to` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_by` binary(16) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_organization_location_custody_periods_location` (`location_id`,`valid_from`),
+  KEY `fk_organization_location_custody_periods_device` (`designated_device_id`),
+  KEY `fk_organization_location_custody_periods_created_by` (`created_by`),
+  CONSTRAINT `fk_organization_location_custody_periods_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_organization_location_custody_periods_device` FOREIGN KEY (`designated_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_organization_location_custody_periods_location` FOREIGN KEY (`location_id`) REFERENCES `organization_locations` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_organization_location_custody_periods_bounds` CHECK (((`valid_to` is null) or (`valid_to` >= `valid_from`))),
+  CONSTRAINT `ck_organization_location_custody_periods_device` CHECK (((`custody_mode` <> _utf8mb4'EXCLUSIVE_DEVICE') or (`designated_device_id` is not null))),
+  CONSTRAINT `ck_organization_location_custody_periods_mode` CHECK ((`custody_mode` in (_utf8mb4'EXCLUSIVE_USER',_utf8mb4'EXCLUSIVE_DEVICE',_utf8mb4'SHARED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_organization_location_custody_periods_update_guard` BEFORE UPDATE ON `organization_location_custody_periods` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.id <=> OLD.id AND
+    NEW.location_id <=> OLD.location_id AND
+    NEW.custody_mode <=> OLD.custody_mode AND
+    NEW.designated_device_id <=> OLD.designated_device_id AND
+    NEW.valid_from <=> OLD.valid_from AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_by <=> OLD.created_by AND
+    NEW.created_at <=> OLD.created_at AND
+    OLD.valid_to IS NULL
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'organization_location_custody_periods : seule la fermeture d''une période ouverte (valid_to) est admise.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_organization_location_custody_periods_no_delete` BEFORE DELETE ON `organization_location_custody_periods` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'organization_location_custody_periods : suppression physique interdite (INV-GLO-03).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
 -- Table structure for table `organization_locations`
@@ -8346,5 +8422,7 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261012090000'),
   ('20261012100000'),
   ('20261013090000'),
-  ('20261013090100');
+  ('20261013090100'),
+  ('20261013090200'),
+  ('20261013090300');
 UNLOCK TABLES;

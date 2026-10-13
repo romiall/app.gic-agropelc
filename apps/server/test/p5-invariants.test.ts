@@ -136,6 +136,30 @@ describe('P5-22 : invariants de la distribution sur toute la base', () => {
     ).toEqual([]);
   });
 
+  it('INV-DIS-03 : historique des gardes — une seule période ouverte, égale à la garde courante ; périodes contiguës (P5-23, ADR-040)', async () => {
+    expect(
+      await offenders(sql<{ ref: string }>`
+        SELECT BIN_TO_UUID(location_id) AS ref FROM organization_location_custody_periods
+        GROUP BY location_id HAVING SUM(valid_to IS NULL) <> 1 LIMIT 20`),
+    ).toEqual([]);
+    expect(
+      await offenders(sql<{ ref: string }>`
+        SELECT BIN_TO_UUID(p.location_id) AS ref FROM organization_location_custody_periods p
+        JOIN organization_locations l ON l.id = p.location_id
+        WHERE p.valid_to IS NULL
+          AND (p.custody_mode <> l.custody_mode OR NOT (p.designated_device_id <=> l.designated_device_id))
+        LIMIT 20`),
+    ).toEqual([]);
+    expect(
+      await offenders(sql<{ ref: string }>`
+        SELECT BIN_TO_UUID(p.id) AS ref FROM organization_location_custody_periods p
+        WHERE p.valid_to IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM organization_location_custody_periods n
+          WHERE n.location_id = p.location_id AND n.id <> p.id AND n.valid_from = p.valid_to)
+        LIMIT 20`),
+    ).toEqual([]);
+  });
+
   it('INV-DIS-02 : tout quota d’appareil actif porte sur un emplacement en garde partagée (P5-23, AV-230)', async () => {
     expect(
       await offenders(sql<{ ref: string }>`

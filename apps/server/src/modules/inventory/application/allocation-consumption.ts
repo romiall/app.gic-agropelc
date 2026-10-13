@@ -43,7 +43,7 @@ import {
 import type { DB } from '../../../platform/kysely/database.js';
 import { recordConflict } from '../../../platform/sync/conflicts.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../platform/kysely/uuid-columns.js';
-import { currentSettingValue } from '../../organization/application/public/index.js';
+import { currentSettingValue, custodyAt } from '../../organization/application/public/index.js';
 import {
   activeQuotaSummary,
   activeRemainingMilli,
@@ -195,9 +195,14 @@ export type CustodyReason =
  */
 export async function custodyMismatch(
   uow: Transaction<DB>,
-  request: Pick<ConsumptionRequest, 'location' | 'deviceId'>,
+  request: Pick<ConsumptionRequest, 'location' | 'deviceId'> & {
+    /** Date du fait hors ligne (P5-23, ADR-040) : garde et rattachement jugés à cette date. */
+    readonly at?: Date;
+  },
 ): Promise<CustodyReason | null> {
-  const { location, deviceId } = request;
+  const { deviceId, at } = request;
+  const location =
+    at === undefined ? request.location : await locationAt(uow, request.location, at);
   if (location.custodyMode === 'EXCLUSIVE_DEVICE') {
     if (location.designatedDeviceId !== null && location.designatedDeviceId !== deviceId) {
       return 'DEVICE_NOT_DESIGNATED';
@@ -213,14 +218,44 @@ export async function custodyMismatch(
   }
   const device = await uow
     .selectFrom('identity_devices')
-    .select('designated_site_id')
+    .select(['designated_site_id', 'designation_changed_at'])
     .where('id', '=', toBin(deviceId))
     .executeTakeFirst();
   const attachedSite = fromBinOrNull(device?.designated_site_id ?? null);
-  if (attachedSite !== null && location.siteId !== null && attachedSite !== location.siteId) {
+  // AV-243 : un rattachement postérieur au fait ne le juge pas (signal informatif : omis plutôt que faux).
+  const attachedLater =
+    at !== undefined &&
+    device?.designation_changed_at !== null &&
+    device?.designation_changed_at !== undefined &&
+    device.designation_changed_at.getTime() > at.getTime();
+  if (
+    !attachedLater &&
+    attachedSite !== null &&
+    location.siteId !== null &&
+    attachedSite !== location.siteId
+  ) {
     return 'DEVICE_OTHER_SITE';
   }
   return null;
+}
+
+/**
+ * Emplacement tel que gardé à `at` (P5-23, AV-195 (2), ADR-040) : mode et appareil désigné de la période
+ * de garde qui couvre la date du fait (`custodyAt`), à défaut la garde courante (emplacement sans
+ * historique). Le détenteur d'un stock mobile ne change jamais (`location.update` ne l'expose pas).
+ */
+export async function locationAt(
+  uow: Transaction<DB>,
+  location: ConsumptionLocation,
+  at: Date,
+): Promise<ConsumptionLocation> {
+  const period = await custodyAt(uow, location.id, at);
+  if (!period) return location;
+  return {
+    ...location,
+    custodyMode: period.custodyMode,
+    designatedDeviceId: period.designatedDeviceId,
+  };
 }
 
 /** Valeur d'un paramètre pour un site : réglage du site s'il existe, à défaut le réglage global. */
@@ -270,11 +305,19 @@ export async function prepareQuotaConsumption(
   deps: { readonly idGenerator: IdGenerator },
   request: ConsumptionRequest,
 ): Promise<QuotaConsumption | null> {
-  const { location } = request;
+  // P5-23 (ADR-040) : un fait hors ligne se juge sur la garde en vigueur à sa date — appareil désigné, et
+  // partage ou non (un fait d'une période exclusive ne consomme ni ne signale aucun quota).
+  const location = request.capturedOffline
+    ? await locationAt(uow, request.location, request.occurredAt)
+    : request.location;
   const warnings = new Set<AllocationWarning>();
 
   if (request.capturedOffline) {
-    const reason = await custodyMismatch(uow, request);
+    const reason = await custodyMismatch(uow, {
+      location: request.location,
+      deviceId: request.deviceId,
+      at: request.occurredAt,
+    });
     if (reason !== null) {
       warnings.add('CUSTODY_DEVICE_MISMATCH');
       await openConflict(uow, deps, request, {

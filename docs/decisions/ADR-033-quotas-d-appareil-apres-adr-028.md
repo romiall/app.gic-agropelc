@@ -2,6 +2,7 @@
 
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; précise ADR-004 §1 à §5 et ADR-028 §4 sans décision métier nouvelle : les points métier sont les AV-160 à AV-163, à défaut paramétrable)
 - **Date** : 08/10/2026
+- **Précisé par** : [ADR-040](ADR-040-garde-jugee-a-la-date-du-fait.md) (P5-23) : la garde d'un fait hors ligne se juge sur la période en vigueur à sa date
 
 ## Contexte
 

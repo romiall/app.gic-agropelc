@@ -673,6 +673,7 @@ export interface IdentityDevices {
   created_at: Generated<Date>;
   created_by: Buffer;
   designated_site_id: Buffer | null;
+  designation_changed_at: Date | null;
   enrolled_by_user_id: Buffer;
   id: Buffer;
   is_shared: Generated<number>;
@@ -1149,6 +1150,18 @@ export interface InventoryTransferPairLocks {
   created_at: Generated<Date>;
   from_location_id: Buffer;
   to_location_id: Buffer;
+}
+
+export interface OrganizationLocationCustodyPeriods {
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  custody_mode: string;
+  designated_device_id: Buffer | null;
+  id: Buffer;
+  location_id: Buffer;
+  valid_from: Date;
+  valid_to: Date | null;
 }
 
 export interface OrganizationLocations {
@@ -2265,6 +2278,7 @@ export interface DB {
   inventory_stock_transfer_lines: InventoryStockTransferLines;
   inventory_stock_transfers: InventoryStockTransfers;
   inventory_transfer_pair_locks: InventoryTransferPairLocks;
+  organization_location_custody_periods: OrganizationLocationCustodyPeriods;
   organization_locations: OrganizationLocations;
   organization_points_of_sale: OrganizationPointsOfSale;
   organization_sites: OrganizationSites;

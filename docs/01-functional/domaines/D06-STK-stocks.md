@@ -230,6 +230,7 @@ Les mouvements eux-mêmes ne sont pas publiés un par un comme événements mét
 | Consommation locale | L'appareil tient un **solde local** = solde téléchargé + opérations locales en attente. Il refuse de dépasser l'allocation ou le solde exclusif (BR-STK-013). |
 | Expédition, réception, perte, consommation, comptage | Possibles hors ligne ; commandes idempotentes. |
 | Réception sans document, retour à la source (P5-16) | Possibles hors ligne, jamais rejetés pour une raison d'état (BR-SYN-007) : destination non exclusive ou appareil hors garde → appliqué avec `CUSTODY_DEVICE_MISMATCH` ; fait contradictoire avec l'état du transfert → mis en quarantaine (`CONFLICT`, aucun mouvement) ; l'appareil reçoit le rapprochement par le jeu `transfers` (réception `MATCHED`, `matched_transfer_id`, transfert `RECEIVED`). |
+| Garde jugée à la date du fait (P5-23) | Hors ligne, la garde d'appareil (vente, perte, consommation, transfert, réception sans document, mouvement interne) se juge sur la période de garde en vigueur à l'`occurred_at` du fait (`custodyAt`), jamais sur la garde courante ; en ligne, la garde courante. | ADR-040 ; AV-195 (2), AV-243. |
 | Octroi et révocation d'allocation, validation | En ligne uniquement. |
 | Lot | Le lot FIFO proposé localement est **indicatif** ; le serveur recalcule sur son état. Si le lot local n'a plus de solde, le serveur applique le FIFO serveur et conserve le lot local dans `client_lot_hint`. |
 | Coût | Toujours déterminé par le serveur (jamais transmis par le client). |

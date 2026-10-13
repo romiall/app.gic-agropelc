@@ -34,6 +34,8 @@ import { fromBinOrNull, toBin, toBinOrNull } from '../../../../platform/kysely/u
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { emitPointOfSaleChange } from '../sync-changes.js';
 import { PosConfigurationGuardRegistry } from '../pos-configuration-guard-registry.js';
+import { recordCustodyPeriod } from '../custody-periods.js';
+import { SystemClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
 
 const custodyModeSchema = z.enum(['EXCLUSIVE_DEVICE', 'SHARED']);
 
@@ -101,13 +103,20 @@ async function previousDeviceAllowsChange(
 }
 
 const configureHandler =
-  (guards: PosConfigurationGuardRegistry): CommandHandler<ConfigurePayload> =>
+  (guards: PosConfigurationGuardRegistry, ids: IdGenerator): CommandHandler<ConfigurePayload> =>
   async (uow, envelope) => {
     const siteId = toBin(envelope.aggregate_id);
     // Premier verrou, avant toute lecture (voir l'en-tête) : l'emplacement de vente en exclusif.
     const salesLocation = await uow
       .selectFrom('organization_locations')
-      .select(['site_id', 'location_type', 'status', 'custody_mode', 'designated_device_id'])
+      .select([
+        'site_id',
+        'location_type',
+        'status',
+        'custody_mode',
+        'designated_device_id',
+        'created_at',
+      ])
       .where('id', '=', toBin(envelope.payload.salesLocationId))
       .forUpdate()
       .executeTakeFirst();
@@ -268,6 +277,20 @@ const configureHandler =
       })
       .where('id', '=', toBin(salesLocationId))
       .execute();
+    // P5-23 (AV-195 (2), ADR-040) : la période de garde qui commence (faits hors ligne jugés à leur date).
+    await recordCustodyPeriod(uow, {
+      locationId: salesLocationId,
+      previous: {
+        custodyMode: salesLocation.custody_mode ?? 'SHARED',
+        designatedDeviceId: fromBinOrNull(salesLocation.designated_device_id),
+        since: salesLocation.created_at,
+      },
+      next: { custodyMode, designatedDeviceId: effectiveDeviceId },
+      at: new Date(envelope.occurred_at),
+      commandId: envelope.command_id,
+      createdBy: envelope.author_user_id,
+      newId: () => ids.newId(),
+    });
     // P5-18 : la configuration et l'emplacement de vente atteignent les appareils (jeu `org`, AV-195).
     await emitPointOfSaleChange(uow, envelope.aggregate_id);
     return { status: 'APPLIED' };
@@ -276,12 +299,13 @@ const configureHandler =
 export function registerPosCommands(
   registry: CommandHandlerRegistry,
   guards: PosConfigurationGuardRegistry = new PosConfigurationGuardRegistry(),
+  ids: IdGenerator = new Uuidv7Generator(new SystemClock()),
 ): void {
   registry.register({
     commandType: 'organization.pos.configure',
     version: 1,
     payloadSchema: configurePayloadSchema,
     permissionCode: 'org.structure.manage',
-    handler: configureHandler(guards),
+    handler: configureHandler(guards, ids),
   });
 }

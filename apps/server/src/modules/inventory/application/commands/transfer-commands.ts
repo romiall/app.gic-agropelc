@@ -54,6 +54,7 @@ import {
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
 import { findProductLotTracking, findUnit } from '../../../catalog/application/public/index.js';
+import { custodyAt } from '../../../organization/application/public/index.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
@@ -63,7 +64,12 @@ import {
   type RecordMoveDeps,
 } from '../public/record-move.js';
 import { transferChanges } from '../sync-changes.js';
-import { custodyMismatch, stockOwnerRole, type CustodyReason } from '../allocation-consumption.js';
+import {
+  custodyMismatch,
+  locationAt,
+  stockOwnerRole,
+  type CustodyReason,
+} from '../allocation-consumption.js';
 import {
   activeDocumentMoves,
   applyDeferredMatch,
@@ -218,6 +224,8 @@ async function otherCustody(
   uow: UnitOfWork,
   locationId: string,
   author: { readonly userId: string; readonly deviceId: string | null },
+  /** Hors ligne : date du fait, la garde en vigueur à cette date fait foi (P5-23, ADR-040). */
+  at?: Date,
 ): Promise<boolean> {
   const row = await uow
     .selectFrom('organization_locations')
@@ -225,11 +233,14 @@ async function otherCustody(
     .where('id', '=', toBin(locationId))
     .executeTakeFirst();
   if (!row) return false;
+  const period = at === undefined ? undefined : await custodyAt(uow, locationId, at);
+  const mode = period?.custodyMode ?? row.custody_mode;
   const custodian = fromBinOrNull(row.custodian_user_id);
-  const designated = fromBinOrNull(row.designated_device_id);
-  if (row.custody_mode === 'EXCLUSIVE_USER')
+  const designated =
+    period !== undefined ? period.designatedDeviceId : fromBinOrNull(row.designated_device_id);
+  if (mode === 'EXCLUSIVE_USER')
     return custodian !== null && custodian !== author.userId.toLowerCase();
-  if (row.custody_mode === 'EXCLUSIVE_DEVICE') {
+  if (mode === 'EXCLUSIVE_DEVICE') {
     return designated !== null && designated !== author.deviceId?.toLowerCase();
   }
   return false;
@@ -884,7 +895,10 @@ ${refusal}`
         }
       }
     }
-    const exclusive = to.custodyMode === 'EXCLUSIVE_DEVICE' || to.custodyMode === 'EXCLUSIVE_USER';
+    // P5-23 (ADR-040) : hors ligne, la garde de la destination est celle de la date de la réception.
+    const judged = offline ? await locationAt(uow, to, new Date(envelope.occurred_at)) : to;
+    const exclusive =
+      judged.custodyMode === 'EXCLUSIVE_DEVICE' || judged.custodyMode === 'EXCLUSIVE_USER';
     if (!exclusive && !offline) {
       return rejected(
         'BLIND_RECEIPT_NOT_ALLOWED',
@@ -894,7 +908,7 @@ ${refusal}`
     const origin = await loadCommandOrigin(uow, envelope.command_id);
     let custodyReason: CustodyReason | null = exclusive ? null : 'LOCATION_NOT_EXCLUSIVE';
     if (exclusive && offline && origin.deviceId !== null) {
-      custodyReason = await custodyMismatch(uow, { location: to, deviceId: origin.deviceId });
+      custodyReason = await custodyMismatch(uow, { location: judged, deviceId: origin.deviceId });
     }
 
     const occurredAt = new Date(envelope.occurred_at);
@@ -1205,7 +1219,8 @@ ${refusal}`
     const author = { userId: envelope.author_user_id, deviceId: origin.deviceId };
     const foreign: string[] = [];
     for (const locationId of [fromLocationId, toLocationId]) {
-      if (await otherCustody(uow, locationId, author)) foreign.push(locationId);
+      const at = envelope.captured_offline ? occurredAt : undefined;
+      if (await otherCustody(uow, locationId, author, at)) foreign.push(locationId);
     }
     if (foreign.length > 0 && !envelope.captured_offline) return INTERNAL_MOVE_CUSTODY;
     const docNumber = await documentSequences.next(uow, {

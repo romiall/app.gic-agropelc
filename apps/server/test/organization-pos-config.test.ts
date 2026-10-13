@@ -13,6 +13,7 @@ import { registerSiteCommands } from '../src/modules/organization/application/co
 import { registerPosCommands } from '../src/modules/organization/application/commands/pos-commands.js';
 import { registerLocationCommands } from '../src/modules/organization/application/commands/location-commands.js';
 import {
+  custodyAt,
   findPosConfigBySalesLocation,
   findPosConfigBySite,
   LocationDeactivationGuardRegistry,
@@ -29,6 +30,7 @@ import {
   freshUuid,
   grantTestPermission,
   insertTestDevice,
+  insertTestLocation,
   insertTestProduct,
   insertTestRole,
   insertTestUser,
@@ -801,6 +803,102 @@ describe('organization — configuration du PDV et gardes de désactivation (P5-
       }
       const applied = await configure(siteId, exclusive);
       expect(applied.status, JSON.stringify(applied)).toBe('APPLIED');
+      expect(await locationRow(salesLocationId)).toMatchObject({
+        custody_mode: 'EXCLUSIVE_DEVICE',
+      });
+    });
+  });
+
+  describe('historique des gardes (P5-23, AV-195 (2), ADR-040)', () => {
+    const periods = (locationId: string) =>
+      db
+        .selectFrom('organization_location_custody_periods')
+        .select(['custody_mode', 'designated_device_id', 'valid_from', 'valid_to'])
+        .where('location_id', '=', toBin(locationId))
+        .orderBy('valid_from')
+        .orderBy('created_at')
+        .execute();
+
+    it('custodyAt : période couvrante [début, fin) ; avant toute période, la plus ancienne qui a une durée — jamais une période vide', async () => {
+      const siteId = await createSite('MAGASIN');
+      const device = await newDevice();
+      // Emplacement inséré sans commande (aucune période), puis un historique cohérent (INV-DIS-03) : une
+      // période vide fermée, puis la période ouverte égale à la garde courante.
+      const location = await db.transaction().execute(async (trx) => {
+        const id = await insertTestLocation(trx, admin, siteId, { locationType: 'STORE' });
+        await trx
+          .updateTable('organization_locations')
+          .set({ custody_mode: 'EXCLUSIVE_DEVICE', designated_device_id: toBin(device) })
+          .where('id', '=', toBin(id))
+          .execute();
+        return id;
+      });
+      const T = new Date('2026-08-01T10:00:00.000Z');
+      // Identifiants choisis (préfixe 00 puis ff, suffixe propre à l'emplacement) : la période vide passe la
+      // première dans l'index, à même début.
+      const prefix = location.replace(/-/g, '').slice(0, 30);
+      await db
+        .insertInto('organization_location_custody_periods')
+        .values({
+          id: Buffer.from(`00${prefix}`, 'hex'),
+          location_id: toBin(location),
+          custody_mode: 'SHARED',
+          designated_device_id: null,
+          valid_from: T,
+          valid_to: T,
+          command_id: null,
+          created_by: toBin(admin),
+        })
+        .execute();
+      await db
+        .insertInto('organization_location_custody_periods')
+        .values({
+          id: Buffer.from(`ff${prefix}`, 'hex'),
+          location_id: toBin(location),
+          custody_mode: 'EXCLUSIVE_DEVICE',
+          designated_device_id: toBin(device),
+          valid_from: T,
+          valid_to: null,
+          command_id: null,
+          created_by: toBin(admin),
+        })
+        .execute();
+      const before = await custodyAt(db, location, new Date('2026-08-01T09:00:00.000Z'));
+      expect(before).toMatchObject({ custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: device });
+      const after = await custodyAt(db, location, new Date('2026-08-01T11:00:00.000Z'));
+      expect(after).toMatchObject({ custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: device });
+      expect(await custodyAt(db, await createLocation(siteId, 'STORE'), T)).toMatchObject({
+        custodyMode: 'SHARED',
+      }); // période initiale écrite par location.create, couvrante à sa date
+    });
+
+    it('location.create ouvre la période initiale ; pos.configure ferme la période et en ouvre une à chaque changement, rien au rejeu', async () => {
+      const { siteId, salesLocationId } = await newPos();
+      expect(await periods(salesLocationId)).toMatchObject([
+        { custody_mode: 'SHARED', designated_device_id: null, valid_to: null },
+      ]);
+      const deviceA = await newDevice();
+      const deviceB = await newDevice();
+      const toA = { salesLocationId, custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: deviceA };
+      expect((await configure(siteId, toA)).status).toBe('APPLIED');
+      expect((await configure(siteId, toA)).status).toBe('APPLIED'); // rejeu : aucune période de plus
+      const afterA = await periods(salesLocationId);
+      expect(afterA).toHaveLength(2);
+      expect(afterA[0]).toMatchObject({ custody_mode: 'SHARED' });
+      expect(afterA[0]!.valid_to?.toISOString()).toBe(OCCURRED_AT);
+      expect(afterA[1]).toMatchObject({ custody_mode: 'EXCLUSIVE_DEVICE', valid_to: null });
+      expect(fromBin(afterA[1]!.designated_device_id!)).toBe(deviceA);
+      expect(afterA[1]!.valid_from.toISOString()).toBe(OCCURRED_AT);
+
+      expect((await configure(siteId, { ...toA, designatedDeviceId: deviceB })).status).toBe(
+        'APPLIED',
+      );
+      const afterB = await periods(salesLocationId);
+      expect(afterB).toHaveLength(3);
+      // Même date de commande : la période de A est vide, elle n'a jamais été en vigueur.
+      expect(afterB[1]!.valid_to?.toISOString()).toBe(OCCURRED_AT);
+      expect(fromBin(afterB[2]!.designated_device_id!)).toBe(deviceB);
+      expect(afterB[2]!.valid_to).toBeNull();
       expect(await locationRow(salesLocationId)).toMatchObject({
         custody_mode: 'EXCLUSIVE_DEVICE',
       });

@@ -23,6 +23,7 @@ import {
   type RecordMoveInput,
 } from '../src/modules/inventory/application/public/record-move.js';
 import { lockSellableQuantity } from '../src/modules/inventory/application/public/stock-query.js';
+import { recordCustodyPeriod } from '../src/modules/organization/application/custody-periods.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
@@ -1167,6 +1168,180 @@ describe('consommation des quotas d’appareil (P5-09, ADR-033)', () => {
           (row) => (row.details as Record<string, unknown>)['reason'] === 'DEVICE_OTHER_SITE',
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('garde jugée à la date du fait hors ligne (P5-23, AV-195 (2), ADR-040)', () => {
+    const at = (hhmm: string) => new Date(`2026-10-08T${hhmm}:00.000Z`);
+    async function exclusiveTo(designatedDeviceId: string): Promise<string> {
+      return db.transaction().execute(async (trx) => {
+        const id = await insertTestLocation(trx, admin, siteId, { locationType: 'STORE' });
+        await trx
+          .updateTable('organization_locations')
+          .set({
+            custody_mode: 'EXCLUSIVE_DEVICE',
+            designated_device_id: toBin(designatedDeviceId),
+          })
+          .where('id', '=', toBin(id))
+          .execute();
+        return id;
+      });
+    }
+    /** Changement de garde comme `organization.pos.configure` : période consignée, emplacement mis à jour. */
+    async function changeCustody(
+      locationId: string,
+      previous: { custodyMode: string; designatedDeviceId: string | null },
+      next: { custodyMode: string; designatedDeviceId: string | null },
+      when: Date,
+    ): Promise<void> {
+      await db.transaction().execute(async (trx) => {
+        await recordCustodyPeriod(trx, {
+          locationId,
+          previous: { ...previous, since: at('00:00') },
+          next,
+          at: when,
+          commandId: freshUuid(),
+          createdBy: admin,
+          newId: () => idGenerator.newId(),
+        });
+        await trx
+          .updateTable('organization_locations')
+          .set({
+            custody_mode: next.custodyMode,
+            designated_device_id:
+              next.designatedDeviceId === null ? null : toBin(next.designatedDeviceId),
+          })
+          .where('id', '=', toBin(locationId))
+          .execute();
+      });
+    }
+    const reasons = async (locationId: string) =>
+      (await conflicts(locationId, 'CUSTODY_DEVICE_MISMATCH')).map(
+        (row) => (row.details as Record<string, unknown>)['reason'],
+      );
+
+    it('changement d’appareil désigné à 10:00 : l’ancien appareil vend sans signal avant, avec signal à partir de 10:00 ; le nouveau, l’inverse', async () => {
+      const first = await newHolder();
+      const second = await newHolder();
+      const location = await exclusiveTo(first.deviceId);
+      const productId = await newProduct(50, location);
+      await changeCustody(
+        location,
+        { custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: first.deviceId },
+        { custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: second.deviceId },
+        at('10:00'),
+      );
+      const offline = (holder: Holder, hhmm: string) =>
+        sell(holder, productId, 1, {
+          fromLocationId: location,
+          capturedOffline: true,
+          occurredAt: at(hhmm),
+        });
+
+      expect((await offline(first, '09:30'))[0]?.warnings).toBeUndefined();
+      expect(await reasons(location)).toEqual([]);
+      expect((await offline(second, '10:30'))[0]?.warnings).toBeUndefined();
+      expect(await reasons(location)).toEqual([]);
+      expect((await offline(first, '10:00'))[0]?.warnings).toEqual(['CUSTODY_DEVICE_MISMATCH']);
+      expect((await offline(first, '10:30'))[0]?.warnings).toEqual(['CUSTODY_DEVICE_MISMATCH']);
+      expect((await offline(second, '09:30'))[0]?.warnings).toEqual(['CUSTODY_DEVICE_MISMATCH']);
+      expect(await reasons(location)).toEqual([
+        'DEVICE_NOT_DESIGNATED',
+        'DEVICE_NOT_DESIGNATED',
+        'DEVICE_NOT_DESIGNATED',
+      ]);
+      expect(await balanceOf(productId, location)).toBe(45); // tous les faits sont appliqués
+    });
+
+    it('création et configuration à la même date : la période initiale, vide, n’est jamais retenue — un fait antérieur se juge sur la garde configurée', async () => {
+      const designated = await newHolder();
+      const intruder = await newHolder();
+      const location = await db
+        .transaction()
+        .execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'STORE' }));
+      const shared = { custodyMode: 'SHARED', designatedDeviceId: null };
+      // Période initiale de la création (comme `organization.location.create`), puis configuration à la même date.
+      await db.transaction().execute((trx) =>
+        recordCustodyPeriod(trx, {
+          locationId: location,
+          previous: { ...shared, since: at('10:00') },
+          next: shared,
+          at: at('10:00'),
+          commandId: freshUuid(),
+          createdBy: admin,
+          newId: () => idGenerator.newId(),
+        }),
+      );
+      await changeCustody(
+        location,
+        shared,
+        { custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: designated.deviceId },
+        at('10:00'),
+      );
+      const productId = await newProduct(50, location);
+      const before = await sell(intruder, productId, 1, {
+        fromLocationId: location,
+        capturedOffline: true,
+        occurredAt: at('09:00'),
+      });
+      expect(before[0]?.warnings).toEqual(['CUSTODY_DEVICE_MISMATCH']);
+      expect(await reasons(location)).toEqual(['DEVICE_NOT_DESIGNATED']);
+    });
+
+    it('garde exclusive puis partagée à 10:00, quota actif ensuite : un fait de la période exclusive ne consomme ni ne signale aucun quota', async () => {
+      const designated = await newHolder();
+      const quotaHolder = await newHolder();
+      const location = await exclusiveTo(designated.deviceId);
+      const productId = await newProduct(50, location);
+      await changeCustody(
+        location,
+        { custodyMode: 'EXCLUSIVE_DEVICE', designatedDeviceId: designated.deviceId },
+        { custodyMode: 'SHARED', designatedDeviceId: null },
+        at('10:00'),
+      );
+      const quotaId = await grantQuota(quotaHolder, productId, 10, { locationId: location });
+      const before = await sell(designated, productId, 2, {
+        fromLocationId: location,
+        capturedOffline: true,
+        occurredAt: at('09:30'),
+      });
+      expect(before[0]?.warnings).toBeUndefined();
+      expect(before[0]?.allocationId).toBeUndefined();
+      // Le même appareil, sans quota, après le passage en garde partagée : signalé (AV-166).
+      const after = await sell(designated, productId, 2, {
+        fromLocationId: location,
+        capturedOffline: true,
+        occurredAt: at('10:30'),
+      });
+      expect(after[0]?.warnings).toEqual(['ALLOCATION_EXCEEDED']);
+      expect(Number((await quota(quotaId)).quantity_remaining)).toBe(10);
+      await expectInvariants(quotaId);
+    });
+
+    it('AV-243 : appareil rattaché à un autre site à 10:00 — un fait antérieur n’est pas signalé DEVICE_OTHER_SITE, un fait postérieur l’est', async () => {
+      const holder = await newHolder();
+      const otherSite = await db.transaction().execute(async (trx) => {
+        const zoneId = await insertTestZone(trx, admin);
+        return insertTestSite(trx, admin, zoneId);
+      });
+      await db
+        .updateTable('identity_devices')
+        .set({ designated_site_id: toBin(otherSite), designation_changed_at: at('10:00') })
+        .where('id', '=', toBin(holder.deviceId))
+        .execute();
+      const location = await db
+        .transaction()
+        .execute((trx) => insertTestLocation(trx, admin, siteId, { locationType: 'STORE' }));
+      const productId = await newProduct(50, location);
+      const offline = (hhmm: string) =>
+        sell(holder, productId, 1, {
+          fromLocationId: location,
+          capturedOffline: true,
+          occurredAt: at(hhmm),
+        });
+      expect((await offline('09:30'))[0]?.warnings).toBeUndefined();
+      expect((await offline('10:30'))[0]?.warnings).toEqual(['CUSTODY_DEVICE_MISMATCH']);
+      expect(await reasons(location)).toEqual(['DEVICE_OTHER_SITE']);
     });
   });
 

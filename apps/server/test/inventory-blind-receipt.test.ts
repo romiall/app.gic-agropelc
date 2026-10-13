@@ -745,12 +745,20 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       const receiptId = freshUuid();
       const dispatchCommand = freshUuid();
       const receiveCommand = freshUuid();
+      // Renvoi à l'identique : même identifiant de commande **et** même `device_seq` (l'enveloppe entière est
+      // hachée ; un autre `device_seq` serait refusé `COMMAND_ID_REUSED`, revue de P5-23) ; un numéro par tour,
+      // unique pour l'appareil (la réception hors ligne le stocke).
       const runDispatch = () =>
-        dispatch(world, pair, productId, 20, { transferId, commandId: dispatchCommand });
+        dispatch(world, pair, productId, 20, {
+          transferId,
+          commandId: dispatchCommand,
+          deviceSeq: 9_000_000 + round * 2,
+        });
       const runReceive = () =>
         blindReceive(world, pair, [{ productId, receivedQtyBase: 20 }], {
           receiptId,
           commandId: receiveCommand,
+          deviceSeq: 9_000_001 + round * 2,
         });
       let [sent, received] = await Promise.all([runDispatch(), runReceive()]);
       // Un interblocage résiduel n'est qu'un « réessayer plus tard » : la commande est rejouée.
@@ -759,8 +767,8 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       for (let retry = 0; retry < 3 && received.result.status === 'RETRY_LATER'; retry++) {
         received = await runReceive();
       }
-      expect(sent.result.status).toMatch(/^APPLIED/);
-      expect(received.result.status).toMatch(/^APPLIED/);
+      expect(sent.result.status, JSON.stringify(sent.result)).toMatch(/^APPLIED/);
+      expect(received.result.status, JSON.stringify(received.result)).toMatch(/^APPLIED/);
       expect((await transferOf(receiptId)).status).toBe('MATCHED');
       expect((await transferOf(transferId)).status).toBe('RECEIVED');
       expect(await movesOf(transferId, 'TRANSFER_RECEIPT')).toHaveLength(1);
