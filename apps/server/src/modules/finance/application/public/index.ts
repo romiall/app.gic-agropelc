@@ -129,3 +129,7 @@ export type {
   SupplierPayables,
   ExpensesSummary,
 } from './operations-query.js';
+
+// P8-12 : vérification de la finance opérationnelle (INV-FIN-07, INV-FIN-08), réconciliation quotidienne.
+export { verifyExpenses, verifySupplierLedger } from './operations-verification.js';
+export type { OperationsBreach, OperationsVerification } from './operations-verification.js';

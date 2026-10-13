@@ -15,6 +15,7 @@ import { registerPolicyCommands } from '../src/modules/approvals/application/com
 import { registerRequestCommands } from '../src/modules/approvals/application/commands/request-commands.js';
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { registerSupplierInvoiceCommands } from '../src/modules/finance/application/commands/supplier-invoice-commands.js';
+import { registerSupplierPaymentCommands } from '../src/modules/finance/application/commands/supplier-payment-commands.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -31,6 +32,8 @@ import {
 import {
   codeOf,
   eventsOf,
+  fund,
+  newAccount,
   newActor,
   newPosSite,
   tx,
@@ -70,7 +73,9 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
           ? 'CONTROL_POLICY'
           : type.startsWith('approvals.')
             ? 'APPROVAL_REQUEST'
-            : 'SUPPLIER_INVOICE',
+            : type.startsWith('finance.supplier_payment')
+              ? 'SUPPLIER_PAYMENT'
+              : 'SUPPLIER_INVOICE',
         aggregate_id: aggregateId,
         author_user_id: actor.userId,
         base_version: null,
@@ -149,12 +154,9 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
     const decisions = new ApprovalDecisionHandlerRegistry();
     registerPolicyCommands(registry);
     registerRequestCommands(registry, decisions);
-    registerSupplierInvoiceCommands(
-      registry,
-      decisions,
-      idGenerator,
-      new DocumentSequenceService(),
-    );
+    const sequences = new DocumentSequenceService();
+    registerSupplierInvoiceCommands(registry, decisions, idGenerator, sequences);
+    registerSupplierPaymentCommands(registry, decisions, idGenerator, sequences);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     root = await tx(async (trx) => {
       const userId = await insertTestUser(trx);
@@ -344,11 +346,21 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
 
     const s2 = await wf09();
     const paid = await recordInvoice(fin1, invoicePayload(s2, 10));
-    await db
-      .updateTable('finance_supplier_invoices')
-      .set({ status: 'PARTIALLY_PAID', paid_xaf: 1_000 })
-      .where('id', '=', toBin(paid.id))
-      .execute();
+    const bank = await newAccount({ type: 'BANQUE', responsible: fin1.userId });
+    await fund(new Uuidv7Generator(new FixedClock(new Date(NOW))), bank, 10_000, at('05:00'), root.userId);
+    expect(
+      codeOf(
+        await run(fin1, 'finance.supplier_payment.record', freshUuid(), at('11:30'), {
+          supplierId: s2.supplierId,
+          amountXaf: 1_000,
+          paymentMethodCode: 'VIREMENT',
+          fromAccountId: bank,
+          externalReference: 'VIR-T',
+          allocations: [{ invoiceId: paid.id, amountXaf: 1_000 }],
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect((await invoiceRow(paid.id))?.status).toBe('PARTIALLY_PAID');
     expect(
       codeOf(
         await run(fin2, 'finance.supplier_invoice.cancel', paid.id, at('12:00'), { reason: 'x' }),

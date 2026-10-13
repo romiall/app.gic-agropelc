@@ -30,8 +30,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | `21b9851` | Fait : 5 tests serveur, 14 mutations détectées |
 | P8-09 | Lectures HTTP : dépenses (portée), factures, paiements, dettes ; payé du rapprochement de P6 | `3d316bd` | Fait : 5 tests HTTP de bout en bout, 6 mutations détectées |
 | P8-10 | Jeux hors ligne : dépenses de l'auteur (`cash`, 30 jours), catégories (`catalog`), seuils (`me`) | `c7f40eb` | Fait : 3 tests par le pull réel ; 3 mutations détectées, 1 équivalente (la garde de portée `USER` double la vérification de l'auteur) |
-| P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage, valeur des pertes, vue d'ensemble financière | _à venir_ | Fait : 5 tests (2 unitaires, 3 HTTP), 8 mutations détectées ; le câblage de bout en bout de la marge d'un lot abattu est vérifié en P8-13 |
-| P8-12 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage, valeur des pertes, vue d'ensemble financière | `4dcc4a7` | Fait : 5 tests (2 unitaires, 3 HTTP), 8 mutations détectées ; le câblage de bout en bout de la marge d'un lot abattu est vérifié en P8-13 |
+| P8-12 | Invariants et réconciliation : `verifyExpenses`, `verifySupplierLedger` dans la réconciliation quotidienne ; balayage de toute la base ; ordre des verrous en concurrence | _à venir_ | Fait : 5 tests de balayage, 7 tests de concurrence et de détection, 1 test de la tâche ; 12 mutations détectées sur `gic_agropelc_p8m`, 1 équivalente (verrou de l'en-tête du BC seul retiré : les lignes du BC, verrouillées aussi, sérialisent déjà les paires testées ; l'en-tête reste verrouillé pour l'ordre global d'ADR-038) |
+| P8-13 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -51,6 +52,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-09 | `procurement-api/procurement-read.controller.ts` (rapprochement) | payé (`paidXaf`) composé depuis `finance` (`paidXafOfPurchaseOrder`) quand les valeurs sont visibles | ADR-061 §3 |
 | P8-11 | `production/application/public` (`lot-sale-lots.ts`, `index.ts`), `production-api` (`production-read.controller.ts`, nouveau `lot-margin.ts`) | `slaughterStockLotIds` ; CA de la marge de lot avec les produits d'abattage (défaut de P4 et P7 : un lot abattu affichait un CA nul) | ADR-062 §1, AV-366 |
 | P8-11 | `inventory/application/public` (`loss-summary.ts`, `index.ts`), `inventory-api` (nouveau `loss-summary-read.controller.ts`, `inventory-api.module.ts`) | `lossValueSummary`, `GET /losses/summary` | ADR-062 §3 |
+| P8-12 | `finance` (P4, P5) : `jobs/cash-ledger-reconciliation-job.ts` et son test unitaire `cash-ledger-reconciliation-job.test.ts` | deux sections de plus (dépenses, documents fournisseurs) ; le test simule les deux nouvelles vérifications | INV-FIN-07, INV-FIN-08 |
 
 ## 4. Écarts de documentation relevés (pour la session principale)
 
@@ -60,3 +62,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 - Le dictionnaire `10-approvals-attachments-communication.md` (énumération `operation_type`) ne contient pas `CASH_TRANSFER_DISCREPANCY` ; complété avec `INVOICE_MISMATCH` en P8-03 (fait).
 - `PROMPT-DE-REPRISE.md` §1 annonce « 123 permissions et 500 attributions » vérifiées par `db/tests/seed.test.ts` : depuis P8-03, **124 et 503** (à reporter à l'intégration).
 - ADR-060 §9 corrigé en P8-03 : le lancement de P8 demandait des catégories à clé dérivée du code (ADR-031), mais l'enveloppe d'une commande exige un UUIDv7 comme `aggregate_id` ; une catégorie semée avec un UUID version 5 ne serait plus administrable. Les catégories ont donc un UUIDv7 semé une fois, synchronisé par son identifiant, comme les motifs.
+
+## 5. Bases de données
+
+- **Mutations sur la base de développement (13/10/2026).** Jusqu'à P8-11, les tests de mutation de P8-04 à P8-08 ont tourné sur `gic_agropelc_p8` au lieu de la base jetable. Le code volontairement faux y a laissé 32 lignes incohérentes, toutes datées des passes de mutation et toutes de données de test : 19 factures dont le payé ne suit pas les affectations, 7 paiements, 6 dépenses dont le coût net ne suit pas l'état. Le balayage `p8-invariants.test.ts` les signale sur cette base ; aucune n'est corrigée à la main (ce serait fabriquer des données). Depuis P8-12, les mutations tournent sur `gic_agropelc_p8m`, et la suite de clôture tournera sur une base neuve.
