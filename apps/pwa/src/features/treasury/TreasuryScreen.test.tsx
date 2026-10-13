@@ -218,6 +218,24 @@ function serve(routes: Routes) {
   });
 }
 
+/** Appareil en lecture seule le temps de `run` : dernière synchronisation complète ancienne (AV-009). */
+async function whileReadOnly(run: () => Promise<void>) {
+  const db = getDb();
+  const saved = await db.syncMeta.get('device');
+  await db.syncMeta.put({
+    key: 'device',
+    device_id: saved?.device_id ?? '01900000-0000-7000-8000-0000000000d0',
+    clock_skew_ms: null,
+    last_sync_at: '2026-09-01T00:00:00.000Z',
+  });
+  try {
+    await run();
+  } finally {
+    if (saved) await db.syncMeta.put(saved);
+    else await db.syncMeta.delete('device');
+  }
+}
+
 async function rememberRoles(roles: readonly string[]) {
   await getDb().navigation.put({
     user_id: IDS.user,
@@ -297,6 +315,29 @@ describe('Trésorerie (ECR-FIN-05)', () => {
       aggregate_id: SESSION,
       captured_offline: false,
       payload: { reason: 'Erreur de rendu de monnaie' },
+    });
+  });
+
+  it('lecture seule (AV-009) : validation refusée et annoncée, rien n’est enregistré', async () => {
+    await whileReadOnly(async () => {
+      const user = userEvent.setup();
+      renderScreen();
+      const sessions = await screen.findByRole('region', { name: 'Sessions de caisse à valider' });
+      const card = within(sessions).getByRole('listitem', { name: /07:00–18:00$/ });
+      await user.click(within(card).getByRole('button', { name: /^Examiner la session/ }));
+      await user.type(
+        await within(card).findByLabelText(
+          'Motif de la validation (obligatoire : la session présente un écart)',
+        ),
+        'Erreur de rendu',
+      );
+      await user.click(within(card).getByRole('button', { name: 'Valider la session' }));
+      expect(
+        await screen.findByText(
+          /Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise\. Rien n’a été enregistré/,
+        ),
+      ).toBeInTheDocument();
+      expect(await outboxOf('finance.cash_session.validate')).toEqual([]);
     });
   });
 

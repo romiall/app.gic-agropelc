@@ -23,6 +23,7 @@ import {
   isBlockingWait,
   lastWaitingCommand,
   phaseOf,
+  saveErrorKey,
   submitCommand,
   waitingIds,
 } from '../sales/submit.js';
@@ -131,6 +132,7 @@ export function AllocationsScreen() {
   const [editText, setEditText] = useState('');
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const ids = {
     location: useId(),
     holder: useId(),
@@ -237,6 +239,7 @@ export function AllocationsScreen() {
   const send = async (kind: Kind, input: Parameters<typeof submitCommand>[0]) => {
     if (blocked) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const command = await submitCommand(input);
       setLast({ commandId: command.command_id, kind });
@@ -246,6 +249,8 @@ export function AllocationsScreen() {
         setQuantityText('');
         setHoursText('');
       }
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -305,6 +310,11 @@ export function AllocationsScreen() {
       )}
       {last ? (
         <CommandResult commandId={last.commandId} messages={`quotas.${last.kind}_result`} />
+      ) : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t(saveError)}
+        </p>
       ) : null}
       {read.denied ? (
         <p className="alert alert-error" role="alert">

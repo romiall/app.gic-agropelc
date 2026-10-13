@@ -25,6 +25,24 @@ vi.mock('../auth/AuthContext.js', () => ({
 
 const PENDING_SALE = '01900000-0000-7000-8000-0000000000c1';
 
+/** Appareil en lecture seule le temps de `run` : dernière synchronisation complète ancienne (AV-009). */
+async function whileReadOnly(run: () => Promise<void>) {
+  const db = getDb();
+  const saved = await db.syncMeta.get('device');
+  await db.syncMeta.put({
+    key: 'device',
+    device_id: saved?.device_id ?? '01900000-0000-7000-8000-0000000000d0',
+    clock_skew_ms: null,
+    last_sync_at: '2026-09-01T00:00:00.000Z',
+  });
+  try {
+    await run();
+  } finally {
+    if (saved) await db.syncMeta.put(saved);
+    else await db.syncMeta.delete('device');
+  }
+}
+
 function pendingSaleCommand(): OutboxCommand {
   return {
     command_id: '01900000-0000-7000-8000-0000000000d1',
@@ -137,6 +155,25 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
         comment: 'Erreur de saisie',
         paymentTreatment: 'CUSTOMER_CREDIT',
       },
+    });
+  });
+
+  it('lecture seule (AV-009) : annulation refusée et annoncée, rien n’est enregistré', async () => {
+    await whileReadOnly(async () => {
+      const user = userEvent.setup();
+      renderAt(`/ventes/${SALE_ID}`);
+      await user.click(await screen.findByRole('button', { name: 'Annuler la vente' }));
+      await user.type(screen.getByLabelText('Commentaire'), 'Erreur de saisie');
+      await user.click(screen.getByLabelText('Garder en avoir du client'));
+      await user.click(screen.getByRole('button', { name: 'Confirmer l’annulation' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise\. Rien n’a été enregistré/,
+      );
+      expect(
+        (await getDb().outbox.toArray()).some(
+          (command) => command.command_type === 'sales.sale.cancel',
+        ),
+      ).toBe(false);
     });
   });
 

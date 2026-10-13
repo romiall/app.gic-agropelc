@@ -9,20 +9,17 @@ import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { enqueueCommand, REPEATED_FAILURE_ATTEMPTS, type EnqueueInput } from '../../sync/outbox.js';
 import { getSyncEngine } from '../sync/sync-engine-instance.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
-import { loadAutonomy, OfflineReadOnlyError } from '../sync/autonomy.js';
+import { OfflineReadOnlyError } from '../sync/autonomy.js';
 
 /**
- * Enregistre une opération dans l'outbox et relance l'envoi. Au-delà de l'autonomie hors connexion
- * (AV-009), l'appareil est en lecture seule : l'opération est refusée (`OfflineReadOnlyError`) et
- * rien n'est enregistré ; les opérations déjà dans l'outbox continuent de partir.
+ * Enregistre une opération dans l'outbox et relance l'envoi. En lecture seule (AV-009), elle est
+ * refusée par `enqueueCommand` (`OfflineReadOnlyError`) et rien n'est enregistré.
  */
 export async function submitCommand(
   input: Omit<EnqueueInput, 'capturedOffline' | 'commandVersion'> & {
     readonly commandVersion?: number;
   },
 ): Promise<OutboxCommand> {
-  const autonomy = await loadAutonomy(getDb(), clock.now());
-  if (autonomy.level === 'READ_ONLY') throw new OfflineReadOnlyError(autonomy.hours ?? 0);
   const command = await enqueueCommand(
     getDb(),
     { clock, idGenerator },
@@ -30,6 +27,16 @@ export async function submitCommand(
   );
   void getSyncEngine()?.trigger();
   return command;
+}
+
+/**
+ * Message d'un échec d'enregistrement : lecture seule (autonomie dépassée, AV-009) ou échec de la base
+ * locale.
+ */
+export function saveErrorKey(error: unknown): string {
+  return error instanceof OfflineReadOnlyError
+    ? 'sync.read_only_refused'
+    : 'sales.error_local_save';
 }
 
 /** Commande de l'outbox suivie en direct (statut, références du serveur, erreur). */

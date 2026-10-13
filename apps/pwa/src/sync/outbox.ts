@@ -7,6 +7,7 @@
  */
 import type { GicDatabase, OutboxCommand } from '../storage/db.js';
 import type { Clock, IdGenerator } from '@gic/domain';
+import { loadAutonomy, OfflineReadOnlyError } from '../features/sync/autonomy.js';
 
 export interface EnqueueInput {
   readonly authorUserId: string;
@@ -33,11 +34,19 @@ async function nextDeviceSeq(db: GicDatabase): Promise<number> {
   return (last?.device_seq ?? 0) + 1;
 }
 
+/**
+ * Enregistre une opération dans l'outbox. Au-delà de l'autonomie hors connexion (AV-009, AV-314),
+ * l'appareil est en lecture seule : l'opération est refusée (`OfflineReadOnlyError`) et rien n'est
+ * enregistré, quel que soit l'écran qui l'enregistre ; les opérations déjà dans l'outbox partent.
+ */
 export async function enqueueCommand(
   db: GicDatabase,
   deps: { readonly clock: Clock; readonly idGenerator: IdGenerator },
   input: EnqueueInput,
 ): Promise<OutboxCommand> {
+  // Hors de la transaction d'écriture : la mesure lit l'état de synchronisation et les paramètres.
+  const autonomy = await loadAutonomy(db, deps.clock.now());
+  if (autonomy.level === 'READ_ONLY') throw new OfflineReadOnlyError(autonomy.hours ?? 0);
   return db.transaction('rw', db.outbox, async () => {
     const now = deps.clock.now().toISOString();
     const deviceSeq = await nextDeviceSeq(db);

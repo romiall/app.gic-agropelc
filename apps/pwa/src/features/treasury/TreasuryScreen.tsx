@@ -26,6 +26,7 @@ import {
   isBlockingWait,
   lastWaitingCommand,
   phaseOf,
+  saveErrorKey,
   submitCommand,
   waitingIds,
 } from '../sales/submit.js';
@@ -124,6 +125,7 @@ export function TreasuryScreen() {
   const [comment, setComment] = useState('');
   const [last, setLast] = useState<{ commandId: string; kind: Kind }>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const ids = { option: useId(), reason: useId(), comment: useId() };
   // Commandes gérées lues dans la base locale : les décisions (`approvals.`) ne sont pas dans les
   // référentiels de vente.
@@ -214,10 +216,13 @@ export function TreasuryScreen() {
   const send = async (kind: Kind, input: Parameters<typeof submitCommand>[0]) => {
     if (blocked) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const command = await submitCommand(input);
       setLast({ commandId: command.command_id, kind });
       setOpen(null);
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -284,6 +289,11 @@ export function TreasuryScreen() {
       <h1>{t('nav.screens.treasury')}</h1>
       {last ? (
         <CommandResult commandId={last.commandId} messages={`treasury.${last.kind}_result`} />
+      ) : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t(saveError)}
+        </p>
       ) : null}
       {read.failed && !read.denied ? (
         // Relecture en échec : annoncée avec « Réessayer », la liste d'avant restant affichée comme

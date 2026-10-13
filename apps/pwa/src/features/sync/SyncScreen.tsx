@@ -14,6 +14,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { isEffectivelyOnline } from '../../platform/connectivity.js';
 import { enqueueCommand } from '../../sync/outbox.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { saveErrorKey } from '../sales/submit.js';
 import { getSyncEngine } from './sync-engine-instance.js';
 import { useSyncStatus } from './useSyncStatus.js';
 
@@ -36,24 +37,31 @@ export function SyncScreen() {
   };
 
   const runDiagnostic = async () => {
-    const command = await enqueueCommand(
-      getDb(),
-      { clock, idGenerator },
-      {
-        authorUserId: state.userId,
-        commandType: 'organization.setting.set',
-        commandVersion: 1,
-        aggregateType: 'SETTING',
-        payload: {
-          key: `diagnostic.pwa.${idGenerator.newId()}`,
-          value: clock.now().toISOString(),
-          scopeType: 'GLOBAL',
-          isClientVisible: true,
-          reason: 'Diagnostic P0-14 : vérification du pipeline depuis la PWA.',
+    let command;
+    try {
+      command = await enqueueCommand(
+        getDb(),
+        { clock, idGenerator },
+        {
+          authorUserId: state.userId,
+          commandType: 'organization.setting.set',
+          commandVersion: 1,
+          aggregateType: 'SETTING',
+          payload: {
+            key: `diagnostic.pwa.${idGenerator.newId()}`,
+            value: clock.now().toISOString(),
+            scopeType: 'GLOBAL',
+            isClientVisible: true,
+            reason: 'Diagnostic P0-14 : vérification du pipeline depuis la PWA.',
+          },
+          capturedOffline: !isEffectivelyOnline(),
         },
-        capturedOffline: !isEffectivelyOnline(),
-      },
-    );
+      );
+    } catch (error) {
+      // Lecture seule (AV-009) : le diagnostic est une opération comme une autre, refusée.
+      setDiagnosticMessage(t(saveErrorKey(error)));
+      return;
+    }
     setDiagnosticMessage(
       t('sync.diagnostic_enqueued', { status: t(`sync.status.${command.status}`) }),
     );

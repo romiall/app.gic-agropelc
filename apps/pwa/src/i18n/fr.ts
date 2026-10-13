@@ -2945,6 +2945,8 @@ export const fr = {
     },
   },
   sync: {
+    read_only_refused:
+      'Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise. Rien n’a été enregistré ; synchronisez ce téléphone avant toute nouvelle opération.',
     autonomy_warning:
       'Aucune synchronisation depuis {{hours}} h : connectez-vous dès que possible. Au-delà de {{max}} h, ce téléphone passera en lecture seule.',
     autonomy_read_only:

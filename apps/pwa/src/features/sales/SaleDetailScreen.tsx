@@ -23,7 +23,7 @@ import { rootCustomerId, useSalesReferences, type SalesReferences } from './refe
 import { waitsForOtherUser } from './pending.js';
 import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
-import { submitCommand } from './submit.js';
+import { saveErrorKey, submitCommand } from './submit.js';
 
 const DEFAULT_CANCEL_MINUTES = 15;
 
@@ -47,6 +47,7 @@ function CancelSaleForm({
   const [comment, setComment] = useState('');
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const now = clock.now();
   const configured = Number(
@@ -72,6 +73,7 @@ function CancelSaleForm({
   const submit = async () => {
     if (errors.length > 0 || busy) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -90,6 +92,8 @@ function CancelSaleForm({
         },
       });
       onDone(command.command_id);
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -154,6 +158,11 @@ function CancelSaleForm({
           {message}
         </p>
       ))}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t(saveError)}
+        </p>
+      ) : null}
       <div className="result-actions">
         <button type="button" onClick={() => void submit()} disabled={errors.length > 0 || busy}>
           {t('sales.cancel.submit')}

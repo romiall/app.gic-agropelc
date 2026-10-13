@@ -19,7 +19,7 @@ import { formatMoney, formatQuantity } from '../sales/format.js';
 import { recentSales } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
-import { submitCommand } from '../sales/submit.js';
+import { saveErrorKey, submitCommand } from '../sales/submit.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { stockRows } from '../stock/stock-view.js';
 import { canRelease, myQuotas, releasePayload, todaySales } from './pos-home.js';
@@ -36,6 +36,7 @@ export function PosHomeScreen() {
   const [confirmRelease, setConfirmRelease] = useState<string | null>(null);
   const [released, setReleased] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!refs || !userId) {
     return (
@@ -109,6 +110,7 @@ export function PosHomeScreen() {
     const quota = quotas.find((candidate) => candidate.allocation.id === quotaId);
     if (!quota || !canRelease(quota) || !mayRelease || busy) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const command = await submitCommand({
         authorUserId: userId,
@@ -119,6 +121,8 @@ export function PosHomeScreen() {
       });
       setReleased(command.command_id);
       setConfirmRelease(null);
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
     } finally {
       setBusy(false);
     }
@@ -196,6 +200,11 @@ export function PosHomeScreen() {
         <h2 id="pos-home-quota-title">{t('pos_home.quota_title')}</h2>
         {released ? (
           <CommandResult commandId={released} messages="pos_home.release_result" />
+        ) : null}
+        {saveError ? (
+          <p className="alert alert-error" role="alert">
+            {t(saveError)}
+          </p>
         ) : null}
         {quotas.length === 0 ? (
           <p className="home-muted">{t('pos_home.quota_empty')}</p>

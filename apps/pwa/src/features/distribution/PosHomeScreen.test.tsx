@@ -73,6 +73,24 @@ async function rememberRoles(roles: readonly string[]) {
   });
 }
 
+/** Appareil en lecture seule le temps de `run` : dernière synchronisation complète ancienne (AV-009). */
+async function whileReadOnly(run: () => Promise<void>) {
+  const db = getDb();
+  const saved = await db.syncMeta.get('device');
+  await db.syncMeta.put({
+    key: 'device',
+    device_id: saved?.device_id ?? '01900000-0000-7000-8000-0000000000d0',
+    clock_skew_ms: null,
+    last_sync_at: '2026-09-01T00:00:00.000Z',
+  });
+  try {
+    await run();
+  } finally {
+    if (saved) await db.syncMeta.put(saved);
+    else await db.syncMeta.delete('device');
+  }
+}
+
 function renderScreen() {
   return render(
     <MemoryRouter>
@@ -258,6 +276,24 @@ describe('Accueil du PDV (ECR-DIS-01)', () => {
       within(cash).getByText(/Clôture saisie sur cette tablette par un autre utilisateur/),
     ).toBeInTheDocument();
     expect(within(cash).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('lecture seule (AV-009) : libération refusée et annoncée, rien n’est enregistré', async () => {
+    await whileReadOnly(async () => {
+      await rememberRoles(['VENDEUR_PDV']);
+      await getDb().projections.put(allocationRow());
+      const user = userEvent.setup();
+      renderScreen();
+      const quotas = await screen.findByRole('region', { name: 'Mes quotas sur ce téléphone' });
+      await user.click(
+        await within(quotas).findByRole('button', { name: 'Libérer le quota Œufs de table' }),
+      );
+      await user.click(within(quotas).getByRole('button', { name: /^Confirmer : rendre/ }));
+      expect(await within(quotas).findByRole('alert')).toHaveTextContent(
+        /Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise\. Rien n’a été enregistré/,
+      );
+      expect(await getDb().outbox.count()).toBe(0);
+    });
   });
 
   it('libération réservée aux rôles qui la détiennent (CTE, VEN)', async () => {

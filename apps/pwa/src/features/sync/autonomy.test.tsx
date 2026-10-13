@@ -1,13 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { FixedClock } from '@gic/domain';
+import { clock } from '../../platform/composition.js';
 import { getDb, type SyncMeta } from '../../storage/db.js';
+import { enqueueCommand } from '../../sync/outbox.js';
 import { meSettingRow } from '../sales/fixtures.js';
 import type { SettingData } from '../sales/types.js';
 import { submitCommand } from '../sales/submit.js';
 import { autonomyOf, hoursFrom, OfflineReadOnlyError } from './autonomy.js';
 import { AutonomyBanner } from './AutonomyBanner.js';
+import { SyncScreen } from './SyncScreen.js';
 
 vi.mock('./sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
+vi.mock('../auth/AuthContext.js', () => ({
+  useAuth: () => ({
+    state: {
+      status: 'unlocked',
+      userId: '01900000-0000-7000-8000-000000000001',
+      deviceStatus: 'ACTIVE',
+    },
+    deviceId: '01900000-0000-7000-8000-0000000000d0',
+  }),
+}));
 vi.mock('../../platform/composition.js', async () => {
   const { FixedClock, Uuidv7Generator } = await import('@gic/domain');
   const clock = new FixedClock(new Date('2026-10-10T12:00:00.000Z'));
@@ -103,26 +118,73 @@ describe('Autonomie hors connexion (AV-009)', () => {
     expect(await getDb().outbox.count()).toBe(1);
   });
 
-  it('bandeau : avertissement, puis lecture seule ; rien après une synchronisation récente', async () => {
+  it('lecture seule : la garde est au point d’enregistrement unique, diagnostic compris', async () => {
+    await lastSync(ago(169));
+    await expect(
+      enqueueCommand(
+        getDb(),
+        { clock, idGenerator: { newId: () => '01900000-0000-7000-8000-0000000000ab' } },
+        {
+          authorUserId: '01900000-0000-7000-8000-000000000001',
+          commandType: 'organization.setting.set',
+          commandVersion: 1,
+          aggregateType: 'SETTING',
+          payload: {},
+          capturedOffline: true,
+        },
+      ),
+    ).rejects.toBeInstanceOf(OfflineReadOnlyError);
+    expect(await getDb().outbox.count()).toBe(0);
+  });
+
+  it('diagnostic de l’écran de synchronisation : refusé en lecture seule, refus annoncé', async () => {
+    await lastSync(ago(169));
+    const user = userEvent.setup();
+    render(<SyncScreen />);
+    await user.click(await screen.findByRole('button', { name: 'Tester la synchronisation' }));
+    expect(
+      await screen.findByText(/Lecture seule : .*Rien n’a été enregistré/),
+    ).toBeInTheDocument();
+    expect(await getDb().outbox.count()).toBe(0);
+  });
+
+  it('bandeau : avertissement, lecture seule, puis disparu après une synchronisation (sans remontage)', async () => {
     await lastSync(ago(50));
-    const { unmount } = render(<AutonomyBanner />);
+    const { container } = render(<AutonomyBanner />);
     expect(
       await screen.findByText(
         /Aucune synchronisation depuis 50 h : connectez-vous dès que possible/,
       ),
     ).toHaveAttribute('role', 'status');
-    unmount();
-
     await lastSync(ago(200));
-    const second = render(<AutonomyBanner />);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /Lecture seule : aucune synchronisation depuis 200 h \(plus de 168 h\)/,
     );
-    second.unmount();
-
+    // Synchronisation réussie : le bandeau se retire (transition observée, pas une attente fixe).
     await lastSync(ago(2));
-    const { container } = render(<AutonomyBanner />);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(container).toBeEmptyDOMElement();
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('bandeau resté monté : il suit le temps (retour au premier plan), sans nouvelle synchronisation', async () => {
+    const fixed = clock as unknown as FixedClock;
+    try {
+      await lastSync(ago(47));
+      render(<AutonomyBanner />);
+      await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+      fixed.advance(2 * HOUR);
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      expect(await screen.findByText(/Aucune synchronisation depuis 49 h/)).toBeInTheDocument();
+      fixed.advance(121 * HOUR);
+      act(() => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /Lecture seule : aucune synchronisation depuis 170 h/,
+      );
+    } finally {
+      fixed.setTo(NOW);
+    }
   });
 });
