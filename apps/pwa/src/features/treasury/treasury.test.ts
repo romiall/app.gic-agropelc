@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  closeDiscrepancyPayload,
   currentVarianceXaf,
-  decisionPayload,
   imputationOptions,
   sessionReasonRequired,
   sessionValidationBlock,
@@ -65,7 +65,9 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     expect(transferDecisionBlock(transfer, 'vendeur')).toBe('INVOLVED');
     expect(transferDecisionBlock(transfer, 'finance-2')).toBe('INVOLVED');
     expect(transferDecisionBlock(transfer, 'porteur')).toBe('INVOLVED');
-    expect(transferDecisionBlock({ ...transfer, approvalRequestId: null }, ME)).toBe('NO_REQUEST');
+    // Sans demande de validation liée : clos par la même commande (AV-183 harmonisé).
+    const withoutRequest = { ...transfer, approvalRequestId: null };
+    expect(transferDecisionBlock(withoutRequest, ME)).toBeNull();
     expect(transferDecisionBlock({ ...transfer, status: 'CLOSED' }, ME)).toBe('NOT_PENDING');
     expect(imputationOptions(transfer).map((choice) => [choice.option, choice.disabled])).toEqual([
       ['SENDER', false],
@@ -84,12 +86,10 @@ describe('Trésorerie (ECR-FIN-05)', () => {
         (choice) => choice.option === 'CARRIER',
       )?.disabled,
     ).toBe(false);
-    expect(
-      decisionPayload({ requestId: 'demande', option: 'COMPANY', reason: ' Vol ', comment: ' ' }),
-    ).toEqual({ requestId: 'demande', decisionOption: 'COMPANY', decisionData: { reason: 'Vol' } });
-    expect(
-      decisionPayload({ requestId: 'demande', option: 'SENDER', reason: 'Erreur', comment: 'Vu' }),
-    ).toMatchObject({ comment: 'Vu' });
+    expect(closeDiscrepancyPayload({ option: 'COMPANY', reason: ' Vol ' })).toEqual({
+      imputation: 'COMPANY',
+      reason: 'Vol',
+    });
     expect(userLabel(ME, ME, 'vous')).toBe('vous');
     expect(userLabel('01900000-0000-7000-8000-0000000000e1', ME, 'vous')).toBe('…00e1');
     expect(userLabel(null, ME, 'vous')).toBe('');

@@ -3,7 +3,7 @@ import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import type { PushResponse } from '@gic/contracts';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
 import { enqueueCommand } from './outbox.js';
-import { IN_PROGRESS_GRACE_MS, runPushCycle } from './push.js';
+import { IN_PROGRESS_GRACE_MS, nextBusyRetries, runPushCycle } from './push.js';
 import { clearSessionRuntime, setSessionRuntime } from '../features/auth/session-runtime.js';
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
@@ -404,6 +404,46 @@ describe('sync/push (runPushCycle)', () => {
         { skip: new Set([command.command_id]) },
       ),
     ).toEqual({ outcome: 'NOTHING_TO_PUSH' });
+  });
+
+  it('appareil en attente d’approbation (DEVICE_PENDING, AV-228) : une attente, jamais un échec', async () => {
+    const pending = await enqueueOne(db, 'appareil en attente');
+    // Deux renvois SERVER_BUSY déjà comptés : l'attente d'approbation remet le compteur à zéro.
+    await db.outbox.update(pending.command_id, {
+      busy_retries: 2,
+      last_error: { code: 'SERVER_BUSY', message_fr: 'Erreur transitoire, à réessayer.' },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  command_id: pending.command_id,
+                  status: 'RETRY_LATER',
+                  error: {
+                    code: 'DEVICE_PENDING',
+                    message_fr: 'Appareil en attente d’approbation.',
+                  },
+                },
+              ],
+              server_time: clock.now().toISOString(),
+              clock_skew_ms: 0,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const result = await runPushCycle(db, { clock, idGenerator, deviceId: DEVICE_ID });
+    expect(result).toMatchObject({ outcome: 'PUSHED', settled: 0, stalled: [] });
+    expect(await db.outbox.get(pending.command_id)).toMatchObject({
+      status: 'PENDING_SYNC',
+      busy_retries: 0,
+      last_error: { code: 'DEVICE_PENDING' },
+    });
+    expect(nextBusyRetries('DEVICE_PENDING', 2)).toBe(0);
   });
 
   it('REJECTED : statut et motif conservés sur la commande (BR-SYN-009)', async () => {

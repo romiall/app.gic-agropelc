@@ -12,6 +12,7 @@ import {
   useHeldBehindFailure,
   useOutboxCommand,
 } from './submit.js';
+import { awaitsDeviceApproval } from './pending.js';
 
 interface CommandResultProps {
   readonly commandId: string;
@@ -40,6 +41,9 @@ export function CommandResult({ commandId, messages, children }: CommandResultPr
     text = t('sync.repeated_failure', { reason: rejectionMessage(command) ?? '' });
   } else if (holder) {
     text = t('sync.held_behind_failure', { reason: rejectionMessage(holder) ?? '' });
+  } else if (awaitsDeviceApproval(command)) {
+    // Appareil en attente d'approbation (AV-228) : l'opération partira après l'approbation.
+    text = t('sync.device_pending');
   } else if (phase === 'WAITING') {
     text = t(`${messages}.WAITING_${command.captured_offline ? 'offline' : 'online'}`);
   } else if (phase === 'REJECTED') {

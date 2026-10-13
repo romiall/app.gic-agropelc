@@ -84,6 +84,25 @@ describe('Opération retenue derrière une opération plus ancienne en échec r�
   });
 });
 
+describe('Résultat d’une opération : appareil en attente d’approbation (AV-228)', () => {
+  afterEach(async () => {
+    cleanup();
+    await getDb().outbox.clear();
+  });
+
+  it('annoncée comme une attente d’approbation, pas comme un échec', async () => {
+    await getDb().outbox.put({
+      ...waiting('vente', 1, 0),
+      last_error: { code: 'DEVICE_PENDING', message_fr: 'Appareil en attente d’approbation.' },
+    });
+    render(<CommandResult commandId="vente" messages="sales.result" />);
+    const text = await screen.findByText(
+      'Enregistrée sur ce téléphone, qui attend l’approbation de l’administrateur : l’opération partira après l’approbation.',
+    );
+    expect(text.closest('.result')).not.toHaveClass('result-error');
+  });
+});
+
 describe('Résultat d’une opération : avertissement du serveur', () => {
   afterEach(async () => {
     cleanup();

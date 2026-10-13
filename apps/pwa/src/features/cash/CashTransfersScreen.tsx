@@ -22,7 +22,6 @@ import {
   cancelPayload,
   canCancel,
   deviceTransfers,
-  discrepancyPolicyState,
   MAX_CANCEL_REASON,
   MAX_CARRIER_NAME,
   MAX_TRANSFER_COMMENT,
@@ -112,7 +111,6 @@ export function CashTransfersScreen() {
       time: formatClockTime(view.sentAt),
     });
   const who = (id: string) => (id === userId ? t('cash_transfer.you') : `…${id.slice(-4)}`);
-  const policy = discrepancyPolicyState(refs.controlPolicies, now);
   const own = new Set(ownAccounts(refs.cashAccounts, userId).map((account) => account.id));
   const incoming = toReceive(views, refs.cashAccounts, userId);
   // Réceptions en cours ou écarts en attente de la Finance sur l'une de ses caisses : pour mémoire.
@@ -322,7 +320,6 @@ export function CashTransfersScreen() {
                 editing?.id === view.id && editing.kind === 'receive' ? (
                   <TransferReceiveForm
                     sentXaf={view.amountSentXaf}
-                    policy={policy}
                     busy={busy}
                     onSubmit={(received, comment) => void receive(view, received, comment)}
                     onClose={closeEdit}

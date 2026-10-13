@@ -2478,8 +2478,6 @@ export const fr = {
     decision_block: {
       INVOLVED:
         'Vous avez envoyé, porté ou reçu cette remise : un autre valideur doit décider de l’écart.',
-      NO_REQUEST:
-        'Aucune demande de validation n’est liée à cet écart : signalez-le à l’administrateur.',
       NOT_PENDING: 'Cet écart n’est plus en attente.',
     },
     decide_open: 'Décider de l’écart de la remise {{doc}}',
@@ -2491,8 +2489,7 @@ export const fr = {
       RECEIVER: 'Récepteur',
       COMPANY: 'Entreprise',
     },
-    decision_reason: 'Motif (obligatoire, 200 caractères au plus)',
-    decision_comment: 'Commentaire (facultatif)',
+    decision_reason: 'Motif (obligatoire, 500 caractères au plus)',
     decide_submit: 'Clore l’écart',
     transit_title: 'Remises en transit',
     transit_empty: 'Aucune remise en transit.',
@@ -2587,8 +2584,6 @@ export const fr = {
     match: 'Montant conforme à l’envoi.',
     discrepancy: 'Écart de {{amount}} : il sera soumis à la Finance, qui l’impute et le motive.',
     lost: 'Rien reçu : la remise sera déclarée perdue et soumise à la Finance.',
-    discrepancy_refused:
-      'Écart de {{amount}} : aucune politique de validation des écarts n’est en vigueur, le serveur refusera cette réception (en ligne comme hors ligne). Prévenez la Finance.',
     receive_submit: 'Confirmer la réception de {{amount}}',
     sent_title: 'Mes remises',
     sent_empty: 'Aucune remise envoyée en cours.',
@@ -2945,6 +2940,10 @@ export const fr = {
     },
   },
   sync: {
+    device_pending:
+      'Enregistrée sur ce téléphone, qui attend l’approbation de l’administrateur : l’opération partira après l’approbation.',
+    device_pending_notice:
+      'Ce téléphone attend l’approbation de l’administrateur : les opérations enregistrées partiront après l’approbation. Si l’attente dure, le serveur les signalera comme bloquées.',
     read_only_refused:
       'Lecture seule : aucune synchronisation depuis plus longtemps que l’autonomie permise. Rien n’a été enregistré ; synchronisez ce téléphone avant toute nouvelle opération.',
     autonomy_warning:

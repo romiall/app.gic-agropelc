@@ -380,3 +380,15 @@ Phase close le 13/10/2026.
   - identifiant d'écran à créer dans [`03-parcours-et-ecrans.md`](../01-functional/03-parcours-et-ecrans.md) pour l'écran des remises de fonds (AV-239) ;
   - statut des écrans de P5 dans la matrice de traçabilité et le plan de développement, que cette phase ne modifie pas ;
   - avant les tests de la PWA, reconstruire `packages/contracts` (`pnpm --filter @gic/contracts build` : `dist` n'est pas versionné, et `DistributionDashboardResponse` y est attendu).
+
+### 9.7 Adaptations après l'intégration (P5-23)
+
+> Ouvertes le 13/10/2026, après l'intégration de la phase dans `claude/brave-pasteur-c7q4y7` (`9b52c4c`) et l'avance rapide de `claude/pwa-p5` sur cette branche. Plages réservées pour la suite : AV numérotés de 330 à 349, ADR numérotés de 052 à 059, besoins serveur S-53 et suivants.
+
+| Incr. | Objet | Commit | Contenu |
+|---|---|---|---|
+| F-76 | Adaptations aux changements de P5-23 (AV-183, AV-228 ; AV-188 et AV-195 sans objet) | _à venir_ | **Écarts de remise (AV-183 harmonisé)** : une réception avec écart n'est plus refusée sans politique de validation (l'écart attend sans demande) ; l'annonce préalable du refus est retirée de la réception (écran des remises, trésorerie), avec la lecture des politiques du jeu `policies` qu'elle seule utilisait. Dans la trésorerie, l'écart se clôt par `finance.cash_transfer.close_discrepancy` (agrégat de la remise, imputation et motif de 500 caractères au plus, en ligne seulement), avec ou sans demande liée : un écart sans demande, jusque-là bloqué, est clos par la même commande ; le commentaire de la décision disparaît (absent du contrat). **Appareil en attente d'approbation (AV-228)** : un renvoi `RETRY_LATER` motivé par `DEVICE_PENDING` est une attente, jamais un échec (compteur des renvois remis à zéro) ; l'opération l'annonce (« partira après l'approbation ») et l'écran de synchronisation l'avise ; au-delà du délai du serveur, `COMMAND_STALLED` suit le chemin existant. **Sans objet** : AV-188 (aucune demande d'annulation d'encaissement n'est saisie sur l'appareil) ; AV-195 (3) (l'appareil ne lit pas le jeu `device`) |
+
+| Incr. | Tests (vitest) | Typage | ESLint | Prettier | Navigateur |
+|---|---|---|---|---|---|
+| F-76 | 505 verts (72 fichiers), dont clôture d'un écart (commande, agrégat de la remise, charge utile, motif de 500 caractères, écart sans demande clos), attente d'approbation (renvoi neutre, résultat de l'opération, avis de l'écran de synchronisation) ; 8 mutations, chacune détectée | OK | OK | OK | Différé : connexion requise (voir § 7) |

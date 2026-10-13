@@ -5,14 +5,12 @@ import type {
   CashSessionData,
   CashTransferData,
   CashTransferTargetData,
-  ControlPolicyData,
   SettingData,
 } from '../sales/types.js';
 import {
   cancelPayload,
   canCancel,
   deviceTransfers,
-  discrepancyPolicyState,
   mySentTransfers,
   overIndicativeBalance,
   ownAccounts,
@@ -295,36 +293,6 @@ describe('Remises de fonds vues par l’appareil (UC-FIN-07)', () => {
     expect(byId.get('r-acceptee')).toMatchObject({ docNumber: 'RMF-YDE-2026-000012' });
     expect(byId.get('r-attente')).toMatchObject({ docNumber: null, receivingXaf: null });
     expect(byId.get('r2')).toMatchObject({ receiving: 'WAITING', receivingXaf: 140_000 });
-  });
-
-  it('politique de validation des écarts en vigueur, comme le serveur', () => {
-    const at = new Date('2026-10-10T09:00:00.000Z');
-    const policy = (overrides: Partial<ControlPolicyData> = {}): ControlPolicyData => ({
-      id: 'p',
-      code: 'ECART',
-      version: 1,
-      operation_type: 'CASH_TRANSFER_DISCREPANCY',
-      requires_approval: true,
-      approver_permission: 'finance.cash_session.validate',
-      valid_from: '2026-01-01T00:00:00.000Z',
-      valid_to: null,
-      ...overrides,
-    });
-    expect(discrepancyPolicyState([], at)).toBe('UNKNOWN');
-    expect(discrepancyPolicyState([policy()], at)).toBe('APPLIES');
-    expect(discrepancyPolicyState([policy({ requires_approval: false })], at)).toBe('MISSING');
-    expect(discrepancyPolicyState([policy({ approver_permission: null })], at)).toBe('MISSING');
-    expect(discrepancyPolicyState([policy({ valid_to: '2026-10-10T09:00:00.000Z' })], at)).toBe(
-      'MISSING',
-    );
-    expect(discrepancyPolicyState([policy({ valid_from: '2026-10-11T00:00:00.000Z' })], at)).toBe(
-      'MISSING',
-    );
-    expect(discrepancyPolicyState([policy({ operation_type: 'EXPENSE' })], at)).toBe('MISSING');
-    // Une politique applicable parmi d'autres suffit (`.find` du serveur).
-    expect(
-      discrepancyPolicyState([policy({ requires_approval: false }), policy({ id: 'q' })], at),
-    ).toBe('APPLIES');
   });
 
   it('solde de la caisse source : registre du serveur, comptage à l’aveugle pour la caisse du PDV', () => {

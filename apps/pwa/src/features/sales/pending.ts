@@ -36,6 +36,17 @@ export function waitsForOtherUser(
   );
 }
 
+/**
+ * Commande en attente renvoyée par le serveur parce que l'appareil attend son approbation
+ * (`RETRY_LATER` avec `DEVICE_PENDING`, AV-228) : elle s'appliquera après l'approbation ; au-delà de
+ * `sync.retry_hold_minutes`, le serveur la déclare bloquée (`COMMAND_STALLED`).
+ */
+export function awaitsDeviceApproval(
+  command: Pick<OutboxCommand, 'status' | 'last_error'>,
+): boolean {
+  return isWaiting(command) && command.last_error?.code === 'DEVICE_PENDING';
+}
+
 export function isAccepted(command: Pick<OutboxCommand, 'status'>): boolean {
   return command.status === 'SYNCED' || command.status === 'SYNCED_WITH_WARNING';
 }
