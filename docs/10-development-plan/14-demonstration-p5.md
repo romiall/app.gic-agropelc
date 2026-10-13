@@ -171,12 +171,12 @@ Ordre de verrouillage (ADR-038) : chaque paire de transactions concurrentes rele
 | P5-21 E2E | PDV hors ligne toute une journée, AT-004, AT-035 et AT-036 croisés ; correctifs du protocole d'envoi et des connexions MySQL en UTC |
 | P5-22 invariants | Balayage de toute la base, réconciliation de la trésorerie étendue, `STOCK_NEGATIVE` pour toute sortie physique, ordre de verrouillage global testé en concurrence (ADR-038) |
 | P5-23 revue adverse | Onze lots de correctifs : gardes des référentiels et besoins serveur des écrans (S-02, S-20, S-29 à S-31, S-37, S-40, S-48) ; affectations sous verrou, curseur du pull (AV-198) ; portée des commandes `inventory` (AV-182), quotas en vigueur et cumul (AV-211) ; caisse entre deux sessions (AV-224) ; écart de remise sans politique (AV-183), encaissement d'une vente anonyme (AV-188) ; quarantaine d'un appareil par historique de ses statuts (AV-212, AV-228) ; horloge suspecte paramétrée (AV-216, AV-226, AV-227) ; garde exclusive et quotas (AV-195, AV-230), garde jugée à la date du fait (ADR-040, AV-243) ; accueil et tableau sur une seule définition (ADR-041, AV-200, AV-209) |
-| Écrans (fork) | ECR-DIS-01 à 04, ECR-STK-06, ECR-FIN-05, ECR-FIN-07 (remises de fonds) ; jeux de P5 sur l'appareil, envoi strict dans l'ordre (ADR-039), garde d'AT-003, lecture seule après l'autonomie hors connexion (F-56 à F-77) |
+| Écrans (fork) | ECR-DIS-01 à 04, ECR-STK-06, ECR-FIN-05, ECR-FIN-07 (remises de fonds) ; jeux de P5 sur l'appareil, envoi strict dans l'ordre (ADR-039), garde d'AT-003, lecture seule après l'autonomie hors connexion, statut de la session retenue d'une ouverture fusionnée (F-56 à F-78) |
 
 ## 4. Ce qui reste hors périmètre de P5
 
 - **Vérification dans le navigateur et sur appareil** des écrans de P5 (et de ceux des phases précédentes) : à faire avec le porteur (compte de démonstration local, `pnpm run demo:data`, [`db/README.md`](../../db/README.md) §5).
-- **Changement d'utilisateur sur une même tablette** (sessions multiples de la PWA) : le découpage proposé par le fork attend la réponse du porteur ([suivi](15-ecrans-pwa.md) § 9.6).
+- **Changement d'utilisateur sur une même tablette** (sessions multiples de la PWA, changement de vendeur hors ligne avec son code PIN, jeux cloisonnés par utilisateur) : reporté à une phase dédiée (décision du porteur du 13/10/2026, [suivi](15-ecrans-pwa.md) § 9.7) ; le suivi par auteur des opérations et des quotas, livré, reste le périmètre de P5.
 - **Garde de sécurité des comptes** : fenêtre de quarantaine d'un utilisateur suspendu puis réactivé (AV-229), avant la mise en production, sinon en P10.
 - **Alertes** (remise non reçue, réception non rapprochée, quotas à régulariser, écart de caisse) : les signaux existent (accueil, conflits) ; la diffusion est en P9.
 - **Finance opérationnelle** (dépenses, factures et paiements fournisseurs, rapprochement) : P8 ; les ajustements tardifs des sessions validées à l'écran de trésorerie attendent S-51.
