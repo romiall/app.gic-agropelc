@@ -801,7 +801,7 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
           selfApproved: true,
         }),
       ),
-    ).toBe('CASH_TRANSFER_VALIDATOR_INVOLVED');
+    ).toBe('SELF_APPROVAL_FORBIDDEN'); // le marqueur est réservé à la Direction (INV-ADM-02, MP-07)
     expect(
       codeOf(
         await approve(fin3, requestId, {

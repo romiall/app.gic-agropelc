@@ -25,6 +25,7 @@ import {
   type ApprovalDecisionHandlerRegistry,
 } from '../decision-handler-registry.js';
 import { recordRequesterChange } from '../approval-changes.js';
+import { canSelfApproveAt } from './approval-inbox.js';
 
 export interface DecideApprovalRequestInput {
   readonly requestId: string;
@@ -34,7 +35,10 @@ export interface DecideApprovalRequestInput {
   readonly comment?: string;
   readonly decisionOption?: string;
   readonly decisionData?: Readonly<Record<string, string>>;
-  /** Auto-approbation explicite (BR-ADM-017) : jamais déduite du rôle de l'auteur. */
+  /**
+   * Auto-approbation explicite (BR-ADM-017) : jamais déduite du rôle de l'auteur, et permise à la
+   * Direction seulement (INV-ADM-02, AV-010 ; MP-07).
+   */
   readonly selfApproved?: boolean;
 }
 
@@ -98,11 +102,17 @@ export async function decideApprovalRequest(
     );
   }
 
+  // INV-ADM-02 : le marqueur ne suffit pas, l'auteur doit relever de la Direction à l'instant de la
+  // décision (MP-07 : avant, tout approbateur pouvait valider sa propre demande en le posant).
   const isSelfRequest = input.decidedBy === fromBin(row.requested_by);
-  if (isSelfRequest && input.selfApproved !== true) {
+  if (
+    isSelfRequest &&
+    (input.selfApproved !== true ||
+      !(await canSelfApproveAt(uow, input.decidedBy, input.decidedAt)))
+  ) {
     return refused(
       'SELF_APPROVAL_FORBIDDEN',
-      "L'approbateur doit être différent du demandeur (BR-ADM-017).",
+      "L'approbateur doit être différent du demandeur ; seule la Direction valide sa propre demande, explicitement (BR-ADM-017).",
     );
   }
 

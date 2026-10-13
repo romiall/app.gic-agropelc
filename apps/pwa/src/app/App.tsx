@@ -60,6 +60,7 @@ import { SalesListScreen } from '../features/sales/SalesListScreen.js';
 import { AutonomyBanner } from '../features/sync/AutonomyBanner.js';
 import { DeviceApprovalBanner } from '../features/devices/DeviceApprovalBanner.js';
 import { DevicesScreen } from '../features/devices/DevicesScreen.js';
+import { ApprovalsScreen } from '../features/approvals/ApprovalsScreen.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
@@ -139,6 +140,7 @@ function AppShell() {
             <Route path={ROUTES.posHome} element={<PosHomeScreen />} />
             <Route path={ROUTES.allocations} element={<AllocationsScreen />} />
             <Route path={ROUTES.devices} element={<DevicesScreen />} />
+            <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
             <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
             <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
             <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />

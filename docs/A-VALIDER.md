@@ -276,6 +276,7 @@ Classification (PM §45) :
 | AV-259 | Rattachement d'un appareil à un site hors de la portée du responsable | SECONDAIRE | MP | Refusé : le site cible doit être dans la portée de l'auteur (`FORBIDDEN_SCOPE`) ; l'Admin rattache partout | **TRANCHÉ** (voir journal §3) |
 | AV-260 | Tablette rattachée à un site : relève-t-elle du responsable de ce site ? | SECONDAIRE | MP | Oui : le site de rattachement compte dans la portée, en plus des affectations de l'utilisateur qui l'a connectée | **TRANCHÉ** (voir journal §3) |
 | AV-261 | Lecture des appareils par le Responsable production | SECONDAIRE | MP | `identity.device.read` en portée `SITE` ajouté (il approuve et bloque déjà) | **TRANCHÉ** (voir journal §3) |
+| AV-262 | Remise au-delà du plafond ou dépassement d'encours refusés après coup : quel effet ? | SECONDAIRE | MP | Décision tracée sans effet sur la vente ; le refus reste visible dans l'historique de la demande | OUVERT |
 
 ---
 
@@ -356,6 +357,7 @@ Format de chaque fiche : **Question**, **Pourquoi c'est important**, **Choix pos
   - le rôle Admin n'approuve aucune opération métier ;
   - exception : un utilisateur Direction peut s'auto-approuver, avec le marqueur `SELF_APPROVED` dans l'audit (petite structure).
 - **Références** : CM §5.3, §40 ; ADR-018.
+- **Défaut implémenté** : la recommandation. Depuis MP-07 (13/10/2026), la décision exige le rôle Direction **en plus** du marqueur explicite `selfApproved` (`canSelfApprove`, `@gic/domain`) : avant, tout approbateur pouvait valider sa propre demande en posant le marqueur (écart à INV-ADM-02, corrigé et testé). La file de validation ne montre ses propres demandes qu'à la Direction.
 
 ### AV-011 — Pipeline prospect — SECONDAIRE
 - **Recommandation** : étapes configurables. Valeurs initiales : `NOUVEAU`, `CONTACTE`, `INTERESSE`, `NEGOCIATION`. Terminaux système non configurables : `CLIENT` (conversion) et `PERDU`.
@@ -1919,6 +1921,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a).
 - **Impact** : `db/seeds/rbac-data.ts` (501 octrois), matrice RBAC §5.1 ; MP-06.
+
+### AV-262 — Remise au-delà du plafond ou dépassement d'encours refusés après coup — SECONDAIRE
+- **Question** : une remise au-delà du plafond du vendeur (`PRICE_OVERRIDE`, AV-026) et un dépassement de la limite de crédit (`CREDIT_LIMIT_EXCEEDED`, AV-028) sont validés **après** la vente, déjà enregistrée. Que produit un refus : rien de plus qu'une trace, une alerte, une correction de prix, une sanction ?
+- **Pourquoi** : en construisant la file de validation (MP-07), aucun module ne traite la décision de ces deux types (aucun gestionnaire, ADR-018) : approuver ou refuser ne change rien à la vente. Ni le CM ni AV-026 ne disent ce que vaut un refus. **CONFIRMÉ** (lecture du code) ; l'effet attendu est **À VALIDER**.
+- **Choix** : (a) décision tracée seulement, visible dans l'historique de la demande et l'audit ; (b) en plus, alerte au vendeur et à son responsable (P9) ; (c) refus = annulation ou avoir à émettre sur la vente (contre-écriture, ADR-006).
+- **Recommandation** : (a) maintenant, (b) avec les alertes de P9 ; (c) seulement si le porteur veut qu'un refus corrige la vente.
+- **Impact** : `approvals` (aucun gestionnaire pour ces types), écran ECR-ADM-08 (« validation a posteriori : l'opération est déjà enregistrée »), `approvalDecisionSpec` (`recordOnly`), test `approvals-inbox.test.ts` (catalogue fidèle aux gestionnaires). Défaut implémenté : (a), sans paramètre (aucun effet à régler).
 ---
 
 ## 3. Journal des décisions

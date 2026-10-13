@@ -57,7 +57,7 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 | UC-ADM-12 | Gérer les équipes et leurs membres | `organization.team.create`, `organization.team.set_members` | ADMIN, RESP_COMMERCIAL (lecture) | Non |
 | UC-ADM-13 | Modifier un paramètre système | `organization.setting.set` | ADMIN (DIRECTION pour les seuils financiers) | Non |
 | UC-ADM-14 | Définir une politique de contrôle | `approvals.policy.set` | DIRECTION, ADMIN | Non |
-| UC-ADM-15 | Traiter la file de validation (approuver ou rejeter) | `approvals.request.approve`, `approvals.request.reject` | Responsables, DIRECTION, FINANCE | Non |
+| UC-ADM-15 | Traiter la file de validation (approuver ou rejeter) ; lecture `GET /approvals/inbox` (ECR-ADM-08, MP-07) | `approvals.request.approve`, `approvals.request.reject` | Responsables, DIRECTION, FINANCE | Non |
 | UC-ADM-16 | Joindre une pièce justificative à une opération | `attachments.attachment.register` + upload | Tous | **Oui** (capture et file d'upload) |
 
 ## 5. Entrées

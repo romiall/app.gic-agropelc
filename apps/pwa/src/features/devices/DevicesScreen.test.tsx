@@ -150,10 +150,9 @@ describe('Appareils (ECR-ADM-05)', () => {
     const user = userEvent.setup();
     renderScreen();
     const card = await screen.findByRole('listitem', { name: 'Appareil 7KQ2' });
-    expect(authorizedRequest).toHaveBeenCalledWith(
-      expect.anything(),
+    // Chemins seuls : en cas d'échec, afficher la base locale passée en argument épuise la mémoire.
+    expect(vi.mocked(authorizedRequest).mock.calls.map((call) => call[1])).toContain(
       '/api/v1/devices?limit=200&status=PENDING',
-      { method: 'GET' },
     );
     expect(within(card).getByText('En attente')).toBeInTheDocument();
     expect(within(card).getByText(/connecté par Awa Nde/)).toBeInTheDocument();

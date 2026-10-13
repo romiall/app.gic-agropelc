@@ -82,6 +82,7 @@ export const ROUTES = {
   posHome: '/pdv',
   allocations: '/stock/quotas',
   devices: '/administration/appareils',
+  approvals: '/validations',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -288,6 +289,20 @@ export const ROLE_SETS = {
     'RESP_PRODUCTION',
     'RESP_FERME',
     'MAGASINIER',
+  ],
+  /**
+   * ECR-ADM-08 : rôles qui détiennent `approvals.request.read` et au moins une permission d'approbation
+   * d'une politique (DIR, FIN, RCO, RPR, RFE, MAG, RAC) ; le serveur ne rend que les demandes que chacun
+   * peut décider. L'Admin n'approuve aucune opération métier (RC-03).
+   */
+  approvals: [
+    'DIRECTION',
+    'FINANCE',
+    'RESP_COMMERCIAL',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'RESP_ACHATS',
   ],
 } as const satisfies Record<string, readonly string[]>;
 
@@ -532,6 +547,22 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: ROLE_SETS.deviceRead,
     actionCodes: ['DEVICES'],
     signalCodes: ['DEVICES_PENDING'],
+    offline: false,
+  },
+  {
+    // MP-07 : file de validation unifiée (UX-08), décisions en ligne ; « Valider les mortalités » et
+    // « Valider les remises » ouvrent la file filtrée par type.
+    id: 'ECR-ADM-08',
+    path: ROUTES.approvals,
+    labelKey: 'approvals',
+    group: 'general',
+    roles: ROLE_SETS.approvals,
+    actionCodes: ['VALIDATIONS', 'MORTALITY', 'DISCOUNTS'],
+    actionQuery: {
+      MORTALITY: '?types=MORTALITY,ANIMAL_COUNT_ADJUSTMENT',
+      DISCOUNTS: '?types=PRICE_OVERRIDE',
+    },
+    signalCodes: ['APPROVALS_PENDING'],
     offline: false,
   },
   {

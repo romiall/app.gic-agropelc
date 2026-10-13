@@ -18,6 +18,18 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(routeOfSignal({ code: 'STOCK_OUT', action: { route: null } })).toBeNull();
     expect(routeOfSignal({ code: 'STOCK_OUT', action: null })).toBeNull();
     expect(routeOfAction({ code: 'DEVICES', route: null }, 'ADMIN')).toBe(ROUTES.devices);
+    // MP-07 : file de validation, filtrée par type depuis les actions des responsables.
+    expect(routeOfSignal({ code: 'APPROVALS_PENDING', action: { route: null } })).toBe(
+      ROUTES.approvals,
+    );
+    expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'DIRECTION')).toBe(ROUTES.approvals);
+    expect(routeOfAction({ code: 'MORTALITY', route: null }, 'RESP_PRODUCTION')).toBe(
+      `${ROUTES.approvals}?types=MORTALITY,ANIMAL_COUNT_ADJUSTMENT`,
+    );
+    expect(routeOfAction({ code: 'DISCOUNTS', route: null }, 'RESP_COMMERCIAL')).toBe(
+      `${ROUTES.approvals}?types=PRICE_OVERRIDE`,
+    );
+    expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'ADMIN')).toBeNull();
     // Un code de signal ne mène qu'à un seul écran.
     const codes = SCREENS.flatMap((screen) => screen.signalCodes ?? []);
     expect(new Set(codes).size).toBe(codes.length);

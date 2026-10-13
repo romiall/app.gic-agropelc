@@ -17,7 +17,7 @@ import { registerAttachmentCommands } from '../src/modules/attachments/applicati
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import type { ApprovalDecisionContext } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { requestApproval } from '../src/modules/approvals/application/public/request-approval.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -393,62 +393,77 @@ describe('approvals (P0-13)', () => {
       expect(result.status === 'REJECTED' && result.error.code).toBe('APPROVER_NOT_ALLOWED');
     });
 
-    it('approve : demandeur == approbateur sans selfApproved → REJECTED SELF_APPROVAL_FORBIDDEN (BR-ADM-017)', async () => {
+    it('approve : demandeur == approbateur → SELF_APPROVAL_FORBIDDEN, même avec le marqueur, sauf la Direction (BR-ADM-017, INV-ADM-02)', async () => {
       const policyId = await setPolicy(`TEST_POLICY_${freshUuid().slice(-8)}`);
-      const requestId = freshUuid();
-      await db.transaction().execute((trx) =>
-        requestApproval(trx, {
-          requestId,
-          operationType: 'LOSS_DECLARATION',
-          subjectType: 'TEST_LOSS',
-          subjectId: freshUuid(),
-          subjectSummary: 'Auto-demande',
-          siteId,
-          requestedBy: approver, // le demandeur EST l'approbateur potentiel
-          requestedAt: new Date(OCCURRED_AT),
-          policyId,
-          policyVersion: 1,
-        }),
+      const selfRequest = async (requestedBy: string) => {
+        const requestId = freshUuid();
+        await db.transaction().execute((trx) =>
+          requestApproval(trx, {
+            requestId,
+            operationType: 'LOSS_DECLARATION',
+            subjectType: 'TEST_LOSS',
+            subjectId: freshUuid(),
+            subjectSummary: 'Auto-demande',
+            siteId,
+            requestedBy, // le demandeur EST l'approbateur potentiel
+            requestedAt: new Date(OCCURRED_AT),
+            policyId,
+            policyVersion: 1,
+          }),
+        );
+        return requestId;
+      };
+      const approve = (author: string, device: string, requestId: string, selfApproved?: true) =>
+        pipeline.handle(
+          buildCommand({
+            commandId: freshUuid(),
+            commandType: 'approvals.request.approve',
+            authorUserId: author,
+            aggregateType: 'APPROVAL_REQUEST',
+            aggregateId: requestId,
+            payload: selfApproved ? { requestId, selfApproved } : { requestId },
+          }),
+          { authenticatedUserId: author, authenticatedDeviceId: device, transport: 'ONLINE_API' },
+        );
+      const codeOf = (result: Awaited<ReturnType<typeof approve>>) =>
+        result.status === 'REJECTED' ? result.error.code : result.status;
+
+      // Approbateur hors Direction : sa propre demande, refusée avec ou sans le marqueur (avant MP-07,
+      // le marqueur suffisait).
+      const ownRequest = await selfRequest(approver);
+      expect(codeOf(await approve(approver, approverDevice, ownRequest))).toBe(
+        'SELF_APPROVAL_FORBIDDEN',
+      );
+      expect(codeOf(await approve(approver, approverDevice, ownRequest, true))).toBe(
+        'SELF_APPROVAL_FORBIDDEN',
       );
 
-      const denied = await pipeline.handle(
-        buildCommand({
-          commandId: freshUuid(),
-          commandType: 'approvals.request.approve',
-          authorUserId: approver,
-          aggregateType: 'APPROVAL_REQUEST',
-          aggregateId: requestId,
-          payload: { requestId },
-        }),
-        {
-          authenticatedUserId: approver,
-          authenticatedDeviceId: approverDevice,
-          transport: 'ONLINE_API',
-        },
+      // Direction (rôle réel du seed) qui détient aussi l'approbation : marqueur exigé, puis permis.
+      const director = await db.transaction().execute((trx) => insertTestUser(trx));
+      const directorDevice = await db
+        .transaction()
+        .execute((trx) => insertTestDevice(trx, director, { status: 'ACTIVE' }));
+      const directionRole = await db
+        .selectFrom('identity_roles')
+        .select('id')
+        .where('code', '=', 'DIRECTION')
+        .executeTakeFirstOrThrow();
+      await db
+        .transaction()
+        .execute((trx) =>
+          assignTestRole(trx, director, fromBin(directionRole.id), admin, { scopeType: 'GLOBAL' }),
+        );
+      const directorRequest = await selfRequest(director);
+      expect(codeOf(await approve(director, directorDevice, directorRequest))).toBe(
+        'SELF_APPROVAL_FORBIDDEN',
       );
-      expect(denied.status).toBe('REJECTED');
-      expect(denied.status === 'REJECTED' && denied.error.code).toBe('SELF_APPROVAL_FORBIDDEN');
-
-      const allowed = await pipeline.handle(
-        buildCommand({
-          commandId: freshUuid(),
-          commandType: 'approvals.request.approve',
-          authorUserId: approver,
-          aggregateType: 'APPROVAL_REQUEST',
-          aggregateId: requestId,
-          payload: { requestId, selfApproved: true },
-        }),
-        {
-          authenticatedUserId: approver,
-          authenticatedDeviceId: approverDevice,
-          transport: 'ONLINE_API',
-        },
+      expect(codeOf(await approve(director, directorDevice, directorRequest, true))).toBe(
+        'APPLIED',
       );
-      expect(allowed.status).toBe('APPLIED');
       const row = await db
         .selectFrom('approvals_approval_requests')
         .select('self_approved')
-        .where('id', '=', toBin(requestId))
+        .where('id', '=', toBin(directorRequest))
         .executeTakeFirstOrThrow();
       expect(row.self_approved).toBe(1);
     });

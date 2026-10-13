@@ -149,6 +149,7 @@ export {
   declareLoss,
   lotMortalitySummary,
   findLossDeclaration,
+  lossesAwaitingPhoto,
 } from './loss-declaration.js';
 export type {
   LossCategory,

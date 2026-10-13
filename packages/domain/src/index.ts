@@ -377,3 +377,14 @@ export type {
 // Récurrence des tâches planifiées, heure locale de Douala (P5-16).
 export { nextRecurringRun, assertRecurringSchedule, localTimeMinutes } from './recurrence.js';
 export type { RecurringSchedule } from './recurrence.js';
+
+// Décision d'une demande de validation par type d'opération ; auto-validation (MP-07, ECR-ADM-08).
+export {
+  APPROVAL_COMMENT_MAX,
+  APPROVAL_DECISION_DATA_MAX,
+  APPROVAL_DECISION_SPECS,
+  SELF_APPROVAL_ROLE,
+  approvalDecisionSpec,
+  canSelfApprove,
+} from './approval-decisions.js';
+export type { ApprovalDecisionOptions, ApprovalDecisionSpec } from './approval-decisions.js';

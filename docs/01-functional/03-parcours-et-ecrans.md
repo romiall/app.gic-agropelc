@@ -117,7 +117,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-ADM-05 | Appareils (approbation, blocage, déclaration de perte, rattachement à un site) | ADMIN, responsables dans leur portée (BR-ADM-025) ; lecture seule pour la Direction et le magasinier | Non | P0 (cadrage), livré en MP-06 |
 | ECR-ADM-06 | Organisation : sites, emplacements, zones, géorepères, équipes, PDV | ADMIN | Non | P0/P1 |
 | ECR-ADM-07 | Paramètres et politiques de contrôle | ADMIN (Direction pour les seuils) | Non | P0/P2 |
-| ECR-ADM-08 | File de validation unifiée | DIRECTION, responsables, FINANCE | Non | P2 |
+| ECR-ADM-08 | File de validation unifiée | DIRECTION, responsables, FINANCE, magasinier (écarts de transfert de son site) ; chacun ne voit que ce qu'il peut décider | Non | P2 (cadrage), livré en MP-07 |
 | ECR-SYN-01 | État de synchronisation et opérations en attente | Tous | Oui | P0 |
 | ECR-SYN-02 | Supervision de la synchronisation (appareils, retards, erreurs) | ADMIN, DIRECTION | Non | P0 |
 | ECR-SYN-03 | Résolution des conflits | ADMIN, responsables | Non | P2 |

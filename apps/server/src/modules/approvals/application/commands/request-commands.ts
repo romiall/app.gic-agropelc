@@ -88,6 +88,17 @@ function buildDecisionCommandHandler(
   // Cœur partagé avec les commandes en façade d'un module propriétaire (P5-13,
   // `finance.cash_session.validate`) : `decideApprovalRequest`.
   return async (uow, envelope) => {
+    // SM-APPROVAL, D01 (UC-ADM-15) : aucune décision hors ligne, elle exige l'état du serveur. Comme les
+    // façades (`finance.cash_session.validate`, `.close_discrepancy`) : sans cette garde, une décision
+    // saisie hors ligne s'appliquait au renvoi, à la date de l'appareil (revue de P8, B4 ; MP-07).
+    if (envelope.captured_offline) {
+      return {
+        status: 'REJECTED',
+        errorCode: 'ONLINE_REQUIRED',
+        messageFr:
+          'Une décision de validation se prend en ligne : reprenez-la depuis la file de validation.',
+      };
+    }
     const result = await decideApprovalRequest(uow, decisionRegistry, {
       requestId: envelope.payload.requestId,
       decision,

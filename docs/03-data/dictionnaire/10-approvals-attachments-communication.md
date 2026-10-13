@@ -9,7 +9,7 @@
 | [STD-ID] | | | | |
 | `code` | code | Non | — | Lignée de la politique |
 | `version` | int | Non | 1 | |
-| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
+| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`,`CASH_TRANSFER_DISCREPANCY`) | Non | — | `CASH_TRANSFER_DISCREPANCY` (écart d'une remise de fonds, AV-153) en P5-03 ; `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
 | `condition` | json | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
 | `requires_photo` | boolean | Non | false | |
 | `requires_comment` | boolean | Non | false | |
@@ -55,7 +55,7 @@
 | `policy_id`, `policy_version` | uuid, int | Oui | — | Politique figée |
 | `required_attachment_ids` | uuid[] | Non | `{}` | Pièces attendues |
 | `status` | enum(`PENDING`,`APPROVED`,`REJECTED`,`CANCELLED`) | Non | `PENDING` | |
-| `decision_option` | code | Oui | — | Issue choisie (ex. `ERREUR_DECLARATION`, `PERTE_NON_JUSTIFIEE`, `REFUND`, `KEEP_CREDIT`). Des données propres au type d'opération (`decisionData` de `approvals.request.approve`, dix au plus, ex. `correctedReference` d'un encaissement suspect, AV-135, P4-08) sont remises au gestionnaire du module propriétaire sans être stockées ici : l'inbox et l'audit de la commande les tracent |
+| `decision_option` | code | Oui | — | Issue choisie (ex. `ERREUR_DECLARATION`, `PERTE_NON_JUSTIFIEE`, `REFUND`, `CUSTOMER_CREDIT`, imputation `SENDER`/`CARRIER`/`RECEIVER`/`COMPANY` d'un écart de remise ; catalogue par type : `approvalDecisionSpec`, `@gic/domain`, MP-07). Des données propres au type d'opération (`decisionData` de `approvals.request.approve`, dix au plus, ex. `correctedReference` d'un encaissement suspect, AV-135, P4-08) sont remises au gestionnaire du module propriétaire sans être stockées ici : l'inbox et l'audit de la commande les tracent |
 | `decided_by` | uuid → identity.users | Oui | — | |
 | `decided_at` | ts | Oui | — | |
 | `decision_comment` | text | Oui | — | Obligatoire en cas de rejet |

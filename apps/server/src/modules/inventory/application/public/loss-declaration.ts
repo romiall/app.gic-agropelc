@@ -481,6 +481,41 @@ export async function lotMortalitySummary(
   };
 }
 
+/**
+ * Pertes dont l'approbation attend encore la photo exigée (AV-107, BR-ADM-020 ; MP-07) : même garde
+ * que le gestionnaire de décision `MORTALITY` (photo exigée, aucune pièce `AVAILABLE`). La file de
+ * validation l'annonce (« justificatif en cours de transmission ») au lieu de laisser la décision échouer.
+ */
+export async function lossesAwaitingPhoto(
+  executor: Kysely<DB> | Transaction<DB>,
+  lossIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (lossIds.length === 0) return new Set();
+  const rows = await executor
+    .selectFrom('inventory_loss_declarations')
+    .select('id')
+    .where(
+      'id',
+      'in',
+      lossIds.map((id) => toBin(id)),
+    )
+    .where('requires_photo', '=', toDbBool(true))
+    .execute();
+  const waiting = new Set<string>();
+  for (const row of rows) {
+    const lossId = fromBin(row.id);
+    if (
+      !(await hasAvailableAttachment(executor, {
+        ownerType: LOSS_ATTACHMENT_OWNER_TYPE,
+        ownerId: lossId,
+      }))
+    ) {
+      waiting.add(lossId);
+    }
+  }
+  return waiting;
+}
+
 /** Déclaration de perte par identifiant : rejeu d'une commande qui la crée (revue P7). */
 export async function findLossDeclaration(
   executor: Kysely<DB> | Transaction<DB>,
