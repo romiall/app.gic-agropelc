@@ -3,9 +3,10 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../modules/identity/identity.module.js';
 import { InventoryReadController } from './inventory-read.controller.js';
 import { AllocationReadController } from './allocation-read.controller.js';
+import { LossSummaryReadController } from './loss-summary-read.controller.js';
 
 @Module({
   imports: [IdentityModule],
-  controllers: [InventoryReadController, AllocationReadController],
+  controllers: [InventoryReadController, AllocationReadController, LossSummaryReadController],
 })
 export class InventoryApiModule {}

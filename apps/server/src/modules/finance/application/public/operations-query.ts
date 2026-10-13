@@ -558,3 +558,77 @@ export async function paidXafOfPurchaseOrder(
     .executeTakeFirstOrThrow();
   return Number(row.paid);
 }
+
+export interface ExpensesSummary {
+  /** KPI-FIN-04 : Σ dépenses valides de la période (enregistrées sans validation, approuvées, payées). */
+  readonly totalXaf: number;
+  readonly count: number;
+  readonly byCategory: readonly {
+    readonly code: string;
+    readonly label: string;
+    readonly amountXaf: number;
+    readonly count: number;
+  }[];
+  /** En attente de validation (à payer ou déjà payées). */
+  readonly pendingXaf: number;
+  /** Payées puis rejetées : reclassées non justifiées, imputées au déclarant (AV-355). */
+  readonly unjustifiedXaf: number;
+}
+
+/** Dépenses d'une période, par catégorie (KPI-FIN-04), datées de leur `occurred_at`. */
+export async function expensesSummary(
+  executor: Executor,
+  period: { readonly fromUtc: Date; readonly toUtc: Date },
+): Promise<ExpensesSummary> {
+  const rows = await executor
+    .selectFrom('finance_expenses as e')
+    .innerJoin('finance_expense_categories as c', 'c.id', 'e.category_id')
+    .select([
+      'c.code as code',
+      'c.label as label',
+      'e.status as status',
+      sql<string>`SUM(e.amount_xaf)`.as('amount'),
+      sql<string>`COUNT(*)`.as('count'),
+    ])
+    .where('e.occurred_at', '>=', period.fromUtc)
+    .where('e.occurred_at', '<', period.toUtc)
+    .groupBy(['c.code', 'c.label', 'e.status'])
+    .execute();
+  const valid = new Set(['RECORDED', 'APPROVED', 'PAID']);
+  const byCategory = new Map<
+    string,
+    { code: string; label: string; amountXaf: number; count: number }
+  >();
+  let pendingXaf = 0;
+  let unjustifiedXaf = 0;
+  for (const row of rows) {
+    const amount = Number(row.amount);
+    if (valid.has(row.status)) {
+      const current = byCategory.get(row.code) ?? {
+        code: row.code,
+        label: row.label,
+        amountXaf: 0,
+        count: 0,
+      };
+      byCategory.set(row.code, {
+        ...current,
+        amountXaf: current.amountXaf + amount,
+        count: current.count + Number(row.count),
+      });
+    } else if (row.status === 'PENDING_APPROVAL' || row.status === 'PAID_PENDING_APPROVAL') {
+      pendingXaf += amount;
+    } else if (row.status === 'PAID_REJECTED') {
+      unjustifiedXaf += amount;
+    }
+  }
+  const categories = [...byCategory.values()].sort(
+    (a, b) => b.amountXaf - a.amountXaf || a.code.localeCompare(b.code),
+  );
+  return {
+    totalXaf: categories.reduce((sum, line) => sum + line.amountXaf, 0),
+    count: categories.reduce((sum, line) => sum + line.count, 0),
+    byCategory: categories,
+    pendingXaf,
+    unjustifiedXaf,
+  };
+}

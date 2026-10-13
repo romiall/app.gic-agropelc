@@ -116,6 +116,7 @@ export {
   getSupplierPayment,
   supplierPayables,
   paidXafOfPurchaseOrder,
+  expensesSummary,
 } from './operations-query.js';
 export type {
   ExpenseSummary,
@@ -126,4 +127,5 @@ export type {
   SupplierPaymentSummary,
   PayableLine,
   SupplierPayables,
+  ExpensesSummary,
 } from './operations-query.js';

@@ -29,8 +29,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | `3558d5c` | Fait : 6 tests serveur, 12 mutations détectées |
 | P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | `21b9851` | Fait : 5 tests serveur, 14 mutations détectées |
 | P8-09 | Lectures HTTP : dépenses (portée), factures, paiements, dettes ; payé du rapprochement de P6 | `3d316bd` | Fait : 5 tests HTTP de bout en bout, 6 mutations détectées |
-| P8-10 | Jeux hors ligne : dépenses de l'auteur (`cash`, 30 jours), catégories (`catalog`), seuils (`me`) | _à venir_ | Fait : 3 tests par le pull réel ; 3 mutations détectées, 1 équivalente (la garde de portée `USER` double la vérification de l'auteur) |
-| P8-11 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-10 | Jeux hors ligne : dépenses de l'auteur (`cash`, 30 jours), catégories (`catalog`), seuils (`me`) | `c7f40eb` | Fait : 3 tests par le pull réel ; 3 mutations détectées, 1 équivalente (la garde de portée `USER` double la vérification de l'auteur) |
+| P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage, valeur des pertes, vue d'ensemble financière | _à venir_ | Fait : 5 tests (2 unitaires, 3 HTTP), 8 mutations détectées ; le câblage de bout en bout de la marge d'un lot abattu est vérifié en P8-13 |
+| P8-12 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -48,8 +49,8 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-07 | `procurement/application/public` (`invoicing.ts`, `index.ts`) | `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing`, `invoicedQuantitiesOfOrder` | ADR-061 §3 |
 | P8-07 | Documentation de P6 | D08 l.93 (quantité facturée écrite à l'appel de `finance`), dictionnaire `08-procurement.md` (`invoiced_qty_base`), `02-modules.md` (API interne de `procurement`) | ADR-061 §3 |
 | P8-09 | `procurement-api/procurement-read.controller.ts` (rapprochement) | payé (`paidXaf`) composé depuis `finance` (`paidXafOfPurchaseOrder`) quand les valeurs sont visibles | ADR-061 §3 |
-| P8-11 | `production/application/public`, `production-api` | `lotStockLotIds`, CA de la marge de lot avec les produits d'abattage | ADR-062 §1, AV-366 |
-| P8-11 | `inventory` : lecture et route | `lossValueSummary`, `GET /inventory/losses/summary` | ADR-062 §3 |
+| P8-11 | `production/application/public` (`lot-sale-lots.ts`, `index.ts`), `production-api` (`production-read.controller.ts`, nouveau `lot-margin.ts`) | `slaughterStockLotIds` ; CA de la marge de lot avec les produits d'abattage (défaut de P4 et P7 : un lot abattu affichait un CA nul) | ADR-062 §1, AV-366 |
+| P8-11 | `inventory/application/public` (`loss-summary.ts`, `index.ts`), `inventory-api` (nouveau `loss-summary-read.controller.ts`, `inventory-api.module.ts`) | `lossValueSummary`, `GET /losses/summary` | ADR-062 §3 |
 
 ## 4. Écarts de documentation relevés (pour la session principale)
 

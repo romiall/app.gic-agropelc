@@ -1908,7 +1908,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : D07 (l.234) compte « les ventes des têtes et produits du lot », mais P4 ne compte que le lot de stock du lot : un lot abattu affiche une marge négative. Les œufs sortent déjà du lot pondeur au coût standard (ADR-027). **DÉDUIT**
 - **Choix** : (a) ventes du lot et de ses produits d'abattage ; œufs exclus ; (b) œufs inclus, crédit au coût standard retiré de la marge ; (c) inchangé.
 - **Recommandation** : (a) : aucune valeur n'est comptée deux fois.
-- **Impact** : `production-api` (marge de lot), lecture publique `lotStockLotIds` ([ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
+- **Impact** : `production-api` (marge de lot), lecture publique `slaughterStockLotIds` ([ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
 
 ---
 

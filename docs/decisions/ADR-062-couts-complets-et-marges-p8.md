@@ -22,7 +22,7 @@ Depuis P4, la « marge de lot » se compose dans `production-api` : CA net des v
    Les œufs (`production_egg_collections`) n'y entrent pas. Ils sortent du lot au coût standard par un crédit `PRODUCTION_TRANSFEREE` (ADR-027), qui réduit déjà le coût net du lot : ajouter leur CA compterait leur valeur deux fois.
 
    Mise en œuvre :
-   - `production` expose la liste des lots de stock d'un lot de production (`lotStockLotIds`, lecture publique) ;
+   - `production` expose les lots de stock de ses abattages enregistrés (`slaughterStockLotIds`, lecture publique) ;
    - `production-api` la passe à `lotRevenue` ;
    - les autres formules ne changent pas : marge de lot = CA net − coût net du lot, et marge brute des ventes = CA net − coût des ventes figé.
 2. **Coût complet.** Le coût d'un lot est la somme de ses écritures (INV-FIN-08) :
@@ -33,7 +33,7 @@ Depuis P4, la « marge de lot » se compose dans `production-api` : CA net des v
 
    Pas de nouvelle formule : `GET /production/lots/:id` (détail par nature), `GET /costs` (écritures d'un objet), coût restant et coût par tête (ADR-027).
 3. **Valeur des pertes** (BR-FIN-044, KPI-FIN-08). Nouvelle lecture publique d'`inventory`, `lossValueSummary`, sur les déclarations de pertes d'une période. Elle regroupe par produit, lot de production et motif, en quantité et en valeur, selon le statut de la déclaration (confirmée, en attente, non justifiée).
-   - Route `GET /api/v1/inventory/losses/summary?from&to&group_by=product|lot|reason`, permission `inventory.loss.read`.
+   - Route `GET /api/v1/losses/summary?from&to&group_by=product|lot|reason&site_id`, permission `inventory.loss.read` (sans site : portée `ALL` exigée).
    - Valeurs masquées sans `inventory.valuation.read` (RC-05).
    - C'est un indicateur, jamais une charge ajoutée au coût du lot (BR-PRD-013).
 4. **Vue d'ensemble financière** (AT-040). `GET /api/v1/finance/overview?from&to`, permission `finance.payable.read` et portée `ALL`. Elle se compose dans `finance-api` à partir des lectures publiques existantes, sans nouvelle définition :
