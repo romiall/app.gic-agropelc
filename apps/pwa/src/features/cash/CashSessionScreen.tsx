@@ -128,9 +128,21 @@ export function CashSessionScreen() {
       <p className="home-muted">{t('cash.foreign_openings')}</p>
     ) : null;
   // Ouverture de l'utilisateur rattachée à une session existante : aucune caisse ouverte (AV-154).
-  const attachedNote = cash.attached.at(-1) ? (
+  const lastAttached = cash.attached.at(-1);
+  // Statut de la session retenue (S-48) : ouverte au serveur, ou déjà close.
+  const attachedKey =
+    lastAttached?.targetStatus === 'OPEN'
+      ? 'cash.attached_open'
+      : lastAttached?.targetStatus === 'PENDING_VALIDATION' ||
+          lastAttached?.targetStatus === 'VALIDATED'
+        ? 'cash.attached_closed'
+        : 'cash.attached';
+  const attachedNote = lastAttached ? (
     <p className="text-warn" role="status">
-      {t('cash.attached', { date: formatDateTime(cash.attached.at(-1)?.openedAt ?? '') })}
+      {t(attachedKey, {
+        date: formatDateTime(lastAttached.openedAt),
+        status: t(`cash.target_status.${lastAttached.targetStatus ?? 'VALIDATED'}`),
+      })}
     </p>
   ) : null;
   const counted = parseXaf(countText);
