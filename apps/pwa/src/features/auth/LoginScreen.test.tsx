@@ -5,7 +5,14 @@ import { LoginScreen } from './LoginScreen.js';
 import * as AuthContextModule from './AuthContext.js';
 
 function stubUseAuth(
-  error?: 'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED' | 'SERVER_ERROR',
+  error?:
+    | 'INVALID_CREDENTIALS'
+    | 'OFFLINE'
+    | 'LOCKED'
+    | 'SERVER_ERROR'
+    | 'DEVICE_BLOCKED'
+    | 'DEVICE_LOST'
+    | 'DEVICE_RETIRED',
   loginWithPassword: ReturnType<typeof vi.fn> = vi.fn(),
 ) {
   vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
@@ -43,6 +50,10 @@ describe('LoginScreen (ECR-ADM-01)', () => {
     ['OFFLINE', 'Pas de réseau : la première connexion doit se faire en ligne.'],
     ['LOCKED', 'Trop de tentatives : réessayez plus tard.'],
     ['SERVER_ERROR', 'Le service est momentanément indisponible. Réessayez dans un instant.'],
+    // AV-253 : appareil hors service, mot de passe juste.
+    ['DEVICE_BLOCKED', 'Cet appareil est bloqué : contactez votre responsable.'],
+    ['DEVICE_LOST', 'Cet appareil a été déclaré perdu : contactez votre responsable.'],
+    ['DEVICE_RETIRED', 'Cet appareil est retiré du service : contactez votre responsable.'],
   ] as const)('erreur %s : message distinct, annoncé comme alerte', (error, message) => {
     stubUseAuth(error);
     render(<LoginScreen />);

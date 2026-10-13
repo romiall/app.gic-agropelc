@@ -60,7 +60,7 @@ Pour chaque domaine : responsabilités, commandes, requêtes, événements, idem
 | Élément | Contenu |
 |---|---|
 | Responsabilités | Authentification, sessions, enrôlement et cycle de vie des appareils, utilisateurs, rôles, affectations |
-| Endpoints hors commandes | `POST /auth/login` (téléphone, mot de passe, empreinte d'appareil) → jetons + statut d'appareil ; `POST /auth/refresh` ; `POST /auth/logout` |
+| Endpoints hors commandes | `POST /auth/login` (téléphone, mot de passe, empreinte d'appareil) → jetons + statut d'appareil ; 401 `INVALID_CREDENTIALS` générique (identifiant inconnu, mot de passe faux, compte non actif) ; 403 `DEVICE_BLOCKED`, `DEVICE_LOST` ou `DEVICE_RETIRED` après un mot de passe juste (AV-253) ; 429 `LOGIN_LOCKED` ; `POST /auth/refresh` ; `POST /auth/logout` |
 | Commandes (I) | `identity.user.create`, `.update`, `.suspend`, `.deactivate`, `.reactivate` ; `identity.role.set_permissions` ; `identity.role_assignment.grant`, `.revoke` ; `identity.device.approve`, `.designate` (appareil partagé, site de rattachement, BR-DIS-003), `.block`, `.unblock`, `.declare_lost`, `.retire` ; `identity.session.revoke` |
 | Requêtes | `GET /users`, `/users/{id}`, `/me` (profil, droits effectifs), `/devices`, `/roles`, `/permissions` |
 | Événements | `UserCreated`, `UserDeactivated`, `RoleAssigned`, `DeviceApproved`, `DeviceBlocked`… |

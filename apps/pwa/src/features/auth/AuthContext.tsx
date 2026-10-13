@@ -20,7 +20,7 @@ import {
   setupPin as persistPin,
   unlockWithPin as tryUnlockWithPin,
 } from '../../storage/session.js';
-import { login as loginRequest } from './login.js';
+import { login as loginRequest, type DeviceRefusal } from './login.js';
 import { decodeAccessTokenClaims } from '../../platform/jwt-decode.js';
 import { clearSessionRuntime, setSessionRuntime } from './session-runtime.js';
 
@@ -36,7 +36,8 @@ export type AuthState =
   | { readonly status: 'loading' }
   | {
       readonly status: 'login_required';
-      readonly error?: 'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED' | 'SERVER_ERROR';
+      readonly error?:
+        'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED' | 'SERVER_ERROR' | DeviceRefusal;
     }
   | { readonly status: 'pin_setup_required' }
   | { readonly status: 'locked'; readonly pinError?: { readonly attemptsLeft: number } | 'WIPED' }

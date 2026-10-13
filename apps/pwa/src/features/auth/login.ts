@@ -6,6 +6,10 @@
  */
 import { apiUrl } from '../../platform/env.js';
 
+/** Appareil hors service, rendu après un mot de passe correct (AV-253). */
+export const DEVICE_REFUSALS = ['DEVICE_BLOCKED', 'DEVICE_LOST', 'DEVICE_RETIRED'] as const;
+export type DeviceRefusal = (typeof DEVICE_REFUSALS)[number];
+
 export interface LoginInput {
   readonly phone: string;
   readonly password: string;
@@ -24,6 +28,7 @@ export type LoginResult =
   | { readonly ok: false; readonly reason: 'OFFLINE' }
   | { readonly ok: false; readonly reason: 'INVALID_CREDENTIALS' }
   | { readonly ok: false; readonly reason: 'LOCKED' }
+  | { readonly ok: false; readonly reason: DeviceRefusal }
   | { readonly ok: false; readonly reason: 'UNKNOWN'; readonly status: number };
 
 export async function login(input: LoginInput): Promise<LoginResult> {
@@ -45,6 +50,16 @@ export async function login(input: LoginInput): Promise<LoginResult> {
 
   if (response.status === 401) return { ok: false, reason: 'INVALID_CREDENTIALS' };
   if (response.status === 429) return { ok: false, reason: 'LOCKED' };
+  if (response.status === 403) {
+    // AV-253 : appareil bloqué, perdu ou retiré (mot de passe juste) — motif propre.
+    const code = await response
+      .json()
+      .then((body: { error?: { code?: string } }) => body.error?.code)
+      .catch(() => undefined);
+    if (code !== undefined && (DEVICE_REFUSALS as readonly string[]).includes(code)) {
+      return { ok: false, reason: code as DeviceRefusal };
+    }
+  }
   if (!response.ok) return { ok: false, reason: 'UNKNOWN', status: response.status };
 
   const body = (await response.json()) as {

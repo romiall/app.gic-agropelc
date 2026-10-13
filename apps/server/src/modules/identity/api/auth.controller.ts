@@ -30,7 +30,10 @@ import {
   recordLoginFailure,
   resetLoginAttempts,
 } from '../application/auth/login-lockout.js';
-import { findOrEnrollDevice } from '../application/auth/device-enrollment.js';
+import {
+  findOrEnrollDevice,
+  type DeviceLoginRefusal,
+} from '../application/auth/device-enrollment.js';
 import { createSession, rotateSession, revokeSessionById } from '../application/auth/session.js';
 
 const loginSchema = z.object({
@@ -56,6 +59,13 @@ function validationError(issues: readonly { message: string }[]): ApiError {
     `Corps de requête invalide : ${issues.map((i) => i.message).join(' ; ')}`,
   );
 }
+
+/** AV-253 : message rendu après un mot de passe correct, selon l'état de l'appareil. */
+const DEVICE_REFUSAL_MESSAGES: Record<DeviceLoginRefusal, string> = {
+  DEVICE_BLOCKED: 'Cet appareil est bloqué : contactez votre responsable.',
+  DEVICE_LOST: 'Cet appareil a été déclaré perdu : contactez votre responsable.',
+  DEVICE_RETIRED: 'Cet appareil est retiré du service : contactez votre responsable.',
+};
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -97,7 +107,9 @@ export class AuthController {
       .where('phone', '=', phone)
       .executeTakeFirst();
 
-    const fail = async (actorUserId: string | null): Promise<never> => {
+    // `errorCode` : motif écrit dans l'audit seulement (AV-253 : un compte suspendu ou désactivé garde le
+    // message générique, son motif n'est lisible qu'au journal).
+    const fail = async (actorUserId: string | null, errorCode?: string): Promise<never> => {
       await this.db.transaction().execute(async (trx) => {
         await recordLoginFailure(trx, 'IDENTIFIER', phone, now);
         await recordLoginFailure(trx, 'IP', ip, now);
@@ -117,6 +129,7 @@ export class AuthController {
               entityId: actorUserId,
               ip,
               result: 'FAILED',
+              errorCode: errorCode ?? 'INVALID_CREDENTIALS',
               correlationId: request.correlationId,
             },
           );
@@ -128,7 +141,7 @@ export class AuthController {
     if (!user) return fail(null);
     const passwordOk = await verifyPassword(user.password_hash, password);
     if (!passwordOk) return fail(fromBin(user.id));
-    if (user.status !== 'ACTIVE') return fail(fromBin(user.id));
+    if (user.status !== 'ACTIVE') return fail(fromBin(user.id), `ACCOUNT_${user.status}`);
 
     const userId = fromBin(user.id);
     const deviceResult = await this.db.transaction().execute((trx) =>
@@ -141,7 +154,31 @@ export class AuthController {
         ...(appVersion !== undefined ? { appVersion } : {}),
       }),
     );
-    if (!deviceResult.ok) return fail(userId);
+    if (!deviceResult.ok) {
+      // AV-253 (13/10/2026) : le mot de passe est juste, l'appareil est hors service — motif rendu
+      // (403, code distinct) pour renvoyer l'utilisateur vers son responsable ; ni compteur
+      // d'échecs (les identifiants sont valides) ni session.
+      await this.db.transaction().execute((trx) =>
+        recordAudit(
+          trx,
+          { idGenerator: this.idGenerator, clock: this.clock },
+          {
+            occurredAt: now,
+            actorUserId: userId,
+            actorRoles: [],
+            deviceId,
+            action: 'auth.login.failed',
+            entityType: 'USER',
+            entityId: userId,
+            ip,
+            result: 'DENIED',
+            errorCode: deviceResult.reason,
+            correlationId: request.correlationId,
+          },
+        ),
+      );
+      throw new ApiError(403, deviceResult.reason, DEVICE_REFUSAL_MESSAGES[deviceResult.reason]);
+    }
 
     const { sessionId, refreshToken } = await this.db.transaction().execute(async (trx) => {
       const issued = await createSession(trx, this.idGenerator, { userId, deviceId, now, ip });

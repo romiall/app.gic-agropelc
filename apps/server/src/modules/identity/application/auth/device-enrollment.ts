@@ -29,9 +29,12 @@ export interface DeviceLoginInput {
   readonly now: Date;
 }
 
+/** Appareil hors service : le motif est rendu à qui a prouvé son mot de passe (AV-253). */
+export type DeviceLoginRefusal = 'DEVICE_BLOCKED' | 'DEVICE_LOST' | 'DEVICE_RETIRED';
+
 export type DeviceLoginCheck =
   | { readonly ok: true; readonly status: 'PENDING' | 'ACTIVE' }
-  | { readonly ok: false; readonly reason: 'DEVICE_BLOCKED' };
+  | { readonly ok: false; readonly reason: DeviceLoginRefusal };
 
 /** Idempotent par `deviceId` : rejoué, retrouve la même ligne plutôt que d'en recréer une. */
 export async function findOrEnrollDevice(
@@ -46,13 +49,9 @@ export async function findOrEnrollDevice(
     .executeTakeFirst();
 
   if (existing) {
-    if (
-      existing.status === 'BLOCKED' ||
-      existing.status === 'LOST' ||
-      existing.status === 'RETIRED'
-    ) {
-      return { ok: false, reason: 'DEVICE_BLOCKED' };
-    }
+    if (existing.status === 'BLOCKED') return { ok: false, reason: 'DEVICE_BLOCKED' };
+    if (existing.status === 'LOST') return { ok: false, reason: 'DEVICE_LOST' };
+    if (existing.status === 'RETIRED') return { ok: false, reason: 'DEVICE_RETIRED' };
     await uow
       .updateTable('identity_devices')
       .set({ last_seen_at: input.now })
