@@ -8,7 +8,7 @@
 
 Confirmé en début de phase (checklist §2) : P1 n'a aucun AV **bloquant**. Les AV importants/secondaires listés (AV-003 zones, AV-017 catégories de client, AV-018 canaux, AV-031 poids/unité, AV-061 dimensions tarifaires, AV-062 activation, AV-080 conditionnements) restent `OUVERT` au registre — leurs valeurs par défaut documentées y ont été implémentées de façon **paramétrable** (référentiels en base, jamais codés en dur) :
 
-- AV-017 : `catalog.customer_categories` — table vide au démarrage, alimentée par `catalog.customer_category.create` (aucune des 5 valeurs suggérées n'est pré-semée : à la différence du RBAC, aucune décision GIC ne fixe encore la liste réelle).
+- AV-017 : `catalog.customer_categories` — table vide au démarrage, alimentée par `catalog.customer_category.create` (aucune des 5 valeurs suggérées n'est pré-semée : à la différence du RBAC, aucune décision GIC ne fixe encore la liste réelle). **Depuis MP-02** (AV-017 tranché le 13/10/2026) : les cinq catégories sont semées et publiées dans le jeu `customer_category`.
 - AV-018 : `catalog.sales_channels` — même principe.
 - AV-031 : `catalog_products.pricing_mode` (`PER_UNIT` par défaut, `PER_WEIGHT` supporté).
 - AV-061 : le moteur (`resolvePrice`) supporte toutes les dimensions du PM §9 (zone, site, catégorie client, canal, quantité, campagne) sans qu'aucune ne soit privilégiée en dur — seule la formule de spécificité (BR-PRX-005) est fixée.

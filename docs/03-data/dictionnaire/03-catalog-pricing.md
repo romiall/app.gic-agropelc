@@ -88,7 +88,7 @@
 | `is_active` | boolean | Non | true | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **UQ** `(category, code)`. **Suppr.** `DESACTIVATION` (BR-CAT-010). **Offline** DL — jeu `catalog` (P5-18, AV-196) : `REASON_CODE`, ligne `GLOBAL` ; motifs semés publiés par le seed.
+- **PK** `id`. **UQ** `(category, code)`. **Suppr.** `DESACTIVATION` (BR-CAT-010). **Offline** DL — jeu `catalog` (P5-18, AV-196) : `REASON_CODE`, ligne `GLOBAL` ; motifs semés publiés par le seed. **Semés** (rejouable, codes absents seulement) : rendements de production (P7-04) ; résultats de visite, perte d'un prospect et annulation (MP-02, AV-248 : `COMMANDE_PRISE`, code figé lu par KPI-COM-12 ; `AUTRE` avec `requires_comment`).
 
 ## catalog.product_standard_costs
 

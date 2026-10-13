@@ -48,6 +48,8 @@ export interface ReasonCodeSeed {
   readonly category: string;
   readonly code: string;
   readonly label: string;
+  /** Commentaire exigé à la saisie (motif « Autre », AV-248) ; faux par défaut. */
+  readonly requiresComment?: boolean;
 }
 
 export const PRODUCTION_REASON_CODES: readonly ReasonCodeSeed[] = [

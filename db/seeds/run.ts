@@ -14,8 +14,17 @@ import { connectUtc } from './connection.js';
 import { PERMISSIONS, ROLE_DISCOUNT_SETTINGS, ROLE_PERMISSIONS, ROLES } from './rbac-data.js';
 import { SYSTEM_SETTINGS, SYSTEM_SETTING_REVISIONS } from './system-settings.js';
 import { VIRTUAL_LOCATIONS } from './virtual-locations.js';
-import { LEAD_SOURCES, PIPELINE_STEPS } from './crm-references.js';
-import { CONTROL_POLICIES, PRODUCTION_REASON_CODES } from './production-references.js';
+import {
+  LEAD_SOURCES,
+  PIPELINE_STEPS,
+  CRM_REASON_CODES,
+  CUSTOMER_CATEGORIES,
+} from './crm-references.js';
+import {
+  CONTROL_POLICIES,
+  PRODUCTION_REASON_CODES,
+  type ReasonCodeSeed,
+} from './production-references.js';
 import { FINANCE_CONTROL_POLICIES, PAYMENT_METHODS } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
 import { publishReferenceFeeds } from './publish-references.js';
@@ -246,6 +255,25 @@ async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): 
     }
     console.log(`  + ${table} (${inserted} nouveau(x) code(s) sur ${rows.length})`);
   }
+  // AV-248 : motifs de départ du CRM et des annulations.
+  await seedReasonCodes(conn, systemUserId, 'CRM', CRM_REASON_CODES);
+  // AV-017 : catégories de clients initiales, codes absents seulement.
+  let categories = 0;
+  for (const category of CUSTOMER_CATEGORIES) {
+    const [existing] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT id FROM catalog_customer_categories WHERE code = ?',
+      [category.code],
+    );
+    if (existing.length > 0) continue;
+    await conn.query(
+      `INSERT INTO catalog_customer_categories (id, code, name, created_by) VALUES (?, ?, ?, ?)`,
+      [newId(), category.code, category.name, systemUserId],
+    );
+    categories++;
+  }
+  console.log(
+    `  + catalog_customer_categories (${categories} nouvelle(s) sur ${CUSTOMER_CATEGORIES.length})`,
+  );
 }
 
 /**
@@ -284,23 +312,41 @@ async function seedProductionReferences(
     policies++;
   }
   console.log(`  + approvals_control_policies (${policies} nouvelle(s) sur ${allPolicies.length})`);
+  await seedReasonCodes(conn, systemUserId, 'production', PRODUCTION_REASON_CODES);
+}
+
+/**
+ * Motifs absents seulement (clé `(category, code)`) : un motif modifié ou désactivé depuis par un
+ * administrateur n'est jamais réécrit.
+ */
+async function seedReasonCodes(
+  conn: mysql.Connection,
+  systemUserId: Buffer,
+  scope: string,
+  codes: readonly ReasonCodeSeed[],
+): Promise<void> {
   let reasons = 0;
-  for (const reason of PRODUCTION_REASON_CODES) {
+  for (const reason of codes) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(
       'SELECT id FROM catalog_reason_codes WHERE category = ? AND code = ?',
       [reason.category, reason.code],
     );
     if (existing.length > 0) continue;
     await conn.query(
-      `INSERT INTO catalog_reason_codes (id, category, code, label, created_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [newId(), reason.category, reason.code, reason.label, systemUserId],
+      `INSERT INTO catalog_reason_codes (id, category, code, label, requires_comment, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        newId(),
+        reason.category,
+        reason.code,
+        reason.label,
+        reason.requiresComment ?? false,
+        systemUserId,
+      ],
     );
     reasons++;
   }
-  console.log(
-    `  + catalog_reason_codes production (${reasons} nouveau(x) sur ${PRODUCTION_REASON_CODES.length})`,
-  );
+  console.log(`  + catalog_reason_codes ${scope} (${reasons} nouveau(x) sur ${codes.length})`);
 }
 
 /** Trésorerie (P4-02) : moyens de paiement (AV-056), codes absents seulement. */

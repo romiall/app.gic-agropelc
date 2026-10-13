@@ -23,7 +23,12 @@ import {
 } from '../seeds/rbac-data.js';
 import { VIRTUAL_LOCATIONS } from '../seeds/virtual-locations.js';
 import { SYSTEM_SETTINGS } from '../seeds/system-settings.js';
-import { LEAD_SOURCES, PIPELINE_STEPS } from '../seeds/crm-references.js';
+import {
+  CRM_REASON_CODES,
+  CUSTOMER_CATEGORIES,
+  LEAD_SOURCES,
+  PIPELINE_STEPS,
+} from '../seeds/crm-references.js';
 import { PAYMENT_METHODS } from '../seeds/finance-references.js';
 import { codeEntityId } from '../seeds/code-entity-id.js';
 
@@ -110,6 +115,30 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     );
     expect(sources).toHaveLength(LEAD_SOURCES.length);
     expect(sources.find((s) => s.code === 'KOMMO')?.is_system).toBe(1);
+  });
+
+  it('crée les motifs de départ (AV-248) et les cinq catégories de clients (AV-017)', async () => {
+    const [reasons] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT category, code, requires_comment FROM catalog_reason_codes
+        WHERE category IN ('VISIT_OUTCOME', 'PROSPECT_LOST', 'CANCELLATION') AND is_active = TRUE`,
+    );
+    for (const seed of CRM_REASON_CODES) {
+      const row = reasons.find((r) => r.category === seed.category && r.code === seed.code);
+      expect(row, `${seed.category} ${seed.code}`).toBeDefined();
+      expect(row!.requires_comment, `${seed.category} ${seed.code}`).toBe(
+        seed.requiresComment ? 1 : 0,
+      );
+    }
+    // COMMANDE_PRISE est lu par KPI-COM-12 ; « Autre » exige un commentaire dans chaque catégorie.
+    expect(CRM_REASON_CODES.filter((r) => r.code === 'AUTRE' && r.requiresComment)).toHaveLength(3);
+    expect(
+      CRM_REASON_CODES.some((r) => r.category === 'VISIT_OUTCOME' && r.code === 'COMMANDE_PRISE'),
+    ).toBe(true);
+    const [categories] = await conn.query<mysql.RowDataPacket[]>(
+      'SELECT code FROM catalog_customer_categories WHERE code IN (?) AND is_active = TRUE',
+      [CUSTOMER_CATEGORIES.map((c) => c.code)],
+    );
+    expect(categories).toHaveLength(5);
   });
 
   it('crée les cinq moyens de paiement (AV-056), référence exigée hors espèces', async () => {
@@ -205,6 +234,14 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect(await missing('catalog', 'REASON_CODE', 'SELECT id FROM catalog_reason_codes')).toBe(0);
     expect(await missing('catalog', 'PIPELINE_STEP', 'SELECT id FROM crm_pipeline_steps')).toBe(0);
     expect(await missing('catalog', 'LEAD_SOURCE', 'SELECT id FROM crm_lead_sources')).toBe(0);
+    // MP-02 (AV-017) : catégories de clients, au jeu du repli générique de leurs commandes.
+    expect(
+      await missing(
+        'customer_category',
+        'CUSTOMER_CATEGORY',
+        'SELECT id FROM catalog_customer_categories',
+      ),
+    ).toBe(0);
     expect(
       await missing(
         'policies',
@@ -263,44 +300,49 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     }
   });
 
-  it('est idempotent : une seconde exécution ne modifie aucun décompte', async () => {
-    const feedCount = async () => {
-      const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS c FROM sync_change_feed
-          WHERE dataset IN ('catalog', 'me', 'policies', 'location')`,
+  // Rejoue tout le seed dans un processus séparé : délai propre, plus long que celui du fichier.
+  it(
+    'est idempotent : une seconde exécution ne modifie aucun décompte',
+    { timeout: 60_000 },
+    async () => {
+      const feedCount = async () => {
+        const [rows] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) AS c FROM sync_change_feed
+          WHERE dataset IN ('catalog', 'me', 'policies', 'location', 'customer_category')`,
+        );
+        return Number((rows[0] as { c: number }).c);
+      };
+      const feedBefore = await feedCount();
+      runSeed();
+      // P5-18 : la publication des référentiels semés n'ajoute rien à la seconde exécution.
+      expect(await feedCount()).toBe(feedBefore);
+
+      const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
+        'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
       );
-      return Number((rows[0] as { c: number }).c);
-    };
-    const feedBefore = await feedCount();
-    runSeed();
-    // P5-18 : la publication des référentiels semés n'ajoute rien à la seconde exécution.
-    expect(await feedCount()).toBe(feedBefore);
+      expect((roles as unknown as { c: number }).c).toBe(ROLES.length);
 
-    const [[roles]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_roles WHERE is_system = TRUE',
-    );
-    expect((roles as unknown as { c: number }).c).toBe(ROLES.length);
+      const [[permissions]] = await conn.query<mysql.RowDataPacket[][]>(
+        'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
+      );
+      expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
 
-    const [[permissions]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_permissions WHERE deprecated_at IS NULL',
-    );
-    expect((permissions as unknown as { c: number }).c).toBe(PERMISSIONS.length);
-
-    const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
-      `SELECT COUNT(*) AS c FROM identity_role_permissions rp
+      const [[grants]] = await conn.query<mysql.RowDataPacket[][]>(
+        `SELECT COUNT(*) AS c FROM identity_role_permissions rp
        JOIN identity_roles r ON r.id = rp.role_id
        WHERE r.is_system = TRUE`,
-    );
-    expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
+      );
+      expect((grants as unknown as { c: number }).c).toBe(ROLE_PERMISSIONS.length);
 
-    const [[users]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM identity_users WHERE is_system = TRUE',
-    );
-    expect((users as unknown as { c: number }).c).toBe(1);
+      const [[users]] = await conn.query<mysql.RowDataPacket[][]>(
+        'SELECT COUNT(*) AS c FROM identity_users WHERE is_system = TRUE',
+      );
+      expect((users as unknown as { c: number }).c).toBe(1);
 
-    const [[locations]] = await conn.query<mysql.RowDataPacket[][]>(
-      'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL',
-    );
-    expect((locations as unknown as { c: number }).c).toBe(VIRTUAL_LOCATIONS.length);
-  });
+      const [[locations]] = await conn.query<mysql.RowDataPacket[][]>(
+        'SELECT COUNT(*) AS c FROM organization_locations WHERE is_virtual = TRUE AND site_id IS NULL',
+      );
+      expect((locations as unknown as { c: number }).c).toBe(VIRTUAL_LOCATIONS.length);
+    },
+  );
 });

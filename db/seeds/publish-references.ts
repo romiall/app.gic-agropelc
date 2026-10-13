@@ -50,6 +50,13 @@ const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
     entityType: 'REASON_CODE',
     query: 'SELECT id AS entity_key, version AS row_version FROM catalog_reason_codes',
   },
+  // AV-017 (MP-02) : catégories semées, publiées comme le repli générique du pipeline des commandes
+  // `catalog.customer_category.*` (jeu `customer_category`, version 1).
+  {
+    dataset: 'customer_category',
+    entityType: 'CUSTOMER_CATEGORY',
+    query: 'SELECT id AS entity_key, 1 AS row_version FROM catalog_customer_categories',
+  },
   {
     dataset: 'catalog',
     entityType: 'PIPELINE_STEP',
