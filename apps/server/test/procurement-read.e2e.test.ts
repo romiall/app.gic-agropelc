@@ -401,7 +401,8 @@ describe('Lectures HTTP des achats (P6-06)', () => {
       orderedValueXaf: 20_000,
       acceptedValueXaf: 10_000,
       invoicedValueXaf: 0,
-      paidXaf: null,
+      // P8-09 : payé composé depuis `finance` pour un lecteur des dettes (`finance.payable.read`).
+      paidXaf: 0,
     });
     const masked = (await get(mag, `/api/v1/purchase-orders/${po1}/matching`)).json().matching;
     expect(masked.lines[0]).toMatchObject({ acceptedQtyBase: 10, acceptedValueXaf: null });

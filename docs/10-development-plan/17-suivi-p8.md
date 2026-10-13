@@ -56,6 +56,8 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-12 | `finance` (P4, P5) : `jobs/cash-ledger-reconciliation-job.ts` et son test unitaire `cash-ledger-reconciliation-job.test.ts` | deux sections de plus (dépenses, documents fournisseurs) ; le test simule les deux nouvelles vérifications | INV-FIN-07, INV-FIN-08 |
 | P8-13 | `production-api` (`production-read.controller.ts`, `lot-margin.ts`) | la composition du CA d'un lot (`withSales`, P4-09 et P8-11) devient `lotWithSales` dans `lot-margin.ts`, appelée par la route et par le test d'acceptation ; comportement inchangé | ADR-062 §1 |
 | P8-13 | `production-acceptance.test.ts` (P7, P4) | `run` accepte des justificatifs ; commandes et décisions de dépense enregistrées ; un test de plus en fin de fichier (AT-026 avec dépense, AT-041, lot abattu vendu) | ADR-062 §5 |
+| P8-14 | `procurement-api/procurement-read.controller.ts`, `test/procurement-read.e2e.test.ts` (P6) | payé du BC (`paidXaf`) seulement pour un lecteur des dettes (`finance.payable.read`) ; l'attente du test de P6 passe de `null` (valeur d'attente d'avant P8) à 0 pour l'acheteur — elle échouait depuis P8-09 sans avoir été relancée | AV-365, revue de P8-14 |
+| P8-14 | `inventory-api/loss-summary-read.controller.ts`, `sync/entity-projections.ts` | dates au calendrier, ordre sans valorisation ; fenêtre des dépenses du jeu `cash` | revue de P8-14 |
 
 ## 4. Écarts de documentation relevés (pour la session principale)
 

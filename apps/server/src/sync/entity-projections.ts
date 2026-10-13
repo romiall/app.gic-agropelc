@@ -143,8 +143,14 @@ function recentScopeOf(
 /** Fenêtre du jeu `sales_recent` (01-architecture-offline.md §3.1 : « des 7 derniers jours »). */
 const RECENT_7_DAYS = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 7 DAY)`;
 
-/** Fenêtre des dépenses du jeu `cash` (dictionnaire `finance.expenses` : « DL (30 j) », ADR-060 §11). */
-const EXPENSE_WINDOW = sql<boolean>`occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)`;
+/**
+ * Fenêtre des dépenses du jeu `cash` (dictionnaire `finance.expenses` : « DL (30 j) », ADR-060 §11) :
+ * datées des 30 derniers jours, ou modifiées depuis (une décision sur une dépense plus ancienne doit
+ * arriver sur l'appareil de son auteur), ou encore en attente de décision (revue de P8-14).
+ */
+const EXPENSE_WINDOW = sql<boolean>`(occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)
+  OR updated_at >= (UTC_TIMESTAMP(6) - INTERVAL 30 DAY)
+  OR status IN ('PENDING_APPROVAL', 'PAID_PENDING_APPROVAL'))`;
 
 /** Fenêtre du jeu `crm_activity` (01-architecture-offline.md §3.1 : « des 90 derniers jours »). */
 const ACTIVITY_WINDOW = sql<boolean>`a.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 90 DAY)`;

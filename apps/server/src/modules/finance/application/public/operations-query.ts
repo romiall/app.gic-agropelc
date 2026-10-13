@@ -64,6 +64,12 @@ export interface ExpenseSummary {
 }
 
 export interface ExpenseFilter {
+  /**
+   * Périmètre de la liste (`listConfinementAt` d'`identity`) : dépenses d'un de ces sites **ou** dont
+   * l'auteur est l'un de ces utilisateurs. Sur-ensemble des dépenses visibles, que le transport affine
+   * élément par élément ; deux listes vides : aucune dépense.
+   */
+  readonly anyOf?: { readonly siteIds: readonly string[]; readonly ownerUserIds: readonly string[] };
   readonly fromUtc?: Date;
   readonly toUtc?: Date;
   readonly siteId?: string;
@@ -149,7 +155,23 @@ export async function listExpenses(
   executor: Executor,
   filter: ExpenseFilter,
 ): Promise<Page<ExpenseSummary>> {
+  const anyOf = filter.anyOf;
+  if (anyOf !== undefined && anyOf.siteIds.length === 0 && anyOf.ownerUserIds.length === 0) {
+    return { items: [], nextCursor: null };
+  }
   const rows = await expenseQuery(executor)
+    .$if(anyOf !== undefined, (qb) =>
+      qb.where((eb) =>
+        eb.or([
+          ...(anyOf!.siteIds.length > 0
+            ? [eb('e.site_id', 'in', anyOf!.siteIds.map((id) => toBin(id)))]
+            : []),
+          ...(anyOf!.ownerUserIds.length > 0
+            ? [eb('e.created_by', 'in', anyOf!.ownerUserIds.map((id) => toBin(id)))]
+            : []),
+        ]),
+      ),
+    )
     .$if(filter.fromUtc !== undefined, (qb) => qb.where('e.occurred_at', '>=', filter.fromUtc!))
     .$if(filter.toUtc !== undefined, (qb) => qb.where('e.occurred_at', '<', filter.toUtc!))
     .$if(filter.siteId !== undefined, (qb) => qb.where('e.site_id', '=', toBin(filter.siteId!)))
@@ -249,7 +271,9 @@ function invoiceOf(row: InvoiceRowOf): SupplierInvoiceSummary {
     totalXaf,
     printedTotalXaf: row.printed_total_xaf === null ? null : Number(row.printed_total_xaf),
     paidXaf,
-    balanceXaf: row.status === 'CANCELLED' ? 0 : totalXaf - paidXaf,
+    // Dette seulement une fois la facture approuvée (BR-FIN-032, `finance_v_payables`).
+    balanceXaf:
+      row.status === 'APPROVED' || row.status === 'PARTIALLY_PAID' ? totalXaf - paidXaf : 0,
     status: row.status,
     mismatchDetails: parsed<unknown[]>(row.mismatch_details) ?? [],
     approvalRequestId: fromBinOrNull(row.approval_request_id),
@@ -476,6 +500,8 @@ export async function supplierPayables(
       'v.paid_xaf as paid_xaf',
       'v.balance_xaf as balance_xaf',
     ])
+    // Une facture approuvée de total nul n'est pas une dette (revue de P8-14).
+    .where('v.balance_xaf', '>', 0)
     .$if(filter.supplierId !== undefined, (qb) =>
       qb.where('v.supplier_id', '=', toBin(filter.supplierId!)),
     )

@@ -2,7 +2,8 @@
  * P8-10 : jeux hors ligne de la finance opérationnelle (ADR-060 §9 et §11 ; dictionnaire
  * `finance.expenses` « DL (30 j) », `finance.expense_categories` « DL ») — par le pull réel
  * (`SyncPullService`) : dépenses de l'auteur seul dans `cash` (fenêtre de 30 jours, version suivie),
- * catégories dans `catalog`, seuils des dépenses publiés dans `me`.
+ * catégories dans `catalog`, seuils des dépenses publiés dans `me`. Revue de P8-14 : une dépense plus
+ * ancienne reste servie tant qu'elle attend sa décision, et à nouveau quand elle est modifiée.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -15,8 +16,16 @@ import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { resolveEntityProjection } from '../src/sync/entity-projections.js';
 import { registerExpenseCommands } from '../src/modules/finance/application/commands/expense-commands.js';
 import { registerExpenseCategoryCommands } from '../src/modules/finance/application/commands/expense-category-commands.js';
-import { fromBin } from '../src/platform/kysely/uuid-columns.js';
-import { closeTestDb, db, freshUuid, insertTestUser, insertTestZone } from './helpers.js';
+import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import {
+  closeTestDb,
+  db,
+  freshUuid,
+  insertTestUser,
+  insertTestZone,
+  neutralizePolicy,
+} from './helpers.js';
 import {
   fund,
   newAccount,
@@ -35,6 +44,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
   let terrain: Actor;
   let other: Actor;
   let fin: Actor;
+  let dir: Actor;
   let site: string;
   let account: string;
   const category: Record<string, string> = {};
@@ -47,6 +57,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     aggregateId: string,
     occurredAt: string,
     payload: unknown,
+    offline = false,
   ): Promise<CommandResult> => {
     const result = await pipeline.handle(
       {
@@ -61,7 +72,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
         depends_on: [],
         occurred_at: occurredAt,
         client_created_at: occurredAt,
-        captured_offline: false,
+        captured_offline: offline,
         backdated_reason: null,
         attachment_ids: [],
         payload,
@@ -69,7 +80,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
       {
         authenticatedUserId: actor.userId,
         authenticatedDeviceId: actor.deviceId,
-        transport: 'ONLINE_API',
+        transport: offline ? 'SYNC_PUSH' : 'ONLINE_API',
       },
     );
     expect(result.status, JSON.stringify(result)).toMatch(/^APPLIED/);
@@ -96,18 +107,38 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     changes
       .filter((change) => change.entity_type === entityType && change.entity_id === entityId)
       .at(-1);
-  const recordExpense = async (actor: Actor, occurredAt: string, amountXaf = 1_000) => {
+  const recordExpense = async (
+    actor: Actor,
+    occurredAt: string,
+    amountXaf = 1_000,
+    offline = false,
+  ) => {
     const id = freshUuid();
-    await send(actor, 'finance.expense.record', 'EXPENSE', id, occurredAt, {
-      categoryId: category.CARBURANT,
-      amountXaf,
-      description: 'Essence',
-      siteId: site,
-      paidNow: true,
-      paidFromAccountId: account,
-    });
+    await send(
+      actor,
+      'finance.expense.record',
+      'EXPENSE',
+      id,
+      occurredAt,
+      {
+        categoryId: category.CARBURANT,
+        amountXaf,
+        description: 'Essence',
+        siteId: site,
+        paidNow: true,
+        paidFromAccountId: account,
+      },
+      offline,
+    );
     return id;
   };
+  /** Dernière modification d'une dépense reculée (la fenêtre lit aussi `updated_at`). */
+  const touchedDaysAgo = (id: string, days: number) =>
+    db
+      .updateTable('finance_expenses')
+      .set({ updated_at: new Date(Date.now() - days * 24 * 3_600_000) })
+      .where('id', '=', toBin(id))
+      .execute();
 
   beforeAll(async () => {
     const clock = new FixedClock(new Date());
@@ -115,6 +146,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     const registry = new CommandHandlerRegistry();
     registerExpenseCommands(registry, idGenerator, new DocumentSequenceService());
     registerExpenseCategoryCommands(registry);
+    registerPolicyCommands(registry);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     pullService = new SyncPullService(db);
     const root = await tx((trx) => insertTestUser(trx));
@@ -126,6 +158,7 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     });
     other = await newActor('COMMERCIAL_TERRAIN', root, { scopeType: 'ZONE', scopeZoneId: zoneId });
     fin = await newActor('FINANCE', root);
+    dir = await newActor('DIRECTION', root);
     account = await newAccount({
       type: 'CAISSE_UTILISATEUR',
       responsible: terrain.userId,
@@ -174,8 +207,46 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     });
     expect(await project(db, id, { scopeType: 'GLOBAL', scopeId: null })).toBeUndefined();
     expect(await project(db, id, { scopeType: 'USER', scopeId: other.userId })).toBeUndefined();
+    // Datée de 31 jours mais tout juste synchronisée : servie (modifiée dans la fenêtre) ; plus
+    // modifiée depuis 31 jours : plus servie.
     const old = await recordExpense(terrain, recently(31 * 24 * 60));
+    expect(await project(db, old, { scopeType: 'USER', scopeId: terrain.userId })).toMatchObject({
+      id: old,
+    });
+    await touchedDaysAgo(old, 31);
     expect(await project(db, old, { scopeType: 'USER', scopeId: terrain.userId })).toBeUndefined();
+  });
+
+  it('au-delà de 30 jours, une dépense en attente de décision reste servie à son auteur (revue de P8-14)', async () => {
+    const project = resolveEntityProjection('EXPENSE')!;
+    // Politique EXPENSE du jour de la dépense (40 jours plus tôt), neutralisée ensuite.
+    const day = recently(40 * 24 * 60).slice(0, 10);
+    const policyId = freshUuid();
+    await send(dir, 'approvals.policy.set', 'CONTROL_POLICY', policyId, `${day}T00:00:00.000Z`, {
+      code: `EXP-SYNC-${policyId.slice(-12)}`,
+      operationType: 'EXPENSE',
+      requiresApproval: true,
+      approverPermission: 'finance.expense.approve',
+      approverScope: 'ALL',
+      validFrom: `${day}T00:00:00.000Z`,
+      validTo: `${day}T23:59:59.000Z`,
+    });
+    try {
+      // Payée hors ligne au-delà du seuil du justificatif, sans photo : en validation a posteriori.
+      const pending = await recordExpense(terrain, `${day}T12:00:00.000Z`, 15_000, true);
+      const row = await db
+        .selectFrom('finance_expenses')
+        .select('status')
+        .where('id', '=', toBin(pending))
+        .executeTakeFirstOrThrow();
+      expect(row.status).toBe('PAID_PENDING_APPROVAL');
+      await touchedDaysAgo(pending, 40);
+      expect(
+        await project(db, pending, { scopeType: 'USER', scopeId: terrain.userId }),
+      ).toMatchObject({ id: pending, status: 'PAID_PENDING_APPROVAL' });
+    } finally {
+      await neutralizePolicy(policyId);
+    }
   });
 
   it('catalog : une catégorie créée est servie à tout appareil ; me : seuils des dépenses publiés', async () => {

@@ -42,6 +42,7 @@ describe('P8-11 : valeur des pertes et vue d’ensemble financière', { timeout:
   let rfe: Actor;
   let terrain: Actor;
   let admin: Actor;
+  let ach: Actor;
   let site: string;
   let productA: string;
   let productB: string;
@@ -108,7 +109,8 @@ describe('P8-11 : valeur des pertes et vue d’ensemble financière', { timeout:
       scopeZoneId: zoneId,
     });
     admin = await newActor('ADMIN', root);
-    for (const actor of [fin, rfe, terrain, admin]) {
+    ach = await newActor('RESP_ACHATS', root);
+    for (const actor of [fin, rfe, terrain, admin, ach]) {
       tokens.set(
         actor.userId,
         await signAccessToken(
@@ -330,5 +332,58 @@ describe('P8-11 : valeur des pertes et vue d’ensemble financière', { timeout:
     expect(
       (await get(fin, '/api/v1/finance/overview?from=2026-07-22&to=2026-07-21')).statusCode,
     ).toBe(400);
+  });
+
+  it('revue de P8-14 : vue d’ensemble par bloc selon les droits, créances par tranche ; dates impossibles 400 ; pertes sans valorisation triées par quantité', async () => {
+    const overview = (actor: Actor, from = DAY, to = DAY) =>
+      get(actor, `/api/v1/finance/overview?from=${from}&to=${to}`);
+    // Le Resp. achats lit dettes et dépenses, pas le CA, l'encaissé, les créances ni la trésorerie.
+    const purchasing = await overview(ach);
+    expect(purchasing.statusCode, purchasing.body).toBe(200);
+    expect(purchasing.json()).toMatchObject({
+      revenue: null,
+      collected: null,
+      receivables: null,
+      cash: null,
+      payables: { balanceXaf: expect.any(Number) },
+      expenses: { totalXaf: expect.any(Number) },
+    });
+    const finance = await overview(fin);
+    const receivables = (
+      finance.json() as {
+        receivables: { overdueXaf: number; buckets: Record<string, number> };
+      }
+    ).receivables;
+    expect(Object.keys(receivables.buckets).sort()).toEqual(['0-30', '31-60', '61-90', '>90']);
+    expect(Object.values(receivables.buckets).reduce((sum, value) => sum + value, 0)).toBe(
+      receivables.overdueXaf,
+    );
+    expect((await overview(fin, '2026-02-30', '2026-03-01')).statusCode).toBe(400);
+    expect(
+      (await get(fin, `/api/v1/losses/summary?from=2026-02-30&to=2026-03-01&site_id=${site}`))
+        .statusCode,
+    ).toBe(400);
+
+    // Beaucoup d'unités de peu de valeur : l'ordre par valeur et l'ordre par quantité diffèrent.
+    const productC = await tx((trx) => insertTestProduct(trx, root));
+    await loss({
+      productId: productC,
+      locationId: await tx((trx) => insertTestLocation(trx, root, site)),
+      category: 'CASSE',
+      status: 'APPROVED',
+      quantity: 10,
+      valueXaf: 1_000,
+    });
+    const order = async (actor: Actor) =>
+      (
+        (
+          await get(
+            actor,
+            `/api/v1/losses/summary?from=${DAY}&to=${DAY}&site_id=${site}&group_by=product`,
+          )
+        ).json() as { lines: { productId: string }[] }
+      ).lines.map((line) => line.productId);
+    expect(await order(fin)).toEqual([productA, productB, productC]);
+    expect(await order(rfe)).toEqual([productC, productA, productB]);
   });
 });

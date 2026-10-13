@@ -39,12 +39,15 @@ Depuis P4, la « marge de lot » se compose dans `production-api` : CA net des v
 4. **Vue d'ensemble financière** (AT-040). `GET /api/v1/finance/overview?from&to`, permission `finance.payable.read` et portée `ALL`. Elle se compose dans `finance-api` à partir des lectures publiques existantes, sans nouvelle définition :
    - CA net et coût des ventes (`periodRevenue`, `sales`) ;
    - encaissé (KPI-FIN-01, `cashedSummary` d'ADR-041) ;
-   - créances à la fin de la période, par tranche (KPI-FIN-02) ;
+   - créances au jour de la lecture, par tranche (KPI-FIN-02) — le solde dû est un solde courant, il ne se reconstitue pas à la fin d'une période passée ;
    - dépenses approuvées ou payées de la période, par catégorie (KPI-FIN-04) ;
    - dettes et avances fournisseurs (KPI-FIN-05) ;
    - soldes de trésorerie (KPI-FIN-06).
 
-   Les montants sont masqués selon les droits du lecteur (coûts : `inventory.valuation.read`).
+   Les montants sont masqués selon les droits du lecteur (coûts : `inventory.valuation.read`). Précision de la revue de P8-14 : chaque bloc n'est rendu qu'avec le droit qui gouverne déjà sa lecture, sinon il vaut `null`. La matrice réserve en effet le CA, l'encaissé, les créances et la trésorerie à la Direction et à la Finance, alors que le Resp. achats lit les dettes :
+   - CA, encaissé, créances et trésorerie : `analytics.dashboard.finance` ;
+   - dépenses : `finance.expense.read` en portée `ALL` ;
+   - dettes : le droit de la route.
 5. **Rejouer l'exemple de la stratégie finance** (AT-026, DoD de P8). La « dépense directe » de 140 000 passe désormais par `finance.expense.record`, imputée au lot. Les totaux restent 5 600 000 (coût), environ 2 424 (coût par tête), 10 741 500 (CA) et 5 141 500 (marge de lot), avec un détail `DEPENSE_DIRECTE` de 140 000.
 
 ## Conséquences

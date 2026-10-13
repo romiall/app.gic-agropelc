@@ -18,6 +18,7 @@ import { recordDenied } from '../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
 import { evaluateAccess, hasPermissionAt } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { businessDateParam } from '../read-api/read-access.js';
 import {
   LOSS_SUMMARY_GROUPS,
   lossValueSummary,
@@ -26,13 +27,23 @@ import {
 const LOSS_READ = 'inventory.loss.read';
 const VALUATION_READ = 'inventory.valuation.read';
 
-const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
+/** Jour métier existant au calendrier : une date impossible donne 400, jamais 500 (revue de P8-14). */
+const businessDate = businessDateParam;
 const querySchema = z.object({
   from: businessDate,
   to: businessDate,
   group_by: z.enum(LOSS_SUMMARY_GROUPS).default('product'),
   site_id: z.string().uuid().optional(),
 });
+
+/** Clé stable d'une ligne de synthèse (produit, lot ou motif). */
+const lineKey = (line: {
+  readonly productId: string | null;
+  readonly productionLotId: string | null;
+  readonly category: string | null;
+  readonly reasonCodeId: string | null;
+}): string =>
+  [line.productId, line.productionLotId, line.category, line.reasonCodeId].join('|');
 
 @Controller('api/v1')
 export class LossSummaryReadController {
@@ -127,9 +138,17 @@ export class LossSummaryReadController {
       from: query.from,
       to: query.to,
       group_by: query.group_by,
+      // Sans valorisation (RC-05), ni la valeur ni l'ordre qu'elle donne : tri par quantité.
       lines: valued
         ? lines
-        : lines.map((line) => ({ ...line, valueXaf: null, pendingValueXaf: null })),
+        : [...lines]
+            .sort(
+              (a, b) =>
+                b.quantityBase - a.quantityBase ||
+                b.pendingQuantityBase - a.pendingQuantityBase ||
+                lineKey(a).localeCompare(lineKey(b)),
+            )
+            .map((line) => ({ ...line, valueXaf: null, pendingValueXaf: null })),
       total_value_xaf: valued ? lines.reduce((sum, line) => sum + line.valueXaf, 0) : null,
     };
   }

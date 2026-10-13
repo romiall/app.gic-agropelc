@@ -60,6 +60,8 @@ P8 crée les dépenses (`finance.expenses`, SM-EXPENSE). Le registre de trésore
 10. **Numérotation et site**. `DEP-{site}-{AAAA}-{seq6}`, avec pour site celui du compte payeur, sinon celui de la saisie (`siteId` de la charge utile). Le site porte la portée (`finance.expense.read`, `SITE`) ; la propriété `OWN` est celle de l'auteur.
 11. **Jeux hors ligne**. Les dépenses de l'auteur des 30 derniers jours vont dans le jeu `cash` (`EXPENSE`, portée `USER`). Les catégories vont dans `catalog`. Les seuils vont dans `me`.
 
+    Précision de la revue de P8-14 : la fenêtre comprend aussi les dépenses modifiées dans les 30 derniers jours et celles qui attendent une décision. Sinon, la décision sur une dépense plus ancienne n'arriverait jamais sur l'appareil de son auteur.
+
 ## Conséquences
 
 - La caisse de PDV traite une dépense comme un encaissement : même garde de session, même conflit hors ligne, même résolution à l'ouverture. Le code de résolution de P5 s'étend au type `EXPENSE`, sans changer de règle.

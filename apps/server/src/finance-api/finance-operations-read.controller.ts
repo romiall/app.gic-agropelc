@@ -9,7 +9,10 @@
  *   404 audité pour le détail ; droit absent : 403 audité.
  * - Factures, paiements, dettes : `finance.payable.read` (Direction, Resp. achats, Finance ; `ALL`,
  *   AV-365).
- * - Listes paginées par curseur (UUIDv7, du plus récent au plus ancien) ; périodes en jours métier.
+ * - Listes paginées par curseur (UUIDv7, du plus récent au plus ancien) ; périodes en jours métier
+ *   (une date impossible donne 400). La liste des dépenses est pré-filtrée par le périmètre du lecteur
+ *   (`ReadAccess.confinement` : sites, auteurs) avant la pagination, puis affinée élément par élément
+ *   (revue de P8-14 : une page ne doit pas être vide parce que les plus récentes sont hors portée).
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -26,12 +29,16 @@ import {
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
-import { ApiError } from '../platform/http/api-error.exception.js';
 import { RequiresPermission } from '../platform/http/authorization.decorators.js';
-import { recordDenied } from '../audit/record-denied.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
-import { evaluateAccess, hasPermissionAt } from '../modules/identity/application/public/index.js';
-import { toBin } from '../platform/kysely/uuid-columns.js';
+import {
+  ReadAccess,
+  assertPeriod,
+  businessDateParam,
+  idParamSchema,
+  parseOrThrow,
+  uuidParam,
+} from '../read-api/read-access.js';
 import {
   OPERATIONS_LIST_DEFAULT_LIMIT,
   OPERATIONS_LIST_MAX_LIMIT,
@@ -48,8 +55,8 @@ import {
 const EXPENSE_READ = 'finance.expense.read';
 const PAYABLE_READ = 'finance.payable.read';
 
-const uuid = z.string().uuid();
-const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
+const uuid = uuidParam;
+const businessDate = businessDateParam;
 const limit = z.coerce.number().int().positive().max(OPERATIONS_LIST_MAX_LIMIT).optional();
 const expensesQuerySchema = z.object({
   from: businessDate.optional(),
@@ -76,85 +83,32 @@ const paymentsQuerySchema = z.object({
   limit,
 });
 const payablesQuerySchema = z.object({ supplier_id: uuid.optional() });
-const idParamSchema = z.object({ id: uuid });
-
-function parseOrThrow<T>(schema: z.ZodType<T>, raw: unknown): T {
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    throw new ApiError(
-      400,
-      'VALIDATION_ERROR',
-      `Paramètres de requête invalides : ${parsed.error.issues.map((i) => i.message).join(' ; ')}`,
-    );
-  }
-  return parsed.data;
-}
 
 @Controller('api/v1')
 export class FinanceOperationsReadController {
+  private readonly expenseRead: ReadAccess;
+  private readonly payableRead: ReadAccess;
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(CLOCK) private readonly clock: Clock,
-    @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
-  ) {}
-
-  private async deny(
-    request: AuthenticatedRequest,
-    now: Date,
-    permission: string,
-    entity: { readonly type: string; readonly id?: string },
-    reason: 'NO_PERMISSION' | 'OUT_OF_SCOPE',
-  ): Promise<never> {
-    const auth = request.auth!;
-    await recordDenied(
-      this.db,
-      { idGenerator: this.idGenerator, clock: this.clock },
-      {
-        occurredAt: now,
-        actorUserId: auth.sub,
-        actorRoles: [],
-        deviceId: auth.device_id,
-        action: 'access.denied',
-        entityType: entity.type,
-        entityId: entity.id ?? null,
-        reason:
-          reason === 'NO_PERMISSION'
-            ? `Permission manquante : ${permission}.`
-            : `Hors portée : ${permission}.`,
-        errorCode: reason === 'NO_PERMISSION' ? 'FORBIDDEN' : 'NOT_FOUND',
-      },
-    );
-    if (reason === 'NO_PERMISSION') {
-      throw new ApiError(403, 'FORBIDDEN', 'Droit insuffisant pour cette consultation.');
-    }
-    throw new ApiError(404, 'NOT_FOUND', 'Ressource introuvable.');
-  }
-
-  private async requirePermission(
-    request: AuthenticatedRequest,
-    now: Date,
-    permission: string,
-    entity: { readonly type: string; readonly id?: string },
-  ): Promise<void> {
-    if (!(await hasPermissionAt(this.db, toBin(request.auth!.sub), permission, now))) {
-      await this.deny(request, now, permission, entity, 'NO_PERMISSION');
-    }
+    @Inject(ID_GENERATOR) idGenerator: IdGenerator,
+  ) {
+    const deps = { clock, idGenerator };
+    this.expenseRead = new ReadAccess(db, deps, EXPENSE_READ);
+    this.payableRead = new ReadAccess(db, deps, PAYABLE_READ);
   }
 
   /** Dépense dans la portée du lecteur : site de la dépense, propriété de son auteur. */
-  private async expenseVisible(
+  private expenseVisible(
     request: AuthenticatedRequest,
     now: Date,
     expense: ExpenseSummary,
   ): Promise<boolean> {
-    return (
-      await evaluateAccess(this.db, {
-        userId: request.auth!.sub,
-        permissionCode: EXPENSE_READ,
-        occurredAt: now,
-        resource: { siteId: expense.siteId, ownerUserId: expense.createdBy },
-      })
-    ).allowed;
+    return this.expenseRead.allows(request, now, {
+      siteId: expense.siteId,
+      ownerUserId: expense.createdBy,
+    });
   }
 
   @Get('expenses')
@@ -163,12 +117,12 @@ export class FinanceOperationsReadController {
   @RequiresPermission(EXPENSE_READ)
   async expenses(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
     const query = parseOrThrow(expensesQuerySchema, rawQuery);
-    if (query.from !== undefined && query.to !== undefined && query.to < query.from) {
-      throw new ApiError(400, 'VALIDATION_ERROR', 'Période invalide.');
-    }
+    assertPeriod(query.from, query.to);
     const now = this.clock.now();
-    await this.requirePermission(request, now, EXPENSE_READ, { type: 'EXPENSE' });
+    await this.expenseRead.requirePermission(request, now, { type: 'EXPENSE' });
+    const anyOf = await this.expenseRead.confinement(request, now);
     const page = await listExpenses(this.db, {
+      ...(anyOf !== null ? { anyOf } : {}),
       ...(query.from !== undefined ? { fromUtc: businessDayStartUtc(query.from) } : {}),
       ...(query.to !== undefined ? { toUtc: businessDayEndUtc(query.to) } : {}),
       ...(query.site_id !== undefined ? { siteId: query.site_id } : {}),
@@ -194,10 +148,10 @@ export class FinanceOperationsReadController {
     const { id } = parseOrThrow(idParamSchema, rawParams);
     const now = this.clock.now();
     const entity = { type: 'EXPENSE', id };
-    await this.requirePermission(request, now, EXPENSE_READ, entity);
+    await this.expenseRead.requirePermission(request, now, entity);
     const expense = await getExpense(this.db, id);
     if (!expense || !(await this.expenseVisible(request, now, expense))) {
-      return this.deny(request, now, EXPENSE_READ, entity, 'OUT_OF_SCOPE');
+      return this.expenseRead.deny(request, now, entity, 'OUT_OF_SCOPE');
     }
     return { expense };
   }
@@ -208,7 +162,7 @@ export class FinanceOperationsReadController {
   @RequiresPermission(PAYABLE_READ)
   async invoices(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
     const query = parseOrThrow(invoicesQuerySchema, rawQuery);
-    await this.requirePermission(request, this.clock.now(), PAYABLE_READ, {
+    await this.payableRead.requirePermission(request, this.clock.now(), {
       type: 'SUPPLIER_INVOICE',
     });
     const page = await listSupplierInvoices(this.db, {
@@ -231,9 +185,9 @@ export class FinanceOperationsReadController {
     const { id } = parseOrThrow(idParamSchema, rawParams);
     const now = this.clock.now();
     const entity = { type: 'SUPPLIER_INVOICE', id };
-    await this.requirePermission(request, now, PAYABLE_READ, entity);
+    await this.payableRead.requirePermission(request, now, entity);
     const invoice = await getSupplierInvoice(this.db, id);
-    if (!invoice) return this.deny(request, now, PAYABLE_READ, entity, 'OUT_OF_SCOPE');
+    if (!invoice) return this.payableRead.deny(request, now, entity, 'OUT_OF_SCOPE');
     return { supplier_invoice: invoice };
   }
 
@@ -243,7 +197,7 @@ export class FinanceOperationsReadController {
   @RequiresPermission(PAYABLE_READ)
   async payments(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
     const query = parseOrThrow(paymentsQuerySchema, rawQuery);
-    await this.requirePermission(request, this.clock.now(), PAYABLE_READ, {
+    await this.payableRead.requirePermission(request, this.clock.now(), {
       type: 'SUPPLIER_PAYMENT',
     });
     const page = await listSupplierPayments(this.db, {
@@ -263,9 +217,9 @@ export class FinanceOperationsReadController {
     const { id } = parseOrThrow(idParamSchema, rawParams);
     const now = this.clock.now();
     const entity = { type: 'SUPPLIER_PAYMENT', id };
-    await this.requirePermission(request, now, PAYABLE_READ, entity);
+    await this.payableRead.requirePermission(request, now, entity);
     const payment = await getSupplierPayment(this.db, id);
-    if (!payment) return this.deny(request, now, PAYABLE_READ, entity, 'OUT_OF_SCOPE');
+    if (!payment) return this.payableRead.deny(request, now, entity, 'OUT_OF_SCOPE');
     return { supplier_payment: payment };
   }
 
@@ -276,7 +230,7 @@ export class FinanceOperationsReadController {
   async payables(@Query() rawQuery: unknown, @Req() request: AuthenticatedRequest) {
     const query = parseOrThrow(payablesQuerySchema, rawQuery);
     const now = this.clock.now();
-    await this.requirePermission(request, now, PAYABLE_READ, { type: 'SUPPLIER_INVOICE' });
+    await this.payableRead.requirePermission(request, now, { type: 'SUPPLIER_INVOICE' });
     const today = businessDayOf(now);
     const suppliers = await supplierPayables(this.db, {
       today,

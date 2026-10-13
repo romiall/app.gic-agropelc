@@ -54,6 +54,7 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
   let supplierId: string;
   let orderId: string;
   let invoiceId: string;
+  let rpr: Actor;
   let paymentId: string;
 
   const get = (actor: Actor, url: string) =>
@@ -124,7 +125,8 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
       scopeZoneId: zoneId,
     });
     mag = await newActor('MAGASINIER', root, { scopeType: 'SITE', scopeSiteId: siteA });
-    for (const actor of [fin, ach, admin, venA, terrain, mag]) {
+    rpr = await newActor('RESP_PRODUCTION', root);
+    for (const actor of [fin, ach, admin, venA, terrain, mag, rpr]) {
       tokens.set(
         actor.userId,
         await signAccessToken(
@@ -365,5 +367,72 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
     const masked = await get(mag, `/api/v1/purchase-orders/${orderId}/matching`);
     expect(masked.statusCode, masked.body).toBe(200);
     expect(masked.json()).toMatchObject({ matching: { totals: { paidXaf: null } } });
+  });
+
+  it('revue de P8-14 : liste pré-filtrée par la portée, date impossible 400, payé du BC réservé aux lecteurs des dettes, solde nul avant approbation', async () => {
+    const divers = await db
+      .selectFrom('finance_expense_categories')
+      .select('id')
+      .where('code', '=', 'DIVERS')
+      .executeTakeFirstOrThrow();
+    // Les plus récentes sont d'un autre site : la première page du vendeur porte quand même la sienne.
+    for (let index = 0; index < 3; index++) {
+      await send(fin, 'finance.expense.record', 'EXPENSE', freshUuid(), {
+        categoryId: fromBin(divers.id),
+        amountXaf: 500,
+        description: `Autre site ${index}`,
+        siteId: siteB,
+        paidNow: false,
+      });
+    }
+    const page = await get(venA, '/api/v1/expenses?limit=2');
+    expect(page.statusCode, page.body).toBe(200);
+    expect(page.json()).toEqual({
+      expenses: [expect.objectContaining({ id: expenseA })],
+      next_cursor: null,
+    });
+    const own = await get(terrain, '/api/v1/expenses?limit=1');
+    expect((own.json() as { expenses: { id: string }[] }).expenses.map((e) => e.id)).toEqual([
+      expenseTerrain,
+    ]);
+    // Une date impossible au calendrier : 400, jamais 500.
+    expect((await get(fin, '/api/v1/expenses?from=2026-02-30')).statusCode).toBe(400);
+
+    // Payé du BC : le Resp. production valorise le BC mais ne lit pas les dettes.
+    const production = await get(rpr, `/api/v1/purchase-orders/${orderId}/matching`);
+    expect(production.statusCode, production.body).toBe(200);
+    expect(production.json()).toMatchObject({
+      matching: { totals: { invoicedValueXaf: 150_000, paidXaf: null } },
+    });
+
+    // Facture en écart (20 facturés pour 10 acceptés) : pas encore une dette, solde nul.
+    const disputed = freshUuid();
+    await send(fin, 'finance.supplier_invoice.record', 'SUPPLIER_INVOICE', disputed, {
+      supplierId,
+      supplierInvoiceRef: `F-${disputed.slice(-8)}`,
+      invoiceDate: '2026-10-08',
+      purchaseOrderId: orderId,
+      lines: [
+        {
+          poLineId: fromBin(
+            (
+              await db
+                .selectFrom('procurement_purchase_order_lines')
+                .select('id')
+                .where('order_id', '=', toBin(orderId))
+                .executeTakeFirstOrThrow()
+            ).id,
+          ),
+          description: 'Sacs',
+          quantity: 20,
+          unitPriceXaf: 15_000,
+          lineTotalXaf: 300_000,
+        },
+      ],
+    });
+    const detail = await get(fin, `/api/v1/supplier-invoices/${disputed}`);
+    expect(detail.json()).toMatchObject({
+      supplier_invoice: { status: 'MISMATCH', totalXaf: 300_000, balanceXaf: 0 },
+    });
   });
 });

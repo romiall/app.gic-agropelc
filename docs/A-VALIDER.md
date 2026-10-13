@@ -1901,7 +1901,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : le catalogue n'a pas de permission de lecture propre ; `finance.payable.read` couvre les dettes. **DÉDUIT**
 - **Choix** : (a) `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` ; (b) permissions dédiées.
 - **Recommandation** : (a).
-- **Impact** : `GET /supplier-invoices`, `/supplier-payments`, `/payables`, `/finance/overview` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §10, [ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §4). Défaut implémenté : (a) (P8). Non paramétrable.
+- **Impact** : `GET /supplier-invoices`, `/supplier-payments`, `/payables`, `/finance/overview` ([ADR-061](decisions/ADR-061-factures-et-paiements-fournisseurs-p8.md) §10, [ADR-062](decisions/ADR-062-couts-complets-et-marges-p8.md) §4). Défaut implémenté : (a) (P8). Non paramétrable. Revue de P8-14 : dans la vue d'ensemble, les blocs CA, encaissé, créances et trésorerie exigent en plus `analytics.dashboard.finance`, et les dépenses `finance.expense.read` en portée `ALL` ; le payé d'un BC dans `/purchase-orders/{id}/matching` exige `finance.payable.read`.
 
 ### AV-366 — Chiffre d'affaires d'un lot de production — IMPORTANTE
 - **Question** : Le chiffre d'affaires de la marge d'un lot comprend-il les ventes des produits issus du lot (abattage, œufs) ?

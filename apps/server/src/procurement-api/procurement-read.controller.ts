@@ -59,6 +59,7 @@ import {
 
 const ORDER_READ = 'procurement.order.read';
 const VALUATION_READ = 'inventory.valuation.read';
+const PAYABLE_READ = 'finance.payable.read';
 
 const uuid = z.string().uuid();
 const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
@@ -391,13 +392,11 @@ export class ProcurementReadController {
     );
     if (!(await this.canValue(request, now))) return { matching: maskMatching(matching) };
     // P8-09 (ADR-061 §3) : le payé du BC vient de `finance` (composition de transport, `procurement`
-    // n'importe pas `finance`).
-    return {
-      matching: {
-        ...matching,
-        totals: { ...matching.totals, paidXaf: await paidXafOfPurchaseOrder(this.db, id) },
-      },
-    };
+    // n'importe pas `finance`) ; revue de P8-14 : seulement pour qui lit les dettes (AV-365).
+    const paidXaf = (await hasPermissionAt(this.db, toBin(request.auth!.sub), PAYABLE_READ, now))
+      ? await paidXafOfPurchaseOrder(this.db, id)
+      : null;
+    return { matching: { ...matching, totals: { ...matching.totals, paidXaf } } };
   }
 
   @Get('receipts')
