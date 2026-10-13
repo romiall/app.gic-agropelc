@@ -482,8 +482,12 @@ export async function verifyCashTransfers(
       }
     }
 
-    if (t.status === 'DISCREPANCY_PENDING' || t.status === 'CLOSED') {
-      const request = t.approvalRequestId === null ? undefined : requests.get(t.approvalRequestId);
+    // Sans demande : aucune politique active à la réception, écart clos directement (AV-183, P5-23).
+    if (
+      (t.status === 'DISCREPANCY_PENDING' || t.status === 'CLOSED') &&
+      t.approvalRequestId !== null
+    ) {
+      const request = requests.get(t.approvalRequestId);
       const expected = t.status === 'DISCREPANCY_PENDING' ? 'PENDING' : 'APPROVED';
       if (
         !request ||

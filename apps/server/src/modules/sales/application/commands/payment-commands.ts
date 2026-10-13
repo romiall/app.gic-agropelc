@@ -163,6 +163,28 @@ async function lockPayment(uow: Uow, paymentId: string) {
     .executeTakeFirst();
 }
 
+/**
+ * AV-188 (a) (P5-23) : un encaissement qui règle une vente **sans client saisie en ligne** ne s'annule pas —
+ * la vente resterait due sans personne à qui réclamer le solde (INV-VEN-07). Annuler la vente, ou la régler
+ * autrement (le nouvel encaissement couvre la vente, l'ancien n'y est plus affecté), d'abord.
+ */
+async function settlesOnlineAnonymousSale(uow: Uow, paymentId: Buffer): Promise<boolean> {
+  const row = await uow
+    .selectFrom('sales_payment_allocations as a')
+    .innerJoin('sales_sales as s', 's.id', 'a.sale_id')
+    .select('a.id')
+    .where('a.payment_id', '=', paymentId)
+    .where('a.status', '=', 'ACTIVE')
+    .where('s.customer_id', 'is', null)
+    .where('s.captured_offline', '=', 0)
+    .where('s.status', '<>', 'CANCELLED')
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+const PAYMENT_ANONYMOUS_SALE_MESSAGE =
+  'Cet encaissement règle une vente sans client saisie en ligne : annuler la vente, ou la régler autrement, avant d’annuler l’encaissement (INV-VEN-07, AV-188).';
+
 /** Valeur encore à vendre d'une commande (attente × prix convenu) : plafond d'un acompte (AV-150). */
 async function pendingValueXaf(uow: Uow, orderId: string): Promise<number> {
   const lines = await uow
@@ -940,6 +962,9 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         'Encaissement en partie remboursé : son annulation n’est pas prise en charge.',
       );
     }
+    if (await settlesOnlineAnonymousSale(uow, payment.id)) {
+      return rejected('PAYMENT_ANONYMOUS_SALE', PAYMENT_ANONYMOUS_SALE_MESSAGE);
+    }
     const policy = await activePolicy(uow, 'PAYMENT_CANCELLATION', at);
     if (!policy) return CONTROL_POLICY_MISSING('PAYMENT_CANCELLATION');
     const requestId = idGenerator.newId();
@@ -1065,6 +1090,10 @@ function registerDecisions(
         'Une part de l’encaissement a été remboursée depuis la demande : rejeter la demande (AV-151).',
       );
     }
+    // AV-188 : demande antérieure au contrôle, ou vente devenue concernée depuis.
+    if (await settlesOnlineAnonymousSale(uow, payment.id)) {
+      throw new ApprovalDecisionRefused('PAYMENT_ANONYMOUS_SALE', PAYMENT_ANONYMOUS_SALE_MESSAGE);
+    }
     try {
       const deltas = newCounterDeltas();
       await releaseAllocations(
@@ -1118,16 +1147,28 @@ function registerDecisions(
   decisionRegistry.register('PAYMENT_DUPLICATE', async (uow, ctx) => {
     const head = await uow
       .selectFrom('sales_customer_payments')
-      .select(['customer_id'])
+      .select(['customer_id', 'intended_sale_id', 'intended_order_id', 'amount_xaf'])
       .where('id', '=', toBin(ctx.subjectId))
       .executeTakeFirst();
     const details = await latestConflictDetails(uow, {
       conflictType: 'PAYMENT_REFERENCE_DUPLICATE',
       entityId: ctx.subjectId,
     });
-    // Les cibles et montants saisis sont rejoués ; à défaut (affectation automatique), les ventes
-    // ouvertes du client, de l'échéance la plus ancienne à la plus récente (BR-FIN-004).
-    const requested = requestedTargets(details);
+    // Les cibles et montants saisis sont rejoués ; à défaut, la cible mémorisée d'un encaissement joint à
+    // une vente ou à une commande (`intended_sale_id`, `intended_order_id` ; D09 §15, P5-23 — elle était
+    // ignorée) ; sinon (affectation automatique), les ventes ouvertes du client, de l'échéance la plus
+    // ancienne à la plus récente (BR-FIN-004).
+    const saved = requestedTargets(details);
+    const intendedSale = head ? fromBinOrNull(head.intended_sale_id) : null;
+    const intendedOrder = head ? fromBinOrNull(head.intended_order_id) : null;
+    const requested: TargetInput[] =
+      saved.length > 0 || !head
+        ? saved
+        : intendedSale !== null
+          ? [{ saleId: intendedSale, amountXaf: Number(head.amount_xaf) }]
+          : intendedOrder !== null
+            ? [{ orderId: intendedOrder, amountXaf: Number(head.amount_xaf) }]
+            : [];
     const customerId = head ? fromBinOrNull(head.customer_id) : null;
     const accounts = customerId ? await customerAccountsOf(uow, customerId) : undefined;
     const autoSaleIds =

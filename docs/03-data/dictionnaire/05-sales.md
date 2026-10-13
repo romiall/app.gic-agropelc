@@ -297,7 +297,7 @@ Dérivés, non stockés : **en attente** = `quantity_base − sold_quantity_base
 | `cash_movement_id` | uuid → finance.cash_movements | Oui | — | Mouvement de trésorerie : renseigné pour `RECORDED`, `CANCELLATION_REQUESTED` et `CANCELLED`, nul pour `SUSPECT_DUPLICATE` et `REJECTED` (INV-FIN-09) ; ne change plus une fois posé (INV-FIN-01) |
 | `status` | enum(`RECORDED`,`SUSPECT_DUPLICATE`,`REJECTED`,`CANCELLATION_REQUESTED`,`CANCELLED`) | Non | — | `REJECTED` et `CANCELLED` sont terminaux |
 | `duplicate_of_payment_id` | uuid → sales_customer_payments | Oui | — | DÉDUIT : encaissement dont celui-ci semble le doublon (décision de la Finance) |
-| `intended_sale_id` | uuid → sales_sales | Oui | — | DÉDUIT : vente visée par un encaissement suspect, affectée à la décision de la Finance (AV-135) ; figée ; exclusive de `intended_order_id` |
+| `intended_sale_id` | uuid → sales_sales | Oui | — | DÉDUIT : vente visée par un encaissement suspect, affectée à la décision de la Finance (AV-135 ; rejouée par la décision `PAYMENT_DUPLICATE` quand le conflit ne consigne aucune cible saisie, P5-23 — elle était ignorée) ; figée ; exclusive de `intended_order_id` |
 | `intended_order_id` | uuid → sales_sales_orders | Oui | — | DÉDUIT : commande visée (acompte) ; figée |
 | `unallocated_xaf` | money_xaf | Non | — | Crédit client restant, non affecté (dénormalisé) ; nul hors encaissement enregistré d'un client identifié |
 | `refunded_xaf` | money_xaf | Non | 0 | DÉDUIT : part remboursée au client (sortie de caisse) ; ne diminue jamais ; `unallocated_xaf + refunded_xaf ≤ amount_xaf` |

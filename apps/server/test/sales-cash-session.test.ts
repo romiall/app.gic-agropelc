@@ -553,7 +553,10 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     const pos = await newPos();
     const sessionId = await openSession(pos, at('08:00'));
     const saleId = freshUuid();
-    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), saleBody(pos, 6));
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), {
+      ...saleBody(pos, 6),
+      customerId: await newCustomer(),
+    });
     const [payment] = await paymentsOf(saleId);
     const paymentId = fromBin(payment!.id);
     await ok(pos.seller, 'finance.cash_session.close', 'CASH_SESSION', sessionId, at('12:00'), {
@@ -600,15 +603,28 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     expect(Number(adjustment!.delta_xaf)).toBe(3_000);
     const check = await tx((trx) => verifyCashSessionVariance(trx, sessionId));
     expect(check).toMatchObject({ ok: true, countedMinusExpectedXaf: 3_000 });
-    // La vente anonyme, saisie en ligne, ne doit pas rester due (INV-VEN-07, AV-188) : le client la règle
-    // de nouveau par mobile money (aucune session : la caisse est close et la limite du jour atteinte).
-    const repaid = await payAnonymousSale(pos, saleId, 3_000, at('14:30'), false, {
-      methodCode: 'MOBILE_MONEY_ORANGE',
-      cashAccountId: pos.momoId,
-      reference: momoRef(),
-    });
-    expect(repaid.result.status, JSON.stringify(repaid.result)).toBe('APPLIED');
-    expect(Number((await sale(saleId)).balance_due_xaf)).toBe(0);
+    // La vente a un client (AV-188 : l'encaissement d'une vente anonyme saisie en ligne ne s'annule pas) :
+    // l'annulation rouvre sa créance.
+    expect(Number((await sale(saleId)).balance_due_xaf)).toBe(3_000);
+  });
+
+  it('AV-188 (a) : l’encaissement d’une vente sans client saisie en ligne ne s’annule pas (INV-VEN-07)', async () => {
+    const pos = await newPos();
+    await openSession(pos, at('08:00'));
+    const saleId = freshUuid();
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), saleBody(pos, 2));
+    const [payment] = await paymentsOf(saleId);
+    const refused = await run(
+      pos.seller,
+      'sales.payment.request_cancellation',
+      'CUSTOMER_PAYMENT',
+      fromBin(payment!.id),
+      at('10:00'),
+      { comment: 'Encaissement saisi deux fois' },
+    );
+    expect(refused.status).toBe('REJECTED');
+    expect(refused.error?.code).toBe('PAYMENT_ANONYMOUS_SALE');
+    expect((await paymentRow(fromBin(payment!.id)))?.status).toBe('RECORDED');
   });
 
   it('BR-DIS-005, encaissement hors vente (sales.payment.record) : refus en ligne, CASH_SESSION_MISSING hors ligne sans document, index avec session ; un encaissement antérieur à l’ouverture reste à traiter', async () => {
@@ -796,8 +812,12 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     expect((await sale(saleC)).status).toBe('CANCELLATION_REQUESTED');
 
     // Encaissement en demande d'annulation : son argent est encore au registre ; session close entre-temps.
+    // Vente avec un client : l'encaissement d'une vente anonyme saisie en ligne ne s'annule pas (AV-188).
     const saleD = freshUuid();
-    await ok(pos.seller, 'sales.sale.record', 'SALE', saleD, at('09:30'), saleBody(pos, 2));
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleD, at('09:30'), {
+      ...saleBody(pos, 2),
+      customerId: await newCustomer(),
+    });
     const [paymentD] = await paymentsOf(saleD);
     await ok(
       pos.seller,
@@ -861,6 +881,65 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
       (await tx((trx) => verifyCashLedger(trx, { cashAccountIds: [pos.accountId, pos.momoId] })))
         .ok,
     ).toBe(true);
+  });
+
+  it('décision PAYMENT_DUPLICATE d’un encaissement joint à une vente : la cible mémorisée est réglée (D09 §15, P5-23)', async () => {
+    const pos = await newPos();
+    const reference = `OM-DUP-${freshUuid().slice(-12)}`;
+    const withReference = (quantity: number) => ({
+      fromLocationId: pos.counterId,
+      lines: [line(quantity)],
+      payments: [
+        {
+          methodCode: 'MOBILE_MONEY_ORANGE',
+          amountXaf: quantity * PRICE,
+          reference,
+          cashAccountId: pos.momoId,
+        },
+      ],
+    });
+    await ok(pos.seller, 'sales.sale.record', 'SALE', freshUuid(), at('09:00'), withReference(2));
+    // Hors ligne, une seconde vente anonyme porte la même référence : son encaissement est mis de côté.
+    const second = freshUuid();
+    const recorded = await ok(
+      pos.seller,
+      'sales.sale.record',
+      'SALE',
+      second,
+      at('09:05'),
+      withReference(2),
+      true,
+    );
+    expect(warningsOf(recorded)).toContain('PAYMENT_SUSPECT_DUPLICATE');
+    // Mis de côté, sans affectation : retrouvé par sa cible mémorisée.
+    const [suspect] = await db
+      .selectFrom('sales_customer_payments')
+      .selectAll()
+      .where('intended_sale_id', '=', toBin(second))
+      .execute();
+    expect(suspect?.status).toBe('SUSPECT_DUPLICATE');
+    expect(Number((await sale(second)).balance_due_xaf)).toBe(1_000);
+    const request = await db
+      .selectFrom('approvals_approval_requests')
+      .select('id')
+      .where('subject_id', '=', suspect!.id)
+      .where('operation_type', '=', 'PAYMENT_DUPLICATE')
+      .executeTakeFirstOrThrow();
+    // Deux paiements distincts : la Finance corrige la référence du second. Avant : affectation
+    // automatique aux ventes ouvertes d'un client absent, refus `ALLOCATION_EXCEEDS`.
+    await ok(
+      fin1,
+      'approvals.request.approve',
+      'APPROVAL_REQUEST',
+      fromBin(request.id),
+      at('09:20'),
+      {
+        requestId: fromBin(request.id),
+        decisionData: { correctedReference: `${reference}-B` },
+      },
+    );
+    expect((await paymentRow(fromBin(suspect!.id)))?.status).toBe('RECORDED');
+    expect(Number((await sale(second)).balance_due_xaf)).toBe(0);
   });
 
   it('AV-184 : un doublon suspect d’espèces au PDV, approuvé par la Finance, reçoit l’index de session de son mouvement', async () => {
@@ -1069,7 +1148,10 @@ describe('P5-14 : vente et caisse (BR-DIS-005, BR-VEN-028, AT-031)', { timeout: 
     const pos = await newPos();
     const sessionId = await openSession(pos, at('08:00'));
     const saleId = freshUuid();
-    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), saleBody(pos, 6));
+    await ok(pos.seller, 'sales.sale.record', 'SALE', saleId, at('09:00'), {
+      ...saleBody(pos, 6),
+      customerId: await newCustomer(),
+    });
     const [payment] = await paymentsOf(saleId);
     const paymentId = fromBin(payment!.id);
     // Écart à la clôture : la session attend sa validation.

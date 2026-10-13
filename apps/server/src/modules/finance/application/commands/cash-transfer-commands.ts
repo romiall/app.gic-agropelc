@@ -10,12 +10,17 @@
  *   conflit hors ligne.
  * - `finance.cash_transfer.receive` : entrée `TRANSFER_IN` du montant **reçu** sur le compte
  *   destinataire (aucune pour une réception de 0, AV-175) ; écart = reçu − envoyé ; un écart ouvre la
- *   validation `CASH_TRANSFER_DISCREPANCY`. Le récepteur n'est jamais l'expéditeur (AV-172).
+ *   validation `CASH_TRANSFER_DISCREPANCY` (si une politique est active, AV-183). Le récepteur n'est
+ *   jamais l'expéditeur (AV-172).
  * - `finance.cash_transfer.cancel` (hors ligne possible, expéditeur seul) : inverse de la sortie,
  *   **daté de l'annulation** (fait physique nouveau, ADR-032 §2, AV-157), remise `CANCELLED`.
  * - Décision `CASH_TRANSFER_DISCREPANCY` (registre des décisions d'`approvals`, ADR-018) :
  *   `DISCREPANCY_PENDING` → `CLOSED` avec imputation (`decisionOption`) et motif
  *   (`decisionData.reason`), **sans aucun mouvement** (ADR-032 §7) ; rejet et retrait refusés (AV-174).
+ *   Sans politique active à la réception, aucune demande n'est créée : la réception n'est pas refusée
+ *   et l'écart se clôt directement (AV-183, P5-23).
+ * - `finance.cash_transfer.close_discrepancy` (en ligne, `finance.cash_session.validate`) : façade de
+ *   cette décision, ou clôture directe d'un écart sans demande, avec les mêmes contrôles (AV-183).
  * - Courses hors ligne (ADR-032 §8, AV-173) : réception après l'annulation, annulation après la
  *   réception, seconde réception — fait conservé comme observation dans un conflit informatif pour la
  *   Finance, aucun mouvement, remise inchangée ; en ligne, refus.
@@ -25,6 +30,7 @@
  * de leur identifiant, puis le compteur de numéros, puis insère la remise.
  */
 import type { IdGenerator } from '@gic/domain';
+import { evaluateAccess } from '../../../identity/application/public/index.js';
 import {
   checkTransferImputation,
   decideCashTransferAction,
@@ -37,9 +43,11 @@ import {
 } from '@gic/domain';
 import {
   cashTransferCancelPayloadSchema,
+  cashTransferCloseDiscrepancyPayloadSchema,
   cashTransferReceivePayloadSchema,
   cashTransferSendPayloadSchema,
   type CashTransferCancelPayload,
+  type CashTransferCloseDiscrepancyPayload,
   type CashTransferReceivePayload,
   type CashTransferSendPayload,
   type WarningCode,
@@ -63,6 +71,7 @@ import {
 } from '../../../../platform/kysely/uuid-columns.js';
 import {
   ApprovalDecisionRefused,
+  decideApprovalRequest,
   requestApproval,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
@@ -84,6 +93,9 @@ import { emitCashTransferChange } from '../sync-changes.js';
 
 type Uow = Transaction<DB>;
 type Envelope<P> = Parameters<CommandHandler<P>>[1];
+
+/** Droit de valider un écart de caisse (Finance, Direction ; `cash-session-commands.ts`). */
+const CASH_SESSION_VALIDATE_PERMISSION = 'finance.cash_session.validate';
 
 /** Ligne de remise, verrouillée par la réception, l'annulation et la décision. */
 interface TransferRow {
@@ -180,6 +192,68 @@ async function insertFinanceEvent(
       command_id: toBin(input.commandId),
     })
     .execute();
+}
+
+/**
+ * Clôture d'un écart de remise (ADR-032 §7, AV-174) : imputation choisie, motif, aucun mouvement de
+ * trésorerie (la différence est déjà sortie des livres). Partagée par la décision `CASH_TRANSFER_DISCREPANCY`
+ * et par la clôture directe d'un écart reçu sans politique (AV-183, P5-23). Refus : `{ code, messageFr }`.
+ */
+async function closeTransferDiscrepancy(
+  uow: Uow,
+  transfer: TransferRow,
+  input: {
+    readonly decidedBy: string;
+    readonly decidedAt: Date;
+    readonly option: string | undefined;
+    readonly reason: string | undefined;
+  },
+): Promise<{ readonly code: string; readonly messageFr: string } | null> {
+  if (
+    !isAllowedTransferValidator(input.decidedBy, {
+      sentBy: transfer.sentBy,
+      receivedBy: transfer.receivedBy,
+      carrierUserId: transfer.carrierUserId,
+    })
+  ) {
+    return {
+      code: 'CASH_TRANSFER_VALIDATOR_INVOLVED',
+      messageFr:
+        'Le valideur d’un écart de remise n’est ni l’expéditeur, ni le récepteur, ni le porteur.',
+    };
+  }
+  let imputation: string;
+  try {
+    imputation = checkTransferImputation(input.option, {
+      carrierUserId: transfer.carrierUserId,
+      carrierName: transfer.carrierName,
+    });
+  } catch (error) {
+    if (error instanceof DomainError) return { code: error.code, messageFr: error.message };
+    throw error;
+  }
+  const reason = input.reason?.trim() ?? '';
+  if (reason === '') {
+    return {
+      code: 'REASON_REQUIRED',
+      messageFr: 'Motif de la clôture de l’écart obligatoire.',
+    };
+  }
+  await uow
+    .updateTable('finance_cash_transfers')
+    .set({
+      status: 'CLOSED',
+      imputation,
+      closing_reason: reason,
+      closed_by: toBin(input.decidedBy),
+      closed_at: input.decidedAt,
+      updated_by: toBin(input.decidedBy),
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(transfer.id))
+    .execute();
+  await emitCashTransferChange(uow, transfer.id);
+  return null;
 }
 
 export function registerCashTransferCommands(
@@ -514,31 +588,29 @@ export function registerCashTransferCommands(
         at,
         offline ? origin.receivedAt : undefined,
       );
-      if (!policy) {
-        return rejected(
-          'CONTROL_POLICY_MISSING',
-          'Aucune politique de contrôle CASH_TRANSFER_DISCREPANCY active avec approbateur (approvals.policy.set) : la validation de l’écart est obligatoire.',
-        );
-      }
+      // AV-183 (a), harmonisé en P5-23 : sans politique active, la réception (fait accompli, souvent hors
+      // ligne) n'est jamais refusée pour une configuration ; l'écart attend sans demande et la Finance le
+      // clôt directement (`finance.cash_transfer.close_discrepancy`), comme une session de caisse.
       const siteId = transfer.siteId ?? to.siteId;
       const site = siteId !== null ? await loadSiteRef(uow, siteId) : undefined;
-      approvalRequestId = idGenerator.newId();
-      await requestApproval(uow, {
-        requestId: approvalRequestId,
-        operationType: 'CASH_TRANSFER_DISCREPANCY',
-        subjectType: 'CASH_TRANSFER',
-        subjectId: transfer.id,
-        subjectSummary:
-          `Remise ${transfer.docNumber} : envoyé ${transfer.amountSentXaf} XAF, reçu ` +
-          `${p.receivedXaf} XAF, écart ${discrepancyXaf} XAF` +
-          (p.comment !== undefined ? ` — ${p.comment}` : ''),
-        ...(site ? { siteId: site.id, zoneId: site.zoneId } : {}),
-        amountXaf: Math.abs(discrepancyXaf),
-        requestedBy: author,
-        requestedAt: at,
-        policyId: policy.id,
-        policyVersion: policy.version,
-      });
+      approvalRequestId = policy ? idGenerator.newId() : null;
+      if (policy && approvalRequestId !== null)
+        await requestApproval(uow, {
+          requestId: approvalRequestId,
+          operationType: 'CASH_TRANSFER_DISCREPANCY',
+          subjectType: 'CASH_TRANSFER',
+          subjectId: transfer.id,
+          subjectSummary:
+            `Remise ${transfer.docNumber} : envoyé ${transfer.amountSentXaf} XAF, reçu ` +
+            `${p.receivedXaf} XAF, écart ${discrepancyXaf} XAF` +
+            (p.comment !== undefined ? ` — ${p.comment}` : ''),
+          ...(site ? { siteId: site.id, zoneId: site.zoneId } : {}),
+          amountXaf: Math.abs(discrepancyXaf),
+          requestedBy: author,
+          requestedAt: at,
+          policyId: policy.id,
+          policyVersion: policy.version,
+        });
       await insertFinanceEvent(uow, idGenerator, {
         eventType: 'CashTransferDiscrepancyDetected',
         transferId: transfer.id,
@@ -711,6 +783,92 @@ export function registerCashTransferCommands(
     handler: cancel,
   });
 
+  // --- Clôture d'un écart : façade de la décision, ou clôture directe sans demande (AV-183, P5-23) -------
+  /**
+   * `finance.cash_transfer.close_discrepancy` (en ligne) : comme `finance.cash_session.validate`, façade de la
+   * décision `CASH_TRANSFER_DISCREPANCY` quand l'écart a sa demande (`decideApprovalRequest` : droit
+   * d'approbation, auto-approbation, puis le gestionnaire de décision ci-dessous), clôture directe sinon
+   * (aucune politique active à la réception, AV-183), avec les mêmes contrôles : valideur ni expéditeur,
+   * ni récepteur, ni porteur ; imputation admise ; motif. Portée : `finance.cash_session.validate` sur le
+   * site de la remise (celui de la demande), à défaut celui du compte destinataire.
+   */
+  const closeDiscrepancy: CommandHandler<CashTransferCloseDiscrepancyPayload> = async (
+    uow,
+    envelope,
+  ) => {
+    if (envelope.captured_offline) {
+      return rejected(
+        'ONLINE_REQUIRED',
+        'La clôture d’un écart de remise se fait en ligne, par la Finance ou la Direction.',
+      );
+    }
+    const at = new Date(envelope.occurred_at);
+    const author = envelope.author_user_id;
+    // ADR-038 : la remise (sous ses deux comptes) avant la demande, mise à jour en fin de décision (N13).
+    const transfer = await lockTransfer(uow, envelope.aggregate_id);
+    if (!transfer) return rejected('NOT_FOUND', 'Remise de fonds introuvable.');
+    if (transfer.status !== 'DISCREPANCY_PENDING') {
+      return rejected(
+        'CASH_TRANSFER_STATUS_INVALID',
+        'Cette remise n’a pas d’écart en attente de clôture.',
+      );
+    }
+    const destination = await findCashAccount(uow, transfer.toAccountId);
+    const siteId = transfer.siteId ?? destination?.siteId ?? null;
+    const access = await evaluateAccess(uow, {
+      userId: author,
+      permissionCode: CASH_SESSION_VALIDATE_PERMISSION,
+      occurredAt: at,
+      resource: siteId !== null ? { siteId } : {},
+    });
+    if (!access.allowed) return rejected('FORBIDDEN_SCOPE', 'Remise hors de votre périmètre.');
+    const { imputation, reason } = envelope.payload;
+    if (transfer.approvalRequestId !== null) {
+      const decided = await decideApprovalRequest(uow, decisionRegistry, {
+        requestId: transfer.approvalRequestId,
+        decision: 'APPROVED',
+        decidedBy: author,
+        decidedAt: at,
+        comment: reason,
+        decisionOption: imputation,
+        decisionData: { reason },
+      });
+      if (!decided.ok) return rejected(decided.errorCode, decided.messageFr);
+    } else {
+      const refusal = await closeTransferDiscrepancy(uow, transfer, {
+        decidedBy: author,
+        decidedAt: at,
+        option: imputation,
+        reason,
+      });
+      if (refusal) return rejected(refusal.code, refusal.messageFr);
+    }
+    const serverRefs = {
+      cashTransferId: transfer.id,
+      status: 'CLOSED',
+      imputation,
+      ...(transfer.approvalRequestId !== null
+        ? { approvalRequestId: transfer.approvalRequestId }
+        : {}),
+    };
+    return {
+      status: 'APPLIED',
+      serverRefs,
+      audit: {
+        before: { status: transfer.status, discrepancyXaf: transfer.discrepancyXaf },
+        after: { ...serverRefs, reason, closedBy: author, closedAt: at.toISOString() },
+      },
+    };
+  };
+  registry.register({
+    commandType: 'finance.cash_transfer.close_discrepancy',
+    version: 1,
+    payloadSchema: cashTransferCloseDiscrepancyPayloadSchema,
+    // Même droit que la validation d'une session de caisse et que l'approbateur de la politique semée.
+    permissionCode: CASH_SESSION_VALIDATE_PERMISSION,
+    handler: closeDiscrepancy,
+  });
+
   // --- Décision CASH_TRANSFER_DISCREPANCY (ADR-018, ADR-032 §7, AV-174) ---------------------------------
 
   decisionRegistry.register('CASH_TRANSFER_DISCREPANCY', async (uow, ctx) => {
@@ -731,51 +889,13 @@ export function registerCashTransferCommands(
         'L’écart d’une remise ne se rejette pas : l’approuver en choisissant son imputation et son motif (une erreur de saisie se corrige par une remise de régularisation).',
       );
     }
-    if (
-      !isAllowedTransferValidator(ctx.decidedBy, {
-        sentBy: transfer.sentBy,
-        receivedBy: transfer.receivedBy,
-        carrierUserId: transfer.carrierUserId,
-      })
-    ) {
-      throw new ApprovalDecisionRefused(
-        'CASH_TRANSFER_VALIDATOR_INVOLVED',
-        'Le valideur d’un écart de remise n’est ni l’expéditeur, ni le récepteur, ni le porteur.',
-      );
-    }
-    let imputation: string;
-    try {
-      imputation = checkTransferImputation(ctx.decisionOption, {
-        carrierUserId: transfer.carrierUserId,
-        carrierName: transfer.carrierName,
-      });
-    } catch (error) {
-      if (error instanceof DomainError)
-        throw new ApprovalDecisionRefused(error.code, error.message);
-      throw error;
-    }
-    const reason = ctx.decisionData?.['reason']?.trim() ?? '';
-    if (reason === '') {
-      throw new ApprovalDecisionRefused(
-        'REASON_REQUIRED',
-        'Motif de la clôture de l’écart obligatoire (decisionData.reason).',
-      );
-    }
-    // Aucun mouvement de trésorerie : la différence est déjà sortie des livres (ADR-032 §7).
-    await uow
-      .updateTable('finance_cash_transfers')
-      .set({
-        status: 'CLOSED',
-        imputation,
-        closing_reason: reason,
-        closed_by: toBin(ctx.decidedBy),
-        closed_at: ctx.decidedAt,
-        updated_by: toBin(ctx.decidedBy),
-        version: sql`version + 1`,
-      })
-      .where('id', '=', toBin(transfer.id))
-      .execute();
-    await emitCashTransferChange(uow, transfer.id);
+    const refusal = await closeTransferDiscrepancy(uow, transfer, {
+      decidedBy: ctx.decidedBy,
+      decidedAt: ctx.decidedAt,
+      option: ctx.decisionOption,
+      reason: ctx.decisionData?.['reason'],
+    });
+    if (refusal) throw new ApprovalDecisionRefused(refusal.code, refusal.messageFr);
   });
 
   // AV-174 : l'écart reste à décider — le récepteur ne retire pas la demande (sinon la remise

@@ -915,27 +915,33 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     await ledgerOk([pos, central], [id]);
   });
 
-  it('écart sans politique applicable : CONTROL_POLICY_MISSING (aucune, ou seulement une politique sans approbation)', async () => {
+  it('écart sans politique applicable (AV-183) : réception appliquée sans demande, en ligne comme hors ligne, et avec une politique sans approbation', async () => {
     const { seller, pos } = await newPdv();
     const central = await newCentral();
-    const { id } = await send(seller, {
-      fromAccountId: pos,
-      toAccountId: central,
-      amountXaf: 1_000,
-    });
+    const sent = async (amountXaf: number) =>
+      (await send(seller, { fromAccountId: pos, toAccountId: central, amountXaf })).id;
+    const online = await sent(1_000);
+    const offline = await sent(2_000);
+    const lax = await sent(3_000);
     await withoutActivePolicies(
       'CASH_TRANSFER_DISCREPANCY',
       new Date(at('00:00', '2026-10-06')),
       async () => {
-        expect(codeOf(await receive(fin1, id, 900))).toBe('CONTROL_POLICY_MISSING');
-        const lax = freshUuid();
+        expect(await receive(fin1, online, 900)).toMatchObject({
+          status: 'APPLIED_WITH_WARNINGS',
+          warnings: ['CASH_TRANSFER_DISCREPANCY'],
+        });
+        expect(await receive(fin1, offline, 1_500, at('19:00'), { offline: true })).toMatchObject({
+          status: 'APPLIED_WITH_WARNINGS',
+        });
+        const laxPolicy = freshUuid();
         const created = await runCommand(pipeline, root, {
           type: 'approvals.policy.set',
           aggregateType: 'CONTROL_POLICY',
-          aggregateId: lax,
+          aggregateId: laxPolicy,
           occurredAt: at('00:00'),
           payload: {
-            code: `CTD-LAX-${lax.slice(-12)}`,
+            code: `CTD-LAX-${laxPolicy.slice(-12)}`,
             operationType: 'CASH_TRANSFER_DISCREPANCY',
             requiresApproval: false,
             validFrom: at('00:00'),
@@ -944,15 +950,151 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
         });
         expect(created.status).toBe('APPLIED');
         try {
-          expect(codeOf(await receive(fin1, id, 900, at('19:01')))).toBe('CONTROL_POLICY_MISSING');
+          expect((await receive(fin1, lax, 2_000, at('19:01'))).status).toBe(
+            'APPLIED_WITH_WARNINGS',
+          );
         } finally {
-          await neutralizePolicy(lax);
+          await neutralizePolicy(laxPolicy);
         }
       },
     );
-    expect(await transferRow(id)).toMatchObject({ status: 'SENT' });
-    // Une réception égale ne demande aucune politique.
-    expect((await receive(fin1, id, 1_000, at('19:02'))).status).toBe('APPLIED');
+    for (const [id, discrepancy] of [
+      [online, -100],
+      [offline, -500],
+      [lax, -1_000],
+    ] as const) {
+      const row = await transferRow(id);
+      expect(row).toMatchObject({ status: 'DISCREPANCY_PENDING', discrepancy_xaf: discrepancy });
+      expect(row!.approval_request_id).toBeNull();
+      expect(await approvalOf(id)).toHaveLength(0);
+      const [event] = await eventsOf(id, 'CashTransferDiscrepancyDetected');
+      expect(event?.payload).toMatchObject({ discrepancy_xaf: discrepancy });
+    }
+    expect(await balanceOf(central)).toBe(900 + 1_500 + 2_000);
+    // Une remise en écart sans demande est cohérente (verifyCashTransfers l'admet, AV-183).
+    await ledgerOk([pos, central], [online, offline, lax]);
+  });
+
+  it('clôture directe d’un écart sans demande (AV-183) : mêmes contrôles que la décision, en ligne seulement, aucun mouvement', async () => {
+    const { seller, pos } = await newPdv();
+    const central = await newCentral();
+    const { id } = await send(seller, {
+      fromAccountId: pos,
+      toAccountId: central,
+      amountXaf: 5_000,
+      carrierUserId: fin3.userId,
+    });
+    await withoutActivePolicies(
+      'CASH_TRANSFER_DISCREPANCY',
+      new Date(at('00:00', '2026-10-06')),
+      async () => {
+        expect((await receive(fin1, id, 4_000)).status).toBe('APPLIED_WITH_WARNINGS');
+      },
+    );
+    const close = (
+      actor: Actor,
+      payload: Record<string, unknown>,
+      options: { readonly offline?: boolean } = {},
+    ) => run(actor, 'finance.cash_transfer.close_discrepancy', id, at('20:00'), payload, options);
+    const ok = { imputation: 'COMPANY', reason: 'Écart accepté par la Finance' };
+
+    expect(codeOf(await close(seller, ok))).toBe('FORBIDDEN'); // le vendeur n'a pas le droit
+    expect(codeOf(await close(fin2, ok, { offline: true }))).toBe('ONLINE_REQUIRED');
+    expect(codeOf(await close(fin1, ok))).toBe('CASH_TRANSFER_VALIDATOR_INVOLVED'); // récepteur
+    expect(codeOf(await close(fin3, ok))).toBe('CASH_TRANSFER_VALIDATOR_INVOLVED'); // porteur
+    expect(codeOf(await close(fin2, { imputation: 'VOLEUR', reason: 'x' }))).toBe(
+      'CASH_TRANSFER_IMPUTATION_REQUIRED',
+    );
+    expect(codeOf(await close(fin2, { imputation: 'COMPANY' }))).toMatch(/^VALIDATION_ERROR/);
+    expect(codeOf(await close(fin2, { imputation: 'COMPANY', reason: '   ' }))).toMatch(
+      /^VALIDATION_ERROR/,
+    );
+    expect(await transferRow(id)).toMatchObject({ status: 'DISCREPANCY_PENDING' });
+
+    // Portée : un droit de validation limité à un autre site ne couvre pas la remise.
+    const otherSite = await newPosSite(root.userId, zoneId);
+    const scoped = await tx(async (trx) => {
+      const userId = await insertTestUser(trx);
+      const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+      const role = await insertTestRole(trx, root.userId, { allowedScopeTypes: ['SITE'] });
+      await grantTestPermission(trx, role, 'finance.cash_session.validate', root.userId, {
+        maxScope: 'SITE',
+      });
+      await assignTestRole(trx, userId, role, root.userId, {
+        scopeType: 'SITE',
+        scopeSiteId: otherSite,
+      });
+      return { userId, deviceId };
+    });
+    expect(codeOf(await close(scoped, ok))).toBe('FORBIDDEN_SCOPE');
+
+    const closed = await close(fin2, ok);
+    expect(closed.status, JSON.stringify(closed)).toBe('APPLIED');
+    expect(closed).toMatchObject({
+      server_refs: { cashTransferId: id, status: 'CLOSED', imputation: 'COMPANY' },
+    });
+    const row = await transferRow(id);
+    expect(row).toMatchObject({
+      status: 'CLOSED',
+      imputation: 'COMPANY',
+      closing_reason: 'Écart accepté par la Finance',
+    });
+    expect(fromBin(row!.closed_by!)).toBe(fin2.userId);
+    expect(row!.closed_at?.toISOString()).toBe(at('20:00'));
+    expect(row!.approval_request_id).toBeNull();
+    expect(await movementsOf(id)).toHaveLength(2);
+    expect(await balanceOf(pos)).toBe(200_000 - 5_000);
+    expect(await balanceOf(central)).toBe(4_000);
+    const audit = (await auditOf(id)).filter(
+      (a) => a.action === 'finance.cash_transfer.close_discrepancy',
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.after).toMatchObject({
+      status: 'CLOSED',
+      imputation: 'COMPANY',
+      reason: 'Écart accepté par la Finance',
+    });
+    expect(codeOf(await close(fin2, ok))).toBe('CASH_TRANSFER_STATUS_INVALID');
+    await ledgerOk([pos, central], [id]);
+  });
+
+  it('clôture d’un écart avec demande (AV-183) : façade de la décision CASH_TRANSFER_DISCREPANCY, mêmes refus qu’approvals', async () => {
+    const { seller, pos } = await newPdv();
+    const central = await newCentral();
+    const { id } = await send(seller, {
+      fromAccountId: pos,
+      toAccountId: central,
+      amountXaf: 6_000,
+    });
+    expect((await receive(fin1, id, 5_500)).status).toBe('APPLIED_WITH_WARNINGS');
+    const [request] = await approvalOf(id);
+    expect(request).toMatchObject({ status: 'PENDING' });
+    const close = (actor: Actor, payload: Record<string, unknown>) =>
+      run(actor, 'finance.cash_transfer.close_discrepancy', id, at('20:00'), payload);
+    // Le demandeur (récepteur) : auto-approbation refusée par approvals, avant tout contrôle propre.
+    expect(codeOf(await close(fin1, { imputation: 'SENDER', reason: 'Erreur' }))).toBe(
+      'SELF_APPROVAL_FORBIDDEN',
+    );
+    expect(codeOf(await close(fin2, { imputation: 'CARRIER', reason: 'Erreur' }))).toBe(
+      'CASH_TRANSFER_IMPUTATION_INVALID',
+    ); // pas de porteur
+    const closed = await close(fin2, { imputation: 'SENDER', reason: 'Erreur de comptage' });
+    expect(closed.status, JSON.stringify(closed)).toBe('APPLIED');
+    expect(closed).toMatchObject({
+      server_refs: { status: 'CLOSED', approvalRequestId: fromBin(request!.id) },
+    });
+    expect((await approvalOf(id))[0]).toMatchObject({
+      status: 'APPROVED',
+      decision_option: 'SENDER',
+    });
+    expect(fromBin((await approvalOf(id))[0]!.decided_by!)).toBe(fin2.userId);
+    expect(await transferRow(id)).toMatchObject({
+      status: 'CLOSED',
+      imputation: 'SENDER',
+      closing_reason: 'Erreur de comptage',
+    });
+    expect(await movementsOf(id)).toHaveLength(2);
+    await ledgerOk([pos, central], [id]);
   });
 
   it('réception en ligne sur un compte désactivé de force : refus métier CASH_ACCOUNT_INACTIVE, jamais RETRY_LATER', async () => {

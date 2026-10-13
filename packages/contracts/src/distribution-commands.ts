@@ -110,6 +110,21 @@ export const cashTransferCancelPayloadSchema = z.object({
 });
 export type CashTransferCancelPayload = z.infer<typeof cashTransferCancelPayloadSchema>;
 
+/**
+ * `finance.cash_transfer.close_discrepancy` — en ligne, Finance ou Direction (AV-183, P5-23) : clôture
+ * d'un écart de remise (`DISCREPANCY_PENDING` → `CLOSED`), sans mouvement (ADR-032 §7). Façade de la
+ * décision `CASH_TRANSFER_DISCREPANCY` si l'écart a sa demande, clôture directe sinon (aucune politique
+ * active à la réception). `imputation` : `SENDER`, `CARRIER`, `RECEIVER` ou `COMPANY` (contrôlée par le
+ * domaine, `checkTransferImputation` : `CARRIER` exige un porteur connu de la remise).
+ */
+export const cashTransferCloseDiscrepancyPayloadSchema = z.object({
+  imputation: text(30),
+  reason: text(500),
+});
+export type CashTransferCloseDiscrepancyPayload = z.infer<
+  typeof cashTransferCloseDiscrepancyPayloadSchema
+>;
+
 // --- Quotas d'appareil (inventory.allocation.*) --------------------------------------------------------------------
 
 /**
