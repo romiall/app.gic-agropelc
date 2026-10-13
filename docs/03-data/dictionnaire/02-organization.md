@@ -225,7 +225,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `pricing.max_discount_pct.<ROLE>` | 0 / 5 / 15 | AV-026 |
 | `pricing.stale_rules_hours` | 24 | AV-063 |
 | `finance.cash_holding_max_xaf` | 200 000 | D09 §14 |
-| `finance.cash_sessions_per_day_max` | 1 (visible de l'appareil) | AV-154 : sessions de caisse par PDV et par jour métier |
+| `finance.cash_sessions_per_day_max` | 0 = sans limite (visible de l'appareil ; révision « AV-154 (13/10/2026) » depuis 1) | AV-154 tranché : sessions de caisse par PDV et par jour métier ; une valeur ≥ 1 borne un site, une valeur invalide vaut « sans limite » |
 | `finance.cash_session_force_close_hours` | 24 | D05 §14 : au-delà, session signalée et clôture d'office possible |
 | `finance.cash_variance_critical_xaf` | 10 000 | D13 : gravité critique de l'alerte d'écart de caisse |
 | `finance.cash_variance_tolerance_xaf` | 0 | AV-057 : tout écart est validé ; un écart dans la tolérance est validé d'office |

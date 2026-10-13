@@ -324,7 +324,8 @@ export async function cashNumberSetting(
 
 /** Valeurs par défaut des paramètres de caisse (seed P5-03), utilisées faute de version en vigueur. */
 export const CASH_SETTING_DEFAULTS = {
-  sessionsPerDayMax: { key: 'finance.cash_sessions_per_day_max', fallback: 1 },
+  // AV-154 (13/10/2026) : 0 = sans limite, nouveau défaut.
+  sessionsPerDayMax: { key: 'finance.cash_sessions_per_day_max', fallback: 0 },
   forceCloseHours: { key: 'finance.cash_session_force_close_hours', fallback: 24 },
   varianceToleranceXaf: { key: 'finance.cash_variance_tolerance_xaf', fallback: 0 },
   varianceCriticalXaf: { key: 'finance.cash_variance_critical_xaf', fallback: 10_000 },

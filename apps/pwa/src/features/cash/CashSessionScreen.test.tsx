@@ -220,9 +220,11 @@ describe('Caisse du PDV (ECR-DIS-02)', () => {
 
   it('ouverture hors ligne au-delà de la limite du jour : rattachée, aucune caisse ouverte sur le téléphone', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    await getDb().projections.put(
+    // Limite d'une session par jour réglée pour le site (sans limite par défaut, AV-154).
+    await getDb().projections.bulkPut([
       cashSessionRow({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00.000Z' }),
-    );
+      meSettingRow('finance.cash_sessions_per_day_max', 1, { type: 'SITE', id: IDS.site }),
+    ]);
     const user = userEvent.setup();
     renderScreen();
     await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '5000');
@@ -348,10 +350,31 @@ describe('Caisse du PDV (ECR-DIS-02)', () => {
     expect(screen.queryByText(/en attente de validation/)).not.toBeInTheDocument();
   });
 
-  it('limite de sessions du jour : refusée en ligne, rattachée hors ligne (AV-154)', async () => {
+  it('sans limite par défaut : une nouvelle session s’ouvre après une session close du jour (AV-154, 13/10/2026)', async () => {
     await getDb().projections.put(
       cashSessionRow({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00.000Z' }),
     );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.type(await screen.findByLabelText('Montant compté (F CFA)'), '0');
+    expect(screen.queryByText(/Le nombre de sessions de caisse du jour est atteint/)).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Ouvrir la caisse' })).toBeEnabled(),
+    );
+  });
+
+  it('limite de sessions du jour : refusée en ligne, rattachée hors ligne (AV-154)', async () => {
+    // Limite d'une session par jour réglée pour le site (sans limite par défaut) ; datée avant les
+    // versions suivantes du test, qui la remplacent.
+    await getDb().projections.bulkPut([
+      cashSessionRow({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00.000Z' }),
+      meSettingRow(
+        'finance.cash_sessions_per_day_max',
+        1,
+        { type: 'SITE', id: IDS.site },
+        '2025-12-01T00:00:00.000Z',
+      ),
+    ]);
     const user = userEvent.setup();
     const { unmount } = renderScreen();
     expect(

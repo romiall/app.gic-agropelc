@@ -240,7 +240,7 @@ export function deviceCash(input: {
         openedAt: new Date(command.occurred_at),
         capturedOffline: command.captured_offline,
         sessions: [...planSessions(views, input.userId), ...leftDataset],
-        maxSessionsPerDay: normalizedSessionsPerDay(Number(input.maxSessionsPerDay ?? 1)),
+        maxSessionsPerDay: normalizedSessionsPerDay(Number(input.maxSessionsPerDay ?? 0)),
       });
       if (plan.kind === 'MERGE') {
         attached.push({
@@ -573,7 +573,7 @@ export function cashOpenPlan(input: {
       ),
       ...input.cash.leftDataset,
     ],
-    maxSessionsPerDay: normalizedSessionsPerDay(Number(input.maxSessionsPerDay ?? 1)),
+    maxSessionsPerDay: normalizedSessionsPerDay(Number(input.maxSessionsPerDay ?? 0)),
   });
 }
 

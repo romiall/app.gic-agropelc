@@ -89,14 +89,20 @@ export interface PlanCashSessionOpenInput {
    * jour métier. Une session hors de ces cas est sans effet sur la décision.
    */
   readonly sessions: readonly ExistingCashSession[];
-  /** `finance.cash_sessions_per_day_max` (AV-154) ; une valeur < 1 ou invalide vaut 1. */
+  /**
+   * `finance.cash_sessions_per_day_max` (AV-154) : 0 = sans limite (défaut depuis la décision du
+   * 13/10/2026) ; une valeur négative ou invalide vaut aussi « sans limite ».
+   */
   readonly maxSessionsPerDay: number;
   readonly previousDayOverlap?: CashSessionPreviousDayOverlapMode;
 }
 
-/** Limite de sessions par jour : entier ≥ 1 (une valeur absurde ne bloque jamais toute ouverture). */
+/**
+ * Limite de sessions par jour (AV-154, tranché le 13/10/2026 : sans limite par défaut) : entier ≥ 1, ou
+ * `Infinity` pour 0 (sans limite) et pour une valeur absurde, qui ne bloque jamais une ouverture.
+ */
 export function normalizedSessionsPerDay(value: number): number {
-  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1;
+  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : Number.POSITIVE_INFINITY;
 }
 
 const byOpening = (a: ExistingCashSession, b: ExistingCashSession) =>

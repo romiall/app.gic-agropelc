@@ -165,7 +165,8 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   { key: 'finance.cash_holding_max_xaf', value: 200_000, isClientVisible: false, ref: 'D09 §14' },
   // P5-03 (ADR-032, AV-057, AV-153, AV-154, AV-158) : sessions de caisse et remises de fonds.
   // Nombre de sessions par PDV et par jour métier (AV-154) ; lu par l'appareil à l'ouverture.
-  { key: 'finance.cash_sessions_per_day_max', value: 1, isClientVisible: true, ref: 'AV-154' },
+  // AV-154, tranché le 13/10/2026 : 0 = sans limite (une seule session ouverte à la fois).
+  { key: 'finance.cash_sessions_per_day_max', value: 0, isClientVisible: true, ref: 'AV-154' },
   // Au-delà de ces heures, une session ouverte est signalée et la Finance peut la clôturer d'office.
   {
     key: 'finance.cash_session_force_close_hours',
@@ -309,6 +310,13 @@ export const SYSTEM_SETTING_REVISIONS: readonly SystemSettingRevision[] = [
       'PORC_ENGRAISSEMENT',
       'PORC_NAISSAGE',
     ],
+    isClientVisible: true,
+  },
+  {
+    // AV-154 tranché le 13/10/2026 (lot de mise en pilote, MP-03) : sessions sans limite par jour.
+    revision: 'AV-154 (13/10/2026)',
+    key: 'finance.cash_sessions_per_day_max',
+    value: 0,
     isClientVisible: true,
   },
 ];

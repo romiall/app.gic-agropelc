@@ -231,7 +231,7 @@ Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'u
 |---|---|
 | MP-01 | **Fait** (13/10/2026, `e50a656`) — décisions du porteur et réalignement documentaire (registre AV, plan, `CLAUDE.md`) |
 | MP-02 | **Fait** (13/10/2026) — référentiels de départ : 16 motifs `VISIT_OUTCOME`, `PROSPECT_LOST`, `CANCELLATION` (AV-248, `AUTRE` avec commentaire exigé) dans `catalog`, et 5 catégories de clients (AV-017) dans le jeu `customer_category`, semés de façon rejouable (`seedReasonCodes`, codes absents seulement) ; `seed.test.ts` ; S-15 fait ; appliqués à `gic_agropelc_dev` et `gic_agropelc_p523d` |
-| MP-03 | Caisse : sessions sans limite par jour (AV-154 : `finance.cash_sessions_per_day_max`, 0 = sans limite, nouveau défaut), garde de la PWA alignée |
+| MP-03 | **Fait** (13/10/2026) — caisse : sessions sans limite par jour (AV-154 : `finance.cash_sessions_per_day_max`, 0 = sans limite, nouveau défaut ; révision du paramètre pour les bases existantes ; `normalizedSessionsPerDay` partagé par le serveur et la PWA, une valeur invalide vaut « sans limite ») ; une seule session ouverte à la fois inchangée ; tests du domaine, du serveur et de la PWA |
 | MP-04 | Réception d'achat au-delà du seuil de photo acceptée et marquée « photo manquante », signal pour les Achats (AV-246 ; BR-APP-014 précisé) |
 | MP-05 | Connexion : message distinct pour un appareil bloqué, perdu ou retiré ; compte suspendu générique, motif à l'audit (AV-253) |
 | MP-06 | Appareils : lecture `GET /devices` (portée d'AV-247), code court à la connexion, écran ECR-ADM-05 (approuver, bloquer, débloquer, déclarer perdu, retirer, rattacher), bandeau « en attente d'approbation », commande d'installation `db:approve-device` (AV-254), actions d'accueil reliées |

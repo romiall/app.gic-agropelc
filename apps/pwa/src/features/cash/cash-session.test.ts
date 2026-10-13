@@ -596,12 +596,15 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
       code: 'CASH_SESSION_ALREADY_OPEN',
     });
     expect(plan(open, false, 1)).toMatchObject({ kind: 'MERGE', reason: 'OPEN_SESSION_EXISTS' });
-    // Session du jour close : la limite du jour (paramètre, 1 à défaut) décide.
+    // Session du jour close : la limite du jour (paramètre ; sans limite à défaut ou à 0, AV-154
+    // tranché le 13/10/2026) décide.
     const closed = cashOf(
       [],
       [session({ status: 'PENDING_VALIDATION', closed_at: '2026-10-10T08:00:00.000Z' })],
     );
-    expect(plan(closed, true, undefined)).toMatchObject({
+    expect(plan(closed, true, undefined)).toMatchObject({ kind: 'CREATE' });
+    expect(plan(closed, true, 0)).toMatchObject({ kind: 'CREATE' });
+    expect(plan(closed, true, 1)).toMatchObject({
       kind: 'REJECT',
       code: 'CASH_SESSION_DAILY_LIMIT',
     });

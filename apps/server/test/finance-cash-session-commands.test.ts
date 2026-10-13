@@ -636,7 +636,9 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
     });
 
     it('limite du jour métier (AV-154) : refus en ligne, fusion hors ligne ; réglage de site à 2 ; jour suivant', async () => {
+      // Limite réglée à 1 pour le site (sans limite par défaut depuis le 13/10/2026).
       const pos = await newPos();
+      await siteSetting(pos.siteId, 'finance.cash_sessions_per_day_max', 1);
       const first = await openOk(pos, 0, t('6', '07:00'));
       expect((await closeSession(pos, first, 0, t('6', '12:00'))).status).toBe('APPLIED');
       expect(codeOf(await openSession(pos, 0, t('6', '13:00')))).toBe('CASH_SESSION_DAILY_LIMIT');
@@ -658,6 +660,21 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       const afternoon = await openOk(two, 0, t('6', '13:00'));
       expect((await closeSession(two, afternoon, 0, t('6', '18:00'))).status).toBe('APPLIED');
       expect(codeOf(await openSession(two, 0, t('6', '19:00')))).toBe('CASH_SESSION_DAILY_LIMIT');
+    });
+
+    it('0 = sans limite (AV-154 tranché le 13/10/2026) : trois sessions le même jour, une seule ouverte à la fois', async () => {
+      const pos = await newPos();
+      await siteSetting(pos.siteId, 'finance.cash_sessions_per_day_max', 0);
+      for (const [from, to] of [
+        ['07:00', '10:00'],
+        ['10:30', '14:00'],
+        ['14:30', '18:00'],
+      ] as const) {
+        const session = await openOk(pos, 0, t('6', from));
+        expect(codeOf(await openSession(pos, 0, t('6', from)))).toBe('CASH_SESSION_ALREADY_OPEN');
+        expect((await closeSession(pos, session, 0, t('6', to))).status).toBe('APPLIED');
+      }
+      expect(await sessionsOf(pos.accountId)).toHaveLength(3);
     });
 
     it('solde d’ouverture à l’instant exact de la clôture précédente porteuse d’un écart de −500 : compté une fois', async () => {

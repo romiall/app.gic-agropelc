@@ -258,20 +258,36 @@ describe('planCashSessionOpen : ouverture (AV-154, ADR-032 §2 et §8)', () => {
     ).toMatchObject({ kind: 'CREATE' });
   });
 
-  it('une limite invalide ou inférieure à 1 vaut 1', () => {
-    expect(normalizedSessionsPerDay(0)).toBe(1);
-    expect(normalizedSessionsPerDay(-3)).toBe(1);
-    expect(normalizedSessionsPerDay(Number.NaN)).toBe(1);
+  it('0 vaut « sans limite » (AV-154, 13/10/2026), comme une valeur invalide ; sinon entier ≥ 1', () => {
+    expect(normalizedSessionsPerDay(0)).toBe(Number.POSITIVE_INFINITY);
+    expect(normalizedSessionsPerDay(-3)).toBe(Number.POSITIVE_INFINITY);
+    expect(normalizedSessionsPerDay(Number.NaN)).toBe(Number.POSITIVE_INFINITY);
+    expect(normalizedSessionsPerDay(0.5)).toBe(Number.POSITIVE_INFINITY);
+    expect(normalizedSessionsPerDay(1)).toBe(1);
     expect(normalizedSessionsPerDay(2.7)).toBe(2);
-    const sessions = [closed('S1', '2026-10-08T07:00:00Z', '2026-10-08T08:00:00Z')];
+    // Sans limite : une sixième session du même jour métier s'ouvre, en ligne comme hors ligne.
+    const sessions = ['07', '08', '09', '10', '11'].map((hour, index) =>
+      closed(`S${index + 1}`, `2026-10-08T${hour}:00:00Z`, `2026-10-08T${hour}:30:00Z`),
+    );
+    for (const capturedOffline of [false, true]) {
+      expect(
+        planCashSessionOpen({
+          openedAt: at('2026-10-08T12:00:00Z'),
+          capturedOffline,
+          sessions,
+          maxSessionsPerDay: normalizedSessionsPerDay(0),
+        }),
+      ).toMatchObject({ kind: 'CREATE' });
+    }
+    // Une seule session ouverte à la fois reste la règle (BR-DIS-006, INV-FIN-06).
     expect(
       planCashSessionOpen({
-        openedAt: at('2026-10-08T09:00:00Z'),
+        openedAt: at('2026-10-08T12:00:00Z'),
         capturedOffline: false,
-        sessions,
-        maxSessionsPerDay: 0,
+        sessions: [...sessions, open('S6', '2026-10-08T11:45:00Z')],
+        maxSessionsPerDay: normalizedSessionsPerDay(0),
       }),
-    ).toMatchObject({ kind: 'REJECT', code: 'CASH_SESSION_DAILY_LIMIT' });
+    ).toMatchObject({ kind: 'REJECT', code: 'CASH_SESSION_ALREADY_OPEN' });
   });
 
   it('propriété : un plan CREATE ne chevauche jamais une session existante (filet de la base jamais atteint)', () => {
