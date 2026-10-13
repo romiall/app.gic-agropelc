@@ -340,3 +340,20 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-080 (part P5) | DoD de P5 : journée de PDV rejouée hors ligne par des appareils virtuels, écarts de caisse expliqués par le registre (`p5-pdv-offline-day.test.ts`) | Vérifié par appareils virtuels ; pilote réel à mener |
 | REQ-201, REQ-203 (part P5) | `p5-sync-projections.test.ts` (jeux de P5), `p5-pull-cursor.test.ts` (AV-198), `p5-pdv-offline-day.test.ts` ; jeux appliqués par la PWA (F-56) | Vérifié côté serveur ; PWA livrée, non vérifiée dans le navigateur |
 | REQ-204 (part P5) | `p5-pdv-three-tablets.test.ts`, `inventory-stock-negative.test.ts` (AV-215), balayage `p5-invariants.test.ts` (INV-STK-05, 10, 11, 20 ; INV-DIS-01 à 03 ; INV-FIN-05, 11) | Vérifié |
+
+### 17.10 Phase P8 (13/10/2026) — [`18-demonstration-p8.md`](18-demonstration-p8.md)
+
+| REQ | Vérifié par | État à la fin de P8 |
+|---|---|---|
+| REQ-044 (part P8) | `finance-supplier-invoice-commands.test.ts`, `finance-supplier-payment-commands.test.ts`, `p8-read.e2e.test.ts` (`/supplier-invoices`, `/supplier-payments`, `/payables`, payé du rapprochement) | Vérifié côté serveur ; écrans ECR-FIN-04, ECR-APP-05 à livrer |
+| REQ-045 (part P8) | `p8-acceptance.e2e.test.ts` (AT-025 : WF-09 de bout en bout avec les commandes de P6, de la commande au paiement validé par la Direction) | Vérifié |
+| REQ-046 (part P8) | `p8-acceptance.e2e.test.ts` (commandé, livré, rejeté, accepté, facturé, payé au rapprochement), `p8-invariants.test.ts` et `verifySupplierLedger` (INV-FIN-07, facturé des BC), `p8-lock-order.test.ts` | Vérifié |
+| REQ-051 (part P8) | `finance-expense-commands.test.ts`, `finance-expense-decisions.test.ts`, `p8-costs.e2e.test.ts` et `p8-acceptance.e2e.test.ts` (vue d'ensemble : CA, encaissé, créances, dépenses, dettes, trésorerie ; AT-040) | Vérifié côté serveur ; écrans ECR-FIN-02, 03, 06 à livrer |
+| REQ-052 (part P8) | `p8-costs.e2e.test.ts` et `production-acceptance.test.ts` (valeur des pertes par produit, lot et motif, BR-FIN-044 ; AT-041), `finance-expense-commands.test.ts` (écritures de coût des dépenses) | Vérifié |
+| REQ-053 (part P8) | `production-acceptance.test.ts` (AT-026 avec la dépense de 140 000 ; lot abattu dont les produits sont vendus, AV-366), `p8-lot-margin.test.ts`, `verifyExpenses` (INV-FIN-08) | Vérifié sur l'exemple de la stratégie finance ; marge d'un lot pilote à valider par la Direction (DoD) |
+| REQ-059 (part P8) | `GET /finance/overview` (`p8-costs.e2e.test.ts`, blocs selon les droits, revue de P8-14) | Lecture serveur livrée ; tableau Finance en P9 |
+| REQ-081 (part P8) | `production-acceptance.test.ts` (lot → abattage → produits vendus → marge du lot) | Vérifié |
+| REQ-084 (part P8) | AT-040 et AT-041 automatisés (`p8-acceptance.e2e.test.ts`, `production-acceptance.test.ts`, `p8-costs.e2e.test.ts`) | Vérifié pour AT-040 et AT-041 ; autres questions en P9 |
+| REQ-080 (part P8) | `p8-acceptance.e2e.test.ts` (journée de PDV hors ligne avec dépenses, validation a posteriori, attendu de la session) | Vérifié par appareil virtuel ; pilote réel à mener |
+| REQ-201, REQ-203 (part P8) | `p8-sync-projections.test.ts` (dépenses de l'auteur, catégories, seuils ; fenêtre élargie en P8-14) | Vérifié côté serveur ; écrans à livrer |
+

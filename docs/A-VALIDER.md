@@ -271,8 +271,8 @@ Classification (PM §45) :
 | AV-358 | Facture fournisseur sans bon de commande | SECONDAIRE | P8 | Mise en revue (`MISMATCH`) ; paramètre `finance.invoice_without_po_mode` | OUVERT |
 | AV-359 | Avoir fournisseur | IMPORTANTE | P8 | Annulation motivée de la facture contestée puis facture rectificative (même référence admise) ; pas d'entité avoir | OUVERT |
 | AV-360 | Échéance par défaut d'une facture fournisseur | SECONDAIRE | P8 | Saisie, sinon date de facture + délai du fournisseur, sinon date de facture | OUVERT |
-| AV-361 | Réception ou bon de commande annulé après facturation | SECONDAIRE | P8 | Pas de garde côté achats ; écart « facturé > accepté » signalé par la réconciliation, corrigé par avoir | OUVERT |
-| AV-362 | Avances fournisseurs et affectation ultérieure | SECONDAIRE | P8 | Avance admise (`finance.supplier_advance_allowed`) ; affectation ultérieure par `finance.supplier_payment.allocate` | OUVERT |
+| AV-361 | Réception ou bon de commande annulé après facturation | SECONDAIRE | P8 | Pas de garde côté achats ; écart « facturé > accepté » lisible au rapprochement, approbation non informée refusée, corrigé par avoir | OUVERT |
+| AV-362 | Avances fournisseurs et affectation ultérieure | SECONDAIRE | P8 | Avance admise (`finance.supplier_advance_allowed`) ; affectation ultérieure par `finance.supplier_payment.allocate`, complément sur la même facture regroupé | OUVERT |
 | AV-363 | Paiement fournisseur validé : date du décaissement, factures payées entre-temps | SECONDAIRE | P8 | Décaissement daté de la décision ; décision refusée si une affectation dépasse le solde | OUVERT |
 | AV-364 | Annulation d'un paiement fournisseur enregistré | SECONDAIRE | P8 | Par la Direction, avec motif, sans demande séparée | OUVERT |
 | AV-365 | Lecture des factures, paiements fournisseurs et de la vue d'ensemble financière | SECONDAIRE | P8 | `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` | OUVERT |

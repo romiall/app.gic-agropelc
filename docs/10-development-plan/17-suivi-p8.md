@@ -12,7 +12,8 @@
 | Migrations | versions `20261101xxxxxx` |
 | AV | numéros 350 à 399 (provisoires) ; utilisés : AV-350 à AV-366 |
 | ADR | numéros 060 à 069 (provisoires) ; utilisés : ADR-060 à ADR-062 |
-| Démonstration de sortie | `18-demonstration-p8.md` (à la clôture) |
+| Démonstration de sortie | [`18-demonstration-p8.md`](18-demonstration-p8.md) |
+| Base neuve de clôture | `gic_agropelc_p8n` (13/10/2026) |
 
 Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agropelc_p8` neuve, **1 111 tests verts** (127 fichiers). Un premier passage a donné un dépassement de délai sous charge dans `sales-allocations.test.ts`, vert à la relance (33 sur 33).
 
@@ -32,9 +33,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-10 | Jeux hors ligne : dépenses de l'auteur (`cash`, 30 jours), catégories (`catalog`), seuils (`me`) | `c7f40eb` | Fait : 3 tests par le pull réel ; 3 mutations détectées, 1 équivalente (la garde de portée `USER` double la vérification de l'auteur) |
 | P8-11 | Coûts complets et marges : CA d'un lot avec ses produits d'abattage, valeur des pertes, vue d'ensemble financière | `4dcc4a7` | Fait : 5 tests (2 unitaires, 3 HTTP), 8 mutations détectées ; le câblage de bout en bout de la marge d'un lot abattu est vérifié en P8-13 |
 | P8-12 | Invariants et réconciliation : `verifyExpenses`, `verifySupplierLedger` dans la réconciliation quotidienne ; balayage de toute la base ; ordre des verrous en concurrence | `2914381` | Fait : 5 tests de balayage, 7 tests de concurrence et de détection, 1 test de la tâche ; 12 mutations détectées sur `gic_agropelc_p8m`, 1 équivalente (verrou de l'en-tête du BC seul retiré : les lignes du BC, verrouillées aussi, sérialisent déjà les paires testées ; l'en-tête reste verrouillé pour l'ordre global d'ADR-038) |
-| P8-13 | Acceptation : AT-025 (WF-09 de bout en bout), AT-040, AT-041, AT-026 avec la dépense directe de 140 000, lot abattu dont les produits sont vendus, journée de PDV hors ligne avec dépenses | _à venir_ | Fait : 3 tests de bout en bout (`p8-acceptance.e2e.test.ts`), 1 test d'acceptation de la production ; 6 mutations détectées sur `gic_agropelc_p8m` |
-| P8-14 | Revue adverse : quatre axes (dépenses, fournisseurs, lectures et synchronisation, schéma et vérifications), deux vérificateurs sceptiques ; correctifs | `b38c6be` (lectures) et _à venir_ | Fait : 28 constats (aucun critique), 11 confirmés, 11 partiels, 6 réfutés ou acceptés ; 27 mutations détectées (11 lectures, 16 fournisseurs, dépenses et vérifications) ; voir §6 |
-| P8-15 | Voir le backlog du plan | — | À faire |
+| P8-13 | Acceptation : AT-025 (WF-09 de bout en bout), AT-040, AT-041, AT-026 avec la dépense directe de 140 000, lot abattu dont les produits sont vendus, journée de PDV hors ligne avec dépenses | `8f3bf1d` | Fait : 3 tests de bout en bout (`p8-acceptance.e2e.test.ts`), 1 test d'acceptation de la production ; 6 mutations détectées sur `gic_agropelc_p8m` |
+| P8-14 | Revue adverse : quatre axes (dépenses, fournisseurs, lectures et synchronisation, schéma et vérifications), deux vérificateurs sceptiques ; correctifs | `b38c6be`, `8c1b775` | Fait : 28 constats (aucun critique), 11 confirmés, 11 partiels, 6 réfutés ou acceptés ; 27 mutations détectées (11 lectures, 16 fournisseurs, dépenses et vérifications) ; voir §6 |
+| P8-15 | Clôture : suite complète sur base neuve, démonstration, matrice §17.10 | ce commit | Fait : serveur 1 178 tests verts (139 fichiers), `db` 200, domaine 405, contrats 237 ; typage de la PWA vert |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -112,7 +113,7 @@ Alignés dans la documentation sans changement de code :
 Réfutés : B7 (accepté par ADR-061 §6 : la décision est refusée proprement, AV-363) et la moitié de B5 (l'appareil d'une commande n'est jamais nul).
 
 **Pour la session principale (hors de P8, non corrigés ici)** :
-- B4 : `approvals.request.approve` n'a aucune garde hors ligne. Une décision saisie hors ligne ou antidatée décaisse un paiement à la date de l'appareil, alors que les machines à états disent « aucune décision hors ligne ». Le correctif est générique (`buildDecisionCommandHandler`) et touche tous les types de décision.
+- B4 (corrigé par la session principale dans MP-07, 13/10/2026) : `approvals.request.approve` n'avait aucune garde hors ligne. Une décision saisie hors ligne ou antidatée décaisse un paiement à la date de l'appareil, alors que les machines à états disent « aucune décision hors ligne ». Le correctif est générique (`buildDecisionCommandHandler`) et touche tous les types de décision.
 - A7 : l'annulation d'une dépense de frais généraux et `production.overhead.allocate` ne partagent aucun verrou. Le même trou existe déjà dans `inventory.overhead.cancel` (P7). Le correctif est un verrou partagé sur la répartition du mois.
 - A6 : un justificatif exigé entre 10 000 et 50 000 n'est jamais vérifié à l'arrivée du fichier. Cela relève d'une alerte asynchrone, en P9.
 
