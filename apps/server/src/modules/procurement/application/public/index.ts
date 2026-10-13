@@ -34,3 +34,12 @@ export type { ReceiptForPlacement } from './receipt-placement.js';
 
 export { procurementOverview } from './home-metrics.js';
 export type { ProcurementOverview } from './home-metrics.js';
+
+// P8-07 (ADR-061 §3) : facturation d'un BC, appelée par `finance` (quantités facturées écrites ici).
+export {
+  lockOrderForInvoicing,
+  applyInvoicedQuantities,
+  receiptLinesForInvoicing,
+  invoicedQuantitiesOfOrder,
+} from './invoicing.js';
+export type { InvoicingOrder, InvoicingOrderLine, InvoicingReceiptLine } from './invoicing.js';

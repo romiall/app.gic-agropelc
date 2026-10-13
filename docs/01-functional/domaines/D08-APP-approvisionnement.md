@@ -90,7 +90,7 @@ ADM (validations, pièces, emplacements), CAT (produits achetables), STK (entré
 
 ## 11. Événements consommés
 
-`ApprovalGranted` / `ApprovalRejected` (types `PURCHASE_REQUEST`, `PURCHASE_ORDER`, `RECEIPT_WITHOUT_PO`, `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION`), `SupplierInvoiceRecorded` (mise à jour de la quantité facturée des lignes de BC, pour le rapprochement).
+`ApprovalGranted` / `ApprovalRejected` (types `PURCHASE_REQUEST`, `PURCHASE_ORDER`, `RECEIPT_WITHOUT_PO`, `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION`), la quantité facturée des lignes de BC n'est pas mise à jour par un événement : `finance` appelle l'API publique `applyInvoicedQuantities` de `procurement` quand une facture devient `APPROVED` ou qu'une facture approuvée est annulée (ADR-061 §3, P8-07 ; `procurement` n'importe pas `finance`).
 
 ## 12. Fonctionnement hors ligne
 

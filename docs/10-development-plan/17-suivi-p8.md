@@ -24,9 +24,10 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-02 | Domaine partagé (`expenses.ts`, `supplier-ledger.ts`) et schémas des commandes (`finance-operations-commands.ts`) | `290f88a` | Fait : domaine 401 tests (37 nouveaux, 100 % de couverture des deux fichiers), contrats 236 tests ; 8 mutations détectées ; typage, ESLint, frontières verts |
 | P8-03 | `db` : migration `20261101090000`, seed, `schema.sql`, types Kysely, dictionnaires | `b588b23` | Fait : `db` 200 tests (11 nouveaux), six mutations du schéma détectées sur `gic_agropelc_p8m` ; serveur RBAC et validations 36 tests ; typage vert |
 | P8-04 | Catégories de dépense : commandes, publication `catalog`, projection | `cc09f77` | Fait : 5 tests serveur, 7 mutations détectées ; seed 12 tests |
-| P8-05 | Dépenses : enregistrement (en ligne, hors ligne, PDV, revue a posteriori), paiement, annulation | _à venir_ | Fait : 10 tests serveur, 15 mutations détectées ; non-régression de 7 fichiers voisins verte (101 tests) |
-| P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | _à venir_ | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
-| P8-07 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-05 | Dépenses : enregistrement (en ligne, hors ligne, PDV, revue a posteriori), paiement, annulation | `eb036be` | Fait : 10 tests serveur, 15 mutations détectées ; non-régression de 7 fichiers voisins verte (101 tests) |
+| P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | `eb036be` | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
+| P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | _à venir_ | Fait : 6 tests serveur, 12 mutations détectées |
+| P8-08 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -41,7 +42,8 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-05 | `finance` (P5) : `cash-transfer-support.ts` | `canActOnCashAccount` : permission optionnelle (défaut inchangé) | ADR-060 §4 |
 | P8-05 | `procurement/application/public` (`supplier-query.ts`, `index.ts`) | `findSupplier` (avancé de P8-07) | ADR-061 |
 | P8-05 | `packages/contracts` (`error-codes.ts`) | `EXPENSE_REVIEW_REQUIRED` en fin de `WARNING_CODES` | R8 |
-| P8-07 | `procurement/application/public` | `findSupplier`, `applyInvoicedQuantities` | ADR-061 §3 |
+| P8-07 | `procurement/application/public` (`invoicing.ts`, `index.ts`) | `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing`, `invoicedQuantitiesOfOrder` | ADR-061 §3 |
+| P8-07 | Documentation de P6 | D08 l.93 (quantité facturée écrite à l'appel de `finance`), dictionnaire `08-procurement.md` (`invoiced_qty_base`), `02-modules.md` (API interne de `procurement`) | ADR-061 §3 |
 | P8-09 | `procurement-api` (rapprochement) | payé (`paidXaf`) composé depuis `finance` | ADR-061 §3 |
 | P8-11 | `production/application/public`, `production-api` | `lotStockLotIds`, CA de la marge de lot avec les produits d'abattage | ADR-062 §1, AV-366 |
 | P8-11 | `inventory` : lecture et route | `lossValueSummary`, `GET /inventory/losses/summary` | ADR-062 §3 |

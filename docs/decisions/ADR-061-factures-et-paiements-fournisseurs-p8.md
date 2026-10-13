@@ -38,7 +38,7 @@ P6 a livré bons de commande et réceptions. Le rapprochement (`GET /purchase-or
 
    Résultat : `APPROVED` si conforme. Sinon `MISMATCH`, avec le détail dans `mismatch_details` et une demande `INVOICE_MISMATCH` sous la politique `INVOICE_MISMATCH_DEFAULT` (`finance.supplier_invoice.approve`). Une facture arrivée avant la réception est donc en `MISMATCH` (D09 l.192).
 3. **Quantités facturées : écrites par `procurement`, appelé par `finance`** (option A ; tranche D08 l.93 contre D09 l.171).
-   - `procurement` expose `applyInvoicedQuantities(uow, {orderId, lines:[{poLineId, deltaBase}]})`. Cette fonction publique verrouille l'en-tête puis les lignes du BC, met à jour `invoiced_qty_base` et incrémente `version`. Le propriétaire écrit donc sa table.
+   - `procurement` expose `lockOrderForInvoicing(uow, orderId)` (en-tête puis lignes du BC verrouillés, prix, accepté, déjà facturé) et `applyInvoicedQuantities(uow, {orderId, lines:[{poLineId, deltaBase}]})`, qui met à jour `invoiced_qty_base` (les lignes de BC n'ont pas de version). Le propriétaire écrit donc sa table. Le rapprochement se fait sous ce verrou : deux factures concurrentes sur les mêmes lignes se rapprochent l'une après l'autre (P8-07).
    - `finance` l'appelle dans sa transaction : `+` quand une facture devient `APPROVED`, `−` quand une facture approuvée est annulée.
    - Une facture en `MISMATCH` ou `DISPUTED` ne compte pas. Deux factures pour la même quantité ne passent donc jamais sans décision.
    - Le rapprochement de P6 affiche ainsi le facturé réel (en quantité). Le payé (`paidXaf`) est composé dans la couche de transport, par une lecture publique de `finance` : `procurement` n'importe pas `finance`.
