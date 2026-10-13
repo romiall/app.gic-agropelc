@@ -40,6 +40,7 @@ import {
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { paidXafOfPurchaseOrder } from '../modules/finance/application/public/index.js';
 import {
   PROCUREMENT_LIST_DEFAULT_LIMIT,
   PROCUREMENT_LIST_MAX_LIMIT,
@@ -388,7 +389,15 @@ export class ProcurementReadController {
       await purchaseOrderMatching(this.db, id),
       siteResourceOf,
     );
-    return { matching: (await this.canValue(request, now)) ? matching : maskMatching(matching) };
+    if (!(await this.canValue(request, now))) return { matching: maskMatching(matching) };
+    // P8-09 (ADR-061 §3) : le payé du BC vient de `finance` (composition de transport, `procurement`
+    // n'importe pas `finance`).
+    return {
+      matching: {
+        ...matching,
+        totals: { ...matching.totals, paidXaf: await paidXafOfPurchaseOrder(this.db, id) },
+      },
+    };
   }
 
   @Get('receipts')

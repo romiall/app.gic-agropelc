@@ -27,8 +27,9 @@ Point de départ vérifié le 13/10/2026 : suite serveur complète sur `gic_agro
 | P8-05 | Dépenses : enregistrement (en ligne, hors ligne, PDV, revue a posteriori), paiement, annulation | `eb036be` | Fait : 10 tests serveur, 15 mutations détectées ; non-régression de 7 fichiers voisins verte (101 tests) |
 | P8-06 | Décisions `EXPENSE` (approbation, rejet, plafond par rôle, retrait refusé) | `eb036be` | Fait : 4 tests serveur, 6 mutations détectées ; domaine 18 tests pour les dépenses |
 | P8-07 | Factures fournisseurs : rapprochement sous verrou du BC, écart et décision `INVOICE_MISMATCH`, contestation, avoir, quantités facturées écrites par `procurement` | `3558d5c` | Fait : 6 tests serveur, 12 mutations détectées |
-| P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | _à venir_ | Fait : 5 tests serveur, 14 mutations détectées |
-| P8-09 à P8-15 | Voir le backlog du plan | — | À faire |
+| P8-08 | Paiements fournisseurs : validation de la Direction avant décaissement, affectations prévues, avances, annulation | `21b9851` | Fait : 5 tests serveur, 14 mutations détectées |
+| P8-09 | Lectures HTTP : dépenses (portée), factures, paiements, dettes ; payé du rapprochement de P6 | _à venir_ | Fait : 5 tests HTTP de bout en bout, 6 mutations détectées |
+| P8-10 à P8-15 | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P8)
 
@@ -45,7 +46,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | P8-05 | `packages/contracts` (`error-codes.ts`) | `EXPENSE_REVIEW_REQUIRED` en fin de `WARNING_CODES` | R8 |
 | P8-07 | `procurement/application/public` (`invoicing.ts`, `index.ts`) | `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing`, `invoicedQuantitiesOfOrder` | ADR-061 §3 |
 | P8-07 | Documentation de P6 | D08 l.93 (quantité facturée écrite à l'appel de `finance`), dictionnaire `08-procurement.md` (`invoiced_qty_base`), `02-modules.md` (API interne de `procurement`) | ADR-061 §3 |
-| P8-09 | `procurement-api` (rapprochement) | payé (`paidXaf`) composé depuis `finance` | ADR-061 §3 |
+| P8-09 | `procurement-api/procurement-read.controller.ts` (rapprochement) | payé (`paidXaf`) composé depuis `finance` (`paidXafOfPurchaseOrder`) quand les valeurs sont visibles | ADR-061 §3 |
 | P8-11 | `production/application/public`, `production-api` | `lotStockLotIds`, CA de la marge de lot avec les produits d'abattage | ADR-062 §1, AV-366 |
 | P8-11 | `inventory` : lecture et route | `lossValueSummary`, `GET /inventory/losses/summary` | ADR-062 §3 |
 
