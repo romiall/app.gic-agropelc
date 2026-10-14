@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PhotoModule from '../attachments/photo.js';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -12,7 +13,7 @@ import { parseReceived } from './receive.js';
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 // Photo : le canevas n'existe pas en test ; le recodage rend un petit JPEG, une image HEIC est illisible.
 vi.mock('../attachments/photo.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../attachments/photo.js')>();
+  const actual = await importOriginal<typeof PhotoModule>();
   return {
     ...actual,
     browserPhotoCodec: {
