@@ -461,7 +461,7 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     ).toMatch(/^VALIDATION_ERROR/);
   });
 
-  it('MP-10 (AV-296) : la file liste les photos du document ; le valideur les voit, pas un autre', async () => {
+  it('MP-10 (AV-286) : la file liste les photos du document ; le valideur les voit, pas un autre', async () => {
     const subject = await db
       .selectFrom('approvals_approval_requests')
       .select('subject_id')

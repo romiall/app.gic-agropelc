@@ -11,6 +11,7 @@ import type { Clock, IdGenerator } from '@gic/domain';
 import type { GicDatabase } from '../storage/db.js';
 import { PUSH_TIMEOUT_MS, runPushCycle } from './push.js';
 import { runPullCycle } from './pull.js';
+import { runAttachmentUploadCycle } from './attachment-upload.js';
 import { resetInterruptedPushes } from './outbox.js';
 
 const PERIODIC_INTERVAL_MS = 30_000;
@@ -95,6 +96,22 @@ async function syncCycle(deps: SyncEngineDeps, exclusive: boolean): Promise<Sync
     // Rien de réglé (`RETRY_LATER` partout) : renvoyer aussitôt le même lot ne servirait à rien.
     if (result.settled === 0) break;
   }
+
+  // Octets des pièces jointes : après les commandes (leur enregistrement doit être accepté), avant le
+  // tirage (MP-10, ADR-012 point 3).
+  if (deps.isStopped?.()) return 'STOPPED';
+  const uploads = await runAttachmentUploadCycle(deps.db, {
+    clock: deps.clock,
+    ...(deps.userId ? { userId: deps.userId } : {}),
+    ...(deps.isStopped ? { isStopped: deps.isStopped } : {}),
+  });
+  if (uploads.outcome === 'SESSION_CHANGED') return 'STOPPED';
+  // Réseau coupé pendant une pièce (`INTERRUPTED`) : le tirage juge lui-même de la joignabilité.
+  if (uploads.outcome === 'SESSION_INVALID') {
+    deps.onSessionInvalid();
+    return 'SESSION_INVALID';
+  }
+  if (uploads.sent > 0) pushed = true;
 
   if (deps.isStopped?.()) return 'STOPPED';
   const pullResult = await runPullCycle(deps.db, {

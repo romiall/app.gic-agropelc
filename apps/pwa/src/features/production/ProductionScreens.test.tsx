@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
@@ -12,6 +12,21 @@ import { OutputScreen } from './OutputScreen.js';
 import { checkEggs, EMPTY_EGGS } from './eggs.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
+// Photo : le canevas n'existe pas en test ; le recodage rend un petit JPEG, une image HEIC est illisible.
+vi.mock('../attachments/photo.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../attachments/photo.js')>();
+  return {
+    ...actual,
+    browserPhotoCodec: {
+      decode: async (file: Blob) => {
+        if (file.type === 'image/heic') throw new Error('format');
+        return { width: 1600, height: 1200, source: null };
+      },
+      encode: async () =>
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])], { type: 'image/jpeg' }),
+    },
+  };
+});
 vi.mock('../../platform/composition.js', async () => {
   const { FixedClock, Uuidv7Generator } = await import('@gic/domain');
   const clock = new FixedClock(new Date('2026-10-10T09:00:00.000Z'));
@@ -161,6 +176,8 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     await getDb().projections.clear();
     await getDb().outbox.clear();
     await getDb().navigation.clear();
+    await getDb().attachmentFiles.clear();
+    await getDb().attachmentBlobs.clear();
   });
 
   async function rememberRoles(roles: readonly string[]) {
@@ -283,6 +300,112 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     });
     const refs = await loadSalesReferences(getDb());
     expect(refs.pending.get(`${STORE}:${FEED}`)).toBe(25);
+  });
+
+  it('MP-10 (AV-107) : photo de la mortalité rattachée à la déclaration ; jointe après coup depuis le journal', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/production/lots/${BROILERS}`);
+    await user.type(await screen.findByLabelText('Nombre de morts'), '2');
+    await user.upload(
+      screen.getByLabelText('Prendre une photo'),
+      new File(['photo'], 'morts.jpg', { type: 'image/jpeg' }),
+    );
+    await screen.findByText(/Photo prête/);
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la mortalité' }));
+    await screen.findByText(/Mortalité enregistrée sur ce téléphone/);
+    const [register, mortality] = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(mortality).toMatchObject({
+      command_type: 'production.mortality.record',
+      attachment_ids: [],
+    });
+    expect(register).toMatchObject({
+      command_type: 'attachments.attachment.register',
+      payload: { ownerType: 'STOCK_LOSS', ownerId: mortality!.aggregate_id, kind: 'PHOTO' },
+    });
+    const awaiting = within(
+      await screen.findByRole('region', { name: 'Mortalités en attente de validation' }),
+    );
+    expect(await awaiting.findByText(/Photo enregistrée sur ce téléphone/)).toBeInTheDocument();
+
+    // Une seconde mortalité sans photo : la photo se joint depuis les mortalités en attente, seule.
+    await user.type(screen.getByLabelText('Nombre de morts'), '1');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la mortalité' }));
+    await user.click(await awaiting.findByRole('button', { name: 'Joindre la photo' }));
+    await user.upload(
+      awaiting.getByLabelText('Choisir une image'),
+      new File(['photo'], 'morts.jpg', { type: 'image/jpeg' }),
+    );
+    await awaiting.findByText(/Photo prête/);
+    await user.click(awaiting.getByRole('button', { name: 'Envoyer la photo' }));
+    await waitFor(async () =>
+      expect(
+        (await getDb().outbox.toArray()).filter(
+          (command) => command.command_type === 'attachments.attachment.register',
+        ),
+      ).toHaveLength(2),
+    );
+    const commands = await getDb().outbox.orderBy('device_seq').toArray();
+    const second = commands.find(
+      (command) =>
+        command.command_type === 'production.mortality.record' &&
+        command.aggregate_id !== mortality!.aggregate_id,
+    );
+    expect(commands.at(-1)).toMatchObject({
+      command_type: 'attachments.attachment.register',
+      payload: { ownerType: 'STOCK_LOSS', ownerId: second!.aggregate_id },
+    });
+    await waitFor(() =>
+      expect(awaiting.queryByRole('button', { name: 'Joindre la photo' })).toBeNull(),
+    );
+  });
+
+  it('revue de MP-10 : mortalité d’un jour passé, en attente de validation — sa photo se joint encore', async () => {
+    const LOSS = '01900000-0000-7000-8000-0000000009d1';
+    await getDb().projections.put({
+      key: `production:LOT_LOSS:${LOSS}`,
+      dataset: 'production',
+      entity_type: 'LOT_LOSS',
+      entity_id: LOSS,
+      scope_type: 'SITE',
+      scope_id: IDS.site,
+      row_version: 1,
+      seq: 9,
+      data: {
+        id: LOSS,
+        doc_number: 'PRT-2026-000031',
+        production_lot_id: BROILERS,
+        location_id: BUILDING,
+        quantity_base: 4,
+        category: 'MORTALITE',
+        reason_code_id: null,
+        comment: null,
+        status: 'PENDING_APPROVAL',
+        occurred_at: '2026-10-05T07:00:00.000Z',
+      },
+    });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/production/lots/${BROILERS}`);
+    const awaiting = within(
+      await screen.findByRole('region', { name: 'Mortalités en attente de validation' }),
+    );
+    expect(awaiting.getByText(/4 têtes/)).toBeInTheDocument();
+    await user.click(await awaiting.findByRole('button', { name: 'Joindre la photo' }));
+    await user.upload(
+      awaiting.getByLabelText('Choisir une image'),
+      new File(['photo'], 'morts.jpg', { type: 'image/jpeg' }),
+    );
+    await awaiting.findByText(/Photo prête/);
+    await user.click(awaiting.getByRole('button', { name: 'Envoyer la photo' }));
+    await waitFor(async () =>
+      expect(await getDb().outbox.toArray()).toEqual([
+        expect.objectContaining({
+          command_type: 'attachments.attachment.register',
+          payload: expect.objectContaining({ ownerType: 'STOCK_LOSS', ownerId: LOSS }),
+        }),
+      ]),
+    );
   });
 
   it('en ligne : plus de morts que l’effectif bloqué ; pesée et observation', async () => {

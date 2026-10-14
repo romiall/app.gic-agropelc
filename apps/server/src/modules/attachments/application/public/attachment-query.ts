@@ -57,7 +57,7 @@ export interface OwnedAttachment {
 
 /**
  * Pièces des documents, par `${ownerType}:${ownerId}`, les plus anciennes d'abord, hors pièces
- * remplacées (MP-10 : photos montrées au valideur, AV-296).
+ * remplacées (MP-10 : photos montrées au valideur, AV-286).
  */
 export async function attachmentsOfOwners(
   executor: Kysely<DB> | Transaction<DB>,
@@ -91,4 +91,52 @@ export async function attachmentsOfOwners(
     result.set(key, list);
   }
   return result;
+}
+
+/**
+ * Les pièces exigées par une demande de validation sont-elles reçues (BR-ADM-020) ? La liste d'une
+ * demande est figée à sa création ; une pièce exigée refusée, en quarantaine ou jamais enregistrée
+ * est **remplacée** par une autre pièce reçue du même document — de même nature si la pièce exigée
+ * est connue —, chacune ne remplaçant qu'une pièce (AV-290 : « nouvelle photo, même document » ;
+ * revue de MP-10 : sans cela, la validation restait bloquée à vie).
+ */
+export async function requiredAttachmentsSatisfied(
+  executor: Kysely<DB> | Transaction<DB>,
+  input: {
+    readonly requiredIds: readonly string[];
+    readonly ownerType: string;
+    readonly ownerId: string;
+  },
+): Promise<boolean> {
+  if (input.requiredIds.length === 0) return true;
+  const required = await executor
+    .selectFrom('attachments_attachments')
+    .select(['id', 'kind', 'upload_status'])
+    .where(
+      'id',
+      'in',
+      input.requiredIds.map((id) => toBin(id)),
+    )
+    .execute();
+  const byId = new Map(required.map((row) => [fromBin(row.id), row]));
+  const missing = input.requiredIds.filter((id) => byId.get(id)?.upload_status !== 'AVAILABLE');
+  if (missing.length === 0) return true;
+  const replacements = (
+    await executor
+      .selectFrom('attachments_attachments')
+      .select(['id', 'kind'])
+      .where('owner_type', '=', input.ownerType)
+      .where('owner_id', '=', toBin(input.ownerId))
+      .where('upload_status', '=', 'AVAILABLE')
+      .execute()
+  ).filter((row) => !input.requiredIds.includes(fromBin(row.id)));
+  // Les pièces exigées connues d'abord : leur remplaçante doit avoir la même nature.
+  const ordered = [...missing].sort((a, b) => Number(byId.has(b)) - Number(byId.has(a)));
+  for (const id of ordered) {
+    const kind = byId.get(id)?.kind;
+    const index = replacements.findIndex((row) => kind === undefined || row.kind === kind);
+    if (index < 0) return false;
+    replacements.splice(index, 1);
+  }
+  return true;
 }

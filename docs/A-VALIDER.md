@@ -307,6 +307,7 @@ Classification (PM §45) :
 | AV-290 | Photo refusée ou jamais reçue | SECONDAIRE | MP | Nouvelle photo à prendre ; aucune relance automatique ; `MISSING` à 7 jours et alerte en P9 | OUVERT |
 | AV-291 | Formats, nombre et budget local des photos | SECONDAIRE | MP | Images recodées en JPEG ; une photo par opération ; 50 Mo en attente au plus, au-delà l'opération part sans photo | OUVERT |
 | AV-292 | Stockage des fichiers pour le pilote | SECONDAIRE | MP | Disque local du serveur (`ATTACHMENTS_STORAGE_DIR`) sur un volume sauvegardé ; stockage objet avec AV-091 | OUVERT |
+| AV-293 | Métadonnées des pièces jointes servies à tous les appareils | SECONDAIRE | MP | Inchangé : le flux de la pièce reste en portée `GLOBAL` (repli générique du pipeline) ; contenu protégé par la lecture | OUVERT |
 
 ---
 
@@ -2133,7 +2134,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 14/10/2026) : (a).
 - **Impact** : fin de l'envoi des octets (`attachments-api/upload.controller.ts`, `regularizeReceiptPhoto` de `procurement`) ; la photo (`DELIVERY_NOTE` de la `GOODS_RECEIPT`) est jointe après coup par son auteur ; clôture manuelle par `sync.conflict.dismiss` (motif obligatoire, existant) ; ADR-046.
-- **Mise en œuvre** (MP-10, 14/10/2026) : serveur fait (`procurement-receipt-commands.test.ts`) ; « Joindre la photo » dans la PWA avec MP-10 (2/3).
+- **Mise en œuvre** (MP-10, 14/10/2026) : serveur (`procurement-receipt-commands.test.ts`) ; « Joindre la photo du bon » dans la PWA, depuis le résultat de la réception et la liste des réceptions de l'utilisateur, avec le badge « Photo manquante » tant qu'aucune photo n'est reçue ou en route. Revue de MP-10 : la fermeture automatique est réservée à une photo dont l'auteur est le réceptionnaire, ou peut enregistrer des réceptions sur le site de la réception (`canRegularizeReceiptPhoto`) ; celle d'un tiers reste reçue, le signal reste ouvert pour le Resp. achats (**DÉDUIT** : sans cela, un fichier quelconque contournait la clôture motivée).
 
 ### AV-286 — Photo visible par les valideurs — IMPORTANTE — **TRANCHÉ**
 - **Question** : la Direction, le Resp. production et le Resp. achats doivent-ils voir la photo dans l'application avant de décider ?
@@ -2142,6 +2143,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 14/10/2026) : (a). Fichiers sur le disque du serveur pour le pilote.
 - **Impact** : `GET /api/v1/attachments/{id}/content` (auteur, valideur d'une demande en attente sur le document, lecteur du document dans sa portée ; refus audité ; `private, no-store`) ; pièces de chaque demande dans `GET /approvals/inbox` ; écran des validations (PWA) ; ADR-046.
+- **Mise en œuvre** (MP-10, 14/10/2026) : serveur et PWA (« Voir la photo » sur chaque demande dont une pièce est reçue, nouvel essai après un échec ; `ApprovalsScreen.test.tsx`, `approvals-inbox.test.ts`).
 
 ### AV-287 — Chiffrement des photos en attente sur le téléphone — IMPORTANTE — **TRANCHÉ**
 - **Question** : faut-il chiffrer dès MP-10 les photos qui attendent leur envoi sur le téléphone ?
@@ -2172,6 +2174,12 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) nouvelle photo à prendre (nouvelle pièce, même document) ; aucune relance automatique ; `MISSING` et alerte `ATTACHMENT_MISSING` avec les alertes de P9 ; (b) reprise de la même pièce (`QUARANTINED` → `PENDING_UPLOAD`).
 - **Recommandation** : (a).
 - **Impact** : PWA (état « refusée » de la photo, nouvelle photo possible) ; P9 (tâche des 7 jours). Défaut implémenté : (a).
+- **Mise en œuvre** (MP-10, 14/10/2026, revue adverse) :
+  - une pièce exigée par une validation, refusée ou jamais enregistrée, est **remplacée** par une autre pièce reçue du même document, de même nature si la pièce exigée est connue (`requiredAttachmentsSatisfied`, décision et file de validation) : sans cela, la liste figée bloquait l'approbation à vie ;
+  - la PWA propose de reprendre la photo d'une réception refusée et celle d'une mortalité en attente, quel que soit son jour ;
+  - seule une réponse portant un code d'erreur connu du serveur rend un envoi définitivement refusé ; une réponse sans code (passerelle, pare-feu) est réessayée ;
+  - une fin d'envoi interrompue après l'écriture du dernier morceau est constatée à la session suivante ou au renvoi : la pièce n'attend plus sans fin ;
+  - l'écran de synchronisation compte les photos refusées à reprendre.
 
 ### AV-291 — Formats, nombre et budget local des photos — SECONDAIRE
 - **Question** : quels fichiers accepter sur le téléphone, combien de photos par opération, et que faire quand l'espace réservé aux photos en attente est plein ?
@@ -2179,6 +2187,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) toute image décodable, recodée en JPEG ; une photo par opération ; au-delà de 50 Mo en attente, la photo est refusée avec un message et l'opération part sans elle ; PDF avec la facture fournisseur ; (b) plusieurs photos par opération.
 - **Recommandation** : (a) pour le pilote.
 - **Impact** : PWA (`PhotoField`, budget). Défaut implémenté : (a).
+- **Mise en œuvre** (MP-10, 14/10/2026) : « Prendre une photo » (caméra arrière) ou « Choisir une image » ; image illisible (HEIC sur Android…) ou espace plein : message, l'opération part sans photo ; recodage JPEG (`photo.ts`) ; budget de 50 Mo de photos en attente (`PHOTO_PENDING_BUDGET_BYTES`).
 
 ### AV-292 — Stockage des fichiers pour le pilote — SECONDAIRE
 - **Question** : où le serveur du pilote garde-t-il les photos, tant que le stockage objet n'est pas choisi (AV-091) ?
@@ -2186,6 +2195,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) disque local du serveur, sur un volume sauvegardé, désigné par `ATTACHMENTS_STORAGE_DIR` ; (b) stockage objet compatible S3 dès le pilote.
 - **Recommandation** : (a) ; l'interface `ChunkStorage` permet de changer ensuite.
 - **Impact** : configuration du déploiement (P0-17) ; aucune donnée perdue au changement si les fichiers sont recopiés. Défaut : (a), à configurer.
+
+### AV-293 — Métadonnées des pièces jointes servies à tous les appareils — SECONDAIRE
+- **Question** : le jeu hors ligne `attachment` doit-il rester servi à tout appareil (identifiant, propriétaire, nature, statut de chaque pièce de l'entreprise), ou être limité à l'auteur de la pièce ?
+- **Pourquoi** : revue adverse de MP-10 : le pipeline écrit pour toute commande appliquée une ligne de flux en portée `GLOBAL` (repli générique, P0-06), et la fin d'envoi aussi ; le tirage n'a pas de liste blanche de jeux. Écart avec 02-securite §6 (« l'appareil ne reçoit que son périmètre »). Le contenu reste protégé par la lecture contrôlée (AV-286). **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé pour le pilote ; (b) jeu propre à l'auteur (portée `USER`) et liste blanche des jeux au tirage, sans repli `GLOBAL` pour les pièces ; (c) portée du site du document.
+- **Recommandation** : (b), avec le durcissement du tirage (touche le pipeline et `sync/`, à mener avec l'intégration de P9).
+- **Impact** : `command-pipeline.service.ts` (repli), `sync-pull.service.ts`, `upload.controller.ts`, PWA (`useOwnerPhotos` n'y lirait plus que ses pièces). Défaut implémenté : (a).
 ---
 
 ## 3. Journal des décisions

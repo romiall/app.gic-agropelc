@@ -67,6 +67,7 @@ import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
 import { countPending } from '../sync/outbox.js';
+import { pendingAttachments } from '../sync/attachment-upload.js';
 import { getDb } from '../storage/db.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { ROUTES } from './screens.js';
@@ -92,7 +93,9 @@ function AppShell() {
   if (state.status === 'locked') return <PinUnlockScreen />;
 
   const onLogout = async () => {
-    const pending = await countPending(getDb());
+    // Opérations et photos encore à envoyer (MP-10 : une photo de mortalité attend son auteur).
+    const pending =
+      (await countPending(getDb())) + (await pendingAttachments(getDb(), state.userId)).count;
     const message =
       pending > 0 ? t('auth.logout_confirm_pending', { count: pending }) : t('auth.logout_confirm');
     if (window.confirm(message)) await logout();

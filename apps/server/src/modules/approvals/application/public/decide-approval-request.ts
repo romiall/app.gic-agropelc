@@ -19,7 +19,7 @@ import {
   evaluateAccess,
   type ResourceLocator,
 } from '../../../identity/application/public/index.js';
-import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
+import { requiredAttachmentsSatisfied } from '../../../attachments/application/public/index.js';
 import {
   ApprovalDecisionRefused,
   type ApprovalDecisionHandlerRegistry,
@@ -120,7 +120,14 @@ export async function decideApprovalRequest(
     const requiredIds = Array.isArray(row.required_attachment_ids)
       ? row.required_attachment_ids.filter((v): v is string => typeof v === 'string')
       : [];
-    if (!(await areAttachmentsAvailable(uow, requiredIds))) {
+    // Pièce exigée ou, à défaut, une remplaçante reçue du même document (AV-290, revue de MP-10).
+    if (
+      !(await requiredAttachmentsSatisfied(uow, {
+        requiredIds,
+        ownerType: row.subject_type,
+        ownerId: fromBin(row.subject_id),
+      }))
+    ) {
       return refused(
         'ATTACHMENT_MISSING',
         'Pièce justificative requise non encore reçue (BR-ADM-020).',

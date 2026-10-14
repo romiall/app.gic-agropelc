@@ -32,8 +32,8 @@ import {
   type ApprovalInboxItem,
 } from '../modules/approvals/application/public/index.js';
 import {
-  areAttachmentsAvailable,
   attachmentsOfOwners,
+  requiredAttachmentsSatisfied,
 } from '../modules/attachments/application/public/index.js';
 import { lossesAwaitingPhoto } from '../modules/inventory/application/public/index.js';
 import { parseOrThrow, ReadAccess, uuidParam } from '../read-api/read-access.js';
@@ -97,7 +97,7 @@ export class ApprovalsInboxController {
         .filter((item) => item.operationType === 'MORTALITY' && item.subjectType === 'STOCK_LOSS')
         .map((item) => item.subjectId),
     );
-    // Pièces du document décidé (MP-10, AV-296) : le valideur les voit par `GET /attachments/{id}/content`.
+    // Pièces du document décidé (MP-10, AV-286) : le valideur les voit par `GET /attachments/{id}/content`.
     const owned = await attachmentsOfOwners(
       this.db,
       items.map((item) => ({ ownerType: item.subjectType, ownerId: item.subjectId })),
@@ -105,7 +105,11 @@ export class ApprovalsInboxController {
     const presented = [];
     for (const item of items) {
       const attachmentsPending =
-        !(await areAttachmentsAvailable(this.db, item.requiredAttachmentIds)) ||
+        !(await requiredAttachmentsSatisfied(this.db, {
+          requiredIds: item.requiredAttachmentIds,
+          ownerType: item.subjectType,
+          ownerId: item.subjectId,
+        })) ||
         (item.operationType === 'MORTALITY' && photoWaiting.has(item.subjectId));
       presented.push({
         id: item.id,

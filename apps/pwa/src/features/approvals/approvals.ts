@@ -35,6 +35,12 @@ export interface ApprovalView {
   readonly requestedByName: string | null;
   readonly requestedAt: string;
   readonly attachmentsPending: boolean;
+  /** Pièces du document décidé (MP-10, AV-286) ; absentes d'un serveur plus ancien. */
+  readonly attachments?: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly uploadStatus: string;
+  }[];
   readonly selfRequest: boolean;
 }
 

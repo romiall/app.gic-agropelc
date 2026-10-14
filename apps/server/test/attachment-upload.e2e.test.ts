@@ -15,6 +15,8 @@ import { registerRawBodyParser } from '../src/platform/http/register-raw-body-pa
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { CHUNK_STORAGE } from '../src/platform/storage/chunk-storage.provider.js';
+import type { ChunkStorage } from '../src/platform/storage/chunk-storage.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import {
   signAccessToken,
@@ -108,7 +110,7 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
         backdated_reason: null,
         attachment_ids: [],
         payload: {
-          ownerType: 'TEST_SUBJECT',
+          ownerType: 'STOCK_LOSS',
           ownerId: freshUuid(),
           kind: 'PHOTO',
           mimeType: 'image/jpeg',
@@ -334,6 +336,51 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
       headers: { authorization: `Bearer ${token}` },
     });
     expect(unknown.statusCode).toBe(404);
+  });
+
+  it('revue de MP-10 : fin d’envoi interrompue après l’écriture du dernier morceau — constatée à la session suivante ou au renvoi', async () => {
+    const storage = app.get<ChunkStorage>(CHUNK_STORAGE);
+    // Tous les octets sont sur le stockage, mais la fin n'a pas été enregistrée (base restée à 0).
+    const content = jpeg('fin interrompue');
+    const first = await registerAttachment(content.length, sha256Hex(content));
+    await storage.appendChunk(`attachments/${first}`, 0, content);
+    const session = await app.inject({
+      method: 'POST',
+      url: `/api/v1/attachments/${first}/upload-session`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(session.statusCode).toBe(409);
+    expect(session.json().error.details).toEqual({ upload_status: 'AVAILABLE' });
+    const row = await db
+      .selectFrom('attachments_attachments')
+      .select(['upload_status', 'uploaded_bytes'])
+      .where('id', '=', toBin(first))
+      .executeTakeFirstOrThrow();
+    expect(row).toEqual({ upload_status: 'AVAILABLE', uploaded_bytes: content.length });
+
+    // Variante : l'appareil renvoie le dernier morceau, déjà sur le stockage.
+    const second = await registerAttachment(content.length, sha256Hex(content));
+    await storage.appendChunk(`attachments/${second}`, 0, content);
+    const again = await putAll(second, content);
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ uploaded_bytes: content.length, upload_status: 'AVAILABLE' });
+    // Une seule fin enregistrée par pièce (audit).
+    const audits = await db
+      .selectFrom('audit_audit_log')
+      .select('action')
+      .where('entity_id', '=', toBin(second))
+      .where('action', '=', 'attachments.attachment.upload_completed')
+      .execute();
+    expect(audits).toHaveLength(1);
+  });
+
+  it('revue de MP-10 : identifiant mal formé → 404, jamais une erreur du serveur', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/attachments/${'a'.repeat(36)}/content`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(404);
   });
 
   it('sans Authorization → 401', async () => {

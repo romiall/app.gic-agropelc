@@ -230,14 +230,15 @@ describe('approvals (P0-13)', () => {
     async function createPendingRequest(
       policyId: string,
       requiredAttachmentIds: readonly string[] = [],
+      subjectId: string = freshUuid(),
     ): Promise<string> {
       const requestId = freshUuid();
       await db.transaction().execute((trx) =>
         requestApproval(trx, {
           requestId,
           operationType: 'LOSS_DECLARATION',
-          subjectType: 'TEST_LOSS',
-          subjectId: freshUuid(),
+          subjectType: 'STOCK_LOSS',
+          subjectId,
           subjectSummary: 'Perte de test',
           siteId,
           requestedBy: requester,
@@ -479,7 +480,7 @@ describe('approvals (P0-13)', () => {
           aggregateType: 'ATTACHMENT',
           aggregateId: attachmentId,
           payload: {
-            ownerType: 'TEST_LOSS',
+            ownerType: 'STOCK_LOSS',
             ownerId: freshUuid(),
             kind: 'PHOTO',
             mimeType: 'image/jpeg',
@@ -537,6 +538,66 @@ describe('approvals (P0-13)', () => {
         },
       );
       expect(unblocked.status).toBe('APPLIED');
+    });
+
+    it('revue de MP-10 (AV-290) : pièce exigée refusée ou jamais enregistrée — remplacée par une nouvelle pièce du même document', async () => {
+      const policyId = await setPolicy(`TEST_POLICY_${freshUuid().slice(-8)}`);
+      const lossId = freshUuid();
+      const insertPiece = async (id: string, kind: string, status: string, owner = lossId) =>
+        db
+          .insertInto('attachments_attachments')
+          .values({
+            id: toBin(id),
+            owner_type: 'STOCK_LOSS',
+            owner_id: toBin(owner),
+            kind,
+            mime_type: 'image/jpeg',
+            size_bytes: 100,
+            uploaded_bytes: 100,
+            sha256: 'c'.repeat(64),
+            storage_key: `test/${id}`,
+            upload_status: status,
+            captured_at: new Date(OCCURRED_AT),
+            occurred_at: new Date(OCCURRED_AT),
+            created_by: toBin(requester),
+          })
+          .execute();
+      const approve = async (requestId: string) => {
+        const result = await pipeline.handle(
+          buildCommand({
+            commandId: freshUuid(),
+            commandType: 'approvals.request.approve',
+            authorUserId: approver,
+            aggregateType: 'APPROVAL_REQUEST',
+            aggregateId: requestId,
+            payload: { requestId },
+          }),
+          {
+            authenticatedUserId: approver,
+            authenticatedDeviceId: approverDevice,
+            transport: 'ONLINE_API',
+          },
+        );
+        return result.status === 'REJECTED' ? result.error.code : result.status;
+      };
+
+      // Pièce exigée en quarantaine : une autre nature, ou une pièce d'un autre document, ne suffit pas.
+      const quarantined = freshUuid();
+      await insertPiece(quarantined, 'PHOTO', 'QUARANTINED');
+      const requestId = await createPendingRequest(policyId, [quarantined], lossId);
+      await insertPiece(freshUuid(), 'OTHER', 'AVAILABLE');
+      await insertPiece(freshUuid(), 'PHOTO', 'AVAILABLE', freshUuid());
+      expect(await approve(requestId)).toBe('ATTACHMENT_MISSING');
+      // Nouvelle photo reçue du même document : elle remplace la pièce exigée.
+      await insertPiece(freshUuid(), 'PHOTO', 'AVAILABLE');
+      expect(await approve(requestId)).toBe('APPLIED');
+
+      // Pièce exigée jamais enregistrée : toute pièce reçue du document la remplace.
+      const otherLoss = freshUuid();
+      const unknown = await createPendingRequest(policyId, [freshUuid()], otherLoss);
+      expect(await approve(unknown)).toBe('ATTACHMENT_MISSING');
+      await insertPiece(freshUuid(), 'OTHER', 'AVAILABLE', otherLoss);
+      expect(await approve(unknown)).toBe('APPLIED');
     });
 
     it('reject : commentaire obligatoire (VALIDATION_ERROR si absent), puis rejet effectif avec motif', async () => {

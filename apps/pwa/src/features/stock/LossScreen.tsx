@@ -18,6 +18,9 @@ import { saleUnitsOf } from '../sales/sale-form.js';
 import { batchViews } from '../production/incubation.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { phaseOf, submitCommand } from '../sales/submit.js';
+import { photoAttachment } from '../attachments/attachments.js';
+import type { PreparedPhoto } from '../attachments/photo.js';
+import { PhotoField } from '../attachments/PhotoField.js';
 import {
   checkLoss,
   DEVICE_LOSS_CATEGORIES,
@@ -50,6 +53,8 @@ export function LossScreen() {
   const online = useOnline();
   const [locationChoice, setLocationChoice] = useState<string | null>(null);
   const [draft, setDraft] = useState<LossDraft>(EMPTY);
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [submitted, setSubmitted] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -72,6 +77,7 @@ export function LossScreen() {
             type="button"
             onClick={() => {
               setDraft(EMPTY);
+              setPhoto(null);
               setSubmitted(undefined);
             }}
           >
@@ -211,6 +217,7 @@ export function LossScreen() {
     !(lotRequired && !chosenLot) &&
     guard.blocks.length === 0 &&
     !(online && overAvailable) &&
+    !preparing &&
     !busy;
 
   const submit = async () => {
@@ -223,6 +230,14 @@ export function LossScreen() {
         commandType: 'inventory.loss.declare',
         aggregateType: 'STOCK_LOSS',
         aggregateId: idGenerator.newId(),
+        // Photo facultative (AV-288), rattachée à la déclaration sans être citée (ADR-046).
+        ...(photo
+          ? {
+              attachments: [
+                photoAttachment(photo, { kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false }),
+              ],
+            }
+          : {}),
         payload: lossPayload({ ...effective, lotId, category: draft.category }, location.id, {
           ...check,
           quantity: check.quantity,
@@ -435,7 +450,12 @@ export function LossScreen() {
               </p>
             ))
         : null}
-      <p className="home-muted">{t('loss.photo_hint')}</p>
+      <PhotoField
+        label={t('photo.loss_label')}
+        value={photo}
+        onChange={setPhoto}
+        onBusyChange={setPreparing}
+      />
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}

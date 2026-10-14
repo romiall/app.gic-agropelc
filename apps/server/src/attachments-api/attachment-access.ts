@@ -1,5 +1,5 @@
 /**
- * Lecture d'une pièce jointe (MP-10, AV-296 ; 02-securite §6 : accès délivré après contrôle de portée
+ * Lecture d'une pièce jointe (MP-10, AV-286 ; 02-securite §9 : accès délivré après contrôle de portée
  * sur le document propriétaire) : son auteur ; qui peut décider une validation en attente sur ce
  * document (le valideur voit la pièce de ce qu'il décide) ; ou qui lit le document dans sa portée —
  * réception : `procurement.order.read` sur son site ; perte : `inventory.loss.read` sur son site ou
@@ -13,6 +13,7 @@ import { lossDeclarationLocator } from '../modules/inventory/application/public/
 import { getGoodsReceipt } from '../modules/procurement/application/public/index.js';
 
 const RECEIPT_READ = 'procurement.order.read';
+const RECEIPT_RECORD = 'procurement.receipt.record';
 const LOSS_READ = 'inventory.loss.read';
 
 export async function canViewAttachment(
@@ -63,4 +64,28 @@ export async function canViewAttachment(
     ).allowed;
   }
   return false;
+}
+
+/**
+ * La photo jointe peut-elle régulariser la « photo manquante » de la réception (AV-285) ? Son auteur
+ * doit être le réceptionnaire, ou pouvoir enregistrer des réceptions sur le site de celle-ci : un
+ * tiers ne clôt pas le signal du Resp. achats en joignant un fichier quelconque (revue de MP-10).
+ */
+export async function canRegularizeReceiptPhoto(
+  executor: Kysely<DB> | Transaction<DB>,
+  receiptId: string,
+  userId: string,
+  at: Date,
+): Promise<boolean> {
+  const receipt = await getGoodsReceipt(executor, receiptId);
+  if (!receipt) return false;
+  if (receipt.receivedBy === userId) return true;
+  return (
+    await evaluateAccess(executor, {
+      userId,
+      permissionCode: RECEIPT_RECORD,
+      occurredAt: at,
+      resource: { siteId: receipt.siteId },
+    })
+  ).allowed;
 }

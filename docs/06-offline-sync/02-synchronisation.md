@@ -239,9 +239,9 @@ Le détail par entité est dans [`03-matrice-conflits.md`](03-matrice-conflits.m
 | Capture | Recodage sur l'appareil en JPEG (1 280 px de grand côté, qualité 0,7 puis par paliers, ≤ 400 Ko ; métadonnées EXIF retirées) ; calcul du SHA-256 ; stockage local, non chiffré pour l'instant comme la file des opérations (AV-287) |
 | Métadonnées | Commande **séparée** `attachments.attachment.register`, placée juste avant l'opération dans la file, **sans** `depends_on` (un refus de la pièce ne fait jamais refuser le fait, BR-SYN-007) → `attachments.attachments` `PENDING_UPLOAD`. Une réception **cite** sa photo dans `attachment_ids` ; une perte ou une mortalité la rattache par son propriétaire (`STOCK_LOSS`), sans la citer (ADR-046) |
 | Upload | Une fois l'enregistrement accepté : `POST /api/v1/attachments/{id}/upload-session` → octets déjà reçus et taille de morceau recommandée (256 Ko ; l'appareil envoie 128 Ko) ; `PUT` par morceau avec `Content-Range` ; reprise à l'offset retourné ; par l'auteur seul ; finalisation → vérification du SHA-256 et de la signature du fichier → `AVAILABLE`, sinon `QUARANTINED` ; une pièce qui n'accepte plus d'octets rend son statut (`details.upload_status`) |
-| Priorité | Après le push des commandes ; plus petites d'abord ; pièces requises pour une validation en premier |
-| Échec | Nouvel essai avec attente progressive ; après 7 jours → `MISSING` et alerte (SM-ATTACHMENT) |
-| Suppression locale | Après `AVAILABLE` confirmé ; miniature conservée 7 jours |
+| Priorité | Après le push des commandes ; plus petites d'abord ; budget d'octets par cycle (la priorité des pièces exigées par une validation n'est pas encore faite) ; une coupure pendant une pièce la reporte et laisse le tirage se faire |
+| Échec | Nouvel essai avec attente progressive ; refus définitif seulement sur un code d'erreur connu du serveur ; après 7 jours → `MISSING` et alerte (SM-ATTACHMENT, P9, AV-290) |
+| Suppression locale | Octets retirés après `AVAILABLE` confirmé, ou quand la pièce est refusée ; la fiche reste (pas de miniature conservée) |
 
 ## 9. Horloge
 

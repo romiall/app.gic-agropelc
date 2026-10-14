@@ -21,7 +21,12 @@
  * dans la transaction du gestionnaire (étape 6) au moment où ce gestionnaire s'exécute.
  */
 import { z } from 'zod';
-import { ATTACHMENT_KINDS, ATTACHMENT_MAX_SIZE_BYTES, ATTACHMENT_MIME_TYPES } from '@gic/contracts';
+import {
+  ATTACHMENT_KINDS,
+  ATTACHMENT_MAX_SIZE_BYTES,
+  ATTACHMENT_MIME_TYPES,
+  ATTACHMENT_OWNER_TYPES,
+} from '@gic/contracts';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -35,7 +40,8 @@ const ALLOWED_MIME_TYPES = ATTACHMENT_MIME_TYPES;
 const MAX_SIZE_BYTES = ATTACHMENT_MAX_SIZE_BYTES;
 
 const registerPayloadSchema = z.object({
-  ownerType: z.string().min(1).max(40),
+  /** Propriétaires lus par le serveur (ADR-046 §2) ; un nouveau propriétaire s'ajoute à la liste. */
+  ownerType: z.enum(ATTACHMENT_OWNER_TYPES),
   ownerId: z.string().uuid(),
   kind: z.enum(ATTACHMENT_KINDS),
   mimeType: z.enum(ALLOWED_MIME_TYPES),

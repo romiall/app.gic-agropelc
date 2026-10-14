@@ -51,11 +51,48 @@ function command(
 describe('Écran de synchronisation : libellés et classement (MP-09)', () => {
   beforeEach(async () => {
     await getDb().outbox.clear();
+    await getDb().attachmentFiles.clear();
   });
 
   afterEach(async () => {
     cleanup();
     await getDb().outbox.clear();
+    await getDb().attachmentFiles.clear();
+  });
+
+  it('MP-10 : photos de l’utilisateur encore à envoyer, comptées à part', async () => {
+    const file = (
+      id: string,
+      author: string,
+      status: 'QUEUED' | 'SENT' | 'REFUSED',
+      size: number,
+    ) => ({
+      attachment_id: id,
+      author_user_id: author,
+      owner_type: 'STOCK_LOSS',
+      owner_id: 'perte',
+      kind: 'PHOTO',
+      mime_type: 'image/jpeg',
+      size_bytes: size,
+      sha256: 'a'.repeat(64),
+      captured_at: AT,
+      register_command_id: `cmd-${id}`,
+      status,
+      uploaded_bytes: 0,
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+    });
+    await getDb().attachmentFiles.bulkPut([
+      file('p1', ME, 'QUEUED', 300 * 1024),
+      file('p2', ME, 'QUEUED', 100 * 1024),
+      file('p3', ME, 'SENT', 900 * 1024),
+      file('p4', OTHER, 'QUEUED', 900 * 1024),
+      file('p5', ME, 'REFUSED', 900 * 1024),
+    ]);
+    render(<SyncScreen />);
+    expect(await screen.findByText('2 photos à envoyer (400 Ko).')).toBeInTheDocument();
+    expect(await screen.findByText(/1 photo refusée par le serveur/)).toBeInTheDocument();
   });
 
   it('types d’opération en français ; une opération refusée de l’utilisateur se classe, sans être effacée', async () => {

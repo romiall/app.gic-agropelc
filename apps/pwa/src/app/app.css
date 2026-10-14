@@ -1265,3 +1265,48 @@ ul.outbox-list li {
 .stock-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+/* Photo jointe (MP-10). */
+.photo-field {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.photo-field legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.photo-status {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.receipt-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.server-photo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border-radius: 8px;
+}
+
+/* Focus clavier visible sur les boutons de prise de vue (l'entrée fichier est masquée). */
+.photo-actions .action:focus-within {
+  outline: 3px solid rgb(30 122 52 / 45%);
+  outline-offset: 2px;
+}

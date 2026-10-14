@@ -782,7 +782,7 @@ describe('procurement.receipt.* (P6-05)', () => {
     expect(await conflictOf(small.id)).toHaveLength(0);
   });
 
-  it('MP-10 (AV-287) : photo du bon jointe après coup → « photo manquante » close ; le Resp. achats la voit, un autre non', async () => {
+  it('MP-10 (AV-285) : photo du bon jointe après coup → « photo manquante » close ; le Resp. achats la voit, un autre non', async () => {
     const photoConflict = async (receiptId: string) =>
       db
         .selectFrom('sync_sync_conflicts')
@@ -816,7 +816,7 @@ describe('procurement.receipt.* (P6-05)', () => {
       }) as unknown as AuthenticatedRequest;
     const reply = { header: () => reply } as unknown as FastifyReply;
     /** Pièce enregistrée par le magasinier (comme `attachments.attachment.register`), puis envoyée. */
-    const attach = async (receiptId: string, kind: string) => {
+    const attach = async (receiptId: string, kind: string, author: Actor = storekeeper) => {
       const id = freshUuid();
       const content = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(id)]);
       await db
@@ -834,14 +834,14 @@ describe('procurement.receipt.* (P6-05)', () => {
           upload_status: 'PENDING_UPLOAD',
           captured_at: new Date(at('14:00:00')),
           occurred_at: new Date(at('14:00:00')),
-          created_by: toBin(storekeeper.userId),
+          created_by: toBin(author.userId),
         })
         .execute();
       const put = await controller.putContent(
         id,
         `bytes 0-${content.length - 1}/${content.length}`,
         content,
-        requestOf(storekeeper),
+        requestOf(author),
       );
       expect(put.upload_status).toBe('AVAILABLE');
       return { id, content };
@@ -869,6 +869,12 @@ describe('procurement.receipt.* (P6-05)', () => {
       userId: strangerId,
       deviceId: await db.transaction().execute((trx) => insertTestDevice(trx, strangerId)),
     } as Actor;
+
+    // Revue de MP-10 : un tiers sans droit sur la réception ne clôt pas son signal en y joignant un
+    // fichier ; la pièce reste reçue, le signal ouvert pour le Resp. achats.
+    const third = await receiveMissing('13:20:00');
+    await attach(third, 'DELIVERY_NOTE', stranger);
+    expect((await photoConflict(third)).status).toBe('OPEN');
     await expect(controller.getContent(photo.id, requestOf(stranger), reply)).rejects.toMatchObject(
       { code: 'FORBIDDEN' },
     );

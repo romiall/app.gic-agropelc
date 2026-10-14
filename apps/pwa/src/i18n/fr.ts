@@ -860,8 +860,6 @@ export const fr = {
     cause_label: 'Cause (facultatif)',
     cause_placeholder: 'Cause non précisée',
     comment_label: 'Commentaire (facultatif)',
-    photo_hint:
-      'La mortalité est soumise à validation ; la photo demandée au valideur n’est pas encore jointe par l’application.',
     input_location_label: 'Pris sur',
     input_product_label: 'Aliment ou intrant',
     no_consumable:
@@ -1080,8 +1078,6 @@ export const fr = {
       'Ce bon de livraison est déjà reçu pour ce fournisseur : la réception sera mise en quarantaine pour vérification et n’entrera pas au stock avant décision.',
     comment_required:
       'Un motif de rejet choisi exige une précision : décrivez-la dans les observations.',
-    photo_hint:
-      'Au-delà de {{threshold}} acceptés, la photo du bon de livraison est exigée ; l’application ne sait pas encore la joindre : la réception sera enregistrée « photo manquante » et signalée aux Achats.',
     submit: 'Enregistrer la réception',
     result: {
       WAITING_offline:
@@ -1091,7 +1087,7 @@ export const fr = {
       WARNING: 'Réception {{doc}} enregistrée, avec un signalement.',
       WARNING_RECEIPT_QUARANTINED: 'Réception {{doc}} mise en quarantaine pour validation.',
       WARNING_RECEIPT_PHOTO_MISSING:
-        'Réception {{doc}} enregistrée sans photo du bon de livraison : elle est signalée aux Achats ; gardez le bon pour la régularisation.',
+        'Réception {{doc}} enregistrée sans photo du bon de livraison : elle est signalée aux Achats ; joignez la photo du bon dès que possible.',
       CONFLICT: 'Réception mise en attente d’examen (conflit).',
       REJECTED: 'Réception refusée : {{reason}}',
     },
@@ -2299,8 +2295,6 @@ export const fr = {
       'La quantité dépasse le disponible (ou le lot choisi) : le serveur refuserait la perte. Vérifiez la quantité.',
     over_offline:
       'La quantité dépasse le disponible connu de l’appareil : la perte sera tout de même enregistrée et signalée.',
-    photo_hint:
-      'La photo justificative n’est pas encore prise par l’application : gardez-la sur le téléphone.',
     issue: {
       PRODUCT_REQUIRED: 'Choisissez le produit.',
       QUANTITY_INVALID: 'Quantité invalide (au plus 3 décimales).',
@@ -2587,7 +2581,7 @@ export const fr = {
     amount: 'Montant : {{amount}}',
     amount_masked: 'Montant au coût masqué (droit de valorisation requis).',
     attachment_pending:
-      'Justificatif en cours de transmission : l’approbation sera possible dès sa réception.',
+      'Justificatif attendu (pas encore reçu par le serveur) : l’approbation sera possible dès sa réception.',
     self_request:
       'Votre propre demande : en tant que Direction, vous pouvez la valider en le déclarant explicitement.',
     record_only:
@@ -3251,6 +3245,55 @@ export const fr = {
       },
     },
   },
+  photo: {
+    take: 'Prendre une photo',
+    choose: 'Choisir une image',
+    ready: 'Photo prête ({{size}} Ko).',
+    remove: 'Retirer la photo',
+    preparing: 'Préparation de la photo…',
+    send: 'Envoyer la photo',
+    cancel: 'Annuler',
+    view: 'Voir la photo',
+    retry: 'Réessayer',
+    mortality_awaiting_title: 'Mortalités en attente de validation',
+    mortality_awaiting_hint:
+      'Le valideur attend la photo avant d’approuver : joignez-la si elle manque.',
+    mortality_awaiting_line: '{{heads}} · {{date}}',
+    loading: 'Chargement de la photo…',
+    error: {
+      UNSUPPORTED:
+        'Image illisible sur ce téléphone (format non pris en charge) : prenez la photo avec l’appareil photo.',
+      TOO_LARGE: 'Photo trop lourde, même réduite : reprenez-la.',
+      BUDGET:
+        'Trop de photos attendent leur envoi sur ce téléphone : synchronisez, puis réessayez. L’opération peut partir sans photo.',
+    },
+    state: {
+      LOCAL: 'Photo enregistrée sur ce téléphone : elle partira à la prochaine synchronisation.',
+      UPLOADING: 'Photo en cours d’envoi ({{percent}} %).',
+      RECEIVED: 'Photo reçue par le serveur.',
+      REFUSED: 'Photo refusée par le serveur : prenez-en une nouvelle.',
+      OTHER_AUTHOR:
+        'Photo prise sur ce téléphone par un autre utilisateur : elle partira à sa prochaine connexion.',
+    },
+    view_error: {
+      OFFLINE: 'Photo indisponible hors connexion.',
+      SESSION_INVALID: 'Reconnectez-vous pour voir la photo.',
+      FORBIDDEN: 'Cette photo n’est pas dans votre périmètre.',
+      NOT_AVAILABLE: 'Photo pas encore reçue par le serveur.',
+      ERROR: 'Photo indisponible pour le moment.',
+    },
+    receipt_label: 'Photo du bon de livraison',
+    receipt_hint:
+      'À partir de {{threshold}} acceptés, la photo du bon est exigée : sans elle, la réception est enregistrée « photo manquante » et signalée aux Achats.',
+    loss_label: 'Photo de la perte (facultative)',
+    mortality_label: 'Photo des animaux morts',
+    mortality_hint:
+      'La mortalité est soumise à validation : le valideur attend la photo avant d’approuver.',
+    attach_receipt: 'Joindre la photo du bon',
+    attach_mortality: 'Joindre la photo',
+    missing_badge: 'Photo manquante',
+    approval_alt: 'Photo jointe : {{summary}}',
+  },
   sync: {
     device_pending:
       'Enregistrée sur ce téléphone, qui attend son approbation (par l’administrateur ou un responsable habilité) : l’opération partira après l’approbation.',
@@ -3274,6 +3317,12 @@ export const fr = {
     pending_operations: 'Opérations en attente',
     no_pending: 'Aucune opération en attente.',
     attention_operations: 'Opérations à examiner',
+    photos_pending_one: '{{count}} photo à envoyer ({{size}} Ko).',
+    photos_pending_other: '{{count}} photos à envoyer ({{size}} Ko).',
+    photos_refused_one:
+      '{{count}} photo refusée par le serveur : reprenez-la depuis son document (réception, mortalité).',
+    photos_refused_other:
+      '{{count}} photos refusées par le serveur : reprenez-les depuis leur document (réception, mortalité).',
     acknowledge: 'Classer',
     acknowledge_label: 'Classer : {{operation}}',
     acknowledge_help:

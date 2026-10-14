@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
+import { fetchAttachmentContent } from '../../sync/attachment-content.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { ApprovalsScreen } from './ApprovalsScreen.js';
 import {
@@ -18,6 +19,7 @@ import {
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../sync/api-client.js', () => ({ authorizedRequest: vi.fn() }));
+vi.mock('../../sync/attachment-content.js', () => ({ fetchAttachmentContent: vi.fn() }));
 vi.mock('../auth/AuthContext.js', () => ({
   useAuth: () => ({
     state: {
@@ -299,9 +301,7 @@ describe('Validations (ECR-ADM-08)', () => {
     const waitingCard = await screen.findByRole('listitem', {
       name: 'Mortalité : Mortalité PRT-0013',
     });
-    expect(
-      within(waitingCard).getByText(/Justificatif en cours de transmission/),
-    ).toBeInTheDocument();
+    expect(within(waitingCard).getByText(/Justificatif attendu/)).toBeInTheDocument();
     expect(within(waitingCard).getByText(/Montant au coût masqué/)).toBeInTheDocument();
     expect(
       within(waitingCard).getByRole('button', { name: 'Approuver : Mortalité PRT-0013' }),
@@ -374,6 +374,72 @@ describe('Validations (ECR-ADM-08)', () => {
     expect(await lastCommand()).toMatchObject({
       payload: { requestId: view.id, decisionOption: 'CUSTOMER_CREDIT' },
     });
+  });
+
+  it('MP-10 (AV-286) : photo reçue du document vue avant de décider ; photo en route non proposée ; hors périmètre', async () => {
+    const PHOTO = '01900000-0000-7000-8000-0000000003f1';
+    const view = request({
+      operationType: 'MORTALITY',
+      subjectType: 'STOCK_LOSS',
+      subjectSummary: 'Mortalité : 12 têtes',
+      attachments: [
+        { id: PHOTO, kind: 'PHOTO', uploadStatus: 'AVAILABLE' },
+        {
+          id: '01900000-0000-7000-8000-0000000003f2',
+          kind: 'PHOTO',
+          uploadStatus: 'PENDING_UPLOAD',
+        },
+      ],
+    });
+    serve([view]);
+    const createObjectURL = vi.fn(() => 'blob:photo-recue');
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    vi.mocked(fetchAttachmentContent).mockResolvedValue({
+      ok: true,
+      blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }),
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ });
+    const buttons = within(card).getAllByRole('button', { name: 'Voir la photo' });
+    expect(buttons).toHaveLength(1);
+    await user.click(buttons[0]!);
+    const image = await within(card).findByRole('img', {
+      name: 'Photo jointe : Mortalité : 12 têtes',
+    });
+    expect(image).toHaveAttribute('src', 'blob:photo-recue');
+    expect(fetchAttachmentContent).toHaveBeenCalledWith(expect.anything(), PHOTO);
+    cleanup();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:photo-recue');
+
+    // Échec réseau puis nouvel essai réussi.
+    vi.mocked(fetchAttachmentContent).mockResolvedValueOnce({ ok: false, reason: 'OFFLINE' });
+    renderScreen();
+    await user.click(
+      within(await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ })).getByRole(
+        'button',
+        { name: 'Voir la photo' },
+      ),
+    );
+    expect(await screen.findByText(/Photo indisponible hors connexion/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByRole('img', { name: 'Photo jointe : Mortalité : 12 têtes' }),
+    ).toBeInTheDocument();
+    cleanup();
+
+    vi.mocked(fetchAttachmentContent).mockResolvedValue({ ok: false, reason: 'FORBIDDEN' });
+    renderScreen();
+    await user.click(
+      within(await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ })).getByRole(
+        'button',
+        { name: 'Voir la photo' },
+      ),
+    );
+    expect(
+      await screen.findByText('Cette photo n’est pas dans votre périmètre.'),
+    ).toBeInTheDocument();
   });
 
   it('hors ligne : écran en ligne seulement ; file vide ; droit refusé', async () => {

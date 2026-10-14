@@ -405,6 +405,39 @@ describe('P7-02 : prérequis inventory de la production', () => {
     ).toBe('ATTACHMENT_MISSING');
     expect((await lossRow(lossId)).status).toBe('PENDING_APPROVAL');
 
+    // Revue de MP-10 : une pièce d'une autre nature (document quelconque) n'est pas la photo exigée.
+    const notAPhoto = freshUuid();
+    await db
+      .insertInto('attachments_attachments')
+      .values({
+        id: toBin(notAPhoto),
+        owner_type: 'STOCK_LOSS',
+        owner_id: toBin(lossId),
+        kind: 'OTHER',
+        mime_type: 'application/pdf',
+        size_bytes: 2_000,
+        uploaded_bytes: 2_000,
+        sha256: 'c'.repeat(64),
+        storage_key: `test/${notAPhoto}`,
+        upload_status: 'AVAILABLE',
+        captured_at: new Date(at('07:00:00')),
+        occurred_at: new Date(at('07:00:00')),
+        created_by: toBin(farmManager.userId),
+      })
+      .execute();
+    expect(
+      code(
+        await run(
+          productionManager,
+          'approvals.request.approve',
+          'APPROVAL_REQUEST',
+          approvalId,
+          at('08:07:00'),
+          { requestId: approvalId },
+        ),
+      ),
+    ).toBe('ATTACHMENT_MISSING');
+
     const photo = freshUuid();
     await db
       .insertInto('attachments_attachments')
@@ -439,7 +472,7 @@ describe('P7-02 : prérequis inventory de la production', () => {
     expect((await lossRow(lossId)).status).toBe('APPROVED');
     expect(await lotHeadcount(db, { lotId: stockLotId, scope: 'REARING' })).toBe(997);
 
-    // MP-10 (AV-296) : photo de la perte — son auteur, le lecteur des pertes du site (Resp.
+    // MP-10 (AV-286) : photo de la perte — son auteur, le lecteur des pertes du site (Resp.
     // production) ; pas le responsable d'une autre ferme (portée de site, AV-094).
     const owner = { createdBy: farmManager.userId, ownerType: 'STOCK_LOSS', ownerId: lossId };
     const now = new Date(at('09:00:00'));

@@ -267,7 +267,7 @@ export async function approvalInboxPage(
 /**
  * L'utilisateur peut-il décider une demande en attente portant sur ce document (même portée que la
  * file de validation : permission de décision sur le demandeur, le site et la zone, BR-ADM-018) ?
- * Sert à montrer au valideur la pièce jointe du document qu'il décide (MP-10, AV-296), même sans
+ * Sert à montrer au valideur la pièce jointe du document qu'il décide (MP-10, AV-286), même sans
  * droit de lecture sur le document lui-même.
  */
 export async function canDecidePendingApprovalOf(

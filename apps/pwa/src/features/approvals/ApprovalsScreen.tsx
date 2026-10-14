@@ -16,6 +16,7 @@ import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime, formatKpiValue } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
+import { ServerPhoto } from '../attachments/PhotoViews.js';
 import { readPages, useOnlineRead, type Pages } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
@@ -315,6 +316,16 @@ export function ApprovalsScreen() {
                 {view.attachmentsPending ? (
                   <p className="text-warn">{t('approvals.attachment_pending')}</p>
                 ) : null}
+                {/* Photos reçues du document décidé : vues avant de décider (AV-286). */}
+                {(view.attachments ?? [])
+                  .filter((attachment) => attachment.uploadStatus === 'AVAILABLE')
+                  .map((attachment) => (
+                    <ServerPhoto
+                      key={attachment.id}
+                      attachmentId={attachment.id}
+                      alt={t('photo.approval_alt', { summary: view.subjectSummary })}
+                    />
+                  ))}
                 {view.selfRequest ? (
                   <p className="home-muted">{t('approvals.self_request')}</p>
                 ) : null}

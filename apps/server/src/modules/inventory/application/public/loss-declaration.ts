@@ -322,6 +322,7 @@ export function registerLossDecisionHandlers(
         !(await hasAvailableAttachment(uow, {
           ownerType: LOSS_ATTACHMENT_OWNER_TYPE,
           ownerId: ctx.subjectId,
+          kind: 'PHOTO',
         }))
       ) {
         throw new ApprovalDecisionRefused(
@@ -508,6 +509,7 @@ export async function lossesAwaitingPhoto(
       !(await hasAvailableAttachment(executor, {
         ownerType: LOSS_ATTACHMENT_OWNER_TYPE,
         ownerId: lossId,
+        kind: 'PHOTO',
       }))
     ) {
       waiting.add(lossId);

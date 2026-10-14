@@ -8,8 +8,11 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '../../storage/db.js';
 import { acknowledgeCommand } from '../../sync/outbox.js';
+import { pendingAttachments } from '../../sync/attachment-upload.js';
+import { refusedPhotosCount } from '../attachments/attachments.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { awaitsDeviceApproval } from '../sales/pending.js';
 import { operationLabel } from './operation-label.js';
@@ -21,6 +24,10 @@ export function SyncScreen() {
   const { state } = useAuth();
   const status = useSyncStatus();
   const [syncing, setSyncing] = useState(false);
+  // Photos de l'utilisateur encore à envoyer (MP-10) : elles partent après les opérations.
+  const userId = state.status === 'unlocked' ? state.userId : undefined;
+  const photos = useLiveQuery(() => pendingAttachments(getDb(), userId), [userId]);
+  const refusedPhotos = useLiveQuery(() => refusedPhotosCount(userId), [userId]);
 
   if (state.status !== 'unlocked' || !status) return null;
 
@@ -48,6 +55,17 @@ export function SyncScreen() {
         <p className="home-banner" role="status">
           {t('sync.device_pending_notice')}
         </p>
+      ) : null}
+      {photos && photos.count > 0 ? (
+        <p className="home-muted">
+          {t('sync.photos_pending', {
+            count: photos.count,
+            size: Math.max(1, Math.round(photos.bytes / 1024)),
+          })}
+        </p>
+      ) : null}
+      {refusedPhotos && refusedPhotos > 0 ? (
+        <p className="text-warn">{t('sync.photos_refused', { count: refusedPhotos })}</p>
       ) : null}
       <h2>{t('sync.pending_operations')}</h2>
       {status.pending.length === 0 ? (

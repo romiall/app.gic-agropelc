@@ -12,13 +12,17 @@ import { ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
-import { formatClockTime } from '../home/format-home.js';
+import { formatClockTime, formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
 import { physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
+import { photoAttachment } from '../attachments/attachments.js';
+import type { PreparedPhoto } from '../attachments/photo.js';
+import { PhotoField } from '../attachments/PhotoField.js';
+import { AttachPhoto } from '../attachments/PhotoViews.js';
 import type { ProductionLotData } from '../sales/types.js';
 import { checkTransferLine, type TransferLineDraft } from '../stock/transfer.js';
 import {
@@ -43,6 +47,34 @@ import {
   weighingPayload,
 } from './daily.js';
 
+/**
+ * Mortalités du lot qui attendent la décision, quel que soit leur jour : leur photo se joint ici
+ * après coup — l'approbation l'attend (AV-107 ; revue de MP-10 : le seul journal du jour la rendait
+ * impossible dès le lendemain). Celles encore sur l'appareil y figurent aussi.
+ */
+function mortalitiesAwaitingApproval(
+  refs: SalesReferences,
+  lotId: string,
+): { readonly id: string; readonly at: string; readonly heads: number }[] {
+  const known = new Set<string>();
+  const list: { id: string; at: string; heads: number }[] = [];
+  for (const loss of refs.lotLosses) {
+    if (loss.production_lot_id !== lotId || loss.category !== 'MORTALITE') continue;
+    known.add(loss.id);
+    if (loss.status !== 'PENDING_APPROVAL') continue;
+    list.push({ id: loss.id, at: loss.occurred_at, heads: loss.quantity_base ?? 0 });
+  }
+  for (const command of refs.outbox) {
+    if (command.command_type !== 'production.mortality.record') continue;
+    if (known.has(command.aggregate_id)) continue;
+    if (command.status === 'REJECTED' || command.status === 'CONFLICT') continue;
+    const payload = command.payload as { productionLotId?: string; quantity?: number };
+    if (payload.productionLotId !== lotId) continue;
+    list.push({ id: command.aggregate_id, at: command.occurred_at, heads: payload.quantity ?? 0 });
+  }
+  return list.sort((a, b) => b.at.localeCompare(a.at));
+}
+
 type EntryKind = 'MORTALITY' | 'INPUT' | 'WEIGHING' | 'OBSERVATION';
 const KINDS: readonly EntryKind[] = ['MORTALITY', 'INPUT', 'WEIGHING', 'OBSERVATION'];
 
@@ -62,6 +94,10 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
   const [quantityText, setQuantityText] = useState('');
   const [reasonId, setReasonId] = useState('');
   const [comment, setComment] = useState('');
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  // Nouvelle saisie : le champ photo repart à neuf (message d'erreur compris).
+  const [photoField, setPhotoField] = useState(0);
   const ids = { location: useId(), quantity: useId(), reason: useId(), comment: useId() };
   const location =
     locations.find((candidate) => candidate.id === locationChoice) ??
@@ -80,7 +116,12 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
     reasons.find((reason) => reason.id === reasonId)?.requires_comment === true;
   const commentMissing = commentRequired && comment.trim() === '';
   const ready =
-    location !== undefined && quantity !== null && !commentMissing && !(online && over) && !blocked;
+    location !== undefined &&
+    quantity !== null &&
+    !commentMissing &&
+    !(online && over) &&
+    !preparing &&
+    !blocked;
 
   const submit = () => {
     if (!ready || !location || quantity === null) return;
@@ -88,6 +129,14 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
       authorUserId: userId,
       commandType: 'production.mortality.record',
       aggregateType: 'STOCK_LOSS',
+      // Photo rattachée à la déclaration (`STOCK_LOSS`) : l'approbation l'attend (AV-107, ADR-046).
+      ...(photo
+        ? {
+            attachments: [
+              photoAttachment(photo, { kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false }),
+            ],
+          }
+        : {}),
       payload: mortalityPayload({
         lotId: lot.id,
         locationId: location.id,
@@ -100,6 +149,8 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
         setQuantityText('');
         setReasonId('');
         setComment('');
+        setPhoto(null);
+        setPhotoField((value) => value + 1);
       }
     });
   };
@@ -189,7 +240,14 @@ function MortalityForm({ refs, lot, online, send, blocked, userId }: FormProps) 
           </p>
         ) : null}
       </div>
-      <p className="home-muted">{t('production.photo_hint')}</p>
+      <PhotoField
+        key={photoField}
+        label={t('photo.mortality_label')}
+        hint={t('photo.mortality_hint')}
+        value={photo}
+        onChange={setPhoto}
+        onBusyChange={setPreparing}
+      />
       <button type="button" className="btn-block submit-sale" disabled={!ready} onClick={submit}>
         {t('production.submit.MORTALITY')}
       </button>
@@ -577,6 +635,7 @@ export function DailyEntryScreen() {
 
   const today = businessDayOf(clock.now());
   const journal = todayJournal(refs, lot.id, today);
+  const awaitingPhoto = mortalitiesAwaitingApproval(refs, lot.id);
   const heads = rearingHeadcount(refs, lot);
   const settling =
     last !== undefined && !refs.outbox.some((command) => command.command_id === last.commandId);
@@ -662,6 +721,36 @@ export function DailyEntryScreen() {
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
         </p>
+      ) : null}
+      {awaitingPhoto.length > 0 ? (
+        <section className="sale-block" aria-labelledby="production-photos-title">
+          <h2 id="production-photos-title">{t('photo.mortality_awaiting_title')}</h2>
+          <p className="home-muted">{t('photo.mortality_awaiting_hint')}</p>
+          <ul className="receipt-lines">
+            {awaitingPhoto.map((mortality) => (
+              <li key={mortality.id}>
+                <span>
+                  <strong>
+                    {t('photo.mortality_awaiting_line', {
+                      heads: formatQuantityUnit(mortality.heads, 'TETE'),
+                      date: formatMoment(mortality.at, today),
+                    })}
+                  </strong>
+                  <AttachPhoto
+                    userId={userId}
+                    target={{
+                      kind: 'PHOTO',
+                      ownerType: 'STOCK_LOSS',
+                      cited: false,
+                      ownerId: mortality.id,
+                    }}
+                    label={t('photo.attach_mortality')}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       <section className="sale-block" aria-labelledby="production-journal-title">
         <h2 id="production-journal-title">{t('production.journal_title')}</h2>

@@ -7,9 +7,11 @@
  *
  * MP-10 :
  * - fin de l'envoi : empreinte **et** signature du fichier (premiers octets conformes au type
- *   déclaré, 02-securite §6) ; sinon `QUARANTINED` ; la photo du bon de livraison d'une réception
- *   clôt sa « photo manquante » (`regularizeReceiptPhoto`, AV-287) ;
- * - `GET /attachments/{id}/content` : lecture authentifiée de la pièce (AV-296), sans URL signée
+ *   déclaré, 02-securite §9) ; sinon `QUARANTINED` ; rejouable (octets tous reçus mais fin non
+ *   enregistrée : constatée à la session suivante ou au renvoi du dernier morceau) et sans effet sur
+ *   une pièce déjà finalisée ; la photo du bon de livraison d'une réception clôt sa « photo manquante »
+ *   quand son auteur a le droit sur la réception (`regularizeReceiptPhoto`, AV-285) ;
+ * - `GET /attachments/{id}/content` : lecture authentifiée de la pièce (AV-286), sans URL signée
  *   (le stockage objet reste à choisir, AV-091) — par son auteur, par qui lit le document
  *   propriétaire dans sa portée, ou par qui peut décider une validation en attente sur lui.
  */
@@ -44,7 +46,10 @@ import { CHUNK_STORAGE } from '../platform/storage/chunk-storage.provider.js';
 import { ChunkOffsetMismatchError, type ChunkStorage } from '../platform/storage/chunk-storage.js';
 import { ATTACHMENT_CHUNK_SIZE_BYTES } from '@gic/contracts';
 import { regularizeReceiptPhoto } from '../modules/procurement/application/public/index.js';
-import { canViewAttachment } from './attachment-access.js';
+import { canRegularizeReceiptPhoto, canViewAttachment } from './attachment-access.js';
+
+/** Identifiant de pièce bien formé (sinon 404, jamais une erreur de conversion). */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { recordDenied } from '../audit/record-denied.js';
 
 /** Premiers octets attendus de chaque type accepté (02-securite §6 : type vérifié sur le contenu). */
@@ -121,7 +126,16 @@ export class AttachmentUploadController {
     @Req() request: AuthenticatedRequest,
   ): Promise<{ uploaded_bytes: number; chunk_size: number }> {
     const row = await this.loadUploadableAttachment(id, request.auth!.sub);
-    return { uploaded_bytes: row.uploaded_bytes, chunk_size: RECOMMENDED_CHUNK_SIZE_BYTES };
+    // Octets réellement reçus (le stockage fait foi) : une fin d'envoi interrompue après l'écriture
+    // du dernier morceau est constatée ici, et la pièce n'attend plus sans fin (revue de MP-10).
+    const stored = await this.storage.uploadedBytes(row.storage_key!);
+    if (stored >= row.size_bytes) {
+      const status = await this.finalize(id, row, request.auth!.sub);
+      throw new ApiError(409, 'CONFLICT', `Pièce jointe déjà reçue (statut ${status}).`, {
+        upload_status: status,
+      });
+    }
+    return { uploaded_bytes: stored, chunk_size: RECOMMENDED_CHUNK_SIZE_BYTES };
   }
 
   @Head(':id/content')
@@ -175,6 +189,11 @@ export class AttachmentUploadController {
       newTotal = await this.storage.appendChunk(row.storage_key!, range.start, body);
     } catch (error) {
       if (error instanceof ChunkOffsetMismatchError) {
+        // Dernier morceau renvoyé alors que tout est déjà sur le stockage : la fin est constatée.
+        if (error.expectedOffset >= row.size_bytes) {
+          const status = await this.finalize(id, row, request.auth!.sub);
+          return { uploaded_bytes: row.size_bytes, upload_status: status };
+        }
         throw new ApiError(
           409,
           'UPLOAD_OFFSET_MISMATCH',
@@ -194,18 +213,28 @@ export class AttachmentUploadController {
       return { uploaded_bytes: newTotal, upload_status: 'PENDING_UPLOAD' };
     }
 
-    // Dernier morceau : empreinte et signature vérifiées sur le fichier assemblé (SM-ATTACHMENT).
-    const full = await this.storage.readAll(row.storage_key!);
-    const finalStatus =
-      sha256HexOfBuffer(full) === row.sha256 && matchesSignature(full, row.mime_type)
-        ? 'AVAILABLE'
-        : 'QUARANTINED';
-    await this.recordUploadCompletion(id, newTotal, finalStatus, request.auth!.sub, row);
-    return { uploaded_bytes: newTotal, upload_status: finalStatus };
+    const status = await this.finalize(id, row, request.auth!.sub);
+    return { uploaded_bytes: newTotal, upload_status: status };
   }
 
   /**
-   * Contenu d'une pièce reçue (MP-10, AV-296) : son auteur, qui lit le document propriétaire dans sa
+   * Fin d'envoi (SM-ATTACHMENT) : empreinte et signature vérifiées sur le fichier assemblé, statut,
+   * audit, événement, flux, régularisation. Rend le statut final ; une pièce déjà finalisée garde le
+   * sien, sans second effet.
+   */
+  private async finalize(id: string, row: AttachmentRow, actorUserId: string): Promise<string> {
+    const full = await this.storage.readAll(row.storage_key!);
+    const finalStatus =
+      full.length === row.size_bytes &&
+      sha256HexOfBuffer(full) === row.sha256 &&
+      matchesSignature(full, row.mime_type)
+        ? 'AVAILABLE'
+        : 'QUARANTINED';
+    return this.recordUploadCompletion(id, row.size_bytes, finalStatus, actorUserId, row);
+  }
+
+  /**
+   * Contenu d'une pièce reçue (MP-10, AV-286) : son auteur, qui lit le document propriétaire dans sa
    * portée (réception : `procurement.order.read` sur le site ; perte : `inventory.loss.read` sur le
    * site ou la zone, ou sa propre déclaration, AV-094), ou qui peut décider une validation en attente
    * sur ce document. Refus audité ; jamais mis en cache.
@@ -270,7 +299,7 @@ export class AttachmentUploadController {
   }
 
   private async loadAttachment(id: string): Promise<AttachmentRow | undefined> {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return undefined;
+    if (!UUID_PATTERN.test(id)) return undefined;
     return this.db
       .selectFrom('attachments_attachments')
       .select([
@@ -322,21 +351,34 @@ export class AttachmentUploadController {
     status: 'AVAILABLE' | 'QUARANTINED',
     actorUserId: string,
     attachment: Pick<AttachmentRow, 'owner_type' | 'owner_id' | 'kind'>,
-  ): Promise<void> {
+  ): Promise<string> {
     const now = this.clock.now();
-    await this.db.transaction().execute(async (trx) => {
-      await trx
+    return this.db.transaction().execute(async (trx) => {
+      // Seule une pièce encore en attente change d'état : deux fins concurrentes n'en font qu'une, et
+      // une pièce reçue ne repasse jamais en quarantaine (SM-ATTACHMENT, revue de MP-10).
+      const updated = await trx
         .updateTable('attachments_attachments')
         .set({ uploaded_bytes: uploadedBytes, upload_status: status })
         .where('id', '=', toBin(attachmentId))
-        .execute();
+        .where('upload_status', 'in', ['PENDING_UPLOAD', 'MISSING'])
+        .executeTakeFirst();
+      if (Number(updated.numUpdatedRows) === 0) {
+        const current = await trx
+          .selectFrom('attachments_attachments')
+          .select('upload_status')
+          .where('id', '=', toBin(attachmentId))
+          .executeTakeFirstOrThrow();
+        return current.upload_status;
+      }
 
-      // Photo du bon de livraison reçue : la « photo manquante » de la réception est régularisée
-      // (AV-287 ; conflits au rang N11, avant la tête d'audit N14, ADR-038).
+      // Photo du bon de livraison reçue : la « photo manquante » de la réception est régularisée si
+      // son auteur a le droit sur la réception (AV-285 ; conflits au rang N11, avant la tête d'audit
+      // N14, ADR-038).
       const regularized =
         status === 'AVAILABLE' &&
         attachment.owner_type === 'GOODS_RECEIPT' &&
-        attachment.kind === 'DELIVERY_NOTE'
+        attachment.kind === 'DELIVERY_NOTE' &&
+        (await canRegularizeReceiptPhoto(trx, fromBin(attachment.owner_id), actorUserId, now))
           ? await regularizeReceiptPhoto(trx, {
               receiptId: fromBin(attachment.owner_id),
               attachmentId,
@@ -389,6 +431,7 @@ export class AttachmentUploadController {
           row_version: 1,
         })
         .execute();
+      return status;
     });
   }
 }
