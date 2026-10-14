@@ -6092,6 +6092,27 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `platform_event_consumer_failures`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `platform_event_consumer_failures` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `consumer_name` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `event_seq` bigint unsigned NOT NULL,
+  `event_id` binary(16) NOT NULL,
+  `event_type` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `error_message` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `attempts` smallint NOT NULL,
+  `failed_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_platform_event_consumer_failures_event` (`consumer_name`,`event_seq`),
+  KEY `ix_platform_event_consumer_failures_failed` (`failed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `platform_event_consumer_marks`
 --
 
@@ -9681,5 +9702,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090300'),
   ('20261101090000'),
   ('20261201090000'),
-  ('20261201090100');
+  ('20261201090100'),
+  ('20261201090200');
 UNLOCK TABLES;

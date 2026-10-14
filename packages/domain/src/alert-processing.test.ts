@@ -54,6 +54,7 @@ describe('alertFromEvent — événements déjà publiés par les phases précé
       subjectKey: SALE,
       dedupKey: `OVERDUE_RECEIVABLE:${SALE}`,
       severity: 'WARNING',
+      declaredSeverity: null,
       siteId: SITE,
       zoneId: null,
       ownerUserIds: ['aaaaaaaa-0000-7000-8000-000000000001'],
@@ -76,6 +77,7 @@ describe('alertFromEvent — événements déjà publiés par les phases précé
     );
     expect(critical.alertType).toBe('CASH_VARIANCE');
     expect(critical.severity).toBe('CRITICAL');
+    expect(critical.declaredSeverity).toBe('CRITICAL');
     expect(critical.recipientRoles).toEqual(['FINANCE']);
 
     const warning = raise(
@@ -92,6 +94,7 @@ describe('alertFromEvent — événements déjà publiés par les phases précé
       event('CashVarianceDetected', SESSION, { variance_xaf: 10, severity: 'INFO' }),
     );
     expect(action.severity).toBe('WARNING');
+    expect(action.declaredSeverity).toBeNull();
   });
 
   it('CashSessionOpenLongDetected lève ; CashSessionClosed résout le même sujet', () => {

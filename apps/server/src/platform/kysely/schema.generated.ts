@@ -236,6 +236,128 @@ export interface CatalogUnits {
   name: string;
 }
 
+export interface CommunicationAlertRecipients {
+  added_at: Generated<Date>;
+  alert_id: Buffer;
+  origin: string;
+  role_code: string | null;
+  user_id: Buffer;
+}
+
+export interface CommunicationAlertRules {
+  alert_type: string;
+  created_at: Generated<Date>;
+  enabled: Generated<number>;
+  escalation_hours: number | null;
+  escalation_roles: Generated<Json>;
+  recipient_roles: Json;
+  resolution_mode: string;
+  severity: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CommunicationAlerts {
+  acknowledged_at: Date | null;
+  acknowledged_by: Buffer | null;
+  action_screen: string | null;
+  alert_type: string;
+  business_day: Date | null;
+  created_at: Generated<Date>;
+  critical_since: Date | null;
+  dedup_key: string;
+  escalated_at: Date | null;
+  first_detected_at: Date;
+  id: Buffer;
+  last_detected_at: Date;
+  last_pass_id: string | null;
+  message: Generated<string>;
+  nature: string;
+  occurrences: Generated<number>;
+  open_dedup_key: string | null;
+  owner_user_id: Buffer | null;
+  payload: Json;
+  resolution_comment: string | null;
+  resolution_kind: string | null;
+  resolved_at: Date | null;
+  resolved_by: Buffer | null;
+  severity: string;
+  site_id: Buffer | null;
+  status: Generated<string>;
+  subject_id: Buffer;
+  subject_type: string;
+  title: string;
+  updated_at: Generated<Date>;
+  version: Generated<number>;
+  zone_id: Buffer | null;
+}
+
+export interface CommunicationInternalNotes {
+  archive_reason: string | null;
+  archived_at: Date | null;
+  body: string;
+  category: string;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  expires_at: Date | null;
+  id: Buffer;
+  published_at: Date | null;
+  related_entity_id: Buffer | null;
+  related_entity_type: string | null;
+  requires_ack: Generated<number>;
+  status: Generated<string>;
+  title: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CommunicationNoteAcknowledgements {
+  acknowledged_at: Date | null;
+  command_id: Buffer | null;
+  note_id: Buffer;
+  read_at: Date;
+  user_id: Buffer;
+}
+
+export interface CommunicationNoteAudiences {
+  audience_ref: Generated<string>;
+  audience_type: string;
+  note_id: Buffer;
+}
+
+export interface CommunicationNotifications {
+  alert_id: Buffer | null;
+  alert_type: string | null;
+  body: Generated<string>;
+  channel: string;
+  created_at: Generated<Date>;
+  delivered_at: Date | null;
+  id: Buffer;
+  kind: string;
+  link: string | null;
+  note_id: Buffer | null;
+  read_at: Date | null;
+  source_event_id: Buffer | null;
+  source_id: Buffer | null;
+  source_type: string | null;
+  title: string;
+  user_id: Buffer;
+}
+
+export interface CommunicationPushSubscriptions {
+  auth: string;
+  created_at: Generated<Date>;
+  device_id: Buffer;
+  endpoint: string;
+  id: Buffer;
+  p256dh: string;
+  revoked_at: Date | null;
+  user_id: Buffer;
+}
+
 export interface CrmCustomerAssignments {
   active_key: Buffer | null;
   assigned_by: Buffer;
@@ -1480,6 +1602,17 @@ export interface PlatformDomainEvents {
   seq: Generated<number>;
 }
 
+export interface PlatformEventConsumerFailures {
+  attempts: number;
+  consumer_name: string;
+  error_message: string;
+  event_id: Buffer;
+  event_seq: number;
+  event_type: string;
+  failed_at: Generated<Date>;
+  id: Generated<number>;
+}
+
 export interface PlatformEventConsumerMarks {
   consumer_name: string;
   event_id: Buffer;
@@ -2409,6 +2542,14 @@ export interface DB {
   catalog_reason_codes: CatalogReasonCodes;
   catalog_sales_channels: CatalogSalesChannels;
   catalog_units: CatalogUnits;
+  communication_alert_recipients: CommunicationAlertRecipients;
+  communication_alert_rules: CommunicationAlertRules;
+  communication_alerts: CommunicationAlerts;
+  communication_internal_notes: CommunicationInternalNotes;
+  communication_note_acknowledgements: CommunicationNoteAcknowledgements;
+  communication_note_audiences: CommunicationNoteAudiences;
+  communication_notifications: CommunicationNotifications;
+  communication_push_subscriptions: CommunicationPushSubscriptions;
   crm_customer_assignments: CrmCustomerAssignments;
   crm_customer_stage_history: CrmCustomerStageHistory;
   crm_customers: CrmCustomers;
@@ -2433,8 +2574,8 @@ export interface DB {
   finance_supplier_payments: FinanceSupplierPayments;
   finance_v_payables: FinanceVPayables;
   identity_auth_sessions: IdentityAuthSessions;
-  identity_devices: IdentityDevices;
   identity_device_status_periods: IdentityDeviceStatusPeriods;
+  identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
   identity_permissions: IdentityPermissions;
   identity_role_permissions: IdentityRolePermissions;
@@ -2470,6 +2611,7 @@ export interface DB {
   organization_zones: OrganizationZones;
   platform_document_sequences: PlatformDocumentSequences;
   platform_domain_events: PlatformDomainEvents;
+  platform_event_consumer_failures: PlatformEventConsumerFailures;
   platform_event_consumer_marks: PlatformEventConsumerMarks;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
   platform_job_schedules: PlatformJobSchedules;

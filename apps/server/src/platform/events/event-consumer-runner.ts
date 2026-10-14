@@ -27,7 +27,8 @@ import {
   EVENT_CONSUMER_REGISTRY,
   type EventConsumerRegistry,
 } from './event-consumer-registry.provider.js';
-import { toDomainEvent } from './domain-event.js';
+import { toDomainEvent, type DomainEvent } from './domain-event.js';
+import { toBin } from '../kysely/uuid-columns.js';
 import { settledSequenceBound } from '../kysely/settled-sequence.js';
 
 export interface EventConsumerRunOptions {
@@ -114,6 +115,10 @@ export class EventConsumerRunner {
       } else {
         failed++;
         batchError = errorMessageOf(lastError);
+        // `last_error` est réécrit par le premier événement traité ensuite : le saut est consigné
+        // à part (ajout seul), avant d'avancer la position (ADR-071 §12, AV-412). Un rejeu avant la
+        // position ne le double pas (unicité consommateur × position).
+        await this.recordFailure(consumerName, event, batchError, maxAttempts);
       }
       await this.saveOffset(consumerName, lastSeq, batchError);
     }
@@ -123,6 +128,26 @@ export class EventConsumerRunner {
     }
 
     return { processed, failed, lastSeq };
+  }
+
+  private async recordFailure(
+    consumerName: string,
+    event: DomainEvent,
+    message: string,
+    attempts: number,
+  ): Promise<void> {
+    await this.db
+      .insertInto('platform_event_consumer_failures')
+      .values({
+        consumer_name: consumerName,
+        event_seq: event.seq,
+        event_id: toBin(event.eventId),
+        event_type: event.eventType.slice(0, 80),
+        error_message: message.slice(0, 1000),
+        attempts,
+      })
+      .ignore()
+      .execute();
   }
 
   private async saveOffset(

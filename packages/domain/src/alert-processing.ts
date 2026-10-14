@@ -40,7 +40,14 @@ export interface AlertRaiseAction {
   /** Identifiant d'agrégat ou nom canonique d'un sujet composite (le serveur en dérive un UUID v5). */
   readonly subjectKey: string;
   readonly dedupKey: string;
+  /**
+   * Gravité effective si la règle n'est pas lue : celle que l'événement déclare quand le type l'admet,
+   * sinon la gravité par défaut du catalogue. Le consommateur préfère `declaredSeverity`, puis la
+   * gravité **de la règle** (un administrateur peut l'avoir modifiée, AV-401).
+   */
   readonly severity: AlertSeverity;
+  /** Gravité portée par l'événement et admise par le type ; `null` si absente ou non admise. */
+  readonly declaredSeverity: AlertSeverity | null;
   readonly siteId: string | null;
   readonly zoneId: string | null;
   readonly ownerUserIds: readonly string[];
@@ -191,10 +198,9 @@ export function alertFromEvent(event: AlertEventInput): AlertFromEventResult {
       continue;
     }
     const declared = event.payload['severity'];
-    const severity: AlertSeverity =
-      isAlertSeverity(declared) && definition.severities.includes(declared)
-        ? declared
-        : definition.defaultSeverity;
+    const declaredSeverity: AlertSeverity | null =
+      isAlertSeverity(declared) && definition.severities.includes(declared) ? declared : null;
+    const severity: AlertSeverity = declaredSeverity ?? definition.defaultSeverity;
     actions.push({
       kind: 'RAISE',
       alertType: definition.code,
@@ -202,6 +208,7 @@ export function alertFromEvent(event: AlertEventInput): AlertFromEventResult {
       subjectKey,
       dedupKey: alertDedupKey(definition.code, subjectKey),
       severity,
+      declaredSeverity,
       siteId: stringOrNull(event.payload['site_id'])?.toLowerCase() ?? null,
       zoneId: stringOrNull(event.payload['zone_id'])?.toLowerCase() ?? null,
       ownerUserIds: ownerIds(definition, event.payload),

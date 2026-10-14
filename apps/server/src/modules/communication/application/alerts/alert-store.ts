@@ -1,0 +1,468 @@
+/**
+ * Écriture des alertes (P9-04 ; ADR-071 §4, §6, §7, §9, §10 ; SM-ALERT ; INV-NOT-01). Fonctions de la
+ * couche d'application, appelées dans la transaction du consommateur `communication.alerts` ou d'une
+ * commande `communication.alert.*`. La ligne d'alerte est verrouillée (`FOR UPDATE`, rang N10b de
+ * l'ADR-038) avant toute lecture qui décide d'une écriture.
+ *
+ * - **Levée** : une alerte ouverte par (type, sujet) ; une nouvelle occurrence met à jour l'alerte
+ *   ouverte (compteur, dernière occurrence, charge utile, gravité relevée), jamais n'en crée une autre.
+ * - **Résolution** : par condition disparue (événement), par passe complète (marqueur) ou à la main.
+ * - Les événements `AlertRaised` et `AlertResolved` sont publiés dans la même transaction.
+ */
+import { sql } from 'kysely';
+import {
+  alertDefinitionOf,
+  alertsResolvedByPass,
+  raisedSeverity,
+  renderAlertMessage,
+  type AlertPassCompletedAction,
+  type AlertRaiseAction,
+  type AlertResolveAction,
+  type AlertSeverity,
+  type AlertStatus,
+  type AlertType,
+  type IdGenerator,
+} from '@gic/domain';
+import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
+import { jsonValue } from '../../../../platform/kysely/json-value.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { codeEntityId } from '../../../../platform/sync/code-entity-id.js';
+
+/** Nom du type d'entité de la clé de sujet composite (UUID version 5, ADR-071 §5). */
+export const ALERT_SUBJECT_ENTITY = 'ALERT_SUBJECT';
+
+export interface AlertRule {
+  readonly alertType: AlertType;
+  readonly enabled: boolean;
+  readonly severity: AlertSeverity;
+  readonly recipientRoles: readonly string[];
+  readonly resolutionMode: 'AUTO' | 'MANUAL';
+  readonly escalationHours: number | null;
+  readonly escalationRoles: readonly string[];
+}
+
+const stringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+/** Règle d'un type ; `undefined` si elle n'est pas semée (type ajouté sans migration de données). */
+export async function loadAlertRule(
+  uow: UnitOfWork,
+  alertType: AlertType,
+): Promise<AlertRule | undefined> {
+  const row = await uow
+    .selectFrom('communication_alert_rules')
+    .selectAll()
+    .where('alert_type', '=', alertType)
+    .executeTakeFirst();
+  if (!row) return undefined;
+  return {
+    alertType,
+    enabled: Boolean(row.enabled),
+    severity: row.severity as AlertSeverity,
+    recipientRoles: stringArray(row.recipient_roles),
+    resolutionMode: row.resolution_mode as 'AUTO' | 'MANUAL',
+    escalationHours: row.escalation_hours,
+    escalationRoles: stringArray(row.escalation_roles),
+  };
+}
+
+/** Identifiant du sujet : l'agrégat tel quel, ou l'UUID v5 déterministe d'un sujet composite. */
+export function subjectIdOf(subjectKey: string): string {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(subjectKey)
+    ? subjectKey
+    : codeEntityId(ALERT_SUBJECT_ENTITY, subjectKey);
+}
+
+export interface WriteDeps {
+  readonly idGenerator: IdGenerator;
+}
+
+export interface RaiseOutcome {
+  readonly alertId: string;
+  readonly created: boolean;
+  readonly severity: AlertSeverity;
+  /** La gravité vient d'être relevée à `CRITICAL` sur une alerte déjà ouverte. */
+  readonly raisedToCritical: boolean;
+}
+
+interface OpenAlertRow {
+  readonly id: Buffer;
+  readonly severity: string;
+  readonly occurrences: number;
+  readonly critical_since: Date | null;
+  readonly last_pass_id: string | null;
+  readonly last_detected_at: Date;
+}
+
+async function lockOpenByKey(uow: UnitOfWork, dedupKey: string): Promise<OpenAlertRow | undefined> {
+  return uow
+    .selectFrom('communication_alerts')
+    .select(['id', 'severity', 'occurrences', 'critical_since', 'last_pass_id', 'last_detected_at'])
+    .where('open_dedup_key', '=', dedupKey)
+    .forUpdate()
+    .executeTakeFirst();
+}
+
+function isDuplicateKey(error: unknown): boolean {
+  const code = (error as { code?: string; errno?: number } | null)?.code;
+  const errno = (error as { errno?: number } | null)?.errno;
+  return code === 'ER_DUP_ENTRY' || errno === 1062;
+}
+
+async function publishAlertEvent(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  input: {
+    readonly eventType: 'AlertRaised' | 'AlertResolved' | 'AlertAcknowledged' | 'AlertEscalated';
+    readonly alertId: Buffer;
+    readonly occurredAt: Date;
+    readonly commandId?: Buffer | null;
+    readonly causationId?: Buffer | null;
+    readonly payload: Record<string, unknown>;
+  },
+): Promise<void> {
+  await uow
+    .insertInto('platform_domain_events')
+    .values({
+      event_id: toBin(deps.idGenerator.newId()),
+      event_type: input.eventType,
+      producer_module: 'communication',
+      aggregate_type: 'ALERT',
+      aggregate_id: input.alertId,
+      occurred_at: input.occurredAt,
+      payload: jsonValue(input.payload),
+      command_id: input.commandId ?? null,
+      causation_id: input.causationId ?? null,
+    })
+    .execute();
+}
+
+/**
+ * Levée (ou nouvelle occurrence) d'une alerte. La règle désactivée ou absente n'est pas appelée ici : le
+ * consommateur ne lève rien (ADR-071 §8).
+ */
+export async function raiseAlert(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  action: AlertRaiseAction,
+  rule: AlertRule,
+  causationEventId: string | null,
+): Promise<RaiseOutcome> {
+  const definition = alertDefinitionOf(action.alertType);
+  // Gravité : celle de l'événement si le type l'admet, sinon celle de la règle (AV-401).
+  const incoming: AlertSeverity = action.declaredSeverity ?? rule.severity;
+  const rendered = renderAlertMessage(action.alertType, action.payload, { showProtected: false });
+  const causation = causationEventId === null ? null : toBin(causationEventId);
+
+  const update = async (row: OpenAlertRow): Promise<RaiseOutcome> => {
+    const current = row.severity as AlertSeverity;
+    const next = raisedSeverity(current, incoming);
+    const raisedToCritical = next === 'CRITICAL' && current !== 'CRITICAL';
+    const lastDetected =
+      action.occurredAt.getTime() > row.last_detected_at.getTime()
+        ? action.occurredAt
+        : row.last_detected_at;
+    await uow
+      .updateTable('communication_alerts')
+      .set({
+        occurrences: row.occurrences + 1,
+        last_detected_at: lastDetected,
+        severity: next,
+        critical_since: row.critical_since ?? (next === 'CRITICAL' ? action.occurredAt : null),
+        title: rendered.title,
+        message: rendered.message,
+        payload: jsonValue(action.payload),
+        // Une occurrence hors passe (transition) n'efface pas l'identité de la dernière passe.
+        last_pass_id: action.passId ?? row.last_pass_id,
+        ...(action.businessDay !== null
+          ? { business_day: sql`CAST(${action.businessDay} AS DATE)` }
+          : {}),
+        version: sql`version + 1`,
+      })
+      .where('id', '=', row.id)
+      .execute();
+    if (raisedToCritical) {
+      await publishAlertEvent(uow, deps, {
+        eventType: 'AlertRaised',
+        alertId: row.id,
+        occurredAt: action.occurredAt,
+        causationId: causation,
+        payload: {
+          alert_id: fromBin(row.id),
+          alert_type: action.alertType,
+          severity: next,
+          created: false,
+          severity_raised: true,
+          subject_type: action.subjectType,
+          site_id: action.siteId,
+        },
+      });
+    }
+    return { alertId: fromBin(row.id), created: false, severity: next, raisedToCritical };
+  };
+
+  const existing = await lockOpenByKey(uow, action.dedupKey);
+  if (existing) return update(existing);
+
+  const id = deps.idGenerator.newId();
+  const idBin = toBin(id);
+  try {
+    await uow
+      .insertInto('communication_alerts')
+      .values({
+        id: idBin,
+        alert_type: action.alertType,
+        nature: definition.nature,
+        severity: incoming,
+        status: 'OPEN',
+        subject_type: action.subjectType,
+        subject_id: toBin(subjectIdOf(action.subjectKey)),
+        site_id: action.siteId === null ? null : toBin(action.siteId),
+        zone_id: action.zoneId === null ? null : toBin(action.zoneId),
+        owner_user_id: action.ownerUserIds[0] === undefined ? null : toBin(action.ownerUserIds[0]),
+        action_screen: action.actionScreen,
+        title: rendered.title,
+        message: rendered.message,
+        payload: jsonValue(action.payload),
+        dedup_key: action.dedupKey,
+        first_detected_at: action.occurredAt,
+        last_detected_at: action.occurredAt,
+        business_day:
+          action.businessDay === null ? null : sql<Date>`CAST(${action.businessDay} AS DATE)`,
+        last_pass_id: action.passId,
+        critical_since: incoming === 'CRITICAL' ? action.occurredAt : null,
+      })
+      .execute();
+  } catch (error) {
+    if (!isDuplicateKey(error)) throw error;
+    // Une autre transaction vient de lever la même alerte : on la verrouille et on l'incrémente.
+    const raced = await lockOpenByKey(uow, action.dedupKey);
+    if (!raced) throw error;
+    return update(raced);
+  }
+  await publishAlertEvent(uow, deps, {
+    eventType: 'AlertRaised',
+    alertId: idBin,
+    occurredAt: action.occurredAt,
+    causationId: causation,
+    payload: {
+      alert_id: id,
+      alert_type: action.alertType,
+      severity: incoming,
+      created: true,
+      severity_raised: false,
+      subject_type: action.subjectType,
+      subject_id: subjectIdOf(action.subjectKey),
+      site_id: action.siteId,
+      zone_id: action.zoneId,
+      owner_user_id: action.ownerUserIds[0] ?? null,
+    },
+  });
+  return {
+    alertId: id,
+    created: true,
+    severity: incoming,
+    raisedToCritical: incoming === 'CRITICAL',
+  };
+}
+
+/** Résolution par condition disparue (événement de résolution) de l'alerte ouverte d'un sujet. */
+export async function resolveByCondition(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  action: AlertResolveAction,
+  causationEventId: string | null,
+): Promise<{ readonly resolved: boolean; readonly alertId: string | null }> {
+  const row = await lockOpenByKey(uow, action.dedupKey);
+  if (!row) return { resolved: false, alertId: null };
+  await closeAlert(uow, deps, row.id, action.alertType, 'CONDITION_CLEARED', action.occurredAt, {
+    causationEventId,
+  });
+  return { resolved: true, alertId: fromBin(row.id) };
+}
+
+/**
+ * Résolution à la fin d'une passe **complète** (ADR-071 §3) : les alertes d'état ouvertes du type que la
+ * passe n'a pas revues (identité de passe, jamais l'horloge).
+ */
+export async function resolveByPass(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  action: AlertPassCompletedAction,
+  causationEventId: string | null,
+): Promise<number> {
+  const open = await uow
+    .selectFrom('communication_alerts')
+    .select(['id', 'alert_type', 'status', 'last_pass_id'])
+    .where('alert_type', '=', action.alertType)
+    .where('status', 'in', ['OPEN', 'ACKNOWLEDGED'])
+    .forUpdate()
+    .execute();
+  const ids = new Set(
+    alertsResolvedByPass(
+      open.map((row) => ({
+        id: fromBin(row.id),
+        alertType: action.alertType,
+        status: row.status as AlertStatus,
+        lastPassId: row.last_pass_id,
+      })),
+      { alertType: action.alertType, passId: action.passId },
+    ),
+  );
+  let resolved = 0;
+  for (const row of open) {
+    if (!ids.has(fromBin(row.id))) continue;
+    await closeAlert(uow, deps, row.id, action.alertType, 'PASS', action.occurredAt, {
+      causationEventId,
+    });
+    resolved += 1;
+  }
+  return resolved;
+}
+
+/** Clôt une alerte (système) : `RESOLVED`, nature et date ; publie `AlertResolved`. */
+async function closeAlert(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  alertId: Buffer,
+  alertType: AlertType,
+  kind: 'CONDITION_CLEARED' | 'PASS',
+  at: Date,
+  options: { readonly causationEventId: string | null },
+): Promise<void> {
+  await uow
+    .updateTable('communication_alerts')
+    .set({
+      status: 'RESOLVED',
+      resolved_at: at,
+      resolution_kind: kind,
+      version: sql`version + 1`,
+    })
+    .where('id', '=', alertId)
+    .execute();
+  await publishAlertEvent(uow, deps, {
+    eventType: 'AlertResolved',
+    alertId,
+    occurredAt: at,
+    causationId: options.causationEventId === null ? null : toBin(options.causationEventId),
+    payload: {
+      alert_id: fromBin(alertId),
+      alert_type: alertType,
+      resolution_kind: kind,
+      resolved_by: null,
+    },
+  });
+}
+
+// --- Commandes (acquittement, résolution, écart) ----------------------------------------------------------
+
+export interface LockedAlert {
+  readonly id: string;
+  readonly alertType: AlertType;
+  readonly status: AlertStatus;
+  readonly severity: AlertSeverity;
+  readonly siteId: string | null;
+  readonly zoneId: string | null;
+  readonly ownerUserId: string | null;
+  readonly firstDetectedAt: Date;
+}
+
+/** Alerte verrouillée pour une commande (rang N10b) ; `undefined` si elle n'existe pas. */
+export async function lockAlert(
+  uow: UnitOfWork,
+  alertId: string,
+): Promise<LockedAlert | undefined> {
+  const row = await uow
+    .selectFrom('communication_alerts')
+    .select([
+      'id',
+      'alert_type',
+      'status',
+      'severity',
+      'site_id',
+      'zone_id',
+      'owner_user_id',
+      'first_detected_at',
+    ])
+    .where('id', '=', toBin(alertId))
+    .forUpdate()
+    .executeTakeFirst();
+  if (!row) return undefined;
+  return {
+    id: fromBin(row.id),
+    alertType: row.alert_type as AlertType,
+    status: row.status as AlertStatus,
+    severity: row.severity as AlertSeverity,
+    siteId: fromBinOrNull(row.site_id),
+    zoneId: fromBinOrNull(row.zone_id),
+    ownerUserId: fromBinOrNull(row.owner_user_id),
+    firstDetectedAt: row.first_detected_at,
+  };
+}
+
+export async function markAcknowledged(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  alert: LockedAlert,
+  input: { readonly userId: string; readonly at: Date; readonly commandId: string },
+): Promise<void> {
+  await uow
+    .updateTable('communication_alerts')
+    .set({
+      status: 'ACKNOWLEDGED',
+      acknowledged_by: toBin(input.userId),
+      acknowledged_at: input.at,
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(alert.id))
+    .execute();
+  await publishAlertEvent(uow, deps, {
+    eventType: 'AlertAcknowledged',
+    alertId: toBin(alert.id),
+    occurredAt: input.at,
+    commandId: toBin(input.commandId),
+    payload: {
+      alert_id: alert.id,
+      alert_type: alert.alertType,
+      acknowledged_by: input.userId,
+    },
+  });
+}
+
+export async function markClosedManually(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  alert: LockedAlert,
+  input: {
+    readonly kind: 'MANUAL' | 'DISMISSED';
+    readonly userId: string;
+    readonly at: Date;
+    readonly comment: string;
+    readonly commandId: string;
+  },
+): Promise<void> {
+  await uow
+    .updateTable('communication_alerts')
+    .set({
+      status: input.kind === 'DISMISSED' ? 'DISMISSED' : 'RESOLVED',
+      resolved_by: toBin(input.userId),
+      resolved_at: input.at,
+      resolution_kind: input.kind,
+      resolution_comment: input.comment,
+      version: sql`version + 1`,
+    })
+    .where('id', '=', toBin(alert.id))
+    .execute();
+  await publishAlertEvent(uow, deps, {
+    eventType: 'AlertResolved',
+    alertId: toBin(alert.id),
+    occurredAt: input.at,
+    commandId: toBin(input.commandId),
+    payload: {
+      alert_id: alert.id,
+      alert_type: alert.alertType,
+      resolution_kind: input.kind,
+      resolved_by: input.userId,
+    },
+  });
+}

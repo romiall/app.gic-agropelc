@@ -54,7 +54,8 @@
 | P9-01 | Conception : cartographie, ADR 070 à 078, AV 400 à 442, backlog du plan §4 (26 incréments) | `384e74c` | Fait : ADR-070 à 078, 43 AV (aucun bloquant, 10 IMPORTANTE), D11, D13, dictionnaires `communication` et `analytics`, `03-historisation-suppression.md` et ADR-038 (rang N10b) complétés, `check_refs.py` propre ; revue adverse de la conception : cinq chercheurs, un vérificateur sceptique par constat, 60 constats retenus (4 graves, 22 moyens, 34 mineurs), tous traités dans ce commit (§7) |
 | P9-02 | Domaine partagé et contrats : catalogue des alertes, traitement d'un événement, rendu, livraison, périodes d'analyse, registre des indicateurs, couche sémantique ; schémas de commandes et de lectures | `50c87f4` | Fait : domaine 531 tests (126 nouveaux, couverture des fichiers nouveaux 97 à 100 %), contrats 267 tests (30 nouveaux), 29 mutations détectées sur la base de code, `tsc` et ESLint propres |
 | P9-03 | Schéma `communication` : migration `20261201090100`, 36 règles d'alerte et 15 paramètres semés, dictionnaire, invariants INV-NOT-02 et 03 | ce commit | Fait : `db` 221 tests (20 nouveaux), 35 mutations du schéma détectées sur la base jetable (aucune survivante), montée, descente et remontée vérifiées, seed idempotent |
-| P9-04 et suivants | Voir le backlog du plan | — | À faire |
+| P9-04 | Socle des alertes : écriture dédoublonnée, consommateur `communication.alerts`, commandes `communication.alert.*` et `communication.alert_rule.set` ; table des événements sautés par le runner | ce commit | Fait : serveur 27 tests (25 + 2), domaine 23 tests, 20 mutations détectées (deux survivantes traitées par des tests), migration `20261201090200` montée, descente et remontée vérifiées |
+| P9-05 et suivants | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P9)
 
@@ -69,6 +70,9 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | A7 | `db` : migration `20261201090000`, `schema.sql`, `schema.generated.ts` | table `inventory_overhead_pool_locks` (sans clé étrangère vers le site) | A7 |
 | A7 | tests de P7-10 et P8-05 | trois cas de concurrence ajoutés à `production-overhead-allocation.test.ts`, un à `finance-expense-commands.test.ts` | A7 |
 | A7 | documentation | ADR-038 (rang N2b, révision), dictionnaire `06-inventory.md`, D06 (API publique) | A7 |
+| P9-04 | `apps/server/src/platform/events/event-consumer-runner.ts` | méthode `recordFailure` : chaque événement sauté après ses essais est consigné dans `platform_event_consumer_failures` avant l'avancée de la position (aucune ligne existante modifiée) | P9-04 |
+| P9-04 | `apps/server/src/app.module.ts`, `apps/server/src/worker/worker.module.ts` | `CommunicationModule` et `CommunicationJobsModule` ajoutés aux imports | P9-04 |
+| P9-04 | `db/schema.sql`, `apps/server/src/platform/kysely/schema.generated.ts` | table `platform_event_consumer_failures` et version `20261201090200` (le fichier généré est régénéré) | P9-04 |
 | P9-03 | `db/seeds/run.ts`, `db/seeds/system-settings.ts` | étape `seedAlertRules` ; quinze paramètres de détection, de rétention et de regroupement (ajouts en fin de liste) | P9-03 |
 | P9-02 | `packages/domain` : `index.ts` ; `packages/contracts` : `index.ts` | exports ajoutés en fin de fichier (aucun existant modifié) | P9-02 |
 | P9-01 | documentation | ADR-070 à 078 (nouveaux), ADR-038 (rang N10b), `docs/decisions/README.md`, `A-VALIDER.md` (AV 400 à 442), plan §4 (section P9), D11 §13 et §15, D13 §3, §7.1, §15, dictionnaires `10-approvals-attachments-communication.md` (règles sans seuil, `alert_recipients`, colonnes d'alerte, audiences) et `12-analytics.md` (`query_log`, `catalog_version`, export, instantanés), `03-data/03-historisation-suppression.md` (alertes, journal des requêtes, notes) | P9-01 |
@@ -77,7 +81,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 
 | Incr. prévu | Fichier ou module | Changement prévu | Nature |
 |---|---|---|---|
-| P9-04 | `platform/events` (`event-consumer-runner.ts`) | table `platform_event_consumer_failures` écrite par le runner ; option `settleSeconds` par consommateur | ajout, additif |
+| P9-05 à P9-06 | `communication` (adaptateur de destinataires) | lecture en lecture seule des tables `identity` (sous-ensembles affectation et rôle) dans `communication-api/` ; demande B1 | lecture, signalée |
 | P9-07 à P9-10 | `sales`, `finance`, `inventory`, `production`, `procurement`, `approvals`, `crm`, `fieldwork`, `sync`, `audit` | événements de déclenchement (fichiers `*-alert-events.ts`), tâches de passe et récurrences ; `audit.chain.verify_daily`, `inventory.ledger.reconcile_daily`, `finance.cash.reconcile_daily` publient leur événement puis se terminent en succès ; déduplication par jour des tâches de P4 à P5 adaptée | ajouts, un changement de comportement des trois tâches de réconciliation |
 | P9-14 | `platform/read-scope.ts` | mode « union » ajouté à `ReadScope` (ET par défaut inchangé) | ajout |
 | P9-15 | `public/` des modules propriétaires (`inventory`, `production`, `crm`, `sales`, `approvals`) | fonctions de référence manquantes (couverture, ratios, mortalité, œufs, effectifs, compteur de validations) exportées par `index.ts` | ajouts |

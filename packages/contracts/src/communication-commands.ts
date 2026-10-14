@@ -4,9 +4,10 @@
  * direction. Contrat partagé entre l'appareil (prise en compte et accusé hors ligne, UC-NOT-02 et 06) et
  * le serveur, qui l'importe pour valider (un seul schéma).
  *
- * L'identifiant de l'agrégat (alerte, note, notification, règle) est l'`aggregate_id` de l'enveloppe ;
- * l'identifiant d'une règle d'alerte est dérivé de son code (ADR-031). Le serveur calcule seul les
- * destinataires, la gravité et les états : aucune de ces valeurs n'est dans une charge utile.
+ * L'identifiant de l'agrégat (alerte, note, notification) est l'`aggregate_id` de l'enveloppe (UUIDv7) ;
+ * une règle d'alerte se désigne par son `alertType` : son `aggregate_id` est un identifiant de commande
+ * sans portée métier. Le serveur calcule seul les destinataires, la gravité et les états : aucune de ces
+ * valeurs n'est dans une charge utile.
  */
 import { ALERT_RESOLUTION_MODES, ALERT_SEVERITIES, ALERT_TYPES } from '@gic/domain';
 import { z } from 'zod';
