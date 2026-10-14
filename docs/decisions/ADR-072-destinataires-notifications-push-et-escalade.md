@@ -3,7 +3,7 @@
 - **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique BR-NOT-001, 004, 005, 008, D13 §14 ; les choix métier sont AV-413 à AV-418, AV-439 et AV-440, défauts paramétrables)
 - **Date** : 14/10/2026 (numéro provisoire de la plage 070 à 079 ; révisé le même jour après la revue adverse de la conception)
 - **Précise** : [ADR-071](ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)
-- **Questions liées** : AV-064, AV-413 à AV-418, AV-439, AV-440
+- **Questions liées** : AV-064, AV-413 à AV-418, AV-439, AV-440, AV-443
 
 ## Contexte
 
@@ -54,6 +54,20 @@ Faits du code :
 - La table des destinataires borne la charge : une alerte a quelques dizaines de lignes au plus.
 - Le résolveur dépend des affectations à l'instant de la levée ; la supervision (`comm.alert.read`) couvre le reste.
 - Les notifications directes d'événements (§4) augmentent le trafic des consommateurs : elles sont filtrées par le catalogue des déclencheurs et par leur destinataire.
+
+## Révision (P9-05, 14/10/2026)
+
+La mise en œuvre a précisé six points de la décision ; la revue adverse de l'incrément (31 constats retenus) en a fait corriger neuf dans le code. Le texte ci-dessus reste la décision d'origine ; ceci en est l'état implémenté.
+
+1. **Instant jugé (§1).** Les affectations, les équipes et les statuts sont jugés à l'instant du **traitement** de l'événement, non à celui de sa survenue : une alerte ouverte s'adresse à ceux qui peuvent agir maintenant (BR-NOT-001), et l'événement est consommé en quelques secondes. DÉDUIT. Un propriétaire ou un responsable d'équipe n'est retenu que s'il est actif **et** a une affectation active ; sinon il neutraliserait le repli sur la Direction.
+2. **Rôles d'un déclencheur (§1, AV-443).** Les rôles propres à un déclencheur (`DUPLICATE_SUSPECTED`) valent tant que la règle du type a les rôles du catalogue ; une règle modifiée par un administrateur vaut pour tout le type (`effectiveRecipientRoles`, domaine).
+3. **Responsable et approbateurs (§1).** Le responsable d'équipe n'est calculé que pour un type qui le prévoit (`teamManager`) et dont l'événement désigne un propriétaire ; `APPROVAL_PENDING_LONG` n'a **pas** de responsable d'équipe : ses destinataires sont les approbateurs. La charge utile d'une demande en attente porte `approver_permission` et `requester_user_id` ; le demandeur est le propriétaire de la ressource jugée par le moteur de droits (portées `OWN` et `TEAM`) sans devenir destinataire, et il est exclu.
+4. **Adaptateur (§2).** Le port `AlertRecipientResolver` est exporté par l'API publique de `communication` ; l'adaptateur `communication-api/identity-recipient-resolver.ts` est fourni par le module global `CommunicationRecipientsModule`, importé par l'API et le worker. La couverture d'une affectation est celle d'`evaluateAccess` ; les approbateurs sont jugés par `evaluateAccess` lui-même.
+5. **Web Push (§5).** L'adaptateur par défaut est **désactivé** : sans bibliothèque ni clé (AV-415), aucune ligne `WEB_PUSH` n'est créée et la notification reste `IN_APP`. L'envoi ne se fait pas dans la tâche d'escalade mais dans une tâche dédiée, `communication.push.dispatch`, chaque minute, après validation de la transaction qui a créé la ligne. Une ligne est reprise tant qu'elle a moins de 60 minutes (fenêtre technique), que l'alerte est ouverte et qu'un appareil actif d'un utilisateur actif est abonné. L'état de livraison est tenu par notification : dès qu'un appareil a reçu le push, la ligne est livrée (un état par appareil demanderait une table, à décider avec l'adaptateur réel).
+6. **Regroupement (§6).** Le créneau d'un couple (utilisateur, type) s'ouvre au dernier push d'**alerte** destiné à l'utilisateur, hors escalade et hors ligne qui ne partira jamais (alerte close, jamais livrée) ; le décompte du push suivant compte les alertes **critiques** tues, une fois chacune, sans l'alerte qui ouvre le créneau.
+7. **Escalade (§7).** Les candidats sont filtrés par la règle (active, avec délai, délai écoulé) et lus par identifiant croissant avec reprise par curseur : aucune alerte non escaladable n'en affame une autre, et l'ordre est celui des verrous de `resolveByPass` (pas d'interblocage croisé). L'escalade n'est **consommée** que si un titulaire du niveau supérieur existe : sans audience, rien n'est posé et l'alerte reste candidate (un titulaire affecté plus tard est alerté). Une erreur imprévue sur une alerte annule ses écritures (point de sauvegarde) sans bloquer les autres. L'événement `AlertEscalated` porte `escalation_recipients`.
+8. **Notifications (§4).** Une notification porte `source_type` = `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` ; une `IN_APP` est livrée à sa création. Un relèvement en `CRITICAL` renotifie les destinataires encore actifs. Les notifications **directes** d'événements (AV-439) sont livrées avec les notes (P9-11), qui partagent le même écrivain de notifications.
+9. **Abonnement (§5).** `communication.push.subscribe` s'exécute en lecture validée (pas de verrou d'intervalle sur un point de terminaison absent, ADR-038) ; l'unicité du point de terminaison arbitre deux abonnements simultanés. « Tout marquer lu » ne couvre que les notifications créées avant l'instant du geste.
 
 ## Tests
 

@@ -21,8 +21,9 @@ import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { registerAlertCommands } from '../src/modules/communication/application/commands/alert-commands.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
-import { closeTestDb, db, freshUuid, insertTestUser, withTestUow } from './helpers.js';
+import { closeTestDb, db, freshUuid, insertTestUser } from './helpers.js';
 import { codeOf, newActor, runCommand, tx, type Actor } from './cash-transfer-fixtures.js';
+import { committed, rolledBack } from './communication-test-kit.js';
 
 const AT = '2026-11-02T09:00:00.000Z';
 const idGenerator = new Uuidv7Generator(new FixedClock(new Date('2026-11-02T10:00:00.000Z')));
@@ -112,7 +113,7 @@ const eventsOf = (uow: UnitOfWork, alertId: Buffer, type: string) =>
 
 describe('P9-04 : consommateur communication.alerts', () => {
   it('levée : une alerte ouverte, rendue en neutre, avec son événement AlertRaised', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const sale = freshUuid();
       const event = overdue(sale);
       await handleAlertEvent(uow, event, options);
@@ -140,7 +141,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('déduplication : une nouvelle occurrence met à jour l’alerte ouverte au lieu d’en créer une', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const sale = freshUuid();
       await handleAlertEvent(uow, overdue(sale, { days_overdue: 13 }), options);
       await handleAlertEvent(uow, overdue(sale, { days_overdue: 14 }), options);
@@ -169,7 +170,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('redélivrance : le même événement n’est compté qu’une fois (marque du consommateur)', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const sale = freshUuid();
       const event = overdue(sale);
       await handleAlertEvent(uow, event, options);
@@ -180,7 +181,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('un événement étranger aux alertes n’est ni marqué ni traité', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const event = eventOf('sales.sale.record', freshUuid(), {});
       await handleAlertEvent(uow, event, options);
       const marks = await uow
@@ -193,7 +194,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('gravité : relevée par une occurrence plus grave (critical_since posé), jamais abaissée', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const session = freshUuid();
       const variance = (severity: string, amount: number) =>
         eventOf('CashVarianceDetected', session, {
@@ -222,7 +223,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('résolution par condition disparue : l’alerte se clôt, un nouvel événement en crée une nouvelle', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const session = freshUuid();
       await handleAlertEvent(
         uow,
@@ -261,14 +262,14 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('résolution sans alerte ouverte : sans effet', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const session = freshUuid();
       await handleAlertEvent(uow, eventOf('CashSessionClosed', session, {}), options);
       expect(await alertsOf(uow, 'CASH_SESSION_OPEN_LONG', session)).toHaveLength(0);
     }));
 
   it('passe complète : les alertes d’état non revues sont résolues, par identité de passe', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const a = freshUuid();
       const b = freshUuid();
       const c = freshUuid();
@@ -296,7 +297,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('une passe rejouée avec la même identité ne résout pas ce qu’elle a revu', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const a = freshUuid();
       const b = freshUuid();
       await handleAlertEvent(uow, overdue(a, { pass_id: 'pass-1' }), options);
@@ -314,7 +315,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('un marqueur n’affecte ni les alertes d’événement ni les autres types', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const loss = freshUuid();
       const location = freshUuid();
       await handleAlertEvent(
@@ -342,7 +343,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
     }));
 
   it('sujet composite : un identifiant déterministe, une seule alerte par couple emplacement × produit', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const location = freshUuid();
       const product = freshUuid();
       const breach = (available: number) =>
@@ -377,7 +378,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
         .execute(),
     );
     try {
-      await withTestUow(async (uow) => {
+      await rolledBack(async (uow) => {
         await handleAlertEvent(
           uow,
           eventOf('PriceMismatchDetected', sale, { sale_id: sale }),
@@ -408,7 +409,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
       );
     await setRuleSeverity('CRITICAL');
     try {
-      await withTestUow(async (uow) => {
+      await rolledBack(async (uow) => {
         await handleAlertEvent(
           uow,
           eventOf('CashVarianceDetected', session, { session_id: session, variance_xaf: -500 }),
@@ -432,7 +433,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
       const event = overdue(sale, { pass_id: pass });
       for (let attempt = 1; ; attempt++) {
         try {
-          return await db.transaction().execute((uow) => handleAlertEvent(uow, event, options));
+          return await committed((uow) => handleAlertEvent(uow, event, options));
         } catch (error) {
           if (!deadlock(error) || attempt >= 5) throw error;
         }
@@ -461,10 +462,8 @@ describe('P9-04 : consommateur communication.alerts', () => {
     const bReleased = new Promise<void>((resolve) => {
       releaseB = resolve;
     });
-    const b = db
-      .transaction()
-      .setIsolationLevel('read committed')
-      .execute((uow) =>
+    const b = committed(
+      (uow) =>
         handleAlertEvent(
           uow.withPlugin(
             pauseAfterEmptyAlertLock(async () => {
@@ -475,12 +474,12 @@ describe('P9-04 : consommateur communication.alerts', () => {
           overdue(sale, { pass_id: 'race-b' }),
           options,
         ),
-      );
+      { isolation: 'read committed' },
+    );
     await Promise.race([bReadEmpty, b]);
-    await db
-      .transaction()
-      .setIsolationLevel('read committed')
-      .execute((uow) => handleAlertEvent(uow, overdue(sale, { pass_id: 'race-a' }), options));
+    await committed((uow) => handleAlertEvent(uow, overdue(sale, { pass_id: 'race-a' }), options), {
+      isolation: 'read committed',
+    });
     releaseB();
     await b;
     const alerts = await db
@@ -502,7 +501,7 @@ describe('P9-04 : consommateur communication.alerts', () => {
   });
 
   it('une occurrence hors passe (transition) ne détruit pas l’identité de la dernière passe', () =>
-    withTestUow(async (uow) => {
+    rolledBack(async (uow) => {
       const sale = freshUuid();
       await handleAlertEvent(uow, overdue(sale, { pass_id: 'pass-1' }), options);
       await handleAlertEvent(uow, overdue(sale), options);

@@ -89,3 +89,22 @@ export function isEscalationDue(
     now.getTime() >= escalationDueAt(alert.criticalSince, escalationHours).getTime()
   );
 }
+
+/** Longueur maximale du corps d'une notification (colonne `communication_notifications.body`). */
+export const NOTIFICATION_BODY_MAX = 1000;
+
+/** Titre de la notification d'escalade : un autre message que celui de la levée, jamais regroupé (§7). */
+export function escalationTitle(title: string): string {
+  return `Escalade : ${title}`;
+}
+
+/**
+ * Corps du push qui ouvre un nouveau créneau de regroupement : il compte les alertes du même type tues
+ * dans le créneau précédent (D13 §14, AV-416). Borné à la longueur de la colonne.
+ */
+export function groupedPushBody(body: string, suppressed: number): string {
+  if (!Number.isFinite(suppressed) || suppressed <= 0) return body;
+  const count = Math.trunc(suppressed);
+  const suffix = ` (+${count} autre${count > 1 ? 's' : ''} alerte${count > 1 ? 's' : ''} de ce type)`;
+  return `${body.slice(0, NOTIFICATION_BODY_MAX - suffix.length)}${suffix}`;
+}

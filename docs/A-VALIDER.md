@@ -337,6 +337,7 @@ Classification (PM §45) :
 | AV-440 | Valeurs au coût dans les alertes et notifications | IMPORTANTE | P9 | Texte neutre pour les destinataires sans `inventory.valuation.read` (évalué au site de l'alerte) ; valeurs protégées en champs séparés de la charge utile, jamais dans `message` | OUVERT |
 | AV-441 | Sujet d'une alerte à clé composite | SECONDAIRE | P9 | UUID version 5 déterministe du couple (emplacement × produit, PDV × produit, lot × jour) ; clé de déduplication lisible ; lot exclu de la clé d'un seuil de stock | OUVERT |
 | AV-442 | Alerte d'erreur de synchronisation (`SYNC_ERROR`) | SECONDAIRE | P9 | Passe planifiée de la couche `sync` sur la boîte des commandes (`REJECTED` et `CONFLICT`, liste de codes explicite) ; sujet = appareil × code d'erreur ; auto-résolue par marqueur ou par `SyncConflictResolved` | OUVERT |
+| AV-443 | Rôles destinataires d'un déclencheur à rôles propres, règle modifiée | SECONDAIRE | P9 | Les rôles propres d'un déclencheur (`DUPLICATE_SUSPECTED`) valent tant que la règle du type n'a pas été modifiée ; une règle modifiée par un administrateur vaut pour tout le type | OUVERT |
 
 ---
 
@@ -2386,7 +2387,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : Le catalogue d'événements cite NOT pour `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `DeviceEnrollmentRequested`, `StockTransferRequested`, `StockTransferDispatched`, `PurchaseRequestApproved`, `PurchaseRequestRejected`, D01 §14 dit que les événements des demandeurs « servent aux notifications » ; ADR-072 ne prévoyait que alerte, note et export comme sources. **DÉDUIT**.
 - **Choix** : (a) liste ci-contre, canal in-app, destinataire par le résolveur (ADR-072 §2) ; les autres restent sans notification ; (b) toutes les lignes du catalogue ; (c) aucune notification directe.
 - **Recommandation** : (a).
-- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4, P9-05 ; consommateur de `communication` (second consommateur, ou règle du consommateur d'alertes). Défaut implémenté : (a). Paramétrable : activation par type.
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4, P9-11 (livrées avec les notes, par le même écrivain de notifications) ; consommateur de `communication` (second consommateur, ou règle du consommateur d'alertes). Défaut implémenté : (a). Paramétrable : activation par type.
 
 ### AV-440 — Valeurs au coût dans les alertes et notifications — IMPORTANTE
 - **Question** : Une alerte ou une notification peut-elle porter une valeur au coût (valeur d'une perte, écart d'inventaire en valeur) à un destinataire qui ne détient pas `inventory.valuation.read` ?
@@ -2408,6 +2409,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) passe de `sync` sur la fenêtre `sync.error_alert_window_hours` (24) : un événement par (appareil, code d'erreur) ; codes transitoires exclus ; résolution par marqueur de passe ; `dismiss` admis (alerte d'événement pour un rejet) ; (b) alerte par commande rejetée ; (c) pas d'alerte, file des conflits seulement.
 - **Recommandation** : (a).
 - **Impact** : `sync` (tâche), [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §2 et §3. Défaut implémenté : (a). Paramétrable (fenêtre, liste de codes).
+
+### AV-443 — Rôles destinataires d'un déclencheur à rôles propres, règle modifiée — SECONDAIRE
+- **Question** : Quand un type d'alerte a des déclencheurs à rôles destinataires propres (`DUPLICATE_SUSPECTED` : la Finance pour un paiement, le responsable commercial pour un doublon de client, le responsable des achats pour une réception en quarantaine), que vaut la liste de rôles de la règle quand un administrateur l'a modifiée ?
+- **Pourquoi** : La règle (`communication.alert_rule.set`) porte une seule liste de rôles par type ; le catalogue du domaine en porte une par déclencheur. Sans arbitrage, soit le réglage de l'administrateur est contourné par le déclencheur, soit les rôles propres d'un déclencheur disparaissent dès le moindre réglage. **DÉDUIT**.
+- **Choix** : (a) tant que la règle a les rôles du catalogue, ceux du déclencheur s'appliquent ; une règle modifiée vaut pour tout le type ; (b) toujours les rôles de la règle ; (c) l'union de la règle et du déclencheur.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §1, `effectiveRecipientRoles` (domaine). Défaut implémenté : (a). Paramétrable : par la règle elle-même (la modifier suffit).
 
 ---
 

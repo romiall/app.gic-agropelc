@@ -120,11 +120,12 @@ async function publishAlertEvent(
     readonly causationId?: Buffer | null;
     readonly payload: Record<string, unknown>;
   },
-): Promise<void> {
+): Promise<string> {
+  const eventId = deps.idGenerator.newId();
   await uow
     .insertInto('platform_domain_events')
     .values({
-      event_id: toBin(deps.idGenerator.newId()),
+      event_id: toBin(eventId),
       event_type: input.eventType,
       producer_module: 'communication',
       aggregate_type: 'ALERT',
@@ -135,6 +136,7 @@ async function publishAlertEvent(
       causation_id: input.causationId ?? null,
     })
     .execute();
+  return eventId;
 }
 
 /**
@@ -463,6 +465,122 @@ export async function markClosedManually(
       alert_type: alert.alertType,
       resolution_kind: input.kind,
       resolved_by: input.userId,
+    },
+  });
+}
+
+// --- Escalade (BR-NOT-005 ; ADR-072 §7) ---------------------------------------------------------------------
+
+export interface EscalationAlertRow {
+  readonly id: string;
+  readonly alertType: AlertType;
+  readonly status: AlertStatus;
+  readonly severity: AlertSeverity;
+  readonly criticalSince: Date | null;
+  readonly escalatedAt: Date | null;
+  readonly siteId: string | null;
+  readonly zoneId: string | null;
+  readonly ownerUserId: string | null;
+  readonly payload: Record<string, unknown>;
+}
+
+/**
+ * Alertes critiques ouvertes jamais escaladées dont la règle est active, a un délai d'escalade et dont ce
+ * délai est écoulé depuis `critical_since`. L'échéance est rejugée par alerte, sous verrou, avec la
+ * fonction du domaine. Triées par identifiant, avec reprise après `after` : l'ordre est celui des
+ * verrous de `resolveByPass` (clé primaire à l'intérieur d'un type), ce qui exclut les interblocages
+ * croisés (ADR-038), et aucune alerte non escaladable n'en affame une autre.
+ */
+export async function listEscalationCandidateIds(
+  uow: UnitOfWork,
+  input: { readonly now: Date; readonly after: string | null; readonly limit: number },
+): Promise<readonly string[]> {
+  const rows = await uow
+    .selectFrom('communication_alerts as a')
+    .innerJoin('communication_alert_rules as r', 'r.alert_type', 'a.alert_type')
+    .select('a.id')
+    .where('a.status', '=', 'OPEN')
+    .where('a.severity', '=', 'CRITICAL')
+    .where('a.escalated_at', 'is', null)
+    .where('r.enabled', '=', 1)
+    .where('r.escalation_hours', 'is not', null)
+    .where(sql<boolean>`a.critical_since <= TIMESTAMPADD(HOUR, -r.escalation_hours, ${input.now})`)
+    .$if(input.after !== null, (qb) => qb.where('a.id', '>', toBin(input.after!)))
+    .orderBy('a.id', 'asc')
+    .limit(input.limit)
+    .execute();
+  return rows.map((row) => fromBin(row.id));
+}
+
+/** Alerte verrouillée avec ce qu'il faut pour juger et émettre l'escalade (rang N10b). */
+export async function lockAlertForEscalation(
+  uow: UnitOfWork,
+  alertId: string,
+): Promise<EscalationAlertRow | undefined> {
+  const row = await uow
+    .selectFrom('communication_alerts')
+    .select([
+      'id',
+      'alert_type',
+      'status',
+      'severity',
+      'critical_since',
+      'escalated_at',
+      'site_id',
+      'zone_id',
+      'owner_user_id',
+      'payload',
+    ])
+    .where('id', '=', toBin(alertId))
+    .forUpdate()
+    .executeTakeFirst();
+  if (!row) return undefined;
+  return {
+    id: fromBin(row.id),
+    alertType: row.alert_type as AlertType,
+    status: row.status as AlertStatus,
+    severity: row.severity as AlertSeverity,
+    criticalSince: row.critical_since,
+    escalatedAt: row.escalated_at,
+    siteId: fromBinOrNull(row.site_id),
+    zoneId: fromBinOrNull(row.zone_id),
+    ownerUserId: fromBinOrNull(row.owner_user_id),
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+  };
+}
+
+/**
+ * Pose l'escalade (une seule fois : `UPDATE` conditionnel) et publie `AlertEscalated`. Renvoie
+ * l'identifiant de l'événement (source des notifications d'escalade), ou `null` si l'alerte n'était plus à
+ * escalader (prise en compte, résolue, déjà escaladée).
+ */
+export async function markEscalated(
+  uow: UnitOfWork,
+  deps: WriteDeps,
+  alert: EscalationAlertRow,
+  at: Date,
+  recipientCount: number,
+): Promise<string | null> {
+  const result = await uow
+    .updateTable('communication_alerts')
+    .set({ escalated_at: at, version: sql`version + 1` })
+    .where('id', '=', toBin(alert.id))
+    .where('status', '=', 'OPEN')
+    .where('escalated_at', 'is', null)
+    .execute();
+  if (Number(result[0]?.numUpdatedRows ?? 0) === 0) return null;
+  return publishAlertEvent(uow, deps, {
+    eventType: 'AlertEscalated',
+    alertId: toBin(alert.id),
+    occurredAt: at,
+    payload: {
+      alert_id: alert.id,
+      alert_type: alert.alertType,
+      severity: alert.severity,
+      critical_since: alert.criticalSince?.toISOString() ?? null,
+      escalated_at: at.toISOString(),
+      site_id: alert.siteId,
+      escalation_recipients: recipientCount,
     },
   });
 }

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ESCALATION_HOURS,
   DEFAULT_PUSH_GROUP_MINUTES,
+  NOTIFICATION_BODY_MAX,
   escalationDueAt,
+  escalationTitle,
+  groupedPushBody,
   isEscalationDue,
   notificationChannelsFor,
   pushGroupDecision,
@@ -80,5 +83,26 @@ describe('escalade (BR-NOT-005, ADR-072 §7)', () => {
     expect(isEscalationDue({ ...critical, criticalSince: null }, 4, late)).toBe(false);
     // Relevée à CRITICAL tard : l'échéance part du relèvement, pas de la première détection.
     expect(isEscalationDue({ ...critical, criticalSince: plus(T0, 500) }, 4, late)).toBe(false);
+  });
+});
+
+describe('textes des notifications (ADR-072 §6, §7 ; AV-416)', () => {
+  it('l’escalade est un autre message que la levée', () => {
+    expect(escalationTitle('Perte anormale')).toBe('Escalade : Perte anormale');
+  });
+
+  it('le push d’un nouveau créneau compte les alertes tues, au pluriel quand il le faut', () => {
+    expect(groupedPushBody('Stock bas', 0)).toBe('Stock bas');
+    expect(groupedPushBody('Stock bas', -2)).toBe('Stock bas');
+    expect(groupedPushBody('Stock bas', Number.NaN)).toBe('Stock bas');
+    expect(groupedPushBody('Stock bas', 1)).toBe('Stock bas (+1 autre alerte de ce type)');
+    expect(groupedPushBody('Stock bas', 3)).toBe('Stock bas (+3 autres alertes de ce type)');
+  });
+
+  it('le corps regroupé ne dépasse jamais la colonne, le décompte est conservé', () => {
+    const body = 'x'.repeat(NOTIFICATION_BODY_MAX);
+    const grouped = groupedPushBody(body, 12);
+    expect(grouped).toHaveLength(NOTIFICATION_BODY_MAX);
+    expect(grouped.endsWith('(+12 autres alertes de ce type)')).toBe(true);
   });
 });

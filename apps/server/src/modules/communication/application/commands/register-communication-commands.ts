@@ -10,6 +10,7 @@ import {
 } from '../../../../platform/sync/command-handler-registry.provider.js';
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { registerAlertCommands } from './alert-commands.js';
+import { registerNotificationCommands } from './notification-commands.js';
 
 @Injectable()
 export class CommunicationCommandsRegistrar implements OnModuleInit {
@@ -20,5 +21,6 @@ export class CommunicationCommandsRegistrar implements OnModuleInit {
 
   onModuleInit(): void {
     registerAlertCommands(this.registry, this.idGenerator);
+    registerNotificationCommands(this.registry, this.idGenerator);
   }
 }

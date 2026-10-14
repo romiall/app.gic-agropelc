@@ -53,9 +53,10 @@
 | A7 | Verrou de la masse mensuelle des frais généraux, lectures courantes, tests de concurrence | `9a9efc6` | Fait : 4 tests de concurrence, 7 mutations détectées sur 8 (1 équivalente) ; paquet `db` 201 tests verts |
 | P9-01 | Conception : cartographie, ADR 070 à 078, AV 400 à 442, backlog du plan §4 (26 incréments) | `384e74c` | Fait : ADR-070 à 078, 43 AV (aucun bloquant, 10 IMPORTANTE), D11, D13, dictionnaires `communication` et `analytics`, `03-historisation-suppression.md` et ADR-038 (rang N10b) complétés, `check_refs.py` propre ; revue adverse de la conception : cinq chercheurs, un vérificateur sceptique par constat, 60 constats retenus (4 graves, 22 moyens, 34 mineurs), tous traités dans ce commit (§7) |
 | P9-02 | Domaine partagé et contrats : catalogue des alertes, traitement d'un événement, rendu, livraison, périodes d'analyse, registre des indicateurs, couche sémantique ; schémas de commandes et de lectures | `50c87f4` | Fait : domaine 531 tests (126 nouveaux, couverture des fichiers nouveaux 97 à 100 %), contrats 267 tests (30 nouveaux), 29 mutations détectées sur la base de code, `tsc` et ESLint propres |
-| P9-03 | Schéma `communication` : migration `20261201090100`, 36 règles d'alerte et 15 paramètres semés, dictionnaire, invariants INV-NOT-02 et 03 | ce commit | Fait : `db` 221 tests (20 nouveaux), 35 mutations du schéma détectées sur la base jetable (aucune survivante), montée, descente et remontée vérifiées, seed idempotent |
-| P9-04 | Socle des alertes : écriture dédoublonnée, consommateur `communication.alerts`, commandes `communication.alert.*` et `communication.alert_rule.set` ; table des événements sautés par le runner | ce commit | Fait : serveur 27 tests (25 + 2), domaine 23 tests, 20 mutations détectées (deux survivantes traitées par des tests), migration `20261201090200` montée, descente et remontée vérifiées |
-| P9-05 et suivants | Voir le backlog du plan | — | À faire |
+| P9-03 | Schéma `communication` : migration `20261201090100`, 36 règles d'alerte et 15 paramètres semés, dictionnaire, invariants INV-NOT-02 et 03 | `e47a37c` | Fait : `db` 221 tests (20 nouveaux), 35 mutations du schéma détectées sur la base jetable (aucune survivante), montée, descente et remontée vérifiées, seed idempotent |
+| P9-04 | Socle des alertes : écriture dédoublonnée, consommateur `communication.alerts`, commandes `communication.alert.*` et `communication.alert_rule.set` ; table des événements sautés par le runner | `c99284c` | Fait : serveur 27 tests (25 + 2), domaine 23 tests, 20 mutations détectées (deux survivantes traitées par des tests), migration `20261201090200` montée, descente et remontée vérifiées |
+| P9-05 | Destinataires, notifications, Web Push (port), escalade et abonnements | ce commit | Fait : serveur 57 tests (11 destinataires, 34 notifications, escalade et envoi, 12 commandes), domaine 13 tests de plus ; revue adverse (41 agents, 31 constats retenus, neuf corrigés) ; mutations et revue : §8 |
+| P9-06 et suivants | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P9)
 
@@ -72,6 +73,8 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | A7 | documentation | ADR-038 (rang N2b, révision), dictionnaire `06-inventory.md`, D06 (API publique) | A7 |
 | P9-04 | `apps/server/src/platform/events/event-consumer-runner.ts` | méthode `recordFailure` : chaque événement sauté après ses essais est consigné dans `platform_event_consumer_failures` avant l'avancée de la position (aucune ligne existante modifiée) | P9-04 |
 | P9-04 | `apps/server/src/app.module.ts`, `apps/server/src/worker/worker.module.ts` | `CommunicationModule` et `CommunicationJobsModule` ajoutés aux imports | P9-04 |
+| P9-05 | `apps/server/src/app.module.ts`, `apps/server/src/worker/worker.module.ts` | `CommunicationRecipientsModule` (global) ajouté aux imports | P9-05 |
+| P9-05 | `packages/domain/src/index.ts` | exports de `alert-recipients.ts` et de trois fonctions de `alert-delivery.ts` (ajouts) | P9-05 |
 | P9-04 | `db/schema.sql`, `apps/server/src/platform/kysely/schema.generated.ts` | table `platform_event_consumer_failures` et version `20261201090200` (le fichier généré est régénéré) | P9-04 |
 | P9-03 | `db/seeds/run.ts`, `db/seeds/system-settings.ts` | étape `seedAlertRules` ; quinze paramètres de détection, de rétention et de regroupement (ajouts en fin de liste) | P9-03 |
 | P9-02 | `packages/domain` : `index.ts` ; `packages/contracts` : `index.ts` | exports ajoutés en fin de fichier (aucun existant modifié) | P9-02 |
@@ -81,7 +84,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 
 | Incr. prévu | Fichier ou module | Changement prévu | Nature |
 |---|---|---|---|
-| P9-05 à P9-06 | `communication` (adaptateur de destinataires) | lecture en lecture seule des tables `identity` (sous-ensembles affectation et rôle) dans `communication-api/` ; demande B1 | lecture, signalée |
+| P9-05 | `communication-api/identity-recipient-resolver.ts` (nouveau) | lecture des tables `identity` (affectations, rôles, utilisateurs, appareils) et `organization` (équipes, zones) par rôle et périmètre : requête inverse que les API publiques n'offrent pas ; demande B1 | lecture, signalée |
 | P9-07 à P9-10 | `sales`, `finance`, `inventory`, `production`, `procurement`, `approvals`, `crm`, `fieldwork`, `sync`, `audit` | événements de déclenchement (fichiers `*-alert-events.ts`), tâches de passe et récurrences ; `audit.chain.verify_daily`, `inventory.ledger.reconcile_daily`, `finance.cash.reconcile_daily` publient leur événement puis se terminent en succès ; déduplication par jour des tâches de P4 à P5 adaptée | ajouts, un changement de comportement des trois tâches de réconciliation |
 | P9-14 | `platform/read-scope.ts` | mode « union » ajouté à `ReadScope` (ET par défaut inchangé) | ajout |
 | P9-15 | `public/` des modules propriétaires (`inventory`, `production`, `crm`, `sales`, `approvals`) | fonctions de référence manquantes (couverture, ratios, mortalité, œufs, effectifs, compteur de validations) exportées par `index.ts` | ajouts |
@@ -145,3 +148,28 @@ Cinq chercheurs (alertes et événements ; destinataires, push, escalade et note
 | Paramètres | Cadence de tâche déclarée paramétrable alors qu'elle est en code ; seuils « déjà lus » semés mais non lus | ADR-071 §8, AV-400, AV-405, AV-411 |
 | CA | Nombre de ventes de `periodRevenue` compte les annulées ; attribution distincte voulue | ADR-075 §2, AV-426 |
 | Couverture des acceptations | AT-027, AT-032, AT-047 non repris | backlog P9-24 |
+
+## 8. Revue adverse de P9-05 et mutations (14/10/2026)
+
+Quatre angles (concurrence et verrouillage ; confidentialité et portée ; conformité aux ADR et à D13 ; qualité des tests), un vérificateur sceptique par constat : 41 agents, **37 constats, 31 retenus, 6 réfutés**. Neuf défauts réels sont corrigés dans le code, les autres sont documentés (ADR-072, révision P9-05) ou couverts par des tests ajoutés.
+
+| Sujet | Constat vérifié | Traitement |
+|---|---|---|
+| Escalade consommée sans audience, erreur avalée (3 constats) | `escalated_at` et `AlertEscalated` posés avant les destinataires ; sans titulaire du niveau supérieur ou après une erreur, l'unique escalade est perdue | Corrigé : l'audience est résolue avant la pose ; point de sauvegarde par alerte ; l'alerte reste candidate. Tests : sans audience puis audience, panne isolée, erreur annulée |
+| Candidats non filtrés par la règle | 200 alertes non escaladables affamaient les autres | Corrigé : jointure sur la règle (active, délai, échéance), lecture par identifiant croissant avec curseur (ordre des verrous de `resolveByPass`). Tests : affamement par règle et par absence d'audience, lots |
+| Créneau de regroupement | Ouvert par une ligne jamais envoyée (alerte close), par l'escalade ; décompte des tues faux (alertes tièdes, doubles lignes) | Corrigé : lignes livrées ou d'alerte ouverte seulement, hors escalade ; décompte des alertes critiques, une fois chacune. Test de séquence complet |
+| Appareils et utilisateurs | Push livrés à un appareil bloqué, perdu ou retiré et à un utilisateur suspendu | Corrigé : jointures sur `identity_devices` et `identity_users` à la création et à l'envoi. Révoquer les abonnements au changement de statut reste à faire avec le consommateur d'état d'appareil (hors P9-05, la jointure suffit fonctionnellement) |
+| Relèvement en `CRITICAL` | Renotifie des destinataires devenus inactifs | Corrigé : filtre par `activeUsersAmong` ; test |
+| Propriétaire et responsable | Retenus sans affectation active, neutralisant le repli sur la Direction | Corrigé dans l'adaptateur ; tests |
+| Approbateurs de portée `TEAM` ou `OWN` | Le demandeur n'était pas le propriétaire jugé par le moteur de droits | Corrigé : le demandeur est le propriétaire de la ressource évaluée, sans être destinataire ; test |
+| Abonnement | Verrou d'intervalle sur un point de terminaison absent (ADR-038 §3) ; « tout marquer lu » hors ligne marquait des notifications créées ensuite | Corrigé : lecture validée, reprise du doublon ; borne par l'instant du geste. Tests, dont la concurrence |
+| Notifications directes (AV-439) | Annoncées par la ligne du plan sans être livrées | Reportées en P9-11 (même écrivain de notifications), plan et AV-439 mis à jour |
+| Instant jugé | Destinataires jugés à l'instant du traitement, non de l'événement (ADR-072 §1) | Documenté et assumé (ADR-072, révision §1) : l'alerte ouverte s'adresse à ceux qui peuvent agir maintenant |
+| Responsable pour `APPROVAL_PENDING_LONG` | Cité par l'ADR, jamais produit ; le catalogue ne le prévoit pas | ADR corrigé (approbateurs seulement) |
+| Livraison par notification, adaptateur « journal » | État de livraison par notification et non par abonnement ; adaptateur désactivé livré ; envoi par une tâche dédiée à la minute | Documentés (ADR-072, révision §5) ; l'état par appareil demande une table, à décider avec l'adaptateur réel (AV-415) |
+| Qualité des tests (14 constats) | Gardes sans test : périmètre transmis, origines, rôles propres d'un déclencheur, rôles d'escalade, abonnements révoqués, créneaux, fenêtre de reprise, adaptateur (appartenance échue, rôle inactif, équipe inactive) | une trentaine de tests ajoutés ; paramètre `communication.push_group_minutes` non testé : les paramètres système sont immuables et partagés (voir la mémoire du projet), couvert par défaut à 15 |
+
+**Mutations** (base jetable `gic_agropelc_p9m`) : 56 mutants sur le code de P9-05, **52 détectés**, 4 équivalents documentés : sortie anticipée pour `INFO` (le canal vide ne produit aucune ligne), valeur initiale de `showProtected` (écrasée dès qu'une valeur protégée est rendue), rejugement de l'échéance sous verrou (déjà acquise par la requête des candidats, défense en profondeur contre une course), délai de règle nul (une arithmétique `NULL` écarte déjà la ligne). La première passe a révélé six gardes non testées, dont un **test vide** : trois abonnements créés après la première lecture de la transaction du test étaient invisibles à la lecture répétable ; les données sont désormais validées avant la première lecture, avec un témoin.
+
+**Outil de test** (`apps/server/test/communication-test-kit.ts`) : une transaction de test annulée laisse un numéro absent dans `platform_domain_events`, et les consommateurs ne dépassent pas un trou de moins de 120 s (`settled-sequence.ts`) ; un seul test annulé suffisait à faire échouer, dans la même minute, un test de la suite qui attend un consommateur (observé : `role-assignment-commands`, cache RBAC). Les tests de `communication` reprennent désormais chaque numéro consommé par une transaction annulée avec une ligne `test.tombstone`, ignorée de tous les consommateurs (le numéro appartenait à la seule transaction annulée). À reprendre par la session principale pour les autres tests qui annulent des transactions produisant des événements.
+

@@ -19,6 +19,7 @@ import { FinanceJobsModule } from '../modules/finance/finance-jobs.module.js';
 import { SalesJobsModule } from '../modules/sales/sales-jobs.module.js';
 import { FieldworkJobsModule } from '../modules/fieldwork/fieldwork-jobs.module.js';
 import { CommunicationJobsModule } from '../modules/communication/communication-jobs.module.js';
+import { CommunicationRecipientsModule } from '../communication-api/communication-recipients.module.js';
 import { WorkerService } from './worker.service.js';
 
 @Module({
@@ -30,6 +31,7 @@ import { WorkerService } from './worker.service.js';
     SalesJobsModule,
     FieldworkJobsModule,
     CommunicationJobsModule,
+    CommunicationRecipientsModule,
   ],
   providers: [WorkerService],
   exports: [WorkerService],

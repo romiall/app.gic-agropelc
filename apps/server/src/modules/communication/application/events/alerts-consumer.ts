@@ -27,6 +27,7 @@ import {
   raiseAlert,
   resolveByCondition,
   resolveByPass,
+  type AlertRule,
   type RaiseOutcome,
 } from '../alerts/alert-store.js';
 
@@ -35,8 +36,8 @@ export const ALERTS_CONSUMER_NAME = 'communication.alerts';
 const logger = new Logger('communication.alerts');
 
 /**
- * Suite d'une levée (destinataires, notifications, escalade) : branchée par P9-05 ; absente en P9-04.
- * Appelée dans la transaction du consommateur, après l'écriture de l'alerte.
+ * Suite d'une levée (destinataires, notifications) : `createAlertNotifier` (P9-05). Appelée dans la
+ * transaction du consommateur, après l'écriture de l'alerte, donc sous son verrou (rang N10b).
  */
 export type AfterRaise = (
   uow: UnitOfWork,
@@ -44,6 +45,7 @@ export type AfterRaise = (
     readonly outcome: RaiseOutcome;
     readonly action: Extract<AlertAction, { kind: 'RAISE' }>;
     readonly event: DomainEvent;
+    readonly rule: AlertRule;
   },
 ) => Promise<void>;
 
@@ -95,7 +97,7 @@ export async function handleAlertEvent(
         if (rule === undefined || !rule.enabled) break;
         const outcome = await raiseAlert(uow, deps, action, rule, event.eventId);
         if (options.afterRaise !== undefined) {
-          await options.afterRaise(uow, { outcome, action, event });
+          await options.afterRaise(uow, { outcome, action, event, rule });
         }
         break;
       }

@@ -21,6 +21,7 @@ import { FieldworkJobsModule } from './modules/fieldwork/fieldwork-jobs.module.j
 import { CrmModule } from './modules/crm/crm.module.js';
 import { CommunicationModule } from './modules/communication/communication.module.js';
 import { CommunicationJobsModule } from './modules/communication/communication-jobs.module.js';
+import { CommunicationRecipientsModule } from './communication-api/communication-recipients.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
@@ -65,6 +66,7 @@ import { RootController } from './health/root.controller.js';
     CrmModule,
     CommunicationModule,
     CommunicationJobsModule,
+    CommunicationRecipientsModule,
     CommandsModule,
     ChainVerificationModule,
     AuditApiModule,

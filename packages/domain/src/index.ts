@@ -511,12 +511,24 @@ export type { RenderAlertMessageOptions, RenderedAlertMessage } from './alert-me
 export {
   DEFAULT_ESCALATION_HOURS,
   DEFAULT_PUSH_GROUP_MINUTES,
+  NOTIFICATION_BODY_MAX,
   NOTIFICATION_CHANNELS,
   escalationDueAt,
+  escalationTitle,
+  groupedPushBody,
   isEscalationDue,
   notificationChannelsFor,
   pushGroupDecision,
 } from './alert-delivery.js';
+export {
+  FALLBACK_RECIPIENT_ROLE,
+  RECIPIENT_ORIGINS,
+  effectiveRecipientRoles,
+  mergeRecipients,
+  planRecipients,
+  recipientsToAdd,
+} from './alert-recipients.js';
+export type { RecipientCandidate, RecipientOrigin, RecipientPlan } from './alert-recipients.js';
 export type {
   EscalationCandidate,
   NotificationChannel,
