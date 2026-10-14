@@ -51,8 +51,9 @@
 | Incr. | Objet | Commit | État |
 |---|---|---|---|
 | A7 | Verrou de la masse mensuelle des frais généraux, lectures courantes, tests de concurrence | `9a9efc6` | Fait : 4 tests de concurrence, 7 mutations détectées sur 8 (1 équivalente) ; paquet `db` 201 tests verts |
-| P9-01 | Conception : cartographie, ADR 070 à 078, AV 400 à 442, backlog du plan §4 (26 incréments) | ce commit | Fait : ADR-070 à 078, 43 AV (aucun bloquant, 10 IMPORTANTE), D11, D13, dictionnaires `communication` et `analytics`, `03-historisation-suppression.md` et ADR-038 (rang N10b) complétés, `check_refs.py` propre ; revue adverse de la conception : cinq chercheurs, un vérificateur sceptique par constat, 60 constats retenus (4 graves, 22 moyens, 34 mineurs), tous traités dans ce commit (§7) |
-| P9-02 et suivants | Voir le backlog du plan | — | À faire |
+| P9-01 | Conception : cartographie, ADR 070 à 078, AV 400 à 442, backlog du plan §4 (26 incréments) | `384e74c` | Fait : ADR-070 à 078, 43 AV (aucun bloquant, 10 IMPORTANTE), D11, D13, dictionnaires `communication` et `analytics`, `03-historisation-suppression.md` et ADR-038 (rang N10b) complétés, `check_refs.py` propre ; revue adverse de la conception : cinq chercheurs, un vérificateur sceptique par constat, 60 constats retenus (4 graves, 22 moyens, 34 mineurs), tous traités dans ce commit (§7) |
+| P9-02 | Domaine partagé et contrats : catalogue des alertes, traitement d'un événement, rendu, livraison, périodes d'analyse, registre des indicateurs, couche sémantique ; schémas de commandes et de lectures | ce commit | Fait : domaine 531 tests (126 nouveaux, couverture des fichiers nouveaux 97 à 100 %), contrats 267 tests (30 nouveaux), 29 mutations détectées sur la base de code, `tsc` et ESLint propres |
+| P9-03 et suivants | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P9)
 
@@ -67,6 +68,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 | A7 | `db` : migration `20261201090000`, `schema.sql`, `schema.generated.ts` | table `inventory_overhead_pool_locks` (sans clé étrangère vers le site) | A7 |
 | A7 | tests de P7-10 et P8-05 | trois cas de concurrence ajoutés à `production-overhead-allocation.test.ts`, un à `finance-expense-commands.test.ts` | A7 |
 | A7 | documentation | ADR-038 (rang N2b, révision), dictionnaire `06-inventory.md`, D06 (API publique) | A7 |
+| P9-02 | `packages/domain` : `index.ts` ; `packages/contracts` : `index.ts` | exports ajoutés en fin de fichier (aucun existant modifié) | P9-02 |
 | P9-01 | documentation | ADR-070 à 078 (nouveaux), ADR-038 (rang N10b), `docs/decisions/README.md`, `A-VALIDER.md` (AV 400 à 442), plan §4 (section P9), D11 §13 et §15, D13 §3, §7.1, §15, dictionnaires `10-approvals-attachments-communication.md` (règles sans seuil, `alert_recipients`, colonnes d'alerte, audiences) et `12-analytics.md` (`query_log`, `catalog_version`, export, instantanés), `03-data/03-historisation-suppression.md` (alertes, journal des requêtes, notes) | P9-01 |
 
 ### Code existant dont la modification est prévue par la conception (à signaler à chaque incrément)

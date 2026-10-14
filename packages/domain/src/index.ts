@@ -449,3 +449,116 @@ export {
   canSelfApprove,
 } from './approval-decisions.js';
 export type { ApprovalDecisionOptions, ApprovalDecisionSpec } from './approval-decisions.js';
+
+// P9 : alertes (catalogue, traitement d'un événement, rendu, livraison), périodes d'analyse, registre
+// des indicateurs et couche sémantique de l'explorateur (ADR-070 à ADR-078).
+export {
+  ALERT_CATALOG,
+  ALERT_DETECTOR_MODULES,
+  ALERT_NATURES,
+  ALERT_PASS_COMPLETED_EVENT,
+  ALERT_RESOLUTION_MODES,
+  ALERT_SEVERITIES,
+  ALERT_STATUSES,
+  ALERT_TYPES,
+  OPEN_ALERT_STATUSES,
+  alertDedupKey,
+  alertDefinitionOf,
+  alertSubjectKey,
+  compareAlertSeverity,
+  enabledByDefault,
+  isAlertSeverity,
+  isAlertType,
+  raisedSeverity,
+} from './alerts.js';
+export type {
+  AlertDetectorModule,
+  AlertEventPayload,
+  AlertFieldKind,
+  AlertMessageField,
+  AlertNature,
+  AlertResolutionMode,
+  AlertSeverity,
+  AlertStatus,
+  AlertTrigger,
+  AlertType,
+  AlertTypeDefinition,
+} from './alerts.js';
+export {
+  ALERT_COMMANDS,
+  alertFromEvent,
+  alertTriggerEventTypes,
+  alertsResolvedByPass,
+  applyAlertCommand,
+  isAlertTriggerEvent,
+} from './alert-processing.js';
+export type {
+  AlertAction,
+  AlertCommand,
+  AlertEventInput,
+  AlertEventIssue,
+  AlertFromEventResult,
+  AlertPassCompletedAction,
+  AlertRaiseAction,
+  AlertResolveAction,
+  AlertTransition,
+  AlertTransitionInput,
+  AlertTransitionRefusal,
+  OpenAlertForPass,
+} from './alert-processing.js';
+export { alertCarriesProtectedValue, renderAlertMessage } from './alert-message.js';
+export type { RenderAlertMessageOptions, RenderedAlertMessage } from './alert-message.js';
+export {
+  DEFAULT_ESCALATION_HOURS,
+  DEFAULT_PUSH_GROUP_MINUTES,
+  NOTIFICATION_CHANNELS,
+  escalationDueAt,
+  isEscalationDue,
+  notificationChannelsFor,
+  pushGroupDecision,
+} from './alert-delivery.js';
+export type {
+  EscalationCandidate,
+  NotificationChannel,
+  PushGroupDecision,
+} from './alert-delivery.js';
+export {
+  ANALYTICS_PERIOD_CODES,
+  isAnalyticsPeriodCode,
+  resolveAnalyticsPeriod,
+} from './analytics-period.js';
+export type {
+  AnalyticsPeriod,
+  AnalyticsPeriodCode,
+  AnalyticsPeriodWindow,
+  ResolveAnalyticsPeriodInput,
+} from './analytics-period.js';
+export {
+  ANALYTICS_CATALOG_VERSION,
+  ANALYTICS_DATASETS,
+  EXPLORATION_FILTER_OPS,
+  EXPLORATION_LIMITS,
+  analyticsCatalogIssues,
+  datasetOf,
+  validateExploration,
+} from './analytics-catalog.js';
+export type {
+  DatasetDefinition,
+  DimensionDefinition,
+  DimensionType,
+  ExplorationContext,
+  ExplorationDefinition,
+  ExplorationErrorCode,
+  ExplorationFilter,
+  ExplorationFilterOp,
+  ExplorationPlan,
+  ExplorationSort,
+  ExplorationValidation,
+  MeasureAggregate,
+  MeasureDefinition,
+  MeasureUnit,
+  ResolvedFilter,
+  ScopeKind,
+} from './analytics-catalog.js';
+export { KPI_CATALOG, kpiDefinitionOf, kpiHasPreviousPeriod, kpisToCreate } from './kpi-catalog.js';
+export type { KpiDefinition, KpiNature, KpiReferenceState } from './kpi-catalog.js';

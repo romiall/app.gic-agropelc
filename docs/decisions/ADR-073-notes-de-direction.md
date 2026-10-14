@@ -14,7 +14,7 @@ Faits : la spécification de synchronisation donne au jeu `comms` la portée `US
 ## Décision
 
 1. **Cycle** : `DRAFT` → `PUBLISHED` → `ARCHIVED`.
-   - Le brouillon n'est visible que de son auteur ; il se crée et se modifie (`communication.note.draft.save`, permission `comm.note.publish`). Un brouillon abandonné passe à `ARCHIVED` : rien n'est supprimé physiquement.
+   - Le brouillon n'est visible que de son auteur ; il se crée et se modifie (`communication.note.save_draft`, permission `comm.note.publish`). Un brouillon abandonné passe à `ARCHIVED` : rien n'est supprimé physiquement.
    - La publication (`communication.note.publish`) fige titre, corps, catégorie, audience, référence, expiration et option d'accusé ; **plus aucune colonne de la note ni aucune ligne de son audience** n'est modifiable, en base comme en commande : les déclencheurs d'immuabilité couvrent `internal_notes` et `note_audiences` (INSERT, UPDATE et DELETE refusés dès que la note n'est plus `DRAFT`). L'archivage est un changement de statut.
 2. **Publication** : réservée à `comm.note.publish` (Direction). Validations (D13 §8) : titre et corps non vides, audience non vide, expiration postérieure à la publication. Une note corrective est une **nouvelle** note qui référence l'ancienne (`related_entity_type = 'INTERNAL_NOTE'`). La clé primaire de l'audience n'admet pas de colonne nulle : `audience_ref` vaut `'*'` pour `ALL`.
 3. **Audience et lecture en ligne** : la note est visible d'un utilisateur si une ligne d'audience le désigne — `ALL`, un de ses rôles actifs, un de ses sites ou zones d'affectation (avec descendantes), ou lui-même ; l'audience est évaluée **à la lecture** (`GET /notes`, `GET /notes/{id}`), de sorte qu'une affectation postérieure à la publication voit la note.
