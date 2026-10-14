@@ -27,6 +27,18 @@ describe('changePassword (MP-08, AV-251)', () => {
       current_password: 'provisoire1',
       new_password: 'personnel-1',
     });
+    // MP-11 : une demande sans réponse est abandonnée (comptée hors ligne), l'écran ne reste pas figé.
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('sans réponse dans le délai : OFFLINE (MP-11)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('délai dépassé', 'TimeoutError');
+      }),
+    );
+    expect(await changePassword(input)).toEqual({ ok: false, reason: 'OFFLINE' });
   });
 
   it('401 : mot de passe actuel faux, ou jeton expiré ; 429 ; 400 avec le défaut ; réseau', async () => {

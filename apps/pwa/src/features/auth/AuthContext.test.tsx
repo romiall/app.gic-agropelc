@@ -160,6 +160,61 @@ describe('AuthContext (machine à états ECR-ADM-01/02)', () => {
     expect(await hasLocalSession(getDb())).toBe(false);
   });
 
+  it('changement imposé : une réponse arrivée après « Annuler » est ignorée (MP-11)', async () => {
+    vi.mocked(login).mockResolvedValueOnce({
+      ok: true as const,
+      accessToken: fakeAccessToken({ sub: FAKE_USER_ID, device_id: 'd', session_id: 's' }),
+      refreshToken: 'refresh-token-1',
+      expiresIn: 900,
+      mustChangePassword: true,
+      deviceStatus: 'ACTIVE' as const,
+    });
+    let answer: (result: { ok: true }) => void = () => undefined;
+    vi.mocked(changePassword).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <TestHarness />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('login_required'));
+    await user.click(screen.getByText('login'));
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('password_change_required'),
+    );
+    await user.click(screen.getByText('change-password'));
+    await user.click(screen.getByText('cancel'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('login_required'));
+    answer({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Ni écran du PIN sans connexion, ni session.
+    expect(screen.getByTestId('status')).toHaveTextContent('login_required');
+    expect(await hasLocalSession(getDb())).toBe(false);
+  });
+
+  it('échéance du jeton d’accès : courue depuis la connexion, pas depuis le PIN (MP-11)', async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <TestHarness />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('login_required'));
+    await user.click(screen.getByText('login'));
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('pin_setup_required'),
+    );
+    const loggedInBy = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await user.click(screen.getByText('set-pin'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unlocked'));
+    expect(getSessionRuntime()!.accessTokenExpiresAt).toBeLessThanOrEqual(loggedInBy + 900_000);
+  });
+
   it('parcours complet : login_required -> pin_setup_required -> unlocked', async () => {
     const user = userEvent.setup();
     render(

@@ -7,6 +7,10 @@
  * n'est jamais renvoyé. Écrit par le module propriétaire des tables (`identity`).
  *
  * - Droit : `identity.user.manage` (l'Admin seul, portée `ALL`) ; sans lui, 403 audité.
+ * - Appareil `ACTIVE` exigé (MP-11, revue adverse : RC-02, une écriture hors du pipeline des
+ *   commandes garde la règle) ; un appareil en attente d'approbation reçoit 403 `DEVICE_PENDING`
+ *   audité. La session, le compte de l'Admin et l'appareil hors service sont refusés en amont par la
+ *   garde d'authentification (AV-282).
  * - Cible : un compte réel (l'utilisateur système n'existe pas pour cette route : 404) ; pas son propre
  *   compte (`RESET_OWN_PASSWORD` : le changement de mot de passe s'en charge) ; pas un compte désactivé
  *   (`USER_DEACTIVATED`) ; un compte suspendu est accepté (AV-281).
@@ -15,7 +19,8 @@
  *   impose le changement à la prochaine connexion, AV-251), toutes les sessions de l'utilisateur
  *   révoquées (motif `ADMIN`), verrouillage de son identifiant levé, audit
  *   `identity.user.reset_password` sans aucun mot de passe.
- * - Un jeton d'accès déjà émis reste valable jusqu'à son expiration (15 min au plus, 02-securite §3).
+ * - Les jetons d'accès de l'utilisateur sont refusés dès sa requête suivante (AV-282 : la garde
+ *   d'authentification constate la révocation de la session).
  */
 import { Body, Controller, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -41,6 +46,7 @@ import { hashPassword } from '../application/auth/password.js';
 import { resetLoginAttempts } from '../application/auth/login-lockout.js';
 import { revokeUserSessions } from '../application/commands/revoke-sessions.js';
 import { hasPermissionAt } from '../application/public/rights-check.js';
+import { checkDeviceActive } from '../application/public/device-check.js';
 
 const USER_MANAGE = 'identity.user.manage';
 
@@ -94,6 +100,25 @@ export class UserPasswordController {
         correlationId: request.correlationId,
       });
       throw new ApiError(403, 'FORBIDDEN', 'Réinitialisation réservée à l’administrateur.');
+    }
+    const device = await checkDeviceActive(this.db, toBin(auth.device_id), now);
+    if (!device.ok) {
+      await recordDenied(this.db, deps, {
+        occurredAt: now,
+        actorUserId: auth.sub,
+        actorRoles: [],
+        deviceId: auth.device_id,
+        action: 'identity.user.reset_password',
+        entityType: 'USER',
+        entityId: targetId,
+        errorCode: device.reason,
+        correlationId: request.correlationId,
+      });
+      throw new ApiError(
+        403,
+        device.reason,
+        'Réinitialisation impossible depuis cet appareil : il doit être approuvé et en service.',
+      );
     }
 
     const target = await this.db

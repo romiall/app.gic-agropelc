@@ -5,8 +5,11 @@ import { PasswordChangeScreen } from './PasswordChangeScreen.js';
 import * as AuthContextModule from './AuthContext.js';
 import type { PasswordChangeError } from './AuthContext.js';
 
-function stubUseAuth(error?: PasswordChangeError) {
-  const changeProvisionalPassword = vi.fn(async () => undefined);
+function stubUseAuth(
+  error?: PasswordChangeError,
+  change: () => Promise<void> = async () => undefined,
+) {
+  const changeProvisionalPassword = vi.fn(change);
   const cancelPasswordChange = vi.fn();
   vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
     state: { status: 'password_change_required', ...(error ? { error } : {}) },
@@ -54,6 +57,26 @@ describe('PasswordChangeScreen (MP-08, AV-251, AV-280)', () => {
     render(<PasswordChangeScreen />);
     await fill('provisoire1', 'personnel-123', 'personnel-123');
     expect(changeProvisionalPassword).toHaveBeenCalledWith('provisoire1', 'personnel-123');
+  });
+
+  it('pendant l’envoi, « Annuler » est désactivé : une réponse tardive ne vise plus un écran quitté (MP-11)', async () => {
+    let answer: () => void = () => undefined;
+    const { cancelPasswordChange } = stubUseAuth(
+      undefined,
+      () =>
+        new Promise<void>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    render(<PasswordChangeScreen />);
+    await fill('provisoire1', 'personnel-123', 'personnel-123');
+    const cancel = screen.getByRole('button', { name: 'Annuler et se déconnecter' });
+    expect(cancel).toBeDisabled();
+    await userEvent.setup().click(cancel);
+    expect(cancelPasswordChange).not.toHaveBeenCalled();
+    answer();
+    await screen.findByRole('button', { name: 'Enregistrer mon mot de passe' });
+    expect(screen.getByRole('button', { name: 'Annuler et se déconnecter' })).toBeEnabled();
   });
 
   it('erreur du serveur affichée ; affichage des saisies ; abandon', async () => {

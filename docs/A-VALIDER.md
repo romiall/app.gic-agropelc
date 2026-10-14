@@ -296,7 +296,7 @@ Classification (PM §45) :
 | AV-279 | Chiffre d'affaires d'un lot de production | IMPORTANTE | P8 | Ventes du lot et de ses produits d'abattage ; œufs exclus (déjà valorisés par le crédit au coût standard) | OUVERT |
 | AV-280 | Règles d'un nouveau mot de passe : longueur maximale, réemploi | SECONDAIRE | MP | 8 à 128 caractères ; différent de celui qu'il remplace (le provisoire ne peut pas être gardé) ; aucune règle de composition, d'historique ni d'expiration | OUVERT |
 | AV-281 | Gardes de la réinitialisation du mot de passe par l'Admin | SECONDAIRE | MP | Pas son propre compte (changement avec l'actuel), pas un compte désactivé ni le compte système ; compte suspendu accepté ; verrouillage de l'identifiant levé | OUVERT |
-| AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Inchangé : le jeton d'accès reste valable jusqu'à son expiration (15 min au plus) ; le renouvellement est refusé | OUVERT |
+| AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Blocage immédiat : session, compte et appareil vérifiés à chaque requête (cache de 5 s, vidé à chaque révocation) | TRANCHÉ |
 | AV-283 | « Classer » une opération refusée ou en conflit sur l'appareil | SECONDAIRE | MP | Marque locale `ACKNOWLEDGED`, statut et opération conservés ; par son seul auteur ; conflit classé sans être réglé ; aucun archivage à 30 jours | OUVERT |
 | AV-284 | « Encaisser le reste dû » depuis le reçu : sort du surplus | SECONDAIRE | MP | Montant prérempli au reste dû ; affecté à la seule vente du reçu ; le surplus reste en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique | OUVERT |
 | AV-285 | Régularisation de la « photo manquante » d'une réception | IMPORTANTE | MP | Close automatiquement à la réception de la photo du bon ; clôture manuelle par le Resp. achats avec motif | TRANCHÉ |
@@ -2106,12 +2106,21 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Impact** : `POST /users/{id}/reset-password`, `GET /users` (`actions.resetPassword`), écran des utilisateurs ; ADR-045. Défaut implémenté : (a).
 
-### AV-282 — Session révoquée ou compte suspendu : refus immédiat des requêtes ? — IMPORTANTE
+### AV-282 — Session révoquée ou compte suspendu : refus immédiat des requêtes ? — IMPORTANTE — **TRANCHÉ**
 - **Question** : une session révoquée (réinitialisation, suspension, déconnexion) ou un compte suspendu doivent-ils être refusés dès la requête suivante, ou à l'expiration du jeton d'accès ?
 - **Pourquoi** : `AuthGuard` vérifie la signature et l'expiration du jeton (15 min), mais ne relit ni la session ni le statut de l'utilisateur ou de l'appareil. 02-securite §5 dit pourtant que « le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil » à chaque requête. Les commandes sont protégées (le pipeline vérifie l'utilisateur et l'appareil), pas les lectures ni `change-password`. **CONFIRMÉ** (lecture du code, MP-08).
 - **Choix** : (a) inchangé : refus au renouvellement, au plus 15 min ; (b) contrôle de la session (révocation) et des statuts à chaque requête, avec un cache court ; (c) jeton d'accès plus court.
 - **Recommandation** : (b), avant la mise en production.
-- **Impact** : `AuthGuard`, performances (une lecture par requête, ou un cache) ; 02-securite §3 et §5 ; MP-11 ou P10. Défaut implémenté : (a). Non paramétrable.
+- **Impact** : `AuthGuard`, performances (une lecture par requête, ou un cache) ; 02-securite §3 et §5 ; MP-11 ou P10. Non paramétrable.
+- **Décision** (porteur du projet, 14/10/2026) : (b), « blocage immédiat » : le serveur vérifie à chaque requête la session et le statut du compte et de l'appareil, avec un petit cache de quelques secondes.
+- **Mise en œuvre** (MP-11, 14/10/2026) :
+  - `AuthGuard` lit l'état de la session du jeton (`session-state.ts`) : une session de sa **famille de rotation** encore vivante (le jeton émis juste avant une rotation porte l'identifiant de la ligne `ROTATED`), un utilisateur `ACTIVE`, un appareil `ACTIVE` ou `PENDING` (l'appareil en attente lit et voit son attente, AV-228). Sinon 401 `UNAUTHENTICATED`, motif dans `details.reason` (`SESSION_REVOKED`, `USER_INACTIVE`, `DEVICE_OUT_OF_SERVICE`).
+  - L'état est gardé 5 s par session et vidé par toute révocation du processus (déconnexion, réinitialisation, suspension, désactivation, blocage d'appareil, réutilisation, changement de mot de passe). Un statut changé sans révocation est vu au plus 5 s plus tard. Index `(token_family_id, revoked_at)` (migration `20261102090000`).
+  - La déconnexion révoque toute la famille de la session.
+  - Revue adverse de MP-11 : la réinitialisation du mot de passe exige en plus un appareil `ACTIVE` (RC-02, 403 `DEVICE_PENDING` audité) ; le changement du mot de passe révoque les autres sessions de l'utilisateur (motif `PASSWORD_CHANGED`, nombre dans l'audit).
+  - PWA : un 401 fait renouveler le jeton une fois, puis rejouer l'appel ; un renouvellement refusé vide la session (reconnexion).
+  - Conséquence (**DÉDUIT**) : un appareil bloqué, perdu ou retiré n'envoie plus rien dès le blocage, au lieu d'au plus 15 min après. Ses opérations en attente restent sur l'appareil jusqu'au déblocage et à une nouvelle connexion ; les faits datés d'avant le blocage sont alors acceptés (BR-SYN-007), ceux de la période hors service mis en quarantaine (INV-ADM-03).
+  - Tests : `auth-session-state.e2e.test.ts`, `identity-users-password.test.ts`, `api-client.test.ts` (PWA).
 
 ### AV-283 — « Classer » une opération refusée ou en conflit sur l'appareil — SECONDAIRE
 - **Question** : comment l'utilisateur « prend-il connaissance » d'une opération refusée (BR-SYN-009, SM-SYNC-COMMAND : `REJECTED → ACKNOWLEDGED`, « archivé localement 30 jours ») ? Qui le peut sur une tablette partagée, et une opération en conflit se classe-t-elle aussi ?
@@ -2285,3 +2294,4 @@ Politique par défaut, paramétrable :
 | 14/10/2026 | AV-286 | Les valideurs voient la photo dans l'application dès MP-10 (lecture protégée) | Porteur du projet |
 | 14/10/2026 | AV-287 | Photos en attente non chiffrées pour l'instant ; chiffrement de tout le stockage local avant la production | Porteur du projet |
 | 14/10/2026 | AV-288 | Photo d'une perte toujours facultative ; seule la mortalité l'exige | Porteur du projet |
+| 14/10/2026 | AV-282 | Blocage immédiat : session, compte et appareil vérifiés à chaque requête, avec un cache de quelques secondes | Porteur du projet |

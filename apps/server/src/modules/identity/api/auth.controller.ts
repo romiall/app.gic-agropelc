@@ -10,6 +10,11 @@
  * actuel faux comme un échec de connexion de l'utilisateur (verrouillage progressif, 02-securite §2) ;
  * aucun mot de passe n'est journalisé ni audité. Le changement imposé du mot de passe provisoire reste
  * l'affaire de l'écran (AV-251) : le serveur ne refuse rien d'autre.
+ *
+ * MP-11 (revue adverse) : la connexion cherche d'abord le compte en vigueur du numéro (un numéro se
+ * réattribue après une désactivation) et paie une vérification argon2 leurre pour un numéro inconnu ;
+ * `change-password` révoque les autres sessions de l'utilisateur (`PASSWORD_CHANGED`) ; `logout`
+ * révoque toute la famille de la session.
  */
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -35,7 +40,7 @@ import {
 } from '../application/public/jwt.js';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { Public, SelfScoped } from '../../../platform/http/authorization.decorators.js';
-import { hashPassword, verifyPassword } from '../application/auth/password.js';
+import { hashPassword, verifyDecoyPassword, verifyPassword } from '../application/auth/password.js';
 import {
   checkLoginLock,
   recordLoginFailure,
@@ -46,6 +51,7 @@ import {
   type DeviceLoginRefusal,
 } from '../application/auth/device-enrollment.js';
 import { createSession, rotateSession, revokeSessionById } from '../application/auth/session.js';
+import { revokeOtherUserSessions } from '../application/commands/revoke-sessions.js';
 
 const loginSchema = z.object({
   phone: z.string().min(1).max(20),
@@ -120,11 +126,22 @@ export class AuthController {
       throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
     }
 
-    const user = await this.db
-      .selectFrom('identity_users')
-      .select(['id', 'password_hash', 'status', 'must_change_password'])
-      .where('phone', '=', phone)
-      .executeTakeFirst();
+    // MP-11 (revue adverse) : un numéro se réattribue après la désactivation de son compte (unicité sur
+    // les seuls comptes non désactivés, `active_phone`) — le compte en vigueur passe d'abord ; à défaut,
+    // le dernier compte désactivé du numéro, pour l'audit de l'échec.
+    const user =
+      (await this.db
+        .selectFrom('identity_users')
+        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .where('active_phone', '=', phone)
+        .executeTakeFirst()) ??
+      (await this.db
+        .selectFrom('identity_users')
+        .select(['id', 'password_hash', 'status', 'must_change_password'])
+        .where('phone', '=', phone)
+        .orderBy('id', 'desc')
+        .limit(1)
+        .executeTakeFirst());
 
     // `errorCode` : motif écrit dans l'audit seulement (AV-253 : un compte suspendu ou désactivé garde le
     // message générique, son motif n'est lisible qu'au journal).
@@ -157,8 +174,12 @@ export class AuthController {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Identifiants invalides.');
     };
 
-    // Utilisateur système (`password_hash` vide) : jamais de connexion, comme un identifiant inconnu.
-    if (!user || user.password_hash === '') return fail(null);
+    // Utilisateur système (`password_hash` vide) : jamais de connexion, comme un identifiant inconnu —
+    // après une vérification leurre, au même coût qu'un vrai mot de passe (MP-11).
+    if (!user || user.password_hash === '') {
+      await verifyDecoyPassword(password);
+      return fail(null);
+    }
     const passwordOk = await verifyPassword(user.password_hash, password);
     if (!passwordOk) return fail(fromBin(user.id));
     if (user.status !== 'ACTIVE') return fail(fromBin(user.id), `ACCOUNT_${user.status}`);
@@ -397,6 +418,15 @@ export class AuthController {
         .where('id', '=', user.id)
         .execute();
       await resetLoginAttempts(trx, 'IDENTIFIER', user.phone);
+      // MP-11 (revue adverse) : toute autre session de l'utilisateur — ouverte avec le mot de passe
+      // provisoire ou avec l'ancien, peut-être par un tiers — est close ; celle-ci reste ouverte.
+      const revokedSessions = await revokeOtherUserSessions(
+        trx,
+        auth.sub,
+        auth.session_id,
+        'PASSWORD_CHANGED',
+        now,
+      );
       await recordAudit(
         trx,
         { idGenerator: this.idGenerator, clock: this.clock },
@@ -408,6 +438,7 @@ export class AuthController {
           action: 'identity.user.change_password',
           entityType: 'USER',
           entityId: auth.sub,
+          after: { revoked_sessions: revokedSessions },
           result: 'SUCCESS',
           correlationId: request.correlationId,
         },

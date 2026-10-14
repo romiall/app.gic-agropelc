@@ -22,7 +22,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import {
   ensureSupplierLot,
@@ -39,6 +38,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 
 const DAY = '2026-09-12';
@@ -401,7 +401,7 @@ describe('Lectures HTTP de la production (P7-11)', () => {
       }
     });
     for (const actor of [rfeA, rfeB, rpr, fin, ven]) {
-      actor.token = await signAccessToken(
+      actor.token = await signTestAccessToken(
         jwtKeys.privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),

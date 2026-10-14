@@ -35,6 +35,16 @@ export function clearSessionRuntime(): void {
   current = undefined;
 }
 
+/**
+ * MP-11 (AV-282) : le serveur a refusé ce jeton d'accès (401) alors qu'il est encore valable sur
+ * l'appareil — session révoquée, horloge décalée. Il est tenu pour expiré : le prochain
+ * `ensureAccessToken` le renouvelle, et un refus du renouvellement vide la session. Sans effet si un
+ * autre jeton l'a déjà remplacé.
+ */
+export function expireAccessToken(accessToken: string): void {
+  if (current?.accessToken === accessToken) current.accessTokenExpiresAt = 0;
+}
+
 export type AccessTokenResult =
   | { readonly ok: true; readonly accessToken: string }
   | { readonly ok: false; readonly reason: 'OFFLINE' | 'SESSION_INVALID' };

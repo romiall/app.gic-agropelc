@@ -27,7 +27,6 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { SyncPushService } from '../src/sync/sync-push.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import {
   recordStockMove,
   verifyStockLedger,
@@ -49,6 +48,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 
 export type { Actor } from './cash-transfer-fixtures.js';
@@ -341,7 +341,7 @@ export class PosWorld {
 
   /** Jeton d'accès signé à l'heure de l'horloge fixe (le garde JWT lit la même horloge). */
   token(actor: Actor): Promise<string> {
-    return signAccessToken(
+    return signTestAccessToken(
       this.app.get(JWT_KEYS).privateKey,
       { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
       this.clock.now(),

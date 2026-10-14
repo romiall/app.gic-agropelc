@@ -28,7 +28,9 @@
 | Tentatives | 5 échecs → blocage progressif (1, 5, 15 min) par identifiant et par IP ; audit `auth.login.failed` | D |
 | PIN local | 6 chiffres, par utilisateur et par appareil ; il sert à **déverrouiller** l'application hors ligne. Une clé est dérivée du PIN (PBKDF2-SHA256, ≥ 310 000 itérations, sel aléatoire) et déchiffre les jetons et les magasins sensibles locaux. Il n'est jamais transmis au serveur. 5 échecs → effacement des jetons locaux et reconnexion en ligne obligatoire (BR-ADM-024) | D |
 | Double facteur | Non au MVP (coût et fiabilité des SMS) ; à envisager pour `DIRECTION`, `ADMIN`, `FINANCE` (TOTP) | AV-008 |
-| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP) ; mot de passe provisoire saisi par l'Admin, par une route en ligne hors du journal des commandes, jamais journalisé ni audité en clair ; sessions de l'utilisateur révoquées, changement imposé à la connexion suivante (AV-252, AV-281, ADR-045) ; audit `identity.user.reset_password` | D |
+| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP), depuis un appareil `ACTIVE` ; mot de passe provisoire saisi par l'Admin, par une route en ligne hors du journal des commandes, jamais journalisé ni audité en clair ; sessions de l'utilisateur révoquées, changement imposé à la connexion suivante (AV-252, AV-281, ADR-045) ; audit `identity.user.reset_password` | D |
+| Changement | Avec le mot de passe actuel ; les autres sessions de l'utilisateur sont révoquées (`PASSWORD_CHANGED`), celle qui change le mot de passe reste ouverte (MP-11) | D |
+| Identifiant inconnu | Même vérification argon2 (hachage leurre) qu'un compte réel : le temps de réponse ne dit pas si le numéro existe. Un numéro réattribué après une désactivation ouvre le compte en vigueur (MP-11) | D |
 
 ## 3. Sessions, jetons, révocation
 
@@ -37,7 +39,8 @@
 | Jeton d'accès | JWT signé (EdDSA ou ES256), durée **15 min**, contenu minimal : `sub`, `device_id`, `session_id`, `iat`, `exp`. **Aucun** droit dans le jeton : les droits sont lus côté serveur à chaque requête (avec cache court, invalidé à chaque changement) |
 | Jeton de rafraîchissement | Opaque (256 bits aléatoires), stocké haché (SHA-256), **rotation à chaque usage**, famille de rotation. La réutilisation d'un jeton déjà utilisé révoque toute la famille (`TOKEN_REUSE`) et lève une alerte. Durée glissante : 30 jours |
 | Autonomie hors ligne | `offline_grant_until` = dernière synchronisation + 7 jours (AV-009), signé par le serveur et vérifié localement pour autoriser la saisie |
-| Révocation | Désactivation d'utilisateur, blocage d'appareil, décision de l'Admin : révocation de toutes les sessions concernées ; effet immédiat en ligne (refus du rafraîchissement, jeton d'accès expiré sous 15 min) ; hors ligne, effet à la reconnexion, avec quarantaine des commandes postérieures (INV-ADM-03) |
+| Révocation | Déconnexion (toute la famille de rotation), désactivation ou suspension d'utilisateur, blocage d'appareil, réinitialisation ou changement du mot de passe, décision de l'Admin : révocation des sessions concernées ; effet immédiat en ligne : refus du rafraîchissement **et** du jeton d'accès dès la requête suivante (AV-282) ; hors ligne, effet à la reconnexion, avec quarantaine des commandes postérieures (INV-ADM-03) |
+| Contrôle à chaque requête | La garde d'authentification vérifie, en plus de la signature et de l'échéance, qu'une session de la famille du jeton est vivante, que l'utilisateur est `ACTIVE` et que l'appareil est `ACTIVE` ou `PENDING`. Sinon 401 `UNAUTHENTICATED` (motif `SESSION_REVOKED`, `USER_INACTIVE` ou `DEVICE_OUT_OF_SERVICE` dans `details.reason`). État gardé 5 s par session, vidé à chaque révocation (AV-282) |
 | Stockage côté appareil | Jetons chiffrés par la clé dérivée du PIN, dans IndexedDB (et non `localStorage`) ; jamais accessibles à un script tiers (CSP) |
 
 ## 4. Autorisation
@@ -51,7 +54,7 @@
 ## 5. Appareils autorisés
 
 - Enrôlement → `PENDING` → approbation (AV-006) → `ACTIVE`.
-- Chaque requête porte `device_id` (dans le jeton). Le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil.
+- Chaque requête porte `device_id` (dans le jeton). Le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil : un appareil bloqué, perdu ou retiré est refusé dès la requête suivante ; un appareil en attente lit, mais n'écrit pas (RC-02, AV-228, AV-282).
 - Le code court et l'identifiant d'appareil n'ont **aucune** valeur d'authentification : c'est la session qui authentifie.
 - Extension future (F-18) : clé asymétrique d'appareil (WebCrypto non exportable) pour signer les lots de commandes. Non retenue au MVP (complexité, faible gain tant que la session est vérifiée).
 

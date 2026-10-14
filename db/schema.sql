@@ -3113,9 +3113,10 @@ CREATE TABLE `identity_auth_sessions` (
   KEY `ix_identity_auth_sessions_user_device` (`user_id`,`device_id`),
   KEY `ix_identity_auth_sessions_expires_at` (`expires_at`),
   KEY `fk_identity_auth_sessions_device` (`device_id`),
+  KEY `ix_identity_auth_sessions_family` (`token_family_id`,`revoked_at`),
   CONSTRAINT `fk_identity_auth_sessions_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_identity_auth_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_identity_auth_sessions_revoked_reason` CHECK (((`revoked_reason` is null) or (`revoked_reason` in (_utf8mb4'LOGOUT',_utf8mb4'ADMIN',_utf8mb4'USER_DEACTIVATED',_utf8mb4'DEVICE_BLOCKED',_utf8mb4'TOKEN_REUSE',_utf8mb4'EXPIRED',_utf8mb4'ROTATED'))))
+  CONSTRAINT `ck_identity_auth_sessions_revoked_reason` CHECK (((`revoked_reason` is null) or (`revoked_reason` in (_utf8mb4'LOGOUT',_utf8mb4'ADMIN',_utf8mb4'USER_DEACTIVATED',_utf8mb4'DEVICE_BLOCKED',_utf8mb4'TOKEN_REUSE',_utf8mb4'EXPIRED',_utf8mb4'ROTATED',_utf8mb4'PASSWORD_CHANGED'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -9081,5 +9082,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090100'),
   ('20261013090200'),
   ('20261013090300'),
-  ('20261101090000');
+  ('20261101090000'),
+  ('20261102090000');
 UNLOCK TABLES;

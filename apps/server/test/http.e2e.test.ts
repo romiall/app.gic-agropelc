@@ -19,10 +19,7 @@ import {
   type CommandHandlerRegistry,
 } from '../src/platform/sync/command-handler-registry.provider.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import {
-  signAccessToken,
-  type JwtKeyPair,
-} from '../src/modules/identity/application/public/jwt.js';
+import { type JwtKeyPair } from '../src/modules/identity/application/public/jwt.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -33,6 +30,7 @@ import {
   insertTestPermission,
   insertTestRole,
   insertTestUser,
+  signTestAccessToken,
 } from './helpers.js';
 
 const OCCURRED_AT = new Date('2026-09-24T09:00:00.000Z');
@@ -73,7 +71,7 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
 
     user = await createRealUser();
     device = await createRealDevice(user);
-    token = await signAccessToken(
+    token = await signTestAccessToken(
       jwtKeys.privateKey,
       { sub: user, device_id: device, session_id: freshUuid() },
       clock.now(),

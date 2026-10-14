@@ -8,6 +8,7 @@
  *
  * Les mots de passe ci-dessous sont des valeurs de test, propres à ce fichier.
  */
+import { randomInt } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -19,7 +20,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { hashPassword } from '../src/modules/identity/application/auth/password.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { resolveEntityProjection } from '../src/sync/entity-projections.js';
@@ -29,18 +29,23 @@ import {
   db,
   freshPhone,
   freshUuid,
+  insertTestDevice,
   insertTestSite,
   insertTestUser,
   insertTestZone,
   type TestAssignmentOptions,
+  signTestAccessToken,
 } from './helpers.js';
 import { newActor, roleIdOf, tx, type Actor } from './cash-transfer-fixtures.js';
 
 const TEST_PASSWORD = 'mot-de-passe-de-test';
 const PROVISIONAL = 'provisoire-mp08';
 
+// Adresses propres à l'exécution : les compteurs d'échecs par IP survivent d'une exécution à l'autre
+// (une IP reprise d'une exécution précédente peut être verrouillée).
+const RUN_OCTET = randomInt(256);
 let ipCounter = 0;
-const freshIp = () => `10.80.${Math.floor(++ipCounter / 250)}.${(ipCounter % 250) + 1}`;
+const freshIp = () => `10.80.${RUN_OCTET}.${(++ipCounter % 254) + 1}`;
 let deviceSeq = 0;
 
 interface UserEntry {
@@ -67,7 +72,7 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
   let deactivated: string;
 
   const tokenOf = (actor: Actor) =>
-    signAccessToken(
+    signTestAccessToken(
       app.get(JWT_KEYS).privateKey,
       { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
       clock.now(),
@@ -197,6 +202,13 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
     expect((await get(vendeur, '/api/v1/users')).statusCode).toBe(403);
     expect((await get(admin, '/api/v1/users?status=INCONNU')).statusCode).toBe(400);
     // L'utilisateur système (empreinte vide) ne se connecte jamais : 401, pas une erreur du serveur.
+    // Son numéro ne réussit jamais : ses échecs des exécutions précédentes sont levés d'abord.
+    await db
+      .updateTable('identity_login_attempts')
+      .set({ failed_count: 0, blocked_until: null })
+      .where('scope_type', '=', 'IDENTIFIER')
+      .where('scope_value', '=', '+237600000000')
+      .execute();
     expect((await login('+237600000000', TEST_PASSWORD)).statusCode).toBe(401);
     const system = await get(admin, '/api/v1/users?q=%2B237600000000');
     expect((system.json() as { users: unknown[] }).users).toEqual([]);
@@ -205,7 +217,17 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
   it('réinitialisation par l’Admin : sessions révoquées, changement imposé, audit sans mot de passe (AV-252)', async () => {
     const before = await login(targetS1.phone, TEST_PASSWORD);
     expect(before.statusCode).toBe(200);
-    const { refresh_token: oldRefresh } = before.json() as { refresh_token: string };
+    const { refresh_token: oldRefresh, access_token: oldAccess } = before.json() as {
+      refresh_token: string;
+      access_token: string;
+    };
+    const home = (accessToken: string) =>
+      app.inject({
+        method: 'GET',
+        url: '/api/v1/home',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+    expect((await home(oldAccess)).statusCode).toBe(200);
 
     const done = await reset(admin, targetS1.id, PROVISIONAL);
     expect(done.statusCode, done.body).toBe(200);
@@ -230,6 +252,13 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
       payload: { refresh_token: oldRefresh },
     });
     expect(refreshed.statusCode).toBe(401);
+    // AV-282 (blocage immédiat) : le jeton d'accès encore valable 15 min est refusé dès la requête
+    // suivante.
+    const blocked = await home(oldAccess);
+    expect(blocked.statusCode).toBe(401);
+    expect(blocked.json()).toMatchObject({
+      error: { code: 'UNAUTHENTICATED', details: { reason: 'SESSION_REVOKED' } },
+    });
 
     const audit = await db
       .selectFrom('audit_audit_log')
@@ -273,6 +302,22 @@ describe('MP-08 : comptes et mots de passe', { timeout: 180_000 }, () => {
       .where('action', '=', 'identity.user.reset_password')
       .execute();
     expect(deniedAudit.map((a) => a.result)).toEqual(['DENIED']);
+
+    // MP-11 (RC-02) : un Admin sur un appareil en attente d'approbation ne réinitialise rien.
+    const pendingAdmin: Actor = {
+      userId: admin.userId,
+      deviceId: await tx((trx) => insertTestDevice(trx, admin.userId, { status: 'PENDING' })),
+    };
+    const fromPending = await reset(pendingAdmin, userS2.id, PROVISIONAL);
+    expect(fromPending.statusCode).toBe(403);
+    expect(fromPending.json()).toMatchObject({ error: { code: 'DEVICE_PENDING' } });
+    const pendingAudit = await db
+      .selectFrom('audit_audit_log')
+      .select(['result', 'error_code'])
+      .where('device_id', '=', toBin(pendingAdmin.deviceId))
+      .where('action', '=', 'identity.user.reset_password')
+      .execute();
+    expect(pendingAudit).toEqual([{ result: 'DENIED', error_code: 'DEVICE_PENDING' }]);
 
     expect((await reset(admin, admin.userId, PROVISIONAL)).json()).toMatchObject({
       error: { code: 'RESET_OWN_PASSWORD' },

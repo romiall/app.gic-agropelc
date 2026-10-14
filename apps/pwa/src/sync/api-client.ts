@@ -7,9 +7,17 @@
  * Est « hors ligne » (ADR-037) : un échec de connexion, une requête sans réponse dans le délai
  * (`AbortSignal.timeout`), ou une passerelle qui ne joint pas le serveur (502, 503, 504). Toute autre
  * réponse prouve que le serveur est joignable et reste une erreur HTTP.
+ *
+ * MP-11 (AV-282) : un 401 (la garde refuse le jeton avant tout traitement) fait renouveler le jeton
+ * une fois puis rejouer l'appel ; si le renouvellement est refusé, la session locale est vidée
+ * (`SESSION_INVALID`).
  */
 import type { GicDatabase } from '../storage/db.js';
-import { ensureAccessToken, getSessionRuntime } from '../features/auth/session-runtime.js';
+import {
+  ensureAccessToken,
+  expireAccessToken,
+  getSessionRuntime,
+} from '../features/auth/session-runtime.js';
 import { apiUrl } from '../platform/env.js';
 
 export type ApiResult<T> =
@@ -45,26 +53,29 @@ export async function authorizedRequest<T>(
   },
 ): Promise<ApiResult<T>> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, expectedUserId, ...requestInit } = init;
-  const token = await ensureAccessToken(db);
-  if (!token.ok) return { ok: false, reason: token.reason };
-  // Vérifié après l'obtention du jeton (un renouvellement peut durer) et juste avant l'appel : le
-  // jeton obtenu est alors celui de la session de cet utilisateur.
-  if (expectedUserId !== undefined && getSessionRuntime()?.userId !== expectedUserId) {
-    return { ok: false, reason: 'SESSION_CHANGED' };
-  }
-
   let response: Response;
-  try {
-    response = await fetch(apiUrl(path), {
-      ...requestInit,
-      signal: requestInit.signal ?? AbortSignal.timeout(timeoutMs),
-      headers: {
-        ...(requestInit.headers ?? {}),
-        authorization: `Bearer ${token.accessToken}`,
-      },
-    });
-  } catch {
-    return { ok: false, reason: 'OFFLINE' };
+  for (let attempt = 1; ; attempt++) {
+    const token = await ensureAccessToken(db);
+    if (!token.ok) return { ok: false, reason: token.reason };
+    // Vérifié après l'obtention du jeton (un renouvellement peut durer) et juste avant l'appel : le
+    // jeton obtenu est alors celui de la session de cet utilisateur.
+    if (expectedUserId !== undefined && getSessionRuntime()?.userId !== expectedUserId) {
+      return { ok: false, reason: 'SESSION_CHANGED' };
+    }
+    try {
+      response = await fetch(apiUrl(path), {
+        ...requestInit,
+        signal: requestInit.signal ?? AbortSignal.timeout(timeoutMs),
+        headers: {
+          ...(requestInit.headers ?? {}),
+          authorization: `Bearer ${token.accessToken}`,
+        },
+      });
+    } catch {
+      return { ok: false, reason: 'OFFLINE' };
+    }
+    if (response.status !== 401 || attempt > 1) break;
+    expireAccessToken(token.accessToken);
   }
 
   if (GATEWAY_STATUSES.has(response.status)) return { ok: false, reason: 'OFFLINE' };

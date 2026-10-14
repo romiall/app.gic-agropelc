@@ -18,10 +18,7 @@ import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { CHUNK_STORAGE } from '../src/platform/storage/chunk-storage.provider.js';
 import type { ChunkStorage } from '../src/platform/storage/chunk-storage.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import {
-  signAccessToken,
-  type JwtKeyPair,
-} from '../src/modules/identity/application/public/jwt.js';
+import { type JwtKeyPair } from '../src/modules/identity/application/public/jwt.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -31,6 +28,7 @@ import {
   insertTestDevice,
   insertTestRole,
   insertTestUser,
+  signTestAccessToken,
 } from './helpers.js';
 
 const OCCURRED_AT = '2026-09-25T09:00:00.000Z';
@@ -68,7 +66,7 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
     device = await db
       .transaction()
       .execute((trx) => insertTestDevice(trx, user, { status: 'ACTIVE' }));
-    token = await signAccessToken(
+    token = await signTestAccessToken(
       jwtKeys.privateKey,
       { sub: user, device_id: device, session_id: freshUuid() },
       clock.now(),
@@ -308,7 +306,7 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
     const otherDevice = await db
       .transaction()
       .execute((trx) => insertTestDevice(trx, other, { status: 'ACTIVE' }));
-    const otherToken = await signAccessToken(
+    const otherToken = await signTestAccessToken(
       app.get<JwtKeyPair>(JWT_KEYS).privateKey,
       { sub: other, device_id: otherDevice, session_id: freshUuid() },
       app.get(CLOCK).now(),

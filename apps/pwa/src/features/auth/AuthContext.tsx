@@ -14,6 +14,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -36,6 +37,8 @@ interface StagedLogin {
   readonly refreshToken: string;
   readonly accessToken: string;
   readonly expiresIn: number;
+  /** Heure de réception du jeton (ms) : son échéance court depuis la connexion, pas depuis le PIN. */
+  readonly issuedAt: number;
   readonly deviceStatus: 'PENDING' | 'ACTIVE';
   readonly deviceShortCode?: string;
 }
@@ -84,7 +87,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const db = useMemo(() => getDb(), []);
   const [state, setState] = useState<AuthState>({ status: 'loading' });
   const [deviceId, setDeviceId] = useState<string>();
-  const [staged, setStaged] = useState<StagedLogin>();
+  const [staged, setStagedState] = useState<StagedLogin>();
+  // Connexion en cours, lue après un appel réseau : une réponse arrivée après « Annuler » (ou après
+  // une autre connexion) ne concerne plus l'écran (MP-11, revue adverse).
+  const stagedRef = useRef<StagedLogin | undefined>(undefined);
+  const setStaged = useCallback((next: StagedLogin | undefined) => {
+    stagedRef.current = next;
+    setStagedState(next);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +126,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         refreshToken: result.refreshToken,
         accessToken: result.accessToken,
         expiresIn: result.expiresIn,
+        issuedAt: Date.now(),
         deviceStatus: result.deviceStatus,
         ...(result.deviceShortCode !== undefined
           ? { deviceShortCode: result.deviceShortCode }
@@ -127,7 +138,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           : { status: 'pin_setup_required' },
       );
     },
-    [deviceId],
+    [deviceId, setStaged],
   );
 
   const changeProvisionalPassword = useCallback(
@@ -138,6 +149,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         currentPassword,
         newPassword,
       });
+      if (stagedRef.current !== staged) return;
       if (result.ok) {
         setState({ status: 'pin_setup_required' });
         return;
@@ -156,13 +168,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
             : result.reason;
       setState({ status: 'password_change_required', error });
     },
-    [staged],
+    [staged, setStaged],
   );
 
   const cancelPasswordChange = useCallback(() => {
     setStaged(undefined);
     setState({ status: 'login_required' });
-  }, []);
+  }, [setStaged]);
 
   const submitNewPin = useCallback(
     async (pin: string) => {
@@ -182,13 +194,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         deviceStatus: staged.deviceStatus,
         refreshToken: staged.refreshToken,
         accessToken: staged.accessToken,
-        accessTokenExpiresAt: Date.now() + staged.expiresIn * 1000,
+        accessTokenExpiresAt: staged.issuedAt + staged.expiresIn * 1000,
         pinKey,
       });
       setStaged(undefined);
       setState({ status: 'unlocked', userId: staged.userId, deviceStatus: staged.deviceStatus });
     },
-    [staged, deviceId, db],
+    [staged, deviceId, db, setStaged],
   );
 
   const unlockWithPin = useCallback(
@@ -224,7 +236,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     await db.pinLocks.clear();
     await db.navigation.clear();
     setState({ status: 'login_required' });
-  }, [db]);
+  }, [db, setStaged]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

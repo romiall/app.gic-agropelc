@@ -2,6 +2,7 @@
  * `POST /api/v1/auth/change-password` (MP-08 ; AV-251, AV-280) : changement du mot de passe avec le
  * jeton d'accès de la connexion, avant la création du PIN (la session de l'appareil n'existe pas
  * encore : appel direct, comme `login.ts`). Jamais hors ligne : le serveur juge le mot de passe actuel.
+ * Sans réponse dans le délai, l'appel est abandonné et compté hors ligne (MP-11, revue adverse).
  *
  * Aucun mot de passe n'est conservé par l'appareil : ni dans la base locale, ni dans un journal.
  */
@@ -22,6 +23,8 @@ export type ChangePasswordResult =
   | { readonly ok: false; readonly reason: 'UNKNOWN'; readonly status: number };
 
 const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+/** Délai d'une demande : le hachage argon2 du serveur prend moins d'une seconde. */
+export const CHANGE_PASSWORD_TIMEOUT_MS = 30_000;
 const PROBLEMS: readonly NewPasswordProblem[] = ['TOO_SHORT', 'TOO_LONG', 'UNCHANGED', 'MISMATCH'];
 
 export async function changePassword(input: {
@@ -41,6 +44,7 @@ export async function changePassword(input: {
         current_password: input.currentPassword,
         new_password: input.newPassword,
       }),
+      signal: AbortSignal.timeout(CHANGE_PASSWORD_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, reason: 'OFFLINE' };

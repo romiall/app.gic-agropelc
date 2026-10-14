@@ -19,7 +19,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { recordStockMove } from '../src/modules/inventory/application/public/index.js';
 import {
@@ -34,6 +33,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 
 const OPENING_AT = '2026-06-01T08:00:00.000Z';
@@ -252,7 +252,7 @@ describe('Lectures HTTP du stock (P2-05)', () => {
     });
 
     for (const userId of [admin, magA, seller, vendor, noRight]) {
-      tokens[userId] = await signAccessToken(
+      tokens[userId] = await signTestAccessToken(
         jwtKeys.privateKey,
         { sub: userId, device_id: adminDevice, session_id: freshUuid() },
         clock.now(),

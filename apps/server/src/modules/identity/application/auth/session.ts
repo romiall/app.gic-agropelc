@@ -123,16 +123,21 @@ export async function rotateSession(
   };
 }
 
+/**
+ * Déconnexion : révoque la **famille** de la session du jeton (MP-11). Un jeton d'accès émis juste
+ * avant une rotation porte l'identifiant de la ligne `ROTATED` : révoquer cette seule ligne laisserait
+ * la session vivante.
+ */
 export async function revokeSessionById(
   uow: UnitOfWork,
   sessionId: string,
   reason: 'LOGOUT',
   now: Date,
 ): Promise<void> {
-  await uow
-    .updateTable('identity_auth_sessions')
-    .set({ revoked_at: now, revoked_reason: reason })
+  const row = await uow
+    .selectFrom('identity_auth_sessions')
+    .select('token_family_id')
     .where('id', '=', toBin(sessionId))
-    .where('revoked_at', 'is', null)
-    .execute();
+    .executeTakeFirst();
+  if (row) await revokeSessionFamily(uow, row.token_family_id, reason, now);
 }

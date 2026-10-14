@@ -8,10 +8,17 @@
  */
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { forgetSessionStates } from '../auth/session-state.js';
 
 /** `identity_auth_sessions.revoked_reason` — sous-ensemble de la contrainte CHECK en base. */
 export type RevokedReason =
-  'LOGOUT' | 'ADMIN' | 'USER_DEACTIVATED' | 'DEVICE_BLOCKED' | 'TOKEN_REUSE' | 'EXPIRED';
+  | 'LOGOUT'
+  | 'ADMIN'
+  | 'USER_DEACTIVATED'
+  | 'DEVICE_BLOCKED'
+  | 'TOKEN_REUSE'
+  | 'EXPIRED'
+  | 'PASSWORD_CHANGED';
 
 export async function revokeUserSessions(
   uow: UnitOfWork,
@@ -25,6 +32,36 @@ export async function revokeUserSessions(
     .where('user_id', '=', toBin(userId))
     .where('revoked_at', 'is', null)
     .execute();
+  forgetSessionStates();
+}
+
+/**
+ * Révoque les sessions de l'utilisateur **sauf** la famille de `keptSessionId` (MP-11 : changement de
+ * mot de passe, motif `PASSWORD_CHANGED`) : la session qui change le mot de passe reste ouverte, toute
+ * autre session (ouverte avec le mot de passe provisoire, ou volée) est close. Rend le nombre de
+ * sessions révoquées (audit).
+ */
+export async function revokeOtherUserSessions(
+  uow: UnitOfWork,
+  userId: string,
+  keptSessionId: string,
+  reason: RevokedReason,
+  now: Date,
+): Promise<number> {
+  const kept = await uow
+    .selectFrom('identity_auth_sessions')
+    .select('token_family_id')
+    .where('id', '=', toBin(keptSessionId))
+    .executeTakeFirst();
+  let query = uow
+    .updateTable('identity_auth_sessions')
+    .set({ revoked_at: now, revoked_reason: reason })
+    .where('user_id', '=', toBin(userId))
+    .where('revoked_at', 'is', null);
+  if (kept) query = query.where('token_family_id', '!=', kept.token_family_id);
+  const result = await query.executeTakeFirst();
+  forgetSessionStates();
+  return Number(result.numUpdatedRows);
 }
 
 export async function revokeDeviceSessions(
@@ -39,6 +76,7 @@ export async function revokeDeviceSessions(
     .where('device_id', '=', toBin(deviceId))
     .where('revoked_at', 'is', null)
     .execute();
+  forgetSessionStates();
 }
 
 /**
@@ -58,4 +96,5 @@ export async function revokeSessionFamily(
     .where('token_family_id', '=', tokenFamilyId)
     .where('revoked_at', 'is', null)
     .execute();
+  forgetSessionStates();
 }

@@ -96,7 +96,12 @@ export function PasswordChangeScreen() {
         <button type="submit" className="btn-block" disabled={submitting}>
           {submitting ? t('auth.password_change_submitting') : t('auth.password_change_submit')}
         </button>
-        <button type="button" className="secondary" onClick={cancelPasswordChange}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={cancelPasswordChange}
+          disabled={submitting}
+        >
           {t('auth.password_change_cancel')}
         </button>
       </form>

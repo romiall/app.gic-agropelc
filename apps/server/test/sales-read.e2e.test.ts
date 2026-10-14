@@ -20,7 +20,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import {
   recordStockMove,
@@ -37,6 +36,7 @@ import {
   insertTestUser,
   insertTestZone,
   freshPhone,
+  signTestAccessToken,
 } from './helpers.js';
 
 const DAY = '2026-10-05';
@@ -372,7 +372,7 @@ describe('Lectures HTTP des ventes et de la trésorerie (P4-10)', () => {
       posA = await cashAccount({ name: 'Caisse PDV A', type: 'CAISSE_PDV', siteId: siteA });
     });
     for (const actor of [comA, comB, venA, fin, rpr]) {
-      actor.token = await signAccessToken(
+      actor.token = await signTestAccessToken(
         jwtKeys.privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),

@@ -20,7 +20,6 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CHUNK_STORAGE } from '../src/platform/storage/chunk-storage.provider.js';
 import type { ChunkStorage } from '../src/platform/storage/chunk-storage.js';
@@ -39,6 +38,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 import { newActor, tx, type Actor } from './cash-transfer-fixtures.js';
 
@@ -77,7 +77,7 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
   const requests: Record<string, string> = {};
 
   const tokenOf = (actor: Actor) =>
-    signAccessToken(
+    signTestAccessToken(
       app.get(JWT_KEYS).privateKey,
       { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
       clock.now(),

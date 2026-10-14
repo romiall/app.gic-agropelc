@@ -2,10 +2,10 @@
  * Lecture du contenu d'une pièce jointe reçue par le serveur (MP-10, AV-286) :
  * `GET /api/v1/attachments/{id}/content` avec le jeton de la session — l'écran des validations montre
  * la photo du document décidé. Le serveur contrôle la portée (403 hors périmètre) ; rien n'est gardé
- * sur l'appareil.
+ * sur l'appareil. Un 401 fait renouveler le jeton une fois puis rejouer la lecture (MP-11, AV-282).
  */
 import type { GicDatabase } from '../storage/db.js';
-import { ensureAccessToken } from '../features/auth/session-runtime.js';
+import { ensureAccessToken, expireAccessToken } from '../features/auth/session-runtime.js';
 import { apiUrl } from '../platform/env.js';
 
 export type AttachmentContentResult =
@@ -22,20 +22,24 @@ export async function fetchAttachmentContent(
   db: GicDatabase,
   attachmentId: string,
 ): Promise<AttachmentContentResult> {
-  const token = await ensureAccessToken(db);
-  if (!token.ok) return { ok: false, reason: token.reason };
   let response: Response;
-  try {
-    response = await fetch(
-      apiUrl(`/api/v1/attachments/${encodeURIComponent(attachmentId)}/content`),
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token.accessToken}` },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      },
-    );
-  } catch {
-    return { ok: false, reason: 'OFFLINE' };
+  for (let attempt = 1; ; attempt++) {
+    const token = await ensureAccessToken(db);
+    if (!token.ok) return { ok: false, reason: token.reason };
+    try {
+      response = await fetch(
+        apiUrl(`/api/v1/attachments/${encodeURIComponent(attachmentId)}/content`),
+        {
+          method: 'GET',
+          headers: { authorization: `Bearer ${token.accessToken}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        },
+      );
+    } catch {
+      return { ok: false, reason: 'OFFLINE' };
+    }
+    if (response.status !== 401 || attempt > 1) break;
+    expireAccessToken(token.accessToken);
   }
   if (response.ok) {
     try {

@@ -20,10 +20,7 @@ import {
   type CommandHandlerRegistry,
 } from '../src/platform/sync/command-handler-registry.provider.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import {
-  signAccessToken,
-  type JwtKeyPair,
-} from '../src/modules/identity/application/public/jwt.js';
+import { type JwtKeyPair } from '../src/modules/identity/application/public/jwt.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -34,6 +31,7 @@ import {
   insertTestPermission,
   insertTestRole,
   insertTestUser,
+  signTestAccessToken,
 } from './helpers.js';
 
 const HTTP_SYNC_DEMO_TYPE = 'test.sync_http_demo.record';
@@ -71,7 +69,7 @@ describe('POST /api/v1/sync/push, GET /api/v1/sync/pull (câblage NestJS + Fasti
 
     user = await createRealUser();
     device = await createRealDevice(user);
-    token = await signAccessToken(
+    token = await signTestAccessToken(
       jwtKeys.privateKey,
       { sub: user, device_id: device, session_id: freshUuid() },
       clock.now(),
