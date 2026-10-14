@@ -37,6 +37,11 @@ function sha256Hex(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+/** Contenu commençant comme un JPEG (signature vérifiée à la fin de l'envoi, MP-10). */
+function jpeg(body: string): Buffer {
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(body, 'utf8')]);
+}
+
 describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fastify, NFR-08)', () => {
   let app: NestFastifyApplication;
   let token: string;
@@ -119,7 +124,7 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
   }
 
   it('NFR-08 : upload interrompu après le premier morceau, repris via HEAD, complété avec succès', async () => {
-    const first = Buffer.from('a'.repeat(100), 'utf8');
+    const first = jpeg('a'.repeat(96));
     const second = Buffer.from('b'.repeat(150), 'utf8');
     const full = Buffer.concat([first, second]);
     const attachmentId = await registerAttachment(full.length, sha256Hex(full));
@@ -217,6 +222,118 @@ describe('POST/PUT/HEAD /api/v1/attachments/{id}/content (câblage NestJS + Fast
     });
     expect(put.statusCode).toBe(200);
     expect(put.json()).toEqual({ uploaded_bytes: content.length, upload_status: 'QUARANTINED' });
+  });
+
+  async function putAll(attachmentId: string, content: Buffer, authToken = token) {
+    return app.inject({
+      method: 'PUT',
+      url: `/api/v1/attachments/${attachmentId}/content`,
+      headers: {
+        authorization: `Bearer ${authToken}`,
+        'content-type': 'application/octet-stream',
+        'content-range': `bytes 0-${content.length - 1}/${content.length}`,
+      },
+      payload: content,
+    });
+  }
+
+  it('MP-10 : empreinte juste mais contenu qui n’est pas un JPEG → QUARANTINED (signature, 02-securite §6)', async () => {
+    const content = Buffer.from('<script>pas une image</script>', 'utf8');
+    const attachmentId = await registerAttachment(content.length, sha256Hex(content));
+    const put = await putAll(attachmentId, content);
+    expect(put.json()).toEqual({ uploaded_bytes: content.length, upload_status: 'QUARANTINED' });
+  });
+
+  it('MP-10 : morceau au-delà de la taille annoncée → 400, rien d’écrit', async () => {
+    const content = jpeg('z'.repeat(20));
+    const attachmentId = await registerAttachment(content.length, sha256Hex(content));
+    const beyond = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/attachments/${attachmentId}/content`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/octet-stream',
+        'content-range': `bytes 0-${content.length}/${content.length}`,
+      },
+      payload: Buffer.concat([content, Buffer.from('!')]),
+    });
+    expect(beyond.statusCode).toBe(400);
+    expect((await putAll(attachmentId, content)).json()).toMatchObject({
+      upload_status: 'AVAILABLE',
+    });
+  });
+
+  it('MP-10 : pièce reçue — nouvel envoi refusé (409, statut rendu) ; lecture par l’auteur, refusée à un autre', async () => {
+    const content = jpeg('photo du bon');
+    const attachmentId = await registerAttachment(content.length, sha256Hex(content));
+
+    // Pas encore reçue : rien à lire.
+    const early = await app.inject({
+      method: 'GET',
+      url: `/api/v1/attachments/${attachmentId}/content`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(early.statusCode).toBe(409);
+    expect(early.json().error).toMatchObject({
+      code: 'ATTACHMENT_NOT_AVAILABLE',
+      details: { upload_status: 'PENDING_UPLOAD' },
+    });
+
+    expect((await putAll(attachmentId, content)).json()).toMatchObject({
+      upload_status: 'AVAILABLE',
+    });
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/v1/attachments/${attachmentId}/upload-session`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.details).toEqual({ upload_status: 'AVAILABLE' });
+
+    const read = await app.inject({
+      method: 'GET',
+      url: `/api/v1/attachments/${attachmentId}/content`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.rawPayload.equals(content)).toBe(true);
+    expect(read.headers['content-type']).toBe('image/jpeg');
+    expect(read.headers['cache-control']).toBe('private, no-store');
+    expect(read.headers['x-content-type-options']).toBe('nosniff');
+
+    // Un autre utilisateur, sans droit sur le document (propriétaire de test) : refus audité.
+    const other = await db.transaction().execute((trx) => insertTestUser(trx));
+    const otherDevice = await db
+      .transaction()
+      .execute((trx) => insertTestDevice(trx, other, { status: 'ACTIVE' }));
+    const otherToken = await signAccessToken(
+      app.get<JwtKeyPair>(JWT_KEYS).privateKey,
+      { sub: other, device_id: otherDevice, session_id: freshUuid() },
+      app.get(CLOCK).now(),
+    );
+    const denied = await app.inject({
+      method: 'GET',
+      url: `/api/v1/attachments/${attachmentId}/content`,
+      headers: { authorization: `Bearer ${otherToken}` },
+    });
+    expect(denied.statusCode).toBe(403);
+    const audit = await db
+      .selectFrom('audit_audit_log')
+      .select(['action', 'result'])
+      .where('entity_id', '=', toBin(attachmentId))
+      .where('actor_user_id', '=', toBin(other))
+      .execute();
+    expect(audit).toEqual([{ action: 'access.denied', result: 'DENIED' }]);
+    // L'auteur seul envoie : un autre est refusé même pour une pièce en attente.
+    const pending = await registerAttachment(content.length, sha256Hex(content));
+    expect((await putAll(pending, content, otherToken)).statusCode).toBe(403);
+
+    const unknown = await app.inject({
+      method: 'GET',
+      url: `/api/v1/attachments/${freshUuid()}/content`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(unknown.statusCode).toBe(404);
   });
 
   it('sans Authorization → 401', async () => {

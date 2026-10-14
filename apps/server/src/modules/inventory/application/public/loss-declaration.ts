@@ -516,6 +516,32 @@ export async function lossesAwaitingPhoto(
   return waiting;
 }
 
+/**
+ * Site, zone et déclarant d'une perte (portée de lecture de sa pièce jointe, MP-10 ; AV-094 : portée
+ * pleine sur le site ou la zone, ou déclarant soi-même).
+ */
+export async function lossDeclarationLocator(
+  executor: Kysely<DB> | Transaction<DB>,
+  lossId: string,
+): Promise<
+  | { readonly siteId: string; readonly zoneId: string | null; readonly declaredBy: string }
+  | undefined
+> {
+  const row = await executor
+    .selectFrom('inventory_loss_declarations as d')
+    .leftJoin('organization_sites as s', 's.id', 'd.site_id')
+    .select(['d.site_id as site_id', 's.zone_id as zone_id', 'd.declared_by as declared_by'])
+    .where('d.id', '=', toBin(lossId))
+    .executeTakeFirst();
+  return row
+    ? {
+        siteId: fromBin(row.site_id),
+        zoneId: row.zone_id ? fromBin(row.zone_id) : null,
+        declaredBy: fromBin(row.declared_by),
+      }
+    : undefined;
+}
+
 /** Déclaration de perte par identifiant : rejeu d'une commande qui la crée (revue P7). */
 export async function findLossDeclaration(
   executor: Kysely<DB> | Transaction<DB>,

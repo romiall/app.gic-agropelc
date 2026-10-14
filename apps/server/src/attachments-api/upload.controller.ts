@@ -1,18 +1,22 @@
 /**
- * Endpoints de fichiers (08-api-events/01-architecture-api.md §4.10 ; ADR-012 point 3) :
+ * Endpoints de fichiers (08-api-events/01-architecture-api.md §4.10 ; ADR-012 point 3, ADR-046) :
  * transfert d'octets bruts par morceaux, **hors** du pipeline de commande — une session
  * d'upload n'est pas un `command_type` JSON. Couche transport (comme `sync/`, `organization-
- * api/`) : compose `identity` (garde) et `attachments`/`platform` directement, sans passer
- * par un module métier propriétaire.
+ * api/`) : compose `identity` (garde), `attachments`/`platform`, et les API publiques des modules
+ * propriétaires des documents (portée de lecture, régularisation).
  *
- * `GET /attachments/{id}/url` (URL signée) : différé — aucun consommateur en P0 (personne
- * n'affiche encore une pièce jointe), et sa forme dépend du fournisseur de stockage réel
- * (AV-091, encore ouvert). `POST .../upload-session`, `PUT .../content`, `HEAD .../content`
- * suffisent à démontrer NFR-08 (reprise après coupure).
+ * MP-10 :
+ * - fin de l'envoi : empreinte **et** signature du fichier (premiers octets conformes au type
+ *   déclaré, 02-securite §6) ; sinon `QUARANTINED` ; la photo du bon de livraison d'une réception
+ *   clôt sa « photo manquante » (`regularizeReceiptPhoto`, AV-287) ;
+ * - `GET /attachments/{id}/content` : lecture authentifiée de la pièce (AV-296), sans URL signée
+ *   (le stockage objet reste à choisir, AV-091) — par son auteur, par qui lit le document
+ *   propriétaire dans sa portée, ou par qui peut décider une validation en attente sur lui.
  */
 import {
   Body,
   Controller,
+  Get,
   Head,
   HttpCode,
   Inject,
@@ -38,10 +42,47 @@ import { recordAudit } from '../audit/record-audit.js';
 import { jsonValue } from '../platform/kysely/json-value.js';
 import { CHUNK_STORAGE } from '../platform/storage/chunk-storage.provider.js';
 import { ChunkOffsetMismatchError, type ChunkStorage } from '../platform/storage/chunk-storage.js';
+import { ATTACHMENT_CHUNK_SIZE_BYTES } from '@gic/contracts';
+import { regularizeReceiptPhoto } from '../modules/procurement/application/public/index.js';
+import { canViewAttachment } from './attachment-access.js';
+import { recordDenied } from '../audit/record-denied.js';
+
+/** Premiers octets attendus de chaque type accepté (02-securite §6 : type vérifié sur le contenu). */
+export function matchesSignature(content: Buffer, mimeType: string): boolean {
+  switch (mimeType) {
+    case 'image/jpeg':
+      return (
+        content.length >= 3 && content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff
+      );
+    case 'image/webp':
+      return (
+        content.length >= 12 &&
+        content.subarray(0, 4).toString('latin1') === 'RIFF' &&
+        content.subarray(8, 12).toString('latin1') === 'WEBP'
+      );
+    case 'application/pdf':
+      return content.length >= 5 && content.subarray(0, 5).toString('latin1') === '%PDF-';
+    default:
+      return false;
+  }
+}
+
+interface AttachmentRow {
+  readonly storage_key: string | null;
+  readonly size_bytes: number;
+  readonly sha256: string;
+  readonly uploaded_bytes: number;
+  readonly upload_status: string;
+  readonly created_by: Buffer;
+  readonly mime_type: string;
+  readonly owner_type: string;
+  readonly owner_id: Buffer;
+  readonly kind: string;
+}
 
 /** ADR-012 point 3 : « morceaux de 256 Ko ». Communiqué au client, pas imposé côté serveur
  * (seul l'ordre strictement séquentiel est vérifié — un client peut envoyer plus petit). */
-const RECOMMENDED_CHUNK_SIZE_BYTES = 256 * 1024;
+const RECOMMENDED_CHUNK_SIZE_BYTES = ATTACHMENT_CHUNK_SIZE_BYTES;
 
 interface ParsedContentRange {
   readonly start: number;
@@ -57,7 +98,8 @@ function parseContentRange(header: string | undefined): ParsedContentRange | und
   const start = Number(startStr);
   const end = Number(endStr);
   const total = Number(totalStr);
-  if (end < start) return undefined;
+  // Un morceau au-delà de la taille annoncée corromprait le fichier assemblé (MP-10).
+  if (end < start || end >= total) return undefined;
   return { start, end, total };
 }
 
@@ -152,23 +194,84 @@ export class AttachmentUploadController {
       return { uploaded_bytes: newTotal, upload_status: 'PENDING_UPLOAD' };
     }
 
-    // Dernier morceau : empreinte vérifiée sur le fichier assemblé (SM-ATTACHMENT).
+    // Dernier morceau : empreinte et signature vérifiées sur le fichier assemblé (SM-ATTACHMENT).
     const full = await this.storage.readAll(row.storage_key!);
-    const finalStatus = sha256HexOfBuffer(full) === row.sha256 ? 'AVAILABLE' : 'QUARANTINED';
-    await this.recordUploadCompletion(id, newTotal, finalStatus, request.auth!.sub);
+    const finalStatus =
+      sha256HexOfBuffer(full) === row.sha256 && matchesSignature(full, row.mime_type)
+        ? 'AVAILABLE'
+        : 'QUARANTINED';
+    await this.recordUploadCompletion(id, newTotal, finalStatus, request.auth!.sub, row);
     return { uploaded_bytes: newTotal, upload_status: finalStatus };
   }
 
-  private async loadUploadableAttachment(
-    id: string,
-    authenticatedUserId: string,
-  ): Promise<{
-    readonly storage_key: string | null;
-    readonly size_bytes: number;
-    readonly sha256: string;
-    readonly uploaded_bytes: number;
-  }> {
-    const row = await this.db
+  /**
+   * Contenu d'une pièce reçue (MP-10, AV-296) : son auteur, qui lit le document propriétaire dans sa
+   * portée (réception : `procurement.order.read` sur le site ; perte : `inventory.loss.read` sur le
+   * site ou la zone, ou sa propre déclaration, AV-094), ou qui peut décider une validation en attente
+   * sur ce document. Refus audité ; jamais mis en cache.
+   */
+  @Get(':id/content')
+  @UseGuards(AuthGuard)
+  @SelfScoped()
+  async getContent(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<Buffer> {
+    const userId = request.auth!.sub;
+    const now = this.clock.now();
+    const row = await this.loadAttachment(id);
+    if (!row) throw new ApiError(404, 'NOT_FOUND', 'Pièce jointe introuvable.');
+    if (
+      !(await canViewAttachment(
+        this.db,
+        {
+          createdBy: fromBin(row.created_by),
+          ownerType: row.owner_type,
+          ownerId: fromBin(row.owner_id),
+        },
+        userId,
+        now,
+      ))
+    ) {
+      await recordDenied(
+        this.db,
+        { idGenerator: this.idGenerator, clock: this.clock },
+        {
+          occurredAt: now,
+          actorUserId: userId,
+          actorRoles: [],
+          deviceId: request.auth!.device_id,
+          action: 'access.denied',
+          entityType: 'ATTACHMENT',
+          entityId: id,
+          reason: `Hors portée du document ${row.owner_type}.`,
+          errorCode: 'FORBIDDEN',
+        },
+      );
+      throw new ApiError(403, 'FORBIDDEN', 'Cette pièce jointe n’est pas dans votre périmètre.');
+    }
+    if (row.upload_status !== 'AVAILABLE') {
+      throw new ApiError(
+        409,
+        'ATTACHMENT_NOT_AVAILABLE',
+        'Pièce jointe pas encore reçue ou refusée.',
+        { upload_status: row.upload_status },
+      );
+    }
+    const content = await this.storage.readAll(row.storage_key!);
+    reply
+      .header('Content-Type', row.mime_type)
+      .header('Content-Length', String(content.length))
+      .header('Cache-Control', 'private, no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Disposition', 'inline');
+    return content;
+  }
+
+  private async loadAttachment(id: string): Promise<AttachmentRow | undefined> {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return undefined;
+    return this.db
       .selectFrom('attachments_attachments')
       .select([
         'storage_key',
@@ -177,9 +280,20 @@ export class AttachmentUploadController {
         'uploaded_bytes',
         'upload_status',
         'created_by',
+        'mime_type',
+        'owner_type',
+        'owner_id',
+        'kind',
       ])
       .where('id', '=', toBin(id))
       .executeTakeFirst();
+  }
+
+  private async loadUploadableAttachment(
+    id: string,
+    authenticatedUserId: string,
+  ): Promise<AttachmentRow> {
+    const row = await this.loadAttachment(id);
     if (!row) throw new ApiError(404, 'NOT_FOUND', 'Pièce jointe introuvable.');
     if (fromBin(row.created_by) !== authenticatedUserId) {
       throw new ApiError(
@@ -189,10 +303,12 @@ export class AttachmentUploadController {
       );
     }
     if (row.upload_status !== 'PENDING_UPLOAD' && row.upload_status !== 'MISSING') {
+      // Statut rendu à l'appareil (MP-10) : déjà reçue (`AVAILABLE`) ou à reprendre (`QUARANTINED`).
       throw new ApiError(
         409,
         'CONFLICT',
         `Cette pièce jointe n'accepte plus de téléversement (statut ${row.upload_status}).`,
+        { upload_status: row.upload_status },
       );
     }
     return row;
@@ -205,6 +321,7 @@ export class AttachmentUploadController {
     uploadedBytes: number,
     status: 'AVAILABLE' | 'QUARANTINED',
     actorUserId: string,
+    attachment: Pick<AttachmentRow, 'owner_type' | 'owner_id' | 'kind'>,
   ): Promise<void> {
     const now = this.clock.now();
     await this.db.transaction().execute(async (trx) => {
@@ -213,6 +330,20 @@ export class AttachmentUploadController {
         .set({ uploaded_bytes: uploadedBytes, upload_status: status })
         .where('id', '=', toBin(attachmentId))
         .execute();
+
+      // Photo du bon de livraison reçue : la « photo manquante » de la réception est régularisée
+      // (AV-287 ; conflits au rang N11, avant la tête d'audit N14, ADR-038).
+      const regularized =
+        status === 'AVAILABLE' &&
+        attachment.owner_type === 'GOODS_RECEIPT' &&
+        attachment.kind === 'DELIVERY_NOTE'
+          ? await regularizeReceiptPhoto(trx, {
+              receiptId: fromBin(attachment.owner_id),
+              attachmentId,
+              resolvedBy: actorUserId,
+              at: now,
+            })
+          : 0;
 
       await recordAudit(
         trx,
@@ -228,6 +359,7 @@ export class AttachmentUploadController {
           entityType: 'ATTACHMENT',
           entityId: attachmentId,
           result: status === 'AVAILABLE' ? 'SUCCESS' : 'QUARANTINED',
+          ...(regularized > 0 ? { after: { regularizedConflicts: regularized } } : {}),
         },
       );
 

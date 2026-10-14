@@ -151,6 +151,7 @@ export {
   declareLoss,
   lotMortalitySummary,
   findLossDeclaration,
+  lossDeclarationLocator,
   lossesAwaitingPhoto,
 } from './loss-declaration.js';
 export type {

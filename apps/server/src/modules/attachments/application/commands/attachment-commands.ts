@@ -21,6 +21,7 @@
  * dans la transaction du gestionnaire (étape 6) au moment où ce gestionnaire s'exécute.
  */
 import { z } from 'zod';
+import { ATTACHMENT_KINDS, ATTACHMENT_MAX_SIZE_BYTES, ATTACHMENT_MIME_TYPES } from '@gic/contracts';
 import type {
   CommandHandler,
   CommandHandlerRegistry,
@@ -28,17 +29,10 @@ import type {
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 
-/** D01 §8 (validations) ; CHECK ck_attachments_attachments_size (migration P0-04). */
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/webp', 'application/pdf'] as const;
-const MAX_SIZE_BYTES = 5 * 1024 * 1024;
-const ATTACHMENT_KINDS = [
-  'PHOTO',
-  'INVOICE',
-  'RECEIPT',
-  'DELIVERY_NOTE',
-  'SUPPLIER_DOCUMENT',
-  'OTHER',
-] as const;
+/** D01 §8 (validations) ; CHECK ck_attachments_attachments_size (migration P0-04) ; bornes partagées
+ * avec l'appareil (`@gic/contracts`, MP-10). */
+const ALLOWED_MIME_TYPES = ATTACHMENT_MIME_TYPES;
+const MAX_SIZE_BYTES = ATTACHMENT_MAX_SIZE_BYTES;
 
 const registerPayloadSchema = z.object({
   ownerType: z.string().min(1).max(40),

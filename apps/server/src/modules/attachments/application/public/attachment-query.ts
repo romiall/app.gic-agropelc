@@ -5,7 +5,7 @@
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 /** Vrai si `attachmentIds` est vide, ou si chacune est `AVAILABLE` (BR-ADM-020). */
 export async function areAttachmentsAvailable(
@@ -46,4 +46,49 @@ export async function hasAvailableAttachment(
     .$if(owner.kind !== undefined, (qb) => qb.where('kind', '=', owner.kind!))
     .executeTakeFirst();
   return row !== undefined;
+}
+
+export interface OwnedAttachment {
+  readonly id: string;
+  readonly kind: string;
+  readonly mimeType: string;
+  readonly uploadStatus: string;
+}
+
+/**
+ * Pièces des documents, par `${ownerType}:${ownerId}`, les plus anciennes d'abord, hors pièces
+ * remplacées (MP-10 : photos montrées au valideur, AV-296).
+ */
+export async function attachmentsOfOwners(
+  executor: Kysely<DB> | Transaction<DB>,
+  owners: readonly { readonly ownerType: string; readonly ownerId: string }[],
+): Promise<ReadonlyMap<string, readonly OwnedAttachment[]>> {
+  const result = new Map<string, OwnedAttachment[]>();
+  if (owners.length === 0) return result;
+  const rows = await executor
+    .selectFrom('attachments_attachments')
+    .select(['id', 'owner_type', 'owner_id', 'kind', 'mime_type', 'upload_status', 'created_at'])
+    .where(
+      'owner_id',
+      'in',
+      [...new Set(owners.map((owner) => owner.ownerId))].map((id) => toBin(id)),
+    )
+    .where('upload_status', '<>', 'SUPERSEDED')
+    .orderBy('created_at', 'asc')
+    .orderBy('id', 'asc')
+    .execute();
+  const wanted = new Set(owners.map((owner) => `${owner.ownerType}:${owner.ownerId}`));
+  for (const row of rows) {
+    const key = `${row.owner_type}:${fromBin(row.owner_id)}`;
+    if (!wanted.has(key)) continue;
+    const list = result.get(key) ?? [];
+    list.push({
+      id: fromBin(row.id),
+      kind: row.kind,
+      mimeType: row.mime_type,
+      uploadStatus: row.upload_status,
+    });
+    result.set(key, list);
+  }
+  return result;
 }

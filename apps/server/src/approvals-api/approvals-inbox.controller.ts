@@ -31,7 +31,10 @@ import {
   canSelfApproveAt,
   type ApprovalInboxItem,
 } from '../modules/approvals/application/public/index.js';
-import { areAttachmentsAvailable } from '../modules/attachments/application/public/index.js';
+import {
+  areAttachmentsAvailable,
+  attachmentsOfOwners,
+} from '../modules/attachments/application/public/index.js';
 import { lossesAwaitingPhoto } from '../modules/inventory/application/public/index.js';
 import { parseOrThrow, ReadAccess, uuidParam } from '../read-api/read-access.js';
 
@@ -94,6 +97,11 @@ export class ApprovalsInboxController {
         .filter((item) => item.operationType === 'MORTALITY' && item.subjectType === 'STOCK_LOSS')
         .map((item) => item.subjectId),
     );
+    // Pièces du document décidé (MP-10, AV-296) : le valideur les voit par `GET /attachments/{id}/content`.
+    const owned = await attachmentsOfOwners(
+      this.db,
+      items.map((item) => ({ ownerType: item.subjectType, ownerId: item.subjectId })),
+    );
     const presented = [];
     for (const item of items) {
       const attachmentsPending =
@@ -113,6 +121,13 @@ export class ApprovalsInboxController {
         requestedByName: names.get(item.requestedBy) ?? null,
         requestedAt: item.requestedAt.toISOString(),
         attachmentsPending,
+        attachments: (owned.get(`${item.subjectType}:${item.subjectId}`) ?? []).map(
+          (attachment) => ({
+            id: attachment.id,
+            kind: attachment.kind,
+            uploadStatus: attachment.uploadStatus,
+          }),
+        ),
         selfRequest: item.selfRequest,
       });
     }

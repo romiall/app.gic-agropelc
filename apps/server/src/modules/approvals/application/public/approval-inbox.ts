@@ -263,3 +263,50 @@ export async function approvalInboxPage(
   }
   return { items, nextCursor };
 }
+
+/**
+ * L'utilisateur peut-il décider une demande en attente portant sur ce document (même portée que la
+ * file de validation : permission de décision sur le demandeur, le site et la zone, BR-ADM-018) ?
+ * Sert à montrer au valideur la pièce jointe du document qu'il décide (MP-10, AV-296), même sans
+ * droit de lecture sur le document lui-même.
+ */
+export async function canDecidePendingApprovalOf(
+  executor: Executor,
+  input: {
+    readonly userId: string;
+    readonly subjectType: string;
+    readonly subjectId: string;
+    readonly at: Date;
+  },
+): Promise<boolean> {
+  const rows = await executor
+    .selectFrom('approvals_approval_requests as r')
+    .innerJoin('approvals_control_policies as p', 'p.id', 'r.policy_id')
+    .select([
+      'r.site_id as site_id',
+      'r.zone_id as zone_id',
+      'r.requested_by as requested_by',
+      'p.approver_permission as approver_permission',
+    ])
+    .where('r.status', '=', 'PENDING')
+    .where('r.subject_type', '=', input.subjectType)
+    .where('r.subject_id', '=', toBin(input.subjectId))
+    .execute();
+  for (const row of rows) {
+    if (!row.approver_permission) continue;
+    const siteId = fromBinOrNull(row.site_id);
+    const zoneId = fromBinOrNull(row.zone_id);
+    const access = await evaluateAccess(executor, {
+      userId: input.userId,
+      permissionCode: row.approver_permission,
+      occurredAt: input.at,
+      resource: {
+        ownerUserId: fromBin(row.requested_by),
+        ...(siteId !== null ? { siteId } : {}),
+        ...(zoneId !== null ? { zoneId } : {}),
+      },
+    });
+    if (access.allowed) return true;
+  }
+  return false;
+}

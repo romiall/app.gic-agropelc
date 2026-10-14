@@ -51,7 +51,7 @@ Classification (PM §45) :
 | AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Bon de livraison distinct (livreur, heure, quantités, preuve) ; plusieurs livraisons partielles | **TRANCHÉ** (voir journal §3) |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
 | AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
-| AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) | OUVERT |
+| AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) ; photo jamais exigée hors mortalité (AV-288, 14/10/2026) | OUVERT |
 | AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée au déclarant ; rejet sans motif = erreur de déclaration | **TRANCHÉ** (voir journal §3) |
 | AV-039 | Fréquence et procédure d'inventaire | SECONDAIRE | P2/P5 | Mensuel complet recommandé + ponctuel | OUVERT |
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
@@ -299,6 +299,14 @@ Classification (PM §45) :
 | AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Inchangé : le jeton d'accès reste valable jusqu'à son expiration (15 min au plus) ; le renouvellement est refusé | OUVERT |
 | AV-283 | « Classer » une opération refusée ou en conflit sur l'appareil | SECONDAIRE | MP | Marque locale `ACKNOWLEDGED`, statut et opération conservés ; par son seul auteur ; conflit classé sans être réglé ; aucun archivage à 30 jours | OUVERT |
 | AV-284 | « Encaisser le reste dû » depuis le reçu : sort du surplus | SECONDAIRE | MP | Montant prérempli au reste dû ; affecté à la seule vente du reçu ; le surplus reste en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique | OUVERT |
+| AV-285 | Régularisation de la « photo manquante » d'une réception | IMPORTANTE | MP | Close automatiquement à la réception de la photo du bon ; clôture manuelle par le Resp. achats avec motif | TRANCHÉ |
+| AV-286 | Photo visible par les valideurs | IMPORTANTE | MP | Oui dès MP-10 : lecture protégée par la portée sur le document ou la décision en attente | TRANCHÉ |
+| AV-287 | Chiffrement des photos en attente sur le téléphone | IMPORTANTE | MP | Pas encore (comme la file des opérations) ; chiffrement de tout le stockage local avant la production | TRANCHÉ |
+| AV-288 | Photo d'une perte hors mortalité | IMPORTANTE | MP | Toujours facultative ; seule la mortalité l'exige avant l'approbation | TRANCHÉ |
+| AV-289 | Validation d'une réception sans BC dont la photo manque | SECONDAIRE | MP | Inchangée : seules les pièces citées par la réception sont exigées | OUVERT |
+| AV-290 | Photo refusée ou jamais reçue | SECONDAIRE | MP | Nouvelle photo à prendre ; aucune relance automatique ; `MISSING` à 7 jours et alerte en P9 | OUVERT |
+| AV-291 | Formats, nombre et budget local des photos | SECONDAIRE | MP | Images recodées en JPEG ; une photo par opération ; 50 Mo en attente au plus, au-delà l'opération part sans photo | OUVERT |
+| AV-292 | Stockage des fichiers pour le pilote | SECONDAIRE | MP | Disque local du serveur (`ATTACHMENTS_STORAGE_DIR`) sur un volume sauvegardé ; stockage objet avec AV-091 | OUVERT |
 
 ---
 
@@ -2117,6 +2125,67 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) montant prérempli au reste dû de la vente ; affectation explicite à elle seule ; surplus en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique ; (b) comme (a), mais le surplus réparti sur les autres créances de la plus ancienne à la plus récente (affectations explicites calculées sur l'appareil, refusées en ligne si elles dépassent un reste dû) ; (c) préremplissage seul, affectation automatique.
 - **Recommandation** : (a).
 - **Impact** : `apps/pwa/src/features/sales/collect.ts` (`previewTargetedAllocation`, `allocationsOf` ; encaissements en attente imputés à leurs ventes), `CollectScreen.tsx` (paramètre `vente`, envoi attendu après la lecture des créances en ligne), `SaleDetailScreen.tsx`, `ROUTES.collectFor`. Vente déjà réglée entre-temps : avertissement et affectation automatique ; hors ligne, la part devenue sans objet reste en crédit (fait accompli, serveur inchangé). Défaut implémenté : (a). Non paramétrable.
+
+### AV-285 — Régularisation de la « photo manquante » d'une réception — IMPORTANTE — **TRANCHÉ**
+- **Question** : une réception enregistrée sans la photo exigée du bon de livraison ouvre le conflit informatif `RECEIPT_PHOTO_MISSING` (AV-246). Quand ce signal se ferme-t-il ?
+- **Pourquoi** : AV-246 annonce que « la photo jointe ensuite la régularise (MP-10) », sans dire comment ; aucun code ne fermait le conflit. **CONFIRMÉ** (lecture du code, 14/10/2026).
+- **Choix** : (a) fermeture automatique à la réception de la photo, et manuelle par le Resp. achats avec un motif ; (b) automatique seulement ; (c) manuelle seulement.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a).
+- **Impact** : fin de l'envoi des octets (`attachments-api/upload.controller.ts`, `regularizeReceiptPhoto` de `procurement`) ; la photo (`DELIVERY_NOTE` de la `GOODS_RECEIPT`) est jointe après coup par son auteur ; clôture manuelle par `sync.conflict.dismiss` (motif obligatoire, existant) ; ADR-046.
+- **Mise en œuvre** (MP-10, 14/10/2026) : serveur fait (`procurement-receipt-commands.test.ts`) ; « Joindre la photo » dans la PWA avec MP-10 (2/3).
+
+### AV-286 — Photo visible par les valideurs — IMPORTANTE — **TRANCHÉ**
+- **Question** : la Direction, le Resp. production et le Resp. achats doivent-ils voir la photo dans l'application avant de décider ?
+- **Pourquoi** : sans lecture, le valideur ne sait que « justificatif reçu » ; l'URL signée prévue (02-securite §6) attend le choix du stockage objet (AV-091). **CONFIRMÉ**.
+- **Choix** : (a) oui dès MP-10, lecture protégée ; (b) plus tard, avec le stockage définitif.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a). Fichiers sur le disque du serveur pour le pilote.
+- **Impact** : `GET /api/v1/attachments/{id}/content` (auteur, valideur d'une demande en attente sur le document, lecteur du document dans sa portée ; refus audité ; `private, no-store`) ; pièces de chaque demande dans `GET /approvals/inbox` ; écran des validations (PWA) ; ADR-046.
+
+### AV-287 — Chiffrement des photos en attente sur le téléphone — IMPORTANTE — **TRANCHÉ**
+- **Question** : faut-il chiffrer dès MP-10 les photos qui attendent leur envoi sur le téléphone ?
+- **Pourquoi** : 01-architecture-offline §2 annonce des pièces locales chiffrées, mais la file des opérations ne l'est pas aujourd'hui (seul le jeton de session l'est) ; une clé tirée du PIN rendrait une photo non envoyée illisible après une réinitialisation du PIN. **CONFIRMÉ**.
+- **Choix** : (a) pas encore, comme la file des opérations ; chiffrement de tout le stockage local traité en une fois avant la production ; (b) oui, avec une clé tirée du PIN.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a).
+- **Impact** : magasins `attachmentFiles` et `attachmentBlobs` de la PWA en clair, comme `outbox` ; **à traiter avant la mise en production** : chiffrement de la file des opérations et des pièces locales (01-architecture-offline §2, 02-securite §5).
+
+### AV-288 — Photo d'une perte hors mortalité — IMPORTANTE — **TRANCHÉ**
+- **Question** : quand la photo d'une perte (hors mortalité) est-elle exigée avant que le responsable puisse approuver ?
+- **Pourquoi** : AV-037 propose des seuils de photo (casse, détérioration, produit impropre à partir de 10 000 F ; destruction toujours), jamais appliqués : aucune politique `LOSS_DECLARATION` n'est semée et la garde de photo ne vise que la mortalité. **CONFIRMÉ**.
+- **Choix** : (a) selon les seuils d'AV-037 ; (b) toujours facultative ; (c) exigée pour toute perte validée.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (b), toujours facultative : la photo est proposée, jamais exigée ; seule la mortalité l'exige (AV-107, AV-048). Tranche la partie « photo » d'AV-037 ; ses seuils de validation restent ouverts.
+- **Impact** : la photo d'une perte n'est pas citée par l'opération (aucune validation ne l'attend) ; elle reste rattachée à la déclaration (`STOCK_LOSS`) et visible du valideur ; ADR-046.
+
+### AV-289 — Validation d'une réception sans BC dont la photo manque — SECONDAIRE
+- **Question** : D08 et SM-RECEIPT disent que la validation `RECEIPT_WITHOUT_PO` « exige la photo reçue » ; depuis MP-04, une réception sans BC peut être enregistrée sans photo, et sa validation n'exige alors aucune pièce. Faut-il bloquer l'approbation tant qu'aucune photo du document n'est reçue, comme la mortalité ?
+- **Pourquoi** : constat de la lecture de MP-10 ; la réception sans BC n'est pas proposée par la PWA et ses politiques ne sont pas semées (S-24). **CONFIRMÉ**.
+- **Choix** : (a) inchangé : seules les pièces citées par la réception sont exigées ; (b) approbation bloquée sans photo `AVAILABLE` du document.
+- **Recommandation** : (b) quand la PWA proposera la réception sans BC.
+- **Impact** : décision `RECEIPT_WITHOUT_PO` (`procurement`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-290 — Photo refusée ou jamais reçue — SECONDAIRE
+- **Question** : que faire d'une photo dont l'enregistrement est refusé, dont l'empreinte ou la signature est fausse (`QUARANTINED`, état final), ou qui n'arrive jamais ?
+- **Pourquoi** : SM-ATTACHMENT n'a aucune transition depuis `QUARANTINED` ; aucune tâche ne pose `MISSING` après 7 jours. **CONFIRMÉ**.
+- **Choix** : (a) nouvelle photo à prendre (nouvelle pièce, même document) ; aucune relance automatique ; `MISSING` et alerte `ATTACHMENT_MISSING` avec les alertes de P9 ; (b) reprise de la même pièce (`QUARANTINED` → `PENDING_UPLOAD`).
+- **Recommandation** : (a).
+- **Impact** : PWA (état « refusée » de la photo, nouvelle photo possible) ; P9 (tâche des 7 jours). Défaut implémenté : (a).
+
+### AV-291 — Formats, nombre et budget local des photos — SECONDAIRE
+- **Question** : quels fichiers accepter sur le téléphone, combien de photos par opération, et que faire quand l'espace réservé aux photos en attente est plein ?
+- **Pourquoi** : le serveur accepte JPEG, WebP et PDF ; HEIC (iPhone) ne se décode pas partout ; NFR-06 fixe 50 Mo de pièces en attente, sans dire quoi faire au-delà. **DÉDUIT**.
+- **Choix** : (a) toute image décodable, recodée en JPEG ; une photo par opération ; au-delà de 50 Mo en attente, la photo est refusée avec un message et l'opération part sans elle ; PDF avec la facture fournisseur ; (b) plusieurs photos par opération.
+- **Recommandation** : (a) pour le pilote.
+- **Impact** : PWA (`PhotoField`, budget). Défaut implémenté : (a).
+
+### AV-292 — Stockage des fichiers pour le pilote — SECONDAIRE
+- **Question** : où le serveur du pilote garde-t-il les photos, tant que le stockage objet n'est pas choisi (AV-091) ?
+- **Pourquoi** : le défaut est le répertoire temporaire du système (`ATTACHMENTS_STORAGE_DIR`), hors sauvegarde. **CONFIRMÉ**.
+- **Choix** : (a) disque local du serveur, sur un volume sauvegardé, désigné par `ATTACHMENTS_STORAGE_DIR` ; (b) stockage objet compatible S3 dès le pilote.
+- **Recommandation** : (a) ; l'interface `ChunkStorage` permet de changer ensuite.
+- **Impact** : configuration du déploiement (P0-17) ; aucune donnée perdue au changement si les fichiers sont recopiés. Défaut : (a), à configurer.
 ---
 
 ## 3. Journal des décisions
@@ -2196,3 +2265,7 @@ Politique par défaut, paramétrable :
 | 13/10/2026 | AV-259 | Rattachement d'un appareil : site cible dans la portée de l'auteur | Porteur du projet |
 | 13/10/2026 | AV-260 | Le site de rattachement d'un appareil compte dans la portée de son responsable | Porteur du projet |
 | 13/10/2026 | AV-261 | Lecture des appareils accordée au Responsable production (portée SITE) | Porteur du projet |
+| 14/10/2026 | AV-285 | Photo manquante d'une réception : fermeture automatique à la réception de la photo, et manuelle par le Resp. achats avec motif | Porteur du projet |
+| 14/10/2026 | AV-286 | Les valideurs voient la photo dans l'application dès MP-10 (lecture protégée) | Porteur du projet |
+| 14/10/2026 | AV-287 | Photos en attente non chiffrées pour l'instant ; chiffrement de tout le stockage local avant la production | Porteur du projet |
+| 14/10/2026 | AV-288 | Photo d'une perte toujours facultative ; seule la mortalité l'exige | Porteur du projet |

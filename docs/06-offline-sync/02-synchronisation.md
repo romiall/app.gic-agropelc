@@ -236,9 +236,9 @@ Le détail par entité est dans [`03-matrice-conflits.md`](03-matrice-conflits.m
 
 | Étape | Règle |
 |---|---|
-| Capture | Compression sur l'appareil (1 280 px de grand côté, qualité 0,7, ≤ 400 Ko) ; calcul du SHA-256 ; stockage local chiffré |
-| Métadonnées | Envoyées **dans** la commande (`attachment_ids`) → `attachments.attachments` `PENDING_UPLOAD` |
-| Upload | `POST /api/v1/attachments/{id}/upload-session` → URL et taille de morceau (256 Ko) ; `PUT` par morceau avec `Content-Range` ; reprise à l'offset retourné par `HEAD` ; finalisation → vérification du SHA-256 et du type MIME → `AVAILABLE` |
+| Capture | Recodage sur l'appareil en JPEG (1 280 px de grand côté, qualité 0,7 puis par paliers, ≤ 400 Ko ; métadonnées EXIF retirées) ; calcul du SHA-256 ; stockage local, non chiffré pour l'instant comme la file des opérations (AV-287) |
+| Métadonnées | Commande **séparée** `attachments.attachment.register`, placée juste avant l'opération dans la file, **sans** `depends_on` (un refus de la pièce ne fait jamais refuser le fait, BR-SYN-007) → `attachments.attachments` `PENDING_UPLOAD`. Une réception **cite** sa photo dans `attachment_ids` ; une perte ou une mortalité la rattache par son propriétaire (`STOCK_LOSS`), sans la citer (ADR-046) |
+| Upload | Une fois l'enregistrement accepté : `POST /api/v1/attachments/{id}/upload-session` → octets déjà reçus et taille de morceau recommandée (256 Ko ; l'appareil envoie 128 Ko) ; `PUT` par morceau avec `Content-Range` ; reprise à l'offset retourné ; par l'auteur seul ; finalisation → vérification du SHA-256 et de la signature du fichier → `AVAILABLE`, sinon `QUARANTINED` ; une pièce qui n'accepte plus d'octets rend son statut (`details.upload_status`) |
 | Priorité | Après le push des commandes ; plus petites d'abord ; pièces requises pour une validation en premier |
 | Échec | Nouvel essai avec attente progressive ; après 7 jours → `MISSING` et alerte (SM-ATTACHMENT) |
 | Suppression locale | Après `AVAILABLE` confirmé ; miniature conservée 7 jours |

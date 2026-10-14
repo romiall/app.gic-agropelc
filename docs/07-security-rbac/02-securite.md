@@ -91,8 +91,8 @@ Minimisation : l'appareil ne reçoit que son périmètre (O3) ; aucune donnée f
 
 ## 9. Pièces justificatives
 
-- Type MIME vérifié par signature de fichier (magic bytes) et non par l'extension ; taille ≤ 5 Mo ; SHA-256 vérifié.
-- Stockage objet privé ; accès par URL signée à durée courte, délivrée après contrôle de portée sur le document propriétaire.
+- Type MIME vérifié par signature de fichier (magic bytes) et non par l'extension ; taille ≤ 5 Mo ; SHA-256 vérifié (signature contrôlée à la fin de l'envoi depuis MP-10).
+- Stockage objet privé ; accès par URL signée à durée courte, délivrée après contrôle de portée sur le document propriétaire. Pour le pilote (MP-10, AV-286, AV-292) : fichiers sur le disque du serveur, lecture authentifiée `GET /attachments/{id}/content` avec le même contrôle de portée, jamais mise en cache.
 - Images réencodées côté serveur (suppression des métadonnées EXIF, sauf date et position conservées en base si utiles).
 
 ## 10. Réponses aux fraudes métier (PM §37)

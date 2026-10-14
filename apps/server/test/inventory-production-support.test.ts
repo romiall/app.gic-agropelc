@@ -35,6 +35,7 @@ import {
   virtualLocationId,
 } from '../src/modules/inventory/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { canViewAttachment } from '../src/attachments-api/attachment-access.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -437,6 +438,23 @@ describe('P7-02 : prérequis inventory de la production', () => {
     ).toBe('APPLIED');
     expect((await lossRow(lossId)).status).toBe('APPROVED');
     expect(await lotHeadcount(db, { lotId: stockLotId, scope: 'REARING' })).toBe(997);
+
+    // MP-10 (AV-296) : photo de la perte — son auteur, le lecteur des pertes du site (Resp.
+    // production) ; pas le responsable d'une autre ferme (portée de site, AV-094).
+    const owner = { createdBy: farmManager.userId, ownerType: 'STOCK_LOSS', ownerId: lossId };
+    const now = new Date(at('09:00:00'));
+    expect(await canViewAttachment(db, owner, farmManager.userId, now)).toBe(true);
+    expect(await canViewAttachment(db, owner, productionManager.userId, now)).toBe(true);
+    expect(await canViewAttachment(db, owner, otherFarmManager.userId, now)).toBe(false);
+    // Déclarant sans portée pleine : sa propre déclaration seulement (AV-094), pas une pièce d'autrui.
+    expect(
+      await canViewAttachment(
+        db,
+        { ...owner, createdBy: productionManager.userId },
+        otherFarmManager.userId,
+        now,
+      ),
+    ).toBe(false);
   });
 
   it('seuils de la politique MORTALITY ; politique absente ; mortalité d’un lot d’incubation (AV-113)', async () => {
