@@ -4,11 +4,22 @@
  * `api/`, comme `auth.guard.ts`) : authentifie et gère la session — RC-01/RC-02 restent au
  * pipeline de commande (`commands/`), pas ici (« un jeton valide authentifie un auteur, il
  * n'autorise aucune action par lui-même »).
+ *
+ * MP-08 (AV-251, AV-280, ADR-045) : `change-password` applique les règles partagées d'un nouveau mot de
+ * passe (`newPasswordProblem` : 8 à 128 caractères, différent de l'actuel) et compte un mot de passe
+ * actuel faux comme un échec de connexion de l'utilisateur (verrouillage progressif, 02-securite §2) ;
+ * aucun mot de passe n'est journalisé ni audité. Le changement imposé du mot de passe provisoire reste
+ * l'affaire de l'écran (AV-251) : le serveur ne refuse rien d'autre.
  */
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import type { FastifyRequest } from 'fastify';
-import type { Clock, IdGenerator } from '@gic/domain';
+import {
+  LOGIN_PASSWORD_MAX_LENGTH,
+  newPasswordProblem,
+  type Clock,
+  type IdGenerator,
+} from '@gic/domain';
 import { CLOCK } from '../../../platform/clock.provider.js';
 import { ID_GENERATOR } from '../../../platform/id-generator.provider.js';
 import { DATABASE, type Database } from '../../../platform/kysely/database.provider.js';
@@ -38,7 +49,7 @@ import { createSession, rotateSession, revokeSessionById } from '../application/
 
 const loginSchema = z.object({
   phone: z.string().min(1).max(20),
-  password: z.string().min(1),
+  password: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
   device_id: z.string().uuid(),
   device_label: z.string().max(200).optional(),
   platform: z.string().max(100).optional(),
@@ -48,9 +59,17 @@ const loginSchema = z.object({
 const refreshSchema = z.object({ refresh_token: z.string().min(1) });
 
 const changePasswordSchema = z.object({
-  current_password: z.string().min(1),
-  new_password: z.string().min(8),
+  current_password: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
+  // Longueur jugée par `newPasswordProblem` (message propre, code `PASSWORD_INVALID`).
+  new_password: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
 });
+
+/** Messages des défauts d'un nouveau mot de passe (MP-08, AV-280). */
+export const PASSWORD_PROBLEM_MESSAGES: Readonly<Record<string, string>> = {
+  TOO_SHORT: 'Mot de passe trop court : 8 caractères au moins.',
+  TOO_LONG: 'Mot de passe trop long : 128 caractères au plus.',
+  UNCHANGED: 'Le nouveau mot de passe doit être différent de l’actuel.',
+};
 
 function validationError(issues: readonly { message: string }[]): ApiError {
   return new ApiError(
@@ -138,7 +157,8 @@ export class AuthController {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Identifiants invalides.');
     };
 
-    if (!user) return fail(null);
+    // Utilisateur système (`password_hash` vide) : jamais de connexion, comme un identifiant inconnu.
+    if (!user || user.password_hash === '') return fail(null);
     const passwordOk = await verifyPassword(user.password_hash, password);
     if (!passwordOk) return fail(fromBin(user.id));
     if (user.status !== 'ACTIVE') return fail(fromBin(user.id), `ACCOUNT_${user.status}`);
@@ -327,12 +347,46 @@ export class AuthController {
 
     const user = await this.db
       .selectFrom('identity_users')
-      .select(['id', 'password_hash'])
+      .select(['id', 'password_hash', 'phone'])
       .where('id', '=', toBin(auth.sub))
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+    if (!user || user.password_hash === '') {
+      throw new ApiError(401, 'INVALID_CREDENTIALS', 'Mot de passe actuel incorrect.');
+    }
+    // MP-08 : le mot de passe actuel se teste comme une connexion de cet utilisateur (verrouillage
+    // progressif par identifiant, 02-securite §2) : un jeton d'accès volé ne permet pas de le deviner.
+    if ((await checkLoginLock(this.db, 'IDENTIFIER', user.phone, now)).blocked) {
+      throw new ApiError(429, 'LOGIN_LOCKED', 'Trop de tentatives : réessayez plus tard.');
+    }
     const currentOk = await verifyPassword(user.password_hash, parsed.data.current_password);
     if (!currentOk) {
+      await this.db.transaction().execute(async (trx) => {
+        await recordLoginFailure(trx, 'IDENTIFIER', user.phone, now);
+        await recordAudit(
+          trx,
+          { idGenerator: this.idGenerator, clock: this.clock },
+          {
+            occurredAt: now,
+            actorUserId: auth.sub,
+            actorRoles: [],
+            deviceId: auth.device_id,
+            action: 'identity.user.change_password',
+            entityType: 'USER',
+            entityId: auth.sub,
+            result: 'FAILED',
+            errorCode: 'INVALID_CREDENTIALS',
+            correlationId: request.correlationId,
+          },
+        );
+      });
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Mot de passe actuel incorrect.');
+    }
+    const problem = newPasswordProblem({
+      password: parsed.data.new_password,
+      current: parsed.data.current_password,
+    });
+    if (problem) {
+      throw new ApiError(400, 'PASSWORD_INVALID', PASSWORD_PROBLEM_MESSAGES[problem]!, { problem });
     }
 
     const newHash = await hashPassword(parsed.data.new_password);
@@ -342,6 +396,7 @@ export class AuthController {
         .set({ password_hash: newHash, must_change_password: toDbBool(false) })
         .where('id', '=', user.id)
         .execute();
+      await resetLoginAttempts(trx, 'IDENTIFIER', user.phone);
       await recordAudit(
         trx,
         { idGenerator: this.idGenerator, clock: this.clock },

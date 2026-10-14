@@ -9,6 +9,24 @@ describe('redactSecrets (INV-AUD-02, BR-AUD-007)', () => {
     });
   });
 
+  it('masque les mots de passe saisis (MP-08) : création d’un compte, changement, réinitialisation', () => {
+    expect(
+      redactSecrets({
+        fullName: 'A',
+        initialPassword: 'x',
+        new_password: 'y',
+        current_password: 'z',
+        newPassword: 'w',
+      }),
+    ).toEqual({
+      fullName: 'A',
+      initialPassword: '[REDACTED]',
+      new_password: '[REDACTED]',
+      current_password: '[REDACTED]',
+      newPassword: '[REDACTED]',
+    });
+  });
+
   it('est insensible à la casse du nom de champ', () => {
     expect(redactSecrets({ Password_Hash: 'x' })).toEqual({ Password_Hash: '[REDACTED]' });
   });

@@ -27,7 +27,7 @@
 - **IX** `(status)`.
 - **Suppr.** `DESACTIVATION` (jamais de suppression : l'utilisateur est l'acteur d'opérations passées).
 - **Hist.** Changements de statut, téléphone et nom dans l'audit (avant et après).
-- **Audit** Création, modification, suspension, désactivation, réactivation, réinitialisation de mot de passe.
+- **Audit** Création, modification, suspension, désactivation, réactivation, réinitialisation de mot de passe (`identity.user.reset_password`), changement de mot de passe (`identity.user.change_password`) ; jamais un mot de passe (ADR-045 : la charge conservée d'`identity.user.create` est masquée). Fiche servie aux appareils (jeu `user`) : `id`, `full_name`, `status` seulement (ADR-045).
 - **Offline** L'appareil télécharge son propre profil et les noms (id, `full_name`) des utilisateurs de son périmètre, pour l'affichage.
 - **Intégrité** INV-ADM-01 (au moins un `ADMIN` actif) ; `password_hash` jamais exposé ni journalisé (INV-AUD-02).
 

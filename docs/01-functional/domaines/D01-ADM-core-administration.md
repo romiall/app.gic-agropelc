@@ -59,6 +59,8 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 | UC-ADM-14 | Définir une politique de contrôle | `approvals.policy.set` | DIRECTION, ADMIN | Non |
 | UC-ADM-15 | Traiter la file de validation (approuver ou rejeter) ; lecture `GET /approvals/inbox` (ECR-ADM-08, MP-07) | `approvals.request.approve`, `approvals.request.reject` | Responsables, DIRECTION, FINANCE | Non |
 | UC-ADM-16 | Joindre une pièce justificative à une opération | `attachments.attachment.register` + upload | Tous | **Oui** (capture et file d'upload) |
+| UC-ADM-17 | Changer son mot de passe (imposé à la connexion s'il est provisoire, AV-251) | `POST /auth/change-password` (route hors commandes, ADR-045) | Tous | Non |
+| UC-ADM-18 | Réinitialiser le mot de passe d'un utilisateur (mot de passe provisoire saisi par l'Admin, AV-252, AV-281) | `POST /users/{id}/reset-password` (route hors commandes, ADR-045) | ADMIN | Non |
 
 ## 5. Entrées
 

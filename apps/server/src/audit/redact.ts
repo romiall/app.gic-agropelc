@@ -10,10 +10,21 @@
  * un champ non sensible qui contiendrait accidentellement un mot de la liste comme
  * sous-chaîne (ex. `token_family_id` n'est pas un secret). À étendre, dans son propre commit,
  * quand un futur module introduit une nouvelle colonne sensible.
+ *
+ * MP-08 (ADR-045) : aussi appliqué par le pipeline des commandes à la charge utile conservée
+ * (`sync.command_inbox`, événements, audit) ; mots de passe saisis ajoutés (`initialPassword` de
+ * `identity.user.create`, corps des routes de mot de passe).
  */
 const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'password',
   'password_hash',
+  // MP-08 : mots de passe saisis (commande de création d'un compte, routes de mot de passe).
+  'initialpassword',
+  'initial_password',
+  'newpassword',
+  'new_password',
+  'currentpassword',
+  'current_password',
   'pin',
   'pin_hash',
   'pin_code',

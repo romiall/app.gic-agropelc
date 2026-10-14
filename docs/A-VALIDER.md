@@ -294,6 +294,9 @@ Classification (PM §45) :
 | AV-277 | Annulation d'un paiement fournisseur enregistré | SECONDAIRE | P8 | Par la Direction, avec motif, sans demande séparée | OUVERT |
 | AV-278 | Lecture des factures, paiements fournisseurs et de la vue d'ensemble financière | SECONDAIRE | P8 | `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` | OUVERT |
 | AV-279 | Chiffre d'affaires d'un lot de production | IMPORTANTE | P8 | Ventes du lot et de ses produits d'abattage ; œufs exclus (déjà valorisés par le crédit au coût standard) | OUVERT |
+| AV-280 | Règles d'un nouveau mot de passe : longueur maximale, réemploi | SECONDAIRE | MP | 8 à 128 caractères ; différent de celui qu'il remplace (le provisoire ne peut pas être gardé) ; aucune règle de composition, d'historique ni d'expiration | OUVERT |
+| AV-281 | Gardes de la réinitialisation du mot de passe par l'Admin | SECONDAIRE | MP | Pas son propre compte (changement avec l'actuel), pas un compte désactivé ni le compte système ; compte suspendu accepté ; verrouillage de l'identifiant levé | OUVERT |
+| AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Inchangé : le jeton d'accès reste valable jusqu'à son expiration (15 min au plus) ; le renouvellement est refusé | OUVERT |
 
 ---
 
@@ -2065,6 +2068,34 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a) : aucune valeur n'est comptée deux fois.
 - **Impact** : `production-api` (marge de lot), lecture publique `slaughterStockLotIds` ([ADR-044](decisions/ADR-044-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
 
+
+### AV-280 — Règles d'un nouveau mot de passe : longueur maximale, réemploi — SECONDAIRE
+- **Question** : au-delà des 8 caractères au moins (AV-008, 02-securite §2), un nouveau mot de passe a-t-il une longueur maximale ? Peut-il être identique à celui qu'il remplace ?
+- **Pourquoi** : en construisant MP-08, le changement acceptait un nouveau mot de passe identique à l'actuel. Après une réinitialisation, l'utilisateur aurait donc pu « changer » vers le mot de passe provisoire, que l'Admin connaît. Aucune borne haute n'existait, alors que le hachage argon2id est coûteux. Les sources ne disent rien de la composition, de l'historique ni de l'expiration. **DÉDUIT**.
+- **Choix** : (a) 8 à 128 caractères, différent de celui qu'il remplace, sans autre règle ; (b) en plus, une composition imposée (chiffres, lettres) ; (c) en plus, un historique et une expiration.
+- **Recommandation** : (a), adapté à des utilisateurs de terrain sur téléphone ; (b) et (c) seulement si le porteur le demande.
+- **Impact** : `packages/domain/src/password.ts` (`newPasswordProblem`), création d'un compte, `POST /auth/change-password`, réinitialisation, écrans de la PWA ; ADR-045. Défaut implémenté : (a), bornes en constantes partagées.
+
+### AV-281 — Gardes de la réinitialisation du mot de passe par l'Admin — SECONDAIRE
+- **Question** : l'Admin peut-il réinitialiser son propre mot de passe, celui d'un compte désactivé, suspendu, ou du compte système ? La réinitialisation lève-t-elle le verrouillage d'un compte bloqué par des échecs ?
+- **Pourquoi** : AV-252 fixe le principe (mot de passe saisi par l'Admin), pas ces cas limites. **DÉDUIT**.
+- **Choix** :
+  - (a) son propre compte refusé (`RESET_OWN_PASSWORD`) : il passe par le changement, avec l'actuel ;
+  - compte désactivé refusé (`USER_DEACTIVATED`) : à réactiver d'abord ;
+  - compte suspendu accepté ;
+  - compte système introuvable pour cette route ;
+  - verrouillage de l'identifiant levé.
+
+  (b) Aucune garde au-delà du droit.
+- **Recommandation** : (a).
+- **Impact** : `POST /users/{id}/reset-password`, `GET /users` (`actions.resetPassword`), écran des utilisateurs ; ADR-045. Défaut implémenté : (a).
+
+### AV-282 — Session révoquée ou compte suspendu : refus immédiat des requêtes ? — IMPORTANTE
+- **Question** : une session révoquée (réinitialisation, suspension, déconnexion) ou un compte suspendu doivent-ils être refusés dès la requête suivante, ou à l'expiration du jeton d'accès ?
+- **Pourquoi** : `AuthGuard` vérifie la signature et l'expiration du jeton (15 min), mais ne relit ni la session ni le statut de l'utilisateur ou de l'appareil. 02-securite §5 dit pourtant que « le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil » à chaque requête. Les commandes sont protégées (le pipeline vérifie l'utilisateur et l'appareil), pas les lectures ni `change-password`. **CONFIRMÉ** (lecture du code, MP-08).
+- **Choix** : (a) inchangé : refus au renouvellement, au plus 15 min ; (b) contrôle de la session (révocation) et des statuts à chaque requête, avec un cache court ; (c) jeton d'accès plus court.
+- **Recommandation** : (b), avant la mise en production.
+- **Impact** : `AuthGuard`, performances (une lecture par requête, ou un cache) ; 02-securite §3 et §5 ; MP-11 ou P10. Défaut implémenté : (a). Non paramétrable.
 ---
 
 ## 3. Journal des décisions

@@ -347,6 +347,8 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 |---|---|---|
 | REQ-061 (part MP-06) | `identity-devices-scope.test.ts` (portée des commandes et de la lecture, auto-approbation, site cible, compteur de l'accueil, commande d'installation), `auth.e2e.test.ts` (code court) ; PWA : `DevicesScreen.test.tsx`, `DeviceApprovalBanner.test.tsx` | Vérifié par les tests ; ECR-ADM-05 non vérifié dans le navigateur (MP-11) |
 | REQ-076 (part MP-07) | `approvals-inbox.test.ts` (portée de chaque décideur, filtre, pagination, pièce attendue, montant masqué, auto-validation de la Direction, catalogue de décision fidèle aux gestionnaires), `approval-commands.test.ts` (INV-ADM-02), `packages/domain/src/approval-decisions.test.ts` ; PWA : `ApprovalsScreen.test.tsx` | Vérifié par les tests ; ECR-ADM-08 non vérifié dans le navigateur (MP-11) |
+| REQ-208 (part MP-08) | `identity-users-password.test.ts` (`GET /users` : portée du lecteur, rôles, action permise ; réinitialisation réservée à l'Admin, gardes AV-281) ; PWA : `UsersScreen.test.tsx` | Vérifié par les tests ; écran non vérifié dans le navigateur (MP-11) |
+| REQ-209 (part MP-08) | `identity-users-password.test.ts` (INV-AUD-02 : mot de passe provisoire masqué dans l'inbox, l'événement et l'audit ; audit de la réinitialisation sans secret), `redact.test.ts` | Vérifié |
 | REQ-208 (part MP-06) | `identity-devices-scope.test.ts` (BR-ADM-025 : équipe, site, zone, site de rattachement ; AV-258 à AV-261), `seed.test.ts` (lecture du Resp. production) | Vérifié |
 
 ### 17.10 Phase P8 (13/10/2026) — [`18-demonstration-p8.md`](18-demonstration-p8.md)

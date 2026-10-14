@@ -83,6 +83,7 @@ export const ROUTES = {
   allocations: '/stock/quotas',
   devices: '/administration/appareils',
   approvals: '/validations',
+  users: '/administration/utilisateurs',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -295,6 +296,11 @@ export const ROLE_SETS = {
    * d'une politique (DIR, FIN, RCO, RPR, RFE, MAG, RAC) ; le serveur ne rend que les demandes que chacun
    * peut décider. L'Admin n'approuve aucune opération métier (RC-03).
    */
+  /**
+   * ECR-ADM-04 partiel (MP-08) : liste des comptes et réinitialisation du mot de passe, pour l'Admin
+   * (`identity.user.manage`) ; la lecture `GET /users` sert aussi d'autres rôles, sans menu pour eux.
+   */
+  userManage: ['ADMIN'],
   approvals: [
     'DIRECTION',
     'FINANCE',
@@ -563,6 +569,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       DISCOUNTS: '?types=PRICE_OVERRIDE',
     },
     signalCodes: ['APPROVALS_PENDING'],
+    offline: false,
+  },
+  {
+    // MP-08 : ECR-ADM-04 partiel — comptes et réinitialisation du mot de passe (AV-252).
+    id: 'ECR-ADM-04',
+    path: ROUTES.users,
+    labelKey: 'users',
+    group: 'general',
+    roles: ROLE_SETS.userManage,
+    actionCodes: ['USERS'],
     offline: false,
   },
   {

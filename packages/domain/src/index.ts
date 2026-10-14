@@ -449,3 +449,12 @@ export {
   canSelfApprove,
 } from './approval-decisions.js';
 export type { ApprovalDecisionOptions, ApprovalDecisionSpec } from './approval-decisions.js';
+
+// Règles d'un nouveau mot de passe (MP-08 ; AV-008, AV-280).
+export {
+  LOGIN_PASSWORD_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  newPasswordProblem,
+} from './password.js';
+export type { NewPasswordProblem } from './password.js';

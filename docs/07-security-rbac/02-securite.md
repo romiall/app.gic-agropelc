@@ -24,11 +24,11 @@
 | Élément | Décision | Statut |
 |---|---|---|
 | Identifiant | Numéro de téléphone E.164 | AV-008 |
-| Mot de passe | ≥ 8 caractères ; hachage **argon2id** (paramètres OWASP en vigueur, mémoire ≥ 19 Mo) ; changement forcé à la première connexion | D |
+| Mot de passe | 8 à 128 caractères, différent de celui qu'il remplace (AV-008, AV-280 ; règles partagées `newPasswordProblem`) ; hachage **argon2id** (paramètres OWASP en vigueur, mémoire ≥ 19 Mo) ; changement imposé à la connexion d'un mot de passe provisoire (création, réinitialisation) par l'écran de la PWA, sans refus du serveur (AV-251) ; un mot de passe actuel faux au changement compte comme un échec de connexion | D |
 | Tentatives | 5 échecs → blocage progressif (1, 5, 15 min) par identifiant et par IP ; audit `auth.login.failed` | D |
 | PIN local | 6 chiffres, par utilisateur et par appareil ; il sert à **déverrouiller** l'application hors ligne. Une clé est dérivée du PIN (PBKDF2-SHA256, ≥ 310 000 itérations, sel aléatoire) et déchiffre les jetons et les magasins sensibles locaux. Il n'est jamais transmis au serveur. 5 échecs → effacement des jetons locaux et reconnexion en ligne obligatoire (BR-ADM-024) | D |
 | Double facteur | Non au MVP (coût et fiabilité des SMS) ; à envisager pour `DIRECTION`, `ADMIN`, `FINANCE` (TOTP) | AV-008 |
-| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP) ; audit | D |
+| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP) ; mot de passe provisoire saisi par l'Admin, par une route en ligne hors du journal des commandes, jamais journalisé ni audité en clair ; sessions de l'utilisateur révoquées, changement imposé à la connexion suivante (AV-252, AV-281, ADR-045) ; audit `identity.user.reset_password` | D |
 
 ## 3. Sessions, jetons, révocation
 

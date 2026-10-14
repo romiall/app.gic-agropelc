@@ -30,6 +30,9 @@ describe('app/screens — registre et navigation par rôle', () => {
       `${ROUTES.approvals}?types=PRICE_OVERRIDE`,
     );
     expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'ADMIN')).toBeNull();
+    // MP-08 : comptes et réinitialisation, pour l'Admin.
+    expect(routeOfAction({ code: 'USERS', route: null }, 'ADMIN')).toBe(ROUTES.users);
+    expect(routeOfAction({ code: 'USERS', route: null }, 'DIRECTION')).toBeNull();
     // Un code de signal ne mène qu'à un seul écran.
     const codes = SCREENS.flatMap((screen) => screen.signalCodes ?? []);
     expect(new Set(codes).size).toBe(codes.length);

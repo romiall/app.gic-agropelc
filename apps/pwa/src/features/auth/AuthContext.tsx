@@ -1,7 +1,12 @@
 /**
- * État d'authentification de l'application (ECR-ADM-01, 02) : machine à 5 états côté
+ * État d'authentification de l'application (ECR-ADM-01, 02) : machine à 6 états côté
  * appareil (distincte de SM-USER/SM-DEVICE, qui vivent côté serveur) —
- * `loading` → `login_required` ⇄ `pin_setup_required` → `unlocked` ⇄ `locked`.
+ * `loading` → `login_required` ⇄ (`password_change_required` →) `pin_setup_required` → `unlocked` ⇄
+ * `locked`.
+ *
+ * MP-08 (AV-251) : un compte au mot de passe provisoire (`must_change_password` rendu par la connexion)
+ * passe par l'écran de changement juste après la connexion, avant la création du PIN : rien d'autre ne
+ * s'ouvre avant. Aucun mot de passe n'est conservé par l'appareil.
  */
 import {
   createContext,
@@ -23,6 +28,8 @@ import {
 import { login as loginRequest, type DeviceRefusal } from './login.js';
 import { decodeAccessTokenClaims } from '../../platform/jwt-decode.js';
 import { clearSessionRuntime, setSessionRuntime } from './session-runtime.js';
+import { changePassword as changePasswordRequest } from './change-password.js';
+import type { NewPasswordProblem } from '@gic/domain';
 
 interface StagedLogin {
   readonly userId: string;
@@ -33,13 +40,23 @@ interface StagedLogin {
   readonly deviceShortCode?: string;
 }
 
+/** Échec du changement imposé du mot de passe (MP-08). */
+export type PasswordChangeError =
+  'INVALID_CURRENT' | 'LOCKED' | 'OFFLINE' | 'SERVER_ERROR' | NewPasswordProblem;
+
 export type AuthState =
   | { readonly status: 'loading' }
   | {
       readonly status: 'login_required';
       readonly error?:
-        'INVALID_CREDENTIALS' | 'OFFLINE' | 'LOCKED' | 'SERVER_ERROR' | DeviceRefusal;
+        | 'INVALID_CREDENTIALS'
+        | 'OFFLINE'
+        | 'LOCKED'
+        | 'SERVER_ERROR'
+        | 'SESSION_EXPIRED'
+        | DeviceRefusal;
     }
+  | { readonly status: 'password_change_required'; readonly error?: PasswordChangeError }
   | { readonly status: 'pin_setup_required' }
   | { readonly status: 'locked'; readonly pinError?: { readonly attemptsLeft: number } | 'WIPED' }
   | {
@@ -52,6 +69,10 @@ export interface AuthContextValue {
   readonly state: AuthState;
   readonly deviceId: string | undefined;
   loginWithPassword(phone: string, password: string): Promise<void>;
+  /** Changement imposé du mot de passe provisoire, avant le PIN (MP-08, AV-251). */
+  changeProvisionalPassword(currentPassword: string, newPassword: string): Promise<void>;
+  /** Abandon du changement imposé : retour à la connexion, sans session. */
+  cancelPasswordChange(): void;
   submitNewPin(pin: string): Promise<void>;
   unlockWithPin(pin: string): Promise<void>;
   logout(): Promise<void>;
@@ -100,10 +121,48 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           ? { deviceShortCode: result.deviceShortCode }
           : {}),
       });
-      setState({ status: 'pin_setup_required' });
+      setState(
+        result.mustChangePassword
+          ? { status: 'password_change_required' }
+          : { status: 'pin_setup_required' },
+      );
     },
     [deviceId],
   );
+
+  const changeProvisionalPassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      if (!staged) return;
+      const result = await changePasswordRequest({
+        accessToken: staged.accessToken,
+        currentPassword,
+        newPassword,
+      });
+      if (result.ok) {
+        setState({ status: 'pin_setup_required' });
+        return;
+      }
+      if (result.reason === 'SESSION_EXPIRED') {
+        // Jeton de la connexion expiré (15 min) : reprendre la connexion.
+        setStaged(undefined);
+        setState({ status: 'login_required', error: 'SESSION_EXPIRED' });
+        return;
+      }
+      const error: PasswordChangeError =
+        result.reason === 'INVALID_NEW'
+          ? result.problem
+          : result.reason === 'UNKNOWN'
+            ? 'SERVER_ERROR'
+            : result.reason;
+      setState({ status: 'password_change_required', error });
+    },
+    [staged],
+  );
+
+  const cancelPasswordChange = useCallback(() => {
+    setStaged(undefined);
+    setState({ status: 'login_required' });
+  }, []);
 
   const submitNewPin = useCallback(
     async (pin: string) => {
@@ -160,6 +219,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   const logout = useCallback(async () => {
     clearSessionRuntime();
+    setStaged(undefined);
     await db.session.clear();
     await db.pinLocks.clear();
     await db.navigation.clear();
@@ -167,8 +227,26 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   }, [db]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, deviceId, loginWithPassword, submitNewPin, unlockWithPin, logout }),
-    [state, deviceId, loginWithPassword, submitNewPin, unlockWithPin, logout],
+    () => ({
+      state,
+      deviceId,
+      loginWithPassword,
+      changeProvisionalPassword,
+      cancelPasswordChange,
+      submitNewPin,
+      unlockWithPin,
+      logout,
+    }),
+    [
+      state,
+      deviceId,
+      loginWithPassword,
+      changeProvisionalPassword,
+      cancelPasswordChange,
+      submitNewPin,
+      unlockWithPin,
+      logout,
+    ],
   );
 
   return <AuthReactContext.Provider value={value}>{children}</AuthReactContext.Provider>;

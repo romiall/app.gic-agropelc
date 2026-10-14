@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext.js';
 import { LoginScreen } from '../features/auth/LoginScreen.js';
 import { PinSetupScreen } from '../features/auth/PinSetupScreen.js';
+import { PasswordChangeScreen } from '../features/auth/PasswordChangeScreen.js';
 import { PinUnlockScreen } from '../features/auth/PinUnlockScreen.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { MenuScreen } from '../features/navigation/MenuScreen.js';
@@ -61,6 +62,7 @@ import { AutonomyBanner } from '../features/sync/AutonomyBanner.js';
 import { DeviceApprovalBanner } from '../features/devices/DeviceApprovalBanner.js';
 import { DevicesScreen } from '../features/devices/DevicesScreen.js';
 import { ApprovalsScreen } from '../features/approvals/ApprovalsScreen.js';
+import { UsersScreen } from '../features/users/UsersScreen.js';
 import { SyncBadge } from '../features/sync/SyncBadge.js';
 import { SyncScreen } from '../features/sync/SyncScreen.js';
 import { startSyncEngine, stopSyncEngine } from '../features/sync/sync-engine-instance.js';
@@ -84,6 +86,8 @@ function AppShell() {
   if (state.status === 'loading') return null;
 
   if (state.status === 'login_required') return <LoginScreen />;
+  // MP-08 (AV-251) : mot de passe provisoire à changer avant toute autre chose.
+  if (state.status === 'password_change_required') return <PasswordChangeScreen />;
   if (state.status === 'pin_setup_required') return <PinSetupScreen />;
   if (state.status === 'locked') return <PinUnlockScreen />;
 
@@ -141,6 +145,7 @@ function AppShell() {
             <Route path={ROUTES.allocations} element={<AllocationsScreen />} />
             <Route path={ROUTES.devices} element={<DevicesScreen />} />
             <Route path={ROUTES.approvals} element={<ApprovalsScreen />} />
+            <Route path={ROUTES.users} element={<UsersScreen />} />
             <Route path={ROUTES.transfer} element={<TransferScreen key="liste" />} />
             <Route path={ROUTES.transferPattern} element={<TransferScreen key="detail" />} />
             <Route path={ROUTES.newProspect} element={<NewProspectScreen />} />
