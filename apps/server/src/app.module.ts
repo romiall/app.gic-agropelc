@@ -22,6 +22,7 @@ import { CrmModule } from './modules/crm/crm.module.js';
 import { CommunicationModule } from './modules/communication/communication.module.js';
 import { CommunicationJobsModule } from './modules/communication/communication-jobs.module.js';
 import { CommunicationRecipientsModule } from './communication-api/communication-recipients.module.js';
+import { CommunicationApiModule } from './communication-api/communication-api.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
@@ -67,6 +68,7 @@ import { RootController } from './health/root.controller.js';
     CommunicationModule,
     CommunicationJobsModule,
     CommunicationRecipientsModule,
+    CommunicationApiModule,
     CommandsModule,
     ChainVerificationModule,
     AuditApiModule,

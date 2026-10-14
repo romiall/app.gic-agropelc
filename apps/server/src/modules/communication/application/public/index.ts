@@ -4,6 +4,32 @@
  * les modules propriétaires publient des événements (ADR-070 §2).
  */
 export { ALERTS_CONSUMER_NAME } from '../events/alerts-consumer.js';
+export {
+  ALERT_READ_PERMISSION,
+  alertDetail,
+  alertPage,
+  alertSummary,
+  decodeAlertCursor,
+} from './alert-read.js';
+export type {
+  AlertCursor,
+  AlertFilter,
+  AlertPage,
+  AlertReadItem,
+  AlertSummaryResult,
+  AlertVisibility,
+} from './alert-read.js';
+export {
+  decodeNotificationCursor,
+  listAlertRuleItems,
+  notificationPage,
+} from './notification-read.js';
+export type {
+  AlertRuleReadItem,
+  NotificationCursor,
+  NotificationPage,
+  NotificationReadItem,
+} from './notification-read.js';
 export { ALERT_RECIPIENT_RESOLVER } from '../recipients/recipient-resolver.js';
 export type {
   AlertRecipientResolver,

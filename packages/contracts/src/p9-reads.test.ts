@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   alertItemSchema,
   alertListResponseSchema,
+  alertRuleItemSchema,
+  alertRuleListResponseSchema,
   alertSummarySchema,
   noteAcknowledgementsResponseSchema,
   noteItemSchema,
@@ -80,6 +82,32 @@ describe('lectures de communication', () => {
         computedAt: T,
       }).success,
     ).toBe(false);
+  });
+
+  it('règle d’alerte : réglages et ce que le catalogue admet', () => {
+    const rule = {
+      alertType: 'HIGH_LOSS',
+      nature: 'EVENT',
+      enabled: true,
+      severity: 'CRITICAL',
+      severitiesAdmitted: ['WARNING', 'CRITICAL'],
+      recipientRoles: ['RESP_FERME', 'DIRECTION'],
+      resolutionMode: 'MANUAL',
+      resolutionModesAdmitted: ['AUTO', 'MANUAL'],
+      escalationHours: 4,
+      escalationApplicable: true,
+      escalationRoles: ['DIRECTION'],
+      sourceAvailable: true,
+      version: 2,
+      updatedAt: T,
+      updatedBy: null,
+    };
+    expect(alertRuleItemSchema.parse(rule)).toEqual(rule);
+    expect(alertRuleListResponseSchema.parse({ items: [rule] }).items).toHaveLength(1);
+    expect(() => alertRuleItemSchema.parse({ ...rule, escalationHours: 0 })).toThrow();
+    expect(() => alertRuleItemSchema.parse({ ...rule, escalationHours: 200 })).toThrow();
+    expect(() => alertRuleItemSchema.parse({ ...rule, alertType: 'INCONNU' })).toThrow();
+    expect(() => alertRuleItemSchema.parse({ ...rule, severitiesAdmitted: [] })).toThrow();
   });
 
   it('notifications et notes', () => {

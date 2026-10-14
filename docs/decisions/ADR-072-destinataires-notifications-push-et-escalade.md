@@ -69,6 +69,13 @@ La mise en œuvre a précisé six points de la décision ; la revue adverse de l
 8. **Notifications (§4).** Une notification porte `source_type` = `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` ; une `IN_APP` est livrée à sa création. Un relèvement en `CRITICAL` renotifie les destinataires encore actifs. Les notifications **directes** d'événements (AV-439) sont livrées avec les notes (P9-11), qui partagent le même écrivain de notifications.
 9. **Abonnement (§5).** `communication.push.subscribe` s'exécute en lecture validée (pas de verrou d'intervalle sur un point de terminaison absent, ADR-038) ; l'unicité du point de terminaison arbitre deux abonnements simultanés. « Tout marquer lu » ne couvre que les notifications créées avant l'instant du geste.
 
+## Révision (P9-06, 14/10/2026)
+
+1. **Boîte (§3, §9).** Le droit de lecture de la boîte dure autant que l'alerte est ouverte (`OPEN`, `ACKNOWLEDGED`) : une alerte résolue ou écartée n'est plus lue que par la supervision. `visibility` ne porte `RECIPIENT` que pour une alerte ouverte.
+2. **Notifications (§4).** Le corps d'une notification `IN_APP` d'alerte porteuse d'une valeur au coût est **rendu à la lecture** selon le droit courant du lecteur (`inventory.valuation.read` sur le site de l'alerte), comme le message de l'alerte : la valeur reçue pendant que le droit était détenu ne reste pas lisible après sa perte (RC-05). Le texte stocké, déjà poussé ou synchronisé, ne se rappelle pas.
+3. **Résumé (§3).** Exact en portée `ALL` (comptage en base) ; sinon l'ensemble visible est balayé et jugé ligne à ligne, jusqu'à 2 000 lignes, `truncated` n'étant vrai que si une ligne reste à balayer.
+4. **Index.** Aucun index sur `last_detected_at` : l'ensemble ouvert est petit et les alertes closes sont purgées à 2 ans ; à mesurer (`EXPLAIN`, RISK-13) en P9-22, avec les tableaux.
+
 ## Tests
 
 Résolution (rôle × site/zone, affectation d'équipe, propriétaire, responsable d'équipe, approbateur, repli Direction, utilisateur désactivé), **confinement des lectures** (grille portée maximale × affectation ; compteurs égaux à la lecture exacte ; une alerte sans site invisible sous `SITE` ; un objet hors portée = 404 opaque), regroupement (deux alertes critiques dans le créneau = un push ; course sous le verrou ; escalade jamais regroupée), escalade (une seule fois, depuis `critical_since`, arrêtée par la prise en compte, prise en compte hors ligne tardive), push 410 et ligne non envoyée reprise, masquage d'une valeur protégée dans la notification.

@@ -219,6 +219,8 @@ export {
   NOTE_STATUSES,
   alertItemSchema,
   alertListResponseSchema,
+  alertRuleItemSchema,
+  alertRuleListResponseSchema,
   alertSummarySchema,
   noteAcknowledgementsResponseSchema,
   noteItemSchema,
@@ -229,6 +231,8 @@ export {
 export type {
   AlertItem,
   AlertListResponse,
+  AlertRuleItem,
+  AlertRuleListResponse,
   AlertSummary,
   NoteAcknowledgementsResponse,
   NoteItem,

@@ -8,6 +8,7 @@
  */
 import {
   ALERT_NATURES,
+  ALERT_RESOLUTION_MODES,
   ALERT_SEVERITIES,
   ALERT_STATUSES,
   ALERT_TYPES,
@@ -93,6 +94,35 @@ export const notificationListResponseSchema = z.object({
   nextCursor: z.string().max(200).nullable(),
 });
 export type NotificationListResponse = z.infer<typeof notificationListResponseSchema>;
+
+/**
+ * `GET /alert-rules` : règles d'alerte (réservé à `comm.alert_rule.manage`). Les gravités et modes de
+ * résolution admis viennent du catalogue du domaine : l'écran ne propose que ce que `alert_rule.set`
+ * acceptera. Les seuils ne sont pas ici : ce sont des paramètres système (AV-400).
+ */
+export const alertRuleItemSchema = z.object({
+  alertType: z.enum(ALERT_TYPES),
+  nature: z.enum(ALERT_NATURES),
+  enabled: z.boolean(),
+  severity: z.enum(ALERT_SEVERITIES),
+  severitiesAdmitted: z.array(z.enum(ALERT_SEVERITIES)).min(1),
+  recipientRoles: z.array(z.string().min(1).max(40)),
+  resolutionMode: z.enum(ALERT_RESOLUTION_MODES),
+  resolutionModesAdmitted: z.array(z.enum(ALERT_RESOLUTION_MODES)).min(1),
+  escalationHours: z.number().int().min(1).max(168).nullable(),
+  /** Faux : le type n'est jamais critique, l'escalade ne s'applique pas. */
+  escalationApplicable: z.boolean(),
+  escalationRoles: z.array(z.string().min(1).max(40)),
+  /** Faux : la source de la détection n'existe pas encore (règle semée désactivée). */
+  sourceAvailable: z.boolean(),
+  version: z.number().int().min(1),
+  updatedAt: instant,
+  updatedBy: uuid.nullable(),
+});
+export type AlertRuleItem = z.infer<typeof alertRuleItemSchema>;
+
+export const alertRuleListResponseSchema = z.object({ items: z.array(alertRuleItemSchema) });
+export type AlertRuleListResponse = z.infer<typeof alertRuleListResponseSchema>;
 
 export const NOTE_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 

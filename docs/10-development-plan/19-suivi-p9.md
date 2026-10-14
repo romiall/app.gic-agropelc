@@ -55,8 +55,9 @@
 | P9-02 | Domaine partagé et contrats : catalogue des alertes, traitement d'un événement, rendu, livraison, périodes d'analyse, registre des indicateurs, couche sémantique ; schémas de commandes et de lectures | `50c87f4` | Fait : domaine 531 tests (126 nouveaux, couverture des fichiers nouveaux 97 à 100 %), contrats 267 tests (30 nouveaux), 29 mutations détectées sur la base de code, `tsc` et ESLint propres |
 | P9-03 | Schéma `communication` : migration `20261201090100`, 36 règles d'alerte et 15 paramètres semés, dictionnaire, invariants INV-NOT-02 et 03 | `e47a37c` | Fait : `db` 221 tests (20 nouveaux), 35 mutations du schéma détectées sur la base jetable (aucune survivante), montée, descente et remontée vérifiées, seed idempotent |
 | P9-04 | Socle des alertes : écriture dédoublonnée, consommateur `communication.alerts`, commandes `communication.alert.*` et `communication.alert_rule.set` ; table des événements sautés par le runner | `c99284c` | Fait : serveur 27 tests (25 + 2), domaine 23 tests, 20 mutations détectées (deux survivantes traitées par des tests), migration `20261201090200` montée, descente et remontée vérifiées |
-| P9-05 | Destinataires, notifications, Web Push (port), escalade et abonnements | ce commit | Fait : serveur 57 tests (11 destinataires, 34 notifications, escalade et envoi, 12 commandes), domaine 13 tests de plus ; revue adverse (41 agents, 31 constats retenus, neuf corrigés) ; mutations et revue : §8 |
-| P9-06 et suivants | Voir le backlog du plan | — | À faire |
+| P9-05 | Destinataires, notifications, Web Push (port), escalade et abonnements | `953d210` | Fait : serveur 57 tests (11 destinataires, 34 notifications, escalade et envoi, 12 commandes), domaine 13 tests de plus ; revue adverse (41 agents, 31 constats retenus, neuf corrigés) ; mutations et revue : §8 |
+| P9-06 | Lectures HTTP de la communication : alertes, résumé, détail, notifications, règles | ce commit | Fait : 14 tests de bout en bout (portées `ALL`, `SITE`, `OWN`, `TEAM`, boîte, valeur au coût, 404 audité, curseur, notifications, règles) ; 28 mutants détectés sur 30 (2 équivalents) ; revue adverse §9 |
+| P9-07 et suivants | Voir le backlog du plan | — | À faire |
 
 ## 3. Code existant touché (hors des fichiers nouveaux de P9)
 
@@ -84,6 +85,7 @@ Ces modifications sont signalées à la session principale à chaque fin de lot.
 
 | Incr. prévu | Fichier ou module | Changement prévu | Nature |
 |---|---|---|---|
+| P9-06 | `apps/server/src/app.module.ts`, `packages/contracts/src/index.ts` | `CommunicationApiModule` ajouté aux imports ; exports des contrats `alertRuleItemSchema` et `alertRuleListResponseSchema` (ajouts) | P9-06 |
 | P9-05 | `communication-api/identity-recipient-resolver.ts` (nouveau) | lecture des tables `identity` (affectations, rôles, utilisateurs, appareils) et `organization` (équipes, zones) par rôle et périmètre : requête inverse que les API publiques n'offrent pas ; demande B1 | lecture, signalée |
 | P9-07 à P9-10 | `sales`, `finance`, `inventory`, `production`, `procurement`, `approvals`, `crm`, `fieldwork`, `sync`, `audit` | événements de déclenchement (fichiers `*-alert-events.ts`), tâches de passe et récurrences ; `audit.chain.verify_daily`, `inventory.ledger.reconcile_daily`, `finance.cash.reconcile_daily` publient leur événement puis se terminent en succès ; déduplication par jour des tâches de P4 à P5 adaptée | ajouts, un changement de comportement des trois tâches de réconciliation |
 | P9-14 | `platform/read-scope.ts` | mode « union » ajouté à `ReadScope` (ET par défaut inchangé) | ajout |
@@ -172,4 +174,17 @@ Quatre angles (concurrence et verrouillage ; confidentialité et portée ; confo
 **Mutations** (base jetable `gic_agropelc_p9m`) : 56 mutants sur le code de P9-05, **52 détectés**, 4 équivalents documentés : sortie anticipée pour `INFO` (le canal vide ne produit aucune ligne), valeur initiale de `showProtected` (écrasée dès qu'une valeur protégée est rendue), rejugement de l'échéance sous verrou (déjà acquise par la requête des candidats, défense en profondeur contre une course), délai de règle nul (une arithmétique `NULL` écarte déjà la ligne). La première passe a révélé six gardes non testées, dont un **test vide** : trois abonnements créés après la première lecture de la transaction du test étaient invisibles à la lecture répétable ; les données sont désormais validées avant la première lecture, avec un témoin.
 
 **Outil de test** (`apps/server/test/communication-test-kit.ts`) : une transaction de test annulée laisse un numéro absent dans `platform_domain_events`, et les consommateurs ne dépassent pas un trou de moins de 120 s (`settled-sequence.ts`) ; un seul test annulé suffisait à faire échouer, dans la même minute, un test de la suite qui attend un consommateur (observé : `role-assignment-commands`, cache RBAC). Les tests de `communication` reprennent désormais chaque numéro consommé par une transaction annulée avec une ligne `test.tombstone`, ignorée de tous les consommateurs (le numéro appartenait à la seule transaction annulée). À reprendre par la session principale pour les autres tests qui annulent des transactions produisant des événements.
+
+## 9. Revue adverse de P9-06 et mutations (14/10/2026)
+
+Deux angles (confinement et confidentialité ; conformité, exactitude et performance), un vérificateur sceptique par constat : 10 agents, **8 constats, 5 retenus, 3 réfutés** (curseur qui diviserait l'existence d'une alerte, jeton valide d'un utilisateur suspendu pendant 15 minutes — propriété du pipeline d'authentification, évaluation exacte non mémoïsée — coût borné par le plafond de balayage).
+
+| Sujet | Constat vérifié | Traitement |
+|---|---|---|
+| La boîte donne un droit de lecture permanent (2 constats) | ADR-072 §9 limite la boîte à la durée d'ouverture de l'alerte ; le code la lisait aussi après résolution (détail et liste `status=RESOLVED`), pendant la durée de conservation | Corrigé : `RECIPIENT` seulement pour `OPEN` et `ACKNOWLEDGED` ; « boîte seule » ne rend jamais une alerte close ; une alerte close se lit par la supervision. Tests dont le cas d'un destinataire qui supervise aussi |
+| Corps figé des notifications | Une valeur au coût reçue avec le droit restait lisible après sa perte (écart liste d'alertes / notifications, RC-05) | Corrigé : le corps `IN_APP` d'une alerte porteuse de valeur au coût est rendu à la lecture selon le droit courant ; les autres gardent leur texte. Les notifications déjà poussées ou synchronisées ne se rappellent pas |
+| Fin de page | Curseur non nul après la dernière alerte ; `truncated` vrai pour exactement 2 000 lignes | Corrigé comme `approvalInboxPage` ; le résumé relit une ligne avant d'annoncer la troncature |
+| Tri sans index | `ORDER BY last_detected_at` sans index : tri complet à chaque balayage | Non corrigé : l'ensemble ouvert est petit et les closes sont purgées à 2 ans ; l'index `(status, last_detected_at, id)` est à décider sur mesure (`EXPLAIN`, RISK-13) avec les tableaux, P9-22 |
+
+**Mutations** (base jetable) : 30 mutants sur le code des lectures, **28 détectés, 2 équivalents** : reconnaissance de la portée `ALL` (optimisation : le même résultat sort du balayage ligne à ligne, plus lent et plafonné), pré-filtre de la boîte sans statut (l'évaluation exacte de la visibilité écarte la même ligne). Deux listes de test ont dû être durcies : les alertes du test sont datées dans le futur et propres à l'exécution, pour rester en tête de la liste triée d'une base partagée qui s'accumule.
 
