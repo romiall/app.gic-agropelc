@@ -297,6 +297,8 @@ Classification (PM §45) :
 | AV-280 | Règles d'un nouveau mot de passe : longueur maximale, réemploi | SECONDAIRE | MP | 8 à 128 caractères ; différent de celui qu'il remplace (le provisoire ne peut pas être gardé) ; aucune règle de composition, d'historique ni d'expiration | OUVERT |
 | AV-281 | Gardes de la réinitialisation du mot de passe par l'Admin | SECONDAIRE | MP | Pas son propre compte (changement avec l'actuel), pas un compte désactivé ni le compte système ; compte suspendu accepté ; verrouillage de l'identifiant levé | OUVERT |
 | AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Inchangé : le jeton d'accès reste valable jusqu'à son expiration (15 min au plus) ; le renouvellement est refusé | OUVERT |
+| AV-283 | « Classer » une opération refusée ou en conflit sur l'appareil | SECONDAIRE | MP | Marque locale `ACKNOWLEDGED`, statut et opération conservés ; par son seul auteur ; conflit classé sans être réglé ; aucun archivage à 30 jours | OUVERT |
+| AV-284 | « Encaisser le reste dû » depuis le reçu : sort du surplus | SECONDAIRE | MP | Montant prérempli au reste dû ; affecté à la seule vente du reçu ; le surplus reste en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique | OUVERT |
 
 ---
 
@@ -1839,6 +1841,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a). Visite : `COMMANDE_PRISE` (code figé, lu par KPI-COM-12), `VENTE_REALISEE`, `A_RELANCER`, `PAS_INTERESSE`, `ABSENT`, `AUTRE`. Prospect perdu : `PRIX_TROP_ELEVE`, `CONCURRENT`, `PAS_DE_BESOIN`, `INJOIGNABLE`, `HORS_ZONE`, `AUTRE`. Annulation : `ERREUR_SAISIE`, `DOUBLON`, `DEMANDE_CLIENT`, `AUTRE`. `AUTRE` exige un commentaire ; libellés ajustables au catalogue.
 - **Impact** : `db/seeds` (rejouable : insertion des seuls absents, jamais de réécriture d'un motif modifié), publication dans `catalog` ; S-15 ; lot de mise en pilote (MP-02).
+- **Mise en œuvre** (MP-09, 14/10/2026) : le commentaire d'un résultat de visite qui l'exige (`requires_comment`, « Autre ») n'était contrôlé nulle part. Visite : la PWA bloque l'envoi sans commentaire (libellé « obligatoire pour ce résultat ») ; le serveur refuse en ligne (`COMMENT_REQUIRED`) et accepte hors ligne (fait accompli, BR-SYN-007, comme un motif désactivé entre-temps ; **DÉDUIT**). Prospect perdu : déjà refusé par le serveur (BR-CRM-009), sans écran dans la PWA. Annulation d'une vente ou d'une commande : déjà exigé par la PWA.
 
 ### AV-249 — Affichage des unités dans la PWA — SECONDAIRE — **TRANCHÉ**
 - **Question** : comment afficher une quantité et son unité (« 27 PLATEAU » aujourd'hui) ?
@@ -2098,6 +2101,20 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) inchangé : refus au renouvellement, au plus 15 min ; (b) contrôle de la session (révocation) et des statuts à chaque requête, avec un cache court ; (c) jeton d'accès plus court.
 - **Recommandation** : (b), avant la mise en production.
 - **Impact** : `AuthGuard`, performances (une lecture par requête, ou un cache) ; 02-securite §3 et §5 ; MP-11 ou P10. Défaut implémenté : (a). Non paramétrable.
+
+### AV-283 — « Classer » une opération refusée ou en conflit sur l'appareil — SECONDAIRE
+- **Question** : comment l'utilisateur « prend-il connaissance » d'une opération refusée (BR-SYN-009, SM-SYNC-COMMAND : `REJECTED → ACKNOWLEDGED`, « archivé localement 30 jours ») ? Qui le peut sur une tablette partagée, et une opération en conflit se classe-t-elle aussi ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : une opération refusée reste « à examiner » sans aucun moyen de la classer. L'état `ACKNOWLEDGED` n'existe pas dans le protocole (`DEVICE_SYNC_STATES`), et d'autres écrans lisent le statut `REJECTED` (vente refusée, expédition ignorée ou ressaisie). Un conflit peut encore être résolu par le serveur et revenir par le téléchargement. **CONFIRMÉ** (navigateur et code).
+- **Choix** : (a) marque locale `ACKNOWLEDGED` (`local_flags`), statut inchangé, opération conservée ; classement par son seul auteur ; un conflit se classe aussi, sans être réglé ; aucun archivage ; (b) nouvel état `ACKNOWLEDGED` dans le protocole, purge après 30 jours ; (c) conflits exclus du classement.
+- **Recommandation** : (a) : rien ne disparaît (BR-SYN-013), les écrans qui lisent `REJECTED` ne changent pas, la résolution d'un conflit par le serveur s'applique toujours.
+- **Impact** : `apps/pwa/src/sync/outbox.ts` (`acknowledgeCommand`, `needsAttention`, `countAttention`), `useSyncStatus.ts`, `SyncScreen.tsx` (bouton « Classer », libellés français des types d'opération). Les expéditions refusées ignorées ou ressaisies (`DISMISSED`, `REENTERED`, écran des transferts) sortent aussi de la liste. Défaut implémenté : (a). Non paramétrable. L'archivage à 30 jours du SM reste à décider avec la purge de l'outbox.
+
+### AV-284 — « Encaisser le reste dû » depuis le reçu : sort du surplus — SECONDAIRE
+- **Question** : depuis le reçu d'une vente, l'encaissement doit-il régler cette vente avant les plus anciennes ? Que devient un montant supérieur à son reste dû ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : le lien ouvrait l'encaissement du client sans montant, et l'affectation automatique (BR-FIN-004, la plus ancienne d'abord) pouvait régler une autre vente que celle du reçu. Le serveur accepte des affectations explicites et laisse le reste en crédit du client (`sales.payment.record`). **CONFIRMÉ** (navigateur et code).
+- **Choix** : (a) montant prérempli au reste dû de la vente ; affectation explicite à elle seule ; surplus en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique ; (b) comme (a), mais le surplus réparti sur les autres créances de la plus ancienne à la plus récente (affectations explicites calculées sur l'appareil, refusées en ligne si elles dépassent un reste dû) ; (c) préremplissage seul, affectation automatique.
+- **Recommandation** : (a).
+- **Impact** : `apps/pwa/src/features/sales/collect.ts` (`previewTargetedAllocation`, `allocationsOf` ; encaissements en attente imputés à leurs ventes), `CollectScreen.tsx` (paramètre `vente`, envoi attendu après la lecture des créances en ligne), `SaleDetailScreen.tsx`, `ROUTES.collectFor`. Vente déjà réglée entre-temps : avertissement et affectation automatique ; hors ligne, la part devenue sans objet reste en crédit (fait accompli, serveur inchangé). Défaut implémenté : (a). Non paramétrable.
 ---
 
 ## 3. Journal des décisions

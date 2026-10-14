@@ -8,8 +8,10 @@ import { resetConnectivityForTests } from '../../platform/connectivity.js';
 import { CollectScreen } from './CollectScreen.js';
 import {
   afterPendingPayments,
+  allocationsOf,
   duesFromRecentSales,
   previewAllocation,
+  previewTargetedAllocation,
   sortDues,
 } from './collect.js';
 import { IDS, posCashAccountRow, SALE_ID, saleRow, seedSalesFixtures } from './fixtures.js';
@@ -72,9 +74,47 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       },
     ]);
     expect(dues.map((due) => due.saleId)).toEqual(['d', 'n']);
-    expect(afterPendingPayments(dues, [1000]).map((due) => [due.saleId, due.balanceXaf])).toEqual([
-      ['n', 300],
+    expect(
+      afterPendingPayments(dues, [{ amountXaf: 1000, targets: null }]).map((due) => [
+        due.saleId,
+        due.balanceXaf,
+      ]),
+    ).toEqual([['n', 300]]);
+    // Encaissement ciblé en attente : il ne règle que sa vente, dans la limite de son reste.
+    expect(
+      afterPendingPayments(dues, [
+        { amountXaf: 1000, targets: [{ saleId: 'n', amountXaf: 400 }] },
+        { amountXaf: 900, targets: [{ saleId: 'n', amountXaf: 900 }] },
+      ]).map((due) => [due.saleId, due.balanceXaf]),
+    ).toEqual([['d', 800]]);
+  });
+
+  it('affectation ciblée : la vente désignée seule, le surplus en avoir ; vente absente : null', () => {
+    const dues = sortDues([
+      {
+        saleId: 'a',
+        docNumber: 'A',
+        dueDate: '2026-10-01',
+        occurredAt: '2026-09-01',
+        balanceXaf: 500,
+      },
+      {
+        saleId: 'b',
+        docNumber: 'B',
+        dueDate: '2026-11-01',
+        occurredAt: '2026-10-01',
+        balanceXaf: 800,
+      },
     ]);
+    const full = previewTargetedAllocation(1000, dues, 'b');
+    expect(full?.lines.map((line) => [line.due.saleId, line.amountXaf])).toEqual([['b', 800]]);
+    expect(full?.creditXaf).toBe(200);
+    expect(allocationsOf(full!)).toEqual([{ saleId: 'b', amountXaf: 800 }]);
+    const partial = previewTargetedAllocation(300, dues, 'b');
+    expect(allocationsOf(partial!)).toEqual([{ saleId: 'b', amountXaf: 300 }]);
+    expect(partial?.creditXaf).toBe(0);
+    expect(previewTargetedAllocation(300, dues, 'z')).toBeNull();
+    expect(previewTargetedAllocation(0, dues, 'b')).toEqual({ lines: [], creditXaf: 0 });
   });
 
   it('affectation prévue : échéance la plus ancienne d’abord, le reste en avoir', () => {
@@ -128,6 +168,81 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
       captured_offline: true,
       payload: { customerId: IDS.customer, methodCode: 'ESPECES', amountXaf: 1500 },
     });
+  });
+
+  it('« Encaisser le reste dû » : montant prérempli au reste de la vente, affecté à elle seule', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}&vente=${SALE_ID}`);
+    expect(
+      await screen.findByText(
+        /Encaissement affecté à la vente VTE-2026-000123 \(reste dû 2 000 F CFA\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('2000');
+    expect(screen.getByText('Affectation prévue (vente désignée)')).toBeInTheDocument();
+    expect(screen.getByText('Réglé : 2 000 F CFA')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
+    await screen.findByText(
+      'Encaissement enregistré sur ce téléphone, il sera envoyé dès le retour du réseau.',
+    );
+    const [command] = await getDb().outbox.toArray();
+    expect(command?.payload).toMatchObject({
+      customerId: IDS.customer,
+      amountXaf: 2000,
+      allocations: [{ saleId: SALE_ID, amountXaf: 2000 }],
+    });
+  });
+
+  it('vente ciblée : un montant plus fort laisse le surplus en avoir ; « Répartir » revient à l’automatique', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}&vente=${SALE_ID}`);
+    const field = await screen.findByLabelText('Montant reçu (F CFA)');
+    await user.clear(field);
+    await user.type(field, '2500');
+    expect(screen.getByText('Reste en avoir du client : 500 F CFA')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Répartir sur toutes les créances' }));
+    expect(screen.queryByText(/Encaissement affecté à la vente/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('2500');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
+    await screen.findByText(
+      'Encaissement enregistré sur ce téléphone, il sera envoyé dès le retour du réseau.',
+    );
+    const [command] = await getDb().outbox.toArray();
+    expect(command?.payload).toMatchObject({ amountXaf: 2500 });
+    expect(command?.payload).not.toHaveProperty('allocations');
+  });
+
+  it('« Répartir » garde le montant prérempli', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}&vente=${SALE_ID}`);
+    await user.click(
+      await screen.findByRole('button', { name: 'Répartir sur toutes les créances' }),
+    );
+    expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('2000');
+    expect(screen.getByText('Affectation prévue (la plus ancienne d’abord)')).toBeInTheDocument();
+  });
+
+  it('vente ciblée sans reste dû connu : avertissement, affectation automatique, rien de prérempli', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderAt(`/encaisser?client=${IDS.customer}&vente=01900000-0000-7000-8000-0000000000ff`);
+    expect(
+      await screen.findByText(/La vente désignée n’a plus de reste dû connu/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('');
+    expect(screen.queryByText(/Encaissement affecté à la vente/)).not.toBeInTheDocument();
+  });
+
+  it('vente ciblée en ligne : rien n’est envoyé avant la lecture des créances', async () => {
+    request.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}&vente=${SALE_ID}`);
+    expect(await screen.findByText('Lecture des créances…')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Montant reçu (F CFA)'), '2000');
+    expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
+    expect(screen.queryByText(/La vente désignée n’a plus de reste dû/)).not.toBeInTheDocument();
   });
 
   it('site du PDV, caisse fermée : en ligne, encaissement en espèces bloqué, invite « Ouvrir la caisse »', async () => {

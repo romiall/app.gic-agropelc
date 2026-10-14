@@ -103,13 +103,16 @@ export function NewVisitScreen() {
     settingValue(refs.settings, 'crm.visit.max_distance_m', undefined, now) ??
       DEFAULT_VISIT_MAX_DISTANCE_M,
   );
+  const outcomes = visitOutcomes(refs.reasonCodes);
+  const outcomeRequiresComment =
+    outcomes.find((outcome) => outcome.id === draft.outcomeId)?.requires_comment === true;
   const check = checkVisit(effective, {
     customer,
     session,
     maxDistanceM: Number.isFinite(maxDistanceM) ? maxDistanceM : DEFAULT_VISIT_MAX_DISTANCE_M,
     today,
+    outcomeRequiresComment,
   });
-  const outcomes = visitOutcomes(refs.reasonCodes);
   // Pas de proposition pendant un relevé : la position affichée pourrait être l'ancienne.
   const proposePosition =
     geo.state !== 'locating' &&
@@ -246,7 +249,9 @@ export function NewVisitScreen() {
         )}
       </div>
       <div className="field">
-        <label htmlFor={notesId}>{t('visit.notes_label')}</label>
+        <label htmlFor={notesId}>
+          {outcomeRequiresComment ? t('visit.notes_label_required') : t('visit.notes_label')}
+        </label>
         <textarea
           id={notesId}
           className="text-input"
@@ -278,6 +283,9 @@ export function NewVisitScreen() {
         />
       </div>
 
+      {check.issues.includes('COMMENT_REQUIRED') ? (
+        <p className="error-message">{t('visit.issue.COMMENT_REQUIRED')}</p>
+      ) : null}
       {check.issues.includes('NEXT_ACTION_PAST') ? (
         <p className="error-message">{t('visit.issue.NEXT_ACTION_PAST')}</p>
       ) : null}

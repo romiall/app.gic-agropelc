@@ -61,6 +61,31 @@ async function seedOutcome(): Promise<void> {
   });
 }
 
+/** Résultat « Autre » : commentaire exigé (AV-248). */
+const OTHER_OUTCOME = '01900000-0000-7000-8000-0000000000e2';
+
+async function seedOtherOutcome(): Promise<void> {
+  await getDb().projections.put({
+    key: `reason_code:REASON_CODE:${OTHER_OUTCOME}`,
+    dataset: 'reason_code',
+    entity_type: 'REASON_CODE',
+    entity_id: OTHER_OUTCOME,
+    scope_type: 'GLOBAL',
+    scope_id: null,
+    row_version: 1,
+    seq: 2,
+    data: {
+      id: OTHER_OUTCOME,
+      category: 'VISIT_OUTCOME',
+      code: 'AUTRE',
+      label: 'Autre',
+      loss_category: null,
+      requires_comment: true,
+      is_active: true,
+    },
+  });
+}
+
 async function locateCustomer(lat: string, lng: string): Promise<void> {
   const db = getDb();
   const key = `customers:CUSTOMER:${IDS.customer}`;
@@ -220,6 +245,33 @@ describe('+ Visite (ECR-CRM-04)', () => {
     expect(
       screen.queryByLabelText('Enregistrer cette position comme celle du compte'),
     ).not.toBeInTheDocument();
+  });
+
+  it('résultat « Autre » : commentaire obligatoire avant l’envoi (AV-248)', async () => {
+    await seedOutcome();
+    await seedOtherOutcome();
+    locateAt(null);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/clients/visite?client=${IDS.customer}`);
+    expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Enregistrer la visite' });
+    await user.selectOptions(screen.getByLabelText('Résultat de la visite'), OTHER_OUTCOME);
+    expect(
+      screen.getByText('Ce résultat exige un commentaire : précisez ce qui s’est passé.'),
+    ).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+    const notes = screen.getByLabelText('Commentaire (obligatoire pour ce résultat)');
+    await user.type(notes, '   ');
+    expect(submit).toBeDisabled();
+    await user.type(notes, 'Boutique fermée pour travaux');
+    expect(submit).toBeEnabled();
+    expect(screen.queryByText(/exige un commentaire/)).not.toBeInTheDocument();
+    // Résultat ordinaire : le commentaire redevient facultatif.
+    await user.clear(notes);
+    await user.selectOptions(screen.getByLabelText('Résultat de la visite'), OUTCOME);
+    expect(screen.getByLabelText('Commentaire (facultatif)')).toBeInTheDocument();
+    expect(submit).toBeEnabled();
   });
 
   it('sans résultat paramétré ni position : message explicite, envoi impossible ; prochaine action passée refusée', async () => {

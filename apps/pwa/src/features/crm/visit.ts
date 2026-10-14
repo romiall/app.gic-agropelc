@@ -42,7 +42,8 @@ export const EMPTY_VISIT: VisitDraft = {
   saveCustomerPosition: true,
 };
 
-export type VisitIssue = 'CUSTOMER_REQUIRED' | 'OUTCOME_REQUIRED' | 'NEXT_ACTION_PAST';
+export type VisitIssue =
+  'CUSTOMER_REQUIRED' | 'OUTCOME_REQUIRED' | 'COMMENT_REQUIRED' | 'NEXT_ACTION_PAST';
 
 export interface VisitCheck {
   readonly issues: readonly VisitIssue[];
@@ -81,11 +82,16 @@ export function checkVisit(
     readonly maxDistanceM: number;
     /** Jour métier courant (`AAAA-MM-JJ`). */
     readonly today: string;
+    /** Le résultat choisi exige un commentaire (motif « Autre », AV-248 ; `requires_comment`). */
+    readonly outcomeRequiresComment?: boolean;
   },
 ): VisitCheck {
   const issues: VisitIssue[] = [];
   if (!draft.customerId || !context.customer) issues.push('CUSTOMER_REQUIRED');
   if (!draft.outcomeId) issues.push('OUTCOME_REQUIRED');
+  if (draft.outcomeId && context.outcomeRequiresComment && !draft.notes.trim()) {
+    issues.push('COMMENT_REQUIRED');
+  }
   if (
     draft.nextActionAt &&
     (!DATE_ONLY.test(draft.nextActionAt) || draft.nextActionAt < context.today)

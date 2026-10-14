@@ -8,8 +8,11 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getDb } from '../../storage/db.js';
+import { acknowledgeCommand } from '../../sync/outbox.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { awaitsDeviceApproval } from '../sales/pending.js';
+import { operationLabel } from './operation-label.js';
 import { getSyncEngine } from './sync-engine-instance.js';
 import { useSyncStatus } from './useSyncStatus.js';
 
@@ -53,7 +56,7 @@ export function SyncScreen() {
         <ul className="outbox-list">
           {status.pending.map((command) => (
             <li key={command.command_id}>
-              {command.command_type} — {t(`sync.status.${command.status}`)}
+              {operationLabel(t, command.command_type)} — {t(`sync.status.${command.status}`)}
             </li>
           ))}
         </ul>
@@ -62,13 +65,31 @@ export function SyncScreen() {
       {status.attention.length > 0 && (
         <>
           <h2>{t('sync.attention_operations')}</h2>
+          <p className="home-muted">{t('sync.acknowledge_help')}</p>
           <ul className="outbox-list">
-            {status.attention.map((command) => (
-              <li key={command.command_id}>
-                {command.command_type} — {t(`sync.status.${command.status}`)}
-                {command.last_error ? ` : ${command.last_error.message_fr}` : ''}
-              </li>
-            ))}
+            {status.attention.map((command) => {
+              const label = operationLabel(t, command.command_type);
+              return (
+                <li key={command.command_id}>
+                  {label} — {t(`sync.status.${command.status}`)}
+                  {command.last_error ? ` : ${command.last_error.message_fr}` : ''}
+                  {command.status === 'CONFLICT' ? (
+                    <small> {t('sync.acknowledged_conflict')}</small>
+                  ) : null}
+                  {/* Sur une tablette partagée, chacun classe ses propres opérations. */}
+                  {command.author_user_id === state.userId ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={t('sync.acknowledge_label', { operation: label })}
+                      onClick={() => void acknowledgeCommand(getDb(), command.command_id)}
+                    >
+                      {t('sync.acknowledge')}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

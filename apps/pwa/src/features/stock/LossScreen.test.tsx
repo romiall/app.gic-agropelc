@@ -456,6 +456,20 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
   });
 
+  it('« Quantité invalide » seulement une fois une quantité saisie, pas au choix du produit (MP-09)', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.chicken);
+    expect(screen.queryByText(/Quantité invalide/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Quantité'), 'abc');
+    expect(screen.getByText(/Quantité invalide/)).toBeInTheDocument();
+  });
+
   it('quantité hors de la borne numeric(14,3) : refusée sur l’appareil', () => {
     const draft = {
       productId: IDS.eggs,

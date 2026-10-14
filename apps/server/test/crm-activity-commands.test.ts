@@ -63,6 +63,8 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
   let siteId: string;
   let teamId: string;
   let outcomeId: string;
+  /** Résultat « Autre » : commentaire exigé (AV-248). */
+  let otherOutcomeId: string;
   let lostReasonId: string;
   let cancelReasonId: string;
 
@@ -125,6 +127,8 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
       readonly position?: { lat: number; lng: number } | null;
       readonly offline?: boolean;
       readonly outcome?: string;
+      /** `null` : visite sans commentaire. */
+      readonly notes?: string | null;
     } = {},
   ) {
     const id = freshUuid();
@@ -138,7 +142,9 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
         customerId,
         position: options.position === undefined ? { ...CENTER, accuracyM: 15 } : options.position,
         outcomeReasonCodeId: options.outcome ?? outcomeId,
-        notes: 'Présentation des prix du mois',
+        ...(options.notes === null
+          ? {}
+          : { notes: options.notes ?? 'Présentation des prix du mois' }),
         nextActionAt: '2026-10-09',
       },
       { offline: options.offline ?? false },
@@ -232,12 +238,14 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
       dir = await actor(roles.dir);
 
       outcomeId = freshUuid();
+      otherOutcomeId = freshUuid();
       lostReasonId = freshUuid();
       cancelReasonId = freshUuid();
-      for (const [id, category] of [
-        [outcomeId, 'VISIT_OUTCOME'],
-        [lostReasonId, 'PROSPECT_LOST'],
-        [cancelReasonId, 'CANCELLATION'],
+      for (const [id, category, requiresComment] of [
+        [outcomeId, 'VISIT_OUTCOME', 0],
+        [otherOutcomeId, 'VISIT_OUTCOME', 1],
+        [lostReasonId, 'PROSPECT_LOST', 0],
+        [cancelReasonId, 'CANCELLATION', 0],
       ] as const) {
         await trx
           .insertInto('catalog_reason_codes')
@@ -246,6 +254,7 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
             category,
             code: `TEST_${id.replace(/-/g, '').slice(-12).toUpperCase()}`,
             label: 'Motif de test',
+            requires_comment: requiresComment,
             created_by: toBin(adminId),
           })
           .execute();
@@ -438,6 +447,29 @@ describe('crm.visit.*, crm.interaction.*, crm.target.* (P3-05)', () => {
     expect(code(await cancel(rco, { comment: 'Doublon de saisie' }))).toBe('APPLIED');
     expect(fromBinOrNull((await visitRow(recorded.id)).cancelled_by)).toBe(rco.userId);
     expect(code(await cancel(cte1, { comment: 'Encore' }))).toBe('ALREADY_CANCELLED');
+  });
+
+  it('AV-248 : résultat « Autre » — commentaire exigé en ligne, visite hors ligne acceptée sans lui', async () => {
+    const customerId = await createCustomer(cte1);
+    const other = { outcome: otherOutcomeId, notes: null };
+    expect(code(await visit(cte1, customerId, at('09:00:00'), other).result)).toBe(
+      'COMMENT_REQUIRED',
+    );
+    expect(
+      code(
+        await visit(cte1, customerId, at('09:05:00'), {
+          outcome: otherOutcomeId,
+          notes: 'Client en deuil, revenir la semaine prochaine',
+        }).result,
+      ),
+    ).toBe('APPLIED');
+    // Hors ligne : fait accompli (BR-SYN-007), comme un motif désactivé entre-temps.
+    const offline = visit(cte1, customerId, at('09:10:00'), { ...other, offline: true });
+    expect(code(await offline.result)).toBe('APPLIED');
+    // Un résultat ordinaire n'exige rien.
+    expect(code(await visit(cte1, customerId, at('09:15:00'), { notes: null }).result)).toBe(
+      'APPLIED',
+    );
   });
 
   it('BR-CRM-017 : interactions — canal fermé, enregistrement, annulation', async () => {

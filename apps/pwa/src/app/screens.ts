@@ -73,7 +73,10 @@ export const ROUTES = {
   transfer: '/stock/transferts',
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
-  collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
+  /** Encaissement d'un client ; avec une vente, son reste dû est prérempli et lui est affecté (MP-09). */
+  collectFor: (customerId: string, saleId?: string) =>
+    `/encaisser?client=${encodeURIComponent(customerId)}` +
+    (saleId ? `&vente=${encodeURIComponent(saleId)}` : ''),
   cash: '/caisse',
   cashTransfers: '/caisse/remises',
   treasury: '/finance/tresorerie',

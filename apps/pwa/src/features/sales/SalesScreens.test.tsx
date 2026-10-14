@@ -232,6 +232,22 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(within(receipt).getByText(/Boutique Mvog-Mbi · Vendeur : vous/)).toBeInTheDocument();
   });
 
+  it('reçu : points signalés en français (code inconnu tel quel), « Encaisser le reste dû » ciblé sur la vente (MP-09)', async () => {
+    await getDb().projections.put(
+      saleRow({ flags: ['OUT_OF_SESSION', 'PRICE_MISMATCH', 'FUTUR'] }),
+    );
+    renderAt(`/ventes/${SALE_ID}`);
+    expect(
+      await screen.findByText(
+        'Points signalés par le serveur : Vente hors prise de service, Prix différent du catalogue, FUTUR',
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Encaisser le reste dû' })).toHaveAttribute(
+      'href',
+      `/encaisser?client=${IDS.customer}&vente=${SALE_ID}`,
+    );
+  });
+
   it('vente inconnue de l’appareil : message explicite', async () => {
     renderAt('/ventes/01900000-0000-7000-8000-0000000000ff');
     expect(await screen.findByText(/Vente introuvable sur cet appareil/)).toBeInTheDocument();

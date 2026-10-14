@@ -35,6 +35,8 @@ stateDiagram-v2
 | `CONFLICT` | Résolution serveur reçue par téléchargement | — | `SYNCED` / `REJECTED` | Effets serveur reflétés | — | — | — |
 | `REJECTED` | Prise de connaissance | — | `ACKNOWLEDGED` | Archivé localement 30 jours | — | — | — |
 
+Mise en œuvre de la PWA (MP-09, AV-283) : la prise de connaissance est le bouton « Classer » de l'écran de synchronisation, offert à l'auteur de l'opération. `ACKNOWLEDGED` y est une **marque locale** (`local_flags`) : l'opération garde son statut `REJECTED` et n'est pas effacée (BR-SYN-013) ; elle quitte la liste « à examiner » et le compteur. Une opération `CONFLICT` se classe de la même façon, sans être réglée : la résolution du serveur s'applique toujours. L'archivage à 30 jours n'est pas réalisé (AV-283).
+
 ### Côté serveur (inbox)
 
 | État initial | Action | Condition | Nouvel état | Effets |

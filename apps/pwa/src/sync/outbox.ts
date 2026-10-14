@@ -202,6 +202,34 @@ export async function countPending(db: GicDatabase): Promise<number> {
   return db.outbox.where('status').anyOf(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']).count();
 }
 
+/**
+ * Opération refusée ou en conflit que l'utilisateur a « classée » (MP-09, AV-283 ; BR-SYN-009 : visible
+ * « jusqu'à ce que l'utilisateur en prenne connaissance » ; SM de la commande sur l'appareil :
+ * `REJECTED → ACKNOWLEDGED`) : marquage local, jamais envoyé, la commande garde son statut et n'est pas
+ * effacée (BR-SYN-013). `DISMISSED` et `REENTERED` sont posés par l'écran des transferts sur une
+ * expédition refusée (ignorée ou ressaisie) : elle est aussi prise en compte.
+ */
+export const ACKNOWLEDGED_FLAG = 'ACKNOWLEDGED';
+const SETTLED_FLAGS: readonly string[] = [ACKNOWLEDGED_FLAG, 'DISMISSED', 'REENTERED'];
+
+/** Refusée ou en conflit, et pas encore prise en compte par l'utilisateur. */
+export function needsAttention(command: OutboxCommand): boolean {
+  if (command.status !== 'CONFLICT' && command.status !== 'REJECTED') return false;
+  return !command.local_flags?.some((flag) => SETTLED_FLAGS.includes(flag));
+}
+
+/** Classe une opération refusée ou en conflit (marquage local seulement). */
+export async function acknowledgeCommand(db: GicDatabase, commandId: string): Promise<boolean> {
+  return db.transaction('rw', db.outbox, async () => {
+    const command = await db.outbox.get(commandId);
+    if (!command || !needsAttention(command)) return false;
+    await db.outbox.update(commandId, {
+      local_flags: [...(command.local_flags ?? []), ACKNOWLEDGED_FLAG],
+    });
+    return true;
+  });
+}
+
 export async function countAttention(db: GicDatabase): Promise<number> {
-  return db.outbox.where('status').anyOf(['CONFLICT', 'REJECTED']).count();
+  return db.outbox.where('status').anyOf(['CONFLICT', 'REJECTED']).filter(needsAttention).count();
 }

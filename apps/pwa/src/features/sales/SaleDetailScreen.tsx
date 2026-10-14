@@ -289,7 +289,13 @@ export function SaleDetailScreen() {
         <p className="home-banner">{t('sales.detail.cancellation_pending')}</p>
       ) : null}
       {sale.flags.length > 0 ? (
-        <p className="text-warn">{t('sales.detail.flag_hint', { flags: sale.flags.join(', ') })}</p>
+        <p className="text-warn">
+          {t('sales.detail.flag_hint', {
+            flags: sale.flags
+              .map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag }))
+              .join(', '),
+          })}
+        </p>
       ) : null}
 
       <div className="result-actions no-print">
@@ -301,7 +307,7 @@ export function SaleDetailScreen() {
         sale.balanceDueXaf > 0 &&
         sale.status === 'CONFIRMED' &&
         holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.paymentRecord) ? (
-          <Link to={ROUTES.collectFor(customer.id)} className="action action-compact">
+          <Link to={ROUTES.collectFor(customer.id, sale.id)} className="action action-compact">
             <span className="action-label">{t('sales.detail.collect')}</span>
           </Link>
         ) : null}

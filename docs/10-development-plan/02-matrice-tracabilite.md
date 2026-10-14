@@ -350,6 +350,9 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-208 (part MP-08) | `identity-users-password.test.ts` (`GET /users` : portée du lecteur, rôles, action permise ; réinitialisation réservée à l'Admin, gardes AV-281) ; PWA : `UsersScreen.test.tsx` | Vérifié par les tests ; écran non vérifié dans le navigateur (MP-11) |
 | REQ-209 (part MP-08) | `identity-users-password.test.ts` (INV-AUD-02 : mot de passe provisoire masqué dans l'inbox, l'événement et l'audit ; audit de la réinitialisation sans secret), `redact.test.ts` | Vérifié |
 | REQ-208 (part MP-06) | `identity-devices-scope.test.ts` (BR-ADM-025 : équipe, site, zone, site de rattachement ; AV-258 à AV-261), `seed.test.ts` (lecture du Resp. production) | Vérifié |
+| REQ-203 (part MP-09) | PWA : `outbox.test.ts` (SM-SYNC-COMMAND, BR-SYN-009 : opération refusée ou en conflit classée sans changer de statut ni être effacée, compteur ; AV-283), `SyncScreen.test.tsx` (types d'opération en français, classement par le seul auteur) | Vérifié |
+| REQ-009 (part MP-09) | `crm-activity-commands.test.ts` (AV-248 : résultat « Autre » sans commentaire refusé en ligne, accepté hors ligne) ; PWA : `NewVisitScreen.test.tsx` (envoi bloqué sans commentaire) | Vérifié |
+| REQ-051 (part MP-09) | PWA : `collect.test.ts`, `CollectScreen.test.tsx` (« Encaisser le reste dû » : montant prérempli, affectation à la vente du reçu, surplus en avoir, retour à l'automatique, vente déjà réglée, envoi attendu après la lecture des créances ; AV-284), `SalesScreens.test.tsx` (lien ciblé, points signalés en français) | Vérifié |
 
 ### 17.10 Phase P8 (13/10/2026) — [`18-demonstration-p8.md`](18-demonstration-p8.md)
 

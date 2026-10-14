@@ -426,11 +426,14 @@ export function LossScreen() {
         )
       ) : null}
       {draft.productId || draft.quantityText || draft.category
-        ? check.issues.map((issue) => (
-            <p key={issue} className="error-message">
-              {t(`loss.issue.${issue}`)}
-            </p>
-          ))
+        ? check.issues
+            // Quantité jugée seulement une fois saisie : rien d'affiché au choix du produit (MP-09).
+            .filter((issue) => issue !== 'QUANTITY_INVALID' || draft.quantityText !== '')
+            .map((issue) => (
+              <p key={issue} className="error-message">
+                {t(`loss.issue.${issue}`)}
+              </p>
+            ))
         : null}
       <p className="home-muted">{t('loss.photo_hint')}</p>
       {saveError ? (

@@ -7,6 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { computeBadgeState, type BadgeState } from '../../sync/badge-state.js';
+import { needsAttention } from '../../sync/outbox.js';
 import { clock } from '../../platform/composition.js';
 
 export interface SyncStatus {
@@ -29,7 +30,8 @@ export function useSyncStatus(): SyncStatus | undefined {
       pending: allOutbox.filter(
         (c) => c.status === 'LOCAL_ONLY' || c.status === 'PENDING_SYNC' || c.status === 'SYNCING',
       ),
-      attention: allOutbox.filter((c) => c.status === 'CONFLICT' || c.status === 'REJECTED'),
+      // Une opération classée par l'utilisateur ne compte plus (MP-09, AV-283).
+      attention: allOutbox.filter(needsAttention),
       lastSyncAt: meta?.last_sync_at ?? null,
     };
   }, []);
