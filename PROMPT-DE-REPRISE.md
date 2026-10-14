@@ -134,7 +134,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 3. **MP-10** : photo jointe (prise de vue, stockage hors ligne, envoi, rattachement ; régularisation de la « photo manquante ») ;
 4. **MP-11** : revue adverse du lot, vérification dans le navigateur, clôture.
 
-En parallèle ou ensuite, à choisir avec le porteur : **écrans de P8** (ECR-FIN-02 à 06, ECR-APP-05) ; constat A7 de la revue de P8 (verrou des frais généraux) ; **revue des AV** de P5 et de P8 ; P9 (alertes, tableaux).
+En parallèle (décision du porteur du 14/10/2026) : la session parallèle corrige le constat A7 de la revue de P8 (verrou des frais généraux), puis mène le **serveur de P9** ([`PROMPT-LANCEMENT-P9.md`](PROMPT-LANCEMENT-P9.md), branche `claude/p9-analytics`) ; la session principale l'intègre. Ensuite, à choisir avec le porteur : **écrans de P8** (ECR-FIN-02 à 06, ECR-APP-05), **revue des AV** de P5 et de P8.
 
 Pour la phase retenue : lire sa fiche et son backlog dans le plan (§4), les lignes de la matrice, les domaines, tables, machines à états et tests d'acceptation cités (CLAUDE.md §4), puis avancer par petits incréments commités avec leurs tests et documents.
 
