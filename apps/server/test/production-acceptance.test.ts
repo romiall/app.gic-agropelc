@@ -17,13 +17,24 @@
  * - AT-053 : l'administrateur ajoute un calibre d'œufs (produit + paramètre) : utilisable aussitôt
  *   par la collecte, sans changer le modèle de mouvement ; les collectes antérieures sont
  *   inchangées.
+ * - P8-13 (ADR-044 §1, §3, §5) : AT-026 avec la litière de 140 000 en dépense directe
+ *   (`finance.expense.record`, validée par la production, imputée au lot) — mêmes totaux, détail
+ *   `DEPENSE_DIRECTE` ; AT-041 sur ce lot (pertes par lot, motif et produit ; coût du lot inchangé par
+ *   la mortalité) ; le lot abattu dont les produits sont vendus porte leur CA (`lotWithSales`, la
+ *   composition de `GET /production/lots/:id`).
  * AT-028 et AT-029 : production-egg-collection-commands.test.ts, production-incubation-commands.
  *
  * Les politiques de mortalité du test valent une journée (la plus récente l'emporte) ; les codes
  * des calibres de AT-053 sont stables d'une exécution à l'autre (paramètres sans fin de validité).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
+import {
+  FixedClock,
+  Uuidv7Generator,
+  businessDayEndUtc,
+  businessDayStartUtc,
+  type IdGenerator,
+} from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
@@ -40,13 +51,17 @@ import { registerDailyCommands } from '../src/modules/production/application/com
 import { registerEggCollectionCommands } from '../src/modules/production/application/commands/egg-collection-commands.js';
 import { registerSlaughterCommands } from '../src/modules/production/application/commands/slaughter-commands.js';
 import { registerSaleCommands } from '../src/modules/sales/application/commands/sale-commands.js';
+import { registerExpenseCommands } from '../src/modules/finance/application/commands/expense-commands.js';
+import { registerExpenseDecisions } from '../src/modules/finance/application/commands/expense-decisions.js';
 import { lotRevenue } from '../src/modules/sales/application/public/index.js';
 import {
   ensureSupplierLot,
+  lossValueSummary,
   lotHeadcount,
   recordStockMove,
   virtualLocationId,
 } from '../src/modules/inventory/application/public/index.js';
+import { lotWithSales } from '../src/production-api/lot-margin.js';
 import { getProductionLot } from '../src/modules/production/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
@@ -121,6 +136,7 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
     aggregateId: string,
     occurredAt: string,
     payload: unknown,
+    attachmentIds: readonly string[] = [],
   ): Promise<Result> {
     return pipeline.handle(
       {
@@ -137,7 +153,7 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
         client_created_at: occurredAt,
         captured_offline: false,
         backdated_reason: null,
-        attachment_ids: [],
+        attachment_ids: [...attachmentIds],
         payload,
       },
       {
@@ -243,6 +259,8 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
     registerEggCollectionCommands(registry, idGenerator, sequences);
     registerSlaughterCommands(registry, idGenerator, sequences);
     registerSaleCommands(registry, idGenerator, sequences);
+    registerExpenseCommands(registry, idGenerator, sequences);
+    registerExpenseDecisions(decisions, idGenerator);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     const roles = {
@@ -1056,5 +1074,264 @@ describe('P7-13 et P4-13 : tests d’acceptation de la production (parts P7 et P
       .where('collection_id', '=', toBin(before.id))
       .execute();
     expect(earlierLines.map((l) => [fromBin(l.product_id), l.quantity])).toEqual([[mediumId, 100]]);
+  });
+
+  it('AT-026 (part P8) et AT-041 : litière de 140 000 en dépense directe validée ; pertes par lot, motif et produit ; lot abattu dont les produits sont vendus', async () => {
+    const lots = await openingStock([
+      { productId: chickId, ref: 'PC8', quantity: 2400, cost: 450 },
+      { productId: feedId, quantity: 280, cost: 15_000 },
+      { productId: vaccineId, quantity: 36, cost: 5_000 },
+    ]);
+    const lotId = await lotWithEntries(
+      'POULET_CHAIR',
+      broilerId,
+      buildingId,
+      at('06:00:00', '2026-09-15'),
+      [{ productId: chickId, lotId: lots.get('PC8')!, quantity: 2400 }],
+    );
+    const netOf = async () => (await getProductionLot(db, lotId))!.costs.netXaf;
+
+    // La litière n'est plus un intrant consommé : une dépense de la ferme imputée au lot (ADR-044 §5).
+    // 140 000 > seuil de validation (50 000) : en attente et sans coût jusqu'à la décision (ADR-042).
+    const policyId = freshUuid();
+    await ok(
+      policyAdmin,
+      'approvals.policy.set',
+      'CONTROL_POLICY',
+      policyId,
+      at('00:00:00', '2026-09-15'),
+      {
+        code: `EXPENSE_${policyId.slice(-8)}`,
+        operationType: 'EXPENSE',
+        validFrom: at('00:00:00', '2026-09-15'),
+        validTo: at('23:59:59', '2026-09-15'),
+        requiresApproval: true,
+        approverPermission: 'finance.expense.approve',
+        approverScope: 'ALL',
+      },
+    );
+    const supplies = await db
+      .selectFrom('finance_expense_categories')
+      .select('id')
+      .where('code', '=', 'FOURNITURES')
+      .executeTakeFirstOrThrow();
+    const expenseId = freshUuid();
+    const photo = freshUuid();
+    await ok(
+      farmManager,
+      'finance.expense.record',
+      'EXPENSE',
+      expenseId,
+      at('09:00:00', '2026-09-15'),
+      {
+        categoryId: fromBin(supplies.id),
+        amountXaf: 140_000,
+        description: 'Litière : 140 balles',
+        siteId: farmId,
+        costObject: { type: 'PRODUCTION_LOT', id: lotId },
+        paidNow: false,
+      },
+      [photo],
+    );
+    const expense = () =>
+      db
+        .selectFrom('finance_expenses')
+        .select(['status', 'approval_request_id'])
+        .where('id', '=', toBin(expenseId))
+        .executeTakeFirstOrThrow();
+    expect((await expense()).status).toBe('PENDING_APPROVAL');
+    expect(await netOf()).toBe(1_080_000);
+    await db
+      .insertInto('attachments_attachments')
+      .values({
+        id: toBin(photo),
+        owner_type: 'EXPENSE',
+        owner_id: toBin(expenseId),
+        kind: 'RECEIPT',
+        mime_type: 'image/jpeg',
+        size_bytes: 1_000,
+        uploaded_bytes: 1_000,
+        sha256: 'c'.repeat(64),
+        storage_key: `test/${photo}`,
+        upload_status: 'AVAILABLE',
+        captured_at: new Date(at('09:00:00', '2026-09-15')),
+        occurred_at: new Date(at('09:00:00', '2026-09-15')),
+        created_by: toBin(farmManager.userId),
+      })
+      .execute();
+    const requestId = fromBin((await expense()).approval_request_id!);
+    await ok(
+      productionManager,
+      'approvals.request.approve',
+      'APPROVAL_REQUEST',
+      requestId,
+      at('10:00:00', '2026-09-15'),
+      { requestId },
+    );
+    expect((await expense()).status).toBe('APPROVED');
+    expect(await netOf()).toBe(1_220_000);
+
+    const consume = (productId: string, quantity: number, costType: string, day: string) =>
+      ok(farmManager, 'production.input.record', 'CONSUMPTION', freshUuid(), at('09:00:00', day), {
+        productionLotId: lotId,
+        locationId: storeId,
+        productId,
+        quantityBase: quantity,
+        unitCode: productId === feedId ? 'SAC' : 'FLACON',
+        quantity,
+        costType,
+      });
+    await consume(feedId, 280, 'ALIMENT', '2026-09-20');
+    await consume(vaccineId, 36, 'VETERINAIRE', '2026-09-25');
+    // 90 morts en trois déclarations, un jour propre à ce test (la plus récente politique l'emporte).
+    await mortalityPolicy('2026-09-18', { requiresApproval: false, requiresPhoto: false });
+    for (const [time, quantity] of [
+      ['08:00:00', 40],
+      ['12:00:00', 30],
+      ['17:00:00', 20],
+    ] as const) {
+      await ok(
+        farmManager,
+        'production.mortality.record',
+        'STOCK_LOSS',
+        freshUuid(),
+        at(time, '2026-09-18'),
+        { productionLotId: lotId, quantity },
+      );
+    }
+
+    // AT-026 : mêmes totaux que l'exemple de la stratégie finance, litière en DEPENSE_DIRECTE.
+    const lot = (await getProductionLot(db, lotId))!;
+    expect(lot.headcount).toEqual({ unsold: 2310, rearing: 2310 });
+    const byType = Object.fromEntries(lot.costs.breakdown.map((l) => [l.costType, l.netXaf]));
+    expect(byType).toMatchObject({
+      ANIMAUX: 1_080_000,
+      ALIMENT: 4_200_000,
+      VETERINAIRE: 180_000,
+      DEPENSE_DIRECTE: 140_000,
+    });
+    expect(byType.AUTRE_INTRANT ?? 0).toBe(0);
+    expect(lot.costs.netXaf).toBe(5_600_000);
+    expect(lot.costs.costPerHeadXaf).toBe(2424);
+
+    // AT-041 : quelles pertes ? Par lot, par motif, par produit, en quantité et en valeur figée ; la
+    // mortalité ne change pas le coût du lot (BR-PRD-013), elle le répartit sur moins de têtes.
+    const declared = await db
+      .selectFrom('inventory_loss_declarations')
+      .select('value_xaf')
+      .where('production_lot_id', '=', toBin(lotId))
+      .execute();
+    expect(declared).toHaveLength(3);
+    const lossValue = declared.reduce((sum, row) => sum + Number(row.value_xaf), 0);
+    expect(lossValue).toBeGreaterThan(0);
+    const period = {
+      fromUtc: businessDayStartUtc('2026-09-18'),
+      toUtc: businessDayEndUtc('2026-09-18'),
+      siteIds: [farmId],
+    };
+    const counted = {
+      declarations: 3,
+      quantityBase: 90,
+      valueXaf: lossValue,
+      pendingQuantityBase: 0,
+    };
+    expect(await lossValueSummary(db, { ...period, groupBy: 'lot' })).toEqual([
+      expect.objectContaining({ productionLotId: lotId, ...counted }),
+    ]);
+    expect(await lossValueSummary(db, { ...period, groupBy: 'reason' })).toEqual([
+      expect.objectContaining({ category: 'MORTALITE', ...counted }),
+    ]);
+    expect(await lossValueSummary(db, { ...period, groupBy: 'product' })).toEqual([
+      expect.objectContaining({ productId: broilerId, ...counted }),
+    ]);
+
+    // Lot abattu, produits livrés dans le camion du responsable de ferme, puis 1 000 pièces vendues :
+    // le CA du lot comprend celui de ses produits (ADR-044 §1, AV-279).
+    const truck = freshUuid();
+    await db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto('organization_locations')
+        .values({
+          id: toBin(truck),
+          site_id: toBin(farmId),
+          code: truck.replace(/-/g, '').slice(-8).toUpperCase(),
+          name: 'Camion de livraison',
+          location_type: 'MOBILE',
+          custody_mode: 'EXCLUSIVE_USER',
+          custodian_user_id: toBin(farmManager.userId),
+          created_by: toBin(admin.userId),
+        })
+        .execute();
+      await trx
+        .updateTable('catalog_products')
+        .set({ is_sellable: 1 })
+        .where('id', '=', toBin(wholeId))
+        .execute();
+      const ruleId = freshUuid();
+      await trx
+        .insertInto('pricing_price_rules')
+        .values({
+          id: toBin(ruleId),
+          code: `PR-${ruleId.slice(-12)}`,
+          version: 1,
+          product_id: toBin(wholeId),
+          unit_price_xaf: 5_000,
+          pricing_unit_code: 'PIECE',
+          status: 'ACTIVE',
+          valid_from: new Date('2026-01-01T00:00:00.000Z'),
+          approved_by: toBin(admin.userId),
+          approved_at: new Date('2026-01-01T00:00:00.000Z'),
+          created_by: toBin(admin.userId),
+        })
+        .execute();
+    });
+    await ok(
+      farmManager,
+      'production.slaughter.record',
+      'SLAUGHTER',
+      freshUuid(),
+      at('08:00:00', '2026-10-26'),
+      {
+        productionLotId: lotId,
+        sourceLocationId: buildingId,
+        slaughterhouseLocationId: houseId,
+        heads: 2310,
+        condemnedHeads: 0,
+        liveWeightG: 4_620_000,
+        outputs: [
+          { productId: wholeId, toLocationId: truck, quantityBase: 2310, weightG: 3_234_000 },
+        ],
+      },
+    );
+    const beforeSale = await lotWithSales(db, (await getProductionLot(db, lotId))!);
+    expect(beforeSale.sales).toMatchObject({ netRevenueXaf: 0, lotMarginXaf: -5_600_000 });
+    await ok(farmManager, 'sales.sale.record', 'SALE', freshUuid(), at('10:00:00', '2026-10-26'), {
+      fromLocationId: truck,
+      lines: [
+        {
+          productId: wholeId,
+          quantity: 1000,
+          unitCode: 'PIECE',
+          quantityBase: 1000,
+          listUnitPriceXaf: 5_000,
+          unitPriceXaf: 5_000,
+        },
+      ],
+      payments: [{ methodCode: 'ESPECES', amountXaf: 5_000_000, cashAccountId: farmCash }],
+    });
+    const detail = await lotWithSales(db, (await getProductionLot(db, lotId))!);
+    expect(detail.sales).toMatchObject({
+      netRevenueXaf: 5_000_000,
+      slaughterProductsRevenueXaf: 5_000_000,
+      soldQuantity: 0,
+      lotMarginXaf: 5_000_000 - 5_600_000,
+    });
+    // Coût figé des 1 000 pièces : une part du coût du lot emporté par l'abattage.
+    expect(detail.sales.costOfSalesXaf).toBeGreaterThan(2_400_000);
+    expect(detail.sales.costOfSalesXaf).toBeLessThan(2_450_000);
+    expect(detail.sales.grossMarginXaf).toBe(5_000_000 - detail.sales.costOfSalesXaf);
+    expect(detail.costs.monthly.find((line) => line.period === '2026-10')?.revenueXaf).toBe(
+      5_000_000,
+    );
   });
 });

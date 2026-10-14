@@ -103,3 +103,33 @@ export type {
   CashSessionsOverview,
   PendingCashTransfers,
 } from './distribution-metrics.js';
+
+// P8-09 : lectures de la finance opérationnelle (dépenses, factures et paiements fournisseurs, dettes).
+export {
+  OPERATIONS_LIST_DEFAULT_LIMIT,
+  OPERATIONS_LIST_MAX_LIMIT,
+  listExpenses,
+  getExpense,
+  listSupplierInvoices,
+  getSupplierInvoice,
+  listSupplierPayments,
+  getSupplierPayment,
+  supplierPayables,
+  paidXafOfPurchaseOrder,
+  expensesSummary,
+} from './operations-query.js';
+export type {
+  ExpenseSummary,
+  ExpenseFilter,
+  SupplierInvoiceSummary,
+  SupplierInvoiceLine,
+  PaymentAllocationView,
+  SupplierPaymentSummary,
+  PayableLine,
+  SupplierPayables,
+  ExpensesSummary,
+} from './operations-query.js';
+
+// P8-12 : vérification de la finance opérationnelle (INV-FIN-07, INV-FIN-08), réconciliation quotidienne.
+export { verifyExpenses, verifySupplierLedger } from './operations-verification.js';
+export type { OperationsBreach, OperationsVerification } from './operations-verification.js';

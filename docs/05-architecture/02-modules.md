@@ -156,7 +156,7 @@
 |---|---|
 | Responsabilité | Fournisseurs, demandes d'achat, bons de commande, réceptions |
 | Tables | `suppliers`, `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `purchase_order_lines`, `goods_receipts`, `goods_receipt_lines` |
-| API | §4.8 ; interne : `procurement.supplier(id)`, `procurement.poLineMatching(poLine)`, `procurement.receiptForPlacement(receipt)` (mise en place directe : réception et entrée de lot dans le même lot de commandes, AV-112) |
+| API | §4.8 ; interne : `findSupplier(id)` (P8-05), `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing` (facturation par `finance`, ADR-043 §3, P8-07), `purchaseOrderMatching`, `procurement.receiptForPlacement(receipt)` (mise en place directe : réception et entrée de lot dans le même lot de commandes, AV-112) |
 | Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory` |
 | Interdites | `finance`, `production`, `sales` |

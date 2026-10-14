@@ -40,6 +40,7 @@ import {
   type ResourceLocator,
 } from '../modules/identity/application/public/index.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
+import { paidXafOfPurchaseOrder } from '../modules/finance/application/public/index.js';
 import {
   PROCUREMENT_LIST_DEFAULT_LIMIT,
   PROCUREMENT_LIST_MAX_LIMIT,
@@ -58,6 +59,7 @@ import {
 
 const ORDER_READ = 'procurement.order.read';
 const VALUATION_READ = 'inventory.valuation.read';
+const PAYABLE_READ = 'finance.payable.read';
 
 const uuid = z.string().uuid();
 const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ.');
@@ -388,7 +390,13 @@ export class ProcurementReadController {
       await purchaseOrderMatching(this.db, id),
       siteResourceOf,
     );
-    return { matching: (await this.canValue(request, now)) ? matching : maskMatching(matching) };
+    if (!(await this.canValue(request, now))) return { matching: maskMatching(matching) };
+    // P8-09 (ADR-043 §3) : le payé du BC vient de `finance` (composition de transport, `procurement`
+    // n'importe pas `finance`) ; revue de P8-14 : seulement pour qui lit les dettes (AV-278).
+    const paidXaf = (await hasPermissionAt(this.db, toBin(request.auth!.sub), PAYABLE_READ, now))
+      ? await paidXafOfPurchaseOrder(this.db, id)
+      : null;
+    return { matching: { ...matching, totals: { ...matching.totals, paidXaf } } };
   }
 
   @Get('receipts')

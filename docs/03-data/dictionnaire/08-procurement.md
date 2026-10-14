@@ -99,7 +99,7 @@
 | `unit_price_xaf` | money_xaf | Non | — | Par unité de base |
 | `line_total_xaf` | money_xaf | Non | — | |
 | `accepted_qty_base` | qty | Non | 0 | Σ acceptés des réceptions `POSTED` (dénormalisé) |
-| `invoiced_qty_base` | qty | Non | 0 | Σ facturés (dénormalisé) |
+| `invoiced_qty_base` | qty | Non | 0 | Σ facturés (dénormalisé) : quantités des factures fournisseurs approuvées, écrites par `applyInvoicedQuantities` à l'appel de `finance` (ADR-043 §3, P8-07) |
 | `closed_qty_base` | qty | Non | 0 | Reliquat clôturé |
 | `excess_qty_base` | qty | Non | 0 | DÉDUIT (P6-02) : excédent accepté hors ligne au-delà du commandé, en revue `OVER_RECEIPT` (BR-APP-010) |
 | `status` | enum(`OPEN`,`RECEIVED`,`CLOSED`,`CANCELLED`) | Non | `OPEN` | |

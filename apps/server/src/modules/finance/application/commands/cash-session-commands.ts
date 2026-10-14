@@ -418,27 +418,39 @@ async function createSession(
   // P5-14 (AV-184) : une ouverture appliquée après coup (saisie hors ligne, synchronisée plus tard)
   // couvre, par le temps, les encaissements en espèces de la caisse saisis hors ligne sans session
   // depuis son heure d'ouverture : leurs conflits CASH_SESSION_MISSING sont résolus (l'index des
-  // mouvements n'est jamais réécrit, ADR-032 §2 : la lecture se fait par la fenêtre).
-  const uncovered = await uow
-    .selectFrom('finance_cash_movements')
-    .select('source_doc_id')
-    .where('cash_account_id', '=', toBin(account.id))
-    .where('movement_type', '=', 'CUSTOMER_PAYMENT')
-    .where('source_doc_type', '=', 'CUSTOMER_PAYMENT')
-    .where('is_reversal', '=', 0)
-    .where('cash_session_id', 'is', null)
-    .where('occurred_at', '>=', openedAt)
-    .execute();
-  await resolveOpenConflicts(uow, {
-    conflictType: 'CASH_SESSION_MISSING',
-    entityType: 'CUSTOMER_PAYMENT',
-    entityIds: uncovered.map((row) => fromBin(row.source_doc_id)),
-    resolution: 'MERGE',
-    resolvedBy: author,
-    resolvedAt: openedAt,
-    comment: 'Encaissement couvert par une session de caisse ouverte après coup (AV-184).',
-    refs: [sessionId],
-  });
+  // mouvements n'est jamais réécrit, ADR-032 §2 : la lecture se fait par la fenêtre). P8-05 (AV-267) :
+  // de même pour les dépenses payées en espèces par la caisse du PDV.
+  for (const kind of [
+    {
+      type: 'CUSTOMER_PAYMENT',
+      comment: 'Encaissement couvert par une session de caisse ouverte après coup (AV-184).',
+    },
+    {
+      type: 'EXPENSE',
+      comment: 'Dépense couverte par une session de caisse ouverte après coup (AV-267).',
+    },
+  ] as const) {
+    const uncovered = await uow
+      .selectFrom('finance_cash_movements')
+      .select('source_doc_id')
+      .where('cash_account_id', '=', toBin(account.id))
+      .where('movement_type', '=', kind.type)
+      .where('source_doc_type', '=', kind.type)
+      .where('is_reversal', '=', 0)
+      .where('cash_session_id', 'is', null)
+      .where('occurred_at', '>=', openedAt)
+      .execute();
+    await resolveOpenConflicts(uow, {
+      conflictType: 'CASH_SESSION_MISSING',
+      entityType: kind.type,
+      entityIds: uncovered.map((row) => fromBin(row.source_doc_id)),
+      resolution: 'MERGE',
+      resolvedBy: author,
+      resolvedAt: openedAt,
+      comment: kind.comment,
+      refs: [sessionId],
+    });
+  }
 
   if (openingVarianceXaf !== 0) {
     await publishVariance(uow, deps, {

@@ -221,6 +221,59 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-055',
   },
+  // P8-03 (ADR-042 §2 et §5) : seuils des dépenses, comparaisons strictes ; visibles de l'appareil,
+  // qui les applique hors ligne (justificatif, validation annoncée, plafond du PDV).
+  {
+    key: 'finance.expense_approval_threshold_xaf',
+    value: 50_000,
+    isClientVisible: true,
+    ref: 'AV-058',
+  },
+  {
+    key: 'finance.expense_photo_threshold_xaf',
+    value: 10_000,
+    isClientVisible: true,
+    ref: 'AV-058',
+  },
+  {
+    key: 'finance.pos_expense_max_xaf',
+    value: 50_000,
+    isClientVisible: true,
+    ref: 'AV-266',
+  },
+  // P8-03 (ADR-043) : rapprochement d'une facture (tolérances nulles, AV-053), facture sans BC
+  // (`REVIEW` ou `APPROVE`, AV-271), avances fournisseurs (AV-275), série des documents `FF` et `PF`
+  // (1 à 10 lettres majuscules ou chiffres, sinon `SIEGE`).
+  {
+    key: 'finance.invoice_match_qty_tolerance_pct',
+    value: 0,
+    isClientVisible: false,
+    ref: 'AV-053',
+  },
+  {
+    key: 'finance.invoice_match_price_tolerance_xaf',
+    value: 0,
+    isClientVisible: false,
+    ref: 'AV-053',
+  },
+  {
+    key: 'finance.invoice_without_po_mode',
+    value: 'REVIEW',
+    isClientVisible: false,
+    ref: 'AV-271',
+  },
+  {
+    key: 'finance.supplier_advance_allowed',
+    value: true,
+    isClientVisible: false,
+    ref: 'AV-275',
+  },
+  {
+    key: 'finance.supplier_series_code',
+    value: 'SIEGE',
+    isClientVisible: false,
+    ref: 'AV-176',
+  },
   {
     key: 'procurement.po_approval_threshold_xaf',
     value: 500_000,

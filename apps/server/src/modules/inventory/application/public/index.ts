@@ -132,6 +132,8 @@ export {
   SPECIES_GROUPS,
   recordCostEntry,
   costObjectBalance,
+  lotCostObjectStatus,
+  siteOverheadMonthAllocated,
 } from './cost-entries.js';
 export type {
   CostObjectType,
@@ -221,3 +223,7 @@ export type {
 } from './allocation-query.js';
 // P5-17 (AV-190) : anomalies de stock encore présentes, avant la clôture manuelle de leur conflit.
 export { hasNegativeStock, isAllocationOvercommitted } from './stock-conflict-conditions.js';
+
+// P8-11 (ADR-044 §3 ; BR-FIN-044, KPI-FIN-08 ; AT-041) : valeur des pertes d'une période.
+export { LOSS_SUMMARY_GROUPS, lossValueSummary } from './loss-summary.js';
+export type { LossSummaryGroup, LossSummaryLine } from './loss-summary.js';

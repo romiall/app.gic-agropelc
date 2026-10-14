@@ -50,7 +50,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
   - **renouvellement de session côté PWA** : `ensureAccessToken` ne lance qu'un renouvellement à la fois (le jeton de rafraîchissement tourne à chaque appel et sa réutilisation est refusée) ; tout nouvel écran qui appelle l'API passe par `authorizedRequest`, jamais par `fetch` direct ;
   - une migration **modifiée sur place** après avoir été appliquée n'est pas rejouée par dbmate : comparer une base reconstruite depuis les migrations à la base de test en cas d'échec inexpliqué d'une contrainte (`SHOW CREATE TABLE`).
 
-## 2. État du projet (vérifié le 13/10/2026)
+## 2. État du projet (vérifié le 14/10/2026)
 
 | Phase | État | Référence |
 |---|---|---|
@@ -63,14 +63,22 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 | P6 Approvisionnement | Code terminé ; reprise prévue pour AV-096 (réception hors site après validation) | `11-demonstration-p6.md` |
 | P7 Production | Code terminé (CA et marge des lots livrés en P4) | `12-demonstration-p7.md` |
 | **P5 Distribution et PDV** | **Code terminé** (P5-01 à P5-24, 13/10/2026) : caisse (sessions, validation, réévaluation par le delta, remises de fonds), quotas d'appareil, garde des emplacements (jugée à la date du fait, ADR-040), réception sans document, tableau de distribution (ADR-035) et accueil sur une seule définition (ADR-041), jeux hors ligne de P5, invariants balayés, ordre de verrouillage (ADR-038) ; écrans de P5 intégrés | `14-demonstration-p5.md` |
-| P8, P9, P10 | Non commencées | plan §4 |
+| **P8 Finance opérationnelle** | **Code serveur terminé** (P8-01 à P8-15, 13/10/2026, menée en parallèle sur `claude/p8-finance` puis intégrée) : dépenses, factures et paiements fournisseurs, dettes, coûts complets et marges, vue d'ensemble financière ; ADR-042 à ADR-044, AV-263 à AV-279 ; écrans ECR-FIN-02 à 06 et ECR-APP-05 à livrer | `18-demonstration-p8.md` |
+| **Lot de mise en pilote (MP)** | **En cours** : MP-01 à MP-07 faits (référentiels de départ, caisse sans limite par jour, réception sans photo signalée, connexion d'un appareil hors service, écran Appareils ECR-ADM-05, file de validation ECR-ADM-08, auto-validation réservée à la Direction, aucune décision hors ligne) ; restent MP-08 (mot de passe) à MP-11 (revue, navigateur, clôture) | plan §4 |
+| P9, P10 | Non commencées | plan §4 |
 
-- Tests au 13/10 (clôture de P5, base neuve `gic_agropelc_p523d`) : domaine **364** (24 fichiers, couverture 99,1 %), contrats **222** (9), base **188** (20), PWA **507** (72, après F-78), serveur **1 111** (127 fichiers ; ~15 à 40 min selon la charge du poste ; sous forte charge, des dépassements de délai de 20 s apparaissent sans défaut du code : relancer isolément les fichiers en échec) ; typage, lint, frontières et références verts. La CI GitHub n'a pas tourné sur ces commits (rien n'est poussé).
+- Tests au 14/10 (après MP-07 et l'intégration de P8, base neuve `gic_agropelc_mp8i`) : domaine **410** (27 fichiers, couverture 99,25 %), contrats **238** (10), base **201** (21), PWA **541** (76), serveur **1 191** passés sur 141 fichiers (un fichier, `p5-distribution-metrics`, interrompu par un arrêt du lanceur sous charge, vert quand on le rejoue seul) ; typage, frontières et lint verts. Une suite serveur complète prend 11 à 40 min selon la charge du poste ; sous forte charge, un dépassement de délai ou un arrêt du lanceur peut survenir sans défaut du code : relancer isolément le fichier concerné.
 - Git : `main` sur GitHub contient le travail local poussé le 07/10 (jusqu'à P4-06, commit `417c791`) ; la branche **`claude/brave-pasteur-c7q4y7`** porte en plus les correctifs de CI, P4-06 (revue), P4-07 à P4-14 et AV-150 (poussés le 07/10), puis, **en local seulement**, ADR-030, P5-01 à P5-24, les écrans des phases P1 à P4, P6 et P7 (fork `claude/pwa-ecrans`, fusionné le 12/10) et ceux de P5 (fork `claude/pwa-p5`, fusionné le 13/10, adaptations F-76 à F-78 comprises). Le fork peut encore livrer des adaptations sur `claude/pwa-p5` (worktree `.claude/worktrees/pwa-ecrans` ; plages réservées : AV 330 à 349, ADR 052 à 059, besoins S-53 et suivants) : les intégrer ici, numéros renumérotés. Toute fusion dans `main` (pull request) est à la main du porteur. Les branches `claude/p5-*` et leurs worktrees (lots parallèles du 10/10, réunis par squash) sont jetables.
 - Écrans PWA : **34 écrans** des phases P1 à P4, P6 et P7, plus l'accueil et la navigation par rôle (F-01 à F-55), puis les **écrans de P5** (ECR-DIS-01 à 04, ECR-STK-06, ECR-FIN-05, ECR-FIN-07 ; F-56 à F-78 ; ADR-039, AV-231 à AV-242), suivi [`docs/10-development-plan/15-ecrans-pwa.md`](docs/10-development-plan/15-ecrans-pwa.md) ; non livrés : ECR-CRM-06 et ECR-TER-02 (besoin serveur S-28), changement d'utilisateur sur une tablette partagée (reporté à une phase dédiée, décision du porteur du 13/10/2026), écrans de P8 à P10. **Vérification dans le navigateur : commencée par le porteur** le 13/10 (compte de démonstration local, connexion réussie), pas encore menée écran par écran. Besoins serveur et leur statut : [`16-besoins-serveur-des-ecrans.md`](docs/10-development-plan/16-besoins-serveur-des-ecrans.md). Aucun déploiement.
-- Avancement estimé (13/10, pondéré par les durées indicatives du plan, DÉDUIT) : développement ≈ 73 % (P0 à P3 et P6 ≈ 95 %, P4, P5 et P7 100 %, P8, P9 et P10 à 0 %) ; il reste environ 10 semaines de développement, plus la vérification dans le navigateur et sur appareil et le déploiement.
+- Avancement estimé (DÉDUIT, pondéré par les durées indicatives du plan) : ≈ 71 % au 13/10 avant P8 et le lot MP ; depuis, le code serveur de P8 et MP-01 à MP-07 sont faits. Restent : écrans de P8, MP-08 à MP-11, P9, P10, la vérification sur appareil et le déploiement.
 
-## 3. Ce qu'ont fait les sessions du 12/10 au 13/10/2026 (P5-23, P5-24)
+## 3. Ce qu'ont fait les sessions du 13/10 au 14/10/2026 (vérification des écrans, lot MP, P8)
+
+- **Vérification des écrans dans le navigateur** (13/10) avec le porteur, sur le compte de démonstration : une quarantaine d'écrans sans erreur, quatorze opérations réelles ; trois manques avant tout pilote (file de validation, écran des appareils, photo jointe) et des défauts d'affichage, transformés en **lot de mise en pilote** (MP-01 à MP-11, plan §4) ; décisions du porteur au journal du 13/10 d'`A-VALIDER.md` (AV-006, 017, 154, 246 à 254, 258 à 261).
+- **MP-01 à MP-07** faits (voir le tableau ci-dessus) ; AV-262 ouvert (refus après coup d'une remise ou d'un dépassement d'encours : décision tracée sans effet).
+- **P8** menée en parallèle par une autre session (prompt [`PROMPT-LANCEMENT-P8.md`](PROMPT-LANCEMENT-P8.md)), puis intégrée le 13/10 : renumérotation des AV provisoires 350 à 366 en AV-263 à AV-279 et des ADR 060 à 062 en ADR-042 à ADR-044, règles de décision de ses types dans `approvalDecisionSpec`, suites complètes sur base neuve. Constats de sa revue laissés hors P8 : A7 (l'annulation d'une dépense de frais généraux et `production.overhead.allocate` ne partagent aucun verrou ; même trou dans `inventory.overhead.cancel` de P7) et A6 (justificatif exigé jamais vérifié à l'arrivée du fichier : alerte asynchrone de P9) ; B4 (aucune garde hors ligne des décisions) corrigé en MP-07.
+
+## 3 bis. Ce qu'ont fait les sessions du 12/10 au 13/10/2026 (P5-23, P5-24)
 
 - **P5-23, revue adverse et correctifs** (onze lots, chacun vérifié par mutation) : gardes des référentiels et besoins serveur des écrans (S-02, S-20, S-29 à S-31, S-37, S-40, S-48) ; affectations sous verrou ; **curseur du pull** retenu derrière une fenêtre de stabilisation (AV-198) ; portée des commandes `inventory` (AV-182), quotas en vigueur à la date du fait et cumul (AV-211) ; opération de caisse entre deux sessions (AV-224) ; écart de remise sans politique (`close_discrepancy`, AV-183), encaissement d'une vente anonyme (AV-188) ; quarantaine d'un appareil débloqué ou retiré par l'historique de ses statuts (AV-212), appareil en attente `DEVICE_PENDING` (AV-228) ; horloge suspecte paramétrée (AV-216, AV-226, AV-227) ; garde exclusive refusée tant qu'un quota est actif (AV-230), fiche d'appareil servie à l'appareil seul ; **garde jugée à la date du fait** hors ligne (historique `organization_location_custody_periods`, ADR-040, INV-DIS-03 ; AV-243) ; **accueil et tableau de distribution sur une seule définition** par période d'activité (`period-activity.ts`, ADR-041 ; AV-200, AV-209, AV-244, AV-245).
 - **Écrans de P5** intégrés depuis le fork (F-56 à F-78) : AV-231 à AV-242, ADR-039, ECR-FIN-07, besoins S-43 à S-52.
@@ -78,7 +86,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 - **P5-24** : [`14-demonstration-p5.md`](docs/10-development-plan/14-demonstration-p5.md), matrice §17.8.
 - **Bases** : toutes les bases locales sont migrées jusqu'à `20261013090300` ; la base neuve **`gic_agropelc_p523d`** est la référence (suite complète verte au 13/10) ; `gic_agropelc_p523b` est polluée par des tests de mutation (jetable) ; `gic_agropelc_dev` porte les données de démonstration.
 
-## 3 bis. Ce qu'ont fait les sessions du 10/10 au 12/10/2026 (poste local, MySQL 8.4)
+## 3 ter. Ce qu'ont fait les sessions du 10/10 au 12/10/2026 (poste local, MySQL 8.4)
 
 - **Correctif de tests repris** (`b77f195`) : la session parallèle du 08/10 (worktree `amazing-grothendieck-f04efd`, non commité, sur l'ancien `main`) avait stabilisé les tests de politiques de contrôle face à la date réelle (`withoutActivePolicies`, `neutralizePolicy`) ; repris sur la branche, deux pièges ajoutés au §1.
 - **Lot 1 de P5 en parallèle** (un worktree et une base MySQL neuve par incrément, conception, critique, implémentation, revue adverse, contre-vérification, corrections), puis **intégration séquentielle par squash** : P5-11 (`ea1f660`), P5-12 (`38b40b9`, ADR-034), P5-15 (`a8f9d2b`), P5-16 (`7c18646`) ; AV-166 à AV-182 (renumérotés sans trou à l'intégration).
@@ -97,7 +105,7 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 - **MySQL meurt avec la session** qui l'a lancé : un plantage du shell (codes 107/66 même sur `echo`) a coupé deux passages de la suite, qui sont sortis en code 0 avec seulement une partie des fichiers. Vérifier le nombre de fichiers réellement passés avant de conclure ; relancer MySQL et repasser les fichiers manquants.
 - **Base de test** : `gic_agropelc_test` porte encore 36 versions de paramètres `production.*` datées dans le futur (pollution du 08/10) ; sa recréation (suppression puis migrations et seeds) attend le porteur, le classificateur du mode automatique ayant refusé le `DROP DATABASE`. En attendant, les suites tournent sur **`gic_agropelc_base`** (base neuve, mêmes comptes que `db/.env`, nom de base remplacé) ; bases de lot jetables `gic_agropelc_p511`, `p512`, `p515`, `p516`.
 
-## 3 ter. Ce qu'a fait la session du 07/10/2026 (environnement distant, MySQL 8.0)
+## 3 quater. Ce qu'a fait la session du 07/10/2026 (environnement distant, MySQL 8.0)
 
 - Dossier local poussé vers GitHub par le porteur ; travail poursuivi sur la branche `claude/brave-pasteur-c7q4y7`.
 - **CI rendue verte** : seeds dans la CI, tests du contrat d'accueil, exclusion des tests Playwright de vitest, faux positif gitleaks (gabarit de clés JWT), verrou de lecture partagé pour les frais généraux.
@@ -118,14 +126,15 @@ Tu reprends le développement de **GIC AGROPELC**, une application de gestion (v
 
 ## 5. Par où commencer
 
-**Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **1 111**, base **188**, domaine **364**, contrats **222**, PWA **507**) avant toute modification ; en cas d'échec, le signaler au porteur.
+**Étape 0 — vérifier le point de départ** : base de test migrée et semée, `db/.env` présent ; suites complètes vertes (serveur **1 191**, base **201**, domaine **410**, contrats **238**, PWA **541**) avant toute modification ; en cas d'échec, le signaler au porteur.
 
-**Étape 1 — la suite** : **P5 est terminée** (13/10/2026). Demander au porteur quoi engager (choix multiple, recommandation en premier) :
-1. **Vérification des écrans dans le navigateur** (P1 à P5) avec le porteur, sur le compte de démonstration — recommandé : rien n'a encore été vu écran par écran, et le pilote réel en dépend ;
-2. **Reprise de P6 pour AV-096** (réception hors site après validation), courte ;
-3. **P8 Finance opérationnelle** — dépenses, factures et paiements fournisseurs, rapprochement, dettes ;
-4. **Besoins serveur des écrans** encore ouverts (lot transverse, [`16-besoins-serveur-des-ecrans.md`](docs/10-development-plan/16-besoins-serveur-des-ecrans.md)) ;
-5. **Revue des AV de P5** avec le porteur (défauts à confirmer).
+**Étape 1 — la suite** : poursuivre le **lot de mise en pilote** dans l'ordre du plan §4 :
+1. **MP-08** : écran de changement du mot de passe imposé après la connexion (`must_change_password`, AV-251 : par l'écran seulement) ; réinitialisation par l'Admin avec un mot de passe saisi (AV-252 : route en ligne hors du journal des commandes, jamais journalisé en clair, sessions révoquées) — il manque une lecture `GET /users` et un écran minimal de la liste des utilisateurs ;
+2. **MP-09** : affichage (unités en libellés courts AV-249, drapeaux et types d'opération en français, liens des signaux, ventes signalées ventilées AV-255, « Encaisser le reste dû » ciblé, message de quantité prématuré, diagnostic de synchronisation retiré AV-250, valeur du stock avec le transit AV-256) ;
+3. **MP-10** : photo jointe (prise de vue, stockage hors ligne, envoi, rattachement ; régularisation de la « photo manquante ») ;
+4. **MP-11** : revue adverse du lot, vérification dans le navigateur, clôture.
+
+En parallèle ou ensuite, à choisir avec le porteur : **écrans de P8** (ECR-FIN-02 à 06, ECR-APP-05) ; constat A7 de la revue de P8 (verrou des frais généraux) ; **revue des AV** de P5 et de P8 ; P9 (alertes, tableaux).
 
 Pour la phase retenue : lire sa fiche et son backlog dans le plan (§4), les lignes de la matrice, les domaines, tables, machines à états et tests d'acceptation cités (CLAUDE.md §4), puis avancer par petits incréments commités avec leurs tests et documents.
 

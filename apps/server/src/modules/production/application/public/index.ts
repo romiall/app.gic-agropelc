@@ -36,3 +36,6 @@ export type {
 
 export { productionOverview } from './home-metrics.js';
 export type { ProductionOverview } from './home-metrics.js';
+
+// P8-11 (ADR-044 §1, AV-279) : lots de stock des produits d'abattage d'un lot (CA de la marge de lot).
+export { slaughterStockLotIds } from './lot-sale-lots.js';

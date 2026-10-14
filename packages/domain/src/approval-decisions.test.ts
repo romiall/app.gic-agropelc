@@ -39,6 +39,10 @@ describe('approval-decisions (MP-07, ECR-ADM-08)', () => {
       { key: 'correctedReference', required: false },
     ]);
     expect(approvalDecisionSpec('PRICE_OVERRIDE').recordOnly).toBe(true);
+    expect(approvalDecisionSpec('INVOICE_MISMATCH')).toEqual({
+      rejectable: true,
+      approveReasonRequired: true,
+    });
     expect(approvalDecisionSpec('CREDIT_LIMIT_EXCEEDED').recordOnly).toBe(true);
   });
 

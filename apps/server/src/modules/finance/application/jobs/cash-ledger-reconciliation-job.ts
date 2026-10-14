@@ -17,6 +17,7 @@ import {
 import { verifyCashLedger } from '../public/cash-accounts.js';
 import { verifyCashSessions } from '../public/cash-session-verification.js';
 import { verifyCashTransfers } from '../public/cash-transfer-query.js';
+import { verifyExpenses, verifySupplierLedger } from '../public/operations-verification.js';
 
 export const CASH_LEDGER_RECONCILIATION_JOB_TYPE = 'finance.cash.reconcile_daily';
 
@@ -34,7 +35,10 @@ export class CashLedgerReconciliationJob implements OnModuleInit {
       const ledger = await verifyCashLedger(uow);
       const transfers = await verifyCashTransfers(uow);
       const sessions = await verifyCashSessions(uow);
-      if (!ledger.ok || !transfers.ok || !sessions.ok) {
+      // P8-12 : dépenses et fournisseurs (INV-FIN-07, INV-FIN-08).
+      const expenses = await verifyExpenses(uow);
+      const suppliers = await verifySupplierLedger(uow);
+      if (!ledger.ok || !transfers.ok || !sessions.ok || !expenses.ok || !suppliers.ok) {
         const sections: string[] = [];
         if (!ledger.ok) {
           sections.push(
@@ -63,13 +67,24 @@ export class CashLedgerReconciliationJob implements OnModuleInit {
               ),
           );
         }
+        for (const [label, check] of [
+          ['dépense(s)', expenses],
+          ['document(s) fournisseur', suppliers],
+        ] as const) {
+          if (!check.ok) {
+            sections.push(
+              `${check.breaches.length} ${label} en écart` +
+                detail(check.breaches.map((b) => `${b.ref} ${b.invariant} : ${b.detail}`)),
+            );
+          }
+        }
         const message = `CASH_MISMATCH : ${sections.join(' ; ')}.`;
         this.logger.error(message);
         throw new Error(message);
       }
       this.logger.log(
         `Trésorerie réconciliée : ${ledger.accountsChecked} compte(s), ${transfers.transfersChecked} remise(s), ` +
-          `${sessions.sessionsChecked} session(s), aucun écart.`,
+          `${sessions.sessionsChecked} session(s), ${expenses.checked} dépense(s), ${suppliers.checked} document(s) fournisseur, aucun écart.`,
       );
     });
   }

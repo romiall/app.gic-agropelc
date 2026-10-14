@@ -455,8 +455,8 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
 
   it('catalogue de décision fidèle aux gestionnaires des modules (ADR-018)', () => {
     const registry = app.get<ApprovalDecisionHandlerRegistry>(APPROVAL_DECISION_HANDLER_REGISTRY);
-    // Types sans aucun appelant de `requestApproval` à ce jour (attendus en P8).
-    const unused = new Set(['EXPENSE', 'RECEIPT_VALUE', 'SUPPLIER_PAYMENT']);
+    // Type sans aucun appelant de `requestApproval` à ce jour.
+    const unused = new Set(['RECEIPT_VALUE']);
     for (const type of OPERATION_TYPES) {
       const spec = APPROVAL_DECISION_SPECS[type];
       if (spec?.recordOnly) expect(registry.resolve(type), type).toBeUndefined();

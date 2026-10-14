@@ -640,6 +640,64 @@ export interface FinanceCashTransfers {
   version: Generated<number>;
 }
 
+export interface FinanceExpenseCategories {
+  allowed_on_pos: Generated<number>;
+  code: string;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  default_cost_type: string | null;
+  id: Buffer;
+  is_active: Generated<number>;
+  is_system: Generated<number>;
+  label: string;
+  status_reason: string | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface FinanceExpenses {
+  amount_xaf: number;
+  approval_request_id: Buffer | null;
+  backdated_reason: string | null;
+  business_date: Date | null;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  captured_offline: Generated<number>;
+  cash_movement_id: Buffer | null;
+  category_id: Buffer;
+  client_created_at: Date | null;
+  clock_suspect: Generated<number>;
+  command_id: Buffer | null;
+  cost_object_id: Buffer | null;
+  cost_object_type: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  created_device_id: Buffer | null;
+  description: string;
+  doc_number: string;
+  id: Buffer;
+  local_ref: string | null;
+  occurred_at: Date;
+  paid_at: Date | null;
+  paid_by: Buffer | null;
+  paid_from_account_id: Buffer | null;
+  paid_now: number;
+  payee_name: string | null;
+  received_at_server: Date | null;
+  reclassified_category_id: Buffer | null;
+  responsibility_user_id: Buffer | null;
+  review_reasons: Json | null;
+  site_id: Buffer;
+  species_group: string | null;
+  status: string;
+  supplier_id: Buffer | null;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface FinancePaymentMethods {
   code: string;
   created_at: Generated<Date>;
@@ -649,6 +707,114 @@ export interface FinancePaymentMethods {
   requires_reference: Generated<number>;
   updated_at: Generated<Date>;
   version: Generated<number>;
+}
+
+export interface FinanceSupplierInvoiceLines {
+  created_at: Generated<Date>;
+  description: string;
+  id: Buffer;
+  invoice_id: Buffer;
+  line_no: number;
+  line_total_xaf: number;
+  po_line_id: Buffer | null;
+  product_id: Buffer | null;
+  quantity_base: Decimal | null;
+  receipt_line_id: Buffer | null;
+  unit_price_xaf: number | null;
+}
+
+export interface FinanceSupplierInvoices {
+  active_ref_key: string | null;
+  approval_reason: string | null;
+  approval_request_id: Buffer | null;
+  approved_at: Date | null;
+  approved_by: Buffer | null;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  command_id: Buffer | null;
+  comment: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  dispute_reason: string | null;
+  disputed_at: Date | null;
+  disputed_by: Buffer | null;
+  doc_number: string;
+  due_date: Date;
+  id: Buffer;
+  invoice_date: Date;
+  mismatch_details: Json | null;
+  occurred_at: Date;
+  paid_xaf: Generated<number>;
+  printed_total_xaf: number | null;
+  purchase_order_id: Buffer | null;
+  site_id: Buffer | null;
+  status: string;
+  supplier_id: Buffer;
+  supplier_invoice_ref: string;
+  tax_total_xaf: Generated<number>;
+  total_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface FinanceSupplierPaymentAllocations {
+  activated_at: Date | null;
+  active_invoice_key: Buffer | null;
+  amount_xaf: number;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  id: Buffer;
+  invoice_id: Buffer;
+  payment_id: Buffer;
+  reversal_reason: string | null;
+  reversed_at: Date | null;
+  reversed_by: Buffer | null;
+  status: string;
+}
+
+export interface FinanceSupplierPayments {
+  amount_xaf: number;
+  approval_request_id: Buffer | null;
+  cancel_movement_id: Buffer | null;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  cancelled_by: Buffer | null;
+  cash_movement_id: Buffer | null;
+  command_id: Buffer | null;
+  comment: string | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  decided_at: Date | null;
+  decided_by: Buffer | null;
+  disbursed_at: Date | null;
+  doc_number: string;
+  external_reference: string | null;
+  from_account_id: Buffer;
+  id: Buffer;
+  occurred_at: Date;
+  payment_method_code: string;
+  site_id: Buffer | null;
+  status: string;
+  supplier_id: Buffer;
+  unallocated_xaf: number;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface FinanceVPayables {
+  balance_xaf: Generated<number>;
+  days_overdue: number | null;
+  doc_number: string;
+  due_date: Date;
+  invoice_date: Date;
+  invoice_id: Buffer;
+  paid_xaf: Generated<number>;
+  supplier_id: Buffer;
+  supplier_invoice_ref: string;
+  total_xaf: number;
 }
 
 export interface IdentityAuthSessions {
@@ -2251,7 +2417,14 @@ export interface DB {
   finance_cash_session_adjustments: FinanceCashSessionAdjustments;
   finance_cash_sessions: FinanceCashSessions;
   finance_cash_transfers: FinanceCashTransfers;
+  finance_expense_categories: FinanceExpenseCategories;
+  finance_expenses: FinanceExpenses;
   finance_payment_methods: FinancePaymentMethods;
+  finance_supplier_invoice_lines: FinanceSupplierInvoiceLines;
+  finance_supplier_invoices: FinanceSupplierInvoices;
+  finance_supplier_payment_allocations: FinanceSupplierPaymentAllocations;
+  finance_supplier_payments: FinanceSupplierPayments;
+  finance_v_payables: FinanceVPayables;
   identity_auth_sessions: IdentityAuthSessions;
   identity_devices: IdentityDevices;
   identity_device_status_periods: IdentityDeviceStatusPeriods;

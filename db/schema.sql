@@ -150,7 +150,7 @@ CREATE TABLE `approvals_control_policies` (
   CONSTRAINT `fk_approvals_control_policies_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_approvals_control_policies_permission` FOREIGN KEY (`approver_permission`) REFERENCES `identity_permissions` (`code`) ON DELETE RESTRICT,
   CONSTRAINT `ck_approvals_control_policies_approver_scope` CHECK (((`approver_scope` is null) or (`approver_scope` in (_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'TEAM',_utf8mb4'ALL')))),
-  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT',_utf8mb4'PAYMENT_CANCELLATION',_utf8mb4'PAYMENT_DUPLICATE',_utf8mb4'CASH_TRANSFER_DISCREPANCY'))),
+  CONSTRAINT `ck_approvals_control_policies_operation_type` CHECK ((`operation_type` in (_utf8mb4'LOSS_DECLARATION',_utf8mb4'MORTALITY',_utf8mb4'INVENTORY_ADJUSTMENT',_utf8mb4'TRANSFER_DISCREPANCY',_utf8mb4'EXPENSE',_utf8mb4'PURCHASE_REQUEST',_utf8mb4'PURCHASE_ORDER',_utf8mb4'RECEIPT_WITHOUT_PO',_utf8mb4'RECEIPT_VALUE',_utf8mb4'SUPPLIER_PAYMENT',_utf8mb4'PRICE_OVERRIDE',_utf8mb4'SALE_CANCELLATION',_utf8mb4'CREDIT_LIMIT_EXCEEDED',_utf8mb4'CASH_VARIANCE',_utf8mb4'CHECKIN_OVERRIDE',_utf8mb4'RECEIPT_QUARANTINE',_utf8mb4'RECEIPT_CANCELLATION',_utf8mb4'ANIMAL_COUNT_ADJUSTMENT',_utf8mb4'PAYMENT_CANCELLATION',_utf8mb4'PAYMENT_DUPLICATE',_utf8mb4'CASH_TRANSFER_DISCREPANCY',_utf8mb4'INVOICE_MISMATCH'))),
   CONSTRAINT `ck_approvals_control_policies_requires_approval` CHECK (((`requires_approval` = false) or (`approver_permission` is not null))),
   CONSTRAINT `ck_approvals_control_policies_status` CHECK ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'RETIRED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
@@ -2413,6 +2413,234 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `finance_expense_categories`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_expense_categories` (
+  `id` binary(16) NOT NULL,
+  `code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `label` varchar(120) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `default_cost_type` varchar(25) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `allowed_on_pos` tinyint(1) NOT NULL DEFAULT '0',
+  `is_system` tinyint(1) NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `status_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_expense_categories_code` (`code`),
+  KEY `fk_finance_expense_categories_created_by` (`created_by`),
+  KEY `fk_finance_expense_categories_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_expense_categories_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expense_categories_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_expense_categories_cost_type` CHECK (((`default_cost_type` is null) or (`default_cost_type` in (_utf8mb4'VETERINAIRE',_utf8mb4'ALIMENT',_utf8mb4'AUTRE_INTRANT',_utf8mb4'DEPENSE_DIRECTE')))),
+  CONSTRAINT `ck_finance_expense_categories_system` CHECK (((0 = `is_system`) or (0 = `allowed_on_pos`)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_expense_categories_update_guard` BEFORE UPDATE ON `finance_expense_categories` FOR EACH ROW BEGIN
+  IF NOT (NEW.code <=> OLD.code AND NEW.is_system <=> OLD.is_system AND NEW.created_at <=> OLD.created_at
+          AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expense_categories : code et nature système immuables.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_expense_categories_no_delete` BEFORE DELETE ON `finance_expense_categories` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expense_categories : suppression interdite ; désactiver la catégorie.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_expenses`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_expenses` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `local_ref` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `site_id` binary(16) NOT NULL,
+  `category_id` binary(16) NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `payee_name` varchar(120) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `supplier_id` binary(16) DEFAULT NULL,
+  `description` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `cost_object_type` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cost_object_id` binary(16) DEFAULT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `paid_now` tinyint(1) NOT NULL,
+  `paid_from_account_id` binary(16) DEFAULT NULL,
+  `paid_at` datetime(6) DEFAULT NULL,
+  `paid_by` binary(16) DEFAULT NULL,
+  `cash_movement_id` binary(16) DEFAULT NULL,
+  `status` varchar(25) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `review_reasons` json DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `reclassified_category_id` binary(16) DEFAULT NULL,
+  `responsibility_user_id` binary(16) DEFAULT NULL,
+  `cancel_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `business_date` date GENERATED ALWAYS AS (cast(convert_tz(`occurred_at`,_utf8mb4'+00:00',_utf8mb4'+01:00') as date)) STORED,
+  `command_id` binary(16) DEFAULT NULL,
+  `client_created_at` datetime(6) DEFAULT NULL,
+  `received_at_server` datetime(6) DEFAULT NULL,
+  `created_device_id` binary(16) DEFAULT NULL,
+  `captured_offline` tinyint(1) NOT NULL DEFAULT '0',
+  `clock_suspect` tinyint(1) NOT NULL DEFAULT '0',
+  `backdated_reason` text COLLATE utf8mb4_0900_as_cs,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_expenses_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_finance_expenses_device_ref` (`created_device_id`,`local_ref`),
+  UNIQUE KEY `uq_finance_expenses_command` (`command_id`),
+  UNIQUE KEY `uq_finance_expenses_cash_movement` (`cash_movement_id`),
+  KEY `ix_finance_expenses_category_day` (`category_id`,`business_date`),
+  KEY `ix_finance_expenses_cost_object` (`cost_object_type`,`cost_object_id`),
+  KEY `ix_finance_expenses_site_day` (`site_id`,`business_date`),
+  KEY `ix_finance_expenses_author_day` (`created_by`,`business_date`),
+  KEY `ix_finance_expenses_status` (`status`,`business_date`),
+  KEY `fk_finance_expenses_supplier` (`supplier_id`),
+  KEY `fk_finance_expenses_account` (`paid_from_account_id`),
+  KEY `fk_finance_expenses_paid_by` (`paid_by`),
+  KEY `fk_finance_expenses_approval` (`approval_request_id`),
+  KEY `fk_finance_expenses_reclassified` (`reclassified_category_id`),
+  KEY `fk_finance_expenses_responsibility` (`responsibility_user_id`),
+  KEY `fk_finance_expenses_cancelled_by` (`cancelled_by`),
+  KEY `fk_finance_expenses_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_expenses_account` FOREIGN KEY (`paid_from_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_category` FOREIGN KEY (`category_id`) REFERENCES `finance_expense_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_created_device` FOREIGN KEY (`created_device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_movement` FOREIGN KEY (`cash_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_paid_by` FOREIGN KEY (`paid_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_reclassified` FOREIGN KEY (`reclassified_category_id`) REFERENCES `finance_expense_categories` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_responsibility` FOREIGN KEY (`responsibility_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_expenses_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_expenses_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_finance_expenses_cost_object` CHECK ((((`cost_object_type` is null) and (`cost_object_id` is null) and (`species_group` is null)) or ((`cost_object_type` in (_utf8mb4'PRODUCTION_LOT',_utf8mb4'INCUBATION_BATCH',_utf8mb4'SITE')) and (`cost_object_id` is not null)))),
+  CONSTRAINT `ck_finance_expenses_paid` CHECK ((((`paid_at` is null) and (`paid_from_account_id` is null) and (`paid_by` is null) and (`cash_movement_id` is null)) or ((`paid_at` is not null) and (`paid_from_account_id` is not null) and (`paid_by` is not null) and (`cash_movement_id` is not null)))),
+  CONSTRAINT `ck_finance_expenses_paid_now` CHECK (((0 = `paid_now`) or (`paid_at` is not null))),
+  CONSTRAINT `ck_finance_expenses_species` CHECK (((`species_group` is null) or ((`cost_object_type` = _utf8mb4'SITE') and (`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC'))))),
+  CONSTRAINT `ck_finance_expenses_state` CHECK ((((`status` in (_utf8mb4'PAID',_utf8mb4'PAID_PENDING_APPROVAL',_utf8mb4'PAID_REJECTED')) = (`paid_at` is not null)) and ((`status` not in (_utf8mb4'PENDING_APPROVAL',_utf8mb4'PAID_PENDING_APPROVAL')) or (`approval_request_id` is not null)) and ((`status` = _utf8mb4'PAID_REJECTED') = ((`reclassified_category_id` is not null) and (`responsibility_user_id` is not null))) and ((`status` = _utf8mb4'CANCELLED') = ((`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_reason` is not null))))),
+  CONSTRAINT `ck_finance_expenses_status` CHECK ((`status` in (_utf8mb4'RECORDED',_utf8mb4'PENDING_APPROVAL',_utf8mb4'APPROVED',_utf8mb4'REJECTED',_utf8mb4'PAID',_utf8mb4'PAID_PENDING_APPROVAL',_utf8mb4'PAID_REJECTED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_expenses_update_guard` BEFORE UPDATE ON `finance_expenses` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.local_ref <=> OLD.local_ref AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.category_id <=> OLD.category_id AND
+    NEW.amount_xaf <=> OLD.amount_xaf AND
+    NEW.payee_name <=> OLD.payee_name AND
+    NEW.supplier_id <=> OLD.supplier_id AND
+    NEW.description <=> OLD.description AND
+    NEW.cost_object_type <=> OLD.cost_object_type AND
+    NEW.cost_object_id <=> OLD.cost_object_id AND
+    NEW.species_group <=> OLD.species_group AND
+    NEW.paid_now <=> OLD.paid_now AND
+    NEW.review_reasons <=> OLD.review_reasons AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.client_created_at <=> OLD.client_created_at AND
+    NEW.received_at_server <=> OLD.received_at_server AND
+    NEW.created_device_id <=> OLD.created_device_id AND
+    NEW.captured_offline <=> OLD.captured_offline AND
+    NEW.clock_suspect <=> OLD.clock_suspect AND
+    NEW.backdated_reason <=> OLD.backdated_reason AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expenses : saisie immuable ; seuls décision, paiement et annulation évoluent.';
+  END IF;
+  IF OLD.paid_at IS NOT NULL AND NOT (
+    NEW.paid_at <=> OLD.paid_at AND NEW.paid_from_account_id <=> OLD.paid_from_account_id AND
+    NEW.paid_by <=> OLD.paid_by AND NEW.cash_movement_id <=> OLD.cash_movement_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expenses : paiement immuable.';
+  END IF;
+  IF OLD.status IN ('REJECTED', 'PAID', 'PAID_REJECTED', 'CANCELLED') AND NOT (
+    NEW.status <=> OLD.status AND NEW.reclassified_category_id <=> OLD.reclassified_category_id AND
+    NEW.responsibility_user_id <=> OLD.responsibility_user_id AND NEW.cancelled_at <=> OLD.cancelled_at AND
+    NEW.approval_request_id <=> OLD.approval_request_id
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expenses : état terminal.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_expenses_no_delete` BEFORE DELETE ON `finance_expenses` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_expenses : suppression interdite ; annuler la dépense (ADR-006).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `finance_payment_methods`
 --
 
@@ -2448,6 +2676,417 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_supplier_invoice_lines`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_supplier_invoice_lines` (
+  `id` binary(16) NOT NULL,
+  `invoice_id` binary(16) NOT NULL,
+  `line_no` smallint NOT NULL,
+  `po_line_id` binary(16) DEFAULT NULL,
+  `receipt_line_id` binary(16) DEFAULT NULL,
+  `product_id` binary(16) DEFAULT NULL,
+  `description` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `quantity_base` decimal(14,3) DEFAULT NULL,
+  `unit_price_xaf` bigint DEFAULT NULL,
+  `line_total_xaf` bigint NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_supplier_invoice_lines_no` (`invoice_id`,`line_no`),
+  KEY `ix_finance_supplier_invoice_lines_po_line` (`po_line_id`),
+  KEY `ix_finance_supplier_invoice_lines_receipt_line` (`receipt_line_id`),
+  KEY `fk_finance_supplier_invoice_lines_product` (`product_id`),
+  CONSTRAINT `fk_finance_supplier_invoice_lines_invoice` FOREIGN KEY (`invoice_id`) REFERENCES `finance_supplier_invoices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoice_lines_po_line` FOREIGN KEY (`po_line_id`) REFERENCES `procurement_purchase_order_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoice_lines_product` FOREIGN KEY (`product_id`) REFERENCES `catalog_products` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoice_lines_receipt_line` FOREIGN KEY (`receipt_line_id`) REFERENCES `procurement_goods_receipt_lines` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_supplier_invoice_lines_amounts` CHECK (((`line_no` > 0) and (`line_total_xaf` >= 0) and ((`unit_price_xaf` is null) or (`unit_price_xaf` >= 0)) and ((`quantity_base` is null) or (`quantity_base` > 0)))),
+  CONSTRAINT `ck_finance_supplier_invoice_lines_po` CHECK (((`po_line_id` is null) or ((`quantity_base` is not null) and (`unit_price_xaf` is not null))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_invoice_lines_no_update` BEFORE UPDATE ON `finance_supplier_invoice_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_invoice_lines : lignes immuables ; annuler la facture.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_invoice_lines_no_delete` BEFORE DELETE ON `finance_supplier_invoice_lines` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_invoice_lines : suppression interdite.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_supplier_invoices`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_supplier_invoices` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `supplier_id` binary(16) NOT NULL,
+  `supplier_invoice_ref` varchar(60) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `invoice_date` date NOT NULL,
+  `due_date` date NOT NULL,
+  `purchase_order_id` binary(16) DEFAULT NULL,
+  `total_xaf` bigint NOT NULL,
+  `printed_total_xaf` bigint DEFAULT NULL,
+  `tax_total_xaf` bigint NOT NULL DEFAULT '0',
+  `paid_xaf` bigint NOT NULL DEFAULT '0',
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `mismatch_details` json DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `approved_by` binary(16) DEFAULT NULL,
+  `approved_at` datetime(6) DEFAULT NULL,
+  `approval_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `disputed_by` binary(16) DEFAULT NULL,
+  `disputed_at` datetime(6) DEFAULT NULL,
+  `dispute_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `comment` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancel_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `active_ref_key` varchar(60) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when (`status` <> _utf8mb4'CANCELLED') then `supplier_invoice_ref` end)) STORED,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_supplier_invoices_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_finance_supplier_invoices_active_ref` (`supplier_id`,`active_ref_key`),
+  UNIQUE KEY `uq_finance_supplier_invoices_command` (`command_id`),
+  KEY `ix_finance_supplier_invoices_supplier` (`supplier_id`,`status`,`due_date`),
+  KEY `ix_finance_supplier_invoices_order` (`purchase_order_id`),
+  KEY `ix_finance_supplier_invoices_status` (`status`,`due_date`),
+  KEY `fk_finance_supplier_invoices_site` (`site_id`),
+  KEY `fk_finance_supplier_invoices_approval` (`approval_request_id`),
+  KEY `fk_finance_supplier_invoices_approved_by` (`approved_by`),
+  KEY `fk_finance_supplier_invoices_disputed_by` (`disputed_by`),
+  KEY `fk_finance_supplier_invoices_cancelled_by` (`cancelled_by`),
+  KEY `fk_finance_supplier_invoices_created_by` (`created_by`),
+  KEY `fk_finance_supplier_invoices_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_supplier_invoices_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_disputed_by` FOREIGN KEY (`disputed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_order` FOREIGN KEY (`purchase_order_id`) REFERENCES `procurement_purchase_orders` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_invoices_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_supplier_invoices_amounts` CHECK (((`total_xaf` >= 0) and (`tax_total_xaf` >= 0) and (`paid_xaf` >= 0) and (`paid_xaf` <= `total_xaf`) and ((`printed_total_xaf` is null) or (`printed_total_xaf` >= 0)))),
+  CONSTRAINT `ck_finance_supplier_invoices_dates` CHECK ((`due_date` >= `invoice_date`)),
+  CONSTRAINT `ck_finance_supplier_invoices_state` CHECK ((((`status` not in (_utf8mb4'APPROVED',_utf8mb4'PARTIALLY_PAID',_utf8mb4'PAID')) or ((`approved_at` is not null) and (`approved_by` is not null))) and ((`status` <> _utf8mb4'DISPUTED') or (`disputed_at` is not null)) and ((`status` = _utf8mb4'CANCELLED') = ((`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_reason` is not null))) and ((`status` <> _utf8mb4'APPROVED') or (`paid_xaf` = 0)) and ((`status` <> _utf8mb4'PARTIALLY_PAID') or ((`paid_xaf` > 0) and (`paid_xaf` < `total_xaf`))) and ((`status` <> _utf8mb4'PAID') or (`paid_xaf` = `total_xaf`)) and ((`status` in (_utf8mb4'APPROVED',_utf8mb4'PARTIALLY_PAID',_utf8mb4'PAID')) or (`paid_xaf` = 0)))),
+  CONSTRAINT `ck_finance_supplier_invoices_status` CHECK ((`status` in (_utf8mb4'MISMATCH',_utf8mb4'DISPUTED',_utf8mb4'APPROVED',_utf8mb4'PARTIALLY_PAID',_utf8mb4'PAID',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_invoices_update_guard` BEFORE UPDATE ON `finance_supplier_invoices` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.supplier_id <=> OLD.supplier_id AND
+    NEW.supplier_invoice_ref <=> OLD.supplier_invoice_ref AND
+    NEW.invoice_date <=> OLD.invoice_date AND
+    NEW.due_date <=> OLD.due_date AND
+    NEW.purchase_order_id <=> OLD.purchase_order_id AND
+    NEW.total_xaf <=> OLD.total_xaf AND
+    NEW.printed_total_xaf <=> OLD.printed_total_xaf AND
+    NEW.tax_total_xaf <=> OLD.tax_total_xaf AND
+    NEW.mismatch_details <=> OLD.mismatch_details AND
+    NEW.comment <=> OLD.comment AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_invoices : facture immuable ; seuls décision, payé et annulation évoluent.';
+  END IF;
+  IF OLD.status = 'CANCELLED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_invoices : facture annulée, état terminal.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_invoices_no_delete` BEFORE DELETE ON `finance_supplier_invoices` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_invoices : suppression interdite ; annuler la facture (ADR-006).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_supplier_payment_allocations`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_supplier_payment_allocations` (
+  `id` binary(16) NOT NULL,
+  `payment_id` binary(16) NOT NULL,
+  `invoice_id` binary(16) NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `activated_at` datetime(6) DEFAULT NULL,
+  `reversed_at` datetime(6) DEFAULT NULL,
+  `reversed_by` binary(16) DEFAULT NULL,
+  `reversal_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `active_invoice_key` binary(16) GENERATED ALWAYS AS ((case when (`status` <> _utf8mb4'REVERSED') then `invoice_id` end)) STORED,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_supplier_payment_allocations_active` (`payment_id`,`active_invoice_key`),
+  KEY `ix_finance_supplier_payment_allocations_invoice` (`invoice_id`,`status`),
+  KEY `fk_finance_supplier_payment_allocations_reversed_by` (`reversed_by`),
+  KEY `fk_finance_supplier_payment_allocations_created_by` (`created_by`),
+  CONSTRAINT `fk_finance_supplier_payment_allocations_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payment_allocations_invoice` FOREIGN KEY (`invoice_id`) REFERENCES `finance_supplier_invoices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payment_allocations_payment` FOREIGN KEY (`payment_id`) REFERENCES `finance_supplier_payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payment_allocations_reversed_by` FOREIGN KEY (`reversed_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_supplier_payment_allocations_amount` CHECK ((`amount_xaf` > 0)),
+  CONSTRAINT `ck_finance_supplier_payment_allocations_state` CHECK ((((`status` = _utf8mb4'REVERSED') = ((`reversed_at` is not null) and (`reversed_by` is not null) and (`reversal_reason` is not null))) and ((`status` <> _utf8mb4'ACTIVE') or (`activated_at` is not null)))),
+  CONSTRAINT `ck_finance_supplier_payment_allocations_status` CHECK ((`status` in (_utf8mb4'PLANNED',_utf8mb4'ACTIVE',_utf8mb4'REVERSED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_payment_allocations_update_guard` BEFORE UPDATE ON `finance_supplier_payment_allocations` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.payment_id <=> OLD.payment_id AND NEW.invoice_id <=> OLD.invoice_id AND NEW.amount_xaf <=> OLD.amount_xaf AND
+    NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payment_allocations : affectation immuable.';
+  END IF;
+  IF NOT ((OLD.status = 'PLANNED' AND NEW.status IN ('PLANNED', 'ACTIVE', 'REVERSED'))
+          OR (OLD.status = 'ACTIVE' AND NEW.status IN ('ACTIVE', 'REVERSED'))
+          OR (OLD.status = 'REVERSED' AND NEW.status = 'REVERSED' AND NEW.reversed_at <=> OLD.reversed_at)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payment_allocations : seul le passage à ACTIVE puis à REVERSED est admis.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_payment_allocations_no_delete` BEFORE DELETE ON `finance_supplier_payment_allocations` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payment_allocations : suppression interdite ; contrepasser l''affectation.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `finance_supplier_payments`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `finance_supplier_payments` (
+  `id` binary(16) NOT NULL,
+  `doc_number` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `supplier_id` binary(16) NOT NULL,
+  `amount_xaf` bigint NOT NULL,
+  `payment_method_code` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `from_account_id` binary(16) NOT NULL,
+  `external_reference` varchar(80) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `status` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `unallocated_xaf` bigint NOT NULL,
+  `cash_movement_id` binary(16) DEFAULT NULL,
+  `disbursed_at` datetime(6) DEFAULT NULL,
+  `cancel_movement_id` binary(16) DEFAULT NULL,
+  `approval_request_id` binary(16) DEFAULT NULL,
+  `decided_by` binary(16) DEFAULT NULL,
+  `decided_at` datetime(6) DEFAULT NULL,
+  `comment` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancel_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `cancelled_by` binary(16) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `occurred_at` datetime(6) NOT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_finance_supplier_payments_doc_number` (`doc_number`),
+  UNIQUE KEY `uq_finance_supplier_payments_command` (`command_id`),
+  UNIQUE KEY `uq_finance_supplier_payments_movement` (`cash_movement_id`),
+  UNIQUE KEY `uq_finance_supplier_payments_cancel_movement` (`cancel_movement_id`),
+  KEY `ix_finance_supplier_payments_supplier` (`supplier_id`,`status`),
+  KEY `ix_finance_supplier_payments_status` (`status`,`occurred_at`),
+  KEY `fk_finance_supplier_payments_site` (`site_id`),
+  KEY `fk_finance_supplier_payments_method` (`payment_method_code`),
+  KEY `fk_finance_supplier_payments_account` (`from_account_id`),
+  KEY `fk_finance_supplier_payments_approval` (`approval_request_id`),
+  KEY `fk_finance_supplier_payments_decided_by` (`decided_by`),
+  KEY `fk_finance_supplier_payments_cancelled_by` (`cancelled_by`),
+  KEY `fk_finance_supplier_payments_created_by` (`created_by`),
+  KEY `fk_finance_supplier_payments_updated_by` (`updated_by`),
+  CONSTRAINT `fk_finance_supplier_payments_account` FOREIGN KEY (`from_account_id`) REFERENCES `finance_cash_accounts` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_approval` FOREIGN KEY (`approval_request_id`) REFERENCES `approvals_approval_requests` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_cancel_movement` FOREIGN KEY (`cancel_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_cancelled_by` FOREIGN KEY (`cancelled_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_decided_by` FOREIGN KEY (`decided_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_method` FOREIGN KEY (`payment_method_code`) REFERENCES `finance_payment_methods` (`code`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_movement` FOREIGN KEY (`cash_movement_id`) REFERENCES `finance_cash_movements` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_site` FOREIGN KEY (`site_id`) REFERENCES `organization_sites` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `procurement_suppliers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_finance_supplier_payments_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_finance_supplier_payments_amounts` CHECK (((`amount_xaf` > 0) and (`unallocated_xaf` >= 0) and (`unallocated_xaf` <= `amount_xaf`))),
+  CONSTRAINT `ck_finance_supplier_payments_disbursed` CHECK (((`cash_movement_id` is null) = (`disbursed_at` is null))),
+  CONSTRAINT `ck_finance_supplier_payments_state` CHECK ((((`status` <> _utf8mb4'PENDING_APPROVAL') or ((`cash_movement_id` is null) and (`approval_request_id` is not null))) and ((`status` <> _utf8mb4'RECORDED') or (`cash_movement_id` is not null)) and ((`status` <> _utf8mb4'REJECTED') or ((`cash_movement_id` is null) and (`decided_at` is not null))) and ((`status` = _utf8mb4'CANCELLED') = ((`cancelled_at` is not null) and (`cancelled_by` is not null) and (`cancel_reason` is not null))) and ((`status` <> _utf8mb4'CANCELLED') or (`cash_movement_id` is null) or (`cancel_movement_id` is not null)) and ((`cancel_movement_id` is null) or (`status` = _utf8mb4'CANCELLED')))),
+  CONSTRAINT `ck_finance_supplier_payments_status` CHECK ((`status` in (_utf8mb4'PENDING_APPROVAL',_utf8mb4'RECORDED',_utf8mb4'REJECTED',_utf8mb4'CANCELLED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_payments_update_guard` BEFORE UPDATE ON `finance_supplier_payments` FOR EACH ROW BEGIN
+  IF NOT (
+    NEW.doc_number <=> OLD.doc_number AND
+    NEW.site_id <=> OLD.site_id AND
+    NEW.supplier_id <=> OLD.supplier_id AND
+    NEW.amount_xaf <=> OLD.amount_xaf AND
+    NEW.payment_method_code <=> OLD.payment_method_code AND
+    NEW.from_account_id <=> OLD.from_account_id AND
+    NEW.external_reference <=> OLD.external_reference AND
+    NEW.comment <=> OLD.comment AND
+    NEW.occurred_at <=> OLD.occurred_at AND
+    NEW.command_id <=> OLD.command_id AND
+    NEW.created_at <=> OLD.created_at AND
+    NEW.created_by <=> OLD.created_by
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payments : paiement immuable ; seuls décision, affectations et annulation évoluent.';
+  END IF;
+  IF OLD.cash_movement_id IS NOT NULL AND NOT (NEW.cash_movement_id <=> OLD.cash_movement_id AND NEW.disbursed_at <=> OLD.disbursed_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payments : décaissement immuable.';
+  END IF;
+  IF OLD.status IN ('REJECTED', 'CANCELLED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payments : état terminal.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_finance_supplier_payments_no_delete` BEFORE DELETE ON `finance_supplier_payments` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'finance_supplier_payments : suppression interdite ; annuler le paiement (ADR-006).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Temporary view structure for view `finance_v_payables`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `finance_v_payables` AS SELECT 
+ 1 AS `supplier_id`,
+ 1 AS `invoice_id`,
+ 1 AS `doc_number`,
+ 1 AS `supplier_invoice_ref`,
+ 1 AS `invoice_date`,
+ 1 AS `due_date`,
+ 1 AS `total_xaf`,
+ 1 AS `paid_xaf`,
+ 1 AS `balance_xaf`,
+ 1 AS `days_overdue`*/;
+SET character_set_client = @saved_cs_client;
 
 --
 -- Table structure for table `identity_auth_sessions`
@@ -8352,6 +8991,23 @@ DELIMITER ;
 -- Dumping routines for database 'gic_agropelc_dev'
 --
 
+--
+-- Final view structure for view `finance_v_payables`
+--
+
+/*!50001 DROP VIEW IF EXISTS `finance_v_payables`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `finance_v_payables` AS select `i`.`supplier_id` AS `supplier_id`,`i`.`id` AS `invoice_id`,`i`.`doc_number` AS `doc_number`,`i`.`supplier_invoice_ref` AS `supplier_invoice_ref`,`i`.`invoice_date` AS `invoice_date`,`i`.`due_date` AS `due_date`,`i`.`total_xaf` AS `total_xaf`,`i`.`paid_xaf` AS `paid_xaf`,(`i`.`total_xaf` - `i`.`paid_xaf`) AS `balance_xaf`,greatest(0,(to_days(cast(convert_tz(utc_timestamp(),'+00:00','+01:00') as date)) - to_days(`i`.`due_date`))) AS `days_overdue` from `finance_supplier_invoices` `i` where (`i`.`status` in ('APPROVED','PARTIALLY_PAID')) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -8424,5 +9080,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090000'),
   ('20261013090100'),
   ('20261013090200'),
-  ('20261013090300');
+  ('20261013090300'),
+  ('20261101090000');
 UNLOCK TABLES;

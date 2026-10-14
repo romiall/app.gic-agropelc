@@ -9,7 +9,7 @@
 | [STD-ID] | | | | |
 | `code` | code | Non | — | Lignée de la politique |
 | `version` | int | Non | 1 | |
-| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`,`CASH_TRANSFER_DISCREPANCY`) | Non | — | `CASH_TRANSFER_DISCREPANCY` (écart d'une remise de fonds, AV-153) en P5-03 ; `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
+| `operation_type` | enum(`LOSS_DECLARATION`,`MORTALITY`,`INVENTORY_ADJUSTMENT`,`TRANSFER_DISCREPANCY`,`EXPENSE`,`PURCHASE_REQUEST`,`PURCHASE_ORDER`,`RECEIPT_WITHOUT_PO`,`RECEIPT_VALUE`,`SUPPLIER_PAYMENT`,`PRICE_OVERRIDE`,`SALE_CANCELLATION`,`CREDIT_LIMIT_EXCEEDED`,`CASH_VARIANCE`,`CHECKIN_OVERRIDE`,`RECEIPT_QUARANTINE`,`RECEIPT_CANCELLATION`,`ANIMAL_COUNT_ADJUSTMENT`,`PAYMENT_CANCELLATION`,`PAYMENT_DUPLICATE`,`CASH_TRANSFER_DISCREPANCY`,`INVOICE_MISMATCH`) | Non | — | `RECEIPT_QUARANTINE`, `RECEIPT_CANCELLATION` ajoutés en P6-02 (D08 §11) ; `CASH_TRANSFER_DISCREPANCY` (écart d'une remise de fonds) en P5-03 ; `INVOICE_MISMATCH` (écart de rapprochement d'une facture fournisseur, ADR-043) en P8-03 ; `ANIMAL_COUNT_ADJUSTMENT` (écart d'inventaire sur des animaux, AV-108) en P7-02 ; `PAYMENT_CANCELLATION` (annulation d'un encaissement client) et `PAYMENT_DUPLICATE` (décision de la Finance sur un encaissement `SUSPECT_DUPLICATE`, AV-056) en P4-02 (SM-CUSTOMER-PAYMENT) |
 | `condition` | json | Non | `{}` | Conditions déclaratives : catégorie, quantité ≥, valeur ≥, pourcentage de l'effectif ≥, site ou zone |
 | `requires_photo` | boolean | Non | false | |
 | `requires_comment` | boolean | Non | false | |
@@ -22,7 +22,7 @@
 | `created_at`, `created_by` | | | | |
 
 - **PK** `id`. **UQ** `(code, version)`.
-- **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois en P4-02 pour `PAYMENT_CANCELLATION` et `PAYMENT_DUPLICATE`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
+- **CK** `requires_approval` ⇒ `approver_permission` non nul. `operation_type` ∈ catalogue ci-dessus (`ck_approvals_control_policies_operation_type`, recréé à chaque ajout de type : la dernière fois en P8-03 pour `INVOICE_MISMATCH`, migration `20261101090000`). C'est la **seule** des deux tables à porter ce `CHECK` (voir `approval_requests`).
 - **Suppr.** `VERSIONNEMENT` (INV : la version en vigueur à `occurred_at` est figée sur l'opération, BR-ADM-016).
 - **Audit** Chaque version. **Offline** DL (politiques actives, pour l'évaluation indicative sur l'appareil) — jeu `policies`, ligne `GLOBAL` (P5-18, AV-196) : la nouvelle version active est publiée et la version retirée supprimée (`DELETE`) ; politiques semées publiées par le seed.
 - Le schéma de `condition` est validé par l'application (JSON Schema versionné) ; il n'est **jamais** interrogé comme donnée métier.
@@ -35,6 +35,14 @@
   | `CREDIT_LIMIT_EXCEEDED_DEFAULT` | `CREDIT_LIMIT_EXCEEDED` | `sales.credit_limit_exceed.approve` | AV-028, BR-VEN-025 |
   | `PAYMENT_CANCELLATION_DEFAULT` | `PAYMENT_CANCELLATION` | `sales.payment.cancel` | AV-056, SM-CUSTOMER-PAYMENT |
   | `PAYMENT_DUPLICATE_DEFAULT` | `PAYMENT_DUPLICATE` | `sales.payment.cancel` | AV-056, BR-FIN-005 |
+
+- **Politiques par défaut de la finance opérationnelle** (P8-03, seed `db/seeds/finance-references.ts`, mêmes règles d'insertion). Le seuil est un paramètre ; la politique dit qui approuve (ADR-042 §2, ADR-043).
+
+  | Code | `operation_type` | Permission d'approbation | Réf. |
+  |---|---|---|---|
+  | `EXPENSE_DEFAULT` | `EXPENSE` | `finance.expense.approve` | AV-058, AV-264, BR-FIN-021 |
+  | `INVOICE_MISMATCH_DEFAULT` | `INVOICE_MISMATCH` | `finance.supplier_invoice.approve` | AV-053, BR-FIN-031 |
+  | `SUPPLIER_PAYMENT_DEFAULT` | `SUPPLIER_PAYMENT` | `finance.supplier_payment.approve` | AV-055, BR-FIN-033 |
 
 ## approvals.approval_requests
 

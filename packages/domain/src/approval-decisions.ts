@@ -77,6 +77,10 @@ export const APPROVAL_DECISION_SPECS: Readonly<Record<string, ApprovalDecisionSp
     rejectable: true,
     approveData: [{ key: 'correctedReference', required: false }],
   },
+  // P8 (ADR-043 §5) : l'écart de rapprochement d'une facture s'approuve en motivant ; refusé, la facture
+  // passe contestée. Dépenses et paiements fournisseurs : approuver ou refuser simplement (plafond de
+  // l'approbateur vérifié par le serveur, AV-263).
+  INVOICE_MISMATCH: { rejectable: true, approveReasonRequired: true },
   PRICE_OVERRIDE: { rejectable: true, recordOnly: true },
   CREDIT_LIMIT_EXCEEDED: { rejectable: true, recordOnly: true },
   CASH_VARIANCE: { rejectable: false, approveReasonRequired: true },

@@ -207,3 +207,56 @@ export async function emitCashTransfersOfAccountChange(
     await emitCashTransferChange(uow, fromBin(transfer.id), { previousOwnerId });
   }
 }
+
+/**
+ * P8-04 (ADR-042 §9, AV-270) : catégories de dépense, jeu `catalog`, ligne `GLOBAL`, à leur
+ * identifiant et à leur version, actives ou non (l'appareil affiche la catégorie d'une dépense
+ * existante ; il ne propose que les actives non système). Même jeu que les référentiels de vente
+ * (`catalog/application/sync-changes.ts`, que `finance` n'importe pas). Les catégories semées sont
+ * publiées par le seed (`db/seeds/publish-references.ts`).
+ */
+export async function emitExpenseCategoryChange(
+  uow: Transaction<DB>,
+  categoryId: string,
+): Promise<void> {
+  const row = await uow
+    .selectFrom('finance_expense_categories')
+    .select('version')
+    .where('id', '=', toBin(categoryId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: 'catalog',
+      entityType: 'EXPENSE_CATEGORY',
+      entityId: categoryId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      rowVersion: row.version,
+    },
+  ]);
+}
+
+/**
+ * P8-05 (ADR-042 §11) : dépense de l'auteur, jeu `cash`, ligne `USER` (l'auteur seul, à la version de
+ * la ligne) ; la fenêtre de 30 jours est tenue par la projection (P8-10). Émis à chaque écriture de la
+ * dépense : enregistrement, paiement, décision, annulation.
+ */
+export async function emitExpenseChange(uow: Transaction<DB>, expenseId: string): Promise<void> {
+  const row = await uow
+    .selectFrom('finance_expenses')
+    .select(['created_by', 'version'])
+    .where('id', '=', toBin(expenseId))
+    .executeTakeFirst();
+  if (!row) return;
+  await recordChanges(uow, [
+    {
+      dataset: CASH_DATASET,
+      entityType: 'EXPENSE',
+      entityId: expenseId,
+      scopeType: 'USER',
+      scopeId: fromBin(row.created_by),
+      rowVersion: row.version,
+    },
+  ]);
+}

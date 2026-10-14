@@ -1,7 +1,7 @@
 /**
  * Enregistrement des gestionnaires de commande `finance` au démarrage (même inversion de
  * dépendance que `OrganizationCommandsRegistrar`) : comptes (P4-03), remises de fonds et décision
- * `CASH_TRANSFER_DISCREPANCY` (P5-15). Injections explicites (`@Inject`) : vitest/esbuild n'émet pas
+ * `CASH_TRANSFER_DISCREPANCY` (P5-15), catégories de dépense (P8-04), dépenses (P8-05) et décision `EXPENSE` (P8-06), factures fournisseurs et décision `INVOICE_MISMATCH` (P8-07), paiements fournisseurs et décision `SUPPLIER_PAYMENT` (P8-08). Injections explicites (`@Inject`) : vitest/esbuild n'émet pas
  * de métadonnées de décorateur (P2-05).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
@@ -18,6 +18,11 @@ import {
 } from '../../../approvals/application/public/index.js';
 import { registerAccountCommands } from './account-commands.js';
 import { registerCashTransferCommands } from './cash-transfer-commands.js';
+import { registerExpenseCategoryCommands } from './expense-category-commands.js';
+import { registerExpenseCommands } from './expense-commands.js';
+import { registerExpenseDecisions } from './expense-decisions.js';
+import { registerSupplierInvoiceCommands } from './supplier-invoice-commands.js';
+import { registerSupplierPaymentCommands } from './supplier-payment-commands.js';
 
 @Injectable()
 export class FinanceCommandsRegistrar implements OnModuleInit {
@@ -31,6 +36,21 @@ export class FinanceCommandsRegistrar implements OnModuleInit {
 
   onModuleInit(): void {
     registerAccountCommands(this.registry);
+    registerExpenseCategoryCommands(this.registry);
+    registerExpenseCommands(this.registry, this.idGenerator, this.documentSequences);
+    registerExpenseDecisions(this.decisionRegistry, this.idGenerator);
+    registerSupplierInvoiceCommands(
+      this.registry,
+      this.decisionRegistry,
+      this.idGenerator,
+      this.documentSequences,
+    );
+    registerSupplierPaymentCommands(
+      this.registry,
+      this.decisionRegistry,
+      this.idGenerator,
+      this.documentSequences,
+    );
     registerCashTransferCommands(
       this.registry,
       this.decisionRegistry,

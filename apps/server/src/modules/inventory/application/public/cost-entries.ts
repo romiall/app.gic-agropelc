@@ -10,7 +10,7 @@
  * (BR-SYN-007), sans ligne de coût.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
-import type { IdGenerator } from '@gic/domain';
+import { businessDayOf, businessDayStartUtc, type IdGenerator } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 
@@ -138,4 +138,55 @@ export async function costObjectBalance(
   const debitXaf = Number(row.debit);
   const creditXaf = Number(row.credit);
   return { debitXaf, creditXaf, netXaf: debitXaf - creditXaf };
+}
+
+/**
+ * État d'un lot de production ou d'un lot d'incubation, objet de coût d'une dépense (P8-05,
+ * ADR-042 §8) : `finance` n'importe pas `production` ; l'état est porté par le lot de stock de
+ * traçabilité (origine `PRODUCTION_LOT` ou `INCUBATION_BATCH`), clos par `production` à la clôture
+ * du lot (INV-PRD-02). `UNKNOWN` : aucun lot de stock de cette origine.
+ */
+export async function lotCostObjectStatus(
+  executor: Kysely<DB> | Transaction<DB>,
+  input: {
+    readonly costObjectType: 'PRODUCTION_LOT' | 'INCUBATION_BATCH';
+    readonly costObjectId: string;
+  },
+): Promise<'OPEN' | 'CLOSED' | 'UNKNOWN'> {
+  const row = await executor
+    .selectFrom('inventory_stock_lots')
+    .select('status')
+    .where('origin_type', '=', input.costObjectType)
+    .where('origin_id', '=', toBin(input.costObjectId))
+    .orderBy('created_at', 'desc')
+    .executeTakeFirst();
+  if (!row) return 'UNKNOWN';
+  return row.status === 'OPEN' ? 'OPEN' : 'CLOSED';
+}
+
+/**
+ * Le mois métier (Africa/Douala) contenant `at` a-t-il déjà été réparti entre les lots pour cette
+ * ferme et cette espèce (crédit `ALLOCATION` du site, ADR-026) ? Garde de l'annulation d'une
+ * dépense de frais généraux (P8-05), comme celle d'une saisie `inventory.overhead.cancel`.
+ */
+export async function siteOverheadMonthAllocated(
+  executor: Kysely<DB> | Transaction<DB>,
+  input: { readonly siteId: string; readonly speciesGroup: SpeciesGroup; readonly at: Date },
+): Promise<boolean> {
+  const day = businessDayOf(input.at);
+  const [year, month] = day.split('-').map(Number) as [number, number];
+  const start = businessDayStartUtc(`${year}-${String(month).padStart(2, '0')}-01`);
+  const next =
+    month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const row = await executor
+    .selectFrom('inventory_cost_entries')
+    .select('id')
+    .where('cost_object_type', '=', 'SITE')
+    .where('cost_object_id', '=', toBin(input.siteId))
+    .where('source_type', '=', 'ALLOCATION')
+    .where('species_group', '=', input.speciesGroup)
+    .where('occurred_at', '>=', start)
+    .where('occurred_at', '<', businessDayStartUtc(next))
+    .executeTakeFirst();
+  return row !== undefined;
 }
