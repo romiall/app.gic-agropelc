@@ -776,6 +776,587 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
+-- Table structure for table `communication_alert_recipients`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alert_recipients` (
+  `alert_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `origin` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `role_code` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `added_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`alert_id`,`user_id`),
+  KEY `ix_communication_alert_recipients_user` (`user_id`,`alert_id`),
+  CONSTRAINT `fk_communication_alert_recipients_alert` FOREIGN KEY (`alert_id`) REFERENCES `communication_alerts` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_communication_alert_recipients_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alert_recipients_origin` CHECK ((`origin` in (_utf8mb4'RULE',_utf8mb4'OWNER',_utf8mb4'TEAM_MANAGER',_utf8mb4'APPROVER',_utf8mb4'ESCALATION',_utf8mb4'FALLBACK')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_recipients_update_guard` BEFORE UPDATE ON `communication_alert_recipients` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_recipients : ajout seul.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_recipients_no_delete` BEFORE DELETE ON `communication_alert_recipients` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_recipients : suppression directe interdite (suit l''alerte).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_alert_rules`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alert_rules` (
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `severity` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `recipient_roles` json NOT NULL,
+  `resolution_mode` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `escalation_hours` smallint DEFAULT NULL,
+  `escalation_roles` json NOT NULL DEFAULT (json_array(_utf8mb4'DIRECTION')),
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`alert_type`),
+  KEY `fk_communication_alert_rules_updated_by` (`updated_by`),
+  CONSTRAINT `fk_communication_alert_rules_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alert_rules_escalation` CHECK (((`escalation_hours` is null) or (`escalation_hours` between 1 and 168))),
+  CONSTRAINT `ck_communication_alert_rules_resolution` CHECK ((`resolution_mode` in (_utf8mb4'AUTO',_utf8mb4'MANUAL'))),
+  CONSTRAINT `ck_communication_alert_rules_roles` CHECK (((json_type(`recipient_roles`) = _utf8mb4'ARRAY') and (json_type(`escalation_roles`) = _utf8mb4'ARRAY'))),
+  CONSTRAINT `ck_communication_alert_rules_severity` CHECK ((`severity` in (_utf8mb4'INFO',_utf8mb4'WARNING',_utf8mb4'CRITICAL'))),
+  CONSTRAINT `ck_communication_alert_rules_type` CHECK ((`alert_type` in (_utf8mb4'STOCK_LOW',_utf8mb4'STOCK_OUT',_utf8mb4'POS_REPLENISH',_utf8mb4'STOCK_NEGATIVE',_utf8mb4'HIGH_LOSS',_utf8mb4'HIGH_MORTALITY',_utf8mb4'DAILY_ENTRY_MISSING',_utf8mb4'STANDARD_COST_MISSING',_utf8mb4'RECEIPT_INCOMPLETE',_utf8mb4'INVENTORY_VARIANCE',_utf8mb4'OVERDUE_RECEIVABLE',_utf8mb4'CASH_VARIANCE',_utf8mb4'CASH_HOLDING_HIGH',_utf8mb4'CASH_SESSION_OPEN_LONG',_utf8mb4'CASH_TRANSFER_NOT_RECEIVED',_utf8mb4'SYNC_ERROR',_utf8mb4'SYNC_STALE',_utf8mb4'DEVICE_SEQ_GAP',_utf8mb4'CLOCK_SKEW',_utf8mb4'INACTIVE_COMMERCIAL',_utf8mb4'CHECKIN_SUSPICIOUS',_utf8mb4'PRICE_MISMATCH',_utf8mb4'DUPLICATE_SUSPECTED',_utf8mb4'APPROVAL_PENDING_LONG',_utf8mb4'TRANSFER_NOT_RECEIVED',_utf8mb4'TRANSFER_UNMATCHED',_utf8mb4'LOT_EXPIRING',_utf8mb4'ATTACHMENT_MISSING',_utf8mb4'KOMMO_SYNC_FAILED',_utf8mb4'AUDIT_CHAIN_BROKEN',_utf8mb4'ALLOCATION_EXPIRED',_utf8mb4'ALLOCATION_REVOCATION_PENDING',_utf8mb4'SALE_UNDELIVERED',_utf8mb4'CONSUMER_FAILED',_utf8mb4'LEDGER_MISMATCH',_utf8mb4'CASH_MISMATCH')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_rules_update_guard` BEFORE UPDATE ON `communication_alert_rules` FOR EACH ROW BEGIN
+  IF NOT (NEW.alert_type <=> OLD.alert_type AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_rules : type d''alerte immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_rules_no_delete` BEFORE DELETE ON `communication_alert_rules` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_rules : suppression interdite ; désactiver la règle.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_alerts`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alerts` (
+  `id` binary(16) NOT NULL,
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `nature` varchar(5) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `severity` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `subject_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `subject_id` binary(16) NOT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `zone_id` binary(16) DEFAULT NULL,
+  `owner_user_id` binary(16) DEFAULT NULL,
+  `action_screen` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `title` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `message` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '',
+  `payload` json NOT NULL,
+  `dedup_key` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `open_dedup_key` varchar(200) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when (`status` in (_utf8mb4'OPEN',_utf8mb4'ACKNOWLEDGED')) then `dedup_key` else NULL end)) STORED,
+  `occurrences` int NOT NULL DEFAULT '1',
+  `first_detected_at` datetime(6) NOT NULL,
+  `last_detected_at` datetime(6) NOT NULL,
+  `business_day` date DEFAULT NULL,
+  `last_pass_id` varchar(64) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `critical_since` datetime(6) DEFAULT NULL,
+  `escalated_at` datetime(6) DEFAULT NULL,
+  `acknowledged_by` binary(16) DEFAULT NULL,
+  `acknowledged_at` datetime(6) DEFAULT NULL,
+  `resolved_by` binary(16) DEFAULT NULL,
+  `resolved_at` datetime(6) DEFAULT NULL,
+  `resolution_kind` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `resolution_comment` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_alerts_open_dedup` (`open_dedup_key`),
+  KEY `ix_communication_alerts_status` (`status`,`severity`,`first_detected_at`),
+  KEY `ix_communication_alerts_site` (`site_id`,`status`),
+  KEY `ix_communication_alerts_owner` (`owner_user_id`,`status`),
+  KEY `ix_communication_alerts_type` (`alert_type`,`status`),
+  KEY `ix_communication_alerts_subject` (`subject_type`,`subject_id`),
+  KEY `ix_communication_alerts_escalation` (`status`,`severity`,`escalated_at`,`critical_since`),
+  KEY `fk_communication_alerts_acknowledged_by` (`acknowledged_by`),
+  KEY `fk_communication_alerts_resolved_by` (`resolved_by`),
+  CONSTRAINT `fk_communication_alerts_acknowledged_by` FOREIGN KEY (`acknowledged_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_alerts_resolved_by` FOREIGN KEY (`resolved_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_alerts_type` FOREIGN KEY (`alert_type`) REFERENCES `communication_alert_rules` (`alert_type`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alerts_ack` CHECK (((`acknowledged_at` is null) = (`acknowledged_by` is null))),
+  CONSTRAINT `ck_communication_alerts_closed` CHECK ((((`status` in (_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')) = (`resolved_at` is not null)) and ((`status` in (_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')) = (`resolution_kind` is not null)))),
+  CONSTRAINT `ck_communication_alerts_critical` CHECK (((`severity` = _utf8mb4'CRITICAL') = (`critical_since` is not null))),
+  CONSTRAINT `ck_communication_alerts_dismissed` CHECK (((`resolution_kind` is null) or ((`resolution_kind` = _utf8mb4'DISMISSED') = (`status` = _utf8mb4'DISMISSED')))),
+  CONSTRAINT `ck_communication_alerts_escalated` CHECK (((`escalated_at` is null) or (`critical_since` is not null))),
+  CONSTRAINT `ck_communication_alerts_kind` CHECK (((`resolution_kind` is null) or (`resolution_kind` in (_utf8mb4'CONDITION_CLEARED',_utf8mb4'PASS',_utf8mb4'MANUAL',_utf8mb4'DISMISSED')))),
+  CONSTRAINT `ck_communication_alerts_manual` CHECK (((`resolution_kind` is null) or (`resolution_kind` not in (_utf8mb4'MANUAL',_utf8mb4'DISMISSED')) or ((`resolved_by` is not null) and (`resolution_comment` is not null)))),
+  CONSTRAINT `ck_communication_alerts_nature` CHECK ((`nature` in (_utf8mb4'STATE',_utf8mb4'EVENT'))),
+  CONSTRAINT `ck_communication_alerts_occurrences` CHECK ((`occurrences` >= 1)),
+  CONSTRAINT `ck_communication_alerts_severity` CHECK ((`severity` in (_utf8mb4'INFO',_utf8mb4'WARNING',_utf8mb4'CRITICAL'))),
+  CONSTRAINT `ck_communication_alerts_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'ACKNOWLEDGED',_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alerts_update_guard` BEFORE UPDATE ON `communication_alerts` FOR EACH ROW BEGIN
+  IF OLD.status IN ('RESOLVED', 'DISMISSED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : alerte résolue ou écartée, immuable (ADR-006).';
+  END IF;
+  IF NOT (NEW.id <=> OLD.id AND NEW.alert_type <=> OLD.alert_type AND NEW.nature <=> OLD.nature
+          AND NEW.subject_type <=> OLD.subject_type AND NEW.subject_id <=> OLD.subject_id
+          AND NEW.dedup_key <=> OLD.dedup_key AND NEW.first_detected_at <=> OLD.first_detected_at
+          AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : identité de l''alerte immuable.';
+  END IF;
+  IF OLD.status = 'ACKNOWLEDGED' AND NEW.status = 'OPEN' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : une alerte prise en compte ne redevient pas ouverte.';
+  END IF;
+  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-401) ; le compteur ne recule pas.
+  IF FIELD(NEW.severity, 'INFO', 'WARNING', 'CRITICAL') < FIELD(OLD.severity, 'INFO', 'WARNING', 'CRITICAL') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : la gravité d''une alerte ouverte ne baisse pas.';
+  END IF;
+  IF NEW.occurrences < OLD.occurrences THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : le compteur d''occurrences ne recule pas.';
+  END IF;
+  -- L'escalade et le point de départ de l'échéance ne s'effacent pas.
+  IF OLD.escalated_at IS NOT NULL AND NOT (NEW.escalated_at <=> OLD.escalated_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : escalade déjà posée.';
+  END IF;
+  IF OLD.critical_since IS NOT NULL AND NOT (NEW.critical_since <=> OLD.critical_since) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : critical_since déjà posé.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alerts_purge_guard` BEFORE DELETE ON `communication_alerts` FOR EACH ROW BEGIN
+  IF NOT (OLD.status IN ('RESOLVED', 'DISMISSED')
+          AND OLD.resolved_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 730 DAY)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : seules les alertes closes depuis plus de 2 ans se purgent.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_internal_notes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_internal_notes` (
+  `id` binary(16) NOT NULL,
+  `title` varchar(160) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `body` text COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `category` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `related_entity_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `related_entity_id` binary(16) DEFAULT NULL,
+  `requires_ack` tinyint(1) NOT NULL DEFAULT '0',
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DRAFT',
+  `published_at` datetime(6) DEFAULT NULL,
+  `expires_at` datetime(6) DEFAULT NULL,
+  `archived_at` datetime(6) DEFAULT NULL,
+  `archive_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_internal_notes_command` (`command_id`),
+  KEY `ix_communication_internal_notes_status` (`status`,`published_at`),
+  KEY `fk_communication_internal_notes_created_by` (`created_by`),
+  KEY `fk_communication_internal_notes_updated_by` (`updated_by`),
+  CONSTRAINT `fk_communication_internal_notes_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_internal_notes_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_internal_notes_archived` CHECK (((`status` = _utf8mb4'ARCHIVED') = (`archived_at` is not null))),
+  CONSTRAINT `ck_communication_internal_notes_category` CHECK ((`category` in (_utf8mb4'PRIX',_utf8mb4'INSTRUCTION',_utf8mb4'PROCEDURE',_utf8mb4'INFORMATION'))),
+  CONSTRAINT `ck_communication_internal_notes_expiry` CHECK (((`expires_at` is null) or (`published_at` is null) or (`expires_at` > `published_at`))),
+  CONSTRAINT `ck_communication_internal_notes_published` CHECK (((`status` <> _utf8mb4'PUBLISHED') or (`published_at` is not null))),
+  CONSTRAINT `ck_communication_internal_notes_related` CHECK (((`related_entity_type` is null) = (`related_entity_id` is null))),
+  CONSTRAINT `ck_communication_internal_notes_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'PUBLISHED',_utf8mb4'ARCHIVED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_internal_notes_update_guard` BEFORE UPDATE ON `communication_internal_notes` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : identité de la note immuable.';
+  END IF;
+  IF OLD.status = 'ARCHIVED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : note archivée, immuable.';
+  END IF;
+  IF OLD.status = 'PUBLISHED' THEN
+    IF NOT (NEW.title <=> OLD.title AND NEW.body <=> OLD.body AND NEW.category <=> OLD.category
+            AND NEW.related_entity_type <=> OLD.related_entity_type AND NEW.related_entity_id <=> OLD.related_entity_id
+            AND NEW.requires_ack <=> OLD.requires_ack AND NEW.published_at <=> OLD.published_at
+            AND NEW.expires_at <=> OLD.expires_at) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : note publiée, immuable (BR-NOT-006) ; publier une note corrective.';
+    END IF;
+    IF NEW.status NOT IN ('PUBLISHED', 'ARCHIVED') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : une note publiée ne revient pas au brouillon.';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_internal_notes_no_delete` BEFORE DELETE ON `communication_internal_notes` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : suppression interdite ; archiver la note.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_note_acknowledgements`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_note_acknowledgements` (
+  `note_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `read_at` datetime(6) NOT NULL,
+  `acknowledged_at` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  PRIMARY KEY (`note_id`,`user_id`),
+  KEY `ix_communication_note_acknowledgements_user` (`user_id`,`acknowledged_at`),
+  CONSTRAINT `fk_communication_note_acknowledgements_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_note_acknowledgements_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_acknowledgements_update_guard` BEFORE UPDATE ON `communication_note_acknowledgements` FOR EACH ROW BEGIN
+  IF NOT (NEW.note_id <=> OLD.note_id AND NEW.user_id <=> OLD.user_id AND NEW.read_at <=> OLD.read_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : lecture immuable.';
+  END IF;
+  IF OLD.acknowledged_at IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : accusé déjà enregistré, immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_acknowledgements_no_delete` BEFORE DELETE ON `communication_note_acknowledgements` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : suppression interdite.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_note_audiences`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_note_audiences` (
+  `note_id` binary(16) NOT NULL,
+  `audience_type` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `audience_ref` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '*',
+  PRIMARY KEY (`note_id`,`audience_type`,`audience_ref`),
+  CONSTRAINT `fk_communication_note_audiences_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_note_audiences_ref` CHECK (((`audience_type` = _utf8mb4'ALL') = (`audience_ref` = _utf8mb4'*'))),
+  CONSTRAINT `ck_communication_note_audiences_type` CHECK ((`audience_type` in (_utf8mb4'ALL',_utf8mb4'ROLE',_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'USER')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_insert_guard` BEFORE INSERT ON `communication_note_audiences` FOR EACH ROW BEGIN
+  IF (SELECT status FROM communication_internal_notes WHERE id = NEW.note_id) <> 'DRAFT' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : audience figée dès la publication de la note.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_update_guard` BEFORE UPDATE ON `communication_note_audiences` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : modification interdite ; retirer puis ajouter la ligne d''un brouillon.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_delete_guard` BEFORE DELETE ON `communication_note_audiences` FOR EACH ROW BEGIN
+  IF (SELECT status FROM communication_internal_notes WHERE id = OLD.note_id) <> 'DRAFT' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : audience figée dès la publication de la note.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_notifications`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_notifications` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `channel` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `kind` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `alert_id` binary(16) DEFAULT NULL,
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `note_id` binary(16) DEFAULT NULL,
+  `source_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `source_id` binary(16) DEFAULT NULL,
+  `source_event_id` binary(16) DEFAULT NULL,
+  `title` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `body` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '',
+  `link` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `delivered_at` datetime(6) DEFAULT NULL,
+  `read_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_notifications_event` (`user_id`,`channel`,`source_event_id`),
+  KEY `ix_communication_notifications_user` (`user_id`,`read_at`,`created_at`),
+  KEY `ix_communication_notifications_alert` (`alert_id`),
+  KEY `ix_communication_notifications_push` (`user_id`,`alert_type`,`channel`,`created_at`),
+  KEY `fk_communication_notifications_note` (`note_id`),
+  CONSTRAINT `fk_communication_notifications_alert` FOREIGN KEY (`alert_id`) REFERENCES `communication_alerts` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_communication_notifications_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_notifications_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_notifications_alert` CHECK (((`kind` <> _utf8mb4'ALERT') or (`alert_type` is not null))),
+  CONSTRAINT `ck_communication_notifications_channel` CHECK ((`channel` in (_utf8mb4'IN_APP',_utf8mb4'WEB_PUSH'))),
+  CONSTRAINT `ck_communication_notifications_kind` CHECK ((`kind` in (_utf8mb4'ALERT',_utf8mb4'NOTE',_utf8mb4'DIRECT',_utf8mb4'EXPORT'))),
+  CONSTRAINT `ck_communication_notifications_note` CHECK (((`kind` <> _utf8mb4'NOTE') or (`note_id` is not null)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_notifications_update_guard` BEFORE UPDATE ON `communication_notifications` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.user_id <=> OLD.user_id AND NEW.channel <=> OLD.channel AND NEW.kind <=> OLD.kind
+          AND NEW.alert_id <=> OLD.alert_id AND NEW.alert_type <=> OLD.alert_type AND NEW.note_id <=> OLD.note_id
+          AND NEW.source_type <=> OLD.source_type AND NEW.source_id <=> OLD.source_id
+          AND NEW.source_event_id <=> OLD.source_event_id AND NEW.title <=> OLD.title AND NEW.body <=> OLD.body
+          AND NEW.link <=> OLD.link AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_notifications : seules la livraison et la lecture évoluent.';
+  END IF;
+  IF OLD.read_at IS NOT NULL AND NOT (NEW.read_at <=> OLD.read_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_notifications : date de lecture déjà posée.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_push_subscriptions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_push_subscriptions` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `device_id` binary(16) NOT NULL,
+  `endpoint` varchar(500) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `p256dh` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `auth` varchar(100) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `revoked_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_push_subscriptions_endpoint` (`endpoint`),
+  KEY `ix_communication_push_subscriptions_user` (`user_id`,`revoked_at`),
+  KEY `fk_communication_push_subscriptions_device` (`device_id`),
+  CONSTRAINT `fk_communication_push_subscriptions_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_push_subscriptions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_push_subscriptions_update_guard` BEFORE UPDATE ON `communication_push_subscriptions` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.user_id <=> OLD.user_id AND NEW.device_id <=> OLD.device_id
+          AND NEW.endpoint <=> OLD.endpoint AND NEW.p256dh <=> OLD.p256dh AND NEW.auth <=> OLD.auth
+          AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_push_subscriptions : seule la révocation évolue.';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL AND NOT (NEW.revoked_at <=> OLD.revoked_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_push_subscriptions : révocation déjà posée.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `crm_customer_assignments`
 --
 
@@ -9099,5 +9680,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090200'),
   ('20261013090300'),
   ('20261101090000'),
-  ('20261201090000');
+  ('20261201090000'),
+  ('20261201090100');
 UNLOCK TABLES;

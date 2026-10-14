@@ -128,23 +128,27 @@
 |---|---|---:|---|---|
 | [STD-ID] | | | | |
 | `alert_type` | code → alert_rules | Non | — | |
-| `severity` | enum | Non | — | |
-| `subject_type`, `subject_id` | code, uuid | Non | — | Objet concerné |
+| `nature` | enum(`STATE`,`EVENT`) | Non | — | Alerte d'état (se résout seule) ou d'événement (BR-NOT-003) |
+| `severity` | enum(`INFO`,`WARNING`,`CRITICAL`) | Non | — | Relevée par une occurrence plus grave, jamais abaissée tant que l'alerte est ouverte (AV-401) |
+| `subject_type`, `subject_id` | code, uuid | Non | — | Objet concerné ; UUID v5 déterministe pour un sujet composite (ADR-071 §5) |
 | `site_id`, `zone_id` | uuid | Oui | — | Routage par périmètre |
 | `owner_user_id` | uuid → identity.users | Oui | — | Propriétaire de l'objet (titulaire du client, auteur, vendeur) : sert la portée `OWN` et `TEAM` |
-| `title`, `message` | label, text | Non | — | |
+| `title` | varchar(200) | Non | — | |
+| `message` | varchar(1000) | Non | `''` | Rendu **neutre** (sans valeur au coût) ; le rendu pour un lecteur est calculé à la lecture (ADR-071 §11) |
 | `payload` | json | Non | `{}` | Valeurs du message en champs séparés (copie des données minimales de l'événement) ; les valeurs au coût y sont des champs **protégés**, rendus à la lecture selon `inventory.valuation.read` (ADR-071 §11) ; jamais recopiées dans `message` |
 | `action_screen` | code | Oui | — | Écran d'action (`ECR-…`) |
 | `dedup_key` | varchar(200) | Non | — | `type:subject` |
 | `open_dedup_key` | varchar(200) | Oui | généré | `dedup_key` tant que `status` ∈ (`OPEN`, `ACKNOWLEDGED`), sinon `NULL` (colonne générée, ADR-071 §4) |
 | `occurrences` | int | Non | 1 | |
 | `first_detected_at`, `last_detected_at` | ts | Non | — | |
+| `business_day` | date | Oui | — | Jour métier du dernier fait détecté |
 | `status` | enum(`OPEN`,`ACKNOWLEDGED`,`RESOLVED`,`DISMISSED`) | Non | `OPEN` | |
 | `acknowledged_by`, `acknowledged_at`, `resolved_by`, `resolved_at` | | Oui | — | |
-| `resolution_comment` | text | Oui | — | |
+| `resolution_kind` | enum(`CONDITION_CLEARED`,`PASS`,`MANUAL`,`DISMISSED`) | Oui | — | Comment l'alerte s'est close ; renseigné ⇔ `RESOLVED` ou `DISMISSED` |
+| `resolution_comment` | varchar(500) | Oui | — | Obligatoire pour une résolution manuelle ou un écart |
 | `escalated_at` | ts | Oui | — | |
 | `critical_since` | ts | Oui | — | Instant de la levée ou du relèvement en `CRITICAL` : point de départ de l'échéance d'escalade (ADR-072 §7) |
-| `last_pass_id` | uuid | Oui | — | Identité de la dernière passe de détection qui a revu l'alerte d'état ; sert à la résolution par marqueur (ADR-071 §3) |
+| `last_pass_id` | varchar(64) | Oui | — | Identité de la dernière passe de détection qui a revu l'alerte d'état ; sert à la résolution par marqueur (ADR-071 §3) |
 
 - **PK** `id`. **UQ** `open_dedup_key` (INV-NOT-01 : au plus une alerte ouverte par type et objet ; les valeurs `NULL` ne se heurtent pas). **IX** `(status, severity, first_detected_at)`, `(site_id, status)`, `(owner_user_id, status)`.
 - **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans. **Offline** DL (50 dernières ouvertes du périmètre).
@@ -173,13 +177,17 @@
 | `user_id` | uuid → identity.users | Non | — | |
 | `channel` | enum(`IN_APP`,`WEB_PUSH`) | Non | — | |
 | `title`, `body` | label, text | Non | — | |
+| `kind` | enum(`ALERT`,`NOTE`,`DIRECT`,`EXPORT`) | Non | — | Source : alerte, note de direction, notification directe d'un événement (AV-439), fin d'un export |
 | `link` | varchar(200) | Oui | — | |
-| `alert_id` | uuid → alerts | Oui | — | |
-| `note_id` | uuid → internal_notes | Oui | — | |
+| `alert_id` | uuid → alerts | Oui | — | Mis à `NULL` à la purge de l'alerte |
+| `alert_type` | code | Oui | — | Type de l'alerte (regroupement des push par couple utilisateur et type) ; exigé si `kind = ALERT` |
+| `note_id` | uuid → internal_notes | Oui | — | Exigé si `kind = NOTE` |
+| `source_type`, `source_id` | code, uuid | Oui | — | Objet source d'une notification directe ou d'un export |
+| `source_event_id` | uuid | Oui | — | Événement qui l'a produite ; unique avec (utilisateur, canal) : un consommateur rejoué ne la double pas |
 | `created_at` | ts | Non | `now()` | |
-| `delivered_at`, `read_at` | ts | Oui | — | |
+| `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois |
 
-- **PK** `id`. **IX** `(user_id, read_at)`. **Suppr.** `PURGE_TECHNIQUE` 90 jours après lecture. **Offline** DL (non lues).
+- **PK** `id`. **UQ** `(user_id, channel, source_event_id)`. **IX** `(user_id, read_at, created_at)`, `(alert_id)`, `(user_id, alert_type, channel, created_at)`. **Suppr.** `PURGE_TECHNIQUE` 90 jours après lecture. **Offline** DL (non lues).
 
 ## communication.push_subscriptions
 
@@ -190,7 +198,7 @@
 | [STD-ID] | | | | |
 | `user_id` | uuid → identity.users | Non | — | |
 | `device_id` | uuid → identity.devices | Non | — | |
-| `endpoint` | text | Non | — | |
+| `endpoint` | varchar(500) | Non | — | |
 | `p256dh`, `auth` | text | Non | — | Clés Web Push |
 | `created_at` | ts | Non | `now()` | |
 | `revoked_at` | ts | Oui | — | |
@@ -210,8 +218,10 @@
 | `related_entity_type`, `related_entity_id` | code, uuid | Oui | — | Ex. règle tarifaire |
 | `requires_ack` | boolean | Non | false | AV-066 |
 | `published_at` | ts | Oui | — | |
-| `expires_at` | ts | Oui | — | |
+| `expires_at` | ts | Oui | — | Postérieure à la publication |
 | `status` | enum(`DRAFT`,`PUBLISHED`,`ARCHIVED`) | Non | `DRAFT` | |
+| `archived_at`, `archive_reason` | ts, varchar(500) | Oui | — | Archivage d'une note publiée ou abandon d'un brouillon |
+| `command_id` | uuid | Oui | — | Idempotence de la publication (unique) |
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **Suppr.** `ARCHIVED` (un brouillon abandonné aussi : aucune suppression physique, INV-GLO-03) ; immuable une fois publiée, **audiences comprises** : déclencheurs d'immuabilité sur `internal_notes` et `note_audiences` (BR-NOT-006). **Offline** DL en portée `USER` (notes publiées non expirées des utilisateurs résolus à la publication).

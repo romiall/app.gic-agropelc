@@ -152,7 +152,9 @@
 | INV-KOM-01 | (système, type externe, identifiant externe) correspond à une seule entité GIC. | Doublons d'intégration | DB (`UNIQUE`) | I |
 | INV-KOM-02 | Un webhook (clé de déduplication) n'est traité qu'une fois. | Double création depuis Kommo | DB (`UNIQUE`) | S |
 | INV-KOM-03 | GIC ne modifie jamais un champ dont Kommo est propriétaire. | Double responsabilité (CM §59) | CODE (mapping déclaratif) | U |
-| INV-NOT-01 | Au plus une alerte ouverte par (type, objet concerné). | Accumulation de notifications (CM §54) | DB (index unique partiel) | I |
+| INV-NOT-01 | Au plus une alerte ouverte par (type, objet concerné). | Accumulation de notifications (CM §54) | DB (colonne générée `open_dedup_key` sous index unique : MySQL n'a pas d'index partiel, ADR-071 §6) | I |
+| INV-NOT-02 | Une alerte résolue ou écartée n'est plus modifiée ; la gravité d'une alerte ouverte ne baisse pas. | Perte de l'historique d'une alerte (ADR-006), alerte critique masquée | DB (déclencheur) | I |
+| INV-NOT-03 | Une note de direction publiée est immuable, audience comprise ; une note n'est jamais supprimée. | Consigne modifiée après accusé de lecture (BR-NOT-006) | DB (déclencheurs sur la note et son audience) | I |
 
 ## 11. Couverture des exemples du PM §28
 

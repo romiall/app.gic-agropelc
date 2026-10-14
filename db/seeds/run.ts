@@ -31,6 +31,7 @@ import {
   PAYMENT_METHODS,
 } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
+import { ALERT_RULES } from './communication-references.js';
 import { publishReferenceFeeds } from './publish-references.js';
 
 import { newUuidv7Bytes as newId } from './uuidv7.js';
@@ -161,6 +162,35 @@ async function seedVirtualLocations(conn: mysql.Connection, systemUserId: Buffer
   }
   console.log(
     `  + organization_locations virtuels (${VIRTUAL_LOCATIONS.length} types, BR-ADM-010)`,
+  );
+}
+
+/**
+ * Règles d'alerte (P9-03, D13 §7.1) : insertion des règles absentes seulement. Une règle existante n'est
+ * jamais réécrite (un administrateur a pu la modifier, `communication.alert_rule.set`).
+ */
+async function seedAlertRules(conn: mysql.Connection): Promise<void> {
+  let inserted = 0;
+  for (const rule of ALERT_RULES) {
+    const [result] = await conn.query<mysql.ResultSetHeader>(
+      `INSERT INTO communication_alert_rules
+         (alert_type, enabled, severity, recipient_roles, resolution_mode, escalation_hours, escalation_roles)
+       VALUES (?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON))
+       ON DUPLICATE KEY UPDATE alert_type = alert_type`,
+      [
+        rule.alertType,
+        rule.enabled,
+        rule.severity,
+        JSON.stringify(rule.recipientRoles),
+        rule.resolutionMode,
+        rule.escalationHours,
+        JSON.stringify(rule.escalationRoles),
+      ],
+    );
+    if (result.affectedRows === 1) inserted++;
+  }
+  console.log(
+    `  + communication_alert_rules (${inserted} nouvelles règles sur ${ALERT_RULES.length})`,
   );
 }
 
@@ -415,6 +445,7 @@ async function main(): Promise<void> {
     await seedProductionReferences(conn, systemUserId);
     await seedFinanceReferences(conn);
     await seedExpenseCategories(conn, systemUserId);
+    await seedAlertRules(conn);
     // P4-11 puis P5-18 (ADR-031, AV-196) : référentiels semés publiés dans le flux de synchronisation.
     await publishReferenceFeeds(conn);
     console.log('Terminé.');

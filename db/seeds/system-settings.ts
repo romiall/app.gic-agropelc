@@ -333,6 +333,78 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-207',
   },
+  // P9-03 (ADR-071, ADR-072, ADR-078 ; AV-400 à AV-442) : seuils, délais et durées des alertes. Un seul
+  // lieu des seuils (AV-400) : lus par le détecteur, dans le module qui porte la donnée.
+  {
+    key: 'communication.push_group_minutes',
+    value: 15,
+    isClientVisible: false,
+    ref: 'D13 §14, AV-416',
+  },
+  {
+    key: 'communication.consumer_lag_alert_seconds',
+    value: 300,
+    isClientVisible: false,
+    ref: 'AV-412, AV-438',
+  },
+  { key: 'communication.alert_retention_days', value: 730, isClientVisible: false, ref: 'AV-437' },
+  {
+    key: 'communication.notification_retention_days',
+    value: 90,
+    isClientVisible: false,
+    ref: 'AV-437',
+  },
+  {
+    key: 'approvals.pending_long_hours',
+    value: 24,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-408',
+  },
+  {
+    key: 'attachments.missing_alert_days',
+    value: 7,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-407',
+  },
+  {
+    key: 'procurement.receipt_incomplete_alert_days',
+    value: 2,
+    isClientVisible: false,
+    ref: 'BR-APP-015, AV-410',
+  },
+  {
+    key: 'inventory.high_loss_alert_xaf',
+    value: 50_000,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-406',
+  },
+  {
+    key: 'sales.high_loss_alert_sales_pct',
+    value: 5,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-406',
+  },
+  {
+    key: 'inventory.transfer_not_received_hours',
+    value: 48,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-065',
+  },
+  {
+    key: 'inventory.lot_expiring_days',
+    value: 15,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-065',
+  },
+  // BR-TER-013 : lundi à samedi par défaut (numéros ISO des jours, 1 = lundi).
+  {
+    key: 'sales.commercial_working_days',
+    value: ['1', '2', '3', '4', '5', '6'],
+    isClientVisible: false,
+    ref: 'BR-TER-013, AV-409',
+  },
+  { key: 'sync.stale_hours', value: 24, isClientVisible: false, ref: 'D13 §7.1' },
+  { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-442' },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).

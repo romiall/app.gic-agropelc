@@ -340,3 +340,26 @@ consommateurs réels (alertes, projections, Kommo…) restent hors périmètre P
 - **Suppr.** Ajout seul (comme `domain_events`) : la preuve d'idempotence tient à ce qu'une
   seconde écriture pour la même clé échoue (contrainte PK) plutôt que d'écraser la première —
   ni `UPDATE` ni `DELETE` pour l'application.
+
+## platform.event_consumer_failures
+
+**Responsabilité** : événements **sautés** par un consommateur après ses essais (P9-04 ; ADR-071 §12,
+AV-412 ; catalogue d'événements §3 « Échecs »). Le runner saute l'événement et avance la position ;
+`event_consumer_offsets.last_error` n'en garde que le dernier message, réécrit à `NULL` par le premier
+événement traité ensuite. Cette table consigne chaque saut pour que l'alerte technique `CONSUMER_FAILED`
+(ADMIN) ne repose pas sur un champ éphémère.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | bigint | Non | auto | |
+| `consumer_name` | code | Non | — | Même espace de noms que `event_consumer_offsets` |
+| `event_seq` | bigint | Non | — | `platform_domain_events.seq` |
+| `event_id` | uuid | Non | — | `platform_domain_events.event_id` (sans FK) |
+| `event_type` | varchar(80) | Non | — | |
+| `error_message` | varchar(1000) | Non | — | Dernier message d'erreur |
+| `attempts` | smallint | Non | — | Essais effectués |
+| `failed_at` | ts | Non | `now()` | |
+
+- **PK** `id`. **UQ** `(consumer_name, event_seq)` : un saut n'est consigné qu'une fois. **IX** `(failed_at)`.
+- **Suppr.** Ajout seul (`SELECT` et `INSERT` seulement pour l'application).
+- **Implémentation** : migration `20261201090200_create_platform_event_consumer_failures.sql`.
