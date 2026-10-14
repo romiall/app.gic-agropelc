@@ -12,7 +12,10 @@
  *
  * Annulation (ADR-006) : écritures inverses (`CREDIT`) ; refusée si le mois de l'espèce a déjà
  * été réparti (`OVERHEAD_ALREADY_ALLOCATED`) — DÉDUIT : une répartition n'est jamais réécrite
- * (ADR-026) ; un frais saisi en trop après la répartition reste dans les coûts du mois.
+ * (ADR-026) ; un frais saisi en trop après la répartition reste dans les coûts du mois. Correctif A7
+ * (revue de P8) : l'annulation prend d'abord le verrou de la masse de chaque (espèce, mois) de la
+ * saisie (ADR-038, rang N2b), puis relit la garde par une lecture verrouillante ; une répartition
+ * concurrente est ainsi terminée avant elle, ou l'attend.
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
@@ -26,7 +29,13 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
-import { SPECIES_GROUPS, recordCostEntry, type SpeciesGroup } from '../public/cost-entries.js';
+import {
+  SPECIES_GROUPS,
+  lockOverheadPools,
+  overheadPeriodOf,
+  recordCostEntry,
+  type SpeciesGroup,
+} from '../public/cost-entries.js';
 
 const PERMISSION = 'inventory.cost_entry.record';
 
@@ -125,7 +134,10 @@ function buildHandlers(idGenerator: IdGenerator) {
         created_by: toBin(envelope.author_user_id),
       })
       .execute();
-    for (const line of p.lines) {
+    // Lignes par espèce croissante : `recordCostEntry` prend le verrou de chaque masse (A7), toujours
+    // dans le même ordre que l'annulation et la répartition.
+    const ordered = [...p.lines].sort((a, b) => a.speciesGroup.localeCompare(b.speciesGroup));
+    for (const line of ordered) {
       const lineId = idGenerator.newId();
       const costEntryId = await recordCostEntry(uow, deps, {
         costObjectType: 'SITE',
@@ -181,6 +193,15 @@ function buildHandlers(idGenerator: IdGenerator) {
       .where('l.entry_id', '=', entry.id)
       .execute();
     const month = businessMonthBounds(entry.occurred_at);
+    // Masse de chaque espèce de la saisie, avant la garde (A7) : ordre unique, aucun cycle.
+    await lockOverheadPools(
+      uow,
+      lines.map((line) => ({
+        siteId,
+        speciesGroup: line.species_group as SpeciesGroup,
+        period: overheadPeriodOf(entry.occurred_at),
+      })),
+    );
     for (const line of lines) {
       if (await monthAllocated(uow, siteId, line.species_group as SpeciesGroup, month)) {
         return rejected(
@@ -224,7 +245,10 @@ function buildHandlers(idGenerator: IdGenerator) {
   return { record, cancel };
 }
 
-/** Une répartition (`ALLOCATION`) a-t-elle déjà crédité les frais de l'espèce sur ce mois ? */
+/**
+ * Une répartition (`ALLOCATION`) a-t-elle déjà crédité les frais de l'espèce sur ce mois ? Lecture
+ * verrouillante : appelée sous le verrou de la masse (A7), elle rend les répartitions validées avant lui.
+ */
 async function monthAllocated(
   uow: UnitOfWork,
   siteId: string,
@@ -240,6 +264,7 @@ async function monthAllocated(
     .where('species_group', '=', speciesGroup)
     .where('occurred_at', '>=', month.start)
     .where('occurred_at', '<', month.end)
+    .forShare()
     .executeTakeFirst();
   return row !== undefined;
 }

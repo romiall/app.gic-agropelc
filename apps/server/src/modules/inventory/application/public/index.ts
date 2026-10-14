@@ -134,6 +134,9 @@ export {
   costObjectBalance,
   lotCostObjectStatus,
   siteOverheadMonthAllocated,
+  lockOverheadPool,
+  lockOverheadPools,
+  overheadPeriodOf,
 } from './cost-entries.js';
 export type {
   CostObjectType,
@@ -142,6 +145,7 @@ export type {
   SpeciesGroup,
   CostEntryInput,
   CostObjectBalance,
+  OverheadPoolKey,
 } from './cost-entries.js';
 export { lotHeadcount, lotHeadDays, lotLostQuantity } from './lot-headcount.js';
 export type { HeadcountScope } from './lot-headcount.js';

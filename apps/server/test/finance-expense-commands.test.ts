@@ -3,7 +3,8 @@
  * enregistrement en ligne et hors ligne, payée ou à payer ; caisse de PDV (catégorie, plafond, session
  * exigée, `CASH_SESSION_MISSING` résolu à l'ouverture) ; validation a posteriori d'une saisie hors
  * ligne non conforme ; seuils de validation et de justificatif ; coût par l'API d'`inventory` ;
- * paiement ; annulation (contrepassation, frais généraux déjà répartis) ; portée et rejeu.
+ * paiement ; annulation (contrepassation, frais généraux déjà répartis) ; portée et rejeu ; A7 (revue
+ * de P8) : les frais généraux d'une ferme se saisissent et s'annulent sous le verrou de leur masse.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
@@ -16,7 +17,10 @@ import { registerRequestCommands } from '../src/modules/approvals/application/co
 import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/application/decision-handler-registry.js';
 import { registerCashSessionCommands } from '../src/modules/finance/application/commands/cash-session-commands.js';
 import { registerExpenseCommands } from '../src/modules/finance/application/commands/expense-commands.js';
-import { recordCostEntry } from '../src/modules/inventory/application/public/index.js';
+import {
+  lockOverheadPool,
+  recordCostEntry,
+} from '../src/modules/inventory/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -717,18 +721,126 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
         paidNow: false,
       });
     // Saisie sur un site, imputée à un autre : refusée (la portée vérifiée est celle de la saisie).
-    expect(codeOf((await attempt(shop, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' })).result)).toBe(
-      'COST_OBJECT_INVALID',
-    );
+    expect(
+      codeOf((await attempt(shop, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' })).result),
+    ).toBe('COST_OBJECT_INVALID');
     // Frais généraux d'une espèce sur un point de vente : aucune répartition possible, refusés.
-    expect(codeOf((await attempt(shop, { type: 'SITE', id: shop, speciesGroup: 'VOLAILLE' })).result)).toBe(
-      'SITE_NOT_FARM',
-    );
+    expect(
+      codeOf((await attempt(shop, { type: 'SITE', id: shop, speciesGroup: 'VOLAILLE' })).result),
+    ).toBe('SITE_NOT_FARM');
     // Sur la ferme elle-même : acceptés, FRAIS_GENERAUX de l'espèce.
     const ok = await attempt(farm, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' });
     expect(codeOf(ok.result)).toBe('APPLIED');
     expect(await costsOf(ok.id)).toEqual([
-      expect.objectContaining({ object: 'SITE', objectId: farm, costType: 'FRAIS_GENERAUX', species: 'VOLAILLE' }),
+      expect.objectContaining({
+        object: 'SITE',
+        objectId: farm,
+        costType: 'FRAIS_GENERAUX',
+        species: 'VOLAILLE',
+      }),
     ]);
+  });
+
+  it('A7 : saisie, annulation et approbation d’une dépense de frais généraux attendent le verrou de la masse (site, espèce, mois)', async () => {
+    const farm = await newFarm();
+    const key = { siteId: farm, speciesGroup: 'PORC' as const, period: '2026-10' };
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    class Rollback extends Error {}
+    /** Une transaction de test tient la masse jusqu'à la libération, puis s'annule. */
+    const holdPool = async () => {
+      let ready!: () => void;
+      let open!: () => void;
+      const held = new Promise<void>((resolve) => (ready = resolve));
+      const gate = new Promise<void>((resolve) => (open = resolve));
+      const done = db
+        .transaction()
+        .execute(async (trx) => {
+          await lockOverheadPool(trx, key);
+          ready();
+          await gate;
+          throw new Rollback();
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof Rollback)) throw error;
+        });
+      await Promise.race([held, done]);
+      return {
+        release: async () => {
+          open();
+          await done;
+        },
+      };
+    };
+    /** Lance une commande pendant que la masse est tenue : elle attend, puis aboutit. */
+    const waits = async (start: () => Promise<CommandResult>) => {
+      const holder = await holdPool();
+      let finished = false;
+      const pending = start().finally(() => (finished = true));
+      await sleep(700);
+      const stillWaiting = !finished;
+      await holder.release();
+      return { stillWaiting, result: await pending };
+    };
+    const payload = {
+      categoryId: category.DIVERS,
+      amountXaf: 4_000,
+      description: 'Petit matériel de la ferme',
+      siteId: farm,
+      costObject: { type: 'SITE', id: farm, speciesGroup: 'PORC' },
+      paidNow: false,
+    };
+
+    // Saisie : le coût FRAIS_GENERAUX est une écriture de la masse, donc sous son verrou.
+    const id = freshUuid();
+    const recorded = await waits(() =>
+      run(fin, 'finance.expense.record', id, at('10:00'), payload),
+    );
+    expect(recorded.stillWaiting).toBe(true);
+    expect(codeOf(recorded.result)).toBe('APPLIED');
+    expect(await costsOf(id)).toHaveLength(1);
+
+    // Annulation (mois pas encore réparti) : la garde et la contrepassation passent sous le verrou.
+    const cancelled = await waits(() =>
+      run(fin, 'finance.expense.cancel', id, at('12:00'), { reason: 'Erreur de saisie' }),
+    );
+    expect(cancelled.stillWaiting).toBe(true);
+    expect(codeOf(cancelled.result)).toBe('APPLIED');
+    expect(await costsOf(id)).toEqual([
+      expect.objectContaining({ direction: 'DEBIT', amount: 4_000 }),
+      expect.objectContaining({ direction: 'CREDIT', amount: 4_000 }),
+    ]);
+
+    // Une répartition validée pendant l'attente : la garde la voit (lecture verrouillante), l'annulation
+    // est refusée au lieu de contrepasser un frais déjà porté par les lots.
+    const second = freshUuid();
+    expect(codeOf((await record(fin, payload, { id: second })).result)).toBe('APPLIED');
+    // Un approbateur dont les droits n'ont jamais été lus : sa transaction lit ses droits avant le
+    // verrou, donc son instantané précède la répartition validée pendant l'attente.
+    const late = await newActor('DIRECTION', root.userId);
+    const holder = await holdPool();
+    let finished = false;
+    const pending = run(late, 'finance.expense.cancel', second, at('13:00'), {
+      reason: 'Erreur',
+    }).finally(() => (finished = true));
+    await sleep(700);
+    expect(finished).toBe(false);
+    await db
+      .insertInto('inventory_cost_entries')
+      .values({
+        id: toBin(freshUuid()),
+        cost_object_type: 'SITE',
+        cost_object_id: toBin(farm),
+        cost_type: 'FRAIS_GENERAUX',
+        species_group: 'PORC',
+        amount_xaf: 4_000,
+        direction: 'CREDIT',
+        source_type: 'ALLOCATION',
+        source_id: toBin(freshUuid()),
+        occurred_at: new Date(at('11:00')),
+        created_by: toBin(root.userId),
+      })
+      .execute();
+    await holder.release();
+    expect(codeOf(await pending)).toBe('OVERHEAD_ALREADY_ALLOCATED');
   });
 });

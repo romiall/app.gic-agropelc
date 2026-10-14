@@ -9,19 +9,26 @@
  * - clôture d'un lot en cours de mois (AV-105) : part estimée sur les frais connus (têtes ×
  *   jours écoulés), puis la répartition du mois l'exclut ;
  * - refus : permission, mois futur, site qui n'est pas une ferme ; annulation d'un frais d'un
- *   mois déjà réparti.
+ *   mois déjà réparti ;
+ * - A7 (revue de P8, ADR-038 rang N2b) : répartition, clôture d'un lot, saisie et annulation d'un
+ *   frais partagent le verrou de la masse (site, espèce, mois) ; une annulation concurrente d'une
+ *   répartition est refusée ou précède, jamais de part d'un frais annulé dans les lots.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Transaction } from 'kysely';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
+import type { DB } from '../src/platform/kysely/database.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
 import { registerOverheadCommands as registerInventoryOverheadCommands } from '../src/modules/inventory/application/commands/overhead-commands.js';
 import { registerLotCommands } from '../src/modules/production/application/commands/lot-commands.js';
 import { registerOverheadCommands } from '../src/modules/production/application/commands/overhead-commands.js';
+import { periodWindow } from '../src/modules/production/application/overhead-allocation.js';
 import {
   costObjectBalance,
   ensureSupplierLot,
+  lockOverheadPool,
   recordStockMove,
   virtualLocationId,
 } from '../src/modules/inventory/application/public/index.js';
@@ -505,5 +512,227 @@ describe('P7-10 : répartition des frais généraux', () => {
     expect(lines.get(lotB)).toEqual([1000, 5_714]);
     expect(lines.has(lotC)).toBe(false);
     expect(await overheadsOf(lotC)).toBe(857);
+  });
+
+  // --- A7 (revue de P8, ADR-038 rang N2b) : verrou de la masse mensuelle des frais généraux ----------
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  class Rollback extends Error {}
+
+  /** Une transaction de test qui tient une ressource jusqu'à `release()`, puis s'annule (rien n'en reste). */
+  async function hold(lock: (trx: Transaction<DB>) => Promise<unknown>) {
+    let ready!: () => void;
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => (ready = resolve));
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const done = db
+      .transaction()
+      .execute(async (trx) => {
+        await lock(trx);
+        ready();
+        await gate;
+        throw new Rollback();
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof Rollback)) throw error;
+      });
+    await Promise.race([held, done]);
+    return {
+      release: async () => {
+        open();
+        await done;
+      },
+    };
+  }
+
+  /** Suit une commande dès son lancement : `done` devient vrai quand son résultat est rendu. */
+  function track(promise: Promise<unknown>): { done: boolean } {
+    const state = { done: false };
+    void promise.then(
+      () => (state.done = true),
+      () => (state.done = true),
+    );
+    return state;
+  }
+
+  /** Masse non répartie d'un mois (frais généraux de l'espèce sur le site de la ferme). */
+  async function poolOf(speciesGroup: string, period: string): Promise<number> {
+    const window = periodWindow(period, new Date(NOW));
+    return (
+      await costObjectBalance(db, {
+        costObjectType: 'SITE',
+        costObjectId: farmId,
+        costTypes: ['FRAIS_GENERAUX'],
+        speciesGroup: speciesGroup as 'VOLAILLE' | 'PORC',
+        from: window.start,
+        at: new Date(window.end.getTime() - 1),
+      })
+    ).netXaf;
+  }
+
+  const cancelEntry = (entryId: string) =>
+    run(productionManager, 'inventory.overhead.cancel', 'OVERHEAD_ENTRY', entryId, NOW, {
+      entryId,
+      comment: 'Erreur',
+    });
+
+  it('A7 : annulation d’une saisie pendant la répartition de son mois — refusée après elle, masse du site jamais négative', async () => {
+    const entryId = await overhead('2026-11-02T09:00:00.000Z', [
+      { speciesGroup: 'PORC', amountXaf: 7_000 },
+    ]);
+    expect(await poolOf('PORC', '2026-11')).toBe(7_000);
+    // Une ligne de répartition non validée arrête la répartition juste après sa lecture de la masse
+    // (étape « répartitions déjà écrites »), puis s'annule : rien n'en reste.
+    const blocker = await hold((trx) =>
+      trx
+        .insertInto('production_overhead_allocations')
+        .values({
+          id: toBin(freshUuid()),
+          site_id: toBin(farmId),
+          species_group: 'PORC',
+          period: '2026-11',
+          run_kind: 'REGULARIZATION',
+          sequence: 99,
+          pool_xaf: 0,
+          allocated_xaf: 0,
+          head_days_total: '0',
+          occurred_at: new Date(NOW),
+          created_by: toBin(finance.userId),
+        })
+        .execute(),
+    );
+    const allocation = allocate('PORC', '2026-11');
+    const allocationState = track(allocation);
+    await sleep(800);
+    expect(allocationState.done).toBe(false);
+    // L'annulation arrive pendant la répartition : sans verrou commun, elle passait (mois « pas encore
+    // réparti ») et contrepassait un frais que les lots allaient déjà porter.
+    const cancellation = cancelEntry(entryId);
+    await sleep(800);
+    await blocker.release();
+    const [allocated, cancelled] = await Promise.all([allocation, cancellation]);
+    expect(allocated).toMatchObject({
+      status: 'APPLIED',
+      server_refs: { runKind: 'INITIAL', allocatedXaf: '7000' },
+    });
+    expect(code(cancelled)).toBe('OVERHEAD_ALREADY_ALLOCATED');
+    expect(await poolOf('PORC', '2026-11')).toBe(0);
+    expect(await overheadsOf(pigLot)).toBe(10_000 + 7_000);
+  });
+
+  it('A7 : annulation validée avant la répartition qui attendait — masse relue à jour, rien n’est réparti d’un frais annulé', async () => {
+    // Un lot de volaille de septembre : la masse de septembre n'a jamais été répartie.
+    const lotS = await lot('POULET_CHAIR', broilerId, '2026-09-02T10:00:00.000Z', {
+      productId: chickId,
+      lotId: chickLotId,
+      quantity: 20,
+    });
+    const entryId = await overhead('2026-09-10T09:00:00.000Z', [
+      { speciesGroup: 'VOLAILLE', amountXaf: 9_000 },
+    ]);
+    expect(await poolOf('VOLAILLE', '2026-09')).toBe(9_000);
+    // La masse de septembre est tenue : l'annulation arrive la première, la répartition ensuite ; toutes
+    // deux ont déjà lu leur instantané quand le verrou est rendu.
+    const holder = await hold((trx) =>
+      lockOverheadPool(trx, { siteId: farmId, speciesGroup: 'VOLAILLE', period: '2026-09' }),
+    );
+    const cancellation = cancelEntry(entryId);
+    const cancellationState = track(cancellation);
+    await sleep(800);
+    const allocation = allocate('VOLAILLE', '2026-09');
+    const allocationState = track(allocation);
+    await sleep(800);
+    expect(cancellationState.done).toBe(false);
+    expect(allocationState.done).toBe(false);
+    await holder.release();
+    const [cancelled, allocated] = await Promise.all([cancellation, allocation]);
+    expect(cancelled.status, JSON.stringify(cancelled)).toBe('APPLIED');
+    // La masse relue sous le verrou est nulle : la répartition n'écrit rien (jamais de part d'un frais
+    // annulé dans les lots, jamais de masse négative).
+    expect(code(allocated)).toBe('NOTHING_TO_ALLOCATE');
+    expect(await poolOf('VOLAILLE', '2026-09')).toBe(0);
+    expect(await overheadsOf(lotS)).toBe(0);
+  });
+
+  it('A7 : saisie, annulation, répartition et clôture d’un lot attendent le verrou de la masse (site, espèce, mois)', async () => {
+    const key = { siteId: farmId, speciesGroup: 'VOLAILLE' as const, period: '2026-11' };
+    /** Lance une commande pendant que la masse est tenue : elle doit attendre, puis aboutir. */
+    const waits = async (start: () => Promise<Result>) => {
+      const holder = await hold((trx) => lockOverheadPool(trx, key));
+      const pending = start();
+      const state = track(pending);
+      await sleep(700);
+      const stillWaiting = !state.done;
+      await holder.release();
+      const result = await pending;
+      expect(result.status, JSON.stringify(result)).not.toBe('RETRY_LATER');
+      return { stillWaiting, result };
+    };
+
+    const recorded = await waits(() =>
+      run(productionManager, 'inventory.overhead.record', 'OVERHEAD_ENTRY', freshUuid(), NOW, {
+        siteId: farmId,
+        label: 'Gardiennage',
+        lines: [{ speciesGroup: 'VOLAILLE', amountXaf: 1_000 }],
+      }),
+    );
+    expect(recorded.stillWaiting).toBe(true);
+    expect(recorded.result.status).toBe('APPLIED');
+
+    // Mois métier de Douala (UTC+1) : le 31 octobre à 23 h 30 UTC est déjà le 1er novembre.
+    const boundary = await waits(() =>
+      run(
+        productionManager,
+        'inventory.overhead.record',
+        'OVERHEAD_ENTRY',
+        freshUuid(),
+        '2026-10-31T23:30:00.000Z',
+        {
+          siteId: farmId,
+          label: 'Gardiennage de fin de mois',
+          lines: [{ speciesGroup: 'VOLAILLE', amountXaf: 500 }],
+        },
+      ),
+    );
+    expect(boundary.stillWaiting).toBe(true);
+
+    const entryId = await overhead('2026-11-04T09:00:00.000Z', [
+      { speciesGroup: 'VOLAILLE', amountXaf: 2_000 },
+    ]);
+    const cancelled = await waits(() => cancelEntry(entryId));
+    expect(cancelled.stillWaiting).toBe(true);
+    // Le mois de novembre est déjà réparti (test précédent) : refus, mais après avoir attendu.
+    expect(code(cancelled.result)).toBe('OVERHEAD_ALREADY_ALLOCATED');
+
+    const allocated = await waits(() => allocate('VOLAILLE', '2026-11'));
+    expect(allocated.stillWaiting).toBe(true);
+    expect(allocated.result.status).toBe('APPLIED');
+
+    // Lot D : 5 têtes du 2 au 4 novembre, transférées au lot A, puis clôturé (part estimée des frais).
+    const lotD = await lot('POULET_CHAIR', broilerId, '2026-11-02T10:00:00.000Z', {
+      productId: chickId,
+      lotId: chickLotId,
+      quantity: 5,
+    });
+    const moved = await run(
+      farmManager,
+      'production.lot.record_entry',
+      'LOT_ENTRY',
+      freshUuid(),
+      '2026-11-04T10:00:00.000Z',
+      {
+        productionLotId: lotA,
+        sourceKind: 'TRANSFER',
+        sourceProductionLotId: lotD,
+        sourceLocationId: buildingId,
+        quantity: 5,
+      },
+    );
+    expect(moved.status, JSON.stringify(moved)).toBe('APPLIED');
+    const closed = await waits(() =>
+      run(productionManager, 'production.lot.close', 'PRODUCTION_LOT', lotD, NOW, {}),
+    );
+    expect(closed.stillWaiting).toBe(true);
+    expect(closed.result.status).toBe('APPLIED');
   });
 });

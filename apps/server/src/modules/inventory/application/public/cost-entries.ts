@@ -60,6 +60,56 @@ export interface CostEntryInput {
   readonly comment?: string;
 }
 
+/**
+ * Masse mensuelle des frais généraux d'une ferme : (site, espèce, mois métier `AAAA-MM`) — correctif
+ * A7 (revue de P8, ADR-038 rang N2b). Elle est lue par la répartition (`production.overhead.allocate`,
+ * part estimée à la clôture d'un lot), puis répartie ; une saisie ne se contrepasse que tant que le mois
+ * n'est pas réparti. Toute transaction qui écrit ou garde cette masse prend d'abord son verrou.
+ */
+export interface OverheadPoolKey {
+  readonly siteId: string;
+  readonly speciesGroup: SpeciesGroup;
+  readonly period: string;
+}
+
+/** Mois métier (Africa/Douala) d'un instant, `AAAA-MM`. */
+export function overheadPeriodOf(at: Date): string {
+  return businessDayOf(at).slice(0, 7);
+}
+
+/**
+ * Verrou exclusif de la masse (site, espèce, mois), tenu jusqu'à la fin de la transaction. La ligne est
+ * garantie par un upsert sans effet qui prend son verrou d'écriture (ADR-038 §3), jamais par un
+ * `SELECT … FOR UPDATE` sur une clé absente. Rang N2b : après les documents racines (une saisie, une
+ * dépense), avant tout autre rang ; plusieurs masses se verrouillent par `lockOverheadPools` (ordre
+ * croissant). Une lecture simple de la transaction peut précéder le verrou : la masse et la garde
+ * « mois déjà réparti » se relisent donc par une lecture verrouillante, qui rend les lignes validées.
+ */
+export async function lockOverheadPool(uow: Transaction<DB>, key: OverheadPoolKey): Promise<void> {
+  await uow
+    .insertInto('inventory_overhead_pool_locks')
+    .values({
+      site_id: toBin(key.siteId),
+      species_group: key.speciesGroup,
+      period: key.period,
+    })
+    .onDuplicateKeyUpdate({ period: key.period })
+    .execute();
+}
+
+/** Plusieurs masses, verrouillées dans un ordre unique (site, espèce, mois) : aucun cycle entre elles. */
+export async function lockOverheadPools(
+  uow: Transaction<DB>,
+  keys: readonly OverheadPoolKey[],
+): Promise<void> {
+  const unique = new Map(
+    keys.map((key) => [`${key.siteId}|${key.speciesGroup}|${key.period}`, key] as const),
+  );
+  for (const id of [...unique.keys()].sort()) {
+    await lockOverheadPool(uow, unique.get(id)!);
+  }
+}
+
 /** Écrit une ligne du registre de coûts ; `null` si le montant est nul (aucune ligne). */
 export async function recordCostEntry(
   uow: Transaction<DB>,
@@ -70,6 +120,19 @@ export async function recordCostEntry(
     throw new Error(`Montant de coût invalide : ${input.amountXaf}.`);
   }
   if (input.amountXaf === 0) return null;
+  // Toute écriture de la masse des frais généraux d'une ferme passe sous le verrou de sa masse
+  // mensuelle (A7) : elle ne s'intercale jamais dans une répartition ou une annulation du mois.
+  if (
+    input.costObjectType === 'SITE' &&
+    input.costType === 'FRAIS_GENERAUX' &&
+    input.speciesGroup !== undefined
+  ) {
+    await lockOverheadPool(uow, {
+      siteId: input.costObjectId,
+      speciesGroup: input.speciesGroup,
+      period: overheadPeriodOf(input.occurredAt),
+    });
+  }
   const id = deps.idGenerator.newId();
   await uow
     .insertInto('inventory_cost_entries')
@@ -112,9 +175,14 @@ export async function costObjectBalance(
     readonly from?: Date;
     readonly costTypes?: readonly CostType[];
     readonly speciesGroup?: SpeciesGroup;
+    /**
+     * Lecture verrouillante (`FOR SHARE`) : rend les écritures validées jusqu'ici, et non l'instantané
+     * de la transaction. Pour la masse d'un mois réparti sous `lockOverheadPool` (A7).
+     */
+    readonly current?: boolean;
   },
 ): Promise<CostObjectBalance> {
-  const row = await executor
+  const query = executor
     .selectFrom('inventory_cost_entries')
     .select([
       sql<string>`COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount_xaf ELSE 0 END), 0)`.as(
@@ -133,8 +201,8 @@ export async function costObjectBalance(
     )
     .$if(filter.speciesGroup !== undefined, (qb) =>
       qb.where('species_group', '=', filter.speciesGroup!),
-    )
-    .executeTakeFirstOrThrow();
+    );
+  const row = await (filter.current === true ? query.forShare() : query).executeTakeFirstOrThrow();
   const debitXaf = Number(row.debit);
   const creditXaf = Number(row.credit);
   return { debitXaf, creditXaf, netXaf: debitXaf - creditXaf };
@@ -168,6 +236,8 @@ export async function lotCostObjectStatus(
  * Le mois métier (Africa/Douala) contenant `at` a-t-il déjà été réparti entre les lots pour cette
  * ferme et cette espèce (crédit `ALLOCATION` du site, ADR-026) ? Garde de l'annulation d'une
  * dépense de frais généraux (P8-05), comme celle d'une saisie `inventory.overhead.cancel`.
+ * Lecture verrouillante (A7) : l'appelant tient `lockOverheadPool` de ce mois ; la lecture rend les
+ * répartitions validées avant le verrou, et non l'instantané de sa transaction.
  */
 export async function siteOverheadMonthAllocated(
   executor: Kysely<DB> | Transaction<DB>,
@@ -187,6 +257,7 @@ export async function siteOverheadMonthAllocated(
     .where('species_group', '=', input.speciesGroup)
     .where('occurred_at', '>=', start)
     .where('occurred_at', '<', businessDayStartUtc(next))
+    .forShare()
     .executeTakeFirst();
   return row !== undefined;
 }

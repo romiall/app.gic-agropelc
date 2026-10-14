@@ -1135,6 +1135,13 @@ export interface InventoryOverheadEntryLines {
   species_group: string;
 }
 
+export interface InventoryOverheadPoolLocks {
+  created_at: Generated<Date>;
+  period: string;
+  site_id: Buffer;
+  species_group: string;
+}
+
 export interface InventoryProductValuations {
   avg_unit_cost_xaf: Generated<Decimal>;
   last_entry_move_id: Buffer | null;
@@ -2441,6 +2448,7 @@ export interface DB {
   inventory_loss_declarations: InventoryLossDeclarations;
   inventory_overhead_entries: InventoryOverheadEntries;
   inventory_overhead_entry_lines: InventoryOverheadEntryLines;
+  inventory_overhead_pool_locks: InventoryOverheadPoolLocks;
   inventory_product_valuations: InventoryProductValuations;
   inventory_stock_allocation_entries: InventoryStockAllocationEntries;
   inventory_stock_allocations: InventoryStockAllocations;

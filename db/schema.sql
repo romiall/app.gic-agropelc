@@ -4105,6 +4105,23 @@ CREATE TABLE `inventory_product_valuations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `inventory_overhead_pool_locks`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_overhead_pool_locks` (
+  `site_id` binary(16) NOT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `period` char(7) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`site_id`,`species_group`,`period`),
+  CONSTRAINT `ck_inventory_overhead_pool_locks_period` CHECK (regexp_like(`period`,_utf8mb4'^[0-9]{4}-(0[1-9]|1[0-2])$')),
+  CONSTRAINT `ck_inventory_overhead_pool_locks_species` CHECK ((`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `inventory_stock_allocation_entries`
 --
 
@@ -9081,5 +9098,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090100'),
   ('20261013090200'),
   ('20261013090300'),
-  ('20261101090000');
+  ('20261101090000'),
+  ('20261201090000');
 UNLOCK TABLES;
