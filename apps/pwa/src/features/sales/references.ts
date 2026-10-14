@@ -49,6 +49,7 @@ import type {
   ProductData,
   ProductUnitData,
   ReasonCodeData,
+  UnitData,
   SaleData,
   SalesOrderData,
   SettingData,
@@ -79,6 +80,8 @@ export interface SalesReferences {
   readonly customers: readonly CustomerData[];
   readonly paymentMethods: readonly PaymentMethodData[];
   readonly reasonCodes: readonly ReasonCodeData[];
+  /** Unités du catalogue par code (MP-09, AV-249 : nom de repli d'un libellé d'unité). */
+  readonly units: ReadonlyMap<string, UnitData>;
   readonly settings: readonly SettingData[];
   readonly workSessions: readonly WorkSessionData[];
   readonly orders: ReadonlyMap<string, SalesOrderData>;
@@ -372,6 +375,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     pointsOfSale,
     meSettings,
     catalogReasonCodes,
+    catalogUnits,
     transfersCursor,
     stockCursor,
     ordersCursor,
@@ -431,6 +435,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
     listProjected<SettingData>(db, 'me', 'SETTING'),
     listProjected<ReasonCodeData>(db, 'catalog', 'REASON_CODE'),
+    listProjected<UnitData>(db, 'catalog', 'UNIT'),
     db.syncCursors.get('transfers'),
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
@@ -519,6 +524,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     // Motifs semés publiés dans `catalog` (P5-18), réunis à ceux créés par commande (`reason_code`),
     // la version de `catalog` d'abord.
     reasonCodes: unionById(catalogReasonCodes, reasonCodes).filter((reason) => reason.is_active),
+    units: new Map(catalogUnits.map((unit) => [unit.code, unit])),
     // Paramètres du seul jeu `me` (retraits compris) : l'ancien jeu `setting` n'est plus tiré.
     settings: meSettings,
     workSessions: deviceWorkSessions(workSessions, ownOutbox, fieldworkCursor?.pulled_at),

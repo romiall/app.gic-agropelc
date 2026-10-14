@@ -16,7 +16,7 @@ import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDay, formatDateTime } from '../home/format-home.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantityUnit, type UnitCatalog } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 
@@ -145,6 +145,7 @@ export function DistributionScreen() {
                   pos={pos}
                   methodLabels={methodLabels}
                   periodOnly={periodOnly}
+                  units={refs?.units}
                 />
               ))}
             </>
@@ -224,10 +225,12 @@ function PointOfSaleCard({
   pos,
   methodLabels,
   periodOnly,
+  units,
 }: {
   readonly pos: DistributionPointOfSale;
   readonly methodLabels: ReadonlyMap<string, string>;
   readonly periodOnly: boolean;
+  readonly units: UnitCatalog | undefined;
 }) {
   const { t } = useTranslation();
   const titleId = `distribution-pos-${pos.siteId}`;
@@ -289,7 +292,7 @@ function PointOfSaleCard({
       ) : (
         <ul className="line-list">
           {pos.products.map((row) => (
-            <ProductItem key={row.productId} row={row} periodOnly={periodOnly} />
+            <ProductItem key={row.productId} row={row} periodOnly={periodOnly} units={units} />
           ))}
         </ul>
       )}
@@ -388,13 +391,16 @@ function DevicesBlock({ pos }: { readonly pos: DistributionPointOfSale }) {
 function ProductItem({
   row,
   periodOnly,
+  units,
 }: {
   readonly row: DistributionProductRow;
   readonly periodOnly: boolean;
+  readonly units: UnitCatalog | undefined;
 }) {
   const { t } = useTranslation();
   const unit = row.baseUnitCode;
-  const q = (value: number | null) => (value === null ? '—' : `${formatQuantity(value)} ${unit}`);
+  const q = (value: number | null) =>
+    value === null ? '—' : formatQuantityUnit(value, unit, units);
   // Mesures lues à l'instant de lecture (ADR-035 §5) : séparées de celles de la période.
   const nowMeasures = row.toDeliverQty > 0 || (row.allocatedQty !== null && row.allocatedQty > 0);
   return (

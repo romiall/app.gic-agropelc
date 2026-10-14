@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { ageDays, lotsOfDevice, rearingHeadcount, todayJournal } from './daily.js';
 
@@ -69,7 +69,7 @@ export function LotsScreen() {
                     <strong>
                       {heads === null
                         ? t('production.headcount_unknown')
-                        : t('production.headcount', { heads: formatQuantity(heads) })}
+                        : t('production.headcount', { heads: formatQuantityUnit(heads, 'TETE') })}
                     </strong>
                     {lot.status === 'SELLING' ? (
                       <span className="badge badge-info">{t('production.status.SELLING')}</span>

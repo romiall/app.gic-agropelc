@@ -5,7 +5,7 @@
  */
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatMoney } from './format.js';
+import { formatMoney, unitLabel } from './format.js';
 import type { ComputedLine, DraftLine, SaleUnit } from './sale-form.js';
 import type { ReasonCodeData } from './types.js';
 
@@ -64,13 +64,13 @@ export function SaleLineEditor({
             >
               {units.map((unit) => (
                 <option key={unit.unitCode} value={unit.unitCode}>
-                  {unit.unitCode}
+                  {unitLabel(unit.unitCode)}
                 </option>
               ))}
             </select>
           </div>
         ) : (
-          <p className="line-unit">{draft.unitCode}</p>
+          <p className="line-unit">{unitLabel(draft.unitCode)}</p>
         )}
         {byWeight ? (
           <div className="field">

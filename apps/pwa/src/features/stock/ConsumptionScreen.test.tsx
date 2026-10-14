@@ -132,7 +132,7 @@ describe('Consommer un intrant (ECR-STK-08)', () => {
     const quantity = screen.getByLabelText('Quantité');
     await user.type(quantity, '31');
     const refusal = screen.getByText(
-      'Carton de 30 œufs : quota dépassé, il vous reste 30 U, 31 demandé(s).',
+      'Carton de 30 œufs : quota dépassé, il vous reste 30 U, 31 U demandé(s).',
     );
     expect(refusal).toHaveAttribute('role', 'status');
     expect(quantity).toHaveAttribute('aria-invalid', 'true');
@@ -142,7 +142,9 @@ describe('Consommer un intrant (ECR-STK-08)', () => {
     // Au-delà du stock aussi : refusée, jamais annoncée « enregistrée ».
     await user.clear(quantity);
     await user.type(quantity, '101');
-    expect(screen.getByText(/quota dépassé, il vous reste 30 U, 101 demandé/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/quota dépassé, il vous reste 30 U, 101 U demandé/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/sera tout de même enregistrée/)).not.toBeInTheDocument();
     await user.clear(quantity);
     await user.type(quantity, '30');

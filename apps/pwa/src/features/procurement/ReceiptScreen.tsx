@@ -16,7 +16,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import type { PurchaseOrderData } from '../sales/types.js';
@@ -197,14 +197,14 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 <span>
                   {t('purchase_receipt.remaining', {
                     quantity: formatQuantity(remaining),
-                    unit,
+                    unit: unitLabel(unit, remaining),
                   })}
                 </span>
               </div>
               <div className="line-fields">
                 <div className="field">
                   <label htmlFor={`delivered-${line.id}`}>
-                    {t('purchase_receipt.delivered_label', { unit })}
+                    {t('purchase_receipt.delivered_label', { unit: unitLabel(unit) })}
                   </label>
                   <input
                     id={`delivered-${line.id}`}
@@ -218,7 +218,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 </div>
                 <div className="field">
                   <label htmlFor={`rejected-${line.id}`}>
-                    {t('purchase_receipt.rejected_label', { unit })}
+                    {t('purchase_receipt.rejected_label', { unit: unitLabel(unit) })}
                   </label>
                   <input
                     id={`rejected-${line.id}`}
@@ -235,7 +235,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 <p className="home-muted">
                   {t('purchase_receipt.accepted', {
                     quantity: formatQuantity(check.accepted),
-                    unit,
+                    unit: unitLabel(unit, check.accepted),
                   })}
                 </p>
               ) : null}
@@ -301,7 +301,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                   <p className="error-message" role="alert">
                     {t('purchase_receipt.over_online', {
                       quantity: formatQuantity(check.over),
-                      unit,
+                      unit: unitLabel(unit, check.over),
                     })}
                   </p>
                 ) : (
@@ -310,7 +310,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                       offlineOverMode === 'QUARANTINE'
                         ? 'purchase_receipt.over_offline'
                         : 'purchase_receipt.over_offline_apply',
-                      { quantity: formatQuantity(check.over), unit },
+                      { quantity: formatQuantity(check.over), unit: unitLabel(unit, check.over) },
                     )}
                   </p>
                 )

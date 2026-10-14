@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { formatBusinessDay } from '../home/format-home.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { needsAttention, stockLocations, stockRows } from './stock-view.js';
 
@@ -115,25 +115,25 @@ export function StockScreen() {
                 </div>
                 <dl className="progress-grid stock-grid">
                   <dt>{t('stock.on_hand')}</dt>
-                  <dd>
-                    {formatQuantity(row.onHand)} {unit}
-                  </dd>
+                  <dd>{formatQuantityUnit(row.onHand, unit, refs.units)}</dd>
                   <dt>{t('stock.available')}</dt>
                   <dd className={row.available <= 0 ? 'text-warn' : undefined}>
-                    {formatQuantity(row.available)} {unit}
+                    {formatQuantityUnit(row.available, unit, refs.units)}
                   </dd>
                 </dl>
                 {row.pending > 0 ? (
                   <p className="home-muted">
-                    {t('stock.pending', { quantity: formatQuantity(row.pending), unit })}
+                    {t('stock.pending', {
+                      quantity: formatQuantity(row.pending),
+                      unit: unitLabel(unit, row.pending, refs.units),
+                    })}
                   </p>
                 ) : null}
                 {row.threshold && state !== 'OK' ? (
                   <p className="home-muted">
                     {t('stock.threshold', {
-                      min: formatQuantity(row.threshold.minQty),
-                      suggested: formatQuantity(row.threshold.suggestedQty),
-                      unit,
+                      min: formatQuantityUnit(row.threshold.minQty, unit, refs.units),
+                      suggested: formatQuantityUnit(row.threshold.suggestedQty, unit, refs.units),
                     })}
                   </p>
                 ) : null}
@@ -169,7 +169,7 @@ export function StockScreen() {
                               ) : null}
                             </span>
                             <span>
-                              {formatQuantity(Number(lot.qty_on_hand))} {unit}
+                              {formatQuantityUnit(Number(lot.qty_on_hand), unit, refs.units)}
                             </span>
                           </li>
                         ))}

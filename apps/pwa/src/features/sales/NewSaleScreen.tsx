@@ -25,7 +25,7 @@ import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from './CommandResult.js';
 import { localOutstanding } from './credit.js';
 import { CustomerPicker } from './CustomerPicker.js';
-import { formatMoney, formatQuantity } from './format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit, unitLabel } from './format.js';
 import { formatDateTime } from '../home/format-home.js';
 import {
   EMPTY_PAYMENT,
@@ -210,9 +210,12 @@ export function NewSaleScreen() {
           blocks.push(
             t(`sales.quota_block_message.${decision.code}`, {
               product: product?.name ?? '',
-              available: formatQuantity(Math.max(0, decision.available)),
-              requested: formatQuantity(quantity),
-              unit: product?.base_unit_code ?? '',
+              available: formatQuantityUnit(
+                Math.max(0, decision.available),
+                product?.base_unit_code ?? '',
+                refs?.units,
+              ),
+              requested: formatQuantityUnit(quantity, product?.base_unit_code ?? '', refs?.units),
             }),
           );
         } else if (decision.signalled) {
@@ -443,6 +446,7 @@ export function NewSaleScreen() {
           <ProductPicker
             products={sellable}
             availableOf={(productId) => availableAt(refs, location, productId)}
+            units={refs.units}
             onPick={addProduct}
             onClose={() => setPicking(false)}
           />
@@ -485,7 +489,11 @@ export function NewSaleScreen() {
             const values = {
               product: product?.name ?? '',
               remaining: formatQuantity(Math.max(0, quota.remaining)),
-              unit: product?.base_unit_code ?? '',
+              unit: unitLabel(
+                product?.base_unit_code ?? '',
+                Math.max(0, quota.remaining),
+                refs?.units,
+              ),
               until: quota.validUntil ? formatDateTime(quota.validUntil.toISOString()) : '',
             };
             return (

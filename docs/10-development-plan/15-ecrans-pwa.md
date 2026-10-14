@@ -414,6 +414,7 @@ Phase close le 13/10/2026.
 
 | Incr. | Tests (vitest) | Typage | ESLint | Prettier | Navigateur |
 |---|---|---|---|---|---|
+| MP-09 (1/3) | 555 verts (80 fichiers), dont libellés d'unité (pluriel, symboles, repli sur le catalogue), écran du stock en « plateaux », messages à plusieurs nombres ; diagnostic de synchronisation absent ; 4 mutations, chacune détectée | OK | OK | OK | À faire en MP-11 |
 | MP-08 | 551 verts (79 fichiers), dont changement imposé (contexte : parcours provisoire, erreurs, abandon, connexion expirée ; écran : règles, erreur du serveur ; appel HTTP), écran des utilisateurs (réinitialisation hors file d'envoi, saisie vidée, refus, réseau absent, droit, filtre) ; 7 mutations, chacune détectée | OK | OK | OK | À faire en MP-11 |
 | MP-07 | 541 verts (76 fichiers), dont file de validation (approbation d'une remise, refus d'une mortalité avec son issue et la file filtrée, justificatif attendu, montant masqué, écart de caisse accepté avec motif, propre demande de la Direction, annulation de vente, hors ligne, file vide, droit refusé), règles de décision, routes de l'accueil | OK | OK | OK | À faire en MP-11 |
 | MP-06 | 531 verts (75 fichiers), dont écran des appareils (filtre d'attente, approbation, refus avec motif, rattachement, appareil connecté par soi-même, hors ligne, droit refusé, avertissement sur ce téléphone), bandeau (code, sans code, approbation, appareil actif), code court à la connexion, routes des signaux | OK | OK | OK | À faire en MP-11 |

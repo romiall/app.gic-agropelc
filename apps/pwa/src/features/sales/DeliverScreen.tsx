@@ -12,7 +12,7 @@ import { ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from './CommandResult.js';
-import { formatQuantity } from './format.js';
+import { formatQuantity, unitLabel } from './format.js';
 import { openOrders } from './open-orders.js';
 import { useSalesReferences } from './references.js';
 import { MAX_COMMENT_LENGTH, MAX_RECIPIENT_LENGTH } from './sale-form.js';
@@ -159,13 +159,13 @@ export function DeliverScreen() {
                     <small>
                       {t('orders.deliver.line_max', {
                         quantity: formatQuantity(line.toDeliverBase),
-                        unit,
+                        unit: unitLabel(unit, line.toDeliverBase, refs.units),
                       })}
                     </small>
                   </div>
                   <div className="field">
                     <label htmlFor={`deliver-${line.id}`}>
-                      {t('orders.deliver.quantity_label', { unit })}
+                      {t('orders.deliver.quantity_label', { unit: unitLabel(unit, 1, refs.units) })}
                     </label>
                     <input
                       id={`deliver-${line.id}`}

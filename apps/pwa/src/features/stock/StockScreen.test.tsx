@@ -88,6 +88,43 @@ describe('Stock par emplacement (ECR-STK-01)', () => {
     expect(within(chicken).getByText(/réapprovisionnement suggéré : 16 U/)).toBeInTheDocument();
   });
 
+  it('unités en libellés courts accordés (MP-09, AV-249), repli sur le nom du catalogue', async () => {
+    const db = getDb();
+    const withUnit = async (productId: string, unit: string) => {
+      const key = `product:PRODUCT:${productId}`;
+      const row = (await db.projections.get(key))!;
+      await db.projections.put({ ...row, data: { ...row.data, base_unit_code: unit } });
+    };
+    await withUnit(IDS.eggs, 'PLATEAU');
+    await withUnit(IDS.chicken, 'BIDON');
+    await db.projections.put({
+      key: 'catalog:UNIT:u-bidon',
+      dataset: 'catalog',
+      entity_type: 'UNIT',
+      entity_id: 'u-bidon',
+      scope_type: 'GLOBAL',
+      scope_id: null,
+      row_version: 1,
+      seq: 1,
+      data: {
+        id: 'u-bidon',
+        code: 'BIDON',
+        name: 'Bidon de 20 L',
+        is_count: true,
+        is_active: true,
+      },
+    });
+    renderAt();
+    const eggs = await screen.findByRole('listitem', { name: 'Œufs de table' });
+    expect(within(eggs).getByText('300 plateaux')).toBeInTheDocument();
+    expect(within(eggs).getByText(/en attente : 30 plateaux/)).toBeInTheDocument();
+    const chicken = screen.getByRole('listitem', { name: 'Poulet de chair' });
+    expect(
+      within(chicken).getByText(/réapprovisionnement suggéré : 16 Bidon de 20 L/),
+    ).toBeInTheDocument();
+    expect(within(chicken).getByText(/Seuil : 10 Bidon de 20 L/)).toBeInTheDocument();
+  });
+
   it('seuil lu sur le solde physique (ADR-033 §10) ; transit dont la réception est saisie exclu', () => {
     const location = { id: 'loc', custody_mode: 'SHARED', is_virtual: false } as LocationData;
     const refs = {

@@ -3,7 +3,7 @@
  * pour le simulateur (ECR-PRX-03) et la gestion des règles (ECR-PRX-02).
  */
 import type { TFunction } from 'i18next';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import type { SalesReferences } from '../sales/references.js';
 
 export interface ScopedRule {
@@ -42,7 +42,10 @@ export function describeScope(
         })
       : null,
     rule.minQuantity !== null
-      ? t('price_sim.scope.min_quantity', { quantity: formatQuantity(rule.minQuantity), unit })
+      ? t('price_sim.scope.min_quantity', {
+          quantity: formatQuantity(rule.minQuantity),
+          unit: unitLabel(unit, rule.minQuantity),
+        })
       : null,
     rule.commercialCampaignId ? t('price_sim.scope.campaign') : null,
   ].filter(Boolean);

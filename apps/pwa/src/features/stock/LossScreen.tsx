@@ -12,7 +12,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
 import { batchViews } from '../production/incubation.js';
@@ -282,7 +282,7 @@ export function LossScreen() {
           <p className="home-muted">
             {t('sales.product_available', {
               quantity: formatQuantity(available),
-              unit: product.base_unit_code,
+              unit: unitLabel(product.base_unit_code, available, refs.units),
             })}
           </p>
         ) : null}
@@ -311,13 +311,13 @@ export function LossScreen() {
             >
               {units.map((candidate) => (
                 <option key={candidate.unitCode} value={candidate.unitCode}>
-                  {candidate.unitCode}
+                  {unitLabel(candidate.unitCode)}
                 </option>
               ))}
             </select>
           </div>
         ) : (
-          <p className="line-unit">{unitCode}</p>
+          <p className="line-unit">{unitLabel(unitCode)}</p>
         )}
       </div>
       {lots.length > 0 ? (

@@ -5,7 +5,7 @@
  */
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatQuantity } from './format.js';
+import { formatQuantity, unitLabel, type UnitCatalog } from './format.js';
 import type { ProductData } from './types.js';
 
 const MAX_RESULTS = 12;
@@ -14,11 +14,19 @@ interface ProductPickerProps {
   readonly products: readonly ProductData[];
   /** Disponible par produit sur l'emplacement ; absent : non affiché (préparation d'une commande). */
   readonly availableOf?: (productId: string) => number;
+  /** Unités du catalogue (libellés d'unité, AV-249). */
+  readonly units?: UnitCatalog;
   readonly onPick: (product: ProductData) => void;
   readonly onClose: () => void;
 }
 
-export function ProductPicker({ products, availableOf, onPick, onClose }: ProductPickerProps) {
+export function ProductPicker({
+  products,
+  availableOf,
+  units,
+  onPick,
+  onClose,
+}: ProductPickerProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const inputId = useId();
@@ -66,7 +74,7 @@ export function ProductPicker({ products, availableOf, onPick, onClose }: Produc
                   <small className={available > 0 ? undefined : 'text-warn'}>
                     {t('sales.product_available', {
                       quantity: formatQuantity(available),
-                      unit: product.base_unit_code,
+                      unit: unitLabel(product.base_unit_code, available, units),
                     })}
                   </small>
                 ) : null}

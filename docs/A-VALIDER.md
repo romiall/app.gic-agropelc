@@ -1847,6 +1847,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a), sans changement de la base (« 27 plateaux », « 1 pièce », « 500 kg », « 12 têtes »).
 - **Impact** : fonction unique de formatage dans la PWA et ses appels ; lot de mise en pilote (MP-09).
+- **Mise en œuvre** (MP-09, 14/10/2026) : `unitLabel` et `formatQuantityUnit` (`apps/pwa/src/features/sales/format.ts`) ; libellés courts de TETE, OEUF, PIECE, KG, G, L, SAC, PLATEAU, CARTON, DOSE (pluriel à partir de 2, symboles invariables) ; repli sur le nom de l'unité publiée dans le jeu `catalog`, puis sur le code ; une quarantaine d'écrans convertis (quantités, libellés de champ, sélecteurs) ; un message à plusieurs nombres porte l'unité sur chaque nombre ; l'écran d'administration du catalogue garde les codes.
 
 ### AV-250 — Diagnostic « Tester la synchronisation » de l'application livrée — SECONDAIRE — **TRANCHÉ**
 - **Question** : garder le bouton qui enregistre un paramètre système de test (`organization.setting.set`) ?
@@ -1855,6 +1856,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (b).
 - **Décision** (porteur du projet, 13/10/2026) : (c), retiré de l'application ; l'écran de synchronisation garde « Forcer la synchronisation » et les listes d'opérations.
 - **Impact** : écran ECR-SYN-01 ; lot de mise en pilote (MP-09).
+- **Mise en œuvre** (MP-09, 14/10/2026) : diagnostic, textes et test retirés de `SyncScreen.tsx` ; les commandes de diagnostic déjà en attente dans un navigateur y restent (rien ne disparaît, BR-SYN-013) et s'appliqueraient si l'appareil était approuvé : à vérifier sur le poste du porteur en MP-11.
 
 ### AV-251 — Changement du mot de passe provisoire — IMPORTANTE — **TRANCHÉ**
 - **Question** : un compte créé ou réinitialisé avec un mot de passe provisoire (`must_change_password`) doit-il être bloqué tant qu'il ne l'a pas changé ?

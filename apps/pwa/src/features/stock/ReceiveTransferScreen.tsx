@@ -19,7 +19,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { incomingTransfers, parseReceived } from './receive.js';
 import { submitCommand } from '../sales/submit.js';
@@ -101,12 +101,15 @@ function ReceiveForm({
               <div className="line-head">
                 <strong>{product?.name ?? line.product_id}</strong>
                 <small>
-                  {t('receive.dispatched', { quantity: formatQuantity(dispatched), unit })}
+                  {t('receive.dispatched', {
+                    quantity: formatQuantity(dispatched),
+                    unit: unitLabel(unit, dispatched),
+                  })}
                 </small>
               </div>
               <div className="field">
                 <label htmlFor={`receive-${line.id}`}>
-                  {t('receive.received_label', { unit })}
+                  {t('receive.received_label', { unit: unitLabel(unit) })}
                 </label>
                 <input
                   id={`receive-${line.id}`}
@@ -125,7 +128,7 @@ function ReceiveForm({
                 <p className="text-warn">
                   {t('receive.short', {
                     quantity: formatQuantity(dispatched - (received ?? 0)),
-                    unit,
+                    unit: unitLabel(unit, dispatched - (received ?? 0)),
                   })}
                 </p>
               ) : null}

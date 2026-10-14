@@ -15,7 +15,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { deviceCash, foreignClose, openSession, posCashAccounts } from '../cash/cash-session.js';
 import { formatDateTime } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, unitLabel } from '../sales/format.js';
 import { recentSales } from '../sales/recent-sales.js';
 import { useSalesReferences } from '../sales/references.js';
 import { settingValue } from '../sales/stock.js';
@@ -215,6 +215,7 @@ export function PosHomeScreen() {
               const unit = product?.base_unit_code ?? '';
               const name = product?.name ?? '';
               const remaining = formatQuantity(Math.max(0, quota.remaining));
+              const remainingUnit = unitLabel(unit, Math.max(0, quota.remaining), refs?.units);
               const armed = confirmRelease === quota.allocation.id;
               return (
                 <li key={quota.allocation.id} className="line-card" aria-label={name}>
@@ -224,7 +225,7 @@ export function PosHomeScreen() {
                   <p>
                     {t(quota.validUntil ? 'pos_home.quota_line_until' : 'pos_home.quota_line', {
                       remaining,
-                      unit,
+                      unit: remainingUnit,
                       until: quota.validUntil ? formatDateTime(quota.validUntil.toISOString()) : '',
                     })}
                   </p>
@@ -254,7 +255,7 @@ export function PosHomeScreen() {
                             disabled={busy}
                             onClick={() => void release(quota.allocation.id)}
                           >
-                            {t('pos_home.release_confirm', { remaining, unit })}
+                            {t('pos_home.release_confirm', { remaining, unit: remainingUnit })}
                           </button>
                           <button
                             type="button"
@@ -297,18 +298,26 @@ export function PosHomeScreen() {
                         physical: formatQuantity(
                           Math.round((row.onHand - row.pending) * 1000) / 1000,
                         ),
-                        unit: row.product.base_unit_code,
+                        unit: unitLabel(
+                          row.product.base_unit_code,
+                          row.onHand - row.pending,
+                          refs?.units,
+                        ),
                       })
                     : shared
                       ? t('pos_home.stock_line_shared', {
                           physical: formatQuantity(
                             Math.round((row.onHand - row.pending) * 1000) / 1000,
                           ),
-                          unit: row.product.base_unit_code,
+                          unit: unitLabel(
+                            row.product.base_unit_code,
+                            row.onHand - row.pending,
+                            refs?.units,
+                          ),
                         })
                       : t('pos_home.stock_line', {
                           available: formatQuantity(row.available),
-                          unit: row.product.base_unit_code,
+                          unit: unitLabel(row.product.base_unit_code, row.available, refs?.units),
                         })}
                 </p>
               </li>

@@ -17,7 +17,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
-import { formatMoney, formatQuantity } from './format.js';
+import { formatMoney, formatQuantity, unitLabel } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { waitsForOtherUser } from './pending.js';
@@ -255,7 +255,7 @@ export function SaleDetailScreen() {
                 <small>
                   {t('sales.detail.line', {
                     quantity: formatQuantity(line.quantity),
-                    unit: line.unitCode,
+                    unit: unitLabel(line.unitCode, line.quantity, refs.units),
                     price: formatMoney(line.unitPriceXaf),
                   })}
                   {line.discountXaf > 0

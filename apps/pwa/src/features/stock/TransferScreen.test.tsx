@@ -253,7 +253,7 @@ describe('Transférer (ECR-STK-02)', () => {
     const line = screen.getByRole('listitem', { name: 'Ligne 1' });
     await user.selectOptions(within(line).getByLabelText('Produit'), IDS.eggs);
     await user.type(within(line).getByLabelText('Quantité'), '31');
-    const refusal = screen.getByText(/quota dépassé, il vous reste 30 U, 31 demandé\(s\)/);
+    const refusal = screen.getByText(/quota dépassé, il vous reste 30 U, 31 U demandé\(s\)/);
     expect(within(line).getByLabelText('Quantité').getAttribute('aria-describedby')).toContain(
       refusal.id,
     );
@@ -302,7 +302,7 @@ describe('Transférer (ECR-STK-02)', () => {
     await user.clear(quantity);
     await user.type(quantity, '301');
     const refusal = screen.getByText(
-      'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 demandé(s).',
+      'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 U demandé(s).',
     );
     expect(quantity.getAttribute('aria-describedby')).toContain(refusal.id);
     const send = screen.getByRole('button', { name: 'Expédier la demande' });

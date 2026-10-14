@@ -242,9 +242,9 @@ export const fr = {
       ALLOCATION_EXPIRED:
         '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
       ALLOCATION_EXCEEDED:
-        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
+        '{{product}} : quota dépassé, il vous reste {{available}}, {{requested}} demandé(s).',
       INSUFFICIENT_STOCK:
-        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} disponible(s), {{requested}} demandé(s).',
     },
     quota_expired:
       '{{product}} : votre quota a expiré le {{until}} ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
@@ -798,7 +798,7 @@ export const fr = {
     age_one: '{{count}} jour',
     age_other: '{{count}} jours',
     today_summary: 'Aujourd’hui : {{deaths}} mort(s), {{entries}} saisie(s)',
-    headcount: '{{heads}} têtes',
+    headcount: '{{heads}}',
     headcount_unknown: 'Effectif inconnu',
     status: {
       PLANNED: 'Planifié',
@@ -823,7 +823,7 @@ export const fr = {
     rearing_location_label: 'Bâtiment ou case',
     deaths_label: 'Nombre de morts',
     count_invalid: 'Nombre entier attendu.',
-    location_headcount: 'Effectif sur cet emplacement : {{heads}} têtes',
+    location_headcount: 'Effectif sur cet emplacement : {{heads}}',
     deaths_over_online:
       'Plus de morts que l’effectif de cet emplacement : le serveur refuserait la saisie. Vérifiez le nombre ou l’emplacement.',
     deaths_over_offline:
@@ -1100,7 +1100,7 @@ export const fr = {
       CANCELLED: 'Annulé',
     },
     expected: 'livraison prévue le {{date}}',
-    line_progress: 'commandé {{ordered}} {{unit}}, reste {{remaining}} {{unit}}',
+    line_progress: 'commandé {{ordered}}, reste {{remaining}}',
     edit: 'Modifier',
     submit: 'Soumettre',
     mark_sent: 'Marquer envoyé',
@@ -1524,7 +1524,7 @@ export const fr = {
     receipt_product_label: 'Animaux reçus',
     source_lot_label: 'Lot d’origine',
     source_location_label: 'Bâtiment ou case d’origine',
-    source_location: '{{name}} ({{heads}} têtes)',
+    source_location: '{{name}} ({{heads}})',
     no_source_heads:
       'Ce lot n’a aucune tête connue du téléphone dans un bâtiment ou une case de la ferme.',
     parent_inactive_offline:
@@ -2304,9 +2304,9 @@ export const fr = {
       ALLOCATION_EXPIRED:
         '{{product}} : votre quota a expiré ; demandez son renouvellement à votre responsable, il arrivera à la prochaine synchronisation.',
       ALLOCATION_EXCEEDED:
-        '{{product}} : quota dépassé, il vous reste {{available}} {{unit}}, {{requested}} demandé(s).',
+        '{{product}} : quota dépassé, il vous reste {{available}}, {{requested}} demandé(s).',
       INSUFFICIENT_STOCK:
-        '{{product}} : stock insuffisant sur cet appareil, {{available}} {{unit}} disponible(s), {{requested}} demandé(s).',
+        '{{product}} : stock insuffisant sur cet appareil, {{available}} disponible(s), {{requested}} demandé(s).',
     },
     guard_signal:
       '{{product}} : au-delà de ce que permet la garde hors ligne ({{code}}) ; la sortie est enregistrée et le serveur la signalera.',
@@ -2328,7 +2328,7 @@ export const fr = {
     on_hand: 'Physique',
     available: 'Disponible',
     pending: 'Opérations de l’appareil en attente : {{quantity}} {{unit}}',
-    threshold: 'Seuil : {{min}} {{unit}} · réapprovisionnement suggéré : {{suggested}} {{unit}}',
+    threshold: 'Seuil : {{min}} · réapprovisionnement suggéré : {{suggested}}',
     lots: 'Lots ({{count}})',
     no_lot: 'Sans lot',
     expiry: 'Péremption : {{date}}',
@@ -2632,9 +2632,8 @@ export const fr = {
     holder: 'utilisateur {{user}}, appareil {{device}}',
     you: 'vous',
     this_device: 'ce téléphone',
-    remaining: 'Reste {{remaining}} {{unit}} sur {{granted}} {{unit}} accordé(s).',
-    remaining_until:
-      'Reste {{remaining}} {{unit}} sur {{granted}} {{unit}} accordé(s), jusqu’au {{until}}.',
+    remaining: 'Reste {{remaining}} sur {{granted}} accordé(s).',
+    remaining_until: 'Reste {{remaining}} sur {{granted}} accordé(s), jusqu’au {{until}}.',
     revocation_pending:
       'Appareil signalé : le quota ne se consomme plus, sa révocation est attendue.',
     expired:
@@ -3070,8 +3069,7 @@ export const fr = {
       'Aucun magasin n’est configuré pour ce point de vente : la demande attend sa configuration.',
     suggest_title: 'À réapprovisionner',
     suggest_empty: 'Aucun produit sous sa cible connue de ce téléphone.',
-    suggest_line:
-      'Disponible : {{available}} {{unit}} · en route : {{transit}} {{unit}} · suggéré : {{suggested}} {{unit}}',
+    suggest_line: 'Disponible : {{available}} · en route : {{transit}} · suggéré : {{suggested}}',
     add_suggestion: 'Ajouter {{name}} à la demande',
     state: {
       STOCK_OUT: 'Rupture',
@@ -3246,11 +3244,6 @@ export const fr = {
     pending_operations: 'Opérations en attente',
     no_pending: 'Aucune opération en attente.',
     attention_operations: 'Opérations à examiner',
-    diagnostic_title: 'Diagnostic',
-    diagnostic_help:
-      'Enregistre un paramètre de test (organization.setting.set) pour vérifier que le pipeline fonctionne, en ligne comme hors ligne.',
-    diagnostic_submit: 'Tester la synchronisation',
-    diagnostic_enqueued: 'Commande de test ajoutée à la file (statut : {{status}}).',
     badge: {
       synced: 'Synchronisé',
       pending: '{{count}} opération en attente',

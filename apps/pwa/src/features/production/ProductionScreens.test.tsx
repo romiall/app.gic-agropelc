@@ -259,7 +259,7 @@ describe('Production (ECR-PRD-01, ECR-PRD-02)', () => {
     await user.selectOptions(screen.getByLabelText('Pris sur'), STORE);
     await user.type(screen.getByLabelText('Quantité'), '25');
     await user.click(screen.getByRole('button', { name: 'Enregistrer la consommation' }));
-    expect(await journal.findByText('Aliment démarrage : 25 KG')).toBeInTheDocument();
+    expect(await journal.findByText('Aliment démarrage : 25 kg')).toBeInTheDocument();
 
     const [mortality, input] = await getDb().outbox.orderBy('device_seq').toArray();
     expect(mortality).toMatchObject({

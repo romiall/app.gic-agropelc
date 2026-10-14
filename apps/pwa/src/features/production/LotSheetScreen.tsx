@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useOnline } from '../../platform/useOnline.js';
 import { formatBusinessDate, formatDateTime, formatMonthPeriod } from '../home/format-home.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { rearingHeadcount } from './daily.js';
@@ -312,29 +312,26 @@ export function LotSheetScreen() {
                       t('lot_sheet.initial'),
                       current.initialQuantity === null
                         ? null
-                        : `${formatQuantity(current.initialQuantity)} ${unit}`,
+                        : formatQuantityUnit(current.initialQuantity, unit),
                     ),
-                    row(
-                      t('lot_sheet.unsold'),
-                      `${formatQuantity(current.headcount.unsold)} ${unit}`,
-                    ),
+                    row(t('lot_sheet.unsold'), formatQuantityUnit(current.headcount.unsold, unit)),
                     row(
                       t('lot_sheet.rearing'),
-                      `${formatQuantity(current.headcount.rearing)} ${unit}`,
+                      formatQuantityUnit(current.headcount.rearing, unit),
                     ),
                     row(
                       t('lot_sheet.deaths'),
-                      `${formatQuantity(current.mortality.countedQuantity)} ${unit}`,
+                      formatQuantityUnit(current.mortality.countedQuantity, unit),
                     ),
                     current.mortality.pendingQuantity > 0
                       ? row(
                           t('lot_sheet.deaths_pending'),
-                          `${formatQuantity(current.mortality.pendingQuantity)} ${unit}`,
+                          formatQuantityUnit(current.mortality.pendingQuantity, unit),
                         )
                       : null,
                     row(
                       t('lot_sheet.lost'),
-                      `${formatQuantity(current.mortality.lostQuantity)} ${unit}`,
+                      formatQuantityUnit(current.mortality.lostQuantity, unit),
                     ),
                   ]
                 : lot
@@ -343,7 +340,7 @@ export function LotSheetScreen() {
                         t('lot_sheet.rearing_device'),
                         localHeads === null
                           ? t('production.headcount_unknown')
-                          : `${formatQuantity(localHeads)} ${unit}`,
+                          : formatQuantityUnit(localHeads, unit),
                       ),
                     ]
                   : null}
@@ -414,10 +411,7 @@ export function LotSheetScreen() {
                     <p className="home-muted">{t('lot_sheet.amounts_hidden')}</p>
                   ) : null}
                   <dl className="receipt-totals">
-                    {row(
-                      t('lot_sheet.sold'),
-                      `${formatQuantity(current.sales.soldQuantity)} ${unit}`,
-                    )}
+                    {row(t('lot_sheet.sold'), formatQuantityUnit(current.sales.soldQuantity, unit))}
                     {row(t('lot_sheet.revenue'), money(current.sales.netRevenueXaf))}
                     {row(t('lot_sheet.cost_of_sales'), money(current.sales.costOfSalesXaf))}
                     {row(t('lot_sheet.lot_margin'), money(current.sales.lotMarginXaf))}
@@ -461,7 +455,7 @@ export function LotSheetScreen() {
                             <small>{t('lot_sheet.cancelled')}</small>
                           ) : null}
                         </span>
-                        <span>{`${formatQuantity(entry.quantity)} ${unit}`}</span>
+                        <span>{formatQuantityUnit(entry.quantity, unit)}</span>
                       </li>
                     ))}
                   </ul>

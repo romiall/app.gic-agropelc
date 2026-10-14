@@ -12,7 +12,7 @@ import { idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { LinesEditor } from '../stock/LinesEditor.js';
@@ -259,10 +259,9 @@ export function ReplenishScreen() {
                   </p>
                   <p className="home-muted">
                     {t('replenish.suggest_line', {
-                      available: formatQuantity(suggestion.available),
-                      transit: formatQuantity(suggestion.inTransit),
-                      suggested: formatQuantity(suggestion.suggestedQty),
-                      unit,
+                      available: formatQuantityUnit(suggestion.available, unit, refs?.units),
+                      transit: formatQuantityUnit(suggestion.inTransit, unit, refs?.units),
+                      suggested: formatQuantityUnit(suggestion.suggestedQty, unit, refs?.units),
                     })}
                   </p>
                   <button
@@ -300,7 +299,7 @@ export function ReplenishScreen() {
             return already
               ? t('replenish.already_requested', {
                   quantity: formatQuantity(already),
-                  unit: product.base_unit_code,
+                  unit: unitLabel(product.base_unit_code, already, refs?.units),
                 })
               : null;
           }}
@@ -364,7 +363,11 @@ export function ReplenishScreen() {
                           {t('replenish.request_line', {
                             name: product?.name ?? '',
                             quantity: formatQuantity(line.quantityBase),
-                            unit: product?.base_unit_code ?? '',
+                            unit: unitLabel(
+                              product?.base_unit_code ?? '',
+                              line.quantityBase,
+                              refs?.units,
+                            ),
                           })}
                         </li>
                       );

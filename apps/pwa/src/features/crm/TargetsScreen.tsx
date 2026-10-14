@@ -19,7 +19,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDate } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import {
@@ -79,7 +79,7 @@ function TargetCard({
     target.metric === 'CA'
       ? formatMoney(target.targetValue)
       : target.metric === 'QTE_PRODUIT'
-        ? `${formatQuantity(target.targetValue)} ${product?.base_unit_code ?? ''}`.trim()
+        ? formatQuantityUnit(target.targetValue, product?.base_unit_code ?? '', refs.units)
         : formatQuantity(target.targetValue);
   // Périodes avec l'année : la liste mêle les objectifs actifs de plusieurs années.
   const period = t('performance.target_period', {
@@ -437,7 +437,7 @@ export function TargetsScreen() {
           <div className="field">
             <label htmlFor={ids.value}>
               {form.metric === 'QTE_PRODUIT' && product
-                ? t('targets.value_label_unit', { unit: product.base_unit_code })
+                ? t('targets.value_label_unit', { unit: unitLabel(product.base_unit_code) })
                 : t(`targets.value_label.${form.metric}`)}
             </label>
             <input

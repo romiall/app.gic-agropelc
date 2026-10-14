@@ -620,6 +620,15 @@ export interface PaymentMethodData {
   readonly is_active: boolean;
 }
 
+/** (`catalog`, entité `UNIT`, P5-18) Unité de mesure du catalogue ; clé de jeu dérivée du code. */
+export interface UnitData {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly is_count: boolean;
+  readonly is_active: boolean;
+}
+
 /** (`reason_code`) */
 export interface ReasonCodeData {
   readonly id: string;
