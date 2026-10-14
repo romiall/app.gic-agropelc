@@ -152,7 +152,7 @@ Lecture de tous les modules, via des vues de lecture publiées par chaque module
 
 ## 13. Permissions
 
-`analytics.dashboard.direction`, `analytics.dashboard.commercial`, `analytics.dashboard.distribution`, `analytics.dashboard.stock`, `analytics.dashboard.production`, `analytics.dashboard.finance`, `analytics.explore`, `analytics.view.share`, `analytics.export`, plus les permissions de lecture des domaines (portée des lignes) et `inventory.valuation.read` (mesures).
+`analytics.dashboard.direction`, `analytics.dashboard.commercial`, `analytics.dashboard.distribution`, `analytics.dashboard.stock`, `analytics.dashboard.production`, `analytics.dashboard.finance`, `analytics.explore`, `analytics.view.share`, `analytics.export`, plus les permissions de lecture des domaines (portée des lignes) et `inventory.valuation.read` (mesures). La sauvegarde d'une vue est portée par `analytics.explore` et la demande d'export par `analytics.export` : aucun code nouveau n'est semé (AV-435).
 
 ## 14. Exceptions
 
@@ -161,3 +161,15 @@ Lecture de tous les modules, via des vues de lecture publiées par chaque module
 | Données incomplètes (appareils non synchronisés) | Indicateur de fraîcheur (BR-ANA-005) ; aucune extrapolation. |
 | Chiffre contesté | Remontée jusqu'aux opérations sources (BR-ANA-010), registre de stock (ECR-STK-07), audit. |
 | Requête trop lourde | Refus explicite avec suggestion d'affiner ; exports lourds en asynchrone. |
+
+## 15. Conception de P9 (14/10/2026)
+
+| Sujet | Décision |
+|---|---|
+| Valeurs | Les tableaux appellent les fonctions publiques déjà utilisées par l'accueil et le tableau de distribution ; l'explorateur lit des vues `analytics_f_*` ; leur équivalence est testée ([ADR-075](../../decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md)) |
+| Explorateur | Catalogue déclaratif, compilateur sans requête libre, portée en union, mesures protégées refusées (`FORBIDDEN_MEASURE`) ([ADR-074](../../decisions/ADR-074-couche-semantique-et-explorateur.md)) |
+| Tableaux | `GET /analytics/dashboards/{code}` (`direction`, `commercial`, `stock`, `production`, `finance` ; `distribution` inchangé), blocs isolés, instantanés personnels toutes les 15 minutes ([ADR-076](../../decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md)) |
+| Vues et exports | Commandes `analytics.view.save`, `.share`, `.delete`, `.set_default` ; exports asynchrones audités, CSV et XLSX sans dépendance ([ADR-077](../../decisions/ADR-077-vues-sauvegardees-et-exports-audites.md)) |
+| Charge | Bornes, plans `EXPLAIN`, palier 1, rétention ([ADR-078](../../decisions/ADR-078-charge-paliers-analytiques-et-retention.md)) |
+| Étendue des lignes | Exacte (union site, zone avec descendantes, titulaire), jamais tirée de `listConfinementAt` ; règle fermée si non exprimable (AV-423) |
+| Questions ouvertes | AV-421 à AV-437 |

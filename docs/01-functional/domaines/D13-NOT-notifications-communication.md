@@ -18,6 +18,7 @@ Produire des **alertes utiles, qui provoquent une action** et ne s'accumulent pa
 |---|---|---|
 | Règle d'alerte | `communication.alert_rules` | Type, seuils, gravité, destinataires, activation |
 | Alerte | `communication.alerts` | Occurrence avec cycle de vie |
+| Destinataire d'alerte | `communication.alert_recipients` | Boîte d'un utilisateur : qui doit voir l'alerte, et pourquoi (règle, propriétaire, escalade) — [ADR-072](../../decisions/ADR-072-destinataires-notifications-push-et-escalade.md) |
 | Notification | `communication.notifications` | Message à un utilisateur (in-app, push) |
 | Abonnement push | `communication.push_subscriptions` | Point de terminaison Web Push par appareil |
 | Note de direction | `communication.internal_notes`, `communication.note_audiences`, `communication.note_acknowledgements` | Communication interne ciblée |
@@ -57,7 +58,7 @@ Alertes routées, notifications in-app et push, notes ciblées, accusés de lect
 
 ### 7.1 Catalogue initial des alertes
 
-Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
+Toutes les valeurs de seuil sont des défauts paramétrables (AV-065). Les seuils sont des paramètres `organization.system_settings`, lus par le détecteur dans le module propriétaire ; la règle d'alerte porte l'activation, la gravité, les rôles et le mode de résolution (AV-400, [ADR-071](../../decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)).
 
 | Code | Déclencheur | Détection | Gravité | Destinataires | Résolution |
 |---|---|---|---|---|---|
@@ -91,6 +92,12 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
 | `ATTACHMENT_MISSING` | Pièce requise non reçue après 7 jours | Planifiée | WARNING | Auteur, responsable | Auto |
 | `KOMMO_SYNC_FAILED` | Message d'intégration en échec définitif | Sur échec | WARNING | ADMIN | Manuelle (rejeu) |
 | `AUDIT_CHAIN_BROKEN` | BR-AUD-006 | Planifiée | CRITICAL | ADMIN, DIRECTION | Manuelle |
+| `ALLOCATION_EXPIRED` | Quota d'appareil échu non libéré : événement `AllocationExpired` (P5-08, tâche `inventory.allocations.expiry_daily`, au plus un par quota et par jour métier ; AV-402) | Planifiée (00:05) | WARNING | Magasinier du site, responsable | Auto (quota libéré ou révoqué) |
+| `ALLOCATION_REVOCATION_PENDING` | Quota d'un appareil bloqué, perdu ou d'un utilisateur désactivé, en attente de révocation : événement `AllocationRevocationPending` (P5-08 ; AV-402) | Sur fait | WARNING | Magasinier du site, responsable | Auto (quota révoqué) |
+| `SALE_UNDELIVERED` | Vente confirmée non livrée depuis plus de `sales.undelivered_alert_days` (7 par défaut ; AV-132, AV-402) | Planifiée | WARNING | Titulaire du client, vendeur, responsable | Auto (livrée ou annulée) |
+| `CONSUMER_FAILED` | Événement sauté après échec persistant (table des échecs du runner), ou consommateur en retard au-delà de `communication.consumer_lag_alert_seconds` (AV-412) | Planifiée | WARNING | ADMIN | Auto (retard résorbé) |
+| `LEDGER_MISMATCH` | Écart de la réconciliation quotidienne du registre de stock (INV-STK-01, AT-047) : événement `LedgerMismatchDetected`, publié par la tâche `inventory.ledger.reconcile_daily` avant de se terminer en succès (AV-402) | Planifiée (02:00) | CRITICAL | Responsable du site, DIRECTION, ADMIN | Manuelle (après régularisation) |
+| `CASH_MISMATCH` | Écart de la réconciliation quotidienne de la trésorerie (D09) : événement `CashMismatchDetected`, publié par `finance.cash.reconcile_daily` avant de se terminer en succès (AV-402) | Planifiée | CRITICAL | FINANCE, DIRECTION | Manuelle (après régularisation) |
 
 ## 8. Validations
 
@@ -123,3 +130,17 @@ Les alertes et notes de l'utilisateur sont téléchargées : 50 dernières alert
 | Tempête d'alertes (ex. panne généralisant les ruptures) | Déduplication (BR-NOT-002) + regroupement des notifications push : au plus 1 push par utilisateur et par type toutes les 15 minutes. |
 | Destinataire absent ou désactivé | Routage vers les autres titulaires du rôle dans le périmètre ; à défaut, la Direction. |
 | Push non supporté (navigateur, iOS ancien) | Notification in-app seulement. |
+
+## 15. Conception de P9 (14/10/2026)
+
+| Sujet | Décision |
+|---|---|
+| Architecture | Détection par les modules propriétaires, corrélation par le consommateur `communication.alerts` ; `communication` ne lit aucune table d'autrui ([ADR-070](../../decisions/ADR-070-architecture-de-p9-communication-et-analytics.md), [ADR-071](../../decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)) |
+| Déduplication | Colonne générée `open_dedup_key` sous index unique (INV-NOT-01) ; événement marqué consommé à la première instruction |
+| Résolution | Alerte d'état : marqueur de fin de passe ou événement de résolution ; alerte d'événement : manuelle avec commentaire |
+| Destinataires | Explicites, écrits à la levée ; supervision par la portée de `comm.alert.read` ; repli sur la Direction ([ADR-072](../../decisions/ADR-072-destinataires-notifications-push-et-escalade.md)) |
+| Push | Port `WebPushSender`, adaptateur journal tant que le porteur n'a pas fourni bibliothèque ni clés (AV-415) |
+| Notes | Immuables après publication, audience évaluée à la lecture, accusés hors ligne ([ADR-073](../../decisions/ADR-073-notes-de-direction.md)) |
+| Placement des détecteurs | Dans le module qui porte la donnée, selon le graphe : `INACTIVE_COMMERCIAL`, `HIGH_LOSS` (part « % des ventes ») et `OVERDUE_RECEIVABLE` dans `sales` ; les passes d'état portent une identité (ADR-071 §2 et §3) |
+| Valeurs au coût | Jamais dans le message d'une alerte : champ protégé, rendu selon le droit `inventory.valuation.read` du lecteur (AV-440) |
+| Questions ouvertes | AV-400 à AV-420 et AV-438 à AV-442 |

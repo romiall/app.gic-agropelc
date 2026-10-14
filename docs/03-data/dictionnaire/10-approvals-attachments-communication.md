@@ -105,17 +105,17 @@
 
 ## communication.alert_rules
 
-**Responsabilité** : règles d'alerte.
+**Responsabilité** : règles d'alerte. Les seuils ne sont pas portés ici : ce sont des paramètres `organization.system_settings` lus par le détecteur, dans le module propriétaire (AV-400, [ADR-071](../../decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)).
 
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `alert_type` | code | Non | — | PK (catalogue D13 §7.1) |
 | `enabled` | boolean | Non | true | |
 | `severity` | enum(`INFO`,`WARNING`,`CRITICAL`) | Non | — | |
-| `thresholds` | json | Non | `{}` | Seuils paramétrables (AV-065) |
 | `recipient_roles` | text[] | Non | — | Codes de rôles destinataires |
 | `resolution_mode` | enum(`AUTO`,`MANUAL`) | Non | — | |
-| `escalation_hours` | smallint | Oui | 4 | Alertes `CRITICAL` |
+| `escalation_hours` | smallint | Oui | 4 | Alertes `CRITICAL` (BR-NOT-005) |
+| `escalation_roles` | text[] | Non | `{DIRECTION}` | Rôles du niveau supérieur (AV-417) |
 | `updated_at`, `updated_by` | | | | |
 
 - **PK** `alert_type`. **Suppr.** Désactivation (`enabled`). **Audit** Modification.
@@ -131,18 +131,37 @@
 | `severity` | enum | Non | — | |
 | `subject_type`, `subject_id` | code, uuid | Non | — | Objet concerné |
 | `site_id`, `zone_id` | uuid | Oui | — | Routage par périmètre |
+| `owner_user_id` | uuid → identity.users | Oui | — | Propriétaire de l'objet (titulaire du client, auteur, vendeur) : sert la portée `OWN` et `TEAM` |
 | `title`, `message` | label, text | Non | — | |
+| `payload` | json | Non | `{}` | Valeurs du message en champs séparés (copie des données minimales de l'événement) ; les valeurs au coût y sont des champs **protégés**, rendus à la lecture selon `inventory.valuation.read` (ADR-071 §11) ; jamais recopiées dans `message` |
 | `action_screen` | code | Oui | — | Écran d'action (`ECR-…`) |
 | `dedup_key` | varchar(200) | Non | — | `type:subject` |
+| `open_dedup_key` | varchar(200) | Oui | généré | `dedup_key` tant que `status` ∈ (`OPEN`, `ACKNOWLEDGED`), sinon `NULL` (colonne générée, ADR-071 §4) |
 | `occurrences` | int | Non | 1 | |
 | `first_detected_at`, `last_detected_at` | ts | Non | — | |
 | `status` | enum(`OPEN`,`ACKNOWLEDGED`,`RESOLVED`,`DISMISSED`) | Non | `OPEN` | |
 | `acknowledged_by`, `acknowledged_at`, `resolved_by`, `resolved_at` | | Oui | — | |
 | `resolution_comment` | text | Oui | — | |
 | `escalated_at` | ts | Oui | — | |
+| `critical_since` | ts | Oui | — | Instant de la levée ou du relèvement en `CRITICAL` : point de départ de l'échéance d'escalade (ADR-072 §7) |
+| `last_pass_id` | uuid | Oui | — | Identité de la dernière passe de détection qui a revu l'alerte d'état ; sert à la résolution par marqueur (ADR-071 §3) |
 
-- **PK** `id`. **UQ** `dedup_key` parmi `OPEN`/`ACKNOWLEDGED` (INV-NOT-01).
+- **PK** `id`. **UQ** `open_dedup_key` (INV-NOT-01 : au plus une alerte ouverte par type et objet ; les valeurs `NULL` ne se heurtent pas). **IX** `(status, severity, first_detected_at)`, `(site_id, status)`, `(owner_user_id, status)`.
 - **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans. **Offline** DL (50 dernières ouvertes du périmètre).
+
+## communication.alert_recipients
+
+**Responsabilité** : boîte d'alertes d'un utilisateur — qui doit voir quelle alerte, fixé à la levée ou à l'escalade ([ADR-072](../../decisions/ADR-072-destinataires-notifications-push-et-escalade.md)).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `alert_id` | uuid → alerts | Non | — | |
+| `user_id` | uuid → identity.users | Non | — | |
+| `origin` | enum(`RULE`,`OWNER`,`TEAM_MANAGER`,`APPROVER`,`ESCALATION`,`FALLBACK`) | Non | — | Règle (rôle × périmètre), propriétaire, responsable de l'équipe du propriétaire, approbateur (permission et portée), escalade, repli Direction |
+| `role_code` | code | Oui | — | Rôle par lequel l'utilisateur est destinataire |
+| `added_at` | ts | Non | `now()` | |
+
+- **PK** `(alert_id, user_id)`. **IX** `(user_id, alert_id)`. **Suppr.** Suit l'alerte (purge à 2 ans). **Offline** DL (via les alertes ouvertes).
 
 ## communication.notifications
 
@@ -195,7 +214,7 @@
 | `status` | enum(`DRAFT`,`PUBLISHED`,`ARCHIVED`) | Non | `DRAFT` | |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **Suppr.** `ARCHIVED` ; immuable une fois publiée (BR-NOT-006). **Offline** DL (publiées non expirées et ciblées).
+- **PK** `id`. **Suppr.** `ARCHIVED` (un brouillon abandonné aussi : aucune suppression physique, INV-GLO-03) ; immuable une fois publiée, **audiences comprises** : déclencheurs d'immuabilité sur `internal_notes` et `note_audiences` (BR-NOT-006). **Offline** DL en portée `USER` (notes publiées non expirées des utilisateurs résolus à la publication).
 
 ## communication.note_audiences
 
@@ -205,7 +224,7 @@
 |---|---|---:|---|---|
 | `note_id` | uuid → internal_notes | Non | — | |
 | `audience_type` | enum(`ALL`,`ROLE`,`SITE`,`ZONE`,`USER`) | Non | — | |
-| `audience_ref` | varchar(80) | Oui | — | Code de rôle ou identifiant |
+| `audience_ref` | varchar(80) | Non | `'*'` | Code de rôle ou identifiant ; `'*'` pour `ALL` (une clé primaire n'admet pas de colonne nulle) |
 
 - **PK** `(note_id, audience_type, audience_ref)`. **Suppr.** Suit la note.
 

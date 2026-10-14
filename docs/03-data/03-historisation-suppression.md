@@ -71,6 +71,9 @@ Codes : `IMMUABLE` (ni modification ni suppression, correction par écriture inv
 | `sync.change_feed`, `identity.auth_sessions`, `communication.notifications`, `communication.push_subscriptions`, `integrations.inbox_messages` / `outbox_messages` (traités), fichiers d'`analytics.export_jobs`, `platform.jobs` (terminées, P0-08) | PURGE_TECHNIQUE | Rétentions : 60 j, 90 j, 90 j, à la révocation, 180 j, 30 j, 30 j |
 | `platform.job_schedules`, `inventory.transfer_pair_locks` (P5-16) | TECH sans purge | Tables techniques de petit volume (une ligne par tâche récurrente, une par paire de transfert) : jamais supprimées ; une récurrence retirée du code reste inerte |
 | `analytics.saved_views` | LIBRE | Suppression par le propriétaire, auditée |
+| `communication.alerts` (résolues ou écartées), `communication.alert_recipients` (P9, ADR-078 §8) | IMMUABLE après résolution ; purge par le rôle de maintenance | 2 ans après résolution (`communication.alert_retention_days`) ; `BEFORE DELETE` limité aux alertes `RESOLVED` ou `DISMISSED` de plus de 2 ans ; le rôle d'application n'a pas `DELETE` |
+| `analytics.query_log` (P9) | PURGE_TECHNIQUE | 90 jours (`analytics.query_log_retention_days`), tâche de l'application |
+| `communication.internal_notes`, `communication.note_audiences`, `communication.note_acknowledgements` (P9) | IMMUABLE après publication | Archivage ; un brouillon abandonné est archivé, jamais supprimé |
 | `analytics.kpi_snapshots`, `inventory.stock_balances`, `inventory.product_valuations`, `inventory.stock_balance_snapshots` | Projection | Recalcul |
 
 ## 4. Mise en œuvre

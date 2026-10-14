@@ -44,6 +44,7 @@ Cycles relevés :
 | N8 | affectations, puis encaissements | par clé primaire, identifiants croissants |
 | N9 | comptes de trésorerie | tous ceux de l'opération, en une passe triée, avant le premier mouvement (`lockCashAccounts`) |
 | N10 | remises de fonds ; sessions de caisse, puis ajustements | sous-ressources : seulement sous le verrou de leurs comptes (une remise : ses deux comptes, ordre croissant, comme l'envoi) |
+| N10b | alertes et destinataires d'alerte (`communication`, ADR-071 §10, P9) | sous-ressource propre à `communication` : la ligne d'alerte (`FOR UPDATE`) avant ses transitions, sous le consommateur `communication.alerts` et les commandes `communication.alert.*` ; aucune commande d'un autre module ne la tient ; après les rangs N0 à N10 d'une commande, avant les insertions N11 et la tête d'audit N14 |
 | N11 | demandes de validation, conflits, événements | insertions |
 | N12 | compteur de numéros | juste avant l'insertion du document ; exceptions documentées `ANV`, `TRF`, `VTE` (chaque compteur n'est disputé que par des opérations qui le prennent au même rang : aucun cycle) |
 | N13 | demande de validation décidée | mise à jour en fin de décision |
@@ -100,6 +101,10 @@ Cycles relevés :
 **Cycles vérifiés.** Un détenteur de la masse n'attend aucune ressource que les autres commandes concernées tiennent : la répartition n'attend que la masse et des lignes en ajout seul ; l'annulation tient sa saisie ou sa dépense, jamais la masse d'un autre document. Les masses se prennent par espèce puis par mois, dans un ordre unique.
 
 **Tests** : `production-overhead-allocation.test.ts` (annulation pendant la répartition, répartition qui attendait, chaque commande attend le verrou, mois de Douala à la frontière UTC), `finance-expense-commands.test.ts` (saisie, annulation, garde relue à jour). Chaque verrou et chaque lecture courante sont vérifiés par mutation sur la base jetable.
+
+## Révision (P9-01, rang N10b)
+
+Les alertes de `communication` (P9) ajoutent un rang, **N10b**, entre les sessions de caisse (N10) et les insertions (N11) : une commande `communication.alert.*` ne prend que N0, la ligne d'alerte puis N11 (événements) et N14 (audit) ; le consommateur `communication.alerts` écrit hors pipeline (une transaction par événement) et prend la même ligne avant d'insérer ses événements. Aucun autre module ne tient N10b : pas de cycle. Le test de concurrence (alerte levée pendant que sa prise en compte est écrite) est dans P9-23.
 
 ## Résidus assumés
 

@@ -1,0 +1,60 @@
+# ADR-072 — Destinataires, notifications, Web Push et escalade des alertes
+
+- **Statut** : ACCEPTÉ (DÉDUIT, technique ; applique BR-NOT-001, 004, 005, 008, D13 §14 ; les choix métier sont AV-413 à AV-418, AV-439 et AV-440, défauts paramétrables)
+- **Date** : 14/10/2026 (numéro provisoire de la plage 070 à 079 ; révisé le même jour après la revue adverse de la conception)
+- **Précise** : [ADR-071](ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)
+- **Questions liées** : AV-064, AV-413 à AV-418, AV-439, AV-440
+
+## Contexte
+
+Une alerte doit atteindre les bonnes personnes (rôle × périmètre de l'objet, BR-NOT-001), sans jamais montrer à quelqu'un un objet hors de son périmètre (BR-NOT-008). D13 prévoit deux canaux (in-app, Web Push), un regroupement des push (au plus un par utilisateur et par type toutes les 15 minutes, §14) et l'escalade d'une alerte `CRITICAL` non prise en compte sous 4 h vers le niveau supérieur (BR-NOT-005).
+
+Faits du code :
+- l'API publique d'`identity` répond « quels rôles et affectations a cet utilisateur ? » (`activeRoleCodesAt`, `activeRoleAssignmentsAt`, `listConfinementAt`), jamais « quels utilisateurs tiennent ce rôle ou cette permission dans ce périmètre ? ». La seule requête rôle → utilisateurs du code est privée à `identity` (`admin-guard.ts`, rôle `ADMIN`) ; `sync/device-scope.ts` lit utilisateur → périmètres, pas l'inverse : **il n'existe aucun précédent à copier** ;
+- la portée de `comm.alert.read` semée est : `OWN` pour le commercial terrain et le commercial sédentaire, `TEAM` pour le responsable commercial, `SITE` pour le vendeur de PDV, le responsable de ferme et le magasinier, `ALL` pour la Direction, l'administrateur, la Finance et les responsables de production et d'achats. Une lecture « par périmètre » seule ne montrerait pas à un commercial `OWN` l'alerte de stock bas d'un PDV, ni les alertes d'un site sans propriétaire à un rôle `TEAM` ;
+- une hiérarchie existe : `organization_teams.manager_user_id` (non nul), `listManagedTeamMembersAt` et `listTeamsOfUserAt` (`organization`) ; « le responsable » de D13 est donc le responsable de l'équipe du propriétaire, avant d'être un rôle ;
+- les approbateurs d'une demande de validation sont définis par **permission et portée** (`approver_permission`, `approver_scope`, `approval-inbox.ts`), jamais par rôle ;
+- aucune bibliothèque Web Push n'est installée, aucune clé VAPID n'existe dans les paramètres ;
+- le consommateur d'événements traite un événement par transaction et peut en rejouer un (au moins une fois).
+
+## Décision
+
+1. **Destinataires explicites, fixés à la levée.** Table `communication_alert_recipients` (alerte, utilisateur, origine, rôle). À la levée d'une alerte, le résolveur calcule, dans cet ordre :
+   - `RULE` : les titulaires des rôles destinataires de la règle dont une affectation active couvre le site ou la zone de l'objet (affectation `TEAM` : le propriétaire de l'objet est membre de l'équipe) ;
+   - `OWNER` : le propriétaire quand l'événement en désigne un (titulaire du client, auteur, vendeur) ;
+   - `TEAM_MANAGER` : le responsable de l'équipe du propriétaire à l'instant de l'événement, par l'API publique d'`organization` ; c'est « le responsable » de D13 §7.1 pour `SYNC_STALE`, `INACTIVE_COMMERCIAL`, `CASH_HOLDING_HIGH` et `APPROVAL_PENDING_LONG` ;
+   - `APPROVER` : pour `APPROVAL_PENDING_LONG`, les titulaires de la permission d'approbation de la politique dans le périmètre de la demande, le demandeur exclu ;
+   - `FALLBACK` : à défaut de tout destinataire, les titulaires du rôle `DIRECTION` (D13 §14).
+   Un destinataire désactivé ou sans affectation active à l'instant de l'événement est omis ; un utilisateur n'a qu'une ligne par alerte (la première origine l'emporte).
+2. **Résolveur derrière un port à trois opérations.** `AlertRecipientResolver` (port de `communication`) : `usersHoldingRolesAt(roles, site, zone, at)` (zone avec ancêtres, via `organization`), `usersHoldingPermissionAt(permission, scope, at)` et `activeUsers(at)` (audience `ALL` d'ADR-073). L'adaptateur vit dans `communication-api/` et lit les affectations d'`identity` (statut actif, rôle actif, `valid_from`, `valid_to`, `revoked_at`) ; ce sont des requêtes nouvelles, isolées dans un seul fichier, que les fonctions publiques d'`identity` (besoin B1, suivi §5) remplaceront. Les responsables d'équipe viennent d'`organization`.
+3. **Lecture d'un utilisateur = sa boîte + sa supervision, confinées exactement.** `GET /alerts` rend l'union de (a) ses alertes destinataires (index `alert_recipients (user_id, alert_id)` joint à `alerts`, filtré sur `status`), (b) les alertes de l'étendue de `comm.alert.read`. Pour (b), un pré-filtre SQL sur `(site_id, owner_user_id)` issu de `listConfinementAt` — qui peut valoir `null`, c'est-à-dire « aucun pré-filtre » — est **toujours suivi d'une évaluation exacte** par ligne (`evaluateAccess` avec `{siteId, zoneId, ownerUserId}` de l'alerte), pagination par curseur et plafond de balayage, comme `approval-inbox.ts`. Un compte ou un résumé (`/alerts/summary`, compteurs de la tour de contrôle) n'est jamais un `COUNT` sur le pré-filtre : il suit la même évaluation, ou se limite à la boîte (exacte en SQL). Une alerte sans site sous une portée `SITE` n'est pas visible. Un détail hors des deux ensembles est un 404 opaque audité (RC-09).
+4. **Notifications.** Une ligne `communication_notifications` par destinataire et par canal :
+   - `IN_APP` pour `WARNING` et `CRITICAL`, rien pour `INFO` (centre d'alertes seulement) ;
+   - `WEB_PUSH` pour `CRITICAL` immédiat (BR-NOT-004) ;
+   - le texte porté est celui **rendu pour ce destinataire** : une valeur protégée n'y figure que s'il détient `inventory.valuation.read` sur le site (ADR-071 §11, AV-440) ;
+   - trois sources : une alerte, une note de direction (ADR-073), la fin d'un export (ADR-077) et, pour les événements du catalogue dont la conséquence est « notification » sans alerte (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferDispatched`, `PurchaseRequestApproved`, `PurchaseRequestRejected`…), une **notification directe** par un consommateur de `communication` qui s'appuie sur le même résolveur (AV-439).
+   La lecture marque `read_at` (commande `communication.notification.read`, hors ligne admise ; permission `comm.alert.read`).
+5. **Web Push derrière un port.** `WebPushSender` ; adaptateur par défaut « journal » : aucune dépendance ajoutée sans validation du porteur (AV-415). Sans clé VAPID ou sans abonnement valide, la notification reste `IN_APP` (D13 §14). Un abonnement qui répond 410 est révoqué (`revoked_at`). L'abonnement est une commande (`communication.push.subscribe` / `.unsubscribe`, permission `comm.alert.read`), liée à l'appareil authentifié. La ligne `WEB_PUSH` est créée dans la transaction du consommateur et envoyée **après validation** ; une ligne non envoyée (`delivered_at` nul, abonnement non révoqué) est reprise par la tâche d'escalade (au moins une fois ; un push en double est toléré).
+6. **Regroupement** (D13 §14). Au plus un push par utilisateur et par type d'alerte pendant `communication.push_group_minutes` (15). Le créneau est décidé **dans la transaction du consommateur, sous le verrou de l'alerte** (rang N10b), en lisant le dernier `WEB_PUSH` du couple (utilisateur, type) ; l'alerte supprimée garde sa notification `IN_APP`. Le premier push du créneau suivant compte les alertes tues. Le push d'une **escalade** (§7) n'est jamais regroupé : c'est un autre message. Une alerte `CRITICAL` regroupée l'est par exception explicite de D13 §14 à BR-NOT-004 (« immédiat »), pas par oubli (AV-416).
+7. **Escalade** (BR-NOT-005, SM-ALERT). Tâche `communication.alerts.escalate`, intervalle de 10 minutes : toute alerte `CRITICAL` `OPEN` dont `critical_since + escalation_hours` (règle ; 4 par défaut) est passé et dont `escalated_at` est nul reçoit, par un `UPDATE` conditionnel (`status = 'OPEN' AND escalated_at IS NULL`) sous le verrou N10b, `escalated_at`, les destinataires du niveau supérieur (rôles `escalation_roles` de la règle, `DIRECTION` par défaut ; origine `ESCALATION`, la ligne est créée ou la notification ajoutée si le destinataire existait déjà), un push et l'événement `AlertEscalated`. L'échéance se mesure depuis `critical_since` (la levée en `CRITICAL` ou le relèvement), pas depuis `first_detected_at`. Une prise en compte appliquée avant l'escalade l'arrête ; jugée à l'état serveur au moment de son application, une prise en compte hors ligne arrivée après l'escalade est sans effet sur elle (AV-417).
+8. **Prise en compte hors ligne.** `communication.alert.acknowledge` est une commande idempotente, admise hors ligne (UC-NOT-02) ; appliquée à une alerte déjà résolue ou écartée, elle est sans effet et le serveur le dit (aucun fait accompli n'est rejeté pour un état métier, BR-SYN-007) (AV-418).
+9. **Suivi des destinataires.** Un nouveau titulaire d'un rôle `OWN` ou `TEAM` ne voit pas les alertes de site déjà ouvertes (sans propriétaire) ; il reçoit les suivantes ; les alertes d'état se résolvent seules. La boîte vaut droit de lecture pour la durée d'ouverture de l'alerte : exception assumée, par BR-NOT-001, à la lecture par portée de BR-NOT-008 (AV-413). À chaque occurrence d'une alerte ouverte, le résolveur peut être rejoué pour **ajouter** les destinataires manquants (origine `RULE`) ; il n'en retire jamais.
+10. **Rétention.** Une alerte résolue disparaît des boîtes (`status`) ; ses lignes de destinataires et de notifications sont conservées jusqu'à la purge (ADR-078).
+
+## Alternatives écartées
+
+- **Visibilité par périmètre seulement (pas de destinataires)** : un commercial `OWN` ne verrait pas l'alerte de son PDV ; élargir `comm.alert.read` changerait le seed RBAC de tous les rôles.
+- **Destinataires calculés à chaque lecture** : une lecture inverse (rôle → utilisateurs) à chaque affichage, et un résultat qui change avec les affectations après coup.
+- **`COUNT` indexé sur le pré-filtre** pour les compteurs de supervision : sur-ensemble de ce que l'utilisateur est en droit de voir (une alerte de site sans propriétaire sous une portée `TEAM`, une alerte sans site sous `SITE`).
+- **Bibliothèque Web Push et clés immédiatement** : dépendance et secrets à décider par le porteur ; le port suffit à finir et tester le serveur.
+- **Escalade mesurée depuis la première détection** : une alerte relevée à `CRITICAL` après des jours serait escaladée aussitôt.
+
+## Conséquences
+
+- La table des destinataires borne la charge : une alerte a quelques dizaines de lignes au plus.
+- Le résolveur dépend des affectations à l'instant de la levée ; la supervision (`comm.alert.read`) couvre le reste.
+- Les notifications directes d'événements (§4) augmentent le trafic des consommateurs : elles sont filtrées par le catalogue des déclencheurs et par leur destinataire.
+
+## Tests
+
+Résolution (rôle × site/zone, affectation d'équipe, propriétaire, responsable d'équipe, approbateur, repli Direction, utilisateur désactivé), **confinement des lectures** (grille portée maximale × affectation ; compteurs égaux à la lecture exacte ; une alerte sans site invisible sous `SITE` ; un objet hors portée = 404 opaque), regroupement (deux alertes critiques dans le créneau = un push ; course sous le verrou ; escalade jamais regroupée), escalade (une seule fois, depuis `critical_since`, arrêtée par la prise en compte, prise en compte hors ligne tardive), push 410 et ligne non envoyée reprise, masquage d'une valeur protégée dans la notification.

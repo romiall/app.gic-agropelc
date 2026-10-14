@@ -370,6 +370,48 @@ P8 est menée **en parallèle de la session principale** (branche `claude/p8-fin
 | Risques | RISK-13 |
 | DoD | La Direction répond seule aux questions du CM §62 |
 
+**Conception arrêtée le 14/10/2026** ([ADR-070](../decisions/ADR-070-architecture-de-p9-communication-et-analytics.md) à [ADR-078](../decisions/ADR-078-charge-paliers-analytiques-et-retention.md), AV-400 à AV-442 ; numéros provisoires, renumérotés à l'intégration ; révisée le même jour après une revue adverse de la conception) :
+- deux modules, `communication` et `analytics`, avec leurs couches de transport `communication-api/` et `analytics-api/` ; le graphe de dépendances ne change pas ;
+- les alertes montent par **événements** publiés par le module qui porte la donnée (placement imposé par le graphe : par exemple `INACTIVE_COMMERCIAL` dans `sales`) ; le consommateur `communication.alerts` les transforme en alertes, dédoublonnées par une colonne générée sous index unique (INV-NOT-01) ;
+- une alerte d'état se résout seule par **marqueur de fin de passe complète** (identité de passe, jamais l'horloge) ; une alerte d'événement se résout à la main ; les tâches de réconciliation publient puis se terminent en succès ;
+- les seuils sont des paramètres `system_settings` lus par le détecteur ; une valeur au coût n'est jamais écrite dans le message d'une alerte (droit `inventory.valuation.read` du lecteur) ;
+- destinataires explicites écrits à la levée (règle, propriétaire, responsable d'équipe, approbateur, repli Direction), supervision par la portée de `comm.alert.read` avec évaluation **exacte** ; Web Push derrière un port, sans dépendance ni clé tant que le porteur ne les fournit pas ;
+- les tableaux appellent les **fonctions publiques déjà utilisées** par l'accueil et le tableau de distribution (celles qui manquent sont créées dans les modules propriétaires) ; l'explorateur lit des vues `analytics_f_*` déclarées dans un catalogue, sous une **étendue exacte** des lignes qui ne se déduit pas de `listConfinementAt` ; leur équivalence est testée (BR-ANA-009, AT-054) ;
+- exports toujours asynchrones, audités, réservés à leur demandeur, CSV et XLSX sans nouvelle dépendance ;
+- palier analytique 1 (vues SQL, instantanés), bornes et plans `EXPLAIN` dans la suite, mesure de charge à la demande, tâches longues isolées du consommateur d'alertes ;
+- les fichiers tenus par la session principale (`home-service.ts`, `role-catalog.ts`, `identity`, `attachments`, `entity-projections.ts`, `apps/pwa`) ne sont pas modifiés : les besoins B1 à B5 sont au suivi [`19-suivi-p9.md`](19-suivi-p9.md) §5 ; les ajouts de `platform/` (table des événements sautés, isolation des tâches, port de stockage) sont additifs et signalés (§3).
+
+**Backlog (26 incréments, serveur ; les écrans ECR-ANA-01 à 06 et ECR-NOT-01 à 03 forment un lot séparé, sur feu vert de la session principale)** :
+
+| Incrément | Contenu |
+|---|---|
+| P9-01 | **Fait** (14/10/2026) — `docs` : ADR-070 à ADR-078, AV-400 à AV-442, ce backlog, suivi `19-suivi-p9.md` ; D11, D13, dictionnaires et `03-historisation-suppression.md` complétés ; revue adverse de la conception (60 constats retenus, tous traités) |
+| P9-02 | Domaine partagé et contrats : `packages/domain` — catalogue des alertes (module détecteur, sujet, champs protégés, événements qui lèvent et résolvent) et fonctions pures (`alertFromEvent`, `renderAlertMessage`, regroupement, échéance d'escalade depuis `critical_since`), catalogue de la couche sémantique, registre des indicateurs (fonction de référence existante ou à créer), `resolveAnalyticsPeriod` (extension de `businessPeriodOf`), validation d'une définition d'exploration ; schémas de commandes et de lectures dans `packages/contracts` ; couverture ≥ 90 % |
+| P9-03 | Schéma `communication` : migration (règles, alertes à clé de déduplication ouverte, `last_pass_id`, `critical_since`, destinataires à origine, notifications, abonnements push, notes, audiences à sentinelle, accusés ; déclencheurs d'immuabilité), seeds (règles du catalogue, paramètres), dictionnaire, tests `db`, `schema.sql` et `schema.generated.ts` |
+| P9-04 | Socle des alertes : API publique de `communication` (levée, relèvement, résolution), consommateur `communication.alerts` (marques d'événements), commandes `communication.alert.acknowledge`, `.resolve`, `.dismiss` et `communication.alert_rule.set`, événements `Alert*`, rang N10b de l'ADR-038 (amendement), INV-NOT-01 en concurrence ; **plateforme** : table `platform_event_consumer_failures` écrite par le runner, option `settleSeconds` |
+| P9-05 | Destinataires, notifications, Web Push (port) et escalade : résolveur de destinataires (port, adaptateur, responsables d'équipe), notifications in-app dont les notifications directes d'événements (AV-439), valeurs protégées masquées, abonnements, regroupement sous verrou, tâche `communication.alerts.escalate`, `communication.notification.read` |
+| P9-06 | Lectures HTTP de la communication : `GET /alerts`, `/alerts/{id}`, `/alerts/summary`, `/notifications`, `/alert-rules` ; boîte et supervision à évaluation exacte, 404 opaque audité |
+| P9-07 | Détecteurs 1 — ventes et finance : récurrence de `sales.receivables.overdue_daily` en passe à identité, `PaymentFlaggedDuplicate`, `PriceMismatchDetected`, `SALE_UNDELIVERED`, `INACTIVE_COMMERCIAL` (dans `sales`), part « % du CA » de `HIGH_LOSS`, `CASH_HOLDING_HIGH`, `CASH_MISMATCH`, consommation des événements de caisse et de remises déjà publiés |
+| P9-08 | Détecteurs 2 — stock : transitions de seuil, de zéro et de négatif (AV-405), pertes anormales (seuil absolu), écart d'inventaire, transferts non reçus, réapprovisionnement, péremption, `LEDGER_MISMATCH`, consommation de `StockTransferUnmatched`, `AllocationExpired`, `AllocationRevocationPending` |
+| P9-09 | Détecteurs 3 — production, achats, approbations, pièces : mortalité, saisie manquante, coût standard manquant, réception incomplète et réception en quarantaine, demande en attente (`escalated_at`, approbateurs), pièce jamais reçue (dépenses, réceptions) |
+| P9-10 | Détecteurs 4 — terrain, synchronisation, audit : pointage suspect, doublon de compte client, erreurs de synchronisation par passe (AV-442), appareil sans synchronisation, trou de séquence, horloge, chaîne d'audit rompue (publication puis succès, récurrence), consommateur en échec |
+| P9-11 | Notes de direction : commandes `draft.save`, `publish`, `archive`, `acknowledge`, audiences, lectures, notifications, événements ; immuabilité en base y compris les audiences |
+| P9-12 | Jeu hors ligne `comms` (portée `USER` : alertes ouvertes, notifications non lues, notes, accusés) : lecteurs `sync/communication-projections.ts`, publication au flux par destinataire, test par le pull réel ; AT-048 hors ligne |
+| P9-13 | Schéma `analytics` et couche sémantique : migration (vues sauvegardées, exports, instantanés, journal des requêtes, index manquants justifiés par `EXPLAIN`), treize vues `analytics_f_*` à portée dérivée, catalogue, dictionnaire |
+| P9-14 | Explorateur : `POST /analytics/query` (dont `view_id`), `GET /analytics/catalog`, compilateur, **étendue exacte** des lignes (`resolveExactScope`, mode union), mesures protégées, limites en erreur ; grille portée maximale × affectation ; AT-046 (lecture) |
+| P9-15 | Fonctions de référence manquantes dans les modules propriétaires (fichiers de `public/`) : couverture, taux visite → commande, réachat, mortalité par jour et sur 7 jours, taux de mortalité cumulé, œufs et taux, effectifs par type de lot, `countPendingApprovalsFor` ; tests d'équivalence avec leurs documents |
+| P9-16 | Cohérence des indicateurs : résolveur de périodes branché (tableau de distribution compris), tests d'équivalence tableaux = explorateur = documents, rapprochement de `periodRevenue` (AV-426) ; AT-039, AT-054 |
+| P9-17 | Tableaux et tour de contrôle : extraction de `resolveDashboardScope` du contrôleur de distribution, `GET /analytics/dashboards/{direction, commercial, stock, production, finance}`, fraîcheur, liens d'exploration, blocs isolés ; AT-038 |
+| P9-18 | Instantanés personnels et jeu `kpi` : tâche de 15 minutes par lots, suppression à la perte du droit, `GET /analytics/snapshots/me`, lecteurs `sync/kpi-projections.ts` |
+| P9-19 | Vues sauvegardées et partage : commandes `analytics.view.*`, `GET /analytics/views`, exécution par `view_id`, revalidation à l'exécution |
+| P9-20 | Exports audités CSV et XLSX : `analytics.export.request`, tâche d'export qui ne lève pas pour un échec métier, écrivain XLSX interne, port de stockage étendu (`delete`, lecture en flux), lectures d'état, téléchargement du demandeur seul ; AT-046 complet |
+| P9-21 | Traçabilité et enquête d'audit : composition du registre de stock (`GET /stock-moves`), des documents et de l'audit ; AT-043, AT-045 |
+| P9-22 | Charge et rétention : jeu de charge d'un million de lignes, bornes, plans, concurrence par utilisateur, **isolation des tâches longues dans le worker**, tâches de purge, métriques de délai et de retard ; NFR-12, NFR-13, NFR-15 |
+| P9-23 | Invariants et réconciliation : INV-NOT-01 et invariants nouveaux (alerte résolue immuable, note publiée immuable, export audité), balayage de toute la base, ordre de verrouillage (rang N10b) testé en concurrence |
+| P9-24 | Acceptation de bout en bout : AT-038, 039, 043, 045, 046, 048, 054 et les alertes AT-027, AT-032, AT-047 sur l'application complète (`PosWorld`) |
+| P9-25 | Revue adverse (chercheurs puis vérificateurs sceptiques) et correctifs, chaque correctif vérifié par mutation sur la base jetable |
+| P9-26 | Clôture : démonstration `20-demonstration-p9.md`, matrice §17.11, plan ; suite complète verte sur une base neuve |
+
 ### P10 — Intégration Kommo
 
 | Rubrique | Contenu |

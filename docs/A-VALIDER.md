@@ -294,6 +294,49 @@ Classification (PM §45) :
 | AV-277 | Annulation d'un paiement fournisseur enregistré | SECONDAIRE | P8 | Par la Direction, avec motif, sans demande séparée | OUVERT |
 | AV-278 | Lecture des factures, paiements fournisseurs et de la vue d'ensemble financière | SECONDAIRE | P8 | `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` | OUVERT |
 | AV-279 | Chiffre d'affaires d'un lot de production | IMPORTANTE | P8 | Ventes du lot et de ses produits d'abattage ; œufs exclus (déjà valorisés par le crédit au coût standard) | OUVERT |
+| AV-400 | Seuils des alertes : où les paramétrer | SECONDAIRE | P9 | Seuils dans `organization.system_settings` (historisés) ; `alert_rules` ne porte ni seuil ni paramètre de détection | OUVERT |
+| AV-401 | Gravité d'une alerte dont le niveau varie | SECONDAIRE | P9 | Gravité fixée à la levée par l'événement ; relèvement seulement, jamais d'abaissement tant que l'alerte est ouverte ; `critical_since` mesure l'escalade | OUVERT |
+| AV-402 | Types d'alerte ajoutés au catalogue ; types sans source | SECONDAIRE | P9 | Six types ajoutés (`ALLOCATION_EXPIRED`, `ALLOCATION_REVOCATION_PENDING`, `SALE_UNDELIVERED`, `CONSUMER_FAILED`, `LEDGER_MISMATCH`, `CASH_MISMATCH`) ; `KOMMO_SYNC_FAILED` au catalogue, règle désactivée jusqu'à P10 | OUVERT |
+| AV-403 | Résolution automatique des alertes d'état | SECONDAIRE | P9 | Passe planifiée à identité (`pass_id`) : un événement par sujet vrai, puis marqueur de fin de passe complète ; le consommateur résout les alertes `AUTO` non revues par cette passe | OUVERT |
+| AV-404 | Alerte d'événement : résolution, écart, nouvelle occurrence | SECONDAIRE | P9 | Résolution manuelle avec commentaire ; écart avec motif réservé aux alertes d'événement ; une occurrence après résolution ou écart crée une nouvelle alerte | OUVERT |
+| AV-405 | Alertes de stock « sur mouvement » | IMPORTANTE | P9 | `inventory` publie la transition de franchissement (seuil, zéro, négatif) dans la transaction du mouvement ; passe horaire en filet ; sujet = couple emplacement × produit | OUVERT |
+| AV-406 | Alertes de perte anormale et de mortalité élevée | SECONDAIRE | P9 | Perte : valeur d'un emplacement sur un jour ≥ 50 000 XAF (`inventory`) ou ≥ 5 % du CA net du jour métier (`sales`) ; mortalité : seuils d'AV-121 (0,5 % ou 20 têtes, `production`) | OUVERT |
+| AV-407 | Pièce requise jamais reçue (`ATTACHMENT_MISSING`) | IMPORTANTE | P9 | Pièce attendue (justificatif de dépense, photo de réception) non reçue après 7 jours ; détection par le module qui l'exige, via l'API publique d'`attachments` | OUVERT |
+| AV-408 | Demande d'approbation en attente ; escalade ; sans approbateur | IMPORTANTE | P9 | En attente depuis plus de 24 h : alerte aux approbateurs (titulaires de la permission d'approbation dans le périmètre, demandeur exclu) et à la Direction, `escalated_at` écrit par `approvals` ; la détection « sans approbateur » est différée jusqu'à la lecture inverse d'`identity` | OUVERT |
+| AV-409 | Commercial inactif (`INACTIVE_COMMERCIAL`) | SECONDAIRE | P9 | BR-TER-013 : sans prise de service, visite ni vente un jour ouvré (lundi à samedi), alerte le lendemain à 08:00 ; détecteur dans `sales` | OUVERT |
+| AV-410 | Réception incomplète (`RECEIPT_INCOMPLETE`) | SECONDAIRE | P9 | BR-APP-015 : bon de commande dont la date prévue est dépassée de plus de 2 jours avec un reliquat, ou réception comportant une quantité rejetée ; auto-résolue à reliquat nul ou clôturé | OUVERT |
+| AV-411 | Tâches planifiées de détection : créneaux | SECONDAIRE | P9 | Créneaux de D13 §7.1 en heure de Douala, constantes de planification dans le module ; les tâches déjà écrites mais jamais planifiées (et la vérification de chaîne d'audit) reçoivent leur récurrence | OUVERT |
+| AV-412 | Consommateur d'événements en échec | SECONDAIRE | P9 | Table d'ajout seul des événements sautés, écrite par le runner de plateforme ; alerte technique `CONSUMER_FAILED` (ADMIN) lue sur cette table et sur le retard | OUVERT |
+| AV-413 | Destinataires d'une alerte | IMPORTANTE | P9 | Règle (rôles × site ou zone), propriétaire, responsable d'équipe, approbateur, repli sur la Direction ; fixés à la levée, complétés sans retrait | OUVERT |
+| AV-414 | Canaux de notification par gravité | SECONDAIRE | P9 | `CRITICAL` : in-app et push immédiat ; `WARNING` : in-app ; `INFO` : centre d'alertes seulement | OUVERT |
+| AV-415 | Web Push : bibliothèque, clés et repli | IMPORTANTE | P9 | Port `WebPushSender` ; adaptateur journal par défaut ; sans clés VAPID ni abonnement valide, notification in-app seulement | OUVERT |
+| AV-416 | Regroupement des notifications push | SECONDAIRE | P9 | Au plus un push par utilisateur et par type toutes les 15 minutes, créneau décidé sous le verrou de l'alerte ; les suivantes restent in-app, comptées au push suivant ; l'escalade n'est jamais regroupée | OUVERT |
+| AV-417 | Escalade d'une alerte critique | SECONDAIRE | P9 | 4 h sans prise en compte, mesurées depuis `critical_since` ; niveau supérieur = rôles d'escalade de la règle (Direction par défaut) ; une seule escalade par alerte | OUVERT |
+| AV-418 | Prise en compte d'une alerte hors ligne | SECONDAIRE | P9 | `communication.alert.acknowledge` admise hors ligne ; sans effet sur une alerte déjà résolue ou écartée, ni sur une escalade déjà posée ; le serveur le dit | OUVERT |
+| AV-419 | Notes de direction : audience, brouillon, expiration, correction | SECONDAIRE | P9 | Audience `ALL`, rôle, site, zone, utilisateur évaluée à la lecture en ligne ; lignes de flux `USER` résolues à la publication ; immuable après publication ; brouillon abandonné = `ARCHIVED` ; note corrective = nouvelle note ; accusé optionnel par note | OUVERT |
+| AV-420 | Note automatique à l'activation d'une règle tarifaire | SECONDAIRE | P9 | Non livrée : l'événement `PriceRuleActivated` ne crée pas de note ; la Direction publie la note | OUVERT |
+| AV-421 | Limites de l'explorateur | SECONDAIRE | P9 | 10 000 lignes affichées, 100 000 exportées, 15 s d'exécution, trois ans de période détaillée, deux requêtes simultanées par utilisateur ; le dépassement est une erreur, pas une troncature | OUVERT |
+| AV-422 | Mesures protégées : refus ou masquage | SECONDAIRE | P9 | Explorateur et export : refus `FORBIDDEN_MEASURE` ; tableaux : valeur masquée (ADR-035) ; toute valeur au coût est protégée (perte, achat, coût, marge, valeur de stock) | OUVERT |
+| AV-423 | Étendue exacte des lignes d'un jeu de faits | IMPORTANTE | P9 | Étendue exacte (union de clauses site, zone avec descendantes, titulaire) calculée par évaluation de la permission de lecture du jeu sur les univers finis ; combinaison non énumérable = aucune ligne ; jamais tirée de `listConfinementAt` | OUVERT |
+| AV-424 | Jeux de faits livrés en P9 | SECONDAIRE | P9 | Les treize jeux du dictionnaire, par domaine ; `f_sales_line` sans dimension « lot » (CA d'un lot par `lotRevenue`) ; `f_attendance` par personne seulement ; une dimension n'est déclarée que si sa source existe | OUVERT |
+| AV-425 | Zone d'une ligne de fait : zone seule ou zone et ancêtres | SECONDAIRE | P9 | La dimension `zone` filtre par la zone et ses descendantes ; le regroupement se fait au niveau choisi | OUVERT |
+| AV-426 | Chiffre d'affaires : deux calculs à rapprocher | IMPORTANTE | P9 | `period-activity.ts` fait référence (KPI-COM-07, 08) ; `periodRevenue` : CA égal par construction, attribution (commercial attribué) et nombre de ventes (annulées comprises) distincts, nommés à part ; tout écart devient un correctif minimal tracé | OUVERT |
+| AV-427 | Annulations dans l'explorateur | SECONDAIRE | P9 | Mesures par période d'activité par défaut (annulation appliquée, datée de `applied_at`) ; mesure « net par date de vente » distincte, colonne de date propre (`sale_day`), libellé différent ; mélange refusé | OUVERT |
+| AV-428 | Remontée d'un chiffre jusqu'aux sources | SECONDAIRE | P9 | Deux niveaux : bloc → exploration filtrée → document ; registre de stock par `GET /stock-moves` (emplacement obligatoire) et audit par les lectures existantes | OUVERT |
+| AV-429 | Contenu de la tour de contrôle et des tableaux de rôle | IMPORTANTE | P9 | Sept blocs de D11 §7.2 ; période précédente pour les flux seulement ; blocs indépendants ; indicateurs sans fonction publique créés dans les modules propriétaires | OUVERT |
+| AV-430 | Instantanés personnels : fréquence, périodes, utilisateurs, retrait | SECONDAIRE | P9 | Toutes les 15 minutes, `TODAY`, `WEEK`, `MONTH`, pour les titulaires d'un tableau dont un appareil a contacté le serveur depuis 7 jours ; lignes supprimées (avec `DELETE` publié) à la perte du droit ou de l'appareil actif | OUVERT |
+| AV-431 | Jeu hors ligne `kpi` | SECONDAIRE | P9 | Une ligne par (tableau, période), portée `USER`, republiée au changement de contenu ou toutes les heures pour la date | OUVERT |
+| AV-432 | Vues sauvegardées : partage, vue par défaut, lecture | SECONDAIRE | P9 | Partage par rôle ; aucun droit supplémentaire ; vue par défaut d'un rôle ; suppression physique par le propriétaire, auditée ; listage avec état d'exécutabilité | OUVERT |
+| AV-433 | Exports : formats, asynchronie, durée de vie | SECONDAIRE | P9 | CSV (UTF-8 avec BOM, `;`) et XLSX (écrivain interne) ; toujours asynchrone ; échec métier consigné `FAILED` sans rejeu ; téléchargement authentifié 24 h ; fichier purgé à 30 jours | OUVERT |
+| AV-434 | Droit d'exporter et de télécharger un export | SECONDAIRE | P9 | `analytics.export` + droit de lecture du jeu + `inventory.valuation.read` pour les mesures protégées, à la demande et au calcul ; téléchargement réservé au demandeur, audité | OUVERT |
+| AV-435 | Permissions de P9 : codes réutilisés | SECONDAIRE | P9 | `analytics.view.save` = `analytics.explore` ; `analytics.export.request` = `analytics.export` ; abonnements push et lecture de notifications sous `comm.alert.read` ; accusé de note sous `comm.note.read` | OUVERT |
+| AV-436 | Volumétrie cible et paliers analytiques | IMPORTANTE | P9 | Palier 1 (vues SQL, instantanés) ; passage au palier 2 sur mesure : p95 > 3 s ou 20 millions de lignes de faits ; jeu de charge d'un million de lignes de vente | OUVERT |
+| AV-437 | Rétention des données de communication et d'analyse | SECONDAIRE | P9 | Alertes 2 ans après résolution (rôle de maintenance), notifications 90 jours après lecture, abonnements invalides à la révocation, fichiers d'export 30 jours, journal des requêtes 90 jours ; marques, événements, audit conservés | OUVERT |
+| AV-438 | Délai événement → alerte et fenêtre de stabilisation | IMPORTANTE | P9 | Fenêtre de 120 s de la plateforme conservée (tolérance documentée) ; délai et retard mesurés ; option de fenêtre propre à `communication.alerts` si la mesure l'exige | OUVERT |
+| AV-439 | Notifications directes d'événements (hors alerte) | SECONDAIRE | P9 | Notification in-app directe pour les décisions de validation (demandeur), les demandes de validation (approbateurs du périmètre, sous B1), les transferts expédiés (destinataire) et les demandes d'achat décidées (demandeur) ; sans alerte ni push | OUVERT |
+| AV-440 | Valeurs au coût dans les alertes et notifications | IMPORTANTE | P9 | Texte neutre pour les destinataires sans `inventory.valuation.read` (évalué au site de l'alerte) ; valeurs protégées en champs séparés de la charge utile, jamais dans `message` | OUVERT |
+| AV-441 | Sujet d'une alerte à clé composite | SECONDAIRE | P9 | UUID version 5 déterministe du couple (emplacement × produit, PDV × produit, lot × jour) ; clé de déduplication lisible ; lot exclu de la clé d'un seuil de stock | OUVERT |
+| AV-442 | Alerte d'erreur de synchronisation (`SYNC_ERROR`) | SECONDAIRE | P9 | Passe planifiée de la couche `sync` sur la boîte des commandes (`REJECTED` et `CONFLICT`, liste de codes explicite) ; sujet = appareil × code d'erreur ; auto-résolue par marqueur ou par `SyncConflictResolved` | OUVERT |
 
 ---
 
@@ -2064,6 +2107,307 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) ventes du lot et de ses produits d'abattage ; œufs exclus ; (b) œufs inclus, crédit au coût standard retiré de la marge ; (c) inchangé.
 - **Recommandation** : (a) : aucune valeur n'est comptée deux fois.
 - **Impact** : `production-api` (marge de lot), lecture publique `slaughterStockLotIds` ([ADR-044](decisions/ADR-044-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
+
+### AV-400 — Seuils des alertes : où les paramétrer — SECONDAIRE
+- **Question** : Les seuils des alertes (D13 §7.1) sont-ils portés par `alert_rules.thresholds` (dictionnaire) ou par `organization.system_settings` ?
+- **Pourquoi** : Le dictionnaire de `communication.alert_rules` prévoit une colonne `thresholds` ; la règle 8 de CLAUDE.md place les seuils métier dans `system_settings`. Les détecteurs sont dans les modules propriétaires, qui n'importent pas `communication` (graphe). Aujourd'hui, seul `finance.cash_variance_critical_xaf` est lu par du code ; `production.high_mortality_alert_pct` et `_heads` et `sales.undelivered_alert_days` sont semés mais lus par aucun code : leurs détecteurs (P9-08 à P9-10) devront les lire. **DÉDUIT**.
+- **Choix** : (a) `system_settings` seulement ; `alert_rules` porte l'activation, la gravité, les rôles, le mode de résolution, le délai et les rôles d'escalade ; (b) `alert_rules.thresholds`, publié aux détecteurs par événement de configuration ; (c) les deux, `system_settings` faisant foi.
+- **Recommandation** : (a).
+- **Impact** : Dictionnaire `communication.alert_rules` (colonne `thresholds` retirée), [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §8, paramètres semés par détecteur. Défaut implémenté : (a). Non paramétrable (c'est le lieu des paramètres).
+
+### AV-401 — Gravité d'une alerte dont le niveau varie — SECONDAIRE
+- **Question** : Un type dont la gravité dépend de la valeur (écart de caisse : `WARNING`, `CRITICAL` au-delà de `finance.cash_variance_critical_xaf`) a-t-il une gravité fixe par règle ou calculée par l'événement ?
+- **Pourquoi** : D13 §7.1 donne « WARNING (CRITICAL si ≥ seuil) » pour `CASH_VARIANCE` alors que `alert_rules.severity` est unique par type. Deux types distincts (`STOCK_LOW`, `STOCK_OUT`) ont chacun leur clé de déduplication. **DÉDUIT**.
+- **Choix** : (a) l'événement porte la gravité calculée par son module ; la règle donne la gravité par défaut et les gravités admises ; une occurrence plus grave relève l'alerte ouverte (et pose `critical_since`), aucune ne l'abaisse ; (b) gravité fixe par règle, un type par niveau ; (c) gravité recalculée à chaque occurrence.
+- **Recommandation** : (a) : une alerte qui descend sans que personne ne l'ait lue masque un problème ; la résolution est la seule clôture.
+- **Impact** : [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §7, catalogue des alertes (`packages/domain`), push d'une alerte relevée à `CRITICAL` et échéance d'escalade ([ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §7). Défaut implémenté : (a). Non paramétrable.
+
+### AV-402 — Types d'alerte ajoutés au catalogue ; types sans source — SECONDAIRE
+- **Question** : Quels types s'ajoutent au catalogue de D13 §7.1, et que fait-on des types dont la phase n'est pas livrée ?
+- **Pourquoi** : Le code promet « alerte : P9 » pour les quotas échus et à régulariser (P5-08, `AllocationExpired`, `AllocationRevocationPending`), les ventes confirmées non livrées (AV-132) et les écarts de réconciliation (`LEDGER_MISMATCH`, INV-STK-01, AT-047 ; `CASH_MISMATCH`, D09), absents du catalogue de D13 ; le consommateur d'événements saute un événement en échec sans alerte ; `KOMMO_SYNC_FAILED` relève de P10. Les trois tâches de réconciliation et de vérification de chaîne signalent l'écart en **levant** : leur écriture est annulée par le point de sauvegarde du `JobRunner`, donc leur événement doit être publié avant de se terminer en succès. **DÉDUIT**.
+- **Choix** : (a) ajouter les six types, garder `KOMMO_SYNC_FAILED` désactivé ; les tâches de réconciliation publient puis se terminent `DONE` ; (b) n'ajouter aucun type (les signaux restent à l'accueil) ; (c) tout désactiver sauf demande du porteur.
+- **Recommandation** : (a).
+- **Impact** : D13 §7.1, seed des règles (`communication_alert_rules`), détecteurs de P9-07 à P9-10 ; [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §3 et §13. Défaut implémenté : (a). Paramétrable : `enabled` par règle.
+
+### AV-403 — Résolution automatique des alertes d'état — SECONDAIRE
+- **Question** : Comment une alerte d'état (créance échue, stock faible…) se résout-elle quand la condition disparaît (BR-NOT-003) ?
+- **Pourquoi** : Les modules propriétaires ne peuvent ni lire `communication` ni connaître les alertes ouvertes ; la condition peut cesser sans événement (un paiement ramène le solde à zéro). Une résolution fondée sur l'horloge résoudrait à tort les alertes encore vraies lors d'une passe rejouée ou doublée le même jour (les tâches existantes dédoublonnent par jour métier). **DÉDUIT**.
+- **Choix** : (a) identité de passe : événements et marqueur portent `pass_id`, l'alerte mémorise `last_pass_id`, la clé d'idempotence est (`pass_id`, sujet), le marqueur n'est publié que par la dernière page d'une passe complète ; plus un événement de résolution quand un fait précis la termine ; (b) événement « condition disparue » par module, avec mémoire des alertes ; (c) le consommateur interroge le module à chaque lecture.
+- **Recommandation** : (a) : détection sans état côté propriétaire, sans résolution à tort.
+- **Impact** : [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §3 ; tâches planifiées des modules (suppression de la déduplication par jour quand elles passent en détecteur d'état) ; coût proportionnel au nombre de sujets vrais ([ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md)). Défaut implémenté : (a). Non paramétrable.
+
+### AV-404 — Alerte d'événement : résolution, écart, nouvelle occurrence — SECONDAIRE
+- **Question** : Comment se clôt une alerte d'événement (perte anormale, doublon suspect), que devient une nouvelle occurrence après sa résolution, et peut-on écarter une alerte d'état ?
+- **Pourquoi** : BR-NOT-003 et SM-ALERT : résolution manuelle avec commentaire, écart avec motif ; INV-NOT-01 n'interdit qu'une deuxième alerte *ouverte* par objet. Écarter une alerte d'état dont la condition dure la ferait renaître, notifiée, à la passe suivante. **DÉDUIT**.
+- **Choix** : (a) commentaire obligatoire à la résolution, motif obligatoire à l'écart, nouvelle alerte après résolution ou écart ; `dismiss` interdit sur une alerte d'état (la prise en compte la fait taire tant que la condition dure) ; (b) `dismiss` admis sur une alerte d'état avec une fenêtre de silence par type en paramètre ; (c) réouverture de l'alerte résolue.
+- **Recommandation** : (a) : l'historique d'un objet reste lisible (une ligne par occurrence traitée).
+- **Impact** : Commandes `communication.alert.resolve` et `.dismiss`, index unique sur la clé de déduplication ouverte ([ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §6 et §9). Défaut implémenté : (a). Non paramétrable.
+
+### AV-405 — Alertes de stock « sur mouvement » — IMPORTANTE
+- **Question** : Les alertes `STOCK_LOW`, `STOCK_OUT` et `STOCK_NEGATIVE` sont-elles détectées à chaque mouvement ou par une passe planifiée ?
+- **Pourquoi** : D13 §7.1 dit « Sur mouvement ». Aucun événement `StockThresholdBreached` ni `StockNegativeDetected` n'est publié aujourd'hui ; `recordStockMove` est le chemin le plus sollicité et verrouillé (ADR-038) ; `STOCK_NEGATIVE` naît aussi d'un conflit de synchronisation. Le solde n'a pas d'identifiant propre (clé `emplacement`, `produit`, `lot`) : le sujet est un UUID déterministe du couple. **DÉDUIT**.
+- **Choix** : (a) transition publiée par `inventory` dans la transaction du mouvement, pour les couples avec seuil et pour le négatif ; passe horaire en filet (`breached: false` aussi) ; (b) passe planifiée seule, délai d'une heure ; (c) événement à chaque mouvement.
+- **Recommandation** : (a), sous réserve que la lecture du seuil n'ajoute ni verrou ni écriture sur le chemin chaud : à mesurer en P9-08, repli sur (b) si le coût est visible.
+- **Impact** : `inventory` (publication de l'événement ; lecture du seuil du couple), ordre de verrouillage inchangé, sujet composite ([ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §3 et §5). Défaut implémenté : (a) avec filet. Non paramétrable : la cadence du filet est une constante de planification (AV-411).
+
+### AV-406 — Alertes de perte anormale et de mortalité élevée — SECONDAIRE
+- **Question** : Quels seuils déclenchent `HIGH_LOSS` et `HIGH_MORTALITY`, et dans quel module chaque critère se calcule-t-il ?
+- **Pourquoi** : D13 §7.1 donne 50 000 XAF ou 5 % des ventes du jour pour la perte (par emplacement, sur un jour) ; `inventory` n'importe ni `sales` ni `finance` (graphe), donc le critère « % des ventes » ne peut pas s'évaluer dans `inventory` ; la mortalité a ses paramètres depuis P7 (AV-121). **CONFIRMÉ** (D13) / **DÉDUIT** (emplacement, jour métier, module).
+- **Choix** : (a) seuil absolu évalué par `inventory` sur `StockLossDeclared` (`inventory.high_loss_alert_xaf`), part « % du CA net du jour » évaluée par `sales` qui connaît le CA du jour (ADR-041) et lit les pertes par l'API d'`inventory` (`sales.high_loss_alert_sales_pct`) ; deux événements, un seul type d'alerte ; (b) seuil absolu seul ; (c) dénominateur calculé dans `inventory` d'après les sorties de vente du registre, au coût (écart à D13).
+- **Recommandation** : (a).
+- **Impact** : Détecteurs de `inventory` (P9-08), `sales` (P9-07) et `production` (P9-09), seeds. Défaut implémenté : (a). Paramétrable. La valeur d'une perte est une valeur protégée ([ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §11, AV-440).
+
+### AV-407 — Pièce requise jamais reçue (`ATTACHMENT_MISSING`) — IMPORTANTE
+- **Question** : Qu'est-ce qu'une pièce « requise non reçue après 7 jours » (D13 §7.1) et qui la détecte ?
+- **Pourquoi** : `attachments` ne sait pas quelle pièce est attendue : ce sont les modules qui l'exigent (dépenses, réceptions au-delà du seuil de photo, AV-246 `RECEIPT_PHOTO_MISSING`) qui le savent. La session principale tient `attachments` (MP-10). **DÉDUIT**.
+- **Choix** : (a) chaque module exigeant une pièce publie, par une tâche quotidienne, l'événement pour les documents dont la pièce manque depuis plus de `attachments.missing_alert_days` (7) ; (b) un détecteur unique dans `attachments` (demande à la session principale) ; (c) pas d'alerte, signal à l'accueil seulement.
+- **Recommandation** : (a) : aucune modification d'`attachments`.
+- **Impact** : `finance` (dépenses à justificatif promis) et `procurement` (réceptions marquées `RECEIPT_PHOTO_MISSING`), tâches quotidiennes ; [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §2. Défaut implémenté : (a). Paramétrable (délai ; `0` désactive).
+
+### AV-408 — Demande d'approbation en attente ; escalade ; sans approbateur — IMPORTANTE
+- **Question** : Quand une demande de validation est-elle en retard, qui est alerté, qui est le niveau supérieur, et que fait-on d'une demande qu'aucun approbateur ne peut traiter (D01 §14) ?
+- **Pourquoi** : `approval_requests.escalated_at` n'est jamais écrit ; les approbateurs sont définis par permission et portée (`approver_permission`, `approver_scope`), jamais par rôle : « qui détient cette permission dans ce périmètre ? » est une lecture inverse que ni `approvals` ni la page d'accueil ne font (l'accueil ne liste que les demandes décidables par l'utilisateur). D01 §14 : demande routée vers `DIRECTION`, alerte « validation sans approbateur ». **DÉDUIT**.
+- **Choix** : (a) tâche d'`approvals` : demande `PENDING` depuis plus de `approvals.pending_long_hours` (24) → événement portant la permission, la portée, le site et la zone, `escalated_at` posé une fois, alerte vers les approbateurs et la Direction ; détection « sans approbateur » différée tant que `identity` ne fournit pas la lecture inverse (B1) ; (b) idem avec détection immédiate par lecture directe des tables d'`identity` ; (c) pas d'escalade.
+- **Recommandation** : (a).
+- **Impact** : `approvals` (tâche, `escalated_at`), [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §1 et §7 ; besoin B1 (`usersHoldingPermissionAt`, suivi §5). Défaut implémenté : (a). Paramétrable (24 h).
+
+### AV-409 — Commercial inactif (`INACTIVE_COMMERCIAL`) — SECONDAIRE
+- **Question** : Quels jours comptent et qui est exclu (congé, nouveau commercial, désactivé), et dans quel module se calcule la condition ?
+- **Pourquoi** : BR-TER-013 fixe lundi à samedi « par défaut » et 08:00 ; aucune donnée de congé n'existe dans le modèle. La condition croise prise de service (`fieldwork`), visites (`crm`) et ventes (`sales`) ; `fieldwork` n'importe ni `crm` ni `sales` (graphe), `sales` importe les deux. **CONFIRMÉ** (règle) / **DÉDUIT** (exclusions, module).
+- **Choix** : (a) détecteur dans `sales` (API publique de `fieldwork` pour les prises de service, de `crm` pour les visites) ; jours `sales.commercial_working_days` (lundi à samedi) ; exclus : comptes désactivés, utilisateurs sans affectation commerciale active, jours antérieurs à la première affectation ; (b) idem sans exclusion ; (c) congés saisis (hors périmètre).
+- **Recommandation** : (a).
+- **Impact** : `sales` (tâche quotidienne 08:00 sur le jour métier précédent, P9-07) ; [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §2. Défaut implémenté : (a). Paramétrable (jours) ; l'heure est une constante de planification.
+
+### AV-410 — Réception incomplète (`RECEIPT_INCOMPLETE`) — SECONDAIRE
+- **Question** : Quelles conditions et quel délai déclenchent `RECEIPT_INCOMPLETE` ?
+- **Pourquoi** : BR-APP-015 le définit (date prévue dépassée de plus de 2 jours avec un reliquat, ou quantité rejetée) ; la valeur « 2 jours » n'était pas un paramètre. **CONFIRMÉ** (règle) / **DÉDUIT** (paramètre, résolution).
+- **Choix** : (a) règle de BR-APP-015, délai en paramètre `procurement.receipt_incomplete_alert_days` (2) ; la quantité rejetée lève l'alerte à la réception ; résolution quand le reliquat est nul ou le bon clôturé ; (b) délai compté depuis la dernière réception ; (c) rejet seul.
+- **Recommandation** : (a).
+- **Impact** : `procurement` (événement sur réception ; tâche quotidienne pour le retard). Défaut implémenté : (a). Paramétrable.
+
+### AV-411 — Tâches planifiées de détection : créneaux — SECONDAIRE
+- **Question** : À quelle heure tournent les détections planifiées, et inscrit-on les tâches déjà écrites (`sales.receivables.overdue_daily`, `fieldwork.session.auto_close`, `audit.chain.verify_daily`) ?
+- **Pourquoi** : Les créneaux sont donnés par le catalogue (06:00, 07:00, 08:00, 10:00, horaire, 24 h) ; certaines tâches existent sans récurrence (« la planification relève du déploiement », P4-09). `RecurringJobRegistry` est disponible depuis P5-16 ; une récurrence est déclarée en **code** (`INTERVAL` ou `DAILY`), elle ne lit pas `system_settings`. **DÉDUIT**.
+- **Choix** : (a) créneaux du catalogue, une récurrence par tâche dans son module, inscrite au démarrage ; la cadence est une constante de code (non paramétrable) ; (b) planification par le déploiement (cron externe) ; (c) tâche unique de `communication` qui appelle les modules.
+- **Recommandation** : (a).
+- **Impact** : Fichiers `*-recurring-jobs.ts` des modules concernés (nouveau pour `audit`, `sales`, `fieldwork`). Défaut implémenté : (a). Non paramétrable (une tâche à intervalle court qui comparerait `system_settings` à l'heure serait un choix ultérieur).
+
+### AV-412 — Consommateur d'événements en échec — SECONDAIRE
+- **Question** : Un événement sauté après cinq essais, ou un consommateur en retard, doit-il lever une alerte, et comment la retrouve-t-on ?
+- **Pourquoi** : `event-consumer-runner.ts` : l'événement en échec est sauté, la position avance, `last_error` est réécrit à `null` par le premier événement traité ensuite (`saveOffset` après chaque événement) : l'erreur disparaît en quelques secondes ; D13 §14 et le catalogue d'événements §3 promettent « une alerte technique ». **CONFIRMÉ** (documents, code) / **DÉDUIT** (mise en œuvre).
+- **Choix** : (a) le runner consigne chaque saut dans `platform_event_consumer_failures` (ajout seul, même transaction que l'avancée de position) ; une tâche de `communication` lit cette table et le retard de position et lève `CONSUMER_FAILED`, un par consommateur et par jour métier, résolu sur le retard ; (b) lecture de `last_error` seule (perte silencieuse possible) ; (c) journaux seulement.
+- **Recommandation** : (a) : ajout de plateforme additif, à signaler à la session principale.
+- **Impact** : `platform/events` (ajout), [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §12, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §7. Défaut implémenté : (a) ; repli sur (b) tant que le changement de plateforme n'est pas intégré. Paramétrable : seuil de retard.
+
+### AV-413 — Destinataires d'une alerte — IMPORTANTE
+- **Question** : Qui reçoit une alerte, et que fait-on quand personne ne correspond (D13 §14) ?
+- **Pourquoi** : BR-NOT-001 : destinataires = rôles × périmètre de l'objet ; BR-NOT-008 : jamais d'objet hors périmètre ; `comm.alert.read` est en portée `OWN` pour les commerciaux, `TEAM` pour le responsable commercial, `SITE` pour le vendeur de PDV, le responsable de ferme et le magasinier : une lecture « par périmètre » ne montrerait pas à un commercial l'alerte de son PDV ni les alertes d'un site sans propriétaire à un rôle `TEAM`. Le responsable d'une équipe est connu (`organization_teams.manager_user_id`). **DÉDUIT**.
+- **Choix** : (a) destinataires explicites écrits à la levée (`communication_alert_recipients`, origines `RULE`, `OWNER`, `TEAM_MANAGER`, `APPROVER`, `ESCALATION`, `FALLBACK`), supervision par la portée de `comm.alert.read` avec évaluation exacte ; (b) visibilité par portée seulement ; (c) destinataires recalculés à chaque lecture.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §1 à §3 ; lecture inverse (rôle ou permission → utilisateurs) à demander à `identity` (B1), adaptateur isolé en attendant. Défaut implémenté : (a). Paramétrable : rôles par règle.
+
+### AV-414 — Canaux de notification par gravité — SECONDAIRE
+- **Question** : Quel canal pour quelle gravité (AV-064) ?
+- **Pourquoi** : BR-NOT-004 le donne ; AV-064 le confirme à la forme (in-app + Web Push). **CONFIRMÉ** (règle).
+- **Choix** : (a) BR-NOT-004 tel quel ; (b) push aussi pour `WARNING` ; (c) in-app seulement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4. Défaut implémenté : (a). Non paramétrable en P9 : le canal découle de la gravité de la règle (la règle ne porte pas de colonne de canal).
+
+### AV-415 — Web Push : bibliothèque, clés et repli — IMPORTANTE
+- **Question** : Quelle bibliothèque et quelles clés VAPID pour l'envoi Web Push ?
+- **Pourquoi** : Aucune bibliothèque Web Push n'est installée ; les clés VAPID sont des secrets d'exploitation que le porteur n'a pas fournis ; D13 §14 prévoit le repli in-app. **DÉDUIT**.
+- **Choix** : (a) port et adaptateur journal, bibliothèque et clés décidées au déploiement ; (b) ajouter `web-push` maintenant ; (c) pas de push.
+- **Recommandation** : (a) : le serveur se termine et se teste sans secret.
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §5 ; `communication.push.subscribe`. Défaut implémenté : (a). Paramétrable : clés par variables d'environnement.
+
+### AV-416 — Regroupement des notifications push — SECONDAIRE
+- **Question** : Comment regrouper les push d'une tempête d'alertes (D13 §14), et le regroupement peut-il retarder une alerte `CRITICAL` « immédiate » ?
+- **Pourquoi** : D13 §14 : « au plus 1 push par utilisateur et par type toutes les 15 minutes » ; BR-NOT-004 : push immédiat pour `CRITICAL`. Les deux règles viennent de la spécification : le regroupement est l'exception explicite pour les tempêtes. **CONFIRMÉ** (règles) / **DÉDUIT** (compte au push suivant, course).
+- **Choix** : (a) créneau de `communication.push_group_minutes` (15), décidé dans la transaction du consommateur sous le verrou N10b, compte des alertes tues dans le push suivant, escalade jamais regroupée ; (b) créneau sans compte ; (c) aucun regroupement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §6. Défaut implémenté : (a). Paramétrable.
+
+### AV-417 — Escalade d'une alerte critique — SECONDAIRE
+- **Question** : Au bout de combien de temps et vers qui une alerte `CRITICAL` non prise en compte est-elle escaladée (BR-NOT-005) ?
+- **Pourquoi** : BR-NOT-005 donne 4 h et « responsable → Direction » ; le responsable d'équipe est connu (`TEAM_MANAGER`, destinataire dès la levée), `DIRECTION` est le seul niveau supérieur modélisé au-delà. **CONFIRMÉ** (délai) / **DÉDUIT** (niveau, point de départ).
+- **Choix** : (a) `escalation_hours` par règle (4), rôles d'escalade par règle (`DIRECTION` par défaut), une fois, depuis `critical_since` ; (b) escalades successives ; (c) hiérarchie par équipe.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §7 ; tâche `communication.alerts.escalate`. Défaut implémenté : (a). Paramétrable.
+
+### AV-418 — Prise en compte d'une alerte hors ligne — SECONDAIRE
+- **Question** : Que devient la prise en compte d'une alerte que le serveur a résolue ou escaladée entre-temps ?
+- **Pourquoi** : UC-NOT-02 admet la prise en compte hors ligne ; BR-SYN-007 interdit de rejeter un fait accompli pour un état métier. **DÉDUIT**.
+- **Choix** : (a) appliquée sans effet, résultat explicite, jugée à l'état serveur à son application ; (b) rejetée ; (c) conflit à résoudre.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §7 et §8. Défaut implémenté : (a). Non paramétrable.
+
+### AV-419 — Notes de direction : audience, brouillon, expiration, correction — SECONDAIRE
+- **Question** : Comment se définit l'audience d'une note, que reçoit l'appareil, et que devient une note erronée ou un brouillon ?
+- **Pourquoi** : BR-NOT-006 : audience, publication, expiration, accusé optionnel, immuable, retrait ou note corrective ; AV-066 : accusé par note. Le jeu `comms` est en portée `USER` ; un rôle n'est pas une portée du flux ; une table de transaction ne se supprime pas (INV-GLO-03). **CONFIRMÉ** (règles) / **DÉDUIT** (résolution, brouillon).
+- **Choix** : (a) évaluation à la lecture en ligne, résolution à la publication pour le flux et les notifications, limite assumée pour les affectations postérieures, brouillon archivé jamais supprimé ; (b) catch-up par consommateur des affectations ; (c) audience figée en liste d'utilisateurs.
+- **Recommandation** : (a).
+- **Impact** : [ADR-073](decisions/ADR-073-notes-de-direction.md). Défaut implémenté : (a). Paramétrable : accusé par note.
+
+### AV-420 — Note automatique à l'activation d'une règle tarifaire — SECONDAIRE
+- **Question** : L'activation d'une règle tarifaire publie-t-elle une note automatique (D13 §11) ?
+- **Pourquoi** : D13 §11 cite `PriceRuleActivated` « pour une note automatique » ; BR-NOT-007 : une note ne porte aucun effet et ne remplace pas une règle automatisable ; l'événement n'est pas publié aujourd'hui. **À VALIDER**.
+- **Choix** : (a) pas de note automatique en P9 ; (b) note automatique de catégorie `PRIX` à l'audience des vendeurs ; (c) notification sans note.
+- **Recommandation** : (a) : la décision de communication appartient à la Direction.
+- **Impact** : [ADR-073](decisions/ADR-073-notes-de-direction.md) §7. Défaut implémenté : (a). Paramétrable en (b) par une règle ultérieure.
+
+### AV-421 — Limites de l'explorateur — SECONDAIRE
+- **Question** : Quelles limites bornent l'explorateur et les exports, et que se passe-t-il au dépassement ?
+- **Pourquoi** : BR-ANA-006 : 10 000 / 100 000 / 15 s (« D », sécurité et performance) ; D11 §8 : trois ans et `QUERY_LIMIT_EXCEEDED` ; la concurrence par utilisateur est une garde de charge (RISK-13). **CONFIRMÉ** (limites) / **DÉDUIT** (concurrence, erreur plutôt que troncature).
+- **Choix** : (a) valeurs de D11 en paramètres `analytics.*`, `LIMIT + 1` et erreur au dépassement, export en `FAILED` ; (b) troncature signalée par `truncated` ; (c) sans limite de concurrence.
+- **Recommandation** : (a).
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §8, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §1. Défaut implémenté : (a). Paramétrable.
+
+### AV-422 — Mesures protégées : refus ou masquage — SECONDAIRE
+- **Question** : Que voit un utilisateur sans `inventory.valuation.read` qui demande le coût, la marge ou une valeur au coût ?
+- **Pourquoi** : D11 §8 prévoit `FORBIDDEN_MEASURE` pour l'explorateur ; ADR-035 masque (valeur `null`) dans les tableaux ; les lectures de pertes, d'achats et de production masquent déjà leurs valeurs : l'explorateur doit refuser exactement ce qu'elles masquent. **CONFIRMÉ**.
+- **Choix** : (a) refus à l'explorateur et à l'export, masquage dans les tableaux, liste des mesures protégées vérifiée contre les lectures existantes ; (b) masquage partout ; (c) refus partout.
+- **Recommandation** : (a) : l'explorateur construit une requête, un refus explicite évite un tableau muet.
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §7, [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §8. Défaut implémenté : (a). Non paramétrable.
+
+### AV-423 — Étendue exacte des lignes d'un jeu de faits — IMPORTANTE
+- **Question** : Comment l'explorateur et les instantanés confinent-ils les lignes (BR-ANA-004) quand une permission porte plusieurs portées et affectations ?
+- **Pourquoi** : `listConfinementAt` est un pré-filtre sur-ensemble : pas de zone, `null` pour `ALL` et pour `SITE` ou `ZONE` sous une affectation autre que de site ; sur un agrégat, aucune évaluation par ligne ne le rattrape. L'octroi effectif est l'intersection portée maximale ∩ affectation (`scope-evaluation.ts`). `ReadScope` combine en ET, sans zone. **DÉDUIT**.
+- **Choix** : (a) `resolveExactScope` (`analytics-api/analytics-scope.ts`) : évalue `evaluateAccess` pour chaque site, chaque site avec soi pour titulaire, chaque zone et chaque utilisateur (≤ quelques centaines d'évaluations en cache), union sûre par construction, mode « union » ajouté à `ReadScope` ; remplacée par une fonction d'`identity` (B5) ; (b) fonction exacte dans `identity` tout de suite (demande à la session principale) ; (c) ET, plus restrictif.
+- **Recommandation** : (a), avec B5 en suivi : ne dépend d'aucun fichier tenu par la session principale.
+- **Impact** : `analytics-api/analytics-scope.ts`, `platform/read-scope.ts` (ajout), compilateur ([ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §4). Défaut implémenté : (a). Non paramétrable. Test : grille portée maximale × affectation contre `evaluateAccess` (jamais plus large).
+
+### AV-424 — Jeux de faits livrés en P9 — SECONDAIRE
+- **Question** : Quels jeux `f_*` sont livrés et avec quelles dimensions ?
+- **Pourquoi** : Le dictionnaire `12-analytics.md` en liste treize ; une ligne de vente se répartit sur plusieurs mouvements `SALE` (un par lot) : joindre les mouvements dupliquerait le montant ; la session de travail ne porte ni site ni zone ; plusieurs tables sources n'ont pas de colonne de site (mouvements, soldes, coûts, trésorerie). **DÉDUIT**.
+- **Choix** : (a) treize jeux, dimensions déclarées seulement quand leur source existe, colonnes de portée dérivées dans la vue (ADR-074 §2), règle fermée sinon ; (b) les six principaux (ventes, encaissements, stock, pertes, production, dépenses) ; (c) un jeu « ligne de vente × mouvement » pour le lot.
+- **Recommandation** : (a).
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §2 et §3 ; migrations `analytics_f_*`, dictionnaire `12-analytics.md`. Défaut implémenté : (a). Non paramétrable.
+
+### AV-425 — Zone d'une ligne de fait : zone seule ou zone et ancêtres — SECONDAIRE
+- **Question** : Un filtre « zone Douala » inclut-il les sous-zones, et comment regrouper par niveau ?
+- **Pourquoi** : Le dictionnaire écrit « zone (et ancêtres) » ; AT-038 attend « zone et sous-zones » ; `organization_zone_ancestors` donne la hiérarchie. **DÉDUIT**.
+- **Choix** : (a) dimensions `zone` (zone de rattachement) et `zone_path` ; filtre sur la zone inclut les descendantes ; (b) zone de rattachement seule ; (c) un niveau fixe.
+- **Recommandation** : (a).
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md), `organization` (hiérarchie). Défaut implémenté : (a). Non paramétrable.
+
+### AV-426 — Chiffre d'affaires : deux calculs à rapprocher — IMPORTANTE
+- **Question** : Le chiffre d'affaires de `periodRevenue` (tableau commercial, vue d'ensemble financière) et celui de `period-activity.ts` (accueil, tableau de distribution) sont-ils égaux, et que valent leurs différences ?
+- **Pourquoi** : Deux fonctions calculent le CA : lignes vendues moins lignes annulées (`period-activity.ts`, ADR-041) et total des ventes moins total des annulations appliquées (`revenue.ts`) ; les montants coïncident (total = somme des lignes, taxe nulle), le **nombre de ventes** de `periodRevenue` compte les ventes annulées, et son **attribution** est le commercial attribué (BR-VEN-020, réalisé d'objectif) alors que l'activité personnelle compte vendeur ou commercial. BR-ANA-009. **DÉDUIT**, à confirmer par test.
+- **Choix** : (a) référence = `period-activity.ts`, égalité du CA testée, « réalisé d'objectif » et « activité personnelle » nommés à part, nombre de ventes de `periodRevenue` jamais affiché comme KPI-COM-07 ; correctif minimal tracé si un écart apparaît ; (b) référence = `periodRevenue` ; (c) deux libellés distincts partout.
+- **Recommandation** : (a) : c'est la définition d'ADR-041 déjà partagée par deux écrans.
+- **Impact** : [ADR-075](decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md) §2 ; test d'équivalence (P9-15). Défaut implémenté : (a). Non paramétrable.
+
+### AV-427 — Annulations dans l'explorateur — SECONDAIRE
+- **Question** : L'explorateur compte-t-il une annulation à sa date ou à la date de la vente, et sur quelle colonne de date filtre-t-on chaque mesure ?
+- **Pourquoi** : BR-ANA-003 : « par période d'activité » à la date d'annulation (BR-FIN-042) ; une vue « net par date de vente » est proposée avec un libellé distinct. Le dictionnaire écrit « daté de son occurred_at » alors que la définition de référence date l'annulation de `applied_at` et filtre `status = 'APPLIED'` (`saleActivityArms`). **CONFIRMÉ** (règle) / **DÉDUIT** (colonnes).
+- **Choix** : (a) deux colonnes `business_day` et `sale_day`, une colonne de période par mesure, `ANALYTICS_MIXED_PERIOD_BASIS` si on les mêle ; (b) la seule mesure par période d'activité ; (c) la seule mesure par date de vente.
+- **Recommandation** : (a).
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §3, [ADR-075](decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md) §5, catalogue de `f_sales_line`, dictionnaire. Défaut implémenté : (a). Non paramétrable.
+
+### AV-428 — Remontée d'un chiffre jusqu'aux sources — SECONDAIRE
+- **Question** : Comment se réalise BR-ANA-010 (tout indicateur de la tour mène en au plus deux niveaux aux opérations sources) ?
+- **Pourquoi** : AT-043 (« pourquoi manque-t-il 5 unités ? ») et AT-045 (enquête sur une vente annulée) s'appuient sur `GET /stock-moves` (un emplacement à la fois) et la lecture de l'audit, déjà livrées ; BR-ANA-010 demande le chemin depuis le tableau. **DÉDUIT**.
+- **Choix** : (a) lien d'exploration par bloc, identifiant et route du document par ligne ; composition des lectures existantes ; (b) nouvelle lecture de trace dédiée ; (c) navigation par l'application seulement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-075](decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md) §6 ; `analytics-api` (liens), tests AT-043 et AT-045. Défaut implémenté : (a). Non paramétrable.
+
+### AV-429 — Contenu de la tour de contrôle et des tableaux de rôle — IMPORTANTE
+- **Question** : Quels indicateurs, quelles comparaisons et quel comportement quand un bloc échoue ?
+- **Pourquoi** : D11 §7.2 donne les blocs et les alertes associées ; la comparaison « vs période précédente » est dans le bloc VENTES, elle n'a de sens que pour un flux ; plusieurs indicateurs de D11 n'ont pas de fonction publique (couverture, taux visite → commande, réachat, mortalité par jour et sur 7 jours, taux d'œufs et d'éclosion, effectifs par type de lot) ; une tour partielle vaut mieux qu'une erreur. **CONFIRMÉ** (contenu) / **DÉDUIT** (isolation, flux).
+- **Choix** : (a) §7.2 avec période précédente des flux, isolation par bloc, fonctions créées dans les modules propriétaires (fichiers de `public/`, listés au suivi) ; (b) contenu plus réduit ; (c) échec global à la première erreur.
+- **Recommandation** : (a).
+- **Impact** : [ADR-076](decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md) §2 à §4, [ADR-075](decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md) §1. Défaut implémenté : (a). Paramétrable : période maximale (`analytics.dashboard_max_period_days`), plafond du compteur de validations.
+
+### AV-430 — Instantanés personnels : fréquence, périodes, utilisateurs, retrait — SECONDAIRE
+- **Question** : Quand et pour qui les instantanés `kpi_snapshots` sont-ils calculés, et que devient une ligne devenue sans objet ?
+- **Pourquoi** : Architecture §6 : « toutes les 15 min » ; D11 §12 : tableaux personnels hors ligne. Calculer pour tous les utilisateurs serait du bruit ; sans suppression, un droit retiré laisserait une ligne lisible. **DÉDUIT**.
+- **Choix** : (a) 15 minutes, trois périodes, utilisateurs actifs sur 7 jours, `scope_key` = code du tableau, suppression publiée au flux ; (b) tous les utilisateurs ; (c) à la demande seulement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-076](decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md) §5. Défaut implémenté : (a). Paramétrable (`analytics.snapshot_*`) ; la cadence de 15 minutes est une constante de planification.
+
+### AV-431 — Jeu hors ligne `kpi` — SECONDAIRE
+- **Question** : Quel est le contenu et la portée du jeu `kpi` ?
+- **Pourquoi** : `kpi` est cité par la spécification de synchronisation sans producteur ; la PWA ne le connaît pas encore (`KNOWN_DATASETS`) ; republier à chaque calcul bruiterait le pull, ne republier qu'au changement rendrait « à jour au » trompeur. **DÉDUIT**.
+- **Choix** : (a) un instantané par (tableau, période) pour son utilisateur, republié au changement ou toutes les heures ; (b) tous les instantanés du site ; (c) pas de jeu : lecture en ligne seulement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-076](decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md) §6 ; `sync/kpi-projections.ts` (nouveau) et inscription dans `entity-projections.ts` (session principale, B2). Défaut implémenté : (a). Non paramétrable.
+
+### AV-432 — Vues sauvegardées : partage, vue par défaut, lecture — SECONDAIRE
+- **Question** : Comment se partage une vue, que voit le lecteur et comment liste-t-on et exécute-t-on une vue ?
+- **Pourquoi** : BR-ANA-007 : une vue partagée ne donne aucun droit supplémentaire, chaque lecteur la voit restreinte à son périmètre ; dictionnaire : `shared_with_roles`, `is_default_for_role`, suppression physique d'un objet de confort ; les écrans ECR-ANA-06 supposent un listage et une exécution. **CONFIRMÉ** / **DÉDUIT** (lectures).
+- **Choix** : (a) partage par rôles, revalidation à l'exécution par les droits de l'exécutant, `GET /analytics/views`, exécution par `view_id` ; (b) partage par utilisateurs nommés ; (c) vues publiques à tous.
+- **Recommandation** : (a).
+- **Impact** : [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §1 et §2. Défaut implémenté : (a). Non paramétrable.
+
+### AV-433 — Exports : formats, asynchronie, durée de vie — SECONDAIRE
+- **Question** : Quels formats et quelle mécanique pour les exports (AV-067) ?
+- **Pourquoi** : AV-067 : CSV et XLSX, exports journalisés ; le dictionnaire donne 24 h et 30 jours ; aucune bibliothèque XLSX n'est installée ; le port de stockage ne sait ni supprimer ni lire en flux ; une tâche qui lève voit ses écritures annulées. **CONFIRMÉ** (formats) / **DÉDUIT** (mécanique).
+- **Choix** : (a) tâche unique qui ne lève pas pour un échec métier, écrivain XLSX minimal sans dépendance, port de stockage étendu (suppression, lecture en flux) ; (b) bibliothèque XLSX ; (c) CSV seulement.
+- **Recommandation** : (a).
+- **Impact** : [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §3 à §5. Défaut implémenté : (a). Paramétrable : durées, limite.
+
+### AV-434 — Droit d'exporter et de télécharger un export — SECONDAIRE
+- **Question** : Que faut-il pour exporter des données financières (AV-067), et qui peut télécharger un export ?
+- **Pourquoi** : AV-067 : « l'export de données financières exige `analytics.export` avec un périmètre financier » ; les mesures protégées exigent `inventory.valuation.read` (BR-ANA-004). L'administrateur détient `audit.log.read` sans `analytics.export` ni `inventory.valuation.read` : lui ouvrir le fichier d'un export de marge élargirait le périmètre par une voie latérale. **CONFIRMÉ** / **DÉDUIT** (double contrôle, demandeur seul).
+- **Choix** : (a) droits revérifiés à l'instant du calcul ; téléchargement et lecture d'état réservés au demandeur ; l'audit lit la ligne d'export, pas le fichier ; (b) téléchargement aussi par `audit.log.read` ; (c) droit d'export propre à la finance.
+- **Recommandation** : (a).
+- **Impact** : [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §3, §6 et §8. Défaut implémenté : (a). Non paramétrable.
+
+### AV-435 — Permissions de P9 : codes réutilisés — SECONDAIRE
+- **Question** : Faut-il semer de nouvelles permissions ?
+- **Pourquoi** : D11 §4 cite `analytics.view.save` et `analytics.export.request` ; D11 §13 et le seed n'en listent pas ; le pipeline exige un code de permission par commande (`permissionCode`) : il n'existe pas de commande « utilisateur authentifié ». `comm.alert.read` et `comm.note.read` sont semées pour les onze rôles. **DÉDUIT**.
+- **Choix** : (a) réutiliser les codes semés (`communication.push.subscribe`, `.unsubscribe`, `communication.notification.read` sous `comm.alert.read` ; `communication.note.acknowledge` sous `comm.note.read` ; brouillons de note sous `comm.note.publish`) ; (b) semer `analytics.view.save`, `analytics.export.request`, `comm.push.subscribe` ; (c) tout sous `analytics.explore`.
+- **Recommandation** : (a) : aucun changement de la matrice RBAC.
+- **Impact** : [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §1, [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4 et §5 ; `db/seeds/rbac-data.ts` inchangé pour ces codes. Défaut implémenté : (a). Non paramétrable.
+
+### AV-436 — Volumétrie cible et paliers analytiques — IMPORTANTE
+- **Question** : Quelle volumétrie dimensionne P9 et à quel signal passe-t-on aux agrégats (AV-086, RISK-13) ?
+- **Pourquoi** : H-06 : 150 utilisateurs, 40 sites, 5 000 lignes de vente par jour, 20 000 clients, 200 lots actifs ; architecture §6 : seuils de palier ; le plan de tests prévoit « 1× et 10× H-06 ». **CONFIRMÉ** (hypothèse).
+- **Choix** : (a) palier 1 mesuré sur jeu de charge, bascule sur seuil, facteur 10 gardé pour la porte d'avant production ; (b) agrégats dès P9 ; (c) pas de mesure.
+- **Recommandation** : (a).
+- **Impact** : [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §5 et §6. Défaut implémenté : (a). Paramétrable : seuils de contrôle.
+
+### AV-437 — Rétention des données de communication et d'analyse — SECONDAIRE
+- **Question** : Combien de temps conserve-t-on les alertes, notifications, exports et traces de requêtes, et par quel mécanisme ?
+- **Pourquoi** : Le dictionnaire donne 2 ans (alertes), 90 jours (notifications), 30 jours (exports) et la purge des abonnements invalides ; le journal des requêtes de l'explorateur n'a pas de durée (BR-ANA-008 impose l'audit de l'export, pas de chaque requête) ; le rôle d'application n'a pas `DELETE` sur les tables `IMMUABLE` : les alertes se purgent par le rôle de maintenance. **CONFIRMÉ** (dictionnaire) / **DÉDUIT** (journal, mécanisme).
+- **Choix** : (a) durées du dictionnaire, 90 jours pour le journal, durées en paramètres, `03-historisation-suppression.md` complété ; (b) conservation sans limite ; (c) journal des requêtes non tenu.
+- **Recommandation** : (a).
+- **Impact** : [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §8 ; `docs/03-data/03-historisation-suppression.md` §3 ; tâches de purge. Défaut implémenté : (a). Paramétrable.
+
+### AV-438 — Délai événement → alerte et fenêtre de stabilisation — IMPORTANTE
+- **Question** : NFR-15 exige un délai événement → réaction de 10 s au p95 (p95 ≤ 10 s) et BR-NOT-004 un push « immédiat » pour une alerte `CRITICAL` : comment s'accorde-t-on avec la fenêtre de stabilisation de 120 s du consommateur ?
+- **Pourquoi** : `settledSequenceBound` retient un événement derrière un trou de numérotation récent jusqu'à 120 s (`EVENT_SETTLE_DEFAULT_SECONDS`) ; la fenêtre protège les événements validés tardivement (P5-23). Elle s'applique à tous les consommateurs, alertes critiques comprises. **DÉDUIT**.
+- **Choix** : (a) conserver la fenêtre, la documenter comme tolérance de NFR-15, mesurer délai et retard ; (b) fenêtre propre à `communication.alerts` (option `settleSeconds` du runner), 5 s ; (c) raccourcir la fenêtre pour tous.
+- **Recommandation** : (a) puis (b) si la mesure de P9-21 l'exige.
+- **Impact** : [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §14, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §7 ; `platform/events` (option du runner, ajout). Défaut implémenté : (a). Paramétrable en (b).
+
+### AV-439 — Notifications directes d'événements (hors alerte) — SECONDAIRE
+- **Question** : Quels événements du catalogue dont la conséquence est « notification » (et non une alerte) sont livrés par P9 ?
+- **Pourquoi** : Le catalogue d'événements cite NOT pour `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `DeviceEnrollmentRequested`, `StockTransferRequested`, `StockTransferDispatched`, `PurchaseRequestApproved`, `PurchaseRequestRejected`, D01 §14 dit que les événements des demandeurs « servent aux notifications » ; ADR-072 ne prévoyait que alerte, note et export comme sources. **DÉDUIT**.
+- **Choix** : (a) liste ci-contre, canal in-app, destinataire par le résolveur (ADR-072 §2) ; les autres restent sans notification ; (b) toutes les lignes du catalogue ; (c) aucune notification directe.
+- **Recommandation** : (a).
+- **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4, P9-05 ; consommateur de `communication` (second consommateur, ou règle du consommateur d'alertes). Défaut implémenté : (a). Paramétrable : activation par type.
+
+### AV-440 — Valeurs au coût dans les alertes et notifications — IMPORTANTE
+- **Question** : Une alerte ou une notification peut-elle porter une valeur au coût (valeur d'une perte, écart d'inventaire en valeur) à un destinataire qui ne détient pas `inventory.valuation.read` ?
+- **Pourquoi** : RC-05 et BR-ANA-004 réservent les coûts, marges et valeurs de stock à ce droit ; AV-206 masque déjà la valeur du perdu ; D13 §7.1 envoie `HIGH_LOSS` au responsable de site et `INVENTORY_VARIANCE` à la Finance ; un message pré-rendu contiendrait la valeur pour tous les destinataires, y compris sur l'appareil. **DÉDUIT**.
+- **Choix** : (a) charge utile à champs séparés marqués protégés, message rendu à la lecture selon le droit du lecteur, gabarit neutre sinon ; (b) valeur toujours affichée aux destinataires ; (c) aucune valeur dans les alertes.
+- **Recommandation** : (a).
+- **Impact** : [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §11, [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §4, dictionnaire `communication.alerts` (`payload`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-441 — Sujet d'une alerte à clé composite — SECONDAIRE
+- **Question** : Quel est le sujet d'une alerte dont l'objet n'a pas d'identifiant propre (solde de stock, lot × jour) ?
+- **Pourquoi** : `inventory_stock_balances` n'a pas d'identifiant (clé `emplacement`, `produit`, `lot`) ; `aggregate_id` d'un événement et `subject_id` d'une alerte sont des UUID non nuls ; le seuil de stock est par couple emplacement × produit (BR-STK-051). **DÉDUIT**.
+- **Choix** : (a) UUID v5 du couple (modèle `platform/sync/code-entity-id.ts`), `subject_type` composite, couple lisible dans la charge utile ; (b) colonne de sujet composite ; (c) un événement par lot.
+- **Recommandation** : (a).
+- **Impact** : [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §5, catalogue `alerts.ts`. Défaut implémenté : (a). Non paramétrable.
+
+### AV-442 — Alerte d'erreur de synchronisation (`SYNC_ERROR`) — SECONDAIRE
+- **Question** : Comment `SYNC_ERROR` est-elle détectée et à quelle maille, alors qu'un rejet est un état terminal sans événement ni conflit ?
+- **Pourquoi** : Le pipeline écrit seulement la ligne de boîte d'un rejet (`markAndReject`), `SyncConflictDetected` n'est pas produit à la création ; une alerte par commande inonderait pour un appareil défaillant ; D13 donne « Auto (conflit résolu) » sans mécanisme pour un rejet. **DÉDUIT**.
+- **Choix** : (a) passe de `sync` sur la fenêtre `sync.error_alert_window_hours` (24) : un événement par (appareil, code d'erreur) ; codes transitoires exclus ; résolution par marqueur de passe ; `dismiss` admis (alerte d'événement pour un rejet) ; (b) alerte par commande rejetée ; (c) pas d'alerte, file des conflits seulement.
+- **Recommandation** : (a).
+- **Impact** : `sync` (tâche), [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §2 et §3. Défaut implémenté : (a). Paramétrable (fenêtre, liste de codes).
 
 ---
 

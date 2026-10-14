@@ -13,6 +13,7 @@
 | `name` | label | Non | — | |
 | `dataset` | code | Non | — | Jeu de faits (`f_sales_line`…) |
 | `definition` | json | Non | — | Filtres, colonnes, groupements, agrégats, tri (schéma versionné de la couche sémantique) |
+| `catalog_version` | int | Non | — | Version du catalogue à la sauvegarde ; un champ disparu rend la vue `OUTDATED` (ADR-077 §2) |
 | `shared_with_roles` | text[] | Non | `{}` | Partage (BR-ANA-007) |
 | `is_default_for_role` | code | Oui | — | Vue par défaut d'un rôle |
 | [STD-AUDIT] | | | | |
@@ -32,7 +33,10 @@
 | `format` | enum(`CSV`,`XLSX`) | Non | — | AV-067 |
 | `row_count` | int | Oui | — | |
 | `status` | enum(`QUEUED`,`RUNNING`,`DONE`,`FAILED`,`EXPIRED`) | Non | `QUEUED` | |
-| `storage_key` | varchar(200) | Oui | — | Fichier, lien signé valable 24 h |
+| `storage_key` | varchar(200) | Oui | — | Fichier ; téléchargement authentifié du demandeur, valable 24 h (ADR-077 §5) |
+| `catalog_version` | int | Non | — | Version du catalogue figée à la demande |
+| `error_code` | varchar(60) | Oui | — | Motif d'un `FAILED` (droit retiré, limite, durée) |
+| `expires_at` | ts | Non | — | Fin de validité du téléchargement |
 | `created_at`, `finished_at` | ts | | | |
 
 - **PK** `id`. **Suppr.** Fichier purgé après 30 jours ; ligne conservée (audit, BR-ANA-008).
@@ -44,12 +48,30 @@
 | Colonne | Type logique | Nullable | Défaut | Rôle |
 |---|---|---:|---|---|
 | `user_id` | uuid → identity.users | Non | — | |
-| `scope_key` | varchar(100) | Non | — | Ex. `OWN`, `TEAM:<id>`, `SITE:<id>` |
+| `scope_key` | varchar(100) | Non | — | Code du tableau (`direction`, `commercial`, `stock`, `production`, `finance`, `distribution`) : le périmètre est celui, exact, de l'utilisateur (ADR-076 §5) |
 | `period_key` | varchar(20) | Non | — | `TODAY`, `WEEK`, `MONTH` |
 | `payload` | json | Non | — | Valeurs des indicateurs |
 | `computed_at` | ts | Non | — | Affiché comme « à jour au » |
 
-- **PK** `(user_id, scope_key, period_key)`. **Suppr.** Écrasé à chaque calcul. **Offline** DL.
+- **PK** `(user_id, scope_key, period_key)`. **Suppr.** Écrasé à chaque calcul ; supprimé (avec publication d'un `DELETE` au flux) à la perte du droit du tableau ou de l'appareil actif. **Offline** DL (jeu `kpi`, portée `USER`).
+
+## analytics.query_log
+
+**Responsabilité** : journal technique des requêtes de l'explorateur ([ADR-074](../../decisions/ADR-074-couche-semantique-et-explorateur.md) §8) ; l'export a, lui, sa ligne d'audit (BR-ANA-008).
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| [STD-ID] | | | | |
+| `user_id` | uuid → identity.users | Non | — | |
+| `dataset` | code | Non | — | |
+| `definition` | json | Non | — | Requête telle que validée |
+| `outcome` | enum(`OK`,`REFUSED`,`LIMIT`,`ERROR`) | Non | — | |
+| `error_code` | varchar(60) | Oui | — | |
+| `row_count` | int | Oui | — | |
+| `duration_ms` | int | Oui | — | |
+| `created_at` | ts | Non | `now()` | |
+
+- **PK** `id`. **IX** `(created_at)`, `(user_id, created_at)`. **Suppr.** `PURGE_TECHNIQUE` après 90 jours (AV-437).
 
 ## Jeux de faits (vues de lecture)
 
@@ -69,4 +91,4 @@
 | `analytics.f_cash` | Mouvement de trésorerie | date, compte, type, site | entrées, sorties | `finance.cash_movements` |
 | `analytics.f_purchases` | Ligne de BC et de réception | fournisseur, produit, site, date | commandé, livré, rejeté, accepté, facturé, montants | procurement, finance |
 
-Chaque vue applique le filtre de périmètre RBAC de l'utilisateur à la requête (BR-ANA-004) par une fonction de sécurité au niveau des lignes (voir sécurité §4). Stratégie de matérialisation : [`../../05-architecture/01-architecture-logicielle.md`](../../05-architecture/01-architecture-logicielle.md) §6.
+Sous MySQL, les vues s'appellent `analytics_f_*`. Le périmètre RBAC (BR-ANA-004) est appliqué par le compilateur de l'explorateur : une clause de portée en union (site, zone, personne) construite depuis l'étendue de la permission de lecture du domaine du jeu, MySQL n'ayant pas de sécurité au niveau des lignes ([ADR-074](../../decisions/ADR-074-couche-semantique-et-explorateur.md) §4). Stratégie de matérialisation : [`../../05-architecture/01-architecture-logicielle.md`](../../05-architecture/01-architecture-logicielle.md) §6.
