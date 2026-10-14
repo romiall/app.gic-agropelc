@@ -81,7 +81,7 @@ Notation : P = période, S = périmètre. Toutes les sommes portent sur des docu
 | KPI-COM-17 | Jours de présence | Jours distincts avec une session de travail acceptée | `f_attendance` | C (CM §10) |
 | KPI-COM-18 | CA du portefeuille acquis | CA des ventes aux clients dont l'acquéreur est l'utilisateur | `f_sales_line` | C (CM §7) |
 | KPI-STK-01 | Stock disponible | BR-STK-011, à l'instant ou à une date | `f_stock_balance` | C (CM §2) |
-| KPI-STK-02 | Valeur du stock | Σ solde × coût unitaire courant | `f_stock_balance` | C (CM §31) |
+| KPI-STK-02 | Valeur du stock | Σ solde × coût unitaire courant ; pour toute l'entreprise, la marchandise en transit comprise et annoncée (« dont X en transit »), les pertes en attente de validation à part ; un site : sa seule valeur (AV-256) | `f_stock_balance` | C (CM §31) ; D (AV-256) |
 | KPI-STK-03 | Pertes | Σ quantités et Σ valeurs vers `V_LOSS`, par catégorie, motif, lot, emplacement | `f_losses` | C (CM §35) |
 | KPI-STK-04 | Écarts d'inventaire | Σ écarts nets comptabilisés, en quantité et en valeur | `f_stock_moves` | C (CM §25) |
 | KPI-STK-05 | Couverture | Disponible ÷ ventes moyennes journalières des 14 derniers jours | dérivé | D |

@@ -1900,6 +1900,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) tous comptés, ventilés par type dans le détail, gravité « avertissement » pour les seuls drapeaux de contrôle (prix, stock, crédit, caisse), lien vers les ventes ; (b) drapeaux informatifs exclus du signal.
 - **Recommandation** : (a).
 - **Impact** : `home-service.ts` (signal `SALES_FLAGGED`), PWA. Défaut retenu pour le lot de mise en pilote : (a) (MP-09). Non paramétrable.
+- **Mise en œuvre** (MP-09, 14/10/2026) : `flaggedSalesOfDay` (`sales`, mêmes ventes que le compteur du jour : non annulées, datées du jour, dans le périmètre) ; signal construit par `flaggedSalesSignal` (`home-format.ts`) : « N ventes du jour signalées », ventilation « Stock devenu négatif : 2 · Vente hors prise de service : 3 » (contrôles d'abord, 240 caractères au plus), avertissement dès un drapeau de contrôle, information sinon, action « Voir les ventes signalées ». Seul `OUT_OF_SESSION` est informatif ; tout autre drapeau, connu ou non, est un contrôle (**DÉDUIT** : l'AV ne classe que prix, stock, crédit et caisse ; le défaut le plus prudent range les autres en contrôle). PWA : le signal mène à `/ventes?anomalies=1` (`signalQuery`, ADR-036), liste filtrée sur les ventes du jour signalées connues de l'appareil, retour à toutes les ventes ; libellés des drapeaux sur chaque ligne.
 
 ### AV-256 — Valeur du stock de l'entreprise : la marchandise en transit compte-t-elle ? — SECONDAIRE
 - **Question** : KPI-STK-02 (« Σ solde × coût unitaire courant ») exclut aujourd'hui les emplacements virtuels, donc le transit : une marchandise expédiée, qui appartient encore au GIC, disparaît de la valeur jusqu'à sa réception. Faut-il l'inclure ?
@@ -1907,6 +1908,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) comprise pour la portée de toute l'entreprise, montrée dans le détail ; hors transit pour un site ; pertes en attente exclues mais affichées à part ; (b) inchangé.
 - **Recommandation** : (a).
 - **Impact** : `inventory` (lecture de l'accueil), D11 KPI-STK-02. Défaut retenu pour le lot de mise en pilote : (a). Non paramétrable.
+- **Mise en œuvre** (MP-09, 14/10/2026) : `stockHealth` rend `transitValueXaf` et `pendingLossValueXaf` (soldes de `V_TRANSIT` et `V_PENDING_LOSS`, emplacements sans site) pour la portée de toute l'entreprise seulement, `null` pour un site ; KPI-STK-02 de la Direction et du magasinier à portée globale : valeur + transit, détail « au coût moyen pondéré · dont X en transit · pertes en attente à part : Y ». Le transit peut être négatif tant qu'une réception sans document n'est pas rapprochée (P5-16) : affiché tel quel, le total reste exact (**DÉDUIT**). Hors périmètre de l'AV, signalé au porteur : la marchandise vendue « à livrer » (`V_TO_DELIVER`) reste hors de la valeur.
 
 ### AV-257 — Permissions des rôles modifiables depuis l'application ? — SECONDAIRE
 - **Question** : l'écran d'administration des utilisateurs (ECR-ADM-04) doit-il permettre de modifier les permissions d'un rôle (`identity.role.set_permissions`), ou seulement d'affecter des rôles ?

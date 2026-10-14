@@ -136,6 +136,44 @@ export async function salesActivityByDay(
     }));
 }
 
+export interface FlaggedSalesOfDay {
+  /** Ventes du jour non annulées portant au moins un drapeau (= `flaggedCount` du jour). */
+  readonly salesCount: number;
+  /** Ventes par drapeau : une vente compte pour chacun de ses drapeaux. */
+  readonly byFlag: ReadonlyMap<string, number>;
+}
+
+/**
+ * Ventes signalées d'un jour métier, ventilées par drapeau (signal `SALES_FLAGGED` de l'accueil, AV-255) :
+ * mêmes ventes que `flaggedCount` de `salesActivityByDay` (non annulées, datées du jour, dans le
+ * périmètre). Les drapeaux sont lus et comptés ici, sans `JSON_TABLE`.
+ */
+export async function flaggedSalesOfDay(
+  executor: Executor,
+  scope: ReadScope,
+  day: string,
+): Promise<FlaggedSalesOfDay> {
+  const saleScope = scopeSql(scope, {
+    site: 's.site_id',
+    users: ['s.seller_user_id', 's.commercial_user_id'],
+  });
+  const rows = await sql<{ readonly flags: unknown }>`
+    SELECT s.flags
+      FROM sales_sales s
+     WHERE s.status <> 'CANCELLED'
+       AND s.occurred_at >= ${businessDayStartUtc(day)} AND s.occurred_at < ${businessDayEndUtc(day)}
+       AND JSON_LENGTH(s.flags) > 0 AND ${saleScope}
+  `.execute(executor);
+  const byFlag = new Map<string, number>();
+  for (const row of rows.rows) {
+    const flags = Array.isArray(row.flags) ? (row.flags as unknown[]) : [];
+    for (const flag of new Set(flags.filter((value) => typeof value === 'string'))) {
+      byFlag.set(flag, (byFlag.get(flag) ?? 0) + 1);
+    }
+  }
+  return { salesCount: rows.rows.length, byFlag };
+}
+
 /** Somme de l'activité des jours `[fromDay, toDay]` (semaine de l'accueil). */
 export function sumSalesActivity(
   days: readonly SalesActivityDay[],

@@ -86,6 +86,7 @@ import {
   cashedSummary,
   receivablesSummary,
   recentSales,
+  flaggedSalesOfDay,
   salesActivityByDay,
   sumSalesActivity,
   suspectPaymentsCount,
@@ -97,6 +98,7 @@ import {
 } from '../read-api/distribution-targets.js';
 import { ROLE_CATALOG, ROLE_ORDER, type RoleDefinition } from './role-catalog.js';
 import {
+  flaggedSalesSignal,
   formatXaf,
   kpi,
   lastDays,
@@ -262,15 +264,9 @@ async function salesBlock(
     );
   }
   if (today.flaggedCount > 0) {
-    built.signals.push(
-      signal({
-        code: 'SALES_FLAGGED',
-        severity: 'WARNING',
-        title: `${plural(today.flaggedCount, 'vente du jour porte', 'ventes du jour portent')} une anomalie`,
-        detail: 'Prix différent du catalogue, stock négatif, vente anonyme non payée…',
-        count: today.flaggedCount,
-      }),
-    );
+    // Ventilation par cause, gravité et lien (AV-255).
+    const flagged = flaggedSalesSignal(await flaggedSalesOfDay(ctx.executor, scope, ctx.day));
+    if (flagged) built.signals.push(flagged);
   }
   return built;
 }
@@ -325,13 +321,21 @@ async function stockBlock(
     );
   }
   if (options.value && ctx.canReadValuation) {
+    // Toute l'entreprise : le transit fait partie du stock (AV-256) ; les pertes en attente restent à
+    // part, annoncées. Un site : sa valeur seule (le transit n'a pas de site).
+    const transit = health.transitValueXaf ?? 0;
+    const pendingLoss = health.pendingLossValueXaf ?? 0;
     built.kpis.push(
       kpi({
         code: 'KPI-STK-02',
         label: 'Valeur du stock',
-        value: health.valueXaf,
+        value: health.valueXaf + transit,
         unit: 'XAF',
-        detail: 'au coût moyen pondéré',
+        detail: [
+          'au coût moyen pondéré',
+          ...(transit !== 0 ? [`dont ${formatXaf(transit)} en transit`] : []),
+          ...(pendingLoss !== 0 ? [`pertes en attente à part : ${formatXaf(pendingLoss)}`] : []),
+        ].join(' · '),
       }),
     );
   }

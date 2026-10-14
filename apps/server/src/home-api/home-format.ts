@@ -97,6 +97,77 @@ export function signal(input: {
   };
 }
 
+/**
+ * Drapeaux d'une vente (`sales_sales.flags`) : libellés de l'accueil, comme ceux de la PWA. Seul
+ * `OUT_OF_SESSION` est informatif (déjà couvert par le signal de prise de service) ; tout autre
+ * drapeau, connu ou non, est un contrôle (AV-255).
+ */
+export const SALE_FLAG_LABELS: Readonly<Record<string, string>> = {
+  SESSION_REJECTED: 'Prise de service refusée',
+  OUT_OF_SESSION: 'Vente hors prise de service',
+  PRICE_MISMATCH: 'Prix différent du catalogue',
+  PRODUCT_INACTIVE: 'Produit désactivé',
+  ANONYMOUS_UNPAID: 'Vente anonyme non payée',
+  CREDIT_OVER_LIMIT: 'Encours du client dépassé',
+  STOCK_NEGATIVE: 'Stock devenu négatif',
+  LOT_NOT_SELLABLE: 'Lot non vendable',
+  PAYMENT_SUSPECT_DUPLICATE: 'Encaissement suspect de doublon',
+  CASH_SESSION_MISSING: 'Espèces encaissées sans caisse ouverte',
+  ORDER_OVER_FULFILMENT: 'Livraison au-delà de la commande',
+  ALLOCATION_EXCEEDED: 'Quota dépassé',
+  ALLOCATION_REVOKED_CONSUMED: 'Quota révoqué déjà consommé',
+  ALLOCATION_OVERCOMMITTED: 'Quotas au-delà du stock',
+  CUSTODY_DEVICE_MISMATCH: 'Stock confié à un autre appareil',
+};
+export const INFORMATIVE_SALE_FLAGS: ReadonlySet<string> = new Set(['OUT_OF_SESSION']);
+
+/** Longueur maximale du détail d'un signal (`homeSignalSchema`). */
+const SIGNAL_DETAIL_MAX = 240;
+
+/**
+ * Ventilation des ventes signalées, « Prix différent du catalogue : 2 · Vente hors prise de service :
+ * 3 » : contrôles d'abord, puis du plus fréquent au plus rare ; coupée par « … » au-delà de 240.
+ */
+export function flaggedSalesDetail(byFlag: ReadonlyMap<string, number>): string {
+  const parts = [...byFlag.entries()]
+    .sort(
+      ([a, countA], [b, countB]) =>
+        Number(INFORMATIVE_SALE_FLAGS.has(a)) - Number(INFORMATIVE_SALE_FLAGS.has(b)) ||
+        countB - countA ||
+        a.localeCompare(b),
+    )
+    .map(([flag, count]) => `${SALE_FLAG_LABELS[flag] ?? flag} : ${count}`);
+  const detail = parts.join(' · ');
+  return detail.length <= SIGNAL_DETAIL_MAX
+    ? detail
+    : `${detail.slice(0, SIGNAL_DETAIL_MAX - 1).trimEnd()}…`;
+}
+
+/** Au moins un drapeau de contrôle : le signal est un avertissement, sinon une information (AV-255). */
+export function hasControlFlag(byFlag: ReadonlyMap<string, number>): boolean {
+  return [...byFlag.keys()].some((flag) => !INFORMATIVE_SALE_FLAGS.has(flag));
+}
+
+/**
+ * Signal `SALES_FLAGGED` (AV-255) : nombre de ventes signalées, ventilation par cause, avertissement
+ * s'il y a un drapeau de contrôle, information si les ventes sont seulement hors prise de service ;
+ * lien vers les ventes concernées, route laissée à la PWA (ADR-036). `null` sans vente signalée.
+ */
+export function flaggedSalesSignal(flagged: {
+  readonly salesCount: number;
+  readonly byFlag: ReadonlyMap<string, number>;
+}): HomeSignal | null {
+  if (flagged.salesCount <= 0) return null;
+  return signal({
+    code: 'SALES_FLAGGED',
+    severity: hasControlFlag(flagged.byFlag) ? 'WARNING' : 'INFO',
+    title: plural(flagged.salesCount, 'vente du jour signalée', 'ventes du jour signalées'),
+    detail: flaggedSalesDetail(flagged.byFlag),
+    count: flagged.salesCount,
+    action: { label: 'Voir les ventes signalées', route: null },
+  });
+}
+
 const SEVERITY_ORDER: Record<HomeSignal['severity'], number> = { CRITICAL: 0, WARNING: 1, INFO: 2 };
 
 /** Signaux triés par gravité (stable : l'ordre d'insertion départage), sans doublon de code. */

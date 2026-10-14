@@ -339,6 +339,8 @@ export interface ScreenEntry {
   readonly offline: boolean;
   /** Codes des signaux de l'accueil qui mènent à cet écran (à défaut d'une route du serveur). */
   readonly signalCodes?: readonly string[];
+  /** Paramètres ajoutés à la route pour un signal donné (ex. ventes signalées seules). */
+  readonly signalQuery?: Readonly<Record<string, string>>;
 }
 
 export const SCREENS: readonly ScreenEntry[] = [
@@ -751,6 +753,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: SALE_READER_ROLES,
     actionCodes: [],
     offline: true,
+    // Ventes du jour signalées (AV-255) : la liste filtrée sur elles.
+    signalCodes: ['SALES_FLAGGED'],
+    signalQuery: { SALES_FLAGGED: '?anomalies=1' },
   },
 ];
 
@@ -792,7 +797,7 @@ export function routeOfSignal(signal: {
 }): string | null {
   if (signal.action?.route) return signal.action.route;
   const screen = SCREENS.find((candidate) => candidate.signalCodes?.includes(signal.code));
-  return screen ? screen.path : null;
+  return screen ? `${screen.path}${screen.signalQuery?.[signal.code] ?? ''}` : null;
 }
 
 /** Écrans proposés à un utilisateur selon ses rôles, dans l'ordre du registre. */

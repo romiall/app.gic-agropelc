@@ -23,7 +23,12 @@ import {
   virtualLocationId,
 } from '../src/modules/inventory/application/public/index.js';
 import { cashAccountBalance } from '../src/modules/finance/application/public/index.js';
-import { customerOutstandingXaf } from '../src/modules/sales/application/public/index.js';
+import {
+  customerOutstandingXaf,
+  flaggedSalesOfDay,
+  salesActivityByDay,
+} from '../src/modules/sales/application/public/index.js';
+import { buildHome } from '../src/home-api/home-service.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
@@ -1824,5 +1829,76 @@ describe('sales.sale.record (P4-04)', () => {
     );
     expect(result.status, JSON.stringify(result)).toBe('APPLIED_WITH_WARNINGS');
     expect(await approvalRows(id)).toHaveLength(1);
+  });
+  it('AV-255 : ventes signalées du jour ventilées par drapeau ; signal de l’accueil du vendeur', async () => {
+    const DAY = '2026-10-06';
+    const scope = { siteIds: [pdvSiteId] };
+    const before = await flaggedSalesOfDay(db, scope, DAY);
+    const otherBefore = await flaggedSalesOfDay(db, { siteIds: [otherSiteId] }, DAY);
+    const product = await sellable(1000);
+    await stock(product.id, 1, 100);
+    // Hors ligne, au-delà du stock : vente appliquée avec STOCK_NEGATIVE.
+    const negative = await sell(
+      seller,
+      { lines: [line(product, 3)], payments: [{ methodCode: 'ESPECES', amountXaf: 3000 }] },
+      at('16:00:00'),
+      { offline: true },
+    );
+    expect(negative.result.status, JSON.stringify(negative.result)).toBe('APPLIED_WITH_WARNINGS');
+    // Vente sans anomalie : ne compte pas.
+    await stock(product.id, 5, 100);
+    const clean = await sell(
+      seller,
+      { lines: [line(product, 1)], payments: [{ methodCode: 'ESPECES', amountXaf: 1000 }] },
+      at('16:05:00'),
+    );
+    expect(flagsOf(await saleRow(clean.id))).toEqual([]);
+
+    const after = await flaggedSalesOfDay(db, scope, DAY);
+    expect(after.salesCount - before.salesCount).toBe(1);
+    const delta = (flag: string) => (after.byFlag.get(flag) ?? 0) - (before.byFlag.get(flag) ?? 0);
+    const flags = flagsOf(await saleRow(negative.id));
+    expect(flags).toContain('STOCK_NEGATIVE');
+    for (const flag of flags) expect(delta(flag), flag).toBe(1);
+    // Même définition que le compteur du jour ; un autre site n'est pas touché.
+    const [day] = await salesActivityByDay(db, scope, { fromDay: DAY, toDay: DAY });
+    expect(day?.flaggedCount).toBe(after.salesCount);
+    expect((await flaggedSalesOfDay(db, { siteIds: [otherSiteId] }, DAY)).salesCount).toBe(
+      otherBefore.salesCount,
+    );
+
+    // Accueil du vendeur (son site) : nombre de ventes, ventilation, avertissement, lien.
+    const home = await buildHome({
+      executor: db,
+      userId: seller.userId,
+      clock: new FixedClock(new Date(NOW)),
+    });
+    const flagged = home.signals.find((entry) => entry.code === 'SALES_FLAGGED');
+    expect(flagged).toMatchObject({
+      severity: 'WARNING',
+      count: after.salesCount,
+      action: { label: 'Voir les ventes signalées', route: null },
+    });
+    expect(flagged?.detail).toContain(
+      `Stock devenu négatif : ${after.byFlag.get('STOCK_NEGATIVE')}`,
+    );
+
+    // Une vente signalée puis annulée ne compte plus (transaction annulée : rien ne reste en base).
+    class Rollback extends Error {}
+    await expect(
+      db.transaction().execute(async (trx) => {
+        await trx
+          .updateTable('sales_sales')
+          .set((eb) => ({
+            status: 'CANCELLED',
+            cancelled_xaf: eb.ref('total_xaf'),
+            amount_paid_xaf: 0,
+          }))
+          .where('id', '=', toBin(negative.id))
+          .execute();
+        expect((await flaggedSalesOfDay(trx, scope, DAY)).salesCount).toBe(after.salesCount - 1);
+        throw new Rollback();
+      }),
+    ).rejects.toBeInstanceOf(Rollback);
   });
 });

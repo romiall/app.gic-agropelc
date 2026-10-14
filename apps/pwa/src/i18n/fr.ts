@@ -286,6 +286,11 @@ export const fr = {
       anonymous: 'Client de passage',
       unknown_customer: 'Client',
       open: 'Ouvrir la vente {{doc}}',
+      flagged_banner:
+        'Ventes du jour signalées par le serveur ({{count}} sur cet appareil ; une vente pas encore téléchargée n’y figure pas).',
+      flagged_empty: 'Aucune vente du jour signalée sur cet appareil.',
+      show_all: 'Toutes les ventes',
+      flags: 'Signalé : {{flags}}',
     },
     status: {
       PENDING: 'En attente d’envoi',

@@ -59,5 +59,6 @@ export {
   saleActivityArms,
   salesActivityByDay,
   sumSalesActivity,
+  flaggedSalesOfDay,
 } from './period-activity.js';
 export type { ActivityPeriod, CashedActivityRow, SalesActivityDay } from './period-activity.js';
