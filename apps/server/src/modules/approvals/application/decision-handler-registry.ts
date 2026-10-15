@@ -30,6 +30,8 @@ export interface ApprovalDecisionContext {
   readonly requestedBy: string;
   /** Résumé saisi à la demande (ex. motif d'une demande d'annulation). */
   readonly subjectSummary: string;
+  /** Commentaire du valideur (motif d'une acceptation ou d'un refus), s'il en a saisi un (P8E-02). */
+  readonly comment?: string;
 }
 
 /**

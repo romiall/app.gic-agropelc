@@ -28,9 +28,17 @@ export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
  * - `GOODS_RECEIPT` : bon de livraison d'une réception d'achat (`DELIVERY_NOTE`) ; sa réception
  *   régularise la « photo manquante » (`RECEIPT_PHOTO_MISSING`, AV-246) ;
  * - `STOCK_LOSS` : photo d'une perte ou d'une mortalité (`PHOTO`) ; l'approbation d'une mortalité
- *   l'attend (AV-107).
+ *   l'attend (AV-107) ;
+ * - `EXPENSE` : justificatif d'une dépense (`RECEIPT`), cité par la dépense ; exigé au-delà du seuil
+ *   de justificatif (ADR-042, ADR-047 §3) ;
+ * - `SUPPLIER_INVOICE` : facture fournisseur (`INVOICE`), citée par son enregistrement (ADR-047 §3).
  */
-export const ATTACHMENT_OWNER_TYPES = ['GOODS_RECEIPT', 'STOCK_LOSS'] as const;
+export const ATTACHMENT_OWNER_TYPES = [
+  'GOODS_RECEIPT',
+  'STOCK_LOSS',
+  'EXPENSE',
+  'SUPPLIER_INVOICE',
+] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 
 /** Morceau recommandé pour l'envoi des octets (ADR-012 point 3 : 256 Ko). */

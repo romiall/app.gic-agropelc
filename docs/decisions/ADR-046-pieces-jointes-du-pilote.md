@@ -24,6 +24,7 @@ MP-10 rend la photo utilisable de bout en bout : prise sur le téléphone, stock
    - `STOCK_LOSS` : photo d'une perte ou d'une mortalité (nature `PHOTO`).
 
    Un autre propriétaire est refusé à l'enregistrement (revue de MP-10) ; un nouveau s'ajoute à la liste.
+   - `EXPENSE` et `SUPPLIER_INVOICE` (natures `RECEIPT`, `INVOICE`) : justificatif d'une dépense ou d'une facture fournisseur, cité par l'opération ([ADR-047](ADR-047-ecrans-de-la-finance-p8.md) §3).
 3. **Pièce citée ou rattachée.**
    - Une réception **cite** sa photo dans `attachment_ids` : c'est sa « photo présente » (BR-APP-014), et une validation de réception l'exige.
    - Une perte ou une mortalité ne la cite **pas** : la pièce reste rattachée par son propriétaire. L'approbation d'une mortalité vérifie la photo (nature `PHOTO`) du document (AV-107). Une photo de perte reste facultative (AV-288). Une pièce qui n'arriverait jamais ne fige ainsi aucune validation.

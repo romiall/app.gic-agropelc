@@ -189,6 +189,27 @@ describe('attachments.attachment.register (P0-13)', () => {
     expect(result.status === 'REJECTED' && result.error.code).toMatch(/^VALIDATION_ERROR/);
   });
 
+  it('P8E-02 (ADR-047 §3) : justificatif d’une dépense et facture fournisseur acceptés', async () => {
+    for (const [ownerType, kind] of [
+      ['EXPENSE', 'RECEIPT'],
+      ['SUPPLIER_INVOICE', 'INVOICE'],
+    ] as const) {
+      const raw = buildRegisterCommand({
+        commandId: freshUuid(),
+        authorUserId: author,
+        aggregateId: freshUuid(),
+        ownerId: freshUuid(),
+      });
+      Object.assign(raw.payload as Record<string, unknown>, { ownerType, kind });
+      const result = await pipeline.handle(raw, {
+        authenticatedUserId: author,
+        authenticatedDeviceId: device,
+        transport: 'ONLINE_API',
+      });
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+    }
+  });
+
   it('sans la permission attachments.attachment.manage → REJECTED FORBIDDEN (AV-093)', async () => {
     const strangerId = await db.transaction().execute((trx) => insertTestUser(trx));
     const strangerDevice = await db

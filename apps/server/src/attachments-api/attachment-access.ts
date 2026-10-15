@@ -3,7 +3,9 @@
  * sur le document propriétaire) : son auteur ; qui peut décider une validation en attente sur ce
  * document (le valideur voit la pièce de ce qu'il décide) ; ou qui lit le document dans sa portée —
  * réception : `procurement.order.read` sur son site ; perte : `inventory.loss.read` sur son site ou
- * sa zone, ou sa propre déclaration (AV-094). Autre propriétaire : son auteur seulement.
+ * sa zone, ou sa propre déclaration (AV-094) ; dépense : `finance.expense.read` sur son site et son
+ * auteur ; facture fournisseur : `finance.payable.read` (ADR-047 §3). Autre propriétaire : son auteur
+ * seulement.
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../platform/kysely/database.js';
@@ -11,10 +13,13 @@ import { evaluateAccess } from '../modules/identity/application/public/index.js'
 import { canDecidePendingApprovalOf } from '../modules/approvals/application/public/index.js';
 import { lossDeclarationLocator } from '../modules/inventory/application/public/index.js';
 import { getGoodsReceipt } from '../modules/procurement/application/public/index.js';
+import { getExpense, getSupplierInvoice } from '../modules/finance/application/public/index.js';
 
 const RECEIPT_READ = 'procurement.order.read';
 const RECEIPT_RECORD = 'procurement.receipt.record';
 const LOSS_READ = 'inventory.loss.read';
+const EXPENSE_READ = 'finance.expense.read';
+const PAYABLE_READ = 'finance.payable.read';
 
 export async function canViewAttachment(
   executor: Kysely<DB> | Transaction<DB>,
@@ -60,6 +65,31 @@ export async function canViewAttachment(
           ...(loss.zoneId ? { zoneId: loss.zoneId } : {}),
           ownerUserId: loss.declaredBy,
         },
+      })
+    ).allowed;
+  }
+  if (ownerType === 'EXPENSE') {
+    const expense = await getExpense(executor, ownerId);
+    if (!expense) return false;
+    return (
+      await evaluateAccess(executor, {
+        userId,
+        permissionCode: EXPENSE_READ,
+        occurredAt: at,
+        resource: { siteId: expense.siteId, ownerUserId: expense.createdBy },
+      })
+    ).allowed;
+  }
+  if (ownerType === 'SUPPLIER_INVOICE') {
+    const invoice = await getSupplierInvoice(executor, ownerId);
+    if (!invoice) return false;
+    // Factures lues en portée `ALL` seulement (AV-278).
+    return (
+      await evaluateAccess(executor, {
+        userId,
+        permissionCode: PAYABLE_READ,
+        occurredAt: at,
+        resource: {},
       })
     ).allowed;
   }

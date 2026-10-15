@@ -275,8 +275,19 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
         comment: 'Trois sacs livrés hors bon',
       });
     expect(codeOf(await approve(fin1))).toBe('SELF_APPROVAL_FORBIDDEN');
+    // P8E-02 (ADR-043 §5) : l'acceptation d'un écart est motivée, même par la commande générique.
+    expect(
+      codeOf(
+        await run(dir, 'approvals.request.approve', fromBin(request!.id), at('14:00'), {
+          requestId: fromBin(request!.id),
+        }),
+      ),
+    ).toBe('APPROVAL_REASON_REQUIRED');
+    expect((await invoiceRow(id))?.status).toBe('MISMATCH');
     expect(codeOf(await approve(dir))).toBe('APPLIED');
     expect((await invoiceRow(id))?.status).toBe('APPROVED');
+    // Le motif du valideur reste sur la facture (il n'était gardé que dans la demande).
+    expect((await invoiceRow(id))?.approval_reason).toBe('Trois sacs livrés hors bon');
     expect(await invoicedOf(s.poLineId)).toBe(98);
     expect(
       codeOf(
@@ -345,11 +356,19 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
       ),
     ).toBe('APPLIED');
     expect((await invoiceRow(id))?.status).toBe('DISPUTED');
+    // P8E-02 : le motif du refus devient celui de la contestation.
+    expect((await invoiceRow(id))?.dispute_reason).toBe('Prix non conforme');
 
     const s2 = await wf09();
     const paid = await recordInvoice(fin1, invoicePayload(s2, 10));
     const bank = await newAccount({ type: 'BANQUE', responsible: fin1.userId });
-    await fund(new Uuidv7Generator(new FixedClock(new Date(NOW))), bank, 10_000, at('05:00'), root.userId);
+    await fund(
+      new Uuidv7Generator(new FixedClock(new Date(NOW))),
+      bank,
+      10_000,
+      at('05:00'),
+      root.userId,
+    );
     expect(
       codeOf(
         await run(fin1, 'finance.supplier_payment.record', freshUuid(), at('11:30'), {
@@ -543,7 +562,13 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
       ...invoicePayload(s4, 1),
       printedTotalXaf: 0,
       lines: [
-        { poLineId: s4.poLineId, description: 'Sac offert', quantity: 1, unitPriceXaf: 0, lineTotalXaf: 0 },
+        {
+          poLineId: s4.poLineId,
+          description: 'Sac offert',
+          quantity: 1,
+          unitPriceXaf: 0,
+          lineTotalXaf: 0,
+        },
       ],
     });
     expect(

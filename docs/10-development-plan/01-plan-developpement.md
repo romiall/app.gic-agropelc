@@ -352,6 +352,21 @@ P8 est menée **en parallèle de la session principale** (branche `claude/p8-fin
 | P8-14 | **Fait** (13/10/2026) — quatre chercheurs et deux vérificateurs sceptiques : vingt-huit constats, dont onze confirmés et onze partiels ; correctifs en quatre lots, vingt-sept mutations détectées sur la base jetable (une équivalente documentée) ; assistants de données d'achat de P8 rendus conformes aux invariants de P6. Revue adverse (chercheurs puis vérificateurs sceptiques) et correctifs |
 | P8-15 | **Fait** (13/10/2026) — base neuve `gic_agropelc_p8n` : serveur 1 178 tests verts, `db` 200, domaine 405, contrats 237 ; [`18-demonstration-p8.md`](18-demonstration-p8.md), matrice §17.10. Clôture : démonstration `18-demonstration-p8.md`, matrice §17.x, plan ; suite complète verte sur une base neuve |
 
+**Lot des écrans de P8** (depuis le 15/10/2026 ; décision du porteur : écrans de P8 avant l'intégration de P9 ; conception [ADR-047](../decisions/ADR-047-ecrans-de-la-finance-p8.md), AV-298 à AV-300 ouverts avec leur défaut). Chaque incrément est commité avec ses tests, ses mutations et ses documents ; la vérification dans le navigateur rejoint celle du lot MP, renvoyée à plus tard par le porteur.
+
+| Incrément | Contenu |
+|---|---|
+| P8E-01 | Conception : cartographie (quatre lecteurs), ADR-047, AV-298 à AV-300, backlog. **Fait** (15/10/2026) |
+| P8E-02 | Serveur : propriétaires de pièces `EXPENSE` et `SUPPLIER_INVOICE` et leur lecture ; fiche `EXPENSE` enrichie ; motif d'acceptation d'un écart recopié sur la facture ; action d'accueil « + Dépense » (AV-298). **Fait** (15/10/2026) — `ATTACHMENT_OWNER_TYPES` étendu ; `canViewAttachment` : `finance.expense.read` sur le site et l'auteur de la dépense, `finance.payable.read` pour une facture ; le commentaire du valideur est remis au gestionnaire de décision (`ApprovalDecisionContext.comment`) : l'acceptation d'un écart de facture l'exige (`APPROVAL_REASON_REQUIRED`, ADR-043 §5) et le recopie dans `approval_reason`, un refus le recopie dans `dispute_reason` ; fiche `EXPENSE` : six champs ajoutés en fin de fiche ; `NEW_EXPENSE` pour le commercial terrain, le vendeur de PDV et le Resp. ferme. Tests ciblés verts sur une copie de la base de référence (dix fichiers, dont `home-role-catalog.test.ts`, nouveau) ; treize mutations, toutes détectées |
+| P8E-03 | ECR-FIN-02 « Dépenses » : saisie hors ligne avec justificatif, mes dépenses, vue Finance (payer, annuler) ; dépense payée retranchée de sa caisse dans les soldes indicatifs ; groupe de menu « Finance » |
+| P8E-04 | ECR-FIN-05 : dépenses à payer, paiements en attente de la Direction, lien des mouvements (AV-300) |
+| P8E-05 | ECR-FIN-03 « Factures fournisseurs » : listes, dettes, saisie rapprochée du BC (aperçu indicatif), contestation, approbation, annulation |
+| P8E-06 | ECR-FIN-04 « Paiements fournisseurs » : paiement affecté aux factures, avance, affectation, annulation |
+| P8E-07 | ECR-APP-05 « Rapprochement » : BC avec indicateurs, détail commandé, livré, accepté, facturé, payé |
+| P8E-08 | ECR-FIN-06 « Coûts et marges » : période, lots, pertes, écritures de coût (AV-299) |
+| P8E-09 | ECR-FIN-01 « Créances » : ancienneté, action d'accueil `RECEIVABLES` |
+| P8E-10 | Revue adverse du lot, correctifs, clôture |
+
 ### P9 — Analytics et direction
 
 | Rubrique | Contenu |

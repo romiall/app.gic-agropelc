@@ -386,3 +386,11 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-080 (part P8) | `p8-acceptance.e2e.test.ts` (journée de PDV hors ligne avec dépenses, validation a posteriori, attendu de la session) | Vérifié par appareil virtuel ; pilote réel à mener |
 | REQ-201, REQ-203 (part P8) | `p8-sync-projections.test.ts` (dépenses de l'auteur, catégories, seuils ; fenêtre élargie en P8-14) | Vérifié côté serveur ; écrans à livrer |
 
+### 17.11 Écrans de la finance (lot P8E, en cours depuis le 15/10/2026) — [plan](01-plan-developpement.md) §4, [ADR-047](../decisions/ADR-047-ecrans-de-la-finance-p8.md)
+
+| REQ | Vérifié par | État |
+|---|---|---|
+| REQ-067 (part P8E-02) | `attachment-commands.test.ts` (justificatif `EXPENSE` et facture `SUPPLIER_INVOICE` acceptés), `p8-read.e2e.test.ts` (lecture d'une pièce de dépense par l'auteur et les lecteurs de la dépense, refusée à un autre auteur et à l'Admin ; d'une facture par les lecteurs des dettes ; document inconnu refusé) | Vérifié côté serveur ; saisie de la pièce dans les écrans P8E-03 et P8E-05 |
+| REQ-044, REQ-046 (part P8E-02) | `finance-supplier-invoice-commands.test.ts` (acceptation d'un écart sans motif refusée, même par la commande générique ; motif du valideur sur la facture ; motif d'un refus en contestation) | Vérifié |
+| REQ-051, REQ-201 (part P8E-02) | `p8-sync-projections.test.ts` (fiche `EXPENSE` : fournisseur, paiement, demande, annulation, reclassification, imputation), `home-role-catalog.test.ts` (« + Dépense » des rôles de terrain, AV-298) | Vérifié côté serveur ; écran ECR-FIN-02 en P8E-03 |
+

@@ -708,7 +708,10 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
   },
 
   // P8-10 — dépenses de l'auteur (jeu `cash`, ligne `USER`, 30 derniers jours, ADR-042 §11) : la ligne
-  // de repli `GLOBAL` du pipeline n'est jamais servie. Aucun coût ni décision : statut, motifs de revue.
+  // de repli `GLOBAL` du pipeline n'est jamais servie. Aucun coût : statut, motifs de revue ; P8E-02
+  // (ADR-047 §10) : fournisseur, date de paiement, demande de validation, motif d'annulation,
+  // reclassification et imputation d'un rejet après paiement (le motif du rejet est dans la demande).
+  // Champs ajoutés en fin de fiche : un appareil plus ancien les ignore.
   EXPENSE: async (executor, entityId, context) => {
     if (context.scopeType !== 'USER' || context.scopeId === null) return undefined;
     const row = await executor
@@ -732,6 +735,12 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
         'occurred_at',
         'created_by',
         'version',
+        'supplier_id',
+        'paid_at',
+        'approval_request_id',
+        'cancel_reason',
+        'reclassified_category_id',
+        'responsibility_user_id',
       ])
       .where('id', '=', toBin(entityId))
       .where(EXPENSE_WINDOW)
@@ -760,6 +769,12 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
             : row.review_reasons,
       occurred_at: row.occurred_at.toISOString(),
       version: row.version,
+      supplier_id: fromBinOrNull(row.supplier_id),
+      paid_at: row.paid_at === null ? null : row.paid_at.toISOString(),
+      approval_request_id: fromBinOrNull(row.approval_request_id),
+      cancel_reason: row.cancel_reason,
+      reclassified_category_id: fromBinOrNull(row.reclassified_category_id),
+      responsibility_user_id: fromBinOrNull(row.responsibility_user_id),
     };
   },
 

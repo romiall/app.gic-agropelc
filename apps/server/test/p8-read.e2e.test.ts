@@ -16,6 +16,7 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { canViewAttachment } from '../src/attachments-api/attachment-access.js';
 import {
   closeTestDb,
   db,
@@ -264,6 +265,28 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
         reviewReasons: [],
       },
     });
+  });
+
+  it('P8E-02 (ADR-047 §3) : pièce d’une dépense lue par l’auteur et ses lecteurs ; d’une facture, par les lecteurs des dettes', async () => {
+    const now = clock.now();
+    const view = (actor: Actor, ownerType: string, ownerId: string, createdBy: string) =>
+      canViewAttachment(db, { createdBy, ownerType, ownerId }, actor.userId, now);
+    // Dépense du vendeur du site A : l'auteur, les lecteurs de toute l'entreprise ; pas un autre auteur
+    // en portée propre, ni l'Admin (sans `finance.expense.read`).
+    expect(await view(venA, 'EXPENSE', expenseA, venA.userId)).toBe(true);
+    expect(await view(fin, 'EXPENSE', expenseA, venA.userId)).toBe(true);
+    expect(await view(rpr, 'EXPENSE', expenseA, venA.userId)).toBe(true);
+    expect(await view(terrain, 'EXPENSE', expenseA, venA.userId)).toBe(false);
+    expect(await view(mag, 'EXPENSE', expenseA, venA.userId)).toBe(false);
+    expect(await view(admin, 'EXPENSE', expenseA, venA.userId)).toBe(false);
+    // Le commercial lit la pièce de sa propre dépense, même déposée par un autre.
+    expect(await view(terrain, 'EXPENSE', expenseTerrain, fin.userId)).toBe(true);
+    // Facture : lecteurs des dettes (Finance, Achats), pas un vendeur.
+    expect(await view(ach, 'SUPPLIER_INVOICE', invoiceId, fin.userId)).toBe(true);
+    expect(await view(venA, 'SUPPLIER_INVOICE', invoiceId, fin.userId)).toBe(false);
+    // Document inconnu : refusé.
+    expect(await view(fin, 'EXPENSE', freshUuid(), venA.userId)).toBe(false);
+    expect(await view(fin, 'SUPPLIER_INVOICE', freshUuid(), venA.userId)).toBe(false);
   });
 
   it('GET /expenses : hors portée 404 audité, droit absent 403, paramètres invalides 400', async () => {
