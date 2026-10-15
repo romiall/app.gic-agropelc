@@ -478,6 +478,14 @@ export function registerSupplierInvoiceCommands(
         `Facture ${invoice.status} : aucune décision attendue.`,
       );
     }
+    // ADR-043 §5 : l'acceptation d'un écart est motivée, et ce motif reste sur la facture (P8E-02 : il
+    // n'était gardé que dans la demande, illisible depuis la facture).
+    if (ctx.decision === 'APPROVED' && !ctx.comment) {
+      throw new ApprovalDecisionRefused(
+        'APPROVAL_REASON_REQUIRED',
+        'Motif obligatoire pour accepter l’écart d’une facture fournisseur.',
+      );
+    }
     if (ctx.decision === 'APPROVED') {
       // Revue de P8-14 (ADR-043 §5) : approbateur ≠ auteur, même par la commande générique.
       if (ctx.decidedBy === ctx.requestedBy) {
@@ -498,7 +506,7 @@ export function registerSupplierInvoiceCommands(
         invoice,
         approvedBy: ctx.decidedBy,
         approvedAt: ctx.decidedAt,
-        reason: 'Écart de rapprochement accepté (demande INVOICE_MISMATCH)',
+        reason: ctx.comment!,
         commandId: null,
       });
     } else {
@@ -506,7 +514,7 @@ export function registerSupplierInvoiceCommands(
         invoice,
         by: ctx.decidedBy,
         at: ctx.decidedAt,
-        reason: 'Écart de rapprochement refusé (demande INVOICE_MISMATCH)',
+        reason: ctx.comment ?? 'Écart de rapprochement refusé (demande INVOICE_MISMATCH)',
       });
     }
   });

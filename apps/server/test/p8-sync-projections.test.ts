@@ -194,6 +194,13 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
       status: 'PAID',
       review_reasons: [],
       version: 1,
+      // P8E-02 (ADR-047 §10) : paiement, demande, annulation, reclassification, imputation.
+      supplier_id: null,
+      paid_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      approval_request_id: null,
+      cancel_reason: null,
+      reclassified_category_id: null,
+      responsibility_user_id: null,
     });
     expect(latest(await pull(other, 'cash'), 'EXPENSE', id)?.data ?? null).toBeNull();
     expect(latest(await pull(fin, 'cash'), 'EXPENSE', id)?.data ?? null).toBeNull();

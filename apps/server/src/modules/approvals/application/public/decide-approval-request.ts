@@ -166,6 +166,7 @@ export async function decideApprovalRequest(
         decidedAt: input.decidedAt,
         requestedBy: fromBin(row.requested_by),
         subjectSummary: row.subject_summary,
+        ...(input.comment?.trim() ? { comment: input.comment.trim() } : {}),
       });
     } catch (error) {
       // Transition impossible pour le module propriétaire : décision refusée, sans effet.

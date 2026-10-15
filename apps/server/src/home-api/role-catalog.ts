@@ -100,6 +100,8 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('NEW_VISIT', '+ VISITE'),
       action('NEW_SALE', '+ VENTE'),
       action('NEW_ORDER', '+ COMMANDE'),
+      // P8E-02 (AV-298) : transport, carburant… payés sur le terrain.
+      action('NEW_EXPENSE', '+ DÉPENSE'),
     ],
   },
   COMMERCIAL_SEDENTAIRE: {
@@ -125,6 +127,8 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('LOSS', 'Déclarer une perte'),
       action('RECEIVE_TRANSFER', 'Recevoir un transfert'),
       action('CASH_CLOSE', 'Clôturer la caisse'),
+      // P8E-02 (AV-298) : petite dépense payée par la caisse du PDV (WF-15).
+      action('NEW_EXPENSE', '+ DÉPENSE'),
     ],
   },
   RESP_PRODUCTION: {
@@ -152,6 +156,8 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
       action('EGG_COLLECTION', 'Collecte d’œufs'),
       action('RECEIPTS', 'Réceptions'),
       action('LOSS', 'Déclarer une perte'),
+      // P8E-02 (AV-298) : achats et frais de la ferme.
+      action('NEW_EXPENSE', '+ DÉPENSE'),
     ],
   },
   MAGASINIER: {
