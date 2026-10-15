@@ -53,7 +53,7 @@ function buildRegisterCommand(overrides: {
     backdated_reason: null,
     attachment_ids: [],
     payload: {
-      ownerType: 'TEST_SUBJECT',
+      ownerType: 'STOCK_LOSS',
       ownerId: overrides.ownerId,
       kind: 'PHOTO',
       mimeType: 'image/jpeg',
@@ -110,7 +110,7 @@ describe('attachments.attachment.register (P0-13)', () => {
       .selectAll()
       .where('id', '=', toBin(aggregateId))
       .executeTakeFirstOrThrow();
-    expect(row.owner_type).toBe('TEST_SUBJECT');
+    expect(row.owner_type).toBe('STOCK_LOSS');
     expect(row.upload_status).toBe('PENDING_UPLOAD');
     expect(row.uploaded_bytes).toBe(0);
     expect(row.storage_key).toBe(`attachments/${aggregateId}`);
@@ -163,6 +163,23 @@ describe('attachments.attachment.register (P0-13)', () => {
       ownerId: freshUuid(),
     });
     (raw.payload as Record<string, unknown>).mimeType = 'application/zip';
+    const result = await pipeline.handle(raw, {
+      authenticatedUserId: author,
+      authenticatedDeviceId: device,
+      transport: 'ONLINE_API',
+    });
+    expect(result.status).toBe('REJECTED');
+    expect(result.status === 'REJECTED' && result.error.code).toMatch(/^VALIDATION_ERROR/);
+  });
+
+  it('MP-10 (ADR-046 §2) : propriétaire inconnu du serveur → REJECTED VALIDATION_ERROR', async () => {
+    const raw = buildRegisterCommand({
+      commandId: freshUuid(),
+      authorUserId: author,
+      aggregateId: freshUuid(),
+      ownerId: freshUuid(),
+    });
+    (raw.payload as Record<string, unknown>).ownerType = 'N_IMPORTE_QUOI';
     const result = await pipeline.handle(raw, {
       authenticatedUserId: author,
       authenticatedDeviceId: device,

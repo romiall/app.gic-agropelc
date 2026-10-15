@@ -7,13 +7,17 @@
  * avoir capturé le résultat ou l'erreur réels de `fn`, pour un rollback garanti quel que soit
  * l'issue testée (comme `withRollback`, dont c'est l'équivalent).
  */
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
 import { SystemClock, Uuidv7Generator, businessDayOf } from '@gic/domain';
 import { createDatabase, type DB } from '../src/platform/kysely/database.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import type { OperationType } from '../src/modules/approvals/application/commands/operation-types.js';
+import {
+  signAccessToken,
+  type AccessTokenClaims,
+} from '../src/modules/identity/application/public/jwt.js';
 
 const SERVER_DATABASE_URL = process.env.SERVER_DATABASE_URL;
 if (!SERVER_DATABASE_URL) {
@@ -35,6 +39,36 @@ const idGenerator = new Uuidv7Generator(new SystemClock());
 /** UUIDv7 texte frais, pour des identifiants de test jamais en collision entre exécutions. */
 export function freshUuid(): string {
   return idGenerator.newId();
+}
+
+/** Une année : au-delà de toute horloge de test avancée par un scénario. */
+const TEST_SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * MP-11 (AV-282) : la garde d'authentification n'accepte un jeton que si sa session est vivante.
+ * Insère (validée) la session `claims.session_id` de l'utilisateur sur l'appareil, famille fraîche,
+ * valable un an après l'horloge du test comme après l'heure réelle, puis signe le jeton comme
+ * `signAccessToken`.
+ */
+export async function signTestAccessToken(
+  privateKey: CryptoKey,
+  claims: AccessTokenClaims,
+  now: Date,
+): Promise<string> {
+  const until = new Date(Math.max(now.getTime(), Date.now()) + TEST_SESSION_TTL_MS);
+  await db
+    .insertInto('identity_auth_sessions')
+    .values({
+      id: toBin(claims.session_id),
+      user_id: toBin(claims.sub),
+      device_id: toBin(claims.device_id),
+      refresh_token_hash: randomBytes(32).toString('hex'),
+      token_family_id: toBin(freshUuid()),
+      expires_at: until,
+      offline_grant_until: until,
+    })
+    .execute();
+  return signAccessToken(privateKey, claims, now);
 }
 
 const ROLLBACK_SENTINEL = Symbol('ROLLBACK_SENTINEL');

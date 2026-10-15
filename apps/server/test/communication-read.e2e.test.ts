@@ -27,7 +27,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import type { DomainEvent } from '../src/platform/events/domain-event.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
 import { newActor, tx, type Actor } from './cash-transfer-fixtures.js';
@@ -41,6 +40,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 
 /**
@@ -185,9 +185,10 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
     const team = await tx((trx) => insertTestTeam(trx, teamLead.userId, root));
     await tx((trx) => insertTestTeamMembership(trx, team, commercial.userId, root));
     for (const actor of [finance, direction, admin, sellerA, sellerB, commercial, teamLead]) {
+      // MP-11 (AV-282) : la garde exige une session vivante ; `signTestAccessToken` la crée puis signe.
       tokens.set(
         actor.userId,
-        await signAccessToken(
+        await signTestAccessToken(
           jwtKeys.privateKey,
           { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
           clock.now(),

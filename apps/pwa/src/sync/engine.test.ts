@@ -4,14 +4,17 @@ import { createTestDb, type GicDatabase } from '../storage/db.js';
 import { runSyncCycle, SyncEngine } from './engine.js';
 import type { PushCycleResult } from './push.js';
 import type { PullCycleResult } from './pull.js';
+import type { UploadCycleResult } from './attachment-upload.js';
 
-const { pushMock, pullMock } = vi.hoisted(() => ({
+const { pushMock, pullMock, uploadMock } = vi.hoisted(() => ({
   pushMock: vi.fn<() => Promise<PushCycleResult>>(),
   pullMock: vi.fn<() => Promise<PullCycleResult>>(),
+  uploadMock: vi.fn<() => Promise<UploadCycleResult>>(),
 }));
 
 vi.mock('./push.js', () => ({ runPushCycle: pushMock, PUSH_TIMEOUT_MS: 60_000 }));
 vi.mock('./pull.js', () => ({ runPullCycle: pullMock }));
+vi.mock('./attachment-upload.js', () => ({ runAttachmentUploadCycle: uploadMock }));
 
 const clock = new FixedClock(new Date('2026-09-25T09:00:00.000Z'));
 const idGenerator = new Uuidv7Generator(clock);
@@ -25,6 +28,8 @@ describe('sync/engine (runSyncCycle)', () => {
     onSessionInvalid = vi.fn();
     pushMock.mockReset();
     pullMock.mockReset();
+    uploadMock.mockReset();
+    uploadMock.mockResolvedValue({ outcome: 'NOTHING_TO_UPLOAD', sent: 0 });
   });
 
   afterEach(async () => {
@@ -77,6 +82,41 @@ describe('sync/engine (runSyncCycle)', () => {
     expect(outcome).toBe('SYNCED');
     expect(pushMock).toHaveBeenCalledTimes(3);
     expect(pullMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('MP-10 : photos envoyées après les commandes, avant le tirage ; une photo envoyée suffit à SYNCED', async () => {
+    const order: string[] = [];
+    pushMock.mockImplementation(async () => {
+      order.push('push');
+      return { outcome: 'NOTHING_TO_PUSH' };
+    });
+    uploadMock.mockImplementation(async () => {
+      order.push('upload');
+      return { outcome: 'UPLOADED', sent: 1 };
+    });
+    pullMock.mockImplementation(async () => {
+      order.push('pull');
+      return { outcome: 'SYNCED', changeCount: 0 };
+    });
+    expect(await runSyncCycle({ ...deps(), userId: 'user-1' })).toBe('SYNCED');
+    expect(order).toEqual(['push', 'upload', 'pull']);
+    expect(uploadMock).toHaveBeenCalledWith(db, expect.objectContaining({ userId: 'user-1' }));
+  });
+
+  it('MP-10 : réseau coupé pendant une photo — le tirage a lieu quand même ; session invalide ou changée : pas de tirage', async () => {
+    pushMock.mockResolvedValue({ outcome: 'NOTHING_TO_PUSH' });
+    // Revue de MP-10 : une photo bloquée ne prive pas l'appareil de ses données.
+    uploadMock.mockResolvedValueOnce({ outcome: 'INTERRUPTED', sent: 0 });
+    pullMock.mockResolvedValueOnce({ outcome: 'SYNCED', changeCount: 2 });
+    expect(await runSyncCycle(deps())).toBe('SYNCED');
+    expect(pullMock).toHaveBeenCalledTimes(1);
+    pullMock.mockClear();
+    uploadMock.mockResolvedValueOnce({ outcome: 'SESSION_INVALID', sent: 0 });
+    expect(await runSyncCycle(deps())).toBe('SESSION_INVALID');
+    expect(onSessionInvalid).toHaveBeenCalledTimes(1);
+    uploadMock.mockResolvedValueOnce({ outcome: 'SESSION_CHANGED', sent: 0 });
+    expect(await runSyncCycle(deps())).toBe('STOPPED');
+    expect(pullMock).not.toHaveBeenCalled();
   });
 
   it('lot sans rien de réglé (RETRY_LATER partout) : pas de renvoi immédiat, le tirage a lieu', async () => {

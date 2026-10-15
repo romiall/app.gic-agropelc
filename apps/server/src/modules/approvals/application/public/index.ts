@@ -19,7 +19,11 @@ export { pendingApprovalsFor } from './pending-approvals.js';
 export type { PendingApproval } from './pending-approvals.js';
 
 // MP-07 (ECR-ADM-08) : file de validation paginée, auto-validation de la Direction (INV-ADM-02).
-export { approvalInboxPage, canSelfApproveAt } from './approval-inbox.js';
+export {
+  approvalInboxPage,
+  canDecidePendingApprovalOf,
+  canSelfApproveAt,
+} from './approval-inbox.js';
 export type { ApprovalInboxItem, ApprovalInboxPage } from './approval-inbox.js';
 
 export { currentPolicies } from './policy-query.js';

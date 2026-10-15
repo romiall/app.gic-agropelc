@@ -1,21 +1,34 @@
 /**
  * Ventes récentes (accès à ECR-VEN-05) : les ventes des 7 derniers jours connues de l'appareil, dont
  * celles saisies sur l'appareil et pas encore acceptées par le serveur, la plus récente d'abord.
- * Utilisable hors ligne.
+ * Utilisable hors ligne. Depuis le signal « ventes du jour signalées » de l'accueil (`?anomalies=1`,
+ * AV-255) : les seules ventes du jour non annulées qui portent un drapeau, comme le compte du serveur.
  */
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { ROUTES } from '../../app/screens.js';
 import { formatMoment } from '../home/format-home.js';
 import { formatMoney } from './format.js';
-import { recentSales, saleStatusTone } from './recent-sales.js';
+import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences } from './references.js';
+
+/** Vente du jour, non annulée, signalée par le serveur (définition du signal `SALES_FLAGGED`). */
+function flaggedToday(sale: SaleView, today: string): boolean {
+  return (
+    sale.flags.length > 0 &&
+    sale.status !== 'CANCELLED' &&
+    businessDayOf(new Date(sale.occurredAt)) === today
+  );
+}
 
 export function SalesListScreen() {
   const { t } = useTranslation();
   const refs = useSalesReferences();
+  const [searchParams] = useSearchParams();
+  const [flaggedOnly, setFlaggedOnly] = useState(searchParams.get('anomalies') === '1');
 
   if (!refs) {
     return (
@@ -28,7 +41,10 @@ export function SalesListScreen() {
 
   const today = businessDayOf(clock.now());
   const customers = new Map(refs.customers.map((customer) => [customer.id, customer]));
-  const sales = recentSales(refs);
+  const all = recentSales(refs);
+  const sales = flaggedOnly ? all.filter((sale) => flaggedToday(sale, today)) : all;
+  const flagLabels = (flags: readonly string[]) =>
+    flags.map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag })).join(', ');
 
   return (
     <section className="sale">
@@ -38,9 +54,20 @@ export function SalesListScreen() {
           <span className="action-label">{t('nav.screens.new_sale')}</span>
         </Link>
       </div>
-      <p className="home-muted">{t('sales.list.window_hint')}</p>
+      {flaggedOnly ? (
+        <p className="home-banner" role="status">
+          {t('sales.list.flagged_banner', { count: sales.length })}{' '}
+          <button type="button" className="secondary" onClick={() => setFlaggedOnly(false)}>
+            {t('sales.list.show_all')}
+          </button>
+        </p>
+      ) : (
+        <p className="home-muted">{t('sales.list.window_hint')}</p>
+      )}
       {sales.length === 0 ? (
-        <p className="home-muted">{t('sales.list.empty')}</p>
+        <p className="home-muted">
+          {flaggedOnly ? t('sales.list.flagged_empty') : t('sales.list.empty')}
+        </p>
       ) : (
         <ul className="doc-list">
           {sales.map((sale) => {
@@ -61,6 +88,11 @@ export function SalesListScreen() {
                     <small>
                       {formatMoment(sale.occurredAt, today)} · {customerName}
                     </small>
+                    {sale.flags.length > 0 ? (
+                      <small className="text-warn">
+                        {t('sales.list.flags', { flags: flagLabels(sale.flags) })}
+                      </small>
+                    ) : null}
                   </span>
                   <span className="doc-side">
                     <strong>{formatMoney(sale.netTotalXaf)}</strong>

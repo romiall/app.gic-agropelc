@@ -113,7 +113,7 @@ describe('Demande d’achat (ECR-APP-02)', () => {
     await user.selectOptions(within(line).getByLabelText('Produit'), FEED);
     await user.type(within(line).getByLabelText('Quantité'), '2');
     await user.selectOptions(within(line).getByLabelText('Unité'), 'SAC');
-    await user.type(within(line).getByLabelText('Prix estimé par KG (F, facultatif)'), '400');
+    await user.type(within(line).getByLabelText('Prix estimé par kg (F, facultatif)'), '400');
     fireEvent.change(screen.getByLabelText('Souhaitée pour le (facultatif)'), {
       target: { value: '2026-10-15' },
     });
@@ -150,7 +150,7 @@ describe('Demande d’achat (ECR-APP-02)', () => {
     const line = screen.getByRole('listitem', { name: 'Ligne 1' });
     await user.selectOptions(within(line).getByLabelText('Produit'), FEED);
     await user.type(within(line).getByLabelText('Quantité'), '10');
-    await user.type(within(line).getByLabelText('Prix estimé par KG (F, facultatif)'), '12,5');
+    await user.type(within(line).getByLabelText('Prix estimé par kg (F, facultatif)'), '12,5');
     expect(within(line).getByText('Prix estimé : nombre entier de francs.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Souhaitée pour le (facultatif)'), {
       target: { value: '2026-10-01' },

@@ -33,6 +33,9 @@ export { PLACEABLE_RECEIPT_STATUSES, findReceiptForPlacement } from './receipt-p
 export type { ReceiptForPlacement } from './receipt-placement.js';
 
 export { procurementOverview } from './home-metrics.js';
+
+// MP-10 (AV-285) : photo du bon de livraison reçue après coup.
+export { RECEIPT_PHOTO_MISSING_CONFLICT, regularizeReceiptPhoto } from './receipt-photo.js';
 export type { ProcurementOverview } from './home-metrics.js';
 
 // P8-07 (ADR-043 §3) : facturation d'un BC, appelée par `finance` (quantités facturées écrites ici).

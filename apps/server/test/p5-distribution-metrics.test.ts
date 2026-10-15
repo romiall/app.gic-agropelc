@@ -31,7 +31,6 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { ALL_SCOPE } from '../src/platform/read-scope.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import { SyncPushService } from '../src/sync/sync-push.service.js';
@@ -75,6 +74,7 @@ import {
   neutralizePolicy,
   withoutActivePolicies,
   freshPhone,
+  signTestAccessToken,
 } from './helpers.js';
 import { fund, newActor, roleIdOf, tx, type Actor } from './cash-transfer-fixtures.js';
 import {
@@ -677,7 +677,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
         .where('id', '=', toBin(deviceId))
         .execute();
     }
-    venToken = await signAccessToken(
+    venToken = await signTestAccessToken(
       app.get(JWT_KEYS).privateKey,
       { sub: venP.userId, device_id: venP.deviceId, session_id: freshUuid() },
       clock.now(),
@@ -1266,7 +1266,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
       payload: { requestId },
     });
 
-    const dirToken = await signAccessToken(
+    const dirToken = await signTestAccessToken(
       app.get(JWT_KEYS).privateKey,
       { sub: dir.userId, device_id: dir.deviceId, session_id: freshUuid() },
       clock.now(),
@@ -1363,7 +1363,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
 
   describe('AT-042 : GET /api/v1/analytics/dashboards/distribution', () => {
     const tokenOf = (actor: Actor) =>
-      signAccessToken(
+      signTestAccessToken(
         app.get(JWT_KEYS).privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),
@@ -1613,7 +1613,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
 
   describe('accueil Finance et Magasinier (P5-20, AV-208)', () => {
     const home = async (actor: Actor): Promise<HomeResponse> => {
-      const token = await signAccessToken(
+      const token = await signTestAccessToken(
         app.get(JWT_KEYS).privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),
@@ -1745,7 +1745,7 @@ describe('P5-19 : métriques de distribution', { timeout: 240_000 }, () => {
         (await cashSessionThresholdsAt(db, { siteIds: [siteP], at: new Date() })).get(siteP),
       ).toMatchObject({ forceCloseHours: 24 });
       await home(fin);
-      const token = await signAccessToken(
+      const token = await signTestAccessToken(
         app.get(JWT_KEYS).privateKey,
         { sub: dir.userId, device_id: dir.deviceId, session_id: freshUuid() },
         clock.now(),

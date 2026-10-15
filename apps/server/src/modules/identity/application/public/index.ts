@@ -42,6 +42,9 @@ export type {
 } from './rights-check.js';
 
 export { deviceUserCounts, userFullName, userFullNames } from './user-summary.js';
+// MP-08 (ECR-ADM-04 partiel) : lecture des comptes pour `GET /users`.
+export { USER_STATUSES, listUsersPage } from './user-query.js';
+export type { UserStatus, UserSummary } from './user-query.js';
 export type { DeviceUserCounts } from './user-summary.js';
 
 // MP-06 (ECR-ADM-05 ; AV-247, AV-258 à AV-260) : lecture des appareils et portée partagée par la lecture

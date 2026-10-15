@@ -27,7 +27,7 @@
 - **IX** `(status)`.
 - **Suppr.** `DESACTIVATION` (jamais de suppression : l'utilisateur est l'acteur d'opérations passées).
 - **Hist.** Changements de statut, téléphone et nom dans l'audit (avant et après).
-- **Audit** Création, modification, suspension, désactivation, réactivation, réinitialisation de mot de passe.
+- **Audit** Création, modification, suspension, désactivation, réactivation, réinitialisation de mot de passe (`identity.user.reset_password`), changement de mot de passe (`identity.user.change_password`) ; jamais un mot de passe (ADR-045 : la charge conservée d'`identity.user.create` est masquée). Fiche servie aux appareils (jeu `user`) : `id`, `full_name`, `status` seulement (ADR-045).
 - **Offline** L'appareil télécharge son propre profil et les noms (id, `full_name`) des utilisateurs de son périmètre, pour l'affichage.
 - **Intégrité** INV-ADM-01 (au moins un `ADMIN` actif) ; `password_hash` jamais exposé ni journalisé (INV-AUD-02).
 
@@ -175,11 +175,11 @@
 | `expires_at` | ts | Non | — | Expiration du jeton de rafraîchissement (30 jours glissants) |
 | `offline_grant_until` | ts | Non | — | Fin de l'autonomie hors ligne accordée (AV-009) |
 | `revoked_at` | ts | Oui | — | |
-| `revoked_reason` | enum(`LOGOUT`,`ADMIN`,`USER_DEACTIVATED`,`DEVICE_BLOCKED`,`TOKEN_REUSE`,`EXPIRED`,`ROTATED`) | Oui | — | `ROTATED` (P0-09) : ligne remplacée par la rotation normale du jeton — distinct de `TOKEN_REUSE` (présentation d'une ligne déjà `ROTATED`, famille entière révoquée) |
+| `revoked_reason` | enum(`LOGOUT`,`ADMIN`,`USER_DEACTIVATED`,`DEVICE_BLOCKED`,`TOKEN_REUSE`,`EXPIRED`,`ROTATED`,`PASSWORD_CHANGED`) | Oui | — | `ROTATED` (P0-09) : ligne remplacée par la rotation normale du jeton — distinct de `TOKEN_REUSE` (présentation d'une ligne déjà `ROTATED`, famille entière révoquée). `PASSWORD_CHANGED` (MP-11) : autre session de l'utilisateur close par son changement de mot de passe |
 | `ip_first`, `ip_last` | inet | Oui | — | Adresses de création et de dernier usage |
 
 - **PK** `id`. **UQ** `refresh_token_hash`.
-- **IX** `(user_id, device_id)`, `(expires_at)`.
+- **IX** `(user_id, device_id)`, `(expires_at)`, `(token_family_id, revoked_at)` (MP-11 : la garde d'authentification cherche à chaque requête une session vivante de la famille du jeton, AV-282).
 - **Suppr.** `PURGE_TECHNIQUE` 90 jours après expiration ou révocation (les événements d'authentification restent dans l'audit).
 - **Audit** Création (connexion), révocation, détection de réutilisation. **Offline** SRV (l'appareil conserve ses jetons dans un stockage local protégé).
 - **Rotation** (P0-09) : chaque rafraîchissement insère une **nouvelle ligne** (même `token_family_id`, nouveau `refresh_token_hash`) et marque l'ancienne `ROTATED` — la table garde ainsi la trace nécessaire pour détecter la réutilisation d'un jeton déjà tourné (recherche par `refresh_token_hash` : une ligne trouvée mais déjà `revoked_at` non nul, quelle qu'en soit la raison, signale une réutilisation → révocation de toute la famille, `TOKEN_REUSE`).

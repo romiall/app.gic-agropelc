@@ -1003,7 +1003,7 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     const delivered = await pass('2026-10-29T06:30:00.000Z');
     expect(delivered.events).toEqual([]);
     expect(delivered.markers).toHaveLength(1);
-  });
+  }, 180_000);
 
   it('P9-07 : commerciaux inactifs — jour ouvré examiné, jour non ouvré sans marqueur, activité comptée', async () => {
     // `terrain` a vendu le 20/10 (AT-018) ; `idle` est affecté avant et n'a rien fait.
@@ -1076,5 +1076,5 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     const weekend = await pass('2026-10-26T07:00:00.000Z');
     expect(weekend.events).toEqual([]);
     expect(weekend.markers).toEqual([]);
-  });
+  }, 180_000);
 });

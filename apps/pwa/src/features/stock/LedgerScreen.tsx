@@ -14,7 +14,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { formatClockTime } from '../home/format-home.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
   balanceAtPath,
@@ -326,13 +326,13 @@ export function LedgerScreen() {
             <>
               <dl className="receipt-totals">
                 <dt>{t('ledger.opening')}</dt>
-                <dd>{`${formatQuantity(explanation.opening)} ${unitOf(productId)}`}</dd>
+                <dd>{formatQuantityUnit(explanation.opening, unitOf(productId), refs.units)}</dd>
                 <dt>{t('ledger.entries')}</dt>
-                <dd>{`+ ${formatQuantity(explanation.entries)} ${unitOf(productId)}`}</dd>
+                <dd>{`+ ${formatQuantityUnit(explanation.entries, unitOf(productId), refs.units)}`}</dd>
                 <dt>{t('ledger.exits')}</dt>
-                <dd>{`− ${formatQuantity(explanation.exits)} ${unitOf(productId)}`}</dd>
+                <dd>{`− ${formatQuantityUnit(explanation.exits, unitOf(productId), refs.units)}`}</dd>
                 <dt>{t('ledger.closing')}</dt>
-                <dd>{`${formatQuantity(explanation.closing)} ${unitOf(productId)}`}</dd>
+                <dd>{formatQuantityUnit(explanation.closing, unitOf(productId), refs.units)}</dd>
               </dl>
               {explanation.byType.length > 0 ? (
                 <ul className="receipt-lines">
@@ -357,7 +357,7 @@ export function LedgerScreen() {
                   <p className="text-warn">
                     {t('ledger.unexplained', {
                       quantity: formatQuantity(explanation.unexplained),
-                      unit: unitOf(productId),
+                      unit: unitLabel(unitOf(productId), explanation.unexplained, refs.units),
                     })}
                   </p>
                   <button
@@ -443,7 +443,7 @@ export function LedgerScreen() {
                     </small>
                   </span>
                   <span>
-                    {`${move.direction === 'IN' ? '+' : '−'} ${formatQuantity(move.quantity)} ${unitOf(move.productId)}`}
+                    {`${move.direction === 'IN' ? '+' : '−'} ${formatQuantityUnit(move.quantity, unitOf(move.productId), refs.units)}`}
                     <small>{formatMoveMoment(move.occurredAt)}</small>
                     {move.valueXaf !== null ? <small>{formatMoney(move.valueXaf)}</small> : null}
                   </span>

@@ -20,6 +20,21 @@ export {
 } from './command-envelope.js';
 export type { CommandEnvelopeBase, CommandEnvelope } from './command-envelope.js';
 
+export {
+  ATTACHMENT_MIME_TYPES,
+  ATTACHMENT_MAX_SIZE_BYTES,
+  ATTACHMENT_KINDS,
+  ATTACHMENT_OWNER_TYPES,
+  ATTACHMENT_CHUNK_SIZE_BYTES,
+  ATTACHMENT_UPLOAD_STATUSES,
+} from './attachments.js';
+export type {
+  AttachmentMimeType,
+  AttachmentKind,
+  AttachmentOwnerType,
+  AttachmentUploadStatus,
+} from './attachments.js';
+
 export { CommandRegistry } from './command-registry.js';
 export type { RegisteredCommandType, ParsedCommand } from './command-registry.js';
 

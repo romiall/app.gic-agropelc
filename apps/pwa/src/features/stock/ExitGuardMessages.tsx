@@ -5,7 +5,7 @@
  * polie (`role="status"`) pour ne pas couper la saisie à chaque chiffre.
  */
 import { useTranslation } from 'react-i18next';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantityUnit } from '../sales/format.js';
 import type { ExitGuard, ExitIssue } from '../sales/quota.js';
 import { guardIssueId } from './exit-guard.js';
 
@@ -23,9 +23,9 @@ export function ExitGuardMessages({
   const { t } = useTranslation();
   const values = (issue: ExitIssue) => ({
     product: productName(issue.productId),
-    available: formatQuantity(Math.max(0, issue.available)),
-    requested: formatQuantity(issue.requested),
-    unit: unitOf(issue.productId),
+    // Chaque nombre porte son unité, accordée (MP-09, AV-249).
+    available: formatQuantityUnit(Math.max(0, issue.available), unitOf(issue.productId)),
+    requested: formatQuantityUnit(issue.requested, unitOf(issue.productId)),
   });
   return (
     <>

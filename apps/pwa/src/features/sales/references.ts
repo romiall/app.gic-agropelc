@@ -49,6 +49,7 @@ import type {
   ProductData,
   ProductUnitData,
   ReasonCodeData,
+  UnitData,
   SaleData,
   SalesOrderData,
   SettingData,
@@ -79,6 +80,8 @@ export interface SalesReferences {
   readonly customers: readonly CustomerData[];
   readonly paymentMethods: readonly PaymentMethodData[];
   readonly reasonCodes: readonly ReasonCodeData[];
+  /** Unités du catalogue par code (MP-09, AV-249 : nom de repli d'un libellé d'unité). */
+  readonly units: ReadonlyMap<string, UnitData>;
   readonly settings: readonly SettingData[];
   readonly workSessions: readonly WorkSessionData[];
   readonly orders: ReadonlyMap<string, SalesOrderData>;
@@ -160,6 +163,8 @@ export interface SalesReferences {
   /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
   readonly ordersPulledAt: string | undefined;
   readonly customersPulledAt: string | undefined;
+  /** Heure du dernier tirage complet du jeu `sales_recent` (MP-11 : encaissements acceptés). */
+  readonly salesPulledAt: string | undefined;
   /** Commandes de vente de l'outbox, tous statuts (affichage des opérations en attente). */
   readonly outbox: readonly OutboxCommand[];
 }
@@ -372,12 +377,14 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     pointsOfSale,
     meSettings,
     catalogReasonCodes,
+    catalogUnits,
     transfersCursor,
     stockCursor,
     ordersCursor,
     customersCursor,
     activityCursor,
     fieldworkCursor,
+    salesCursor,
     meta,
     products,
     productUnits,
@@ -431,12 +438,14 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
     listProjected<SettingData>(db, 'me', 'SETTING'),
     listProjected<ReasonCodeData>(db, 'catalog', 'REASON_CODE'),
+    listProjected<UnitData>(db, 'catalog', 'UNIT'),
     db.syncCursors.get('transfers'),
     db.syncCursors.get('stock'),
     db.syncCursors.get('orders'),
     db.syncCursors.get('customers'),
     db.syncCursors.get('crm_activity'),
     db.syncCursors.get('fieldwork'),
+    db.syncCursors.get('sales_recent'),
     db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
@@ -519,6 +528,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     // Motifs semés publiés dans `catalog` (P5-18), réunis à ceux créés par commande (`reason_code`),
     // la version de `catalog` d'abord.
     reasonCodes: unionById(catalogReasonCodes, reasonCodes).filter((reason) => reason.is_active),
+    units: new Map(catalogUnits.map((unit) => [unit.code, unit])),
     // Paramètres du seul jeu `me` (retraits compris) : l'ancien jeu `setting` n'est plus tiré.
     settings: meSettings,
     workSessions: deviceWorkSessions(workSessions, ownOutbox, fieldworkCursor?.pulled_at),
@@ -580,6 +590,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     lastSyncAt: meta?.last_sync_at ?? null,
     ordersPulledAt: ordersCursor?.pulled_at,
     customersPulledAt: customersCursor?.pulled_at,
+    salesPulledAt: salesCursor?.pulled_at,
     outbox,
   };
 }

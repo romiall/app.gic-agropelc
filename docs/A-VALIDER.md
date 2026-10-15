@@ -51,7 +51,7 @@ Classification (PM §45) :
 | AV-034 | Livraison : document distinct ou portée par la vente | IMPORTANTE | P4 | Bon de livraison distinct (livreur, heure, quantités, preuve) ; plusieurs livraisons partielles | **TRANCHÉ** (voir journal §3) |
 | AV-035 | Politique d'allocation de stock | IMPORTANTE | P5 | Allocation explicite, libération confirmée par l'appareil | OUVERT |
 | AV-036 | Traçabilité par lot jusqu'à la vente | IMPORTANTE | P2/P7 | Obligatoire pour les animaux vivants ; FIFO automatique | OUVERT |
-| AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) | OUVERT |
+| AV-037 | Seuils de preuve et de validation des pertes | IMPORTANTE | P2 | Politique paramétrable (valeurs §2) ; photo jamais exigée hors mortalité (AV-288, 14/10/2026) | OUVERT |
 | AV-038 | Traitement du rejet d'une déclaration de perte | SECONDAIRE | P2 | Deux issues : retour stock ou perte imputée au déclarant ; rejet sans motif = erreur de déclaration | **TRANCHÉ** (voir journal §3) |
 | AV-039 | Fréquence et procédure d'inventaire | SECONDAIRE | P2/P5 | Mensuel complet recommandé + ponctuel | OUVERT |
 | AV-040 | Seuils de réapprovisionnement | SECONDAIRE | P5 | Paramétrés par emplacement × produit | OUVERT |
@@ -294,6 +294,24 @@ Classification (PM §45) :
 | AV-277 | Annulation d'un paiement fournisseur enregistré | SECONDAIRE | P8 | Par la Direction, avec motif, sans demande séparée | OUVERT |
 | AV-278 | Lecture des factures, paiements fournisseurs et de la vue d'ensemble financière | SECONDAIRE | P8 | `finance.payable.read` (Direction, Resp. achats, Finance), portée `ALL` | OUVERT |
 | AV-279 | Chiffre d'affaires d'un lot de production | IMPORTANTE | P8 | Ventes du lot et de ses produits d'abattage ; œufs exclus (déjà valorisés par le crédit au coût standard) | OUVERT |
+| AV-280 | Règles d'un nouveau mot de passe : longueur maximale, réemploi | SECONDAIRE | MP | 8 à 128 caractères ; différent de celui qu'il remplace (le provisoire ne peut pas être gardé) ; aucune règle de composition, d'historique ni d'expiration | OUVERT |
+| AV-281 | Gardes de la réinitialisation du mot de passe par l'Admin | SECONDAIRE | MP | Pas son propre compte (changement avec l'actuel), pas un compte désactivé ni le compte système ; compte suspendu accepté ; verrouillage de l'identifiant levé | OUVERT |
+| AV-282 | Session révoquée ou compte suspendu : refus immédiat des requêtes ? | IMPORTANTE | MP | Blocage immédiat : session, compte et appareil vérifiés à chaque requête (cache de 5 s, vidé à chaque révocation) | TRANCHÉ |
+| AV-283 | « Classer » une opération refusée ou en conflit sur l'appareil | SECONDAIRE | MP | Marque locale `ACKNOWLEDGED`, statut et opération conservés ; par son seul auteur ; conflit classé sans être réglé ; aucun archivage à 30 jours | OUVERT |
+| AV-284 | « Encaisser le reste dû » depuis le reçu : sort du surplus | SECONDAIRE | MP | Montant prérempli au reste dû ; affecté à la seule vente du reçu ; le surplus reste en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique | OUVERT |
+| AV-285 | Régularisation de la « photo manquante » d'une réception | IMPORTANTE | MP | Close automatiquement à la réception de la photo du bon ; clôture manuelle par le Resp. achats avec motif | TRANCHÉ |
+| AV-286 | Photo visible par les valideurs | IMPORTANTE | MP | Oui dès MP-10 : lecture protégée par la portée sur le document ou la décision en attente | TRANCHÉ |
+| AV-287 | Chiffrement des photos en attente sur le téléphone | IMPORTANTE | MP | Pas encore (comme la file des opérations) ; chiffrement de tout le stockage local avant la production | TRANCHÉ |
+| AV-288 | Photo d'une perte hors mortalité | IMPORTANTE | MP | Toujours facultative ; seule la mortalité l'exige avant l'approbation | TRANCHÉ |
+| AV-289 | Validation d'une réception sans BC dont la photo manque | SECONDAIRE | MP | Inchangée : seules les pièces citées par la réception sont exigées | OUVERT |
+| AV-290 | Photo refusée ou jamais reçue | SECONDAIRE | MP | Nouvelle photo à prendre ; aucune relance automatique ; `MISSING` à 7 jours et alerte en P9 | OUVERT |
+| AV-291 | Formats, nombre et budget local des photos | SECONDAIRE | MP | Images recodées en JPEG ; une photo par opération ; 50 Mo en attente au plus, au-delà l'opération part sans photo | OUVERT |
+| AV-292 | Stockage des fichiers pour le pilote | SECONDAIRE | MP | Disque local du serveur (`ATTACHMENTS_STORAGE_DIR`) sur un volume sauvegardé ; stockage objet avec AV-091 | OUVERT |
+| AV-293 | Métadonnées des pièces jointes servies à tous les appareils | SECONDAIRE | MP | Inchangé : le flux de la pièce reste en portée `GLOBAL` (repli générique du pipeline) ; contenu protégé par la lecture | OUVERT |
+| AV-294 | Politiques de contrôle des achats par défaut | IMPORTANTE | MP | Une politique par type (demande d'achat, BC au-delà du seuil, réception sans BC, en quarantaine, annulation), sans condition, approbateur selon 01-rbac, portée `ALL` | OUVERT |
+| AV-295 | Droit de décider une validation, jugé aussi à la réception | SECONDAIRE | MP | Date déclarée et réception par le serveur (décision en ligne seulement) | OUVERT |
+| AV-296 | Appareil non partagé lié à l'utilisateur qui l'a connecté | SECONDAIRE | MP | Inchangé : tout compte valide peut se connecter sur un appareil connu et en prend le statut (risque assumé au MVP) | OUVERT |
+| AV-297 | Verrouillage de connexion : essais simultanés, adresse derrière un proxy | SECONDAIRE | MP | `TRUST_PROXY` et limitation de débit au proxy ; réservation atomique de l'essai à faire avant la production | OUVERT |
 | AV-400 | Seuils des alertes : où les paramétrer | SECONDAIRE | P9 | Seuils dans `organization.system_settings` (historisés) ; `alert_rules` ne porte ni seuil ni paramètre de détection | OUVERT |
 | AV-401 | Gravité d'une alerte dont le niveau varie | SECONDAIRE | P9 | Gravité fixée à la levée par l'événement ; relèvement seulement, jamais d'abaissement tant que l'alerte est ouverte ; `critical_since` mesure l'escalade | OUVERT |
 | AV-402 | Types d'alerte ajoutés au catalogue ; types sans source | SECONDAIRE | P9 | Six types ajoutés (`ALLOCATION_EXPIRED`, `ALLOCATION_REVOCATION_PENDING`, `SALE_UNDELIVERED`, `CONSUMER_FAILED`, `LEDGER_MISMATCH`, `CASH_MISMATCH`) ; `KOMMO_SYNC_FAILED` au catalogue, règle désactivée jusqu'à P10 | OUVERT |
@@ -1888,6 +1906,8 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a). Visite : `COMMANDE_PRISE` (code figé, lu par KPI-COM-12), `VENTE_REALISEE`, `A_RELANCER`, `PAS_INTERESSE`, `ABSENT`, `AUTRE`. Prospect perdu : `PRIX_TROP_ELEVE`, `CONCURRENT`, `PAS_DE_BESOIN`, `INJOIGNABLE`, `HORS_ZONE`, `AUTRE`. Annulation : `ERREUR_SAISIE`, `DOUBLON`, `DEMANDE_CLIENT`, `AUTRE`. `AUTRE` exige un commentaire ; libellés ajustables au catalogue.
 - **Impact** : `db/seeds` (rejouable : insertion des seuls absents, jamais de réécriture d'un motif modifié), publication dans `catalog` ; S-15 ; lot de mise en pilote (MP-02).
+- **Mise en œuvre** (MP-09, 14/10/2026) : le commentaire d'un résultat de visite qui l'exige (`requires_comment`, « Autre ») n'était contrôlé nulle part. Visite : la PWA bloque l'envoi sans commentaire (libellé « obligatoire pour ce résultat ») ; le serveur refuse en ligne (`COMMENT_REQUIRED`) et accepte hors ligne (fait accompli, BR-SYN-007, comme un motif désactivé entre-temps ; **DÉDUIT**). Prospect perdu : déjà refusé par le serveur (BR-CRM-009), sans écran dans la PWA. Annulation d'une vente ou d'une commande : déjà exigé par la PWA.
+- **Mise en œuvre** (MP-11, 15/10/2026, revue adverse) : la décision (« désactivables », « libellés ajustables ») n'avait aucune commande. `catalog.reason_code.update` (libellé, commentaire exigé), `.deactivate` et `.reactivate` (`catalog.reference.manage`, nouvelle version publiée dans `catalog`, aucune suppression, BR-CAT-010) ; écran du catalogue : « Modifier », « Désactiver », « Réactiver » sur chaque motif. Le code et la catégorie ne changent jamais.
 
 ### AV-249 — Affichage des unités dans la PWA — SECONDAIRE — **TRANCHÉ**
 - **Question** : comment afficher une quantité et son unité (« 27 PLATEAU » aujourd'hui) ?
@@ -1896,6 +1916,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Décision** (porteur du projet, 13/10/2026) : (a), sans changement de la base (« 27 plateaux », « 1 pièce », « 500 kg », « 12 têtes »).
 - **Impact** : fonction unique de formatage dans la PWA et ses appels ; lot de mise en pilote (MP-09).
+- **Mise en œuvre** (MP-09, 14/10/2026) : `unitLabel` et `formatQuantityUnit` (`apps/pwa/src/features/sales/format.ts`) ; libellés courts de TETE, OEUF, PIECE, KG, G, L, SAC, PLATEAU, CARTON, DOSE (pluriel à partir de 2, symboles invariables) ; repli sur le nom de l'unité publiée dans le jeu `catalog`, puis sur le code ; une quarantaine d'écrans convertis (quantités, libellés de champ, sélecteurs) ; un message à plusieurs nombres porte l'unité sur chaque nombre ; l'écran d'administration du catalogue garde les codes.
 
 ### AV-250 — Diagnostic « Tester la synchronisation » de l'application livrée — SECONDAIRE — **TRANCHÉ**
 - **Question** : garder le bouton qui enregistre un paramètre système de test (`organization.setting.set`) ?
@@ -1904,6 +1925,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (b).
 - **Décision** (porteur du projet, 13/10/2026) : (c), retiré de l'application ; l'écran de synchronisation garde « Forcer la synchronisation » et les listes d'opérations.
 - **Impact** : écran ECR-SYN-01 ; lot de mise en pilote (MP-09).
+- **Mise en œuvre** (MP-09, 14/10/2026) : diagnostic, textes et test retirés de `SyncScreen.tsx` ; les commandes de diagnostic déjà en attente dans un navigateur y restent (rien ne disparaît, BR-SYN-013) et s'appliqueraient si l'appareil était approuvé : à vérifier sur le poste du porteur en MP-11.
 
 ### AV-251 — Changement du mot de passe provisoire — IMPORTANTE — **TRANCHÉ**
 - **Question** : un compte créé ou réinitialisé avec un mot de passe provisoire (`must_change_password`) doit-il être bloqué tant qu'il ne l'a pas changé ?
@@ -1944,6 +1966,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) tous comptés, ventilés par type dans le détail, gravité « avertissement » pour les seuls drapeaux de contrôle (prix, stock, crédit, caisse), lien vers les ventes ; (b) drapeaux informatifs exclus du signal.
 - **Recommandation** : (a).
 - **Impact** : `home-service.ts` (signal `SALES_FLAGGED`), PWA. Défaut retenu pour le lot de mise en pilote : (a) (MP-09). Non paramétrable.
+- **Mise en œuvre** (MP-09, 14/10/2026) : `flaggedSalesOfDay` (`sales`, mêmes ventes que le compteur du jour : non annulées, datées du jour, dans le périmètre) ; signal construit par `flaggedSalesSignal` (`home-format.ts`) : « N ventes du jour signalées », ventilation « Stock devenu négatif : 2 · Vente hors prise de service : 3 » (contrôles d'abord, 240 caractères au plus), avertissement dès un drapeau de contrôle, information sinon, action « Voir les ventes signalées ». Seul `OUT_OF_SESSION` est informatif ; tout autre drapeau, connu ou non, est un contrôle (**DÉDUIT** : l'AV ne classe que prix, stock, crédit et caisse ; le défaut le plus prudent range les autres en contrôle). PWA : le signal mène à `/ventes?anomalies=1` (`signalQuery`, ADR-036), liste filtrée sur les ventes du jour signalées connues de l'appareil, retour à toutes les ventes ; libellés des drapeaux sur chaque ligne.
 
 ### AV-256 — Valeur du stock de l'entreprise : la marchandise en transit compte-t-elle ? — SECONDAIRE
 - **Question** : KPI-STK-02 (« Σ solde × coût unitaire courant ») exclut aujourd'hui les emplacements virtuels, donc le transit : une marchandise expédiée, qui appartient encore au GIC, disparaît de la valeur jusqu'à sa réception. Faut-il l'inclure ?
@@ -1951,6 +1974,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) comprise pour la portée de toute l'entreprise, montrée dans le détail ; hors transit pour un site ; pertes en attente exclues mais affichées à part ; (b) inchangé.
 - **Recommandation** : (a).
 - **Impact** : `inventory` (lecture de l'accueil), D11 KPI-STK-02. Défaut retenu pour le lot de mise en pilote : (a). Non paramétrable.
+- **Mise en œuvre** (MP-09, 14/10/2026) : `stockHealth` rend `transitValueXaf` et `pendingLossValueXaf` (soldes de `V_TRANSIT` et `V_PENDING_LOSS`, emplacements sans site) pour la portée de toute l'entreprise seulement, `null` pour un site ; KPI-STK-02 de la Direction et du magasinier à portée globale : valeur + transit, détail « au coût moyen pondéré · dont X en transit · pertes en attente à part : Y ». Le transit peut être négatif tant qu'une réception sans document n'est pas rapprochée (P5-16) : affiché tel quel, le total reste exact (**DÉDUIT**). Hors périmètre de l'AV, signalé au porteur : la marchandise vendue « à livrer » (`V_TO_DELIVER`) reste hors de la valeur.
 
 ### AV-257 — Permissions des rôles modifiables depuis l'application ? — SECONDAIRE
 - **Question** : l'écran d'administration des utilisateurs (ECR-ADM-04) doit-il permettre de modifier les permissions d'un rôle (`identity.role.set_permissions`), ou seulement d'affecter des rôles ?
@@ -2116,6 +2140,162 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) ventes du lot et de ses produits d'abattage ; œufs exclus ; (b) œufs inclus, crédit au coût standard retiré de la marge ; (c) inchangé.
 - **Recommandation** : (a) : aucune valeur n'est comptée deux fois.
 - **Impact** : `production-api` (marge de lot), lecture publique `slaughterStockLotIds` ([ADR-044](decisions/ADR-044-couts-complets-et-marges-p8.md) §1). Défaut implémenté : (a) (P8). Non paramétrable.
+
+
+### AV-280 — Règles d'un nouveau mot de passe : longueur maximale, réemploi — SECONDAIRE
+- **Question** : au-delà des 8 caractères au moins (AV-008, 02-securite §2), un nouveau mot de passe a-t-il une longueur maximale ? Peut-il être identique à celui qu'il remplace ?
+- **Pourquoi** : en construisant MP-08, le changement acceptait un nouveau mot de passe identique à l'actuel. Après une réinitialisation, l'utilisateur aurait donc pu « changer » vers le mot de passe provisoire, que l'Admin connaît. Aucune borne haute n'existait, alors que le hachage argon2id est coûteux. Les sources ne disent rien de la composition, de l'historique ni de l'expiration. **DÉDUIT**.
+- **Choix** : (a) 8 à 128 caractères, différent de celui qu'il remplace, sans autre règle ; (b) en plus, une composition imposée (chiffres, lettres) ; (c) en plus, un historique et une expiration.
+- **Recommandation** : (a), adapté à des utilisateurs de terrain sur téléphone ; (b) et (c) seulement si le porteur le demande.
+- **Impact** : `packages/domain/src/password.ts` (`newPasswordProblem`), création d'un compte, `POST /auth/change-password`, réinitialisation, écrans de la PWA ; ADR-045. Défaut implémenté : (a), bornes en constantes partagées.
+
+### AV-281 — Gardes de la réinitialisation du mot de passe par l'Admin — SECONDAIRE
+- **Question** : l'Admin peut-il réinitialiser son propre mot de passe, celui d'un compte désactivé, suspendu, ou du compte système ? La réinitialisation lève-t-elle le verrouillage d'un compte bloqué par des échecs ?
+- **Pourquoi** : AV-252 fixe le principe (mot de passe saisi par l'Admin), pas ces cas limites. **DÉDUIT**.
+- **Choix** :
+  - (a) son propre compte refusé (`RESET_OWN_PASSWORD`) : il passe par le changement, avec l'actuel ;
+  - compte désactivé refusé (`USER_DEACTIVATED`) : à réactiver d'abord ;
+  - compte suspendu accepté ;
+  - compte système introuvable pour cette route ;
+  - verrouillage de l'identifiant levé.
+
+  (b) Aucune garde au-delà du droit.
+- **Recommandation** : (a).
+- **Impact** : `POST /users/{id}/reset-password`, `GET /users` (`actions.resetPassword`), écran des utilisateurs ; ADR-045. Défaut implémenté : (a).
+
+### AV-282 — Session révoquée ou compte suspendu : refus immédiat des requêtes ? — IMPORTANTE — **TRANCHÉ**
+- **Question** : une session révoquée (réinitialisation, suspension, déconnexion) ou un compte suspendu doivent-ils être refusés dès la requête suivante, ou à l'expiration du jeton d'accès ?
+- **Pourquoi** : `AuthGuard` vérifie la signature et l'expiration du jeton (15 min), mais ne relit ni la session ni le statut de l'utilisateur ou de l'appareil. 02-securite §5 dit pourtant que « le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil » à chaque requête. Les commandes sont protégées (le pipeline vérifie l'utilisateur et l'appareil), pas les lectures ni `change-password`. **CONFIRMÉ** (lecture du code, MP-08).
+- **Choix** : (a) inchangé : refus au renouvellement, au plus 15 min ; (b) contrôle de la session (révocation) et des statuts à chaque requête, avec un cache court ; (c) jeton d'accès plus court.
+- **Recommandation** : (b), avant la mise en production.
+- **Impact** : `AuthGuard`, performances (une lecture par requête, ou un cache) ; 02-securite §3 et §5 ; MP-11 ou P10. Non paramétrable.
+- **Décision** (porteur du projet, 14/10/2026) : (b), « blocage immédiat » : le serveur vérifie à chaque requête la session et le statut du compte et de l'appareil, avec un petit cache de quelques secondes.
+- **Mise en œuvre** (MP-11, 14/10/2026) :
+  - `AuthGuard` lit l'état de la session du jeton (`session-state.ts`) : une session de sa **famille de rotation** encore vivante (le jeton émis juste avant une rotation porte l'identifiant de la ligne `ROTATED`), un utilisateur `ACTIVE`, un appareil `ACTIVE` ou `PENDING` (l'appareil en attente lit et voit son attente, AV-228). Sinon 401 `UNAUTHENTICATED`, motif dans `details.reason` (`SESSION_REVOKED`, `USER_INACTIVE`, `DEVICE_OUT_OF_SERVICE`).
+  - L'état est gardé 5 s par session et vidé par toute révocation du processus (déconnexion, réinitialisation, suspension, désactivation, blocage d'appareil, réutilisation, changement de mot de passe). Un statut changé sans révocation est vu au plus 5 s plus tard. Index `(token_family_id, revoked_at)` (migration `20261102090000`).
+  - La déconnexion révoque toute la famille de la session.
+  - Revue adverse de MP-11 : la réinitialisation du mot de passe exige en plus un appareil `ACTIVE` (RC-02, 403 `DEVICE_PENDING` audité) ; le changement du mot de passe révoque les autres sessions de l'utilisateur (motif `PASSWORD_CHANGED`, nombre dans l'audit).
+  - PWA : un 401 fait renouveler le jeton une fois, puis rejouer l'appel ; un renouvellement refusé vide la session (reconnexion).
+  - Conséquence (**DÉDUIT**) : un appareil bloqué, perdu ou retiré n'envoie plus rien dès le blocage, au lieu d'au plus 15 min après. Ses opérations en attente restent sur l'appareil jusqu'au déblocage et à une nouvelle connexion ; les faits datés d'avant le blocage sont alors acceptés (BR-SYN-007), ceux de la période hors service mis en quarantaine (INV-ADM-03).
+  - Tests : `auth-session-state.e2e.test.ts`, `identity-users-password.test.ts`, `api-client.test.ts` (PWA).
+
+### AV-283 — « Classer » une opération refusée ou en conflit sur l'appareil — SECONDAIRE
+- **Question** : comment l'utilisateur « prend-il connaissance » d'une opération refusée (BR-SYN-009, SM-SYNC-COMMAND : `REJECTED → ACKNOWLEDGED`, « archivé localement 30 jours ») ? Qui le peut sur une tablette partagée, et une opération en conflit se classe-t-elle aussi ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : une opération refusée reste « à examiner » sans aucun moyen de la classer. L'état `ACKNOWLEDGED` n'existe pas dans le protocole (`DEVICE_SYNC_STATES`), et d'autres écrans lisent le statut `REJECTED` (vente refusée, expédition ignorée ou ressaisie). Un conflit peut encore être résolu par le serveur et revenir par le téléchargement. **CONFIRMÉ** (navigateur et code).
+- **Choix** : (a) marque locale `ACKNOWLEDGED` (`local_flags`), statut inchangé, opération conservée ; classement par son seul auteur ; un conflit se classe aussi, sans être réglé ; aucun archivage ; (b) nouvel état `ACKNOWLEDGED` dans le protocole, purge après 30 jours ; (c) conflits exclus du classement.
+- **Recommandation** : (a) : rien ne disparaît (BR-SYN-013), les écrans qui lisent `REJECTED` ne changent pas, la résolution d'un conflit par le serveur s'applique toujours.
+- **Impact** : `apps/pwa/src/sync/outbox.ts` (`acknowledgeCommand`, `needsAttention`, `countAttention`), `useSyncStatus.ts`, `SyncScreen.tsx` (bouton « Classer », libellés français des types d'opération). Les expéditions refusées ignorées ou ressaisies (`DISMISSED`, `REENTERED`, écran des transferts) sortent aussi de la liste. Défaut implémenté : (a). Non paramétrable. L'archivage à 30 jours du SM reste à décider avec la purge de l'outbox.
+
+### AV-284 — « Encaisser le reste dû » depuis le reçu : sort du surplus — SECONDAIRE
+- **Question** : depuis le reçu d'une vente, l'encaissement doit-il régler cette vente avant les plus anciennes ? Que devient un montant supérieur à son reste dû ?
+- **Pourquoi** : vérification des écrans (13/10/2026) : le lien ouvrait l'encaissement du client sans montant, et l'affectation automatique (BR-FIN-004, la plus ancienne d'abord) pouvait régler une autre vente que celle du reçu. Le serveur accepte des affectations explicites et laisse le reste en crédit du client (`sales.payment.record`). **CONFIRMÉ** (navigateur et code).
+- **Choix** : (a) montant prérempli au reste dû de la vente ; affectation explicite à elle seule ; surplus en avoir du client ; « Répartir sur toutes les créances » revient à l'affectation automatique ; (b) comme (a), mais le surplus réparti sur les autres créances de la plus ancienne à la plus récente (affectations explicites calculées sur l'appareil, refusées en ligne si elles dépassent un reste dû) ; (c) préremplissage seul, affectation automatique.
+- **Recommandation** : (a).
+- **Impact** : `apps/pwa/src/features/sales/collect.ts` (`previewTargetedAllocation`, `allocationsOf` ; encaissements en attente imputés à leurs ventes), `CollectScreen.tsx` (paramètre `vente`, envoi attendu après la lecture des créances en ligne), `SaleDetailScreen.tsx`, `ROUTES.collectFor`. Vente déjà réglée entre-temps : avertissement et affectation automatique ; hors ligne, la part devenue sans objet reste en crédit (fait accompli, serveur inchangé). Défaut implémenté : (a). Non paramétrable.
+
+### AV-285 — Régularisation de la « photo manquante » d'une réception — IMPORTANTE — **TRANCHÉ**
+- **Question** : une réception enregistrée sans la photo exigée du bon de livraison ouvre le conflit informatif `RECEIPT_PHOTO_MISSING` (AV-246). Quand ce signal se ferme-t-il ?
+- **Pourquoi** : AV-246 annonce que « la photo jointe ensuite la régularise (MP-10) », sans dire comment ; aucun code ne fermait le conflit. **CONFIRMÉ** (lecture du code, 14/10/2026).
+- **Choix** : (a) fermeture automatique à la réception de la photo, et manuelle par le Resp. achats avec un motif ; (b) automatique seulement ; (c) manuelle seulement.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a).
+- **Impact** : fin de l'envoi des octets (`attachments-api/upload.controller.ts`, `regularizeReceiptPhoto` de `procurement`) ; la photo (`DELIVERY_NOTE` de la `GOODS_RECEIPT`) est jointe après coup par son auteur ; clôture manuelle par `sync.conflict.dismiss` (motif obligatoire, existant) ; ADR-046.
+- **Mise en œuvre** (MP-10, 14/10/2026) : serveur (`procurement-receipt-commands.test.ts`) ; « Joindre la photo du bon » dans la PWA, depuis le résultat de la réception et la liste des réceptions de l'utilisateur, avec le badge « Photo manquante » tant qu'aucune photo n'est reçue ou en route. Revue de MP-10 : la fermeture automatique est réservée à une photo dont l'auteur est le réceptionnaire, ou peut enregistrer des réceptions sur le site de la réception (`canRegularizeReceiptPhoto`) ; celle d'un tiers reste reçue, le signal reste ouvert pour le Resp. achats (**DÉDUIT** : sans cela, un fichier quelconque contournait la clôture motivée).
+
+### AV-286 — Photo visible par les valideurs — IMPORTANTE — **TRANCHÉ**
+- **Question** : la Direction, le Resp. production et le Resp. achats doivent-ils voir la photo dans l'application avant de décider ?
+- **Pourquoi** : sans lecture, le valideur ne sait que « justificatif reçu » ; l'URL signée prévue (02-securite §6) attend le choix du stockage objet (AV-091). **CONFIRMÉ**.
+- **Choix** : (a) oui dès MP-10, lecture protégée ; (b) plus tard, avec le stockage définitif.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a). Fichiers sur le disque du serveur pour le pilote.
+- **Impact** : `GET /api/v1/attachments/{id}/content` (auteur, valideur d'une demande en attente sur le document, lecteur du document dans sa portée ; refus audité ; `private, no-store`) ; pièces de chaque demande dans `GET /approvals/inbox` ; écran des validations (PWA) ; ADR-046.
+- **Mise en œuvre** (MP-10, 14/10/2026) : serveur et PWA (« Voir la photo » sur chaque demande dont une pièce est reçue, nouvel essai après un échec ; `ApprovalsScreen.test.tsx`, `approvals-inbox.test.ts`).
+
+### AV-287 — Chiffrement des photos en attente sur le téléphone — IMPORTANTE — **TRANCHÉ**
+- **Question** : faut-il chiffrer dès MP-10 les photos qui attendent leur envoi sur le téléphone ?
+- **Pourquoi** : 01-architecture-offline §2 annonce des pièces locales chiffrées, mais la file des opérations ne l'est pas aujourd'hui (seul le jeton de session l'est) ; une clé tirée du PIN rendrait une photo non envoyée illisible après une réinitialisation du PIN. **CONFIRMÉ**.
+- **Choix** : (a) pas encore, comme la file des opérations ; chiffrement de tout le stockage local traité en une fois avant la production ; (b) oui, avec une clé tirée du PIN.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (a).
+- **Impact** : magasins `attachmentFiles` et `attachmentBlobs` de la PWA en clair, comme `outbox` ; **à traiter avant la mise en production** : chiffrement de la file des opérations et des pièces locales (01-architecture-offline §2, 02-securite §5).
+
+### AV-288 — Photo d'une perte hors mortalité — IMPORTANTE — **TRANCHÉ**
+- **Question** : quand la photo d'une perte (hors mortalité) est-elle exigée avant que le responsable puisse approuver ?
+- **Pourquoi** : AV-037 propose des seuils de photo (casse, détérioration, produit impropre à partir de 10 000 F ; destruction toujours), jamais appliqués : aucune politique `LOSS_DECLARATION` n'est semée et la garde de photo ne vise que la mortalité. **CONFIRMÉ**.
+- **Choix** : (a) selon les seuils d'AV-037 ; (b) toujours facultative ; (c) exigée pour toute perte validée.
+- **Recommandation** : (a).
+- **Décision** (porteur du projet, 14/10/2026) : (b), toujours facultative : la photo est proposée, jamais exigée ; seule la mortalité l'exige (AV-107, AV-048). Tranche la partie « photo » d'AV-037 ; ses seuils de validation restent ouverts.
+- **Impact** : la photo d'une perte n'est pas citée par l'opération (aucune validation ne l'attend) ; elle reste rattachée à la déclaration (`STOCK_LOSS`) et visible du valideur ; ADR-046.
+
+### AV-289 — Validation d'une réception sans BC dont la photo manque — SECONDAIRE
+- **Question** : D08 et SM-RECEIPT disent que la validation `RECEIPT_WITHOUT_PO` « exige la photo reçue » ; depuis MP-04, une réception sans BC peut être enregistrée sans photo, et sa validation n'exige alors aucune pièce. Faut-il bloquer l'approbation tant qu'aucune photo du document n'est reçue, comme la mortalité ?
+- **Pourquoi** : constat de la lecture de MP-10 ; la réception sans BC n'est pas proposée par la PWA et ses politiques ne sont pas semées (S-24). **CONFIRMÉ**.
+- **Choix** : (a) inchangé : seules les pièces citées par la réception sont exigées ; (b) approbation bloquée sans photo `AVAILABLE` du document.
+- **Recommandation** : (b) quand la PWA proposera la réception sans BC.
+- **Impact** : décision `RECEIPT_WITHOUT_PO` (`procurement`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-290 — Photo refusée ou jamais reçue — SECONDAIRE
+- **Question** : que faire d'une photo dont l'enregistrement est refusé, dont l'empreinte ou la signature est fausse (`QUARANTINED`, état final), ou qui n'arrive jamais ?
+- **Pourquoi** : SM-ATTACHMENT n'a aucune transition depuis `QUARANTINED` ; aucune tâche ne pose `MISSING` après 7 jours. **CONFIRMÉ**.
+- **Choix** : (a) nouvelle photo à prendre (nouvelle pièce, même document) ; aucune relance automatique ; `MISSING` et alerte `ATTACHMENT_MISSING` avec les alertes de P9 ; (b) reprise de la même pièce (`QUARANTINED` → `PENDING_UPLOAD`).
+- **Recommandation** : (a).
+- **Impact** : PWA (état « refusée » de la photo, nouvelle photo possible) ; P9 (tâche des 7 jours). Défaut implémenté : (a).
+- **Mise en œuvre** (MP-10, 14/10/2026, revue adverse) :
+  - une pièce exigée par une validation, refusée ou jamais enregistrée, est **remplacée** par une autre pièce reçue du même document, de même nature si la pièce exigée est connue (`requiredAttachmentsSatisfied`, décision et file de validation) : sans cela, la liste figée bloquait l'approbation à vie ;
+  - la PWA propose de reprendre la photo d'une réception refusée et celle d'une mortalité en attente, quel que soit son jour ;
+  - seule une réponse portant un code d'erreur connu du serveur rend un envoi définitivement refusé ; une réponse sans code (passerelle, pare-feu) est réessayée ;
+  - une fin d'envoi interrompue après l'écriture du dernier morceau est constatée à la session suivante ou au renvoi : la pièce n'attend plus sans fin ;
+  - l'écran de synchronisation compte les photos refusées à reprendre.
+
+### AV-291 — Formats, nombre et budget local des photos — SECONDAIRE
+- **Question** : quels fichiers accepter sur le téléphone, combien de photos par opération, et que faire quand l'espace réservé aux photos en attente est plein ?
+- **Pourquoi** : le serveur accepte JPEG, WebP et PDF ; HEIC (iPhone) ne se décode pas partout ; NFR-06 fixe 50 Mo de pièces en attente, sans dire quoi faire au-delà. **DÉDUIT**.
+- **Choix** : (a) toute image décodable, recodée en JPEG ; une photo par opération ; au-delà de 50 Mo en attente, la photo est refusée avec un message et l'opération part sans elle ; PDF avec la facture fournisseur ; (b) plusieurs photos par opération.
+- **Recommandation** : (a) pour le pilote.
+- **Impact** : PWA (`PhotoField`, budget). Défaut implémenté : (a).
+- **Mise en œuvre** (MP-10, 14/10/2026) : « Prendre une photo » (caméra arrière) ou « Choisir une image » ; image illisible (HEIC sur Android…) ou espace plein : message, l'opération part sans photo ; recodage JPEG (`photo.ts`) ; budget de 50 Mo de photos en attente (`PHOTO_PENDING_BUDGET_BYTES`).
+
+### AV-292 — Stockage des fichiers pour le pilote — SECONDAIRE
+- **Question** : où le serveur du pilote garde-t-il les photos, tant que le stockage objet n'est pas choisi (AV-091) ?
+- **Pourquoi** : le défaut est le répertoire temporaire du système (`ATTACHMENTS_STORAGE_DIR`), hors sauvegarde. **CONFIRMÉ**.
+- **Choix** : (a) disque local du serveur, sur un volume sauvegardé, désigné par `ATTACHMENTS_STORAGE_DIR` ; (b) stockage objet compatible S3 dès le pilote.
+- **Recommandation** : (a) ; l'interface `ChunkStorage` permet de changer ensuite.
+- **Impact** : configuration du déploiement (P0-17) ; aucune donnée perdue au changement si les fichiers sont recopiés. Défaut : (a), à configurer.
+
+### AV-293 — Métadonnées des pièces jointes servies à tous les appareils — SECONDAIRE
+- **Question** : le jeu hors ligne `attachment` doit-il rester servi à tout appareil (identifiant, propriétaire, nature, statut de chaque pièce de l'entreprise), ou être limité à l'auteur de la pièce ?
+- **Pourquoi** : revue adverse de MP-10 : le pipeline écrit pour toute commande appliquée une ligne de flux en portée `GLOBAL` (repli générique, P0-06), et la fin d'envoi aussi ; le tirage n'a pas de liste blanche de jeux. Écart avec 02-securite §6 (« l'appareil ne reçoit que son périmètre »). Le contenu reste protégé par la lecture contrôlée (AV-286). **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé pour le pilote ; (b) jeu propre à l'auteur (portée `USER`) et liste blanche des jeux au tirage, sans repli `GLOBAL` pour les pièces ; (c) portée du site du document.
+- **Recommandation** : (b), avec le durcissement du tirage (touche le pipeline et `sync/`, à mener avec l'intégration de P9).
+- **Impact** : `command-pipeline.service.ts` (repli), `sync-pull.service.ts`, `upload.controller.ts`, PWA (`useOwnerPhotos` n'y lirait plus que ses pièces). Défaut implémenté : (a).
+
+### AV-294 — Politiques de contrôle des achats par défaut — IMPORTANTE
+- **Question** : quelles politiques de validation des achats une base neuve doit-elle porter : demande d'achat, bon de commande au-delà du seuil, réception sans bon de commande, réception en quarantaine, annulation d'une réception ?
+- **Pourquoi** : revue adverse de MP-11 : aucune n'était semée. Sur une base neuve, toute demande d'achat, tout BC au-delà du seuil, toute réception sans BC ou en quarantaine et toute annulation de réception étaient refusés (`CONTROL_POLICY_MISSING`), y compris une réception saisie hors ligne, fait physique (BR-SYN-007). Le suivi des besoins serveur (S-24) le notait sans AV. **CONFIRMÉ** (lecture du code et du seed).
+- **Choix** : (a) une politique par type, sans condition, approbateur selon 01-rbac (demande d'achat, réception sans BC ou en quarantaine, annulation : Resp. achats ou Direction ; BC au-delà du seuil : Direction), portée `ALL` ; (b) même chose en portée `SITE` ; (c) aucune politique semée, l'Admin les crée avant le pilote (`approvals.policy.set`, sans écran).
+- **Recommandation** : (a).
+- **Impact** : `db/seeds/procurement-references.ts` (codes `*_DEFAULT`, en vigueur depuis 2020 : une politique créée ensuite passe devant), publiées dans le jeu `policies` ; seuil du BC inchangé (`procurement.po_approval_threshold_xaf`, BR-APP-005). Reste (**DÉDUIT**) : si l'Admin retire la politique d'un type, une réception hors ligne de ce type est de nouveau refusée ; l'appliquer sans demande, comme la caisse (AV-183), demande un état de sortie pour une réception en quarantaine sans validation, à décider avec ce cas. Défaut implémenté : (a), modifiable par `approvals.policy.set`.
+
+### AV-295 — Droit de décider une validation, jugé aussi à la réception — SECONDAIRE
+- **Question** : le droit d'approuver une demande (et l'auto-validation de la Direction) doit-il valoir seulement à la date déclarée par l'appareil (`occurred_at`, RC-01), ou aussi quand le serveur reçoit la décision ?
+- **Pourquoi** : revue adverse de MP-11 : une décision se prend en ligne (SM-APPROVAL ; `ONLINE_REQUIRED` sinon), mais ses droits étaient jugés à la date déclarée, sans borne basse (AV-078 non appliqué). Un approbateur dont le rôle a été retiré pouvait antidater sa décision, une Direction déchue valider sa propre demande. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé, date déclarée seulement ; (b) date déclarée **et** réception par le serveur (`sync_command_inbox.received_at`) ; (c) réception seulement.
+- **Recommandation** : (b) : RC-01 reste vrai, et une décision prise en ligne a ses deux dates à quelques secondes l'une de l'autre.
+- **Impact** : `decideApprovalRequest` (`receivedAt`), commandes `approvals.request.approve` / `.reject` et façades (`finance.cash_session.validate`, `finance.cash_transfer.close_discrepancy`, `finance.supplier_invoice.approve`) ; refus `APPROVER_NOT_ALLOWED` ou `SELF_APPROVAL_FORBIDDEN`. Les autres commandes gardent la règle de RC-01 jusqu'à la fenêtre d'antidatage d'AV-078 (avant la production). Défaut implémenté : (b). Non paramétrable.
+
+### AV-296 — Appareil non partagé lié à l'utilisateur qui l'a connecté — SECONDAIRE
+- **Question** : un compte peut-il se connecter sur un appareil non partagé (`is_shared` faux) connecté d'abord par un autre utilisateur, et profiter de son statut (`ACTIVE`) ?
+- **Pourquoi** : revue adverse de MP-11 : le serveur retrouve l'appareil par l'identifiant fourni par la PWA et rend son statut, sans comparer `enrolled_by_user_id` ni `is_shared`. Un compte valide qui connaît l'identifiant d'un appareil actif (lisible par `identity.device.read`, présent dans le jeton de chaque utilisateur d'une tablette partagée) contourne AV-258 (nul n'approuve l'appareil qu'il a connecté). Il ne gagne aucun droit : le RBAC reste celui du compte. Risque assumé au MVP par 02-securite §5 (l'identifiant d'appareil n'authentifie pas ; clé d'appareil F-18 non retenue). **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé ; (b) appareil non partagé lié à l'utilisateur qui l'a connecté : un autre compte y obtient une demande d'enrôlement distincte, en attente, ou un refus ; l'Admin le désigne « partagé » s'il change de main ; (c) clé d'appareil (F-18).
+- **Recommandation** : (b) avant le déploiement du pilote, (c) avant la production.
+- **Impact** : `findOrEnrollDevice` et connexion ; PWA (identifiant d'appareil par utilisateur, ou message) ; réaffectation d'un téléphone d'un vendeur à un autre (désignation « partagé », ou retrait puis nouvel enrôlement) ; AV-258. Défaut implémenté : (a).
+
+### AV-297 — Verrouillage de connexion : essais simultanés, adresse derrière un proxy — SECONDAIRE
+- **Question** : comment garantir le blocage progressif (5 échecs, 02-securite §2) quand des essais arrivent en même temps, et compter l'adresse réelle de l'appareil derrière le CDN prévu (04-deploiement §2) ?
+- **Pourquoi** : revue adverse de MP-11 : le blocage est lu avant la vérification du mot de passe et l'échec compté après ; N requêtes simultanées passent toutes le contrôle (connexion et changement du mot de passe). Le serveur ne lisait pas l'adresse transmise par un proxy : derrière le CDN, toutes les requêtes auraient l'adresse du CDN, et le compteur par adresse bloquerait tout le monde. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) adresses du proxy de confiance (`TRUST_PROXY`) et limitation de débit au proxy, plus réservation atomique de l'essai avant la vérification (compté d'avance, remis à zéro par une connexion réussie) ; (b) `TRUST_PROXY` et limitation de débit au proxy seulement ; (c) inchangé.
+- **Recommandation** : (a) avant la production ; (b) suffit au pilote, l'essai réussi devant de toute façon payer une vérification argon2 (quelques centaines d'essais par palier au plus).
+- **Impact** : MP-11 : variable `TRUST_PROXY` (`true`, nombre de proxys, ou liste d'adresses ; désactivée par défaut), à régler au déploiement (P0-17) avec la limitation de débit du CDN. Reste la réservation atomique (`login-lockout.ts`, `auth.controller.ts`), sans changer le refus d'un appareil hors service après un mot de passe juste (AV-253 : aucun échec compté). Défaut implémenté : (b).
 
 ### AV-400 — Seuils des alertes : où les paramétrer — SECONDAIRE
 - **Question** : Les seuils des alertes (D13 §7.1) sont-ils portés par `alert_rules.thresholds` (dictionnaire) ou par `organization.system_settings` ?
@@ -2480,7 +2660,6 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) l'ancienneté se compte depuis la plus tardive de la confirmation et de la date de livraison demandée (`requested_delivery_date`) ; (b) depuis la confirmation seule (AV-132 à la lettre) ; (c) ne jamais alerter une livraison planifiée.
 - **Recommandation** : (a).
 - **Impact** : `sales` (`sales.orders.undelivered_check`, lecture `listUndeliveredSales`). Défaut implémenté : (a). Paramétrable : `sales.undelivered_alert_days`.
-
 ---
 
 ## 3. Journal des décisions
@@ -2560,3 +2739,8 @@ Politique par défaut, paramétrable :
 | 13/10/2026 | AV-259 | Rattachement d'un appareil : site cible dans la portée de l'auteur | Porteur du projet |
 | 13/10/2026 | AV-260 | Le site de rattachement d'un appareil compte dans la portée de son responsable | Porteur du projet |
 | 13/10/2026 | AV-261 | Lecture des appareils accordée au Responsable production (portée SITE) | Porteur du projet |
+| 14/10/2026 | AV-285 | Photo manquante d'une réception : fermeture automatique à la réception de la photo, et manuelle par le Resp. achats avec motif | Porteur du projet |
+| 14/10/2026 | AV-286 | Les valideurs voient la photo dans l'application dès MP-10 (lecture protégée) | Porteur du projet |
+| 14/10/2026 | AV-287 | Photos en attente non chiffrées pour l'instant ; chiffrement de tout le stockage local avant la production | Porteur du projet |
+| 14/10/2026 | AV-288 | Photo d'une perte toujours facultative ; seule la mortalité l'exige | Porteur du projet |
+| 14/10/2026 | AV-282 | Blocage immédiat : session, compte et appareil vérifiés à chaque requête, avec un cache de quelques secondes | Porteur du projet |

@@ -15,7 +15,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import {
   closeTestDb,
@@ -25,6 +24,7 @@ import {
   insertTestUser,
   insertTestZone,
   openTestCashSession,
+  signTestAccessToken,
 } from './helpers.js';
 import { fund, newAccount, newActor, tx, type Actor } from './cash-transfer-fixtures.js';
 import { newOrder, newSupplier } from './supplier-ledger-fixtures.js';
@@ -129,7 +129,7 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
     for (const actor of [fin, ach, admin, venA, terrain, mag, rpr]) {
       tokens.set(
         actor.userId,
-        await signAccessToken(
+        await signTestAccessToken(
           jwtKeys.privateKey,
           { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
           clock.now(),

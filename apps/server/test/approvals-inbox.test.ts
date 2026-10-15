@@ -7,6 +7,7 @@
  * Base partagée : politiques de test retirées dès leur création (elles ne s'appliquent à rien d'autre),
  * demandes datées de 2019 pour passer en tête de la file (la plus ancienne d'abord), annulées à la fin.
  */
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -19,8 +20,9 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { CHUNK_STORAGE } from '../src/platform/storage/chunk-storage.provider.js';
+import type { ChunkStorage } from '../src/platform/storage/chunk-storage.js';
 import {
   APPROVAL_DECISION_HANDLER_REGISTRY,
   OPERATION_TYPES,
@@ -36,6 +38,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 import { newActor, tx, type Actor } from './cash-transfer-fixtures.js';
 
@@ -49,6 +52,11 @@ interface InboxEntry {
   readonly amountMasked: boolean;
   readonly requestedByName: string | null;
   readonly attachmentsPending: boolean;
+  readonly attachments: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly uploadStatus: string;
+  }[];
   readonly selfRequest: boolean;
 }
 
@@ -69,7 +77,7 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
   const requests: Record<string, string> = {};
 
   const tokenOf = (actor: Actor) =>
-    signAccessToken(
+    signTestAccessToken(
       app.get(JWT_KEYS).privateKey,
       { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
       clock.now(),
@@ -353,6 +361,24 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     // Lecture sans droit d'approbation : rien ; l'Admin n'a pas la file (RC-03).
     expect(await inboxOf(magasinier)).toEqual([]);
     expect((await get(admin, '/api/v1/approvals/inbox')).statusCode).toBe(403);
+
+    // MP-11 : l'accueil lit la même file — la propre demande de la Direction y compte (les demandes
+    // du test sont les plus anciennes : dans la première page), pas celle du Resp. commercial pour
+    // lui-même ; décompte au-delà d'une page, « tronqué » au-delà des pages lues.
+    const directionHome = await pendingApprovalsFor(db, direction.userId, clock.now());
+    expect(directionHome.items.map((entry) => entry.id)).toContain(requests.directionOwn);
+    const comHome = await pendingApprovalsFor(db, respCom.userId, clock.now());
+    expect(comHome).toMatchObject({ total: 3, truncated: false });
+    expect(comHome.items.map((entry) => entry.id)).toEqual([
+      requests.teamDiscount,
+      requests.lossS1,
+      requests.lossS2,
+    ]);
+    const atCap = await pendingApprovalsFor(db, respCom.userId, clock.now(), { cap: 3 });
+    expect(atCap).toMatchObject({ total: 3, truncated: false });
+    const capped = await pendingApprovalsFor(db, respCom.userId, clock.now(), { cap: 2 });
+    expect(capped).toMatchObject({ total: 2, truncated: true });
+    expect(capped.items.map((entry) => entry.id)).toEqual([requests.teamDiscount, requests.lossS1]);
   });
 
   it('filtre par type, pagination, pièce attendue (BR-ADM-020), montant au coût masqué (RC-05)', async () => {
@@ -380,8 +406,10 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
 
     // L'accueil partage la même lecture (montant masqué compris).
     const home = await pendingApprovalsFor(db, respFerme.userId, clock.now());
-    expect(home.find((entry) => entry.id === requests.lossS1)).toMatchObject({ amountXaf: null });
-    expect(home.map((entry) => entry.id)).not.toContain(requests.lossS2);
+    expect(home.items.find((entry) => entry.id === requests.lossS1)).toMatchObject({
+      amountXaf: null,
+    });
+    expect(home.items.map((entry) => entry.id)).not.toContain(requests.lossS2);
   });
 
   it('aucune décision hors ligne (SM-APPROVAL) : approuver ou refuser saisi hors ligne, refusé', async () => {
@@ -451,6 +479,48 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     expect(
       codeOf(await decide(direction, 'approvals.request.reject', requests.otherDiscount, {})),
     ).toMatch(/^VALIDATION_ERROR/);
+  });
+
+  it('MP-10 (AV-286) : la file liste les photos du document ; le valideur les voit, pas un autre', async () => {
+    const subject = await db
+      .selectFrom('approvals_approval_requests')
+      .select('subject_id')
+      .where('id', '=', toBin(requests.lossS1!))
+      .executeTakeFirstOrThrow();
+    const photoId = freshUuid();
+    const content = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('perte')]);
+    await app.get<ChunkStorage>(CHUNK_STORAGE).appendChunk(`attachments/${photoId}`, 0, content);
+    await db
+      .insertInto('attachments_attachments')
+      .values({
+        id: toBin(photoId),
+        owner_type: 'TEST_SUBJECT',
+        owner_id: subject.subject_id,
+        kind: 'PHOTO',
+        mime_type: 'image/jpeg',
+        size_bytes: content.length,
+        uploaded_bytes: content.length,
+        sha256: createHash('sha256').update(content).digest('hex'),
+        storage_key: `attachments/${photoId}`,
+        upload_status: 'AVAILABLE',
+        captured_at: new Date(),
+        occurred_at: new Date(),
+        created_by: toBin(admin.userId),
+      })
+      .execute();
+
+    const entry = (await inboxOf(respFerme)).find((item) => item.id === requests.lossS1);
+    expect(entry?.attachments).toEqual([{ id: photoId, kind: 'PHOTO', uploadStatus: 'AVAILABLE' }]);
+    // Valideurs de la perte (Resp. ferme du site, Resp. commercial de la zone) : la photo s'affiche.
+    for (const decider of [respFerme, respCom]) {
+      const read = await get(decider, `/api/v1/attachments/${photoId}/content`);
+      expect(read.statusCode, read.body).toBe(200);
+      expect(read.rawPayload.equals(content)).toBe(true);
+    }
+    // Ni la Finance (décide les écarts de caisse), ni le magasinier (aucune décision) : refus.
+    for (const outsider of [finance, magasinier]) {
+      expect((await get(outsider, `/api/v1/attachments/${photoId}/content`)).statusCode).toBe(403);
+    }
   });
 
   it('catalogue de décision fidèle aux gestionnaires des modules (ADR-018)', () => {

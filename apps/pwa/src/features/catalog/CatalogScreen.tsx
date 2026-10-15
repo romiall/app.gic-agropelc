@@ -37,6 +37,7 @@ import {
   PRICING_MODES,
   productPayload,
   reasonPayload,
+  reasonUpdatePayload,
   REASON_CATEGORIES,
   SPECIES,
   STOCK_FAMILIES,
@@ -681,6 +682,36 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
   ]);
   const touched = form.code !== '' || form.label !== '';
   const listed = reasons.filter((reason) => reason.category === form.category);
+  // MP-11 (AV-248) : libellé et commentaire exigé ajustables, motif désactivable, jamais supprimé.
+  const [editing, setEditing] = useState<{
+    readonly id: string;
+    readonly label: string;
+    readonly requiresComment: boolean;
+  } | null>(null);
+  const toggle = (reason: ReasonView) =>
+    void send({
+      authorUserId: userId,
+      commandType: reason.isActive
+        ? 'catalog.reason_code.deactivate'
+        : 'catalog.reason_code.reactivate',
+      aggregateType: 'REASON_CODE',
+      aggregateId: reason.id,
+      payload: {},
+    });
+  const saveEdit = (reason: ReasonView) => {
+    if (!editing) return;
+    const payload = reasonUpdatePayload(reason, editing);
+    if (!payload) return;
+    void send({
+      authorUserId: userId,
+      commandType: 'catalog.reason_code.update',
+      aggregateType: 'REASON_CODE',
+      aggregateId: reason.id,
+      payload,
+    }).then((ok) => {
+      if (ok) setEditing(null);
+    });
+  };
   const submit = () =>
     void send({
       authorUserId: userId,
@@ -711,20 +742,96 @@ function ReasonsSection({ reasons, send, blocked, userId, pending }: SectionProp
         <p className="home-muted">{t('catalog.none')}</p>
       ) : (
         <ul className="receipt-lines">
-          {listed.map((reason) => (
-            <li key={reason.id}>
-              <span>
-                <strong>{reason.label}</strong>
-                <small>
-                  {reason.code}
-                  {reason.lossCategory
-                    ? ` · ${t(`loss.categories.${reason.lossCategory}`, { defaultValue: reason.lossCategory })}`
-                    : ''}
-                </small>
-              </span>
-              <span>{reason.requiresComment ? t('catalog.requires_comment_short') : ''}</span>
-            </li>
-          ))}
+          {listed.map((reason) =>
+            editing?.id === reason.id ? (
+              <li
+                key={reason.id}
+                className="sale-block"
+                aria-label={t('catalog.edit_reason', { name: reason.label })}
+              >
+                <div className="field">
+                  <label htmlFor={`${ids.label}-${reason.id}`}>{t('catalog.label_label')}</label>
+                  <input
+                    id={`${ids.label}-${reason.id}`}
+                    className="text-input"
+                    maxLength={200}
+                    value={editing.label}
+                    onChange={(event) =>
+                      setEditing((current) =>
+                        current ? { ...current, label: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+                <label className="choice">
+                  <input
+                    type="checkbox"
+                    checked={editing.requiresComment}
+                    onChange={(event) =>
+                      setEditing((current) =>
+                        current ? { ...current, requiresComment: event.target.checked } : current,
+                      )
+                    }
+                  />
+                  {t('catalog.requires_comment_label')}
+                </label>
+                <div className="result-actions">
+                  <button
+                    type="button"
+                    disabled={blocked || reasonUpdatePayload(reason, editing) === null}
+                    onClick={() => saveEdit(reason)}
+                  >
+                    {t('catalog.save_reason', { name: reason.code })}
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setEditing(null)}>
+                    {t('price_rules.cancel')}
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li key={reason.id}>
+                <span>
+                  <strong>{reason.label}</strong>
+                  <small>
+                    {reason.code}
+                    {reason.lossCategory
+                      ? ` · ${t(`loss.categories.${reason.lossCategory}`, { defaultValue: reason.lossCategory })}`
+                      : ''}
+                    {reason.isActive ? '' : ` · ${t('catalog.status.INACTIVE')}`}
+                  </small>
+                </span>
+                <span>
+                  {reason.requiresComment ? t('catalog.requires_comment_short') : ''}
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={blocked}
+                    aria-label={t('catalog.edit_reason', { name: reason.label })}
+                    onClick={() =>
+                      setEditing({
+                        id: reason.id,
+                        label: reason.label,
+                        requiresComment: reason.requiresComment,
+                      })
+                    }
+                  >
+                    {t('catalog.edit_short')}
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={blocked}
+                    aria-label={t(reason.isActive ? 'catalog.deactivate' : 'catalog.reactivate', {
+                      name: reason.label,
+                    })}
+                    onClick={() => toggle(reason)}
+                  >
+                    {t(reason.isActive ? 'catalog.deactivate_short' : 'catalog.reactivate_short')}
+                  </button>
+                </span>
+              </li>
+            ),
+          )}
         </ul>
       )}
       <h3>{t('catalog.new_reason')}</h3>

@@ -334,6 +334,7 @@ export {
   isAllowedTransferReceiver,
   isAllowedTransferValidator,
   checkTransferImputation,
+  isTransferCarrierKnown,
   cashTransferUnreceivedHoursFrom,
   isTransferUnreceived,
   cashTransferSeriesCodeFrom,
@@ -586,3 +587,11 @@ export type {
 } from './analytics-catalog.js';
 export { KPI_CATALOG, kpiDefinitionOf, kpiHasPreviousPeriod, kpisToCreate } from './kpi-catalog.js';
 export type { KpiDefinition, KpiNature, KpiReferenceState } from './kpi-catalog.js';
+// Règles d'un nouveau mot de passe (MP-08 ; AV-008, AV-280).
+export {
+  LOGIN_PASSWORD_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  newPasswordProblem,
+} from './password.js';
+export type { NewPasswordProblem } from './password.js';

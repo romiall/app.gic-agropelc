@@ -1,6 +1,6 @@
 /**
  * Base locale Dexie (IndexedDB) — squelette P0-14 (06-offline-sync/01-architecture-
- * offline.md §2). Cinq magasins, alignés sur le tableau du §2 :
+ * offline.md §2). Magasins, alignés sur le tableau du §2 :
  *
  * - `outbox`      : commandes en attente (§5, structure conceptuelle de l'outbox) ;
  * - `projections` : état téléchargé par pull (`ref_*`/`scope_*` du §2, fusionnés ici en un
@@ -11,7 +11,12 @@
  * - `session`     : jetons **chiffrés** par la clé dérivée du PIN (`storage/crypto.ts`) ;
  * - `pin_lock`    : sel PBKDF2 et compteur d'échecs du PIN, par utilisateur (BR-ADM-024) —
  *                   distinct de `session` car lisible avant déverrouillage (déterminer quel
- *                   écran afficher n'exige pas de posséder déjà la clé dérivée).
+ *                   écran afficher n'exige pas de posséder déjà la clé dérivée) ;
+ * - `navigation`  : navigation par rôle mémorisée (ADR-036) ;
+ * - `attachmentFiles` et `attachmentBlobs` : pièces jointes en attente d'envoi (MP-10, ADR-012,
+ *                   ADR-046) — métadonnées et état d'envoi d'un côté, octets de l'autre (une liste
+ *                   suivie en direct ne recharge pas les photos) ; non chiffrées pour l'instant,
+ *                   comme l'outbox (AV-287).
  *
  * Migrations versionnées (Dexie `version()`) dès la première version, comme l'exige la
  * stack (05-stack.md §2.2) même si une seule version existe pour l'instant.
@@ -146,6 +151,48 @@ export interface PinLock {
  * de l'accueil, pour proposer le menu par rôle sans réseau. Aucun indicateur ni montant : seul ce
  * qui sert à naviguer est conservé.
  */
+/** État local d'une pièce jointe (MP-10, ADR-046). */
+export const ATTACHMENT_FILE_STATUSES = [
+  /** Enregistrée sur l'appareil, octets à envoyer (dès que sa commande d'enregistrement est acceptée). */
+  'QUEUED',
+  /** Envoi commencé : `uploaded_bytes` octets reçus par le serveur. */
+  'UPLOADING',
+  /** Reçue et vérifiée par le serveur (`AVAILABLE`) : octets retirés de l'appareil. */
+  'SENT',
+  /** Empreinte refusée par le serveur (`QUARANTINED`) : reprendre une nouvelle photo. */
+  'QUARANTINED',
+  /** Enregistrement refusé par le serveur, ou envoi refusé définitivement : elle ne partira pas. */
+  'REFUSED',
+] as const;
+export type AttachmentFileStatus = (typeof ATTACHMENT_FILE_STATUSES)[number];
+
+export interface AttachmentFile {
+  readonly attachment_id: string;
+  /** Seul l'auteur envoie les octets (serveur : `created_by`), avec sa session. */
+  readonly author_user_id: string;
+  readonly owner_type: string;
+  readonly owner_id: string;
+  readonly kind: string;
+  readonly mime_type: string;
+  readonly size_bytes: number;
+  readonly sha256: string;
+  readonly captured_at: string;
+  /** Commande `attachments.attachment.register` de l'outbox. */
+  readonly register_command_id: string;
+  status: AttachmentFileStatus;
+  uploaded_bytes: number;
+  attempts: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  sent_at?: string | null;
+}
+
+/** Octets d'une pièce en attente (`ArrayBuffer` : un `Blob` ne survit pas partout à IndexedDB). */
+export interface AttachmentBlob {
+  readonly attachment_id: string;
+  readonly bytes: ArrayBuffer;
+}
+
 export interface NavigationRecord {
   readonly user_id: string; // clé primaire
   readonly roles: readonly string[];
@@ -171,6 +218,8 @@ export class GicDatabase extends Dexie {
   session!: EntityTable<SessionRecord, 'key'>;
   pinLocks!: EntityTable<PinLock, 'user_id'>;
   navigation!: EntityTable<NavigationRecord, 'user_id'>;
+  attachmentFiles!: EntityTable<AttachmentFile, 'attachment_id'>;
+  attachmentBlobs!: EntityTable<AttachmentBlob, 'attachment_id'>;
 
   constructor(name = 'gic-agropelc') {
     super(name);
@@ -184,6 +233,11 @@ export class GicDatabase extends Dexie {
     });
     // Version 2 (fork « Écrans PWA ») : navigation par rôle mémorisée (ADR-036).
     this.version(2).stores({ navigation: 'user_id' });
+    // Version 3 (MP-10) : pièces jointes en attente d'envoi.
+    this.version(3).stores({
+      attachmentFiles: 'attachment_id, author_user_id, owner_id, register_command_id, status',
+      attachmentBlobs: 'attachment_id',
+    });
   }
 }
 

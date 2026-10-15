@@ -19,6 +19,8 @@ function stubUseAuth(
     state: { status: 'login_required', ...(error ? { error } : {}) },
     deviceId: 'device-1',
     loginWithPassword,
+    changeProvisionalPassword: vi.fn(),
+    cancelPasswordChange: vi.fn(),
     submitNewPin: vi.fn(),
     unlockWithPin: vi.fn(),
     logout: vi.fn(),

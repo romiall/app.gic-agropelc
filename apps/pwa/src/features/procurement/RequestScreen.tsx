@@ -12,6 +12,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
+import { unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { scopeSiteIds } from '../stock/stock-view.js';
@@ -277,7 +278,7 @@ export function RequestScreen() {
                       >
                         {row.units.map((unit) => (
                           <option key={unit.unitCode} value={unit.unitCode}>
-                            {unit.unitCode}
+                            {unitLabel(unit.unitCode)}
                           </option>
                         ))}
                       </select>
@@ -286,7 +287,7 @@ export function RequestScreen() {
                   <div className="field">
                     <label htmlFor={`${line.key}-price`}>
                       {t('purchase_request.price_label', {
-                        unit: row.product?.base_unit_code ?? '',
+                        unit: unitLabel(row.product?.base_unit_code ?? '', 1, refs.units),
                       })}
                     </label>
                     <input

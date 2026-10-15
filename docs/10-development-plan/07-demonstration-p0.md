@@ -60,9 +60,10 @@ parcours à exécuter, une fois un appareil disponible :
    servi localement) sur le réseau du poste de développement.
 2. Se connecter (ECR-ADM-01), établir le PIN (07-security-rbac/02-securite.md §3).
 3. Couper le réseau (mode avion).
-4. Depuis l'écran de synchronisation (ECR-SYN-01), utiliser le diagnostic (« Tester la
-   synchronisation ») : la commande rejoint l'outbox (pastille orange, UX-04), l'application
-   reste utilisable.
+4. Enregistrer une opération hors ligne (une vente, ECR-VEN-01) : la commande rejoint l'outbox
+   (pastille orange, UX-04), l'application reste utilisable. Le diagnostic « Tester la
+   synchronisation » d'origine est retiré depuis MP-09 (AV-250 : il enregistrait un vrai
+   paramètre système).
 5. Rétablir le réseau : la pastille passe au vert, la commande apparaît « Synchronisé » ;
    vérifier côté serveur (`GET /api/v1/audit` ou `db/tests`) que l'audit et l'événement de
    domaine portent le `correlation_id` de cette commande (P0-16).

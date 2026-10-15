@@ -176,6 +176,10 @@ describe('Appareils (ECR-ADM-05)', () => {
     await user.click(within(card).getByRole('button', { name: 'Refuser l’appareil 7KQ2' }));
     const confirm = within(card).getByRole('button', { name: 'Confirmer le refus de 7KQ2' });
     expect(confirm).toBeDisabled();
+    // MP-11 : le groupe de décision porte le code de l'appareil, pas le gabarit brut.
+    expect(
+      within(card).getByRole('group', { name: 'Refuser l’appareil 7KQ2' }),
+    ).toBeInTheDocument();
     await user.type(within(card).getByLabelText('Motif (obligatoire)'), 'Téléphone inconnu');
     expect(confirm).toBeEnabled();
     await user.click(confirm);
@@ -184,6 +188,17 @@ describe('Appareils (ECR-ADM-05)', () => {
       command_type: 'identity.device.block',
       payload: { reason: 'Téléphone inconnu' },
     });
+  });
+
+  it('MP-11 : « Actualiser la liste » relit les appareils ; l’appareil attendu apparaît', async () => {
+    serve([]);
+    const user = userEvent.setup();
+    renderScreen();
+    const refresh = await screen.findByRole('button', { name: 'Actualiser la liste' });
+    expect(screen.queryByRole('listitem', { name: 'Appareil 7KQ2' })).toBeNull();
+    serve([device()]);
+    await user.click(refresh);
+    expect(await screen.findByRole('listitem', { name: 'Appareil 7KQ2' })).toBeInTheDocument();
   });
 
   it('ce téléphone est signalé, avec un avertissement avant de le bloquer', async () => {

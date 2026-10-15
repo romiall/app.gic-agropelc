@@ -35,6 +35,8 @@ stateDiagram-v2
 | `CONFLICT` | Résolution serveur reçue par téléchargement | — | `SYNCED` / `REJECTED` | Effets serveur reflétés | — | — | — |
 | `REJECTED` | Prise de connaissance | — | `ACKNOWLEDGED` | Archivé localement 30 jours | — | — | — |
 
+Mise en œuvre de la PWA (MP-09, AV-283) : la prise de connaissance est le bouton « Classer » de l'écran de synchronisation, offert à l'auteur de l'opération. `ACKNOWLEDGED` y est une **marque locale** (`local_flags`) : l'opération garde son statut `REJECTED` et n'est pas effacée (BR-SYN-013) ; elle quitte la liste « à examiner » et le compteur. Une opération `CONFLICT` se classe de la même façon, sans être réglée : la résolution du serveur s'applique toujours. L'archivage à 30 jours n'est pas réalisé (AV-283).
+
 ### Côté serveur (inbox)
 
 | État initial | Action | Condition | Nouvel état | Effets |
@@ -165,9 +167,9 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `attachments.attachment.register` (dans l'opération) | Type et taille déclarés valides | `PENDING_UPLOAD` | `AttachmentRegistered` | — | — | Permission de l'opération |
-| `PENDING_UPLOAD` | Upload (morceaux) terminé | SHA-256 conforme ; type MIME conforme | `AVAILABLE` | `AttachmentUploaded` ; débloque la validation qui l'attendait (BR-ADM-020) | — | — | Auteur |
-| `PENDING_UPLOAD` | Upload terminé | Empreinte ou type non conforme | `QUARANTINED` | `AttachmentUploadFailed` ; nouvel essai demandé | — | — | `system` |
+| `[*]` | `attachments.attachment.register` (commande séparée, juste avant l'opération, sans dépendance ; ADR-046) | Type et taille déclarés valides | `PENDING_UPLOAD` | `AttachmentRegistered` | — | — | `attachments.attachment.manage` (AV-093) |
+| `PENDING_UPLOAD` | Upload (morceaux) terminé | SHA-256 conforme ; signature du fichier conforme au type déclaré | `AVAILABLE` | `AttachmentUploaded` ; débloque la validation qui l'attendait (BR-ADM-020) ; photo du bon de livraison d'une réception : clôt `RECEIPT_PHOTO_MISSING` (AV-285) | — | — | Auteur |
+| `PENDING_UPLOAD` | Upload terminé | Empreinte ou signature non conforme | `QUARANTINED` | `AttachmentUploadFailed` ; état final : une nouvelle photo est à prendre (AV-290) | — | — | `system` |
 | `PENDING_UPLOAD` | Délai de 7 jours | — | `MISSING` | Alerte `ATTACHMENT_MISSING` | — | — | `system` |
 | `AVAILABLE` | Remplacement | Nouvelle pièce `AVAILABLE` | `SUPERSEDED` | L'ancienne reste consultable | — | — | Auteur ou responsable |
 

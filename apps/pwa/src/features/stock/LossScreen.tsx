@@ -12,12 +12,15 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
 import { batchViews } from '../production/incubation.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { phaseOf, submitCommand } from '../sales/submit.js';
+import { photoAttachment } from '../attachments/attachments.js';
+import type { PreparedPhoto } from '../attachments/photo.js';
+import { PhotoField } from '../attachments/PhotoField.js';
 import {
   checkLoss,
   DEVICE_LOSS_CATEGORIES,
@@ -50,6 +53,8 @@ export function LossScreen() {
   const online = useOnline();
   const [locationChoice, setLocationChoice] = useState<string | null>(null);
   const [draft, setDraft] = useState<LossDraft>(EMPTY);
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [submitted, setSubmitted] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -72,6 +77,7 @@ export function LossScreen() {
             type="button"
             onClick={() => {
               setDraft(EMPTY);
+              setPhoto(null);
               setSubmitted(undefined);
             }}
           >
@@ -211,6 +217,7 @@ export function LossScreen() {
     !(lotRequired && !chosenLot) &&
     guard.blocks.length === 0 &&
     !(online && overAvailable) &&
+    !preparing &&
     !busy;
 
   const submit = async () => {
@@ -223,6 +230,14 @@ export function LossScreen() {
         commandType: 'inventory.loss.declare',
         aggregateType: 'STOCK_LOSS',
         aggregateId: idGenerator.newId(),
+        // Photo facultative (AV-288), rattachée à la déclaration sans être citée (ADR-046).
+        ...(photo
+          ? {
+              attachments: [
+                photoAttachment(photo, { kind: 'PHOTO', ownerType: 'STOCK_LOSS', cited: false }),
+              ],
+            }
+          : {}),
         payload: lossPayload({ ...effective, lotId, category: draft.category }, location.id, {
           ...check,
           quantity: check.quantity,
@@ -282,7 +297,7 @@ export function LossScreen() {
           <p className="home-muted">
             {t('sales.product_available', {
               quantity: formatQuantity(available),
-              unit: product.base_unit_code,
+              unit: unitLabel(product.base_unit_code, available, refs.units),
             })}
           </p>
         ) : null}
@@ -311,13 +326,13 @@ export function LossScreen() {
             >
               {units.map((candidate) => (
                 <option key={candidate.unitCode} value={candidate.unitCode}>
-                  {candidate.unitCode}
+                  {unitLabel(candidate.unitCode)}
                 </option>
               ))}
             </select>
           </div>
         ) : (
-          <p className="line-unit">{unitCode}</p>
+          <p className="line-unit">{unitLabel(unitCode)}</p>
         )}
       </div>
       {lots.length > 0 ? (
@@ -426,13 +441,21 @@ export function LossScreen() {
         )
       ) : null}
       {draft.productId || draft.quantityText || draft.category
-        ? check.issues.map((issue) => (
-            <p key={issue} className="error-message">
-              {t(`loss.issue.${issue}`)}
-            </p>
-          ))
+        ? check.issues
+            // Quantité jugée seulement une fois saisie : rien d'affiché au choix du produit (MP-09).
+            .filter((issue) => issue !== 'QUANTITY_INVALID' || draft.quantityText !== '')
+            .map((issue) => (
+              <p key={issue} className="error-message">
+                {t(`loss.issue.${issue}`)}
+              </p>
+            ))
         : null}
-      <p className="home-muted">{t('loss.photo_hint')}</p>
+      <PhotoField
+        label={t('photo.loss_label')}
+        value={photo}
+        onChange={setPhoto}
+        onBusyChange={setPreparing}
+      />
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}

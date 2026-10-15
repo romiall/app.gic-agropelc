@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type { FixedClock } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { getDb, type SyncMeta } from '../../storage/db.js';
@@ -137,14 +136,14 @@ describe('Autonomie hors connexion (AV-009)', () => {
     expect(await getDb().outbox.count()).toBe(0);
   });
 
-  it('diagnostic de l’écran de synchronisation : refusé en lecture seule, refus annoncé', async () => {
-    await lastSync(ago(169));
-    const user = userEvent.setup();
+  it('écran de synchronisation : plus de diagnostic qui enregistre un paramètre (MP-09, AV-250)', async () => {
+    await lastSync(ago(1));
     render(<SyncScreen />);
-    await user.click(await screen.findByRole('button', { name: 'Tester la synchronisation' }));
     expect(
-      await screen.findByText(/Lecture seule : .*Rien n’a été enregistré/),
+      await screen.findByRole('button', { name: 'Forcer la synchronisation' }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tester la synchronisation' })).toBeNull();
+    expect(screen.queryByText('Diagnostic')).toBeNull();
     expect(await getDb().outbox.count()).toBe(0);
   });
 

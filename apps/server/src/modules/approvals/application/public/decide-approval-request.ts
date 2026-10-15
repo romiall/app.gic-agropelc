@@ -9,6 +9,11 @@
  *
  * Renvoie le refus (code, message) sans rien écrire, ou `{ ok: true }` une fois la décision écrite.
  * L'appelant décide de la suite (refus de sa commande, rollback éventuel par l'exception du pipeline).
+ *
+ * MP-11 (revue adverse, AV-295) : une décision se prend en ligne ; le droit d'approuver et
+ * l'auto-validation de la Direction doivent valoir à la date déclarée (RC-01) **et** encore à la
+ * réception par le serveur (`receivedAt`) : une date antérieure déclarée par l'appareil (approbateur
+ * dont le rôle a été retiré depuis) ne suffit pas.
  */
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -19,7 +24,7 @@ import {
   evaluateAccess,
   type ResourceLocator,
 } from '../../../identity/application/public/index.js';
-import { areAttachmentsAvailable } from '../../../attachments/application/public/index.js';
+import { requiredAttachmentsSatisfied } from '../../../attachments/application/public/index.js';
 import {
   ApprovalDecisionRefused,
   type ApprovalDecisionHandlerRegistry,
@@ -32,6 +37,8 @@ export interface DecideApprovalRequestInput {
   readonly decision: 'APPROVED' | 'REJECTED';
   readonly decidedBy: string;
   readonly decidedAt: Date;
+  /** Réception de la commande par le serveur (`sync_command_inbox.received_at`) ; absente : `decidedAt`. */
+  readonly receivedAt?: Date;
   readonly comment?: string;
   readonly decisionOption?: string;
   readonly decisionData?: Readonly<Record<string, string>>;
@@ -89,27 +96,35 @@ export async function decideApprovalRequest(
     ...(fromBinOrNull(row.site_id) !== null ? { siteId: fromBinOrNull(row.site_id)! } : {}),
     ...(fromBinOrNull(row.zone_id) !== null ? { zoneId: fromBinOrNull(row.zone_id)! } : {}),
   };
-  const access = await evaluateAccess(uow, {
-    userId: input.decidedBy,
-    permissionCode: policy.approver_permission,
-    occurredAt: input.decidedAt,
-    resource,
-  });
-  if (!access.allowed) {
-    return refused(
-      'APPROVER_NOT_ALLOWED',
-      "Droit d'approbation insuffisant sur le périmètre de cette opération.",
-    );
+  // Date déclarée, puis réception si elle est postérieure (AV-295).
+  const judgedAt =
+    input.receivedAt !== undefined && input.receivedAt > input.decidedAt
+      ? [input.decidedAt, input.receivedAt]
+      : [input.decidedAt];
+  for (const at of judgedAt) {
+    const access = await evaluateAccess(uow, {
+      userId: input.decidedBy,
+      permissionCode: policy.approver_permission,
+      occurredAt: at,
+      resource,
+    });
+    if (!access.allowed) {
+      return refused(
+        'APPROVER_NOT_ALLOWED',
+        "Droit d'approbation insuffisant sur le périmètre de cette opération.",
+      );
+    }
   }
 
   // INV-ADM-02 : le marqueur ne suffit pas, l'auteur doit relever de la Direction à l'instant de la
   // décision (MP-07 : avant, tout approbateur pouvait valider sa propre demande en le posant).
   const isSelfRequest = input.decidedBy === fromBin(row.requested_by);
-  if (
-    isSelfRequest &&
-    (input.selfApproved !== true ||
-      !(await canSelfApproveAt(uow, input.decidedBy, input.decidedAt)))
-  ) {
+  let selfAllowed = input.selfApproved === true;
+  for (const at of judgedAt) {
+    if (isSelfRequest && selfAllowed)
+      selfAllowed = await canSelfApproveAt(uow, input.decidedBy, at);
+  }
+  if (isSelfRequest && !selfAllowed) {
     return refused(
       'SELF_APPROVAL_FORBIDDEN',
       "L'approbateur doit être différent du demandeur ; seule la Direction valide sa propre demande, explicitement (BR-ADM-017).",
@@ -120,7 +135,14 @@ export async function decideApprovalRequest(
     const requiredIds = Array.isArray(row.required_attachment_ids)
       ? row.required_attachment_ids.filter((v): v is string => typeof v === 'string')
       : [];
-    if (!(await areAttachmentsAvailable(uow, requiredIds))) {
+    // Pièce exigée ou, à défaut, une remplaçante reçue du même document (AV-290, revue de MP-10).
+    if (
+      !(await requiredAttachmentsSatisfied(uow, {
+        requiredIds,
+        ownerType: row.subject_type,
+        ownerId: fromBin(row.subject_id),
+      }))
+    ) {
       return refused(
         'ATTACHMENT_MISSING',
         'Pièce justificative requise non encore reçue (BR-ADM-020).',

@@ -156,30 +156,17 @@ const EXPENSE_WINDOW = sql<boolean>`(occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL
 const ACTIVITY_WINDOW = sql<boolean>`a.occurred_at >= (UTC_TIMESTAMP(6) - INTERVAL 90 DAY)`;
 
 const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
+  // MP-08 (ADR-045) : la fiche d'un utilisateur est servie à tous les appareils (ligne `GLOBAL` du repli
+  // du pipeline) pour nommer les auteurs et les titulaires : le nom et le statut seulement. Téléphone,
+  // courriel, dernière connexion et mot de passe provisoire restent sur `GET /users`, avec ses droits.
   USER: async (executor, entityId) => {
     const row = await executor
       .selectFrom('identity_users')
-      .select([
-        'id',
-        'full_name',
-        'phone',
-        'email',
-        'status',
-        'must_change_password',
-        'last_login_at',
-      ])
+      .select(['id', 'full_name', 'status'])
       .where('id', '=', toBin(entityId))
       .executeTakeFirst();
     if (!row) return undefined;
-    return {
-      id: fromBin(row.id),
-      full_name: row.full_name,
-      phone: row.phone,
-      email: row.email,
-      status: row.status,
-      must_change_password: Boolean(row.must_change_password),
-      last_login_at: row.last_login_at,
-    };
+    return { id: fromBin(row.id), full_name: row.full_name, status: row.status };
   },
 
   // P5-23 (AV-195 (3)) : la fiche d'un appareil n'est servie qu'à lui-même (ligne `DEVICE` de

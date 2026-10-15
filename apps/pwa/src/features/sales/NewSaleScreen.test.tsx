@@ -289,7 +289,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await user.clear(quantity);
     await user.type(quantity, '31');
     expect(
-      screen.getByText('Œufs de table : quota dépassé, il vous reste 30 U, 31 demandé(s).'),
+      screen.getByText('Œufs de table : quota dépassé, il vous reste 30 U, 31 U demandé(s).'),
     ).toBeInTheDocument();
     const record = screen.getByRole('button', { name: 'Enregistrer la vente' });
     expect(record).toBeDisabled();
@@ -312,7 +312,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await user.click(await screen.findByRole('button', { name: 'Nouvelle vente' }));
     await addEggs(user);
     expect(
-      await screen.findByText('Œufs de table : quota dépassé, il vous reste 0 U, 1 demandé(s).'),
+      await screen.findByText('Œufs de table : quota dépassé, il vous reste 0 U, 1 U demandé(s).'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer la vente' })).toBeDisabled();
   });
@@ -353,7 +353,7 @@ describe('NewSaleScreen (ECR-VEN-01)', () => {
     await user.type(quantity, '301');
     expect(
       screen.getByText(
-        'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 demandé(s).',
+        'Œufs de table : stock insuffisant sur cet appareil, 300 U disponible(s), 301 U demandé(s).',
       ),
     ).toBeInTheDocument();
     await user.clear(quantity);

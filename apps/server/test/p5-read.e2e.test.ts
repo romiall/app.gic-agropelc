@@ -26,7 +26,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { recordStockMove } from '../src/modules/inventory/application/public/index.js';
 import { recordConflict } from '../src/platform/sync/conflicts.js';
@@ -40,6 +39,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 import {
   codeOf,
@@ -247,7 +247,7 @@ describe('P5-17 : lectures HTTP de P5 et file des conflits', { timeout: 180_000 
     for (const actor of [admin, fin, venA, venB, magA, magB, multi]) {
       tokens.set(
         actor.userId,
-        await signAccessToken(
+        await signTestAccessToken(
           jwtKeys.privateKey,
           { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
           clock.now(),

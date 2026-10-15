@@ -35,7 +35,18 @@ export interface ApprovalView {
   readonly requestedByName: string | null;
   readonly requestedAt: string;
   readonly attachmentsPending: boolean;
+  /** Pièces du document décidé (MP-10, AV-286) ; absentes d'un serveur plus ancien. */
+  readonly attachments?: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly uploadStatus: string;
+  }[];
   readonly selfRequest: boolean;
+  /**
+   * Choix que le serveur refuserait pour cette demande (MP-11 : porteur d'une remise inconnu) ; absent
+   * d'un serveur plus ancien.
+   */
+  readonly unavailableOptions?: readonly string[];
 }
 
 export type ApprovalAction = 'APPROVE' | 'REJECT';
@@ -84,7 +95,10 @@ export function commentMax(view: ApprovalView, action: ApprovalAction): number {
 /** Choix proposés pour une décision. */
 export function optionsFor(view: ApprovalView, action: ApprovalAction) {
   const spec = specOf(view);
-  return action === 'APPROVE' ? spec.approveOptions : spec.rejectOptions;
+  const options = action === 'APPROVE' ? spec.approveOptions : spec.rejectOptions;
+  const unavailable = view.unavailableOptions ?? [];
+  if (!options || unavailable.length === 0) return options;
+  return { ...options, values: options.values.filter((value) => !unavailable.includes(value)) };
 }
 
 /** Données proposées pour une décision (à l'approbation seulement). */

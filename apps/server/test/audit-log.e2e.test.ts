@@ -14,10 +14,7 @@ import { registerCorrelationId } from '../src/platform/http/register-correlation
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import {
-  signAccessToken,
-  type JwtKeyPair,
-} from '../src/modules/identity/application/public/jwt.js';
+import { type JwtKeyPair } from '../src/modules/identity/application/public/jwt.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -28,6 +25,7 @@ import {
   insertTestPermission,
   insertTestRole,
   insertTestUser,
+  signTestAccessToken,
 } from './helpers.js';
 
 const AUDIT_LOG_READ_PERMISSION = 'audit.log.read';
@@ -67,12 +65,12 @@ describe('GET /api/v1/audit (§6, BR-AUD-004, BR-AUD-009)', () => {
     unauthorizedUser = await createRealUser();
     device = await createRealDevice(authorizedUser);
 
-    authorizedToken = await signAccessToken(
+    authorizedToken = await signTestAccessToken(
       jwtKeys.privateKey,
       { sub: authorizedUser, device_id: device, session_id: freshUuid() },
       clock.now(),
     );
-    unauthorizedToken = await signAccessToken(
+    unauthorizedToken = await signTestAccessToken(
       jwtKeys.privateKey,
       { sub: unauthorizedUser, device_id: device, session_id: freshUuid() },
       clock.now(),

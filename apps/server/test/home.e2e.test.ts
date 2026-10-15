@@ -25,7 +25,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { recordStockMove } from '../src/modules/inventory/application/public/index.js';
 import { recordConflict } from '../src/platform/sync/conflicts.js';
@@ -44,6 +43,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 
 const OPENING_AT = '2026-06-01T08:00:00.000Z';
@@ -257,7 +257,7 @@ describe('Accueil par rôle (ADR-030)', () => {
     });
 
     for (const userId of [admin, storekeeperA, storekeeperB, multiRole, valuer, noRole]) {
-      tokens[userId] = await signAccessToken(
+      tokens[userId] = await signTestAccessToken(
         jwtKeys.privateKey,
         { sub: userId, device_id: adminDevice, session_id: freshUuid() },
         clock.now(),
@@ -482,7 +482,7 @@ describe('Accueil par rôle (ADR-030)', () => {
           requestIds.push(requestId);
         }
       });
-      tokens[manager] = await signAccessToken(
+      tokens[manager] = await signTestAccessToken(
         app.get(JWT_KEYS).privateKey,
         { sub: manager, device_id: adminDevice, session_id: freshUuid() },
         clock.now(),
@@ -508,8 +508,9 @@ describe('Accueil par rôle (ADR-030)', () => {
       expect(body.user.roles).toEqual(['RESP_COMMERCIAL']);
       const conflicts = body.signals.find((signal) => signal.code === 'SYNC_CONFLICTS');
       expect(conflicts?.count).toBe(2);
-      expect(conflicts?.detail).toContain('price mismatch ×1');
-      expect(conflicts?.detail).toContain('duplicate customer ×1');
+      // MP-11 : types d'anomalie en français.
+      expect(conflicts?.detail).toContain('prix différent du catalogue ×1');
+      expect(conflicts?.detail).toContain('client en double ×1');
     });
 
     it('validations : seulement celles que le responsable peut décider (portée de la permission d’approbation)', async () => {

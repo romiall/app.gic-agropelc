@@ -1115,6 +1115,7 @@ function validateHandler(
         decision: 'APPROVED',
         decidedBy: author,
         decidedAt: at,
+        receivedAt: (await loadCommandOrigin(uow, envelope.command_id)).receivedAt,
         ...(reason !== null ? { comment: reason, decisionData: { reason } } : {}),
       });
       if (!decided.ok) return rejected(decided.errorCode, decided.messageFr);

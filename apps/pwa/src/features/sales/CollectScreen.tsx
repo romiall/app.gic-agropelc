@@ -24,10 +24,12 @@ import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import {
   afterPendingPayments,
+  allocationsOf,
   duesFromReceivables,
   duesFromRecentSales,
   pendingPaymentsOf,
   previewAllocation,
+  previewTargetedAllocation,
   type ReceivableLine,
 } from './collect.js';
 import { CommandResult } from './CommandResult.js';
@@ -43,6 +45,7 @@ import {
 import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
+import { isWaiting, stillInFlight } from './pending.js';
 import { useSalesReferences } from './references.js';
 import { parseXaf, sellingLocations } from './sale-form.js';
 import { settingValue } from './stock.js';
@@ -62,7 +65,7 @@ interface ReceivablesState {
 function useOnlineReceivables(
   customerId: string | null,
   online: boolean,
-  reloadKey: number,
+  reloadKey: string,
 ): readonly ReceivableLine[] | null | undefined {
   const [state, setState] = useState<ReceivablesState>();
   const key = `${customerId ?? ''}:${reloadKey}`;
@@ -160,6 +163,8 @@ export function CollectScreen() {
   const online = useOnline();
   const [searchParams] = useSearchParams();
   const [customerId, setCustomerId] = useState<string | null>(searchParams.get('client'));
+  /** Vente désignée par le reçu (« Encaisser le reste dû ») ; effacée pour répartir automatiquement. */
+  const [targetSaleId, setTargetSaleId] = useState<string | null>(searchParams.get('vente'));
   const [query, setQuery] = useState('');
   /** Client trouvé en ligne et choisi (absent du portefeuille de l'appareil). */
   const [remoteSelected, setRemoteSelected] = useState<CustomerData>();
@@ -169,7 +174,15 @@ export function CollectScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const receivables = useOnlineReceivables(customerId, online, reloadKey);
+  // MP-11 (revue adverse) : relue aussi quand un encaissement du client sort de la file (accepté ou
+  // refusé) — sinon la vente payée réapparaissait due après l'acceptation.
+  const paymentsInFlight =
+    refs && customerId
+      ? pendingPaymentsOf(refs.outbox, customerId, refs.customerAlias)
+          .map((pending) => pending.commandId)
+          .join(',')
+      : '';
+  const receivables = useOnlineReceivables(customerId, online, `${reloadKey}|${paymentsInFlight}`);
   const remoteCustomers = useRemoteCustomers(query, online);
 
   if (!refs || !userId) {
@@ -190,6 +203,7 @@ export function CollectScreen() {
             type="button"
             onClick={() => {
               setPayment(EMPTY_PAYMENT);
+              setTargetSaleId(null);
               setSubmitted(undefined);
               // Relire les créances : l'encaissement accepté les a réduites.
               setReloadKey((key) => key + 1);
@@ -213,12 +227,22 @@ export function CollectScreen() {
       ? duesFromReceivables(receivables, customer.id)
       : duesFromRecentSales(refs.sales, customer.id, refs.customerAlias)
     : [];
-  const pending = customer ? pendingPaymentsOf(refs.outbox, customer.id, refs.customerAlias) : [];
-  const dues = afterPendingPayments(
-    allDues,
-    pending.map((entry) => entry.amountXaf),
-  );
+  const pending = customer
+    ? pendingPaymentsOf(
+        refs.outbox,
+        customer.id,
+        refs.customerAlias,
+        fromServer ? isWaiting : (command) => stillInFlight(command, refs.salesPulledAt),
+      )
+    : [];
+  const dues = afterPendingPayments(allDues, pending);
   const duesTotal = dues.reduce((sum, due) => sum + due.balanceXaf, 0);
+  // Vente ciblée : attendue tant que les créances en ligne ne sont pas lues ; absente des créances
+  // (réglée, annulée), l'encaissement revient à l'affectation automatique.
+  const duesKnown = receivables !== undefined;
+  const targetDue =
+    targetSaleId && duesKnown ? dues.find((due) => due.saleId === targetSaleId) : undefined;
+  const targetGone = targetSaleId !== null && duesKnown && targetDue === undefined;
   // Site de l'encaissement : celui du point de vente ou du stock de l'utilisateur, sinon son choix.
   const ownSiteId = sellingLocations(refs, userId).find((location) => location.site_id)?.site_id;
   const siteId = ownSiteId ?? (siteChoice || undefined);
@@ -231,15 +255,22 @@ export function CollectScreen() {
     methods.find((candidate) => candidate.code === payment.methodCode) ??
     methods.find((candidate) => candidate.code === DEFAULT_METHOD) ??
     methods[0];
-  const amount = parseXaf(payment.amountText ?? '');
+  // Montant prérempli au reste dû de la vente ciblée tant que l'utilisateur n'en a pas saisi un.
+  const amount =
+    payment.amountText === null && targetDue
+      ? targetDue.balanceXaf
+      : parseXaf(payment.amountText ?? '');
+  const preview =
+    amount !== null && amount > 0
+      ? targetDue
+        ? previewTargetedAllocation(amount, dues, targetDue.saleId)
+        : previewAllocation(amount, dues)
+      : null;
   // Encaissement sur le site d'un PDV : en espèces, il exige une caisse ouverte (BR-DIS-005, AV-233 ;
   // DÉDUIT de `cashAccountFor` : site de type `POINT_DE_VENTE`). Site laissé au serveur : celui qu'il
   // retiendra, la vente de la première créance réglée, à défaut le site du client (DÉDUIT de
   // `payment-commands.ts`).
-  const firstSaleId =
-    amount !== null && amount > 0
-      ? previewAllocation(amount, dues).lines[0]?.due.saleId
-      : undefined;
+  const firstSaleId = preview?.lines[0]?.due.saleId;
   const cashSiteId =
     siteId ??
     (firstSaleId ? refs.sales.find((sale) => sale.id === firstSaleId)?.site_id : undefined) ??
@@ -271,9 +302,15 @@ export function CollectScreen() {
         refs.cashAccounts,
       )
     : [];
-  const preview = amount !== null && amount > 0 ? previewAllocation(amount, dues) : null;
+  const allocations = targetDue && preview ? allocationsOf(preview) : [];
   const ready =
-    customer !== undefined && method !== undefined && issues.length === 0 && !cashBlocked && !busy;
+    customer !== undefined &&
+    method !== undefined &&
+    issues.length === 0 &&
+    !cashBlocked &&
+    !busy &&
+    // Vente ciblée : attendre la lecture des créances pour ne pas l'affecter à l'aveugle.
+    (targetSaleId === null || duesKnown);
   const today = businessDayOf(clock.now());
 
   const submit = async () => {
@@ -299,6 +336,8 @@ export function CollectScreen() {
             },
             refs.cashAccounts,
           ),
+          // Encaissement ciblé : affecté à la vente désignée, le surplus en crédit du client.
+          ...(allocations.length > 0 ? { allocations } : {}),
         },
       });
       setSubmitted(command.command_id);
@@ -333,6 +372,7 @@ export function CollectScreen() {
             setCustomerId(id);
             setRemoteSelected(remoteCustomers.find((candidate) => candidate.id === id));
             setPayment(EMPTY_PAYMENT);
+            setTargetSaleId(null);
           }}
           allowAnonymous={false}
         />
@@ -361,6 +401,7 @@ export function CollectScreen() {
                   ? t('collect.dues_online')
                   : t('collect.dues_offline')}
             </p>
+            {targetGone ? <p className="text-warn">{t('collect.target_gone')}</p> : null}
             {dues.length === 0 ? (
               <p className="home-muted">{t('collect.dues_none')}</p>
             ) : (
@@ -368,7 +409,33 @@ export function CollectScreen() {
                 <p className="home-muted">
                   {t('collect.dues_total', { amount: formatMoney(duesTotal) })}
                 </p>
-                {preview ? <h3 className="field-label">{t('collect.preview_title')}</h3> : null}
+                {targetDue ? (
+                  <p className="home-banner" role="status">
+                    {t('collect.targeted', {
+                      doc: targetDue.docNumber,
+                      amount: formatMoney(targetDue.balanceXaf),
+                    })}{' '}
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setTargetSaleId(null);
+                        setPayment((value) =>
+                          value.amountText === null
+                            ? { ...value, amountText: String(targetDue.balanceXaf) }
+                            : value,
+                        );
+                      }}
+                    >
+                      {t('collect.target_auto')}
+                    </button>
+                  </p>
+                ) : null}
+                {preview ? (
+                  <h3 className="field-label">
+                    {targetDue ? t('collect.preview_title_targeted') : t('collect.preview_title')}
+                  </h3>
+                ) : null}
                 <ul className="doc-list">
                   {dues.map((due) => {
                     const allocated = preview?.lines.find((line) => line.due.saleId === due.saleId);
@@ -450,12 +517,14 @@ export function CollectScreen() {
               method={method}
               value={payment}
               amountLabel={t('collect.amount_label')}
-              amountPlaceholder=""
+              amountPlaceholder={targetDue ? String(targetDue.balanceXaf) : ''}
               onChange={setPayment}
             />
           </section>
 
-          {payment.amountText !== null && payment.amountText !== ''
+          {/* Défauts montrés dès qu'un montant est saisi ou prérempli (encaissement ciblé, MP-11). */}
+          {(payment.amountText !== null && payment.amountText !== '') ||
+          (amount !== null && amount > 0)
             ? issues.map((issue) => (
                 <p key={issue} className="error-message" role="alert">
                   {t(`sales.payment_issue.${issue}`)}

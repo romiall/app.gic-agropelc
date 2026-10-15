@@ -16,9 +16,13 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay, formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
-import { submitCommand } from '../sales/submit.js';
+import { submitCommand, useOutboxCommand } from '../sales/submit.js';
+import { hasUsablePhoto, photoAttachment, useOwnerPhotos } from '../attachments/attachments.js';
+import type { PreparedPhoto } from '../attachments/photo.js';
+import { PhotoField } from '../attachments/PhotoField.js';
+import { AttachPhoto, PhotoStatus } from '../attachments/PhotoViews.js';
 import type { PurchaseOrderData } from '../sales/types.js';
 import {
   checkReceiptLine,
@@ -41,7 +45,81 @@ interface FormProps {
   readonly userId: string;
   readonly online: boolean;
   readonly order: PurchaseOrderData;
-  readonly onDone: (commandId: string) => void;
+  readonly onDone: (commandId: string, receiptId: string) => void;
+}
+
+const RECEIPT_PHOTO = { kind: 'DELIVERY_NOTE', ownerType: 'GOODS_RECEIPT' } as const;
+
+/**
+ * Réceptions saisies par l'utilisateur sur cet appareil : leur photo se joint ou se reprend ici ;
+ * `true` si le serveur a signalé la photo manquante (AV-246).
+ */
+function ownReceipts(refs: SalesReferences, userId: string): ReadonlyMap<string, boolean> {
+  return new Map(
+    refs.outbox
+      .filter(
+        (command) =>
+          command.command_type === 'procurement.receipt.record' &&
+          command.author_user_id === userId,
+      )
+      .map((command) => [
+        command.aggregate_id,
+        (command.warnings ?? []).includes('RECEIPT_PHOTO_MISSING'),
+      ]),
+  );
+}
+
+/**
+ * Photo d'une réception : à joindre (badge « photo manquante ») si le serveur l'a signalée manquante
+ * ou si la photo prise a été refusée, tant qu'aucune photo n'est reçue ou en route (AV-285, AV-290) ;
+ * sinon son état.
+ */
+function ReceiptPhotoBlock({
+  receiptId,
+  userId,
+  missing,
+}: {
+  readonly receiptId: string;
+  readonly userId: string;
+  readonly missing: boolean;
+}) {
+  const { t } = useTranslation();
+  const photos = useOwnerPhotos(receiptId, userId);
+  if (photos === undefined) return null;
+  const refused = photos.some((photo) => photo.state === 'REFUSED');
+  if (hasUsablePhoto(photos) || !(missing || refused)) {
+    return <PhotoStatus ownerId={receiptId} userId={userId} />;
+  }
+  return (
+    <span className="receipt-photo">
+      <span className="badge badge-warn">{t('photo.missing_badge')}</span>
+      <AttachPhoto
+        userId={userId}
+        target={{ ...RECEIPT_PHOTO, cited: false, ownerId: receiptId }}
+        label={t('photo.attach_receipt')}
+      />
+    </span>
+  );
+}
+
+/** Résultat d'une réception : état de sa photo, ou photo à joindre si elle manque (AV-285). */
+function ReceiptPhotoResult({
+  commandId,
+  receiptId,
+  userId,
+}: {
+  readonly commandId: string;
+  readonly receiptId: string;
+  readonly userId: string;
+}) {
+  const command = useOutboxCommand(commandId);
+  return (
+    <ReceiptPhotoBlock
+      receiptId={receiptId}
+      userId={userId}
+      missing={(command?.warnings ?? []).includes('RECEIPT_PHOTO_MISSING')}
+    />
+  );
 }
 
 function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
@@ -50,6 +128,8 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
   const [drafts, setDrafts] = useState<Record<string, ReceiptLineDraft>>({});
   const [deliveryNote, setDeliveryNote] = useState('');
   const [observations, setObservations] = useState('');
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const locationId = useId();
@@ -109,6 +189,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
     rows.every((row) => row.check.issues.length === 0) &&
     !commentMissing &&
     !(online && over.length > 0) &&
+    !preparing &&
     !busy;
 
   const update = (lineId: string, base: ReceiptLineDraft, patch: Partial<ReceiptLineDraft>) =>
@@ -123,6 +204,10 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
         authorUserId: userId,
         commandType: 'procurement.receipt.record',
         aggregateType: 'GOODS_RECEIPT',
+        // Photo du bon citée par la réception : « photo présente » (BR-APP-014, ADR-046).
+        ...(photo
+          ? { attachments: [photoAttachment(photo, { ...RECEIPT_PHOTO, cited: true })] }
+          : {}),
         // Quarantaine prévisible (bon de livraison déjà reçu, ou dépassement hors ligne en mode
         // quarantaine) : rien n'entre au disponible local.
         ...(duplicateNote || (!online && over.length > 0 && offlineOverMode === 'QUARANTINE')
@@ -136,7 +221,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           lines: rows,
         }),
       });
-      onDone(command.command_id);
+      onDone(command.command_id, command.aggregate_id);
     } catch {
       setSaveError(true);
     } finally {
@@ -197,14 +282,14 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 <span>
                   {t('purchase_receipt.remaining', {
                     quantity: formatQuantity(remaining),
-                    unit,
+                    unit: unitLabel(unit, remaining),
                   })}
                 </span>
               </div>
               <div className="line-fields">
                 <div className="field">
                   <label htmlFor={`delivered-${line.id}`}>
-                    {t('purchase_receipt.delivered_label', { unit })}
+                    {t('purchase_receipt.delivered_label', { unit: unitLabel(unit) })}
                   </label>
                   <input
                     id={`delivered-${line.id}`}
@@ -218,7 +303,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 </div>
                 <div className="field">
                   <label htmlFor={`rejected-${line.id}`}>
-                    {t('purchase_receipt.rejected_label', { unit })}
+                    {t('purchase_receipt.rejected_label', { unit: unitLabel(unit) })}
                   </label>
                   <input
                     id={`rejected-${line.id}`}
@@ -235,7 +320,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                 <p className="home-muted">
                   {t('purchase_receipt.accepted', {
                     quantity: formatQuantity(check.accepted),
-                    unit,
+                    unit: unitLabel(unit, check.accepted),
                   })}
                 </p>
               ) : null}
@@ -301,7 +386,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                   <p className="error-message" role="alert">
                     {t('purchase_receipt.over_online', {
                       quantity: formatQuantity(check.over),
-                      unit,
+                      unit: unitLabel(unit, check.over),
                     })}
                   </p>
                 ) : (
@@ -310,7 +395,7 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
                       offlineOverMode === 'QUARANTINE'
                         ? 'purchase_receipt.over_offline'
                         : 'purchase_receipt.over_offline_apply',
-                      { quantity: formatQuantity(check.over), unit },
+                      { quantity: formatQuantity(check.over), unit: unitLabel(unit, check.over) },
                     )}
                   </p>
                 )
@@ -342,9 +427,13 @@ function ReceiptForm({ refs, userId, online, order, onDone }: FormProps) {
           </p>
         ) : null}
       </div>
-      <p className="home-muted">
-        {t('purchase_receipt.photo_hint', { threshold: formatMoney(photoThresholdXaf) })}
-      </p>
+      <PhotoField
+        label={t('photo.receipt_label')}
+        hint={t('photo.receipt_hint', { threshold: formatMoney(photoThresholdXaf) })}
+        value={photo}
+        onChange={setPhoto}
+        onBusyChange={setPreparing}
+      />
       {saveError ? (
         <p className="alert alert-error" role="alert">
           {t('sales.error_local_save')}
@@ -369,7 +458,11 @@ export function ReceiptScreen() {
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const refs = useSalesReferences();
   const online = useOnline();
-  const [submitted, setSubmitted] = useState<{ commandId: string; orderId: string }>();
+  const [submitted, setSubmitted] = useState<{
+    commandId: string;
+    orderId: string;
+    receiptId: string;
+  }>();
 
   if (!refs || !userId) {
     return (
@@ -397,6 +490,11 @@ export function ReceiptScreen() {
           {back}
           <h1>{t('nav.screens.purchase_receipt')}</h1>
           <CommandResult commandId={submitted.commandId} messages="purchase_receipt.result" />
+          <ReceiptPhotoResult
+            commandId={submitted.commandId}
+            receiptId={submitted.receiptId}
+            userId={userId}
+          />
         </section>
       );
     }
@@ -422,7 +520,9 @@ export function ReceiptScreen() {
               userId={userId}
               online={online}
               order={order}
-              onDone={(commandId) => setSubmitted({ commandId, orderId: order.id })}
+              onDone={(commandId, receiptId) =>
+                setSubmitted({ commandId, orderId: order.id, receiptId })
+              }
             />
           </>
         ) : (
@@ -433,6 +533,7 @@ export function ReceiptScreen() {
   }
 
   const recent = [...refs.goodsReceipts].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+  const own = ownReceipts(refs, userId);
   return (
     <section className="sale">
       <h1>{t('nav.screens.purchase_receipt')}</h1>
@@ -489,6 +590,13 @@ export function ReceiptScreen() {
                   {t(`purchase_receipt.status.${receipt.status}`, { defaultValue: receipt.status })}
                   <small>{formatMoment(receipt.occurred_at, today)}</small>
                 </span>
+                {own.has(receipt.id) ? (
+                  <ReceiptPhotoBlock
+                    receiptId={receipt.id}
+                    userId={userId}
+                    missing={own.get(receipt.id) === true}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

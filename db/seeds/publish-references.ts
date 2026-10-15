@@ -121,19 +121,27 @@ function entityIdOf(feed: ReferenceFeed, key: unknown): Buffer {
 export async function publishReferenceFeeds(conn: mysql.Connection): Promise<void> {
   for (const feed of REFERENCE_FEEDS) {
     const [rows] = await conn.query<mysql.RowDataPacket[]>(feed.query);
+    const scopeType = feed.selfDeviceScoped ? 'DEVICE' : 'GLOBAL';
+    // Versions déjà publiées, lues en une fois (MP-11 : une requête par entité prenait près d'une
+    // minute sur une base aux milliers d'appareils).
+    const [publishedRows] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT entity_id, row_version FROM sync_change_feed
+        WHERE dataset = ? AND entity_type = ? AND scope_type = ?`,
+      [feed.dataset, feed.entityType, scopeType],
+    );
+    const alreadyPublished = new Set(
+      publishedRows.map(
+        (row) => `${(row.entity_id as Buffer).toString('hex')}:${Number(row.row_version)}`,
+      ),
+    );
     let published = 0;
     for (const row of rows) {
       const entityId = entityIdOf(feed, row.entity_key);
       const rowVersion = Number(row.row_version);
-      const scopeType = feed.selfDeviceScoped ? 'DEVICE' : 'GLOBAL';
       const scopeId = feed.selfDeviceScoped ? entityId : null;
-      const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT seq FROM sync_change_feed
-          WHERE dataset = ? AND entity_type = ? AND entity_id = ? AND row_version = ?
-            AND scope_type = ? LIMIT 1`,
-        [feed.dataset, feed.entityType, entityId, rowVersion, scopeType],
-      );
-      if (existing.length > 0) continue;
+      const key = `${entityId.toString('hex')}:${rowVersion}`;
+      if (alreadyPublished.has(key)) continue;
+      alreadyPublished.add(key);
       await conn.query(
         `INSERT INTO sync_change_feed
            (dataset, entity_type, entity_id, change_type, scope_type, scope_id, row_version)

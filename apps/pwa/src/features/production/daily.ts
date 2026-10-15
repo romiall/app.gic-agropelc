@@ -17,6 +17,7 @@
  */
 import { acceptsDailyEntries, businessDayOf, type ProductionLotStatus } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { stillInFlight } from '../sales/pending.js';
 import type { SalesReferences } from '../sales/references.js';
 import { physicalLeft, stockKey } from '../sales/stock.js';
@@ -243,6 +244,7 @@ export function todayJournal(
     | 'eggCollections'
     | 'outbox'
     | 'productionPulledAt'
+    | 'units'
     | 'products'
   >,
   lotId: string,
@@ -274,8 +276,12 @@ export function todayJournal(
       pending: false,
       values: {
         product: names.get(consumption.product_id) ?? '',
-        quantity: consumption.quantity ?? consumption.quantity_base ?? 0,
-        unit: consumption.unit_code,
+        quantity: formatQuantity(consumption.quantity ?? consumption.quantity_base ?? 0),
+        unit: unitLabel(
+          consumption.unit_code,
+          consumption.quantity ?? consumption.quantity_base ?? 0,
+          refs.units,
+        ),
       },
     });
   }
@@ -339,8 +345,8 @@ export function todayJournal(
           : kind === 'INPUT'
             ? {
                 product: names.get(String(payload.productId)) ?? '',
-                quantity: Number(payload.quantity ?? 0),
-                unit: String(payload.unitCode ?? ''),
+                quantity: formatQuantity(Number(payload.quantity ?? 0)),
+                unit: unitLabel(String(payload.unitCode ?? ''), Number(payload.quantity ?? 0)),
               }
             : kind === 'WEIGHING'
               ? { sample: Number(payload.sampleSize ?? 0), weight: Number(payload.avgWeightG ?? 0) }

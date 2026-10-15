@@ -9,6 +9,8 @@ function stubUseAuth(submitNewPin: ReturnType<typeof vi.fn>) {
     state: { status: 'pin_setup_required' },
     deviceId: 'device-1',
     loginWithPassword: vi.fn(),
+    changeProvisionalPassword: vi.fn(),
+    cancelPasswordChange: vi.fn(),
     submitNewPin,
     unlockWithPin: vi.fn(),
     logout: vi.fn(),

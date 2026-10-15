@@ -13,7 +13,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import {
   closeTestDb,
@@ -24,6 +23,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 import { newAccount, newActor, tx, fund, type Actor } from './cash-transfer-fixtures.js';
 
@@ -113,7 +113,7 @@ describe('P8-11 : valeur des pertes et vue d’ensemble financière', { timeout:
     for (const actor of [fin, rfe, terrain, admin, ach]) {
       tokens.set(
         actor.userId,
-        await signAccessToken(
+        await signTestAccessToken(
           jwtKeys.privateKey,
           { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
           clock.now(),

@@ -14,7 +14,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import {
@@ -194,7 +194,7 @@ export function OutputScreen() {
               {t(`output.lot_status.${lot.status}`, { defaultValue: lot.status })} ·{' '}
               {lotHeads === null
                 ? t('production.headcount_unknown')
-                : t('production.headcount', { heads: formatQuantity(lotHeads) })}
+                : t('production.headcount', { heads: formatQuantityUnit(lotHeads, 'TETE') })}
             </p>
           </div>
 
@@ -247,7 +247,9 @@ export function OutputScreen() {
                 </select>
                 {heads !== null ? (
                   <p className="home-muted">
-                    {t('production.location_headcount', { heads: formatQuantity(heads) })}
+                    {t('production.location_headcount', {
+                      heads: formatQuantityUnit(heads, 'TETE'),
+                    })}
                   </p>
                 ) : null}
               </div>
@@ -273,7 +275,9 @@ export function OutputScreen() {
               )}
             </div>
             <div className="field">
-              <label htmlFor={ids.quantity}>{t('output.quantity_label', { unit })}</label>
+              <label htmlFor={ids.quantity}>
+                {t('output.quantity_label', { unit: unitLabel(unit) })}
+              </label>
               <input
                 id={ids.quantity}
                 className="text-input"

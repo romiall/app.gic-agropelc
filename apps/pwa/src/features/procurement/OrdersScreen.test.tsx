@@ -201,7 +201,7 @@ async function fillDirectOrder(user: ReturnType<typeof userEvent.setup>) {
   await user.click(form.getByRole('button', { name: 'Ajouter le produit' }));
   const direct = form.getByRole('listitem', { name: 'Aliment démarrage' });
   await user.type(within(direct).getByLabelText('Quantité'), '10');
-  await user.type(within(direct).getByLabelText('Prix par KG (F)'), '400');
+  await user.type(within(direct).getByLabelText('Prix par kg (F)'), '400');
   return form;
 }
 
@@ -275,7 +275,7 @@ describe('Bons de commande (ECR-APP-03)', () => {
     if (!direct) throw new Error('ligne directe absente');
     await user.type(within(direct).getByLabelText('Quantité'), '20');
     await user.selectOptions(within(direct).getByLabelText('Unité'), 'SAC');
-    await user.type(within(direct).getByLabelText('Prix par KG (F)'), '400');
+    await user.type(within(direct).getByLabelText('Prix par kg (F)'), '400');
     // 80 kg × 380 F + 1 000 kg × 400 F = 430 400 F : au-delà du seuil par défaut (500 000 F) ? Non.
     expect(form.getByText(/Total : 430\s400\sF\sCFA/)).toBeInTheDocument();
     expect(form.queryByText(/validation auprès de la Direction/)).not.toBeInTheDocument();
@@ -456,8 +456,8 @@ describe('Bons de commande (ECR-APP-03)', () => {
     const edit = await enabledButton('BC-YDE-2026-000010', 'Modifier');
     await user.click(edit);
     const first = within(draftCard).getByRole('group', { name: 'Aliment démarrage (ligne 1)' });
-    await user.clear(within(first).getByLabelText('Quantité (KG)'));
-    await user.type(within(first).getByLabelText('Quantité (KG)'), '480');
+    await user.clear(within(first).getByLabelText('Quantité (kg)'));
+    await user.type(within(first).getByLabelText('Quantité (kg)'), '480');
     const reads = vi.mocked(authorizedRequest).mock.calls.length;
     // Un cycle de synchronisation repousse la commande : SYNCING puis PENDING_SYNC.
     await getDb().outbox.update('01900000-0000-7000-8000-0000000007f1', { status: 'SYNCING' });
@@ -476,7 +476,7 @@ describe('Bons de commande (ECR-APP-03)', () => {
         within(screen.getByRole('listitem', { name: 'BC-YDE-2026-000010' })).getByRole('group', {
           name: 'Aliment démarrage (ligne 1)',
         }),
-      ).getByLabelText('Quantité (KG)'),
+      ).getByLabelText('Quantité (kg)'),
     ).toHaveValue('480');
   });
 
@@ -502,8 +502,8 @@ describe('Bons de commande (ECR-APP-03)', () => {
     const draftCard = await screen.findByRole('listitem', { name: 'BC-YDE-2026-000010' });
     await user.click(within(draftCard).getByRole('button', { name: 'Modifier' }));
     const first = within(draftCard).getByRole('group', { name: 'Aliment démarrage (ligne 1)' });
-    await user.clear(within(first).getByLabelText('Quantité (KG)'));
-    await user.type(within(first).getByLabelText('Quantité (KG)'), '450');
+    await user.clear(within(first).getByLabelText('Quantité (kg)'));
+    await user.type(within(first).getByLabelText('Quantité (kg)'), '450');
     const second = within(draftCard).getByRole('group', { name: 'Aliment démarrage (ligne 2)' });
     await user.click(within(second).getByLabelText('Annuler cette ligne'));
     await user.click(

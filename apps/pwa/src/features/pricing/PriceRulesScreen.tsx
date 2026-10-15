@@ -13,7 +13,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { prospectZoneOptions } from '../crm/prospect.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney } from '../sales/format.js';
+import { formatMoney, unitLabel } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import {
@@ -322,7 +322,7 @@ function RuleEditor({
       ) : null}
       <div className="field">
         <label htmlFor={ids.price}>
-          {t('price_rules.price_label', { unit: form.pricingUnitCode })}
+          {t('price_rules.price_label', { unit: unitLabel(form.pricingUnitCode) })}
         </label>
         <input
           id={ids.price}
@@ -394,7 +394,7 @@ function RuleEditor({
       <div className="line-fields">
         <div className="field">
           <label htmlFor={ids.min}>
-            {t('price_rules.min_quantity_label', { unit: form.pricingUnitCode })}
+            {t('price_rules.min_quantity_label', { unit: unitLabel(form.pricingUnitCode) })}
           </label>
           <input
             id={ids.min}
@@ -618,7 +618,7 @@ export function PriceRulesScreen() {
         <strong>
           {t('price_rules.price', {
             price: formatMoney(rule.unitPriceXaf),
-            unit: rule.pricingUnitCode,
+            unit: unitLabel(rule.pricingUnitCode),
           })}
         </strong>
         <span className="badge badge-info">

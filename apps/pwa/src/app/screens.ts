@@ -73,7 +73,10 @@ export const ROUTES = {
   transfer: '/stock/transferts',
   transferPattern: '/stock/transferts/:transferId',
   transferOne: (transferId: string) => `/stock/transferts/${transferId}`,
-  collectFor: (customerId: string) => `/encaisser?client=${encodeURIComponent(customerId)}`,
+  /** Encaissement d'un client ; avec une vente, son reste dû est prérempli et lui est affecté (MP-09). */
+  collectFor: (customerId: string, saleId?: string) =>
+    `/encaisser?client=${encodeURIComponent(customerId)}` +
+    (saleId ? `&vente=${encodeURIComponent(saleId)}` : ''),
   cash: '/caisse',
   cashTransfers: '/caisse/remises',
   treasury: '/finance/tresorerie',
@@ -83,6 +86,7 @@ export const ROUTES = {
   allocations: '/stock/quotas',
   devices: '/administration/appareils',
   approvals: '/validations',
+  users: '/administration/utilisateurs',
 } as const;
 
 /** Rôles qui vendent (`sales.sale.record`, 07-security-rbac/01-rbac.md). */
@@ -295,6 +299,11 @@ export const ROLE_SETS = {
    * d'une politique (DIR, FIN, RCO, RPR, RFE, MAG, RAC) ; le serveur ne rend que les demandes que chacun
    * peut décider. L'Admin n'approuve aucune opération métier (RC-03).
    */
+  /**
+   * ECR-ADM-04 partiel (MP-08) : liste des comptes et réinitialisation du mot de passe, pour l'Admin
+   * (`identity.user.manage`) ; la lecture `GET /users` sert aussi d'autres rôles, sans menu pour eux.
+   */
+  userManage: ['ADMIN'],
   approvals: [
     'DIRECTION',
     'FINANCE',
@@ -330,6 +339,8 @@ export interface ScreenEntry {
   readonly offline: boolean;
   /** Codes des signaux de l'accueil qui mènent à cet écran (à défaut d'une route du serveur). */
   readonly signalCodes?: readonly string[];
+  /** Paramètres ajoutés à la route pour un signal donné (ex. ventes signalées seules). */
+  readonly signalQuery?: Readonly<Record<string, string>>;
 }
 
 export const SCREENS: readonly ScreenEntry[] = [
@@ -566,6 +577,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: false,
   },
   {
+    // MP-08 : ECR-ADM-04 partiel — comptes et réinitialisation du mot de passe (AV-252).
+    id: 'ECR-ADM-04',
+    path: ROUTES.users,
+    labelKey: 'users',
+    group: 'general',
+    roles: ROLE_SETS.userManage,
+    actionCodes: ['USERS'],
+    offline: false,
+  },
+  {
     id: 'ECR-APP-02',
     path: ROUTES.purchaseRequests,
     labelKey: 'purchase_request',
@@ -732,6 +753,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     roles: SALE_READER_ROLES,
     actionCodes: [],
     offline: true,
+    // Ventes du jour signalées (AV-255) : la liste filtrée sur elles.
+    signalCodes: ['SALES_FLAGGED'],
+    signalQuery: { SALES_FLAGGED: '?anomalies=1' },
   },
 ];
 
@@ -773,7 +797,7 @@ export function routeOfSignal(signal: {
 }): string | null {
   if (signal.action?.route) return signal.action.route;
   const screen = SCREENS.find((candidate) => candidate.signalCodes?.includes(signal.code));
-  return screen ? screen.path : null;
+  return screen ? `${screen.path}${screen.signalQuery?.[signal.code] ?? ''}` : null;
 }
 
 /** Écrans proposés à un utilisateur selon ses rôles, dans l'ordre du registre. */

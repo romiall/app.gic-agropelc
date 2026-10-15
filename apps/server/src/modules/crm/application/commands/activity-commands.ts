@@ -127,6 +127,11 @@ const recordVisit: CommandHandler<VisitPayload> = async (uow, envelope) => {
       'Résultat de visite inconnu ou inactif (catégorie VISIT_OUTCOME, BR-CRM-012).',
     );
   }
+  // Résultat qui exige un commentaire (« Autre », AV-248) : refusé en ligne sans commentaire ; hors
+  // ligne, la visite est un fait accompli (BR-SYN-007), acceptée comme un motif désactivé entre-temps.
+  if (outcome.requiresComment && !p.notes && !envelope.captured_offline) {
+    return rejected('COMMENT_REQUIRED', 'Ce résultat de visite exige un commentaire (AV-248).');
+  }
 
   const session = await findWorkSessionAt(uow, author, at);
   const customerPosition: GeoPoint | null =

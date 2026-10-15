@@ -28,9 +28,33 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default(() => join(tmpdir(), 'gic-attachments')),
+  // Proxy de confiance devant l'API (AV-297, MP-11 ; CDN de 04-deploiement §2) : `true`, nombre de
+  // proxys, ou liste d'adresses ou de plages séparées par des virgules. Absent : aucun, l'adresse
+  // d'un appareil est celle de la connexion TCP (comptage des échecs de connexion par adresse,
+  // 02-securite §2). Derrière un proxy non déclaré, tous les appareils auraient son adresse.
+  TRUST_PROXY: z.string().trim().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/**
+ * Option `trustProxy` de Fastify tirée de `TRUST_PROXY` (AV-297). Un nombre de proxys devient une
+ * fonction de confiance par saut (les `n` plus proches), forme que le typage de l'adaptateur accepte.
+ */
+export function trustProxyOption(
+  value: string | undefined,
+): boolean | string[] | ((address: string, hop: number) => boolean) {
+  if (value === undefined || value === '' || value.toLowerCase() === 'false') return false;
+  if (value.toLowerCase() === 'true') return true;
+  if (/^\d+$/.test(value)) {
+    const hops = Number(value);
+    return (_address: string, hop: number) => hop < hops;
+  }
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+}
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = envSchema.safeParse(source);

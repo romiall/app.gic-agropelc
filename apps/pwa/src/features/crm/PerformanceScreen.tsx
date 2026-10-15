@@ -14,7 +14,7 @@ import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay } from '../home/format-home.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
   attainment,
@@ -105,7 +105,7 @@ export function PerformanceScreen() {
     if (metric === 'CA') return formatMoney(value);
     if (metric === 'QTE_PRODUIT') {
       const unit = productId ? (products.get(productId)?.base_unit_code ?? '') : '';
-      return `${formatQuantity(value)} ${unit}`.trim();
+      return formatQuantityUnit(value, unit, refs.units);
     }
     return formatQuantity(value);
   };

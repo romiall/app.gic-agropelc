@@ -29,7 +29,14 @@ import {
   LEAD_SOURCES,
   PIPELINE_STEPS,
 } from '../seeds/crm-references.js';
-import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../seeds/finance-references.js';
+import {
+  EXPENSE_CATEGORIES,
+  FINANCE_CONTROL_POLICIES,
+  PAYMENT_METHODS,
+} from '../seeds/finance-references.js';
+import { CONTROL_POLICIES } from '../seeds/production-references.js';
+import { SALES_CONTROL_POLICIES } from '../seeds/sales-references.js';
+import { PROCUREMENT_CONTROL_POLICIES } from '../seeds/procurement-references.js';
 import { codeEntityId } from '../seeds/code-entity-id.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -184,6 +191,40 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
       expect(category.id).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
+    }
+  });
+
+  it('crée les politiques de contrôle par défaut, dont celles des achats (AV-294), approbateur du catalogue', async () => {
+    const all = [
+      ...CONTROL_POLICIES,
+      ...SALES_CONTROL_POLICIES,
+      ...FINANCE_CONTROL_POLICIES,
+      ...PROCUREMENT_CONTROL_POLICIES,
+    ];
+    expect(PROCUREMENT_CONTROL_POLICIES.map((policy) => policy.operationType).sort()).toEqual([
+      'PURCHASE_ORDER',
+      'PURCHASE_REQUEST',
+      'RECEIPT_CANCELLATION',
+      'RECEIPT_QUARANTINE',
+      'RECEIPT_WITHOUT_PO',
+    ]);
+    const permissions = new Set(PERMISSIONS.map((permission) => permission.code));
+    for (const policy of all) {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT operation_type, approver_permission, approver_scope, requires_approval, valid_from
+           FROM approvals_control_policies WHERE code = ?`,
+        [policy.code],
+      );
+      expect(rows, policy.code).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        operation_type: policy.operationType,
+        approver_permission: policy.approverPermission,
+        approver_scope: policy.approverScope,
+        requires_approval: 1,
+      });
+      // En vigueur depuis toujours : une politique créée ensuite (plus récente) passe devant.
+      expect((rows[0]!.valid_from as Date).getUTCFullYear()).toBe(2020);
+      expect(permissions.has(policy.approverPermission), policy.approverPermission).toBe(true);
     }
   });
 

@@ -19,6 +19,7 @@ import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { hasOtherActiveAdmin } from './admin-guard.js';
 import { revokeUserSessions } from './revoke-sessions.js';
 import { hashPassword } from '../auth/password.js';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@gic/domain';
 
 const emptyPayloadSchema = z.object({});
 const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
@@ -26,7 +27,8 @@ const reasonRequiredSchema = z.object({ reason: z.string().min(1).max(500) });
 const createPayloadSchema = z.object({
   fullName: z.string().min(1).max(200),
   phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, 'Numéro attendu au format E.164.'),
-  initialPassword: z.string().min(8),
+  // MP-08 (AV-280) : règles partagées ; masqué dans la charge conservée (ADR-045).
+  initialPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
   email: z.string().email().optional(),
 });
 

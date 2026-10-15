@@ -4,7 +4,8 @@
  * plus ancienne d'abord, éventuellement filtrée par type depuis l'accueil (`?types=`). Décisions
  * `approvals.request.approve` / `.reject` selon les règles partagées du type (`@gic/domain`) ; les écarts
  * de caisse et de remise se décident dans la trésorerie (acceptation seule). Relue après chaque
- * décision ; la suivante attend la réponse définitive de la précédente.
+ * décision ; la suivante attend la réponse définitive de la précédente. Relue aussi par « Actualiser »
+ * et au retour sur l'onglet (MP-11) : un justificatif reçu entre-temps rend l'approbation possible.
  */
 import { useId, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -16,7 +17,8 @@ import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime, formatKpiValue } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { readPages, useOnlineRead, type Pages } from '../sales/online-read.js';
+import { ServerPhoto } from '../attachments/PhotoViews.js';
+import { readPages, useOnlineRead, useRefreshOnVisible, type Pages } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
   isBlockingWait,
@@ -141,7 +143,7 @@ function DecisionForm({ view, action, blocked, onCancel, onConfirm }: DecisionPr
               setInput((current) => ({ ...current, selfApproved: event.target.checked }))
             }
           />
-          {t('approvals.self_confirm')}
+          {t(`approvals.self_confirm.${action}`)}
         </label>
       ) : null}
       {reason && reason !== 'COMMENT_REQUIRED' && reason !== 'SELF_CONFIRM' ? (
@@ -186,6 +188,7 @@ export function ApprovalsScreen() {
     online,
     `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(outbox, PREFIX, userId)}`,
   );
+  useRefreshOnVisible(read.retry);
 
   if (!userId) {
     return (
@@ -270,6 +273,11 @@ export function ApprovalsScreen() {
           {t('approvals.refreshing')}
         </p>
       ) : null}
+      {requests && !read.failed ? (
+        <button type="button" className="secondary" onClick={read.retry} disabled={read.stale}>
+          {t('approvals.refresh')}
+        </button>
+      ) : null}
       {read.data?.more ? <p className="home-muted">{t('approvals.truncated')}</p> : null}
       {requests && requests.length === 0 ? (
         <p className="home-muted">
@@ -315,6 +323,16 @@ export function ApprovalsScreen() {
                 {view.attachmentsPending ? (
                   <p className="text-warn">{t('approvals.attachment_pending')}</p>
                 ) : null}
+                {/* Photos reçues du document décidé : vues avant de décider (AV-286). */}
+                {(view.attachments ?? [])
+                  .filter((attachment) => attachment.uploadStatus === 'AVAILABLE')
+                  .map((attachment) => (
+                    <ServerPhoto
+                      key={attachment.id}
+                      attachmentId={attachment.id}
+                      alt={t('photo.approval_alt', { summary: view.subjectSummary })}
+                    />
+                  ))}
                 {view.selfRequest ? (
                   <p className="home-muted">{t('approvals.self_request')}</p>
                 ) : null}
@@ -322,7 +340,13 @@ export function ApprovalsScreen() {
                   <p className="home-muted">{t('approvals.record_only')}</p>
                 ) : null}
                 {spec.approveReasonRequired ? (
-                  <p className="home-muted">{t('approvals.accept_only')}</p>
+                  <p className="home-muted">
+                    {spec.rejectable
+                      ? t(`approvals.reason_note.${view.operationType}`, {
+                          defaultValue: t('approvals.reason_note.default'),
+                        })
+                      : t('approvals.accept_only')}
+                  </p>
                 ) : null}
                 {open?.id === view.id ? (
                   <DecisionForm

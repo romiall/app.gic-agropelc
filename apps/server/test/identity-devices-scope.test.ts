@@ -19,7 +19,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { approveDeviceByShortCode } from '../src/modules/identity/application/bootstrap-device-approval.js';
 import { pendingDeviceApprovalsFor } from '../src/modules/identity/application/public/index.js';
@@ -33,6 +32,7 @@ import {
   insertTestTeamMembership,
   insertTestUser,
   insertTestZone,
+  signTestAccessToken,
 } from './helpers.js';
 import { newActor, tx, type Actor } from './cash-transfer-fixtures.js';
 
@@ -96,7 +96,7 @@ describe(
           .executeTakeFirstOrThrow()
       ).status;
     const tokenOf = (actor: Actor) =>
-      signAccessToken(
+      signTestAccessToken(
         app.get(JWT_KEYS).privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),

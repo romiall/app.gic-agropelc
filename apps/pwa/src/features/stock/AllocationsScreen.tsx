@@ -15,7 +15,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime } from '../home/format-home.js';
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { stockKey } from '../sales/stock.js';
@@ -367,9 +367,8 @@ export function AllocationsScreen() {
                       </p>
                       <p className="home-muted">
                         {t(item.validUntil ? 'quotas.remaining_until' : 'quotas.remaining', {
-                          remaining: formatQuantity(item.quantityRemaining),
-                          granted: formatQuantity(item.quantityGranted),
-                          unit,
+                          remaining: formatQuantityUnit(item.quantityRemaining, unit, refs.units),
+                          granted: formatQuantityUnit(item.quantityGranted, unit, refs.units),
                           until: item.validUntil ? formatDateTime(item.validUntil) : '',
                         })}
                       </p>
@@ -411,7 +410,7 @@ export function AllocationsScreen() {
                             {t(
                               open === 'increase' ? 'quotas.increase_label' : 'quotas.reason_label',
                               {
-                                unit,
+                                unit: unitLabel(unit, 1, refs.units),
                               },
                             )}
                           </label>
@@ -531,14 +530,14 @@ export function AllocationsScreen() {
                   <p className="home-muted">
                     {t('quotas.unallocated', {
                       quantity: formatQuantity(room.capacity),
-                      unit: product.base_unit_code,
+                      unit: unitLabel(product.base_unit_code, room.capacity, refs.units),
                     })}
                   </p>
                   {room.overcommitted > 0 ? (
                     <p className="text-warn">
                       {t('quotas.overcommitted', {
                         quantity: formatQuantity(room.overcommitted),
-                        unit: product.base_unit_code,
+                        unit: unitLabel(product.base_unit_code, room.overcommitted, refs.units),
                       })}
                     </p>
                   ) : null}
@@ -548,7 +547,9 @@ export function AllocationsScreen() {
             <div className="field">
               <label htmlFor={ids.quantity}>
                 {product
-                  ? t('quotas.quantity_label', { unit: product.base_unit_code })
+                  ? t('quotas.quantity_label', {
+                      unit: unitLabel(product.base_unit_code, 1, refs.units),
+                    })
                   : t('quotas.quantity_label_no_unit')}
               </label>
               <input

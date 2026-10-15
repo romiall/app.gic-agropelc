@@ -1,21 +1,21 @@
 /**
- * ECR-SYN-01 « État de synchronisation et opérations en attente » : liste l'outbox, un bouton
- * de synchronisation manuelle, et un diagnostic qui exerce tout le pipeline (`organization.
- * setting.set`, la commande de démonstration désignée par le plan de développement §3) — en
- * ligne comme hors ligne, pour prouver le trajet complet outbox → push → pipeline → audit.
- * `org.settings.manage` est requis côté serveur (RBAC) : un utilisateur sans ce droit voit sa
- * commande de test rejetée avec le motif exact (BR-SYN-009), ce qui est déjà la démonstration
- * utile pour lui.
+ * ECR-SYN-01 « État de synchronisation et opérations en attente » : liste l'outbox et un bouton de
+ * synchronisation manuelle.
+ *
+ * MP-09 (AV-250, décision du porteur du 13/10/2026) : le diagnostic « Tester la synchronisation » est
+ * retiré. Il enregistrait un vrai paramètre système (`organization.setting.set`), immuable une fois
+ * enregistré (BR-ADM-015), et polluait définitivement les paramètres à chaque essai.
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '../../storage/db.js';
-import { clock, idGenerator } from '../../platform/composition.js';
-import { isEffectivelyOnline } from '../../platform/connectivity.js';
-import { enqueueCommand } from '../../sync/outbox.js';
+import { acknowledgeCommand } from '../../sync/outbox.js';
+import { pendingAttachments } from '../../sync/attachment-upload.js';
+import { refusedPhotosCount } from '../attachments/attachments.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { awaitsDeviceApproval } from '../sales/pending.js';
-import { saveErrorKey } from '../sales/submit.js';
+import { operationLabel } from './operation-label.js';
 import { getSyncEngine } from './sync-engine-instance.js';
 import { useSyncStatus } from './useSyncStatus.js';
 
@@ -24,7 +24,10 @@ export function SyncScreen() {
   const { state } = useAuth();
   const status = useSyncStatus();
   const [syncing, setSyncing] = useState(false);
-  const [diagnosticMessage, setDiagnosticMessage] = useState<string>();
+  // Photos de l'utilisateur encore à envoyer (MP-10) : elles partent après les opérations.
+  const userId = state.status === 'unlocked' ? state.userId : undefined;
+  const photos = useLiveQuery(() => pendingAttachments(getDb(), userId), [userId]);
+  const refusedPhotos = useLiveQuery(() => refusedPhotosCount(userId), [userId]);
 
   if (state.status !== 'unlocked' || !status) return null;
 
@@ -35,38 +38,6 @@ export function SyncScreen() {
     } finally {
       setSyncing(false);
     }
-  };
-
-  const runDiagnostic = async () => {
-    let command;
-    try {
-      command = await enqueueCommand(
-        getDb(),
-        { clock, idGenerator },
-        {
-          authorUserId: state.userId,
-          commandType: 'organization.setting.set',
-          commandVersion: 1,
-          aggregateType: 'SETTING',
-          payload: {
-            key: `diagnostic.pwa.${idGenerator.newId()}`,
-            value: clock.now().toISOString(),
-            scopeType: 'GLOBAL',
-            isClientVisible: true,
-            reason: 'Diagnostic P0-14 : vérification du pipeline depuis la PWA.',
-          },
-          capturedOffline: !isEffectivelyOnline(),
-        },
-      );
-    } catch (error) {
-      // Lecture seule (AV-009) : le diagnostic est une opération comme une autre, refusée.
-      setDiagnosticMessage(t(saveErrorKey(error)));
-      return;
-    }
-    setDiagnosticMessage(
-      t('sync.diagnostic_enqueued', { status: t(`sync.status.${command.status}`) }),
-    );
-    void getSyncEngine()?.trigger();
   };
 
   return (
@@ -85,6 +56,17 @@ export function SyncScreen() {
           {t('sync.device_pending_notice')}
         </p>
       ) : null}
+      {photos && photos.count > 0 ? (
+        <p className="home-muted">
+          {t('sync.photos_pending', {
+            count: photos.count,
+            size: Math.max(1, Math.round(photos.bytes / 1024)),
+          })}
+        </p>
+      ) : null}
+      {refusedPhotos && refusedPhotos > 0 ? (
+        <p className="text-warn">{t('sync.photos_refused', { count: refusedPhotos })}</p>
+      ) : null}
       <h2>{t('sync.pending_operations')}</h2>
       {status.pending.length === 0 ? (
         <p>{t('sync.no_pending')}</p>
@@ -92,7 +74,7 @@ export function SyncScreen() {
         <ul className="outbox-list">
           {status.pending.map((command) => (
             <li key={command.command_id}>
-              {command.command_type} — {t(`sync.status.${command.status}`)}
+              {operationLabel(t, command.command_type)} — {t(`sync.status.${command.status}`)}
             </li>
           ))}
         </ul>
@@ -101,23 +83,34 @@ export function SyncScreen() {
       {status.attention.length > 0 && (
         <>
           <h2>{t('sync.attention_operations')}</h2>
+          <p className="home-muted">{t('sync.acknowledge_help')}</p>
           <ul className="outbox-list">
-            {status.attention.map((command) => (
-              <li key={command.command_id}>
-                {command.command_type} — {t(`sync.status.${command.status}`)}
-                {command.last_error ? ` : ${command.last_error.message_fr}` : ''}
-              </li>
-            ))}
+            {status.attention.map((command) => {
+              const label = operationLabel(t, command.command_type);
+              return (
+                <li key={command.command_id}>
+                  {label} — {t(`sync.status.${command.status}`)}
+                  {command.last_error ? ` : ${command.last_error.message_fr}` : ''}
+                  {command.status === 'CONFLICT' ? (
+                    <small> {t('sync.acknowledged_conflict')}</small>
+                  ) : null}
+                  {/* Sur une tablette partagée, chacun classe ses propres opérations. */}
+                  {command.author_user_id === state.userId ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={t('sync.acknowledge_label', { operation: label })}
+                      onClick={() => void acknowledgeCommand(getDb(), command.command_id)}
+                    >
+                      {t('sync.acknowledge')}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
-
-      <h2>{t('sync.diagnostic_title')}</h2>
-      <p>{t('sync.diagnostic_help')}</p>
-      <button type="button" className="secondary" onClick={() => void runDiagnostic()}>
-        {t('sync.diagnostic_submit')}
-      </button>
-      {diagnosticMessage && <p>{diagnosticMessage}</p>}
     </section>
   );
 }

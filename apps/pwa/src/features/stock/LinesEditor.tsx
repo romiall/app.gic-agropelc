@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProductData } from '../sales/types.js';
 import type { LineRow, TransferLineDraft } from './transfer.js';
+import { unitLabel } from '../sales/format.js';
 
 interface LinesEditorProps {
   readonly rows: readonly LineRow[];
@@ -103,7 +104,7 @@ export function LinesEditor({
                     >
                       {units.map((unit) => (
                         <option key={unit.unitCode} value={unit.unitCode}>
-                          {unit.unitCode}
+                          {unitLabel(unit.unitCode)}
                         </option>
                       ))}
                     </select>

@@ -11,6 +11,7 @@ import {
   isAllowedTransferReceiver,
   isAllowedTransferValidator,
   isCashTransferPairAllowed,
+  isTransferCarrierKnown,
   isTransferUnreceived,
 } from './cash-transfer.js';
 import { DomainError } from './errors.js';
@@ -92,6 +93,12 @@ describe('séparation des tâches (AV-158, AV-172, AV-174)', () => {
 
 describe('imputation d’un écart (AV-153, AV-174)', () => {
   const noCarrier = { carrierUserId: null, carrierName: null };
+  it('porteur connu : utilisateur ou nom saisi (MP-11, partagé avec la file et la trésorerie)', () => {
+    expect(isTransferCarrierKnown(noCarrier)).toBe(false);
+    expect(isTransferCarrierKnown({ carrierUserId: 'p', carrierName: null })).toBe(true);
+    expect(isTransferCarrierKnown({ carrierUserId: null, carrierName: 'Paul' })).toBe(true);
+  });
+
   it('une imputation connue est retenue', () => {
     expect(checkTransferImputation('COMPANY', noCarrier)).toBe('COMPANY');
     expect(checkTransferImputation('CARRIER', { carrierUserId: null, carrierName: 'Paul' })).toBe(

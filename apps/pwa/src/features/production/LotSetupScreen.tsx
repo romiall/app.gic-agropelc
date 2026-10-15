@@ -12,7 +12,7 @@ import { ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, formatQuantityUnit } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import { rearingLocations } from './daily.js';
@@ -543,7 +543,7 @@ function RecordEntry({
                     ? entry.location.name
                     : t('lot_setup.source_location', {
                         name: entry.location.name,
-                        heads: formatQuantity(entry.heads),
+                        heads: formatQuantityUnit(entry.heads, 'TETE'),
                       }),
               }))}
               placeholder={t('lot_setup.choose')}

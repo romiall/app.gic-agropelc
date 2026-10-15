@@ -365,4 +365,92 @@ describe('catalog.* (P1-03)', () => {
     const reasonCodes = await listReasonCodes(db, { category: 'LOSS' });
     expect(reasonCodes.some((r) => r.code === code)).toBe(true);
   });
+
+  it('reason_code.update, deactivate, reactivate — libellé ajustable, désactivable, jamais supprimé (MP-11, AV-248, BR-CAT-010)', async () => {
+    const id = freshUuid();
+    const code = `AUTRE_${id.slice(-8)}`;
+    const run = (commandType: string, payload: Record<string, unknown>) =>
+      pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: commandType,
+          aggregate_type: 'REASON_CODE',
+          aggregate_id: id,
+          occurred_at: OCCURRED_AT,
+          payload,
+        }),
+        ctx(),
+      );
+    const row = () =>
+      db
+        .selectFrom('catalog_reason_codes')
+        .select(['code', 'category', 'label', 'requires_comment', 'is_active', 'version'])
+        .where('id', '=', toBin(id))
+        .executeTakeFirstOrThrow();
+    const feed = () =>
+      db
+        .selectFrom('sync_change_feed')
+        .select(['dataset', 'row_version'])
+        .where('entity_type', '=', 'REASON_CODE')
+        .where('entity_id', '=', toBin(id))
+        .where('dataset', '=', 'catalog')
+        .orderBy('seq')
+        .execute();
+    expect(
+      (await run('catalog.reason_code.set', { category: 'VISIT_OUTCOME', code, label: 'Autre' }))
+        .status,
+    ).toBe('APPLIED');
+
+    expect(
+      (
+        await run('catalog.reason_code.update', {
+          label: 'Autre (préciser)',
+          requiresComment: true,
+        })
+      ).status,
+    ).toBe('APPLIED');
+    expect(await row()).toMatchObject({
+      code,
+      category: 'VISIT_OUTCOME',
+      label: 'Autre (préciser)',
+      requires_comment: 1,
+      is_active: 1,
+      version: 2,
+    });
+    // Sans effet : acceptée, sans nouvelle version.
+    expect((await run('catalog.reason_code.update', { requiresComment: true })).status).toBe(
+      'APPLIED',
+    );
+    expect((await row()).version).toBe(2);
+    const empty = await run('catalog.reason_code.update', {});
+    expect(empty.status === 'REJECTED' && empty.error.code).toMatch(/^VALIDATION_ERROR/);
+
+    expect((await run('catalog.reason_code.deactivate', {})).status).toBe('APPLIED');
+    expect(await row()).toMatchObject({ is_active: 0, version: 3 });
+    expect((await run('catalog.reason_code.deactivate', {})).status).toBe('APPLIED');
+    expect((await row()).version).toBe(3);
+    expect(
+      (await listReasonCodes(db, { category: 'VISIT_OUTCOME' })).find((r) => r.code === code),
+    ).toMatchObject({ isActive: false });
+    expect((await run('catalog.reason_code.reactivate', {})).status).toBe('APPLIED');
+    expect(await row()).toMatchObject({ is_active: 1, version: 4 });
+    // Chaque nouvelle version est publiée aux appareils (jeu `catalog`).
+    expect((await feed()).map((entry) => `${entry.dataset}:${entry.row_version}`)).toEqual([
+      'catalog:1',
+      'catalog:2',
+      'catalog:3',
+      'catalog:4',
+    ]);
+
+    const unknown = await pipeline.handle(
+      buildEnvelope(admin, {
+        command_type: 'catalog.reason_code.deactivate',
+        aggregate_type: 'REASON_CODE',
+        aggregate_id: freshUuid(),
+        occurred_at: OCCURRED_AT,
+        payload: {},
+      }),
+      ctx(),
+    );
+    expect(unknown.status === 'REJECTED' && unknown.error.code).toBe('NOT_FOUND');
+  });
 });

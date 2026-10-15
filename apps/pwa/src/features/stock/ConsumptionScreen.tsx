@@ -12,7 +12,7 @@ import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { saleUnitsOf } from '../sales/sale-form.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
@@ -225,7 +225,7 @@ export function ConsumptionScreen() {
           <p className="home-muted">
             {t('sales.product_available', {
               quantity: formatQuantity(available),
-              unit: product.base_unit_code,
+              unit: unitLabel(product.base_unit_code, available, refs.units),
             })}
           </p>
         ) : null}
@@ -260,7 +260,7 @@ export function ConsumptionScreen() {
             >
               {units.map((unit) => (
                 <option key={unit.unitCode} value={unit.unitCode}>
-                  {unit.unitCode}
+                  {unitLabel(unit.unitCode)}
                 </option>
               ))}
             </select>

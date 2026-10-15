@@ -69,6 +69,7 @@ import { recordConflict, resolveOpenConflicts } from '../platform/sync/conflicts
 import type { UnitOfWork } from '../platform/unit-of-work.js';
 import { retryHoldMinutesFrom, STALLED_CONFLICT_TYPE, STALLED_ENTITY_TYPE } from './retry-hold.js';
 import { recordAudit } from '../audit/record-audit.js';
+import { redactSecrets } from '../audit/redact.js';
 import { recordDenied } from '../audit/record-denied.js';
 import { logStructured } from '../platform/observability/logger.js';
 import {
@@ -202,7 +203,11 @@ export class CommandPipelineService {
     }
     const envelope = envelopeCheck.data;
     const commandIdBin = toBin(envelope.command_id);
-    const payloadHash = sha256Hex(canonicalJsonStringify(envelope));
+    // MP-08 (ADR-045, INV-AUD-02) : la charge utile conservée (inbox, événement, audit) et son
+    // empreinte ne portent aucun secret (`initialPassword` d'un compte créé…) ; le gestionnaire reçoit
+    // l'enveloppe complète, en mémoire. Une charge sans champ sensible est inchangée (même empreinte).
+    const storedPayload = redactSecrets(envelope.payload);
+    const payloadHash = sha256Hex(canonicalJsonStringify(redactSecrets(envelope)));
 
     // Un jeton valide authentifie un auteur (identity/api/auth.guard.ts) ; l'enveloppe doit
     // le déclarer explicitement — pas de commande « au nom d'un autre » sans mécanisme dédié.
@@ -313,7 +318,7 @@ export class CommandPipelineService {
             aggregate_id: toBin(envelope.aggregate_id),
             base_version: envelope.base_version,
             depends_on: jsonValue(envelope.depends_on),
-            payload: jsonValue(envelope.payload),
+            payload: jsonValue(storedPayload),
             payload_hash: payloadHash,
             occurred_at: new Date(envelope.occurred_at),
             client_created_at: new Date(envelope.client_created_at),
@@ -526,7 +531,7 @@ export class CommandPipelineService {
             entityType: envelope.aggregate_type,
             entityId: envelope.aggregate_id,
             ...(handlerAudit?.before !== undefined ? { before: handlerAudit.before } : {}),
-            after: handlerAudit?.after ?? envelope.payload,
+            after: handlerAudit?.after ?? storedPayload,
             result: 'SUCCESS',
             correlationId: ctx.correlationId ?? null,
           },
@@ -541,7 +546,7 @@ export class CommandPipelineService {
             aggregate_type: envelope.aggregate_type,
             aggregate_id: toBin(envelope.aggregate_id),
             occurred_at: occurredAt,
-            payload: jsonValue(envelope.payload),
+            payload: jsonValue(storedPayload),
             command_id: commandIdBin,
             correlation_id: ctx.correlationId ? toBin(ctx.correlationId) : null,
           })

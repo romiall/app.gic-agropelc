@@ -120,6 +120,54 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     expect(rows[1]).toHaveAttribute('href', `/ventes/${SALE_ID}`);
   });
 
+  it('depuis le signal (?anomalies=1) : les seules ventes du jour signalées, puis toutes (AV-255)', async () => {
+    const other = (id: string, data: Record<string, unknown>) => {
+      const base = saleRow({ id, ...data });
+      return { ...base, key: base.key.replace(SALE_ID, id), entity_id: id };
+    };
+    const db = getDb();
+    await db.projections.put(saleRow({ flags: ['STOCK_NEGATIVE', 'OUT_OF_SESSION'] }));
+    // Signalée la veille, et signalée puis annulée : hors du signal du jour.
+    await db.projections.put(
+      other('01900000-0000-7000-8000-0000000000c7', {
+        doc_number: 'VTE-2026-000120',
+        occurred_at: '2026-10-09T10:00:00.000Z',
+        flags: ['PRICE_MISMATCH'],
+      }),
+    );
+    await db.projections.put(
+      other('01900000-0000-7000-8000-0000000000c8', {
+        doc_number: 'VTE-2026-000121',
+        status: 'CANCELLED',
+        flags: ['PRICE_MISMATCH'],
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/ventes?anomalies=1');
+    expect(
+      await screen.findByText(/Ventes du jour signalées par le serveur \(1 sur cet appareil/),
+    ).toBeInTheDocument();
+    const rows = screen.getAllByRole('link', { name: /Ouvrir la vente/ });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('VTE-2026-000123');
+    expect(rows[0]).toHaveTextContent(
+      'Signalé : Stock devenu négatif, Vente hors prise de service',
+    );
+    await user.click(screen.getByRole('button', { name: 'Toutes les ventes' }));
+    expect(screen.getAllByRole('link', { name: /Ouvrir la vente/ })).toHaveLength(4);
+    expect(screen.getByRole('link', { name: 'Ouvrir la vente VTE-2026-000120' })).toHaveTextContent(
+      'Signalé : Prix différent du catalogue',
+    );
+  });
+
+  it('depuis le signal, aucune vente signalée sur l’appareil : message explicite', async () => {
+    renderAt('/ventes?anomalies=1');
+    expect(
+      await screen.findByText('Aucune vente du jour signalée sur cet appareil.'),
+    ).toBeInTheDocument();
+    expect(screen.queryAllByRole('link', { name: /Ouvrir la vente/ })).toHaveLength(0);
+  });
+
   it('reçu : lignes, totaux, client, vendeur', async () => {
     renderAt(`/ventes/${SALE_ID}`);
     const receipt = await screen.findByRole('article', { name: /Reçu VTE-2026-000123/ });
@@ -230,6 +278,22 @@ describe('Ventes récentes et détail (ECR-VEN-05)', () => {
     renderAt(`/ventes/${SALE_ID}`);
     const receipt = await screen.findByRole('article', { name: /Reçu VTE-2026-000123/ });
     expect(within(receipt).getByText(/Boutique Mvog-Mbi · Vendeur : vous/)).toBeInTheDocument();
+  });
+
+  it('reçu : points signalés en français (code inconnu tel quel), « Encaisser le reste dû » ciblé sur la vente (MP-09)', async () => {
+    await getDb().projections.put(
+      saleRow({ flags: ['OUT_OF_SESSION', 'PRICE_MISMATCH', 'FUTUR'] }),
+    );
+    renderAt(`/ventes/${SALE_ID}`);
+    expect(
+      await screen.findByText(
+        'Points signalés par le serveur : Vente hors prise de service, Prix différent du catalogue, FUTUR',
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Encaisser le reste dû' })).toHaveAttribute(
+      'href',
+      `/encaisser?client=${IDS.customer}&vente=${SALE_ID}`,
+    );
   });
 
   it('vente inconnue de l’appareil : message explicite', async () => {

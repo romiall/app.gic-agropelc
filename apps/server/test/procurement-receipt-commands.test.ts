@@ -5,9 +5,16 @@
  * reliquat en ligne et hors ligne (AV-095, deux modes), réception sans BC en revue, lot
  * fournisseur, annulation par mouvements inverses et son refus quand le stock est consommé.
  */
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { FastifyReply } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { AttachmentUploadController } from '../src/attachments-api/upload.controller.js';
+import { LocalFsChunkStorage } from '../src/platform/storage/local-fs-chunk-storage.js';
+import type { AuthenticatedRequest } from '../src/modules/identity/api/auth.guard.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
 import { registerPolicyCommands } from '../src/modules/approvals/application/commands/policy-commands.js';
@@ -773,6 +780,104 @@ describe('procurement.receipt.* (P6-05)', () => {
     );
     expect(small.result.status).toBe('APPLIED');
     expect(await conflictOf(small.id)).toHaveLength(0);
+  });
+
+  it('MP-10 (AV-285) : photo du bon jointe après coup → « photo manquante » close ; le Resp. achats la voit, un autre non', async () => {
+    const photoConflict = async (receiptId: string) =>
+      db
+        .selectFrom('sync_sync_conflicts')
+        .select(['status', 'resolution', 'resolution_refs', 'resolved_by'])
+        .where('entity_type', '=', 'GOODS_RECEIPT')
+        .where('entity_id', '=', toBin(receiptId))
+        .where('conflict_type', '=', 'RECEIPT_PHOTO_MISSING')
+        .executeTakeFirstOrThrow();
+    const receiveMissing = async (time: string) => {
+      const productId = await newProduct();
+      const po = await sentOrder(productId, 20, 15_000);
+      const recorded = await receive(
+        {
+          purchaseOrderId: po.id,
+          lines: [{ poLineId: po.lineId, productId, qtyDeliveredBase: 20 }],
+        },
+        at(time),
+      );
+      expect(recorded.result.status).toBe('APPLIED_WITH_WARNINGS');
+      return recorded.id;
+    };
+    const controller = new AttachmentUploadController(
+      db,
+      new LocalFsChunkStorage(join(tmpdir(), 'gic-test-attachments')),
+      new FixedClock(new Date(NOW)),
+      idGenerator,
+    );
+    const requestOf = (actor: Actor) =>
+      ({
+        auth: { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
+      }) as unknown as AuthenticatedRequest;
+    const reply = { header: () => reply } as unknown as FastifyReply;
+    /** Pièce enregistrée par le magasinier (comme `attachments.attachment.register`), puis envoyée. */
+    const attach = async (receiptId: string, kind: string, author: Actor = storekeeper) => {
+      const id = freshUuid();
+      const content = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(id)]);
+      await db
+        .insertInto('attachments_attachments')
+        .values({
+          id: toBin(id),
+          owner_type: 'GOODS_RECEIPT',
+          owner_id: toBin(receiptId),
+          kind,
+          mime_type: 'image/jpeg',
+          size_bytes: content.length,
+          uploaded_bytes: 0,
+          sha256: createHash('sha256').update(content).digest('hex'),
+          storage_key: `attachments/${id}`,
+          upload_status: 'PENDING_UPLOAD',
+          captured_at: new Date(at('14:00:00')),
+          occurred_at: new Date(at('14:00:00')),
+          created_by: toBin(author.userId),
+        })
+        .execute();
+      const put = await controller.putContent(
+        id,
+        `bytes 0-${content.length - 1}/${content.length}`,
+        content,
+        requestOf(author),
+      );
+      expect(put.upload_status).toBe('AVAILABLE');
+      return { id, content };
+    };
+
+    // Photo du bon de livraison : le signal est clos (régularisation tracée, la pièce en référence).
+    const receiptId = await receiveMissing('13:00:00');
+    expect((await photoConflict(receiptId)).status).toBe('OPEN');
+    const photo = await attach(receiptId, 'DELIVERY_NOTE');
+    const closed = await photoConflict(receiptId);
+    expect(closed).toMatchObject({ status: 'RESOLVED', resolution: 'COMPENSATE' });
+    expect(closed.resolution_refs).toEqual([photo.id]);
+    expect(fromBin(closed.resolved_by!)).toBe(storekeeper.userId);
+
+    // Une autre nature (photo des marchandises) ne régularise pas le bon de livraison manquant.
+    const other = await receiveMissing('13:10:00');
+    await attach(other, 'PHOTO');
+    expect((await photoConflict(other)).status).toBe('OPEN');
+
+    // Lecture : le Resp. achats (lecteur des réceptions du site) la voit ; un utilisateur sans droit non.
+    const bytes = await controller.getContent(photo.id, requestOf(buyer), reply);
+    expect(bytes.equals(photo.content)).toBe(true);
+    const strangerId = await db.transaction().execute((trx) => insertTestUser(trx));
+    const stranger = {
+      userId: strangerId,
+      deviceId: await db.transaction().execute((trx) => insertTestDevice(trx, strangerId)),
+    } as Actor;
+
+    // Revue de MP-10 : un tiers sans droit sur la réception ne clôt pas son signal en y joignant un
+    // fichier ; la pièce reste reçue, le signal ouvert pour le Resp. achats.
+    const third = await receiveMissing('13:20:00');
+    await attach(third, 'DELIVERY_NOTE', stranger);
+    expect((await photoConflict(third)).status).toBe('OPEN');
+    await expect(controller.getContent(photo.id, requestOf(stranger), reply)).rejects.toMatchObject(
+      { code: 'FORBIDDEN' },
+    );
   });
 
   it('BR-APP-011 : réception sans BC — prix et photo exigés, stock immédiat, CMUP recalculé, revue du responsable des achats', async () => {

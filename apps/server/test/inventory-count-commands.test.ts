@@ -480,12 +480,20 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
 
       const row = await db
         .selectFrom('inventory_inventory_counts')
-        .select(['status', 'approval_request_id'])
+        .select(['status', 'approval_request_id', 'doc_number'])
         .where('id', '=', toBin(countId))
         .executeTakeFirstOrThrow();
       expect(row.status).toBe('PENDING_APPROVAL');
       expect(row.approval_request_id).not.toBeNull();
       expect(await balanceOf(productId, locationId)).toBe(100); // pas encore ajusté
+      // RC-05 (MP-11) : le résumé, servi tel quel au demandeur, ne porte aucune valeur au coût.
+      const request = await db
+        .selectFrom('approvals_approval_requests')
+        .select(['subject_summary', 'amount_xaf'])
+        .where('id', '=', row.approval_request_id!)
+        .executeTakeFirstOrThrow();
+      expect(request.subject_summary).toBe(`Écart d'inventaire ${row.doc_number}`);
+      expect(Number(request.amount_xaf)).toBeGreaterThan(0);
     });
 
     it('approve -> POSTED, INVENTORY_GAIN appliqué (compté > théorique)', async () => {

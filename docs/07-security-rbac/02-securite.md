@@ -24,11 +24,13 @@
 | Élément | Décision | Statut |
 |---|---|---|
 | Identifiant | Numéro de téléphone E.164 | AV-008 |
-| Mot de passe | ≥ 8 caractères ; hachage **argon2id** (paramètres OWASP en vigueur, mémoire ≥ 19 Mo) ; changement forcé à la première connexion | D |
+| Mot de passe | 8 à 128 caractères, différent de celui qu'il remplace (AV-008, AV-280 ; règles partagées `newPasswordProblem`) ; hachage **argon2id** (paramètres OWASP en vigueur, mémoire ≥ 19 Mo) ; changement imposé à la connexion d'un mot de passe provisoire (création, réinitialisation) par l'écran de la PWA, sans refus du serveur (AV-251) ; un mot de passe actuel faux au changement compte comme un échec de connexion | D |
 | Tentatives | 5 échecs → blocage progressif (1, 5, 15 min) par identifiant et par IP ; audit `auth.login.failed` | D |
 | PIN local | 6 chiffres, par utilisateur et par appareil ; il sert à **déverrouiller** l'application hors ligne. Une clé est dérivée du PIN (PBKDF2-SHA256, ≥ 310 000 itérations, sel aléatoire) et déchiffre les jetons et les magasins sensibles locaux. Il n'est jamais transmis au serveur. 5 échecs → effacement des jetons locaux et reconnexion en ligne obligatoire (BR-ADM-024) | D |
 | Double facteur | Non au MVP (coût et fiabilité des SMS) ; à envisager pour `DIRECTION`, `ADMIN`, `FINANCE` (TOTP) | AV-008 |
-| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP) ; audit | D |
+| Réinitialisation | Par l'Admin uniquement (pas de libre-service SMS au MVP), depuis un appareil `ACTIVE` ; mot de passe provisoire saisi par l'Admin, par une route en ligne hors du journal des commandes, jamais journalisé ni audité en clair ; sessions de l'utilisateur révoquées, changement imposé à la connexion suivante (AV-252, AV-281, ADR-045) ; audit `identity.user.reset_password` | D |
+| Changement | Avec le mot de passe actuel ; les autres sessions de l'utilisateur sont révoquées (`PASSWORD_CHANGED`), celle qui change le mot de passe reste ouverte (MP-11) | D |
+| Identifiant inconnu | Même vérification argon2 (hachage leurre) qu'un compte réel : le temps de réponse ne dit pas si le numéro existe. Un numéro réattribué après une désactivation ouvre le compte en vigueur (MP-11) | D |
 
 ## 3. Sessions, jetons, révocation
 
@@ -37,7 +39,8 @@
 | Jeton d'accès | JWT signé (EdDSA ou ES256), durée **15 min**, contenu minimal : `sub`, `device_id`, `session_id`, `iat`, `exp`. **Aucun** droit dans le jeton : les droits sont lus côté serveur à chaque requête (avec cache court, invalidé à chaque changement) |
 | Jeton de rafraîchissement | Opaque (256 bits aléatoires), stocké haché (SHA-256), **rotation à chaque usage**, famille de rotation. La réutilisation d'un jeton déjà utilisé révoque toute la famille (`TOKEN_REUSE`) et lève une alerte. Durée glissante : 30 jours |
 | Autonomie hors ligne | `offline_grant_until` = dernière synchronisation + 7 jours (AV-009), signé par le serveur et vérifié localement pour autoriser la saisie |
-| Révocation | Désactivation d'utilisateur, blocage d'appareil, décision de l'Admin : révocation de toutes les sessions concernées ; effet immédiat en ligne (refus du rafraîchissement, jeton d'accès expiré sous 15 min) ; hors ligne, effet à la reconnexion, avec quarantaine des commandes postérieures (INV-ADM-03) |
+| Révocation | Déconnexion (toute la famille de rotation), désactivation ou suspension d'utilisateur, blocage d'appareil, réinitialisation ou changement du mot de passe, décision de l'Admin : révocation des sessions concernées ; effet immédiat en ligne : refus du rafraîchissement **et** du jeton d'accès dès la requête suivante (AV-282) ; hors ligne, effet à la reconnexion, avec quarantaine des commandes postérieures (INV-ADM-03) |
+| Contrôle à chaque requête | La garde d'authentification vérifie, en plus de la signature et de l'échéance, qu'une session de la famille du jeton est vivante, que l'utilisateur est `ACTIVE` et que l'appareil est `ACTIVE` ou `PENDING`. Sinon 401 `UNAUTHENTICATED` (motif `SESSION_REVOKED`, `USER_INACTIVE` ou `DEVICE_OUT_OF_SERVICE` dans `details.reason`). État gardé 5 s par session, vidé à chaque révocation (AV-282) |
 | Stockage côté appareil | Jetons chiffrés par la clé dérivée du PIN, dans IndexedDB (et non `localStorage`) ; jamais accessibles à un script tiers (CSP) |
 
 ## 4. Autorisation
@@ -51,7 +54,7 @@
 ## 5. Appareils autorisés
 
 - Enrôlement → `PENDING` → approbation (AV-006) → `ACTIVE`.
-- Chaque requête porte `device_id` (dans le jeton). Le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil.
+- Chaque requête porte `device_id` (dans le jeton). Le serveur vérifie la correspondance session ↔ appareil et le statut de l'appareil : un appareil bloqué, perdu ou retiré est refusé dès la requête suivante ; un appareil en attente lit, mais n'écrit pas (RC-02, AV-228, AV-282).
 - Le code court et l'identifiant d'appareil n'ont **aucune** valeur d'authentification : c'est la session qui authentifie.
 - Extension future (F-18) : clé asymétrique d'appareil (WebCrypto non exportable) pour signer les lots de commandes. Non retenue au MVP (complexité, faible gain tant que la session est vérifiée).
 
@@ -79,6 +82,7 @@ Minimisation : l'appareil ne reçoit que son périmètre (O3) ; aucune donnée f
 | CSRF | Authentification par en-tête `Authorization: Bearer` (pas de cookie de session pour l'API), donc pas de CSRF |
 | CORS | Origines autorisées : le domaine de l'application seulement |
 | Limitation de débit | Par IP et par utilisateur : `/auth` 10/min ; `/sync/push` 30/min par appareil ; lecture 300/min ; analytics 30/min ; webhooks Kommo 120/min. Réponse 429 avec `Retry-After` |
+| Adresse de l'appareil | Derrière le CDN (04-deploiement §2), adresse transmise par le proxy déclaré dans `TRUST_PROXY` (sinon tous les appareils auraient l'adresse du proxy et le verrouillage par adresse de §2 bloquerait tout le monde) ; la limitation de débit est portée par le proxy. Essais de connexion simultanés : réservation atomique à faire avant la production (AV-297) |
 | Taille | Corps ≤ 1 Mo (push ≤ 256 Ko compressés) ; morceaux de pièces jointes ≤ 256 Ko |
 | En-têtes | `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (géolocalisation et caméra : `self`) |
 | Erreurs | Messages génériques côté client ; détails dans les logs avec `correlation_id` ; aucune pile d'appels exposée. Exception de la connexion (AV-253, 13/10/2026) : après un mot de passe juste, un appareil bloqué, perdu ou retiré reçoit 403 avec un code distinct (`DEVICE_BLOCKED`, `DEVICE_LOST`, `DEVICE_RETIRED`) et un message qui renvoie vers le responsable ; un compte suspendu ou désactivé garde le 401 générique, son motif (`ACCOUNT_<statut>`) n'est écrit que dans l'audit |
@@ -91,8 +95,8 @@ Minimisation : l'appareil ne reçoit que son périmètre (O3) ; aucune donnée f
 
 ## 9. Pièces justificatives
 
-- Type MIME vérifié par signature de fichier (magic bytes) et non par l'extension ; taille ≤ 5 Mo ; SHA-256 vérifié.
-- Stockage objet privé ; accès par URL signée à durée courte, délivrée après contrôle de portée sur le document propriétaire.
+- Type MIME vérifié par signature de fichier (magic bytes) et non par l'extension ; taille ≤ 5 Mo ; SHA-256 vérifié (signature contrôlée à la fin de l'envoi depuis MP-10).
+- Stockage objet privé ; accès par URL signée à durée courte, délivrée après contrôle de portée sur le document propriétaire. Pour le pilote (MP-10, AV-286, AV-292) : fichiers sur le disque du serveur, lecture authentifiée `GET /attachments/{id}/content` avec le même contrôle de portée, jamais mise en cache.
 - Images réencodées côté serveur (suppression des métadonnées EXIF, sauf date et position conservées en base si utiles).
 
 ## 10. Réponses aux fraudes métier (PM §37)

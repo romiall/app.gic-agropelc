@@ -22,8 +22,37 @@ export interface EnqueueInput {
   readonly capturedOffline: boolean;
   readonly backdatedReason?: string | null;
   readonly attachmentIds?: readonly string[];
+  /**
+   * Photos jointes à l'opération (MP-10, ADR-046) : chacune est enregistrée par sa propre commande
+   * `attachments.attachment.register`, placée juste avant l'opération dans la file (sans `depends_on` :
+   * un refus de la pièce ne doit pas faire refuser le fait), ses octets partent après l'envoi.
+   */
+  readonly attachments?: readonly NewAttachment[];
   /** Indices locaux (hors enveloppe, jamais envoyés), voir `OutboxCommand.local_flags`. */
   readonly localFlags?: readonly string[];
+}
+
+/** Commande qui enregistre une pièce jointe (métadonnées ; les octets partent ensuite, ADR-012). */
+export const ATTACHMENT_REGISTER_COMMAND = 'attachments.attachment.register';
+
+/** Pièce jointe préparée sur l'appareil (photo recodée, empreinte calculée). */
+export interface NewAttachment {
+  /** Nature (`DELIVERY_NOTE` pour le bon de livraison, `PHOTO` pour une perte). */
+  readonly kind: string;
+  /** Type du document propriétaire (`GOODS_RECEIPT`, `STOCK_LOSS`). */
+  readonly ownerType: string;
+  /** Document propriétaire ; par défaut l'agrégat de l'opération enregistrée avec elle. */
+  readonly ownerId?: string;
+  /**
+   * Citée dans `attachment_ids` de l'opération (réception : « photo présente », pièce exigée par une
+   * validation). Non citée, elle reste rattachée par son propriétaire (perte, mortalité) : une pièce qui
+   * n'arriverait jamais ne fige alors aucune validation.
+   */
+  readonly cited: boolean;
+  readonly mimeType: string;
+  readonly bytes: ArrayBuffer;
+  readonly sha256: string;
+  readonly capturedAt: string;
 }
 
 async function nextDeviceSeq(db: GicDatabase): Promise<number> {
@@ -47,9 +76,21 @@ export async function enqueueCommand(
   // Hors de la transaction d'écriture : la mesure lit l'état de synchronisation et les paramètres.
   const autonomy = await loadAutonomy(db, deps.clock.now());
   if (autonomy.level === 'READ_ONLY') throw new OfflineReadOnlyError(autonomy.hours ?? 0);
-  return db.transaction('rw', db.outbox, async () => {
+  return db.transaction('rw', db.outbox, db.attachmentFiles, db.attachmentBlobs, async () => {
     const now = deps.clock.now().toISOString();
-    const deviceSeq = await nextDeviceSeq(db);
+    let deviceSeq = await nextDeviceSeq(db);
+    const aggregateId = input.aggregateId ?? deps.idGenerator.newId();
+    const attachmentIds = [...(input.attachmentIds ?? [])];
+    for (const attachment of input.attachments ?? []) {
+      const attachmentId = await putAttachment(db, deps, {
+        now,
+        deviceSeq: deviceSeq++,
+        authorUserId: input.authorUserId,
+        capturedOffline: input.capturedOffline,
+        attachment: { ...attachment, ownerId: attachment.ownerId ?? aggregateId },
+      });
+      if (attachment.cited) attachmentIds.push(attachmentId);
+    }
     const command: OutboxCommand = {
       command_id: deps.idGenerator.newId(),
       device_seq: deviceSeq,
@@ -57,14 +98,14 @@ export async function enqueueCommand(
       command_version: input.commandVersion,
       author_user_id: input.authorUserId,
       aggregate_type: input.aggregateType,
-      aggregate_id: input.aggregateId ?? deps.idGenerator.newId(),
+      aggregate_id: aggregateId,
       base_version: input.baseVersion ?? null,
       depends_on: input.dependsOn ?? [],
       occurred_at: now,
       client_created_at: now,
       captured_offline: input.capturedOffline,
       backdated_reason: input.backdatedReason ?? null,
-      attachment_ids: input.attachmentIds ?? [],
+      attachment_ids: attachmentIds,
       payload: input.payload,
       status: 'LOCAL_ONLY',
       attempts: 0,
@@ -78,6 +119,100 @@ export async function enqueueCommand(
     await db.outbox.put(command);
     return command;
   });
+}
+
+/**
+ * Joint une photo à un document déjà enregistré (« photo manquante » d'une réception, mortalité en
+ * attente de sa photo ; MP-10) : seule la commande d'enregistrement de la pièce, rattachée par son
+ * propriétaire — l'opération d'origine, déjà envoyée, ne change jamais (son enveloppe est son empreinte
+ * d'idempotence). Renvoie l'identifiant de la pièce.
+ */
+export async function enqueueAttachment(
+  db: GicDatabase,
+  deps: { readonly clock: Clock; readonly idGenerator: IdGenerator },
+  input: {
+    readonly authorUserId: string;
+    readonly capturedOffline: boolean;
+    readonly attachment: NewAttachment & { readonly ownerId: string };
+  },
+): Promise<string> {
+  const autonomy = await loadAutonomy(db, deps.clock.now());
+  if (autonomy.level === 'READ_ONLY') throw new OfflineReadOnlyError(autonomy.hours ?? 0);
+  return db.transaction('rw', db.outbox, db.attachmentFiles, db.attachmentBlobs, async () =>
+    putAttachment(db, deps, {
+      now: deps.clock.now().toISOString(),
+      deviceSeq: await nextDeviceSeq(db),
+      authorUserId: input.authorUserId,
+      capturedOffline: input.capturedOffline,
+      attachment: input.attachment,
+    }),
+  );
+}
+
+/** Commande d'enregistrement, fiche locale et octets d'une pièce (dans la transaction de l'appelant). */
+async function putAttachment(
+  db: GicDatabase,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly now: string;
+    readonly deviceSeq: number;
+    readonly authorUserId: string;
+    readonly capturedOffline: boolean;
+    readonly attachment: NewAttachment & { readonly ownerId: string };
+  },
+): Promise<string> {
+  const { attachment } = input;
+  const attachmentId = deps.idGenerator.newId();
+  const register: OutboxCommand = {
+    command_id: deps.idGenerator.newId(),
+    device_seq: input.deviceSeq,
+    command_type: ATTACHMENT_REGISTER_COMMAND,
+    command_version: 1,
+    author_user_id: input.authorUserId,
+    aggregate_type: 'ATTACHMENT',
+    aggregate_id: attachmentId,
+    base_version: null,
+    depends_on: [],
+    occurred_at: input.now,
+    client_created_at: input.now,
+    captured_offline: input.capturedOffline,
+    backdated_reason: null,
+    attachment_ids: [],
+    payload: {
+      ownerType: attachment.ownerType,
+      ownerId: attachment.ownerId,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.bytes.byteLength,
+      sha256: attachment.sha256,
+      capturedAt: attachment.capturedAt,
+    },
+    status: 'LOCAL_ONLY',
+    attempts: 0,
+    next_attempt_at: null,
+    last_error: null,
+    server_refs: null,
+  };
+  await db.outbox.put(register);
+  await db.attachmentFiles.put({
+    attachment_id: attachmentId,
+    author_user_id: input.authorUserId,
+    owner_type: attachment.ownerType,
+    owner_id: attachment.ownerId,
+    kind: attachment.kind,
+    mime_type: attachment.mimeType,
+    size_bytes: attachment.bytes.byteLength,
+    sha256: attachment.sha256,
+    captured_at: attachment.capturedAt,
+    register_command_id: register.command_id,
+    status: 'QUEUED',
+    uploaded_bytes: 0,
+    attempts: 0,
+    next_attempt_at: null,
+    last_error: null,
+  });
+  await db.attachmentBlobs.put({ attachment_id: attachmentId, bytes: attachment.bytes });
+  return attachmentId;
 }
 
 /** Statuts d'une commande qui n'a pas encore reçu de réponse définitive du serveur. */
@@ -202,6 +337,34 @@ export async function countPending(db: GicDatabase): Promise<number> {
   return db.outbox.where('status').anyOf(['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING']).count();
 }
 
+/**
+ * Opération refusée ou en conflit que l'utilisateur a « classée » (MP-09, AV-283 ; BR-SYN-009 : visible
+ * « jusqu'à ce que l'utilisateur en prenne connaissance » ; SM de la commande sur l'appareil :
+ * `REJECTED → ACKNOWLEDGED`) : marquage local, jamais envoyé, la commande garde son statut et n'est pas
+ * effacée (BR-SYN-013). `DISMISSED` et `REENTERED` sont posés par l'écran des transferts sur une
+ * expédition refusée (ignorée ou ressaisie) : elle est aussi prise en compte.
+ */
+export const ACKNOWLEDGED_FLAG = 'ACKNOWLEDGED';
+const SETTLED_FLAGS: readonly string[] = [ACKNOWLEDGED_FLAG, 'DISMISSED', 'REENTERED'];
+
+/** Refusée ou en conflit, et pas encore prise en compte par l'utilisateur. */
+export function needsAttention(command: OutboxCommand): boolean {
+  if (command.status !== 'CONFLICT' && command.status !== 'REJECTED') return false;
+  return !command.local_flags?.some((flag) => SETTLED_FLAGS.includes(flag));
+}
+
+/** Classe une opération refusée ou en conflit (marquage local seulement). */
+export async function acknowledgeCommand(db: GicDatabase, commandId: string): Promise<boolean> {
+  return db.transaction('rw', db.outbox, async () => {
+    const command = await db.outbox.get(commandId);
+    if (!command || !needsAttention(command)) return false;
+    await db.outbox.update(commandId, {
+      local_flags: [...(command.local_flags ?? []), ACKNOWLEDGED_FLAG],
+    });
+    return true;
+  });
+}
+
 export async function countAttention(db: GicDatabase): Promise<number> {
-  return db.outbox.where('status').anyOf(['CONFLICT', 'REJECTED']).count();
+  return db.outbox.where('status').anyOf(['CONFLICT', 'REJECTED']).filter(needsAttention).count();
 }

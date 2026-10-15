@@ -17,7 +17,7 @@ import { useAuth } from '../auth/AuthContext.js';
 import { EXPECTED_DIRECT_CANCEL } from './quota.js';
 import { formatBusinessDay, formatClockTime } from '../home/format-home.js';
 import { CommandResult } from './CommandResult.js';
-import { formatMoney, formatQuantity } from './format.js';
+import { formatMoney, formatQuantity, unitLabel } from './format.js';
 import { recentSales, saleStatusTone, type SaleView } from './recent-sales.js';
 import { rootCustomerId, useSalesReferences, type SalesReferences } from './references.js';
 import { waitsForOtherUser } from './pending.js';
@@ -255,7 +255,7 @@ export function SaleDetailScreen() {
                 <small>
                   {t('sales.detail.line', {
                     quantity: formatQuantity(line.quantity),
-                    unit: line.unitCode,
+                    unit: unitLabel(line.unitCode, line.quantity, refs.units),
                     price: formatMoney(line.unitPriceXaf),
                   })}
                   {line.discountXaf > 0
@@ -289,7 +289,13 @@ export function SaleDetailScreen() {
         <p className="home-banner">{t('sales.detail.cancellation_pending')}</p>
       ) : null}
       {sale.flags.length > 0 ? (
-        <p className="text-warn">{t('sales.detail.flag_hint', { flags: sale.flags.join(', ') })}</p>
+        <p className="text-warn">
+          {t('sales.detail.flag_hint', {
+            flags: sale.flags
+              .map((flag) => t(`sales.detail.flag.${flag}`, { defaultValue: flag }))
+              .join(', '),
+          })}
+        </p>
       ) : null}
 
       <div className="result-actions no-print">
@@ -301,7 +307,7 @@ export function SaleDetailScreen() {
         sale.balanceDueXaf > 0 &&
         sale.status === 'CONFIRMED' &&
         holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.paymentRecord) ? (
-          <Link to={ROUTES.collectFor(customer.id)} className="action action-compact">
+          <Link to={ROUTES.collectFor(customer.id, sale.id)} className="action action-compact">
             <span className="action-label">{t('sales.detail.collect')}</span>
           </Link>
         ) : null}

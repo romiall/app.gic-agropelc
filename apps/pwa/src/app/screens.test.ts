@@ -17,6 +17,10 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(routeOfSignal({ code: 'DEVICES_PENDING', action: { route: '/autre' } })).toBe('/autre');
     expect(routeOfSignal({ code: 'STOCK_OUT', action: { route: null } })).toBeNull();
     expect(routeOfSignal({ code: 'STOCK_OUT', action: null })).toBeNull();
+    // MP-09 (AV-255) : ventes du jour signalées, liste filtrée.
+    expect(routeOfSignal({ code: 'SALES_FLAGGED', action: { route: null } })).toBe(
+      `${ROUTES.sales}?anomalies=1`,
+    );
     expect(routeOfAction({ code: 'DEVICES', route: null }, 'ADMIN')).toBe(ROUTES.devices);
     // MP-07 : file de validation, filtrée par type depuis les actions des responsables.
     expect(routeOfSignal({ code: 'APPROVALS_PENDING', action: { route: null } })).toBe(
@@ -30,6 +34,9 @@ describe('app/screens — registre et navigation par rôle', () => {
       `${ROUTES.approvals}?types=PRICE_OVERRIDE`,
     );
     expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'ADMIN')).toBeNull();
+    // MP-08 : comptes et réinitialisation, pour l'Admin.
+    expect(routeOfAction({ code: 'USERS', route: null }, 'ADMIN')).toBe(ROUTES.users);
+    expect(routeOfAction({ code: 'USERS', route: null }, 'DIRECTION')).toBeNull();
     // Un code de signal ne mène qu'à un seul écran.
     const codes = SCREENS.flatMap((screen) => screen.signalCodes ?? []);
     expect(new Set(codes).size).toBe(codes.length);

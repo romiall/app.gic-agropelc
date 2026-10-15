@@ -18,7 +18,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { localAvailable, physicalLeft, stockKey } from '../sales/stock.js';
 import { submitCommand } from '../sales/submit.js';
@@ -423,7 +423,11 @@ function DirectDispatchForm({
         hint={(product) =>
           t('sales.product_available', {
             quantity: formatQuantity(availableAt(refs, source, product.id)),
-            unit: product.base_unit_code,
+            unit: unitLabel(
+              product.base_unit_code,
+              availableAt(refs, source, product.id),
+              refs.units,
+            ),
           })
         }
         lineIssue={(row) => (lotMissing(row.check.draft) ? t('transfer.lot_required') : null)}
@@ -461,7 +465,7 @@ function DirectDispatchForm({
                     {t('transfer.lot_option', {
                       code: lot.lotCode,
                       quantity: formatQuantity(lot.quantity),
-                      unit: row.product?.base_unit_code ?? '',
+                      unit: unitLabel(row.product?.base_unit_code ?? '', lot.quantity, refs.units),
                     })}
                   </option>
                 ))}
@@ -825,13 +829,13 @@ function RequestDispatchForm({
                 <span>
                   {t('transfer.requested', {
                     quantity: formatQuantity(Number(line.requested_qty_base ?? 0)),
-                    unit,
+                    unit: unitLabel(unit, Number(line.requested_qty_base ?? 0)),
                   })}
                 </span>
               </div>
               <div className="field">
                 <label htmlFor={`dispatch-${line.id}`}>
-                  {t('transfer.dispatched_label', { unit })}
+                  {t('transfer.dispatched_label', { unit: unitLabel(unit) })}
                 </label>
                 <input
                   id={`dispatch-${line.id}`}

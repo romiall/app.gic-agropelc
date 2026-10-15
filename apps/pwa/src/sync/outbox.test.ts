@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
 import {
+  acknowledgeCommand,
   countAttention,
   countPending,
   enqueueCommand,
@@ -154,6 +155,49 @@ describe('sync/outbox (06-offline-sync/01-architecture-offline.md §5)', () => {
 
     expect(await countPending(db)).toBe(1);
     expect(await countAttention(db)).toBe(1);
+  });
+
+  it('acknowledgeCommand : opération refusée ou en conflit classée sans changer de statut (MP-09, AV-283)', async () => {
+    const enqueue = (commandType: string) =>
+      enqueueCommand(
+        db,
+        { clock, idGenerator },
+        {
+          authorUserId: 'user-1',
+          commandType,
+          commandVersion: 1,
+          aggregateType: 'TEST',
+          payload: {},
+          capturedOffline: true,
+        },
+      );
+    const rejected = await enqueue('test.rejected');
+    const conflict = await enqueue('test.conflict');
+    const pending = await enqueue('test.pending');
+    const dismissed = await enqueue('test.dismissed');
+    await db.outbox.update(rejected.command_id, { status: 'REJECTED' });
+    await db.outbox.update(conflict.command_id, { status: 'CONFLICT' });
+    // Expédition refusée déjà ignorée par l'écran des transferts : prise en compte.
+    await db.outbox.update(dismissed.command_id, {
+      status: 'REJECTED',
+      local_flags: ['DISMISSED'],
+    });
+    expect(await countAttention(db)).toBe(2);
+
+    expect(await acknowledgeCommand(db, pending.command_id)).toBe(false);
+    expect(await acknowledgeCommand(db, rejected.command_id)).toBe(true);
+    expect(await acknowledgeCommand(db, rejected.command_id)).toBe(false);
+    expect(await acknowledgeCommand(db, 'inconnue')).toBe(false);
+    expect(await countAttention(db)).toBe(1);
+    expect(await db.outbox.get(rejected.command_id)).toMatchObject({
+      status: 'REJECTED',
+      local_flags: ['ACKNOWLEDGED'],
+    });
+    expect((await db.outbox.get(pending.command_id))?.local_flags ?? []).toEqual([]);
+
+    expect(await acknowledgeCommand(db, conflict.command_id)).toBe(true);
+    expect(await countAttention(db)).toBe(0);
+    expect(await db.outbox.count()).toBe(4);
   });
 
   it('pendingOutbox : ordre strict, dépendantes comprises ; arrêt avant une dépendance qui ne part pas (ADR-039)', async () => {

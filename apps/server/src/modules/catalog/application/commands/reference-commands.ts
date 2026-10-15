@@ -2,8 +2,9 @@
  * Référentiels catalogue simples (catégories de produit, unités, codes motifs, catégories de
  * client, canaux de vente — D16-CAT UC-CAT-03, UC-CAT-04 ; AV-017, AV-018). Chacun suit le
  * même cycle : créé, puis désactivé/réactivé (`DESACTIVATION`, jamais de suppression
- * physique, INV-GLO-03) — sauf `reason_code`, dont le dictionnaire ne prévoit qu'un `set`
- * (création ; la désactivation n'est pas un cas d'usage séparé documenté, BR-CAT-010).
+ * physique, INV-GLO-03). Un motif (`reason_code`) se crée par `set`, puis son libellé et son
+ * commentaire exigé se modifient (`update`) et il se désactive ou se réactive (MP-11 : AV-248,
+ * tranché le 13/10/2026, « listes semées, désactivables », libellés ajustables ; BR-CAT-010).
  *
  * P5-18 (AV-196) : unités, canaux et motifs sont publiés dans le jeu `catalog` (`sync-changes.ts`) ;
  * la désactivation et la réactivation d'une unité ou d'un canal lisent le code dans la charge utile
@@ -264,11 +265,7 @@ function registerCodeKeyedSetActive(
 }
 
 // ---------------------------------------------------------------------------------------
-// catalog.reason_code.set (BR-CAT-010 : jamais supprimé, seulement désactivable — mais le
-// dictionnaire ne documente qu'un `set` en écriture ; is_active reste modifiable via un
-// nouvel appel `set` idempotent sur le même id, à défaut d'une commande dédiée non
-// spécifiée — traité comme un trou de spécification mineur, pas comblé silencieusement :
-// voir AV registre si un besoin réel de désactivation isolée apparaît.)
+// catalog.reason_code.set (création ; un `set` rejoué sur un identifiant existant ne change rien)
 // ---------------------------------------------------------------------------------------
 const reasonCodeCategorySchema = z.enum([
   'LOSS',
@@ -324,6 +321,72 @@ const reasonCodeSet: CommandHandler<ReasonCodeSetPayload> = async (uow, envelope
   await recordChanges(uow, [reasonCodeChange(envelope.aggregate_id, 1)]);
   return { status: 'APPLIED' };
 };
+
+// ---------------------------------------------------------------------------------------
+// catalog.reason_code.{update,deactivate,reactivate} (MP-11, AV-248, BR-CAT-010) : le code et la
+// catégorie ne changent jamais (les opérations passées gardent leur référence) ; une modification
+// sans effet est acceptée sans nouvelle version.
+// ---------------------------------------------------------------------------------------
+const reasonCodeUpdateSchema = z
+  .object({
+    label: z.string().trim().min(1).max(200).optional(),
+    requiresComment: z.boolean().optional(),
+  })
+  .refine((p) => p.label !== undefined || p.requiresComment !== undefined, {
+    message: 'Rien à modifier : libellé ou commentaire exigé attendu.',
+  });
+type ReasonCodeUpdatePayload = z.infer<typeof reasonCodeUpdateSchema>;
+
+async function loadReasonCode(uow: Parameters<CommandHandler<unknown>>[0], id: Buffer) {
+  return uow
+    .selectFrom('catalog_reason_codes')
+    .select(['id', 'label', 'requires_comment', 'is_active', 'version'])
+    .where('id', '=', id)
+    .executeTakeFirst();
+}
+
+const reasonCodeUpdate: CommandHandler<ReasonCodeUpdatePayload> = async (uow, envelope) => {
+  const id = toBin(envelope.aggregate_id);
+  const row = await loadReasonCode(uow, id);
+  if (!row) return notFound('Motif introuvable.');
+  const label = envelope.payload.label ?? row.label;
+  const requiresComment = envelope.payload.requiresComment ?? Boolean(row.requires_comment);
+  if (label === row.label && requiresComment === Boolean(row.requires_comment)) {
+    return { status: 'APPLIED' };
+  }
+  await uow
+    .updateTable('catalog_reason_codes')
+    .set({
+      label,
+      requires_comment: toDbBool(requiresComment),
+      updated_by: toBin(envelope.author_user_id),
+      version: row.version + 1,
+    })
+    .where('id', '=', id)
+    .execute();
+  await recordChanges(uow, [reasonCodeChange(envelope.aggregate_id, row.version + 1)]);
+  return { status: 'APPLIED' };
+};
+
+function reasonCodeSetActive(active: boolean): CommandHandler<Record<string, never>> {
+  return async (uow, envelope) => {
+    const id = toBin(envelope.aggregate_id);
+    const row = await loadReasonCode(uow, id);
+    if (!row) return notFound('Motif introuvable.');
+    if (Boolean(row.is_active) === active) return { status: 'APPLIED' };
+    await uow
+      .updateTable('catalog_reason_codes')
+      .set({
+        is_active: toDbBool(active),
+        updated_by: toBin(envelope.author_user_id),
+        version: row.version + 1,
+      })
+      .where('id', '=', id)
+      .execute();
+    await recordChanges(uow, [reasonCodeChange(envelope.aggregate_id, row.version + 1)]);
+    return { status: 'APPLIED' };
+  };
+}
 
 // ---------------------------------------------------------------------------------------
 // catalog.customer_category.create (AV-017)
@@ -416,6 +479,27 @@ export function registerReferenceCommands(registry: CommandHandlerRegistry): voi
     payloadSchema: reasonCodeSetSchema,
     permissionCode: 'catalog.reference.manage',
     handler: reasonCodeSet,
+  });
+  registry.register({
+    commandType: 'catalog.reason_code.update',
+    version: 1,
+    payloadSchema: reasonCodeUpdateSchema,
+    permissionCode: 'catalog.reference.manage',
+    handler: reasonCodeUpdate,
+  });
+  registry.register({
+    commandType: 'catalog.reason_code.deactivate',
+    version: 1,
+    payloadSchema: z.object({}),
+    permissionCode: 'catalog.reference.manage',
+    handler: reasonCodeSetActive(false),
+  });
+  registry.register({
+    commandType: 'catalog.reason_code.reactivate',
+    version: 1,
+    payloadSchema: z.object({}),
+    permissionCode: 'catalog.reference.manage',
+    handler: reasonCodeSetActive(true),
   });
 
   registry.register({

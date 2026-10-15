@@ -1,13 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PhotoModule from '../attachments/photo.js';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { getDb } from '../../storage/db.js';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { loadSalesReferences } from '../sales/references.js';
 import { ReceiptScreen } from './ReceiptScreen.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
+// Photo : le canevas n'existe pas en test ; le recodage rend un petit JPEG (MP-10).
+vi.mock('../attachments/photo.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof PhotoModule>();
+  return {
+    ...actual,
+    browserPhotoCodec: {
+      decode: async () => ({ width: 1600, height: 1200, source: null }),
+      encode: async () =>
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])], { type: 'image/jpeg' }),
+    },
+  };
+});
 vi.mock('../auth/AuthContext.js', () => ({
   useAuth: () => ({
     state: {
@@ -113,6 +126,182 @@ describe('Réceptionner (ECR-APP-04)', () => {
     vi.restoreAllMocks();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+    await getDb().attachmentFiles.clear();
+    await getDb().attachmentBlobs.clear();
+  });
+
+  const image = () => new File(['bon'], 'bon.jpg', { type: 'image/jpeg' });
+
+  it('MP-10 : photo du bon jointe — enregistrée juste avant la réception, citée par elle ; état affiché', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/achats/receptions/${ORDER}`);
+    await screen.findByRole('listitem', { name: 'Œufs de table' });
+    await user.upload(screen.getByLabelText('Choisir une image'), image());
+    expect(await screen.findByText(/Photo prête/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la réception' }));
+    expect(await screen.findByText(/Réception enregistrée sur ce téléphone/)).toBeInTheDocument();
+
+    const [register, receipt] = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(register).toMatchObject({
+      command_type: 'attachments.attachment.register',
+      depends_on: [],
+      payload: {
+        ownerType: 'GOODS_RECEIPT',
+        ownerId: receipt!.aggregate_id,
+        kind: 'DELIVERY_NOTE',
+        mimeType: 'image/jpeg',
+        sizeBytes: 8,
+      },
+    });
+    expect(receipt).toMatchObject({
+      command_type: 'procurement.receipt.record',
+      attachment_ids: [register!.aggregate_id],
+      depends_on: [],
+    });
+    expect(await screen.findByText(/Photo enregistrée sur ce téléphone/)).toBeInTheDocument();
+  });
+
+  it('revue de MP-10 : photo du bon refusée — à reprendre depuis la liste ; reçue — plus de badge', async () => {
+    const RECEIPT = '01900000-0000-7000-8000-0000000004c1';
+    await getDb().projections.put(
+      projection(
+        'procurement',
+        'GOODS_RECEIPT',
+        RECEIPT,
+        {
+          doc_number: 'REC-2026-000010',
+          purchase_order_id: ORDER,
+          supplier_id: SUPPLIER,
+          location_id: IDS.pos,
+          supplier_delivery_note_ref: null,
+          status: 'POSTED',
+          occurred_at: '2026-10-10T09:00:00.000Z',
+          lines: [],
+        },
+        'SITE',
+      ),
+    );
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000004c2',
+      device_seq: 1,
+      command_type: 'procurement.receipt.record',
+      command_version: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      aggregate_type: 'GOODS_RECEIPT',
+      aggregate_id: RECEIPT,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T09:00:00.000Z',
+      client_created_at: '2026-10-10T09:00:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: ['01900000-0000-7000-8000-0000000004c3'],
+      payload: {},
+      status: 'SYNCED',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: null,
+    });
+    const refusedFile = {
+      attachment_id: '01900000-0000-7000-8000-0000000004c3',
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      owner_type: 'GOODS_RECEIPT',
+      owner_id: RECEIPT,
+      kind: 'DELIVERY_NOTE',
+      mime_type: 'image/jpeg',
+      size_bytes: 8,
+      sha256: 'a'.repeat(64),
+      captured_at: '2026-10-10T09:00:00.000Z',
+      register_command_id: 'enregistrement',
+      status: 'QUARANTINED' as const,
+      uploaded_bytes: 8,
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+    };
+    await getDb().attachmentFiles.put(refusedFile);
+    const user = userEvent.setup();
+    renderAt('/achats/receptions');
+    expect(await screen.findByText('Photo manquante')).toBeInTheDocument();
+    expect(await screen.findByText(/Photo refusée par le serveur/)).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Joindre la photo du bon' }));
+    await user.upload(screen.getByLabelText('Choisir une image'), image());
+    await screen.findByText(/Photo prête/);
+    await user.click(screen.getByRole('button', { name: 'Envoyer la photo' }));
+    expect(await screen.findByText(/Photo enregistrée sur ce téléphone/)).toBeInTheDocument();
+    // Nouvelle photo en route : badge retiré, ancienne photo refusée plus montrée.
+    expect(screen.queryByText('Photo manquante')).toBeNull();
+    expect(screen.queryByText(/Photo refusée par le serveur/)).toBeNull();
+  });
+
+  it('MP-10 (AV-285) : réception « photo manquante » — badge et photo du bon jointe après coup, seule', async () => {
+    const RECEIPT = '01900000-0000-7000-8000-0000000004b1';
+    await getDb().projections.put(
+      projection(
+        'procurement',
+        'GOODS_RECEIPT',
+        RECEIPT,
+        {
+          doc_number: 'REC-2026-000009',
+          purchase_order_id: ORDER,
+          supplier_id: SUPPLIER,
+          location_id: IDS.pos,
+          supplier_delivery_note_ref: null,
+          status: 'POSTED',
+          occurred_at: '2026-10-10T08:00:00.000Z',
+          lines: [],
+        },
+        'SITE',
+      ),
+    );
+    const accepted: OutboxCommand = {
+      command_id: '01900000-0000-7000-8000-0000000004b2',
+      device_seq: 1,
+      command_type: 'procurement.receipt.record',
+      command_version: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      aggregate_type: 'GOODS_RECEIPT',
+      aggregate_id: RECEIPT,
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-10T08:00:00.000Z',
+      client_created_at: '2026-10-10T08:00:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {},
+      status: 'SYNCED_WITH_WARNING',
+      attempts: 1,
+      next_attempt_at: null,
+      last_error: null,
+      server_refs: { docNumber: 'REC-2026-000009' },
+      warnings: ['RECEIPT_PHOTO_MISSING'],
+    };
+    await getDb().outbox.put(accepted);
+    const user = userEvent.setup();
+    renderAt('/achats/receptions');
+    expect(await screen.findByText('Photo manquante')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Joindre la photo du bon' }));
+    const send = screen.getByRole('button', { name: 'Envoyer la photo' });
+    expect(send).toBeDisabled();
+    await user.upload(screen.getByLabelText('Choisir une image'), image());
+    await screen.findByText(/Photo prête/);
+    await user.click(screen.getByRole('button', { name: 'Envoyer la photo' }));
+    expect(await screen.findByText(/Photo enregistrée sur ce téléphone/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Joindre la photo du bon' })).toBeNull();
+    // Photo en route : le badge « photo manquante » disparaît (revue de MP-10).
+    expect(screen.queryByText('Photo manquante')).toBeNull();
+
+    const added = (await getDb().outbox.orderBy('device_seq').toArray()).filter(
+      (command) => command.command_id !== accepted.command_id,
+    );
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({
+      command_type: 'attachments.attachment.register',
+      payload: { ownerType: 'GOODS_RECEIPT', ownerId: RECEIPT, kind: 'DELIVERY_NOTE' },
+    });
   });
 
   it('hors ligne : rejet motivé, dépassement mis en quarantaine, rien au disponible, accepté déduit du reste', async () => {

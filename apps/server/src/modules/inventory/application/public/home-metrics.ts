@@ -2,7 +2,8 @@
  * Chiffres d'`inventory` pour l'accueil par rôle (ECR-ADM-03 ; ADR-030) : santé du stock (ruptures,
  * seuils, soldes négatifs, valeur) et pertes récentes. Lecture seule sur les soldes et le registre ;
  * jamais de valeur stockée (BR-ANA-001). Le périmètre est celui du **site de l'emplacement**.
- * Les emplacements virtuels (clients, fournisseurs, pertes) ne comptent pas comme du stock.
+ * Les emplacements virtuels (clients, fournisseurs, pertes) ne comptent pas comme du stock ; la valeur
+ * en transit et celle des pertes en attente sont rendues à part, pour toute l'entreprise (AV-256).
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -19,6 +20,14 @@ export interface StockHealth {
   readonly negativeBalances: number;
   /** Valeur du stock physique (KPI-STK-02) : exige `inventory.valuation.read` côté appelant. */
   readonly valueXaf: number;
+  /**
+   * Valeur en transit entre deux sites (`V_TRANSIT`, AV-256) : rendue pour la portée de toute
+   * l'entreprise seulement (l'emplacement de transit n'a pas de site), `null` sinon. Négative possible
+   * tant qu'une réception sans document n'est pas rapprochée (P5-16).
+   */
+  readonly transitValueXaf: number | null;
+  /** Valeur des pertes déclarées en attente de validation (`V_PENDING_LOSS`), même portée. */
+  readonly pendingLossValueXaf: number | null;
   readonly thresholdsCount: number;
 }
 
@@ -74,11 +83,31 @@ export async function stockHealth(executor: Executor, scope: ReadScope): Promise
     .where(siteCondition)
     .executeTakeFirstOrThrow();
 
+  // Transit et pertes en attente : emplacements virtuels sans site, lus pour toute l'entreprise (AV-256).
+  const wholeCompany = scope.siteIds === undefined && scope.userIds === undefined;
+  const virtual = wholeCompany
+    ? await executor
+        .selectFrom('inventory_stock_balances as b')
+        .innerJoin('organization_locations', 'organization_locations.id', 'b.location_id')
+        .select([
+          sql<string>`COALESCE(SUM(CASE WHEN organization_locations.location_type = 'V_TRANSIT' THEN b.value_xaf ELSE 0 END), 0)`.as(
+            'transit',
+          ),
+          sql<string>`COALESCE(SUM(CASE WHEN organization_locations.location_type = 'V_PENDING_LOSS' THEN b.value_xaf ELSE 0 END), 0)`.as(
+            'pending_loss',
+          ),
+        ])
+        .where('organization_locations.location_type', 'in', ['V_TRANSIT', 'V_PENDING_LOSS'])
+        .executeTakeFirstOrThrow()
+    : null;
+
   return {
     stockOut: Number(thresholds.out_count),
     stockLow: Number(thresholds.low_count),
     negativeBalances: Number(negatives.negative_count),
     valueXaf: Number(value.value),
+    transitValueXaf: virtual ? Number(virtual.transit) : null,
+    pendingLossValueXaf: virtual ? Number(virtual.pending_loss) : null,
     thresholdsCount: Number(thresholds.total),
   };
 }

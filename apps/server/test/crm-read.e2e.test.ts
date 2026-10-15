@@ -19,7 +19,6 @@ import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
-import { signAccessToken } from '../src/modules/identity/application/public/jwt.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { convertOnConfirmedSale } from '../src/modules/crm/application/public/index.js';
 import {
@@ -34,6 +33,7 @@ import {
   insertTestUser,
   insertTestZone,
   freshLocalPhone,
+  signTestAccessToken,
 } from './helpers.js';
 
 const DAY = '2026-09-20';
@@ -205,7 +205,7 @@ describe('Lectures HTTP du CRM et du pointage (P3-06)', () => {
         .execute();
     });
     for (const actor of [cte1, cte2, rco, ven, mag]) {
-      actor.token = await signAccessToken(
+      actor.token = await signTestAccessToken(
         jwtKeys.privateKey,
         { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
         clock.now(),

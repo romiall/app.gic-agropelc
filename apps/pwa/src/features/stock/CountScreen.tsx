@@ -13,7 +13,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatMoment } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatQuantity } from '../sales/format.js';
+import { formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { submitCommand } from '../sales/submit.js';
 import {
@@ -392,7 +392,7 @@ export function CountScreen() {
                 </div>
                 <div className="field">
                   <label htmlFor={`count-${entry.key}`}>
-                    {t('count.counted_label', { unit: entry.unit })}
+                    {t('count.counted_label', { unit: unitLabel(entry.unit, 1, refs?.units) })}
                   </label>
                   <input
                     id={`count-${entry.key}`}
@@ -412,7 +412,10 @@ export function CountScreen() {
                   <p className={row.variance === 0 ? 'home-muted' : 'text-warn'}>
                     {row.variance === 0
                       ? t('count.no_variance')
-                      : t('count.variance', { quantity: signed(row.variance), unit: entry.unit })}
+                      : t('count.variance', {
+                          quantity: signed(row.variance),
+                          unit: unitLabel(entry.unit, row.variance, refs?.units),
+                        })}
                   </p>
                 ) : null}
                 {row.variance !== null && row.variance !== 0 && reasons.length > 0 ? (

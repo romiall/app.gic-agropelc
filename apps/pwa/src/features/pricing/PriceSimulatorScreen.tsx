@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { businessDayOf, type PriceRule } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { formatBusinessDay } from '../home/format-home.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, unitLabel } from '../sales/format.js';
 import { useSalesReferences } from '../sales/references.js';
 import { MAX_QUANTITY, pricesMayBeStale } from '../sales/sale-form.js';
 import {
@@ -57,7 +57,7 @@ export function PriceSimulatorScreen() {
   const product = products.find((candidate) => candidate.id === productId);
   const pricingUnit = product
     ? product.pricing_mode === 'PER_WEIGHT'
-      ? 'kg'
+      ? 'KG'
       : product.base_unit_code
     : '';
   const sites = [...refs.sites.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
@@ -134,7 +134,7 @@ export function PriceSimulatorScreen() {
       <div className="line-fields">
         <div className="field">
           <label htmlFor={ids.quantity}>
-            {t('price_sim.quantity_label', { unit: pricingUnit || '—' })}
+            {t('price_sim.quantity_label', { unit: unitLabel(pricingUnit) || '—' })}
           </label>
           <input
             id={ids.quantity}
@@ -207,7 +207,7 @@ export function PriceSimulatorScreen() {
                 <strong>
                   {t('price_sim.price', {
                     price: formatMoney(winner.unitPriceXaf),
-                    unit: pricingUnit,
+                    unit: unitLabel(pricingUnit),
                   })}
                 </strong>
               </p>
@@ -215,7 +215,7 @@ export function PriceSimulatorScreen() {
                 <p>
                   {t('price_sim.total', {
                     quantity: formatQuantity(quantity),
-                    unit: pricingUnit,
+                    unit: unitLabel(pricingUnit, quantity),
                     total: formatMoney(total),
                   })}
                 </p>

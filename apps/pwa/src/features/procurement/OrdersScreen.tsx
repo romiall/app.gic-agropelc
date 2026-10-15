@@ -13,7 +13,7 @@ import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { formatMoney, formatQuantity } from '../sales/format.js';
+import { formatMoney, formatQuantity, formatQuantityUnit, unitLabel } from '../sales/format.js';
 import { useSalesReferences, type SalesReferences } from '../sales/references.js';
 import { readPages, readPath, useOnlineRead, type Pages } from '../sales/online-read.js';
 import { settingValue } from '../sales/stock.js';
@@ -167,9 +167,8 @@ function OrderCard({
                   <strong>{product?.name ?? line.productId}</strong>
                   <small>
                     {t('orders_po.line_progress', {
-                      ordered: formatQuantity(line.orderedQtyBase),
-                      remaining: formatQuantity(line.remainingQtyBase),
-                      unit,
+                      ordered: formatQuantityUnit(line.orderedQtyBase, unit),
+                      remaining: formatQuantityUnit(line.remainingQtyBase, unit),
                     })}
                   </small>
                 </span>
@@ -263,7 +262,7 @@ function OrderCard({
                   <div className="line-fields">
                     <div className="field">
                       <label htmlFor={`qty-${line.id}`}>
-                        {t('orders_po.qty_base_label', { unit })}
+                        {t('orders_po.qty_base_label', { unit: unitLabel(unit) })}
                       </label>
                       <input
                         id={`qty-${line.id}`}
@@ -278,7 +277,7 @@ function OrderCard({
                     </div>
                     <div className="field">
                       <label htmlFor={`price-${line.id}`}>
-                        {t('orders_po.price_label', { unit })}
+                        {t('orders_po.price_label', { unit: unitLabel(unit) })}
                       </label>
                       <input
                         id={`price-${line.id}`}
@@ -682,7 +681,7 @@ function NewOrder({
                     >
                       {units.map((candidate) => (
                         <option key={candidate.unitCode} value={candidate.unitCode}>
-                          {candidate.unitCode}
+                          {unitLabel(candidate.unitCode)}
                         </option>
                       ))}
                     </select>
@@ -690,7 +689,7 @@ function NewOrder({
                 ) : null}
                 <div className="field">
                   <label htmlFor={`new-price-${line.key}`}>
-                    {t('orders_po.price_label', { unit })}
+                    {t('orders_po.price_label', { unit: unitLabel(unit) })}
                   </label>
                   <input
                     id={`new-price-${line.key}`}
@@ -705,7 +704,7 @@ function NewOrder({
                 <p className="home-muted">
                   {t('orders_po.remaining_request', {
                     quantity: formatQuantity(line.remainingBase),
-                    unit,
+                    unit: unitLabel(unit, line.remainingBase),
                   })}
                 </p>
               ) : null}
@@ -769,7 +768,10 @@ function NewOrder({
                       doc: line.requestDoc,
                       product: products.get(line.productId)?.name ?? line.productId,
                       quantity: formatQuantity(line.remainingBase),
-                      unit: products.get(line.productId)?.base_unit_code ?? '',
+                      unit: unitLabel(
+                        products.get(line.productId)?.base_unit_code ?? '',
+                        line.remainingBase,
+                      ),
                     })}
                   </option>
                 ))}

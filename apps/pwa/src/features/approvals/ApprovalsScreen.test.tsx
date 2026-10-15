@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
+import { fetchAttachmentContent } from '../../sync/attachment-content.js';
 import { IDS, seedSalesFixtures } from '../sales/fixtures.js';
 import { ApprovalsScreen } from './ApprovalsScreen.js';
 import {
@@ -12,12 +13,14 @@ import {
   commandOf,
   EMPTY_DECISION,
   inboxPath,
+  optionsFor,
   typesFromQuery,
   type ApprovalView,
 } from './approvals.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
 vi.mock('../../sync/api-client.js', () => ({ authorizedRequest: vi.fn() }));
+vi.mock('../../sync/attachment-content.js', () => ({ fetchAttachmentContent: vi.fn() }));
 vi.mock('../auth/AuthContext.js', () => ({
   useAuth: () => ({
     state: {
@@ -191,6 +194,16 @@ describe('Validations : logique (ECR-ADM-08, ADR-018)', () => {
     });
   });
 
+  it('MP-11 : choix que le serveur refuserait retirés (porteur inconnu d’une remise)', () => {
+    const transfer = request({ operationType: 'CASH_TRANSFER_DISCREPANCY' });
+    expect(optionsFor(transfer, 'APPROVE')?.values).toContain('CARRIER');
+    const noCarrier = { ...transfer, unavailableOptions: ['CARRIER'] };
+    expect(optionsFor(noCarrier, 'APPROVE')?.values).not.toContain('CARRIER');
+    expect(optionsFor(noCarrier, 'APPROVE')?.values).toEqual(
+      optionsFor(transfer, 'APPROVE')?.values.filter((value) => value !== 'CARRIER'),
+    );
+  });
+
   it('filtre de l’accueil : types lus dans la requête, chemin de lecture', () => {
     expect(typesFromQuery('MORTALITY,ANIMAL_COUNT_ADJUSTMENT,MORTALITY')).toEqual([
       'MORTALITY',
@@ -299,9 +312,7 @@ describe('Validations (ECR-ADM-08)', () => {
     const waitingCard = await screen.findByRole('listitem', {
       name: 'Mortalité : Mortalité PRT-0013',
     });
-    expect(
-      within(waitingCard).getByText(/Justificatif en cours de transmission/),
-    ).toBeInTheDocument();
+    expect(within(waitingCard).getByText(/Justificatif attendu/)).toBeInTheDocument();
     expect(within(waitingCard).getByText(/Montant au coût masqué/)).toBeInTheDocument();
     expect(
       within(waitingCard).getByRole('button', { name: 'Approuver : Mortalité PRT-0013' }),
@@ -355,6 +366,91 @@ describe('Validations (ECR-ADM-08)', () => {
     });
   });
 
+  it('MP-11 : « Actualiser » et retour sur l’onglet relisent la file ; un justificatif reçu rend l’approbation possible', async () => {
+    const waiting = request({
+      operationType: 'MORTALITY',
+      subjectSummary: 'Mortalité PRT-0020',
+      attachmentsPending: true,
+    });
+    serve([waiting]);
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Mortalité : Mortalité PRT-0020' });
+    expect(
+      within(card).getByRole('button', { name: 'Approuver : Mortalité PRT-0020' }),
+    ).toBeDisabled();
+    const inboxReads = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter((call) => String(call[1]).startsWith('/api/v1/approvals/inbox')).length;
+    const before = inboxReads();
+
+    // La photo arrive au serveur : « Actualiser la file » relit.
+    serve([{ ...waiting, attachmentsPending: false }]);
+    await user.click(screen.getByRole('button', { name: 'Actualiser la file' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approuver : Mortalité PRT-0020' })).toBeEnabled(),
+    );
+    expect(inboxReads()).toBe(before + 1);
+
+    // Retour sur l'onglet : nouvelle relecture ; un onglet masqué ne relit pas.
+    // Propriété d'instance posée puis retirée (l'accesseur du prototype reprend la main).
+    let visibility: DocumentVisibilityState = 'hidden';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+    try {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(inboxReads()).toBe(before + 1);
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() => expect(inboxReads()).toBe(before + 2));
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+  });
+
+  it('MP-11 : écart de facture refusable — pas de « il ne se refuse pas » ; refus de sa propre demande libellé comme un refus', async () => {
+    const invoice = request({
+      operationType: 'INVOICE_MISMATCH',
+      subjectSummary: 'Facture FAC-0007',
+    });
+    const own = request({ subjectSummary: 'Remise de la Direction (refus)', selfRequest: true });
+    serve([invoice, own]);
+    const user = userEvent.setup();
+    renderScreen();
+    const invoiceCard = await screen.findByRole('listitem', {
+      name: 'Écart de facture fournisseur : Facture FAC-0007',
+    });
+    expect(within(invoiceCard).queryByText(/il ne se refuse pas/)).toBeNull();
+    expect(
+      within(invoiceCard).getByText(/refusé, la facture passe en contestation/),
+    ).toBeInTheDocument();
+    expect(
+      within(invoiceCard).getByRole('button', { name: 'Refuser : Facture FAC-0007' }),
+    ).toBeEnabled();
+
+    const ownCard = screen.getByRole('listitem', {
+      name: 'Remise au-delà du plafond : Remise de la Direction (refus)',
+    });
+    await user.click(
+      within(ownCard).getByRole('button', { name: 'Refuser : Remise de la Direction (refus)' }),
+    );
+    expect(within(ownCard).queryByLabelText(/J’approuve ma propre demande/)).toBeNull();
+    await user.type(within(ownCard).getByLabelText('Motif du refus (obligatoire)'), 'Abandon');
+    const confirm = within(ownCard).getByRole('button', { name: 'Confirmer le refus' });
+    expect(confirm).toBeDisabled();
+    await user.click(within(ownCard).getByLabelText(/Je refuse ma propre demande/));
+    await user.click(confirm);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect(await lastCommand()).toMatchObject({
+      command_type: 'approvals.request.reject',
+      payload: { requestId: own.id, selfApproved: true },
+    });
+  });
+
   it('annulation de vente : sort de l’argent au choix de l’approbateur', async () => {
     const view = request({
       operationType: 'SALE_CANCELLATION',
@@ -374,6 +470,72 @@ describe('Validations (ECR-ADM-08)', () => {
     expect(await lastCommand()).toMatchObject({
       payload: { requestId: view.id, decisionOption: 'CUSTOMER_CREDIT' },
     });
+  });
+
+  it('MP-10 (AV-286) : photo reçue du document vue avant de décider ; photo en route non proposée ; hors périmètre', async () => {
+    const PHOTO = '01900000-0000-7000-8000-0000000003f1';
+    const view = request({
+      operationType: 'MORTALITY',
+      subjectType: 'STOCK_LOSS',
+      subjectSummary: 'Mortalité : 12 têtes',
+      attachments: [
+        { id: PHOTO, kind: 'PHOTO', uploadStatus: 'AVAILABLE' },
+        {
+          id: '01900000-0000-7000-8000-0000000003f2',
+          kind: 'PHOTO',
+          uploadStatus: 'PENDING_UPLOAD',
+        },
+      ],
+    });
+    serve([view]);
+    const createObjectURL = vi.fn(() => 'blob:photo-recue');
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    vi.mocked(fetchAttachmentContent).mockResolvedValue({
+      ok: true,
+      blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }),
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ });
+    const buttons = within(card).getAllByRole('button', { name: 'Voir la photo' });
+    expect(buttons).toHaveLength(1);
+    await user.click(buttons[0]!);
+    const image = await within(card).findByRole('img', {
+      name: 'Photo jointe : Mortalité : 12 têtes',
+    });
+    expect(image).toHaveAttribute('src', 'blob:photo-recue');
+    expect(fetchAttachmentContent).toHaveBeenCalledWith(expect.anything(), PHOTO);
+    cleanup();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:photo-recue');
+
+    // Échec réseau puis nouvel essai réussi.
+    vi.mocked(fetchAttachmentContent).mockResolvedValueOnce({ ok: false, reason: 'OFFLINE' });
+    renderScreen();
+    await user.click(
+      within(await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ })).getByRole(
+        'button',
+        { name: 'Voir la photo' },
+      ),
+    );
+    expect(await screen.findByText(/Photo indisponible hors connexion/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(
+      await screen.findByRole('img', { name: 'Photo jointe : Mortalité : 12 têtes' }),
+    ).toBeInTheDocument();
+    cleanup();
+
+    vi.mocked(fetchAttachmentContent).mockResolvedValue({ ok: false, reason: 'FORBIDDEN' });
+    renderScreen();
+    await user.click(
+      within(await screen.findByRole('listitem', { name: /Mortalité : 12 têtes/ })).getByRole(
+        'button',
+        { name: 'Voir la photo' },
+      ),
+    );
+    expect(
+      await screen.findByText('Cette photo n’est pas dans votre périmètre.'),
+    ).toBeInTheDocument();
   });
 
   it('hors ligne : écran en ligne seulement ; file vide ; droit refusé', async () => {

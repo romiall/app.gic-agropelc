@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PhotoModule from '../attachments/photo.js';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,6 +11,21 @@ import { LossScreen } from './LossScreen.js';
 import { parseReceived } from './receive.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
+// Photo : le canevas n'existe pas en test ; le recodage rend un petit JPEG, une image HEIC est illisible.
+vi.mock('../attachments/photo.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof PhotoModule>();
+  return {
+    ...actual,
+    browserPhotoCodec: {
+      decode: async (file: Blob) => {
+        if (file.type === 'image/heic') throw new Error('format');
+        return { width: 1600, height: 1200, source: null };
+      },
+      encode: async () =>
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])], { type: 'image/jpeg' }),
+    },
+  };
+});
 vi.mock('../auth/AuthContext.js', () => ({
   useAuth: () => ({
     state: {
@@ -53,6 +69,82 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     vi.restoreAllMocks();
     await getDb().projections.clear();
     await getDb().outbox.clear();
+    await getDb().attachmentFiles.clear();
+    await getDb().attachmentBlobs.clear();
+  });
+
+  const renderLoss = () =>
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+
+  it('MP-10 (AV-288) : photo facultative rattachée à la déclaration, sans être citée par elle', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderLoss();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText('Quantité'), '2');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    await user.upload(
+      screen.getByLabelText('Prendre une photo'),
+      new File(['photo'], 'casse.jpg', { type: 'image/jpeg' }),
+    );
+    expect(await screen.findByText(/Photo prête/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Déclarer la perte' }));
+    await screen.findByText(/Perte enregistrée sur ce téléphone/);
+
+    const [register, loss] = await getDb().outbox.orderBy('device_seq').toArray();
+    expect(loss).toMatchObject({ command_type: 'inventory.loss.declare', attachment_ids: [] });
+    expect(register).toMatchObject({
+      command_type: 'attachments.attachment.register',
+      payload: { ownerType: 'STOCK_LOSS', ownerId: loss!.aggregate_id, kind: 'PHOTO' },
+    });
+  });
+
+  it('MP-10 : image illisible ou espace des photos plein — message, la perte part sans photo', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderLoss();
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.eggs);
+    await user.type(screen.getByLabelText('Quantité'), '2');
+    await user.click(screen.getByLabelText('Casse'));
+    await user.selectOptions(screen.getByLabelText('Motif'), 'r-casse');
+    await user.upload(
+      screen.getByLabelText('Choisir une image'),
+      new File(['heic'], 'iphone.heic', { type: 'image/heic' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Image illisible/);
+
+    // 50 Mo déjà en attente sur l'appareil (NFR-06) : la photo est refusée.
+    await getDb().attachmentFiles.put({
+      attachment_id: 'deja-en-attente',
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      owner_type: 'STOCK_LOSS',
+      owner_id: 'autre',
+      kind: 'PHOTO',
+      mime_type: 'image/jpeg',
+      size_bytes: 50 * 1024 * 1024,
+      sha256: 'a'.repeat(64),
+      captured_at: '2026-10-14T08:00:00.000Z',
+      register_command_id: 'commande',
+      status: 'QUEUED',
+      uploaded_bytes: 0,
+      attempts: 0,
+      next_attempt_at: null,
+      last_error: null,
+    });
+    await user.upload(
+      screen.getByLabelText('Choisir une image'),
+      new File(['photo'], 'casse.jpg', { type: 'image/jpeg' }),
+    );
+    expect(await screen.findByText(/Trop de photos attendent leur envoi/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Déclarer la perte' }));
+    await screen.findByText(/Perte enregistrée sur ce téléphone/);
+    const commands = await getDb().outbox.toArray();
+    expect(commands.map((command) => command.command_type)).toEqual(['inventory.loss.declare']);
   });
 
   it('hors ligne : perte en conditionnement convertie en unité de base, retirée du disponible local', async () => {
@@ -454,6 +546,20 @@ describe('Déclarer une perte (ECR-STK-04)', () => {
     await user.click(screen.getByLabelText('Casse'));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeEnabled();
+  });
+
+  it('« Quantité invalide » seulement une fois une quantité saisie, pas au choix du produit (MP-09)', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <LossScreen />
+      </MemoryRouter>,
+    );
+    await user.selectOptions(await screen.findByLabelText('Produit'), IDS.chicken);
+    expect(screen.queryByText(/Quantité invalide/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Déclarer la perte' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Quantité'), 'abc');
+    expect(screen.getByText(/Quantité invalide/)).toBeInTheDocument();
   });
 
   it('quantité hors de la borne numeric(14,3) : refusée sur l’appareil', () => {
