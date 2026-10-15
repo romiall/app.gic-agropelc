@@ -349,9 +349,11 @@ interface PaymentLike {
  * Mouvements de la caisse saisis sur l'appareil et pas encore dans le solde servi (en attente, ou
  * acceptés avant le tirage du jeu `cash` qui les inclut), datés à partir de `from` : encaissements en
  * espèces au point de vente (vente, acompte d'une commande, encaissement hors vente) en entrée,
- * remises de fonds envoyées en sortie ; avec les remises connues (`transfers`), l'annulation d'une
- * remise en entrée sur sa source (fait nouveau daté de l'annulation, ADR-032 §2) et la réception en
- * entrée sur la destination (montant reçu, BR-FIN-013). Un encaissement en espèces au PDV crédite la
+ * remises de fonds envoyées et dépenses payées par le compte (P8E-03, ADR-047 §10) en sortie ; avec les
+ * remises connues (`transfers`), l'annulation d'une remise en entrée sur sa source (fait nouveau daté de
+ * l'annulation, ADR-032 §2) et la réception en entrée sur la destination (montant reçu, BR-FIN-013).
+ * Le paiement d'une dépense à payer (`finance.expense.pay`) se fait en ligne et ne porte pas son
+ * montant : il entre dans le solde au tirage suivant du jeu `cash`. Un encaissement en espèces au PDV crédite la
  * caisse du site (DÉDUIT de `cashAccountFor` : emplacement de type `POS`, ou site du PDV pour un
  * encaissement hors vente) ; ailleurs, il crédite la caisse personnelle de celui qui encaisse : pour
  * une caisse personnelle, les espèces encaissées par son détenteur hors d'un emplacement `POS` (vente,
@@ -470,6 +472,11 @@ export function pendingCashMovements(input: {
       }
       case 'finance.cash_transfer.send':
         if (payload.fromAccountId === input.account.id) {
+          amount = -((payload.amountXaf as number | undefined) ?? 0);
+        }
+        break;
+      case 'finance.expense.record':
+        if (payload.paidNow === true && payload.paidFromAccountId === input.account.id) {
           amount = -((payload.amountXaf as number | undefined) ?? 0);
         }
         break;

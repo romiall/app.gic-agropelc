@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ROUTES, routeOfAction, routeOfSignal, SCREENS, screensForRoles } from './screens.js';
+import {
+  ROLE_SETS,
+  ROUTES,
+  routeOfAction,
+  routeOfSignal,
+  SCREENS,
+  screensForRoles,
+} from './screens.js';
 
 describe('app/screens — registre et navigation par rôle', () => {
   it('une route fournie par le serveur l’emporte ; à défaut, celle de l’écran livré', () => {
@@ -34,6 +41,34 @@ describe('app/screens — registre et navigation par rôle', () => {
       `${ROUTES.approvals}?types=PRICE_OVERRIDE`,
     );
     expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'ADMIN')).toBeNull();
+    // P8E-03 (AV-298) : « + Dépense » des rôles de terrain ; « Dépenses et fournisseurs » de la
+    // Finance mène au suivi ; jamais pour l'Admin (sans `finance.expense.record`).
+    expect(routeOfAction({ code: 'NEW_EXPENSE', route: null }, 'VENDEUR_PDV')).toBe(
+      ROUTES.expenses,
+    );
+    expect(routeOfAction({ code: 'EXPENSES', route: null }, 'FINANCE')).toBe(
+      `${ROUTES.expenses}?vue=suivi`,
+    );
+    expect(routeOfAction({ code: 'NEW_EXPENSE', route: null }, 'ADMIN')).toBeNull();
+    // Droits des dépenses (01-rbac.md §5.5) : payer, la Finance seule ; annuler la dépense d'un autre,
+    // les approbateurs (Direction, Finance, Resp. production) ; saisir, dix rôles, jamais l'Admin.
+    expect([...ROLE_SETS.expensePay]).toEqual(['FINANCE']);
+    expect([...ROLE_SETS.expenseApprove].sort()).toEqual(
+      ['DIRECTION', 'FINANCE', 'RESP_PRODUCTION'].sort(),
+    );
+    expect(ROLE_SETS.expenseRecord).toHaveLength(10);
+    expect(ROLE_SETS.expenseRecord).not.toContain('ADMIN');
+    expect([...ROLE_SETS.expenseFollow].sort()).toEqual(
+      [
+        'DIRECTION',
+        'FINANCE',
+        'RESP_ACHATS',
+        'RESP_COMMERCIAL',
+        'RESP_FERME',
+        'RESP_PRODUCTION',
+        'VENDEUR_PDV',
+      ].sort(),
+    );
     // MP-08 : comptes et réinitialisation, pour l'Admin.
     expect(routeOfAction({ code: 'USERS', route: null }, 'ADMIN')).toBe(ROUTES.users);
     expect(routeOfAction({ code: 'USERS', route: null }, 'DIRECTION')).toBeNull();

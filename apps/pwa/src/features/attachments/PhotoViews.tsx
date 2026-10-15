@@ -112,13 +112,18 @@ export function AttachPhoto({
   );
 }
 
-/** Photo lue sur le serveur, affichée sur demande (valideur, Resp. achats ; AV-286). */
+/**
+ * Photo lue sur le serveur, affichée sur demande (valideur, Resp. achats ; AV-286). `label` : nom du
+ * bouton propre au document (« Voir le justificatif de DEP-… »), « Voir la photo » à défaut.
+ */
 export function ServerPhoto({
   attachmentId,
   alt,
+  label,
 }: {
   readonly attachmentId: string;
   readonly alt: string;
+  readonly label?: string;
 }) {
   const { t } = useTranslation();
   const [shown, setShown] = useState(false);
@@ -152,7 +157,7 @@ export function ServerPhoto({
   if (!shown) {
     return (
       <button type="button" className="secondary" onClick={() => setShown(true)}>
-        {t('photo.view')}
+        {label ?? t('photo.view')}
       </button>
     );
   }

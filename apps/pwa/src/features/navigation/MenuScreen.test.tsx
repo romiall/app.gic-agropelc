@@ -24,7 +24,14 @@ const response: Pick<HomeResponse, 'user' | 'sections'> = {
       actions: [
         { code: 'CASH_OPEN', label: 'Ouvrir la caisse', hint: null, route: null, primary: false },
         { code: 'SYNC_STATUS', label: 'Synchronisation', hint: null, route: null, primary: false },
-        { code: 'EXPENSES', label: 'Dépenses de caisse', hint: null, route: null, primary: false },
+        { code: 'NEW_EXPENSE', label: '+ DÉPENSE', hint: null, route: null, primary: false },
+        {
+          code: 'CONTROL_TOWER',
+          label: 'Tour de contrôle',
+          hint: null,
+          route: null,
+          primary: false,
+        },
       ],
       kpis: [],
       activity: [],
@@ -69,8 +76,18 @@ describe('MenuScreen (navigation par rôle, hors ligne)', () => {
       'href',
       '/caisse',
     );
-    // Les dépenses de caisse n'ont pas d'écran (P8) : absentes du menu.
-    expect(actions).not.toHaveTextContent('Dépenses de caisse');
+    // « + Dépense » mène à l'écran des dépenses (ECR-FIN-02, P8E-03).
+    expect(within(actions).getByRole('link', { name: /\+ DÉPENSE/ })).toHaveAttribute(
+      'href',
+      '/finance/depenses',
+    );
+    // Une action sans écran livré : absente du menu.
+    expect(actions).not.toHaveTextContent('Tour de contrôle');
+    // Groupe « Finance » du menu (ADR-047 §1).
+    expect(screen.getByRole('link', { name: /^Dépenses/ })).toHaveAttribute(
+      'href',
+      '/finance/depenses',
+    );
   });
 
   it('la déconnexion se fait depuis le menu', async () => {

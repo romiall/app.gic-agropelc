@@ -53,11 +53,14 @@ export interface OwnedAttachment {
   readonly kind: string;
   readonly mimeType: string;
   readonly uploadStatus: string;
+  /** Auteur de la pièce (P8E-03 : le justificatif d'une dépense est celui de son auteur). */
+  readonly createdBy: string;
 }
 
 /**
  * Pièces des documents, par `${ownerType}:${ownerId}`, les plus anciennes d'abord, hors pièces
- * remplacées (MP-10 : photos montrées au valideur, AV-286).
+ * remplacées (MP-10 : photos montrées au valideur, AV-286). Lecture par l'index (type, document)
+ * depuis P8E-03.
  */
 export async function attachmentsOfOwners(
   executor: Kysely<DB> | Transaction<DB>,
@@ -67,7 +70,17 @@ export async function attachmentsOfOwners(
   if (owners.length === 0) return result;
   const rows = await executor
     .selectFrom('attachments_attachments')
-    .select(['id', 'owner_type', 'owner_id', 'kind', 'mime_type', 'upload_status', 'created_at'])
+    .select([
+      'id',
+      'owner_type',
+      'owner_id',
+      'kind',
+      'mime_type',
+      'upload_status',
+      'created_at',
+      'created_by',
+    ])
+    .where('owner_type', 'in', [...new Set(owners.map((owner) => owner.ownerType))])
     .where(
       'owner_id',
       'in',
@@ -87,6 +100,7 @@ export async function attachmentsOfOwners(
       kind: row.kind,
       mimeType: row.mime_type,
       uploadStatus: row.upload_status,
+      createdBy: fromBin(row.created_by),
     });
     result.set(key, list);
   }

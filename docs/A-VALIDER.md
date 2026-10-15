@@ -315,6 +315,7 @@ Classification (PM §45) :
 | AV-298 | Accès aux écrans de finance et action « + Dépense » de l'accueil | SECONDAIRE | P8 | Finance : tout ; Direction : lecture, file, annulation d'un paiement ; Achats : lecture ; « + Dépense » au menu des dix rôles, sur l'accueil de la Finance et des rôles de terrain | OUVERT |
 | AV-299 | Marges par produit, point de vente et commercial | IMPORTANTE | P8 | Lots et période en P8 ; axes dans l'explorateur de P9 | OUVERT |
 | AV-300 | Ce que P8 ajoute à la trésorerie | SECONDAIRE | P8 | Dépenses à payer, paiements en attente de la Direction, lien des mouvements vers leur document | OUVERT |
+| AV-301 | Site et imputation proposés à la saisie d'une dépense | SECONDAIRE | P8 | Site de la caisse qui paie, sinon seul site des affectations, sinon choix ; imputation proposée : dépense directe du site | OUVERT |
 
 ---
 
@@ -2268,6 +2269,15 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) dépenses à payer (payer, annuler), paiements fournisseurs en attente de la Direction (lecture), lien d'un mouvement vers son document ; (b) seulement le lien des mouvements ; (c) rien de plus, les dépenses se paient depuis l'écran des dépenses.
 - **Recommandation** : (a).
 - **Impact** : `apps/pwa/src/features/treasury/TreasuryScreen.tsx` ; lectures `GET /expenses?status=`, `GET /supplier-payments?status=PENDING_APPROVAL`. Défaut implémenté : (a).
+
+### AV-301 — Site et imputation proposés à la saisie d'une dépense — SECONDAIRE
+- **Question** : quel site et quelle imputation de coût l'écran « + Dépense » propose-t-il par défaut ?
+- **Pourquoi** : le site est obligatoire (`siteId`) ; il porte la portée, la numérotation et le coût du site (ADR-042 §10). L'appareil ne connaît pas exactement le périmètre de l'utilisateur (S-41) : un site hors de ce périmètre est refusé même hors ligne (`FORBIDDEN_SCOPE`). L'imputation (lot, lot d'incubation, frais généraux d'une espèce, dépense directe du site) est un choix explicite (AV-269), mais une dépense sans objet de coût n'a aucune écriture de coût : elle échappe aux coûts de son site et de son point de vente. **DÉDUIT**
+- **Choix** :
+  - site : (a) celui de la caisse qui paie s'il est l'un des sites de l'utilisateur, sinon le seul site de ses affectations, sinon un choix parmi ses sites (tous les sites actifs si l'appareil ne connaît aucune de ses affectations, ou si l'une est globale ou d'équipe) ; (b) toujours un choix ; (c) le site de la caisse imposé ;
+  - imputation : (a) « dépense directe du site » proposée, avec au choix les lots et lots d'incubation ouverts du site, les frais généraux d'une espèce (ferme seulement) et « non imputée » ; (b) « non imputée » proposée ; (c) imputation obligatoire, sans valeur proposée.
+- **Recommandation** : (a) pour les deux : une saisie courte (UX-02) qui garde la dépense dans les coûts de son site.
+- **Impact** : `apps/pwa/src/features/finance/expense.ts` (`expenseSites`, `defaultExpenseSite`, `EXPENSE_DEFAULT_IMPUTATION`), ECR-FIN-02. Défaut implémenté : (a) et (a) (P8E-03). Paramétrable : constante de l'appareil (`EXPENSE_DEFAULT_IMPUTATION`).
 ---
 
 ## 3. Journal des décisions

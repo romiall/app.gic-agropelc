@@ -35,6 +35,7 @@ Le serveur de P8 est terminé depuis le 13/10/2026 : commandes, lectures, jeux h
 ## Conséquences
 
 - `@gic/contracts` : `ATTACHMENT_OWNER_TYPES` étendu ; `attachments-api/attachment-access.ts` : deux règles de lecture ; ADR-046 §2 renvoie ici.
+- `GET /expenses` et `/expenses/{id}` rendent les pièces de chaque dépense déposées par son auteur (P8E-03) : la vue de suivi montre le justificatif sans autre lecture, une pièce non reçue ou refusée y est annoncée comme telle. Le site et l'imputation proposés à la saisie relèvent d'AV-301.
 - La projection `EXPENSE` gagne six champs ; les appareils les reçoivent au prochain changement d'une dépense (aucune republication forcée).
 - Les écrans affichent le message français du serveur pour un refus ; les avertissements d'une dépense (`EXPENSE_REVIEW_REQUIRED`, `CASH_NEGATIVE`, `CASH_SESSION_MISSING`, `LOCAL_REF_DUPLICATE`) ont leur libellé.
 - Les axes de marge, les alertes (factures échues, justificatifs manquants) et le tableau Finance (ECR-ANA-05) relèvent de P9.

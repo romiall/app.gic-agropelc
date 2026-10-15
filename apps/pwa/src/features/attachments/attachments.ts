@@ -16,10 +16,16 @@ import type { PreparedPhoto } from './photo.js';
 export const PHOTO_PENDING_BUDGET_BYTES = 50 * 1024 * 1024;
 
 export interface PhotoTarget {
-  /** `DELIVERY_NOTE` (bon de livraison d'une réception), `PHOTO` (perte, mortalité). */
-  readonly kind: 'DELIVERY_NOTE' | 'PHOTO';
-  readonly ownerType: 'GOODS_RECEIPT' | 'STOCK_LOSS';
-  /** Citée par l'opération (réception) ou rattachée par son propriétaire (perte, mortalité). */
+  /**
+   * `DELIVERY_NOTE` (bon de livraison d'une réception), `PHOTO` (perte, mortalité), `RECEIPT`
+   * (justificatif d'une dépense), `INVOICE` (facture fournisseur ; ADR-047 §3).
+   */
+  readonly kind: 'DELIVERY_NOTE' | 'PHOTO' | 'RECEIPT' | 'INVOICE';
+  readonly ownerType: 'GOODS_RECEIPT' | 'STOCK_LOSS' | 'EXPENSE' | 'SUPPLIER_INVOICE';
+  /**
+   * Citée par l'opération (réception, dépense, facture) ou rattachée par son propriétaire (perte,
+   * mortalité, justificatif joint après coup).
+   */
   readonly cited: boolean;
   /** Document propriétaire ; par défaut l'agrégat de l'opération enregistrée avec la photo. */
   readonly ownerId?: string;

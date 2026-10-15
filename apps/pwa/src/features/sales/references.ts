@@ -15,7 +15,12 @@ import { pendingConsumption, pendingLotConsumption, stockKey } from './stock.js'
 import { quotaPendingByAuthor, type QuotaPendingEntry } from './quota.js';
 import type {
   AllocationData,
+  ApprovalRequestData,
   CashAccountData,
+  ControlPolicyData,
+  ExpenseCategoryData,
+  ExpenseData,
+  RoleAssignmentData,
   CashSessionData,
   CashTransferData,
   CashTransferTargetData,
@@ -156,10 +161,22 @@ export interface SalesReferences {
   readonly cashPulledAt: string | undefined;
   /** Configuration des PDV des sites de l'utilisateur, par site. */
   readonly pointsOfSale: ReadonlyMap<string, PointOfSaleData>;
+  /** Catégories de dépense, inactives comprises (jeu `catalog`, P8E-03). */
+  readonly expenseCategories: readonly ExpenseCategoryData[];
+  /** Dépenses de l'utilisateur servies par le jeu `cash` (ligne `USER`). */
+  readonly expenses: readonly ExpenseData[];
+  /** Politiques de contrôle actives (jeu `policies`). */
+  readonly controlPolicies: readonly ControlPolicyData[];
+  /** Demandes de validation de l'utilisateur (jeu `comms`) : motif d'un refus. */
+  readonly approvalRequests: readonly ApprovalRequestData[];
+  /** Affectations de rôle servies à l'appareil (jeu `role_assignment`). */
+  readonly roleAssignments: readonly RoleAssignmentData[];
   /** Heure du dernier tirage complet du jeu `transfers` (ADR-037 §3). */
   readonly transfersPulledAt: string | undefined;
   /** Dernière synchronisation complète (tous les jeux tirés), pour la fraîcheur des prix. */
   readonly lastSyncAt: string | null;
+  /** Utilisateur dont les données sont tirées sur l'appareil (tablette partagée, ADR-037 §5). */
+  readonly dataUserId: string | undefined;
   /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
   readonly ordersPulledAt: string | undefined;
   readonly customersPulledAt: string | undefined;
@@ -375,6 +392,11 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashTransferTargets,
     cashCursor,
     pointsOfSale,
+    expenseCategories,
+    expenses,
+    controlPolicies,
+    approvalRequests,
+    roleAssignments,
     meSettings,
     catalogReasonCodes,
     catalogUnits,
@@ -436,6 +458,11 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     listProjected<CashTransferTargetData>(db, 'cash', 'CASH_TRANSFER_TARGET'),
     db.syncCursors.get('cash'),
     listProjected<PointOfSaleData>(db, 'org', 'POINT_OF_SALE'),
+    listProjected<ExpenseCategoryData>(db, 'catalog', 'EXPENSE_CATEGORY'),
+    listProjected<ExpenseData>(db, 'cash', 'EXPENSE'),
+    listProjected<ControlPolicyData>(db, 'policies', 'CONTROL_POLICY'),
+    listProjected<ApprovalRequestData>(db, 'comms', 'APPROVAL_REQUEST'),
+    listProjected<RoleAssignmentData>(db, 'role_assignment', 'ROLE_ASSIGNMENT'),
     listProjected<SettingData>(db, 'me', 'SETTING'),
     listProjected<ReasonCodeData>(db, 'catalog', 'REASON_CODE'),
     listProjected<UnitData>(db, 'catalog', 'UNIT'),
@@ -586,8 +613,14 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     cashTransferTargets,
     cashPulledAt: cashCursor?.pulled_at,
     pointsOfSale: new Map(pointsOfSale.map((pos) => [pos.site_id, pos])),
+    expenseCategories: [...expenseCategories].sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+    expenses,
+    controlPolicies,
+    approvalRequests,
+    roleAssignments,
     transfersPulledAt: transfersCursor?.pulled_at,
     lastSyncAt: meta?.last_sync_at ?? null,
+    dataUserId: owner ?? undefined,
     ordersPulledAt: ordersCursor?.pulled_at,
     customersPulledAt: customersCursor?.pulled_at,
     salesPulledAt: salesCursor?.pulled_at,

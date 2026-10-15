@@ -8,6 +8,7 @@ import { CommandPipelineService } from '../src/commands/command-pipeline.service
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerAttachmentCommands } from '../src/modules/attachments/application/commands/attachment-commands.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { attachmentsOfOwners } from '../src/modules/attachments/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -208,6 +209,42 @@ describe('attachments.attachment.register (P0-13)', () => {
       });
       expect(result.status, JSON.stringify(result)).toBe('APPLIED');
     }
+  });
+
+  it('revue de P8E-03 : pièces lues par type et document, auteur rendu, croisements exclus', async () => {
+    const register = async (ownerType: string, ownerId: string, kind: string) => {
+      const aggregateId = freshUuid();
+      const raw = buildRegisterCommand({
+        commandId: freshUuid(),
+        authorUserId: author,
+        aggregateId,
+        ownerId,
+      });
+      Object.assign(raw.payload as Record<string, unknown>, { ownerType, kind });
+      const result = await pipeline.handle(raw, {
+        authenticatedUserId: author,
+        authenticatedDeviceId: device,
+        transport: 'ONLINE_API',
+      });
+      expect(result.status, JSON.stringify(result)).toBe('APPLIED');
+      return aggregateId;
+    };
+    const expenseId = freshUuid();
+    const lossId = freshUuid();
+    const receipt = await register('EXPENSE', expenseId, 'RECEIPT');
+    const lossPhoto = await register('STOCK_LOSS', lossId, 'PHOTO');
+    // Même identifiant, autre type : jamais rendue pour la dépense, ni pour la perte demandée.
+    await register('STOCK_LOSS', expenseId, 'PHOTO');
+    const owned = await attachmentsOfOwners(db, [
+      { ownerType: 'EXPENSE', ownerId: expenseId },
+      { ownerType: 'STOCK_LOSS', ownerId: lossId },
+    ]);
+    expect(owned.get(`EXPENSE:${expenseId}`)).toEqual([
+      expect.objectContaining({ id: receipt, kind: 'RECEIPT', createdBy: author }),
+    ]);
+    expect(owned.get(`STOCK_LOSS:${lossId}`)?.map((piece) => piece.id)).toEqual([lossPhoto]);
+    expect(owned.get(`STOCK_LOSS:${expenseId}`)).toBeUndefined();
+    expect(await attachmentsOfOwners(db, [])).toEqual(new Map());
   });
 
   it('sans la permission attachments.attachment.manage → REJECTED FORBIDDEN (AV-093)', async () => {

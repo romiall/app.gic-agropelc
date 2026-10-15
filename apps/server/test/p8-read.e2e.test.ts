@@ -263,8 +263,82 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
         status: 'PAID',
         siteId: siteA,
         reviewReasons: [],
+        attachments: [],
       },
     });
+  });
+
+  it('P8E-03 (ADR-047 §3) : chaque dépense rendue porte ses pièces, celles d’une autre dépense exclues', async () => {
+    const receipt = freshUuid();
+    await send(venA, 'attachments.attachment.register', 'ATTACHMENT', receipt, {
+      ownerType: 'EXPENSE',
+      ownerId: expenseA,
+      kind: 'RECEIPT',
+      mimeType: 'image/jpeg',
+      sizeBytes: 2_048,
+      sha256: 'ab'.repeat(32),
+      capturedAt: at('10:00'),
+    });
+    // Pièce d'un autre document au même identifiant de propriétaire : jamais rendue.
+    await send(venA, 'attachments.attachment.register', 'ATTACHMENT', freshUuid(), {
+      ownerType: 'STOCK_LOSS',
+      ownerId: expenseA,
+      kind: 'PHOTO',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1_024,
+      sha256: 'cd'.repeat(32),
+      capturedAt: at('10:00'),
+    });
+    const list = (await get(fin, `/api/v1/expenses?site_id=${siteA}`)).json() as {
+      expenses: { id: string; attachments: unknown[] }[];
+    };
+    expect(list.expenses.find((expense) => expense.id === expenseA)?.attachments).toEqual([
+      { id: receipt, kind: 'RECEIPT', uploadStatus: 'PENDING_UPLOAD' },
+    ]);
+    const detail = (await get(venA, `/api/v1/expenses/${expenseA}`)).json() as {
+      expense: { attachments: unknown[] };
+    };
+    expect(detail.expense.attachments).toEqual([
+      { id: receipt, kind: 'RECEIPT', uploadStatus: 'PENDING_UPLOAD' },
+    ]);
+    const other = (await get(fin, `/api/v1/expenses/${expenseFin}`)).json() as {
+      expense: { attachments: unknown[] };
+    };
+    expect(other.expense.attachments).toEqual([]);
+  });
+
+  it('revue de P8E-03 : pièces attribuées à leur dépense dans une page, celles d’un tiers et les remplacées exclues', async () => {
+    const register = (actor: Actor, ownerId: string, seed: string) => {
+      const id = freshUuid();
+      return send(actor, 'attachments.attachment.register', 'ATTACHMENT', id, {
+        ownerType: 'EXPENSE',
+        ownerId,
+        kind: 'RECEIPT',
+        mimeType: 'image/jpeg',
+        sizeBytes: 1_024,
+        sha256: seed.repeat(32),
+        capturedAt: at('10:00'),
+      }).then(() => id);
+    };
+    const terrainFirst = await register(terrain, expenseTerrain, '11');
+    const terrainSecond = await register(terrain, expenseTerrain, '22');
+    const finReceipt = await register(fin, expenseFin, '33');
+    // Pièce d'un tiers sur la dépense du commercial : jamais rendue comme son justificatif.
+    await register(mag, expenseTerrain, '44');
+    // Pièce remplacée : exclue.
+    const replaced = await register(fin, expenseFin, '55');
+    await db
+      .updateTable('attachments_attachments')
+      .set({ upload_status: 'SUPERSEDED' })
+      .where('id', '=', toBin(replaced))
+      .execute();
+    const list = (await get(fin, `/api/v1/expenses?site_id=${siteB}`)).json() as {
+      expenses: { id: string; attachments: { id: string }[] }[];
+    };
+    const piecesOf = (id: string) =>
+      list.expenses.find((expense) => expense.id === id)?.attachments.map((piece) => piece.id);
+    expect(piecesOf(expenseTerrain)).toEqual([terrainFirst, terrainSecond]);
+    expect(piecesOf(expenseFin)).toEqual([finReceipt]);
   });
 
   it('P8E-02 (ADR-047 §3) : pièce d’une dépense lue par l’auteur et ses lecteurs ; d’une facture, par les lecteurs des dettes', async () => {

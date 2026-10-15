@@ -544,7 +544,8 @@ ul.outbox-list li {
   cursor: pointer;
 }
 
-.action-primary {
+.action-primary,
+.action[aria-current='page'] {
   background: var(--color-primary);
   color: var(--color-primary-text);
 }

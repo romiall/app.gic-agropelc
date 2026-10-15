@@ -351,6 +351,33 @@ describe('Caisse vue par l’appareil (ECR-DIS-02)', () => {
     });
   });
 
+  it('P8E-03 (ADR-047 §10) : une dépense payée par la caisse en sort ; à payer ou par une autre caisse, rien', () => {
+    const outbox = [
+      command('finance.expense.record', {
+        amountXaf: 2_000,
+        paidNow: true,
+        paidFromAccountId: ACCOUNT,
+      }),
+      command('finance.expense.record', { amountXaf: 3_000, paidNow: false }),
+      command('finance.expense.record', {
+        amountXaf: 5_000,
+        paidNow: true,
+        paidFromAccountId: 'autre',
+      }),
+      // Refusée : hors du calcul.
+      command(
+        'finance.expense.record',
+        { amountXaf: 7_000, paidNow: true, paidFromAccountId: ACCOUNT },
+        { status: 'REJECTED' },
+      ),
+      // Paiement d'une dépense à payer, en ligne : il n'entre qu'au tirage suivant.
+      command('finance.expense.pay', { paidFromAccountId: ACCOUNT }),
+    ];
+    expect(
+      pendingCashMovements({ account, outbox, cashPulledAt: PULLED, locations, paymentMethods }),
+    ).toEqual({ netXaf: -2_000, count: 1 });
+  });
+
   it('remises connues : annulation en entrée sur la source, réception en entrée sur la destination', () => {
     const served = [
       {

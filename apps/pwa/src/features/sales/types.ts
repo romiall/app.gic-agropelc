@@ -508,6 +508,89 @@ export interface WorkSessionData {
   readonly auto_close?: boolean;
 }
 
+/** (`catalog`, `EXPENSE_CATEGORY`) catégorie de dépense (ADR-042 §9, AV-270) ; inactives comprises. */
+export interface ExpenseCategoryData {
+  readonly id: string;
+  readonly code: string;
+  readonly label: string;
+  /** Type de coût porté vers un lot (`VETERINAIRE`, `ALIMENT`…), `null` : dépense directe. */
+  readonly default_cost_type: string | null;
+  readonly allowed_on_pos: boolean;
+  /** Catégorie système (`NON_JUSTIFIEE`) : jamais proposée à la saisie. */
+  readonly is_system: boolean;
+  readonly is_active: boolean;
+  readonly version: number;
+}
+
+/**
+ * (`cash`, `EXPENSE`, ligne `USER`) dépense de l'utilisateur, datée ou modifiée dans les 30 derniers
+ * jours, ou en attente de décision (ADR-042 §11). Les six derniers champs viennent de P8E-02
+ * (ADR-047 §10) : absents d'une fiche servie avant.
+ */
+export interface ExpenseData {
+  readonly id: string;
+  readonly doc_number: string;
+  readonly local_ref: string | null;
+  readonly site_id: string;
+  readonly category_id: string;
+  readonly amount_xaf: number;
+  readonly payee_name: string | null;
+  readonly description: string;
+  readonly cost_object_type: string | null;
+  readonly cost_object_id: string | null;
+  readonly species_group: string | null;
+  readonly paid_now: boolean;
+  readonly paid_from_account_id: string | null;
+  /** SM-EXPENSE : `RECORDED`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `PAID`… */
+  readonly status: string;
+  /** Motifs de revue d'une saisie hors ligne non conforme (ADR-042 §6). */
+  readonly review_reasons: readonly string[];
+  readonly occurred_at: string;
+  readonly version: number;
+  readonly supplier_id?: string | null;
+  readonly paid_at?: string | null;
+  readonly approval_request_id?: string | null;
+  readonly cancel_reason?: string | null;
+  readonly reclassified_category_id?: string | null;
+  readonly responsibility_user_id?: string | null;
+}
+
+/** (`policies`, `CONTROL_POLICY`) politique de contrôle active (dictionnaire `approvals`). */
+export interface ControlPolicyData {
+  readonly id: string;
+  readonly code: string;
+  readonly version: number;
+  readonly operation_type: string;
+  readonly requires_approval: boolean;
+  readonly approver_permission: string | null;
+  readonly valid_from: string;
+  readonly valid_to: string | null;
+}
+
+/** (`comms`, `APPROVAL_REQUEST`, ligne `USER`) demande de validation dont l'utilisateur est l'auteur. */
+export interface ApprovalRequestData {
+  readonly id: string;
+  readonly operation_type: string;
+  readonly subject_type: string;
+  readonly subject_id: string;
+  readonly status: string;
+  readonly decided_at: string | null;
+  readonly decision_comment: string | null;
+}
+
+/** (`role_assignment`) affectation de rôle ; sert à proposer les sites de l'utilisateur. */
+export interface RoleAssignmentData {
+  readonly id: string;
+  readonly user_id: string;
+  /** `GLOBAL`, `SITE`, `ZONE` ou `TEAM`. */
+  readonly scope_type: string;
+  readonly scope_site_id: string | null;
+  readonly scope_zone_id: string | null;
+  readonly valid_from: string;
+  readonly valid_to: string | null;
+  readonly revoked_at: string | null;
+}
+
 /** (`cash`) compte de trésorerie actif du détenteur, du responsable ou du site. */
 export interface CashAccountData {
   readonly id: string;

@@ -13,6 +13,10 @@
  *   (une date impossible donne 400). La liste des dépenses est pré-filtrée par le périmètre du lecteur
  *   (`ReadAccess.confinement` : sites, auteurs) avant la pagination, puis affinée élément par élément
  *   (revue de P8-14 : une page ne doit pas être vide parce que les plus récentes sont hors portée).
+ * - Pièces d'une dépense (P8E-03, ADR-047 §3) : chaque dépense rendue porte ses pièces (`attachments` :
+ *   identifiant, nature, état d'envoi), que son lecteur ouvre par `GET /attachments/{id}/content`. Seules
+ *   celles de l'auteur de la dépense sont rendues : la photo d'un tiers ne passe pas pour son justificatif
+ *   (revue de P8E-03).
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -31,6 +35,7 @@ import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
 import { RequiresPermission } from '../platform/http/authorization.decorators.js';
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
+import { attachmentsOfOwners } from '../modules/attachments/application/public/index.js';
 import {
   ReadAccess,
   assertPeriod,
@@ -111,6 +116,24 @@ export class FinanceOperationsReadController {
     });
   }
 
+  /** Pièces de l'auteur de chaque dépense rendue (justificatif) : son lecteur les lit (ADR-047 §3). */
+  private async withAttachments(expenses: readonly ExpenseSummary[]) {
+    const owned = await attachmentsOfOwners(
+      this.db,
+      expenses.map((expense) => ({ ownerType: 'EXPENSE', ownerId: expense.id })),
+    );
+    return expenses.map((expense) => ({
+      ...expense,
+      attachments: (owned.get(`EXPENSE:${expense.id}`) ?? [])
+        .filter((attachment) => attachment.createdBy === expense.createdBy)
+        .map((attachment) => ({
+          id: attachment.id,
+          kind: attachment.kind,
+          uploadStatus: attachment.uploadStatus,
+        })),
+    }));
+  }
+
   @Get('expenses')
   @HttpCode(200)
   @UseGuards(AuthGuard)
@@ -137,7 +160,7 @@ export class FinanceOperationsReadController {
     for (const expense of page.items) {
       if (await this.expenseVisible(request, now, expense)) kept.push(expense);
     }
-    return { expenses: kept, next_cursor: page.nextCursor };
+    return { expenses: await this.withAttachments(kept), next_cursor: page.nextCursor };
   }
 
   @Get('expenses/:id')
@@ -153,7 +176,7 @@ export class FinanceOperationsReadController {
     if (!expense || !(await this.expenseVisible(request, now, expense))) {
       return this.expenseRead.deny(request, now, entity, 'OUT_OF_SCOPE');
     }
-    return { expense };
+    return { expense: (await this.withAttachments([expense]))[0] };
   }
 
   @Get('supplier-invoices')

@@ -80,6 +80,8 @@ export const ROUTES = {
   cash: '/caisse',
   cashTransfers: '/caisse/remises',
   treasury: '/finance/tresorerie',
+  /** ECR-FIN-02 (P8E-03) : saisie et mes dépenses ; suivi en ligne avec `?vue=suivi`. */
+  expenses: '/finance/depenses',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -278,6 +280,39 @@ export const ROLE_SETS = {
    * valide et décide, sans recevoir (`finance.cash_transfer.record`) (AV-241).
    */
   treasury: ['FINANCE', 'DIRECTION'],
+  /**
+   * ECR-FIN-02 (P8E-03, AV-298) : `finance.expense.record` (DIR, RPR, ACH, FIN ALL ; RCO, CTE, CSE, MAG
+   * OWN ; VEN, RFE SITE ; jamais l'Admin) : saisie hors ligne et « mes dépenses ».
+   */
+  expenseRecord: [
+    'DIRECTION',
+    'RESP_COMMERCIAL',
+    'COMMERCIAL_TERRAIN',
+    'COMMERCIAL_SEDENTAIRE',
+    'VENDEUR_PDV',
+    'RESP_PRODUCTION',
+    'RESP_FERME',
+    'MAGASINIER',
+    'RESP_ACHATS',
+    'FINANCE',
+  ],
+  /**
+   * Suivi des dépenses : `finance.expense.read` au-delà de ses propres dépenses (DIR, RPR, ACH, FIN
+   * ALL ; RCO TEAM ; VEN, RFE SITE).
+   */
+  expenseFollow: [
+    'DIRECTION',
+    'RESP_PRODUCTION',
+    'RESP_ACHATS',
+    'FINANCE',
+    'RESP_COMMERCIAL',
+    'VENDEUR_PDV',
+    'RESP_FERME',
+  ],
+  /** `finance.expense.pay` (FIN) : payer une dépense à payer, en ligne. */
+  expensePay: ['FINANCE'],
+  /** `finance.expense.approve` (DIR, FIN, RPR) : annuler la dépense d'un autre (SM-EXPENSE). */
+  expenseApprove: ['DIRECTION', 'FINANCE', 'RESP_PRODUCTION'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
@@ -320,7 +355,8 @@ export function holdsAnyRole(held: readonly string[], allowed: readonly string[]
   return held.length === 0 || held.some((role) => allowed.includes(role));
 }
 
-export type ScreenGroup = 'general' | 'sales' | 'stock' | 'crm' | 'procurement' | 'production';
+export type ScreenGroup =
+  'general' | 'sales' | 'stock' | 'crm' | 'procurement' | 'production' | 'finance';
 
 export interface ScreenEntry {
   /** Identifiant de l'inventaire des écrans (`ECR-…`), ou code interne pour un écran transverse. */
@@ -709,13 +745,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: true,
   },
   {
+    // Groupe « Finance » depuis P8E-03 (ADR-047 §1).
     id: 'ECR-FIN-05',
     path: ROUTES.treasury,
     labelKey: 'treasury',
-    group: 'sales',
+    group: 'finance',
     roles: ROLE_SETS.treasury,
     actionCodes: ['CASH_SESSIONS'],
     offline: false,
+  },
+  {
+    // P8E-03 (ADR-047 §2, AV-298) : « + Dépense » des rôles de terrain ; « Dépenses et fournisseurs »
+    // de la Finance mène au suivi.
+    id: 'ECR-FIN-02',
+    path: ROUTES.expenses,
+    labelKey: 'expenses',
+    group: 'finance',
+    roles: ROLE_SETS.expenseRecord,
+    actionCodes: ['NEW_EXPENSE', 'EXPENSES'],
+    actionQuery: { EXPENSES: '?vue=suivi' },
+    offline: true,
   },
   {
     // Remises de fonds sur l'appareil (UC-FIN-07, AV-239) : ECR-FIN-07, créé à l'intégration des écrans de P5.
@@ -765,6 +814,7 @@ export const SCREEN_GROUPS: readonly ScreenGroup[] = [
   'crm',
   'procurement',
   'production',
+  'finance',
   'general',
 ];
 

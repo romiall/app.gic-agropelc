@@ -469,3 +469,137 @@ export function orderRow(overrides: Record<string, unknown> = {}): Projection {
     { type: 'USER', id: IDS.user },
   );
 }
+
+/** Dépenses (ECR-FIN-02, P8E-03) : catégories, dépenses, politiques, demandes, affectations. */
+export const EXPENSE_IDS = {
+  transport: '01900000-0000-7000-8000-0000000000c1',
+  veterinary: '01900000-0000-7000-8000-0000000000c2',
+  unjustified: '01900000-0000-7000-8000-0000000000c3',
+  expense: '01900000-0000-7000-8000-0000000000c4',
+  policy: '01900000-0000-7000-8000-0000000000c5',
+  request: '01900000-0000-7000-8000-0000000000c6',
+  assignment: '01900000-0000-7000-8000-0000000000c7',
+  farm: '01900000-0000-7000-8000-0000000000c8',
+  personal: '01900000-0000-7000-8000-0000000000c9',
+} as const;
+
+/** Catégorie de dépense (jeu `catalog`), par défaut « Transport », permise au PDV. */
+export function expenseCategoryRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.transport,
+    code: 'TRANSPORT',
+    label: 'Transport',
+    default_cost_type: null,
+    allowed_on_pos: true,
+    is_system: false,
+    is_active: true,
+    version: 1,
+    ...overrides,
+  };
+  return row('catalog', 'EXPENSE_CATEGORY', data.id as string, data);
+}
+
+/** Dépense de l'utilisateur (jeu `cash`, ligne `USER`), payée par la caisse du PDV. */
+export function expenseRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.expense,
+    doc_number: 'DEP-PDV-YDE-2026-000001',
+    local_ref: null,
+    site_id: IDS.site,
+    category_id: EXPENSE_IDS.transport,
+    amount_xaf: 2_000,
+    payee_name: null,
+    description: 'Moto-taxi',
+    cost_object_type: 'SITE',
+    cost_object_id: IDS.site,
+    species_group: null,
+    paid_now: true,
+    paid_from_account_id: POS_CASH_ACCOUNT,
+    status: 'PAID',
+    review_reasons: [],
+    occurred_at: '2026-10-10T09:00:00.000Z',
+    version: 1,
+    supplier_id: null,
+    paid_at: '2026-10-10T09:00:00.000Z',
+    approval_request_id: null,
+    cancel_reason: null,
+    reclassified_category_id: null,
+    responsibility_user_id: null,
+    ...overrides,
+  };
+  return row('cash', 'EXPENSE', data.id as string, data, { type: 'USER', id: IDS.user });
+}
+
+/** Politique de contrôle des dépenses (jeu `policies`) : validation par `finance.expense.approve`. */
+export function controlPolicyRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.policy,
+    code: 'EXPENSE_DEFAULT',
+    version: 1,
+    operation_type: 'EXPENSE',
+    condition: null,
+    requires_photo: false,
+    requires_comment: false,
+    requires_approval: true,
+    approver_permission: 'finance.expense.approve',
+    approver_scope: 'ALL',
+    valid_from: '2026-01-01T00:00:00.000Z',
+    valid_to: null,
+    ...overrides,
+  };
+  return row('policies', 'CONTROL_POLICY', data.id as string, data);
+}
+
+/** Demande de validation de l'utilisateur (jeu `comms`, ligne `USER`). */
+export function approvalRequestRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.request,
+    operation_type: 'EXPENSE',
+    subject_type: 'EXPENSE',
+    subject_id: EXPENSE_IDS.expense,
+    subject_summary: 'Dépense Transport — 2000 XAF — PDV-YDE',
+    site_id: IDS.site,
+    zone_id: IDS.zone,
+    requested_by: IDS.user,
+    requested_at: '2026-10-10T09:00:00.000Z',
+    status: 'PENDING',
+    decision_option: null,
+    decided_by: null,
+    decided_at: null,
+    decision_comment: null,
+    ...overrides,
+  };
+  return row('comms', 'APPROVAL_REQUEST', data.id as string, data, { type: 'USER', id: IDS.user });
+}
+
+/** Affectation de rôle de l'utilisateur (jeu `role_assignment`), par défaut sur le site du PDV. */
+export function roleAssignmentRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.assignment,
+    user_id: IDS.user,
+    role_id: '01900000-0000-7000-8000-0000000000ce',
+    scope_type: 'SITE',
+    scope_site_id: IDS.site,
+    scope_zone_id: null,
+    scope_team_id: null,
+    valid_from: '2026-01-01T00:00:00.000Z',
+    valid_to: null,
+    revoked_at: null,
+    ...overrides,
+  };
+  return row('role_assignment', 'ROLE_ASSIGNMENT', data.id as string, data);
+}
+
+/** Site supplémentaire (jeu `site`), par défaut une ferme de la zone des tests. */
+export function siteRow(overrides: Record<string, unknown> = {}): Projection {
+  const data = {
+    id: EXPENSE_IDS.farm,
+    code: 'FERME-OBALA',
+    name: 'Ferme d’Obala',
+    site_type: 'FERME',
+    zone_id: IDS.zone,
+    status: 'ACTIVE',
+    ...overrides,
+  };
+  return row('site', 'SITE', data.id as string, data);
+}

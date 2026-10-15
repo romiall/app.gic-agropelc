@@ -37,16 +37,19 @@ export const ATTACHMENT_REGISTER_COMMAND = 'attachments.attachment.register';
 
 /** Pièce jointe préparée sur l'appareil (photo recodée, empreinte calculée). */
 export interface NewAttachment {
-  /** Nature (`DELIVERY_NOTE` pour le bon de livraison, `PHOTO` pour une perte). */
+  /**
+   * Nature (`DELIVERY_NOTE` pour le bon de livraison, `PHOTO` pour une perte, `RECEIPT` pour le
+   * justificatif d'une dépense, `INVOICE` pour une facture fournisseur).
+   */
   readonly kind: string;
-  /** Type du document propriétaire (`GOODS_RECEIPT`, `STOCK_LOSS`). */
+  /** Type du document propriétaire (`GOODS_RECEIPT`, `STOCK_LOSS`, `EXPENSE`, `SUPPLIER_INVOICE`). */
   readonly ownerType: string;
   /** Document propriétaire ; par défaut l'agrégat de l'opération enregistrée avec elle. */
   readonly ownerId?: string;
   /**
-   * Citée dans `attachment_ids` de l'opération (réception : « photo présente », pièce exigée par une
-   * validation). Non citée, elle reste rattachée par son propriétaire (perte, mortalité) : une pièce qui
-   * n'arriverait jamais ne fige alors aucune validation.
+   * Citée dans `attachment_ids` de l'opération (réception : « photo présente » ; dépense et facture :
+   * justificatif ; pièce exigée par une validation). Non citée, elle reste rattachée par son
+   * propriétaire (perte, mortalité) : une pièce qui n'arriverait jamais ne fige alors aucune validation.
    */
   readonly cited: boolean;
   readonly mimeType: string;
