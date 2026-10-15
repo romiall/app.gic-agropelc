@@ -696,6 +696,23 @@ describe('P7-02 : prérequis inventory de la production', () => {
       .where('id', '=', toBin(countId))
       .executeTakeFirstOrThrow();
     expect(count.status).toBe('PENDING_APPROVAL'); // 1 tête × 500 XAF, sous le seuil en valeur
+    // P9-08 (AV-456) : l'alerte accompagne aussi la validation exigée par les animaux, sous le seuil.
+    const detected = await db
+      .selectFrom('platform_domain_events')
+      .select('payload')
+      .where('event_type', '=', 'InventoryVarianceDetected')
+      .where('aggregate_id', '=', toBin(countId))
+      .execute();
+    expect(detected).toHaveLength(1);
+    const variance = detected[0]!.payload as Record<string, unknown>;
+    expect(variance).toMatchObject({
+      animal_variance: true,
+      lines_with_variance: 1,
+      approval_request_id: fromBin(count.approval_request_id!),
+    });
+    expect(Number(variance['abs_variance_value_xaf'])).toBeLessThan(
+      Number(variance['threshold_xaf']),
+    );
     const approval = await approvalOf(count.approval_request_id!);
     expect(approval.operation_type).toBe('ANIMAL_COUNT_ADJUSTMENT');
     // RC-05 (MP-11) : résumé sans valeur au coût.

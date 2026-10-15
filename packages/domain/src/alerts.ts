@@ -243,7 +243,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'ReplenishmentSuggested' }],
     resolvedBy: [],
-    settings: [],
+    settings: ['inventory.replenish_alert_scope'],
     messageTitle: 'Réapprovisionnement à prévoir',
     messageFields: [
       { key: 'location_label', label: 'Point de vente' },
@@ -301,6 +301,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     messageFields: [
       { key: 'location_label', label: 'Emplacement' },
       { key: 'business_day', label: 'Jour', kind: 'date' },
+      // Absente (champ omis du message) quand la perte du jour porte sur plusieurs produits : la somme
+      // de quantités d'unités différentes n'a pas de sens (AV-453).
       { key: 'loss_quantity', label: 'Quantité perdue', kind: 'quantity' },
       { key: 'loss_value_xaf', label: 'Valeur perdue', kind: 'xaf', protected: true },
     ],
@@ -422,7 +424,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'InventoryVarianceDetected' }],
     resolvedBy: [{ eventType: 'InventoryAdjusted' }],
-    settings: [],
+    // Seuil d'alerte = seuil d'approbation de l'écart (AV-456) : l'alerte accompagne la demande.
+    settings: ['inventory.count_approval_threshold_xaf'],
     messageTitle: "Écart d'inventaire à valider",
     messageFields: [
       { key: 'location_label', label: 'Emplacement' },
@@ -821,6 +824,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { eventType: 'inventory.transfer.cancel' },
       { eventType: 'inventory.transfer.decline' },
       { eventType: 'inventory.transfer.return_to_source' },
+      // P9-08 : l'expédition rapprochée d'une réception sans document est reçue (sujet : l'expédition).
+      { eventType: 'TransferMatchedByBlindReceipt' },
     ],
     settings: ['inventory.transfer_not_received_hours'],
     messageTitle: 'Transfert expédié non reçu',
@@ -845,12 +850,14 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     approvers: false,
     escalationHours: null,
     raisedBy: [{ eventType: 'StockTransferUnmatched' }],
-    resolvedBy: [{ eventType: 'inventory.transfer.return_to_source' }],
+    // P9-08 : le rapprochement tardif publie `BlindReceiptMatched` sous l'identifiant de la réception ; le
+    // retour à la source porte celui de l'expédition (autre sujet) et ne pouvait jamais correspondre.
+    resolvedBy: [{ eventType: 'BlindReceiptMatched' }],
     settings: ['inventory.transfer_unmatched_hours'],
     messageTitle: 'Réception sans document non rapprochée',
     messageFields: [
-      { key: 'transfer_id', label: 'Réception' },
-      { key: 'hours', label: 'Heures', kind: 'hours' },
+      { key: 'doc_number', label: 'Réception' },
+      { key: 'hours_elapsed', label: 'Heures écoulées', kind: 'hours' },
     ],
     sourceAvailable: true,
   }),
@@ -862,6 +869,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     severities: ['WARNING'],
     resolution: 'AUTO',
     subjectType: 'STOCK_LOT',
+    // P9-08 : un lot peut être en stock sur plusieurs sites, et un lot de collecte ou d'abattage porte
+    // plusieurs produits : l'alerte est celle du lot à un site pour un produit (AV-454).
+    subjectParts: ['lot_id', 'site_id', 'product_id'],
     actionScreen: 'ECR-STK-01',
     recipientRoles: ['MAGASINIER'],
     ownerFields: [],
@@ -997,9 +1007,11 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     approvers: false,
     escalationHours: null,
     raisedBy: [{ eventType: 'AllocationRevocationPending' }],
+    // P9-08 : la levée du blocage (appareil débloqué, utilisateur réactivé) met fin à la condition.
     resolvedBy: [
       { eventType: 'inventory.allocation.release' },
       { eventType: 'inventory.allocation.revoke' },
+      { eventType: 'AllocationRevocationCleared' },
     ],
     settings: [],
     messageTitle: 'Quota à régulariser',
@@ -1068,7 +1080,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     severities: ['CRITICAL'],
     resolution: 'MANUAL',
     subjectType: 'LEDGER_RECONCILIATION',
-    subjectParts: ['site_id', 'business_day'],
+    // `site_key` : le site, ou `GLOBAL` pour une anomalie sans site (conservation par produit, emplacement
+    // virtuel global) ; l'alerte d'une anomalie globale n'a alors pas de site (AV-459).
+    subjectParts: ['site_key', 'business_day'],
     actionScreen: 'ECR-STK-07',
     recipientRoles: ['RESP_FERME', 'MAGASINIER', 'DIRECTION', 'ADMIN'],
     ownerFields: [],

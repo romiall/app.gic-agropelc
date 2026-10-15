@@ -68,7 +68,7 @@ export class InventoryCommandsRegistrar implements OnModuleInit {
       this.documentSequences,
     );
     registerConsumptionCommands(this.registry, this.idGenerator);
-    registerThresholdCommands(this.registry);
+    registerThresholdCommands(this.registry, this.idGenerator);
     registerAllocationCommands(this.registry, this.idGenerator);
     registerOverheadCommands(this.registry, this.idGenerator);
     registerCountCommands(

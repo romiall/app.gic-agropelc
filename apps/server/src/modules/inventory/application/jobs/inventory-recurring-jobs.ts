@@ -3,7 +3,10 @@
  * - `inventory.transfers.unmatched_sweep` : toutes les heures (BR-STK-024, délai compté en heures) ;
  * - `inventory.allocations.expiry_daily` (P5-08) : chaque jour à 00:05, heure de Douala — juste
  *   après la fin du jour métier, validité par défaut d'un quota (AV-160) ;
- * - `inventory.ledger.reconcile_daily` (P2-07) : chaque jour à 02:00, heure de Douala, hors activité.
+ * - `inventory.ledger.reconcile_daily` (P2-07) : chaque jour à 02:00, heure de Douala, hors activité ;
+ * - détecteurs d'alertes de stock (P9-08, AV-411, AV-452, AV-454, AV-458) : seuils de stock et
+ *   réapprovisionnement toutes les heures (filet des transitions), péremption des lots chaque jour à 06:00
+ *   et transferts expédiés non reçus chaque jour à 06:30, heure de Douala (D13 §7.1).
  * Constantes techniques de planification, pas des seuils métier. Les tâches quotidiennes des autres
  * modules (audit, finance, ventes, terrain) s'inscrivent de la même façon, une ligne chacune, dans
  * leur propre module (02-modules.md §1).
@@ -15,6 +18,9 @@ import {
 } from '../../../../platform/jobs/recurring-job-registry.provider.js';
 import { ALLOCATION_EXPIRY_JOB_TYPE } from './allocation-expiry-job.js';
 import { LEDGER_RECONCILIATION_JOB_TYPE } from './ledger-reconciliation-job.js';
+import { LOT_EXPIRING_JOB_TYPE } from './lot-expiring-job.js';
+import { STOCK_THRESHOLD_SWEEP_JOB_TYPE } from './stock-threshold-sweep-job.js';
+import { TRANSFER_NOT_RECEIVED_JOB_TYPE } from './transfer-not-received-job.js';
 import { UNMATCHED_TRANSFER_SWEEP_JOB_TYPE } from './unmatched-transfer-sweep-job.js';
 
 export const INVENTORY_RECURRING_JOBS = [
@@ -24,6 +30,12 @@ export const INVENTORY_RECURRING_JOBS = [
   },
   { jobType: ALLOCATION_EXPIRY_JOB_TYPE, schedule: { kind: 'DAILY', localTime: '00:05' } },
   { jobType: LEDGER_RECONCILIATION_JOB_TYPE, schedule: { kind: 'DAILY', localTime: '02:00' } },
+  {
+    jobType: STOCK_THRESHOLD_SWEEP_JOB_TYPE,
+    schedule: { kind: 'INTERVAL', intervalSeconds: 3600 },
+  },
+  { jobType: LOT_EXPIRING_JOB_TYPE, schedule: { kind: 'DAILY', localTime: '06:00' } },
+  { jobType: TRANSFER_NOT_RECEIVED_JOB_TYPE, schedule: { kind: 'DAILY', localTime: '06:30' } },
 ] as const;
 
 @Injectable()

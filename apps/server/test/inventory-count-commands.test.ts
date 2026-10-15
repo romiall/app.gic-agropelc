@@ -101,6 +101,18 @@ async function insertProduct(admin: string): Promise<string> {
   return productId;
 }
 
+/** Événements de détection d'alertes d'un inventaire (P9-08, AV-456), dans l'ordre de publication. */
+async function countEvents(countId: string, eventType: string) {
+  const rows = await db
+    .selectFrom('platform_domain_events')
+    .select(['payload', 'producer_module', 'aggregate_type'])
+    .where('event_type', '=', eventType)
+    .where('aggregate_id', '=', toBin(countId))
+    .orderBy('seq')
+    .execute();
+  return rows;
+}
+
 describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
   let clock: Clock;
   let idGenerator: IdGenerator;
@@ -332,6 +344,18 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       .where('source_doc_id', '=', toBin(countId))
       .execute();
     expect(gainMoves).toHaveLength(0);
+
+    // P9-08 : comptabilisé sans validation → `InventoryAdjusted` (écart nul), jamais d'alerte d'écart.
+    expect(await countEvents(countId, 'InventoryVarianceDetected')).toHaveLength(0);
+    const adjusted = await countEvents(countId, 'InventoryAdjusted');
+    expect(adjusted).toHaveLength(1);
+    expect(adjusted[0]!.payload).toMatchObject({
+      count_id: countId,
+      location_id: locationId,
+      variance_quantity: 0,
+      variance_value_xaf: 0,
+      status: 'POSTED',
+    });
   });
 
   it('submit avec écart sous le seuil (25 000 XAF) -> POSTED direct, INVENTORY_LOSS appliqué (compté < théorique)', async () => {
@@ -369,6 +393,16 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       .executeTakeFirstOrThrow();
     expect(lossMove.move_type).toBe('INVENTORY_LOSS');
     expect(Number(lossMove.quantity)).toBe(5);
+
+    // P9-08 : écart sous le seuil d'approbation → comptabilisé d'office, aucune alerte d'écart.
+    expect(await countEvents(countId, 'InventoryVarianceDetected')).toHaveLength(0);
+    const adjusted = await countEvents(countId, 'InventoryAdjusted');
+    expect(adjusted).toHaveLength(1);
+    expect(adjusted[0]!.payload).toMatchObject({
+      variance_quantity: -5,
+      variance_value_xaf: -5000,
+      status: 'POSTED',
+    });
   });
 
   it('submit avec écart au-dessus du seuil sans politique active -> REJECTED CONTROL_POLICY_MISSING', async () => {
@@ -494,6 +528,29 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
         .executeTakeFirstOrThrow();
       expect(request.subject_summary).toBe(`Écart d'inventaire ${row.doc_number}`);
       expect(Number(request.amount_xaf)).toBeGreaterThan(0);
+
+      // P9-08 (AV-456) : l'alerte accompagne la demande de validation, sans rien comptabiliser.
+      const detected = await countEvents(countId, 'InventoryVarianceDetected');
+      expect(detected).toHaveLength(1);
+      expect(detected[0]).toMatchObject({
+        producer_module: 'inventory',
+        aggregate_type: 'INVENTORY_COUNT',
+      });
+      expect(detected[0]!.payload).toMatchObject({
+        count_id: countId,
+        location_id: locationId,
+        site_id: siteId,
+        variance_quantity: 30,
+        variance_value_xaf: 30_000,
+        abs_variance_value_xaf: 30_000,
+        lines_with_variance: 1,
+        animal_variance: false,
+        threshold_xaf: 25_000,
+        approval_request_id: fromBin(row.approval_request_id!),
+        business_day: '2026-10-02',
+      });
+      expect(await countEvents(countId, 'InventoryAdjusted')).toHaveLength(0);
+      void productId;
     });
 
     it('approve -> POSTED, INVENTORY_GAIN appliqué (compté > théorique)', async () => {
@@ -532,6 +589,54 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       expect(gainMove.move_type).toBe('INVENTORY_GAIN');
       expect(Number(gainMove.quantity)).toBe(30);
       expect(Number(gainMove.unit_cost_xaf)).toBe(1000); // coût figé à la soumission.
+
+      // P9-08 : la comptabilisation approuvée ferme l'alerte d'écart du même inventaire.
+      const adjusted = await countEvents(countId, 'InventoryAdjusted');
+      expect(adjusted).toHaveLength(1);
+      expect(adjusted[0]!.payload).toMatchObject({
+        count_id: countId,
+        location_id: locationId,
+        site_id: siteId,
+        variance_quantity: 30,
+        variance_value_xaf: 30_000,
+        status: 'POSTED',
+      });
+    });
+
+    it('P9-08 : un gain et une perte — écart net, valeur absolue au seuil (borne comprise) et nombre de lignes', async () => {
+      const locationId = await newStore();
+      const gainProduct = await insertProduct(admin);
+      const lossProduct = await insertProduct(admin);
+      await openingBalance(gainProduct, locationId, 100, 1000);
+      await openingBalance(lossProduct, locationId, 100, 500);
+      const countId = await openCount(locationId);
+      await recordLine(countId, gainProduct, 130); // +30 000
+      await recordLine(countId, lossProduct, 90); // −5 000 : écart net 25 000 = le seuil
+      const result = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'inventory.count.submit',
+          aggregate_type: 'INVENTORY_COUNT',
+          aggregate_id: countId,
+          payload: { countId },
+        }),
+        adminCtx(),
+      );
+      expect(result.status).toBe('APPLIED');
+      const count = await db
+        .selectFrom('inventory_inventory_counts')
+        .select(['status', 'approval_request_id'])
+        .where('id', '=', toBin(countId))
+        .executeTakeFirstOrThrow();
+      expect(count.status).toBe('PENDING_APPROVAL'); // 25 000 ≥ 25 000
+      const [detected] = await countEvents(countId, 'InventoryVarianceDetected');
+      expect(detected!.payload).toMatchObject({
+        variance_quantity: 20, // +30 − 10, produits d'unités possiblement différentes : indicatif
+        variance_value_xaf: 25_000,
+        abs_variance_value_xaf: 25_000,
+        lines_with_variance: 2,
+        animal_variance: false,
+        threshold_xaf: 25_000,
+      });
     });
 
     it('reject -> REJECTED, aucun mouvement appliqué', async () => {
@@ -568,6 +673,9 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
         .where('source_doc_id', '=', toBin(countId))
         .execute();
       expect(moves).toHaveLength(0);
+      // Rejet : l'alerte d'écart reste ouverte (recomptage), aucun `InventoryAdjusted`.
+      expect(await countEvents(countId, 'InventoryVarianceDetected')).toHaveLength(1);
+      expect(await countEvents(countId, 'InventoryAdjusted')).toHaveLength(0);
     });
   });
 });

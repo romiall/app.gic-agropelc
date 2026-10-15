@@ -86,6 +86,7 @@ import {
   lockTransferPair,
   matchPolicy,
   markMatched,
+  publishTransferMatchedByBlindReceipt,
   peekTransfer,
   receiptShape,
   receivedQuantities,
@@ -1040,6 +1041,13 @@ ${refusal}`
         policy: allowed!.policy,
       });
       await markMatched(uow, header, matching.dispatch.header.id, origin.receivedAt);
+      await publishTransferMatchedByBlindReceipt(uow, deps, {
+        dispatch: matching.dispatch.header,
+        receiptId,
+        status: outcome.status,
+        matchedAt: origin.receivedAt,
+        commandId: envelope.command_id,
+      });
       serverRefs['matchedTransferId'] = matching.dispatch.header.id;
       if (outcome.overReceived) {
         await recordOverReceipt(uow, deps, {

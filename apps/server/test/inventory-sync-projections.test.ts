@@ -139,7 +139,7 @@ describe('projections /sync/pull du stock (P2-06)', () => {
     const registry = new CommandHandlerRegistry();
     const documentSequences = new DocumentSequenceService();
     registerTransferCommands(registry, decisionRegistry, idGenerator, documentSequences);
-    registerThresholdCommands(registry);
+    registerThresholdCommands(registry, idGenerator);
     registerCountCommands(registry, decisionRegistry, idGenerator, documentSequences);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
     pullService = new SyncPullService(db);

@@ -66,6 +66,10 @@ import {
 import { inventoryCountChange } from '../sync-changes.js';
 import { closeStockNegativeConflicts } from '../stock-negative-conflicts.js';
 import {
+  publishInventoryAdjustedEvent,
+  publishInventoryVarianceEvent,
+} from '../inventory-alert-events.js';
+import {
   loadCommandOrigin,
   loadLocationSite,
   virtualLocationId,
@@ -426,6 +430,15 @@ function buildCountCommands(
         .where('id', '=', row.id)
         .execute();
       await recordCountChange(uow, row);
+      await publishInventoryAdjustedEvent(uow, deps, {
+        countId: envelope.payload.countId,
+        locationId,
+        siteId: fromBin(row.site_id),
+        varianceQuantity: netVarianceQuantity(computed),
+        varianceValueXaf,
+        factAt: occurredAt,
+        commandId: envelope.command_id,
+      });
       return { status: 'APPLIED' };
     }
 
@@ -476,6 +489,24 @@ function buildCountCommands(
       .execute();
 
     await recordCountChange(uow, row);
+    // P9-08 (AV-456) : l'alerte accompagne la demande de validation ; un inventaire sans écart n'en lève pas.
+    const linesWithVariance = computed.filter((entry) => Math.abs(entry.variance) >= 0.0005).length;
+    if (linesWithVariance > 0) {
+      await publishInventoryVarianceEvent(uow, deps, {
+        countId: envelope.payload.countId,
+        locationId,
+        siteId: fromBin(row.site_id),
+        varianceQuantity: netVarianceQuantity(computed),
+        varianceValueXaf,
+        absVarianceValueXaf,
+        linesWithVariance,
+        animalVariance,
+        thresholdXaf: threshold,
+        approvalRequestId,
+        factAt: occurredAt,
+        commandId: envelope.command_id,
+      });
+    }
     return { status: 'APPLIED' };
   };
 
@@ -518,7 +549,7 @@ function registerInventoryAdjustmentDecisionHandler(
     decisionRegistry.register(operationType, async (uow, ctx) => {
       const row = await uow
         .selectFrom('inventory_inventory_counts')
-        .select(['id', 'location_id'])
+        .select(['id', 'location_id', 'site_id', 'variance_value_xaf'])
         .where('id', '=', toBin(ctx.subjectId))
         .executeTakeFirstOrThrow();
 
@@ -556,6 +587,19 @@ function registerInventoryAdjustmentDecisionHandler(
           .where('id', '=', row.id)
           .execute();
         await recordCountChange(uow, row);
+        // P9-08 : ferme l'alerte `INVENTORY_VARIANCE` du même inventaire (AV-456).
+        await publishInventoryAdjustedEvent(uow, deps, {
+          countId: ctx.subjectId,
+          locationId,
+          siteId: fromBin(row.site_id),
+          varianceQuantity: lines.reduce(
+            (sum, line) =>
+              sum + (line.variance_qty_base !== null ? Number(line.variance_qty_base) : 0),
+            0,
+          ),
+          varianceValueXaf: row.variance_value_xaf !== null ? Number(row.variance_value_xaf) : 0,
+          factAt: ctx.decidedAt,
+        });
         return;
       }
 
@@ -566,6 +610,11 @@ function registerInventoryAdjustmentDecisionHandler(
         .execute();
       await recordCountChange(uow, row);
     });
+}
+
+/** Écart net signé des lignes comptées (quantités d'unités différentes : indicateur grossier, AV-456). */
+function netVarianceQuantity(computed: readonly { readonly variance: number }[]): number {
+  return Math.round(computed.reduce((sum, entry) => sum + entry.variance, 0) * 1000) / 1000;
 }
 
 /** AV-108 : vrai si un écart non nul porte sur un produit de famille `BIOLOGIQUE`. */

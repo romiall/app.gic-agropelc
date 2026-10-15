@@ -357,6 +357,31 @@ export {
   cashHoldingThresholdFrom,
 } from './cash-holding.js';
 export type { CashHoldingReason, CashInflow } from './cash-holding.js';
+export {
+  DEFAULT_HIGH_LOSS_ALERT_XAF,
+  DEFAULT_HIGH_LOSS_SALES_PCT,
+  DEFAULT_LOT_EXPIRING_DAYS,
+  DEFAULT_POS_REPLENISH_SCOPE,
+  DEFAULT_TRANSFER_NOT_RECEIVED_HOURS,
+  POS_REPLENISH_SCOPES,
+  elapsedHours,
+  highLossAlertXafOrDefault,
+  highLossSalesPctOrDefault,
+  isHighLossAbsolute,
+  isHighLossSalesShare,
+  isTransferNotReceived,
+  lossSalesSharePct,
+  lotDaysLeft,
+  lotExpiringDaysOrDefault,
+  lotExpiringHorizonDay,
+  needsReplenishment,
+  posReplenishScopeOrDefault,
+  stockLevelChanges,
+  stockLevelOfState,
+  stockThresholdStateOf,
+  transferNotReceivedHoursOrDefault,
+} from './stock-alerts.js';
+export type { PosReplenishScope, StockAlertLevel, StockLevelChange } from './stock-alerts.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
 

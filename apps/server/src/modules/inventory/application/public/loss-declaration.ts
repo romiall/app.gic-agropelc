@@ -21,7 +21,13 @@
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { mortalityRequiresApproval, type IdGenerator, businessDayOf } from '@gic/domain';
+import {
+  businessDayOf,
+  highLossAlertXafOrDefault,
+  isHighLossAbsolute,
+  mortalityRequiresApproval,
+  type IdGenerator,
+} from '@gic/domain';
 import type { WarningCode } from '@gic/contracts';
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
@@ -45,6 +51,12 @@ import {
 import { hasAvailableAttachment } from '../../../attachments/application/public/index.js';
 import { recordStockMove } from './record-move.js';
 import { lotHeadcount } from './lot-headcount.js';
+import { dayLossByLocation } from './loss-summary.js';
+import {
+  locationAlertInfo,
+  publishHighLossEvent,
+  siteThenGlobalSetting,
+} from '../inventory-alert-events.js';
 import {
   allocationWarnings,
   loadLocationSite,
@@ -273,6 +285,14 @@ export async function declareLoss(
     })
     .execute();
   await emitLotLossChange(uow, input.lossId);
+  await signalHighLoss(uow, deps, {
+    lossId: input.lossId,
+    locationId: input.locationId,
+    siteId,
+    category: input.category,
+    occurredAt: input.occurredAt,
+    commandId: input.commandId,
+  });
 
   return {
     ok: true,
@@ -284,6 +304,58 @@ export async function declareLoss(
     valueXaf,
     warnings: allocationWarnings(moveResult.moves),
   };
+}
+
+/**
+ * `HIGH_LOSS` (P9-08 ; D13 §7.1 « sur perte », AV-406, AV-453) : une perte déclarée porte le cumul du jour
+ * métier **du fait** de l'emplacement au seuil `inventory.high_loss_alert_xaf` (site, à défaut global,
+ * 50 000 XAF) ; un événement par déclaration tant que le seuil est atteint (le compteur d'occurrences de
+ * l'alerte avance, une alerte résolue renaît à la déclaration suivante, AV-404). Les déclarations en
+ * attente de validation comptent ; la mortalité, qui a sa propre alerte (`HIGH_MORTALITY`) et se valorise
+ * par tête, n'entre pas dans le cumul.
+ */
+async function signalHighLoss(
+  uow: UnitOfWork,
+  deps: { readonly idGenerator: IdGenerator },
+  input: {
+    readonly lossId: string;
+    readonly locationId: string;
+    readonly siteId: string;
+    readonly category: LossCategory;
+    readonly occurredAt: Date;
+    readonly commandId: string;
+  },
+): Promise<void> {
+  if (input.category === 'MORTALITE') return;
+  const businessDay = businessDayOf(input.occurredAt);
+  const [day] = await dayLossByLocation(uow, {
+    businessDay,
+    locationIds: [input.locationId],
+    excludeCategories: ['MORTALITE'],
+  });
+  if (day === undefined) return;
+  const thresholdXaf = highLossAlertXafOrDefault(
+    await siteThenGlobalSetting(
+      uow,
+      'inventory.high_loss_alert_xaf',
+      input.siteId,
+      input.occurredAt,
+    ),
+  );
+  if (!isHighLossAbsolute({ valueXaf: day.valueXaf, thresholdXaf })) return;
+  const location = await locationAlertInfo(uow, input.locationId);
+  await publishHighLossEvent(uow, deps, {
+    locationId: input.locationId,
+    locationLabel: location?.name ?? input.locationId,
+    siteId: input.siteId,
+    businessDay,
+    lossQuantity: day.quantityBase,
+    lossValueXaf: day.valueXaf,
+    declarations: day.declarations,
+    thresholdXaf,
+    lastLossId: input.lossId,
+    commandId: input.commandId,
+  });
 }
 
 /**

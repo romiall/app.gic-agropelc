@@ -402,6 +402,14 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'D13 §7.1, AV-065',
   },
+  // P9-08 (AV-452) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (D13 littéral : la suggestion
+  // « cible − disponible − transit entrant » est positive) ou `BELOW_MINIMUM` (aussi sous le minimum).
+  {
+    key: 'inventory.replenish_alert_scope',
+    value: 'BELOW_TARGET',
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-452',
+  },
   // BR-TER-013 : lundi à samedi par défaut (numéros ISO des jours, 1 = lundi).
   {
     key: 'sales.commercial_working_days',

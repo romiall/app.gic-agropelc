@@ -476,3 +476,138 @@ describe('alertsResolvedByPass (ADR-071 §3)', () => {
     ]);
   });
 });
+
+describe('alertFromEvent — alertes de stock (P9-08)', () => {
+  const LOT = '0191a3f0-0000-7000-8000-0000000000d1';
+  const SITE_B = '0191a3f0-0000-7000-8000-0000000000bb';
+  const resolved = (type: string, aggregateId: string, payload: Record<string, unknown> = {}) =>
+    alertFromEvent(event(type, aggregateId, payload)).actions.filter(
+      (a) => a.kind === 'RESOLVE',
+    ) as readonly { kind: 'RESOLVE'; alertType: string; subjectKey: string }[];
+
+  it('réception sans document : le rapprochement tardif résout, le retour à la source ne résout pas', () => {
+    const raised = raise(event('StockTransferUnmatched', SALE, { transfer_id: SALE }));
+    expect(raised).toMatchObject({ alertType: 'TRANSFER_UNMATCHED', subjectKey: SALE });
+    expect(resolved('BlindReceiptMatched', SALE).map((a) => a.alertType)).toEqual([
+      'TRANSFER_UNMATCHED',
+    ]);
+    // `inventory.transfer.return_to_source` ne porte que l'expédition : il résout seulement le
+    // transfert non reçu, jamais la réception sans document.
+    expect(resolved('inventory.transfer.return_to_source', SALE).map((a) => a.alertType)).toEqual([
+      'TRANSFER_NOT_RECEIVED',
+    ]);
+  });
+
+  it('quota à régulariser : la levée du blocage résout cette alerte et pas celle de l’échéance', () => {
+    expect(resolved('AllocationRevocationCleared', SALE).map((a) => a.alertType)).toEqual([
+      'ALLOCATION_REVOCATION_PENDING',
+    ]);
+    expect(
+      resolved('inventory.allocation.release', SALE)
+        .map((a) => a.alertType)
+        .sort(),
+    ).toEqual(['ALLOCATION_EXPIRED', 'ALLOCATION_REVOCATION_PENDING']);
+  });
+
+  it('lot bientôt périmé : un sujet par lot, par site et par produit', () => {
+    const base = { lot_id: LOT, business_day: '2026-10-15' };
+    const a = raise(
+      event('LotExpiringDetected', LOT, { ...base, site_id: SITE, product_id: PRODUCT }),
+    );
+    const otherSite = raise(
+      event('LotExpiringDetected', LOT, { ...base, site_id: SITE_B, product_id: PRODUCT }),
+    );
+    const otherProduct = raise(
+      event('LotExpiringDetected', LOT, { ...base, site_id: SITE, product_id: LOCATION }),
+    );
+    expect(a.subjectKey).toBe(`STOCK_LOT:${LOT}:${SITE}:${PRODUCT}`);
+    expect(a.dedupKey).not.toBe(otherSite.dedupKey);
+    expect(a.dedupKey).not.toBe(otherProduct.dedupKey);
+    expect(a.siteId).toBe(SITE);
+    const missing = alertFromEvent(
+      event('LotExpiringDetected', LOT, { lot_id: LOT, site_id: SITE }),
+    );
+    expect(missing.actions).toEqual([]);
+    expect(missing.issues).toEqual([
+      expect.objectContaining({ code: 'SUBJECT_MISSING', alertType: 'LOT_EXPIRING' }),
+    ]);
+  });
+
+  it('écart du registre : sujet par site et par jour, `GLOBAL` pour une anomalie sans site', () => {
+    const site = raise(
+      event('LedgerMismatchDetected', SITE, {
+        site_key: SITE,
+        site_id: SITE,
+        business_day: '2026-10-15',
+        mismatches: 3,
+      }),
+    );
+    expect(site).toMatchObject({
+      alertType: 'LEDGER_MISMATCH',
+      subjectKey: `LEDGER_RECONCILIATION:${SITE}:2026-10-15`,
+      siteId: SITE,
+      severity: 'CRITICAL',
+    });
+    const global = raise(
+      event('LedgerMismatchDetected', SITE, {
+        site_key: 'GLOBAL',
+        business_day: '2026-10-15',
+        mismatches: 1,
+      }),
+    );
+    expect(global.subjectKey).toBe('LEDGER_RECONCILIATION:global:2026-10-15');
+    expect(global.siteId).toBeNull();
+    // Sans clé de site, aucune alerte n'est levée : l'anomalie ne se perd pas en silence, elle devient
+    // un constat de l'événement.
+    const none = alertFromEvent(
+      event('LedgerMismatchDetected', SITE, { business_day: '2026-10-15', mismatches: 1 }),
+    );
+    expect(none.actions).toEqual([]);
+    expect(none.issues[0]).toMatchObject({ code: 'SUBJECT_MISSING' });
+  });
+
+  it('écart d’inventaire : levé par la soumission, résolu par la comptabilisation du même inventaire', () => {
+    const COUNT = '0191a3f0-0000-7000-8000-0000000000e1';
+    expect(raise(event('InventoryVarianceDetected', COUNT, { count_id: COUNT })).subjectKey).toBe(
+      COUNT,
+    );
+    expect(resolved('InventoryAdjusted', COUNT).map((a) => [a.alertType, a.subjectKey])).toEqual([
+      ['INVENTORY_VARIANCE', COUNT],
+    ]);
+  });
+
+  it('transfert non reçu : levé par la passe, résolu par les commandes de réception, d’annulation, de refus ou de retour', () => {
+    expect(raise(event('StockTransferNotReceived', SALE, { transfer_id: SALE })).alertType).toBe(
+      'TRANSFER_NOT_RECEIVED',
+    );
+    for (const command of [
+      'inventory.transfer.receive',
+      'inventory.transfer.cancel',
+      'inventory.transfer.decline',
+      'inventory.transfer.return_to_source',
+      // L'expédition rapprochée d'une réception sans document (immédiat ou tardif) : sujet = l'expédition.
+      'TransferMatchedByBlindReceipt',
+    ]) {
+      expect(resolved(command, SALE).map((a) => a.alertType)).toContain('TRANSFER_NOT_RECEIVED');
+    }
+  });
+
+  it('solde négatif : seul un événement `negative` vrai lève ; réapprovisionnement : sujet PDV × produit', () => {
+    const payload = { location_id: LOCATION, product_id: PRODUCT, site_id: SITE };
+    expect(
+      alertFromEvent(event('StockNegativeDetected', LOCATION, { ...payload, negative: false }))
+        .actions,
+    ).toEqual([]);
+    expect(
+      raise(event('StockNegativeDetected', LOCATION, { ...payload, negative: true })),
+    ).toMatchObject({
+      alertType: 'STOCK_NEGATIVE',
+      subjectKey: `STOCK_POSITION:${LOCATION}:${PRODUCT}`,
+      severity: 'CRITICAL',
+    });
+    expect(raise(event('ReplenishmentSuggested', LOCATION, payload))).toMatchObject({
+      alertType: 'POS_REPLENISH',
+      subjectKey: `POS_PRODUCT:${LOCATION}:${PRODUCT}`,
+    });
+  });
+});

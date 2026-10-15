@@ -256,10 +256,11 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `attachments.missing_alert_days` | 7 | AV-407, AV-449 (P9-03, P9-07) : jours sans justificatif avant l'alerte `ATTACHMENT_MISSING` ; compté depuis la réception par le serveur ; 0 désactive l'alerte et ferme celles qui sont ouvertes ; entier ≥ 0, sinon 7 |
 | `attachments.missing_alert_horizon_days` | 90 | AV-449 (P9-07) : horizon du balayage des justificatifs manquants, en jours ; au moins le délai plus un jour ; entier > 0, sinon 90 |
 | `procurement.receipt_incomplete_alert_days` | 2 | BR-APP-015, AV-410 (P9-03) : jours après lesquels une réception incomplète est signalée |
-| `inventory.high_loss_alert_xaf` | 50 000 | AV-406 (P9-03) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour |
-| `sales.high_loss_alert_sales_pct` | 5 | AV-406 (P9-03) : part des ventes du jour au-delà de laquelle une perte est signalée, en % |
-| `inventory.transfer_not_received_hours` | 48 | AV-065 (P9-03) : délai de l'alerte `TRANSFER_NOT_RECEIVED` |
-| `inventory.lot_expiring_days` | 15 | AV-065 (P9-03) : jours avant péremption pour l'alerte `LOT_EXPIRING` |
+| `inventory.high_loss_alert_xaf` | 50 000 | AV-406, AV-453 (P9-03, P9-08) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour métier du fait ; lu à la déclaration (site, à défaut global) ; nombre ≥ 0, sinon 50 000 ; une perte sans valeur n'alerte jamais |
+| `sales.high_loss_alert_sales_pct` | 5 | AV-406, AV-455 (P9-03, P9-08) : part du CA net du jour du site au-delà de laquelle la perte d'un emplacement est signalée, en % ; nombre > 0, sinon 5 |
+| `inventory.transfer_not_received_hours` | 48 | AV-065, AV-458 (P9-03, P9-08) : délai de l'alerte `TRANSFER_NOT_RECEIVED`, compté depuis l'expédition ; site de l'expéditeur, à défaut global ; nombre > 0, sinon 48 |
+| `inventory.lot_expiring_days` | 15 | AV-065, AV-454 (P9-03, P9-08) : jours avant péremption pour l'alerte `LOT_EXPIRING` ; entier ≥ 0, sinon 15 ; 0 : seulement les lots périmant aujourd'hui ou déjà périmés |
+| `inventory.replenish_alert_scope` | `BELOW_TARGET` | AV-452 (P9-08) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (la suggestion « cible − disponible − transit entrant » est positive, D13 littéral) ou `BELOW_MINIMUM` (aussi sous le minimum du point de vente) ; autre valeur : `BELOW_TARGET` |
 | `sales.commercial_working_days` | `["1","2","3","4","5","6"]` | BR-TER-013, AV-409 (P9-03) : jours ouvrés ISO (1 = lundi) suivis par l'alerte `INACTIVE_COMMERCIAL` ; liste vide ou invalide : lundi à samedi |
 | `sales.inactive_commercial_role_codes` | `["COMMERCIAL_TERRAIN"]` | BR-TER-013, AV-444 (P9-07) : rôles suivis par l'alerte `INACTIVE_COMMERCIAL` |
 | `sync.stale_hours` | 24 | D13 §7.1 (P9-03) : durée sans synchronisation au-delà de laquelle un appareil est signalé |
