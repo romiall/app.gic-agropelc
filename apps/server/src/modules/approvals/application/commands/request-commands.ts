@@ -33,6 +33,7 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin, fromBin } from '../../../../platform/kysely/uuid-columns.js';
+import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import {
   ApprovalDecisionRefused,
   type ApprovalDecisionHandlerRegistry,
@@ -104,6 +105,7 @@ function buildDecisionCommandHandler(
       decision,
       decidedBy: envelope.author_user_id,
       decidedAt: new Date(envelope.occurred_at),
+      receivedAt: (await loadCommandOrigin(uow, envelope.command_id)).receivedAt,
       ...(envelope.payload.comment !== undefined ? { comment: envelope.payload.comment } : {}),
       ...(envelope.payload.decisionOption !== undefined
         ? { decisionOption: envelope.payload.decisionOption }

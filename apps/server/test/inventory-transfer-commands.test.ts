@@ -528,12 +528,21 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
 
       const pendingRow = await db
         .selectFrom('inventory_stock_transfers')
-        .select(['status', 'approval_request_id'])
+        .select(['status', 'approval_request_id', 'doc_number'])
         .where('id', '=', toBin(transferId))
         .executeTakeFirstOrThrow();
       expect(pendingRow.status).toBe('DISCREPANCY_PENDING');
       const requestId = fromBinOrNull(pendingRow.approval_request_id);
       expect(requestId).not.toBeNull();
+      // MP-11 : le valideur lit le numéro du transfert, pas son identifiant technique.
+      const request = await db
+        .selectFrom('approvals_approval_requests')
+        .select('subject_summary')
+        .where('id', '=', toBin(requestId!))
+        .executeTakeFirstOrThrow();
+      expect(request.subject_summary).toBe(
+        `Écart de réception sur transfert ${pendingRow.doc_number}`,
+      );
 
       const approveResult = await pipeline.handle(
         buildEnvelope(approver, {

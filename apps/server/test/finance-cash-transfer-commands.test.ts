@@ -22,6 +22,8 @@ import {
   type IdGenerator,
 } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { ApprovalsInboxController } from '../src/approvals-api/approvals-inbox.controller.js';
+import type { AuthenticatedRequest } from '../src/modules/identity/api/auth.guard.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { DocumentSequenceService } from '../src/platform/document-sequences/document-sequence.service.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
@@ -167,6 +169,26 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     payload: Record<string, unknown> = {},
     occurredAt = at('20:00'),
   ) => run(actor, 'approvals.request.approve', requestId, occurredAt, { requestId, ...payload });
+
+  /** Choix indisponibles annoncés par la file de validation pour l'écart de la remise (MP-11). */
+  const unavailableOptionsOf = async (actor: Actor, transferId: string) => {
+    const inbox = new ApprovalsInboxController(db, clock, idGenerator);
+    const request = {
+      auth: { sub: actor.userId, device_id: actor.deviceId, session_id: freshUuid() },
+    } as AuthenticatedRequest;
+    let cursor: string | undefined;
+    for (let page = 0; page < 50; page++) {
+      const body = await inbox.inbox(
+        { types: 'CASH_TRANSFER_DISCREPANCY', limit: '200', ...(cursor ? { cursor } : {}) },
+        request,
+      );
+      const found = body.requests.find((item) => item.subjectId === transferId);
+      if (found) return found.unavailableOptions;
+      if (body.next_cursor === null) break;
+      cursor = body.next_cursor;
+    }
+    throw new Error(`demande de la remise ${transferId} absente de la file`);
+  };
 
   const ledgerOk = async (accountIds: readonly string[], transferIds: readonly string[]) => {
     const [ledger, transfers] = await tx(async (trx) => [
@@ -775,6 +797,8 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     const [request] = await approvalOf(id);
     expect(request).toMatchObject({ status: 'PENDING', amount_xaf: 3_000 });
     expect(request!.subject_summary).toContain('Billets manquants');
+    // Porteur connu : aucune option retirée (MP-11).
+    expect(await unavailableOptionsOf(fin2, id)).toEqual([]);
     expect(fromBin(request!.requested_by)).toBe(fin1.userId);
     const [event] = await eventsOf(id, 'CashTransferDiscrepancyDetected');
     expect(event?.payload).toMatchObject({
@@ -895,6 +919,8 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     expect(await movementsOf(id)).toHaveLength(1);
     expect(await balanceOf(central)).toBe(0);
     const requestId = fromBin((await approvalOf(id))[0]!.id);
+    // MP-11 : la file annonce d'avance que l'imputation au porteur sera refusée.
+    expect(await unavailableOptionsOf(fin2, id)).toEqual(['CARRIER']);
     expect(
       codeOf(
         await approve(fin2, requestId, {

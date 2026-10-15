@@ -361,6 +361,24 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     // Lecture sans droit d'approbation : rien ; l'Admin n'a pas la file (RC-03).
     expect(await inboxOf(magasinier)).toEqual([]);
     expect((await get(admin, '/api/v1/approvals/inbox')).statusCode).toBe(403);
+
+    // MP-11 : l'accueil lit la même file — la propre demande de la Direction y compte (les demandes
+    // du test sont les plus anciennes : dans la première page), pas celle du Resp. commercial pour
+    // lui-même ; décompte au-delà d'une page, « tronqué » au-delà des pages lues.
+    const directionHome = await pendingApprovalsFor(db, direction.userId, clock.now());
+    expect(directionHome.items.map((entry) => entry.id)).toContain(requests.directionOwn);
+    const comHome = await pendingApprovalsFor(db, respCom.userId, clock.now());
+    expect(comHome).toMatchObject({ total: 3, truncated: false });
+    expect(comHome.items.map((entry) => entry.id)).toEqual([
+      requests.teamDiscount,
+      requests.lossS1,
+      requests.lossS2,
+    ]);
+    const atCap = await pendingApprovalsFor(db, respCom.userId, clock.now(), { cap: 3 });
+    expect(atCap).toMatchObject({ total: 3, truncated: false });
+    const capped = await pendingApprovalsFor(db, respCom.userId, clock.now(), { cap: 2 });
+    expect(capped).toMatchObject({ total: 2, truncated: true });
+    expect(capped.items.map((entry) => entry.id)).toEqual([requests.teamDiscount, requests.lossS1]);
   });
 
   it('filtre par type, pagination, pièce attendue (BR-ADM-020), montant au coût masqué (RC-05)', async () => {
@@ -388,8 +406,10 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
 
     // L'accueil partage la même lecture (montant masqué compris).
     const home = await pendingApprovalsFor(db, respFerme.userId, clock.now());
-    expect(home.find((entry) => entry.id === requests.lossS1)).toMatchObject({ amountXaf: null });
-    expect(home.map((entry) => entry.id)).not.toContain(requests.lossS2);
+    expect(home.items.find((entry) => entry.id === requests.lossS1)).toMatchObject({
+      amountXaf: null,
+    });
+    expect(home.items.map((entry) => entry.id)).not.toContain(requests.lossS2);
   });
 
   it('aucune décision hors ligne (SM-APPROVAL) : approuver ou refuser saisi hors ligne, refusé', async () => {

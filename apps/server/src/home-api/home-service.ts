@@ -98,10 +98,12 @@ import {
 } from '../read-api/distribution-targets.js';
 import { ROLE_CATALOG, ROLE_ORDER, type RoleDefinition } from './role-catalog.js';
 import {
+  conflictTypeLabel,
   flaggedSalesSignal,
   formatXaf,
   kpi,
   lastDays,
+  pendingApprovalsTitle,
   plural,
   shiftDay,
   signal,
@@ -447,15 +449,16 @@ async function coordinationBlock(
 ): Promise<Built> {
   const built = empty();
   const approvals = await pendingApprovalsFor(ctx.executor, ctx.userId, ctx.at);
-  if (approvals.length > 0) {
-    const oldest = approvals[0]!;
+  if (approvals.total > 0) {
+    const oldest = approvals.items[0]!;
+    // MP-11 : décompte jusqu'au plafond, « plus de N » au-delà.
     built.signals.push(
       signal({
         code: 'APPROVALS_PENDING',
         severity: 'WARNING',
-        title: `${plural(approvals.length, 'validation vous attend', 'validations vous attendent')}`,
+        title: pendingApprovalsTitle(approvals.total, approvals.truncated),
         detail: `La plus ancienne : ${oldest.subjectSummary}`,
-        count: approvals.length,
+        count: approvals.total,
         action: { label: 'Ouvrir la file de validation', route: null },
       }),
     );
@@ -473,7 +476,7 @@ async function coordinationBlock(
     const types = Object.entries(conflicts.byType)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([type, count]) => `${type.replaceAll('_', ' ').toLowerCase()} ×${count}`)
+      .map(([type, count]) => `${conflictTypeLabel(type)} ×${count}`)
       .join(', ');
     built.signals.push(
       signal({

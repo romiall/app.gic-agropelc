@@ -118,7 +118,7 @@ Précisions retenues par le module `procurement` là où les règles ci-dessus l
 
 | Point | Choix | Justification |
 |---|---|---|
-| Validation d'une DA (BR-APP-003) | Toujours demandée (`PURCHASE_REQUEST`) ; sans politique active, soumission refusée (`CONTROL_POLICY_MISSING`) : la politique porte la permission de l'approbateur. | Validation inconditionnelle, jamais sautée (même principe que `TRANSFER_DISCREPANCY`, D06). |
+| Validation d'une DA (BR-APP-003) | Toujours demandée (`PURCHASE_REQUEST`) ; sans politique active, soumission refusée (`CONTROL_POLICY_MISSING`) : la politique porte la permission de l'approbateur. Politiques par défaut semées (demande d'achat, BC au-delà du seuil, réception sans BC, en quarantaine, annulation ; AV-294, MP-11). | Validation inconditionnelle, jamais sautée (même principe que `TRANSFER_DISCREPANCY`, D06). |
 | Portée d'une DA | Site bénéficiaire dans le périmètre du demandeur pour `procurement.request.create` (`FORBIDDEN_SCOPE`) ; produits actifs et achetables (`PRODUCT_NOT_PURCHASABLE`). | RC-04 ; SM-PURCHASE-REQUEST « produits achetables ». |
 | Montant estimé | Σ quantité (unité de base) × prix estimé, arrondi au franc par ligne ; lignes sans prix ignorées ; informatif. | BR-VEN-014 (même arrondi) ; SM-PURCHASE-REQUEST « montant estimé (informatif) ». |
 | Retrait, abandon, clôture | Retrait par le seul demandeur tant que la DA est soumise (la demande de validation est retirée) ; abandon d'une DA approuvée et clôture d'une DA partiellement commandée par un valideur (`procurement.request.approve`), motif obligatoire (`REASON_REQUIRED`), conservé dans l'audit. | SM-PURCHASE-REQUEST ; aucune colonne de motif au dictionnaire. |

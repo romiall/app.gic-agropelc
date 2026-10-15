@@ -40,6 +40,7 @@ import type {
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import {
   ApprovalDecisionRefused,
   cancelApprovalRequest,
@@ -399,6 +400,7 @@ export function registerSupplierInvoiceCommands(
         decision: 'APPROVED',
         decidedBy: author,
         decidedAt: at,
+        receivedAt: (await loadCommandOrigin(uow, envelope.command_id)).receivedAt,
         comment: envelope.payload.reason,
       });
       if (!decided.ok) return rejected(decided.errorCode, decided.messageFr);

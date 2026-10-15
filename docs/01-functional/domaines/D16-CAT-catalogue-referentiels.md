@@ -30,7 +30,7 @@ Définir **une seule fois** ce qui peut être stocké, produit, acheté, consomm
 | UC-CAT-01 | Créer ou modifier un produit | `catalog.product.create`, `catalog.product.update` | ADMIN | Non |
 | UC-CAT-02 | Désactiver ou réactiver un produit | `catalog.product.deactivate`, `catalog.product.reactivate` | ADMIN | Non |
 | UC-CAT-03 | Gérer unités, conditionnements et catégories | `catalog.unit.*`, `catalog.product_unit.set`, `catalog.category.*` | ADMIN | Non |
-| UC-CAT-04 | Gérer les codes motifs | `catalog.reason_code.set` | ADMIN | Non |
+| UC-CAT-04 | Gérer les codes motifs | `catalog.reason_code.set`, `catalog.reason_code.update` (libellé, commentaire exigé), `catalog.reason_code.deactivate`, `catalog.reason_code.reactivate` (MP-11, AV-248) | ADMIN | Non |
 | UC-CAT-05 | Consulter le catalogue | requête | Tous | **Oui** |
 
 ## 5. Entrées / 6. Sorties

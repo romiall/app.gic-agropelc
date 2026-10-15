@@ -508,8 +508,9 @@ describe('Accueil par rôle (ADR-030)', () => {
       expect(body.user.roles).toEqual(['RESP_COMMERCIAL']);
       const conflicts = body.signals.find((signal) => signal.code === 'SYNC_CONFLICTS');
       expect(conflicts?.count).toBe(2);
-      expect(conflicts?.detail).toContain('price mismatch ×1');
-      expect(conflicts?.detail).toContain('duplicate customer ×1');
+      // MP-11 : types d'anomalie en français.
+      expect(conflicts?.detail).toContain('prix différent du catalogue ×1');
+      expect(conflicts?.detail).toContain('client en double ×1');
     });
 
     it('validations : seulement celles que le responsable peut décider (portée de la permission d’approbation)', async () => {

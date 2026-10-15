@@ -14,11 +14,13 @@
  *
  * Chaque demande dit si l'approbation attend encore une pièce (`attachmentsPending`, BR-ADM-020 : pièce
  * requise non reçue, ou photo d'une mortalité, AV-107) ; les règles de décision par type sont dans
- * `@gic/domain` (`approvalDecisionSpec`), partagées avec l'écran.
+ * `@gic/domain` (`approvalDecisionSpec`), partagées avec l'écran. `unavailableOptions` : choix du type
+ * que le gestionnaire refuserait pour cette demande (MP-11 : imputation `CARRIER` d'un écart de remise
+ * sans porteur connu, AV-174).
  */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import type { Clock, IdGenerator } from '@gic/domain';
+import { isTransferCarrierKnown, type Clock, type IdGenerator } from '@gic/domain';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
@@ -36,6 +38,7 @@ import {
   requiredAttachmentsSatisfied,
 } from '../modules/attachments/application/public/index.js';
 import { lossesAwaitingPhoto } from '../modules/inventory/application/public/index.js';
+import { findCashTransfer } from '../modules/finance/application/public/index.js';
 import { parseOrThrow, ReadAccess, uuidParam } from '../read-api/read-access.js';
 
 const REQUEST_READ = 'approvals.request.read';
@@ -104,6 +107,14 @@ export class ApprovalsInboxController {
     );
     const presented = [];
     for (const item of items) {
+      const unavailableOptions: string[] = [];
+      if (
+        item.operationType === 'CASH_TRANSFER_DISCREPANCY' &&
+        item.subjectType === 'CASH_TRANSFER'
+      ) {
+        const transfer = await findCashTransfer(this.db, item.subjectId);
+        if (transfer && !isTransferCarrierKnown(transfer)) unavailableOptions.push('CARRIER');
+      }
       const attachmentsPending =
         !(await requiredAttachmentsSatisfied(this.db, {
           requiredIds: item.requiredAttachmentIds,
@@ -133,6 +144,7 @@ export class ApprovalsInboxController {
           }),
         ),
         selfRequest: item.selfRequest,
+        unavailableOptions,
       });
     }
     return presented;

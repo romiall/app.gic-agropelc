@@ -1,9 +1,11 @@
 /** Mise en forme de l'accueil : ventilation des ventes signalées et gravité (AV-255, MP-09). */
 import { describe, expect, it } from 'vitest';
 import {
+  conflictTypeLabel,
   flaggedSalesDetail,
   flaggedSalesSignal,
   hasControlFlag,
+  pendingApprovalsTitle,
 } from '../src/home-api/home-format.js';
 
 describe('Accueil : ventes signalées (AV-255)', () => {
@@ -66,5 +68,21 @@ describe('Accueil : ventes signalées (AV-255)', () => {
       }),
     ).toMatchObject({ severity: 'WARNING', title: '1 vente du jour signalée', count: 1 });
     expect(flaggedSalesSignal({ salesCount: 0, byFlag: new Map() })).toBeNull();
+  });
+});
+
+describe('Accueil : validations en attente (MP-11)', () => {
+  it('nombre exact jusqu’au plafond, « Plus de » au-delà', () => {
+    expect(pendingApprovalsTitle(1, false)).toBe('1 validation vous attend');
+    expect(pendingApprovalsTitle(12, false)).toBe('12 validations vous attendent');
+    expect(pendingApprovalsTitle(100, true)).toBe('Plus de 100 validations vous attendent');
+  });
+});
+
+describe('Accueil : types d’anomalie en français (MP-11)', () => {
+  it('libellé connu ; type inconnu en clair, en minuscules', () => {
+    expect(conflictTypeLabel('RECEIPT_PHOTO_MISSING')).toBe('photo du bon de livraison manquante');
+    expect(conflictTypeLabel('STOCK_NEGATIVE')).toBe('stock devenu négatif');
+    expect(conflictTypeLabel('TYPE_FUTUR_INCONNU')).toBe('type futur inconnu');
   });
 });

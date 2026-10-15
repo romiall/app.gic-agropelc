@@ -59,7 +59,7 @@ Une permission avec la portée maximale `SITE`, attribuée par une affectation `
 
 | # | Règle | Référence |
 |---|---|---|
-| RC-01 | Les droits sont évalués **à `occurred_at`** pour une commande (hors ligne compris) : affectation active, utilisateur actif, appareil actif à cet instant | BR-ADM-004 |
+| RC-01 | Les droits sont évalués **à `occurred_at`** pour une commande (hors ligne compris) : affectation active, utilisateur actif, appareil actif à cet instant. Une décision de validation, prise en ligne seulement, doit aussi valoir à sa réception par le serveur (AV-295, MP-11) | BR-ADM-004 |
 | RC-02 | Toute écriture exige un **appareil `ACTIVE`**, sauf le back-office web authentifié d'un utilisateur `DIRECTION`, `ADMIN`, `FINANCE` ou `RESP_ACHATS`, enregistré comme appareil de type navigateur de bureau. Un fait daté dans une période hors service close de l'appareil reste en quarantaine (AV-212) ; un appareil `PENDING` met ses commandes en attente (AV-228) | BR-ADM-005, AV-006 ; AV-212, AV-228 |
 | RC-03 | **Séparation des tâches** : approbateur ≠ demandeur (sauf `SELF_APPROVED` Direction) ; le rôle `ADMIN` ne détient aucune permission d'approbation métier | AV-010 |
 | RC-04 | Les permissions d'approbation s'évaluent sur le **périmètre de l'opération** (site ou zone du document), et non sur celui du demandeur | BR-ADM-018 |

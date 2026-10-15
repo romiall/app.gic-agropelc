@@ -915,6 +915,7 @@ ${refusal}`
     const receiptId = envelope.aggregate_id;
     const header: TransferHeader = {
       id: receiptId,
+      docNumber: null,
       kind: 'BLIND_RECEIPT',
       status: 'UNMATCHED',
       siteId: from.siteId,

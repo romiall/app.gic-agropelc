@@ -323,7 +323,7 @@ function buildCountCommands(
   const submit: CommandHandler<SubmitPayload> = async (uow, envelope) => {
     const row = await uow
       .selectFrom('inventory_inventory_counts')
-      .select(['id', 'status', 'site_id', 'location_id'])
+      .select(['id', 'status', 'site_id', 'location_id', 'doc_number'])
       .where('id', '=', toBin(envelope.payload.countId))
       .executeTakeFirst();
     if (!row) return notFound();
@@ -445,7 +445,13 @@ function buildCountCommands(
       operationType,
       subjectType: 'INVENTORY_COUNT',
       subjectId: envelope.payload.countId,
-      subjectSummary: `Écart d'inventaire de ${absVarianceValueXaf} XAF`,
+      // RC-05 (MP-11, revue adverse) : aucune valeur au coût dans le résumé, servi tel quel au demandeur
+      // (projection APPROVAL_REQUEST) ; le montant reste dans `amount_xaf`, masqué sans droit de
+      // valorisation.
+      subjectSummary:
+        operationType === 'ANIMAL_COUNT_ADJUSTMENT'
+          ? `Écart de comptage d'animaux ${row.doc_number}`
+          : `Écart d'inventaire ${row.doc_number}`,
       siteId: fromBin(row.site_id),
       amountXaf: absVarianceValueXaf,
       requestedBy: envelope.author_user_id,

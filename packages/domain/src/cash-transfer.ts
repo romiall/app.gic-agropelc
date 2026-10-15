@@ -111,6 +111,17 @@ export function isAllowedTransferValidator(
 }
 
 /**
+ * Un porteur est connu (utilisateur ou nom saisi) : seule condition pour lui imputer un écart (AV-174).
+ * Partagée par la décision, la file de validation et la trésorerie (MP-11).
+ */
+export function isTransferCarrierKnown(carrier: {
+  readonly carrierUserId: string | null;
+  readonly carrierName: string | null;
+}): boolean {
+  return carrier.carrierUserId !== null || carrier.carrierName !== null;
+}
+
+/**
  * AV-174 : imputation choisie à la clôture d'un écart. Absente ou inconnue :
  * `CASH_TRANSFER_IMPUTATION_REQUIRED` ; `CARRIER` sans porteur connu (ni utilisateur, ni nom) :
  * `CASH_TRANSFER_IMPUTATION_INVALID`.
@@ -125,7 +136,7 @@ export function checkTransferImputation(
       'CASH_TRANSFER_IMPUTATION_REQUIRED',
     );
   }
-  if (option === 'CARRIER' && carrier.carrierUserId === null && carrier.carrierName === null) {
+  if (option === 'CARRIER' && !isTransferCarrierKnown(carrier)) {
     throw new DomainError(
       'Aucun porteur n’est connu pour cette remise : l’écart ne peut pas lui être imputé.',
       'CASH_TRANSFER_IMPUTATION_INVALID',

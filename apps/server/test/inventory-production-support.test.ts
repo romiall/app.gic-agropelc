@@ -692,12 +692,14 @@ describe('P7-02 : prérequis inventory de la production', () => {
     ).toBe('APPLIED');
     const count = await db
       .selectFrom('inventory_inventory_counts')
-      .select(['status', 'approval_request_id'])
+      .select(['status', 'approval_request_id', 'doc_number'])
       .where('id', '=', toBin(countId))
       .executeTakeFirstOrThrow();
     expect(count.status).toBe('PENDING_APPROVAL'); // 1 tête × 500 XAF, sous le seuil en valeur
     const approval = await approvalOf(count.approval_request_id!);
     expect(approval.operation_type).toBe('ANIMAL_COUNT_ADJUSTMENT');
+    // RC-05 (MP-11) : résumé sans valeur au coût.
+    expect(approval.subject_summary).toBe(`Écart de comptage d'animaux ${count.doc_number}`);
     const approvalId = fromBin(approval.id);
     expect(
       code(

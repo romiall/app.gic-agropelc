@@ -308,6 +308,8 @@ Classification (PM §45) :
 | AV-291 | Formats, nombre et budget local des photos | SECONDAIRE | MP | Images recodées en JPEG ; une photo par opération ; 50 Mo en attente au plus, au-delà l'opération part sans photo | OUVERT |
 | AV-292 | Stockage des fichiers pour le pilote | SECONDAIRE | MP | Disque local du serveur (`ATTACHMENTS_STORAGE_DIR`) sur un volume sauvegardé ; stockage objet avec AV-091 | OUVERT |
 | AV-293 | Métadonnées des pièces jointes servies à tous les appareils | SECONDAIRE | MP | Inchangé : le flux de la pièce reste en portée `GLOBAL` (repli générique du pipeline) ; contenu protégé par la lecture | OUVERT |
+| AV-294 | Politiques de contrôle des achats par défaut | IMPORTANTE | MP | Une politique par type (demande d'achat, BC au-delà du seuil, réception sans BC, en quarantaine, annulation), sans condition, approbateur selon 01-rbac, portée `ALL` | OUVERT |
+| AV-295 | Droit de décider une validation, jugé aussi à la réception | SECONDAIRE | MP | Date déclarée et réception par le serveur (décision en ligne seulement) | OUVERT |
 
 ---
 
@@ -1851,6 +1853,7 @@ Politique par défaut, paramétrable :
 - **Décision** (porteur du projet, 13/10/2026) : (a). Visite : `COMMANDE_PRISE` (code figé, lu par KPI-COM-12), `VENTE_REALISEE`, `A_RELANCER`, `PAS_INTERESSE`, `ABSENT`, `AUTRE`. Prospect perdu : `PRIX_TROP_ELEVE`, `CONCURRENT`, `PAS_DE_BESOIN`, `INJOIGNABLE`, `HORS_ZONE`, `AUTRE`. Annulation : `ERREUR_SAISIE`, `DOUBLON`, `DEMANDE_CLIENT`, `AUTRE`. `AUTRE` exige un commentaire ; libellés ajustables au catalogue.
 - **Impact** : `db/seeds` (rejouable : insertion des seuls absents, jamais de réécriture d'un motif modifié), publication dans `catalog` ; S-15 ; lot de mise en pilote (MP-02).
 - **Mise en œuvre** (MP-09, 14/10/2026) : le commentaire d'un résultat de visite qui l'exige (`requires_comment`, « Autre ») n'était contrôlé nulle part. Visite : la PWA bloque l'envoi sans commentaire (libellé « obligatoire pour ce résultat ») ; le serveur refuse en ligne (`COMMENT_REQUIRED`) et accepte hors ligne (fait accompli, BR-SYN-007, comme un motif désactivé entre-temps ; **DÉDUIT**). Prospect perdu : déjà refusé par le serveur (BR-CRM-009), sans écran dans la PWA. Annulation d'une vente ou d'une commande : déjà exigé par la PWA.
+- **Mise en œuvre** (MP-11, 15/10/2026, revue adverse) : la décision (« désactivables », « libellés ajustables ») n'avait aucune commande. `catalog.reason_code.update` (libellé, commentaire exigé), `.deactivate` et `.reactivate` (`catalog.reference.manage`, nouvelle version publiée dans `catalog`, aucune suppression, BR-CAT-010) ; écran du catalogue : « Modifier », « Désactiver », « Réactiver » sur chaque motif. Le code et la catégorie ne changent jamais.
 
 ### AV-249 — Affichage des unités dans la PWA — SECONDAIRE — **TRANCHÉ**
 - **Question** : comment afficher une quantité et son unité (« 27 PLATEAU » aujourd'hui) ?
@@ -2211,6 +2214,20 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) inchangé pour le pilote ; (b) jeu propre à l'auteur (portée `USER`) et liste blanche des jeux au tirage, sans repli `GLOBAL` pour les pièces ; (c) portée du site du document.
 - **Recommandation** : (b), avec le durcissement du tirage (touche le pipeline et `sync/`, à mener avec l'intégration de P9).
 - **Impact** : `command-pipeline.service.ts` (repli), `sync-pull.service.ts`, `upload.controller.ts`, PWA (`useOwnerPhotos` n'y lirait plus que ses pièces). Défaut implémenté : (a).
+
+### AV-294 — Politiques de contrôle des achats par défaut — IMPORTANTE
+- **Question** : quelles politiques de validation des achats une base neuve doit-elle porter : demande d'achat, bon de commande au-delà du seuil, réception sans bon de commande, réception en quarantaine, annulation d'une réception ?
+- **Pourquoi** : revue adverse de MP-11 : aucune n'était semée. Sur une base neuve, toute demande d'achat, tout BC au-delà du seuil, toute réception sans BC ou en quarantaine et toute annulation de réception étaient refusés (`CONTROL_POLICY_MISSING`), y compris une réception saisie hors ligne, fait physique (BR-SYN-007). Le suivi des besoins serveur (S-24) le notait sans AV. **CONFIRMÉ** (lecture du code et du seed).
+- **Choix** : (a) une politique par type, sans condition, approbateur selon 01-rbac (demande d'achat, réception sans BC ou en quarantaine, annulation : Resp. achats ou Direction ; BC au-delà du seuil : Direction), portée `ALL` ; (b) même chose en portée `SITE` ; (c) aucune politique semée, l'Admin les crée avant le pilote (`approvals.policy.set`, sans écran).
+- **Recommandation** : (a).
+- **Impact** : `db/seeds/procurement-references.ts` (codes `*_DEFAULT`, en vigueur depuis 2020 : une politique créée ensuite passe devant), publiées dans le jeu `policies` ; seuil du BC inchangé (`procurement.po_approval_threshold_xaf`, BR-APP-005). Reste (**DÉDUIT**) : si l'Admin retire la politique d'un type, une réception hors ligne de ce type est de nouveau refusée ; l'appliquer sans demande, comme la caisse (AV-183), demande un état de sortie pour une réception en quarantaine sans validation, à décider avec ce cas. Défaut implémenté : (a), modifiable par `approvals.policy.set`.
+
+### AV-295 — Droit de décider une validation, jugé aussi à la réception — SECONDAIRE
+- **Question** : le droit d'approuver une demande (et l'auto-validation de la Direction) doit-il valoir seulement à la date déclarée par l'appareil (`occurred_at`, RC-01), ou aussi quand le serveur reçoit la décision ?
+- **Pourquoi** : revue adverse de MP-11 : une décision se prend en ligne (SM-APPROVAL ; `ONLINE_REQUIRED` sinon), mais ses droits étaient jugés à la date déclarée, sans borne basse (AV-078 non appliqué). Un approbateur dont le rôle a été retiré pouvait antidater sa décision, une Direction déchue valider sa propre demande. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé, date déclarée seulement ; (b) date déclarée **et** réception par le serveur (`sync_command_inbox.received_at`) ; (c) réception seulement.
+- **Recommandation** : (b) : RC-01 reste vrai, et une décision prise en ligne a ses deux dates à quelques secondes l'une de l'autre.
+- **Impact** : `decideApprovalRequest` (`receivedAt`), commandes `approvals.request.approve` / `.reject` et façades (`finance.cash_session.validate`, `finance.cash_transfer.close_discrepancy`, `finance.supplier_invoice.approve`) ; refus `APPROVER_NOT_ALLOWED` ou `SELF_APPROVAL_FORBIDDEN`. Les autres commandes gardent la règle de RC-01 jusqu'à la fenêtre d'antidatage d'AV-078 (avant la production). Défaut implémenté : (b). Non paramétrable.
 ---
 
 ## 3. Journal des décisions

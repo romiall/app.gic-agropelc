@@ -333,6 +333,7 @@ export {
   isAllowedTransferReceiver,
   isAllowedTransferValidator,
   checkTransferImputation,
+  isTransferCarrierKnown,
   cashTransferUnreceivedHoursFrom,
   isTransferUnreceived,
   cashTransferSeriesCodeFrom,

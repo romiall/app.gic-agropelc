@@ -394,6 +394,64 @@ describe('approvals (P0-13)', () => {
       expect(result.status === 'REJECTED' && result.error.code).toBe('APPROVER_NOT_ALLOWED');
     });
 
+    it('MP-11 (AV-295) : rôle d’approbateur échu avant la réception → APPROVER_NOT_ALLOWED, même à une date déclarée antérieure', async () => {
+      const policyId = await setPolicy(`TEST_POLICY_${freshUuid().slice(-8)}`);
+      const former = await db.transaction().execute((trx) => insertTestUser(trx));
+      const formerDevice = await db
+        .transaction()
+        .execute((trx) => insertTestDevice(trx, former, { status: 'ACTIVE' }));
+      await db.transaction().execute(async (trx) => {
+        const role = await insertTestRole(trx, former, { allowedScopeTypes: ['SITE'] });
+        await grantTestPermission(trx, role, 'approvals.request.read', admin, { maxScope: 'ALL' });
+        await grantTestPermission(trx, role, APPROVE_PERMISSION, admin, { maxScope: 'SITE' });
+        // Valable à la date déclarée de la décision (09:00), échu depuis 10:00 le même jour.
+        await assignTestRole(trx, former, role, admin, {
+          scopeType: 'SITE',
+          scopeSiteId: siteId,
+          validFrom: new Date('2026-09-01T00:00:00.000Z'),
+          validTo: new Date('2026-09-25T10:00:00.000Z'),
+        });
+      });
+      const requestId = freshUuid();
+      await db.transaction().execute((trx) =>
+        requestApproval(trx, {
+          requestId,
+          operationType: 'LOSS_DECLARATION',
+          subjectType: 'TEST_LOSS',
+          subjectId: freshUuid(),
+          subjectSummary: 'Perte décidée après la fin du rôle',
+          siteId,
+          requestedBy: requester,
+          requestedAt: new Date(OCCURRED_AT),
+          policyId,
+          policyVersion: 1,
+        }),
+      );
+      const result = await pipeline.handle(
+        buildCommand({
+          commandId: freshUuid(),
+          commandType: 'approvals.request.approve',
+          authorUserId: former,
+          aggregateType: 'APPROVAL_REQUEST',
+          aggregateId: requestId,
+          payload: { requestId },
+        }),
+        {
+          authenticatedUserId: former,
+          authenticatedDeviceId: formerDevice,
+          transport: 'ONLINE_API',
+        },
+      );
+      expect(result.status).toBe('REJECTED');
+      expect(result.status === 'REJECTED' && result.error.code).toBe('APPROVER_NOT_ALLOWED');
+      const row = await db
+        .selectFrom('approvals_approval_requests')
+        .select('status')
+        .where('id', '=', toBin(requestId))
+        .executeTakeFirstOrThrow();
+      expect(row.status).toBe('PENDING');
+    });
+
     it('approve : demandeur == approbateur → SELF_APPROVAL_FORBIDDEN, même avec le marqueur, sauf la Direction (BR-ADM-017, INV-ADM-02)', async () => {
       const policyId = await setPolicy(`TEST_POLICY_${freshUuid().slice(-8)}`);
       const selfRequest = async (requestedBy: string) => {
@@ -467,6 +525,28 @@ describe('approvals (P0-13)', () => {
         .where('id', '=', toBin(directorRequest))
         .executeTakeFirstOrThrow();
       expect(row.self_approved).toBe(1);
+
+      // MP-11 (AV-295) : Direction jusqu'à 10:00 seulement (droit d'approuver gardé par un autre rôle) ;
+      // sa décision datée de 09:00, reçue ensuite, ne vaut plus auto-validation.
+      const former = await db.transaction().execute((trx) => insertTestUser(trx));
+      const formerDevice = await db
+        .transaction()
+        .execute((trx) => insertTestDevice(trx, former, { status: 'ACTIVE' }));
+      await db.transaction().execute(async (trx) => {
+        const role = await insertTestRole(trx, former, { allowedScopeTypes: ['SITE'] });
+        await grantTestPermission(trx, role, 'approvals.request.read', admin, { maxScope: 'ALL' });
+        await grantTestPermission(trx, role, APPROVE_PERMISSION, admin, { maxScope: 'SITE' });
+        await assignTestRole(trx, former, role, admin, { scopeType: 'SITE', scopeSiteId: siteId });
+        await assignTestRole(trx, former, fromBin(directionRole.id), admin, {
+          scopeType: 'GLOBAL',
+          validFrom: new Date('2026-09-01T00:00:00.000Z'),
+          validTo: new Date('2026-09-25T10:00:00.000Z'),
+        });
+      });
+      const formerRequest = await selfRequest(former);
+      expect(codeOf(await approve(former, formerDevice, formerRequest, true))).toBe(
+        'SELF_APPROVAL_FORBIDDEN',
+      );
     });
 
     it('approve : pièce jointe requise non AVAILABLE → REJECTED ATTACHMENT_MISSING (BR-ADM-020)', async () => {

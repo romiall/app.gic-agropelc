@@ -97,6 +97,8 @@ export interface TransferPair {
 
 export interface TransferHeader {
   readonly id: string;
+  /** Numéro du document ; `null` pour une réception sans document pas encore enregistrée. */
+  readonly docNumber: string | null;
   readonly kind: string;
   readonly status: string;
   readonly siteId: string;
@@ -126,6 +128,7 @@ export interface TransferLineRow {
 
 interface RawHeader {
   readonly id: Buffer;
+  readonly doc_number: string;
   readonly transfer_kind: string;
   readonly status: string;
   readonly site_id: Buffer;
@@ -145,6 +148,7 @@ interface RawHeader {
 
 const HEADER_COLUMNS = [
   'id',
+  'doc_number',
   'transfer_kind',
   'status',
   'site_id',
@@ -165,6 +169,7 @@ const HEADER_COLUMNS = [
 function headerOf(row: RawHeader): TransferHeader {
   return {
     id: fromBin(row.id),
+    docNumber: row.doc_number,
     kind: row.transfer_kind,
     status: row.status,
     siteId: fromBin(row.site_id),
@@ -621,7 +626,8 @@ export async function applyTransferReceipt(
       operationType: 'TRANSFER_DISCREPANCY',
       subjectType: 'STOCK_TRANSFER',
       subjectId: transfer.id,
-      subjectSummary: `Écart de réception sur transfert ${transfer.id}`,
+      // MP-11 (revue adverse) : le numéro du document, pas son identifiant technique.
+      subjectSummary: `Écart de réception sur transfert ${transfer.docNumber ?? transfer.id}`,
       siteId: transfer.siteId,
       requestedBy: input.receivedBy,
       requestedAt: input.receivedAt,

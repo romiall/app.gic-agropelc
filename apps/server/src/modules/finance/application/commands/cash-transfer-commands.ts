@@ -829,6 +829,7 @@ export function registerCashTransferCommands(
         decision: 'APPROVED',
         decidedBy: author,
         decidedAt: at,
+        receivedAt: (await loadCommandOrigin(uow, envelope.command_id)).receivedAt,
         comment: reason,
         decisionOption: imputation,
         decisionData: { reason },

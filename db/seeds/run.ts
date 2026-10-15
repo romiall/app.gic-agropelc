@@ -31,7 +31,9 @@ import {
   PAYMENT_METHODS,
 } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
+import { PROCUREMENT_CONTROL_POLICIES } from './procurement-references.js';
 import { publishReferenceFeeds } from './publish-references.js';
+import { applySettingRevisions } from './setting-revisions.js';
 
 import { newUuidv7Bytes as newId } from './uuidv7.js';
 
@@ -202,35 +204,7 @@ async function seedSystemSettings(conn: mysql.Connection, systemUserId: Buffer):
   console.log(
     `  + organization_system_settings (${inserted} nouvelles clés sur ${allSettings.length})`,
   );
-  let revised = 0;
-  for (const revision of SYSTEM_SETTING_REVISIONS) {
-    const reason = `Révision ${revision.revision}`;
-    const [applied] = await conn.query<mysql.RowDataPacket[]>(
-      "SELECT id FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL AND reason = ?",
-      [revision.key, reason],
-    );
-    if (applied.length > 0) continue;
-    const [current] = await conn.query<mysql.RowDataPacket[]>(
-      "SELECT JSON_EXTRACT(value, '$') AS value FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
-      [revision.key],
-    );
-    const currentValue = current[0]?.value;
-    const parsed = typeof currentValue === 'string' ? JSON.parse(currentValue) : currentValue;
-    if (JSON.stringify(parsed) === JSON.stringify(revision.value)) continue;
-    await conn.query(
-      `INSERT INTO organization_system_settings (id, \`key\`, value, scope_type, valid_from, is_client_visible, created_by, reason)
-       VALUES (?, ?, CAST(? AS JSON), 'GLOBAL', UTC_TIMESTAMP(6), ?, ?, ?)`,
-      [
-        newId(),
-        revision.key,
-        JSON.stringify(revision.value),
-        revision.isClientVisible,
-        systemUserId,
-        reason,
-      ],
-    );
-    revised++;
-  }
+  const revised = await applySettingRevisions(conn, systemUserId, SYSTEM_SETTING_REVISIONS);
   console.log(
     `  + organization_system_settings révisées (${revised} sur ${SYSTEM_SETTING_REVISIONS.length})`,
   );
@@ -281,15 +255,20 @@ async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): 
 }
 
 /**
- * Production (P7-04) et ventes (P4-02) : politiques de contrôle par défaut et motifs de rendement
- * absents.
+ * Production (P7-04), ventes (P4-02), finance (P5, P8) et achats (MP-11, AV-294) : politiques de
+ * contrôle par défaut et motifs de rendement absents.
  */
 async function seedProductionReferences(
   conn: mysql.Connection,
   systemUserId: Buffer,
 ): Promise<void> {
   let policies = 0;
-  const allPolicies = [...CONTROL_POLICIES, ...SALES_CONTROL_POLICIES, ...FINANCE_CONTROL_POLICIES];
+  const allPolicies = [
+    ...CONTROL_POLICIES,
+    ...SALES_CONTROL_POLICIES,
+    ...FINANCE_CONTROL_POLICIES,
+    ...PROCUREMENT_CONTROL_POLICIES,
+  ];
   for (const policy of allPolicies) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(
       'SELECT id FROM approvals_control_policies WHERE code = ?',
