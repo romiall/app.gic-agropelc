@@ -132,11 +132,16 @@ describe('Utilisateurs (ECR-ADM-04 partiel, MP-08)', () => {
     const submit = within(card).getByRole('button', { name: 'Réinitialiser pour Awa Nde' });
     expect(submit).toBeDisabled();
     await user.type(within(card).getByLabelText('Mot de passe provisoire'), 'provisoire-1');
+    // MP-11 : rien n'est signalé tant que la confirmation n'est pas commencée ; bouton grisé.
+    expect(within(card).queryByText(/ne correspondent pas/)).toBeNull();
+    expect(submit).toBeDisabled();
     await user.type(
       within(card).getByLabelText('Confirmer le mot de passe provisoire'),
       'provisoire-2',
     );
-    expect(within(card).getByText(/ne correspondent pas/)).toBeInTheDocument();
+    expect(
+      within(card).getByText('Les deux saisies du mot de passe provisoire ne correspondent pas.'),
+    ).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await user.clear(within(card).getByLabelText('Confirmer le mot de passe provisoire'));
     await user.type(

@@ -80,6 +80,24 @@ export interface OnlineRead<T> {
  * rien à lire. Après un retour du réseau ou un `retry`, la donnée d'avant reste « périmée » jusqu'à la
  * réponse de la relecture (elle a pu changer pendant la coupure).
  */
+/**
+ * Relit quand l'onglet redevient visible (MP-11, revue adverse : une file de validation ou d'appareils
+ * ouverte en arrière-plan ne voyait jamais arriver le justificatif ou l'appareil attendu).
+ */
+export function useRefreshOnVisible(refresh: () => void): void {
+  const latest = useRef(refresh);
+  useEffect(() => {
+    latest.current = refresh;
+  });
+  useEffect(() => {
+    const onChange = () => {
+      if (document.visibilityState === 'visible') latest.current();
+    };
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, []);
+}
+
 export function useOnlineRead<T>(
   key: string | null,
   load: (key: string) => Promise<ReadResult<T>>,

@@ -10,6 +10,7 @@ import {
   CASH_TRANSFER_IMPUTATIONS,
   isAllowedCashValidator,
   isAllowedTransferValidator,
+  isTransferCarrierKnown,
   type CashTransferImputation,
 } from '@gic/domain';
 
@@ -212,8 +213,7 @@ export function imputationOptions(
 ): readonly { readonly option: CashTransferImputation; readonly disabled: boolean }[] {
   return CASH_TRANSFER_IMPUTATIONS.map((option) => ({
     option,
-    disabled:
-      option === 'CARRIER' && transfer.carrierUserId === null && transfer.carrierName === null,
+    disabled: option === 'CARRIER' && !isTransferCarrierKnown(transfer),
   }));
 }
 

@@ -107,8 +107,13 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
         <input type="checkbox" checked={show} onChange={(event) => setShow(event.target.checked)} />
         {t('users.reset_show')}
       </label>
-      {password && problem ? (
-        <p className="text-warn">{t(`auth.password_change_error.${problem}`)}</p>
+      {/* La différence des deux saisies ne se signale qu'une fois la confirmation commencée (MP-11). */}
+      {password && problem && (problem !== 'MISMATCH' || confirm !== '') ? (
+        <p className="text-warn">
+          {problem === 'MISMATCH'
+            ? t('users.reset_mismatch')
+            : t(`auth.password_change_error.${problem}`)}
+        </p>
       ) : null}
       <div className="result-actions">
         <button

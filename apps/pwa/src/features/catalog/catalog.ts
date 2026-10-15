@@ -301,6 +301,25 @@ export function checkReason(
   return issues;
 }
 
+/**
+ * Charge utile de `catalog.reason_code.update` (MP-11, AV-248 : libellé ajustable, commentaire exigé) :
+ * les seuls champs changés ; `null` si rien ne change ou si le libellé est vide.
+ */
+export function reasonUpdatePayload(
+  reason: Pick<ReasonView, 'label' | 'requiresComment'>,
+  edit: { readonly label: string; readonly requiresComment: boolean },
+): { label?: string; requiresComment?: boolean } | null {
+  const label = edit.label.trim();
+  if (label === '') return null;
+  const payload = {
+    ...(label !== reason.label ? { label } : {}),
+    ...(edit.requiresComment !== reason.requiresComment
+      ? { requiresComment: edit.requiresComment }
+      : {}),
+  };
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
 export function reasonPayload(form: {
   readonly category: string;
   readonly code: string;

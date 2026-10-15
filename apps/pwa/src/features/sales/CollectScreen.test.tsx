@@ -194,6 +194,18 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
     });
   });
 
+  it('vente ciblée, montant prérempli : le défaut d’un moyen de paiement est expliqué (MP-11)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${IDS.customer}&vente=${SALE_ID}`);
+    expect(await screen.findByLabelText('Montant reçu (F CFA)')).toHaveValue('2000');
+    await user.selectOptions(screen.getByLabelText('Moyen de paiement'), 'Orange Money');
+    expect(
+      screen.getByText('La référence de la transaction est obligatoire pour ce moyen de paiement.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer l’encaissement' })).toBeDisabled();
+  });
+
   it('vente ciblée : un montant plus fort laisse le surplus en avoir ; « Répartir » revient à l’automatique', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const user = userEvent.setup();
@@ -301,6 +313,64 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
         { method: 'GET' },
       ),
     );
+  });
+
+  it('hors ligne : un encaissement accepté reste retranché tant que les ventes ne sont pas relues (MP-11)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000009b1',
+      device_seq: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      command_type: 'sales.payment.record',
+      command_version: 1,
+      aggregate_type: 'CUSTOMER_PAYMENT',
+      aggregate_id: '01900000-0000-7000-8000-0000000009b2',
+      payload: {
+        customerId: IDS.customer,
+        methodCode: 'ESPECES',
+        amountXaf: 2000,
+        allocations: [{ saleId: SALE_ID, amountXaf: 2000 }],
+      },
+      occurred_at: '2026-10-14T08:00:00.000Z',
+      client_created_at: '2026-10-14T08:00:00.000Z',
+      captured_offline: true,
+      depends_on: [],
+      status: 'SYNCED',
+      synced_at: '2026-10-14T08:00:05.000Z',
+      attempts: 1,
+    } as never);
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    // Le jeu `sales_recent` n'a pas été tiré depuis l'acceptation : la vente réglée n'est plus due.
+    expect(await screen.findByText('Aucune créance connue pour ce client.')).toBeInTheDocument();
+  });
+
+  it('en ligne : créances relues quand l’encaissement en attente du client est accepté (MP-11)', async () => {
+    request.mockResolvedValue({ ok: true, data: { receivables: [] } });
+    await getDb().outbox.put({
+      command_id: '01900000-0000-7000-8000-0000000009a1',
+      device_seq: 1,
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      command_type: 'sales.payment.record',
+      command_version: 1,
+      aggregate_type: 'CUSTOMER_PAYMENT',
+      aggregate_id: '01900000-0000-7000-8000-0000000009a2',
+      payload: { customerId: IDS.customer, methodCode: 'ESPECES', amountXaf: 2000 },
+      occurred_at: '2026-10-14T08:00:00.000Z',
+      client_created_at: '2026-10-14T08:00:00.000Z',
+      captured_offline: false,
+      depends_on: [],
+      status: 'PENDING_SYNC',
+      attempts: 0,
+    } as never);
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    const reads = () =>
+      request.mock.calls.filter((call) => String(call[1]).startsWith('/api/v1/receivables')).length;
+    await waitFor(() => expect(reads()).toBe(1));
+    await getDb().outbox.update('01900000-0000-7000-8000-0000000009a1', {
+      status: 'SYNCED',
+      synced_at: '2026-10-14T08:00:05.000Z',
+    });
+    await waitFor(() => expect(reads()).toBe(2));
   });
 
   it('créances des ventes récentes : client, non annulées, avec un reste dû', () => {

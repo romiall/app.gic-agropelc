@@ -13,6 +13,7 @@ import {
   commandOf,
   EMPTY_DECISION,
   inboxPath,
+  optionsFor,
   typesFromQuery,
   type ApprovalView,
 } from './approvals.js';
@@ -193,6 +194,16 @@ describe('Validations : logique (ECR-ADM-08, ADR-018)', () => {
     });
   });
 
+  it('MP-11 : choix que le serveur refuserait retirés (porteur inconnu d’une remise)', () => {
+    const transfer = request({ operationType: 'CASH_TRANSFER_DISCREPANCY' });
+    expect(optionsFor(transfer, 'APPROVE')?.values).toContain('CARRIER');
+    const noCarrier = { ...transfer, unavailableOptions: ['CARRIER'] };
+    expect(optionsFor(noCarrier, 'APPROVE')?.values).not.toContain('CARRIER');
+    expect(optionsFor(noCarrier, 'APPROVE')?.values).toEqual(
+      optionsFor(transfer, 'APPROVE')?.values.filter((value) => value !== 'CARRIER'),
+    );
+  });
+
   it('filtre de l’accueil : types lus dans la requête, chemin de lecture', () => {
     expect(typesFromQuery('MORTALITY,ANIMAL_COUNT_ADJUSTMENT,MORTALITY')).toEqual([
       'MORTALITY',
@@ -351,6 +362,91 @@ describe('Validations (ECR-ADM-08)', () => {
     await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
     expect(await lastCommand()).toMatchObject({
       command_type: 'approvals.request.approve',
+      payload: { requestId: own.id, selfApproved: true },
+    });
+  });
+
+  it('MP-11 : « Actualiser » et retour sur l’onglet relisent la file ; un justificatif reçu rend l’approbation possible', async () => {
+    const waiting = request({
+      operationType: 'MORTALITY',
+      subjectSummary: 'Mortalité PRT-0020',
+      attachmentsPending: true,
+    });
+    serve([waiting]);
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Mortalité : Mortalité PRT-0020' });
+    expect(
+      within(card).getByRole('button', { name: 'Approuver : Mortalité PRT-0020' }),
+    ).toBeDisabled();
+    const inboxReads = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter((call) => String(call[1]).startsWith('/api/v1/approvals/inbox')).length;
+    const before = inboxReads();
+
+    // La photo arrive au serveur : « Actualiser la file » relit.
+    serve([{ ...waiting, attachmentsPending: false }]);
+    await user.click(screen.getByRole('button', { name: 'Actualiser la file' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Approuver : Mortalité PRT-0020' })).toBeEnabled(),
+    );
+    expect(inboxReads()).toBe(before + 1);
+
+    // Retour sur l'onglet : nouvelle relecture ; un onglet masqué ne relit pas.
+    // Propriété d'instance posée puis retirée (l'accesseur du prototype reprend la main).
+    let visibility: DocumentVisibilityState = 'hidden';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+    try {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(inboxReads()).toBe(before + 1);
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() => expect(inboxReads()).toBe(before + 2));
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+  });
+
+  it('MP-11 : écart de facture refusable — pas de « il ne se refuse pas » ; refus de sa propre demande libellé comme un refus', async () => {
+    const invoice = request({
+      operationType: 'INVOICE_MISMATCH',
+      subjectSummary: 'Facture FAC-0007',
+    });
+    const own = request({ subjectSummary: 'Remise de la Direction (refus)', selfRequest: true });
+    serve([invoice, own]);
+    const user = userEvent.setup();
+    renderScreen();
+    const invoiceCard = await screen.findByRole('listitem', {
+      name: 'Écart de facture fournisseur : Facture FAC-0007',
+    });
+    expect(within(invoiceCard).queryByText(/il ne se refuse pas/)).toBeNull();
+    expect(
+      within(invoiceCard).getByText(/refusé, la facture passe en contestation/),
+    ).toBeInTheDocument();
+    expect(
+      within(invoiceCard).getByRole('button', { name: 'Refuser : Facture FAC-0007' }),
+    ).toBeEnabled();
+
+    const ownCard = screen.getByRole('listitem', {
+      name: 'Remise au-delà du plafond : Remise de la Direction (refus)',
+    });
+    await user.click(
+      within(ownCard).getByRole('button', { name: 'Refuser : Remise de la Direction (refus)' }),
+    );
+    expect(within(ownCard).queryByLabelText(/J’approuve ma propre demande/)).toBeNull();
+    await user.type(within(ownCard).getByLabelText('Motif du refus (obligatoire)'), 'Abandon');
+    const confirm = within(ownCard).getByRole('button', { name: 'Confirmer le refus' });
+    expect(confirm).toBeDisabled();
+    await user.click(within(ownCard).getByLabelText(/Je refuse ma propre demande/));
+    await user.click(confirm);
+    await waitFor(async () => expect(await getDb().outbox.count()).toBe(1));
+    expect(await lastCommand()).toMatchObject({
+      command_type: 'approvals.request.reject',
       payload: { requestId: own.id, selfApproved: true },
     });
   });

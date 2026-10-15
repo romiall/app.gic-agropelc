@@ -11,6 +11,7 @@
  */
 import { allocatePayment, xaf } from '@gic/domain';
 import type { OutboxCommand } from '../../storage/db.js';
+import { isWaiting } from './pending.js';
 import type { SaleData } from './types.js';
 
 export interface Due {
@@ -185,11 +186,17 @@ export function pendingPaymentsOf(
   outbox: readonly OutboxCommand[],
   customerId: string,
   alias: ReadonlyMap<string, string> = new Map(),
+  /**
+   * Encaissements encore à retrancher : par défaut ceux qui attendent leur envoi. Hors ligne, un
+   * encaissement accepté compte encore tant que le jeu `sales_recent` n'a pas été tiré depuis (MP-11,
+   * ADR-037 §3 : sinon la vente payée réapparaît due) ; en ligne, la relecture des créances le reflète.
+   */
+  counted: (command: OutboxCommand) => boolean = isWaiting,
 ): ({ readonly commandId: string; readonly occurredAt: string } & PendingAmount)[] {
   return outbox
     .filter((command) => {
       if (command.command_type !== 'sales.payment.record') return false;
-      if (!['LOCAL_ONLY', 'PENDING_SYNC', 'SYNCING'].includes(command.status)) return false;
+      if (!counted(command)) return false;
       const payer = (command.payload as { customerId?: string }).customerId;
       return payer !== undefined && (alias.get(payer) ?? payer) === customerId;
     })

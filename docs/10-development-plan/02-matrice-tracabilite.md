@@ -361,6 +361,9 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-076 (part MP-11) | `approval-commands.test.ts` (AV-295 : rôle échu avant la réception, auto-validation d'une Direction déchue), `approvals-inbox.test.ts` (accueil : propres demandes de la Direction, plafond), `finance-cash-transfer-commands.test.ts` (imputation au porteur annoncée indisponible), `inventory-transfer-commands.test.ts` (numéro du transfert dans le résumé) | Vérifié |
 | REQ-054 (part MP-11) | `home-format.test.ts`, `home.e2e.test.ts` (types d'anomalie en français, « Plus de N validations ») | Vérifié |
 | REQ-009 (part MP-11) | `catalog-commands.test.ts` (AV-248 : motif modifié, désactivé, réactivé, publié à chaque version, jamais supprimé) | Vérifié |
+| REQ-076 (part MP-11, PWA) | `ApprovalsScreen.test.tsx` (relecture par le bouton et au retour sur l'onglet, écart de facture refusable, auto-validation d'un refus, option indisponible retirée), `DevicesScreen.test.tsx` (relecture, nom accessible avec le code) | Vérifié par les tests ; navigateur plus tard |
+| REQ-051 (part MP-11) | `CollectScreen.test.tsx`, `collect.test.ts` (défaut d'un montant prérempli expliqué, créances relues à l'acceptation, encaissement accepté retranché hors ligne jusqu'au tirage) | Vérifié par les tests ; navigateur plus tard |
+| REQ-208 (part MP-11) | `UsersScreen.test.tsx` (écart des deux saisies signalé après la confirmation) ; `CatalogScreen.test.tsx` (motifs modifiés, désactivés) | Vérifié par les tests ; navigateur plus tard |
 
 ### 17.10 Phase P8 (13/10/2026) — [`18-demonstration-p8.md`](18-demonstration-p8.md)
 

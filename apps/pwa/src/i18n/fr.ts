@@ -1813,6 +1813,9 @@ export const fr = {
     requires_comment_short: 'Commentaire exigé',
     new_reason: 'Nouveau motif',
     create_reason: 'Enregistrer le motif',
+    edit_short: 'Modifier',
+    edit_reason: 'Modifier le motif {{name}}',
+    save_reason: 'Enregistrer le motif {{name}}',
     issue: {
       CODE_INVALID: 'Code : lettres majuscules, chiffres, tiret ou souligné, sans espace.',
       CODE_TAKEN: 'Ce code existe déjà.',
@@ -2407,6 +2410,7 @@ export const fr = {
     denied: 'Lecture des appareils refusée : droit insuffisant.',
     unavailable: 'Appareils indisponibles : réessayez quand le serveur répond.',
     refreshing: 'Relecture des appareils après la dernière décision…',
+    refresh: 'Actualiser la liste',
     truncated: 'Seuls les 1 000 appareils les plus récents sont affichés : affinez avec le filtre.',
     filter_label: 'Afficher',
     filter: {
@@ -2530,6 +2534,7 @@ export const fr = {
       'Saisissez un mot de passe provisoire (8 caractères au moins) et communiquez-le à la personne, de vive voix : il n’est enregistré nulle part sur ce téléphone.',
     reset_password: 'Mot de passe provisoire',
     reset_confirm: 'Confirmer le mot de passe provisoire',
+    reset_mismatch: 'Les deux saisies du mot de passe provisoire ne correspondent pas.',
     reset_show: 'Afficher le mot de passe',
     reset_submit: 'Réinitialiser pour {{name}}',
     reset_sending: 'Réinitialisation…',
@@ -2545,6 +2550,7 @@ export const fr = {
     denied: 'Lecture des validations refusée : droit insuffisant.',
     unavailable: 'Validations indisponibles : réessayez quand le serveur répond.',
     refreshing: 'Relecture de la file après la dernière décision…',
+    refresh: 'Actualiser la file',
     truncated: 'Seules les 1 000 demandes les plus anciennes sont affichées : décidez-les d’abord.',
     none: 'Aucune validation ne vous attend.',
     none_filtered: 'Aucune validation de ce type ne vous attend.',
@@ -2581,13 +2587,18 @@ export const fr = {
     amount: 'Montant : {{amount}}',
     amount_masked: 'Montant au coût masqué (droit de valorisation requis).',
     attachment_pending:
-      'Justificatif attendu (pas encore reçu par le serveur) : l’approbation sera possible dès sa réception.',
+      'Justificatif attendu (pas encore reçu par le serveur) : l’approbation sera possible dès sa réception ; « Actualiser la file » relit la demande.',
     self_request:
       'Votre propre demande : en tant que Direction, vous pouvez la valider en le déclarant explicitement.',
     record_only:
       'Validation a posteriori : l’opération est déjà enregistrée ; votre décision est tracée sans la modifier.',
     accept_only:
       'Un écart s’accepte avec son motif ; il ne se refuse pas (une erreur se corrige par un ajustement ou une régularisation).',
+    reason_note: {
+      default: 'L’approbation exige un motif ; un refus reste possible.',
+      INVOICE_MISMATCH:
+        'L’écart s’approuve en le motivant ; refusé, la facture passe en contestation.',
+    },
     action: {
       APPROVE: 'Approuver',
       REJECT: 'Refuser',
@@ -2624,7 +2635,10 @@ export const fr = {
     data: {
       correctedReference: 'Référence corrigée (facultatif)',
     },
-    self_confirm: 'J’approuve ma propre demande (auto-validation de la Direction, tracée)',
+    self_confirm: {
+      APPROVE: 'J’approuve ma propre demande (auto-validation de la Direction, tracée)',
+      REJECT: 'Je refuse ma propre demande (décision de la Direction sur sa demande, tracée)',
+    },
     block: {
       ATTACHMENT_PENDING: 'Approbation impossible tant que le justificatif n’est pas reçu.',
       COMMENT_REQUIRED: 'Indiquez le motif du refus.',
@@ -3348,6 +3362,9 @@ export const fr = {
       catalog_product_standard_cost_set: 'Coût standard d’un produit',
       catalog_product_unit_set: 'Conditionnement d’un produit',
       catalog_reason_code_set: 'Motif',
+      catalog_reason_code_update: 'Motif modifié',
+      catalog_reason_code_deactivate: 'Motif désactivé',
+      catalog_reason_code_reactivate: 'Motif réactivé',
       catalog_sales_channel_create: 'Canal de vente créé',
       catalog_sales_channel_deactivate: 'Canal de vente désactivé',
       catalog_sales_channel_reactivate: 'Canal de vente réactivé',

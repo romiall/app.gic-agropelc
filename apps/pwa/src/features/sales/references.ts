@@ -163,6 +163,8 @@ export interface SalesReferences {
   /** Heure du dernier tirage complet des jeux `orders` et `customers` (ADR-037 §3). */
   readonly ordersPulledAt: string | undefined;
   readonly customersPulledAt: string | undefined;
+  /** Heure du dernier tirage complet du jeu `sales_recent` (MP-11 : encaissements acceptés). */
+  readonly salesPulledAt: string | undefined;
   /** Commandes de vente de l'outbox, tous statuts (affichage des opérations en attente). */
   readonly outbox: readonly OutboxCommand[];
 }
@@ -382,6 +384,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     customersCursor,
     activityCursor,
     fieldworkCursor,
+    salesCursor,
     meta,
     products,
     productUnits,
@@ -442,6 +445,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     db.syncCursors.get('customers'),
     db.syncCursors.get('crm_activity'),
     db.syncCursors.get('fieldwork'),
+    db.syncCursors.get('sales_recent'),
     db.syncMeta.get('device'),
     listProjected<ProductData>(db, 'product', 'PRODUCT'),
     listProjected<ProductUnitData>(db, 'product_unit', 'PRODUCT_UNIT'),
@@ -586,6 +590,7 @@ export async function loadSalesReferences(db: GicDatabase): Promise<SalesReferen
     lastSyncAt: meta?.last_sync_at ?? null,
     ordersPulledAt: ordersCursor?.pulled_at,
     customersPulledAt: customersCursor?.pulled_at,
+    salesPulledAt: salesCursor?.pulled_at,
     outbox,
   };
 }

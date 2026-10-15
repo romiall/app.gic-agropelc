@@ -45,6 +45,7 @@ import {
 import { cashPaymentBlocked, cashSessionCoverage } from '../cash/cash-session.js';
 import { CashSessionPrompt } from '../cash/CashSessionPrompt.js';
 import { PaymentFields } from './PaymentFields.js';
+import { isWaiting, stillInFlight } from './pending.js';
 import { useSalesReferences } from './references.js';
 import { parseXaf, sellingLocations } from './sale-form.js';
 import { settingValue } from './stock.js';
@@ -64,7 +65,7 @@ interface ReceivablesState {
 function useOnlineReceivables(
   customerId: string | null,
   online: boolean,
-  reloadKey: number,
+  reloadKey: string,
 ): readonly ReceivableLine[] | null | undefined {
   const [state, setState] = useState<ReceivablesState>();
   const key = `${customerId ?? ''}:${reloadKey}`;
@@ -173,7 +174,15 @@ export function CollectScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const receivables = useOnlineReceivables(customerId, online, reloadKey);
+  // MP-11 (revue adverse) : relue aussi quand un encaissement du client sort de la file (accepté ou
+  // refusé) — sinon la vente payée réapparaissait due après l'acceptation.
+  const paymentsInFlight =
+    refs && customerId
+      ? pendingPaymentsOf(refs.outbox, customerId, refs.customerAlias)
+          .map((pending) => pending.commandId)
+          .join(',')
+      : '';
+  const receivables = useOnlineReceivables(customerId, online, `${reloadKey}|${paymentsInFlight}`);
   const remoteCustomers = useRemoteCustomers(query, online);
 
   if (!refs || !userId) {
@@ -218,7 +227,14 @@ export function CollectScreen() {
       ? duesFromReceivables(receivables, customer.id)
       : duesFromRecentSales(refs.sales, customer.id, refs.customerAlias)
     : [];
-  const pending = customer ? pendingPaymentsOf(refs.outbox, customer.id, refs.customerAlias) : [];
+  const pending = customer
+    ? pendingPaymentsOf(
+        refs.outbox,
+        customer.id,
+        refs.customerAlias,
+        fromServer ? isWaiting : (command) => stillInFlight(command, refs.salesPulledAt),
+      )
+    : [];
   const dues = afterPendingPayments(allDues, pending);
   const duesTotal = dues.reduce((sum, due) => sum + due.balanceXaf, 0);
   // Vente ciblée : attendue tant que les créances en ligne ne sont pas lues ; absente des créances
@@ -506,7 +522,9 @@ export function CollectScreen() {
             />
           </section>
 
-          {payment.amountText !== null && payment.amountText !== ''
+          {/* Défauts montrés dès qu'un montant est saisi ou prérempli (encaissement ciblé, MP-11). */}
+          {(payment.amountText !== null && payment.amountText !== '') ||
+          (amount !== null && amount > 0)
             ? issues.map((issue) => (
                 <p key={issue} className="error-message" role="alert">
                   {t(`sales.payment_issue.${issue}`)}

@@ -3,7 +3,8 @@
  * appareils de la portée du lecteur (`GET /devices`), filtrée par état (en attente par défaut) et par une
  * recherche locale ; décisions `identity.device.*` proposées selon l'état de l'appareil et les actions que
  * le serveur déclare permises au lecteur (auto-approbation exclue, AV-258). Relue après chaque décision ;
- * la suivante attend la réponse définitive de la précédente.
+ * la suivante attend la réponse définitive de la précédente. Relue aussi par « Actualiser » et au retour
+ * sur l'onglet (MP-11) : l'appareil attendu apparaît sans quitter l'écran.
  */
 import { useId, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -13,7 +14,7 @@ import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatDateTime } from '../home/format-home.js';
 import { CommandResult } from '../sales/CommandResult.js';
-import { readPages, useOnlineRead, type Pages } from '../sales/online-read.js';
+import { readPages, useOnlineRead, useRefreshOnVisible, type Pages } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
   isBlockingWait,
@@ -82,7 +83,11 @@ function DecisionForm({
   const loosesThisDevice =
     thisDevice && (action === 'BLOCK' || action === 'LOST' || action === 'RETIRE');
   return (
-    <div className="sale-block" role="group" aria-label={t(`devices.action.${action}`)}>
+    <div
+      className="sale-block"
+      role="group"
+      aria-label={t(`devices.action.${action}`, { code: device.shortCode })}
+    >
       {loosesThisDevice ? (
         <p className="text-warn" role="alert">
           {t('devices.this_device_warning')}
@@ -174,6 +179,7 @@ export function DevicesScreen() {
     online,
     `${last ?? ''}:${lastCommand ? phaseOf(lastCommand) : ''}|${waitingIds(outbox, PREFIX, userId)}`,
   );
+  useRefreshOnVisible(read.retry);
 
   if (!userId) {
     return (
@@ -287,6 +293,11 @@ export function DevicesScreen() {
         <p className="home-muted" role="status">
           {t('devices.refreshing')}
         </p>
+      ) : null}
+      {devices && !read.failed ? (
+        <button type="button" className="secondary" onClick={read.retry} disabled={read.stale}>
+          {t('devices.refresh')}
+        </button>
       ) : null}
       {read.data?.more ? <p className="home-muted">{t('devices.truncated')}</p> : null}
       {devices && devices.length === 0 ? (

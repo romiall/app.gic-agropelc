@@ -12,6 +12,7 @@ import {
   EMPTY_PRODUCT,
   pendingCatalogCodes,
   productPayload,
+  reasonUpdatePayload,
 } from './catalog.js';
 import type { ProductView, ReasonView, UnitView } from './catalog.js';
 
@@ -63,9 +64,10 @@ const PRODUCTS = [
   product({ id: IDS.chicken, code: 'POULET', name: 'Poulet', status: 'INACTIVE' }),
 ];
 
+const REASON_ID = '01900000-0000-7000-8000-00000000c001';
 const REASONS: ReasonView[] = [
   {
-    id: 'reason-1',
+    id: REASON_ID,
     category: 'VISIT_OUTCOME',
     code: 'ABSENT',
     label: 'Client absent',
@@ -312,6 +314,46 @@ describe('Catalogue (ECR-PRX-01)', () => {
     );
   });
 
+  it('motif : libellé et commentaire exigé ajustables, désactivation (MP-11, AV-248)', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await screen.findByRole('region', { name: 'Produits' });
+    await user.click(screen.getByRole('radio', { name: 'Motifs' }));
+    const reasons = within(screen.getByRole('region', { name: 'Motifs' }));
+    const edit = reasons.getByRole('button', { name: 'Modifier le motif Client absent' });
+    await waitFor(() => expect(edit).toBeEnabled());
+    await user.click(edit);
+    const editor = within(
+      reasons.getByRole('listitem', { name: 'Modifier le motif Client absent' }),
+    );
+    const save = editor.getByRole('button', { name: 'Enregistrer le motif ABSENT' });
+    // Rien de changé : rien à envoyer.
+    expect(save).toBeDisabled();
+    await user.clear(editor.getByLabelText('Libellé'));
+    await user.type(editor.getByLabelText('Libellé'), 'Client absent (repasser)');
+    await user.click(editor.getByLabelText('Commentaire obligatoire'));
+    await user.click(save);
+    await waitFor(async () =>
+      expect(await nextCommand()).toMatchObject({
+        command_type: 'catalog.reason_code.update',
+        aggregate_type: 'REASON_CODE',
+        aggregate_id: REASON_ID,
+        payload: { label: 'Client absent (repasser)', requiresComment: true },
+      }),
+    );
+    await settleLast(1);
+    const deactivate = reasons.getByRole('button', { name: 'Désactiver Client absent' });
+    await waitFor(() => expect(deactivate).toBeEnabled());
+    await user.click(deactivate);
+    await waitFor(async () =>
+      expect(await nextCommand()).toMatchObject({
+        command_type: 'catalog.reason_code.deactivate',
+        aggregate_id: REASON_ID,
+        payload: {},
+      }),
+    );
+  });
+
   it('retour sur l’écran : opération en attente annoncée, listes relues à sa réponse', async () => {
     await getDb().outbox.add({
       command_id: '01900000-0000-7000-8000-0000000000f4',
@@ -451,6 +493,20 @@ describe('Règles du catalogue', () => {
     expect(
       checkPackaging({ ...base, factorText: '2,5' }, PRODUCTS[0], existing, true).issues,
     ).toEqual(['FACTOR_NOT_WHOLE']);
+  });
+
+  it('modification d’un motif : seuls les champs changés ; rien si inchangé ou libellé vide', () => {
+    const reason = { label: 'Client absent', requiresComment: false };
+    expect(reasonUpdatePayload(reason, { label: ' Client absent ', requiresComment: false })).toBe(
+      null,
+    );
+    expect(reasonUpdatePayload(reason, { label: '  ', requiresComment: true })).toBe(null);
+    expect(reasonUpdatePayload(reason, { label: 'Absent', requiresComment: false })).toEqual({
+      label: 'Absent',
+    });
+    expect(reasonUpdatePayload(reason, { label: 'Client absent', requiresComment: true })).toEqual({
+      requiresComment: true,
+    });
   });
 
   it('codes des créations en attente pris en compte (sauf refusées)', () => {
