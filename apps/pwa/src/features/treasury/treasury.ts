@@ -124,8 +124,55 @@ export interface CashMovementItem {
   readonly direction: 'IN' | 'OUT';
   readonly amountXaf: number;
   readonly movementType: string;
+  /** Document d'origine du mouvement (P8E-04 : lien vers une dépense ou un paiement fournisseur). */
+  readonly sourceDocType?: string;
+  readonly sourceDocId?: string;
   readonly occurredAt: string;
   readonly isReversal: boolean;
+}
+
+/**
+ * Lecture du document d'origine d'un mouvement que la trésorerie sait montrer (P8E-04, AV-300) :
+ * dépense (`finance.expense.read`) ou paiement fournisseur (`finance.payable.read`) ; `null` sinon.
+ */
+export function movementDocumentPath(
+  movement: Pick<CashMovementItem, 'sourceDocType' | 'sourceDocId'>,
+): string | null {
+  if (!movement.sourceDocId) return null;
+  switch (movement.sourceDocType) {
+    case 'EXPENSE':
+      return `/api/v1/expenses/${movement.sourceDocId}`;
+    case 'SUPPLIER_PAYMENT':
+      return `/api/v1/supplier-payments/${movement.sourceDocId}`;
+    default:
+      return null;
+  }
+}
+
+/** Paiement fournisseur (`SupplierPaymentSummary` de `GET /supplier-payments`). */
+export interface SupplierPaymentItem {
+  readonly id: string;
+  readonly docNumber: string;
+  readonly supplierId: string;
+  readonly amountXaf: number;
+  readonly paymentMethodCode: string;
+  readonly fromAccountId: string;
+  readonly externalReference: string | null;
+  /** `PENDING_APPROVAL`, `RECORDED`, `REJECTED`, `CANCELLED`. */
+  readonly status: string;
+  readonly unallocatedXaf: number;
+  readonly disbursedAt: string | null;
+  readonly approvalRequestId: string | null;
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  readonly cancelReason: string | null;
+  readonly occurredAt: string;
+  readonly createdBy: string;
+}
+
+export interface SupplierPaymentsPage {
+  readonly supplier_payments: readonly SupplierPaymentItem[];
+  readonly next_cursor: string | null;
 }
 
 export interface CashMovementsPage {

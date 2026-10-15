@@ -93,7 +93,16 @@ async function readFollow(
   };
 }
 
-export function ExpenseFollowUp({ userId }: { readonly userId: string }) {
+/**
+ * `fixedGroup` : groupe imposé, sans choix (trésorerie : « dépenses à payer », P8E-04, AV-300).
+ */
+export function ExpenseFollowUp({
+  userId,
+  fixedGroup,
+}: {
+  readonly userId: string;
+  readonly fixedGroup?: ExpenseFollowGroup;
+}) {
   const { t } = useTranslation();
   const refs = useSalesReferences();
   const online = useOnline();
@@ -101,7 +110,8 @@ export function ExpenseFollowUp({ userId }: { readonly userId: string }) {
   const roles = navigation?.roles ?? [];
   const mayPay = holdsAnyRole(roles, ROLE_SETS.expensePay);
   const isApprover = holdsAnyRole(roles, ROLE_SETS.expenseApprove);
-  const [group, setGroup] = useState<ExpenseFollowGroup>('TO_PAY');
+  const [chosenGroup, setGroup] = useState<ExpenseFollowGroup>('TO_PAY');
+  const group = fixedGroup ?? chosenGroup;
   const [open, setOpen] = useState<{ id: string; kind: Kind } | null>(null);
   const [accountChoice, setAccountChoice] = useState('');
   const [reason, setReason] = useState('');
@@ -452,7 +462,7 @@ export function ExpenseFollowUp({ userId }: { readonly userId: string }) {
 
   return (
     <>
-      <div className="field">
+      <div className="field" hidden={fixedGroup !== undefined}>
         <label htmlFor={ids.group}>{t('expense.group_label')}</label>
         <select
           id={ids.group}
@@ -513,7 +523,9 @@ export function ExpenseFollowUp({ userId }: { readonly userId: string }) {
             </p>
           ) : null}
           {data.items.length === 0 ? (
-            <p className="home-muted">{t('expense.follow_empty')}</p>
+            <p className="home-muted">
+              {t(fixedGroup === 'TO_PAY' ? 'expense.none_to_pay' : 'expense.follow_empty')}
+            </p>
           ) : (
             <ul className="line-list">{data.items.map((item) => card(item))}</ul>
           )}

@@ -1,13 +1,15 @@
 /**
  * Mouvements d'un compte de trésorerie (ECR-FIN-05 ; `GET /cash-accounts/{id}/movements`) : du plus
  * récent au plus ancien, par pages de 50 ; les plus anciens sont chargés à la demande et rattachés à
- * la première page lue (une relecture repart de la plus récente).
+ * la première page lue (une relecture repart de la plus récente). Une dépense ou un paiement
+ * fournisseur s'ouvre depuis sa ligne (P8E-04, AV-300).
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../home/format-home.js';
 import { formatMoney } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
+import { MovementDocument } from './MovementDocument.js';
 import type { CashMovementItem, CashMovementsPage } from './treasury.js';
 
 /** Taille d'une page de mouvements (défaut du serveur). */
@@ -93,18 +95,27 @@ export function AccountMovements({
         <p className="home-muted">{t('treasury.movements_empty')}</p>
       ) : (
         <ul className="line-list">
-          {items.map((movement) => (
-            <li key={movement.id}>
-              {t('treasury.movement_line', {
-                date: formatDateTime(movement.occurredAt),
-                type: t(`treasury.movement_type.${movement.movementType}`, {
-                  defaultValue: movement.movementType,
-                }),
-                amount: `${movement.direction === 'OUT' ? '−' : '+'}${formatMoney(movement.amountXaf)}`,
-              })}
-              {movement.isReversal ? ` ${t('treasury.reversal')}` : ''}
-            </li>
-          ))}
+          {items.map((movement) => {
+            const date = formatDateTime(movement.occurredAt);
+            const amount = `${movement.direction === 'OUT' ? '−' : '+'}${formatMoney(movement.amountXaf)}`;
+            return (
+              <li key={movement.id}>
+                {t('treasury.movement_line', {
+                  date,
+                  type: t(`treasury.movement_type.${movement.movementType}`, {
+                    defaultValue: movement.movementType,
+                  }),
+                  amount,
+                })}
+                {movement.isReversal ? ` ${t('treasury.reversal')}` : ''}{' '}
+                <MovementDocument
+                  movement={movement}
+                  label={t('treasury.movement_document_label', { date, amount })}
+                  online={online}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
       {extra?.failed ? (

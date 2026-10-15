@@ -2,14 +2,18 @@
  * ECR-FIN-05 « Trésorerie » (Finance ; Direction : AV-241). En ligne seulement (`ONLINE_ONLY` sinon) :
  * sessions de caisse à valider (détail des flux, validation motivée, `finance.cash_session.validate`),
  * écarts de remise à clore (imputation et motif, `finance.cash_transfer.close_discrepancy`, avec ou
- * sans demande liée, AV-174, AV-183), remises en transit (réception par la Finance), comptes et leurs
- * mouvements. Les ajustements tardifs des sessions déjà validées ne sont pas listés (S-51).
+ * sans demande liée, AV-174, AV-183), remises en transit (réception par la Finance), dépenses à payer
+ * (payer, annuler : vue de suivi des dépenses, P8E-04), paiements fournisseurs en attente de la
+ * Direction (lecture, AV-300), comptes et leurs mouvements (dépense ou paiement fournisseur ouvert
+ * depuis sa ligne). Les ajustements tardifs des sessions déjà validées ne sont pas listés (S-51).
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import type { CashTransferImputation } from '@gic/domain';
-import { holdsAnyRole, ROLE_SETS } from '../../app/screens.js';
+import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
+import { ExpenseFollowUp } from '../finance/ExpenseFollowUp.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -30,6 +34,7 @@ import {
   waitingIds,
 } from '../sales/submit.js';
 import { AccountMovements } from './AccountMovements.js';
+import { PendingSupplierPayments } from './PendingSupplierPayments.js';
 import { SessionDetail } from './SessionDetail.js';
 import {
   closeDiscrepancyPayload,
@@ -51,6 +56,9 @@ const MANAGED_COMMANDS = new Set([
 ]);
 
 type Kind = 'validate' | 'decide' | 'receive';
+
+/** Commandes de la section « Dépenses à payer » (vue de suivi des dépenses, P8E-04). */
+const EXPENSE_COMMANDS = new Set(['finance.expense.pay', 'finance.expense.cancel']);
 
 const KINDS: Readonly<Record<string, Kind>> = {
   'finance.cash_session.validate': 'validate',
@@ -135,6 +143,17 @@ export function TreasuryScreen() {
       [],
     ) ?? [];
   const lastCommand = managed.find((command) => command.command_id === last?.commandId);
+  // Dépenses payées ou annulées depuis la section « Dépenses à payer » : la trésorerie se relit à leur
+  // réponse (soldes, mouvements), sans les annoncer ni bloquer ses propres actions (revue de P8E-04).
+  const expenseCommands =
+    useLiveQuery(
+      () =>
+        getDb()
+          .outbox.orderBy('device_seq')
+          .filter((command) => EXPENSE_COMMANDS.has(command.command_type))
+          .toArray(),
+      [],
+    ) ?? [];
   // Focus porté sur le premier champ d'un formulaire ouvert, rendu au bouton qui l'a ouvert.
   const openers = useRef(new Map<string, HTMLButtonElement | null>());
   const optionRef = useRef<HTMLSelectElement>(null);
@@ -155,7 +174,7 @@ export function TreasuryScreen() {
     managed,
     'finance.',
     userId,
-  )}`;
+  )}|${waitingIds(expenseCommands, 'finance.expense.', userId)}`;
   const read = useOnlineRead<TreasuryRead>(
     online ? 'treasury' : null,
     () => readTreasury(),
@@ -573,6 +592,24 @@ export function TreasuryScreen() {
           </section>
         </>
       )}
+
+      {/* Lectures indépendantes de la trésorerie : affichées même si celle-ci échoue (revue de P8E-04). */}
+      <section className="sale-block" aria-labelledby="treasury-expenses-title">
+        <h2 id="treasury-expenses-title">{t('treasury.expenses_title')}</h2>
+        <ExpenseFollowUp userId={userId} fixedGroup="TO_PAY" />
+        <Link to={`${ROUTES.expenses}?vue=suivi`} className="action action-compact">
+          <span className="action-label">{t('treasury.expenses_follow_link')}</span>
+        </Link>
+      </section>
+
+      <PendingSupplierPayments
+        userId={userId}
+        online={online}
+        reloadKey={reloadKey}
+        accountNames={names}
+        paymentMethods={refs.paymentMethods}
+        users={refs.users}
+      />
     </section>
   );
 }

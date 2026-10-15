@@ -2268,7 +2268,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : l'inventaire le marque « P5/P8 » sans dire quoi. Seule la Finance paie une dépense à payer (`finance.expense.pay`) ; la Direction valide les paiements fournisseurs au-delà du seuil. **CONFIRMÉ** (inventaire, RBAC).
 - **Choix** : (a) dépenses à payer (payer, annuler), paiements fournisseurs en attente de la Direction (lecture), lien d'un mouvement vers son document ; (b) seulement le lien des mouvements ; (c) rien de plus, les dépenses se paient depuis l'écran des dépenses.
 - **Recommandation** : (a).
-- **Impact** : `apps/pwa/src/features/treasury/TreasuryScreen.tsx` ; lectures `GET /expenses?status=`, `GET /supplier-payments?status=PENDING_APPROVAL`. Défaut implémenté : (a).
+- **Impact** : `apps/pwa/src/features/treasury/TreasuryScreen.tsx` ; lectures `GET /expenses?status=`, `GET /supplier-payments?status=PENDING_APPROVAL`. Défaut implémenté : (a) (P8E-04 : vue de suivi des dépenses réutilisée sur le groupe « à payer » ; paiements en attente en lecture, lien vers la file des validations pour la Direction ; dépense ou paiement fournisseur ouvert depuis sa ligne de mouvement).
 
 ### AV-301 — Site et imputation proposés à la saisie d'une dépense — SECONDAIRE
 - **Question** : quel site et quelle imputation de coût l'écran « + Dépense » propose-t-il par défaut ?

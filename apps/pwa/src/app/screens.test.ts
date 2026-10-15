@@ -53,6 +53,8 @@ describe('app/screens — registre et navigation par rôle', () => {
     // Droits des dépenses (01-rbac.md §5.5) : payer, la Finance seule ; annuler la dépense d'un autre,
     // les approbateurs (Direction, Finance, Resp. production) ; saisir, dix rôles, jamais l'Admin.
     expect([...ROLE_SETS.expensePay]).toEqual(['FINANCE']);
+    // Paiement fournisseur au-delà du seuil : décidé par la Direction seule (01-rbac.md §5.5).
+    expect([...ROLE_SETS.supplierPaymentApprove]).toEqual(['DIRECTION']);
     expect([...ROLE_SETS.expenseApprove].sort()).toEqual(
       ['DIRECTION', 'FINANCE', 'RESP_PRODUCTION'].sort(),
     );

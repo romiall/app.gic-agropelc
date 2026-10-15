@@ -3,6 +3,7 @@ import {
   closeDiscrepancyPayload,
   currentVarianceXaf,
   imputationOptions,
+  movementDocumentPath,
   sessionReasonRequired,
   sessionValidationBlock,
   transferDecisionBlock,
@@ -93,5 +94,21 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     expect(userLabel(ME, ME, 'vous')).toBe('vous');
     expect(userLabel('01900000-0000-7000-8000-0000000000e1', ME, 'vous')).toBe('…00e1');
     expect(userLabel(null, ME, 'vous')).toBe('');
+  });
+});
+
+describe('pièce d’origine d’un mouvement (P8E-04, AV-300)', () => {
+  it('dépense et paiement fournisseur seulement', () => {
+    expect(movementDocumentPath({ sourceDocType: 'EXPENSE', sourceDocId: 'e1' })).toBe(
+      '/api/v1/expenses/e1',
+    );
+    expect(movementDocumentPath({ sourceDocType: 'SUPPLIER_PAYMENT', sourceDocId: 'p1' })).toBe(
+      '/api/v1/supplier-payments/p1',
+    );
+    expect(
+      movementDocumentPath({ sourceDocType: 'CUSTOMER_PAYMENT', sourceDocId: 'c1' }),
+    ).toBeNull();
+    expect(movementDocumentPath({ sourceDocType: 'EXPENSE' })).toBeNull();
+    expect(movementDocumentPath({})).toBeNull();
   });
 });

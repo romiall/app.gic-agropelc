@@ -2864,6 +2864,7 @@ export const fr = {
     follow_failed_stale:
       'Actualisation impossible : le serveur n’a pas répondu. La liste ci-dessous peut être périmée ; les actions restent bloquées jusqu’à une relecture.',
     follow_empty: 'Aucune dépense dans ce groupe.',
+    none_to_pay: 'Aucune dépense à payer.',
     refreshing: 'Actualisation en cours… Les actions reprennent à la réponse du serveur.',
     truncated: 'Liste partielle : seules les plus récentes sont montrées.',
     group_label: 'Dépenses',
@@ -2886,7 +2887,7 @@ export const fr = {
     decide_link: 'Décider dans les validations',
     pay_open: 'Payer {{doc}}',
     pay_account_label: 'Compte qui paie',
-    pay_no_account: 'Aucun compte actif ne vous est accessible pour payer : voyez la trésorerie.',
+    pay_no_account: 'Aucun compte actif ne vous est accessible pour payer cette dépense.',
     pay_accounts_failed: 'Comptes indisponibles : le serveur n’a pas répondu. Réessayez.',
     pay_submit: 'Payer {{amount}}',
     pay_result: {
@@ -2899,6 +2900,35 @@ export const fr = {
     },
   },
   treasury: {
+    expenses_title: 'Dépenses à payer',
+    expenses_follow_link: 'Toutes les dépenses',
+    supplier_payments_title: 'Paiements fournisseurs en attente de la Direction',
+    supplier_payments_note:
+      'Au-delà du seuil, rien n’est décaissé avant la décision de la Direction.',
+    supplier_payments_empty: 'Aucun paiement fournisseur en attente.',
+    supplier_payments_denied: 'Paiements fournisseurs non accessibles avec vos droits.',
+    supplier_payments_failed: 'Paiements fournisseurs indisponibles : le serveur n’a pas répondu.',
+    supplier_payments_failed_stale:
+      'Actualisation des paiements fournisseurs impossible : la liste ci-dessous peut être périmée.',
+    supplier_payment_meta: '{{method}} depuis {{account}} · {{date}} · saisi par {{author}}',
+    supplier_payment_reference: 'référence {{reference}}',
+    supplier_payments_decide: 'Décider dans les validations',
+    supplier_payment_status: {
+      PENDING_APPROVAL: 'en attente de la Direction',
+      RECORDED: 'décaissé',
+      REJECTED: 'refusé',
+      CANCELLED: 'annulé',
+    },
+    movement_document_label: '{{amount}} du {{date}}',
+    movement_document_open: {
+      EXPENSE: 'Voir la dépense ({{label}})',
+      SUPPLIER_PAYMENT: 'Voir le paiement fournisseur ({{label}})',
+    },
+    movement_document_expense: '{{doc}} · {{category}} · {{description}} · {{status}}',
+    movement_document_payment: '{{doc}} · {{supplier}} · {{status}}',
+    suppliers_failed: 'Noms des fournisseurs indisponibles : le serveur n’a pas répondu.',
+    movement_document_denied: 'Pièce non accessible avec vos droits.',
+    movement_document_failed: 'Pièce indisponible : le serveur n’a pas répondu.',
     online_only:
       'Trésorerie en ligne seulement : reconnectez-vous. Les remises de fonds se font aussi hors ligne, depuis l’écran « Remises de fonds ».',
     denied: 'Trésorerie non accessible avec vos droits.',

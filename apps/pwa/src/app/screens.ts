@@ -313,6 +313,11 @@ export const ROLE_SETS = {
   expensePay: ['FINANCE'],
   /** `finance.expense.approve` (DIR, FIN, RPR) : annuler la dépense d'un autre (SM-EXPENSE). */
   expenseApprove: ['DIRECTION', 'FINANCE', 'RESP_PRODUCTION'],
+  /**
+   * `finance.supplier_payment.approve` (DIR) : décider d'un paiement fournisseur au-delà du seuil, dans
+   * la file des validations (ADR-043, P8E-04).
+   */
+  supplierPaymentApprove: ['DIRECTION'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */

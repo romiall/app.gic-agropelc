@@ -12,7 +12,9 @@ import type {
   CashSessionDetailResponse,
   CashSessionItem,
   CashTransferItem,
+  SupplierPaymentItem,
 } from './treasury.js';
+import type { ExpenseItem } from '../finance/expense-follow.js';
 import { TreasuryScreen } from './TreasuryScreen.js';
 
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -40,6 +42,66 @@ const GAP_MINE = '01900000-0000-7000-8000-0000000000c6';
 const TRANSIT = '01900000-0000-7000-8000-0000000000c7';
 const REQUEST = '01900000-0000-7000-8000-0000000000c8';
 const OWN_TRANSIT = '01900000-0000-7000-8000-0000000000c9';
+const EXPENSE = '01900000-0000-7000-8000-0000000000ca';
+const PAYMENT = '01900000-0000-7000-8000-0000000000cb';
+const SUPPLIER = '01900000-0000-7000-8000-0000000000cc';
+
+/** Dépense à payer (P8E-04), servie par `GET /expenses`. */
+function expense(overrides: Partial<ExpenseItem> = {}): ExpenseItem {
+  return {
+    id: EXPENSE,
+    docNumber: 'DEP-PDV-YDE-2026-000011',
+    siteId: IDS.site,
+    categoryId: '01900000-0000-7000-8000-0000000000cd',
+    categoryCode: 'ENTRETIEN',
+    categoryLabel: 'Entretien',
+    amountXaf: 5_000,
+    payeeName: null,
+    supplierId: null,
+    description: 'Réparation du congélateur',
+    costObjectType: 'SITE',
+    costObjectId: IDS.site,
+    speciesGroup: null,
+    paidNow: false,
+    paidFromAccountId: null,
+    paidAt: null,
+    status: 'RECORDED',
+    reviewReasons: [],
+    approvalRequestId: null,
+    reclassifiedCategoryId: null,
+    responsibilityUserId: null,
+    cancelReason: null,
+    occurredAt: '2026-10-10T09:00:00.000Z',
+    businessDate: '2026-10-10',
+    capturedOffline: false,
+    createdBy: VENDOR,
+    attachments: [],
+    ...overrides,
+  };
+}
+
+/** Paiement fournisseur en attente de la Direction (P8E-04). */
+function payment(overrides: Partial<SupplierPaymentItem> = {}): SupplierPaymentItem {
+  return {
+    id: PAYMENT,
+    docNumber: 'PF-2026-000004',
+    supplierId: SUPPLIER,
+    amountXaf: 1_470_000,
+    paymentMethodCode: 'MOBILE_MONEY_ORANGE',
+    fromAccountId: CENTRAL,
+    externalReference: 'OM-77812',
+    status: 'PENDING_APPROVAL',
+    unallocatedXaf: 0,
+    disbursedAt: null,
+    approvalRequestId: REQUEST,
+    decidedBy: null,
+    decidedAt: null,
+    cancelReason: null,
+    occurredAt: '2026-10-10T12:00:00.000Z',
+    createdBy: RECEIVER,
+    ...overrides,
+  };
+}
 
 const accounts: CashAccountItem[] = [
   {
@@ -204,6 +266,29 @@ function baseRoutes(): Routes {
       movements: [movement('m3', 9_000)],
       next_cursor: null,
     },
+    // P8E-04 : dépenses à payer, paiements fournisseurs en attente, fournisseurs.
+    '/api/v1/expenses?status=RECORDED&limit=200': { expenses: [expense()], next_cursor: null },
+    '/api/v1/expenses?status=APPROVED&limit=200': { expenses: [], next_cursor: null },
+    '/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200': {
+      supplier_payments: [payment()],
+      next_cursor: null,
+    },
+    '/api/v1/suppliers': {
+      suppliers: [
+        {
+          id: SUPPLIER,
+          code: 'PROVENDA',
+          name: 'Provenderie du Centre',
+          suppliedCategories: [],
+          contactName: null,
+          phone: null,
+          email: null,
+          taxId: null,
+          paymentTermsDays: 30,
+          status: 'ACTIVE',
+        },
+      ],
+    },
   };
 }
 
@@ -271,6 +356,9 @@ describe('Trésorerie (ECR-FIN-05)', () => {
   afterEach(async () => {
     cleanup();
     vi.restoreAllMocks();
+    // Une lecture enchaînée encore en vol après le démontage (dépenses puis comptes) reçoit une
+    // réponse plutôt qu'un appel vide (rejet non géré).
+    serve(baseRoutes());
     await getDb().projections.clear();
     await getDb().outbox.clear();
     await getDb().navigation.clear();
@@ -474,15 +562,22 @@ describe('Trésorerie (ECR-FIN-05)', () => {
       status: 'SYNCED',
       synced_at: '2026-10-10T19:30:00.000Z',
     });
-    expect(await screen.findByText(/Actualisation impossible/)).toBeInTheDocument();
+    // Bandeau de la trésorerie (les sections relues à part ont le leur).
+    const stale = await screen.findByText(/Les chiffres ci-dessous peuvent être périmés/);
     expect(within(sessions).getByRole('listitem', { name: /07:00–18:00$/ })).toBeInTheDocument();
     const decide = screen.getByRole('button', {
       name: 'Décider de l’écart de la remise RMF-YDE-2026-000007',
     });
     expect(decide).toBeDisabled();
     serve(baseRoutes());
-    await user.click(screen.getByRole('button', { name: 'Réessayer' }));
-    await waitFor(() => expect(screen.queryByText(/Actualisation impossible/)).toBeNull());
+    await user.click(
+      within(stale.closest('[role="alert"]') as HTMLElement).getByRole('button', {
+        name: 'Réessayer',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/Les chiffres ci-dessous peuvent être périmés/)).toBeNull(),
+    );
     await waitFor(() => expect(decide).toBeEnabled());
   });
 
@@ -719,5 +814,271 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     renderScreen();
     expect(await screen.findByText(/Trésorerie en ligne seulement/)).toBeInTheDocument();
+  });
+
+  it('P8E-04 (AV-300) : dépense à payer réglée depuis la trésorerie par la Finance, soldes relus à la réponse ; lien vers toutes les dépenses', async () => {
+    await rememberRoles(['FINANCE']);
+    const user = userEvent.setup();
+    renderScreen();
+    const region = await screen.findByRole('region', { name: 'Dépenses à payer' });
+    const card = await within(region).findByRole('listitem', { name: 'DEP-PDV-YDE-2026-000011' });
+    expect(within(card).getByText(/Réparation du congélateur/)).toBeInTheDocument();
+    // Groupe imposé : aucun choix de groupe dans la trésorerie.
+    expect(within(region).queryByRole('combobox', { name: 'Dépenses' })).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Payer DEP-PDV-YDE-2026-000011' }));
+    await user.selectOptions(within(card).getByLabelText('Compte qui paie'), CENTRAL);
+    await user.click(within(card).getByRole('button', { name: /Payer 5\s000 F CFA/ }));
+    expect(await screen.findByText('Paiement en cours d’envoi…')).toBeInTheDocument();
+    const [pay] = await outboxOf('finance.expense.pay');
+    expect(pay).toMatchObject({
+      aggregate_type: 'EXPENSE',
+      aggregate_id: EXPENSE,
+      payload: { paidFromAccountId: CENTRAL },
+    });
+    // Réponse du serveur : la trésorerie se relit (solde de la caisse centrale), la dépense sort de la liste.
+    const routes = baseRoutes();
+    routes['/api/v1/cash-accounts'] = {
+      cash_accounts: accounts.map((account) =>
+        account.id === CENTRAL ? { ...account, balanceXaf: 1_245_000 } : account,
+      ),
+    };
+    routes['/api/v1/expenses?status=RECORDED&limit=200'] = { expenses: [], next_cursor: null };
+    serve(routes);
+    await getDb().outbox.update(pay!.command_id, {
+      status: 'SYNCED',
+      synced_at: '2026-10-10T19:30:00.000Z',
+    });
+    const accountsRegion = screen.getByRole('region', { name: 'Comptes de trésorerie' });
+    expect(
+      await within(accountsRegion).findByText(/Solde : 1\s245\s000 F CFA/),
+    ).toBeInTheDocument();
+    expect(await within(region).findByText('Aucune dépense à payer.')).toBeInTheDocument();
+    expect(within(region).getByRole('link', { name: 'Toutes les dépenses' })).toHaveAttribute(
+      'href',
+      '/finance/depenses?vue=suivi',
+    );
+  });
+
+  it('P8E-04 (AV-300) : paiements fournisseurs en attente — fournisseur, moyen, compte, auteur ; décision réservée à la Direction', async () => {
+    await rememberRoles(['FINANCE']);
+    const { unmount } = renderScreen();
+    const region = await screen.findByRole('region', {
+      name: 'Paiements fournisseurs en attente de la Direction',
+    });
+    const card = await within(region).findByRole('listitem', { name: 'PF-2026-000004' });
+    expect(within(card).getByText(/1\s470\s000 F CFA/)).toBeInTheDocument();
+    expect(within(card).getByText('Provenderie du Centre')).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        /^Orange Money depuis Caisse centrale · .* · saisi par …00e2 · référence OM-77812$/,
+      ),
+    ).toBeInTheDocument();
+    // Rôles lus (le paiement d'une dépense en dépend) : la Finance ne décide pas de ses paiements
+    // (ADR-043 §5), aucun lien vers la file.
+    await screen.findByRole('button', { name: 'Payer DEP-PDV-YDE-2026-000011' });
+    expect(within(region).queryByRole('link', { name: 'Décider dans les validations' })).toBeNull();
+    unmount();
+    await rememberRoles(['DIRECTION']);
+    renderScreen();
+    const direction = await screen.findByRole('region', {
+      name: 'Paiements fournisseurs en attente de la Direction',
+    });
+    expect(
+      await within(direction).findByRole('link', { name: 'Décider dans les validations' }),
+    ).toHaveAttribute('href', '/validations?types=SUPPLIER_PAYMENT');
+  });
+
+  it('P8E-04 (AV-300) : paiements fournisseurs — panne, refus, fournisseurs illisibles, liste partielle', async () => {
+    serve({
+      ...baseRoutes(),
+      '/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200': undefined,
+    });
+    const { unmount } = renderScreen();
+    expect(
+      await screen.findByText('Paiements fournisseurs indisponibles : le serveur n’a pas répondu.'),
+    ).toBeInTheDocument();
+    // La section en échec ne masque pas les autres.
+    expect(
+      await screen.findByRole('listitem', { name: 'DEP-PDV-YDE-2026-000011' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Comptes de trésorerie' })).toBeInTheDocument();
+    unmount();
+
+    // Refus de droit : annoncé, sans « Réessayer ».
+    const routes = baseRoutes();
+    request.mockImplementation(
+      (_db, path) =>
+        Promise.resolve(
+          path === '/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200'
+            ? { ok: false, reason: 'HTTP_ERROR', status: 403, message: 'refusé' }
+            : routes[path]
+              ? { ok: true, data: routes[path] }
+              : { ok: false, reason: 'HTTP_ERROR', status: 500, message: 'absente' },
+        ) as ReturnType<typeof authorizedRequest>,
+    );
+    const second = renderScreen();
+    const denied = await screen.findByText(
+      'Paiements fournisseurs non accessibles avec vos droits.',
+    );
+    expect(
+      within(denied.closest('[role="alert"]') as HTMLElement).queryByRole('button', {
+        name: 'Réessayer',
+      }),
+    ).toBeNull();
+    second.unmount();
+
+    // Fournisseurs illisibles : l'identifiant court, annoncé avec « Réessayer » ; liste partielle.
+    const partial: Routes = { ...baseRoutes(), '/api/v1/suppliers': undefined };
+    partial['/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200'] = {
+      supplier_payments: [payment()],
+      next_cursor: 'c1',
+    };
+    for (let page = 1; page <= 4; page++) {
+      partial[`/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200&cursor=c${page}`] = {
+        supplier_payments: [payment({ id: `p${page}`, docNumber: `PF-2026-00010${page}` })],
+        next_cursor: `c${page + 1}`,
+      };
+    }
+    serve(partial);
+    renderScreen();
+    const region = await screen.findByRole('region', {
+      name: 'Paiements fournisseurs en attente de la Direction',
+    });
+    const card = await within(region).findByRole('listitem', { name: 'PF-2026-000004' });
+    expect(within(card).getByText('…00cc')).toBeInTheDocument();
+    expect(within(region).getByText(/Noms des fournisseurs indisponibles/)).toBeInTheDocument();
+    expect(within(region).getByText(/Liste partielle/)).toBeInTheDocument();
+  });
+
+  it('P8E-04 : lecture de la trésorerie en échec au premier chargement — dépenses et paiements fournisseurs restent affichés', async () => {
+    serve({ ...baseRoutes(), '/api/v1/cash-transfers?status=SENT&limit=200': undefined });
+    renderScreen();
+    expect(await screen.findByText(/Trésorerie indisponible/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('listitem', { name: 'DEP-PDV-YDE-2026-000011' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole('listitem', { name: 'PF-2026-000004' })).toBeInTheDocument();
+  });
+
+  it('P8E-04 (AV-300) : une dépense ou un paiement fournisseur s’ouvre depuis sa ligne de mouvement', async () => {
+    const expenseMove: CashMovementItem = {
+      ...movement('mx', 2_000),
+      direction: 'OUT',
+      movementType: 'EXPENSE',
+      sourceDocType: 'EXPENSE',
+      sourceDocId: EXPENSE,
+    };
+    const paymentMove: CashMovementItem = {
+      ...movement('mp', 1_470_000),
+      direction: 'OUT',
+      movementType: 'SUPPLIER_PAYMENT',
+      sourceDocType: 'SUPPLIER_PAYMENT',
+      sourceDocId: PAYMENT,
+    };
+    const failingMove: CashMovementItem = {
+      ...movement('mf', 3_000),
+      direction: 'OUT',
+      movementType: 'EXPENSE',
+      sourceDocType: 'EXPENSE',
+      sourceDocId: SUPPLIER,
+    };
+    const routes: Routes = {
+      ...baseRoutes(),
+      [`/api/v1/cash-accounts/${CENTRAL}/movements?limit=50`]: {
+        movements: [
+          expenseMove,
+          paymentMove,
+          failingMove,
+          { ...movement('mc', 5_000), sourceDocType: 'CUSTOMER_PAYMENT', sourceDocId: 'x' },
+        ],
+        next_cursor: null,
+      },
+      [`/api/v1/expenses/${EXPENSE}`]: {
+        expense: expense({ status: 'PAID', paidFromAccountId: CENTRAL }),
+      },
+      [`/api/v1/supplier-payments/${PAYMENT}`]: {
+        supplier_payment: payment({ status: 'RECORDED' }),
+      },
+    };
+    serve(routes);
+    const user = userEvent.setup();
+    renderScreen();
+    const accountsRegion = await screen.findByRole('region', { name: 'Comptes de trésorerie' });
+    const central = within(accountsRegion).getByRole('listitem', { name: 'Caisse centrale' });
+    await user.click(
+      within(central).getByRole('button', { name: 'Mouvements de Caisse centrale' }),
+    );
+    await user.click(
+      await within(central).findByRole('button', { name: /^Voir la dépense \(−2\s000 F CFA du / }),
+    );
+    expect(
+      await within(central).findByText(
+        'DEP-PDV-YDE-2026-000011 · Entretien · Réparation du congélateur · Payée',
+      ),
+    ).toBeInTheDocument();
+    // Le détail ouvert reçoit le focus à la place du bouton.
+    expect(within(central).getByRole('status', { name: /^−2\s000 F CFA du / })).toHaveFocus();
+    await user.click(
+      within(central).getByRole('button', { name: /^Voir le paiement fournisseur \(−1\s470\s000/ }),
+    );
+    expect(
+      await within(central).findByText(
+        'PF-2026-000004 · Provenderie du Centre · décaissé · référence OM-77812',
+      ),
+    ).toBeInTheDocument();
+    // Pièce illisible : annoncée avec « Réessayer », puis lue.
+    await user.click(
+      within(central).getByRole('button', { name: /^Voir la dépense \(−3\s000 F CFA du / }),
+    );
+    expect(
+      await within(central).findByText(/Pièce indisponible : le serveur n’a pas répondu/),
+    ).toBeInTheDocument();
+    routes[`/api/v1/expenses/${SUPPLIER}`] = {
+      expense: expense({ id: SUPPLIER, docNumber: 'DEP-PDV-YDE-2026-000012' }),
+    };
+    await user.click(within(central).getByRole('button', { name: 'Réessayer' }));
+    expect(await within(central).findByText(/^DEP-PDV-YDE-2026-000012 · /)).toBeInTheDocument();
+    // Encaissement : aucun lien (seules les dépenses et les paiements fournisseurs s'ouvrent).
+    expect(within(central).queryAllByRole('button', { name: /^Voir/ })).toHaveLength(0);
+  });
+
+  it('P8E-04 : pièce d’un mouvement hors de vos droits — annoncée, sans « Réessayer »', async () => {
+    const routes: Routes = {
+      ...baseRoutes(),
+      [`/api/v1/cash-accounts/${CENTRAL}/movements?limit=50`]: {
+        movements: [
+          {
+            ...movement('mx', 2_000),
+            direction: 'OUT',
+            movementType: 'EXPENSE',
+            sourceDocType: 'EXPENSE',
+            sourceDocId: EXPENSE,
+          },
+        ],
+        next_cursor: null,
+      },
+    };
+    request.mockImplementation(
+      (_db, path) =>
+        Promise.resolve(
+          path === `/api/v1/expenses/${EXPENSE}`
+            ? { ok: false, reason: 'HTTP_ERROR', status: 404, message: 'hors portée' }
+            : routes[path]
+              ? { ok: true, data: routes[path] }
+              : { ok: false, reason: 'HTTP_ERROR', status: 500, message: 'absente' },
+        ) as ReturnType<typeof authorizedRequest>,
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    const accountsRegion = await screen.findByRole('region', { name: 'Comptes de trésorerie' });
+    const central = within(accountsRegion).getByRole('listitem', { name: 'Caisse centrale' });
+    await user.click(
+      within(central).getByRole('button', { name: 'Mouvements de Caisse centrale' }),
+    );
+    await user.click(await within(central).findByRole('button', { name: /^Voir la dépense/ }));
+    expect(
+      await within(central).findByText('Pièce non accessible avec vos droits.'),
+    ).toBeInTheDocument();
+    expect(within(central).queryByRole('button', { name: 'Réessayer' })).toBeNull();
   });
 });
