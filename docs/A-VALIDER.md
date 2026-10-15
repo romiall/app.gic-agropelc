@@ -312,6 +312,9 @@ Classification (PM §45) :
 | AV-295 | Droit de décider une validation, jugé aussi à la réception | SECONDAIRE | MP | Date déclarée et réception par le serveur (décision en ligne seulement) | OUVERT |
 | AV-296 | Appareil non partagé lié à l'utilisateur qui l'a connecté | SECONDAIRE | MP | Inchangé : tout compte valide peut se connecter sur un appareil connu et en prend le statut (risque assumé au MVP) | OUVERT |
 | AV-297 | Verrouillage de connexion : essais simultanés, adresse derrière un proxy | SECONDAIRE | MP | `TRUST_PROXY` et limitation de débit au proxy ; réservation atomique de l'essai à faire avant la production | OUVERT |
+| AV-298 | Accès aux écrans de finance et action « + Dépense » de l'accueil | SECONDAIRE | P8 | Finance : tout ; Direction : lecture, file, annulation d'un paiement ; Achats : lecture ; « + Dépense » au menu des dix rôles, sur l'accueil de la Finance et des rôles de terrain | OUVERT |
+| AV-299 | Marges par produit, point de vente et commercial | IMPORTANTE | P8 | Lots et période en P8 ; axes dans l'explorateur de P9 | OUVERT |
+| AV-300 | Ce que P8 ajoute à la trésorerie | SECONDAIRE | P8 | Dépenses à payer, paiements en attente de la Direction, lien des mouvements vers leur document | OUVERT |
 
 ---
 
@@ -2244,6 +2247,27 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) adresses du proxy de confiance (`TRUST_PROXY`) et limitation de débit au proxy, plus réservation atomique de l'essai avant la vérification (compté d'avance, remis à zéro par une connexion réussie) ; (b) `TRUST_PROXY` et limitation de débit au proxy seulement ; (c) inchangé.
 - **Recommandation** : (a) avant la production ; (b) suffit au pilote, l'essai réussi devant de toute façon payer une vérification argon2 (quelques centaines d'essais par palier au plus).
 - **Impact** : MP-11 : variable `TRUST_PROXY` (`true`, nombre de proxys, ou liste d'adresses ; désactivée par défaut), à régler au déploiement (P0-17) avec la limitation de débit du CDN. Reste la réservation atomique (`login-lockout.ts`, `auth.controller.ts`), sans changer le refus d'un appareil hors service après un mot de passe juste (AV-253 : aucun échec compté). Défaut implémenté : (b).
+
+### AV-298 — Accès aux écrans de finance et action « + Dépense » de l'accueil — SECONDAIRE
+- **Question** : qui voit et utilise les écrans de factures et de paiements fournisseurs, et quels rôles ont « + Dépense » sur leur accueil ?
+- **Pourquoi** : l'inventaire réserve ECR-FIN-03 et 04 à la Finance, mais le RBAC donne à la Direction l'approbation des écarts de facture et des paiements au-delà du seuil, l'annulation d'un paiement décaissé (AV-277) et la lecture des dettes, et au Resp. achats la lecture des factures et des dettes (AV-278). Dix rôles peuvent saisir une dépense (`finance.expense.record`), sans action d'accueil. **CONFIRMÉ** (inventaire, RBAC, catalogue de l'accueil).
+- **Choix** : (a) Finance : tout ; Direction : lecture, décisions dans la file, annulation d'un paiement ; Achats : lecture seule ; « + Dépense » dans le menu des dix rôles, et sur l'accueil de la Finance et des rôles de terrain qui dépensent (vendeur de PDV, commercial terrain, Resp. ferme) ; (b) écrans réservés à la Finance, la Direction passant par la file seule ; (c) « + Dépense » sur l'accueil des dix rôles.
+- **Recommandation** : (a).
+- **Impact** : `apps/pwa/src/app/screens.ts` (rôles des écrans), `home-api/role-catalog.ts` (action d'accueil), ADR-047. Défaut implémenté : (a). Non paramétrable (menu et accueil).
+
+### AV-299 — Marges par produit, point de vente et commercial — IMPORTANTE
+- **Question** : l'écran des coûts et marges (ECR-FIN-06) doit-il montrer dès P8 les marges par produit, point de vente et commercial ?
+- **Pourquoi** : l'inventaire annonce « coûts et marges (lot, produit, PDV, commercial) », mais le serveur ne sert que la marge d'un lot et la marge brute d'une période (`GET /finance/overview`). Les autres axes sont prévus dans l'explorateur de P9 (marge sur les lignes de vente) ; une lecture propre à P8 donnerait une seconde définition de la marge (BR-ANA-009). **CONFIRMÉ** (code, plan de P9).
+- **Choix** : (a) P8 : lots et période, axes dans l'explorateur de P9 ; (b) lecture propre dès P8, réalignée sur P9 ensuite ; (c) rien sur la marge avant P9.
+- **Recommandation** : (a).
+- **Impact** : ECR-FIN-06 ; P9 (explorateur, KPI-FIN-07). Défaut implémenté : (a).
+
+### AV-300 — Ce que P8 ajoute à la trésorerie — SECONDAIRE
+- **Question** : que doit montrer de plus l'écran de trésorerie (ECR-FIN-05) avec P8 ?
+- **Pourquoi** : l'inventaire le marque « P5/P8 » sans dire quoi. Seule la Finance paie une dépense à payer (`finance.expense.pay`) ; la Direction valide les paiements fournisseurs au-delà du seuil. **CONFIRMÉ** (inventaire, RBAC).
+- **Choix** : (a) dépenses à payer (payer, annuler), paiements fournisseurs en attente de la Direction (lecture), lien d'un mouvement vers son document ; (b) seulement le lien des mouvements ; (c) rien de plus, les dépenses se paient depuis l'écran des dépenses.
+- **Recommandation** : (a).
+- **Impact** : `apps/pwa/src/features/treasury/TreasuryScreen.tsx` ; lectures `GET /expenses?status=`, `GET /supplier-payments?status=PENDING_APPROVAL`. Défaut implémenté : (a).
 ---
 
 ## 3. Journal des décisions
