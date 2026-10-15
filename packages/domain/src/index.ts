@@ -53,6 +53,7 @@ export {
 export {
   businessDayOf,
   businessDayStartUtc,
+  isoWeekdayOfBusinessDay,
   businessDayEndUtc,
   isWithinBusinessDay,
   nextBusinessDay,
@@ -346,6 +347,15 @@ export type {
   CashTransferRaceCode,
   CashTransferStatus,
 } from './cash-transfer.js';
+export {
+  DEFAULT_CASH_HOLDING_MAX_DAYS,
+  DEFAULT_CASH_HOLDING_MAX_XAF,
+  assessCashHolding,
+  businessDaysBetween,
+  cashHeldSince,
+  cashHoldingThresholdFrom,
+} from './cash-holding.js';
+export type { CashHoldingReason, CashInflow } from './cash-holding.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
 
@@ -488,6 +498,8 @@ export {
   ALERT_COMMANDS,
   alertFromEvent,
   alertTriggerEventTypes,
+  alertPassId,
+  alertPassIdPrefix,
   alertsResolvedByPass,
   applyAlertCommand,
   isAlertTriggerEvent,

@@ -16,6 +16,17 @@ import { ApprovalDecisionHandlerRegistry } from '../src/modules/approvals/applic
 import { registerExpenseCommands } from '../src/modules/finance/application/commands/expense-commands.js';
 import { registerExpenseDecisions } from '../src/modules/finance/application/commands/expense-decisions.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
+import type { UnitOfWork } from '../src/platform/unit-of-work.js';
+import { publishDetectionEvent } from '../src/platform/events/detection-events.js';
+import { toDomainEvent } from '../src/platform/events/domain-event.js';
+import { codeEntityId } from '../src/platform/sync/code-entity-id.js';
+import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
+import {
+  EXPENSE_ATTACHMENT_MISSING_JOB_TYPE,
+  ExpenseAttachmentMissingJob,
+} from '../src/modules/finance/application/jobs/expense-attachment-missing-job.js';
+import { rolledBack } from './communication-test-kit.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -401,5 +412,190 @@ describe('P8-06 : décisions EXPENSE', { timeout: 60_000 }, () => {
     expect((await expenseRow(expense.id))?.status).toBe('PENDING_APPROVAL');
     expect(codeOf(await decide(dir, 'approve', expense.requestId!))).toBe('APPLIED');
     expect((await expenseRow(expense.id))?.status).toBe('APPROVED');
+  });
+
+  it('P9-07 : justificatif de dépense manquant — passe quotidienne à portée EXPENSE, résolue à l’arrivée de la pièce', async () => {
+    const site = await newPosSite(root.userId, zoneId);
+    const base = { categoryId: category.VETERINAIRE, siteId: site, paidNow: false };
+    // Au-dessus du seuil, l'enregistrement exige un justificatif **déclaré** ; ici l'un n'arrive jamais.
+    const missing = await record(
+      fin,
+      { ...base, amountXaf: 80_000, description: 'Sans pièce' },
+      { attachments: [freshUuid()] },
+    );
+    const cancelledExpense = await record(
+      fin,
+      { ...base, amountXaf: 80_000, description: 'Annulée' },
+      { attachments: [freshUuid()] },
+    );
+    const cancelResult = await run(
+      fin,
+      'finance.expense.cancel',
+      cancelledExpense.id,
+      at('11:00'),
+      { reason: 'Saisie en double' },
+    );
+    expect(codeOf(cancelResult), JSON.stringify(cancelResult)).toBe('APPLIED');
+    const photo = freshUuid();
+    const covered = await record(
+      fin,
+      { ...base, amountXaf: 80_000, description: 'Avec pièce' },
+      { attachments: [photo] },
+    );
+    await uploaded(photo, covered.id);
+    const small = await record(fin, { ...base, amountXaf: 5_000, description: 'Sous le seuil' });
+    const receivedAt = (await expenseRow(missing.id))!.received_at_server!;
+    const dayMs = 86_400_000;
+
+    const clock = new FixedClock(new Date(receivedAt.getTime() + 2 * dayMs));
+    const jobs = new JobHandlerRegistry();
+    new ExpenseAttachmentMissingJob(clock, new Uuidv7Generator(clock), jobs).onModuleInit();
+    // Créneau propre à l'exécution : un marqueur validé par une exécution antérieure ne masque jamais
+    // l'absence du marqueur publié ici.
+    const runSlot = freshUuid().slice(-8);
+    const runJob = (uow: UnitOfWork, name: string) =>
+      jobs.resolve(EXPENSE_ATTACHMENT_MISSING_JOB_TYPE)!(uow, {
+        scheduledFor: `${name}|${runSlot}`,
+      });
+    const mine = [missing.id, covered.id, small.id, cancelledExpense.id];
+    const detected = async (uow: UnitOfWork) =>
+      (
+        await uow
+          .selectFrom('platform_domain_events')
+          .selectAll()
+          .where('event_type', '=', 'AttachmentMissingDetected')
+          .where(
+            'aggregate_id',
+            'in',
+            mine.map((id) => toBin(id)),
+          )
+          .orderBy('seq')
+          .execute()
+      ).map((row) => toDomainEvent(row));
+    const alertOf = (uow: UnitOfWork, key: string) =>
+      uow
+        .selectFrom('communication_alerts')
+        .select(['status', 'resolution_kind', 'occurrences', 'last_pass_id'])
+        .where('dedup_key', '=', key)
+        .executeTakeFirst();
+
+    await rolledBack(async (uow) => {
+      // 2 jours après la réception : en deçà du délai de 7 jours, rien n'est signalé (le marqueur l'est).
+      await runJob(uow, 'early');
+      expect(await detected(uow)).toEqual([]);
+
+      // 100 jours après : hors de l'horizon de balayage de 90 jours (borne l'ensemble examiné).
+      clock.setTo(new Date(receivedAt.getTime() + 100 * dayMs));
+      await runJob(uow, 'beyond');
+      expect(await detected(uow)).toEqual([]);
+
+      // 7 jours après : seule la dépense au-dessus du seuil et sans pièce disponible l'est.
+      clock.setTo(new Date(receivedAt.getTime() + 7 * dayMs + 3_600_000));
+      await runJob(uow, 'late');
+      await runJob(uow, 'late'); // rejeu du même créneau : aucun doublon
+      const events = await detected(uow);
+      expect(events).toHaveLength(1); // ni `covered`, ni `small`, ni la dépense annulée
+      expect(events[0]!.aggregateId).toBe(missing.id);
+      expect(events[0]!.payload).toMatchObject({
+        document_type: 'EXPENSE',
+        document_id: missing.id,
+        days_missing: 7,
+        author_user_id: fin.userId,
+        site_id: site,
+        amount_xaf: 80_000,
+        threshold_days: 7,
+        pass_id: `ATTACHMENT_MISSING:EXPENSE:late|${runSlot}`,
+      });
+
+      // Une alerte du même type levée par une autre portée (réception) : le marqueur de la dépense
+      // ne la résout pas.
+      const receiptDoc = freshUuid();
+      await publishDetectionEvent(uow, idGenerator, {
+        eventType: 'AttachmentMissingDetected',
+        producerModule: 'procurement',
+        aggregateType: 'GOODS_RECEIPT',
+        aggregateId: receiptDoc,
+        occurredAt: clock.now(),
+        passId: 'ATTACHMENT_MISSING:GOODS_RECEIPT:late',
+        payload: {
+          document_type: 'GOODS_RECEIPT',
+          document_id: receiptDoc,
+          document_label: 'REC-TEST',
+          days_missing: 8,
+          author_user_id: fin.userId,
+          site_id: site,
+          business_day: '2026-10-17',
+        },
+      });
+      const receiptEvent = (
+        await uow
+          .selectFrom('platform_domain_events')
+          .selectAll()
+          .where('event_type', '=', 'AttachmentMissingDetected')
+          .where('aggregate_id', '=', toBin(receiptDoc))
+          .execute()
+      ).map((row) => toDomainEvent(row));
+      for (const event of [...events, ...receiptEvent]) {
+        await handleAlertEvent(uow, event, { idGenerator });
+      }
+      expect(await alertOf(uow, `ATTACHMENT_MISSING:${missing.id}`)).toMatchObject({
+        status: 'OPEN',
+        occurrences: 1,
+      });
+
+      // La pièce arrive ; la passe suivante ne revoit plus la dépense : son marqueur résout son alerte,
+      // jamais celle de la réception.
+      await uow
+        .insertInto('attachments_attachments')
+        .values({
+          id: toBin(freshUuid()),
+          owner_type: 'EXPENSE',
+          owner_id: toBin(missing.id),
+          kind: 'RECEIPT',
+          mime_type: 'image/jpeg',
+          size_bytes: 1_000,
+          uploaded_bytes: 1_000,
+          sha256: 'c'.repeat(64),
+          storage_key: `test/${missing.id}`,
+          upload_status: 'AVAILABLE',
+          captured_at: clock.now(),
+          occurred_at: clock.now(),
+          created_by: toBin(root.userId),
+        })
+        .execute();
+      clock.setTo(new Date(receivedAt.getTime() + 8 * dayMs + 3_600_000));
+      await runJob(uow, 'next-day');
+      const marker = (
+        await uow
+          .selectFrom('platform_domain_events')
+          .selectAll()
+          .where('event_type', '=', 'AlertDetectionPassCompleted')
+          .where(
+            'event_id',
+            '=',
+            toBin(
+              codeEntityId(
+                'ALERT_PASS_COMPLETED',
+                `ATTACHMENT_MISSING:ATTACHMENT_MISSING:EXPENSE:next-day|${runSlot}`,
+              ),
+            ),
+          )
+          .execute()
+      ).map((row) => toDomainEvent(row));
+      expect(marker).toHaveLength(1);
+      expect(marker[0]!.payload).toMatchObject({
+        alert_type: 'ATTACHMENT_MISSING',
+        scope: 'EXPENSE',
+      });
+      expect((await detected(uow)).length).toBe(1); // aucune nouvelle détection : la pièce est là
+      await handleAlertEvent(uow, marker[0]!, { idGenerator });
+      expect(await alertOf(uow, `ATTACHMENT_MISSING:${missing.id}`)).toMatchObject({
+        status: 'RESOLVED',
+        resolution_kind: 'PASS',
+      });
+      expect(await alertOf(uow, `ATTACHMENT_MISSING:${receiptDoc}`)).toMatchObject({
+        status: 'OPEN',
+      });
+    });
   });
 });

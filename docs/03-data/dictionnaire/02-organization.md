@@ -221,18 +221,18 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `sales.duplicate_payment_window_minutes` | 10 | AV-056 (minutes ; fenêtre de détection d'un doublon d'encaissement sans référence : même client, même montant ; client visible, l'appareil contrôle aussi localement) |
 | `sales.offline_over_allocation_allowed` | `false` | AV-025 (booléen JSON ; vente hors ligne au-delà de l'allocation, autorisée et signalée si vrai ; client visible, lu par l'appareil hors ligne ; réglable par site, `scope_type = SITE`) |
 | `sales.offline_unallocated_sale_signal` | `"WHEN_ALLOCATED"` | AV-166 (P5-11 ; chaîne JSON `WHEN_ALLOCATED`, `ALWAYS` ou `NEVER` : une vente hors ligne sans quota utilisable sur un emplacement partagé est signalée `ALLOCATION_EXCEEDED` si l'emplacement porte au moins un quota actif du produit, même épuisé (un quota reste actif jusqu'à sa libération ou sa révocation), toujours, ou jamais ; valeur absente ou inconnue : `WHEN_ALLOCATED` ; serveur, non client visible ; réglable par site, `scope_type = SITE`) |
-| `sales.undelivered_alert_days` | 7 | AV-132 (jours ; ancienneté au-delà de laquelle une vente confirmée non livrée est signalée, alerte en P9 ; serveur, non client visible) |
+| `sales.undelivered_alert_days` | 7 | AV-132, AV-451 (jours ; ancienneté au-delà de laquelle une vente confirmée non livrée est signalée, depuis la plus tardive de la confirmation et de la livraison demandée ; alerte `SALE_UNDELIVERED`, P9-07 ; entier ≥ 0, sinon 7 ; serveur, non client visible) |
 | `pricing.max_discount_pct.<ROLE>` | 0 / 5 / 15 | AV-026 |
 | `pricing.stale_rules_hours` | 24 | AV-063 |
-| `finance.cash_holding_max_xaf` | 200 000 | D09 §14 |
+| `finance.cash_holding_max_xaf` | 200 000 | D09 §14, AV-447 : plafond d'encaisse d'une caisse d'utilisateur, alerte `CASH_HOLDING_HIGH` (P9-07) ; solde strictement supérieur ; 0 désactive le critère ; entier ≥ 0, sinon 200 000 |
 | `finance.cash_sessions_per_day_max` | 0 = sans limite (visible de l'appareil ; révision « AV-154 (13/10/2026) » depuis 1) | AV-154 tranché : sessions de caisse par PDV et par jour métier ; une valeur ≥ 1 borne un site, une valeur invalide vaut « sans limite » |
 | `finance.cash_session_force_close_hours` | 24 | D05 §14 : au-delà, session signalée et clôture d'office possible |
 | `finance.cash_variance_critical_xaf` | 10 000 | D13 : gravité critique de l'alerte d'écart de caisse |
-| `finance.cash_variance_tolerance_xaf` | 0 | AV-057 : tout écart est validé ; un écart dans la tolérance est validé d'office |
+| `finance.cash_variance_tolerance_xaf` | 0 | AV-057 : tout écart est validé ; un écart dans la tolérance est validé d'office et n'est pas une alerte (`tolerated`, AV-450, P9-07) |
 | `finance.cash_transfer_unreceived_hours` | 48 | AV-158 : alerte sur une remise de fonds envoyée et jamais reçue (tâche `finance.cash_transfers.unreceived_check`, P5-15 ; entier > 0, sinon 48) |
 | `finance.cash_transfer_allowed_pairs` | `{CAISSE_PDV: [CAISSE_CENTRALE, BANQUE], CAISSE_UTILISATEUR: [CAISSE_CENTRALE, BANQUE], CAISSE_CENTRALE: [CAISSE_PDV, BANQUE], BANQUE: [CAISSE_CENTRALE], MOBILE_MONEY: [CAISSE_CENTRALE, BANQUE]}` | AV-158 (P5-15) : paires de comptes admises pour une remise (type source → types destinataires) ; téléchargé sur l'appareil ; forme invalide → défaut du domaine |
 | `finance.cash_transfer_series_code` | `SIEGE` | AV-176 (P5-15) : code de la série globale `RMF-{CODE}-AAAA-nnnnnn` d'une remise entre comptes sans site (1 à 10 lettres majuscules ou chiffres) |
-| `finance.cash_holding_max_days` | 3 | D09 §14 : jours d'encaisse sans remise avant l'alerte `CASH_HOLDING_HIGH` |
+| `finance.cash_holding_max_days` | 3 | D09 §14, AV-447 : jours métier d'encaisse sans remise avant l'alerte `CASH_HOLDING_HIGH` (P9-07) ; strictement plus ; 0 désactive le critère ; entier ≥ 0, sinon 3 |
 | `finance.supplier_payment_approval_xaf` | 500 000 | AV-055 ; BR-FIN-033 : au-delà (strictement), validation de la Direction avant décaissement (ADR-043 §6) |
 | `finance.expense_approval_threshold_xaf` | 50 000 (visible de l'appareil) | AV-058 : au-delà (strictement), la dépense attend une validation (ADR-042 §2) |
 | `finance.expense_photo_threshold_xaf` | 10 000 (visible de l'appareil) | AV-058 : au-delà (strictement), justificatif exigé |
@@ -248,3 +248,19 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale |
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
 | `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |
+| `communication.push_group_minutes` | 15 | AV-416, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
+| `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé |
+| `communication.alert_retention_days` | 730 | AV-437 (P9-03) : conservation d'une alerte résolue, en jours |
+| `communication.notification_retention_days` | 90 | AV-437 (P9-03) : conservation d'une notification lue, en jours |
+| `approvals.pending_long_hours` | 24 | AV-408 (P9-03) : délai au-delà duquel une demande de validation en attente est signalée |
+| `attachments.missing_alert_days` | 7 | AV-407, AV-449 (P9-03, P9-07) : jours sans justificatif avant l'alerte `ATTACHMENT_MISSING` ; compté depuis la réception par le serveur ; 0 désactive l'alerte et ferme celles qui sont ouvertes ; entier ≥ 0, sinon 7 |
+| `attachments.missing_alert_horizon_days` | 90 | AV-449 (P9-07) : horizon du balayage des justificatifs manquants, en jours ; au moins le délai plus un jour ; entier > 0, sinon 90 |
+| `procurement.receipt_incomplete_alert_days` | 2 | BR-APP-015, AV-410 (P9-03) : jours après lesquels une réception incomplète est signalée |
+| `inventory.high_loss_alert_xaf` | 50 000 | AV-406 (P9-03) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour |
+| `sales.high_loss_alert_sales_pct` | 5 | AV-406 (P9-03) : part des ventes du jour au-delà de laquelle une perte est signalée, en % |
+| `inventory.transfer_not_received_hours` | 48 | AV-065 (P9-03) : délai de l'alerte `TRANSFER_NOT_RECEIVED` |
+| `inventory.lot_expiring_days` | 15 | AV-065 (P9-03) : jours avant péremption pour l'alerte `LOT_EXPIRING` |
+| `sales.commercial_working_days` | `["1","2","3","4","5","6"]` | BR-TER-013, AV-409 (P9-03) : jours ouvrés ISO (1 = lundi) suivis par l'alerte `INACTIVE_COMMERCIAL` ; liste vide ou invalide : lundi à samedi |
+| `sales.inactive_commercial_role_codes` | `["COMMERCIAL_TERRAIN"]` | BR-TER-013, AV-444 (P9-07) : rôles suivis par l'alerte `INACTIVE_COMMERCIAL` |
+| `sync.stale_hours` | 24 | D13 §7.1 (P9-03) : durée sans synchronisation au-delà de laquelle un appareil est signalé |
+| `sync.error_alert_window_hours` | 24 | AV-442 (P9-03) : fenêtre de la passe qui signale les erreurs de synchronisation |

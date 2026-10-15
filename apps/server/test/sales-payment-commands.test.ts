@@ -461,6 +461,17 @@ describe('sales.payment.* (P4-08)', () => {
     body: Record<string, unknown>,
     actor: Actor = finance,
   ) => run(actor, commandType, 'CUSTOMER_PAYMENT', paymentId, occurredAt, body);
+  /** Signaux d'alerte (P9-07) publiés pour un encaissement : événements de ce type, du plus ancien au plus récent. */
+  const signalsOf = async (paymentId: string, eventType: string) =>
+    (
+      await db
+        .selectFrom('platform_domain_events')
+        .select('payload')
+        .where('event_type', '=', eventType)
+        .where('aggregate_id', '=', toBin(paymentId))
+        .orderBy('seq')
+        .execute()
+    ).map((row) => row.payload as Record<string, unknown>);
   const paymentRow = (id: string) =>
     db
       .selectFrom('sales_customer_payments')
@@ -686,6 +697,19 @@ describe('sales.payment.* (P4-08)', () => {
     expect(fromBin(row.intended_sale_id!)).toBe(s2.saleId);
     expect(await allocationsOfPayment(suspect.id)).toHaveLength(0);
     expect(await saleRow(s2.saleId)).toMatchObject({ amount_paid_xaf: 0 });
+    // P9-07 : l'encaissement mis de côté est signalé à la Finance ; l'original, légitime, ne l'est pas.
+    expect(await signalsOf(original.id, 'PaymentFlaggedDuplicate')).toEqual([]);
+    expect(await signalsOf(suspect.id, 'PaymentFlaggedDuplicate')).toEqual([
+      expect.objectContaining({
+        payment_id: suspect.id,
+        reason: 'SAME_REFERENCE',
+        duplicate_of_payment_id: original.id,
+        amount_xaf: 2000,
+        customer_id: customer,
+        method_code: 'MOBILE_MONEY_ORANGE',
+      }),
+    ]);
+    expect(await signalsOf(suspect.id, 'PaymentDuplicateDecided')).toEqual([]);
 
     const requestId = await approvalOfPayment(suspect.id);
     expect(code(await decide('approve', requestId, at('11:00:00')))).toBe(
@@ -701,6 +725,10 @@ describe('sales.payment.* (P4-08)', () => {
     expect(after.reference_normalized).toBe(`${reference}9`.replace(/\s/g, '').toUpperCase());
     expect(await saleRow(s2.saleId)).toMatchObject({ payment_status: 'PAID' });
     expect(await verifyCashLedger(db)).toMatchObject({ ok: true });
+    // P9-07 : la décision de la Finance ferme l'alerte du doublon (événement de résolution).
+    expect(await signalsOf(suspect.id, 'PaymentDuplicateDecided')).toEqual([
+      expect.objectContaining({ payment_id: suspect.id, decision: 'APPROVED' }),
+    ]);
 
     // Un autre doublon, rejeté : aucun effet, statut terminal.
     const again = await pay(
@@ -718,6 +746,10 @@ describe('sales.payment.* (P4-08)', () => {
       status: 'REJECTED',
       cash_movement_id: null,
     });
+    expect(await signalsOf(again.id, 'PaymentFlaggedDuplicate')).toHaveLength(1);
+    expect(await signalsOf(again.id, 'PaymentDuplicateDecided')).toEqual([
+      expect.objectContaining({ payment_id: again.id, decision: 'REJECTED' }),
+    ]);
   });
 
   // --- 4. Annulation (BR-FIN-006) -----------------------------------------------------------------

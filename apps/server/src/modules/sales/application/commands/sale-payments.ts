@@ -24,6 +24,7 @@ import type { DocumentSequenceService } from '../../../../platform/document-sequ
 import type { CommandHandlerOutcome } from '../../../../platform/sync/command-handler-registry.js';
 import type { CommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
+import { publishPaymentFlaggedDuplicate } from './payment-alert-events.js';
 import { fromBin, toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { requestApproval } from '../../../approvals/application/public/index.js';
 import {
@@ -451,6 +452,23 @@ export async function writePayments(
           similarPaymentId: payment.probableDuplicateOfPaymentId,
         },
       });
+      await publishPaymentFlaggedDuplicate(uow, deps.idGenerator, {
+        paymentId: payment.id,
+        docNumber,
+        reason: 'PROBABLE_SAME_AMOUNT',
+        otherPaymentId: payment.probableDuplicateOfPaymentId,
+        methodCode: payment.input.methodCode,
+        amountXaf: payment.input.amountXaf,
+        externalReference: payment.input.reference ?? null,
+        customerId: context.customerId,
+        saleId: context.saleId,
+        receivedByUserId: context.userId,
+        siteId: context.site.id,
+        zoneId: context.zoneId,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        capturedOffline: context.offline,
+      });
       warnings.add('PAYMENT_SUSPECT_DUPLICATE');
     }
   }
@@ -514,6 +532,23 @@ export async function writePayments(
         referenceNormalized: payment.referenceNormalized,
         duplicateOfPaymentId: payment.duplicateOfPaymentId,
       },
+    });
+    await publishPaymentFlaggedDuplicate(uow, deps.idGenerator, {
+      paymentId: payment.id,
+      docNumber,
+      reason: 'SAME_REFERENCE',
+      otherPaymentId: payment.duplicateOfPaymentId,
+      methodCode: payment.input.methodCode,
+      amountXaf: payment.input.amountXaf,
+      externalReference: payment.input.reference ?? null,
+      customerId: context.customerId,
+      saleId: context.saleId,
+      receivedByUserId: context.userId,
+      siteId: context.site.id,
+      zoneId: context.zoneId,
+      occurredAt: at,
+      commandId: envelope.command_id,
+      capturedOffline: context.offline,
     });
     warnings.add('PAYMENT_SUSPECT_DUPLICATE');
   }

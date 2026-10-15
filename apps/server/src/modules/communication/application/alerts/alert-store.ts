@@ -308,7 +308,7 @@ export async function resolveByPass(
         status: row.status as AlertStatus,
         lastPassId: row.last_pass_id,
       })),
-      { alertType: action.alertType, passId: action.passId },
+      { alertType: action.alertType, passId: action.passId, scope: action.scope },
     ),
   );
   let resolved = 0;

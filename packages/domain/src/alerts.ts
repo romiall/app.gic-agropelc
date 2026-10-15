@@ -167,6 +167,11 @@ const nonZero =
   (payload: AlertEventPayload): boolean =>
     typeof payload[key] === 'number' && payload[key] !== 0;
 
+const nonZeroUntolerated =
+  (key: string) =>
+  (payload: AlertEventPayload): boolean =>
+    nonZero(key)(payload) && payload['tolerated'] !== true;
+
 export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
   STOCK_LOW: def({
     code: 'STOCK_LOW',
@@ -465,9 +470,17 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     teamManager: false,
     approvers: false,
     escalationHours: 4,
-    raisedBy: [{ eventType: 'CashVarianceDetected', when: nonZero('variance_xaf') }],
-    resolvedBy: [{ eventType: 'CashSessionValidated' }],
-    settings: ['finance.cash_variance_critical_xaf'],
+    // P9-07 : un écart dans la tolérance (`tolerated`) est un constat, pas une alerte : la validation
+    // d'office n'émet pas `CashSessionValidated`, l'alerte ne pourrait jamais se résoudre.
+    raisedBy: [{ eventType: 'CashVarianceDetected', when: nonZeroUntolerated('variance_xaf') }],
+    // Validée par la Finance, ou validée d'office à la clôture (écarts dans la tolérance : aucun
+    // `CashSessionValidated`, mais `CashSessionClosed` porte `auto_validated`) ; la tolérance peut avoir
+    // changé entre l'ouverture (alerte levée) et la clôture.
+    resolvedBy: [
+      { eventType: 'CashSessionValidated' },
+      { eventType: 'CashSessionClosed', when: bool('auto_validated', true) },
+    ],
+    settings: ['finance.cash_variance_critical_xaf', 'finance.cash_variance_tolerance_xaf'],
     messageTitle: 'Écart de caisse',
     messageFields: [
       { key: 'variance_xaf', label: 'Écart', kind: 'xaf' },
@@ -671,7 +684,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'InactiveCommercialDetected' }],
     resolvedBy: [],
-    settings: ['sales.commercial_working_days'],
+    settings: ['sales.commercial_working_days', 'sales.inactive_commercial_role_codes'],
     messageTitle: 'Commercial sans activité',
     messageFields: [
       { key: 'user_label', label: 'Commercial' },
@@ -750,7 +763,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { eventType: 'CustomerDuplicateSuspected', recipientRoles: ['RESP_COMMERCIAL'] },
       { eventType: 'GoodsReceiptQuarantined', recipientRoles: ['RESP_ACHATS'] },
     ],
-    resolvedBy: [],
+    // La décision de la Finance sur un encaissement en doublon ferme aussi l'alerte (P9-07).
+    resolvedBy: [{ eventType: 'PaymentDuplicateDecided' }],
     settings: [],
     messageTitle: 'Doublon suspecté',
     messageFields: [
@@ -881,7 +895,11 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'AttachmentMissingDetected' }],
     resolvedBy: [],
-    settings: ['attachments.missing_alert_days'],
+    settings: [
+      'attachments.missing_alert_days',
+      'attachments.missing_alert_horizon_days',
+      'finance.expense_photo_threshold_xaf',
+    ],
     messageTitle: 'Pièce justificative non reçue',
     messageFields: [
       { key: 'document_label', label: 'Document' },
@@ -1002,7 +1020,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     subjectType: 'SALE',
     actionScreen: 'ECR-VEN-03',
     recipientRoles: ['RESP_COMMERCIAL'],
-    ownerFields: ['commercial_user_id'],
+    ownerFields: ['commercial_user_id', 'seller_user_id'],
     teamManager: false,
     approvers: false,
     escalationHours: null,
@@ -1088,6 +1106,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     messageTitle: 'Écart de réconciliation de la trésorerie',
     messageFields: [
       { key: 'business_day', label: 'Jour', kind: 'date' },
+      { key: 'account_label', label: 'Compte' },
+      { key: 'sections_label', label: 'Rubriques' },
+      { key: 'breaches', label: 'Écarts', kind: 'integer' },
       { key: 'difference_xaf', label: 'Différence', kind: 'xaf' },
     ],
     sourceAvailable: true,

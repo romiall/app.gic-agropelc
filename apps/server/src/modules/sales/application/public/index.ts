@@ -6,6 +6,8 @@ export { customerOutstandingXaf, listReceivables, summarizeReceivables } from '.
 // P5-14 : vendeur de chaque encaissement (sous-totaux par vendeur d'une session de caisse).
 export { paymentReceivers } from './payment-receivers.js';
 export type { ReceivableLine, ReceivableFilter, ReceivableAgingSummary } from './receivables.js';
+export { listUndeliveredSales } from './undelivered-sales.js';
+export type { UndeliveredSale } from './undelivered-sales.js';
 export {
   cashedByGroup,
   cashedSummary,

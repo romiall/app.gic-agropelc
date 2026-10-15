@@ -75,6 +75,16 @@ export function nextBusinessDay(businessDay: string): string {
 }
 
 /**
+ * Jour de la semaine ISO d'un jour métier : 1 = lundi … 7 = dimanche. Sert aux jours ouvrés
+ * paramétrés (`sales.commercial_working_days`, BR-TER-013).
+ */
+export function isoWeekdayOfBusinessDay(businessDay: string): number {
+  const { year, month, day } = parseBusinessDay(businessDay);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+/**
  * Jour métier décalé de `days` jours (négatif possible) : péremption d'une collecte (AV-122),
  * échéances d'incubation (BR-INC-008). Douala n'a pas d'heure d'été : un jour = 24 h.
  */

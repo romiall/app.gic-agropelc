@@ -43,6 +43,16 @@ import {
   RECEIVABLES_OVERDUE_JOB_TYPE,
   ReceivablesOverdueJob,
 } from '../src/modules/sales/application/jobs/receivables-overdue-job.js';
+import {
+  UNDELIVERED_SALES_JOB_TYPE,
+  UndeliveredSalesJob,
+} from '../src/modules/sales/application/jobs/undelivered-sales-job.js';
+import {
+  INACTIVE_COMMERCIAL_JOB_TYPE,
+  InactiveCommercialJob,
+} from '../src/modules/sales/application/jobs/inactive-commercial-job.js';
+import type { UnitOfWork } from '../src/platform/unit-of-work.js';
+import { rolledBack } from './communication-test-kit.js';
 import { periodRevenue } from '../src/modules/sales/application/public/index.js';
 import { commercialEffort } from '../src/modules/crm/application/public/index.js';
 import {
@@ -774,6 +784,25 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     expect(byId.get(second)).toMatchObject({ status: 'SUSPECT_DUPLICATE', cash_movement_id: null });
     expect(fromBin(byId.get(second)!.duplicate_of_payment_id!)).toBe(first);
     expect(await balanceOf(momoAccount)).toBe(momoBefore + 5000);
+    // P9-07 : l'encaissement mis de côté est signalé à la Finance (alerte DUPLICATE_SUSPECTED) ; le
+    // premier, légitime, ne l'est pas.
+    const flagged = await db
+      .selectFrom('platform_domain_events')
+      .select(['aggregate_id', 'payload'])
+      .where('event_type', '=', 'PaymentFlaggedDuplicate')
+      .where('aggregate_id', 'in', [toBin(first), toBin(second)])
+      .execute();
+    expect(flagged).toHaveLength(1);
+    expect(fromBin(flagged[0]!.aggregate_id)).toBe(second);
+    expect(flagged[0]!.payload).toMatchObject({
+      kind: 'Encaissement',
+      reason: 'SAME_REFERENCE',
+      payment_id: second,
+      duplicate_of_payment_id: first,
+      amount_xaf: 5000,
+      customer_id: customer,
+      site_id: siteId,
+    });
   });
 
   it('AT-032 : créance échue — événement ReceivableOverdue ; règlement affecté aux plus anciennes', async () => {
@@ -801,13 +830,17 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
     const jobClock = new FixedClock(new Date('2026-10-10T06:00:00.000Z'));
     new ReceivablesOverdueJob(jobClock, new Uuidv7Generator(jobClock), jobs).onModuleInit();
     const handler = jobs.resolve(RECEIVABLES_OVERDUE_JOB_TYPE)!;
-    await db.transaction().execute((trx) => handler(trx, {}));
-    const events = await db
-      .selectFrom('platform_domain_events')
-      .select('aggregate_id')
-      .where('event_type', '=', 'ReceivableOverdue')
-      .where('aggregate_id', 'in', [olderSale!.id, newerSale!.id])
-      .execute();
+    // Passe en transaction annulée : son marqueur de fin de passe (type d'alerte partagé) n'est jamais
+    // validé sur la base partagée avec les tests des autres fichiers (P9-07).
+    const events = await rolledBack(async (uow) => {
+      await handler(uow, {});
+      return uow
+        .selectFrom('platform_domain_events')
+        .select('aggregate_id')
+        .where('event_type', '=', 'ReceivableOverdue')
+        .where('aggregate_id', 'in', [olderSale!.id, newerSale!.id])
+        .execute();
+    });
     expect(events.map((event) => fromBin(event.aggregate_id))).toEqual([fromBin(olderSale!.id)]);
 
     // Un règlement de 1 500 solde d'abord la plus ancienne.
@@ -822,5 +855,226 @@ describe('P4-13 : tests d’acceptation des ventes (parts P4)', () => {
       payment_status: 'PARTIALLY_PAID',
       amount_paid_xaf: 500,
     });
+  });
+
+  /**
+   * P9-07 : passes de détection d'alertes d'état de `sales`. Chaque passe s'exécute dans une transaction
+   * annulée (le marqueur d'une passe commité résoudrait les alertes d'une base partagée) ; les lectures
+   * se font dans la même transaction.
+   */
+  const detectionEvents = (uow: UnitOfWork, types: readonly string[], ids: readonly string[]) =>
+    uow
+      .selectFrom('platform_domain_events')
+      .select(['event_type', 'aggregate_id', 'payload', 'event_id'])
+      .where('event_type', 'in', [...types])
+      .where(
+        'aggregate_id',
+        'in',
+        ids.map((id) => toBin(id)),
+      )
+      .orderBy('seq')
+      .execute();
+  const passMarkers = (uow: UnitOfWork, alertType: string, passId: string) =>
+    uow
+      .selectFrom('platform_domain_events')
+      .select(['payload'])
+      .where('event_type', '=', 'AlertDetectionPassCompleted')
+      .where((eb) =>
+        eb(
+          eb.fn('JSON_UNQUOTE', [eb.fn('JSON_EXTRACT', ['payload', eb.val('$.pass_id')])]),
+          '=',
+          passId,
+        ),
+      )
+      .where((eb) =>
+        eb(
+          eb.fn('JSON_UNQUOTE', [eb.fn('JSON_EXTRACT', ['payload', eb.val('$.alert_type')])]),
+          '=',
+          alertType,
+        ),
+      )
+      .execute();
+  /** Créneau de passe propre à l'exécution (un marqueur ancien ne masque jamais un marqueur absent). */
+  const RUN_SLOT = freshUuid().slice(-8);
+  const slotOf = (clockAt: string) => `${clockAt}|${RUN_SLOT}`;
+  const jobHandler = (
+    jobType: string,
+    clockAt: string,
+    make: (clock: FixedClock, registry: JobHandlerRegistry) => void,
+  ) => {
+    const registry = new JobHandlerRegistry();
+    const clock = new FixedClock(new Date(clockAt));
+    make(clock, registry);
+    return registry.resolve(jobType)!;
+  };
+
+  it('P9-07 : créance échue en passe à identité — marqueur, zone, rejeu du même créneau sans doublon', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 3);
+    const customer = await newCustomer(sed, { credit: true });
+    const orderId = freshUuid();
+    await ok(sed, 'sales.order.place', 'SALES_ORDER', orderId, '2026-09-01T09:00:00.000Z', {
+      customerId: customer,
+      fulfilmentLocationId: storeId,
+      lines: [line(product, 1)],
+    });
+    const [sale] = await salesOf(orderId);
+    const saleId = fromBin(sale!.id);
+    const runAt = (clockAt: string, scheduledFor: string) =>
+      rolledBack(async (uow) => {
+        const handler = jobHandler(RECEIVABLES_OVERDUE_JOB_TYPE, clockAt, (clock, registry) =>
+          new ReceivablesOverdueJob(clock, new Uuidv7Generator(clock), registry).onModuleInit(),
+        );
+        await handler(uow, { scheduledFor });
+        await handler(uow, { scheduledFor }); // rejeu du même créneau
+        const events = await detectionEvents(uow, ['ReceivableOverdue'], [saleId]);
+        const markers = await passMarkers(
+          uow,
+          'OVERDUE_RECEIVABLE',
+          `OVERDUE_RECEIVABLE:${scheduledFor}`,
+        );
+        return { events, markers };
+      });
+    const first = await runAt('2026-10-10T06:00:00.000Z', slotOf('2026-10-10T06:00:00.000Z'));
+    expect(first.events).toHaveLength(1);
+    expect(first.markers).toHaveLength(1);
+    const payload = first.events[0]!.payload as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      sale_id: saleId,
+      pass_id: `OVERDUE_RECEIVABLE:${slotOf('2026-10-10T06:00:00.000Z')}`,
+      business_day: '2026-10-10',
+      zone_id: fromBin((await saleRow(saleId)).zone_id),
+    });
+    expect(first.markers[0]!.payload).toMatchObject({
+      alert_type: 'OVERDUE_RECEIVABLE',
+      business_day: '2026-10-10',
+    });
+  });
+
+  it('P9-07 : vente confirmée non livrée — plus de N jours, livraison complète résolue par la passe suivante', async () => {
+    const product = await sellable(1000);
+    await stock(product.id, 3);
+    const customer = await newCustomer(sed, { credit: true });
+    const orderId = freshUuid();
+    await ok(sed, 'sales.order.place', 'SALES_ORDER', orderId, at('08:00:00'), {
+      customerId: customer,
+      fulfilmentLocationId: storeId,
+      lines: [line(product, 3)],
+    });
+    const [sale] = await salesOf(orderId);
+    const saleId = fromBin(sale!.id);
+    const pass = (clockAt: string) =>
+      rolledBack(async (uow) => {
+        const handler = jobHandler(UNDELIVERED_SALES_JOB_TYPE, clockAt, (clock, registry) =>
+          new UndeliveredSalesJob(clock, new Uuidv7Generator(clock), registry).onModuleInit(),
+        );
+        await handler(uow, { scheduledFor: slotOf(clockAt) });
+        return {
+          events: await detectionEvents(uow, ['SaleUndeliveredDetected'], [saleId]),
+          markers: await passMarkers(
+            uow,
+            'SALE_UNDELIVERED',
+            `SALE_UNDELIVERED:${slotOf(clockAt)}`,
+          ),
+        };
+      });
+
+    // 7 jours après la vente : exactement le seuil, aucune alerte ; le marqueur est publié.
+    const atSeuil = await pass('2026-10-27T06:30:00.000Z');
+    expect(atSeuil.events).toEqual([]);
+    expect(atSeuil.markers).toHaveLength(1);
+    // 8 jours : plus de 7 jours.
+    const late = await pass('2026-10-28T06:30:00.000Z');
+    expect(late.events).toHaveLength(1);
+    expect(late.events[0]!.payload).toMatchObject({
+      sale_id: saleId,
+      days_undelivered: 8,
+      threshold_days: 7,
+      sale_day: DAY,
+      seller_user_id: sed.userId,
+    });
+
+    // Livraison complète : la vente n'est plus revue, la passe suivante la résout par le marqueur.
+    const orderLineId = await orderLineOf(orderId);
+    await ok(keeper, 'sales.order.fulfil', 'DELIVERY_NOTE', freshUuid(), at('15:00:00'), {
+      orderId,
+      lines: [{ orderLineId, quantityBase: 3 }],
+    });
+    const delivered = await pass('2026-10-29T06:30:00.000Z');
+    expect(delivered.events).toEqual([]);
+    expect(delivered.markers).toHaveLength(1);
+  });
+
+  it('P9-07 : commerciaux inactifs — jour ouvré examiné, jour non ouvré sans marqueur, activité comptée', async () => {
+    // `terrain` a vendu le 20/10 (AT-018) ; `idle` est affecté avant et n'a rien fait.
+    const idle = await db.transaction().execute(async (trx) => {
+      const userId = await insertTestUser(trx);
+      await assignTestRole(trx, userId, await roleId('COMMERCIAL_TERRAIN'), policyAdmin.userId, {
+        scopeType: 'ZONE',
+        scopeZoneId: zoneId,
+      });
+      return userId;
+    });
+    // Affectations qui ne comptent pas pour le jour examiné (le 20/10, qui débute le 19/10 à 23:00 UTC) :
+    // débutée dans la journée, échue la veille, révoquée la veille.
+    const withAssignment = async (options: {
+      validFrom?: Date;
+      validTo?: Date;
+      revokedAt?: Date;
+    }) =>
+      db.transaction().execute(async (trx) => {
+        const userId = await insertTestUser(trx);
+        await assignTestRole(trx, userId, await roleId('COMMERCIAL_TERRAIN'), policyAdmin.userId, {
+          scopeType: 'ZONE',
+          scopeZoneId: zoneId,
+          ...options,
+        });
+        return userId;
+      });
+    const startsLater = await withAssignment({ validFrom: new Date('2026-10-20T10:00:00.000Z') });
+    const expired = await withAssignment({ validTo: new Date('2026-10-19T12:00:00.000Z') });
+    const revoked = await withAssignment({ revokedAt: new Date('2026-10-19T12:00:00.000Z') });
+    const pass = (clockAt: string) =>
+      rolledBack(async (uow) => {
+        const handler = jobHandler(INACTIVE_COMMERCIAL_JOB_TYPE, clockAt, (clock, registry) =>
+          new InactiveCommercialJob(clock, new Uuidv7Generator(clock), registry).onModuleInit(),
+        );
+        await handler(uow, { scheduledFor: slotOf(clockAt) });
+        return {
+          events: await detectionEvents(
+            uow,
+            ['InactiveCommercialDetected'],
+            [terrain.userId, idle, startsLater, expired, revoked],
+          ),
+          markers: await passMarkers(
+            uow,
+            'INACTIVE_COMMERCIAL',
+            `INACTIVE_COMMERCIAL:${slotOf(clockAt)}`,
+          ),
+        };
+      });
+
+    // Mercredi 21/10 à 08:00 : le jour examiné est le mardi 20/10, jour ouvré.
+    const worked = await pass('2026-10-21T07:00:00.000Z');
+    const flagged = worked.events.map((event) => fromBin(event.aggregate_id));
+    expect(flagged).toContain(idle);
+    expect(flagged).not.toContain(terrain.userId);
+    for (const notTracked of [startsLater, expired, revoked]) {
+      expect(flagged).not.toContain(notTracked);
+    }
+    expect(worked.markers).toHaveLength(1);
+    const event = worked.events.find((e) => fromBin(e.aggregate_id) === idle)!;
+    expect(event.payload).toMatchObject({
+      user_id: idle,
+      inactive_day: '2026-10-20',
+      business_day: '2026-10-20',
+      role_code: 'COMMERCIAL_TERRAIN',
+      zone_id: zoneId,
+    });
+
+    // Lundi 26/10 : le jour examiné est le dimanche 25/10, non ouvré : ni événement ni marqueur.
+    const weekend = await pass('2026-10-26T07:00:00.000Z');
+    expect(weekend.events).toEqual([]);
+    expect(weekend.markers).toEqual([]);
   });
 });

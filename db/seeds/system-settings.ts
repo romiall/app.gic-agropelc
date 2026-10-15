@@ -367,6 +367,12 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     ref: 'D13 §7.1, AV-407',
   },
   {
+    key: 'attachments.missing_alert_horizon_days',
+    value: 90,
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-449',
+  },
+  {
     key: 'procurement.receipt_incomplete_alert_days',
     value: 2,
     isClientVisible: false,
@@ -402,6 +408,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     value: ['1', '2', '3', '4', '5', '6'],
     isClientVisible: false,
     ref: 'BR-TER-013, AV-409',
+  },
+  // AV-444 : rôles suivis par l'alerte d'inactivité (BR-TER-013 dit « commercial terrain »).
+  {
+    key: 'sales.inactive_commercial_role_codes',
+    value: ['COMMERCIAL_TERRAIN'],
+    isClientVisible: false,
+    ref: 'BR-TER-013, AV-444',
   },
   { key: 'sync.stale_hours', value: 24, isClientVisible: false, ref: 'D13 §7.1' },
   { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-442' },

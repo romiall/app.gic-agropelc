@@ -1,24 +1,23 @@
 /**
  * `finance.cash_transfers.unreceived_check` (P5-15 ; AV-158 : alerte à 48 h ; D13 §7.1
- * `CASH_TRANSFER_NOT_RECEIVED`). Publie un événement `CashTransferUnreceived` par remise **envoyée et
- * jamais reçue ni annulée** depuis plus de `finance.cash_transfer_unreceived_hours` heures (48 par
- * défaut, une valeur invalide revient au défaut), au plus un par remise et par jour métier
- * (rejouable). Même patron que `inventory.allocations.expiry_daily`. L'alerte elle-même (consommateur
- * NOT) relève de P9 ; la planification de l'ordonnanceur ou du déploiement. Aucune remise n'est
- * modifiée.
+ * `CASH_TRANSFER_NOT_RECEIVED` ; P9-07 : passe de détection à identité, ADR-071 §3). Publie un événement
+ * `CashTransferUnreceived` par remise **envoyée et jamais reçue ni annulée** depuis plus de
+ * `finance.cash_transfer_unreceived_hours` heures (48 par défaut, une valeur invalide revient au défaut),
+ * puis le marqueur de fin de passe : l'alerte d'état se résout quand la remise n'est plus revue
+ * (reçue, annulée, écart clos). La tâche est horaire : un événement par remise et par passe, le
+ * compteur d'occurrences compte des heures. Aucune remise n'est modifiée.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import {
-  businessDayOf,
-  businessDayStartUtc,
-  isTransferUnreceived,
-  type Clock,
-  type IdGenerator,
-} from '@gic/domain';
+import { businessDayOf, isTransferUnreceived, type Clock, type IdGenerator } from '@gic/domain';
 import { CLOCK } from '../../../../platform/clock.provider.js';
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
-import { jsonValue } from '../../../../platform/kysely/json-value.js';
-import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, fromBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
+import {
+  detectionPassId,
+  passSlotOf,
+  publishDetectionEvent,
+  publishPassCompleted,
+} from '../../../../platform/events/detection-events.js';
 import {
   JOB_HANDLER_REGISTRY,
   type JobHandlerRegistry,
@@ -38,10 +37,10 @@ export class CashTransferUnreceivedJob implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.registry.register(CASH_TRANSFER_UNRECEIVED_JOB_TYPE, async (uow) => {
+    this.registry.register(CASH_TRANSFER_UNRECEIVED_JOB_TYPE, async (uow, payload) => {
       const now = this.clock.now();
       const today = businessDayOf(now);
-      const dayStart = businessDayStartUtc(today);
+      const passId = detectionPassId('CASH_TRANSFER_NOT_RECEIVED', passSlotOf(payload, now));
       const hours = await cashTransferUnreceivedHoursAt(uow, now);
       const threshold = new Date(now.getTime() - hours * 3_600_000);
       const late = await uow
@@ -66,44 +65,38 @@ export class CashTransferUnreceivedJob implements OnModuleInit {
       for (const transfer of late) {
         // Filet : même règle que l'appareil et l'indicateur « en transit » (bord inclus).
         if (!isTransferUnreceived(transfer.sent_at, now, hours)) continue;
-        const already = await uow
-          .selectFrom('platform_domain_events')
-          .select('seq')
-          .where('event_type', '=', 'CashTransferUnreceived')
-          .where('aggregate_type', '=', 'CASH_TRANSFER')
-          .where('aggregate_id', '=', transfer.id)
-          .where('occurred_at', '>=', dayStart)
-          .executeTakeFirst();
-        if (already) continue;
-        await uow
-          .insertInto('platform_domain_events')
-          .values({
-            event_id: toBin(this.idGenerator.newId()),
-            event_type: 'CashTransferUnreceived',
-            producer_module: 'finance',
-            aggregate_type: 'CASH_TRANSFER',
-            aggregate_id: transfer.id,
-            occurred_at: now,
-            payload: jsonValue({
-              transfer_id: fromBin(transfer.id),
-              doc_number: transfer.doc_number,
-              from_account_id: fromBin(transfer.from_account_id),
-              to_account_id: fromBin(transfer.to_account_id),
-              amount_sent_xaf: Number(transfer.amount_sent_xaf),
-              sent_at: transfer.sent_at.toISOString(),
-              sent_by: fromBin(transfer.sent_by),
-              carrier_user_id: fromBinOrNull(transfer.carrier_user_id),
-              carrier_name: transfer.carrier_name,
-              hours_elapsed: Math.floor((now.getTime() - transfer.sent_at.getTime()) / 3_600_000),
-              unreceived_hours: hours,
-              site_id: fromBinOrNull(transfer.site_id),
-              business_day: today,
-            }),
-            command_id: null,
-          })
-          .execute();
-        published += 1;
+        const inserted = await publishDetectionEvent(uow, this.idGenerator, {
+          eventType: 'CashTransferUnreceived',
+          producerModule: 'finance',
+          aggregateType: 'CASH_TRANSFER',
+          aggregateId: fromBin(transfer.id),
+          occurredAt: now,
+          passId,
+          payload: {
+            transfer_id: fromBin(transfer.id),
+            doc_number: transfer.doc_number,
+            from_account_id: fromBin(transfer.from_account_id),
+            to_account_id: fromBin(transfer.to_account_id),
+            amount_sent_xaf: Number(transfer.amount_sent_xaf),
+            sent_at: transfer.sent_at.toISOString(),
+            sent_by: fromBin(transfer.sent_by),
+            carrier_user_id: fromBinOrNull(transfer.carrier_user_id),
+            carrier_name: transfer.carrier_name,
+            hours_elapsed: Math.floor((now.getTime() - transfer.sent_at.getTime()) / 3_600_000),
+            unreceived_hours: hours,
+            site_id: fromBinOrNull(transfer.site_id),
+            business_day: today,
+          },
+        });
+        if (inserted) published += 1;
       }
+      await publishPassCompleted(uow, {
+        producerModule: 'finance',
+        alertType: 'CASH_TRANSFER_NOT_RECEIVED',
+        passId,
+        businessDay: today,
+        occurredAt: now,
+      });
       this.logger.log(
         `Remises de fonds non reçues depuis ${hours} h signalées (${today}) : ${published}.`,
       );

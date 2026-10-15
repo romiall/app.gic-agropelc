@@ -64,6 +64,10 @@ import {
 } from './shared.js';
 import { cashSessionLostOnline, flagCashSessionMissing, planPayments } from './sale-payments.js';
 import {
+  publishPaymentDuplicateDecided,
+  publishPaymentFlaggedDuplicate,
+} from './payment-alert-events.js';
+import {
   applyCounterDeltas,
   compareByDue,
   customerAccountsOf,
@@ -485,6 +489,24 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           allocations: explicit,
         },
       });
+      await publishPaymentFlaggedDuplicate(uow, idGenerator, {
+        paymentId,
+        docNumber,
+        reason: 'SAME_REFERENCE',
+        otherPaymentId: payment.duplicateOfPaymentId,
+        methodCode: p.methodCode,
+        amountXaf: p.amountXaf,
+        externalReference: p.reference ?? null,
+        customerId,
+        saleId: single?.saleId ?? null,
+        orderId: single?.orderId ?? null,
+        receivedByUserId: author,
+        siteId: site.id,
+        zoneId: accounts?.customer.zoneId ?? site.zoneId,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        capturedOffline: offline,
+      });
       return {
         status: 'APPLIED_WITH_WARNINGS',
         warnings: ['PAYMENT_SUSPECT_DUPLICATE'],
@@ -555,6 +577,22 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           amountXaf: p.amountXaf,
           similarPaymentId: payment.probableDuplicateOfPaymentId,
         },
+      });
+      await publishPaymentFlaggedDuplicate(uow, idGenerator, {
+        paymentId,
+        docNumber,
+        reason: 'PROBABLE_SAME_AMOUNT',
+        otherPaymentId: payment.probableDuplicateOfPaymentId,
+        methodCode: p.methodCode,
+        amountXaf: p.amountXaf,
+        externalReference: p.reference ?? null,
+        customerId,
+        receivedByUserId: author,
+        siteId: site.id,
+        zoneId: accounts?.customer.zoneId ?? site.zoneId,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        capturedOffline: offline,
       });
       warnings.add('PAYMENT_SUSPECT_DUPLICATE');
     }
@@ -1199,6 +1237,12 @@ function registerDecisions(
         resolvedBy: ctx.decidedBy,
         resolvedAt: ctx.decidedAt,
       });
+      await publishPaymentDuplicateDecided(uow, idGenerator, {
+        paymentId: ctx.subjectId,
+        decision: 'REJECTED',
+        decidedBy: ctx.decidedBy,
+        decidedAt: ctx.decidedAt,
+      });
       return;
     }
 
@@ -1309,6 +1353,12 @@ function registerDecisions(
       resolvedBy: ctx.decidedBy,
       resolvedAt: ctx.decidedAt,
       ...(corrected !== undefined ? { comment: `Référence corrigée : ${corrected}` } : {}),
+    });
+    await publishPaymentDuplicateDecided(uow, idGenerator, {
+      paymentId: ctx.subjectId,
+      decision: 'APPROVED',
+      decidedBy: ctx.decidedBy,
+      decidedAt: ctx.decidedAt,
     });
   });
 }

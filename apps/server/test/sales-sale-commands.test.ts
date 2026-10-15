@@ -1012,6 +1012,23 @@ describe('sales.sale.record (P4-04)', () => {
     expect(warningsOf(late.result)).toEqual(['PRICE_MISMATCH']);
     expect(await conflicts(late.id)).toEqual(['PRICE_MISMATCH']);
     expect(flagsOf(await saleRow(late.id))).toEqual(['PRICE_MISMATCH']);
+    // P9-07 : un signal d'alerte par vente en écart (INFO), jamais pour la vente sans écart.
+    const mismatchEvents = await db
+      .selectFrom('platform_domain_events')
+      .select(['aggregate_id', 'payload'])
+      .where('event_type', '=', 'PriceMismatchDetected')
+      .where('aggregate_id', 'in', [toBin(late.id), toBin(early.id)])
+      .execute();
+    expect(mismatchEvents).toHaveLength(1);
+    expect(fromBin(mismatchEvents[0]!.aggregate_id)).toBe(late.id);
+    expect(mismatchEvents[0]!.payload).toMatchObject({
+      sale_id: late.id,
+      applied_price_xaf: 4500,
+      expected_price_xaf: 4800,
+      declared_list_price_xaf: 4500,
+      lines_count: 1,
+      captured_offline: true,
+    });
     const [saleLine] = await saleLines(late.id);
     expect(saleLine).toMatchObject({
       unit_price_xaf: 4500,
@@ -1505,6 +1522,22 @@ describe('sales.sale.record (P4-04)', () => {
       { operation_type: 'PAYMENT_DUPLICATE', status: 'PENDING' },
     ]);
     expect(flagsOf(await saleRow(second.id))).toEqual(['PAYMENT_SUSPECT_DUPLICATE']);
+    // P9-07 : encaissement joint à une vente directe mis de côté — signalé à la Finance (alerte).
+    const flagged = await db
+      .selectFrom('platform_domain_events')
+      .select('payload')
+      .where('event_type', '=', 'PaymentFlaggedDuplicate')
+      .where('aggregate_id', '=', suspect!.id)
+      .execute();
+    expect(flagged.map((row) => row.payload)).toEqual([
+      expect.objectContaining({
+        payment_id: fromBin(suspect!.id),
+        reason: 'SAME_REFERENCE',
+        sale_id: second.id,
+        amount_xaf: 1000,
+        method_code: 'MOBILE_MONEY_ORANGE',
+      }),
+    ]);
 
     // La même référence deux fois dans une seule vente est une erreur de saisie.
     const twice = await sell(

@@ -83,6 +83,13 @@ Faits de la plateforme qui bornent la conception :
 - Les alertes locales d'appareil (« stock de votre allocation < 5 ») restent calculées sur l'appareil.
 - Les fichiers de `platform/` touchés (table des échecs du runner, isolation des tâches longues, port de stockage) sont des ajouts signalés à la session principale.
 
+## Révision P9-07 (détecteurs 1 : ventes et finance)
+
+- **Portée d'une passe.** Deux producteurs d'un même type d'alerte d'état (justificatif manquant d'une dépense, d'une réception) ne doivent pas se résoudre l'un l'autre : le marqueur porte une `scope` facultative, l'identité de passe commence par `TYPE:PORTÉE:` (`alertPassId`, domaine) et la résolution ne vise que les alertes dont `last_pass_id` commence par ce préfixe. Sans portée, le comportement est celui du §3. Ajout non cassant : `AlertPassCompletedAction.scope`.
+- **Tâches de réconciliation.** `finance.cash.reconcile_daily` publie un `CashMismatchDetected` par compte et par jour métier (clé `NONE` pour les écarts sans compte, AV-448) puis se termine en succès ; le « signal d'échec dans le résultat » du §3 n'a pas de canal dans `platform_jobs` : le journal et l'alerte (CRITICAL, résolution manuelle) en tiennent lieu.
+- **Événements de fait.** Un détecteur publié « sur fait » (`PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `CashVarianceDetected`) l'est dans la transaction de la commande, sans identité de passe ; son identifiant d'événement est aléatoire, la déduplication de l'alerte est portée par `open_dedup_key`. Un écart de caisse dans la tolérance (`tolerated`) est un constat, pas une alerte (AV-450).
+- **Détecteurs et récurrences.** `sales.receivables.overdue_daily` (07:00), `sales.orders.undelivered_check` (07:30), `sales.commercial.inactivity_check` (08:00), `finance.cash_sessions.open_long_check` et `finance.cash_transfers.unreceived_check` (horaires), `finance.cash_holdings.high_check` (horaire, AV-447), `finance.expenses.attachment_missing_check` (06:15, AV-449). La part « % du CA » de `HIGH_LOSS` passe en P9-08 avec la lecture des pertes d'`inventory`.
+
 ## Tests
 
 `alerts.test.ts` (domaine : une ligne de catalogue par type, `alertFromEvent`, messages neutres et valorisés), `communication-alerts.test.ts` (consommateur : levée, déduplication sous redélivrance et en concurrence, relèvement de gravité, résolution par marqueur, par événement, manuelle ; **passe doublée ou interrompue : aucune résolution à tort** ; `dismiss` refusé sur une alerte d'état ; sujet composite), tâches qui ne lèvent plus sur écart, INV-NOT-01 balayé sur toute la base, mutations sur base jetable pour chaque garde.

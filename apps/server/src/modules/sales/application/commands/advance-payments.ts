@@ -13,6 +13,7 @@ import type { CommandEnvelope } from '@gic/contracts';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import type { CommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
+import { publishPaymentFlaggedDuplicate } from './payment-alert-events.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { requestApproval } from '../../../approvals/application/public/index.js';
 import { recordCashMovement } from '../../../finance/application/public/index.js';
@@ -228,6 +229,23 @@ export async function writeAdvancePayments(
         referenceNormalized: payment.referenceNormalized,
         duplicateOfPaymentId: payment.duplicateOfPaymentId,
       },
+    });
+    await publishPaymentFlaggedDuplicate(uow, deps.idGenerator, {
+      paymentId: payment.id,
+      docNumber,
+      reason: 'SAME_REFERENCE',
+      otherPaymentId: payment.duplicateOfPaymentId,
+      methodCode: payment.input.methodCode,
+      amountXaf: payment.input.amountXaf,
+      externalReference: payment.input.reference ?? null,
+      customerId: context.customerId,
+      orderId: context.orderId,
+      receivedByUserId: context.userId,
+      siteId: context.site.id,
+      zoneId: context.zoneId,
+      occurredAt: at,
+      commandId: envelope.command_id,
+      capturedOffline: context.offline,
     });
     warnings.add('PAYMENT_SUSPECT_DUPLICATE');
   }

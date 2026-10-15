@@ -338,6 +338,14 @@ Classification (PM §45) :
 | AV-441 | Sujet d'une alerte à clé composite | SECONDAIRE | P9 | UUID version 5 déterministe du couple (emplacement × produit, PDV × produit, lot × jour) ; clé de déduplication lisible ; lot exclu de la clé d'un seuil de stock | OUVERT |
 | AV-442 | Alerte d'erreur de synchronisation (`SYNC_ERROR`) | SECONDAIRE | P9 | Passe planifiée de la couche `sync` sur la boîte des commandes (`REJECTED` et `CONFLICT`, liste de codes explicite) ; sujet = appareil × code d'erreur ; auto-résolue par marqueur ou par `SyncConflictResolved` | OUVERT |
 | AV-443 | Rôles destinataires d'un déclencheur à rôles propres, règle modifiée | SECONDAIRE | P9 | Les rôles propres d'un déclencheur (`DUPLICATE_SUSPECTED`) valent tant que la règle du type n'a pas été modifiée ; une règle modifiée par un administrateur vaut pour tout le type | OUVERT |
+| AV-444 | Rôles suivis par `INACTIVE_COMMERCIAL` | SECONDAIRE | P9 | Le rôle `COMMERCIAL_TERRAIN` seul (BR-TER-013), paramètre `sales.inactive_commercial_role_codes` ; congés, jours fériés et activité hors ligne tardive non gérés | OUVERT |
+| AV-445 | `PRICE_MISMATCH` : ventes directes et commandes hors ligne | SECONDAIRE | P9 | Une alerte INFO par vente directe ou par commande saisie hors ligne dont le prix figé diffère du prix résolu à la date du fait ; le conflit de synchronisation reste la trace de traitement | OUVERT |
+| AV-446 | Avance client : doublon probable non contrôlé | SECONDAIRE | P9 | Seule la référence identique d'une avance est mise de côté et signalée (alerte `DUPLICATE_SUSPECTED`) ; le doublon probable (montant identique dans la fenêtre) n'est contrôlé que pour les encaissements de vente et de commande | OUVERT |
+| AV-447 | Encaisse élevée ou sans remise (`CASH_HOLDING_HIGH`) : définition | IMPORTANTE | P9 | Caisse d'utilisateur active de solde positif ; plafond 200 000 XAF ou plus de 3 jours métier depuis la plus récente de la dernière remise non annulée et de l'entrée de l'espèce encore détenue (FIFO) ; 0 désactive un critère ; tâche horaire | OUVERT |
+| AV-448 | `CASH_MISMATCH` : jour métier et écarts sans compte | SECONDAIRE | P9 | Un événement par compte et par jour métier de l'exécution ; les écarts sans compte (dépenses, documents fournisseurs) sous la clé `NONE` ; la tâche réussit au lieu d'échouer | OUVERT |
+| AV-449 | `ATTACHMENT_MISSING` des dépenses : délai, référence, horizon et rattachement | SECONDAIRE | P9 | Délai de 7 jours compté depuis la réception par le serveur ; horizon de balayage de 90 jours (`attachments.missing_alert_horizon_days`, au moins le délai plus un jour) ; 0 jour ferme les alertes ouvertes ; passe de portée `EXPENSE` ; pièce rattachée avec `owner_type = EXPENSE` | OUVERT |
+| AV-450 | `CASH_VARIANCE` : écart toléré, ajustement d'ouverture, ajustements restants | SECONDAIRE | P9 | Un écart dans la tolérance est un constat sans alerte ; l'ajustement de l'écart d'ouverture (AV-224) publie lui aussi l'événement ; une validation d'office ferme l'alerte ; les ajustements encore en attente sont signalés de nouveau ; l'imputé n'est pas destinataire | OUVERT |
+| AV-451 | `SALE_UNDELIVERED` : livraison demandée à une date ultérieure | SECONDAIRE | P9 | L'ancienneté se compte depuis la plus tardive de la confirmation de la vente et de la date de livraison demandée par le client | OUVERT |
 
 ---
 
@@ -2191,7 +2199,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : Les créneaux sont donnés par le catalogue (06:00, 07:00, 08:00, 10:00, horaire, 24 h) ; certaines tâches existent sans récurrence (« la planification relève du déploiement », P4-09). `RecurringJobRegistry` est disponible depuis P5-16 ; une récurrence est déclarée en **code** (`INTERVAL` ou `DAILY`), elle ne lit pas `system_settings`. **DÉDUIT**.
 - **Choix** : (a) créneaux du catalogue, une récurrence par tâche dans son module, inscrite au démarrage ; la cadence est une constante de code (non paramétrable) ; (b) planification par le déploiement (cron externe) ; (c) tâche unique de `communication` qui appelle les modules.
 - **Recommandation** : (a).
-- **Impact** : Fichiers `*-recurring-jobs.ts` des modules concernés (nouveau pour `audit`, `sales`, `fieldwork`). Défaut implémenté : (a). Non paramétrable (une tâche à intervalle court qui comparerait `system_settings` à l'heure serait un choix ultérieur).
+- **Impact** : Fichiers `*-recurring-jobs.ts` des modules concernés (nouveau pour `audit`, `sales`, `fieldwork`). Défaut implémenté : (a). Non paramétrable (une tâche à intervalle court qui comparerait `system_settings` à l'heure serait un choix ultérieur). Créneaux retenus en P9-07 (heure de Douala) : `sales` 07:00 (créances), 07:30 (ventes non livrées), 08:00 (commerciaux inactifs) ; `finance` 06:15 (justificatifs de dépense), 02:30 (réconciliation), horaires (sessions ouvertes, remises non reçues, encaisses élevées).
 
 ### AV-412 — Consommateur d'événements en échec — SECONDAIRE
 - **Question** : Un événement sauté après cinq essais, ou un consommateur en retard, doit-il lever une alerte, et comment la retrouve-t-on ?
@@ -2416,6 +2424,62 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) tant que la règle a les rôles du catalogue, ceux du déclencheur s'appliquent ; une règle modifiée vaut pour tout le type ; (b) toujours les rôles de la règle ; (c) l'union de la règle et du déclencheur.
 - **Recommandation** : (a).
 - **Impact** : [ADR-072](decisions/ADR-072-destinataires-notifications-push-et-escalade.md) §1, `effectiveRecipientRoles` (domaine). Défaut implémenté : (a). Paramétrable : par la règle elle-même (la modifier suffit).
+
+### AV-444 — Rôles suivis par `INACTIVE_COMMERCIAL` — SECONDAIRE
+- **Question** : Quels rôles la détection d'inactivité d'un commercial suit-elle, et quels cas d'absence légitime ignore-t-elle ?
+- **Pourquoi** : BR-TER-013 vise le « commercial terrain » ; le responsable commercial et la Direction ont aussi des affectations commerciales, sans obligation de prise de service quotidienne. Suivre tout rôle commercial inonderait d'alertes l'encadrement. Aucune donnée de congé, de jour férié ni de remplacement n'existe dans le modèle : ces absences légitimes ne sont pas distinguées, et une activité saisie hors ligne et synchronisée après 08:00 n'est pas réévaluée (l'alerte se ferme à la passe suivante). **DÉDUIT**.
+- **Choix** : (a) le seul rôle `COMMERCIAL_TERRAIN`, liste paramétrée `sales.inactive_commercial_role_codes` ; jours ouvrés `sales.commercial_working_days` ; congés, fériés et rattrapage hors ligne non gérés (une alerte parasite se ferme seule le jour suivant) ; (b) tout rôle ayant une affectation commerciale ; (c) congés saisis (hors périmètre).
+- **Recommandation** : (a).
+- **Impact** : `sales` (tâche quotidienne de P9-07), seeds. Défaut implémenté : (a). Paramétrable.
+
+### AV-445 — `PRICE_MISMATCH` : ventes directes et commandes hors ligne — SECONDAIRE
+- **Question** : L'alerte `PRICE_MISMATCH` (prix figé par l'appareil hors ligne différent du prix que le serveur aurait résolu à la date du fait, BR-VEN-029, AV-063) vaut-elle aussi pour une commande saisie hors ligne ?
+- **Pourquoi** : La vente directe hors ligne est vendue au prix figé de l'appareil ; une commande hors ligne garde elle aussi son prix convenu (D04, lignes d'une commande, P4-06 : « hors ligne : prix de l'appareil et anomalie `PRICE_MISMATCH` ») et ouvre le même conflit de synchronisation. L'alerte doit couvrir les deux documents. **DÉDUIT**.
+- **Choix** : (a) un événement par vente directe ou par commande en écart (INFO), publié dans la transaction de la commande, détail des lignes plafonné à 100 ; (b) ventes directes seulement ; (c) une alerte par ligne.
+- **Recommandation** : (a).
+- **Impact** : `sales` (`sales.sale.record`, `sales.order.place`, `sales.order.update` pour les lignes ajoutées). Défaut implémenté : (a). Non paramétrable.
+
+### AV-446 — Avance client : doublon probable non contrôlé — SECONDAIRE
+- **Question** : Une avance client est-elle soumise au contrôle du doublon probable (même montant dans la fenêtre, BR-FIN-005) comme un encaissement de vente ?
+- **Pourquoi** : Le contrôle de référence identique couvre les avances (mise de côté, décision `PAYMENT_DUPLICATE`, alerte `DUPLICATE_SUSPECTED`) ; le doublon probable n'est posé que pour les encaissements de vente et de commande, et l'avance ne porte pas ce signalement. Constat de P9-07, pas une régression. **DÉDUIT**.
+- **Choix** : (a) laisser en l'état : référence identique seulement pour une avance ; (b) étendre le contrôle du doublon probable aux avances (même fenêtre `sales.duplicate_payment_window_minutes`) ; (c) alerte pour tout encaissement de même montant, quel que soit le type.
+- **Recommandation** : (b) à terme, (a) maintenant : le montant d'une avance est souvent rond et répété, le signalement serait bruyant sans retour terrain.
+- **Impact** : `sales` (acomptes joints à `sales.order.place`, `advance-payments.ts`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-447 — Encaisse élevée ou sans remise (`CASH_HOLDING_HIGH`) : définition — IMPORTANTE
+- **Question** : Comment se définit « solde au-dessus du plafond ou aucune remise depuis plus de 3 jours » (D09 §14) : quels comptes, quelle date de référence, quel sort pour un solde nul ?
+- **Pourquoi** : D09 §14 donne les deux seuils sans la date de référence ni la maille ; une caisse de PDV a ses sessions, une caisse centrale ou bancaire n'a pas à être remise. Compter les jours depuis la dernière remise seule signalerait « sans remise depuis trois semaines » un compte vidé puis réalimenté la veille, dès sa première entrée d'espèces. **DÉDUIT**.
+- **Choix** : (a) caisses d'utilisateur actives de solde positif ; référence = la plus récente de l'envoi de la dernière remise non annulée et de l'entrée de l'espèce encore détenue (FIFO : les remises consomment les plus anciennes entrées) ; jours métier ; seuils globaux (compte sans site) ; 0 désactive un critère, une valeur invalide revient au défaut ; (b) référence = dernière remise seule (plus simple, bruyant) ; (c) caisses de PDV incluses.
+- **Recommandation** : (a).
+- **Impact** : `finance` (tâche horaire `finance.cash_holdings.high_check`), seeds (`finance.cash_holding_max_xaf`, `finance.cash_holding_max_days`). Défaut implémenté : (a). Paramétrable (seuils).
+
+### AV-448 — `CASH_MISMATCH` : jour métier et écarts sans compte — SECONDAIRE
+- **Question** : À quel jour métier rattache-t-on un écart de la réconciliation de nuit, et comment sujet-t-on un écart qui ne se rattache à aucun compte ?
+- **Pourquoi** : La tâche tourne à 02:30 et verrait le jour qui commence ; D13 donne « par compte et jour métier ». Les dépenses et documents fournisseurs (INV-FIN-07 et 08) n'ont pas de compte. Une tâche qui échoue annule ses écritures : l'événement n'aurait jamais existé. **DÉDUIT**.
+- **Choix** : (a) jour métier de l'exécution ; un événement par compte ; clé `NONE` pour les écarts sans compte ; la tâche se termine en succès, l'alerte (CRITICAL, résolution manuelle) et le journal sont le signal ; (b) jour examiné (la veille) ; (c) un événement par rupture.
+- **Recommandation** : (a).
+- **Impact** : `finance` (`finance.cash.reconcile_daily`), [ADR-071](decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md) §3. Défaut implémenté : (a). Non paramétrable. Un écart non corrigé crée une alerte par jour (fidèle au catalogue). Un superviseur qui surveillait les tâches `FAILED` ne voit plus la réconciliation : l'alerte est le signal.
+
+### AV-449 — `ATTACHMENT_MISSING` des dépenses : délai, référence, horizon et rattachement — SECONDAIRE
+- **Question** : Les 7 jours d'AV-407 se comptent depuis quelle date, jusqu'à quand balaie-t-on, que devient l'alerte d'une dépense qui sort de l'horizon, et comment une pièce se rattache-t-elle à une dépense ?
+- **Pourquoi** : La date du fait d'une dépense hors ligne peut être ancienne : compter depuis elle alerterait dès la synchronisation. Toute dépense au-dessus du seuil avec pièce resterait examinée à jamais. Un marqueur de passe résout tout ce que la passe n'a pas revu : deux producteurs d'un même type s'annuleraient. La présence se lit sur la pièce `AVAILABLE` rattachée au document ; l'envoi de la photo d'une dépense devra donc la rattacher avec `owner_type = 'EXPENSE'` et `owner_id` = identifiant de la dépense (aucun écran d'envoi n'existe encore pour les dépenses, ECR-FIN-02). **DÉDUIT**.
+- **Choix** : (a) délai compté depuis la réception par le serveur ; horizon `attachments.missing_alert_horizon_days` (90, au moins le délai plus un jour) ; une dépense qui sort de l'horizon sans pièce n'est plus revue : son alerte se ferme (le balayage reste borné) ; `0` jour désactive l'alerte et ferme celles qui sont ouvertes ; passe de **portée** `EXPENSE`, distincte de celle des réceptions (P9-09) ; rattachement `owner_type = EXPENSE` ; (b) délai depuis la date du fait ; (c) passe unique partagée.
+- **Recommandation** : (a).
+- **Impact** : `finance` (tâche quotidienne 06:15), domaine et `communication` (marqueur à portée), seeds ; besoin signalé à la session principale pour les écrans de dépense (rattachement). Défaut implémenté : (a). Paramétrable (délai, `0` désactive ; horizon).
+
+### AV-450 — `CASH_VARIANCE` : écart toléré, ajustement d'ouverture, ajustements restants — SECONDAIRE
+- **Question** : Un écart de caisse dans la tolérance lève-t-il une alerte, l'ajustement d'un écart d'ouverture (AV-224) est-il signalé, une validation d'office ferme-t-elle l'alerte, et que devient l'alerte quand un seul de plusieurs ajustements est validé ? L'imputé est-il destinataire ?
+- **Pourquoi** : Une session validée d'office (écart dans `finance.cash_variance_tolerance_xaf`) n'émet pas `CashSessionValidated` : une alerte levée à l'ouverture (tolérance plus basse à l'époque) ne pourrait jamais se résoudre. L'ajustement d'ouverture ne publiait aucun événement : une session validée recevant une opération antérieure à son ouverture était réévaluée en silence. L'alerte est portée par la session : la validation d'un ajustement la ferme alors que d'autres attendent. D13 §7.1 adresse l'alerte à la Finance seule. **DÉDUIT**.
+- **Choix** : (a) un écart toléré est un constat (événement publié, drapeau `tolerated`, aucune alerte) ; la clôture validée d'office (`CashSessionClosed` avec `auto_validated`) ferme l'alerte ; l'ajustement d'ouverture publie l'événement de phase `ADJUSTMENT` ; les ajustements restants sont signalés de nouveau après une validation (cause `REMAINING_ADJUSTMENTS`) ; l'imputé reste hors destinataires ; (b) alerte aussi pour l'écart toléré ; (c) l'imputé destinataire. Limite : la tolérance lue à l'ouverture peut différer de celle de la clôture ; l'alerte ne se lève pas si l'écart était toléré à l'époque, la demande de validation de l'approbation reste la voie de traitement.
+- **Recommandation** : (a).
+- **Impact** : `finance` (ouverture, clôture, réévaluation, validation), catalogue du domaine. Défaut implémenté : (a). Paramétrable (tolérance, déjà un paramètre).
+
+### AV-451 — `SALE_UNDELIVERED` : livraison demandée à une date ultérieure — SECONDAIRE
+- **Question** : Une vente confirmée dont le client a demandé une livraison à une date ultérieure est-elle « non livrée depuis plus de N jours » à partir de sa confirmation ?
+- **Pourquoi** : AV-132 compte l'ancienneté depuis la confirmation ; une livraison planifiée à deux semaines serait signalée au bout de sept jours alors qu'elle n'est pas en retard. **DÉDUIT**.
+- **Choix** : (a) l'ancienneté se compte depuis la plus tardive de la confirmation et de la date de livraison demandée (`requested_delivery_date`) ; (b) depuis la confirmation seule (AV-132 à la lettre) ; (c) ne jamais alerter une livraison planifiée.
+- **Recommandation** : (a).
+- **Impact** : `sales` (`sales.orders.undelivered_check`, lecture `listUndeliveredSales`). Défaut implémenté : (a). Paramétrable : `sales.undelivered_alert_days`.
 
 ---
 

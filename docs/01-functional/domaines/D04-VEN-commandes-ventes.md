@@ -143,7 +143,7 @@ Sources : CM §4, §7, §11, §13, §30, §32, §38, §39, §41 ; PM §9, §24.
 
 ## 10. Événements produits
 
-`OrderDrafted`, `OrderConfirmed`, `OrderUpdated`, `OrderCancelled`, `OrderPartiallyFulfilled`, `OrderFulfilled`, `OrderClosed`, `SaleConfirmed`, `SaleCancellationRequested`, `SaleCancelled`, `PriceOverrideApplied`, `PriceMismatchDetected`, `CreditLimitExceeded`.
+`OrderDrafted`, `OrderConfirmed`, `OrderUpdated`, `OrderCancelled`, `OrderPartiallyFulfilled`, `OrderFulfilled`, `OrderClosed`, `SaleConfirmed`, `SaleCancellationRequested`, `SaleCancelled`, `PriceOverrideApplied`, `PriceMismatchDetected` (vente directe ou commande hors ligne, P9-07), `PaymentFlaggedDuplicate` et `PaymentDuplicateDecided` (doublon d'encaissement et décision de la Finance, P9-07), `SaleUndeliveredDetected` (tâche `sales.orders.undelivered_check`, P9-07), `CreditLimitExceeded`.
 
 ## 11. Événements consommés
 

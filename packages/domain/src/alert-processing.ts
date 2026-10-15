@@ -78,6 +78,11 @@ export interface AlertPassCompletedAction {
   readonly kind: 'PASS_COMPLETED';
   readonly alertType: AlertType;
   readonly passId: string;
+  /**
+   * Portée de la passe quand plusieurs producteurs publient le même type d'alerte d'état (ex. justificatif
+   * manquant d'une dépense et d'une réception) : le marqueur ne résout que les alertes de sa portée.
+   */
+  readonly scope: string | null;
   readonly businessDay: string | null;
   readonly occurredAt: Date;
 }
@@ -176,6 +181,7 @@ export function alertFromEvent(event: AlertEventInput): AlertFromEventResult {
         kind: 'PASS_COMPLETED',
         alertType,
         passId,
+        scope: stringOrNull(event.payload['scope']),
         businessDay: stringOrNull(event.payload['business_day']),
         occurredAt: event.occurredAt,
       });
@@ -358,16 +364,46 @@ export interface OpenAlertForPass {
  */
 export function alertsResolvedByPass(
   open: readonly OpenAlertForPass[],
-  marker: { readonly alertType: AlertType; readonly passId: string },
+  marker: {
+    readonly alertType: AlertType;
+    readonly passId: string;
+    readonly scope?: string | null | undefined;
+  },
 ): readonly string[] {
   const definition = alertDefinitionOf(marker.alertType);
   if (definition.nature !== 'STATE' || definition.resolution !== 'AUTO') return [];
+  const scopePrefix =
+    marker.scope === undefined || marker.scope === null
+      ? null
+      : alertPassIdPrefix(marker.alertType, marker.scope);
   return open
     .filter(
       (alert) =>
         alert.alertType === marker.alertType &&
         (alert.status === 'OPEN' || alert.status === 'ACKNOWLEDGED') &&
-        alert.lastPassId !== marker.passId,
+        alert.lastPassId !== marker.passId &&
+        // Passe à portée : seules les alertes levées par une passe de cette portée sont concernées.
+        (scopePrefix === null ||
+          (alert.lastPassId !== null && alert.lastPassId.startsWith(scopePrefix))),
     )
     .map((alert) => alert.id);
+}
+
+/** `last_pass_id` est une colonne de 64 caractères. */
+const PASS_ID_MAX = 64;
+
+/** Début commun des identités de passe d'un type d'alerte et d'une portée (ex. `ATTACHMENT_MISSING:EXPENSE:`). */
+export function alertPassIdPrefix(alertType: string, scope?: string | null): string {
+  return scope === undefined || scope === null || scope === ''
+    ? `${alertType}:`
+    : `${alertType}:${scope}:`;
+}
+
+/**
+ * Identité d'une passe : type d'alerte, portée éventuelle et créneau (`scheduledFor` de la tâche, sinon
+ * l'instant de lancement). Un rejeu du même créneau donne la même identité ; le début (type et portée)
+ * n'est jamais tronqué.
+ */
+export function alertPassId(alertType: string, slot: string, scope?: string | null): string {
+  return `${alertPassIdPrefix(alertType, scope)}${slot}`.slice(0, PASS_ID_MAX);
 }
