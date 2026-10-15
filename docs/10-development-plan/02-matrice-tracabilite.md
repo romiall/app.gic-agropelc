@@ -364,6 +364,11 @@ Incréments F-56 à F-75 (branche `claude/pwa-p5`, fusion `b64d56b`) ; AV-231 à
 | REQ-076 (part MP-11, PWA) | `ApprovalsScreen.test.tsx` (relecture par le bouton et au retour sur l'onglet, écart de facture refusable, auto-validation d'un refus, option indisponible retirée), `DevicesScreen.test.tsx` (relecture, nom accessible avec le code) | Vérifié par les tests ; navigateur plus tard |
 | REQ-051 (part MP-11) | `CollectScreen.test.tsx`, `collect.test.ts` (défaut d'un montant prérempli expliqué, créances relues à l'acceptation, encaissement accepté retranché hors ligne jusqu'au tirage) | Vérifié par les tests ; navigateur plus tard |
 | REQ-208 (part MP-11) | `UsersScreen.test.tsx` (écart des deux saisies signalé après la confirmation) ; `CatalogScreen.test.tsx` (motifs modifiés, désactivés) | Vérifié par les tests ; navigateur plus tard |
+| REQ-009 (part MP-02) | `seed.test.ts` (motifs de départ `VISIT_OUTCOME`, `PROSPECT_LOST`, `CANCELLATION`, AV-248 ; catégories de clients, AV-017 ; publication dans `catalog` et `customer_category`) | Vérifié |
+| REQ-023 (part MP-03) | `finance-cash-session-commands.test.ts`, tests du domaine (`normalizedSessionsPerDay`) et de la PWA (caisse : sessions sans limite par jour, AV-154) ; `setting-revisions.test.ts` (révision du paramètre, MP-11) | Vérifié |
+| REQ-067 (part MP-04) | `procurement-receipt-commands.test.ts` (AV-246 : réception sans photo au-delà du seuil appliquée et signalée `RECEIPT_PHOTO_MISSING`, avec BC, hors ligne, sans BC, avec photo, sous le seuil) | Vérifié |
+| REQ-208 (part MP-05) | `auth.e2e.test.ts` (AV-253 : appareil hors service après un mot de passe juste, compte suspendu ou désactivé), PWA : `login.test.ts`, `LoginScreen.test.tsx` | Vérifié |
+| REQ-212 (part MP-11, proxy) | `env.test.ts` (AV-297 : `TRUST_PROXY` absent, vrai, nombre de proxys, liste d'adresses) | Vérifié ; réglage au déploiement (P0-17) |
 
 ### 17.10 Phase P8 (13/10/2026) — [`18-demonstration-p8.md`](18-demonstration-p8.md)
 

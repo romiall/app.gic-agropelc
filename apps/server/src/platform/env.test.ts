@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { loadEnv } from './env.js';
+import { loadEnv, trustProxyOption } from './env.js';
 
 const BASE = { SERVER_DATABASE_URL: 'mysql://gic_app:x@127.0.0.1:3306/db' };
+
+describe('trustProxyOption (AV-297, MP-11)', () => {
+  it('absent, vide ou false : aucun proxy de confiance', () => {
+    expect(trustProxyOption(undefined)).toBe(false);
+    expect(trustProxyOption('')).toBe(false);
+    expect(trustProxyOption('FALSE')).toBe(false);
+    expect(loadEnv(BASE).TRUST_PROXY).toBeUndefined();
+  });
+
+  it('true, nombre de proxys, ou liste d’adresses et de plages', () => {
+    expect(trustProxyOption('true')).toBe(true);
+    const twoHops = trustProxyOption('2') as (address: string, hop: number) => boolean;
+    expect([0, 1, 2].map((hop) => twoHops('203.0.113.7', hop))).toEqual([true, true, false]);
+    expect(trustProxyOption('10.0.0.1, 192.168.0.0/16,')).toEqual(['10.0.0.1', '192.168.0.0/16']);
+    expect(loadEnv({ ...BASE, TRUST_PROXY: ' 1 ' }).TRUST_PROXY).toBe('1');
+  });
+});
 
 describe('loadEnv (01-architecture-logicielle.md §7 « Configuration »)', () => {
   it('applique les valeurs par défaut hors production', () => {

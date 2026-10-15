@@ -310,6 +310,8 @@ Classification (PM §45) :
 | AV-293 | Métadonnées des pièces jointes servies à tous les appareils | SECONDAIRE | MP | Inchangé : le flux de la pièce reste en portée `GLOBAL` (repli générique du pipeline) ; contenu protégé par la lecture | OUVERT |
 | AV-294 | Politiques de contrôle des achats par défaut | IMPORTANTE | MP | Une politique par type (demande d'achat, BC au-delà du seuil, réception sans BC, en quarantaine, annulation), sans condition, approbateur selon 01-rbac, portée `ALL` | OUVERT |
 | AV-295 | Droit de décider une validation, jugé aussi à la réception | SECONDAIRE | MP | Date déclarée et réception par le serveur (décision en ligne seulement) | OUVERT |
+| AV-296 | Appareil non partagé lié à l'utilisateur qui l'a connecté | SECONDAIRE | MP | Inchangé : tout compte valide peut se connecter sur un appareil connu et en prend le statut (risque assumé au MVP) | OUVERT |
+| AV-297 | Verrouillage de connexion : essais simultanés, adresse derrière un proxy | SECONDAIRE | MP | `TRUST_PROXY` et limitation de débit au proxy ; réservation atomique de l'essai à faire avant la production | OUVERT |
 
 ---
 
@@ -2228,6 +2230,20 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) inchangé, date déclarée seulement ; (b) date déclarée **et** réception par le serveur (`sync_command_inbox.received_at`) ; (c) réception seulement.
 - **Recommandation** : (b) : RC-01 reste vrai, et une décision prise en ligne a ses deux dates à quelques secondes l'une de l'autre.
 - **Impact** : `decideApprovalRequest` (`receivedAt`), commandes `approvals.request.approve` / `.reject` et façades (`finance.cash_session.validate`, `finance.cash_transfer.close_discrepancy`, `finance.supplier_invoice.approve`) ; refus `APPROVER_NOT_ALLOWED` ou `SELF_APPROVAL_FORBIDDEN`. Les autres commandes gardent la règle de RC-01 jusqu'à la fenêtre d'antidatage d'AV-078 (avant la production). Défaut implémenté : (b). Non paramétrable.
+
+### AV-296 — Appareil non partagé lié à l'utilisateur qui l'a connecté — SECONDAIRE
+- **Question** : un compte peut-il se connecter sur un appareil non partagé (`is_shared` faux) connecté d'abord par un autre utilisateur, et profiter de son statut (`ACTIVE`) ?
+- **Pourquoi** : revue adverse de MP-11 : le serveur retrouve l'appareil par l'identifiant fourni par la PWA et rend son statut, sans comparer `enrolled_by_user_id` ni `is_shared`. Un compte valide qui connaît l'identifiant d'un appareil actif (lisible par `identity.device.read`, présent dans le jeton de chaque utilisateur d'une tablette partagée) contourne AV-258 (nul n'approuve l'appareil qu'il a connecté). Il ne gagne aucun droit : le RBAC reste celui du compte. Risque assumé au MVP par 02-securite §5 (l'identifiant d'appareil n'authentifie pas ; clé d'appareil F-18 non retenue). **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) inchangé ; (b) appareil non partagé lié à l'utilisateur qui l'a connecté : un autre compte y obtient une demande d'enrôlement distincte, en attente, ou un refus ; l'Admin le désigne « partagé » s'il change de main ; (c) clé d'appareil (F-18).
+- **Recommandation** : (b) avant le déploiement du pilote, (c) avant la production.
+- **Impact** : `findOrEnrollDevice` et connexion ; PWA (identifiant d'appareil par utilisateur, ou message) ; réaffectation d'un téléphone d'un vendeur à un autre (désignation « partagé », ou retrait puis nouvel enrôlement) ; AV-258. Défaut implémenté : (a).
+
+### AV-297 — Verrouillage de connexion : essais simultanés, adresse derrière un proxy — SECONDAIRE
+- **Question** : comment garantir le blocage progressif (5 échecs, 02-securite §2) quand des essais arrivent en même temps, et compter l'adresse réelle de l'appareil derrière le CDN prévu (04-deploiement §2) ?
+- **Pourquoi** : revue adverse de MP-11 : le blocage est lu avant la vérification du mot de passe et l'échec compté après ; N requêtes simultanées passent toutes le contrôle (connexion et changement du mot de passe). Le serveur ne lisait pas l'adresse transmise par un proxy : derrière le CDN, toutes les requêtes auraient l'adresse du CDN, et le compteur par adresse bloquerait tout le monde. **CONFIRMÉ** (lecture du code).
+- **Choix** : (a) adresses du proxy de confiance (`TRUST_PROXY`) et limitation de débit au proxy, plus réservation atomique de l'essai avant la vérification (compté d'avance, remis à zéro par une connexion réussie) ; (b) `TRUST_PROXY` et limitation de débit au proxy seulement ; (c) inchangé.
+- **Recommandation** : (a) avant la production ; (b) suffit au pilote, l'essai réussi devant de toute façon payer une vérification argon2 (quelques centaines d'essais par palier au plus).
+- **Impact** : MP-11 : variable `TRUST_PROXY` (`true`, nombre de proxys, ou liste d'adresses ; désactivée par défaut), à régler au déploiement (P0-17) avec la limitation de débit du CDN. Reste la réservation atomique (`login-lockout.ts`, `auth.controller.ts`), sans changer le refus d'un appareil hors service après un mot de passe juste (AV-253 : aucun échec compté). Défaut implémenté : (b).
 ---
 
 ## 3. Journal des décisions

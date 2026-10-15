@@ -82,6 +82,7 @@ Minimisation : l'appareil ne reçoit que son périmètre (O3) ; aucune donnée f
 | CSRF | Authentification par en-tête `Authorization: Bearer` (pas de cookie de session pour l'API), donc pas de CSRF |
 | CORS | Origines autorisées : le domaine de l'application seulement |
 | Limitation de débit | Par IP et par utilisateur : `/auth` 10/min ; `/sync/push` 30/min par appareil ; lecture 300/min ; analytics 30/min ; webhooks Kommo 120/min. Réponse 429 avec `Retry-After` |
+| Adresse de l'appareil | Derrière le CDN (04-deploiement §2), adresse transmise par le proxy déclaré dans `TRUST_PROXY` (sinon tous les appareils auraient l'adresse du proxy et le verrouillage par adresse de §2 bloquerait tout le monde) ; la limitation de débit est portée par le proxy. Essais de connexion simultanés : réservation atomique à faire avant la production (AV-297) |
 | Taille | Corps ≤ 1 Mo (push ≤ 256 Ko compressés) ; morceaux de pièces jointes ≤ 256 Ko |
 | En-têtes | `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (géolocalisation et caméra : `self`) |
 | Erreurs | Messages génériques côté client ; détails dans les logs avec `correlation_id` ; aucune pile d'appels exposée. Exception de la connexion (AV-253, 13/10/2026) : après un mot de passe juste, un appareil bloqué, perdu ou retiré reçoit 403 avec un code distinct (`DEVICE_BLOCKED`, `DEVICE_LOST`, `DEVICE_RETIRED`) et un message qui renvoie vers le responsable ; un compte suspendu ou désactivé garde le 401 générique, son motif (`ACCOUNT_<statut>`) n'est écrit que dans l'audit |
