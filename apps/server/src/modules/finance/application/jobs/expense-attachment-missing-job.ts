@@ -22,7 +22,15 @@
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
-import { businessDayOf, expensePhotoRequired, type Clock, type IdGenerator } from '@gic/domain';
+import {
+  attachmentDaysMissing,
+  attachmentMissingAlertDaysOrDefault,
+  attachmentScanWindow,
+  businessDayOf,
+  expensePhotoRequired,
+  type Clock,
+  type IdGenerator,
+} from '@gic/domain';
 import { CLOCK } from '../../../../platform/clock.provider.js';
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
@@ -45,36 +53,11 @@ export const EXPENSE_ATTACHMENT_MISSING_JOB_TYPE = 'finance.expenses.attachment_
 /** Portée de la passe : les justificatifs de dépense (les réceptions sont une autre portée). */
 export const EXPENSE_ATTACHMENT_SCOPE = 'EXPENSE';
 
-const DEFAULT_DELAY_DAYS = 7;
-const DEFAULT_HORIZON_DAYS = 90;
-const DAY_MS = 86_400_000;
+/** Fenêtre de balayage partagée avec les réceptions (`packages/domain/src/attachment-alerts.ts`, P9-09). */
+export { attachmentScanWindow };
 
 /** États dont la dépense reste due d'un justificatif (SM-EXPENSE : ni annulée, ni rejetée). */
 const LIVE_STATUSES = ['RECORDED', 'PENDING_APPROVAL', 'APPROVED', 'PAID', 'PAID_PENDING_APPROVAL'];
-
-const wholeDays = (value: unknown, fallback: number): number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
-
-/**
- * Fenêtre de réception examinée : de `now − horizon` à `now − délai`. L'horizon (90 par défaut, une valeur
- * absente, nulle ou invalide revient au défaut) vaut au moins un jour de plus que le délai : une fenêtre
- * de largeur nulle ne détecterait plus rien et résoudrait toutes les alertes.
- */
-export function attachmentScanWindow(
-  now: Date,
-  delayDays: number,
-  horizonSetting: unknown,
-): { readonly horizonDays: number; readonly newest: Date; readonly oldest: Date } {
-  const horizonDays = Math.max(
-    delayDays + 1,
-    wholeDays(horizonSetting, DEFAULT_HORIZON_DAYS) || DEFAULT_HORIZON_DAYS,
-  );
-  return {
-    horizonDays,
-    newest: new Date(now.getTime() - delayDays * DAY_MS),
-    oldest: new Date(now.getTime() - horizonDays * DAY_MS),
-  };
-}
 
 @Injectable()
 export class ExpenseAttachmentMissingJob implements OnModuleInit {
@@ -91,9 +74,8 @@ export class ExpenseAttachmentMissingJob implements OnModuleInit {
       const now = this.clock.now();
       const today = businessDayOf(now);
       const global = { scopeType: 'GLOBAL', scopeId: null, at: now } as const;
-      const delayDays = wholeDays(
+      const delayDays = attachmentMissingAlertDaysOrDefault(
         await currentSettingValue(uow, { key: 'attachments.missing_alert_days', ...global }),
-        DEFAULT_DELAY_DAYS,
       );
       const passId = detectionPassId(
         'ATTACHMENT_MISSING',
@@ -176,7 +158,7 @@ export class ExpenseAttachmentMissingJob implements OnModuleInit {
             document_type: 'EXPENSE',
             document_id: expenseId,
             document_label: expense.doc_number,
-            days_missing: Math.floor((now.getTime() - receivedAt.getTime()) / DAY_MS),
+            days_missing: attachmentDaysMissing(receivedAt, now),
             author_user_id: fromBin(expense.created_by),
             site_id: fromBin(expense.site_id),
             amount_xaf: amount,

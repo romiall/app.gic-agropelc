@@ -254,10 +254,10 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé |
 | `communication.alert_retention_days` | 730 | AV-437 (P9-03) : conservation d'une alerte résolue, en jours |
 | `communication.notification_retention_days` | 90 | AV-437 (P9-03) : conservation d'une notification lue, en jours |
-| `approvals.pending_long_hours` | 24 | AV-408 (P9-03) : délai au-delà duquel une demande de validation en attente est signalée |
+| `approvals.pending_long_hours` | 24 | AV-408, AV-466 (P9-03, P9-09) : délai, en heures depuis la réception de la demande par le serveur (borne comprise), au-delà duquel une demande de validation en attente est signalée et escaladée (`escalated_at`) ; nombre > 0, sinon 24 |
 | `attachments.missing_alert_days` | 7 | AV-407, AV-449 (P9-03, P9-07) : jours sans justificatif avant l'alerte `ATTACHMENT_MISSING` ; compté depuis la réception par le serveur ; 0 désactive l'alerte et ferme celles qui sont ouvertes ; entier ≥ 0, sinon 7 |
 | `attachments.missing_alert_horizon_days` | 90 | AV-449 (P9-07) : horizon du balayage des justificatifs manquants, en jours ; au moins le délai plus un jour ; entier > 0, sinon 90 |
-| `procurement.receipt_incomplete_alert_days` | 2 | BR-APP-015, AV-410 (P9-03) : jours après lesquels une réception incomplète est signalée |
+| `procurement.receipt_incomplete_alert_days` | 2 | BR-APP-015, AV-410, AV-464 (P9-03, P9-09) : jours métier de retard sur la date prévue du bon au-delà desquels (strict : « plus de 2 jours ») un bon avec reliquat est signalé ; entier ≥ 0 (0 : dès le lendemain), sinon 2 ; la lecture est globale |
 | `inventory.high_loss_alert_xaf` | 50 000 | AV-406, AV-453 (P9-03, P9-08) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour métier du fait ; lu à la déclaration (site, à défaut global) ; nombre ≥ 0, sinon 50 000 ; une perte sans valeur n'alerte jamais |
 | `sales.high_loss_alert_sales_pct` | 5 | AV-406, AV-455 (P9-03, P9-08) : part du CA net du jour du site au-delà de laquelle la perte d'un emplacement est signalée, en % ; nombre > 0, sinon 5 |
 | `inventory.transfer_not_received_hours` | 48 | AV-065, AV-458 (P9-03, P9-08) : délai de l'alerte `TRANSFER_NOT_RECEIVED`, compté depuis l'expédition ; site de l'expéditeur, à défaut global ; nombre > 0, sinon 48 |

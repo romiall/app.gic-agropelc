@@ -80,7 +80,8 @@
 | Responsabilité | Politiques de contrôle, demandes de validation, file de validation, exécution des décisions via les gestionnaires enregistrés |
 | Tables | `control_policies`, `approval_requests` |
 | API | `/approvals/inbox`, commandes `approvals.*` ; interne : `approvals.evaluatePolicy(op, context, at)`, `approvals.request(uow, …)`, `approvals.registerHandler(operationType, handler)` ; `approvals.decideApprovalRequest(uow, registry, …)` (P5-13 : cœur des décisions, appelable par un module propriétaire qui offre une commande en façade, ex. `finance.cash_session.validate`) |
-| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `ApprovalCancelled`, `ControlPolicyChanged` |
+| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `ApprovalCancelled`, `ControlPolicyChanged` (aucun publié à ce jour : P9-11), `ApprovalPendingLong` (P9-09) |
+| Tâches planifiées | P9-09 : `approvals.requests.pending_long_check` (horaire ; `escalated_at` posé une fois), dans `ApprovalsJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `attachments` (présence des pièces requises) |
 | Interdites | Modules métier (ils s'enregistrent auprès d'`approvals`, pas l'inverse) |
 
@@ -157,7 +158,8 @@
 | Responsabilité | Fournisseurs, demandes d'achat, bons de commande, réceptions |
 | Tables | `suppliers`, `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `purchase_order_lines`, `goods_receipts`, `goods_receipt_lines` |
 | API | §4.8 ; interne : `findSupplier(id)` (P8-05), `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing` (facturation par `finance`, ADR-043 §3, P8-07), `purchaseOrderMatching`, `procurement.receiptForPlacement(receipt)` (mise en place directe : réception et entrée de lot dans le même lot de commandes, AV-112) |
-| Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected` |
+| Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived` (non publié), `GoodsReceiptQuarantined`, `GoodsReceiptQuarantineDecided`, `GoodsReceiptCancelled` (non publié), `ReceiptIncompleteDetected`, `ReceiptIncompleteCleared`, `AttachmentMissingDetected` (réceptions) — P9-09 |
+| Tâches planifiées | P9-09 : `procurement.receipts.attachment_missing_check` (06:15) et `procurement.orders.receipt_incomplete_check` (07:15), dans `ProcurementJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory` |
 | Interdites | `finance`, `production`, `sales` |
 

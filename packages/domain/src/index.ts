@@ -399,6 +399,34 @@ export {
   standardCostAlertLookbackDaysOrDefault,
 } from './production-alerts.js';
 export type { HighMortalityCause } from './production-alerts.js';
+// Alertes d'achats, de validations et de pièces (P9-09 ; BR-APP-015, AV-408, AV-410, AV-407, AV-449).
+export {
+  DEFAULT_RECEIPT_INCOMPLETE_ALERT_DAYS,
+  receiptIncompleteAlertDaysOrDefault,
+  receiptIncompleteState,
+} from './procurement-alerts.js';
+export type {
+  ReceiptIncompleteLine,
+  ReceiptIncompleteReason,
+  ReceiptIncompleteState,
+} from './procurement-alerts.js';
+export {
+  APPROVAL_OPERATION_LABELS,
+  DEFAULT_APPROVAL_PENDING_LONG_HOURS,
+  approvalOperationLabel,
+  approvalPendingHours,
+  approvalPendingLongHoursOrDefault,
+  isApprovalPendingLong,
+} from './approval-alerts.js';
+export {
+  ATTACHMENT_DAY_MS,
+  DEFAULT_ATTACHMENT_MISSING_ALERT_DAYS,
+  DEFAULT_ATTACHMENT_MISSING_HORIZON_DAYS,
+  attachmentDaysMissing,
+  attachmentMissingAlertDaysOrDefault,
+  attachmentScanWindow,
+  wholeDaysOrDefault,
+} from './attachment-alerts.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
 

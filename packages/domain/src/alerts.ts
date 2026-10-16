@@ -407,7 +407,13 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     approvers: false,
     escalationHours: null,
     raisedBy: [{ eventType: 'ReceiptIncompleteDetected' }],
-    resolvedBy: [{ eventType: 'procurement.order.close_remaining' }],
+    // P9-09 : le bon annulé, et l'état « complet » publié à chaque réception (`ReceiptIncompleteCleared`,
+    // sujet : le bon) ferment aussitôt ; le marqueur de la passe quotidienne ferme le reste (AV-464).
+    resolvedBy: [
+      { eventType: 'procurement.order.close_remaining' },
+      { eventType: 'procurement.order.cancel' },
+      { eventType: 'ReceiptIncompleteCleared' },
+    ],
     settings: ['procurement.receipt_incomplete_alert_days'],
     messageTitle: 'Réception incomplète',
     messageFields: [
@@ -776,8 +782,12 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { eventType: 'CustomerDuplicateSuspected', recipientRoles: ['RESP_COMMERCIAL'] },
       { eventType: 'GoodsReceiptQuarantined', recipientRoles: ['RESP_ACHATS'] },
     ],
-    // La décision de la Finance sur un encaissement en doublon ferme aussi l'alerte (P9-07).
-    resolvedBy: [{ eventType: 'PaymentDuplicateDecided' }],
+    // La décision de la Finance sur un encaissement en doublon ferme aussi l'alerte (P9-07) ; la décision
+    // sur la quarantaine d'une réception ferme celle de la réception (P9-09, AV-465).
+    resolvedBy: [
+      { eventType: 'PaymentDuplicateDecided' },
+      { eventType: 'GoodsReceiptQuarantineDecided' },
+    ],
     settings: [],
     messageTitle: 'Doublon suspecté',
     messageFields: [
@@ -919,6 +929,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       'attachments.missing_alert_days',
       'attachments.missing_alert_horizon_days',
       'finance.expense_photo_threshold_xaf',
+      // P9-09 : la photo du bon de livraison d'une réception (seuil de valeur, BR-APP-014).
+      'procurement.receipt_photo_threshold_xaf',
     ],
     messageTitle: 'Pièce justificative non reçue',
     messageFields: [

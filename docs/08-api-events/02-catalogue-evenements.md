@@ -53,6 +53,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|---|
 | `ControlPolicyChanged` | approvals | SYN | `policy_id`, version | Téléchargement |
 | `ApprovalRequested` | approvals | NOT | `approval_id`, `operation_type`, `subject`, `amount_xaf`, `site_id` | Notification aux approbateurs du périmètre |
+| `ApprovalPendingLong` | approvals | NOT | `request_id`, `operation_type`, `operation_label`, `hours_pending`, `threshold_hours`, `approver_permission`, `approver_scope`, `requester_user_id`, `subject_type`, `subject_id`, `requested_at`, `escalated`, `site_id`, `zone_id`, `business_day`, `pass_id` | Alerte `APPROVAL_PENDING_LONG` (P9-09, AV-466) ; passe horaire `approvals.requests.pending_long_check` ; agrégat : la demande ; ni résumé ni montant (RC-05) |
 | `ApprovalGranted`, `ApprovalRejected` | approvals | NOT, ANA | `approval_id`, `subject`, `decision_option`, `decided_by` | Notification au demandeur. La transition du document est exécutée **de manière synchrone**, dans la transaction de la décision, par le gestionnaire que le module propriétaire a enregistré auprès d'`approvals` (ADR-018) ; l'événement ne sert qu'aux effets secondaires |
 | `ApprovalCancelled` | approvals | NOT | `approval_id` | — |
 | `AttachmentRegistered` | attachments | — | `attachment_id`, `owner` | — |
@@ -171,6 +172,10 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `PurchaseOrderCreated`, `PurchaseOrderApproved` | NOT | `po_id`, total | — |
 | `PurchaseOrderSent` | SYN (téléchargement par les réceptionnaires) | `po_id` | Réception possible hors ligne |
 | `PurchaseOrderCancelled`, `PurchaseOrderClosed` | SYN | `po_id` | — |
+| `ReceiptIncompleteDetected` | NOT | `po_id`, `doc_number`, `supplier_id`, `supplier_label`, `site_id`, `expected_delivery_date`, `days_late` (omis hors retard), `threshold_days`, `reason` (`OVERDUE`, `REJECTED`, `BOTH`), `rejected` (omis sans rejet ou en plusieurs unités), `remaining_lines`, `po_status`, `trigger` (`PASS`, `RECEIPT`, `RECEIPT_CANCELLATION`), `business_day`, `pass_id` (passe) | Alerte `RECEIPT_INCOMPLETE` (P9-09, AV-464) ; agrégat : le bon ; publié à chaque changement des quantités acceptées du bon et par la passe quotidienne (07:15) ; aucune valeur au coût |
+| `ReceiptIncompleteCleared` | NOT | `po_id`, `trigger`, `business_day` | Ferme l'alerte `RECEIPT_INCOMPLETE` du bon (P9-09, AV-464) : bon complet, clôturé ou annulé après un changement de ses quantités |
+| `GoodsReceiptQuarantined` | NOT | `kind` (« Réception »), `reference`, `receipt_id`, `doc_number`, `purchase_order_id`, `supplier_id`, `supplier_label`, `site_id`, `reasons` (`PO_NOT_RECEIVABLE`, `OVER_RECEIPT`, `DUPLICATE_DELIVERY_NOTE`), `approval_request_id`, `supplier_delivery_note_ref`, `business_day`, `captured_offline` | Alerte `DUPLICATE_SUSPECTED` à la mise en quarantaine (P9-09, AV-465) ; agrégat : la réception ; aucun effet de stock jusqu'à la décision |
+| `GoodsReceiptQuarantineDecided` | NOT | `receipt_id`, `decision` (`APPROVED`, `REJECTED`), `decided_by` | Ferme l'alerte `DUPLICATE_SUSPECTED` de la réception (P9-09, AV-465) ; publié à la décision de validation `RECEIPT_QUARANTINE` |
 | `GoodsReceived` | ANA, NOT, FIN (base du rapprochement), PRD (mise en place directe) | `receipt_id`, lignes (livré, rejeté, accepté, coût) | Reliquats ; alerte si rejet |
 | `GoodsReceiptQuarantined` | NOT | `receipt_id` | Validation |
 | `GoodsReceiptCancelled` | ANA | `receipt_id` | — |

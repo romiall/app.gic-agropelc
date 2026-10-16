@@ -34,6 +34,14 @@ import {
   ProductionRecurringJobs,
   PRODUCTION_RECURRING_JOBS,
 } from '../src/modules/production/application/jobs/production-recurring-jobs.js';
+import {
+  ProcurementRecurringJobs,
+  PROCUREMENT_RECURRING_JOBS,
+} from '../src/modules/procurement/application/jobs/procurement-recurring-jobs.js';
+import {
+  ApprovalsRecurringJobs,
+  APPROVALS_RECURRING_JOBS,
+} from '../src/modules/approvals/application/jobs/approvals-recurring-jobs.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
 
@@ -313,17 +321,41 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'DAILY',
       localTime: '10:00',
     });
+    // P9-09 : récurrences de `procurement` (photo de réception 06:15, réception incomplète 07:15) et
+    // d'`approvals` (validations en attente, toutes les heures).
+    const procurement = new RecurringJobRegistry();
+    new ProcurementRecurringJobs(procurement).onModuleInit();
+    expect(procurement.list()).toEqual(PROCUREMENT_RECURRING_JOBS);
+    expect(procurement.get('procurement.receipts.attachment_missing_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '06:15',
+    });
+    expect(procurement.get('procurement.orders.receipt_incomplete_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:15',
+    });
+    const approvals = new RecurringJobRegistry();
+    new ApprovalsRecurringJobs(approvals).onModuleInit();
+    expect(approvals.list()).toEqual(APPROVALS_RECURRING_JOBS);
+    expect(approvals.get('approvals.requests.pending_long_check')?.schedule).toEqual({
+      kind: 'INTERVAL',
+      intervalSeconds: 3600,
+    });
     // Un même processus inscrit les modules sans collision de type de tâche.
     const both = new RecurringJobRegistry();
     new InventoryRecurringJobs(both).onModuleInit();
     new FinanceRecurringJobs(both).onModuleInit();
     new SalesRecurringJobs(both).onModuleInit();
     new ProductionRecurringJobs(both).onModuleInit();
+    new ProcurementRecurringJobs(both).onModuleInit();
+    new ApprovalsRecurringJobs(both).onModuleInit();
     expect(both.list()).toHaveLength(
       INVENTORY_RECURRING_JOBS.length +
         FINANCE_RECURRING_JOBS.length +
         SALES_RECURRING_JOBS.length +
-        PRODUCTION_RECURRING_JOBS.length,
+        PRODUCTION_RECURRING_JOBS.length +
+        PROCUREMENT_RECURRING_JOBS.length +
+        APPROVALS_RECURRING_JOBS.length,
     );
   });
 });
