@@ -316,6 +316,7 @@ Classification (PM §45) :
 | AV-299 | Marges par produit, point de vente et commercial | IMPORTANTE | P8 | Lots et période en P8 ; axes dans l'explorateur de P9 | OUVERT |
 | AV-300 | Ce que P8 ajoute à la trésorerie | SECONDAIRE | P8 | Dépenses à payer, paiements en attente de la Direction, lien des mouvements vers leur document | OUVERT |
 | AV-301 | Site et imputation proposés à la saisie d'une dépense | SECONDAIRE | P8 | Site de la caisse qui paie, sinon seul site des affectations, sinon choix ; imputation proposée : dépense directe du site | OUVERT |
+| AV-303 | Périmètre de l'écran « Coûts et marges » (ECR-FIN-06) | SECONDAIRE | P8 | Finance et Direction, menu seulement ; mois en cours par défaut, un an au plus ; marge d'un lot choisi parmi les 50 plus récents par statut ; pertes = déclarations, quantités par produit | OUVERT |
 | AV-302 | Périmètre de l'écran de rapprochement des achats (ECR-APP-05) | SECONDAIRE | P8 | Resp. achats, Finance et Direction en lecture ; « Réceptions » du Resp. achats y mène ; date prévue dépassée montrée sans seuil, l'alerte reste celle de P9 | OUVERT |
 
 ---
@@ -2289,6 +2290,17 @@ Politique par défaut, paramétrable :
   - accès : (a) menu « Achats » et action `RECEIPTS` du Resp. achats ; (b) menu seulement.
 - **Recommandation** : (a) pour les trois : l'écran sert ceux qui suivent les fournisseurs et les dettes, sans seconde définition du retard (une seule, celle de P9, BR-ANA-009).
 - **Impact** : `apps/pwa/src/app/screens.ts` (`ROLE_SETS.orderMatching`, entrée ECR-APP-05 et son action `RECEIPTS`), `apps/pwa/src/features/procurement/matching.ts` (`orderIndicators`). Défaut implémenté : (a), (a) et (a) (P8E-07). Les factures du bon ne sont lues que par les lecteurs des dettes (`finance.payable.read`) ; les quantités facturées restent visibles de tout lecteur des bons (P8, ADR-043).
+
+### AV-303 — Périmètre de l'écran « Coûts et marges » (ECR-FIN-06) — SECONDAIRE
+- **Question** : qui voit l'écran « Coûts et marges », quelle période propose-t-il, quels lots montre-t-il, et que comptent ses pertes ?
+- **Pourquoi** : l'inventaire (03-parcours-et-ecrans) cite la Finance et la Direction, mais le Resp. production lit lots, coûts et pertes valorisés, et le Resp. achats une vue d'ensemble partielle. Aucune lecture ne rend les marges de plusieurs lots : seule la fiche d'un lot les porte (S-41), une liste de marges coûterait une lecture par lot. `GET /finance/overview` n'accepte qu'un intervalle de jours, sans période nommée ni plafond. BR-FIN-044 compte dans la valeur des pertes les ajustements d'inventaire négatifs, alors que `GET /losses/summary` ne lit que les déclarations, et une quantité n'a de sens que par produit. **DÉDUIT**
+- **Choix** :
+  - rôles : (a) Finance et Direction (inventaire), menu « Finance » seulement ; (b) plus le Resp. production ; (c) plus le Resp. achats ;
+  - période : (a) mois en cours à ce jour par défaut, raccourcis semaine, jour et année en cours, autre période d'un an au plus, jamais après aujourd'hui ; (b) plafond plus long ;
+  - lots : (a) un lot choisi parmi les 50 plus récents d'un statut (en cours, en vente, clôturés), sa fiche et ses écritures de coût à la demande ; (b) un tableau des marges de plusieurs lots (lecture serveur dédiée à créer) ;
+  - pertes : (a) les déclarations seulement, quantités par produit, déclarations par lot ou par motif ; (b) avec les écarts d'inventaire négatifs (BR-FIN-044), lecture serveur à étendre.
+- **Recommandation** : (a) pour les quatre ; le tableau des marges et les écarts d'inventaire viendront avec l'explorateur de P9 (AV-299), sur une seule définition (BR-ANA-009).
+- **Impact** : `apps/pwa/src/app/screens.ts` (`ROLE_SETS.costsMargins`), `apps/pwa/src/features/finance/costs.ts` (`DEFAULT_COST_PERIOD`, `namedPeriod`, `LOT_STATUSES`, `LOT_PAGE_LIMIT`), ECR-FIN-06. Défaut implémenté : (a) pour les quatre (P8E-08). La fiche complète d'un lot reste ouverte depuis l'écran aux seuls rôles de la fiche (Resp. production, Direction).
 ---
 
 ## 3. Journal des décisions

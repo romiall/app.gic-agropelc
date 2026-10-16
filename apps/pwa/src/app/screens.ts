@@ -88,6 +88,8 @@ export const ROUTES = {
   supplierInvoices: '/finance/factures',
   /** ECR-FIN-04 (P8E-06) : paiements fournisseurs, avances, saisie. */
   supplierPayments: '/finance/paiements',
+  /** ECR-FIN-06 (P8E-08) : coûts et marges (période, pertes, lots). */
+  costsMargins: '/finance/couts-et-marges',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -338,6 +340,11 @@ export const ROLE_SETS = {
    * annuler une facture (ADR-043 §5).
    */
   supplierInvoiceApprove: ['DIRECTION', 'FINANCE'],
+  /**
+   * ECR-FIN-06 : vue d'ensemble (`finance.payable.read`), pertes, coûts et marges des lots
+   * (`inventory.valuation.read`) ; Finance et Direction (inventaire, AV-303).
+   */
+  costsMargins: ['FINANCE', 'DIRECTION'],
   /** `finance.supplier_payment.record` (FIN) : saisir un paiement, affecter une avance (ECR-FIN-04). */
   supplierPaymentRecord: ['FINANCE'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
@@ -821,6 +828,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'supplier_payments',
     group: 'finance',
     roles: ROLE_SETS.payableRead,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    // P8E-08 (ADR-047 §6, AV-303) : menu seulement, aucune action d'accueil.
+    id: 'ECR-FIN-06',
+    path: ROUTES.costsMargins,
+    labelKey: 'costs_margins',
+    group: 'finance',
+    roles: ROLE_SETS.costsMargins,
     actionCodes: [],
     offline: false,
   },

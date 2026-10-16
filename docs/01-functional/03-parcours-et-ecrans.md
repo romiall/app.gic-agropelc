@@ -203,7 +203,7 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 | ECR-FIN-03 | Factures fournisseurs | FINANCE | Non | P8 |
 | ECR-FIN-04 | Paiements fournisseurs | FINANCE | Non | P8 |
 | ECR-FIN-05 | Trésorerie : comptes, remises de fonds, sessions de caisse à valider | FINANCE | Non | P5/P8 |
-| ECR-FIN-06 | Coûts et marges (lot, produit, PDV, commercial) | FINANCE, DIRECTION | Non | P8 |
+| ECR-FIN-06 | Coûts et marges (période, pertes, lot ; axes produit, PDV et commercial avec l'explorateur de P9, AV-299) | FINANCE, DIRECTION | Non | P8 |
 | ECR-FIN-07 | Remises de fonds sur l'appareil : envoi, annulation de ses remises en transit, réception avec écart annoncé (UC-FIN-07 ; créé à l'intégration des écrans de P5, AV-239) | Détenteurs de `finance.cash_transfer.record` : RESP_COMMERCIAL, COMMERCIAL_TERRAIN, COMMERCIAL_SEDENTAIRE, VENDEUR_PDV, RESP_FERME, FINANCE | Oui | P5 |
 
 ### 3.8 Pilotage et intégration

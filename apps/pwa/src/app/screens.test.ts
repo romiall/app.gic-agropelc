@@ -142,6 +142,17 @@ describe('app/screens — registre et navigation par rôle', () => {
       offline: false,
     });
     expect([...ROLE_SETS.orderMatching]).toEqual(['RESP_ACHATS', 'FINANCE', 'DIRECTION']);
+    // P8E-08 (AV-303) : coûts et marges, menu seulement.
+    expect(SCREENS.find((screen) => screen.id === 'ECR-FIN-06')).toMatchObject({
+      path: '/finance/couts-et-marges',
+      labelKey: 'costs_margins',
+      group: 'finance',
+      roles: ROLE_SETS.costsMargins,
+      actionCodes: [],
+      offline: false,
+    });
+    expect([...ROLE_SETS.costsMargins]).toEqual(['FINANCE', 'DIRECTION']);
+    expect(screensForRoles(['RESP_ACHATS']).map((screen) => screen.id)).not.toContain('ECR-FIN-06');
     for (const role of ['VENDEUR_PDV', 'MAGASINIER']) {
       expect(screensForRoles([role]).map((screen) => screen.id)).not.toContain('ECR-APP-05');
     }
