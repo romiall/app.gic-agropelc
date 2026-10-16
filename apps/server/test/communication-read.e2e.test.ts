@@ -378,6 +378,8 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
     expect(seen.message).toMatch(/Valeur perdue : 120\s000 XAF/);
     expect(seen.payload).not.toHaveProperty('loss_value_xaf');
     expect(seen.payload).toHaveProperty('loss_quantity');
+    // L'objet du sujet composite reste identifiable (écran d'action) : identifiant, jamais une valeur au coût.
+    expect(typeof seen.payload['location_id']).toBe('string');
 
     const masked = (await alertsOf(sellerA)).find((item) => item.id === alerts.lossA)!;
     expect(masked.message).not.toMatch(/120\s?000/);

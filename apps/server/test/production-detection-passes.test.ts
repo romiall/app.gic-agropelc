@@ -13,6 +13,7 @@ vi.mock('../src/modules/organization/application/public/index.js', async (import
   return { ...actual, currentSettingValue: vi.fn(actual.currentSettingValue) };
 });
 
+import { sql } from 'kysely';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { JobHandlerRegistry } from '../src/platform/jobs/job-handler-registry.js';
 import {
@@ -122,6 +123,10 @@ async function world(uow: UnitOfWork) {
       readonly start?: string | null;
       readonly heads?: number;
       readonly headsAt?: string;
+      /** Instant où tous les animaux quittent l'élevage (mouvement de sortie du bâtiment). */
+      readonly departedAt?: string;
+      /** Jour d'une mise en place saisie par erreur puis annulée (avant la vraie). */
+      readonly erroneousEntryDay?: string;
     } = {},
   ): Promise<{ id: string; code: string; stockLotId: string }> {
     const id = freshUuid();
@@ -142,6 +147,26 @@ async function world(uow: UnitOfWork) {
           value_xaf: 0,
           occurred_at: new Date(options.headsAt ?? '2019-03-01T08:00:00.000Z'),
           source_doc_type: 'INVENTORY_COUNT',
+          source_doc_id: toBin(freshUuid()),
+          created_by: toBin(admin),
+        })
+        .execute();
+    }
+    if (options.departedAt !== undefined) {
+      await uow
+        .insertInto('inventory_stock_moves')
+        .values({
+          id: toBin(freshUuid()),
+          product_id: toBin(product),
+          lot_id: toBin(stockLotId),
+          from_location_id: toBin(building),
+          to_location_id: opening.id,
+          quantity: String(heads),
+          move_type: 'SALE',
+          unit_cost_xaf: 0,
+          value_xaf: 0,
+          occurred_at: new Date(options.departedAt),
+          source_doc_type: 'SALE',
           source_doc_id: toBin(freshUuid()),
           created_by: toBin(admin),
         })
@@ -169,6 +194,31 @@ async function world(uow: UnitOfWork) {
         ...(options.status === 'CLOSED' ? { closed_at: at('06:00', '2019-03-05') } : {}),
       })
       .execute();
+    // Jour de la mise en place = jour de la première entrée non annulée (le détecteur ne lit pas
+    // `start_date`, qui ne recule jamais).
+    const placement = async (day: string, status: 'RECORDED' | 'CANCELLED'): Promise<void> => {
+      await uow
+        .insertInto('production_lot_entries')
+        .values({
+          id: toBin(freshUuid()),
+          production_lot_id: toBin(id),
+          entry_type: 'PLACEMENT',
+          source_kind: 'PURCHASE',
+          product_id: toBin(product),
+          quantity_base: String(Math.max(heads, 1)),
+          to_location_id: toBin(building),
+          occurred_at: at('06:00', day),
+          status,
+          created_by: toBin(admin),
+          ...(status === 'CANCELLED'
+            ? { cancelled_at: at('07:00', day), cancelled_by: toBin(admin) }
+            : {}),
+        })
+        .execute();
+    };
+    if (options.erroneousEntryDay !== undefined)
+      await placement(options.erroneousEntryDay, 'CANCELLED');
+    if (options.start !== null) await placement(options.start ?? '2019-03-01', 'RECORDED');
     return { id, code, stockLotId };
   }
 
@@ -210,6 +260,8 @@ async function world(uow: UnitOfWork) {
         readonly hatchingProduct?: string;
         readonly hatching?: number;
         readonly lines?: readonly string[];
+        /** Date du fait (appareil) : par défaut, le jour de collecte à 10:00Z. */
+        readonly occurredAt?: Date;
       } = {},
     ): Promise<string> => {
       const id = freshUuid();
@@ -233,7 +285,7 @@ async function world(uow: UnitOfWork) {
           ...(options.hatchingProduct !== undefined
             ? { hatching_product_id: toBin(options.hatchingProduct) }
             : {}),
-          occurred_at: new Date(`${day}T10:00:00.000Z`),
+          occurred_at: options.occurredAt ?? new Date(`${day}T10:00:00.000Z`),
           status,
           created_by: toBin(admin),
           ...(status === 'CANCELLED'
@@ -374,9 +426,21 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
       });
       expect(markers[0]!.seq).toBeGreaterThan(event!.seq);
 
-      // Rejeu du même créneau : ni sujet ni marqueur de plus.
+      // Rejeu du même créneau : ni sujet ni marqueur de plus, et aucun numéro de séquence consommé
+      // (un rejeu reconnu avant l'insertion, jamais par `INSERT IGNORE`).
+      const maxSeq = async () =>
+        Number(
+          (
+            await uow
+              .selectFrom('platform_domain_events')
+              .select(sql<string>`MAX(seq)`.as('max'))
+              .executeTakeFirstOrThrow()
+          ).max,
+        );
+      const before = await maxSeq();
       await dailyRunner()(uow, { scheduledFor: SLOT });
       expect(await missingFor(uow, [silent.id])).toHaveLength(1);
+      expect(await maxSeq()).toBe(before);
     }));
 
   it('chaque nature de saisie du jour examiné compte : observation, pesée, collecte, mortalité, intrant', () =>
@@ -427,6 +491,24 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
       // Jour métier de Douala : UTC+1 — 22:59 UTC la veille est encore la veille, 23:00 UTC est le jour.
       await w.entries.observation(justBefore.id, new Date('2019-03-10T22:59:59.000Z'));
       await w.entries.observation(startOfDay.id, new Date('2019-03-10T23:00:00.000Z'));
+      // Borne haute exclusive du jour examiné : 22:59:59.999Z compte, 23:00:00.000Z est le lendemain.
+      const lastInstant = await w.lot();
+      const firstOfNextDay = await w.lot();
+      const consumedLast = await w.lot();
+      const consumedNextDay = await w.lot();
+      await w.entries.observation(lastInstant.id, new Date('2019-03-11T22:59:59.999Z'));
+      await w.entries.observation(firstOfNextDay.id, new Date('2019-03-11T23:00:00.000Z'));
+      await w.entries.consumption(consumedLast.id, new Date('2019-03-11T22:59:59.999Z'));
+      await w.entries.consumption(consumedNextDay.id, new Date('2019-03-11T23:00:00.000Z'));
+      // Collecte : le jour de collecte fourni par la commande fait foi, non la date du fait.
+      const lateSynced = await w.lot();
+      const wrongDate = await w.lot();
+      await w.entries.eggCollection(lateSynced.id, lateSynced.stockLotId, EXAMINED, 'RECORDED', {
+        occurredAt: new Date('2019-03-12T08:00:00.000Z'),
+      });
+      await w.entries.eggCollection(wrongDate.id, wrongDate.stockLotId, '2019-03-10', 'RECORDED', {
+        occurredAt: at('10:00'),
+      });
       await dailyRunner()(uow, { scheduledFor: SLOT });
 
       const ids = [
@@ -437,11 +519,15 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
         dayBefore,
         dayAfter,
         justBefore,
+        firstOfNextDay,
+        consumedNextDay,
+        wrongDate,
       ].map((l) => l.id);
       expect((await missingFor(uow, ids)).map((event) => event.aggregateId).sort()).toEqual(
         [...ids].sort(),
       );
-      expect(await missingFor(uow, [startOfDay.id])).toEqual([]);
+      const counted = [startOfDay, lastInstant, consumedLast, lateSynced].map((l) => l.id);
+      expect(await missingFor(uow, counted)).toEqual([]);
     }));
 
   it('lots non examinés : planifié, clos, mis en place le jour même ou après, sans date, sans animal', () =>
@@ -457,6 +543,11 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
       const emptied = await w.lot({ heads: 0 });
       // Animaux arrivés après la fin du jour examiné : aucun effectif à la fin du jour.
       const arrivedAfter = await w.lot({ headsAt: '2019-03-12T07:00:00.000Z' });
+      // Effectif de fin de journée : arrivé pendant le jour examiné (examiné), sorti pendant le jour (non).
+      const arrivedDuring = await w.lot({ headsAt: '2019-03-11T08:00:00.000Z' });
+      const departedDuring = await w.lot({ departedAt: '2019-03-11T10:00:00.000Z' });
+      // Mise en place saisie par erreur le 1er puis annulée ; la vraie a lieu le jour examiné.
+      const erroneousThenReal = await w.lot({ start: EXAMINED, erroneousEntryDay: '2019-03-01' });
       await dailyRunner()(uow, { scheduledFor: SLOT });
 
       const all = [
@@ -469,13 +560,16 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
         noStart,
         emptied,
         arrivedAfter,
+        arrivedDuring,
+        departedDuring,
+        erroneousThenReal,
       ];
       const events = await missingFor(
         uow,
         all.map((l) => l.id),
       );
       expect(events.map((event) => event.aggregateId).sort()).toEqual(
-        [active.id, selling.id].sort(),
+        [active.id, selling.id, arrivedDuring.id].sort(),
       );
     }));
 
@@ -681,6 +775,13 @@ describe('production.products.standard_cost_check (P9-09, AV-463)', () => {
       const todayEntry = await insertTestProduct(uow, w.admin);
       const later = await insertTestProduct(uow, w.admin);
       const notBirth = await insertTestProduct(uow, w.admin);
+      const noHatching = await insertTestProduct(uow, w.admin);
+      const laterBirth = await insertTestProduct(uow, w.admin);
+      const cancelledBirth = await insertTestProduct(uow, w.admin);
+      const birthFirstInstant = await insertTestProduct(uow, w.admin);
+      const birthBeforeWindow = await insertTestProduct(uow, w.admin);
+      const birthLastInstant = await insertTestProduct(uow, w.admin);
+      const birthAfterToday = await insertTestProduct(uow, w.admin);
       const lot = await w.lot();
       await w.entries.eggCollection(lot.id, lot.stockLotId, '2019-03-10', 'CANCELLED', {
         lines: [cancelled],
@@ -713,12 +814,72 @@ describe('production.products.standard_cost_check (P9-09, AV-463)', () => {
           created_by: toBin(w.admin),
         })
         .execute();
+      // Produit d'œufs à couver renseigné sans quantité à couver : aucune entrée à valoriser.
+      await w.entries.eggCollection(lot.id, lot.stockLotId, '2019-03-10', 'RECORDED', {
+        hatchingProduct: noHatching,
+        hatching: 0,
+      });
+      // Naissance datée après le jour de la passe : hors fenêtre.
+      await uow
+        .insertInto('production_lot_entries')
+        .values({
+          id: toBin(freshUuid()),
+          production_lot_id: toBin(lot.id),
+          entry_type: 'BIRTH',
+          source_kind: 'BIRTH',
+          product_id: toBin(laterBirth),
+          quantity_base: '8',
+          to_location_id: toBin(w.building),
+          occurred_at: at('09:00', '2019-03-13'),
+          created_by: toBin(w.admin),
+        })
+        .execute();
+      // Naissances : annulée ; premier et dernier instants de la fenêtre (jour métier de Douala, UTC+1).
+      const birth = async (productId: string, when: string, status = 'RECORDED') => {
+        await uow
+          .insertInto('production_lot_entries')
+          .values({
+            id: toBin(freshUuid()),
+            production_lot_id: toBin(lot.id),
+            entry_type: 'BIRTH',
+            source_kind: 'BIRTH',
+            product_id: toBin(productId),
+            quantity_base: '8',
+            to_location_id: toBin(w.building),
+            occurred_at: new Date(when),
+            status,
+            created_by: toBin(w.admin),
+            ...(status === 'CANCELLED'
+              ? { cancelled_at: new Date(when), cancelled_by: toBin(w.admin) }
+              : {}),
+          })
+          .execute();
+      };
+      await birth(cancelledBirth, '2019-03-10T10:00:00.000Z', 'CANCELLED');
+      await birth(birthBeforeWindow, '2019-02-09T22:59:59.000Z'); // 9 février 23:59:59 à Douala
+      await birth(birthFirstInstant, '2019-02-09T23:00:00.000Z'); // 10 février 00:00:00 : inclus
+      await birth(birthLastInstant, '2019-03-12T22:59:59.000Z'); // 12 mars 23:59:59 : inclus
+      await birth(birthAfterToday, '2019-03-12T23:00:00.000Z'); // 13 mars 00:00:00 : exclu
       await costRunner(costClock)(uow, { scheduledFor: costSlot.toISOString() });
 
-      const all = [cancelled, old, boundary, todayEntry, later, notBirth];
+      const all = [
+        cancelled,
+        old,
+        boundary,
+        todayEntry,
+        later,
+        notBirth,
+        noHatching,
+        laterBirth,
+        cancelledBirth,
+        birthFirstInstant,
+        birthBeforeWindow,
+        birthLastInstant,
+        birthAfterToday,
+      ];
       const events = await missing(uow, all);
       expect(events.map((event) => event.payload['product_id']).sort()).toEqual(
-        [boundary, todayEntry].sort(),
+        [boundary, todayEntry, birthFirstInstant, birthLastInstant].sort(),
       );
     }));
 
@@ -752,6 +913,27 @@ describe('production.products.standard_cost_check (P9-09, AV-463)', () => {
       expect(second.map((event) => event.payload['product_id']).sort()).toEqual(
         [recent, tenDays].sort(),
       );
+    }));
+
+  it('une fenêtre démesurée (999 999 jours) est plafonnée : la passe ne lève pas et voit les entrées récentes', () =>
+    rolledBack(async (uow) => {
+      const w = await world(uow);
+      const recent = await insertTestProduct(uow, w.admin);
+      const lot = await w.lot();
+      await w.entries.eggCollection(lot.id, lot.stockLotId, '2019-03-08', 'RECORDED', {
+        lines: [recent],
+      });
+      settingsOverride.set('production.standard_cost_alert_lookback_days', 999_999);
+      await costRunner(costClock)(uow, { scheduledFor: costSlot.toISOString() });
+      expect((await missing(uow, [recent])).map((event) => event.payload['product_id'])).toEqual([
+        recent,
+      ]);
+      const markers = await eventsOf(
+        uow,
+        'AlertDetectionPassCompleted',
+        (payload) => payload['pass_id'] === `STANDARD_COST_MISSING:${costSlot.toISOString()}`,
+      );
+      expect(markers).toHaveLength(1);
     }));
 
   it('recentStandardCostProducts : un produit présent par plusieurs sources garde son dernier jour', () =>

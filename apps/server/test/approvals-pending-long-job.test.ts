@@ -254,6 +254,22 @@ describe('approvals.requests.pending_long_check (P9-09, AV-408, AV-466)', () => 
       }
     }));
 
+  it('l’attente se compte depuis la réception par le serveur, non depuis la date du fait', () =>
+    rolledBack(async (uow) => {
+      const w = await world(uow);
+      const offline = await w.request({ hoursAgo: 30, requestedHoursAgo: 72 });
+      await runner()(uow, { scheduledFor: SLOT });
+      const [event] = await eventsOf(
+        uow,
+        'ApprovalPendingLong',
+        (p) => p['request_id'] === offline,
+      );
+      expect(event!.payload).toMatchObject({
+        hours_pending: 30,
+        requested_at: new Date(NOW.getTime() - 72 * HOUR_MS).toISOString(),
+      });
+    }));
+
   it('une demande déjà escaladée est republiée sans réécrire escalated_at ; le rejeu du créneau ne republie pas', () =>
     rolledBack(async (uow) => {
       const w = await world(uow);
@@ -349,6 +365,7 @@ describe('approvals.requests.pending_long_check (P9-09, AV-408, AV-466)', () => 
     const id = await w.request({ hoursAgo: 30, policy: false });
     try {
       let skipped = -1;
+      let markers = -1;
       await db.transaction().execute(async (lockTx) => {
         await lockTx
           .selectFrom('approvals_approval_requests')
@@ -360,9 +377,18 @@ describe('approvals.requests.pending_long_check (P9-09, AV-408, AV-466)', () => 
           await runner()(uow, { scheduledFor: SLOT });
           skipped = (await eventsOf(uow, 'ApprovalPendingLong', (p) => p['request_id'] === id))
             .length;
+          // Une passe partielle ne résout rien : aucun marqueur n'est publié tant qu'une demande est sautée.
+          markers = (
+            await eventsOf(
+              uow,
+              'AlertDetectionPassCompleted',
+              (payload) => payload['pass_id'] === passId(SLOT),
+            )
+          ).length;
         });
       });
       expect(skipped).toBe(0);
+      expect(markers).toBe(0);
       expect(
         await db
           .selectFrom('approvals_approval_requests')
@@ -376,6 +402,14 @@ describe('approvals.requests.pending_long_check (P9-09, AV-408, AV-466)', () => 
         await runner()(uow, { scheduledFor: '2019-03-12T09:30:00.000Z' });
         expect(
           await eventsOf(uow, 'ApprovalPendingLong', (p) => p['request_id'] === id),
+        ).toHaveLength(1);
+        // Libre du verrou : la passe est complète, son marqueur est publié.
+        expect(
+          await eventsOf(
+            uow,
+            'AlertDetectionPassCompleted',
+            (payload) => payload['pass_id'] === passId('2019-03-12T09:30:00.000Z'),
+          ),
         ).toHaveLength(1);
       });
     } finally {

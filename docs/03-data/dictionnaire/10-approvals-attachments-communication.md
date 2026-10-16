@@ -68,7 +68,7 @@
 | `decided_at` | ts | Oui | — | |
 | `decision_comment` | text | Oui | — | Obligatoire en cas de rejet |
 | `self_approved` | boolean | Non | false | Marqueur `SELF_APPROVED` (AV-010) |
-| `escalated_at` | ts | Oui | — | |
+| `escalated_at` | ts | Oui | — | Posé **une fois** par la tâche horaire `approvals.requests.pending_long_check` au premier constat du délai (AV-466), sans commande, sans audit et sans changement de `version` ; jamais remis à `NULL` |
 | [STD-AUDIT] | | | | |
 
 - **PK** `id`. **UQ** une demande `PENDING` par (`subject_type`, `subject_id`, `operation_type`).

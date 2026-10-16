@@ -213,10 +213,10 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `production.slaughter_shelf_life_days` | 5 | AV-100, AV-125 (péremption du lot d'un abattage : jour de l'abattage + N jours ; 0 = sans date) |
 | `production.incubation_durations` | `{"POULE": {"candlingDay": 7, "transferDay": 18, "hatchDay": 21}}` | AV-047, BR-INC-008 (échéancier par espèce, jours depuis la mise en incubateur ; ne bloque rien) |
 | `production.slaughterable_lot_types` | `["POULET_CHAIR","PONDEUSE","REPRODUCTEUR_VOLAILLE","PORC_ENGRAISSEMENT","PORC_NAISSAGE"]` | AV-032, AV-115 (types de lots abattables : tous, décision du 28/09/2026) |
-| `production.high_mortality_alert_pct` | 0,5 | AV-121 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) |
-| `production.high_mortality_alert_heads` | 20 | AV-121 (seuil absolu de l'alerte `HIGH_MORTALITY`) |
-| `production.daily_entry_working_days` | `["1","2","3","4","5","6","7"]` | AV-462 (P9-09) : numéros ISO des jours (1 = lundi) où une saisie du jour est attendue d'un lot en cours ; une liste vide ou sans numéro valide : les sept jours. Un jour absent de la liste n'est pas examiné par `DAILY_ENTRY_MISSING` |
-| `production.standard_cost_alert_lookback_days` | 30 | AV-463 (P9-09) : fenêtre, en jours, des entrées de production (collectes, naissances) revues par `STANDARD_COST_MISSING` ; entier strictement positif, sinon 30 |
+| `production.high_mortality_alert_pct` | 0,5 | AV-121, AV-461 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) : lu au jour du fait, site puis global ; nombre ≥ 0 (0 : toute mortalité alerte), sinon 0,5 ; comparaison stricte |
+| `production.high_mortality_alert_heads` | 20 | AV-121, AV-461 (seuil absolu de l'alerte `HIGH_MORTALITY`) : lu au jour du fait, site puis global ; nombre ≥ 0, sinon 20 ; comparaison stricte |
+| `production.daily_entry_working_days` | `["1","2","3","4","5","6","7"]` | AV-462 (P9-09) : numéros ISO des jours (1 = lundi) où une saisie du jour est attendue d'un lot en cours ; une liste vide ou sans numéro valide : les sept jours. Un jour absent de la liste n'est pas examiné par `DAILY_ENTRY_MISSING` ; lecture globale |
+| `production.standard_cost_alert_lookback_days` | 30 | AV-463 (P9-09) : fenêtre, en jours, des entrées de production (collectes, naissances) revues par `STANDARD_COST_MISSING` (du jour − N au jour, inclus) ; entier strictement positif, plafonné à 3 650, sinon 30 ; lecture globale |
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |
@@ -261,7 +261,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `inventory.high_loss_alert_xaf` | 50 000 | AV-406, AV-453 (P9-03, P9-08) : seuil absolu de l'alerte `HIGH_LOSS`, en XAF, par emplacement et par jour métier du fait ; lu à la déclaration (site, à défaut global) ; nombre ≥ 0, sinon 50 000 ; une perte sans valeur n'alerte jamais |
 | `sales.high_loss_alert_sales_pct` | 5 | AV-406, AV-455 (P9-03, P9-08) : part du CA net du jour du site au-delà de laquelle la perte d'un emplacement est signalée, en % ; nombre > 0, sinon 5 |
 | `inventory.transfer_not_received_hours` | 48 | AV-065, AV-458 (P9-03, P9-08) : délai de l'alerte `TRANSFER_NOT_RECEIVED`, compté depuis l'expédition ; site de l'expéditeur, à défaut global ; nombre > 0, sinon 48 |
-| `inventory.lot_expiring_days` | 15 | AV-065, AV-454 (P9-03, P9-08) : jours avant péremption pour l'alerte `LOT_EXPIRING` ; entier ≥ 0, sinon 15 ; 0 : seulement les lots périmant aujourd'hui ou déjà périmés |
+| `inventory.lot_expiring_days` | 15 | AV-065, AV-454 (P9-03, P9-08) : jours avant péremption pour l'alerte `LOT_EXPIRING` ; entier ≥ 0 (plafonné à 3 650), sinon 15 ; 0 : seulement les lots périmant aujourd'hui ou déjà périmés |
 | `inventory.replenish_alert_scope` | `BELOW_TARGET` | AV-452 (P9-08) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (la suggestion « cible − disponible − transit entrant » est positive, D13 littéral) ou `BELOW_MINIMUM` (aussi sous le minimum du point de vente) ; autre valeur : `BELOW_TARGET` |
 | `sales.commercial_working_days` | `["1","2","3","4","5","6"]` | BR-TER-013, AV-409 (P9-03) : jours ouvrés ISO (1 = lundi) suivis par l'alerte `INACTIVE_COMMERCIAL` ; liste vide ou invalide : lundi à samedi |
 | `sales.inactive_commercial_role_codes` | `["COMMERCIAL_TERRAIN"]` | BR-TER-013, AV-444 (P9-07) : rôles suivis par l'alerte `INACTIVE_COMMERCIAL` |

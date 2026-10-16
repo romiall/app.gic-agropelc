@@ -120,10 +120,16 @@ export function isTransferNotReceived(dispatchedAt: Date, now: Date, hours: numb
 /** Repli de l'horizon de péremption (D13 §7.1 : « périmant sous 15 jours »). */
 export const DEFAULT_LOT_EXPIRING_DAYS = 15;
 
-/** `inventory.lot_expiring_days` : un entier positif ou nul, sinon 15. */
+/**
+ * Plafond de l'horizon (dix ans) : au-delà d'environ 380 000 jours le jour d'horizon n'est plus une date
+ * valide et la passe quotidienne échouerait (même classe de défaut que les fenêtres de P9-09).
+ */
+export const MAX_LOT_EXPIRING_DAYS = 3650;
+
+/** `inventory.lot_expiring_days` : un entier positif ou nul (plafonné), sinon 15. */
 export function lotExpiringDaysOrDefault(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
-    ? value
+    ? Math.min(value, MAX_LOT_EXPIRING_DAYS)
     : DEFAULT_LOT_EXPIRING_DAYS;
 }
 

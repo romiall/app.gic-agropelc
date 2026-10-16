@@ -15,9 +15,12 @@
  *   dépassement (SM-APPROVAL : « escaladée ») ; jamais remis à `NULL`, reste posé si le délai est relevé.
  *   La passe republie **toutes** les demandes en retard (y compris déjà escaladées), sinon son marqueur
  *   fermerait leur alerte.
- * - **Concurrence** : les demandes sont lues `FOR SHARE SKIP LOCKED` ; une demande verrouillée par une
- *   décision en cours est sautée (aucune attente, aucun interblocage), l'alerte d'une demande décidée
- *   entre deux passes n'est pas levée.
+ * - **Concurrence** : chaque demande en retard est verrouillée **par clé primaire** `FOR UPDATE SKIP
+ *   LOCKED` avant d'être publiée et escaladée : la passe prend d'emblée le verrou que son écriture
+ *   réclame (aucune promotion S vers X, aucun verrou sur les politiques ni sur des plages) ; une décision
+ *   qui arrive ensuite attend la fin de la passe. Une demande verrouillée par une décision en cours est
+ *   sautée : la passe est alors **partielle** et ne publie **pas** son marqueur (une passe partielle ne
+ *   résout rien, ADR-071 §3) ; la passe suivante, libre du verrou, ferme ou republie.
  * - **Valeurs au coût** : ni le résumé ni le montant de la demande n'entrent dans la charge utile (RC-05).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
@@ -95,13 +98,27 @@ export class ApprovalPendingLongJob implements OnModuleInit {
         .where('r.created_at', '<=', cutoff)
         .orderBy('r.created_at', 'asc')
         .orderBy('r.id', 'asc')
-        .forShare()
-        .skipLocked()
         .execute();
 
       let published = 0;
       let escalated = 0;
+      let skipped = 0;
       for (const request of pending) {
+        // Verrou par clé primaire, sans filtre de statut : `SKIP LOCKED` ne rend aucune ligne que si une
+        // décision la tient ; une demande décidée entre la lecture et le verrou est rendue avec son
+        // statut courant (lecture courante) et ignorée.
+        const locked = await uow
+          .selectFrom('approvals_approval_requests')
+          .select(['status'])
+          .where('id', '=', request.id)
+          .forUpdate()
+          .skipLocked()
+          .executeTakeFirst();
+        if (locked === undefined) {
+          skipped += 1;
+          continue;
+        }
+        if (locked.status !== 'PENDING') continue;
         const requestId = fromBin(request.id);
         const siteId = fromBinOrNull(request.site_id);
         const zoneId = fromBinOrNull(request.zone_id);
@@ -124,6 +141,8 @@ export class ApprovalPendingLongJob implements OnModuleInit {
             subject_type: request.subject_type,
             subject_id: fromBin(request.subject_id),
             requested_at: request.requested_at.toISOString(),
+            // Vrai si la demande était déjà escaladée **avant** cette passe (faux au premier constat,
+            // où la passe pose `escalated_at`).
             escalated: request.escalated_at !== null,
             business_day: today,
             ...(siteId !== null ? { site_id: siteId } : {}),
@@ -143,15 +162,20 @@ export class ApprovalPendingLongJob implements OnModuleInit {
           escalated += Number(result.numUpdatedRows ?? 0);
         }
       }
-      await publishPassCompleted(uow, {
-        producerModule: 'approvals',
-        alertType: 'APPROVAL_PENDING_LONG',
-        passId,
-        businessDay: today,
-        occurredAt: now,
-      });
+      if (skipped === 0) {
+        await publishPassCompleted(uow, {
+          producerModule: 'approvals',
+          alertType: 'APPROVAL_PENDING_LONG',
+          passId,
+          businessDay: today,
+          occurredAt: now,
+        });
+      }
       this.logger.log(
-        `Validations en attente depuis ${hours} h : ${published} signalée(s), ${escalated} escaladée(s) ; ${pending.length} examinée(s).`,
+        `Validations en attente depuis ${hours} h : ${published} signalée(s), ${escalated} escaladée(s) ; ${pending.length} examinée(s)` +
+          (skipped > 0
+            ? `, ${skipped} verrouillée(s) par une décision : passe partielle, sans marqueur.`
+            : '.'),
       );
     });
   }

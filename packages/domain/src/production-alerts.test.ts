@@ -4,6 +4,8 @@ import {
   DEFAULT_HIGH_MORTALITY_ALERT_HEADS,
   DEFAULT_HIGH_MORTALITY_ALERT_PCT,
   DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS,
+  MAX_STANDARD_COST_ALERT_LOOKBACK_DAYS,
+  isValidHighMortalityThreshold,
   dailyEntryExpected,
   dailyEntryWorkingDaysOrDefault,
   highMortalityAlertHeadsOrDefault,
@@ -21,6 +23,13 @@ describe('seuils de mortalité (AV-121)', () => {
     for (const bad of [undefined, null, '1', -1, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
       expect(highMortalityAlertPctOrDefault(bad)).toBe(0.5);
       expect(highMortalityAlertHeadsOrDefault(bad)).toBe(20);
+    }
+  });
+
+  it('prédicat de validité : un nombre fini positif ou nul', () => {
+    for (const ok of [0, 0.5, 20, 1e6]) expect(isValidHighMortalityThreshold(ok)).toBe(true);
+    for (const bad of ['30', null, undefined, -1, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
+      expect(isValidHighMortalityThreshold(bad)).toBe(false);
     }
   });
 
@@ -65,6 +74,25 @@ describe('highMortalityCause : comparaisons strictes (D13 « > 0,5 % de l’effe
     expect(
       highMortalityCause({ heads: 0, referenceHeadcount: 100, pct: 0, headsThreshold: 0 }),
     ).toBeNull();
+  });
+
+  it('égalité stricte avec un pourcentage décimal non représentable en binaire : jamais d’alerte', () => {
+    // 5 500 × 1,4 vaut 7 699,999… en flottant : 77 sur 5 500 (1,4 % exactement) ne doit pas alerter.
+    const cases: readonly [number, number, number][] = [
+      [1.4, 5500, 77],
+      [0.7, 11_000, 77],
+      [2.8, 2750, 77],
+      [1.4, 10_500, 147],
+    ];
+    for (const [pct, referenceHeadcount, heads] of cases) {
+      expect(
+        highMortalityCause({ heads, referenceHeadcount, pct, headsThreshold: 10_000 }),
+        `${heads}/${referenceHeadcount} à ${pct} %`,
+      ).toBeNull();
+      expect(
+        highMortalityCause({ heads: heads + 1, referenceHeadcount, pct, headsThreshold: 10_000 }),
+      ).toBe('RELATIVE');
+    }
   });
 
   it('seuils à 0 : toute mortalité alerte', () => {
@@ -161,5 +189,13 @@ describe('fenêtre de revue du coût standard (AV-463)', () => {
     }
     expect(standardCostAlertLookbackDaysOrDefault(7)).toBe(7);
     expect(standardCostAlertLookbackDaysOrDefault(1)).toBe(1);
+  });
+
+  it('plafond de dix ans : une grande valeur (« illimité ») est ramenée au plafond', () => {
+    expect(MAX_STANDARD_COST_ALERT_LOOKBACK_DAYS).toBe(3650);
+    expect(standardCostAlertLookbackDaysOrDefault(3650)).toBe(3650);
+    expect(standardCostAlertLookbackDaysOrDefault(3651)).toBe(3650);
+    expect(standardCostAlertLookbackDaysOrDefault(999_999)).toBe(3650);
+    expect(standardCostAlertLookbackDaysOrDefault(Number.MAX_SAFE_INTEGER)).toBe(3650);
   });
 });

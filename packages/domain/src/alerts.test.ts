@@ -168,6 +168,29 @@ describe('gravité et clés', () => {
     ).toBeUndefined();
   });
 
+  it('P9-09 : sujets et résolveurs du catalogue des alertes de production, achats et réceptions', () => {
+    const mortality = alertDefinitionOf('HIGH_MORTALITY');
+    expect(mortality.subjectType).toBe('LOT_DAY');
+    expect(mortality.subjectParts).toEqual(['lot_id', 'business_day']);
+    expect(alertSubjectKey(mortality, 'ignoré', { lot_id: 'L1', business_day: '2026-10-26' })).toBe(
+      'LOT_DAY:l1:2026-10-26',
+    );
+    // Le résolveur mort (un code de permission) n'est plus déclaré.
+    expect(alertDefinitionOf('DAILY_ENTRY_MISSING').resolvedBy).toEqual([]);
+    expect(alertDefinitionOf('STANDARD_COST_MISSING').resolvedBy.map((t) => t.eventType)).toEqual([
+      'StandardCostSet',
+    ]);
+    expect(alertDefinitionOf('RECEIPT_INCOMPLETE').resolvedBy.map((t) => t.eventType)).toEqual([
+      'procurement.order.close_remaining',
+      'procurement.order.cancel',
+      'ReceiptIncompleteCleared',
+    ]);
+    expect(alertDefinitionOf('DUPLICATE_SUSPECTED').resolvedBy.map((t) => t.eventType)).toEqual([
+      'PaymentDuplicateDecided',
+      'GoodsReceiptQuarantineDecided',
+    ]);
+  });
+
   it('un sujet composite accepte une partie numérique (jour, position)', () => {
     const audit = alertDefinitionOf('AUDIT_CHAIN_BROKEN');
     expect(alertSubjectKey(audit, 'x', { partition: 7 })).toBe('AUDIT_PARTITION:7');

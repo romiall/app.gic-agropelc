@@ -20,17 +20,22 @@ export const DEFAULT_HIGH_MORTALITY_ALERT_PCT = 0.5;
 /** Repli du seuil absolu (D13 §7.1 : plus de 20 têtes dans la journée). */
 export const DEFAULT_HIGH_MORTALITY_ALERT_HEADS = 20;
 
+/** Un seuil de mortalité exploitable : un nombre fini positif ou nul (0 : toute mortalité alerte). */
+export function isValidHighMortalityThreshold(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 /** `production.high_mortality_alert_pct` : un nombre fini positif ou nul, sinon 0,5 (AV-121). */
 export function highMortalityAlertPctOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? value
+  return isValidHighMortalityThreshold(value)
+    ? (value as number)
     : DEFAULT_HIGH_MORTALITY_ALERT_PCT;
 }
 
 /** `production.high_mortality_alert_heads` : un nombre fini positif ou nul, sinon 20 (AV-121). */
 export function highMortalityAlertHeadsOrDefault(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? value
+  return isValidHighMortalityThreshold(value)
+    ? (value as number)
     : DEFAULT_HIGH_MORTALITY_ALERT_HEADS;
 }
 
@@ -60,6 +65,9 @@ export function highMortalityRatePct(heads: number, referenceHeadcount: number):
 
 export type HighMortalityCause = 'RELATIVE' | 'ABSOLUTE' | 'BOTH';
 
+/** Tolérance de la comparaison relative (unités de « têtes × 100 »). */
+const RELATIVE_TOLERANCE = 1e-9;
+
 /**
  * Cause du déclenchement, `null` si aucun seuil n'est dépassé. Comparaisons strictes : 20 morts n'alertent
  * pas, 21 oui ; 5 sur 1 000 (0,5 %) n'alerte pas, 6 sur 1 000 oui. Le seuil relatif est ignoré sans
@@ -75,8 +83,12 @@ export function highMortalityCause(input: {
   const pct = highMortalityAlertPctOrDefault(input.pct);
   const headsThreshold = highMortalityAlertHeadsOrDefault(input.headsThreshold);
   const absolute = input.heads > headsThreshold;
+  // Comparaison stricte, tolérante à l'erreur des flottants : 77 sur 5 500 est exactement 1,4 % mais
+  // 5 500 × 1,4 vaut 7 699,999… en binaire ; l'égalité ne doit pas alerter. L'écart minimal hors égalité
+  // (au moins 0,01 × effectif pour un pourcentage au centième) dépasse largement la tolérance.
   const relative =
-    input.referenceHeadcount > 0 && input.heads * 100 > input.referenceHeadcount * pct;
+    input.referenceHeadcount > 0 &&
+    input.heads * 100 - input.referenceHeadcount * pct > RELATIVE_TOLERANCE;
   if (absolute && relative) return 'BOTH';
   if (relative) return 'RELATIVE';
   return absolute ? 'ABSOLUTE' : null;
@@ -123,9 +135,16 @@ export function dailyEntryExpected(input: {
 /** Repli de la fenêtre de revue des entrées de production sans coût standard (AV-463). */
 export const DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS = 30;
 
-/** `production.standard_cost_alert_lookback_days` : un entier strictement positif, sinon 30. */
+/**
+ * Plafond de la fenêtre (dix ans) : au-delà d'environ 380 000 jours le jour de début n'est plus une date
+ * valide et la passe échouerait chaque nuit ; un administrateur qui veut « illimité » saisit une grande
+ * valeur, qui est ramenée au plafond.
+ */
+export const MAX_STANDARD_COST_ALERT_LOOKBACK_DAYS = 3650;
+
+/** `production.standard_cost_alert_lookback_days` : un entier strictement positif (plafonné), sinon 30. */
 export function standardCostAlertLookbackDaysOrDefault(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
-    ? value
+    ? Math.min(value, MAX_STANDARD_COST_ALERT_LOOKBACK_DAYS)
     : DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS;
 }

@@ -53,9 +53,12 @@ export type CommandHandler<P = unknown> = (
 /**
  * Isolation de la transaction métier d'une commande. Par défaut (absent) : celle de la connexion
  * (lecture répétable d'InnoDB). `read committed` : réservé aux commandes qui sérialisent leurs
- * écritures sous un verrou de ligne explicite et dont les lectures verrouillantes par plage
- * poseraient des verrous de plage (gap locks) inutiles, source d'interblocages entre lignes voisines
- * de deux agrégats distincts (sessions de caisse, P5-12).
+ * écritures sous un verrou de ligne explicite, pour deux raisons : (1) leurs lectures verrouillantes par
+ * plage poseraient des verrous de plage (gap locks) inutiles, source d'interblocages entre lignes
+ * voisines de deux agrégats distincts (sessions de caisse, P5-12) ; (2) une lecture simple prise **après**
+ * le verrou de l'agrégat doit voir les validations concurrentes déjà faites, que l'instantané de la
+ * lecture répétable (pris avant l'attente du verrou) ignorerait (détecteurs d'alertes sur fait de
+ * `production.mortality.record` et de `procurement.receipt.record`, P9-09).
  */
 export type CommandIsolationLevel = 'read committed';
 

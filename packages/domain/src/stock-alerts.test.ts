@@ -13,6 +13,7 @@ import {
   isTransferNotReceived,
   lossSalesSharePct,
   lotDaysLeft,
+  MAX_LOT_EXPIRING_DAYS,
   lotExpiringDaysOrDefault,
   lotExpiringHorizonDay,
   needsReplenishment,
@@ -132,6 +133,13 @@ describe('LOT_EXPIRING (AV-454)', () => {
     expect(lotExpiringDaysOrDefault(-1)).toBe(15);
     expect(lotExpiringDaysOrDefault(2.5)).toBe(15);
     expect(lotExpiringDaysOrDefault('7')).toBe(15);
+    // Plafond de dix ans : un horizon démesuré reste une date valide (la passe ne lève pas).
+    expect(lotExpiringDaysOrDefault(3650)).toBe(3650);
+    expect(lotExpiringDaysOrDefault(MAX_LOT_EXPIRING_DAYS + 1)).toBe(3650);
+    expect(lotExpiringDaysOrDefault(Number.MAX_SAFE_INTEGER)).toBe(3650);
+    expect(lotExpiringHorizonDay('2026-10-16', Number.MAX_SAFE_INTEGER)).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
   });
   it('horizon et jours restants en jours du calendrier', () => {
     expect(lotExpiringHorizonDay('2026-10-15', 15)).toBe('2026-10-30');

@@ -955,6 +955,10 @@ export function registerReceiptCommands(
     payloadSchema: recordPayloadSchema,
     permissionCode: 'procurement.receipt.record',
     handler: handlers.record,
+    // P9-09 (AV-464) : l'état du bon est relu après son verrou (`FOR UPDATE`, qui sérialise les réceptions
+    // d'un même bon) ; en lecture confirmée, ces lectures voient les réceptions validées entre-temps, au
+    // lieu d'un instantané antérieur au verrou (même raisonnement que `production.mortality.record`).
+    isolationLevel: 'read committed',
   });
   registry.register({
     commandType: 'procurement.receipt.request_cancellation',

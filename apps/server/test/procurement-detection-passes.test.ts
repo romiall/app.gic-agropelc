@@ -36,6 +36,7 @@ import {
 } from '../src/modules/procurement/application/jobs/procurement-recurring-jobs.js';
 import { RecurringJobRegistry } from '../src/platform/jobs/recurring-job-registry.js';
 import { listOpenOrderIds } from '../src/modules/procurement/application/receipt-alert-events.js';
+import type * as ReceiptAlertEvents from '../src/modules/procurement/application/receipt-alert-events.js';
 import { currentSettingValue } from '../src/modules/organization/application/public/index.js';
 import { publishPassCompleted } from '../src/platform/events/detection-events.js';
 import { toDomainEvent } from '../src/platform/events/domain-event.js';
@@ -69,8 +70,10 @@ const settingsOverride = new Map<string, unknown>();
 beforeEach(() => {
   settingsOverride.clear();
   vi.mocked(currentSettingValue).mockImplementation(async (_executor, input) => {
-    const key = (input as { key: string }).key;
-    return settingsOverride.has(key) ? settingsOverride.get(key) : undefined;
+    const { key, at } = input as { key: string; at: Date };
+    const value = settingsOverride.get(key);
+    // Une valeur fonction est un réglage historisé : elle reçoit l'instant de lecture.
+    return typeof value === 'function' ? (value as (at: Date) => unknown)(at) : value;
   });
   vi.mocked(listOpenOrderIds).mockClear();
 });
@@ -173,6 +176,10 @@ async function world(uow: UnitOfWork) {
     readonly rejected?: number;
     readonly valueXaf?: number;
     readonly receivedDaysAgo?: number;
+    /** Réception hors ligne : le fait date de plus tôt que son arrivée au serveur. */
+    readonly occurredDaysAgo?: number;
+    /** `received_at_server` absent : le délai se compte depuis la création (`created_at`). */
+    readonly serverReceiptUnknown?: boolean;
   }): Promise<{ id: string; docNumber: string }> {
     const id = freshUuid();
     const docNumber = `REC-T-${id.slice(-10)}`;
@@ -191,8 +198,12 @@ async function world(uow: UnitOfWork) {
         received_by: toBin(receiver),
         status,
         total_accepted_value_xaf: options.valueXaf ?? 5_000,
-        occurred_at: new Date(receivedAt.getTime() - 3_600_000),
-        received_at_server: receivedAt,
+        occurred_at:
+          options.occurredDaysAgo === undefined
+            ? new Date(receivedAt.getTime() - 3_600_000)
+            : new Date(NOW.getTime() - options.occurredDaysAgo * DAY_MS),
+        received_at_server: options.serverReceiptUnknown === true ? null : receivedAt,
+        ...(options.serverReceiptUnknown === true ? { created_at: receivedAt } : {}),
         created_by: toBin(admin),
         ...(status === 'CANCELLED' ? { cancelled_at: receivedAt, cancelled_by: toBin(admin) } : {}),
       })
@@ -275,6 +286,25 @@ describe('procurement.orders.receipt_incomplete_check (P9-09, AV-464)', () => {
       localTime: '07:15',
     });
   });
+
+  it('bons ouverts : seuls les envoyés et partiellement reçus sont examinés par la passe', () =>
+    rolledBack(async (uow) => {
+      const w = await world(uow);
+      const actual = await vi.importActual<typeof ReceiptAlertEvents>(
+        '../src/modules/procurement/application/receipt-alert-events.js',
+      );
+      const sent = await w.purchaseOrder({ expected: null, status: 'SENT' });
+      const partial = await w.purchaseOrder({ expected: null, status: 'PARTIALLY_RECEIVED' });
+      const others = [
+        await w.purchaseOrder({ expected: null, status: 'RECEIVED' }),
+        await w.purchaseOrder({ expected: null, status: 'CLOSED' }),
+        await w.purchaseOrder({ expected: null, status: 'APPROVED' }),
+        await w.purchaseOrder({ expected: null, status: 'DRAFT' }),
+      ];
+      const ids = await actual.listOpenOrderIds(uow);
+      const mine = [sent, partial, ...others].map((po) => po.id);
+      expect(ids.filter((id) => mine.includes(id)).sort()).toEqual([sent.id, partial.id].sort());
+    }));
 
   it('retard strict (> 2 jours) ou rejet, avec reliquat : un événement par bon ; marqueur en dernier ; rejeu', () =>
     rolledBack(async (uow) => {
@@ -557,6 +587,54 @@ describe('procurement.receipts.attachment_missing_check (P9-09, AV-467)', () => 
         (payload) => payload['pass_id'] === scoped(SLOT),
       );
       expect(markers).toHaveLength(1);
+    }));
+
+  it('seuil historisé : lu à la date de chaque réception ; une chaîne numérique est acceptée', () =>
+    rolledBack(async (uow) => {
+      const w = await world(uow);
+      const po = await w.purchaseOrder({ expected: '2019-03-20' });
+      // Avant le 5 mars le seuil est de 50 000 XAF ; ensuite, 100 000 (écrit en chaîne).
+      settingsOverride.set('procurement.receipt_photo_threshold_xaf', (at: Date) =>
+        at < new Date('2019-03-05T00:00:00.000Z') ? 50_000 : '100000',
+      );
+      const old = await w.receipt({
+        orderId: po.id,
+        lineId: po.lineId,
+        valueXaf: 60_000,
+        receivedDaysAgo: 8,
+        occurredDaysAgo: 10, // 2 mars : seuil de 50 000, photo exigée
+      });
+      const recent = await w.receipt({
+        orderId: po.id,
+        lineId: po.lineId,
+        valueXaf: 60_000,
+        receivedDaysAgo: 8,
+        occurredDaysAgo: 2, // 10 mars : seuil de 100 000, photo facultative
+      });
+      const big = await w.receipt({
+        orderId: po.id,
+        lineId: po.lineId,
+        valueXaf: 120_000,
+        receivedDaysAgo: 8,
+        occurredDaysAgo: 2,
+      });
+      await attachmentRunner()(uow, { scheduledFor: SLOT });
+      const events = await missing(uow, [old.id, recent.id, big.id]);
+      expect(events.map((event) => event.aggregateId).sort()).toEqual([old.id, big.id].sort());
+    }));
+
+  it('sans réception par le serveur, le délai se compte depuis la création, non depuis la date du fait', () =>
+    rolledBack(async (uow) => {
+      const w = await world(uow);
+      const receipt = await w.receipt({
+        orderId: null,
+        receivedDaysAgo: 9,
+        occurredDaysAgo: 30,
+        serverReceiptUnknown: true,
+      });
+      await attachmentRunner()(uow, { scheduledFor: SLOT });
+      const [event] = await missing(uow, [receipt.id]);
+      expect(event!.payload).toMatchObject({ days_missing: 9 });
     }));
 
   it('le seuil de valeur est lu à la date de la réception (réglage historisé), repli 100 000 XAF', () =>

@@ -333,8 +333,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { key: 'lot_label', label: 'Lot' },
       { key: 'business_day', label: 'Jour', kind: 'date' },
       { key: 'heads', label: 'Têtes mortes', kind: 'integer' },
-      // Absent (champ omis du message) sans effectif de référence : seul le seuil absolu a joué (AV-461).
-      { key: 'rate_pct', label: 'Taux du jour (%)' },
+      // `null` (champ omis du message) sans effectif de référence : seul le seuil absolu a joué (AV-461).
+      // Rendu à la française (« 2,5 ») : un taux est une quantité à deux décimales.
+      { key: 'rate_pct', label: 'Taux du jour (%)', kind: 'quantity' },
     ],
     sourceAvailable: true,
   }),
@@ -793,6 +794,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     messageFields: [
       { key: 'kind', label: 'Objet' },
       { key: 'reference', label: 'Référence' },
+      // Réception en quarantaine : la raison (bon de livraison déjà reçu, dépassement du reliquat, bon non
+      // réceptionnable) ; absent des deux autres producteurs, donc omis de leur message (P9-09, AV-465).
+      { key: 'reason_label', label: 'Motif' },
     ],
     sourceAvailable: true,
   }),
@@ -925,6 +929,8 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'AttachmentMissingDetected' }],
     resolvedBy: [],
+    // Deux producteurs : `finance` (dépenses, portée EXPENSE) et `procurement` (photos de réception, portée
+    // GOODS_RECEIPT), ADR-071 §2 ; le champ `detectorModule` désigne le premier.
     settings: [
       'attachments.missing_alert_days',
       'attachments.missing_alert_horizon_days',

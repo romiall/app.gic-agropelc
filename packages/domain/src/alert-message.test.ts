@@ -95,6 +95,40 @@ describe('renderAlertMessage (ADR-071 §11, AV-440)', () => {
     }
   });
 
+  it('P9-09 : mortalité (taux à la française, champ omis sans effectif de référence) et quarantaine (motif)', () => {
+    const mortality = renderAlertMessage(
+      'HIGH_MORTALITY',
+      { lot_label: 'LOT-7', business_day: '2026-10-26', heads: 25, rate_pct: 2.5 },
+      { showProtected: false },
+    );
+    expect(mortality.title).toBe('Mortalité élevée');
+    expect(mortality.message).toBe(
+      'Lot : LOT-7 ; Jour : 2026-10-26 ; Têtes mortes : 25 ; Taux du jour (%) : 2,5',
+    );
+    const withoutRate = renderAlertMessage(
+      'HIGH_MORTALITY',
+      { lot_label: 'LOT-7', business_day: '2026-10-26', heads: 25, rate_pct: null },
+      { showProtected: false },
+    );
+    expect(withoutRate.message).toBe('Lot : LOT-7 ; Jour : 2026-10-26 ; Têtes mortes : 25');
+    const quarantine = renderAlertMessage(
+      'DUPLICATE_SUSPECTED',
+      { kind: 'Réception', reference: 'REC-1', reason_label: 'Bon de livraison déjà reçu' },
+      { showProtected: false },
+    );
+    expect(quarantine.message).toBe(
+      'Objet : Réception ; Référence : REC-1 ; Motif : Bon de livraison déjà reçu',
+    );
+    // Les autres producteurs n'ont pas de motif : le champ est omis.
+    expect(
+      renderAlertMessage(
+        'DUPLICATE_SUSPECTED',
+        { kind: 'Encaissement', reference: 'ENC-1' },
+        { showProtected: false },
+      ).message,
+    ).toBe('Objet : Encaissement ; Référence : ENC-1');
+  });
+
   it('alertCarriesProtectedValue : vrai seulement si la charge utile porte une valeur protégée', () => {
     expect(alertCarriesProtectedValue('HIGH_LOSS', payload)).toBe(true);
     expect(alertCarriesProtectedValue('HIGH_LOSS', { location_label: 'x' })).toBe(false);

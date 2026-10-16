@@ -27,6 +27,7 @@ import {
   highMortalityAlertPctOrDefault,
   highMortalityCause,
   highMortalityRatePct,
+  isValidHighMortalityThreshold,
   mortalityReferenceHeadcount,
   type Clock,
   type IdGenerator,
@@ -50,16 +51,20 @@ export interface ProductionAlertDeps {
   readonly clock?: Clock | undefined;
 }
 
-/** Réglage du site, à défaut global (règle 8 : aucun seuil codé en dur ; repli au domaine). */
+/**
+ * Réglage du site, à défaut global (règle 8 : aucun seuil codé en dur ; repli au domaine). Une valeur de
+ * site inexploitable (`isValid` faux : chaîne, `null`, négatif) ne masque pas un réglage global valide.
+ */
 export async function siteThenGlobalSetting(
   uow: UnitOfWork,
   key: string,
   siteId: string | null,
   at: Date,
+  isValid: (value: unknown) => boolean = () => true,
 ): Promise<unknown> {
   if (siteId !== null) {
     const bySite = await currentSettingValue(uow, { key, scopeType: 'SITE', scopeId: siteId, at });
-    if (bySite !== undefined) return bySite;
+    if (bySite !== undefined && isValid(bySite)) return bySite;
   }
   return currentSettingValue(uow, { key, scopeType: 'GLOBAL', scopeId: null, at });
 }
@@ -104,6 +109,7 @@ export async function signalHighMortality(
       'production.high_mortality_alert_pct',
       input.siteId,
       input.occurredAt,
+      isValidHighMortalityThreshold,
     ),
   );
   const headsThreshold = highMortalityAlertHeadsOrDefault(
@@ -112,10 +118,13 @@ export async function signalHighMortality(
       'production.high_mortality_alert_heads',
       input.siteId,
       input.occurredAt,
+      isValidHighMortalityThreshold,
     ),
   );
   // Effectif en élevage juste avant le début du jour ; repli (lot mis en place le jour même) : l'effectif
-  // à l'instant du fait plus les morts du jour déjà sorties de l'élevage.
+  // en fin de journée plus les morts du jour (sorties de l'élevage), soit l'effectif avant les morts du
+  // jour **quel que soit l'ordre de saisie** (une saisie hors ligne antérieure aux autres morts du jour
+  // ne les compte pas deux fois).
   const startOfDay = await lotHeadcount(uow, {
     lotId: input.stockLotId,
     scope: 'REARING',
@@ -129,7 +138,7 @@ export async function signalHighMortality(
         : (await lotHeadcount(uow, {
             lotId: input.stockLotId,
             scope: 'REARING',
-            at: input.occurredAt,
+            at: new Date(businessDayEndUtc(businessDay).getTime() - 1),
           })) + heads,
   });
   const cause = highMortalityCause({ heads, referenceHeadcount, pct, headsThreshold });

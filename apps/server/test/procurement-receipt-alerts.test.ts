@@ -60,6 +60,7 @@ interface Actor {
 describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () => {
   let idGenerator: IdGenerator;
   let pipeline: CommandPipelineService;
+  let registry: CommandHandlerRegistry;
   let admin: Actor;
   let storekeeper: Actor;
   let buyer: Actor;
@@ -80,7 +81,9 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     aggregateId: string,
     occurredAt: string,
     payload: unknown,
+    options: { readonly offline?: boolean } = {},
   ): Promise<Result> {
+    const offline = options.offline === true;
     return pipeline.handle(
       {
         command_id: freshUuid(),
@@ -94,7 +97,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
         depends_on: [],
         occurred_at: occurredAt,
         client_created_at: occurredAt,
-        captured_offline: false,
+        captured_offline: offline,
         backdated_reason: null,
         attachment_ids: [],
         payload,
@@ -102,7 +105,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
       {
         authenticatedUserId: actor.userId,
         authenticatedDeviceId: actor.deviceId,
-        transport: 'ONLINE_API',
+        transport: offline ? 'SYNC_PUSH' : 'ONLINE_API',
       },
     );
   }
@@ -142,6 +145,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
   async function sentOrder(
     productId: string,
     expectedDeliveryDate: string,
+    options: { readonly send?: boolean } = {},
   ): Promise<{ readonly id: string; readonly lineId: string }> {
     const id = freshUuid();
     const created = await order(buyer, id, 'create', at('08:00:00'), {
@@ -162,7 +166,9 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
         'APPLIED',
       );
     }
-    expect(code(await order(buyer, id, 'mark_sent', at('08:15:00')))).toBe('APPLIED');
+    if (options.send !== false) {
+      expect(code(await order(buyer, id, 'mark_sent', at('08:15:00')))).toBe('APPLIED');
+    }
     const [line] = await db
       .selectFrom('procurement_purchase_order_lines')
       .select('id')
@@ -178,6 +184,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     rejected: number,
     occurredAt: string,
     note?: string,
+    options: { readonly offline?: boolean } = {},
   ): Promise<{ readonly id: string; readonly result: Result }> {
     const id = freshUuid();
     const result = await run(
@@ -203,6 +210,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
           },
         ],
       },
+      options,
     );
     return { id, result };
   }
@@ -252,7 +260,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
   beforeAll(async () => {
     const clock = new FixedClock(new Date(NOW));
     idGenerator = new Uuidv7Generator(clock);
-    const registry = new CommandHandlerRegistry();
+    registry = new CommandHandlerRegistry();
     const decisions = new ApprovalDecisionHandlerRegistry();
     const sequences = new DocumentSequenceService();
     registerOrderCommands(registry, decisions, idGenerator, sequences);
@@ -356,6 +364,12 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     }
   });
 
+  it('la réception est enregistrée en lecture confirmée, sous le verrou du bon (AV-464)', () => {
+    expect(registry.resolve('procurement.receipt.record', 1)?.isolationLevel).toBe(
+      'read committed',
+    );
+  });
+
   it('réception partielle sans rejet dans les délais : l’état « complet » est publié, aucune alerte', async () => {
     const productId = await newProduct();
     const po = await sentOrder(productId, ON_TIME);
@@ -387,8 +401,23 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
       po_status: 'PARTIALLY_RECEIVED',
       trigger: 'RECEIPT',
     });
-    // Aucune valeur au coût dans la charge utile (RC-05).
-    expect(Object.keys(detected!.payload as object)).not.toContain('total_accepted_value_xaf');
+    // Liste blanche des champs : aucune valeur au coût dans la charge utile (RC-05).
+    expect(Object.keys(detected!.payload as object).sort()).toEqual([
+      'business_day',
+      'days_late',
+      'doc_number',
+      'expected_delivery_date',
+      'po_id',
+      'po_status',
+      'reason',
+      'rejected',
+      'remaining_lines',
+      'site_id',
+      'supplier_id',
+      'supplier_label',
+      'threshold_days',
+      'trigger',
+    ]);
 
     await receive(po, productId, 55, 0, at('10:00:00')); // reliquat nul : BC reçu
     const events = await incompleteEvents(po.id);
@@ -470,6 +499,55 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     });
   });
 
+  it('bon clôturé après réception : l’annulation de la réception ne relève pas l’alerte (état « complet »)', async () => {
+    const productId = await newProduct();
+    const po = await sentOrder(productId, LATE);
+    const first = await receive(po, productId, 50, 0, at('09:00:00')); // bon en retard, reliquat 50
+    expect((await incompleteEvents(po.id)).map((e) => e.eventType)).toEqual([
+      'ReceiptIncompleteDetected',
+    ]);
+    expect(
+      code(
+        await order(buyer, po.id, 'close_remaining', at('09:10:00'), {
+          reason: 'Fournisseur en rupture',
+        }),
+      ),
+    ).toBe('APPLIED');
+    await run(
+      storekeeper,
+      'procurement.receipt.request_cancellation',
+      'GOODS_RECEIPT',
+      first.id,
+      at('09:30:00'),
+      { reason: 'Erreur de saisie' },
+    );
+    expect(code(await approve(buyer, await approvalOf(first.id), at('10:00:00')))).toBe('APPLIED');
+    // Le reliquat est rétabli (50 reçus annulés, 50 clôturés) mais le bon est clôturé : plus à relancer.
+    const events = await incompleteEvents(po.id);
+    expect(events.map((event) => event.eventType)).toEqual([
+      'ReceiptIncompleteDetected',
+      'ReceiptIncompleteCleared',
+    ]);
+    expect(events[1]!.payload).toMatchObject({ trigger: 'RECEIPT_CANCELLATION' });
+  });
+
+  it('une réception en quarantaine ne compte pas dans le rejeté du bon', async () => {
+    const productId = await newProduct();
+    const po = await sentOrder(productId, ON_TIME);
+    const note = `BL-${freshUuid().slice(-8)}`;
+    await receive(po, productId, 10, 0, at('09:00:00'), note);
+    const duplicate = await receive(po, productId, 10, 2, at('09:30:00'), note);
+    expect((await quarantineEvents(duplicate.id)).map((e) => e.eventType)).toEqual([
+      'GoodsReceiptQuarantined',
+    ]);
+    // Une réception distincte comptabilisée réévalue le bon : le rejet de la quarantaine n'y figure pas.
+    await receive(po, productId, 5, 0, at('10:00:00'));
+    expect((await incompleteEvents(po.id)).map((e) => e.eventType)).toEqual([
+      'ReceiptIncompleteCleared',
+      'ReceiptIncompleteCleared',
+    ]);
+  });
+
   it('quarantaine d’un doublon : GoodsReceiptQuarantined avec ses raisons ; rejet : décision publiée', async () => {
     const productId = await newProduct();
     const po = await sentOrder(productId, ON_TIME);
@@ -535,13 +613,103 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     );
     const decided = (await quarantineEvents(distinct.id)).map((event) => event.eventType);
     expect(decided).toEqual(['GoodsReceiptQuarantined', 'GoodsReceiptQuarantineDecided']);
+    expect((await quarantineEvents(distinct.id))[1]!.payload).toMatchObject({
+      receipt_id: distinct.id,
+      decision: 'APPROVED',
+      decided_by: director.userId,
+    });
     // La réception confirmée porte 2 rejetés : le BC devient « incomplet » (rejet avec reliquat).
     const events = await incompleteEvents(po.id);
     expect(events.map((event) => event.eventType)).toEqual([
       'ReceiptIncompleteCleared',
       'ReceiptIncompleteDetected',
     ]);
-    expect(events[1]!.payload).toMatchObject({ reason: 'REJECTED', rejected: 2 });
+    expect(events[1]!.payload).toMatchObject({
+      reason: 'REJECTED',
+      rejected: 2,
+      trigger: 'RECEIPT',
+    });
+  });
+
+  it('quarantaines hors ligne : bon non réceptionnable et dépassement du reliquat, avec leurs raisons', async () => {
+    const productId = await newProduct();
+    // Bon approuvé mais jamais envoyé : une réception hors ligne est mise en quarantaine.
+    const unsent = await sentOrder(productId, ON_TIME, { send: false });
+    const notReceivable = await receive(unsent, productId, 10, 0, at('09:00:00'), undefined, {
+      offline: true,
+    });
+    expect(notReceivable.result, JSON.stringify(notReceivable.result)).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+    });
+    const [first] = await quarantineEvents(notReceivable.id);
+    expect(first!.payload).toMatchObject({
+      reasons: ['PO_NOT_RECEIVABLE'],
+      reason_label: 'Bon de commande non réceptionnable',
+      captured_offline: true,
+      purchase_order_id: unsent.id,
+    });
+
+    // Dépassement du reliquat hors ligne (mode par défaut : quarantaine).
+    const po = await sentOrder(productId, ON_TIME);
+    const over = await receive(po, productId, 150, 0, at('09:10:00'), undefined, {
+      offline: true,
+    });
+    expect(over.result, JSON.stringify(over.result)).toMatchObject({
+      status: 'APPLIED_WITH_WARNINGS',
+    });
+    const [second] = await quarantineEvents(over.id);
+    expect(second!.payload).toMatchObject({
+      reasons: ['OVER_RECEIPT'],
+      reason_label: 'Dépassement du reliquat',
+      captured_offline: true,
+    });
+    // Aucune réception comptabilisée : le bon n'est pas réévalué par la quarantaine.
+    expect(await incompleteEvents(po.id)).toEqual([]);
+
+    // Approuver la quarantaine d'un bon non réceptionnable est refusé : aucune décision publiée.
+    const refused = await approve(director, await approvalOf(notReceivable.id), at('10:00:00'));
+    expect(code(refused)).not.toBe('APPLIED');
+    expect((await quarantineEvents(notReceivable.id)).map((event) => event.eventType)).toEqual([
+      'GoodsReceiptQuarantined',
+    ]);
+    const stillQuarantined = await db
+      .selectFrom('procurement_goods_receipts')
+      .select('status')
+      .where('id', '=', toBin(notReceivable.id))
+      .executeTakeFirstOrThrow();
+    expect(stillQuarantined.status).toBe('QUARANTINED');
+  });
+
+  it('résolveur : l’annulation du bon ferme l’alerte de réception incomplète', async () => {
+    const productId = await newProduct();
+    const po = await sentOrder(productId, ON_TIME);
+    await receive(po, productId, 50, 5, at('09:00:00'));
+    const [detected] = await incompleteEvents(po.id);
+    await rolledBack(async (uow: UnitOfWork) => {
+      await handleAlertEvent(uow, detected!, { idGenerator });
+      const status = async () =>
+        (
+          await uow
+            .selectFrom('communication_alerts')
+            .select('status')
+            .where('dedup_key', '=', `RECEIPT_INCOMPLETE:${po.id}`)
+            .executeTakeFirstOrThrow()
+        ).status;
+      expect(await status()).toBe('OPEN');
+      // L'événement du pipeline de `procurement.order.cancel` porte le bon pour agrégat.
+      await handleAlertEvent(
+        uow,
+        {
+          ...detected!,
+          eventId: freshUuid(),
+          eventType: 'procurement.order.cancel',
+          producerModule: 'procurement',
+          payload: { comment: 'Fournisseur défaillant' },
+        },
+        { idGenerator },
+      );
+      expect(await status()).toBe('RESOLVED');
+    });
   });
 
   it('bout en bout : alertes levées puis fermées par le consommateur', async () => {

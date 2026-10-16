@@ -7,23 +7,19 @@
 /** Repli du délai (D13 §7.1 : en attente depuis plus de 24 h). */
 export const DEFAULT_APPROVAL_PENDING_LONG_HOURS = 24;
 
-/** `approvals.pending_long_hours` : un nombre fini strictement positif, sinon 24. */
+/** Plafond du délai (dix ans) : au-delà, l'instant de coupure ne serait plus une date valide. */
+export const MAX_APPROVAL_PENDING_LONG_HOURS = 87_600;
+
+/** `approvals.pending_long_hours` : un nombre fini strictement positif (plafonné), sinon 24. */
 export function approvalPendingLongHoursOrDefault(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
+    ? Math.min(value, MAX_APPROVAL_PENDING_LONG_HOURS)
     : DEFAULT_APPROVAL_PENDING_LONG_HOURS;
 }
 
 /** Heures entières d'attente depuis la réception par le serveur (jamais négatives). */
 export function approvalPendingHours(createdAt: Date, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / 3_600_000));
-}
-
-/** La demande est en attente depuis assez longtemps (borne comprise, comme les autres délais d'alerte). */
-export function isApprovalPendingLong(createdAt: Date, now: Date, hours: number): boolean {
-  return (
-    now.getTime() - createdAt.getTime() >= approvalPendingLongHoursOrDefault(hours) * 3_600_000
-  );
 }
 
 /**

@@ -560,6 +560,86 @@ describe('HIGH_MORTALITY : cumul du jour d’un lot, à la saisie (P9-09)', () =
     expect(Math.max(...events.map((event) => Number(event.payload['heads'])))).toBe(10);
   });
 
+  it('bornes du jour métier de Douala : 22:59:59.999Z est la veille, 23:00:00.000Z le jour même', async () => {
+    const lot = await placedLot(farm, 1_000);
+    await die(farm, lot.id, 25, { at: '2026-10-25T22:59:59.999Z' });
+    await die(farm, lot.id, 25, { at: '2026-10-25T23:00:00.000Z' });
+    const events = await mortalityEvents(lot.id);
+    expect(events.map((event) => [event.payload['business_day'], event.payload['heads']])).toEqual([
+      [PREVIOUS_DAY, 25],
+      [DAY, 25],
+    ]);
+  });
+
+  it('un lot mis en place le jour même : repli indépendant de l’ordre de saisie (aucune mort comptée deux fois)', async () => {
+    const lot = await placedLot(farm, 50, at('06:00'));
+    await die(farm, lot.id, 10, { at: at('14:00') });
+    // Saisie hors ligne antérieure à la première, synchronisée ensuite : même effectif de référence.
+    await die(farm, lot.id, 2, { at: at('08:00'), offline: true });
+    const events = await mortalityEvents(lot.id);
+    expect(events).toHaveLength(2);
+    expect(events[0]!.payload).toMatchObject({ heads: 10, reference_headcount: 50, rate_pct: 20 });
+    expect(events[1]!.payload).toMatchObject({ heads: 12, reference_headcount: 50, rate_pct: 24 });
+  });
+
+  it('statuts du cumul : une saisie sans validation (RECORDED) compte ; une saisie rejetée ne compte plus', async () => {
+    // Politique du jour précédent sans validation : les saisies sont comptabilisées d'emblée.
+    const policyId = freshUuid();
+    const policy = await run(
+      admin,
+      'approvals.policy.set',
+      'CONTROL_POLICY',
+      policyId,
+      at('00:00', PREVIOUS_DAY),
+      {
+        code: `MORTALITY_${policyId.slice(-8)}`,
+        operationType: 'MORTALITY',
+        validFrom: at('00:00', PREVIOUS_DAY),
+        validTo: `${PREVIOUS_DAY}T23:59:59.000Z`,
+        requiresApproval: false,
+        requiresPhoto: false,
+        approverPermission: 'production.mortality.approve',
+        approverScope: 'ALL',
+        condition: { relativePct: 0, absoluteHeads: 0 },
+      },
+    );
+    expect(policy.status, JSON.stringify(policy)).toBe('APPLIED');
+    const recordedLot = await placedLot(farm, 5_000);
+    const recorded = await die(farm, recordedLot.id, 21, { at: at('09:00', PREVIOUS_DAY) });
+    const row = await db
+      .selectFrom('inventory_loss_declarations')
+      .select('status')
+      .where('id', '=', toBin(recorded.lossId))
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('RECORDED');
+    const [event] = await mortalityEvents(recordedLot.id);
+    expect(event!.payload).toMatchObject({ heads: 21, cause: 'ABSOLUTE' });
+
+    // Jour courant (validation requise par la politique semée) : une saisie rejetée sort du cumul.
+    const lot = await placedLot(farm, 5_000);
+    const first = await die(farm, lot.id, 15);
+    await die(farm, lot.id, 10); // cumul 25 : une alerte
+    expect(await mortalityEvents(lot.id)).toHaveLength(1);
+    const approval = await db
+      .selectFrom('inventory_loss_declarations')
+      .select(['approval_request_id', 'status'])
+      .where('id', '=', toBin(first.lossId))
+      .executeTakeFirstOrThrow();
+    expect(approval.status).toBe('PENDING_APPROVAL');
+    const requestId = fromBin(approval.approval_request_id!);
+    const rejected = await run(
+      productionManager,
+      'approvals.request.reject',
+      'APPROVAL_REQUEST',
+      requestId,
+      at('10:00'),
+      { requestId, comment: 'Erreur de saisie' },
+    );
+    expect(rejected.status, JSON.stringify(rejected)).toBe('APPLIED');
+    await die(farm, lot.id, 1); // 10 + 1 = 11 : sous le seuil, la saisie rejetée n'y est plus
+    expect(await mortalityEvents(lot.id)).toHaveLength(1);
+  });
+
   it('bout en bout : alerte critique levée par le consommateur, une alerte par lot et par jour', async () => {
     const lot = await placedLot(farm, 1_000);
     await die(farm, lot.id, 25, { at: at('09:00', PREVIOUS_DAY) });
@@ -587,7 +667,7 @@ describe('HIGH_MORTALITY : cumul du jour d’un lot, à la saisie (P9-09)', () =
         expect(fromBin(alert.site_id as Buffer)).toBe(farm.siteId);
         expect(alert.message).toContain(lot.code);
         expect(alert.message).toContain('Têtes mortes : 25');
-        expect(alert.message).toContain('Taux du jour (%) : 2.5');
+        expect(alert.message).toContain('Taux du jour (%) : 2,5');
       }
     });
   });

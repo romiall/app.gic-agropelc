@@ -86,7 +86,7 @@ ADM (validations, pièces, emplacements), CAT (produits achetables), STK (entré
 
 ## 10. Événements produits
 
-`SupplierCreated`, `SupplierUpdated`, `PurchaseRequestSubmitted`, `PurchaseRequestApproved`, `PurchaseRequestRejected`, `PurchaseRequestCancelled`, `PurchaseOrderCreated`, `PurchaseOrderApproved`, `PurchaseOrderSent`, `PurchaseOrderCancelled`, `PurchaseOrderClosed`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected`.
+`SupplierCreated`, `SupplierUpdated`, `PurchaseRequestSubmitted`, `PurchaseRequestApproved`, `PurchaseRequestRejected`, `PurchaseRequestCancelled`, `PurchaseOrderCreated`, `PurchaseOrderApproved`, `PurchaseOrderSent`, `PurchaseOrderCancelled`, `PurchaseOrderClosed`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected`, `ReceiptIncompleteCleared`, `GoodsReceiptQuarantineDecided`, `AttachmentMissingDetected` (réceptions). `GoodsReceived` et `GoodsReceiptCancelled` ne sont pas publiés par le code (P9-09).
 
 ## 11. Événements consommés
 

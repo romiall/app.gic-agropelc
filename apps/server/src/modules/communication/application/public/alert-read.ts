@@ -181,12 +181,23 @@ async function inSupervisionScope(
   ).allowed;
 }
 
-/** Charge utile publique : les champs du message qui ne sont pas protégés (RC-05). */
+/**
+ * Charge utile publique : les champs du message qui ne sont pas protégés (RC-05), et les **identifiants**
+ * des parties du sujet composite (`lot_id`, `product_id`, `location_id`…) : ce ne sont pas des valeurs au
+ * coût, et l'écran d'action (BR-NOT-001) a besoin de l'objet concerné, que le sujet haché ne désigne plus.
+ */
 function publicPayload(type: AlertType, payload: Record<string, unknown>): Record<string, unknown> {
+  const definition = alertDefinitionOf(type);
   const result: Record<string, unknown> = {};
-  for (const field of alertDefinitionOf(type).messageFields) {
+  for (const field of definition.messageFields) {
     if (field.protected === true) continue;
     if (payload[field.key] !== undefined) result[field.key] = payload[field.key];
+  }
+  for (const key of definition.subjectParts ?? []) {
+    const value = payload[key];
+    if (key.endsWith('_id') && typeof value === 'string' && result[key] === undefined) {
+      result[key] = value;
+    }
   }
   return result;
 }

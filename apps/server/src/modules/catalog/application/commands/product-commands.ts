@@ -376,7 +376,9 @@ const standardCostSet =
       producerModule: 'catalog',
       aggregateType: 'PRODUCT_STANDARD_COST',
       aggregateId: envelope.aggregate_id,
-      occurredAt: new Date(envelope.occurred_at),
+      // Instant serveur (AV-457) : un événement de résolution ne précède jamais la détection qu'il ferme,
+      // même pour une commande saisie hors ligne et datée de l'appareil.
+      occurredAt: new Date(),
       commandId: envelope.command_id,
       payload: { product_id: productId },
     });

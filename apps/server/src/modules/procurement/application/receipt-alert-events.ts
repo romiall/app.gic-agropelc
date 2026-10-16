@@ -96,7 +96,10 @@ const dayOfDateColumn = (value: Date | null): string | null =>
 
 /**
  * État de réception incomplète de bons de commande (lectures en lot). `excludeReceiptId` écarte une
- * réception du rejeté cumulé (celle qu'on est en train d'annuler). Les BC inconnus sont absents.
+ * réception du rejeté cumulé (celle qu'on est en train d'annuler). `lockLines` relit les lignes du bon
+ * `FOR UPDATE` (lecture courante : la transaction du fait les tient déjà, aucun verrou nouveau) pour que
+ * l'évaluation sur réception ne lise pas un instantané antérieur au verrou du bon. Les BC inconnus sont
+ * absents.
  */
 export async function evaluateOrders(
   uow: UnitOfWork,
@@ -105,6 +108,7 @@ export async function evaluateOrders(
     readonly today: string;
     readonly thresholdDays: number;
     readonly excludeReceiptId?: string;
+    readonly lockLines?: boolean;
   },
 ): Promise<readonly OrderIncompleteInfo[]> {
   const infos: OrderIncompleteInfo[] = [];
@@ -122,7 +126,11 @@ export async function evaluateOrders(
         await uow
           .selectFrom('procurement_suppliers')
           .select(['id', 'name'])
-          .where('id', 'in', [...new Set(orders.map((order) => order.supplier_id))])
+          .where('id', 'in', [
+            ...new Map(
+              orders.map((order) => [fromBin(order.supplier_id), order.supplier_id]),
+            ).values(),
+          ])
           .execute()
       ).map((row) => [fromBin(row.id), row.name]),
     );
@@ -138,6 +146,7 @@ export async function evaluateOrders(
         'status',
       ])
       .where('order_id', 'in', ids)
+      .$if(options.lockLines === true, (qb) => qb.forUpdate())
       .execute();
     const rejectedRows = await uow
       .selectFrom('procurement_goods_receipt_lines as rl')
@@ -159,8 +168,13 @@ export async function evaluateOrders(
         Math.round((rejectedByLine.get(key) ?? 0) * 1000 + Number(row.rejected) * 1000) / 1000,
       );
     }
+    // L'unité ne sert qu'à additionner des quantités rejetées : seuls les produits des lignes rejetées
+    // sont résolus (aucune lecture de catalogue pour un bon sans rejet, chemin chaud de la réception).
     const unitOfProduct = new Map<string, string>();
-    for (const productId of new Set(poLines.map((line) => fromBin(line.product_id)))) {
+    for (const line of poLines) {
+      if ((rejectedByLine.get(fromBin(line.id)) ?? 0) <= 0) continue;
+      const productId = fromBin(line.product_id);
+      if (unitOfProduct.has(productId)) continue;
       unitOfProduct.set(productId, (await findProduct(uow, productId))?.baseUnitCode ?? productId);
     }
     for (const order of orders) {
@@ -243,13 +257,13 @@ export async function signalReceiptIncomplete(
   const [info] = await evaluateOrders(uow, [input.orderId], {
     today,
     thresholdDays,
+    lockLines: true,
     ...(input.excludeReceiptId !== undefined ? { excludeReceiptId: input.excludeReceiptId } : {}),
   });
   if (info === undefined) return;
-  // Un BC clôturé ou annulé n'est plus à relancer, quel que soit son reliquat.
-  const open =
-    (RECEIVING_ORDER_STATUSES as readonly string[]).includes(info.status) ||
-    info.status === 'RECEIVED';
+  // Un BC reçu en entier, clôturé ou annulé n'est plus à relancer, quel que soit son reliquat (D13 :
+  // « reliquat nul ou clôturé ») ; seuls les bons en cours de réception peuvent être incomplets.
+  const open = (RECEIVING_ORDER_STATUSES as readonly string[]).includes(info.status);
   if (open && info.state.incomplete) {
     await publishDetectionEvent(uow, deps.idGenerator, {
       eventType: 'ReceiptIncompleteDetected',
@@ -278,6 +292,18 @@ export async function signalReceiptIncomplete(
 /** Identité de passe de la tâche quotidienne (le type et le créneau). */
 export const receiptIncompletePassId = (slot: string): string =>
   detectionPassId('RECEIPT_INCOMPLETE', slot);
+
+/** Libellé français d'une raison de quarantaine (message de l'alerte). */
+const QUARANTINE_REASON_LABELS: Readonly<Record<string, string>> = {
+  DUPLICATE_DELIVERY_NOTE: 'Bon de livraison déjà reçu',
+  OVER_RECEIPT: 'Dépassement du reliquat',
+  PO_NOT_RECEIVABLE: 'Bon de commande non réceptionnable',
+};
+
+/** Libellé d'un ensemble de raisons de quarantaine (« A ; B »). */
+export function quarantineReasonLabel(reasons: readonly string[]): string {
+  return reasons.map((reason) => QUARANTINE_REASON_LABELS[reason] ?? reason).join(' ; ');
+}
 
 export interface QuarantineEventInput {
   readonly receiptId: string;
@@ -320,6 +346,7 @@ export async function publishGoodsReceiptQuarantined(
       supplier_label: input.supplierLabel,
       site_id: input.siteId,
       reasons: input.reasons,
+      reason_label: quarantineReasonLabel(input.reasons),
       approval_request_id: input.approvalRequestId,
       supplier_delivery_note_ref: input.supplierDeliveryNoteRef,
       business_day: businessDayOf(input.occurredAt),

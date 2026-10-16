@@ -9,18 +9,21 @@
  *   Un jour hors `production.daily_entry_working_days` (tous les jours par défaut : un élevage ne s'arrête
  *   pas) ne publie rien, pas même le marqueur : les alertes ouvertes persistent jusqu'au jour examiné
  *   suivant, comme `INACTIVE_COMMERCIAL`.
- * - **Lots examinés** : `ACTIVE` ou `SELLING`, mis en place **avant** le jour examiné (le jour de la mise
- *   en place compte une entrée de lot, non une saisie) et ayant des animaux en élevage à la fin du jour
- *   examiné (un lot en vente vidé par les ventes n'a plus rien à saisir).
+ * - **Lots examinés** : `ACTIVE` ou `SELLING`, mis en place **avant** le jour examiné (jour de la première
+ *   entrée non annulée du lot ; le jour de la mise en place compte une entrée de lot, non une saisie) et
+ *   ayant des animaux en élevage à la fin du jour examiné (un lot en vente vidé par les ventes n'a plus
+ *   rien à saisir).
  * - **Saisie du jour** (BR-PRD-008 : des commandes indépendantes, aucun en-tête) : au moins l'un des faits
  *   suivants **datés du jour examiné** (date du fait, non celle de la synchronisation, comme la fiche du
  *   lot) : mortalité comptée ou en attente, consommation d'intrant enregistrée, pesée non annulée,
  *   observation (dont « RAS », AV-117), collecte d'œufs non annulée. Une saisie rétroactive ou hors ligne
- *   synchronisée **avant** la passe est vue ; synchronisée après, elle ferme l'alerte à la passe suivante
- *   (accepté comme `INACTIVE_COMMERCIAL`, AV-444 ; au plus 24 h).
+ *   synchronisée **avant** la passe est vue ; synchronisée après, elle n'est jamais relue (chaque passe
+ *   examine un seul jour) : l'alerte d'état du lot porte « le dernier jour manquant » et se ferme à la
+ *   première passe dont le jour examiné a une saisie (accepté comme `INACTIVE_COMMERCIAL`, AV-444).
  * Aucun lot n'est modifié.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { sql } from 'kysely';
 import {
   addBusinessDays,
   businessDayEndUtc,
@@ -162,13 +165,22 @@ export class DailyEntryMissingJob implements OnModuleInit {
       }
       const passId = detectionPassId('DAILY_ENTRY_MISSING', passSlotOf(payload, now));
 
+      // Jour de la mise en place : celui de la première entrée **non annulée** du lot (`start_date` ne
+      // recule jamais : une mise en place saisie par erreur puis annulée la laisserait au jour de l'erreur).
       const rows = await uow
-        .selectFrom('production_production_lots')
-        .select(['id', 'lot_code', 'lot_type', 'site_id', 'stock_lot_id', 'status', 'start_date'])
-        .where('status', 'in', ['ACTIVE', 'SELLING'])
-        .where('start_date', 'is not', null)
-        .where('start_date', '<', new Date(`${examinedDay}T00:00:00.000Z`))
-        .orderBy('id', 'asc')
+        .selectFrom('production_production_lots as l')
+        .select([
+          'l.id',
+          'l.lot_code',
+          'l.lot_type',
+          'l.site_id',
+          'l.stock_lot_id',
+          'l.status',
+          sql<Date | null>`(SELECT MIN(e.occurred_at) FROM production_lot_entries e
+            WHERE e.production_lot_id = l.id AND e.status = 'RECORDED')`.as('first_entry_at'),
+        ])
+        .where('l.status', 'in', ['ACTIVE', 'SELLING'])
+        .orderBy('l.id', 'asc')
         .execute();
       const lots: LotToCheck[] = rows.map((row) => ({
         id: fromBin(row.id),
@@ -177,7 +189,7 @@ export class DailyEntryMissingJob implements OnModuleInit {
         siteId: fromBin(row.site_id),
         stockLotId: fromBin(row.stock_lot_id),
         status: row.status as ProductionLotStatus,
-        startDay: row.start_date === null ? null : row.start_date.toISOString().slice(0, 10),
+        startDay: row.first_entry_at === null ? null : businessDayOf(new Date(row.first_entry_at)),
       }));
 
       const endOfDay = new Date(businessDayEndUtc(examinedDay).getTime() - 1);

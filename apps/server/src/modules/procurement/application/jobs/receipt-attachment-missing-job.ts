@@ -47,6 +47,7 @@ import {
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import { hasAvailableAttachment } from '../../../attachments/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
+import { numberSetting } from '../commands/shared.js';
 
 export const RECEIPT_ATTACHMENT_MISSING_JOB_TYPE = 'procurement.receipts.attachment_missing_check';
 
@@ -136,16 +137,13 @@ export class ReceiptAttachmentMissingJob implements OnModuleInit {
       const photoThresholdAt = async (at: Date): Promise<number> => {
         let value = thresholdAt.get(at.getTime());
         if (value === undefined) {
-          const setting = await currentSettingValue(uow, {
-            key: 'procurement.receipt_photo_threshold_xaf',
-            scopeType: 'GLOBAL',
-            scopeId: null,
+          // Même lecture que le gestionnaire de réception (`numberSetting` : nombre ou chaîne numérique).
+          value = await numberSetting(
+            uow,
+            'procurement.receipt_photo_threshold_xaf',
             at,
-          });
-          value =
-            typeof setting === 'number' && Number.isFinite(setting)
-              ? setting
-              : DEFAULT_RECEIPT_PHOTO_THRESHOLD_XAF;
+            DEFAULT_RECEIPT_PHOTO_THRESHOLD_XAF,
+          );
           thresholdAt.set(at.getTime(), value);
         }
         return value;

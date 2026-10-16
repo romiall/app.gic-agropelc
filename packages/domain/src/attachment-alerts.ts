@@ -12,13 +12,17 @@ export const DEFAULT_ATTACHMENT_MISSING_ALERT_DAYS = 7;
 /** Repli de l'horizon de revue (AV-449 : 90 jours). */
 export const DEFAULT_ATTACHMENT_MISSING_HORIZON_DAYS = 90;
 export const ATTACHMENT_DAY_MS = 86_400_000;
+/** Plafond d'un délai ou d'un horizon (dix ans) : au-delà, la date de borne ne serait plus valide. */
+export const MAX_ATTACHMENT_ALERT_DAYS = 3650;
 
 /**
- * Entier positif ou nul lu d'un réglage ; une valeur absente ou invalide revient au repli. **0 est une
- * valeur** : pour le délai, il désactive l'alerte (les alertes ouvertes se ferment).
+ * Entier positif ou nul lu d'un réglage, plafonné à dix ans ; une valeur absente ou invalide revient au
+ * repli. **0 est une valeur** : pour le délai, il désactive l'alerte (les alertes ouvertes se ferment).
  */
 export function wholeDaysOrDefault(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? Math.min(value, MAX_ATTACHMENT_ALERT_DAYS)
+    : fallback;
 }
 
 /** `attachments.missing_alert_days` : 7 par défaut, 0 désactive. */

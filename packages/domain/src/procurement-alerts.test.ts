@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_APPROVAL_PENDING_LONG_HOURS,
   APPROVAL_OPERATION_LABELS,
+  MAX_APPROVAL_PENDING_LONG_HOURS,
   approvalOperationLabel,
   approvalPendingHours,
   approvalPendingLongHoursOrDefault,
-  isApprovalPendingLong,
 } from './approval-alerts.js';
 import {
   DEFAULT_ATTACHMENT_MISSING_ALERT_DAYS,
   DEFAULT_ATTACHMENT_MISSING_HORIZON_DAYS,
+  MAX_ATTACHMENT_ALERT_DAYS,
   attachmentDaysMissing,
   attachmentMissingAlertDaysOrDefault,
   attachmentScanWindow,
@@ -147,10 +148,16 @@ describe('demande de validation en attente depuis longtemps (AV-408, AV-466)', (
     expect(approvalPendingLongHoursOrDefault(0.5)).toBe(0.5);
   });
 
-  it('borne comprise : à 24 h exactement la demande est en retard, une minute avant non', () => {
-    expect(isApprovalPendingLong(created, new Date('2026-10-20T07:59:00.000Z'), 24)).toBe(false);
-    expect(isApprovalPendingLong(created, new Date('2026-10-20T08:00:00.000Z'), 24)).toBe(true);
-    expect(isApprovalPendingLong(created, new Date('2026-10-20T08:00:00.000Z'), -1)).toBe(true);
+  it('plafond : un délai démesuré est ramené à dix ans (la coupure reste une date valide)', () => {
+    expect(MAX_APPROVAL_PENDING_LONG_HOURS).toBe(87_600);
+    expect(approvalPendingLongHoursOrDefault(87_600)).toBe(87_600);
+    expect(approvalPendingLongHoursOrDefault(87_601)).toBe(87_600);
+    expect(approvalPendingLongHoursOrDefault(1e12)).toBe(87_600);
+    const now = new Date('2026-10-20T08:00:00.000Z');
+    const cutoff = new Date(
+      now.getTime() - approvalPendingLongHoursOrDefault(Number.MAX_SAFE_INTEGER) * 3_600_000,
+    );
+    expect(Number.isNaN(cutoff.getTime())).toBe(false);
   });
 
   it('heures entières d’attente, jamais négatives', () => {
@@ -188,6 +195,18 @@ describe('pièce manquante (AV-407, AV-449, AV-467)', () => {
     expect(attachmentScanWindow(now, 7, 3).horizonDays).toBe(8);
     expect(attachmentScanWindow(now, 7, 0).horizonDays).toBe(90);
     expect(attachmentScanWindow(now, 100, undefined).horizonDays).toBe(101);
+  });
+
+  it('plafond : un délai ou un horizon démesuré est ramené à dix ans (la fenêtre reste valide)', () => {
+    expect(MAX_ATTACHMENT_ALERT_DAYS).toBe(3650);
+    expect(wholeDaysOrDefault(3650, 7)).toBe(3650);
+    expect(wholeDaysOrDefault(3651, 7)).toBe(3650);
+    expect(attachmentMissingAlertDaysOrDefault(Number.MAX_SAFE_INTEGER)).toBe(3650);
+    const now = new Date('2026-10-20T06:15:00.000Z');
+    const window = attachmentScanWindow(now, 3650, Number.MAX_SAFE_INTEGER);
+    expect(window.horizonDays).toBe(3651);
+    expect(Number.isNaN(window.oldest.getTime())).toBe(false);
+    expect(Number.isNaN(window.newest.getTime())).toBe(false);
   });
 
   it('jours écoulés depuis la réception par le serveur', () => {
