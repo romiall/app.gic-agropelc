@@ -728,7 +728,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'CheckInSuspicious' }],
     resolvedBy: [],
-    settings: [],
+    settings: ['fieldwork.suspicion_max_speed_kmh', 'fieldwork.suspicion_repeated_accuracy_count'],
     messageTitle: 'Pointage suspect',
     messageFields: [
       { key: 'user_label', label: 'Commercial' },
@@ -773,8 +773,10 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     subjectType: 'DUPLICATE_CANDIDATE',
     actionScreen: null,
     recipientRoles: ['FINANCE'],
-    ownerFields: [],
-    teamManager: false,
+    // Le compte client porte son titulaire (`owner_user_id`) : un responsable commercial affecté à l'équipe
+    // reçoit l'alerte par ses commerciaux (P9-10, AV-469). Encaissements et réceptions n'ont pas ce champ.
+    ownerFields: ['owner_user_id'],
+    teamManager: true,
     approvers: false,
     escalationHours: null,
     // Trois producteurs (ADR-071 §2) : encaissement (`sales`), compte client (`crm`), réception (`procurement`).
@@ -784,10 +786,12 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { eventType: 'GoodsReceiptQuarantined', recipientRoles: ['RESP_ACHATS'] },
     ],
     // La décision de la Finance sur un encaissement en doublon ferme aussi l'alerte (P9-07) ; la décision
-    // sur la quarantaine d'une réception ferme celle de la réception (P9-09, AV-465).
+    // sur la quarantaine d'une réception ferme celle de la réception (P9-09, AV-465) ; la fusion de deux
+    // comptes ferme celle du compte qui n'est plus un doublon en attente (P9-10, AV-469).
     resolvedBy: [
       { eventType: 'PaymentDuplicateDecided' },
       { eventType: 'GoodsReceiptQuarantineDecided' },
+      { eventType: 'CustomerDuplicateResolved' },
     ],
     settings: [],
     messageTitle: 'Doublon suspecté',

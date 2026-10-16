@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DomainError } from './errors.js';
 import {
+  CHECKIN_SUSPICION_LABELS,
   canRequestOverride,
+  checkinSuspicionLabel,
   detectCheckinSuspicion,
   evaluateCheckin,
   evaluateVisit,
@@ -190,6 +192,31 @@ describe('detectCheckinSuspicion — BR-TER-010', () => {
         previousAccuracies: [12, 12, 12, 12, 12],
       }),
     ).toEqual(['ACCURACY_REPEATED']);
+  });
+});
+
+describe('checkinSuspicionLabel — message de l’alerte CHECKIN_SUSPICIOUS (P9-10)', () => {
+  it('un libellé français par signal, joints dans l’ordre reçu', () => {
+    expect(checkinSuspicionLabel([])).toBe('');
+    expect(checkinSuspicionLabel(['ACCURACY_ZERO'])).toBe('Précision GPS nulle');
+    expect(checkinSuspicionLabel(['SPEED_IMPLAUSIBLE', 'COORDINATES_REPEATED'])).toBe(
+      "Vitesse impossible depuis la position précédente ; Mêmes coordonnées qu'un autre jour",
+    );
+  });
+
+  it('tous les signaux de la détection ont un libellé', () => {
+    const emitted = detectCheckinSuspicion({
+      position: CENTER,
+      accuracyM: 0,
+      occurredAt: new Date('2026-10-01T09:00:00Z'),
+      previous: { position: north(30_000), occurredAt: new Date('2026-10-01T08:59:00Z') },
+      otherDayPositions: [CENTER],
+      previousAccuracies: [0, 0, 0, 0, 0, 0],
+      maxSpeedKmh: 150,
+      repeatedAccuracyCount: 5,
+    });
+    expect([...emitted].sort()).toEqual(Object.keys(CHECKIN_SUSPICION_LABELS).sort());
+    for (const flag of emitted) expect(CHECKIN_SUSPICION_LABELS[flag]).not.toBe('');
   });
 });
 

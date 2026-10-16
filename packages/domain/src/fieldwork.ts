@@ -181,6 +181,19 @@ export function detectCheckinSuspicion(input: {
   return flags;
 }
 
+/** Libellés français des signaux de pointage suspect (message de l'alerte `CHECKIN_SUSPICIOUS`, P9-10). */
+export const CHECKIN_SUSPICION_LABELS: Readonly<Record<CheckinSuspicionFlag, string>> = {
+  SPEED_IMPLAUSIBLE: 'Vitesse impossible depuis la position précédente',
+  ACCURACY_ZERO: 'Précision GPS nulle',
+  COORDINATES_REPEATED: "Mêmes coordonnées qu'un autre jour",
+  ACCURACY_REPEATED: 'Même précision répétée',
+};
+
+/** Signaux joints en une phrase, dans l'ordre reçu (champ « Signaux » du message de l'alerte). */
+export function checkinSuspicionLabel(flags: readonly CheckinSuspicionFlag[]): string {
+  return flags.map((flag) => CHECKIN_SUSPICION_LABELS[flag]).join(' ; ');
+}
+
 export type VisitFlag = 'OUT_OF_SESSION' | 'FAR_FROM_CUSTOMER' | 'SESSION_REJECTED';
 
 /**

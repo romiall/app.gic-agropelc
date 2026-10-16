@@ -188,7 +188,30 @@ describe('gravité et clés', () => {
     expect(alertDefinitionOf('DUPLICATE_SUSPECTED').resolvedBy.map((t) => t.eventType)).toEqual([
       'PaymentDuplicateDecided',
       'GoodsReceiptQuarantineDecided',
+      'CustomerDuplicateResolved',
     ]);
+  });
+
+  it('P9-10 : pointage suspect et doublon de compte client', () => {
+    const checkin = alertDefinitionOf('CHECKIN_SUSPICIOUS');
+    // Les deux seuils de BR-TER-010 lus par la commande de pointage sont cités (garde de semis du catalogue).
+    expect(checkin.settings).toEqual([
+      'fieldwork.suspicion_max_speed_kmh',
+      'fieldwork.suspicion_repeated_accuracy_count',
+    ]);
+    expect(checkin.nature).toBe('EVENT');
+    expect(checkin.resolution).toBe('MANUAL');
+    expect(checkin.ownerFields).toEqual(['user_id']);
+
+    // Le compte client porte son titulaire : une affectation d'équipe reçoit l'alerte par ses commerciaux.
+    const duplicate = alertDefinitionOf('DUPLICATE_SUSPECTED');
+    expect(duplicate.ownerFields).toEqual(['owner_user_id']);
+    expect(duplicate.teamManager).toBe(true);
+    const customer = duplicate.raisedBy.find((t) => t.eventType === 'CustomerDuplicateSuspected');
+    expect(customer?.recipientRoles).toEqual(['RESP_COMMERCIAL']);
+    // Le sujet est l'agrégat de l'événement (le nouveau compte) : même clé simple que les deux autres.
+    expect(duplicate.subjectParts).toBeUndefined();
+    expect(alertSubjectKey(duplicate, 'ABC', {})).toBe('abc');
   });
 
   it('un sujet composite accepte une partie numérique (jour, position)', () => {

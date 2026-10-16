@@ -79,14 +79,16 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `CustomerConverted` | crm | ANA, KOM, NOT | `customer_id`, `sale_id`, `converted_at`, titulaire | KPI conversions ; stade client dans Kommo |
 | `ProspectLost`, `ProspectReopened` | crm | ANA, KOM | `customer_id`, motif | — |
 | `CustomerReassigned` | crm | SYN (`SCOPE_EXIT`), KOM, NOT | `customer_id`, ancien et nouveau titulaire | Téléchargement ou retrait ; responsable Kommo ; notification |
-| `CustomerMerged` | crm | KOM, ANA | `kept_id`, `merged_id` | Liens externes rattachés |
+| `CustomerMerged` | crm | KOM, ANA | `kept_id`, `merged_id` | Liens externes rattachés (non publié à ce jour) |
+| `CustomerDuplicateSuspected` | crm | NOT | `customer_id` (sujet : le nouveau compte), `existing_customer_id`, `reference` (nom du nouveau compte), `reason_label`, `owner_user_id`, `site_id`, `zone_id`, `business_day` | Alerte `DUPLICATE_SUSPECTED` (P9-10, AV-469) ; publié par `crm.customer.create` pour un doublon créé hors ligne, sans téléphone |
+| `CustomerDuplicateResolved` | crm | NOT | `customer_id`, `kept_customer_id`, `merged_customer_id`, `decided_by` | Ferme l'alerte du compte qui n'est plus un doublon en attente ; publié par `crm.customer.merge` |
 | `CustomerCreditTermsChanged` | crm | SYN | `customer_id` | Contrôle du crédit hors ligne |
 | `VisitRecorded`, `VisitCancelled` | crm | ANA, NOT (`far_from_customer`) | `visit_id`, `customer_id`, `user_id`, drapeaux | KPI visites |
 | `InteractionRecorded` | crm | ANA | `interaction_id` | — |
 | `SalesTargetSet` | crm | ANA | `target_id` | Suivi des objectifs |
 | `CheckInAccepted`, `CheckInRejected` | fieldwork | ANA, NOT (rejets répétés) | `checkin_id`, résultat, distance | Audit de présence |
 | `CheckInOverrideRequested` | fieldwork | NOT (via `ApprovalRequested`) | `session_id` | — |
-| `CheckInSuspicious` | fieldwork | NOT | `checkin_id`, signaux | Alerte `CHECKIN_SUSPICIOUS` |
+| `CheckInSuspicious` | fieldwork | NOT | `checkin_id`, `user_id`, `user_label`, `zone_id`, `flags` (libellés), `flag_codes`, `distance_m`, `accuracy_m`, `server_result`, `business_day` — sans coordonnées | Alerte `CHECKIN_SUSPICIOUS` (P9-10, AV-468) ; publié par `fieldwork.checkin.record` après l'écriture du pointage |
 | `WorkSessionStarted`, `WorkSessionEnded`, `WorkSessionAutoClosed` | fieldwork | ANA | `session_id`, `user_id` | KPI présence ; levée de `INACTIVE_COMMERCIAL` |
 
 ### 2.4 Ventes et encaissements (producteur : `sales`)
@@ -219,7 +221,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `DeviceSequenceGapDetected` | sync | NOT | `device_id`, trou | Alerte critique |
 | `ClockSkewDetected` | sync | NOT | `device_id`, écart | Alerte `CLOCK_SKEW` |
 | `DeviceSyncStale` | sync (tâche planifiée) | NOT | `device_id`, dernière synchronisation | Alerte `SYNC_STALE` |
-| `AuditChainBroken` | audit | NOT | partition, position | Alerte critique |
+| `AuditChainBroken` | audit | NOT | `partition` (mois métier), `position` (seq), `reason`, bornes de la fenêtre, `business_day` | Alerte critique `AUDIT_CHAIN_BROKEN` (P9-10, AV-470) ; publié par `audit.chain.verify_daily`, qui se termine en succès |
 | `AnalyticsExportRequested`, `AnalyticsExportCompleted`, `SavedViewShared` | analytics | NOT | `export_id` | Lien de téléchargement |
 | `ReplenishmentSuggested` | inventory (tâche planifiée) | NOT | PDV, produit, quantité | Alerte `POS_REPLENISH` |
 | `KommoLeadQualifiedReceived` | integrations | CRM | `lead_id`, contact | Création ou rapprochement du compte |

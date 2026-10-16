@@ -42,6 +42,7 @@ import {
   ApprovalsRecurringJobs,
   APPROVALS_RECURRING_JOBS,
 } from '../src/modules/approvals/application/jobs/approvals-recurring-jobs.js';
+import { AUDIT_RECURRING_JOBS, AuditRecurringJobs } from '../src/audit/audit-recurring-jobs.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
 
@@ -341,6 +342,14 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'INTERVAL',
       intervalSeconds: 3600,
     });
+    // P9-10 : vérification quotidienne de la chaîne d'audit, à 03:00 (AV-470).
+    const audit = new RecurringJobRegistry();
+    new AuditRecurringJobs(audit).onModuleInit();
+    expect(audit.list()).toEqual(AUDIT_RECURRING_JOBS);
+    expect(audit.get('audit.chain.verify_daily')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '03:00',
+    });
     // Un même processus inscrit les modules sans collision de type de tâche.
     const both = new RecurringJobRegistry();
     new InventoryRecurringJobs(both).onModuleInit();
@@ -349,13 +358,15 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
     new ProductionRecurringJobs(both).onModuleInit();
     new ProcurementRecurringJobs(both).onModuleInit();
     new ApprovalsRecurringJobs(both).onModuleInit();
+    new AuditRecurringJobs(both).onModuleInit();
     expect(both.list()).toHaveLength(
       INVENTORY_RECURRING_JOBS.length +
         FINANCE_RECURRING_JOBS.length +
         SALES_RECURRING_JOBS.length +
         PRODUCTION_RECURRING_JOBS.length +
         PROCUREMENT_RECURRING_JOBS.length +
-        APPROVALS_RECURRING_JOBS.length,
+        APPROVALS_RECURRING_JOBS.length +
+        AUDIT_RECURRING_JOBS.length,
     );
   });
 });

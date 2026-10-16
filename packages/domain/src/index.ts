@@ -124,6 +124,8 @@ export {
   sessionAutoCloseAt,
   resolveSessionEnd,
   detectCheckinSuspicion,
+  CHECKIN_SUSPICION_LABELS,
+  checkinSuspicionLabel,
   evaluateVisit,
 } from './fieldwork.js';
 

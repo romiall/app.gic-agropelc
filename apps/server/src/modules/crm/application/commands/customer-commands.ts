@@ -42,6 +42,10 @@ import {
 import { findReasonCode } from '../../../catalog/application/public/index.js';
 import { emitCustomerChange } from '../sync-changes.js';
 import {
+  publishCustomerDuplicateResolved,
+  publishCustomerDuplicateSuspected,
+} from '../customer-alert-events.js';
+import {
   CUSTOMER_MERGED,
   CUSTOMER_NOT_FOUND,
   FORBIDDEN_SCOPE,
@@ -437,6 +441,19 @@ function buildHandlers(idGenerator: IdGenerator) {
           phone: phones.value.primary,
           resolution: 'crm.customer.merge (BR-CRM-007)',
         },
+      });
+      // Alerte `DUPLICATE_SUSPECTED` du compte client (P9-10, AV-469) : après le conflit, jamais un rejet.
+      await publishCustomerDuplicateSuspected(uow, idGenerator, {
+        customerId,
+        displayName: p.displayName,
+        existingCustomerId: fromBin(duplicateOf.id),
+        zoneId: p.zoneId,
+        homeSiteId,
+        ownerUserId: ownerId,
+        acquiredByUserId: acquiredBy,
+        occurredAt: at,
+        commandId: envelope.command_id,
+        capturedOffline: envelope.captured_offline,
       });
       return { status: 'APPLIED_WITH_WARNINGS', warnings: ['DUPLICATE_CUSTOMER'] };
     }
@@ -941,6 +958,24 @@ function buildHandlers(idGenerator: IdGenerator) {
       resolvedAt: at,
       refs: [keptId],
     });
+    // Fin de l'état de doublon en attente (P9-10, AV-469) : le compte absorbé qui portait un
+    // `duplicate_of_id` disparaît, et le compte conservé n'est plus le doublon de l'absorbé. Les autres
+    // doublons repointés vers le compte conservé gardent leur alerte (leur état est inchangé).
+    const resolvedCustomers: string[] = [];
+    if (absorbed.duplicate_of_id !== null) resolvedCustomers.push(absorbedId);
+    if (kept.duplicate_of_id !== null && kept.duplicate_of_id.equals(absorbed.id)) {
+      resolvedCustomers.push(keptId);
+    }
+    for (const customerId of resolvedCustomers) {
+      await publishCustomerDuplicateResolved(uow, idGenerator, {
+        customerId,
+        keptCustomerId: keptId,
+        mergedCustomerId: absorbedId,
+        decidedBy: author,
+        decidedAt: at,
+        commandId: envelope.command_id,
+      });
+    }
     return {
       status: 'APPLIED',
       audit: {

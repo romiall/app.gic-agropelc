@@ -47,7 +47,7 @@
 | Responsabilité | Journal d'audit chaîné (D12) |
 | Tables | `audit.audit_log` |
 | API | `audit.record(uow, entry)`, `audit.recordDenied(entry)` (transaction séparée) ; requête `GET /audit` |
-| Événements | `AuditChainBroken` |
+| Événements | `AuditChainBroken` (P9-10 : publié par `audit.chain.verify_daily`, 03:00 Douala, AV-470) |
 | Autorisées | `platform` |
 | Interdites | Tout module métier (il est appelé, il n'appelle pas) |
 
@@ -114,7 +114,7 @@
 | Responsabilité | Pointages, sessions de travail, dérogations |
 | Tables | `geo_checkins`, `work_sessions` |
 | API | `/work-sessions` ; commandes `fieldwork.*` ; interne : `fieldwork.openSessionAt(user, at)` |
-| Événements | `CheckIn*`, `WorkSession*` |
+| Événements | `CheckIn*`, `WorkSession*`, `CheckInSuspicious` (P9-10 : sur `fieldwork.checkin.record`, AV-468) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `approvals` |
 | Interdites | `crm`, `sales` et au-dessus |
 
@@ -125,7 +125,7 @@
 | Responsabilité | Comptes clients, portefeuille, pipeline, visites, interactions, objectifs, référentiels commerciaux |
 | Tables | `customers`, `customer_assignments`, `customer_stage_history`, `pipeline_steps`, `lead_sources`, `visits`, `interactions`, `sales_targets` |
 | API | `/customers`, `/visits`, `/interactions`, `/targets` ; interne : `crm.customer(id)`, `crm.ownerAt(customer, at)`, `crm.creditStatus(customer)`, `crm.markConverted(uow, customer, sale)`, `crm.recordLastSale(uow, customer, at)`, `crm.createOrLinkFromExternal(uow, …)` |
-| Événements | `Prospect*`, `Customer*`, `Visit*`, `InteractionRecorded`, `SalesTargetSet` |
+| Événements | `Prospect*`, `Customer*`, `Visit*`, `InteractionRecorded`, `SalesTargetSet`, `CustomerDuplicateSuspected` et `CustomerDuplicateResolved` (P9-10 : sur `crm.customer.create` et `crm.customer.merge`, AV-469) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `fieldwork`, `approvals`, `attachments` |
 | Interdites | `sales`, `inventory`, `finance`, `pricing` (le CRM ne connaît pas les ventes : la conversion est déclenchée par l'appel de `sales`) |
 
