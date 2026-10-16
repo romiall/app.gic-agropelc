@@ -112,7 +112,10 @@ export async function attachmentsOfOwners(
  * demande est figée à sa création ; une pièce exigée refusée, en quarantaine ou jamais enregistrée
  * est **remplacée** par une autre pièce reçue du même document — de même nature si la pièce exigée
  * est connue —, chacune ne remplaçant qu'une pièce (AV-290 : « nouvelle photo, même document » ;
- * revue de MP-10 : sans cela, la validation restait bloquée à vie).
+ * revue de MP-10 : sans cela, la validation restait bloquée à vie). La remplaçante est celle de
+ * l'**auteur** du document, le demandeur de la validation, qui a cité les pièces exigées : la pièce
+ * d'un collègue ne lève pas l'exigence (revue de P8E-05 ; les lectures ne présentent que les pièces
+ * de l'auteur, ADR-047 §3).
  */
 export async function requiredAttachmentsSatisfied(
   executor: Kysely<DB> | Transaction<DB>,
@@ -120,6 +123,8 @@ export async function requiredAttachmentsSatisfied(
     readonly requiredIds: readonly string[];
     readonly ownerType: string;
     readonly ownerId: string;
+    /** Demandeur de la validation, auteur des pièces exigées. */
+    readonly authorUserId: string;
   },
 ): Promise<boolean> {
   if (input.requiredIds.length === 0) return true;
@@ -142,6 +147,7 @@ export async function requiredAttachmentsSatisfied(
       .where('owner_type', '=', input.ownerType)
       .where('owner_id', '=', toBin(input.ownerId))
       .where('upload_status', '=', 'AVAILABLE')
+      .where('created_by', '=', toBin(input.authorUserId))
       .execute()
   ).filter((row) => !input.requiredIds.includes(fromBin(row.id)));
   // Les pièces exigées connues d'abord : leur remplaçante doit avoir la même nature.

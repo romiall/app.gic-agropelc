@@ -141,6 +141,7 @@ export async function decideApprovalRequest(
         requiredIds,
         ownerType: row.subject_type,
         ownerId: fromBin(row.subject_id),
+        authorUserId: fromBin(row.requested_by),
       }))
     ) {
       return refused(

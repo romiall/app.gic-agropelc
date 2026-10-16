@@ -421,6 +421,58 @@ describe('P8-09 : lectures HTTP de la finance opérationnelle', { timeout: 180_0
     expect((await get(fin, `/api/v1/supplier-payments/${freshUuid()}`)).statusCode).toBe(404);
   });
 
+  it('P8E-05 (ADR-047 §3) : chaque facture rendue porte les pièces de son auteur', async () => {
+    const register = (actor: Actor, seed: string, ownerId = invoiceId) => {
+      const id = freshUuid();
+      return send(actor, 'attachments.attachment.register', 'ATTACHMENT', id, {
+        ownerType: 'SUPPLIER_INVOICE',
+        ownerId,
+        kind: 'INVOICE',
+        mimeType: 'image/jpeg',
+        sizeBytes: 4_096,
+        sha256: seed.repeat(32),
+        capturedAt: at('10:00'),
+      }).then(() => id);
+    };
+    // Deux autres factures du fournisseur, sans bon (en écart, hors des dettes) : l'une avec sa
+    // photo, l'autre sans. Aucune pièce ne passe d'une facture à l'autre.
+    const record = async () => {
+      const id = freshUuid();
+      await send(fin, 'finance.supplier_invoice.record', 'SUPPLIER_INVOICE', id, {
+        supplierId,
+        supplierInvoiceRef: `P-${id.slice(-8)}`,
+        invoiceDate: '2026-10-08',
+        lines: [{ description: 'Transport', lineTotalXaf: 5_000 }],
+      });
+      return id;
+    };
+    const second = await record();
+    const bare = await record();
+    const scan = await register(fin, '66');
+    const secondScan = await register(fin, '88', second);
+    // Pièce d'un autre utilisateur : jamais présentée comme la facture.
+    await register(ach, '77');
+    const list = (await get(fin, `/api/v1/supplier-invoices?supplier_id=${supplierId}`)).json() as {
+      supplier_invoices: { id: string; attachments: unknown[] }[];
+    };
+    const piecesOf = (id: string) =>
+      list.supplier_invoices.find((item) => item.id === id)?.attachments;
+    expect(piecesOf(invoiceId)).toEqual([
+      { id: scan, kind: 'INVOICE', uploadStatus: 'PENDING_UPLOAD' },
+    ]);
+    expect(piecesOf(second)).toEqual([
+      { id: secondScan, kind: 'INVOICE', uploadStatus: 'PENDING_UPLOAD' },
+    ]);
+    expect(piecesOf(bare)).toEqual([]);
+    const detail = (await get(ach, `/api/v1/supplier-invoices/${invoiceId}`)).json() as {
+      supplier_invoice: { attachments: unknown[]; lines: unknown[] };
+    };
+    expect(detail.supplier_invoice.attachments).toEqual([
+      { id: scan, kind: 'INVOICE', uploadStatus: 'PENDING_UPLOAD' },
+    ]);
+    expect(detail.supplier_invoice.lines).toHaveLength(1);
+  });
+
   it('GET /payables : solde, ancienneté au jour métier, avance et dette nette', async () => {
     const response = await get(fin, `/api/v1/payables?supplier_id=${supplierId}`);
     expect(response.statusCode, response.body).toBe(200);

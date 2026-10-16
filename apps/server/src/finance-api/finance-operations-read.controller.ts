@@ -13,10 +13,10 @@
  *   (une date impossible donne 400). La liste des dépenses est pré-filtrée par le périmètre du lecteur
  *   (`ReadAccess.confinement` : sites, auteurs) avant la pagination, puis affinée élément par élément
  *   (revue de P8-14 : une page ne doit pas être vide parce que les plus récentes sont hors portée).
- * - Pièces d'une dépense (P8E-03, ADR-047 §3) : chaque dépense rendue porte ses pièces (`attachments` :
- *   identifiant, nature, état d'envoi), que son lecteur ouvre par `GET /attachments/{id}/content`. Seules
- *   celles de l'auteur de la dépense sont rendues : la photo d'un tiers ne passe pas pour son justificatif
- *   (revue de P8E-03).
+ * - Pièces d'une dépense ou d'une facture (P8E-03, P8E-05 ; ADR-047 §3) : chaque document rendu porte
+ *   ses pièces (`attachments` : identifiant, nature, état d'envoi), que son lecteur ouvre par
+ *   `GET /attachments/{id}/content`. Seules celles de l'auteur du document sont rendues : la photo d'un
+ *   tiers ne passe pas pour son justificatif (revue de P8E-03).
  */
 import { Controller, Get, HttpCode, Inject, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -116,16 +116,22 @@ export class FinanceOperationsReadController {
     });
   }
 
-  /** Pièces de l'auteur de chaque dépense rendue (justificatif) : son lecteur les lit (ADR-047 §3). */
-  private async withAttachments(expenses: readonly ExpenseSummary[]) {
+  /**
+   * Pièces de l'auteur de chaque document rendu (justificatif d'une dépense, facture fournisseur) : son
+   * lecteur les lit (ADR-047 §3).
+   */
+  private async withAttachments<T extends { readonly id: string; readonly createdBy: string }>(
+    ownerType: 'EXPENSE' | 'SUPPLIER_INVOICE',
+    documents: readonly T[],
+  ) {
     const owned = await attachmentsOfOwners(
       this.db,
-      expenses.map((expense) => ({ ownerType: 'EXPENSE', ownerId: expense.id })),
+      documents.map((document) => ({ ownerType, ownerId: document.id })),
     );
-    return expenses.map((expense) => ({
-      ...expense,
-      attachments: (owned.get(`EXPENSE:${expense.id}`) ?? [])
-        .filter((attachment) => attachment.createdBy === expense.createdBy)
+    return documents.map((document) => ({
+      ...document,
+      attachments: (owned.get(`${ownerType}:${document.id}`) ?? [])
+        .filter((attachment) => attachment.createdBy === document.createdBy)
         .map((attachment) => ({
           id: attachment.id,
           kind: attachment.kind,
@@ -160,7 +166,7 @@ export class FinanceOperationsReadController {
     for (const expense of page.items) {
       if (await this.expenseVisible(request, now, expense)) kept.push(expense);
     }
-    return { expenses: await this.withAttachments(kept), next_cursor: page.nextCursor };
+    return { expenses: await this.withAttachments('EXPENSE', kept), next_cursor: page.nextCursor };
   }
 
   @Get('expenses/:id')
@@ -176,7 +182,7 @@ export class FinanceOperationsReadController {
     if (!expense || !(await this.expenseVisible(request, now, expense))) {
       return this.expenseRead.deny(request, now, entity, 'OUT_OF_SCOPE');
     }
-    return { expense: (await this.withAttachments([expense]))[0] };
+    return { expense: (await this.withAttachments('EXPENSE', [expense]))[0] };
   }
 
   @Get('supplier-invoices')
@@ -197,7 +203,10 @@ export class FinanceOperationsReadController {
       ...(query.cursor !== undefined ? { beforeId: query.cursor } : {}),
       limit: query.limit ?? OPERATIONS_LIST_DEFAULT_LIMIT,
     });
-    return { supplier_invoices: page.items, next_cursor: page.nextCursor };
+    return {
+      supplier_invoices: await this.withAttachments('SUPPLIER_INVOICE', page.items),
+      next_cursor: page.nextCursor,
+    };
   }
 
   @Get('supplier-invoices/:id')
@@ -211,7 +220,7 @@ export class FinanceOperationsReadController {
     await this.payableRead.requirePermission(request, now, entity);
     const invoice = await getSupplierInvoice(this.db, id);
     if (!invoice) return this.payableRead.deny(request, now, entity, 'OUT_OF_SCOPE');
-    return { supplier_invoice: invoice };
+    return { supplier_invoice: (await this.withAttachments('SUPPLIER_INVOICE', [invoice]))[0] };
   }
 
   @Get('supplier-payments')

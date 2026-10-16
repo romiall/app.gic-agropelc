@@ -623,7 +623,13 @@ describe('approvals (P0-13)', () => {
     it('revue de MP-10 (AV-290) : pièce exigée refusée ou jamais enregistrée — remplacée par une nouvelle pièce du même document', async () => {
       const policyId = await setPolicy(`TEST_POLICY_${freshUuid().slice(-8)}`);
       const lossId = freshUuid();
-      const insertPiece = async (id: string, kind: string, status: string, owner = lossId) =>
+      const insertPiece = async (
+        id: string,
+        kind: string,
+        status: string,
+        owner = lossId,
+        author = requester,
+      ) =>
         db
           .insertInto('attachments_attachments')
           .values({
@@ -639,7 +645,7 @@ describe('approvals (P0-13)', () => {
             upload_status: status,
             captured_at: new Date(OCCURRED_AT),
             occurred_at: new Date(OCCURRED_AT),
-            created_by: toBin(requester),
+            created_by: toBin(author),
           })
           .execute();
       const approve = async (requestId: string) => {
@@ -667,6 +673,8 @@ describe('approvals (P0-13)', () => {
       const requestId = await createPendingRequest(policyId, [quarantined], lossId);
       await insertPiece(freshUuid(), 'OTHER', 'AVAILABLE');
       await insertPiece(freshUuid(), 'PHOTO', 'AVAILABLE', freshUuid());
+      // Revue de P8E-05 : la photo d'un autre utilisateur, même reçue, ne remplace pas celle de l'auteur.
+      await insertPiece(freshUuid(), 'PHOTO', 'AVAILABLE', lossId, approver);
       expect(await approve(requestId)).toBe('ATTACHMENT_MISSING');
       // Nouvelle photo reçue du même document : elle remplace la pièce exigée.
       await insertPiece(freshUuid(), 'PHOTO', 'AVAILABLE');
@@ -675,6 +683,8 @@ describe('approvals (P0-13)', () => {
       // Pièce exigée jamais enregistrée : toute pièce reçue du document la remplace.
       const otherLoss = freshUuid();
       const unknown = await createPendingRequest(policyId, [freshUuid()], otherLoss);
+      expect(await approve(unknown)).toBe('ATTACHMENT_MISSING');
+      await insertPiece(freshUuid(), 'OTHER', 'AVAILABLE', otherLoss, approver);
       expect(await approve(unknown)).toBe('ATTACHMENT_MISSING');
       await insertPiece(freshUuid(), 'OTHER', 'AVAILABLE', otherLoss);
       expect(await approve(unknown)).toBe('APPLIED');

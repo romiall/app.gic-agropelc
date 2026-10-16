@@ -1,0 +1,607 @@
+/**
+ * Saisie d'une facture fournisseur (ECR-FIN-03, P8E-05 ; ADR-043 §2, ADR-047 §4 ; Finance, en ligne) :
+ * fournisseur, bon de commande facultatif (lignes proposées depuis son rapprochement : accepté non
+ * facturé, prix du bon, en unité de base du produit), référence, dates, lignes (montant calculé ou lu
+ * sur la facture papier), total imprimé, commentaire, photo de la facture citée par l'enregistrement.
+ * Aperçu indicatif du rapprochement par la règle partagée, doublon de référence contrôlé sur les
+ * factures lues ; le serveur tranche. Hors ligne, le brouillon reste à l'écran, l'envoi attend le réseau.
+ */
+import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { businessDayOf } from '@gic/domain';
+import { clock, idGenerator } from '../../platform/composition.js';
+import { photoAttachment } from '../attachments/attachments.js';
+import type { PreparedPhoto } from '../attachments/photo.js';
+import { PhotoField } from '../attachments/PhotoField.js';
+import { formatBusinessDate } from '../home/format-home.js';
+import type { OrderView } from '../procurement/orders.js';
+import type { SupplierView } from '../procurement/suppliers.js';
+import { CommandResult } from '../sales/CommandResult.js';
+import { formatMoney, unitLabel } from '../sales/format.js';
+import { readPages, readPath, useOnlineRead } from '../sales/online-read.js';
+import { useSalesReferences } from '../sales/references.js';
+import { saveErrorKey, submitCommand, useOutboxCommand } from '../sales/submit.js';
+import { mismatchText } from './invoice-format.js';
+import {
+  duplicateInvoice,
+  emptyInvoiceDraft,
+  freeLine,
+  INVOICE_MAX_PAGES,
+  INVOICE_PAGE_LIMIT,
+  invoiceIssues,
+  invoicePreview,
+  invoiceRecordPayload,
+  linesFromMatching,
+  MAX_INVOICE_COMMENT,
+  MAX_INVOICE_LINE_DESCRIPTION,
+  MAX_INVOICE_LINES,
+  MAX_INVOICE_REF,
+  parseInvoiceLine,
+  type InvoiceDraft,
+  type InvoiceLineDraft,
+  type OrderMatchingItem,
+  type SupplierInvoiceItem,
+} from './supplier-invoice.js';
+
+/** Bons d'un fournisseur qu'une facture peut viser : envoyés, reçus en partie ou en tout, clos. */
+const INVOICEABLE_ORDERS = new Set(['SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED']);
+
+export function InvoiceForm({
+  userId,
+  suppliers,
+  online,
+  reloadKey,
+}: {
+  readonly userId: string;
+  readonly suppliers: readonly SupplierView[];
+  readonly online: boolean;
+  /**
+   * Réponses des opérations sur les factures (écran) : bons, rapprochement et factures relus ; la
+   * réponse d'un enregistrement relit le rapprochement avant la saisie suivante sur le même bon.
+   */
+  readonly reloadKey: string;
+}) {
+  const { t } = useTranslation();
+  const refs = useSalesReferences();
+  const today = businessDayOf(clock.now());
+  const [draft, setDraft] = useState<InvoiceDraft>(() => emptyInvoiceDraft(today));
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<string>();
+  const [freeCount, setFreeCount] = useState(0);
+  const ids = {
+    supplier: useId(),
+    order: useId(),
+    ref: useId(),
+    date: useId(),
+    due: useId(),
+    printed: useId(),
+    comment: useId(),
+  };
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const supplierRef = useRef<HTMLSelectElement>(null);
+  const addLineRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<'title' | 'supplier' | 'add' | null>(null);
+  // Focus demandé par une action, posé quand son élément est rendu : les effets du rendu précédent
+  // passent avant ceux de l'action (« Nouvelle facture » : le champ n'existe pas encore).
+  useEffect(() => {
+    const target = focusNext.current;
+    const element =
+      target === 'title'
+        ? titleRef.current
+        : target === 'supplier'
+          ? supplierRef.current
+          : target === 'add'
+            ? addLineRef.current
+            : null;
+    if (!element) return;
+    focusNext.current = null;
+    element.focus();
+  });
+  const supplierId = draft.supplierId;
+  // Bons du fournisseur et ses factures (doublon de référence), lus au choix du fournisseur ; la
+  // dernière lecture reste affichée hors ligne (périmée : l'envoi attend le réseau).
+  const orders = useOnlineRead(
+    supplierId
+      ? `/api/v1/purchase-orders?supplier_id=${supplierId}&limit=${INVOICE_PAGE_LIMIT}`
+      : null,
+    (key) => readPages<OrderView>([key], 'purchase_orders', INVOICE_MAX_PAGES),
+    online,
+    reloadKey,
+  );
+  const invoices = useOnlineRead(
+    supplierId
+      ? `/api/v1/supplier-invoices?supplier_id=${supplierId}&limit=${INVOICE_PAGE_LIMIT}`
+      : null,
+    (key) => readPages<SupplierInvoiceItem>([key], 'supplier_invoices', INVOICE_MAX_PAGES),
+    online,
+    reloadKey,
+  );
+  const matching = useOnlineRead(
+    draft.purchaseOrderId ? `/api/v1/purchase-orders/${draft.purchaseOrderId}/matching` : null,
+    (key) => readPath<{ readonly matching: OrderMatchingItem }>(key),
+    online,
+    reloadKey,
+  );
+
+  if (submitted) {
+    return (
+      <section className="sale-block" aria-labelledby="invoice-new-title">
+        <h2 id="invoice-new-title" ref={titleRef} tabIndex={-1}>
+          {t('supplier_invoice.new_title')}
+        </h2>
+        <CommandResult commandId={submitted} messages="supplier_invoice.record_result">
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(emptyInvoiceDraft(today));
+              setPhoto(null);
+              setSubmitted(undefined);
+              focusNext.current = 'supplier';
+            }}
+          >
+            {t('supplier_invoice.another')}
+          </button>
+        </CommandResult>
+        <RecordStatus commandId={submitted} />
+      </section>
+    );
+  }
+
+  const supplier = suppliers.find((candidate) => candidate.id === supplierId);
+  const activeSuppliers = suppliers
+    .filter((candidate) => candidate.status === 'ACTIVE' || candidate.id === supplierId)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const supplierOrders = (orders.data?.items ?? [])
+    .filter((order) => INVOICEABLE_ORDERS.has(order.status))
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  const orderMatching = draft.purchaseOrderId ? (matching.data?.matching ?? null) : null;
+  const productOf = (productId: string | null) =>
+    refs?.products.find((product) => product.id === productId);
+  const lineLabel = (poLineId: string) => {
+    const line = orderMatching?.lines.find((candidate) => candidate.poLineId === poLineId);
+    return line ? (productOf(line.productId)?.name ?? null) : null;
+  };
+  const update = (patch: Partial<InvoiceDraft>) =>
+    setDraft((current) => ({ ...current, ...patch }));
+  const updateLine = (key: string, patch: Partial<InvoiceLineDraft>) =>
+    setDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+    }));
+  const chooseOrder = (orderId: string) => {
+    update({ purchaseOrderId: orderId, lines: [] });
+  };
+  // Lignes du bon proposées une fois son rapprochement relu (une seule fois par bon choisi) : un
+  // rapprochement périmé proposerait le reliquat d'avant la facture précédente.
+  if (
+    orderMatching &&
+    !matching.stale &&
+    orderMatching.orderId === draft.purchaseOrderId &&
+    !draft.lines.some((line) => line.poLineId !== null)
+  ) {
+    const proposed = linesFromMatching(
+      orderMatching,
+      (line) => productOf(line.productId)?.name ?? t('supplier_invoice.line_default'),
+      (line) => productOf(line.productId)?.base_unit_code ?? null,
+    );
+    if (proposed.length > 0)
+      setDraft((current) => ({ ...current, lines: [...proposed, ...current.lines] }));
+  }
+
+  const loadedInvoices = invoices.data?.items ?? [];
+  const duplicate = duplicateInvoice(draft.supplierInvoiceRef, supplierId, loadedInvoices);
+  const issues = invoiceIssues(draft, loadedInvoices);
+  const preview = invoicePreview({
+    draft,
+    matching: orderMatching,
+    paymentTermsDays: supplier?.paymentTermsDays ?? null,
+  });
+  const readFailed =
+    (supplierId !== '' && (orders.failed || invoices.failed)) ||
+    (draft.purchaseOrderId !== '' && matching.failed);
+  const waitingReads =
+    (supplierId !== '' && (orders.stale || invoices.stale)) ||
+    (draft.purchaseOrderId !== '' && matching.stale);
+  const ready =
+    online &&
+    issues.length === 0 &&
+    preview.errorCode === null &&
+    !waitingReads &&
+    !preparing &&
+    !busy;
+  const touched = supplierId !== '' || draft.supplierInvoiceRef !== '';
+
+  const submit = async () => {
+    if (!ready) return;
+    setBusy(true);
+    setSaveError(null);
+    try {
+      const command = await submitCommand({
+        authorUserId: userId,
+        commandType: 'finance.supplier_invoice.record',
+        aggregateType: 'SUPPLIER_INVOICE',
+        aggregateId: idGenerator.newId(),
+        // Photo de la facture citée par l'enregistrement (ADR-047 §3).
+        ...(photo
+          ? {
+              attachments: [
+                photoAttachment(photo, {
+                  kind: 'INVOICE',
+                  ownerType: 'SUPPLIER_INVOICE',
+                  cited: true,
+                }),
+              ],
+            }
+          : {}),
+        payload: invoiceRecordPayload(draft),
+      });
+      focusNext.current = 'title';
+      setSubmitted(command.command_id);
+    } catch (error) {
+      setSaveError(saveErrorKey(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Échec d'une lecture du formulaire : refus de droit sans relance, panne avec relance. */
+  const readProblem = (
+    read: { readonly failed: boolean; readonly denied: boolean; readonly retry: () => void },
+    failedKey: string,
+    retryKey: string,
+  ) =>
+    read.failed ? (
+      <p className="text-warn" role="status">
+        {read.denied ? t('supplier_invoice.form_denied') : t(failedKey)}{' '}
+        {read.denied ? null : (
+          <button type="button" className="secondary" onClick={read.retry}>
+            {t(retryKey)}
+          </button>
+        )}
+      </p>
+    ) : null;
+
+  return (
+    <section className="sale-block" aria-labelledby="invoice-new-title">
+      <h2 id="invoice-new-title" ref={titleRef} tabIndex={-1}>
+        {t('supplier_invoice.new_title')}
+      </h2>
+      {online ? null : (
+        <p className="text-warn" role="status">
+          {t('supplier_invoice.form_offline')}
+        </p>
+      )}
+      <div className="field">
+        <label htmlFor={ids.supplier}>{t('supplier_invoice.supplier_label')}</label>
+        <select
+          id={ids.supplier}
+          ref={supplierRef}
+          className="text-input"
+          value={supplierId}
+          onChange={(event) =>
+            update({ supplierId: event.target.value, purchaseOrderId: '', lines: [] })
+          }
+        >
+          <option value="">{t('supplier_invoice.supplier_placeholder')}</option>
+          {activeSuppliers.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.name}
+            </option>
+          ))}
+        </select>
+        {supplierId
+          ? readProblem(
+              invoices,
+              'supplier_invoice.invoices_failed',
+              'supplier_invoice.retry_invoices',
+            )
+          : null}
+      </div>
+      {supplierId ? (
+        <div className="field">
+          <label htmlFor={ids.order}>{t('supplier_invoice.order_label')}</label>
+          <select
+            id={ids.order}
+            className="text-input"
+            value={draft.purchaseOrderId}
+            onChange={(event) => chooseOrder(event.target.value)}
+          >
+            <option value="">{t('supplier_invoice.without_order')}</option>
+            {supplierOrders.map((order) => (
+              <option key={order.id} value={order.id}>
+                {t('supplier_invoice.order_option', {
+                  doc: order.docNumber,
+                  status: t(`orders_po.status.${order.status}`, { defaultValue: order.status }),
+                })}
+              </option>
+            ))}
+          </select>
+          {readProblem(orders, 'supplier_invoice.orders_failed', 'supplier_invoice.retry_orders')}
+          {draft.purchaseOrderId
+            ? readProblem(
+                matching,
+                'supplier_invoice.matching_failed',
+                'supplier_invoice.retry_matching',
+              )
+            : null}
+        </div>
+      ) : null}
+      <div className="field">
+        <label htmlFor={ids.ref}>{t('supplier_invoice.ref_label')}</label>
+        <input
+          id={ids.ref}
+          className="text-input"
+          maxLength={MAX_INVOICE_REF}
+          value={draft.supplierInvoiceRef}
+          onChange={(event) => update({ supplierInvoiceRef: event.target.value })}
+        />
+        {duplicate ? (
+          <p className="error-message" role="alert">
+            {t('supplier_invoice.duplicate', { doc: duplicate.docNumber })}
+          </p>
+        ) : null}
+      </div>
+      <div className="line-fields">
+        <div className="field">
+          <label htmlFor={ids.date}>{t('supplier_invoice.date_label')}</label>
+          <input
+            id={ids.date}
+            type="date"
+            className="text-input"
+            value={draft.invoiceDate}
+            onChange={(event) => update({ invoiceDate: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor={ids.due}>{t('supplier_invoice.due_label')}</label>
+          <input
+            id={ids.due}
+            type="date"
+            className="text-input"
+            value={draft.dueDate}
+            onChange={(event) => update({ dueDate: event.target.value })}
+          />
+          {!draft.dueDate && supplier && preview.dueDate ? (
+            <p className="home-muted">
+              {supplier.paymentTermsDays === null
+                ? t('supplier_invoice.due_default_none', {
+                    date: formatBusinessDate(preview.dueDate),
+                  })
+                : t('supplier_invoice.due_default', {
+                    date: formatBusinessDate(preview.dueDate),
+                    count: supplier.paymentTermsDays,
+                  })}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <fieldset className="field">
+        <legend>{t('supplier_invoice.lines_legend')}</legend>
+        {draft.lines.length === 0 ? (
+          <p className="home-muted">
+            {draft.purchaseOrderId && !orderMatching && !matching.failed
+              ? t('sales.loading')
+              : t('supplier_invoice.no_line')}
+          </p>
+        ) : (
+          <ol className="line-list">
+            {draft.lines.map((line, index) => {
+              const parsed = parseInvoiceLine(line);
+              // Unité de base du produit : celle de la quantité proposée, saisie et envoyée.
+              const unit = line.unitCode
+                ? unitLabel(line.unitCode, parsed.quantity ?? 0, refs?.units)
+                : null;
+              const priceUnit = line.unitCode ? unitLabel(line.unitCode, 1, refs?.units) : null;
+              const label = t('supplier_invoice.line_label', { rank: index + 1 });
+              return (
+                <li key={line.key} className="line-card" aria-label={label}>
+                  <div className="field">
+                    <label htmlFor={`${line.key}-description`}>
+                      {t('supplier_invoice.line_description', { rank: index + 1 })}
+                    </label>
+                    <input
+                      id={`${line.key}-description`}
+                      className="text-input"
+                      maxLength={MAX_INVOICE_LINE_DESCRIPTION}
+                      value={line.description}
+                      onChange={(event) =>
+                        updateLine(line.key, { description: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="line-fields">
+                    <div className="field">
+                      <label htmlFor={`${line.key}-quantity`}>
+                        {unit
+                          ? t('supplier_invoice.line_quantity_unit', { rank: index + 1, unit })
+                          : t('supplier_invoice.line_quantity', { rank: index + 1 })}
+                      </label>
+                      <input
+                        id={`${line.key}-quantity`}
+                        className="text-input"
+                        inputMode="decimal"
+                        value={line.quantityText}
+                        onChange={(event) =>
+                          updateLine(line.key, { quantityText: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`${line.key}-price`}>
+                        {priceUnit
+                          ? t('supplier_invoice.line_price_unit', {
+                              rank: index + 1,
+                              unit: priceUnit,
+                            })
+                          : t('supplier_invoice.line_price', { rank: index + 1 })}
+                      </label>
+                      <input
+                        id={`${line.key}-price`}
+                        className="text-input"
+                        inputMode="numeric"
+                        value={line.unitPriceText}
+                        onChange={(event) =>
+                          updateLine(line.key, { unitPriceText: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`${line.key}-total`}>
+                        {t('supplier_invoice.line_total', { rank: index + 1 })}
+                      </label>
+                      <input
+                        id={`${line.key}-total`}
+                        className="text-input"
+                        inputMode="numeric"
+                        placeholder={parsed.computedXaf === null ? '' : String(parsed.computedXaf)}
+                        value={line.totalText}
+                        onChange={(event) =>
+                          updateLine(line.key, { totalText: event.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <p className="home-muted">
+                    {parsed.empty
+                      ? t('supplier_invoice.line_skipped')
+                      : parsed.totalXaf === null
+                        ? t('supplier_invoice.line_incomplete')
+                        : t('supplier_invoice.line_amount', {
+                            amount: formatMoney(parsed.totalXaf),
+                          })}
+                  </p>
+                  {line.poLineId === null ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        focusNext.current = 'add';
+                        setDraft((current) => ({
+                          ...current,
+                          lines: current.lines.filter((candidate) => candidate.key !== line.key),
+                        }));
+                      }}
+                    >
+                      {t('supplier_invoice.line_remove', { rank: index + 1 })}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        <button
+          type="button"
+          className="secondary"
+          ref={addLineRef}
+          disabled={draft.lines.length >= MAX_INVOICE_LINES}
+          onClick={() => {
+            setFreeCount((count) => count + 1);
+            setDraft((current) => ({
+              ...current,
+              lines: [...current.lines, freeLine(`free:${freeCount + 1}`)],
+            }));
+          }}
+        >
+          {t('supplier_invoice.line_add')}
+        </button>
+      </fieldset>
+      <div className="field">
+        <label htmlFor={ids.printed}>{t('supplier_invoice.printed_label')}</label>
+        <input
+          id={ids.printed}
+          className="text-input"
+          inputMode="numeric"
+          value={draft.printedTotalText}
+          onChange={(event) => update({ printedTotalText: event.target.value })}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor={ids.comment}>{t('supplier_invoice.comment_label')}</label>
+        <textarea
+          id={ids.comment}
+          className="text-input"
+          rows={2}
+          maxLength={MAX_INVOICE_COMMENT}
+          value={draft.comment}
+          onChange={(event) => update({ comment: event.target.value })}
+        />
+      </div>
+      <PhotoField
+        label={t('supplier_invoice.photo_label')}
+        value={photo}
+        onChange={setPhoto}
+        onBusyChange={setPreparing}
+      />
+      {preview.errorCode ? (
+        <p className="error-message" role="alert">
+          {t(`supplier_invoice.preview_error.${preview.errorCode}`, {
+            defaultValue: t('supplier_invoice.preview_error.INVOICE_LINE_INVALID'),
+          })}
+        </p>
+      ) : preview.match ? (
+        <div role="status" className="home-banner">
+          <p>
+            {preview.match.conforming
+              ? t('supplier_invoice.preview_conforming', {
+                  total: formatMoney(preview.match.totalXaf as number),
+                })
+              : t('supplier_invoice.preview_mismatch', {
+                  total: formatMoney(preview.match.totalXaf as number),
+                })}
+          </p>
+          {preview.match.details.length > 0 ? (
+            <ul>
+              {preview.match.details.map((detail, index) => (
+                <li key={`${detail.reason}-${index}`}>{mismatchText(t, detail, lineLabel)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      {touched
+        ? issues
+            .filter((issue) => issue !== 'DUPLICATE')
+            .map((issue) => (
+              <p key={issue} className="error-message">
+                {t(`supplier_invoice.issue.${issue}`)}
+              </p>
+            ))
+        : null}
+      {online && waitingReads && !readFailed ? (
+        <p className="home-muted" role="status">
+          {t('supplier_invoice.reading')}
+        </p>
+      ) : null}
+      {saveError ? (
+        <p className="alert alert-error" role="alert">
+          {t(saveError)}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        className="btn-block submit-sale"
+        disabled={!ready}
+        onClick={() => void submit()}
+      >
+        {busy ? t('sales.submitting') : t('supplier_invoice.submit')}
+      </button>
+    </section>
+  );
+}
+
+/** Statut renvoyé à l'enregistrement : rapprochement conforme (approuvée) ou écart à décider. */
+function RecordStatus({ commandId }: { readonly commandId: string }) {
+  const { t } = useTranslation();
+  const command = useOutboxCommand(commandId);
+  const status = command?.server_refs?.status;
+  if (status !== 'APPROVED' && status !== 'MISMATCH') return null;
+  return (
+    <p className="home-muted" role="status">
+      {t(`supplier_invoice.after.${status}`)}
+    </p>
+  );
+}

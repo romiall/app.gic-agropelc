@@ -120,6 +120,7 @@ export class ApprovalsInboxController {
           requiredIds: item.requiredAttachmentIds,
           ownerType: item.subjectType,
           ownerId: item.subjectId,
+          authorUserId: item.requestedBy,
         })) ||
         (item.operationType === 'MORTALITY' && photoWaiting.has(item.subjectId));
       presented.push({

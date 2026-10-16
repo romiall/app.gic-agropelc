@@ -484,7 +484,7 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
   it('MP-10 (AV-286) : la file liste les photos du document ; le valideur les voit, pas un autre', async () => {
     const subject = await db
       .selectFrom('approvals_approval_requests')
-      .select('subject_id')
+      .select(['subject_id', 'requested_by'])
       .where('id', '=', toBin(requests.lossS1!))
       .executeTakeFirstOrThrow();
     const photoId = freshUuid();
@@ -521,6 +521,30 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     for (const outsider of [finance, magasinier]) {
       expect((await get(outsider, `/api/v1/attachments/${photoId}/content`)).statusCode).toBe(403);
     }
+    // Revue de P8E-05 : la photo d'un autre que le demandeur ne remplace pas la pièce exigée.
+    expect(entry?.attachmentsPending).toBe(true);
+    const ownId = freshUuid();
+    await db
+      .insertInto('attachments_attachments')
+      .values({
+        id: toBin(ownId),
+        owner_type: 'TEST_SUBJECT',
+        owner_id: subject.subject_id,
+        kind: 'PHOTO',
+        mime_type: 'image/jpeg',
+        size_bytes: content.length,
+        uploaded_bytes: content.length,
+        sha256: createHash('sha256').update(content).digest('hex'),
+        storage_key: `attachments/${ownId}`,
+        upload_status: 'AVAILABLE',
+        captured_at: new Date(),
+        occurred_at: new Date(),
+        created_by: subject.requested_by,
+      })
+      .execute();
+    expect(
+      (await inboxOf(respFerme)).find((item) => item.id === requests.lossS1)?.attachmentsPending,
+    ).toBe(false);
   });
 
   it('catalogue de décision fidèle aux gestionnaires des modules (ADR-018)', () => {

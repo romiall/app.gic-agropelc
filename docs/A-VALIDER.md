@@ -2193,7 +2193,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Impact** : PWA (état « refusée » de la photo, nouvelle photo possible) ; P9 (tâche des 7 jours). Défaut implémenté : (a).
 - **Mise en œuvre** (MP-10, 14/10/2026, revue adverse) :
-  - une pièce exigée par une validation, refusée ou jamais enregistrée, est **remplacée** par une autre pièce reçue du même document, de même nature si la pièce exigée est connue (`requiredAttachmentsSatisfied`, décision et file de validation) : sans cela, la liste figée bloquait l'approbation à vie ;
+  - une pièce exigée par une validation, refusée ou jamais enregistrée, est **remplacée** par une autre pièce reçue du même document, de même nature si la pièce exigée est connue (`requiredAttachmentsSatisfied`, décision et file de validation) : sans cela, la liste figée bloquait l'approbation à vie ; depuis la revue de P8E-05 (16/10/2026), la remplaçante est une pièce de l'auteur du document, le demandeur de la validation : la pièce d'un collègue ne lève pas l'exigence ;
   - la PWA propose de reprendre la photo d'une réception refusée et celle d'une mortalité en attente, quel que soit son jour ;
   - seule une réponse portant un code d'erreur connu du serveur rend un envoi définitivement refusé ; une réponse sans code (passerelle, pare-feu) est réessayée ;
   - une fin d'envoi interrompue après l'écriture du dernier morceau est constatée à la session suivante ou au renvoi : la pièce n'attend plus sans fin ;

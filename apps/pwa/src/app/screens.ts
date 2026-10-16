@@ -82,6 +82,8 @@ export const ROUTES = {
   treasury: '/finance/tresorerie',
   /** ECR-FIN-02 (P8E-03) : saisie et mes dépenses ; suivi en ligne avec `?vue=suivi`. */
   expenses: '/finance/depenses',
+  /** ECR-FIN-03 (P8E-05) : dettes, factures fournisseurs, saisie rapprochée. */
+  supplierInvoices: '/finance/factures',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -318,6 +320,15 @@ export const ROLE_SETS = {
    * la file des validations (ADR-043, P8E-04).
    */
   supplierPaymentApprove: ['DIRECTION'],
+  /** ECR-FIN-03 : `finance.payable.read` (DIR, ACH, FIN ; ALL, AV-278) : dettes et factures (AV-298). */
+  payableRead: ['DIRECTION', 'RESP_ACHATS', 'FINANCE'],
+  /** `finance.supplier_invoice.record` (FIN) : saisie d'une facture fournisseur. */
+  supplierInvoiceRecord: ['FINANCE'],
+  /**
+   * `finance.supplier_invoice.approve` (DIR, FIN) : contester, approuver (jamais sa propre facture) ou
+   * annuler une facture (ADR-043 §5).
+   */
+  supplierInvoiceApprove: ['DIRECTION', 'FINANCE'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
@@ -770,6 +781,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     actionCodes: ['NEW_EXPENSE', 'EXPENSES'],
     actionQuery: { EXPENSES: '?vue=suivi' },
     offline: true,
+  },
+  {
+    // P8E-05 (ADR-047 §4, AV-298) : Finance (saisie, décisions), Direction (décisions), Achats (lecture).
+    id: 'ECR-FIN-03',
+    path: ROUTES.supplierInvoices,
+    labelKey: 'supplier_invoices',
+    group: 'finance',
+    roles: ROLE_SETS.payableRead,
+    actionCodes: [],
+    offline: false,
   },
   {
     // Remises de fonds sur l'appareil (UC-FIN-07, AV-239) : ECR-FIN-07, créé à l'intégration des écrans de P5.
