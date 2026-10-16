@@ -2,6 +2,8 @@
  * `OrganizationCommandsRegistrar`, `identity/application/commands/register-identity-
  * commands.ts`). */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import type { IdGenerator } from '@gic/domain';
+import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import {
   COMMAND_HANDLER_REGISTRY,
   type CommandHandlerRegistry,
@@ -13,10 +15,11 @@ import { registerProductCommands } from './product-commands.js';
 export class CatalogCommandsRegistrar implements OnModuleInit {
   constructor(
     @Inject(COMMAND_HANDLER_REGISTRY) private readonly registry: CommandHandlerRegistry,
+    @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
   ) {}
 
   onModuleInit(): void {
     registerReferenceCommands(this.registry);
-    registerProductCommands(this.registry);
+    registerProductCommands(this.registry, this.idGenerator);
   }
 }

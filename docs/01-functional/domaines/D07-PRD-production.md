@@ -182,8 +182,8 @@ ADM (sites, bâtiments et cases comme emplacements, validations), CAT (produits 
 
 | Cas | Traitement |
 |---|---|
-| Mortalité massive (épidémie) | Validation requise (seuil) ; alerte `HIGH_MORTALITY` immédiate à la Direction et au Resp. production dès réception, sans attendre la validation. |
-| Saisie du jour oubliée | Alerte `DAILY_ENTRY_MISSING` le lendemain à 10:00 pour chaque lot actif sans saisie la veille. Saisie rétroactive possible dans la fenêtre AV-078. |
+| Mortalité massive (épidémie) | Validation requise (seuil) ; alerte `HIGH_MORTALITY` immédiate à la Direction et au Resp. production dès réception, sans attendre la validation (P9-09, AV-461 : cumul du jour métier du fait du lot, validé ou en attente, sur l'effectif en début de journée ; une alerte par lot et par jour). |
+| Saisie du jour oubliée | Alerte `DAILY_ENTRY_MISSING` le lendemain à 10:00 pour chaque lot actif sans saisie la veille (P9-09, AV-462 : aucune mortalité, intrant, pesée, observation ni collecte datés de la veille ; lot `ACTIVE` ou `SELLING` mis en place avant la veille, animaux en élevage). Saisie rétroactive possible dans la fenêtre AV-078 ; une saisie synchronisée après la passe ferme l'alerte à la passe suivante. |
 | Écart entre effectif théorique et comptage physique | Inventaire du bâtiment (D06) ; écart ajusté avec motif, visible sur la fiche lot. |
 | Poussins issus de l'éclosion et vendus directement | Vente depuis l'emplacement d'éclosion (lot `INCUBATION_BATCH`), sans mise en place. |
 | Lot réparti sur plusieurs bâtiments | Autorisé : l'effectif et les indicateurs sont agrégés sur le lot de traçabilité. |

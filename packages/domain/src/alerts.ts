@@ -315,7 +315,10 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     defaultSeverity: 'CRITICAL',
     severities: ['CRITICAL'],
     resolution: 'MANUAL',
-    subjectType: 'PRODUCTION_LOT',
+    // P9-09 : la mortalité est « journalière » (D13) : une alerte par lot **et par jour métier** ; la
+    // deuxième journée d'une épidémie n'est pas absorbée par l'alerte non résolue de la veille (AV-461).
+    subjectType: 'LOT_DAY',
+    subjectParts: ['lot_id', 'business_day'],
     actionScreen: 'ECR-PRD-03',
     recipientRoles: ['RESP_PRODUCTION', 'DIRECTION'],
     ownerFields: [],
@@ -328,7 +331,9 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     messageTitle: 'Mortalité élevée',
     messageFields: [
       { key: 'lot_label', label: 'Lot' },
+      { key: 'business_day', label: 'Jour', kind: 'date' },
       { key: 'heads', label: 'Têtes mortes', kind: 'integer' },
+      // Absent (champ omis du message) sans effectif de référence : seul le seuil absolu a joué (AV-461).
       { key: 'rate_pct', label: 'Taux du jour (%)' },
     ],
     sourceAvailable: true,
@@ -348,8 +353,11 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     approvers: false,
     escalationHours: null,
     raisedBy: [{ eventType: 'DailyEntryMissing' }],
-    resolvedBy: [{ eventType: 'production.daily.record' }],
-    settings: [],
+    // P9-09 : `production.daily.record` est un code de permission, jamais un type d'événement, et les
+    // événements des saisies ont le document (non le lot) pour agrégat : aucun ne peut désigner le sujet.
+    // Le marqueur de passe ferme l'alerte du lot qui a rattrapé sa saisie (AV-462).
+    resolvedBy: [],
+    settings: ['production.daily_entry_working_days'],
     messageTitle: 'Saisie du jour manquante',
     messageFields: [
       { key: 'lot_label', label: 'Lot' },
@@ -373,8 +381,10 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     approvers: false,
     escalationHours: null,
     raisedBy: [{ eventType: 'StandardCostMissing' }],
+    // `StandardCostSet` est publié par la commande `catalog.product_standard_cost.set` (P9-09) ; le
+    // marqueur de la passe quotidienne ferme aussi l'alerte d'un produit sorti de la fenêtre de revue.
     resolvedBy: [{ eventType: 'StandardCostSet' }],
-    settings: [],
+    settings: ['production.standard_cost_alert_lookback_days'],
     messageTitle: 'Coût standard manquant',
     messageFields: [
       { key: 'product_label', label: 'Produit' },

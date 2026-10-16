@@ -102,7 +102,7 @@
 | Responsabilité | Produits, unités, conditionnements, catégories, motifs, coûts standard |
 | Tables | `product_categories`, `units`, `products`, `product_units`, `reason_codes`, `product_standard_costs`, `customer_categories`, `sales_channels` (référentiels commerciaux partagés) |
 | API | `/products`, `/units`, `/reason-codes` ; interne : `catalog.product(id)`, `catalog.toBase(product, qty, unit)`, `catalog.standardCost(product, at)` |
-| Événements | `Product*`, `ReasonCodeChanged`, `ProductStandardCostChanged` |
+| Événements | `Product*`, `ReasonCodeChanged`, `ProductStandardCostChanged` (non publié), `StandardCostSet` (P9-09 : un par version de coût, résolution immédiate de `STANDARD_COST_MISSING`, AV-463) |
 | Autorisées | `platform`, `audit`, `identity` |
 | Interdites | Modules métier au-dessus |
 
@@ -168,7 +168,8 @@
 | Responsabilité | Lots, entrées, saisies quotidiennes, collectes d'œufs, incubation, abattage, répartition des frais généraux (ADR-026) |
 | Tables | `production_lots`, `lot_entries`, `lot_weighings`, `lot_observations`, `egg_collections` (+ lignes), `incubation_batches`, `incubation_events`, `slaughter_batches` (+ produits), `overhead_allocations` (+ lignes) |
 | API | §4.7 ; interne : `production.lot(id)`, `production.lotStatus(id)` |
-| Événements | `ProductionLot*`, `LotEntryRecorded`, `MortalityRecorded`, `LotInputConsumed`, `Lot*Recorded`, `EggCollection*`, `Incubation*`, `Candling*`, `Hatch*`, `ProductionRecorded`, `LotStatusChanged`, `HighMortalityDetected` |
+| Événements | `ProductionLot*`, `LotEntryRecorded`, `MortalityRecorded`, `LotInputConsumed`, `Lot*Recorded`, `EggCollection*`, `Incubation*`, `Candling*`, `Hatch*`, `ProductionRecorded`, `LotStatusChanged`, `HighMortalityDetected` (P9-09 : sur `production.mortality.record`, agrégat lot × jour), `DailyEntryMissing`, `StandardCostMissing` (passes planifiées) |
+| Tâches planifiées | P9-09 : `production.products.standard_cost_check` (07:45), `production.lots.daily_entry_check` (10:00), dans `ProductionJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory`, `procurement` |
 | Interdites | `sales`, `finance`, `crm` |
 

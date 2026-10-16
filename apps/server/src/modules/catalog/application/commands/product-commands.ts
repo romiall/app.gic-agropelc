@@ -13,6 +13,8 @@
  */
 import { z } from 'zod';
 import { sql } from 'kysely';
+import { SystemClock, Uuidv7Generator, type IdGenerator } from '@gic/domain';
+import { publishDetectionEvent } from '../../../../platform/events/detection-events.js';
 import type {
   CommandHandler,
   CommandHandlerOutcome,
@@ -323,52 +325,72 @@ const standardCostSetSchema = z.object({
 });
 type StandardCostSetPayload = z.infer<typeof standardCostSetSchema>;
 
-const standardCostSet: CommandHandler<StandardCostSetPayload> = async (uow, envelope) => {
-  const id = toBin(envelope.aggregate_id);
-  const already = await uow
-    .selectFrom('catalog_product_standard_costs')
-    .select('id')
-    .where('id', '=', id)
-    .executeTakeFirst();
-  if (already) return { status: 'APPLIED' };
+const standardCostSet =
+  (idGenerator: IdGenerator): CommandHandler<StandardCostSetPayload> =>
+  async (uow, envelope) => {
+    const id = toBin(envelope.aggregate_id);
+    const already = await uow
+      .selectFrom('catalog_product_standard_costs')
+      .select('id')
+      .where('id', '=', id)
+      .executeTakeFirst();
+    if (already) return { status: 'APPLIED' };
 
-  const { productId, unitCostXaf, reason } = envelope.payload;
-  const product = await uow
-    .selectFrom('catalog_products')
-    .select('id')
-    .where('id', '=', toBin(productId))
-    .executeTakeFirst();
-  if (!product) return notFound('Produit introuvable.');
-  // Une version par instant (`uq_catalog_product_standard_costs_version`) : deux coûts datés du même
-  // instant levaient la violation d'unicité (renvoi sans fin).
-  const sameInstant = await uow
-    .selectFrom('catalog_product_standard_costs')
-    .select('id')
-    .where('product_id', '=', toBin(productId))
-    .where('valid_from', '=', new Date(envelope.occurred_at))
-    .executeTakeFirst();
-  if (sameInstant) {
-    return invalid(
-      'STANDARD_COST_VERSION_EXISTS',
-      'Un coût standard de ce produit est déjà daté de cet instant.',
-    );
-  }
+    const { productId, unitCostXaf, reason } = envelope.payload;
+    const product = await uow
+      .selectFrom('catalog_products')
+      .select('id')
+      .where('id', '=', toBin(productId))
+      .executeTakeFirst();
+    if (!product) return notFound('Produit introuvable.');
+    // Une version par instant (`uq_catalog_product_standard_costs_version`) : deux coûts datés du même
+    // instant levaient la violation d'unicité (renvoi sans fin).
+    const sameInstant = await uow
+      .selectFrom('catalog_product_standard_costs')
+      .select('id')
+      .where('product_id', '=', toBin(productId))
+      .where('valid_from', '=', new Date(envelope.occurred_at))
+      .executeTakeFirst();
+    if (sameInstant) {
+      return invalid(
+        'STANDARD_COST_VERSION_EXISTS',
+        'Un coût standard de ce produit est déjà daté de cet instant.',
+      );
+    }
 
-  await uow
-    .insertInto('catalog_product_standard_costs')
-    .values({
-      id,
-      product_id: toBin(productId),
-      unit_cost_xaf: unitCostXaf,
-      valid_from: new Date(envelope.occurred_at),
-      reason: reason ?? null,
-      created_by: toBin(envelope.author_user_id),
-    })
-    .execute();
-  return { status: 'APPLIED' };
-};
+    await uow
+      .insertInto('catalog_product_standard_costs')
+      .values({
+        id,
+        product_id: toBin(productId),
+        unit_cost_xaf: unitCostXaf,
+        valid_from: new Date(envelope.occurred_at),
+        reason: reason ?? null,
+        created_by: toBin(envelope.author_user_id),
+      })
+      .execute();
+    // P9-09 (AV-463) : ferme l'alerte `STANDARD_COST_MISSING` du produit sans attendre la passe quotidienne.
+    // Un rejeu est reconnu plus haut (la version existe déjà) : un événement par version de coût.
+    await publishDetectionEvent(uow, idGenerator, {
+      eventType: 'StandardCostSet',
+      producerModule: 'catalog',
+      aggregateType: 'PRODUCT_STANDARD_COST',
+      aggregateId: envelope.aggregate_id,
+      occurredAt: new Date(envelope.occurred_at),
+      commandId: envelope.command_id,
+      payload: { product_id: productId },
+    });
+    return { status: 'APPLIED' };
+  };
 
-export function registerProductCommands(registry: CommandHandlerRegistry): void {
+/**
+ * `idGenerator` : celui de la plateforme (`CatalogCommandsRegistrar`) ; le repli sert les appelants qui
+ * n'enregistrent que les commandes (tests) et n'a pas d'effet sur l'identité des faits.
+ */
+export function registerProductCommands(
+  registry: CommandHandlerRegistry,
+  idGenerator: IdGenerator = new Uuidv7Generator(new SystemClock()),
+): void {
   registry.register({
     commandType: 'catalog.product.create',
     version: 1,
@@ -409,6 +431,6 @@ export function registerProductCommands(registry: CommandHandlerRegistry): void 
     version: 1,
     payloadSchema: standardCostSetSchema,
     permissionCode: 'catalog.product.manage',
-    handler: standardCostSet,
+    handler: standardCostSet(idGenerator),
   });
 }

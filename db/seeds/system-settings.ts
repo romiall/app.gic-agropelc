@@ -426,6 +426,21 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'sync.stale_hours', value: 24, isClientVisible: false, ref: 'D13 §7.1' },
   { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-442' },
+  // P9-09 (AV-462) : jours de la semaine (numéros ISO, 1 = lundi) où une saisie du jour est attendue d'un
+  // lot en cours (`DAILY_ENTRY_MISSING`) ; tous les jours par défaut, un élevage ne s'arrête pas.
+  {
+    key: 'production.daily_entry_working_days',
+    value: ['1', '2', '3', '4', '5', '6', '7'],
+    isClientVisible: false,
+    ref: 'D13 §7.1, AV-462',
+  },
+  // P9-09 (AV-463) : fenêtre (jours) des entrées de production revues par `STANDARD_COST_MISSING`.
+  {
+    key: 'production.standard_cost_alert_lookback_days',
+    value: 30,
+    isClientVisible: false,
+    ref: 'AV-124, AV-463',
+  },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que
   // dupliqué ici (le rôle doit exister avant que sa clé de remise ait un sens).

@@ -30,6 +30,10 @@ import {
   SalesRecurringJobs,
   SALES_RECURRING_JOBS,
 } from '../src/modules/sales/application/jobs/sales-recurring-jobs.js';
+import {
+  ProductionRecurringJobs,
+  PRODUCTION_RECURRING_JOBS,
+} from '../src/modules/production/application/jobs/production-recurring-jobs.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
 
@@ -297,13 +301,29 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'DAILY',
       localTime: '08:00',
     });
+    // P9-09 : récurrences de `production` (coût standard manquant 07:45, saisie du jour manquante 10:00).
+    const production = new RecurringJobRegistry();
+    new ProductionRecurringJobs(production).onModuleInit();
+    expect(production.list()).toEqual(PRODUCTION_RECURRING_JOBS);
+    expect(production.get('production.products.standard_cost_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:45',
+    });
+    expect(production.get('production.lots.daily_entry_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '10:00',
+    });
     // Un même processus inscrit les modules sans collision de type de tâche.
     const both = new RecurringJobRegistry();
     new InventoryRecurringJobs(both).onModuleInit();
     new FinanceRecurringJobs(both).onModuleInit();
     new SalesRecurringJobs(both).onModuleInit();
+    new ProductionRecurringJobs(both).onModuleInit();
     expect(both.list()).toHaveLength(
-      INVENTORY_RECURRING_JOBS.length + FINANCE_RECURRING_JOBS.length + SALES_RECURRING_JOBS.length,
+      INVENTORY_RECURRING_JOBS.length +
+        FINANCE_RECURRING_JOBS.length +
+        SALES_RECURRING_JOBS.length +
+        PRODUCTION_RECURRING_JOBS.length,
     );
   });
 });

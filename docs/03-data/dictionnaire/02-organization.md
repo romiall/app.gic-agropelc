@@ -215,6 +215,8 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `production.slaughterable_lot_types` | `["POULET_CHAIR","PONDEUSE","REPRODUCTEUR_VOLAILLE","PORC_ENGRAISSEMENT","PORC_NAISSAGE"]` | AV-032, AV-115 (types de lots abattables : tous, décision du 28/09/2026) |
 | `production.high_mortality_alert_pct` | 0,5 | AV-121 (seuil relatif de l'alerte `HIGH_MORTALITY`, cumul du jour ; découplé de la validation) |
 | `production.high_mortality_alert_heads` | 20 | AV-121 (seuil absolu de l'alerte `HIGH_MORTALITY`) |
+| `production.daily_entry_working_days` | `["1","2","3","4","5","6","7"]` | AV-462 (P9-09) : numéros ISO des jours (1 = lundi) où une saisie du jour est attendue d'un lot en cours ; une liste vide ou sans numéro valide : les sept jours. Un jour absent de la liste n'est pas examiné par `DAILY_ENTRY_MISSING` |
+| `production.standard_cost_alert_lookback_days` | 30 | AV-463 (P9-09) : fenêtre, en jours, des entrées de production (collectes, naissances) revues par `STANDARD_COST_MISSING` ; entier strictement positif, sinon 30 |
 | `crm.commercial_role_codes` | `["RESP_COMMERCIAL", "COMMERCIAL_TERRAIN", "COMMERCIAL_SEDENTAIRE"]` | BR-CRM-003, BR-CRM-020 (DÉDUIT : rôles réputés commerciaux — titulaire à la création, nouveau titulaire d'une réaffectation) |
 | `sales.direct_cancel_minutes` | 15 | AV-030 |
 | `sales.default_payment_terms_days` | 30 | AV-028 |

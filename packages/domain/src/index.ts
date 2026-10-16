@@ -382,6 +382,23 @@ export {
   transferNotReceivedHoursOrDefault,
 } from './stock-alerts.js';
 export type { PosReplenishScope, StockAlertLevel, StockLevelChange } from './stock-alerts.js';
+
+// Alertes de production (P9-09 ; D13 §7.1, AV-121, AV-124, AV-461 à AV-463).
+export {
+  DEFAULT_DAILY_ENTRY_WORKING_DAYS,
+  DEFAULT_HIGH_MORTALITY_ALERT_HEADS,
+  DEFAULT_HIGH_MORTALITY_ALERT_PCT,
+  DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS,
+  dailyEntryExpected,
+  dailyEntryWorkingDaysOrDefault,
+  highMortalityAlertHeadsOrDefault,
+  highMortalityAlertPctOrDefault,
+  highMortalityCause,
+  highMortalityRatePct,
+  mortalityReferenceHeadcount,
+  standardCostAlertLookbackDaysOrDefault,
+} from './production-alerts.js';
+export type { HighMortalityCause } from './production-alerts.js';
 export { distributionResidual, isDistributionReconciled } from './distribution.js';
 export type { DistributionFlows } from './distribution.js';
 

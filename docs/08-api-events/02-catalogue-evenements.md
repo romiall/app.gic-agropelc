@@ -60,7 +60,8 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `AttachmentUploadFailed` | attachments | NOT | `attachment_id`, cause | Nouvel essai demandé à l'auteur |
 | `ProductCreated`, `ProductUpdated`, `ProductReactivated` | catalog | SYN, KOM | `product_id` | Catalogue |
 | `ProductDeactivated` | catalog | SYN, PRX, NOT | `product_id` | Alerte si des règles actives ou des soldes restent |
-| `ProductStandardCostChanged` | catalog | STK | `product_id`, coût | Valorisation des productions futures |
+| `ProductStandardCostChanged` | catalog | STK | `product_id`, coût | Valorisation des productions futures. **Non publié par le code** : la commande `catalog.product_standard_cost.set` publie `StandardCostSet` (P9-09) |
+| `StandardCostSet` | catalog | NOT | `product_id` | Résolution immédiate de l'alerte `STANDARD_COST_MISSING` du produit (AV-463) ; agrégat : la version de coût ; un événement par version, publié dans la transaction de la commande |
 | `ReasonCodeChanged` | catalog | SYN | `reason_code_id` | — |
 | `PriceRuleDrafted` | pricing | — | `rule_id` | — |
 | `PriceRuleActivated` | pricing | SYN, NOT (note automatique), KOM | `rule_id`, produit, prix, dimensions, `valid_from` | Téléchargement vers les appareils concernés ; note de direction (BR-PRX-012) |
@@ -148,7 +149,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|
 | `ProductionLotCreated` | ANA | `lot_id`, type, site | — |
 | `LotEntryRecorded` | ANA | `lot_id`, type d'entrée, quantité | Effectif ; coût (écrit de façon synchrone) |
-| `MortalityRecorded` | NOT (`HIGH_MORTALITY`), ANA | `lot_id`, quantité, effectif de référence, `loss_id` | Alerte immédiate. **Même fait** que `StockLossDeclared` catégorie `MORTALITE` : un consommateur s'abonne à l'un **ou** à l'autre, jamais aux deux pour compter |
+| `MortalityRecorded` | ANA | `lot_id`, quantité, effectif de référence, `loss_id` | **Non publié par le code** (P9-09) : l'événement générique `production.mortality.record` et la ligne de stock portent le fait ; l'alerte est `HighMortalityDetected`. **Même fait** que `StockLossDeclared` catégorie `MORTALITE` : un consommateur s'abonne à l'un **ou** à l'autre, jamais aux deux pour compter |
 | `LotInputConsumed` | ANA | `lot_id`, produit, quantité, valeur | Même principe vis-à-vis de `ConsumptionRecorded` |
 | `LotWeighingRecorded`, `LotObservationRecorded` | ANA, NOT (observation critique) | `lot_id` | — |
 | `EggCollectionRecorded`, `EggCollectionCancelled` | ANA | `collection_id`, quantités | KPI œufs |
@@ -156,7 +157,9 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `ProductionRecorded` | ANA | produit, quantité, lot, source | KPI production générique |
 | `LotStatusChanged` | ANA, SYN | `lot_id`, statut | Disponibilité à la vente |
 | `ProductionLotClosed` | ANA, NOT | `lot_id`, indicateurs figés | Marge de lot |
-| `HighMortalityDetected` | NOT | `lot_id`, taux | Alerte critique |
+| `HighMortalityDetected` | NOT | `lot_id`, `lot_label`, `business_day`, `site_id`, `heads`, `rate_pct` (omis sans effectif de référence), `reference_headcount`, `cause` (`RELATIVE`, `ABSOLUTE`, `BOTH`), `threshold_pct`, `threshold_heads`, `last_loss_id`, `captured_offline` | Alerte `HIGH_MORTALITY` critique (P9-09, AV-461) ; publié dans la transaction de `production.mortality.record` quand le cumul des morts du jour métier du fait du lot atteint un seuil ; agrégat `LOT_DAY` (lot × jour) ; un événement par saisie tant que le cumul reste au seuil |
+| `DailyEntryMissing` | NOT | `lot_id`, `lot_label`, `lot_type`, `missing_day`, `business_day`, `site_id`, `pass_id` | Alerte `DAILY_ENTRY_MISSING` (P9-09, AV-462) ; passe `production.lots.daily_entry_check` (10:00) ; agrégat : le lot ; résolue par le marqueur de la passe suivante |
+| `StandardCostMissing` | NOT | `product_id`, `product_label`, `entry_day`, `business_day`, `pass_id` | Alerte `STANDARD_COST_MISSING` (P9-09, AV-463) ; passe `production.products.standard_cost_check` (07:45) ; sujet : le produit (UUID v5 de `PRODUCT:<product_id>`) |
 
 ### 2.7 Approvisionnement (producteur : `procurement`)
 
