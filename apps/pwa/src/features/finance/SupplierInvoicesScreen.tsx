@@ -13,12 +13,11 @@
  * Le Resp. achats lit (AV-298).
  */
 import { useEffect, useId, useRef, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
-import { getDb, type OutboxCommand } from '../../storage/db.js';
+import type { OutboxCommand } from '../../storage/db.js';
 import { AttachPhoto } from '../attachments/PhotoViews.js';
 import { ServerPhoto } from '../attachments/PhotoViews.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -38,10 +37,10 @@ import { useSalesReferences } from '../sales/references.js';
 import {
   isBlockingWait,
   lastWaitingCommand,
-  phaseOf,
   saveErrorKey,
   submitCommand,
 } from '../sales/submit.js';
+import { familyReloadKey, useCommandFamily } from './command-family.js';
 import type { ExpenseAttachmentItem } from './expense-follow.js';
 import { userName } from './expense-format.js';
 import { mismatchText } from './invoice-format.js';
@@ -95,32 +94,14 @@ async function readInvoices(
   return { ok: true, data: { items: sortInvoices(pages.data.items), more: pages.data.more } };
 }
 
-/**
- * Clé de relecture de l'écran : chaque opération de l'utilisateur sur les factures et sa phase. Une
- * opération nouvelle ou une réponse, même tardive ou immédiate, relit la liste, les dettes et la saisie.
- */
-function familyReloadKey(family: readonly OutboxCommand[], userId: string | undefined): string {
-  return family
-    .filter((command) => command.author_user_id === userId)
-    .map((command) => `${command.command_id}:${phaseOf(command)}`)
-    .join(',');
-}
-
 export function SupplierInvoicesScreen() {
   const { t } = useTranslation();
   const { state } = useAuth();
   const userId = state.status === 'unlocked' ? state.userId : undefined;
   const online = useOnline();
   const navigation = useRememberedNavigation(userId);
-  const family =
-    useLiveQuery(
-      () =>
-        getDb()
-          .outbox.orderBy('device_seq')
-          .filter((command) => command.command_type.startsWith(FAMILY))
-          .toArray(),
-      [],
-    ) ?? [];
+  const family = useCommandFamily(FAMILY);
+  // Toute opération sur les factures (décision, enregistrement) relit la liste, les dettes et la saisie.
   const reloadKey = familyReloadKey(family, userId);
   const suppliers = useOnlineRead(
     userId ? '/api/v1/suppliers' : null,

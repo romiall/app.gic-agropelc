@@ -110,6 +110,28 @@ describe('app/screens — registre et navigation par rôle', () => {
     }
   });
 
+  it('écrans des factures et paiements fournisseurs (P8E-05, P8E-06) : lecteurs des dettes, saisie de la Finance', () => {
+    for (const [id, path] of [
+      ['ECR-FIN-03', '/finance/factures'],
+      ['ECR-FIN-04', '/finance/paiements'],
+    ] as const) {
+      expect(SCREENS.find((screen) => screen.id === id)).toMatchObject({
+        path,
+        group: 'finance',
+        roles: ROLE_SETS.payableRead,
+        offline: false,
+      });
+    }
+    expect(ROUTES.supplierPayments).toBe('/finance/paiements');
+    expect([...ROLE_SETS.payableRead]).toEqual(['DIRECTION', 'RESP_ACHATS', 'FINANCE']);
+    expect([...ROLE_SETS.supplierPaymentRecord]).toEqual(['FINANCE']);
+    expect([...ROLE_SETS.supplierPaymentApprove]).toEqual(['DIRECTION']);
+    expect(screensForRoles(['RESP_ACHATS']).map((screen) => screen.id)).toEqual(
+      expect.arrayContaining(['ECR-FIN-03', 'ECR-FIN-04']),
+    );
+    expect(screensForRoles(['VENDEUR_PDV']).map((screen) => screen.id)).not.toContain('ECR-FIN-04');
+  });
+
   it('chaque code d’action ne mène qu’à un seul écran, et chaque chemin est unique', () => {
     const codes = SCREENS.flatMap((screen) => screen.actionCodes);
     expect(new Set(codes).size).toBe(codes.length);

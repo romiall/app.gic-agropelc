@@ -84,6 +84,8 @@ export const ROUTES = {
   expenses: '/finance/depenses',
   /** ECR-FIN-03 (P8E-05) : dettes, factures fournisseurs, saisie rapprochée. */
   supplierInvoices: '/finance/factures',
+  /** ECR-FIN-04 (P8E-06) : paiements fournisseurs, avances, saisie. */
+  supplierPayments: '/finance/paiements',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -329,6 +331,8 @@ export const ROLE_SETS = {
    * annuler une facture (ADR-043 §5).
    */
   supplierInvoiceApprove: ['DIRECTION', 'FINANCE'],
+  /** `finance.supplier_payment.record` (FIN) : saisir un paiement, affecter une avance (ECR-FIN-04). */
+  supplierPaymentRecord: ['FINANCE'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
   allocationManage: ['DIRECTION', 'RESP_COMMERCIAL', 'RESP_FERME', 'MAGASINIER'],
   /** ECR-DIS-04 : `analytics.dashboard.distribution` (DIR, RCO ZONE, VEN SITE, MAG SITE, FIN). */
@@ -787,6 +791,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     id: 'ECR-FIN-03',
     path: ROUTES.supplierInvoices,
     labelKey: 'supplier_invoices',
+    group: 'finance',
+    roles: ROLE_SETS.payableRead,
+    actionCodes: [],
+    offline: false,
+  },
+  {
+    // P8E-06 (ADR-047 §4, AV-298) : Finance (saisie, avances), Direction (annulation d'un décaissé,
+    // décision dans la file), Achats (lecture).
+    id: 'ECR-FIN-04',
+    path: ROUTES.supplierPayments,
+    labelKey: 'supplier_payments',
     group: 'finance',
     roles: ROLE_SETS.payableRead,
     actionCodes: [],
