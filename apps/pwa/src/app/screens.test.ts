@@ -87,7 +87,10 @@ describe('app/screens — registre et navigation par rôle', () => {
     expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'RESP_FERME')).toBe(
       ROUTES.purchaseReceipts,
     );
-    expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'RESP_ACHATS')).toBeNull();
+    // P8E-07 : « Réceptions » du Resp. achats mène au rapprochement (S-27, AV-302).
+    expect(routeOfAction({ code: 'RECEIPTS', route: null }, 'RESP_ACHATS')).toBe(
+      ROUTES.orderMatching,
+    );
     for (const screen of SCREENS) {
       if (screen.roles === 'ALL') continue;
       for (const code of screen.actionCodes) {
@@ -130,11 +133,33 @@ describe('app/screens — registre et navigation par rôle', () => {
       expect.arrayContaining(['ECR-FIN-03', 'ECR-FIN-04']),
     );
     expect(screensForRoles(['VENDEUR_PDV']).map((screen) => screen.id)).not.toContain('ECR-FIN-04');
+    // P8E-07 (AV-302) : rapprochement des achats.
+    expect(SCREENS.find((screen) => screen.id === 'ECR-APP-05')).toMatchObject({
+      path: '/achats/rapprochement',
+      group: 'procurement',
+      roles: ROLE_SETS.orderMatching,
+      actionCodes: ['RECEIPTS'],
+      offline: false,
+    });
+    expect([...ROLE_SETS.orderMatching]).toEqual(['RESP_ACHATS', 'FINANCE', 'DIRECTION']);
+    for (const role of ['VENDEUR_PDV', 'MAGASINIER']) {
+      expect(screensForRoles([role]).map((screen) => screen.id)).not.toContain('ECR-APP-05');
+    }
   });
 
-  it('chaque code d’action ne mène qu’à un seul écran, et chaque chemin est unique', () => {
-    const codes = SCREENS.flatMap((screen) => screen.actionCodes);
-    expect(new Set(codes).size).toBe(codes.length);
+  it('pour un rôle, chaque code d’action ne mène qu’à un seul écran ; chaque chemin est unique', () => {
+    const pairs = SCREENS.flatMap((screen) =>
+      screen.roles === 'ALL'
+        ? screen.actionCodes.map((code) => `${code}@ALL`)
+        : screen.actionCodes.flatMap((code) =>
+            (screen.roles as readonly string[]).map((role) => `${code}@${role}`),
+          ),
+    );
+    expect(new Set(pairs).size).toBe(pairs.length);
+    // Un même code ne vaut pour plusieurs écrans que s'ils n'ont aucun rôle en commun.
+    expect(
+      SCREENS.filter((screen) => screen.actionCodes.includes('RECEIPTS')).map((s) => s.id),
+    ).toEqual(['ECR-APP-04', 'ECR-APP-05']);
     const paths = SCREENS.map((screen) => screen.path);
     expect(new Set(paths).size).toBe(paths.length);
   });

@@ -347,11 +347,23 @@ describe('Lectures HTTP des achats (P6-06)', () => {
     expect(buyerView.statusCode, buyerView.body).toBe(200);
     const [order] = buyerView.json().purchase_orders;
     expect(order).toMatchObject({ id: po1, status: 'PARTIALLY_RECEIVED', totalXaf: 20_000 });
-    expect(order.lines[0]).toMatchObject({
-      orderedQtyBase: 20,
-      acceptedQtyBase: 10,
-      remainingQtyBase: 10,
-      unitPriceXaf: 1_000,
+    // P8E-07 : livré, rejeté et quarantaine dans la liste, comme au rapprochement du bon.
+    expect(order.lines[0]).toEqual(
+      expect.objectContaining({
+        orderedQtyBase: 20,
+        deliveredQtyBase: 12,
+        rejectedQtyBase: 2,
+        quarantinedQtyBase: 3,
+        acceptedQtyBase: 10,
+        remainingQtyBase: 10,
+        unitPriceXaf: 1_000,
+      }),
+    );
+    const one = (await get(buyer, `/api/v1/purchase-orders/${po1}`)).json();
+    expect(one.purchase_order.lines[0]).toMatchObject({
+      deliveredQtyBase: 12,
+      rejectedQtyBase: 2,
+      quarantinedQtyBase: 3,
     });
 
     const magView = await get(mag, '/api/v1/purchase-orders');
@@ -364,7 +376,13 @@ describe('Lectures HTTP des achats (P6-06)', () => {
     expect(visible.map((o) => o.id)).not.toContain(po2);
     const masked = visible.find((o) => o.id === po1)!;
     expect(masked.totalXaf).toBeNull();
-    expect(masked.lines[0]).toMatchObject({ unitPriceXaf: null, remainingQtyBase: 10 });
+    // Quantités jamais masquées (RC-05 ne masque que les valeurs).
+    expect(masked.lines[0]).toMatchObject({
+      unitPriceXaf: null,
+      remainingQtyBase: 10,
+      rejectedQtyBase: 2,
+      quarantinedQtyBase: 3,
+    });
 
     const outside = await get(mag, `/api/v1/purchase-orders/${po2}`);
     expect(outside.statusCode).toBe(404);
@@ -447,5 +465,113 @@ describe('Lectures HTTP des achats (P6-06)', () => {
       unitCostXaf: 1_000,
     });
     expect((await get(magB, `/api/v1/receipts/${r1}`)).statusCode).toBe(404);
+  });
+
+  // Dernier test : un bon de plus sur le site A ne doit pas déranger les lectures ci-dessus.
+  it('P8E-07 : liste = rapprochement — réceptions cumulées, quarantaine nette, doublon refusé exclu, quarantaine confirmée comptée', async () => {
+    const po3 = await sentOrder(storeA, 30);
+    const line3 = fromBin(
+      (
+        await db
+          .selectFrom('procurement_purchase_order_lines')
+          .select('id')
+          .where('order_id', '=', toBin(po3))
+          .executeTakeFirstOrThrow()
+      ).id,
+    );
+    const receive = async (
+      id: string,
+      time: string,
+      note: string,
+      delivered: number,
+      rejected: number,
+    ) =>
+      command(mag, 'procurement.receipt.record', 'GOODS_RECEIPT', id, at(time), {
+        purchaseOrderId: po3,
+        supplierId,
+        locationId: storeA,
+        supplierDeliveryNoteRef: note,
+        lines: [
+          {
+            poLineId: line3,
+            productId,
+            unitCode,
+            qtyDeliveredBase: delivered,
+            ...(rejected > 0 ? { qtyRejectedBase: rejected, rejectionReasonCodeId: reasonId } : {}),
+          },
+        ],
+      });
+    const note = `BL-${freshUuid().slice(-8)}`;
+    await receive(freshUuid(), '11:00:00', note, 10, 1);
+    await receive(freshUuid(), '11:30:00', `BL-${freshUuid().slice(-8)}`, 5, 2);
+    // Même bon de livraison : deux quarantaines (BR-APP-012).
+    const kept = freshUuid();
+    await receive(kept, '12:00:00', note, 4, 1);
+    const refused = freshUuid();
+    await receive(refused, '12:30:00', note, 7, 0);
+    const approvalOf = async (receiptId: string) =>
+      fromBin(
+        (
+          await db
+            .selectFrom('procurement_goods_receipts')
+            .select('approval_request_id')
+            .where('id', '=', toBin(receiptId))
+            .executeTakeFirstOrThrow()
+        ).approval_request_id!,
+      );
+    const refusal = await approvalOf(refused);
+    await command(buyer, 'approvals.request.reject', 'APPROVAL_REQUEST', refusal, at('13:00:00'), {
+      requestId: refusal,
+      comment: 'Bon de livraison saisi deux fois',
+    });
+
+    const listLine = async () => {
+      const page = (
+        await get(buyer, `/api/v1/purchase-orders?site_id=${siteA}&status=PARTIALLY_RECEIVED`)
+      ).json().purchase_orders as { id: string; lines: Record<string, unknown>[] }[];
+      return page.find((order) => order.id === po3)!.lines[0]!;
+    };
+    const matchingLine = async () =>
+      (await get(buyer, `/api/v1/purchase-orders/${po3}/matching`)).json().matching.lines[0];
+    // Cumul des deux comptabilisées (10 + 5 livrés, 1 + 2 rejetés) ; quarantaine nette 4 − 1 ;
+    // le doublon refusé ne compte nulle part.
+    const before = {
+      orderedQtyBase: 30,
+      deliveredQtyBase: 15,
+      rejectedQtyBase: 3,
+      quarantinedQtyBase: 3,
+      acceptedQtyBase: 12,
+      remainingQtyBase: 18,
+    };
+    expect(await listLine()).toMatchObject(before);
+    expect(await matchingLine()).toMatchObject(before);
+    // Bon sans réception : tout à zéro.
+    const po2Line = (await get(buyer, `/api/v1/purchase-orders/${po2}`)).json().purchase_order
+      .lines[0];
+    expect(po2Line).toMatchObject({
+      deliveredQtyBase: 0,
+      rejectedQtyBase: 0,
+      quarantinedQtyBase: 0,
+    });
+
+    // Quarantaine confirmée : la réception est comptabilisée, elle quitte la quarantaine.
+    const confirmation = await approvalOf(kept);
+    await command(
+      buyer,
+      'approvals.request.approve',
+      'APPROVAL_REQUEST',
+      confirmation,
+      at('13:30:00'),
+      { requestId: confirmation },
+    );
+    const after = {
+      deliveredQtyBase: 19,
+      rejectedQtyBase: 4,
+      quarantinedQtyBase: 0,
+      acceptedQtyBase: 15,
+      remainingQtyBase: 15,
+    };
+    expect(await listLine()).toMatchObject(after);
+    expect(await matchingLine()).toMatchObject(after);
   });
 });

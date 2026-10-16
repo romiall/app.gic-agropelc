@@ -316,6 +316,7 @@ Classification (PM §45) :
 | AV-299 | Marges par produit, point de vente et commercial | IMPORTANTE | P8 | Lots et période en P8 ; axes dans l'explorateur de P9 | OUVERT |
 | AV-300 | Ce que P8 ajoute à la trésorerie | SECONDAIRE | P8 | Dépenses à payer, paiements en attente de la Direction, lien des mouvements vers leur document | OUVERT |
 | AV-301 | Site et imputation proposés à la saisie d'une dépense | SECONDAIRE | P8 | Site de la caisse qui paie, sinon seul site des affectations, sinon choix ; imputation proposée : dépense directe du site | OUVERT |
+| AV-302 | Périmètre de l'écran de rapprochement des achats (ECR-APP-05) | SECONDAIRE | P8 | Resp. achats, Finance et Direction en lecture ; « Réceptions » du Resp. achats y mène ; date prévue dépassée montrée sans seuil, l'alerte reste celle de P9 | OUVERT |
 
 ---
 
@@ -2278,6 +2279,16 @@ Politique par défaut, paramétrable :
   - imputation : (a) « dépense directe du site » proposée, avec au choix les lots et lots d'incubation ouverts du site, les frais généraux d'une espèce (ferme seulement) et « non imputée » ; (b) « non imputée » proposée ; (c) imputation obligatoire, sans valeur proposée.
 - **Recommandation** : (a) pour les deux : une saisie courte (UX-02) qui garde la dépense dans les coûts de son site.
 - **Impact** : `apps/pwa/src/features/finance/expense.ts` (`expenseSites`, `defaultExpenseSite`, `EXPENSE_DEFAULT_IMPUTATION`), ECR-FIN-02. Défaut implémenté : (a) et (a) (P8E-03). Paramétrable : constante de l'appareil (`EXPENSE_DEFAULT_IMPUTATION`).
+
+### AV-302 — Périmètre de l'écran de rapprochement des achats (ECR-APP-05) — SECONDAIRE
+- **Question** : qui voit l'écran de rapprochement, comment y entre-t-on, et montre-t-il un retard de livraison ?
+- **Pourquoi** : l'inventaire (03-parcours-et-ecrans, UC-APP-12) ne cite que le Resp. achats et la Finance, alors que `procurement.order.read` ouvre aussi la Direction, le Resp. production, le Resp. ferme et le magasinier. UC-APP-12 parle de « retards », mais la seule règle écrite est l'alerte de réception incomplète (BR-APP-015, seuil de 2 jours, AV-065 ouvert), qui relève de P9 ; ADR-047 §8 exclut toute règle de retard propre à l'écran. L'action d'accueil `RECEIPTS` du Resp. achats attend cet écran (F-30, S-27). **DÉDUIT**
+- **Choix** :
+  - rôles : (a) Resp. achats et Finance (inventaire), plus la Direction en lecture, comme les écrans de factures et de paiements (AV-298) ; (b) l'inventaire seul ; (c) tous les détenteurs de `procurement.order.read` ;
+  - retard : (a) constat « date de livraison prévue dépassée de N jours » pour un bon attendu avec un reliquat, sans seuil ni alerte ; (b) rien avant l'alerte de P9 ; (c) le seuil de 2 jours de BR-APP-015 ;
+  - accès : (a) menu « Achats » et action `RECEIPTS` du Resp. achats ; (b) menu seulement.
+- **Recommandation** : (a) pour les trois : l'écran sert ceux qui suivent les fournisseurs et les dettes, sans seconde définition du retard (une seule, celle de P9, BR-ANA-009).
+- **Impact** : `apps/pwa/src/app/screens.ts` (`ROLE_SETS.orderMatching`, entrée ECR-APP-05 et son action `RECEIPTS`), `apps/pwa/src/features/procurement/matching.ts` (`orderIndicators`). Défaut implémenté : (a), (a) et (a) (P8E-07). Les factures du bon ne sont lues que par les lecteurs des dettes (`finance.payable.read`) ; les quantités facturées restent visibles de tout lecteur des bons (P8, ADR-043).
 ---
 
 ## 3. Journal des décisions

@@ -227,6 +227,14 @@ export interface PurchaseOrderLine {
   readonly productId: string;
   readonly unitCode: string;
   readonly orderedQtyBase: number;
+  /**
+   * Livré et rejeté des réceptions comptabilisées, en quarantaine à part : même calcul que le
+   * rapprochement (`receiptSumsByPoLine`), pour que la liste des bons porte ses indicateurs (P8E-07,
+   * ADR-047 §8).
+   */
+  readonly deliveredQtyBase: number;
+  readonly rejectedQtyBase: number;
+  readonly quarantinedQtyBase: number;
   readonly acceptedQtyBase: number;
   readonly closedQtyBase: number;
   readonly excessQtyBase: number;
@@ -278,7 +286,51 @@ function orderLineRows(executor: Executor, orderIds: readonly Buffer[]): Promise
     .execute();
 }
 
-function toOrderLine(row: OrderLineRow): PurchaseOrderLine {
+/** Livré, rejeté et en quarantaine d'une ligne de BC, en millièmes. */
+interface ReceiptSums {
+  readonly delivered: number;
+  readonly rejected: number;
+  readonly quarantined: number;
+}
+
+const NO_RECEIPT: ReceiptSums = { delivered: 0, rejected: 0, quarantined: 0 };
+
+/**
+ * Réceptions des bons, par ligne de BC (D08 UC-APP-12, BR-APP-007, BR-APP-012) : livré et rejeté des
+ * réceptions comptabilisées ; en quarantaine (sans effet tant que non tranchée), le livré moins le
+ * rejeté des réceptions `QUARANTINED`. Les réceptions refusées ou annulées ne comptent pas. Une
+ * définition pour la liste des bons et leur rapprochement.
+ */
+async function receiptSumsByPoLine(
+  executor: Executor,
+  orderIds: readonly Buffer[],
+): Promise<Map<string, ReceiptSums>> {
+  const sums = new Map<string, ReceiptSums>();
+  if (orderIds.length === 0) return sums;
+  const rows = await executor
+    .selectFrom('procurement_goods_receipt_lines as l')
+    .innerJoin('procurement_goods_receipts as r', 'r.id', 'l.receipt_id')
+    .select(['l.po_line_id', 'l.qty_delivered_base', 'l.qty_rejected_base', 'r.status'])
+    .where('r.purchase_order_id', 'in', orderIds)
+    .where('r.status', 'in', [...COUNTED_RECEIPT_STATUSES, 'QUARANTINED'])
+    .execute();
+  for (const row of rows) {
+    if (!row.po_line_id) continue;
+    const key = fromBin(row.po_line_id);
+    const sum = sums.get(key) ?? NO_RECEIPT;
+    const delivered = milli(qty(row.qty_delivered_base));
+    const rejected = milli(qty(row.qty_rejected_base));
+    sums.set(
+      key,
+      row.status === 'QUARANTINED'
+        ? { ...sum, quarantined: sum.quarantined + delivered - rejected }
+        : { ...sum, delivered: sum.delivered + delivered, rejected: sum.rejected + rejected },
+    );
+  }
+  return sums;
+}
+
+function toOrderLine(row: OrderLineRow, receipts: ReceiptSums = NO_RECEIPT): PurchaseOrderLine {
   const ordered = milli(qty(row.ordered_qty_base));
   const accepted = milli(qty(row.accepted_qty_base));
   const closed = milli(qty(row.closed_qty_base));
@@ -288,6 +340,9 @@ function toOrderLine(row: OrderLineRow): PurchaseOrderLine {
     productId: fromBin(row.product_id),
     unitCode: row.unit_code,
     orderedQtyBase: fromMilli(ordered),
+    deliveredQtyBase: fromMilli(receipts.delivered),
+    rejectedQtyBase: fromMilli(receipts.rejected),
+    quarantinedQtyBase: fromMilli(receipts.quarantined),
     acceptedQtyBase: fromMilli(accepted),
     closedQtyBase: fromMilli(closed),
     excessQtyBase: qty(row.excess_qty_base),
@@ -307,10 +362,11 @@ async function orderLinesById(
 ): Promise<Map<string, PurchaseOrderLine[]>> {
   const byOrder = new Map<string, PurchaseOrderLine[]>();
   if (orderIds.length === 0) return byOrder;
+  const receipts = await receiptSumsByPoLine(executor, orderIds);
   for (const row of await orderLineRows(executor, orderIds)) {
     const key = fromBin(row.order_id);
     const list = byOrder.get(key) ?? [];
-    list.push(toOrderLine(row));
+    list.push(toOrderLine(row, receipts.get(fromBin(row.id))));
     byOrder.set(key, list);
   }
   return byOrder;
@@ -448,30 +504,9 @@ export async function purchaseOrderMatching(
     .where('id', '=', toBin(orderId))
     .executeTakeFirst();
   if (!order) return undefined;
-  const receiptRows = await executor
-    .selectFrom('procurement_goods_receipt_lines as l')
-    .innerJoin('procurement_goods_receipts as r', 'r.id', 'l.receipt_id')
-    .select(['l.po_line_id', 'l.qty_delivered_base', 'l.qty_rejected_base', 'r.status'])
-    .where('r.purchase_order_id', '=', order.id)
-    .where('r.status', 'in', [...COUNTED_RECEIPT_STATUSES, 'QUARANTINED'])
-    .execute();
-  const sums = new Map<string, { delivered: number; rejected: number; quarantined: number }>();
-  for (const row of receiptRows) {
-    if (!row.po_line_id) continue;
-    const key = fromBin(row.po_line_id);
-    const sum = sums.get(key) ?? { delivered: 0, rejected: 0, quarantined: 0 };
-    const delivered = milli(qty(row.qty_delivered_base));
-    const rejected = milli(qty(row.qty_rejected_base));
-    if (row.status === 'QUARANTINED') sum.quarantined += delivered - rejected;
-    else {
-      sum.delivered += delivered;
-      sum.rejected += rejected;
-    }
-    sums.set(key, sum);
-  }
+  const sums = await receiptSumsByPoLine(executor, [order.id]);
   const lines = (await orderLineRows(executor, [order.id])).map((row): OrderMatchingLine => {
-    const line = toOrderLine(row);
-    const sum = sums.get(line.id) ?? { delivered: 0, rejected: 0, quarantined: 0 };
+    const line = toOrderLine(row, sums.get(fromBin(row.id)));
     return {
       poLineId: line.id,
       lineNo: line.lineNo,
@@ -479,10 +514,10 @@ export async function purchaseOrderMatching(
       unitCode: line.unitCode,
       status: line.status,
       orderedQtyBase: line.orderedQtyBase,
-      deliveredQtyBase: fromMilli(sum.delivered),
-      rejectedQtyBase: fromMilli(sum.rejected),
+      deliveredQtyBase: line.deliveredQtyBase,
+      rejectedQtyBase: line.rejectedQtyBase,
       acceptedQtyBase: line.acceptedQtyBase,
-      quarantinedQtyBase: fromMilli(sum.quarantined),
+      quarantinedQtyBase: line.quarantinedQtyBase,
       closedQtyBase: line.closedQtyBase,
       excessQtyBase: line.excessQtyBase,
       remainingQtyBase: line.remainingQtyBase,
