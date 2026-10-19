@@ -22,7 +22,7 @@ import {
   listPointsOfSale,
 } from '../modules/organization/application/public/index.js';
 import { activeAllocationHolderDevices } from '../modules/inventory/application/public/index.js';
-import { AUTHOR_DATASET_PREFIX, DEVICE_DATASET } from './sync-push.service.js';
+import { DEVICE_DATASET, authorOfDataset } from './sync-state-datasets.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -107,13 +107,6 @@ export async function freshnessWarningHoursAt(executor: Executor, at: Date): Pro
     : DEFAULT_FRESHNESS_WARNING_HOURS;
 }
 
-/** UUID d'un auteur depuis sa ligne `_a:<32 hexadécimaux>`. */
-function authorOf(dataset: string): string | null {
-  const hex = dataset.slice(AUTHOR_DATASET_PREFIX.length).toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(hex)) return null;
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 const latest = (...dates: readonly (Date | null)[]): Date | null =>
   dates.reduce<Date | null>(
     (max, date) => (date !== null && (max === null || date.getTime() > max.getTime()) ? date : max),
@@ -164,7 +157,7 @@ export async function deviceFreshness(
     const authors: AuthorFreshness[] = [];
     for (const state of own) {
       if (state.dataset === DEVICE_DATASET) continue;
-      const userId = authorOf(state.dataset);
+      const userId = authorOfDataset(state.dataset);
       if (userId === null) continue;
       authors.push({
         userId,

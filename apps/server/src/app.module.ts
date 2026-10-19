@@ -28,6 +28,7 @@ import { CommunicationRecipientsModule } from './communication-api/communication
 import { CommunicationApiModule } from './communication-api/communication-api.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
+import { SyncJobsModule } from './sync/sync-jobs.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
 import { IdentityApiModule } from './identity-api/identity-api.module.js';
@@ -77,6 +78,7 @@ import { RootController } from './health/root.controller.js';
     CommunicationApiModule,
     CommandsModule,
     ChainVerificationModule,
+    SyncJobsModule,
     AuditApiModule,
     OrganizationApiModule,
     IdentityApiModule,

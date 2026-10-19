@@ -11,11 +11,13 @@
  * `sales.receivables.overdue_daily`), `FieldworkJobsModule` (P3-03,
  * `fieldwork.session.auto_close`), `ProductionJobsModule` (P9-09, saisie du jour manquante, coût
  * standard manquant), `ProcurementJobsModule` (P9-09, réception incomplète, photo de réception) et
- * `ApprovalsJobsModule` (P9-09, validation en attente depuis longtemps).
+ * `ApprovalsJobsModule` (P9-09, validation en attente depuis longtemps) et `SyncJobsModule` (P9-10, erreurs de
+ * synchronisation, appareil sans synchronisation, horloge décalée, trou de séquence).
  */
 import { Module } from '@nestjs/common';
 import { PlatformModule } from '../platform/platform.module.js';
 import { ChainVerificationModule } from '../audit/chain-verification.module.js';
+import { SyncJobsModule } from '../sync/sync-jobs.module.js';
 import { InventoryJobsModule } from '../modules/inventory/inventory-jobs.module.js';
 import { FinanceJobsModule } from '../modules/finance/finance-jobs.module.js';
 import { ProductionJobsModule } from '../modules/production/production-jobs.module.js';
@@ -31,6 +33,7 @@ import { WorkerService } from './worker.service.js';
   imports: [
     PlatformModule,
     ChainVerificationModule,
+    SyncJobsModule,
     InventoryJobsModule,
     FinanceJobsModule,
     ProductionJobsModule,

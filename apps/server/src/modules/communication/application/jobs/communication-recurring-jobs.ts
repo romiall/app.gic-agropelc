@@ -2,7 +2,9 @@
  * Récurrences des tâches de `communication` (P9-05 ; ordonnanceur `platform/jobs/job-scheduler.ts`) :
  * - `communication.alerts.escalate` : toutes les 10 minutes (BR-NOT-005 : l'écart toléré sur une échéance
  *   de plusieurs heures est de quelques minutes) ;
- * - `communication.push.dispatch` : chaque minute (BR-NOT-004 : push « immédiat » après validation).
+ * - `communication.push.dispatch` : chaque minute (BR-NOT-004 : push « immédiat » après validation) ;
+ * - `communication.consumers.failure_check` : toutes les cinq minutes (P9-10, AV-475) — le retard toléré est de
+ *   300 s (`communication.consumer_lag_alert_seconds`) : la passe le rattrape à une cadence du même ordre.
  * Constantes techniques de planification, pas des seuils métier (comme `inventory-recurring-jobs.ts`).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
@@ -11,11 +13,13 @@ import {
   type RecurringJobRegistry,
 } from '../../../../platform/jobs/recurring-job-registry.provider.js';
 import { ALERT_ESCALATION_JOB_TYPE } from './alert-escalation-job.js';
+import { CONSUMER_FAILURE_JOB_TYPE } from './consumer-failure-job.js';
 import { PUSH_DISPATCH_JOB_TYPE } from './push-dispatch-job.js';
 
 export const COMMUNICATION_RECURRING_JOBS = [
   { jobType: ALERT_ESCALATION_JOB_TYPE, schedule: { kind: 'INTERVAL', intervalSeconds: 600 } },
   { jobType: PUSH_DISPATCH_JOB_TYPE, schedule: { kind: 'INTERVAL', intervalSeconds: 60 } },
+  { jobType: CONSUMER_FAILURE_JOB_TYPE, schedule: { kind: 'INTERVAL', intervalSeconds: 300 } },
 ] as const;
 
 @Injectable()

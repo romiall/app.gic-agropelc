@@ -128,6 +128,48 @@ export {
   checkinSuspicionLabel,
   evaluateVisit,
 } from './fieldwork.js';
+export type {
+  DeviceStaleness,
+  DeviceStalenessInput,
+  KnownGap,
+  SequenceGap,
+} from './sync-alerts.js';
+export {
+  DEFAULT_SYNC_ERROR_EXCLUDED_CODES,
+  DEFAULT_SYNC_ERROR_WINDOW_HOURS,
+  DEFAULT_SYNC_SEQ_GAP_HOURS,
+  DEFAULT_SYNC_STALE_HORIZON_DAYS,
+  DEFAULT_SYNC_STALE_HOURS,
+  MAX_SYNC_ALERT_HOURS,
+  MAX_SYNC_STALE_HORIZON_DAYS,
+  agedSequenceGaps,
+  clockSkewMinutes,
+  deviceStaleness,
+  gapsExplainedByPending,
+  isSyncErrorAlertable,
+  missingSequenceCount,
+  nextKnownGaps,
+  parseKnownGaps,
+  sameSequenceGaps,
+  syncErrorAlertWindowHoursOrDefault,
+  syncErrorCodeOf,
+  syncErrorExcludedCodesOrDefault,
+  syncSeqGapAlertHoursOrDefault,
+  syncStaleHoursOrDefault,
+  syncStaleHorizonDaysOrDefault,
+  unsignaledSequenceGaps,
+} from './sync-alerts.js';
+export type { ConsumerAlarmInput } from './consumer-alerts.js';
+export {
+  DEFAULT_CONSUMER_FAILURE_WINDOW_HOURS,
+  DEFAULT_CONSUMER_LAG_ALERT_SECONDS,
+  MAX_CONSUMER_FAILURE_WINDOW_HOURS,
+  MAX_CONSUMER_LAG_ALERT_SECONDS,
+  consumerFailureWindowHoursOrDefault,
+  consumerInAlarm,
+  consumerLagAlertSecondsOrDefault,
+  consumerLagSeconds,
+} from './consumer-alerts.js';
 
 export type {
   OrderLineProgress,

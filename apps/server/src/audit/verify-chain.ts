@@ -76,39 +76,86 @@ export function toVerifiableAuditRow(row: Selectable<AuditAuditLog>): Verifiable
   };
 }
 
+/** Lignes lues par page (P9-10) : la plage vérifiée n'est jamais chargée en entier en mémoire. */
+export const VERIFY_CHAIN_PAGE_SIZE = 2_000;
+
+/** Lecteur d'une page : au plus `limit` lignes de numéro supérieur à `afterSeq`, par `seq` croissant. */
+export type AuditPageReader = (
+  afterSeq: number,
+  limit: number,
+) => Promise<readonly VerifiableAuditRow[]>;
+
+/**
+ * Rejoue une plage page après page : la dernière empreinte de chaque page est l'empreinte attendue avant la
+ * première ligne de la suivante, si bien qu'une rupture à cheval sur deux pages est détectée comme dans une
+ * lecture d'un seul tenant. `expectedFirstPrevHash` précède la première ligne lue ; `checked` cumule les
+ * lignes rejouées jusqu'à la rupture comprise. Le lecteur ne rend rien de plus que la page demandée.
+ */
+export async function verifyChainPages(
+  readPage: AuditPageReader,
+  range: { readonly afterSeq: number; readonly toSeq: number },
+  options: {
+    readonly pageSize?: number;
+    /** Empreinte attendue avant la première ligne ; appelée une fois, après la lecture de la première page. */
+    readonly expectedFirstPrevHash: () => Promise<string>;
+  },
+): Promise<ChainVerificationResult> {
+  const pageSize = Math.max(1, Math.floor(options.pageSize ?? VERIFY_CHAIN_PAGE_SIZE));
+  let afterSeq = range.afterSeq;
+  let expectedPrevHash: string | null = null;
+  let checked = 0;
+  while (afterSeq < range.toSeq) {
+    const page = (await readPage(afterSeq, pageSize)).filter((row) => row.seq <= range.toSeq);
+    if (page.length === 0) break;
+    expectedPrevHash ??= await options.expectedFirstPrevHash();
+    const result = verifyChain(page, expectedPrevHash);
+    checked += result.checked;
+    if (!result.ok) {
+      return { checked, ok: false, brokenAtSeq: result.brokenAtSeq, reason: result.reason };
+    }
+    expectedPrevHash = page[page.length - 1]!.rowHash;
+    afterSeq = page[page.length - 1]!.seq;
+    if (page.length < pageSize) break;
+  }
+  return { checked, ok: true, brokenAtSeq: null, reason: null };
+}
+
 export interface VerifyChainRangeOptions {
   readonly fromSeq: number;
   readonly toSeq: number;
+  /** Lignes lues par page ; {@link VERIFY_CHAIN_PAGE_SIZE} par défaut. */
+  readonly pageSize?: number;
 }
 
-/** Enveloppe base de données de {@link verifyChain} : charge la plage puis rejoue. */
+/** Enveloppe base de données de {@link verifyChainPages} : lit la plage par pages de clé `seq`, puis rejoue. */
 export async function verifyChainRange(
   db: Kysely<DB> | Transaction<DB>,
   range: VerifyChainRangeOptions,
 ): Promise<ChainVerificationResult> {
-  const rows = await db
-    .selectFrom('audit_audit_log')
-    .selectAll()
-    .where('seq', '>=', range.fromSeq)
-    .where('seq', '<=', range.toSeq)
-    .orderBy('seq', 'asc')
-    .execute();
-
-  if (rows.length === 0) {
-    return { checked: 0, ok: true, brokenAtSeq: null, reason: null };
-  }
-
-  let expectedFirstPrevHash = GENESIS_PREV_HASH;
-  if (range.fromSeq > 1) {
-    const before = await db
-      .selectFrom('audit_audit_log')
-      .select('row_hash')
-      .where('seq', '=', range.fromSeq - 1)
-      .executeTakeFirst();
-    if (before) {
-      expectedFirstPrevHash = before.row_hash;
-    }
-  }
-
-  return verifyChain(rows.map(toVerifiableAuditRow), expectedFirstPrevHash);
+  return verifyChainPages(
+    async (afterSeq, limit) =>
+      (
+        await db
+          .selectFrom('audit_audit_log')
+          .selectAll()
+          .where('seq', '>', afterSeq)
+          .where('seq', '<=', range.toSeq)
+          .orderBy('seq', 'asc')
+          .limit(limit)
+          .execute()
+      ).map(toVerifiableAuditRow),
+    { afterSeq: range.fromSeq - 1, toSeq: range.toSeq },
+    {
+      ...(range.pageSize !== undefined ? { pageSize: range.pageSize } : {}),
+      expectedFirstPrevHash: async () => {
+        if (range.fromSeq <= 1) return GENESIS_PREV_HASH;
+        const before = await db
+          .selectFrom('audit_audit_log')
+          .select('row_hash')
+          .where('seq', '=', range.fromSeq - 1)
+          .executeTakeFirst();
+        return before ? before.row_hash : GENESIS_PREV_HASH;
+      },
+    },
+  );
 }

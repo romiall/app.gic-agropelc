@@ -347,6 +347,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-412, AV-438',
   },
+  // P9-10 (AV-475) : fenêtre glissante des événements sautés qui maintiennent `CONSUMER_FAILED` ouverte.
+  {
+    key: 'communication.consumer_failure_window_hours',
+    value: 24,
+    isClientVisible: false,
+    ref: 'AV-412, AV-475',
+  },
   { key: 'communication.alert_retention_days', value: 730, isClientVisible: false, ref: 'AV-437' },
   {
     key: 'communication.notification_retention_days',
@@ -426,6 +433,18 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   },
   { key: 'sync.stale_hours', value: 24, isClientVisible: false, ref: 'D13 §7.1' },
   { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-442' },
+  // P9-10 (AV-471) : codes d'erreur de synchronisation qui ne sont pas un défaut de l'appareil (décision de
+  // l'Admin, conséquence d'un autre rejet) et que `SYNC_ERROR` ne signale pas.
+  {
+    key: 'sync.error_alert_excluded_codes',
+    value: ['COMMAND_DISCARDED', 'DEPENDENCY_REJECTED'],
+    isClientVisible: false,
+    ref: 'AV-442, AV-471',
+  },
+  // P9-10 (AV-472) : jours de silence au-delà desquels un appareil actif est tenu pour abandonné (0 : jamais).
+  { key: 'sync.stale_horizon_days', value: 30, isClientVisible: false, ref: 'AV-472' },
+  // P9-10 (AV-473) : heures après lesquelles un trou de séquence non comblé est signalé (BR-SYN-003).
+  { key: 'sync.seq_gap_alert_hours', value: 24, isClientVisible: false, ref: 'BR-SYN-003, AV-473' },
   // P9-09 (AV-462) : jours de la semaine (numéros ISO, 1 = lundi) où une saisie du jour est attendue d'un
   // lot en cours (`DAILY_ENTRY_MISSING`) ; tous les jours par défaut, un élevage ne s'arrête pas.
   {

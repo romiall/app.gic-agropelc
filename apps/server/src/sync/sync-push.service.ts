@@ -41,6 +41,15 @@ import { CLOCK } from '../platform/clock.provider.js';
 import { DATABASE, type Database } from '../platform/kysely/database.provider.js';
 import { toBin } from '../platform/kysely/uuid-columns.js';
 import { currentSettingValue } from '../modules/organization/application/public/index.js';
+import {
+  AUTHOR_DATASET_LIKE,
+  AUTHOR_DATASET_PREFIX,
+  DEVICE_DATASET,
+  authorDataset,
+} from './sync-state-datasets.js';
+
+// Les noms des jeux sont définis dans un fichier sans dépendance (P9-10) ; réexportés pour les importeurs existants.
+export { AUTHOR_DATASET_PREFIX, DEVICE_DATASET, authorDataset };
 
 /**
  * Délai maximal de traitement d'un lot (02-synchronisation.md §3.1) : au-delà, les commandes restantes
@@ -249,17 +258,6 @@ export class SyncPushService {
     if (declaredDatasets.length > 0) cleared = cleared.where('dataset', 'not in', declaredDatasets);
     await cleared.execute();
   }
-}
-
-/** Ligne technique par appareil (`dataset = '_device'`, dictionnaire sync.device_sync_state). */
-export const DEVICE_DATASET = '_device';
-/** Ligne technique par couple (appareil, auteur) : `_a:` suivi des 32 caractères hexadécimaux de l'utilisateur. */
-export const AUTHOR_DATASET_PREFIX = '_a:';
-/** Motif `LIKE` des lignes par auteur (le `_` est un joker de `LIKE` : échappé). */
-const AUTHOR_DATASET_LIKE = String.raw`\_a:%`;
-
-export function authorDataset(userId: string): string {
-  return `${AUTHOR_DATASET_PREFIX}${userId.replace(/-/g, '')}`;
 }
 
 /** Commande d'un lot suspendu derrière une commande à renvoyer : ni traitée, ni enregistrée. */

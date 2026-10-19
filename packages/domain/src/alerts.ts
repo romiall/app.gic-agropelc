@@ -605,7 +605,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'SyncErrorDetected' }],
     resolvedBy: [],
-    settings: ['sync.error_alert_window_hours'],
+    settings: ['sync.error_alert_window_hours', 'sync.error_alert_excluded_codes'],
     messageTitle: 'Erreurs de synchronisation',
     messageFields: [
       { key: 'device_label', label: 'Appareil' },
@@ -630,7 +630,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'DeviceSyncStale' }],
     resolvedBy: [],
-    settings: ['sync.stale_hours'],
+    settings: ['sync.stale_hours', 'sync.stale_horizon_days'],
     messageTitle: 'Appareil sans synchronisation',
     messageFields: [
       { key: 'device_label', label: 'Appareil' },
@@ -655,7 +655,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: 4,
     raisedBy: [{ eventType: 'DeviceSequenceGapDetected' }],
     resolvedBy: [],
-    settings: [],
+    settings: ['sync.seq_gap_alert_hours'],
     messageTitle: 'Trou de séquence non comblé',
     messageFields: [
       { key: 'device_label', label: 'Appareil' },
@@ -680,7 +680,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'ClockSkewDetected' }],
     resolvedBy: [],
-    settings: ['sync.clock_skew_flag_minutes'],
+    settings: ['sync.clock_skew_flag_minutes', 'sync.stale_hours'],
     messageTitle: "Horloge d'appareil décalée",
     messageFields: [
       { key: 'device_label', label: 'Appareil' },
@@ -1095,7 +1095,10 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'ConsumerFailureDetected' }],
     resolvedBy: [],
-    settings: ['communication.consumer_lag_alert_seconds'],
+    settings: [
+      'communication.consumer_lag_alert_seconds',
+      'communication.consumer_failure_window_hours',
+    ],
     messageTitle: "Consommateur d'événements en échec",
     messageFields: [
       { key: 'consumer_name', label: 'Consommateur' },

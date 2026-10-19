@@ -12,6 +12,9 @@
  *   alors qu'une fenêtre « du jour » laisserait sans contrôle tout ce qui est écrit après la dernière
  *   exécution. Une rupture plus ancienne que la fenêtre n'est revue que par la vérification hebdomadaire
  *   complète du mois (§5), renvoyée à P9-22 (charge et isolation des tâches longues).
+ * - **Coût** (P9-10) : le journal est lu par pages de clé `seq` (`verifyChainRange`, 2 000 lignes) et le début de
+ *   la fenêtre est cherché depuis la fin de la table (`verification-window.ts`) : le coût suit la taille de la
+ *   fenêtre, non celle du journal, que rien n'index par date d'écriture.
  * - **Rupture** (P9-10) : la tâche ne lève plus. Une exception ferait annuler par le point de sauvegarde du
  *   `JobRunner` tout ce que le gestionnaire a écrit — dont l'événement — puis reprendrait la tâche sans fin
  *   (ADR-071 §3) ; elle publie `AuditChainBroken` puis se termine en succès, et consigne l'erreur au journal.
@@ -46,6 +49,7 @@ import {
 } from '../platform/jobs/job-handler-registry.provider.js';
 import type { UnitOfWork } from '../platform/unit-of-work.js';
 import { verifyChainRange, type ChainBreakReason } from './verify-chain.js';
+import { firstSeqRecordedAtOrAfter } from './verification-window.js';
 
 export const CHAIN_VERIFICATION_JOB_TYPE = 'audit.chain.verify_daily';
 
@@ -88,18 +92,15 @@ export async function runChainVerification(
   const today = businessDayOf(now);
   const fromDate = businessDayStartUtc(addBusinessDays(today, -1));
 
-  const from = await uow
-    .selectFrom('audit_audit_log')
-    .select(({ fn }) => fn.min('seq').as('minSeq'))
-    .where('recorded_at', '>=', fromDate)
-    .executeTakeFirst();
+  // Début de la fenêtre lu depuis la fin du journal (aucun index sur `recorded_at` : un `MIN(seq)` filtré le
+  // parcourrait tout entier chaque nuit) ; la fin est la dernière ligne, par la clé primaire.
+  const fromSeq = await firstSeqRecordedAtOrAfter(uow, fromDate);
   const to = await uow
     .selectFrom('audit_audit_log')
     .select(({ fn }) => fn.max('seq').as('maxSeq'))
     .executeTakeFirst();
-  if (!from?.minSeq || !to?.maxSeq) return { status: 'EMPTY', businessDay: today };
+  if (fromSeq === null || !to?.maxSeq) return { status: 'EMPTY', businessDay: today };
 
-  const fromSeq = Number(from.minSeq);
   const toSeq = Number(to.maxSeq);
   const result = await verifyChainRange(uow, { fromSeq, toSeq });
   if (result.ok || result.brokenAtSeq === null || result.reason === null) {

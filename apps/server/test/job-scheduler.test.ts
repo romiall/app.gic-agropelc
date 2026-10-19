@@ -43,6 +43,11 @@ import {
   APPROVALS_RECURRING_JOBS,
 } from '../src/modules/approvals/application/jobs/approvals-recurring-jobs.js';
 import { AUDIT_RECURRING_JOBS, AuditRecurringJobs } from '../src/audit/audit-recurring-jobs.js';
+import { SYNC_RECURRING_JOBS, SyncRecurringJobs } from '../src/sync/jobs/sync-recurring-jobs.js';
+import {
+  COMMUNICATION_RECURRING_JOBS,
+  CommunicationRecurringJobs,
+} from '../src/modules/communication/application/jobs/communication-recurring-jobs.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
 
@@ -350,6 +355,27 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'DAILY',
       localTime: '03:00',
     });
+    // P9-10 : alertes de synchronisation, toutes les heures (AV-471 à AV-474).
+    const sync = new RecurringJobRegistry();
+    new SyncRecurringJobs(sync).onModuleInit();
+    expect(sync.list()).toEqual(SYNC_RECURRING_JOBS);
+    expect(sync.list().map((job) => job.jobType)).toEqual([
+      'sync.errors.alert_check',
+      'sync.devices.stale_check',
+      'sync.devices.clock_skew_check',
+      'sync.devices.seq_gap_check',
+    ]);
+    for (const job of sync.list()) {
+      expect(job.schedule).toEqual({ kind: 'INTERVAL', intervalSeconds: 3600 });
+    }
+    // P9-05 et P9-10 : escalade (10 min), envoi des push (1 min), consommateurs en échec (5 min).
+    const communication = new RecurringJobRegistry();
+    new CommunicationRecurringJobs(communication).onModuleInit();
+    expect(communication.list()).toEqual(COMMUNICATION_RECURRING_JOBS);
+    expect(communication.get('communication.consumers.failure_check')?.schedule).toEqual({
+      kind: 'INTERVAL',
+      intervalSeconds: 300,
+    });
     // Un même processus inscrit les modules sans collision de type de tâche.
     const both = new RecurringJobRegistry();
     new InventoryRecurringJobs(both).onModuleInit();
@@ -359,6 +385,8 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
     new ProcurementRecurringJobs(both).onModuleInit();
     new ApprovalsRecurringJobs(both).onModuleInit();
     new AuditRecurringJobs(both).onModuleInit();
+    new SyncRecurringJobs(both).onModuleInit();
+    new CommunicationRecurringJobs(both).onModuleInit();
     expect(both.list()).toHaveLength(
       INVENTORY_RECURRING_JOBS.length +
         FINANCE_RECURRING_JOBS.length +
@@ -366,7 +394,9 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
         PRODUCTION_RECURRING_JOBS.length +
         PROCUREMENT_RECURRING_JOBS.length +
         APPROVALS_RECURRING_JOBS.length +
-        AUDIT_RECURRING_JOBS.length,
+        AUDIT_RECURRING_JOBS.length +
+        SYNC_RECURRING_JOBS.length +
+        COMMUNICATION_RECURRING_JOBS.length,
     );
   });
 });

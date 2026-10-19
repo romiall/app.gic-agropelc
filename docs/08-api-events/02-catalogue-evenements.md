@@ -214,13 +214,15 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved` | communication | notifications (interne) | `alert_id` | Push ou in-app |
 | `AlertDetectionPassCompleted` | tout module détecteur | communication | `alert_type`, `pass_id`, `scope` (facultatif : sépare deux producteurs d'un même type d'alerte d'état), `business_day` | Publié en dernier par une passe de détection **complète** (ADR-071 §3, P9-07) : le consommateur d'alertes résout les alertes d'état ouvertes du type (et de la portée) que cette passe n'a pas revues ; une passe interrompue ne publie rien. Identifiant d'événement dérivé de (type, passe) : un rejeu ne le publie pas deux fois |
 | `InternalNotePublished`, `InternalNoteAcknowledged` | communication | SYN | `note_id` | Téléchargement des notes |
-| `CommandRejected` | sync | NOT | `command_id`, code | Alerte `SYNC_ERROR` |
+| `SyncErrorDetected` | sync (tâche planifiée) | NOT | `device_id`, `error_code`, `device_label`, `occurrences`, `user_id`, `first_at`, `last_at`, `window_hours` — sans message d'erreur | Alerte `SYNC_ERROR` (P9-10, AV-471) ; un événement par appareil × code, sujet composite |
+| `CommandRejected` | sync | — | `command_id`, code | **Non publié** : remplacé par `SyncErrorDetected` (une alerte par commande inonderait) |
 | `CommandApplied` | sync | — (technique, non publié) | — | Métriques uniquement |
 | `SyncConflictDetected` | sync | NOT, module concerné | `conflict_id`, type, rôle responsable | File de résolution. **Pas encore produit** (la file se lit par `GET /sync/conflicts`) |
 | `SyncConflictResolved` | sync | NOT, module concerné | `conflict_id`, `conflict_type`, `owner_role`, `entity_type`, `entity_id`, `site_id`, `applied`, `status`, `resolution`, `refs` | File de résolution. **Produit depuis P5-17** par `sync.conflict.resolve` et `.dismiss` (agrégat `SYNC_CONFLICT`), en plus de l'événement générique du pipeline ; clôture administrative sans rejeu (AV-190) |
-| `DeviceSequenceGapDetected` | sync | NOT | `device_id`, trou | Alerte critique |
-| `ClockSkewDetected` | sync | NOT | `device_id`, écart | Alerte `CLOCK_SKEW` |
-| `DeviceSyncStale` | sync (tâche planifiée) | NOT | `device_id`, dernière synchronisation | Alerte `SYNC_STALE` |
+| `DeviceSequenceGapDetected` | sync (tâche planifiée) | NOT | `device_id`, `device_label`, `missing_from`, `missing_to`, `missing_count`, `gaps_count`, `new_ranges`, `opened_at`, `pending_reported` | Alerte critique `DEVICE_SEQ_GAP` (P9-10, AV-473) ; une plage n'est signalée qu'une fois |
+| `ClockSkewDetected` | sync (tâche planifiée) | NOT | `device_id`, `device_label`, `skew_minutes` (signé), `threshold_minutes`, `last_push_at`, `user_id` | Alerte `CLOCK_SKEW` (P9-10, AV-474) |
+| `DeviceSyncStale` | sync (tâche planifiée) | NOT | `device_id`, `device_label`, `last_sync_at`, `hours_since`, `threshold_hours`, `never_contacted`, `user_id` (qui a enrôlé l'appareil) | Alerte `SYNC_STALE` (P9-10, AV-472) |
+| `ConsumerFailureDetected` | communication (tâche planifiée) | NOT | `consumer_name`, `failed_events`, `lag_seconds`, `last_seq`, `last_failed_at`, `threshold_seconds`, `window_hours` — sans message d'erreur ni type de l'événement sauté | Alerte `CONSUMER_FAILED` (P9-10, AV-475) ; un par consommateur, sujet = son nom |
 | `AuditChainBroken` | audit | NOT | `partition` (mois métier), `position` (seq), `reason`, bornes de la fenêtre, `business_day` | Alerte critique `AUDIT_CHAIN_BROKEN` (P9-10, AV-470) ; publié par `audit.chain.verify_daily`, qui se termine en succès |
 | `AnalyticsExportRequested`, `AnalyticsExportCompleted`, `SavedViewShared` | analytics | NOT | `export_id` | Lien de téléchargement |
 | `ReplenishmentSuggested` | inventory (tâche planifiée) | NOT | PDV, produit, quantité | Alerte `POS_REPLENISH` |
@@ -236,5 +238,5 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | Publication | Insertion dans `platform.domain_events` **dans la transaction** métier : pas d'événement sans fait, pas de fait sans événement |
 | Consommation | Le worker lit par `seq` croissant ; chaque consommateur a sa position (`event_consumer_offsets`), qui ne dépasse jamais un trou récent de la numérotation (un numéro est attribué à l'insertion, pas à la validation : un événement validé après un numéro supérieur serait sauté ; P5-23, même règle que le curseur du pull, AV-198) ; les réactions sont idempotentes (clé = `event_id` + consommateur, ou contrainte d'unicité métier) |
 | Ordre | Garanti par `seq` à l'intérieur d'un consommateur ; les consommateurs n'exigent pas d'ordre global entre agrégats |
-| Échecs | 5 essais avec attente progressive ; ensuite le consommateur marque l'événement en erreur, continue avec les suivants (sauf dépendance d'ordre déclarée) et lève une alerte technique |
+| Échecs | 5 essais **immédiats** (en mémoire, sans attente) ; ensuite le consommateur consigne le saut dans `platform_event_consumer_failures` (ajout seul), avance sa position et continue avec les suivants (sauf dépendance d'ordre déclarée) ; la passe `communication.consumers.failure_check` lève l'alerte `CONSUMER_FAILED` (P9-10, AV-475) |
 | Délai | p95 < 10 s entre publication et réaction (NFR-15) |

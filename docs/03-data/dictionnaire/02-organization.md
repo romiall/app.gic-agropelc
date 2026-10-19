@@ -251,7 +251,8 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
 | `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |
 | `communication.push_group_minutes` | 15 | AV-416, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
-| `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé |
+| `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 |
+| `communication.consumer_failure_window_hours` | 24 | AV-412, AV-475 (P9-10) : fenêtre glissante dans laquelle un événement sauté après échecs persistants maintient `CONSUMER_FAILED` ouverte ; nombre > 0 plafonné à 87 600, sinon 24 |
 | `communication.alert_retention_days` | 730 | AV-437 (P9-03) : conservation d'une alerte résolue, en jours |
 | `communication.notification_retention_days` | 90 | AV-437 (P9-03) : conservation d'une notification lue, en jours |
 | `approvals.pending_long_hours` | 24 | AV-408, AV-466 (P9-03, P9-09) : délai, en heures depuis la réception de la demande par le serveur (borne comprise), au-delà duquel une demande de validation en attente est signalée et escaladée (`escalated_at`) ; nombre > 0, sinon 24 |
@@ -267,3 +268,6 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `sales.inactive_commercial_role_codes` | `["COMMERCIAL_TERRAIN"]` | BR-TER-013, AV-444 (P9-07) : rôles suivis par l'alerte `INACTIVE_COMMERCIAL` |
 | `sync.stale_hours` | 24 | D13 §7.1 (P9-03) : durée sans synchronisation au-delà de laquelle un appareil est signalé |
 | `sync.error_alert_window_hours` | 24 | AV-442 (P9-03) : fenêtre de la passe qui signale les erreurs de synchronisation |
+| `sync.error_alert_excluded_codes` | `["COMMAND_DISCARDED","DEPENDENCY_REJECTED"]` | AV-442, AV-471 (P9-10) : codes d'erreur de synchronisation que `SYNC_ERROR` ne signale pas (décision de l'Admin, conséquence d'un autre rejet) ; liste vide admise, valeur qui n'est pas une liste de chaînes : le défaut |
+| `sync.stale_horizon_days` | 30 | AV-472 (P9-10) : jours de silence au-delà desquels un appareil actif n'est plus signalé par `SYNC_STALE` (tenu pour abandonné) ; entier ≥ 0 plafonné à 3 650, `0` : aucun horizon |
+| `sync.seq_gap_alert_hours` | 24 | BR-SYN-003, AV-473 (P9-10) : heures après lesquelles un trou de séquence non comblé est signalé (`DEVICE_SEQ_GAP`) ; nombre > 0 plafonné à 87 600 |

@@ -13,6 +13,7 @@ import { Module } from '@nestjs/common';
 import { AlertsConsumerRegistrar } from './application/events/register-alerts-consumer.js';
 import { AlertEscalationJob } from './application/jobs/alert-escalation-job.js';
 import { CommunicationRecurringJobs } from './application/jobs/communication-recurring-jobs.js';
+import { ConsumerFailureJob } from './application/jobs/consumer-failure-job.js';
 import { PushDispatchJob } from './application/jobs/push-dispatch-job.js';
 import { DisabledWebPushSender, WEB_PUSH_SENDER } from './application/notifications/web-push.js';
 
@@ -22,6 +23,7 @@ import { DisabledWebPushSender, WEB_PUSH_SENDER } from './application/notificati
     AlertsConsumerRegistrar,
     AlertEscalationJob,
     PushDispatchJob,
+    ConsumerFailureJob,
     CommunicationRecurringJobs,
   ],
 })

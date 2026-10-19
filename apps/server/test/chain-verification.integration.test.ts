@@ -91,6 +91,58 @@ describe('Vérification du chaînage d’audit (P0-07, INV-AUD-01)', () => {
     expect(result.checked).toBe(second.seq - first.seq + 1);
   });
 
+  it('verifyChainRange lue par pages (P9-10) : même résultat qu’en un seul tenant, quelle que soit la taille de page', async () => {
+    const clock = new SystemClock();
+    const idGenerator = new Uuidv7Generator(clock);
+    const admin = await createRealTestUser();
+    const written: number[] = [];
+    for (const suffix of ['a', 'b', 'c']) {
+      const recorded = await db.transaction().execute((trx) =>
+        recordAudit(
+          trx,
+          { idGenerator, clock },
+          {
+            occurredAt: clock.now(),
+            actorUserId: admin,
+            actorRoles: ['ADMIN'],
+            action: `test.chain_verify.paged.${suffix}`,
+            entityType: 'TEST',
+            result: 'SUCCESS',
+          },
+        ),
+      );
+      written.push(recorded.seq);
+    }
+    const range = { fromSeq: written[0]!, toSeq: written[2]! };
+    const whole = await verifyChainRange(db, range);
+    expect(whole.ok).toBe(true);
+    // D'autres suites peuvent écrire entre les trois lignes : la plage contient au moins les trois.
+    expect(whole.checked).toBe(range.toSeq - range.fromSeq + 1);
+    for (const pageSize of [1, 2, 3, 1000]) {
+      expect(await verifyChainRange(db, { ...range, pageSize })).toEqual(whole);
+    }
+    // Plage commençant au milieu de la chaîne : l'empreinte précédente est lue une fois, en base.
+    const tail = await verifyChainRange(db, {
+      fromSeq: written[1]!,
+      toSeq: written[2]!,
+      pageSize: 1,
+    });
+    expect(tail.ok).toBe(true);
+    expect(tail.checked).toBe(written[2]! - written[1]! + 1);
+    // Plage vide : rien à vérifier.
+    expect(
+      await verifyChainRange(db, {
+        fromSeq: written[2]! + 1_000_000,
+        toSeq: written[2]! + 1_000_010,
+      }),
+    ).toEqual({
+      checked: 0,
+      ok: true,
+      brokenAtSeq: null,
+      reason: null,
+    });
+  });
+
   it('audit.chain.verify_daily (enregistré par ChainVerificationJob, réclamé par un vrai JobRunner) : DONE', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [PlatformModule, ChainVerificationModule],

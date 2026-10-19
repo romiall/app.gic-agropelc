@@ -148,7 +148,7 @@
 | `bootstrapped_at` | ts | Oui | — | |
 | `needs_rebootstrap` | boolean | Non | false | |
 
-Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]`), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations restant à envoyer **après** le dernier lot, déclaré par l'appareil dans `pending_by_author` ; nul si non déclaré), `app_version`. `last_device_seq` est le plus grand `device_seq` reçu (P5-07). Sur un appareil partagé (AV-007), une ligne supplémentaire par auteur, `dataset = '_a:<utilisateur>'` (32 caractères hexadécimaux), porte son dernier envoi, son plus grand `device_seq` et ses opérations restantes.
+Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]` ; **écrit depuis P9-10** par `sync.devices.seq_gap_check` : plages de `device_seq` déjà signalées par `DEVICE_SEQ_GAP`, effacé quand la suite est complète, AV-473), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations restant à envoyer **après** le dernier lot, déclaré par l'appareil dans `pending_by_author` ; nul si non déclaré), `app_version`. `last_device_seq` est le plus grand `device_seq` reçu (P5-07). Sur un appareil partagé (AV-007), une ligne supplémentaire par auteur, `dataset = '_a:<utilisateur>'` (32 caractères hexadécimaux), porte son dernier envoi, son plus grand `device_seq` et ses opérations restantes.
 
 - **PK** `(device_id, dataset)`. **Suppr.** Technique (suit l'appareil). **Offline** SRV.
 
@@ -260,6 +260,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `last_seq` | bigint | Non | 0 | |
 | `updated_at` | ts | Non | `now()` | |
 | `last_error` | text | Oui | — | |
+
+**Surveillance (P9-10, AV-475)** : la passe `communication.consumers.failure_check` examine **toutes** les lignes (retard = âge du plus ancien événement de numéro supérieur à `last_seq`). L'application n'a pas le droit de supprimer une ligne : renommer ou retirer un consommateur impose une migration qui renomme ou apure sa ligne, sinon `CONSUMER_FAILED` le signale à jamais ; un consommateur neuf part de `last_seq = 0` et rejoue l'historique (retard transitoire au déploiement, à amorcer avec la tête du flux).
 
 ## platform.document_sequences
 

@@ -19,6 +19,10 @@ vi.mock('../src/audit/verify-chain.js', async (importOriginal) => ({
 import { verifyChainRange } from '../src/audit/verify-chain.js';
 import { ChainVerificationJob, runChainVerification } from '../src/audit/chain-verification-job.js';
 import { recordAudit } from '../src/audit/record-audit.js';
+import {
+  auditPageReaderDescending,
+  firstSeqRecordedAtOrAfter,
+} from '../src/audit/verification-window.js';
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
 import { compositeSubjectId } from '../src/platform/events/detection-events.js';
 import { toDomainEvent } from '../src/platform/events/domain-event.js';
@@ -162,6 +166,28 @@ describe('AUDIT_CHAIN_BROKEN : vérification quotidienne de la chaîne d’audit
       await runChainVerification(uow, deps(runAt('10')), {});
       expect(verify.mock.calls[1]![1].fromSeq).toBe(seqOf.beforeWindow);
     });
+  });
+
+  it('début de fenêtre lu depuis la fin du journal : pages strictement décroissantes, même résultat quelle que soit la taille', async () => {
+    const fromDate = new Date(`${YEAR}-03-09T23:00:00.000Z`); // début du jour métier 03-10 à Douala
+    const reader = auditPageReaderDescending(db);
+    const firstPage = await reader(null, 2);
+    expect(firstPage.map((row) => row.seq)).toEqual([seqOf.monthEdge, seqOf.today]);
+    // Le curseur est exclu : la page suivante commence sous le dernier numéro lu.
+    const secondPage = await reader(seqOf.today, 2);
+    expect(secondPage.map((row) => row.seq)).toEqual([seqOf.yesterday, seqOf.beforeWindow]);
+    expect(secondPage[0]!.recordedAt.toISOString()).toBe(`${YEAR}-03-10T12:00:00.000Z`);
+    for (const pageSize of [1, 2, 3, 4, 1000]) {
+      expect(await firstSeqRecordedAtOrAfter(db, fromDate, pageSize)).toBe(seqOf.yesterday);
+    }
+    // Date postérieure à toute écriture : aucune fenêtre ; antérieure aux cinq écritures de test : leur début
+    // ou plus ancien (les lignes d'autres suites sont d'une année antérieure et arrêtent la lecture).
+    expect(
+      await firstSeqRecordedAtOrAfter(db, new Date(`${YEAR + 60}-01-01T00:00:00.000Z`), 2),
+    ).toBeNull();
+    expect(await firstSeqRecordedAtOrAfter(db, new Date(`${YEAR}-02-27T12:00:00.000Z`), 2)).toBe(
+      seqOf.february,
+    );
   });
 
   it('chaîne intacte : aucun événement', async () => {

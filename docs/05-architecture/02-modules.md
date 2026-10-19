@@ -204,7 +204,7 @@
 | Responsabilité | Règles d'alerte, alertes, notifications, push, notes de direction |
 | Tables | `alert_rules`, `alerts`, `notifications`, `push_subscriptions`, `internal_notes`, `note_audiences`, `note_acknowledgements` |
 | API | `/alerts`, `/notifications`, `/notes`. **Aucune API interne appelée par les modules métier** : les alertes naissent des gestionnaires d'événements de `communication` (et de ses tâches planifiées) |
-| Événements | `Alert*`, `InternalNote*` |
+| Événements | `Alert*`, `InternalNote*`, `ConsumerFailureDetected` (P9-10 : passe de 5 minutes, AV-475) |
 | Autorisées | `platform`, `audit`, `identity`, `organization` ; **consomme** les événements de tous les modules |
 | Interdites | Appels synchrones vers les modules métier (seulement de la lecture de résumé par événement) |
 
@@ -215,7 +215,7 @@
 | Responsabilité | Inbox des commandes, répartition vers les gestionnaires, flux de changements, chargement initial, conflits, supervision des appareils |
 | Tables | `command_inbox`, `sync_conflicts`, `change_feed`, `device_sync_state` |
 | API | `/sync/*`, `/commands` ; interne : `changeFeed.append(uow, …)` (utilisé par tous les modules), `conflicts.open(uow, …)`. **Livré en P5-17** : lectures du noyau (`apps/server/src/platform/sync/conflicts.ts`) `listConflicts`, `findConflict`, `closeConflict`, `CONFLICT_STATUSES`, `CONFLICT_RESOLUTIONS` ; transport `apps/server/src/sync/` : `GET /sync/conflicts(/{id})` (`conflicts-read.controller.ts`), visibilité par rôle propriétaire et portée (`conflict-access.ts`, AV-191), commandes `sync.conflict.resolve` et `.dismiss` enregistrées par `SyncConflictCommandsRegistrar` (`conflict-commands.ts`, AV-190) |
-| Événements | `CommandRejected`, `SyncConflict*` (`SyncConflictResolved` produit depuis P5-17, `SyncConflictDetected` pas encore), `DeviceSequenceGapDetected`, `ClockSkewDetected`, `DeviceSyncStale` |
+| Événements | `CommandRejected` (non publié), `SyncConflict*` (`SyncConflictResolved` produit depuis P5-17, `SyncConflictDetected` pas encore), `SyncErrorDetected`, `DeviceSequenceGapDetected`, `ClockSkewDetected`, `DeviceSyncStale` (P9-10 : passes horaires de la couche transport, `SyncJobsModule`, AV-471 à AV-474) |
 | Autorisées | `platform`, `audit`, `identity` ; **registre** des gestionnaires de commandes (inversion : les modules s'enregistrent) |
 | Interdites | Logique métier (aucune règle de domaine dans `sync`). Exception de transport (P5-17) : `apps/server/src/sync/` (et non le noyau `platform/sync/`) compose les API publiques d'`identity` (portée, `roleCodes`) et d'`inventory` (`findStockLocation`, `isAllocationOvercommitted`, `hasNegativeStock`) et le catalogue des rôles (`home-api/role-catalog.ts`) pour décider de la visibilité et de la clôture d'un conflit (AV-190 à AV-192) ; aucune table d'un autre module n'y est lue ni écrite |
 
