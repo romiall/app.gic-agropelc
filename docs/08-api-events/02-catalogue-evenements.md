@@ -213,7 +213,9 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|---|
 | `AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved` | communication | notifications (interne) | `alert_id` | Push ou in-app |
 | `AlertDetectionPassCompleted` | tout module détecteur | communication | `alert_type`, `pass_id`, `scope` (facultatif : sépare deux producteurs d'un même type d'alerte d'état), `business_day` | Publié en dernier par une passe de détection **complète** (ADR-071 §3, P9-07) : le consommateur d'alertes résout les alertes d'état ouvertes du type (et de la portée) que cette passe n'a pas revues ; une passe interrompue ne publie rien. Identifiant d'événement dérivé de (type, passe) : un rejeu ne le publie pas deux fois |
-| `InternalNotePublished`, `InternalNoteAcknowledged` | communication | SYN | `note_id` | Téléchargement des notes |
+| `InternalNotePublished` | communication | SYN | `note_id`, `title`, `category`, `requires_ack`, `published_at`, `expires_at`, `audience`, `recipients_count`, `published_by` | Téléchargement des notes ; source des notifications `NOTE` (P9-11, AV-477) |
+| `InternalNoteArchived` | communication | SYN | `note_id`, `previous_status`, `archived_at`, `archived_by` | Retrait d'une note publiée ou abandon d'un brouillon (P9-11, AV-477) |
+| `InternalNoteAcknowledged` | communication | SYN | `note_id`, `user_id`, `kind` (`READ` ou `ACKNOWLEDGE`), `read_at`, `acknowledged_at`, `requires_ack` | Un événement par changement de la ligne de lecture ou d'accusé, à la date du fait (P9-11, AV-478) |
 | `SyncErrorDetected` | sync (tâche planifiée) | NOT | `device_id`, `error_code`, `device_label`, `occurrences`, `user_id`, `first_at`, `last_at` (dates de la dernière prise en charge des commandes), `window_hours` — sans message d'erreur | Alerte `SYNC_ERROR` (P9-10, AV-471) ; un événement par appareil × code, sujet composite |
 | `CommandRejected` | sync | — | `command_id`, code | **Non publié** : remplacé par `SyncErrorDetected` (une alerte par commande inonderait) |
 | `CommandApplied` | sync | — (technique, non publié) | — | Métriques uniquement |

@@ -713,3 +713,20 @@ export {
   newPasswordProblem,
 } from './password.js';
 export type { NewPasswordProblem } from './password.js';
+// Audience des notes de direction (P9-11 ; ADR-073, AV-476) : règle pure partagée lecture / accusé / publication.
+export {
+  NOTE_AUDIENCE_ALL_REF,
+  assignmentInAudience,
+  expandNoteAudience,
+  normalizeNoteAudience,
+  noteAudienceEntryOfRow,
+  noteAudienceRow,
+  userInAudience,
+} from './note-audience.js';
+export type {
+  AudienceAssignment,
+  AudienceGeography,
+  ExpandedNoteAudience,
+  NoteAudienceEntry,
+  NoteAudienceType,
+} from './note-audience.js';

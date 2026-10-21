@@ -101,7 +101,7 @@ Toutes les valeurs de seuil sont des défauts paramétrables (AV-065). Les seuil
 
 ## 8. Validations
 
-Règle d'alerte : seuils numériques ≥ 0 et destinataires non vides. Note : titre et corps non vides, audience non vide, expiration postérieure à la publication.
+Règle d'alerte : seuils numériques ≥ 0 et destinataires non vides. Note : titre et corps non vides, audience non vide dont les références existent (rôle actif, site, zone, utilisateur), expiration postérieure à la publication (instant du serveur) ; une note corrective référence une note existante (AV-477).
 
 ## 9. Dépendances
 
@@ -109,7 +109,7 @@ Consomme les événements de tous les modules ; utilise ADM (rôles, périmètre
 
 ## 10. Événements produits
 
-`AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved`, `InternalNotePublished`, `InternalNoteAcknowledged`.
+`AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved`, `InternalNotePublished`, `InternalNoteArchived`, `InternalNoteAcknowledged`.
 
 ## 11. Événements consommés
 

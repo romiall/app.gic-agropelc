@@ -36,6 +36,8 @@ export type {
   RecipientPerimeter,
   RoleHolder,
 } from '../recipients/recipient-resolver.js';
+export { NOTE_AUDIENCE_RESOLVER } from '../notes/note-audience-resolver.js';
+export type { NoteAudienceResolver } from '../notes/note-audience-resolver.js';
 export { DisabledWebPushSender, WEB_PUSH_SENDER } from '../notifications/web-push.js';
 export type {
   PushMessage,
