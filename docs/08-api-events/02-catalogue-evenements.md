@@ -36,7 +36,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | `UserReactivated` | identity | STK | `user_id` | Lève le signal `revocation_pending` des quotas de l'utilisateur si l'appareil est en service (P5-08) |
 | `RoleAssigned`, `RoleAssignmentRevoked` | identity | SYN (périmètres), NOT | `user_id`, `role_code`, `scope` | Recalcul des périmètres de synchronisation (`SCOPE_EXIT` éventuels) |
 | `RolePermissionsChanged` | identity | SYN | `role_id` | Invalidation du cache des droits |
-| `DeviceEnrollmentRequested` | identity | NOT | `device_id`, `user_id` | Notification aux approbateurs |
+| `DeviceEnrollmentRequested` | identity | NOT | `device_id`, `user_id` | Notification aux approbateurs. **Non publié** (AV-482) : la file des appareils (ECR-ADM-05) reste le canal |
 | `DeviceApproved` | identity | NOT | `device_id` | L'utilisateur peut synchroniser |
 | `DeviceBlocked`, `DeviceDeclaredLost` | identity | STK, SYN, NOT | `device_id`, `effective_at` | Quotas actifs de l'appareil en `revocation_pending` (consommateur `inventory.allocation_revocation`, P5-08) ; quarantaine des commandes postérieures |
 | `DeviceUnblocked` | identity | STK | `device_id` | Lève le signal `revocation_pending` des quotas de l'appareil si l'utilisateur est en service (P5-08) |
@@ -52,9 +52,9 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 | Événement | Producteur | Consommateurs | Données minimum | Conséquence |
 |---|---|---|---|---|
 | `ControlPolicyChanged` | approvals | SYN | `policy_id`, version | Téléchargement |
-| `ApprovalRequested` | approvals | NOT | `approval_id`, `operation_type`, `subject`, `amount_xaf`, `site_id` | Notification aux approbateurs du périmètre |
+| `ApprovalRequested` | approvals | NOT | `approval_id`, `operation_type`, `subject_type`, `subject_id`, `amount_xaf`, `site_id`, `zone_id`, `requester_user_id`, `approver_permission`, `requested_at` | Notification aux titulaires de la permission d'approbation de la politique figée sur la demande, sur son périmètre, la Direction à défaut (`communication.direct`, P9-11, AV-480) ; publié par `requestApproval` sous un identifiant déterministe ; jamais le résumé de la demande (RC-05) |
 | `ApprovalPendingLong` | approvals | NOT | `request_id`, `operation_type`, `operation_label`, `hours_pending`, `threshold_hours`, `approver_permission`, `approver_scope`, `requester_user_id`, `subject_type`, `subject_id`, `requested_at`, `escalated` (déjà escaladée avant la passe), `site_id`, `zone_id`, `business_day`, `pass_id` | Alerte `APPROVAL_PENDING_LONG` (P9-09, AV-466) ; passe horaire `approvals.requests.pending_long_check` ; agrégat : la demande ; ni résumé ni montant (RC-05) |
-| `ApprovalGranted`, `ApprovalRejected` | approvals | NOT, ANA | `approval_id`, `subject`, `decision_option`, `decided_by` | Notification au demandeur. La transition du document est exécutée **de manière synchrone**, dans la transaction de la décision, par le gestionnaire que le module propriétaire a enregistré auprès d'`approvals` (ADR-018) ; l'événement ne sert qu'aux effets secondaires |
+| `ApprovalGranted`, `ApprovalRejected` | approvals | NOT, ANA | `approval_id`, `operation_type`, `subject_type`, `subject_id`, `site_id`, `zone_id`, `requester_user_id`, `decision`, `decision_option`, `decided_by`, `comment`, `decided_at` | Notification au demandeur seul, avec le motif d'un refus (`communication.direct`, P9-11, AV-480) ; elle tient lieu de `PurchaseRequestApproved` et `PurchaseRequestRejected` pour une demande d'achat. La transition du document est exécutée **de manière synchrone**, dans la transaction de la décision, par le gestionnaire que le module propriétaire a enregistré auprès d'`approvals` (ADR-018) ; l'événement ne sert qu'aux effets secondaires |
 | `ApprovalCancelled` | approvals | NOT | `approval_id` | — |
 | `AttachmentRegistered` | attachments | — | `attachment_id`, `owner` | — |
 | `AttachmentUploaded` | attachments | approvals, NOT | `attachment_id` | Déblocage d'une validation en attente de pièce |
@@ -115,8 +115,8 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 
 | Événement | Consommateurs | Données minimum | Conséquence |
 |---|---|---|---|
-| `StockTransferRequested` | NOT | `transfer_id`, source, destination | Notification à l'expéditeur |
-| `StockTransferDispatched` | NOT, ANA | `transfer_id`, lignes | Notification au destinataire ; KPI « envoyé » |
+| `StockTransferRequested` | NOT | `transfer_id`, `doc_number`, `from_location_id`, `to_location_id`, `from_site_id`, `to_site_id`, `line_count`, `requested_by`, `occurred_at` | Notification aux expéditeurs du site source (`inventory.transfer.dispatch`), demandeur exclu (`communication.direct`, P9-11, AV-480) ; publié par la commande `inventory.transfer.request` sous un identifiant déterministe |
+| `StockTransferDispatched` | NOT, ANA | `transfer_id`, `doc_number`, `from_location_id`, `to_location_id`, `from_site_id`, `to_site_id`, `line_count`, `dispatched_by`, `occurred_at` | Notification aux réceptionnaires du site destinataire (`inventory.transfer.receive`), expéditeur exclu (`communication.direct`, P9-11, AV-480) ; publié par la commande `inventory.transfer.dispatch` (sur demande ou en expédition directe, jamais en quarantaine) ; KPI « envoyé » |
 | `StockTransferReceived` | ANA | `transfer_id`, reçu | KPI « reçu ». P5-16 : publié aussi par la tâche `inventory.transfers.unmatched_sweep` pour un rapprochement qu'elle fait (`blind_receipt_id`, `matched_by`) ; la réception « reçue » exclut les retours à la source (inverses de l'expédition) |
 | `StockTransferDiscrepancyDetected` | NOT | `transfer_id`, écart, valeur | Validation ; alerte |
 | `StockTransferDiscrepancyResolved` | ANA | `transfer_id`, décision | — |
@@ -170,7 +170,7 @@ Consommateurs, en abrégé : **NOT** (alertes et notifications), **ANA** (projec
 |---|---|---|---|
 | `SupplierCreated`, `SupplierUpdated` | SYN | `supplier_id` | — |
 | `PurchaseRequestSubmitted` | NOT (via approbation) | `request_id` | — |
-| `PurchaseRequestApproved`, `PurchaseRequestRejected`, `PurchaseRequestCancelled` | NOT | `request_id` | Notification au demandeur |
+| `PurchaseRequestApproved`, `PurchaseRequestRejected`, `PurchaseRequestCancelled` | NOT | `request_id` | Notification au demandeur : portée, pour l'approbation et le rejet, par `ApprovalGranted` et `ApprovalRejected` (type d'opération `PURCHASE_REQUEST`, AV-480) — non publiés séparément ; l'annulation reste sans notification (AV-439) |
 | `PurchaseOrderCreated`, `PurchaseOrderApproved` | NOT | `po_id`, total | — |
 | `PurchaseOrderSent` | SYN (téléchargement par les réceptionnaires) | `po_id` | Réception possible hors ligne |
 | `PurchaseOrderCancelled`, `PurchaseOrderClosed` | SYN | `po_id` | — |

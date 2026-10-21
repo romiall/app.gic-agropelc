@@ -10,6 +10,10 @@ import type { AlertSeverity, AlertStatus } from './alerts.js';
 export const NOTIFICATION_CHANNELS = ['IN_APP', 'WEB_PUSH'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
+/** Nature d'une notification : alerte, note de direction, notification directe d'un événement (AV-439), fin d'un export. */
+export const NOTIFICATION_KINDS = ['ALERT', 'NOTE', 'DIRECT', 'EXPORT'] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
 /** Délai d'escalade d'une alerte `CRITICAL` non prise en compte (BR-NOT-005). */
 export const DEFAULT_ESCALATION_HOURS = 4;
 /** Au plus un push par utilisateur et par type toutes les 15 minutes (D13 §14). */

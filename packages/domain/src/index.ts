@@ -644,6 +644,7 @@ export {
   DEFAULT_PUSH_GROUP_MINUTES,
   NOTIFICATION_BODY_MAX,
   NOTIFICATION_CHANNELS,
+  NOTIFICATION_KINDS,
   escalationDueAt,
   escalationTitle,
   groupedPushBody,
@@ -663,6 +664,7 @@ export type { RecipientCandidate, RecipientOrigin, RecipientPlan } from './alert
 export type {
   EscalationCandidate,
   NotificationChannel,
+  NotificationKind,
   PushGroupDecision,
 } from './alert-delivery.js';
 export {
@@ -730,3 +732,21 @@ export type {
   NoteAudienceEntry,
   NoteAudienceType,
 } from './note-audience.js';
+// Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-483).
+export {
+  DIRECT_NOTIFICATION_COMMENT_MAX,
+  DIRECT_NOTIFICATION_EVENT_TYPES,
+  DirectNotificationPayloadError,
+  TRANSFER_DISPATCH_PERMISSION,
+  TRANSFER_RECEIVE_PERMISSION,
+  disabledDirectNotificationTypes,
+  isDirectNotificationEventType,
+  planDirectNotification,
+} from './direct-notifications.js';
+export type {
+  DirectAudience,
+  DirectNotificationEventType,
+  DirectNotificationPlan,
+  DirectNotificationSourceType,
+  DirectPerimeter,
+} from './direct-notifications.js';

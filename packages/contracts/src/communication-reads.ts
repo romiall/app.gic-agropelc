@@ -13,6 +13,7 @@ import {
   ALERT_STATUSES,
   ALERT_TYPES,
   NOTIFICATION_CHANNELS,
+  NOTIFICATION_KINDS,
 } from '@gic/domain';
 import { z } from 'zod';
 import { NOTE_CATEGORIES, noteAudienceEntrySchema } from './communication-commands.js';
@@ -77,11 +78,16 @@ export type AlertSummary = z.infer<typeof alertSummarySchema>;
 export const notificationItemSchema = z.object({
   id: uuid,
   channel: z.enum(NOTIFICATION_CHANNELS),
+  /** Nature : alerte, note de direction, notification directe d'un événement, fin d'un export (AV-439). */
+  kind: z.enum(NOTIFICATION_KINDS),
   title: z.string().min(1).max(200),
   body: z.string().max(1000),
   link: z.string().max(200).nullable(),
   alertId: uuid.nullable(),
   noteId: uuid.nullable(),
+  /** Objet source d'une notification directe (`APPROVAL_REQUEST`, `STOCK_TRANSFER`) : de quoi ouvrir l'écran concerné. */
+  sourceType: z.string().max(40).nullable(),
+  sourceId: uuid.nullable(),
   createdAt: instant,
   deliveredAt: instant.nullable(),
   readAt: instant.nullable(),

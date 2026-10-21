@@ -354,6 +354,13 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-412, AV-475',
   },
+  // P9-11 (3/3, AV-481) : types d'événements dont la notification directe est désactivée (aucun par défaut).
+  {
+    key: 'communication.direct_notification_disabled_types',
+    value: [],
+    isClientVisible: false,
+    ref: 'AV-439, AV-481',
+  },
   { key: 'communication.alert_retention_days', value: 730, isClientVisible: false, ref: 'AV-437' },
   {
     key: 'communication.notification_retention_days',

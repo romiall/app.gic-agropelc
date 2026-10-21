@@ -492,7 +492,13 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
 
   it('notifications : celles du lecteur, non lues, canal, pagination, compteur exact', async () => {
     const base = Date.UTC(2027, 0, 1, 8, 0, 0);
-    const insert = (userId: string, minutes: number, read: boolean, channel = 'IN_APP') =>
+    const insert = (
+      userId: string,
+      minutes: number,
+      read: boolean,
+      channel = 'IN_APP',
+      source?: { readonly type: string; readonly id: string },
+    ) =>
       tx(async (trx) => {
         const id = freshUuid();
         await trx
@@ -502,6 +508,8 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
             user_id: toBin(userId),
             channel,
             kind: 'DIRECT',
+            source_type: source?.type ?? null,
+            source_id: source === undefined ? null : toBin(source.id),
             title: `Notification ${minutes}`,
             body: 'Corps',
             created_at: new Date(base + minutes * 60_000),
@@ -512,7 +520,11 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
         return id;
       });
     const first = await insert(sellerA.userId, 1, true);
-    const second = await insert(sellerA.userId, 2, false);
+    const sourceId = freshUuid();
+    const second = await insert(sellerA.userId, 2, false, 'IN_APP', {
+      type: 'APPROVAL_REQUEST',
+      id: sourceId,
+    });
     const third = await insert(sellerA.userId, 3, false);
     await insert(sellerA.userId, 4, false, 'WEB_PUSH');
     const foreign = await insert(sellerB.userId, 2, false);
@@ -523,6 +535,14 @@ describe('P9-06 : lectures HTTP de la communication', { timeout: 180_000 }, () =
     expect(body.items.map((item) => item.id).slice(0, 3)).toEqual([third, second, first]);
     expect(body.items.map((item) => item.id)).not.toContain(foreign);
     expect(body.unreadCount).toBe(2);
+    // Nature et objet source d'une notification directe : de quoi ouvrir l'écran concerné.
+    const byId = new Map(body.items.map((item) => [item.id, item]));
+    expect(byId.get(second)).toMatchObject({
+      kind: 'DIRECT',
+      sourceType: 'APPROVAL_REQUEST',
+      sourceId,
+    });
+    expect(byId.get(third)).toMatchObject({ kind: 'DIRECT', sourceType: null, sourceId: null });
 
     const unread = notificationListResponseSchema.parse(
       (await get(sellerA, '/api/v1/notifications?unread=true')).json(),

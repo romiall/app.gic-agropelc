@@ -251,6 +251,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
 | `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |
 | `communication.push_group_minutes` | 15 | AV-416, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
+| `communication.direct_notification_disabled_types` | `[]` | AV-481 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
 | `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 |
 | `communication.consumer_failure_window_hours` | 24 | AV-412, AV-475 (P9-10) : fenêtre glissante dans laquelle un événement sauté après échecs persistants maintient `CONSUMER_FAILED` ouverte ; nombre > 0 plafonné à 87 600, sinon 24 |
 | `communication.alert_retention_days` | 730 | AV-437 (P9-03) : conservation d'une alerte résolue, en jours |

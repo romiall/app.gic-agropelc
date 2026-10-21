@@ -80,7 +80,7 @@
 | Responsabilité | Politiques de contrôle, demandes de validation, file de validation, exécution des décisions via les gestionnaires enregistrés |
 | Tables | `control_policies`, `approval_requests` |
 | API | `/approvals/inbox`, commandes `approvals.*` ; interne : `approvals.evaluatePolicy(op, context, at)`, `approvals.request(uow, …)`, `approvals.registerHandler(operationType, handler)` ; `approvals.decideApprovalRequest(uow, registry, …)` (P5-13 : cœur des décisions, appelable par un module propriétaire qui offre une commande en façade, ex. `finance.cash_session.validate`) |
-| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `ApprovalCancelled`, `ControlPolicyChanged` (aucun publié à ce jour : P9-11), `ApprovalPendingLong` (P9-09) |
+| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected` (publiés depuis P9-11 par `requestApproval` et `decideApprovalRequest`, AV-480), `ApprovalCancelled`, `ControlPolicyChanged` (non publiés à ce jour), `ApprovalPendingLong` (P9-09) |
 | Tâches planifiées | P9-09 : `approvals.requests.pending_long_check` (horaire ; `escalated_at` posé une fois), dans `ApprovalsJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `attachments` (présence des pièces requises) |
 | Interdites | Modules métier (ils s'enregistrent auprès d'`approvals`, pas l'inverse) |

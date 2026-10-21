@@ -16,6 +16,7 @@ import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js'
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import type { OperationType } from '../commands/operation-types.js';
 import { recordRequesterChange } from '../approval-changes.js';
+import { publishApprovalRequested } from '../approval-events.js';
 
 export interface RequestApprovalInput {
   /** UUIDv7 fourni par l'appelant (idempotence : même convention que `aggregate_id`). */
@@ -58,4 +59,17 @@ export async function requestApproval(
     })
     .execute();
   await recordRequesterChange(executor, input.requestId, input.requestedBy);
+  // P9-11 (3/3, AV-480) : la demande prévient les approbateurs de sa politique.
+  await publishApprovalRequested(executor, {
+    requestId: input.requestId,
+    operationType: input.operationType,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    amountXaf: input.amountXaf ?? null,
+    siteId: input.siteId ?? null,
+    zoneId: input.zoneId ?? null,
+    requestedBy: input.requestedBy,
+    requestedAt: input.requestedAt,
+    policyId: input.policyId,
+  });
 }

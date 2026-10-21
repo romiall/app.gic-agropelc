@@ -387,7 +387,11 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       .where('aggregate_id', '=', toBin(transferId))
       .where('event_type', 'like', 'StockTransfer%')
       .execute();
-    expect(events.map((e) => e.event_type)).toEqual(['StockTransferDiscrepancyDetected']);
+    // L'expédition a publié le sien (P9-11 (3/3), AV-480) ; le balayage ajoute le seul écart, ni réception ni rapprochement.
+    expect(events.map((e) => e.event_type).sort()).toEqual([
+      'StockTransferDiscrepancyDetected',
+      'StockTransferDispatched',
+    ]);
     const audit = await db
       .selectFrom('audit_audit_log')
       .select('action')

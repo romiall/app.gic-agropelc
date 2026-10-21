@@ -182,7 +182,7 @@
 | `alert_id` | uuid → alerts | Oui | — | Mis à `NULL` à la purge de l'alerte |
 | `alert_type` | code | Oui | — | Type de l'alerte (regroupement des push par couple utilisateur et type) ; exigé si `kind = ALERT` |
 | `note_id` | uuid → internal_notes | Oui | — | Exigé si `kind = NOTE` |
-| `source_type`, `source_id` | code, uuid | Oui | — | Objet source. Pour `kind = ALERT` : `source_type` vaut `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` (escalade, jamais regroupée) et `source_id` l'alerte ; sinon la notification directe ou l'export |
+| `source_type`, `source_id` | code, uuid | Oui | — | Objet source. Pour `kind = ALERT` : `source_type` vaut `ALERT` (levée, relèvement, occurrence) ou `ALERT_ESCALATION` (escalade, jamais regroupée) et `source_id` l'alerte ; sinon la notification directe ou l'export. Pour `kind = DIRECT` (P9-11, AV-480) : `source_type` vaut `APPROVAL_REQUEST` (demande de validation ou sa décision) ou `STOCK_TRANSFER` (transfert demandé ou expédié) et `source_id` l'objet |
 | `source_event_id` | uuid | Oui | — | Événement qui l'a produite ; unique avec (utilisateur, canal) : un consommateur rejoué ne la double pas |
 | `created_at` | ts | Non | `now()` | |
 | `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois. `delivered_at` : posé à la création pour `IN_APP` ; pour `WEB_PUSH`, à l'envoi accepté par au moins un abonnement (tâche `communication.push.dispatch`) ; une ligne jamais livrée est abandonnée après la fenêtre de reprise |

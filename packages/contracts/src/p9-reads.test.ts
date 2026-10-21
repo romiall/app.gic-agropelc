@@ -111,26 +111,44 @@ describe('lectures de communication', () => {
   });
 
   it('notifications et notes', () => {
-    expect(
+    const notification = {
+      id: A,
+      channel: 'IN_APP',
+      kind: 'ALERT',
+      title: 'Rupture de stock',
+      body: 'Produit : Poulet',
+      link: null,
+      alertId: B,
+      noteId: null,
+      sourceType: null,
+      sourceId: null,
+      createdAt: T,
+      deliveredAt: null,
+      readAt: null,
+    };
+    const list = (item: Record<string, unknown>) =>
       notificationListResponseSchema.safeParse({
-        items: [
-          {
-            id: A,
-            channel: 'IN_APP',
-            title: 'Rupture de stock',
-            body: 'Produit : Poulet',
-            link: null,
-            alertId: B,
-            noteId: null,
-            createdAt: T,
-            deliveredAt: null,
-            readAt: null,
-          },
-        ],
+        items: [item],
         unreadCount: 1,
         nextCursor: null,
-      }).success,
+      }).success;
+    expect(list(notification)).toBe(true);
+    // Notification directe : nature et objet source de l'événement (AV-439).
+    expect(
+      list({
+        ...notification,
+        kind: 'DIRECT',
+        alertId: null,
+        sourceType: 'STOCK_TRANSFER',
+        sourceId: A,
+      }),
     ).toBe(true);
+    for (const kind of ['ALERT', 'NOTE', 'DIRECT', 'EXPORT']) {
+      expect(list({ ...notification, kind })).toBe(true);
+    }
+    expect(list({ ...notification, kind: 'AUTRE' })).toBe(false);
+    expect(list({ ...notification, sourceId: 'pas-un-uuid' })).toBe(false);
+    expect(list({ ...notification, kind: undefined })).toBe(false);
     const note = {
       id: A,
       title: 'Prix',

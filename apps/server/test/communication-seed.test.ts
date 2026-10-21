@@ -72,6 +72,7 @@ describe('paramètres des détecteurs', () => {
       'communication.consumer_lag_alert_seconds',
       'communication.alert_retention_days',
       'communication.notification_retention_days',
+      'communication.direct_notification_disabled_types',
     ]) {
       expect(SETTING_KEYS.has(key), key).toBe(true);
     }
@@ -79,6 +80,8 @@ describe('paramètres des détecteurs', () => {
     expect(value('communication.push_group_minutes')).toBe(15);
     expect(value('communication.alert_retention_days')).toBe(730);
     expect(value('communication.notification_retention_days')).toBe(90);
+    // Aucun type de notification directe n'est désactivé par défaut (AV-481).
+    expect(value('communication.direct_notification_disabled_types')).toEqual([]);
     expect(value('approvals.pending_long_hours')).toBe(24);
     expect(value('attachments.missing_alert_days')).toBe(7);
     expect(value('procurement.receipt_incomplete_alert_days')).toBe(2);

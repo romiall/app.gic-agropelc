@@ -15,6 +15,7 @@ import {
   ALERT_TYPES,
   type AlertSeverity,
   type AlertType,
+  type NotificationKind,
 } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
@@ -25,11 +26,14 @@ type Executor = Kysely<DB> | Transaction<DB>;
 export interface NotificationReadItem {
   readonly id: string;
   readonly channel: 'IN_APP' | 'WEB_PUSH';
+  readonly kind: NotificationKind;
   readonly title: string;
   readonly body: string;
   readonly link: string | null;
   readonly alertId: string | null;
   readonly noteId: string | null;
+  readonly sourceType: string | null;
+  readonly sourceId: string | null;
   readonly createdAt: Date;
   readonly deliveredAt: Date | null;
   readonly readAt: Date | null;
@@ -90,11 +94,14 @@ export async function notificationPage(
     .select([
       'id',
       'channel',
+      'kind',
       'title',
       'body',
       'link',
       'alert_id',
       'note_id',
+      'source_type',
+      'source_id',
       'created_at',
       'delivered_at',
       'read_at',
@@ -128,11 +135,14 @@ export async function notificationPage(
     items: page.map((row) => ({
       id: fromBin(row.id),
       channel: row.channel as 'IN_APP' | 'WEB_PUSH',
+      kind: row.kind as NotificationKind,
       title: row.title,
       body: bodies.get(fromBin(row.id)) ?? row.body,
       link: row.link,
       alertId: fromBinOrNull(row.alert_id),
       noteId: fromBinOrNull(row.note_id),
+      sourceType: row.source_type,
+      sourceId: fromBinOrNull(row.source_id),
       createdAt: row.created_at,
       deliveredAt: row.delivered_at,
       readAt: row.read_at,

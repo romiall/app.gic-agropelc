@@ -64,6 +64,7 @@ import {
   type RecordMoveDeps,
 } from '../public/record-move.js';
 import { transferChanges } from '../sync-changes.js';
+import { publishTransferEvent } from '../transfer-events.js';
 import {
   custodyMismatch,
   locationAt,
@@ -426,6 +427,14 @@ function buildTransferCommands(
         })
         .execute();
     }
+    // P9-11 (3/3, AV-480) : la demande prévient les expéditeurs du site source.
+    await publishTransferEvent(uow, {
+      eventType: 'StockTransferRequested',
+      transferId,
+      actorUserId: envelope.author_user_id,
+      occurredAt,
+      commandId: envelope.command_id,
+    });
     await recordChanges(uow, transferChanges(transferId, fromLocationId, toLocationId));
     return { status: 'APPLIED' };
   };
@@ -679,6 +688,14 @@ ${refusal}`
     }
 
     await recordTransferChanges(uow, transfer);
+    // P9-11 (3/3, AV-480) : l'expédition prévient les réceptionnaires du site destinataire.
+    await publishTransferEvent(uow, {
+      eventType: 'StockTransferDispatched',
+      transferId: fromBin(transfer.id),
+      actorUserId: envelope.author_user_id,
+      occurredAt,
+      commandId: envelope.command_id,
+    });
 
     const serverRefs: Record<string, string> = {};
     if (closedRequest !== undefined) {

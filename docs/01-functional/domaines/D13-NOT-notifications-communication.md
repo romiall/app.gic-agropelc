@@ -115,6 +115,8 @@ Consomme les événements de tous les modules ; utilise ADM (rôles, périmètre
 
 Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `HighMortalityDetected`, `CashVarianceDetected`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
 
+**Notifications directes** (consommateur `communication.direct`, P9-11, AV-439, AV-480) : `ApprovalRequested` (aux approbateurs de la politique, la Direction à défaut), `ApprovalGranted` et `ApprovalRejected` (au demandeur, motif du refus compris — ils notifient aussi la décision d'une demande d'achat), `StockTransferRequested` (aux expéditeurs du site source) et `StockTransferDispatched` (aux réceptionnaires du site destinataire), en `IN_APP` seulement, sans valeur ni résumé de l'objet (RC-05) ; activation par type : `communication.direct_notification_disabled_types` (AV-481).
+
 ## 12. Fonctionnement hors ligne
 
 Les alertes et notes de l'utilisateur sont téléchargées : 50 dernières alertes ouvertes, notes non expirées. La prise en compte d'une alerte et l'accusé de lecture d'une note fonctionnent hors ligne. Les alertes locales (ex. « stock de votre allocation < 5 ») sont calculées sur l'appareil, sans passer par le serveur.
