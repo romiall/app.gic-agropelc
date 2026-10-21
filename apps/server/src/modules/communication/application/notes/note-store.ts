@@ -4,8 +4,9 @@
  * `20261201090100_create_communication.sql`) : ces fonctions ne font que les respecter, dans l'ordre qu'elles
  * imposent (l'audience ne s'écrit que sous un brouillon, la publication est le dernier acte).
  */
-import { sql } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { noteAudienceEntryOfRow, noteAudienceRow, type NoteAudienceEntry } from '@gic/domain';
+import type { DB } from '../../../../platform/kysely/database.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import {
   fromBin,
@@ -95,7 +96,7 @@ export async function lockNote(uow: UnitOfWork, noteId: string): Promise<LockedN
 }
 
 /** La note sans verrou (lecture seule : une note publiée ne change plus que de statut). */
-export async function readNote(uow: UnitOfWork, noteId: string): Promise<LockedNote | undefined> {
+export async function readNote(uow: Kysely<DB>, noteId: string): Promise<LockedNote | undefined> {
   const row = await uow
     .selectFrom('communication_internal_notes')
     .select(NOTE_COLUMNS)
@@ -106,7 +107,7 @@ export async function readNote(uow: UnitOfWork, noteId: string): Promise<LockedN
 
 /** Lignes d'audience d'une note, dans l'ordre stable des lignes normalisées. */
 export async function noteAudienceOf(
-  uow: UnitOfWork,
+  uow: Kysely<DB>,
   noteId: string,
 ): Promise<readonly NoteAudienceEntry[]> {
   const rows = await uow

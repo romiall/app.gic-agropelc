@@ -18,14 +18,17 @@ import {
   type AudienceGeography,
   type NoteAudienceEntry,
 } from '@gic/domain';
-import type { UnitOfWork } from '../platform/unit-of-work.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
-import type { NoteAudienceResolver } from '../modules/communication/application/public/index.js';
+import type {
+  NoteAudienceExecutor,
+  NoteAudienceResolver,
+} from '../modules/communication/application/public/index.js';
+type UnitOfWork = NoteAudienceExecutor;
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
 function refsOf(entries: readonly NoteAudienceEntry[], type: 'ROLE' | 'SITE' | 'ZONE' | 'USER') {
-  return entries.flatMap((entry) => (entry.type === type ? [entry.ref] : []));
+  return unique(entries.flatMap((entry) => (entry.type === type ? [entry.ref] : [])));
 }
 
 /** Géographie des seules lignes `SITE` et `ZONE` de l'audience (quatre lectures au plus). */
@@ -206,6 +209,27 @@ export class IdentityNoteAudienceResolver implements NoteAudienceResolver {
       .filter(([userId, assignments]) => userInAudience(userId, assignments, audience))
       .map(([userId]) => userId)
       .sort();
+  }
+
+  async visibleNoteIds(
+    uow: UnitOfWork,
+    userId: string,
+    notes: readonly { readonly id: string; readonly audience: readonly NoteAudienceEntry[] }[],
+    at: Date,
+  ): Promise<ReadonlySet<string>> {
+    if (notes.length === 0) return new Set();
+    const audiences = notes.map((note) => normalizeNoteAudience(note.audience));
+    const geography = await loadGeography(uow, audiences.flat());
+    const assignments = (
+      await activeAssignments(uow, at).where('a.user_id', '=', toBin(userId)).execute()
+    ).map(toAssignment);
+    const visible = new Set<string>();
+    notes.forEach((note, index) => {
+      if (userInAudience(userId, assignments, expandNoteAudience(audiences[index]!, geography))) {
+        visible.add(note.id);
+      }
+    });
+    return visible;
   }
 
   async includesUserAt(

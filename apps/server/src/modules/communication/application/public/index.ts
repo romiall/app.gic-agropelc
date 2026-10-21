@@ -30,6 +30,23 @@ export type {
   NotificationPage,
   NotificationReadItem,
 } from './notification-read.js';
+export {
+  NOTE_INBOX_SCAN_MAX,
+  NOTE_PUBLISH_PERMISSION,
+  NOTE_READ_PERMISSION,
+  decodeNoteCursor,
+  noteAcknowledgementFollowUp,
+  noteDetail,
+  notePage,
+} from './note-read.js';
+export type {
+  NoteAcknowledgementFollowUp,
+  NoteCursor,
+  NotePage,
+  NoteReadItem,
+  NoteReadStatus,
+  NoteViewScope,
+} from './note-read.js';
 export { ALERT_RECIPIENT_RESOLVER } from '../recipients/recipient-resolver.js';
 export type {
   AlertRecipientResolver,
@@ -37,7 +54,10 @@ export type {
   RoleHolder,
 } from '../recipients/recipient-resolver.js';
 export { NOTE_AUDIENCE_RESOLVER } from '../notes/note-audience-resolver.js';
-export type { NoteAudienceResolver } from '../notes/note-audience-resolver.js';
+export type {
+  NoteAudienceExecutor,
+  NoteAudienceResolver,
+} from '../notes/note-audience-resolver.js';
 export { DisabledWebPushSender, WEB_PUSH_SENDER } from '../notifications/web-push.js';
 export type {
   PushMessage,
