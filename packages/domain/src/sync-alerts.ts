@@ -235,7 +235,12 @@ export function sameSequenceGaps(a: readonly KnownGap[], b: readonly KnownGap[])
   );
 }
 
-/** Écart d'horloge en minutes entières, signé (heure du serveur moins heure de l'appareil). */
+/**
+ * Écart d'horloge en minutes entières, signé (heure du serveur moins heure de l'appareil), arrondi à la minute
+ * **supérieure** en valeur absolue : l'alerte se lève quand l'écart dépasse strictement le seuil en
+ * millisecondes, et l'arrondi au plus proche l'afficherait égal au seuil (300,4 s pour un seuil de 5 min).
+ */
 export function clockSkewMinutes(skewMs: number): number {
-  return Math.round(skewMs / 60_000);
+  const minutes = Math.ceil(Math.abs(skewMs) / 60_000);
+  return skewMs < 0 ? -minutes : minutes;
 }

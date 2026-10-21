@@ -90,7 +90,17 @@ export async function runDeviceStaleCheck(
       payload: {
         device_id: device.id,
         device_label: device.label,
-        last_sync_at: staleness.sinceAt.toISOString(),
+        // « Dernière synchronisation » n'existe que pour un appareil déjà contacté : la date de l'activation d'un
+        // appareil jamais utilisé n'en est pas une (le champ est alors omis du message).
+        ...(report.lastContactAt !== null
+          ? { last_sync_at: report.lastContactAt.toISOString() }
+          : {}),
+        // Départ du silence quand il diffère de la dernière synchronisation : appareil jamais contacté, ou activé
+        // (réactivé) après son dernier contact. Sinon la dernière synchronisation le dit déjà.
+        ...(report.lastContactAt === null ||
+        staleness.sinceAt.getTime() !== report.lastContactAt.getTime()
+          ? { silent_since: staleness.sinceAt.toISOString() }
+          : {}),
         hours_since: staleness.hoursSince,
         threshold_hours: staleHours,
         never_contacted: report.lastContactAt === null,

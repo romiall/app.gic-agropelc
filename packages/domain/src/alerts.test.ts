@@ -216,6 +216,18 @@ describe('gravité et clés', () => {
 
   it('un sujet composite accepte une partie numérique (jour, position)', () => {
     const audit = alertDefinitionOf('AUDIT_CHAIN_BROKEN');
-    expect(alertSubjectKey(audit, 'x', { partition: 7 })).toBe('AUDIT_PARTITION:7');
+    expect(alertSubjectKey(audit, 'x', { partition: '2026-10', position: 7 })).toBe(
+      'AUDIT_PARTITION:2026-10:7',
+    );
+  });
+
+  it('chaîne d’audit rompue : le sujet est la partition et la position (deux ruptures du même mois, deux alertes)', () => {
+    const audit = alertDefinitionOf('AUDIT_CHAIN_BROKEN');
+    const first = alertSubjectKey(audit, 'x', { partition: '2026-10', position: 100 });
+    const second = alertSubjectKey(audit, 'x', { partition: '2026-10', position: 5000 });
+    expect(first).not.toBe(second);
+    // Une partie manquante ne donne aucun sujet (jamais un sujet partiel qui absorberait d'autres ruptures).
+    expect(alertSubjectKey(audit, 'x', { partition: '2026-10' })).toBeUndefined();
+    expect(alertSubjectKey(audit, 'x', { position: 100 })).toBeUndefined();
   });
 });

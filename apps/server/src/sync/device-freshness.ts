@@ -147,9 +147,17 @@ export async function deviceFreshness(
       eb.or([eb('dataset', '=', DEVICE_DATASET), eb('dataset', 'like', sql<string>`${'\\_a:%'}`)]),
     )
     .execute();
+  // États regroupés par appareil une fois pour toutes (pas de relecture de tous les états pour chaque appareil).
+  const statesOf = new Map<string, typeof states>();
+  for (const state of states) {
+    const key = state.device_id.toString('hex');
+    const list = statesOf.get(key);
+    if (list === undefined) statesOf.set(key, [state]);
+    else list.push(state);
+  }
   const thresholdMs = warningHours * 3_600_000;
   const report: DeviceFreshness[] = devices.map((device) => {
-    const own = states.filter((state) => state.device_id.equals(device.id));
+    const own = statesOf.get(device.id.toString('hex')) ?? [];
     const deviceState = own.find((state) => state.dataset === DEVICE_DATASET);
     const lastPushAt = deviceState?.last_push_at ?? null;
     const lastPullAt = deviceState?.last_pull_at ?? null;

@@ -413,9 +413,16 @@ describe('trous de séquence (AV-473)', () => {
 describe('clockSkewMinutes', () => {
   it('minutes entières signées', () => {
     expect(clockSkewMinutes(0)).toBe(0);
+    expect(clockSkewMinutes(-0)).toBe(0);
     expect(clockSkewMinutes(7 * 60_000)).toBe(7);
-    expect(clockSkewMinutes(-7 * 60_000 - 29_999)).toBe(-7);
-    expect(clockSkewMinutes(-7 * 60_000 - 30_001)).toBe(-8);
-    expect(clockSkewMinutes(2_147_483_647)).toBe(35_791);
+    // Arrondi à la minute supérieure en valeur absolue, signe conservé.
+    expect(clockSkewMinutes(7 * 60_000 + 1)).toBe(8);
+    expect(clockSkewMinutes(-7 * 60_000)).toBe(-7);
+    expect(clockSkewMinutes(-7 * 60_000 - 1)).toBe(-8);
+    expect(clockSkewMinutes(-7 * 60_000 - 29_999)).toBe(-8);
+    expect(clockSkewMinutes(1)).toBe(1);
+    expect(clockSkewMinutes(2_147_483_647)).toBe(35_792);
+    // Un écart qui dépasse le seuil (en millisecondes) ne s'affiche jamais égal à lui.
+    expect(clockSkewMinutes(300_400)).toBeGreaterThan(5);
   });
 });

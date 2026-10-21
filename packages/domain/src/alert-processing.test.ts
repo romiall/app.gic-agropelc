@@ -258,6 +258,69 @@ describe('alertFromEvent — sujet composite, transitions et passes', () => {
     ]);
   });
 
+  it('P9-10 : pointage suspect — l’agent, son responsable d’équipe et le responsable commercial de la zone', () => {
+    const AGENT = 'AAAAAAAA-0000-7000-8000-0000000000a1';
+    const CHECKIN = '0191a3f0-0000-7000-8000-0000000000d1';
+    const ZONE = '0191a3f0-0000-7000-8000-0000000000e1';
+    const action = raise(
+      event('CheckInSuspicious', CHECKIN, {
+        checkin_id: CHECKIN,
+        user_id: AGENT,
+        zone_id: ZONE,
+        flags: 'Précision GPS nulle',
+      }),
+    );
+    expect(action).toMatchObject({
+      alertType: 'CHECKIN_SUSPICIOUS',
+      subjectKey: CHECKIN,
+      severity: 'WARNING',
+      zoneId: ZONE.toLowerCase(),
+      ownerUserIds: [AGENT.toLowerCase()],
+      recipientRoles: ['RESP_COMMERCIAL'],
+      teamManager: true,
+      approvers: false,
+    });
+    // Sans agent dans la charge : aucun propriétaire, donc aucun responsable d'équipe à chercher.
+    expect(raise(event('CheckInSuspicious', CHECKIN, { zone_id: ZONE })).ownerUserIds).toEqual([]);
+  });
+
+  it('P9-10 : doublon de compte client — son titulaire et le responsable d’équipe de celui-ci', () => {
+    const OWNER = 'AAAAAAAA-0000-7000-8000-0000000000b2';
+    const action = raise(
+      event('CustomerDuplicateSuspected', SALE, { owner_user_id: OWNER, zone_id: SITE }),
+    );
+    expect(action).toMatchObject({
+      alertType: 'DUPLICATE_SUSPECTED',
+      ownerUserIds: [OWNER.toLowerCase()],
+      recipientRoles: ['RESP_COMMERCIAL'],
+      teamManager: true,
+    });
+  });
+
+  it('P9-10 : encaissement et réception en doublon — destinataires inchangés par le titulaire du compte client', () => {
+    // Les deux autres producteurs du type ne portent pas `owner_user_id` : ni propriétaire, ni responsable
+    // d'équipe cherché, seuls les rôles de leur déclencheur reçoivent (non-régression de l'ajout de
+    // `ownerFields` et `teamManager` au type partagé).
+    for (const [eventType, role] of [
+      ['PaymentFlaggedDuplicate', 'FINANCE'],
+      ['GoodsReceiptQuarantined', 'RESP_ACHATS'],
+    ] as const) {
+      const action = raise(
+        event(eventType, SALE, {
+          kind: 'Encaissement',
+          reference: 'ENC-2026-000045',
+          site_id: SITE,
+          recorded_by_user_id: 'AAAAAAAA-0000-7000-8000-0000000000c3',
+        }),
+      );
+      expect(action).toMatchObject({
+        alertType: 'DUPLICATE_SUSPECTED',
+        ownerUserIds: [],
+        recipientRoles: [role],
+      });
+    }
+  });
+
   it('HIGH_LOSS : deux producteurs (seuil absolu et part du CA), même sujet emplacement × jour', () => {
     const payload = { location_id: LOCATION, business_day: '2026-10-14', loss_value_xaf: 80_000 };
     const absolute = raise(event('HighLossDetected', LOCATION, payload));

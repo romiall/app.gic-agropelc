@@ -149,6 +149,31 @@ describe('CLOCK_SKEW : horloge d’appareil décalée (P9-10)', () => {
     });
   });
 
+  it('écart de 5 min 0,4 s : arrondi à la minute supérieure ; le seuil est publié tel que réglé, fractionnaire compris', async () => {
+    await rolledBack(async (uow) => {
+      const { admin } = await world(uow);
+      const tablet = await device(uow, admin);
+      await syncState(uow, tablet.id, {
+        lastPushAt: hoursBefore(1),
+        lastClockSkewMs: 5 * MINUTE_MS + 400,
+      });
+      await pass(uow);
+      const [event] = await skewOf(uow, tablet.id);
+      // 300 400 ms dépasse 300 000 ms : l'écart ne s'affiche pas « 5 » pour un seuil de 5.
+      expect(event!.payload).toMatchObject({ skew_minutes: 6, threshold_minutes: 5 });
+
+      settingsOverride.set('sync.clock_skew_flag_minutes', 5.5);
+      const fractional = await device(uow, admin);
+      await syncState(uow, fractional.id, {
+        lastPushAt: hoursBefore(1),
+        lastClockSkewMs: 336_000,
+      });
+      await pass(uow, '2019-03-12T10:05:00.000Z');
+      const [other] = await skewOf(uow, fractional.id);
+      expect(other!.payload).toMatchObject({ skew_minutes: 6, threshold_minutes: 5.5 });
+    });
+  });
+
   it('fenêtre : seul un envoi des sync.stale_hours dernières heures est examiné', async () => {
     await rolledBack(async (uow) => {
       const { admin } = await world(uow);

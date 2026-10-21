@@ -91,6 +91,8 @@ export interface InboxInput {
   readonly deviceId: string;
   readonly userId: string;
   readonly receivedAt: Date;
+  /** Dernière prise en charge (réinitialisée à chaque reprise d'une commande retenue) ; absente : `null`. */
+  readonly claimedAt?: Date | null;
   readonly status?: 'APPLIED' | 'REJECTED' | 'CONFLICT' | 'FAILED_RETRYABLE' | 'RECEIVED';
   readonly errorCode?: string | null;
   readonly seq?: number | null;
@@ -114,6 +116,7 @@ export async function inboxRow(uow: UnitOfWork, input: InboxInput): Promise<stri
       payload_hash: '0'.repeat(64),
       occurred_at: input.receivedAt,
       received_at: input.receivedAt,
+      claimed_at: input.claimedAt ?? null,
       status: input.status ?? 'APPLIED',
       error_code: input.errorCode ?? null,
     })
@@ -121,13 +124,13 @@ export async function inboxRow(uow: UnitOfWork, input: InboxInput): Promise<stri
   return commandId;
 }
 
-/** Conflit de synchronisation d'une commande ; refermé si `closed`. */
+/** Conflit de synchronisation d'une commande ; refermé si `closed`. Renvoie l'entité du conflit. */
 export async function conflictOf(
   uow: UnitOfWork,
   commandId: string,
   conflictType: string,
   options: { readonly closed?: boolean; readonly resolvedBy?: string } = {},
-): Promise<void> {
+): Promise<string> {
   const entityId = freshUuid();
   await recordConflict(uow, {
     id: freshUuid(),
@@ -149,6 +152,7 @@ export async function conflictOf(
       resolvedAt: NOW,
     });
   }
+  return entityId;
 }
 
 /** État de synchronisation de l'appareil (ligne `_device`) ou d'un auteur (`authorId`). */

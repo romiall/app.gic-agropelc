@@ -8,6 +8,12 @@
  * - **Périmètre** : les commandes reçues par `/sync/push` (les rejets de `/commands` sont rendus à l'écran qui
  *   les a émis), dont l'état est `REJECTED` ou `CONFLICT`. Un rejet est un état terminal sans événement ni
  *   conflit : une alerte par commande inonderait pour un appareil défaillant, d'où la maille appareil × code.
+ * - **Fenêtre** : un rejet est jugé à l'instant où il a été **prononcé**, non à celui de la première réception :
+ *   `received_at` est immuable alors qu'une commande retenue (`FAILED_RETRYABLE`) peut être reprise et rejetée
+ *   des jours plus tard ; la dernière prise en charge (`claimed_at`, réinitialisée à chaque reprise) en est la
+ *   mesure, repli `received_at`. Seul le pipeline l'écrit : un rejet prononcé par l'Admin (`COMMAND_DISCARDED`,
+ *   exclu par défaut) garde la date de la dernière prise en charge de la commande. Un conflit de gestionnaire est un **état** : il reste signalé tant qu'il est
+ *   ouvert, quel que soit son âge (le critère d'ouverture le borne).
  * - **Code d'erreur** : le code de l'inbox, ramené à sa famille (`VALIDATION_ERROR:<raison>` devient
  *   `VALIDATION_ERROR`) ; un conflit de gestionnaire n'a pas de code propre, il prend le type de son conflit
  *   **encore ouvert** (un conflit refermé ne compte plus). Les codes de `sync.error_alert_excluded_codes` ne
@@ -19,6 +25,7 @@
  *   marqueur partiel.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { sql } from 'kysely';
 import {
   businessDayOf,
   isSyncErrorAlertable,
@@ -77,29 +84,37 @@ export async function runSyncErrorCheck(
   );
   const from = new Date(now.getTime() - windowHours * 3_600_000);
 
-  // Commandes rejetées ou refusées avec un code propre (rejet, appareil révoqué, utilisateur désactivé).
+  // Commandes rejetées ou refusées avec un code propre (rejet, appareil révoqué, utilisateur désactivé),
+  // jugées à l'instant de leur dernière prise en charge (voir l'en-tête).
+  const settledAt = sql<Date>`COALESCE(claimed_at, received_at)`;
   const coded = await uow
     .selectFrom('sync_command_inbox')
-    .select(['command_id', 'device_id', 'user_id', 'error_code', 'received_at'])
+    .select(['command_id', 'device_id', 'user_id', 'error_code', settledAt.as('settled_at')])
     .where('transport', '=', 'SYNC_PUSH')
     .where('status', 'in', ['REJECTED', 'CONFLICT'])
     .where('error_code', 'is not', null)
     .where('device_id', 'is not', null)
-    .where('received_at', '>', from)
-    .where('received_at', '<=', now)
+    .where(settledAt, '>', from)
+    .where(settledAt, '<=', now)
     .execute();
-  // Conflits de gestionnaire (sans code propre) : le type de leur conflit encore ouvert.
+  // Conflits de gestionnaire (sans code propre) : le type de leur conflit encore ouvert, sans borne basse.
+  const openSettledAt = sql<Date>`COALESCE(i.claimed_at, i.received_at)`;
   const conflicts = await uow
     .selectFrom('sync_command_inbox as i')
     .innerJoin('sync_sync_conflicts as c', 'c.command_id', 'i.command_id')
-    .select(['i.command_id', 'i.device_id', 'i.user_id', 'c.conflict_type', 'i.received_at'])
+    .select([
+      'i.command_id',
+      'i.device_id',
+      'i.user_id',
+      'c.conflict_type',
+      openSettledAt.as('settled_at'),
+    ])
     .where('i.transport', '=', 'SYNC_PUSH')
     .where('i.status', '=', 'CONFLICT')
     .where('i.error_code', 'is', null)
     .where('i.device_id', 'is not', null)
     .where('c.status', '=', 'OPEN')
-    .where('i.received_at', '>', from)
-    .where('i.received_at', '<=', now)
+    .where(openSettledAt, '<=', now)
     .execute();
 
   const groups = new Map<string, ErrorGroup>();
@@ -110,7 +125,7 @@ export async function runSyncErrorCheck(
     userId: Buffer,
     errorCode: string | null,
     openConflictType: string | null,
-    receivedAt: Date,
+    settledAt: Date,
   ) => {
     if (deviceId === null) return;
     const code = syncErrorCodeOf({ errorCode, openConflictType });
@@ -127,24 +142,24 @@ export async function runSyncErrorCheck(
         deviceId: device,
         code,
         occurrences: 1,
-        firstAt: receivedAt,
-        lastAt: receivedAt,
+        firstAt: settledAt,
+        lastAt: settledAt,
         lastUserId: fromBin(userId),
       });
       return;
     }
     group.occurrences += 1;
-    if (receivedAt.getTime() < group.firstAt.getTime()) group.firstAt = receivedAt;
-    if (receivedAt.getTime() >= group.lastAt.getTime()) {
-      group.lastAt = receivedAt;
+    if (settledAt.getTime() < group.firstAt.getTime()) group.firstAt = settledAt;
+    if (settledAt.getTime() >= group.lastAt.getTime()) {
+      group.lastAt = settledAt;
       group.lastUserId = fromBin(userId);
     }
   };
   for (const row of coded) {
-    add(row.command_id, row.device_id, row.user_id, row.error_code, null, row.received_at);
+    add(row.command_id, row.device_id, row.user_id, row.error_code, null, row.settled_at);
   }
   for (const row of conflicts) {
-    add(row.command_id, row.device_id, row.user_id, null, row.conflict_type, row.received_at);
+    add(row.command_id, row.device_id, row.user_id, null, row.conflict_type, row.settled_at);
   }
 
   const ordered = [...groups.values()].sort(

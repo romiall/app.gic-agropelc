@@ -77,7 +77,7 @@
 | `device_sent_at` | ts | Oui | — | |
 | `received_at` | ts | Non | `now()` | |
 | `applied_at` | ts | Oui | — | |
-| `claimed_at` | ts | Oui | — | Dernière réclamation du traitement (insertion ou reprise) ; l'abandon d'une ligne `RECEIVED` se mesure depuis elle (`received_at` reste la première réception). Modifiable (P5-21, AV-210) |
+| `claimed_at` | ts | Oui | — | Dernière réclamation du traitement (insertion ou reprise) ; l'abandon d'une ligne `RECEIVED` se mesure depuis elle (`received_at` reste la première réception), de même que la date du rejet d'une commande retenue puis rejetée par le pipeline (alerte `SYNC_ERROR`, AV-471). Modifiable (P5-21, AV-210) |
 | `clock_skew_ms` | int | Oui | — | Écart mesuré du lot (serveur − appareil), borné à ±2 147 483 647 ms (AV-227) |
 | `clock_suspect` | boolean | Non | false | Horloge suspecte, décidée à la réception au seuil `sync.clock_skew_flag_minutes` (P5-23, AV-216) ; figée (déclencheur) ; source de `[STD-ORIGIN].clock_suspect` |
 | `captured_offline` | boolean | Non | false | |

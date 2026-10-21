@@ -1,40 +1,41 @@
 /**
  * `audit.chain.verify_daily` (07-security-rbac/03-audit.md §5 « tâche quotidienne qui
  * recalcule la chaîne des entrées du jour » ; BR-AUD-006 ; D13 §7.1 `AUDIT_CHAIN_BROKEN`) : gestionnaire de
- * tâche (platform.jobs, P0-08) qui vérifie le chaînage des entrées écrites sur une fenêtre de **deux jours
- * métier** — le jour métier précédent et le jour courant — (Africa/Douala, sur `recorded_at` : c'est
+ * tâche (platform.jobs, P0-08) qui vérifie le chaînage des entrées écrites depuis le début du jour métier
+ * précédent le créneau planifié jusqu'à la dernière entrée — deux jours métier en marche normale, davantage
+ * après un arrêt du worker, au plus `MAX_CATCH_UP_DAYS` — (Africa/Douala, sur `recorded_at` : c'est
  * l'écriture technique qui intéresse cette tâche, pas l'heure métier de l'événement, qui peut être
  * rétroactive de plusieurs jours, AV-078).
  *
  * - **Couverture** (AV-470) : exécutée une fois par jour à 03:00 (`AuditRecurringJobs`), la fenêtre
- *   commence au début du jour métier **précédent** : toute entrée est vérifiée par au moins une exécution
- *   (une entrée écrite avant 03:00 l'est dans la même journée, une entrée écrite après l'est le lendemain),
- *   alors qu'une fenêtre « du jour » laisserait sans contrôle tout ce qui est écrit après la dernière
- *   exécution. Une rupture plus ancienne que la fenêtre n'est revue que par la vérification hebdomadaire
- *   complète du mois (§5), renvoyée à P9-22 (charge et isolation des tâches longues).
+ *   commence au début du jour métier **précédent le créneau planifié** (`scheduledFor`) : toute entrée est
+ *   vérifiée par au moins une exécution (une entrée écrite avant 03:00 l'est dans la même journée, une entrée
+ *   écrite après l'est le lendemain), alors qu'une fenêtre « du jour » laisserait sans contrôle tout ce qui est
+ *   écrit après la dernière exécution. Cela suppose qu'aucun créneau ne soit **perdu** : une tâche abandonnée
+ *   laisse environ 21 heures d'écritures sans contrôle jusqu'à la vérification complète du mois. Après un arrêt
+ *   du worker, l'ordonnanceur fusionne les créneaux manqués
+ *   en une seule tâche dont `scheduledFor` est le plus ancien dû : la fenêtre remonte jusqu'à lui (au plus
+ *   `MAX_CATCH_UP_DAYS` jours métier). Une rupture plus ancienne que la fenêtre n'est revue que par la
+ *   vérification hebdomadaire complète du mois (§5), renvoyée à P9-22 (charge et isolation des tâches longues).
  * - **Coût** (P9-10) : le journal est lu par pages de clé `seq` (`verifyChainRange`, 2 000 lignes) et le début de
- *   la fenêtre est cherché depuis la fin de la table (`verification-window.ts`) : le coût suit la taille de la
- *   fenêtre, non celle du journal, que rien n'index par date d'écriture.
+ *   la fenêtre est le plus petit `seq` écrit à partir de la date de début, par une requête exacte
+ *   (`verification-window.ts`) : le coût suit la taille de la fenêtre, non celle du journal. La durée de la
+ *   vérification est consignée ; un plafond de lignes ou un point de reprise relèvent de P9-22.
  * - **Rupture** (P9-10) : la tâche ne lève plus. Une exception ferait annuler par le point de sauvegarde du
  *   `JobRunner` tout ce que le gestionnaire a écrit — dont l'événement — puis reprendrait la tâche sans fin
  *   (ADR-071 §3) ; elle publie `AuditChainBroken` puis se termine en succès, et consigne l'erreur au journal.
  *   Sans rupture, rien n'est publié : l'alerte est un événement à résolution manuelle (`resolvedBy` vide),
  *   un contrôle réussi ultérieur ne prouvant pas la réparation d'une ligne immuable.
- * - **Partition** : aucune partition physique n'existe (ADR-023) ; la « partition » du sujet est le mois
- *   métier `AAAA-MM` de l'écriture de la ligne rompue (BR-AUD-008, D12 §14). Une rupture persistante dans
- *   la fenêtre de deux exécutions consécutives republie le même sujet : l'alerte ouverte compte une
- *   occurrence de plus sans renotifier ; résolue à la main, elle renaît seulement si la rupture est encore
- *   dans la fenêtre.
+ * - **Partition et sujet** : aucune partition physique n'existe (ADR-023) ; la « partition » est le mois
+ *   métier `AAAA-MM` de l'écriture de la ligne rompue (BR-AUD-008, D12 §14). Le sujet de l'alerte est la
+ *   partition **et la position** de la rupture : une rupture persistante dans la fenêtre de deux exécutions
+ *   consécutives republie le même sujet (l'alerte ouverte compte une occurrence de plus sans renotifier ;
+ *   résolue à la main, elle renaît seulement si la rupture est encore dans la fenêtre), alors qu'une seconde
+ *   altération du même mois, à une autre position, lève sa propre alerte. La vérification s'arrête à la
+ *   première rupture de la fenêtre : une seconde n'est rapportée qu'une fois la première sortie de la fenêtre.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import {
-  addBusinessDays,
-  businessDayOf,
-  businessDayStartUtc,
-  periodOfBusinessDay,
-  type Clock,
-  type IdGenerator,
-} from '@gic/domain';
+import { businessDayOf, periodOfBusinessDay, type Clock, type IdGenerator } from '@gic/domain';
 import { CLOCK } from '../platform/clock.provider.js';
 import { ID_GENERATOR } from '../platform/id-generator.provider.js';
 import {
@@ -49,7 +50,7 @@ import {
 } from '../platform/jobs/job-handler-registry.provider.js';
 import type { UnitOfWork } from '../platform/unit-of-work.js';
 import { verifyChainRange, type ChainBreakReason } from './verify-chain.js';
-import { firstSeqRecordedAtOrAfter } from './verification-window.js';
+import { firstSeqRecordedAtOrAfter, verificationWindowStart } from './verification-window.js';
 
 export const CHAIN_VERIFICATION_JOB_TYPE = 'audit.chain.verify_daily';
 
@@ -90,10 +91,10 @@ export async function runChainVerification(
 ): Promise<ChainVerificationOutcome> {
   const now = deps.clock.now();
   const today = businessDayOf(now);
-  const fromDate = businessDayStartUtc(addBusinessDays(today, -1));
+  const fromDate = verificationWindowStart(payload, now);
 
-  // Début de la fenêtre lu depuis la fin du journal (aucun index sur `recorded_at` : un `MIN(seq)` filtré le
-  // parcourrait tout entier chaque nuit) ; la fin est la dernière ligne, par la clé primaire.
+  // Début de la fenêtre : le plus petit `seq` écrit à partir de la date de début (requête exacte, sans
+  // hypothèse sur l'ordre des dates) ; la fin est la dernière ligne, par la clé primaire.
   const fromSeq = await firstSeqRecordedAtOrAfter(uow, fromDate);
   const to = await uow
     .selectFrom('audit_audit_log')
@@ -118,7 +119,10 @@ export async function runChainVerification(
     eventType: 'AuditChainBroken',
     producerModule: 'audit',
     aggregateType: 'AUDIT_PARTITION',
-    aggregateId: compositeSubjectId('AUDIT_CHAIN_BROKEN', { partition }),
+    aggregateId: compositeSubjectId('AUDIT_CHAIN_BROKEN', {
+      partition,
+      position: result.brokenAtSeq,
+    }),
     occurredAt: now,
     passId: detectionPassId('AUDIT_CHAIN_BROKEN', passSlotOf(payload, now)),
     payload: {
@@ -155,11 +159,13 @@ export class ChainVerificationJob implements OnModuleInit {
 
   onModuleInit(): void {
     this.registry.register(CHAIN_VERIFICATION_JOB_TYPE, async (uow, payload) => {
+      const startedAt = Date.now();
       const outcome = await runChainVerification(
         uow,
         { clock: this.clock, idGenerator: this.idGenerator },
         payload,
       );
+      const elapsedMs = Date.now() - startedAt;
       if (outcome.status === 'EMPTY') {
         this.logger.log(
           `Aucune entrée d'audit à vérifier pour le jour métier ${outcome.businessDay}.`,
@@ -167,13 +173,13 @@ export class ChainVerificationJob implements OnModuleInit {
       } else if (outcome.status === 'INTACT') {
         this.logger.log(
           `Chaîne d'audit vérifiée pour ${outcome.businessDay} : ${outcome.checked} entrée(s) ` +
-            `(seq ${outcome.fromSeq} à ${outcome.toSeq}), intacte.`,
+            `(seq ${outcome.fromSeq} à ${outcome.toSeq}), intacte, en ${elapsedMs} ms.`,
         );
       } else {
         // Le journal en tient lieu quand l'alerte est inactive (règle désactivée) ou le consommateur à l'arrêt.
         this.logger.error(
           `AUDIT_CHAIN_BROKEN : rupture à seq=${outcome.brokenAtSeq} (${outcome.reason}), partition ` +
-            `${outcome.partition}, fenêtre seq ${outcome.fromSeq} à ${outcome.toSeq}.`,
+            `${outcome.partition}, fenêtre seq ${outcome.fromSeq} à ${outcome.toSeq}, en ${elapsedMs} ms.`,
         );
       }
     });

@@ -150,7 +150,10 @@ describe('CONSUMER_FAILED : consommateur d’événements en échec (P9-10)', ()
       expect(ours(outcome.alarms)).toEqual([
         { consumerName: over, failedEvents: 0, lagSeconds: 301 },
       ]);
-      expect(outcome.published).toBe(1);
+      // La passe examine toutes les positions de la base partagée : un consommateur réel déjà à la tête du flux
+      // voit l'événement de ce test en attente depuis 301 s et compte aussi. Seuls les sujets du test se comptent.
+      expect(outcome.published).toBeGreaterThanOrEqual(1);
+      expect(await eventsOf(uow, 'ConsumerFailureDetected', subject(over))).toHaveLength(1);
       for (const quiet of [edge, justUnder, fresh]) {
         expect(await eventsOf(uow, 'ConsumerFailureDetected', subject(quiet))).toEqual([]);
       }
@@ -267,7 +270,8 @@ describe('CONSUMER_FAILED : consommateur d’événements en échec (P9-10)', ()
   it('le marqueur de fin de passe est publié toujours ; le rejeu du créneau ne duplique rien', async () => {
     await rolledBack(async (uow) => {
       const name = await lagging(uow, secondsBefore(900));
-      expect((await pass(uow)).published).toBe(1);
+      expect((await pass(uow)).published).toBeGreaterThanOrEqual(1);
+      // Le rejeu du créneau est reconnu : rien de plus n'est publié, pour aucun consommateur.
       expect((await pass(uow)).published).toBe(0);
       expect(await eventsOf(uow, 'ConsumerFailureDetected', subject(name))).toHaveLength(1);
       const markers = await markersOf(uow, 'CONSUMER_FAILED');

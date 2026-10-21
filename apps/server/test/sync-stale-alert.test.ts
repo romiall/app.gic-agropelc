@@ -86,6 +86,8 @@ describe('SYNC_STALE : appareil actif sans synchronisation (P9-10)', () => {
         business_day: TODAY,
         pass_id: expect.stringContaining('SYNC_STALE'),
       });
+      // Le silence part du dernier contact : la dernière synchronisation le dit, pas de second champ.
+      expect(event!.payload).not.toHaveProperty('silent_since');
     });
   });
 
@@ -143,8 +145,28 @@ describe('SYNC_STALE : appareil actif sans synchronisation (P9-10)', () => {
       const [event] = await staleOf(uow, old.id);
       expect(event!.payload).toMatchObject({
         never_contacted: true,
-        last_sync_at: hoursBefore(25).toISOString(),
+        silent_since: hoursBefore(25).toISOString(),
         hours_since: 25,
+      });
+      // Aucune « dernière synchronisation » : la date de l'activation n'en est pas une.
+      expect(event!.payload).not.toHaveProperty('last_sync_at');
+    });
+  });
+
+  it('appareil réactivé après un ancien contact : la dernière synchronisation reste le dernier contact, le silence part de la réactivation', async () => {
+    await rolledBack(async (uow) => {
+      const { admin } = await world(uow);
+      const reactivated = await device(uow, admin, {
+        activatedAt: hoursBefore(30),
+        lastSeenAt: hoursBefore(100),
+      });
+      await pass(uow);
+      const [event] = await staleOf(uow, reactivated.id);
+      expect(event!.payload).toMatchObject({
+        never_contacted: false,
+        last_sync_at: hoursBefore(100).toISOString(),
+        silent_since: hoursBefore(30).toISOString(),
+        hours_since: 30,
       });
     });
   });

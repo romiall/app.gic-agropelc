@@ -136,18 +136,24 @@ export class EventConsumerRunner {
     message: string,
     attempts: number,
   ): Promise<void> {
-    await this.db
-      .insertInto('platform_event_consumer_failures')
-      .values({
-        consumer_name: consumerName,
-        event_seq: event.seq,
-        event_id: toBin(event.eventId),
-        event_type: event.eventType.slice(0, 80),
-        error_message: message.slice(0, 1000),
-        attempts,
-      })
-      .ignore()
-      .execute();
+    try {
+      await this.db
+        .insertInto('platform_event_consumer_failures')
+        .values({
+          consumer_name: consumerName,
+          event_seq: event.seq,
+          event_id: toBin(event.eventId),
+          event_type: event.eventType.slice(0, 80),
+          error_message: message.slice(0, 1000),
+          attempts,
+        })
+        .execute();
+    } catch (error) {
+      // Un rejeu avant l'avancée de la position retrouve la ligne : seule l'unicité (consommateur × position) est
+      // ignorée. Toute autre erreur lève, si bien que la position n'avance pas sur un saut sans trace (un
+      // `INSERT IGNORE` aurait aussi avalé une valeur refusée). La table est en ajout seul : pas d'UPDATE accordé.
+      if (!isDuplicateKey(error)) throw error;
+    }
   }
 
   private async saveOffset(
@@ -161,6 +167,11 @@ export class EventConsumerRunner {
       .onDuplicateKeyUpdate({ last_seq: lastSeq, last_error: lastError })
       .execute();
   }
+}
+
+function isDuplicateKey(error: unknown): boolean {
+  const { code, errno } = (error ?? {}) as { code?: string; errno?: number };
+  return code === 'ER_DUP_ENTRY' || errno === 1062;
 }
 
 function errorMessageOf(error: unknown): string {

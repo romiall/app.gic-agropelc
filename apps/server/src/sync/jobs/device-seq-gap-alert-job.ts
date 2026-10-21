@@ -22,7 +22,11 @@
  *   tous les numéros sont arrivés.
  * - **Détection en deux temps** : un agrégat sur l'index unique `(device_id, device_seq)` repère les appareils
  *   incomplets (`COUNT(*) < MAX(device_seq)`), puis une fenêtre SQL ne rend que les plages manquantes de
- *   ceux-là : la table n'est jamais chargée en mémoire.
+ *   ceux-là **qui sont en service** (un appareil bloqué, perdu ou retiré n'enverra plus ses commandes en
+ *   attente : son signal est ailleurs, et sa mémoire de plages est conservée) : la table n'est jamais chargée
+ *   en mémoire. Le coût n'est pas borné dans le temps : l'agrégat parcourt l'index entier et la fenêtre relit
+ *   tous les numéros de chaque appareil actif incomplet, y compris celui dont le trou est définitif (refus
+ *   avant l'écriture de la boîte) ; à mesurer en P9-22 (AV-473).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -63,8 +67,10 @@ export const DEVICE_SEQ_GAP_JOB_TYPE = 'sync.devices.seq_gap_check';
 const MAX_RANGES_IN_PAYLOAD = 10;
 
 export interface DeviceSeqGapOutcome {
-  /** Appareils dont la suite de numéros a un trou. */
+  /** Appareils dont la suite de numéros a un trou, en service ou non. */
   readonly incomplete: number;
+  /** Parmi eux, les appareils en service dont les plages ont été relues. */
+  readonly examined: number;
   /** Appareils actifs ayant au moins une plage ancienne non expliquée. */
   readonly unexplained: number;
   readonly published: number;
@@ -123,7 +129,19 @@ export async function runDeviceSeqGapCheck(
       )
       .execute();
   }
-  if (candidateIds.length === 0) return { incomplete: 0, unexplained: 0, published: 0, hours };
+  if (candidateIds.length === 0) {
+    return { incomplete: 0, examined: 0, unexplained: 0, published: 0, hours };
+  }
+
+  // Seuls les appareils en service sont examinés (voir l'en-tête) : la fenêtre ci-dessous relit tous leurs numéros.
+  const devices = await loadAlertDevices(
+    uow,
+    candidateIds.map((id) => fromBin(id)),
+  );
+  const activeIds = candidateIds.filter((id) => devices.get(fromBin(id))?.status === 'ACTIVE');
+  if (activeIds.length === 0) {
+    return { incomplete: candidateIds.length, examined: 0, unexplained: 0, published: 0, hours };
+  }
 
   // 2. Plages manquantes de ces appareils seulement, avec la date d'ouverture de chacune.
   const rows = (
@@ -138,7 +156,7 @@ export async function runDeviceSeqGapCheck(
                  ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
                ) AS opened_at
           FROM sync_command_inbox
-         WHERE device_seq IS NOT NULL AND device_id IN (${sql.join(candidateIds)})
+         WHERE device_seq IS NOT NULL AND device_id IN (${sql.join(activeIds)})
         WINDOW w AS (PARTITION BY device_id ORDER BY device_seq)
       ) gaps
        WHERE step > 1
@@ -157,7 +175,6 @@ export async function runDeviceSeqGapCheck(
     gapsOf.set(key, list);
   }
 
-  const devices = await loadAlertDevices(uow, [...gapsOf.keys()]);
   const states = await uow
     .selectFrom('sync_device_sync_state')
     .select(['device_id', 'pending_reported', 'known_gaps'])
@@ -174,9 +191,7 @@ export async function runDeviceSeqGapCheck(
   let unexplained = 0;
   let published = 0;
   for (const deviceId of [...gapsOf.keys()].sort()) {
-    const device = devices.get(deviceId);
-    // Un appareil bloqué, perdu ou retiré n'enverra plus ses commandes en attente : son signal est ailleurs.
-    if (device === undefined || device.status !== 'ACTIVE') continue;
+    const device = devices.get(deviceId)!;
     const gaps = gapsOf.get(deviceId)!;
     const state = stateOf.get(deviceId);
     const explained = gapsExplainedByPending(gaps, state?.pending_reported ?? null);
@@ -227,7 +242,13 @@ export async function runDeviceSeqGapCheck(
         .execute();
     }
   }
-  return { incomplete: gapsOf.size, unexplained, published, hours };
+  return {
+    incomplete: candidateIds.length,
+    examined: activeIds.length,
+    unexplained,
+    published,
+    hours,
+  };
 }
 
 @Injectable()
@@ -248,8 +269,9 @@ export class DeviceSeqGapAlertJob implements OnModuleInit {
         payload,
       );
       this.logger.log(
-        `Trous de séquence depuis plus de ${outcome.hours} h : ${outcome.incomplete} appareil(s) incomplet(s), ` +
-          `${outcome.unexplained} sans explication, ${outcome.published} signalé(s).`,
+        `Trous de séquence depuis plus de ${outcome.hours} h : ${outcome.incomplete} appareil(s) incomplet(s) ` +
+          `dont ${outcome.examined} en service, ${outcome.unexplained} sans explication, ` +
+          `${outcome.published} signalé(s).`,
       );
     });
   }

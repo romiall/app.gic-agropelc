@@ -635,6 +635,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     messageFields: [
       { key: 'device_label', label: 'Appareil' },
       { key: 'last_sync_at', label: 'Dernière synchronisation', kind: 'date' },
+      { key: 'silent_since', label: 'Silencieux depuis', kind: 'date' },
       { key: 'hours_since', label: 'Heures', kind: 'hours' },
     ],
     sourceAvailable: true,
@@ -979,7 +980,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     severities: ['CRITICAL'],
     resolution: 'MANUAL',
     subjectType: 'AUDIT_PARTITION',
-    subjectParts: ['partition'],
+    subjectParts: ['partition', 'position'],
     actionScreen: 'ECR-AUD-01',
     recipientRoles: ['ADMIN', 'DIRECTION'],
     ownerFields: [],

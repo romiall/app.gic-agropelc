@@ -23,6 +23,7 @@ import { currentSettingValue } from '../src/modules/organization/application/pub
 import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
 import { compositeSubjectId } from '../src/platform/events/detection-events.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { resolveOpenConflicts } from '../src/platform/sync/conflicts.js';
 import type { UnitOfWork } from '../src/platform/unit-of-work.js';
 import { rolledBack } from './communication-test-kit.js';
 import { closeTestDb, insertTestUser } from './helpers.js';
@@ -272,7 +273,7 @@ describe('SYNC_ERROR : erreurs de synchronisation par appareil et par code (P9-1
     });
   });
 
-  it('conflits de gestionnaire : mêmes bornes de fenêtre et même périmètre de transport que les rejets', async () => {
+  it('conflits de gestionnaire : un état, signalé tant qu’il est ouvert quel que soit son âge ; borné par l’instant courant et le transport', async () => {
     await rolledBack(async (uow) => {
       const { admin } = await world(uow);
       const user = await insertTestUser(uow);
@@ -281,12 +282,14 @@ describe('SYNC_ERROR : erreurs de synchronisation par appareil et par code (P9-1
         type: string,
         receivedAt: Date,
         transport: 'SYNC_PUSH' | 'ONLINE_API' | 'SYSTEM' = 'SYNC_PUSH',
+        claimedAt: Date | null = null,
       ) => {
         const commandId = await inboxRow(uow, {
           deviceId: tablet.id,
           userId: user,
           status: 'CONFLICT',
           receivedAt,
+          claimedAt,
           transport,
         });
         await conflictOf(uow, commandId, type);
@@ -294,25 +297,181 @@ describe('SYNC_ERROR : erreurs de synchronisation par appareil et par code (P9-1
       await conflict('AT_EDGE_CONFLICT', hoursBefore(24));
       await conflict('JUST_INSIDE_CONFLICT', new Date(hoursBefore(24).getTime() + 1));
       await conflict('AT_NOW_CONFLICT', NOW);
+      await conflict('VERY_OLD_CONFLICT', hoursBefore(24 * 90));
       await conflict('FUTURE_CONFLICT', new Date(NOW.getTime() + 1));
+      // Reçu avant l'instant courant mais pris en charge après : le futur reste exclu (borne haute sur la prise en charge).
+      await conflict(
+        'FUTURE_CLAIM_CONFLICT',
+        hoursBefore(1),
+        'SYNC_PUSH',
+        new Date(NOW.getTime() + 1),
+      );
+      // Reçu il y a des mois, repris récemment : signalé (un état ouvert, quel que soit son âge).
+      await conflict('RETRIED_OLD_CONFLICT', hoursBefore(24 * 120), 'SYNC_PUSH', hoursBefore(2));
       await conflict('ONLINE_CONFLICT', hoursBefore(1), 'ONLINE_API');
       await conflict('SYSTEM_CONFLICT', hoursBefore(1), 'SYSTEM');
 
-      expect((await pass(uow)).groups).toBe(2);
-      expect(
-        await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, 'JUST_INSIDE_CONFLICT')),
-      ).toHaveLength(1);
-      expect(
-        await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, 'AT_NOW_CONFLICT')),
-      ).toHaveLength(1);
-      for (const excluded of [
+      expect((await pass(uow)).groups).toBe(5);
+      for (const signaled of [
         'AT_EDGE_CONFLICT',
+        'JUST_INSIDE_CONFLICT',
+        'AT_NOW_CONFLICT',
+        'VERY_OLD_CONFLICT',
+        'RETRIED_OLD_CONFLICT',
+      ]) {
+        expect(await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, signaled))).toHaveLength(
+          1,
+        );
+      }
+      for (const excluded of [
         'FUTURE_CONFLICT',
+        'FUTURE_CLAIM_CONFLICT',
         'ONLINE_CONFLICT',
         'SYSTEM_CONFLICT',
       ]) {
         expect(await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, excluded))).toEqual([]);
       }
+    });
+  });
+
+  it('un rejet est jugé à l’instant de sa dernière prise en charge : une commande retenue puis rejetée tard alerte', async () => {
+    await rolledBack(async (uow) => {
+      const { admin } = await world(uow);
+      const user = await insertTestUser(uow);
+      const tablet = await device(uow, admin);
+      // Reçue il y a cinq jours (retenue, FAILED_RETRYABLE), reprise il y a 3 h et rejetée alors.
+      await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'REJECTED',
+        errorCode: 'VALIDATION_ERROR:late',
+        receivedAt: hoursBefore(120),
+        claimedAt: hoursBefore(3),
+      });
+      // Reçue et prise en charge il y a plus de 24 h : hors fenêtre.
+      await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'REJECTED',
+        errorCode: 'OLD_ONE',
+        receivedAt: hoursBefore(120),
+        claimedAt: hoursBefore(30),
+      });
+      // Prise en charge à la borne basse (exclue) et dans le futur (exclue), malgré une réception récente.
+      await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'REJECTED',
+        errorCode: 'AT_EDGE',
+        receivedAt: hoursBefore(26),
+        claimedAt: hoursBefore(24),
+      });
+      await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'REJECTED',
+        errorCode: 'FUTURE_CLAIM',
+        receivedAt: hoursBefore(1),
+        claimedAt: new Date(NOW.getTime() + 1),
+      });
+      // Deux commandes du même couple : l'une reçue tôt mais rejetée tard, l'autre rejetée plus tôt.
+      await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'REJECTED',
+        errorCode: 'VALIDATION_ERROR:other',
+        receivedAt: hoursBefore(10),
+        claimedAt: hoursBefore(8),
+      });
+
+      expect((await pass(uow)).groups).toBe(1);
+      const [event] = await eventsOf(
+        uow,
+        'SyncErrorDetected',
+        subject(tablet.id, 'VALIDATION_ERROR'),
+      );
+      expect(event!.payload).toMatchObject({
+        occurrences: 2,
+        // Les dates du couple sont celles des rejets, non des premières réceptions.
+        first_at: hoursBefore(8).toISOString(),
+        last_at: hoursBefore(3).toISOString(),
+      });
+      for (const absent of ['OLD_ONE', 'AT_EDGE', 'FUTURE_CLAIM']) {
+        expect(await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, absent))).toEqual([]);
+      }
+    });
+  });
+
+  it('un conflit encore ouvert garde l’alerte ouverte au-delà de la fenêtre ; refermé, le marqueur la ferme', async () => {
+    await rolledBack(async (uow) => {
+      const { admin } = await world(uow);
+      const user = await insertTestUser(uow);
+      const tablet = await device(uow, admin);
+      const commandId = await inboxRow(uow, {
+        deviceId: tablet.id,
+        userId: user,
+        status: 'CONFLICT',
+        receivedAt: hoursBefore(40),
+      });
+      const entityId = await conflictOf(uow, commandId, 'STOCK_NEGATIVE');
+      const alertOf = () =>
+        uow
+          .selectFrom('communication_alerts')
+          .select(['status'])
+          .where('alert_type', '=', 'SYNC_ERROR')
+          .where('owner_user_id', '=', toBin(user))
+          .executeTakeFirstOrThrow();
+
+      await pass(uow);
+      const [raised] = await eventsOf(
+        uow,
+        'SyncErrorDetected',
+        subject(tablet.id, 'STOCK_NEGATIVE'),
+      );
+      await handleAlertEvent(uow, raised!, { idGenerator });
+      expect((await alertOf()).status).toBe('OPEN');
+
+      // Dix heures plus tard, le conflit a 50 h : toujours ouvert, donc toujours signalé, l'alerte reste ouverte.
+      const laterAt = new Date(NOW.getTime() + 10 * 3_600_000);
+      const laterSlot = laterAt.toISOString();
+      await runSyncErrorCheck(
+        uow,
+        { clock: new FixedClock(laterAt), idGenerator },
+        { scheduledFor: laterSlot },
+      );
+      const published = await eventsOf(
+        uow,
+        'SyncErrorDetected',
+        subject(tablet.id, 'STOCK_NEGATIVE'),
+      );
+      expect(published).toHaveLength(2);
+      await handleAlertEvent(uow, published[1]!, { idGenerator });
+      const [laterMarker] = await markersOf(uow, 'SYNC_ERROR', laterSlot);
+      await handleAlertEvent(uow, laterMarker!, { idGenerator });
+      expect((await alertOf()).status).toBe('OPEN');
+
+      // La décision de l'Admin ferme le conflit : à la passe suivante, le couple n'est plus vu et l'alerte se ferme.
+      await resolveOpenConflicts(uow, {
+        conflictType: 'STOCK_NEGATIVE',
+        entityType: 'TEST',
+        entityIds: [entityId],
+        resolution: 'KEEP_SERVER',
+        resolvedBy: admin,
+        resolvedAt: laterAt,
+      });
+      const closingAt = new Date(NOW.getTime() + 11 * 3_600_000);
+      const closingSlot = closingAt.toISOString();
+      await runSyncErrorCheck(
+        uow,
+        { clock: new FixedClock(closingAt), idGenerator },
+        { scheduledFor: closingSlot },
+      );
+      expect(
+        await eventsOf(uow, 'SyncErrorDetected', subject(tablet.id, 'STOCK_NEGATIVE')),
+      ).toHaveLength(2);
+      const [closingMarker] = await markersOf(uow, 'SYNC_ERROR', closingSlot);
+      await handleAlertEvent(uow, closingMarker!, { idGenerator });
+      expect((await alertOf()).status).toBe('RESOLVED');
     });
   });
 

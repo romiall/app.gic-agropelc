@@ -389,8 +389,10 @@ describe('DEVICE_SEQ_GAP : trou de séquence non comblé (P9-10)', () => {
         await syncState(uow, hidden.id, { pendingReported: 0 });
         ids.push(hidden.id);
       }
-      await pass(uow);
+      const outcome = await pass(uow);
       for (const id of ids) expect(await gapsOf(uow, id)).toEqual([]);
+      // Les trois appareils hors service comptent parmi les incomplets mais ne sont pas relus.
+      expect(outcome.incomplete - outcome.examined).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -405,8 +407,13 @@ describe('DEVICE_SEQ_GAP : trou de séquence non comblé (P9-10)', () => {
       await syncState(uow, a.id, { pendingReported: 0 });
       await syncState(uow, b.id, { pendingReported: 0 });
       const outcome = await pass(uow);
-      expect(outcome).toMatchObject({ unexplained: 2, published: 2 });
-      expect(outcome.incomplete).toBeGreaterThanOrEqual(2);
+      // La passe balaie tous les appareils de la base partagée : seuls les deux de ce test sont tenus (les
+      // totaux globaux ne le sont pas), chacun ayant son propre événement ci-dessous.
+      expect(outcome.unexplained).toBeGreaterThanOrEqual(2);
+      expect(outcome.published).toBeGreaterThanOrEqual(2);
+      expect(outcome.examined).toBeGreaterThanOrEqual(2);
+      // Les appareils incomplets comptent aussi ceux qui ne sont plus en service, jamais relus.
+      expect(outcome.incomplete).toBeGreaterThanOrEqual(outcome.examined);
       const [first] = await gapsOf(uow, a.id);
       const [second] = await gapsOf(uow, b.id);
       expect(first!.payload).toMatchObject({ missing_from: 2, missing_to: 3 });

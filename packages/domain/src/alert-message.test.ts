@@ -2,6 +2,46 @@ import { describe, expect, it } from 'vitest';
 import { ALERT_TYPES, alertDefinitionOf } from './alerts.js';
 import { alertCarriesProtectedValue, renderAlertMessage } from './alert-message.js';
 
+describe('SYNC_STALE : dernière synchronisation et départ du silence (P9-10, AV-472)', () => {
+  const render = (payload: Record<string, unknown>) =>
+    renderAlertMessage('SYNC_STALE', payload, { showProtected: false }).message;
+
+  it('appareil déjà contacté, silence compté depuis ce contact : une seule date', () => {
+    expect(
+      render({
+        device_label: 'Tablette Akwa',
+        last_sync_at: '2026-10-14T08:00:00.000Z',
+        hours_since: 26,
+      }),
+    ).toBe('Appareil : Tablette Akwa ; Dernière synchronisation : 2026-10-14 ; Heures : 26 h');
+  });
+
+  it('appareil jamais contacté : le départ du silence seul, sans fausse « dernière synchronisation »', () => {
+    const message = render({
+      device_label: 'Tablette Akwa',
+      silent_since: '2026-10-13T08:00:00.000Z',
+      hours_since: 25,
+    });
+    expect(message).toBe(
+      'Appareil : Tablette Akwa ; Silencieux depuis : 2026-10-13 ; Heures : 25 h',
+    );
+    expect(message).not.toContain('Dernière synchronisation');
+  });
+
+  it('appareil réactivé après son dernier contact : les deux dates, les heures partent de la réactivation', () => {
+    expect(
+      render({
+        device_label: 'Tablette Akwa',
+        last_sync_at: '2026-10-01T08:00:00.000Z',
+        silent_since: '2026-10-10T08:00:00.000Z',
+        hours_since: 30,
+      }),
+    ).toBe(
+      'Appareil : Tablette Akwa ; Dernière synchronisation : 2026-10-01 ; Silencieux depuis : 2026-10-10 ; Heures : 30 h',
+    );
+  });
+});
+
 describe('renderAlertMessage (ADR-071 §11, AV-440)', () => {
   const payload = {
     location_label: 'PDV Bonabéri',

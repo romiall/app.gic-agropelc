@@ -126,7 +126,9 @@ export async function runDeviceClockSkewCheck(
         device_id: deviceId,
         device_label: device.label,
         skew_minutes: clockSkewMinutes(state.last_clock_skew_ms!),
-        threshold_minutes: clockSkewMinutes(thresholdMs),
+        // Le seuil tel que réglé (le réglage admet des minutes fractionnaires) : l'arrondi supérieur est celui de
+        // l'écart, non du seuil.
+        threshold_minutes: thresholdMs / 60_000,
         last_push_at: state.last_push_at!.toISOString(),
         business_day: today,
         ...(author !== undefined ? { user_id: author.userId } : {}),

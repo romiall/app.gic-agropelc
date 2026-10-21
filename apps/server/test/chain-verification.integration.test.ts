@@ -15,7 +15,10 @@ import { Test } from '@nestjs/testing';
 import { SystemClock, Uuidv7Generator } from '@gic/domain';
 import { PlatformModule } from '../src/platform/platform.module.js';
 import { ChainVerificationModule } from '../src/audit/chain-verification.module.js';
-import { CHAIN_VERIFICATION_JOB_TYPE } from '../src/audit/chain-verification-job.js';
+import {
+  CHAIN_VERIFICATION_JOB_TYPE,
+  runChainVerification,
+} from '../src/audit/chain-verification-job.js';
 import {
   JOB_HANDLER_REGISTRY,
   type JobHandlerRegistry,
@@ -25,6 +28,7 @@ import { JobRunner } from '../src/platform/jobs/job-runner.js';
 import { verifyChainRange } from '../src/audit/verify-chain.js';
 import { recordAudit } from '../src/audit/record-audit.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { rolledBack } from './communication-test-kit.js';
 import { closeTestDb, db, freshPhone } from './helpers.js';
 
 const realIdGenerator = new Uuidv7Generator(new SystemClock());
@@ -170,6 +174,21 @@ describe('Vérification du chaînage d’audit (P0-07, INV-AUD-01)', () => {
     const registry = moduleRef.get<JobHandlerRegistry>(JOB_HANDLER_REGISTRY);
     expect(registry.resolve(CHAIN_VERIFICATION_JOB_TYPE)).toBeDefined();
 
+    // La tâche ne lève plus à la rupture (elle publie `AuditChainBroken` puis réussit) : `DONE` seul ne prouve
+    // pas que la chaîne est intacte. On borne donc les événements de rupture publiés par cette exécution, et
+    // l'on vérifie que la fenêtre contient bien l'écriture ci-dessus (ni vide, ni rompue).
+    const lastEvent = await db
+      .selectFrom('platform_domain_events')
+      .select(({ fn }) => fn.max('seq').as('maxSeq'))
+      .executeTakeFirst();
+    const eventsBefore = Number(lastEvent?.maxSeq ?? 0);
+    // Transaction annulée : une rupture réelle ne laisserait pas d'événement critique dans la base d'essai.
+    await rolledBack(async (uow) => {
+      const direct = await runChainVerification(uow, { clock, idGenerator }, {});
+      expect(direct.status).toBe('INTACT');
+      expect(direct.status === 'INTACT' ? direct.checked : 0).toBeGreaterThanOrEqual(1);
+    });
+
     const jobsService = moduleRef.get(JobsService);
     const jobId = await db
       .transaction()
@@ -187,6 +206,13 @@ describe('Vérification du chaînage d’audit (P0-07, INV-AUD-01)', () => {
       jobTypes: [CHAIN_VERIFICATION_JOB_TYPE],
     });
     expect(outcome).toEqual({ claimed: true, jobId, result: 'DONE' });
+    const broken = await db
+      .selectFrom('platform_domain_events')
+      .select('seq')
+      .where('event_type', '=', 'AuditChainBroken')
+      .where('seq', '>', eventsBefore)
+      .execute();
+    expect(broken).toEqual([]);
 
     await moduleRef.close();
   });

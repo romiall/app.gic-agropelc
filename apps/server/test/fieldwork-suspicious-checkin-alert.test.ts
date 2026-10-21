@@ -370,6 +370,25 @@ describe('CHECKIN_SUSPICIOUS : pointage à signal, à l’enregistrement (P9-10)
     expect(await suspiciousEvents(checkinId)).toEqual([]);
   });
 
+  it('commande rejetée après le calcul des signaux (SESSION_EXISTS) : ni pointage ni événement', async () => {
+    const agent = await newAgent();
+    const sessionId = freshUuid();
+    const first = await checkin(agent, at('07:00:00'), { accuracyM: 12, sessionId });
+    expect(first.result.status).toBe('APPLIED');
+    // Même session sous un autre pointage, avec un signal (précision nulle) : les signaux sont calculés puis
+    // la session existante rejette la commande, avant l'écriture du pointage et de l'événement.
+    const second = await checkin(agent, at('07:05:00'), { accuracyM: 0, sessionId });
+    expect(second.result.status).toBe('REJECTED');
+    expect(second.result.error?.code).toBe('SESSION_EXISTS');
+    expect(await suspiciousEvents(second.checkinId)).toEqual([]);
+    const rows = await db
+      .selectFrom('fieldwork_geo_checkins')
+      .select('id')
+      .where('id', '=', toBin(second.checkinId))
+      .execute();
+    expect(rows).toEqual([]);
+  });
+
   it('rejeu : même commande ou même pointage sous une autre commande, un seul événement', async () => {
     const agent = await newAgent();
     const commandId = freshUuid();

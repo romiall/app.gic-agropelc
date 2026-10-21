@@ -3,7 +3,7 @@
  * dans `platform_event_consumer_failures` (ajout seul) ; `last_error` n'en garde que le dernier message,
  * réécrit par le premier événement traité ensuite — la trace ne dépend donc pas de lui.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventConsumerRegistry } from '../src/platform/events/event-consumer-registry.js';
 import { EventConsumerRunner } from '../src/platform/events/event-consumer-runner.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
@@ -97,8 +97,9 @@ describe('P9-04 : événements sautés consignés par le runner', () => {
   it('un rejeu avant l’avancée de la position ne consigne pas le saut deux fois', async () => {
     const consumerName = `test.failures.${freshUuid()}`;
     const registry = new EventConsumerRegistry();
-    registry.register(consumerName, async () => {
-      throw new Error('toujours en échec');
+    // Seul l'événement de ce test échoue : la table des événements est partagée avec les autres fichiers.
+    registry.register(consumerName, async (_uow, event) => {
+      if (event.eventType === 'test.event.poison') throw new Error('toujours en échec');
     });
     const runner = new EventConsumerRunner(db, registry);
     await startAtHead(consumerName);
@@ -117,6 +118,49 @@ describe('P9-04 : événements sautés consignés par le runner', () => {
       .execute();
     await runner.processOnce(consumerName, { maxAttempts: 2, settleSeconds: 0 });
     const failures = await failuresOf(consumerName);
+    expect(failures).toHaveLength(1);
     expect(new Set(failures.map((f) => Number(f.event_seq))).size).toBe(failures.length);
+  });
+
+  it('une erreur autre que l’unicité fait lever le lot : la position n’avance pas sur un saut sans trace', async () => {
+    const consumerName = `test.failures.${freshUuid()}`;
+    const registry = new EventConsumerRegistry();
+    registry.register(consumerName, async (_uow, event) => {
+      if (event.eventType === 'test.event.poison') throw new Error('toujours en échec');
+    });
+    const runner = new EventConsumerRunner(db, registry);
+    await startAtHead(consumerName);
+    const before = await db
+      .selectFrom('platform_event_consumer_offsets')
+      .select('last_seq')
+      .where('consumer_name', '=', consumerName)
+      .executeTakeFirstOrThrow();
+    await insertEvent('test.event.poison');
+
+    const original = db.insertInto.bind(db);
+    const spy = vi.spyOn(db, 'insertInto').mockImplementation(((table: string) => {
+      if (table === 'platform_event_consumer_failures') {
+        throw Object.assign(new Error('verrou perdu'), { code: 'ER_LOCK_DEADLOCK', errno: 1213 });
+      }
+      return original(table as never);
+    }) as never);
+    try {
+      await expect(
+        runner.processOnce(consumerName, { maxAttempts: 2, settleSeconds: 0 }),
+      ).rejects.toThrow('verrou perdu');
+    } finally {
+      spy.mockRestore();
+    }
+    const stuck = await db
+      .selectFrom('platform_event_consumer_offsets')
+      .select('last_seq')
+      .where('consumer_name', '=', consumerName)
+      .executeTakeFirstOrThrow();
+    expect(Number(stuck.last_seq)).toBe(Number(before.last_seq));
+    expect(await failuresOf(consumerName)).toEqual([]);
+
+    // Le lot suivant reprend l'événement : le saut est consigné, puis la position avance.
+    await runner.processOnce(consumerName, { maxAttempts: 2, settleSeconds: 0 });
+    expect(await failuresOf(consumerName)).toHaveLength(1);
   });
 });
