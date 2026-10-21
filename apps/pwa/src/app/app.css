@@ -1095,6 +1095,23 @@ ul.outbox-list li {
   flex-shrink: 0;
 }
 
+/* Ventes d'un groupe de créances (ECR-FIN-01) : texte et lien passent à la ligne sur téléphone. */
+.doc-row.sale-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.sale-row .doc-main {
+  flex: 1 1 10rem;
+}
+
+.sale-row .doc-side {
+  flex: 1 1 12rem;
+  flex-shrink: 1;
+  min-width: 0;
+  align-items: flex-start;
+}
+
 .badge {
   padding: 2px 8px;
   border-radius: 999px;

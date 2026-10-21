@@ -90,6 +90,8 @@ export const ROUTES = {
   supplierPayments: '/finance/paiements',
   /** ECR-FIN-06 (P8E-08) : coûts et marges (période, pertes, lots). */
   costsMargins: '/finance/couts-et-marges',
+  /** ECR-FIN-01 (P8E-09) : créances par client ou par titulaire, ancienneté. */
+  receivables: '/finance/creances',
   replenish: '/pdv/reapprovisionnement',
   distribution: '/pdv/distribution',
   posHome: '/pdv',
@@ -345,6 +347,11 @@ export const ROLE_SETS = {
    * (`inventory.valuation.read`) ; Finance et Direction (inventaire, AV-303).
    */
   costsMargins: ['FINANCE', 'DIRECTION'],
+  /**
+   * ECR-FIN-01 : `sales.receivable.read` (FIN ALL, DIR ALL, RCO TEAM) ; inventaire et Direction
+   * (AV-304). Les autres détenteurs du droit voient les créances de leurs clients à l'encaissement.
+   */
+  receivables: ['FINANCE', 'DIRECTION', 'RESP_COMMERCIAL'],
   /** `finance.supplier_payment.record` (FIN) : saisir un paiement, affecter une avance (ECR-FIN-04). */
   supplierPaymentRecord: ['FINANCE'],
   /** ECR-STK-06 : `inventory.allocation.manage` (DIR, RCO ZONE, RFE SITE, MAG SITE). */
@@ -829,6 +836,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     group: 'finance',
     roles: ROLE_SETS.payableRead,
     actionCodes: [],
+    offline: false,
+  },
+  {
+    // P8E-09 (ADR-047 §9, AV-304) : « Créances » de l'accueil de la Finance.
+    id: 'ECR-FIN-01',
+    path: ROUTES.receivables,
+    labelKey: 'receivables',
+    group: 'finance',
+    roles: ROLE_SETS.receivables,
+    actionCodes: ['RECEIVABLES'],
     offline: false,
   },
   {

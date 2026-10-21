@@ -7,18 +7,24 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb, type OutboxCommand } from '../../storage/db.js';
 import { phaseOf } from '../sales/submit.js';
 
-/** Commandes de l'outbox dont le type commence par `prefix`, dans l'ordre d'enregistrement. */
-export function useCommandFamily(prefix: string): readonly OutboxCommand[] {
-  return (
-    useLiveQuery(
-      () =>
-        getDb()
-          .outbox.orderBy('device_seq')
-          .filter((command) => command.command_type.startsWith(prefix))
-          .toArray(),
-      [prefix],
-    ) ?? []
+/**
+ * Commandes de l'outbox dont le type commence par `prefix`, dans l'ordre d'enregistrement ;
+ * `undefined` tant que l'outbox n'a pas été lue (une lecture lancée avant aurait lieu deux fois).
+ */
+export function useCommandFamilyState(prefix: string): readonly OutboxCommand[] | undefined {
+  return useLiveQuery(
+    () =>
+      getDb()
+        .outbox.orderBy('device_seq')
+        .filter((command) => command.command_type.startsWith(prefix))
+        .toArray(),
+    [prefix],
   );
+}
+
+/** Idem, vide tant que l'outbox n'a pas été lue. */
+export function useCommandFamily(prefix: string): readonly OutboxCommand[] {
+  return useCommandFamilyState(prefix) ?? [];
 }
 
 /** Chaque opération de l'utilisateur et sa phase. */

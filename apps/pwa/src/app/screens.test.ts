@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import appSource from './App.tsx?raw';
 import {
   ROLE_SETS,
   ROUTES,
@@ -153,6 +154,23 @@ describe('app/screens — registre et navigation par rôle', () => {
     });
     expect([...ROLE_SETS.costsMargins]).toEqual(['FINANCE', 'DIRECTION']);
     expect(screensForRoles(['RESP_ACHATS']).map((screen) => screen.id)).not.toContain('ECR-FIN-06');
+    // P8E-09 (AV-304) : créances, action « Créances » de l'accueil de la Finance.
+    expect(SCREENS.find((screen) => screen.id === 'ECR-FIN-01')).toMatchObject({
+      path: '/finance/creances',
+      labelKey: 'receivables',
+      group: 'finance',
+      roles: ROLE_SETS.receivables,
+      actionCodes: ['RECEIVABLES'],
+      offline: false,
+    });
+    expect([...ROLE_SETS.receivables]).toEqual(['FINANCE', 'DIRECTION', 'RESP_COMMERCIAL']);
+    expect(routeOfAction({ code: 'RECEIVABLES', route: null }, 'FINANCE')).toBe(
+      '/finance/creances',
+    );
+    expect(routeOfAction({ code: 'RECEIVABLES', route: null }, 'ADMIN')).toBeNull();
+    for (const role of ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_ACHATS']) {
+      expect(screensForRoles([role]).map((screen) => screen.id)).not.toContain('ECR-FIN-01');
+    }
     for (const role of ['VENDEUR_PDV', 'MAGASINIER']) {
       expect(screensForRoles([role]).map((screen) => screen.id)).not.toContain('ECR-APP-05');
     }
@@ -173,5 +191,19 @@ describe('app/screens — registre et navigation par rôle', () => {
     ).toEqual(['ECR-APP-04', 'ECR-APP-05']);
     const paths = SCREENS.map((screen) => screen.path);
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it('chaque écran du registre est monté sur sa route dans App.tsx', () => {
+    // Un écran déclaré au registre (menu, accueil) mais jamais monté mènerait à une page vide.
+    for (const screen of SCREENS) {
+      const keys = Object.entries(ROUTES)
+        .filter(([, value]) => value === screen.path)
+        .map(([key]) => key);
+      expect(keys, `${screen.id} : route du registre`).not.toHaveLength(0);
+      expect(
+        keys.some((key) => appSource.includes(`ROUTES.${key}`)),
+        `${screen.id} : route montée dans App.tsx`,
+      ).toBe(true);
+    }
   });
 });

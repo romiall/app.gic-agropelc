@@ -31,6 +31,119 @@ vi.mock('../auth/AuthContext.js', () => ({
 
 const request = vi.mocked(authorizedRequest);
 
+const KEPT = '01900000-0000-7000-8000-0000000008a1';
+const ABSORBED = '01900000-0000-7000-8000-0000000008a2';
+const SALE_KEPT = '01900000-0000-7000-8000-0000000008e3';
+const SALE_ABSORBED = '01900000-0000-7000-8000-0000000008e4';
+const NEVER = { __never: true } as const;
+
+/** Résumé client tel que `GET /customers` le rend (CustomerSummary du module crm). */
+function summary(id: string, displayName: string, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    stage: 'CUSTOMER',
+    pipelineStepId: null,
+    customerType: 'RESTAURANT',
+    displayName,
+    contactName: null,
+    businessActivity: null,
+    categoryId: null,
+    phonePrimary: '+237 677 00 11 22',
+    phoneSecondary: null,
+    email: null,
+    addressText: null,
+    zoneId: IDS.zone,
+    position: null,
+    sourceCode: 'TERRAIN',
+    acquiredByUserId: IDS.user,
+    acquiredAt: '2026-01-10T08:00:00.000Z',
+    ownerUserId: null,
+    homeSiteId: null,
+    convertedAt: null,
+    firstSaleId: null,
+    conversionReverted: false,
+    lostReasonCodeId: null,
+    mergedIntoId: null,
+    duplicateOfId: null,
+    creditAllowed: true,
+    creditLimitXaf: 100000,
+    paymentTermsDays: 30,
+    lastSaleAt: null,
+    version: 3,
+    ...over,
+  };
+}
+
+/** Fiche client de `GET /customers/{id}` (enveloppe du contrôleur crm). */
+function customerDetail(customer: unknown, absorbed: readonly string[] = []) {
+  return {
+    customer,
+    absorbed_customer_ids: absorbed,
+    assignments: [],
+    stage_history: [],
+    recent_visits: [],
+    recent_interactions: [],
+    sales: { outstandingXaf: null, receivables: null, recent_orders: null, recent_sales: null },
+  };
+}
+
+/** Ligne de `GET /receivables` (contrôleur sales : `resource` ajouté, `occurredAt` en ISO). */
+function line(
+  saleId: string,
+  docNumber: string,
+  customerId: string,
+  balance: number,
+  dueDate: string,
+) {
+  return {
+    saleId,
+    docNumber,
+    customerId,
+    siteId: IDS.site,
+    commercialUserId: null,
+    sellerUserId: IDS.user,
+    zoneId: IDS.zone,
+    occurredAt: '2026-05-02T09:00:00.000Z',
+    dueDate,
+    netTotalXaf: balance,
+    amountPaidXaf: 0,
+    balanceDueXaf: balance,
+    daysOverdue: 40,
+    overdue: true,
+    bucket: '31-60',
+    resource: { ownerUserId: IDS.user, siteId: IDS.site, zoneId: IDS.zone },
+  };
+}
+
+/** Routes en ligne : une réponse par chemin, `{ __status }` pour un échec, `NEVER` pour une attente. */
+function serveOnline(routes: Record<string, unknown>) {
+  request.mockImplementation((_db, path) => {
+    const data = routes[String(path)];
+    if (data === NEVER) return new Promise(() => {}) as ReturnType<typeof authorizedRequest>;
+    if (data === undefined) {
+      return Promise.resolve({
+        ok: false,
+        reason: 'HTTP_ERROR',
+        status: 404,
+        body: null,
+      }) as ReturnType<typeof authorizedRequest>;
+    }
+    if (typeof data === 'object' && data !== null && '__status' in data) {
+      return Promise.resolve({
+        ok: false,
+        reason: 'HTTP_ERROR',
+        status: (data as { __status: number }).__status,
+        body: null,
+      }) as ReturnType<typeof authorizedRequest>;
+    }
+    return Promise.resolve({ ok: true, data }) as ReturnType<typeof authorizedRequest>;
+  });
+}
+
+function readsOf(path: string): number {
+  return request.mock.calls.filter(([, called]) => called === path).length;
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -313,6 +426,223 @@ describe('Encaisser une créance (ECR-VEN-06)', () => {
         { method: 'GET' },
       ),
     );
+  });
+
+  it('client désigné par le lien et absent de l’appareil : lu en ligne, ses créances et celles de ses comptes absorbés (P8E-09)', async () => {
+    serveOnline({
+      [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
+        ABSORBED,
+      ]),
+      [`/api/v1/receivables?customer_id=${KEPT}`]: {
+        as_of: '2026-10-10',
+        summary: {},
+        receivables: [line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25')],
+      },
+      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
+        as_of: '2026-10-10',
+        summary: {},
+        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+      },
+    });
+    renderAt(`/encaisser?client=${KEPT}&vente=${SALE_KEPT}`);
+    expect(await screen.findByText('Restaurant Chez Mado')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /Encaissement affecté à la vente VTE-2026-000003 \(reste dû 50 000 F CFA\)/,
+      ),
+    ).toBeInTheDocument();
+    // Le compte absorbé fait partie des créances du client : total, aperçu et vente absorbée.
+    expect(screen.getByText(/^Total des créances : 58\s000 F CFA$/)).toBeInTheDocument();
+    expect(screen.getByText(/VTE-2026-000004/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Montant reçu (F CFA)')).toHaveValue('50000');
+    expect(screen.queryByText('Choisissez le client qui règle.')).toBeNull();
+  });
+
+  it('lien vers un compte fusionné : le compte conservé est encaissé, vente absorbée comprise', async () => {
+    serveOnline({
+      [`/api/v1/customers/${ABSORBED}`]: customerDetail(
+        summary(ABSORBED, 'Chez Mado (ancien compte)', { stage: 'MERGED', mergedIntoId: KEPT }),
+      ),
+      [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
+        ABSORBED,
+      ]),
+      [`/api/v1/receivables?customer_id=${KEPT}`]: { as_of: '2026-10-10', receivables: [] },
+      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
+        as_of: '2026-10-10',
+        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${ABSORBED}&vente=${SALE_ABSORBED}`);
+    expect(await screen.findByText('Restaurant Chez Mado')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /Encaissement affecté à la vente VTE-2026-000004 \(reste dû 8 000 F CFA\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ancien compte/)).toBeNull();
+    // Le compte absorbé n'est jamais lu pour lui-même avant la bascule : une seule fois, comme compte du conservé.
+    expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBe(1);
+    await user.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
+    await screen.findByText(/Encaissement/);
+    const [command] = await getDb().outbox.toArray();
+    expect(command?.payload).toMatchObject({
+      customerId: KEPT,
+      amountXaf: 8000,
+      allocations: [{ saleId: SALE_ABSORBED, amountXaf: 8000 }],
+    });
+  });
+
+  it('client trouvé en ligne par la recherche : sa fiche est lue pour ses comptes absorbés (P8E-09)', async () => {
+    serveOnline({
+      '/api/v1/customers?q=Chez&limit=20': {
+        customers: [summary(KEPT, 'Restaurant Chez Mado')],
+        next_cursor: null,
+      },
+      [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado'), [
+        ABSORBED,
+      ]),
+      [`/api/v1/receivables?customer_id=${KEPT}`]: {
+        receivables: [line(SALE_KEPT, 'VTE-2026-000003', KEPT, 50000, '2026-09-25')],
+      },
+      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
+        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+      },
+    });
+    const user = userEvent.setup();
+    renderAt('/encaisser');
+    await user.type(
+      await screen.findByLabelText('Rechercher un client (nom ou téléphone)'),
+      'Chez',
+    );
+    await user.click(await screen.findByRole('button', { name: /Restaurant Chez Mado/ }));
+    expect(await screen.findByText(/^Total des créances : 58\s000 F CFA$/)).toBeInTheDocument();
+    expect(readsOf(`/api/v1/customers/${KEPT}`)).toBe(1);
+  });
+
+  it('client de l’appareil ayant absorbé un compte connu de l’appareil : ses créances sont lues aussi', async () => {
+    await getDb().projections.put({
+      key: `customers:CUSTOMER:${ABSORBED}`,
+      dataset: 'customers',
+      entity_type: 'CUSTOMER',
+      entity_id: ABSORBED,
+      scope_type: 'USER',
+      scope_id: IDS.user,
+      data: {
+        id: ABSORBED,
+        stage: 'MERGED',
+        display_name: 'Ancien compte',
+        contact_name: null,
+        category_id: null,
+        phone_primary: null,
+        zone_id: IDS.zone,
+        owner_user_id: IDS.user,
+        home_site_id: IDS.site,
+        merged_into_id: IDS.customer,
+        credit_allowed: true,
+        credit_limit_xaf: 50000,
+        payment_terms_days: 30,
+        outstanding_xaf: 0,
+        version: 1,
+      },
+      seq: 1,
+      row_version: 1,
+    });
+    serveOnline({
+      [`/api/v1/receivables?customer_id=${IDS.customer}`]: {
+        receivables: [line(SALE_KEPT, 'VTE-2026-000003', IDS.customer, 50000, '2026-09-25')],
+      },
+      [`/api/v1/receivables?customer_id=${ABSORBED}`]: {
+        receivables: [line(SALE_ABSORBED, 'VTE-2026-000004', ABSORBED, 8000, '2026-06-01')],
+      },
+    });
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(await screen.findByText(/^Total des créances : 58\s000 F CFA$/)).toBeInTheDocument();
+    expect(screen.getByText(/VTE-2026-000004/)).toBeInTheDocument();
+    expect(
+      request.mock.calls.some(([, path]) => String(path).startsWith('/api/v1/customers')),
+    ).toBe(false);
+    cleanup();
+
+    // Une lecture en échec parmi les comptes : les créances ne sont pas présentées comme complètes.
+    serveOnline({
+      [`/api/v1/receivables?customer_id=${IDS.customer}`]: {
+        receivables: [line(SALE_KEPT, 'VTE-2026-000003', IDS.customer, 50000, '2026-09-25')],
+      },
+      [`/api/v1/receivables?customer_id=${ABSORBED}`]: { __status: 500 },
+    });
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(readsOf(`/api/v1/receivables?customer_id=${ABSORBED}`)).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText('Toutes les créances du client (lues en ligne).')).toBeNull();
+    expect(screen.queryByText(/VTE-2026-000003/)).toBeNull();
+  });
+
+  it('client de l’appareil : aucune lecture de sa fiche en ligne', async () => {
+    serveOnline({
+      [`/api/v1/receivables?customer_id=${IDS.customer}`]: { receivables: [] },
+    });
+    renderAt(`/encaisser?client=${IDS.customer}`);
+    expect(await screen.findByText('Boutique Mvog-Mbi')).toBeInTheDocument();
+    await waitFor(() => expect(readsOf(`/api/v1/receivables?customer_id=${IDS.customer}`)).toBe(1));
+    expect(
+      request.mock.calls.some(([, path]) => String(path).startsWith('/api/v1/customers')),
+    ).toBe(false);
+  });
+
+  it('client désigné : lecture annoncée tant qu’elle dure, pas d’invite ni de « client inconnu »', async () => {
+    serveOnline({ [`/api/v1/customers/${KEPT}`]: NEVER });
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect((await screen.findAllByText('Lecture du client…')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Choisissez le client qui règle.')).toBeNull();
+    expect(screen.queryByText('Client inconnu de cet appareil')).toBeNull();
+    expect(screen.queryByText('Vente payée en totalité')).toBeNull();
+    expect(readsOf(`/api/v1/receivables?customer_id=${KEPT}`)).toBe(0);
+  });
+
+  it('client désigné illisible : panne relançable, refus sans relance, puis lecture réussie', async () => {
+    serveOnline({ [`/api/v1/customers/${KEPT}`]: { __status: 500 } });
+    const user = userEvent.setup();
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect(
+      await screen.findByText(/Le client désigné n’a pas pu être lu \(réseau ou droits\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Lecture du client…')).toBeNull();
+    expect(screen.queryByText('Vente payée en totalité')).toBeNull();
+    serveOnline({
+      [`/api/v1/customers/${KEPT}`]: customerDetail(summary(KEPT, 'Restaurant Chez Mado')),
+      [`/api/v1/receivables?customer_id=${KEPT}`]: { receivables: [] },
+    });
+    await user.click(screen.getByRole('button', { name: 'Relire le client' }));
+    expect(await screen.findByText('Restaurant Chez Mado')).toBeInTheDocument();
+    expect(screen.queryByText(/n’a pas pu être lu/)).toBeNull();
+
+    // Refus (droits, hors portée) : pas de relance. Panne de réseau : relance.
+    cleanup();
+    serveOnline({ [`/api/v1/customers/${KEPT}`]: { __status: 404 } });
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect(await screen.findByText(/n’a pas pu être lu/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Relire le client' })).toBeNull();
+    cleanup();
+    request.mockResolvedValue({ ok: false, reason: 'OFFLINE' });
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect(await screen.findByText(/n’a pas pu être lu/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Relire le client' })).toBeInTheDocument();
+  });
+
+  it('hors ligne : le client désigné inconnu de l’appareil n’est pas lu, invite à choisir le client', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderAt(`/encaisser?client=${KEPT}`);
+    expect(await screen.findByText('Choisissez le client qui règle.')).toBeInTheDocument();
+    expect(screen.queryByText('Lecture du client…')).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('sans client désigné : invite à choisir le client', async () => {
+    renderAt('/encaisser');
+    expect(await screen.findByText('Choisissez le client qui règle.')).toBeInTheDocument();
   });
 
   it('hors ligne : un encaissement accepté reste retranché tant que les ventes ne sont pas relues (MP-11)', async () => {

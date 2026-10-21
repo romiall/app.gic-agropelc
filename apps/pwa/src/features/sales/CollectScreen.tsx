@@ -9,7 +9,10 @@
  * Créances : en ligne, `GET /api/v1/receivables` (relues après chaque encaissement) ; hors ligne,
  * celles des ventes récentes de l'appareil. Clients : ceux de l'appareil (jeu `customers`), et en
  * ligne une recherche sur `GET /api/v1/customers` pour les rôles qui n'ont pas de portefeuille
- * téléchargé (Finance, besoin S-12). Site : celui du point de vente ou du stock de l'utilisateur ; à
+ * téléchargé (Finance, besoin S-12) ; un client absent de l'appareil (désigné par le lien d'un autre
+ * écran, créances ECR-FIN-01, ou trouvé en ligne) est lu en ligne (`GET /api/v1/customers/{id}`,
+ * P8E-09) : son compte conservé s'il est fusionné, les comptes qu'il a absorbés dont les créances sont
+ * lues aussi (BR-CRM-007, besoin S-22). Site : celui du point de vente ou du stock de l'utilisateur ; à
  * défaut, l'utilisateur peut le choisir, sinon le serveur le déduit des créances réglées.
  */
 import { useEffect, useState } from 'react';
@@ -33,6 +36,7 @@ import {
   type ReceivableLine,
 } from './collect.js';
 import { CommandResult } from './CommandResult.js';
+import { readPath, useOnlineRead } from './online-read.js';
 import { CustomerPicker } from './CustomerPicker.js';
 import { formatMoney } from './format.js';
 import {
@@ -61,28 +65,46 @@ interface ReceivablesState {
   readonly lines: readonly ReceivableLine[] | null;
 }
 
-/** Créances du client lues en ligne ; `undefined` tant que la lecture n'a pas abouti. */
+/**
+ * Créances du client lues en ligne, compte par compte (`accountIds` : le sien et ceux qu'il a absorbés) ;
+ * `undefined` tant que la lecture n'a pas abouti ou que les comptes ne sont pas connus (`null` : hors
+ * ligne ou sans client).
+ */
 function useOnlineReceivables(
   customerId: string | null,
+  accountIds: readonly string[] | null,
   online: boolean,
   reloadKey: string,
 ): readonly ReceivableLine[] | null | undefined {
   const [state, setState] = useState<ReceivablesState>();
-  const key = `${customerId ?? ''}:${reloadKey}`;
+  const accounts = accountIds?.join('+') ?? '';
+  const key = `${accounts}:${reloadKey}`;
   useEffect(() => {
-    if (!customerId || !online) return;
+    if (!customerId || !online || !accounts) return;
     let cancelled = false;
-    void authorizedRequest<{ receivables?: ReceivableLine[] }>(
-      getDb(),
-      `/api/v1/receivables?customer_id=${encodeURIComponent(customerId)}`,
-      { method: 'GET' },
-    ).then((result) => {
-      if (!cancelled) setState({ key, lines: result.ok ? (result.data.receivables ?? []) : null });
+    void Promise.all(
+      accounts
+        .split('+')
+        .map((id) =>
+          authorizedRequest<{ receivables?: ReceivableLine[] }>(
+            getDb(),
+            `/api/v1/receivables?customer_id=${encodeURIComponent(id)}`,
+            { method: 'GET' },
+          ),
+        ),
+    ).then((results) => {
+      if (cancelled) return;
+      setState({
+        key,
+        lines: results.every((result) => result.ok)
+          ? results.flatMap((result) => (result.ok ? (result.data.receivables ?? []) : []))
+          : null,
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [customerId, online, key]);
+  }, [customerId, online, accounts, key]);
   if (!customerId || !online) return null;
   return state?.key === key ? state.lines : undefined;
 }
@@ -126,6 +148,13 @@ function toCustomerData(remote: RemoteCustomer): CustomerData {
     outstanding_xaf: 0,
     version: remote.version,
   };
+}
+
+/** Fiche d'un client lue en ligne (`GET /api/v1/customers/{id}`), champs utiles à l'écran. */
+interface RemoteCustomerDetail {
+  readonly customer: RemoteCustomer;
+  /** Comptes absorbés par ce client (BR-CRM-007). */
+  readonly absorbed_customer_ids?: readonly string[];
 }
 
 /** Recherche en ligne des clients, à partir de 2 caractères. */
@@ -182,8 +211,42 @@ export function CollectScreen() {
           .map((pending) => pending.commandId)
           .join(',')
       : '';
-  const receivables = useOnlineReceivables(customerId, online, `${reloadKey}|${paymentsInFlight}`);
   const remoteCustomers = useRemoteCustomers(query, online);
+  // Client absent de l'appareil (désigné par un lien, ou trouvé en ligne) : sa fiche est lue en ligne,
+  // pour son compte conservé s'il est fusionné et pour les comptes qu'il a absorbés (P8E-09).
+  const onDevice =
+    refs !== undefined && refs.customers.some((candidate) => candidate.id === customerId);
+  const detailKey =
+    refs !== undefined && customerId !== null && !onDevice
+      ? `/api/v1/customers/${encodeURIComponent(customerId)}`
+      : null;
+  const linked = useOnlineRead(detailKey, (key) => readPath<RemoteCustomerDetail>(key), online, '');
+  const linkedDetail = linked.data?.customer.id === customerId ? linked.data : undefined;
+  // Compte fusionné : l'encaissement se fait sur le compte conservé (BR-CRM-007), refusé en ligne sinon.
+  const mergedInto = linkedDetail?.customer.mergedIntoId ?? null;
+  if (mergedInto && customerId !== mergedInto) setCustomerId(mergedInto);
+  const linkedCustomer =
+    linkedDetail && !mergedInto ? toCustomerData(linkedDetail.customer) : undefined;
+  const detailPending = detailKey !== null && online && linked.data === undefined && !linked.failed;
+  // Comptes lus : le client et ceux qu'il a absorbés (appareil : fusions connues ; en ligne : sa fiche).
+  const accountIds =
+    refs !== undefined && customerId !== null && !detailPending && !mergedInto
+      ? [
+          ...new Set([
+            customerId,
+            ...[...(refs?.customerAlias ?? [])]
+              .filter(([, kept]) => kept === customerId)
+              .map(([absorbed]) => absorbed),
+            ...(linkedDetail?.absorbed_customer_ids ?? []),
+          ]),
+        ]
+      : null;
+  const receivables = useOnlineReceivables(
+    customerId,
+    accountIds,
+    online,
+    `${reloadKey}|${paymentsInFlight}`,
+  );
 
   if (!refs || !userId) {
     return (
@@ -220,11 +283,13 @@ export function CollectScreen() {
     ? refs.customers.find((candidate) => candidate.id === customerId)
     : undefined;
   const customer =
-    localCustomer ?? (remoteSelected?.id === customerId ? remoteSelected : undefined);
+    localCustomer ??
+    (remoteSelected?.id === customerId ? remoteSelected : undefined) ??
+    linkedCustomer;
   const fromServer = Array.isArray(receivables);
   const allDues = customer
     ? fromServer
-      ? duesFromReceivables(receivables, customer.id)
+      ? duesFromReceivables(receivables, customer.id, accountIds ?? [customer.id])
       : duesFromRecentSales(refs.sales, customer.id, refs.customerAlias)
     : [];
   const pending = customer
@@ -365,7 +430,12 @@ export function CollectScreen() {
         <h2 id="collect-customer-title">{t('sales.customer_title')}</h2>
         <CustomerPicker
           customers={refs.customers}
-          remoteCustomers={remoteCustomers}
+          remoteCustomers={linkedCustomer ? [linkedCustomer, ...remoteCustomers] : remoteCustomers}
+          unresolved={
+            detailPending && customer === undefined
+              ? { title: t('collect.customer_loading'), hint: '' }
+              : { title: t('sales.customer_unknown'), hint: '' }
+          }
           onQueryChange={setQuery}
           value={customerId}
           onChange={(id) => {
@@ -386,7 +456,22 @@ export function CollectScreen() {
             </span>
           </p>
         ) : customer === undefined ? (
-          <p className="home-muted">{t('collect.customer_required')}</p>
+          detailPending ? (
+            <p className="home-muted" aria-busy="true">
+              {t('collect.customer_loading')}
+            </p>
+          ) : linked.failed ? (
+            <p className="text-warn" role="alert">
+              {t('collect.customer_unreadable')}{' '}
+              {linked.denied ? null : (
+                <button type="button" className="secondary" onClick={linked.retry}>
+                  {t('collect.customer_retry')}
+                </button>
+              )}
+            </p>
+          ) : (
+            <p className="home-muted">{t('collect.customer_required')}</p>
+          )
         ) : null}
       </section>
 

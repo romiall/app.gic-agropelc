@@ -33,10 +33,23 @@ export interface ReceivableLine {
   readonly balanceDueXaf: number;
 }
 
-export function duesFromReceivables(lines: readonly ReceivableLine[], customerId: string): Due[] {
+/**
+ * Créances d'un client lues en ligne. `accountIds` : son compte et ceux qu'il a absorbés
+ * (BR-CRM-007) ; `GET /receivables?customer_id=` n'étend pas aux comptes absorbés (S-22), l'écran
+ * lit donc chaque compte.
+ */
+export function duesFromReceivables(
+  lines: readonly ReceivableLine[],
+  customerId: string,
+  accountIds: readonly string[] = [customerId],
+): Due[] {
+  const accounts = new Set(accountIds);
   return sortDues(
     lines
-      .filter((line) => line.customerId === customerId && line.balanceDueXaf > 0)
+      .filter(
+        (line) =>
+          line.customerId !== null && accounts.has(line.customerId) && line.balanceDueXaf > 0,
+      )
       .map((line) => ({
         saleId: line.saleId,
         docNumber: line.docNumber,

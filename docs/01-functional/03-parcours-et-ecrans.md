@@ -198,7 +198,7 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 | ECR-APP-03 | Bons de commande | RESP_ACHATS | Non | P6 |
 | ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME | Oui | P6 |
 | ECR-APP-05 | Rapprochement commande / réception / facture | RESP_ACHATS, FINANCE | Non | P8 |
-| ECR-FIN-01 | Encaissements et créances (âge, retards) | FINANCE, RESP_COMMERCIAL | Non | P4/P8 |
+| ECR-FIN-01 | Créances (âge, retards ; encaissement par ECR-VEN-06, AV-304) | FINANCE, DIRECTION, RESP_COMMERCIAL | Non | P4/P8 |
 | ECR-FIN-02 | + DÉPENSE | Tous les rôles autorisés | Oui | P8 |
 | ECR-FIN-03 | Factures fournisseurs | FINANCE | Non | P8 |
 | ECR-FIN-04 | Paiements fournisseurs | FINANCE | Non | P8 |

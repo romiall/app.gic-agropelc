@@ -29,6 +29,8 @@ interface CustomerPickerProps {
   readonly allowAnonymous: boolean;
   /** Clients trouvés en ligne, ajoutés aux résultats (rôles sans portefeuille téléchargé). */
   readonly remoteCustomers?: readonly CustomerData[];
+  /** Client désigné (`value`) que ni l'appareil ni la recherche ne connaissent : titre et indice. */
+  readonly unresolved?: { readonly title: string; readonly hint: string };
   /** Saisie de recherche, pour une recherche en ligne par l'écran appelant. */
   readonly onQueryChange?: (query: string) => void;
 }
@@ -40,6 +42,7 @@ export function CustomerPicker({
   allowAnonymous,
   remoteCustomers = [],
   onQueryChange,
+  unresolved,
 }: CustomerPickerProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -67,7 +70,7 @@ export function CustomerPicker({
             {selected
               ? selected.display_name
               : value
-                ? t('sales.customer_unknown')
+                ? (unresolved?.title ?? t('sales.customer_unknown'))
                 : t('sales.customer_anonymous')}
           </p>
           <p className="picked-hint">
@@ -82,7 +85,9 @@ export function CustomerPicker({
                 ]
                   .filter(Boolean)
                   .join(' · ')
-              : t('sales.customer_anonymous_hint')}
+              : value && unresolved
+                ? unresolved.hint
+                : t('sales.customer_anonymous_hint')}
           </p>
         </div>
         <button type="button" className="secondary" onClick={() => setSearching(true)}>

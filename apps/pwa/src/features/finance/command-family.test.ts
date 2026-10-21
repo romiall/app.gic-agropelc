@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { OutboxCommand } from '../../storage/db.js';
-import { familyReloadKey } from './command-family.js';
+import { renderHook, waitFor } from '@testing-library/react';
+import { getDb, type OutboxCommand } from '../../storage/db.js';
+import { familyReloadKey, useCommandFamily, useCommandFamilyState } from './command-family.js';
 
 // Le module importe la file d'envoi, qui charge le moteur de synchronisation.
 vi.mock('../sync/sync-engine-instance.js', () => ({ getSyncEngine: () => undefined }));
@@ -33,5 +34,25 @@ describe('clé de relecture d’une famille d’opérations (P8E-05, P8E-06)', (
       'c1:WAITING,c3:WAITING',
     );
     expect(familyReloadKey([command({})], undefined)).toBe('');
+  });
+
+  it('l’outbox pas encore lue se distingue d’une outbox vide ; seules les opérations de la famille', async () => {
+    await getDb().outbox.clear();
+    await getDb().outbox.bulkPut([
+      command({ command_id: 'a', command_type: 'sales.payment.record', device_seq: 1 }),
+      command({ command_id: 'b', command_type: 'sales.sale.create', device_seq: 2 }),
+    ]);
+    const state = renderHook(() => useCommandFamilyState('sales.payment.'));
+    expect(state.result.current).toBeUndefined();
+    await waitFor(() =>
+      expect(state.result.current?.map((item) => item.command_id)).toEqual(['a']),
+    );
+    // Sans lecture, la version simple rend une liste vide, jamais `undefined`.
+    const simple = renderHook(() => useCommandFamily('sales.payment.'));
+    expect(simple.result.current).toEqual([]);
+    await waitFor(() => expect(simple.result.current).toHaveLength(1));
+    const none = renderHook(() => useCommandFamily('finance.nothing.'));
+    await waitFor(() => expect(none.result.current).toEqual([]));
+    await getDb().outbox.clear();
   });
 });
