@@ -44,6 +44,7 @@ function buildEnvelope(
     readonly aggregate_type: string;
     readonly aggregate_id: string;
     readonly payload: unknown;
+    readonly captured_offline?: boolean;
   },
 ): Record<string, unknown> {
   return {
@@ -406,6 +407,94 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       .where('id', '=', toBin(countId))
       .executeTakeFirstOrThrow();
     expect(row.status).toBe('IN_PROGRESS');
+  });
+
+  it('hors ligne, écart au-dessus du seuil avant l’entrée en vigueur de la politique : accepté au repli sur la réception (BR-SYN-007) ; en ligne, refusé (MP-12, AV-318)', async () => {
+    const offlineLocation = await newStore();
+    const onlineLocation = await newStore();
+    const offlineProduct = await insertProduct(admin);
+    const onlineProduct = await insertProduct(admin);
+    await openingBalance(offlineProduct, offlineLocation, 100, 1000);
+    await openingBalance(onlineProduct, onlineLocation, 100, 1000);
+    const offlineCount = await openCount(offlineLocation);
+    const onlineCount = await openCount(onlineLocation);
+    await recordLine(offlineCount, offlineProduct, 130); // +30 000 XAF, au-dessus du seuil
+    await recordLine(onlineCount, onlineProduct, 130);
+
+    const receivedAt = new Date(new Date(OCCURRED_AT).getTime() + 2 * 60 * 60 * 1000);
+    const laterRegistry = new CommandHandlerRegistry();
+    registerCountCommands(
+      laterRegistry,
+      new ApprovalDecisionHandlerRegistry(),
+      idGenerator,
+      new DocumentSequenceService(),
+    );
+    const laterPipeline = new CommandPipelineService(
+      db,
+      laterRegistry,
+      new FixedClock(receivedAt),
+      idGenerator,
+    );
+    const submit = (countId: string, capturedOffline: boolean) =>
+      laterPipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'inventory.count.submit',
+          aggregate_type: 'INVENTORY_COUNT',
+          aggregate_id: countId,
+          payload: { countId },
+          captured_offline: capturedOffline,
+        }),
+        adminCtx(),
+      );
+
+    const policyId = freshUuid();
+    const outcome = await withoutActivePolicies(
+      'INVENTORY_ADJUSTMENT',
+      new Date(OCCURRED_AT),
+      async () => {
+        // En vigueur après le comptage réel (09:00), avant la réception de la commande (11:00).
+        await db
+          .insertInto('approvals_control_policies')
+          .values({
+            id: toBin(policyId),
+            code: `COUNT_MP12_${policyId.slice(-10)}`,
+            version: 1,
+            operation_type: 'INVENTORY_ADJUSTMENT',
+            condition: JSON.stringify({}),
+            requires_approval: 1,
+            approver_permission: 'inventory.count.approve',
+            approver_scope: 'SITE',
+            valid_from: new Date(receivedAt.getTime() - 30 * 60 * 1000),
+            status: 'ACTIVE',
+            created_by: toBin(admin),
+          })
+          .execute();
+        try {
+          return {
+            offline: await submit(offlineCount, true),
+            online: await submit(onlineCount, false),
+          };
+        } finally {
+          await db
+            .updateTable('approvals_control_policies')
+            .set({ status: 'RETIRED', valid_to: new Date(OCCURRED_AT) })
+            .where('id', '=', toBin(policyId))
+            .execute();
+        }
+      },
+    );
+
+    expect(outcome.offline.status).toBe('APPLIED');
+    const row = await db
+      .selectFrom('inventory_inventory_counts')
+      .select(['status'])
+      .where('id', '=', toBin(offlineCount))
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('PENDING_APPROVAL');
+    expect(outcome.online.status).toBe('REJECTED');
+    expect(outcome.online.status === 'REJECTED' && outcome.online.error.code).toBe(
+      'CONTROL_POLICY_MISSING',
+    );
   });
 
   it('cancel : IN_PROGRESS -> CANCELLED', async () => {

@@ -12,8 +12,8 @@
  *   appliqué avec revue selon `procurement.offline_over_receipt_mode` (BR-APP-010, AV-095). Une
  *   réception annoncée en quarantaine n'entre pas au disponible local (indice `EXPECTED_QUARANTINE`).
  * - Paramètres `procurement.*` lus en portée globale seulement, comme le serveur.
- * - Sans bon de commande : non proposé, la photo du bon de livraison y est toujours exigée et
- *   l'application ne sait pas encore la joindre (S-16, S-24).
+ * - Sans bon de commande : non proposé par l'écran, qui part d'un bon de commande ; la photo du bon
+ *   de livraison n'en est plus la raison (réception signalée sans photo : AV-246, MP-04 et MP-10).
  */
 import {
   DomainError,

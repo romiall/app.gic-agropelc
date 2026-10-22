@@ -130,21 +130,26 @@ export function useOnlineRead<T>(
   useEffect(() => {
     if (!key || !online) return;
     let cancelled = false;
-    void loader.current(key).then((result) => {
-      if (cancelled) return;
-      setState((current) =>
-        result.ok
-          ? { key, reloadKey, generation, data: result.data, failed: false, denied: false }
-          : {
-              key,
-              reloadKey,
-              generation,
-              data: current?.key === key ? current.data : undefined,
-              failed: true,
-              denied: result.denied,
-            },
-      );
-    });
+    // Un chargeur qui lève (réponse inattendue, base locale fermée) est une lecture en échec, à relancer :
+    // jamais un rejet non géré.
+    const fail: ReadResult<T> = { ok: false, denied: false };
+    void (async () => loader.current(key))()
+      .catch(() => fail)
+      .then((result) => {
+        if (cancelled) return;
+        setState((current) =>
+          result.ok
+            ? { key, reloadKey, generation, data: result.data, failed: false, denied: false }
+            : {
+                key,
+                reloadKey,
+                generation,
+                data: current?.key === key ? current.data : undefined,
+                failed: true,
+                denied: result.denied,
+              },
+        );
+      });
     return () => {
       cancelled = true;
     };

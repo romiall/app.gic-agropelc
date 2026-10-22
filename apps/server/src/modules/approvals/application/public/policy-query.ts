@@ -23,6 +23,11 @@ export interface ActiveControlPolicy {
   readonly approverScope: string | null;
 }
 
+/** Une politique dont une demande peut être décidée : elle exige une validation et nomme son approbateur. */
+export function isDecidablePolicy(policy: ActiveControlPolicy): boolean {
+  return policy.requiresApproval && policy.approverPermission !== null;
+}
+
 export async function currentPolicies(
   executor: Kysely<DB> | Transaction<DB>,
   operationType: OperationType,
@@ -53,4 +58,24 @@ export async function currentPolicies(
     approverPermission: row.approver_permission,
     approverScope: row.approver_scope,
   }));
+}
+
+/**
+ * Politique qui s'applique à un fait constaté à `at` : la plus récente **qui peut se décider**
+ * (`isDecidablePolicy` ; une version révisée sans approbateur n'est pas retenue). Hors ligne,
+ * `offlineFallbackAt` (la réception du fait) sert de repli quand aucune politique n'était en vigueur à
+ * `at` : une révision de la politique entre la réalité et l'envoi ne rend pas un fait accompli inacceptable
+ * (BR-SYN-007 ; `approvals.policy.set` retire l'ancienne version à la date de la révision).
+ */
+export async function decidablePolicyFor(
+  executor: Kysely<DB> | Transaction<DB>,
+  operationType: OperationType,
+  at: Date,
+  offlineFallbackAt?: Date,
+): Promise<ActiveControlPolicy | undefined> {
+  const atFact = (await currentPolicies(executor, operationType, at)).find(isDecidablePolicy);
+  if (atFact !== undefined || offlineFallbackAt === undefined) return atFact;
+  return (await currentPolicies(executor, operationType, offlineFallbackAt)).find(
+    isDecidablePolicy,
+  );
 }

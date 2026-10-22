@@ -37,6 +37,7 @@ import {
 import { CONTROL_POLICIES } from '../seeds/production-references.js';
 import { SALES_CONTROL_POLICIES } from '../seeds/sales-references.js';
 import { PROCUREMENT_CONTROL_POLICIES } from '../seeds/procurement-references.js';
+import { STOCK_FIELDWORK_CONTROL_POLICIES } from '../seeds/stock-fieldwork-references.js';
 import { codeEntityId } from '../seeds/code-entity-id.js';
 
 const dbRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -194,13 +195,21 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     }
   });
 
-  it('crée les politiques de contrôle par défaut, dont celles des achats (AV-294), approbateur du catalogue', async () => {
+  it('crée les politiques de contrôle par défaut, dont celles des achats (AV-294) et du stock et du pointage (AV-318), approbateur du catalogue', async () => {
     const all = [
       ...CONTROL_POLICIES,
       ...SALES_CONTROL_POLICIES,
       ...FINANCE_CONTROL_POLICIES,
       ...PROCUREMENT_CONTROL_POLICIES,
+      ...STOCK_FIELDWORK_CONTROL_POLICIES,
     ];
+    // MP-12 : sans elles, l'écart d'un transfert reçu, un inventaire au-dessus du seuil et une
+    // dérogation de pointage étaient refusés `CONTROL_POLICY_MISSING` sur une base neuve.
+    expect(STOCK_FIELDWORK_CONTROL_POLICIES.map((policy) => policy.operationType).sort()).toEqual([
+      'CHECKIN_OVERRIDE',
+      'INVENTORY_ADJUSTMENT',
+      'TRANSFER_DISCREPANCY',
+    ]);
     expect(PROCUREMENT_CONTROL_POLICIES.map((policy) => policy.operationType).sort()).toEqual([
       'PURCHASE_ORDER',
       'PURCHASE_REQUEST',
@@ -235,6 +244,28 @@ describe('seed P0-05 (db/seeds/run.ts)', () => {
     expect((settings as unknown as { c: number }).c).toBeGreaterThanOrEqual(
       SYSTEM_SETTINGS.length + ROLE_DISCOUNT_SETTINGS.length,
     );
+  });
+
+  it('sème la caisse sans limite par jour (AV-154) et le pas d’enregistrement du pull (AV-319), en vigueur en base', async () => {
+    const seeded = new Map(SYSTEM_SETTINGS.map((setting) => [setting.key, setting]));
+    // Un retour accidentel de `finance.cash_sessions_per_day_max` à 1 rétablirait le blocage du PDV
+    // après la clôture de sa caisse (vérification des écrans du 13/10/2026, C9) sans que rien ne rougisse.
+    expect(seeded.get('finance.cash_sessions_per_day_max')).toMatchObject({
+      value: 0,
+      isClientVisible: true,
+    });
+    expect(seeded.get('sync.pull_record_grain_seconds')).toMatchObject({
+      value: 60,
+      isClientVisible: false,
+    });
+    for (const key of ['finance.cash_sessions_per_day_max', 'sync.pull_record_grain_seconds']) {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT `value` FROM organization_system_settings WHERE `key` = ? AND scope_type = 'GLOBAL' AND scope_id IS NULL ORDER BY valid_from DESC LIMIT 1",
+        [key],
+      );
+      expect(rows, key).toHaveLength(1);
+      expect(rows[0]!.value, key).toBe(seeded.get(key)!.value);
+    }
   });
 
   it('exécute le bootstrap identity_users une seule fois (auto-référencé)', async () => {

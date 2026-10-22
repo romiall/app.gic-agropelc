@@ -32,6 +32,7 @@ import {
 } from './finance-references.js';
 import { SALES_CONTROL_POLICIES } from './sales-references.js';
 import { PROCUREMENT_CONTROL_POLICIES } from './procurement-references.js';
+import { STOCK_FIELDWORK_CONTROL_POLICIES } from './stock-fieldwork-references.js';
 import { publishReferenceFeeds } from './publish-references.js';
 import { applySettingRevisions } from './setting-revisions.js';
 
@@ -255,8 +256,8 @@ async function seedCrmReferences(conn: mysql.Connection, systemUserId: Buffer): 
 }
 
 /**
- * Production (P7-04), ventes (P4-02), finance (P5, P8) et achats (MP-11, AV-294) : politiques de
- * contrôle par défaut et motifs de rendement absents.
+ * Production (P7-04), ventes (P4-02), finance (P5, P8), achats (MP-11, AV-294) et stock et pointage
+ * (MP-12, AV-318) : politiques de contrôle par défaut et motifs de rendement absents.
  */
 async function seedProductionReferences(
   conn: mysql.Connection,
@@ -268,6 +269,7 @@ async function seedProductionReferences(
     ...SALES_CONTROL_POLICIES,
     ...FINANCE_CONTROL_POLICIES,
     ...PROCUREMENT_CONTROL_POLICIES,
+    ...STOCK_FIELDWORK_CONTROL_POLICIES,
   ];
   for (const policy of allPolicies) {
     const [existing] = await conn.query<mysql.RowDataPacket[]>(

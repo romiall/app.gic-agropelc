@@ -43,7 +43,7 @@ La retenue de l'appareil devenait alors contraire à INV-SYN-04. Une libération
 - Une dépendance vers la saisie d'un autre utilisateur, si elle existait malgré la décision 4, suspendrait la suite de son auteur au plus `sync.retry_hold_minutes`, jamais sans fin.
 - Le délai de 25 s par lot et une vraie erreur du serveur partagent le code `SERVER_BUSY`. L'appareil ne peut pas distinguer une commande non traitée d'une commande en échec : un lot lent pendant trois cycles signale à tort un échec répété (besoin S-43, code distinct).
 - Les restes déclarés (`pending_by_author`) comptent encore le lot comme parti. Le serveur y ajoute lui-même ce qu'il n'a pas réglé (`b3d5dc0`).
-- L'attente progressive de §4 de `02-synchronisation.md` (`min(15 min, 5 s·2^n)`, alerte à 20 échecs) n'est pas encore appliquée : l'intervalle reste fixe (30 s).
+- L'attente progressive de §4 de `02-synchronisation.md` (`min(15 min, 5 s·2^n)`, alerte à 20 échecs) n'est appliquée que partiellement depuis MP-12 (AV-319) : 30 s doublées jusqu'à 2 min après un cycle en échec, sans gigue ni alerte à 20 échecs.
 - L'index des décisions reçoit la ligne de cet ADR à l'intégration ; ADR-037 §11 y est marqué révisé.
 
 Tests :

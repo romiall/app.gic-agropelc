@@ -204,6 +204,8 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
 
   it('passer au suivi puis revenir à la saisie : le brouillon est gardé, la saisie masquée pendant le suivi (revue de P8E-10)', async () => {
     await asRoles(['FINANCE']);
+    // Le suivi lit les dépenses et les comptes : sans réponse, la lecture rejetait sans être attendue.
+    request.mockResolvedValue({ ok: true, data: { expenses: [], cash_accounts: [] } } as never);
     const user = userEvent.setup();
     renderAt();
     await user.selectOptions(await screen.findByLabelText('Catégorie'), EXPENSE_IDS.transport);

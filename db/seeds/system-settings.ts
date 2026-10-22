@@ -115,6 +115,9 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
   // P5-23 (AV-198) : fenêtre de stabilisation de la numérotation du flux — le curseur du pull ne dépasse
   // jamais un numéro absent suivi d'une ligne plus récente (transaction peut-être encore ouverte).
   { key: 'sync.pull_settle_seconds', value: 120, isClientVisible: false, ref: 'AV-198' },
+  // MP-12 (AV-319) : `last_pull_at` d'un appareil n'est réécrit que s'il a plus de cette durée ; un
+  // appareil tire une trentaine de jeux toutes les 30 s, le seuil de retard est de deux heures.
+  { key: 'sync.pull_record_grain_seconds', value: 60, isClientVisible: false, ref: 'AV-319' },
   { key: 'sync.backdate_max_hours', value: 72, isClientVisible: true, ref: 'AV-078' },
   { key: 'sync.justification_after_hours', value: 24, isClientVisible: true, ref: 'AV-078' },
   { key: 'crm.inactive_after_days', value: 30, isClientVisible: false, ref: 'AV-013' },

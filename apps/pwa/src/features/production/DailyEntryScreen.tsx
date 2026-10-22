@@ -2,7 +2,8 @@
  * ECR-PRD-02 « SAISIE DU JOUR » d'un lot (responsable de ferme ; WF-J4). Mortalité, aliment et
  * intrants, pesée, observation : chaque saisie est une commande distincte, utilisable hors ligne, et
  * apparaît aussitôt dans le journal du jour. La collecte d'œufs a son propre écran. Les mortalités
- * partent en validation selon la politique `MORTALITY` ; la photo n'est pas encore jointe (S-16).
+ * partent en validation selon la politique `MORTALITY` ; la photo de la mortalité est jointe à la saisie, ou
+ * après coup tant qu'elle attend la décision (AV-107, ADR-046).
  */
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';

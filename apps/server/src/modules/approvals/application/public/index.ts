@@ -26,7 +26,7 @@ export {
 } from './approval-inbox.js';
 export type { ApprovalInboxItem, ApprovalInboxPage } from './approval-inbox.js';
 
-export { currentPolicies } from './policy-query.js';
+export { currentPolicies, decidablePolicyFor, isDecidablePolicy } from './policy-query.js';
 export type { ActiveControlPolicy } from './policy-query.js';
 
 export { APPROVAL_DECISION_HANDLER_REGISTRY } from '../decision-handler-registry.provider.js';

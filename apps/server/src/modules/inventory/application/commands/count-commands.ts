@@ -52,7 +52,7 @@ import { DocumentSequenceService } from '../../../../platform/document-sequences
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import {
   requestApproval,
-  currentPolicies,
+  decidablePolicyFor,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
@@ -429,8 +429,15 @@ function buildCountCommands(
       return { status: 'APPLIED' };
     }
 
-    const policies = await currentPolicies(uow, operationType, occurredAt);
-    const policy = policies[0];
+    // Hors ligne, une politique révisée entre le comptage et l'envoi ne rend pas le fait refusé.
+    const policy = await decidablePolicyFor(
+      uow,
+      operationType,
+      occurredAt,
+      envelope.captured_offline
+        ? (await loadCommandOrigin(uow, envelope.command_id)).receivedAt
+        : undefined,
+    );
     if (!policy) {
       return {
         status: 'REJECTED',

@@ -2,7 +2,9 @@
  * Joignabilité réelle du serveur (ADR-037). `navigator.onLine` ne dit que si l'appareil a une
  * interface réseau : sur un Wi-Fi sans accès Internet, il reste vrai. Le moteur de synchronisation
  * rapporte ici l'issue de chaque cycle ; l'appareil est tenu pour hors ligne dès qu'un cycle n'a pas
- * pu joindre le serveur, jusqu'au cycle suivant qui y parvient. Cet état décide du blocage local de la
+ * pu joindre le serveur, jusqu'au cycle suivant qui y parvient : au plus l'attente progressive du moteur
+ * (2 min), levée par une saisie, le retour au premier plan ou « Forcer la synchronisation » (MP-12,
+ * AV-319 ; sur un Wi-Fi sans Internet, aucun événement `online` ne revient). Cet état décide du blocage local de la
  * vente hors ligne (AV-025), du bandeau « hors ligne » et de `captured_offline` (« état du réseau à la
  * saisie », 01-architecture-offline.md §5).
  */

@@ -200,6 +200,7 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `sync.occurred_at_future_tolerance_minutes` | 5 | INV-GLO-02, AV-226 (minutes ≥ 0 ; tolérance d'une date de fait postérieure à l'heure serveur, après correction de l'écart ; valeur absurde : 5) |
 | `sync.retry_hold_minutes` | 30 | AV-217 |
 | `sync.pull_settle_seconds` | 120 | AV-198 (fenêtre de stabilisation de la numérotation du flux) |
+| `sync.pull_record_grain_seconds` | 60 | AV-319 (pas d'enregistrement du dernier pull d'un appareil ; 0 = chaque tirage écrit) |
 | `sync.backdate_max_hours` / `justification_after_hours` | 72 / 24 | AV-078 |
 | `crm.inactive_after_days` | 30 | AV-013 |
 | `crm.visit.max_distance_m` | 500 | BR-CRM-015 |

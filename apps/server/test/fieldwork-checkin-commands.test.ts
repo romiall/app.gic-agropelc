@@ -29,6 +29,7 @@ import {
   insertTestRole,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const NOW = '2026-10-06T18:00:00.000Z';
@@ -564,5 +565,67 @@ describe('fieldwork.checkin.* (P3-03)', () => {
     const zeroAccuracy = checkin(agent, at('06:30:00'), { accuracyM: 0, sessionId: freshUuid() });
     expect((await zeroAccuracy.result).status).toBe('APPLIED');
     expect((await checkinRow(zeroAccuracy.checkinId)).suspicion_flags).toContain('ACCURACY_ZERO');
+  });
+
+  it('MP-12 (AV-318) : dérogation demandée hors ligne avant l’entrée en vigueur de la politique — acceptée au repli sur la réception (BR-SYN-007)', async () => {
+    const agent = await newAgent();
+    const refuse = (time: string) =>
+      checkin(agent, at(time), { position: north(1800), clientResult: 'REJECTED_OUT_OF_ZONE' })
+        .result;
+    for (const time of ['09:00:00', '09:01:00', '09:02:30']) {
+      expect((await refuse(time)).status).toBe('APPLIED');
+    }
+
+    const sessionId = freshUuid();
+    const policyId = freshUuid();
+    // La commande n'est reçue qu'à 11:00 ; la politique n'entre en vigueur qu'à 10:30, après la demande
+    // réelle (09:03).
+    clock.setTo(new Date(at('11:00:00')));
+    try {
+      const request = await withoutActivePolicies(
+        'CHECKIN_OVERRIDE',
+        new Date(at('00:00:00')),
+        async () => {
+          await db
+            .insertInto('approvals_control_policies')
+            .values({
+              id: toBin(policyId),
+              code: `CHECKIN_MP12_${policyId.slice(-10)}`,
+              version: 1,
+              operation_type: 'CHECKIN_OVERRIDE',
+              condition: JSON.stringify({}),
+              requires_approval: 1,
+              approver_permission: 'fieldwork.checkin_override.approve',
+              approver_scope: 'TEAM',
+              valid_from: new Date(at('10:30:00')),
+              status: 'ACTIVE',
+              created_by: toBin(admin),
+            })
+            .execute();
+          try {
+            return await run(
+              agent,
+              'fieldwork.checkin.request_override',
+              'WORK_SESSION',
+              sessionId,
+              at('09:03:00'),
+              { declaredZoneId: zoneId, reason: 'Réseau GPS instable au marché' },
+            );
+          } finally {
+            await db
+              .updateTable('approvals_control_policies')
+              .set({ status: 'RETIRED', valid_to: new Date(at('00:00:00')) })
+              .where('id', '=', toBin(policyId))
+              .execute();
+          }
+        },
+      );
+      expect(request.status, JSON.stringify(request)).toBe('APPLIED');
+    } finally {
+      clock.setTo(new Date(NOW));
+    }
+    const session = await sessionRow(sessionId);
+    expect(session?.override_status).toBe('PENDING');
+    expect(session?.approval_request_id).not.toBeNull();
   });
 });

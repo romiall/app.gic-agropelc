@@ -10,8 +10,8 @@
  *   du jeu `stock`, qui porte leur effet. Le serveur contrôle le
  *   solde de l'emplacement choisi : la garde « plus de morts que l'effectif » porte sur ce bâtiment.
  * - Mortalité (`production.mortality.record`) : nombre entier de têtes, emplacement d'élevage, cause
- *   `LOSS` facultative ; validée selon la politique `MORTALITY` (photo non jointe par l'application,
- *   S-16). Intrant (`production.input.record`) : produit consommable, quantité convertie en unité de
+ *   `LOSS` facultative ; validée selon la politique `MORTALITY` (photo jointe par l'écran, ADR-046).
+ *   Intrant (`production.input.record`) : produit consommable, quantité convertie en unité de
  *   base, nature du coût. Pesée et observation sans effet sur le stock.
  * - Chaque saisie est une commande distincte : un rejet n'annule pas les autres (BR-PRD-008).
  */

@@ -1,8 +1,12 @@
 /**
  * Orchestration push → pull (WF-16, squelette) : déclenchée au démarrage, au retour du
- * réseau (`online`), périodiquement, et manuellement (ECR-SYN-01 « forcer la
- * synchronisation »). Une seule exécution à la fois (`running`) : un déclenchement pendant un
- * cycle en cours attend la fin du cycle courant plutôt que d'en empiler un second. Entre onglets, un
+ * réseau (`online`), au retour d'un onglet masqué, périodiquement, et manuellement (ECR-SYN-01 « forcer
+ * la synchronisation »). Cadence (MP-12, AV-319 ; NFR-09, RISK-16) : 30 s au premier plan, aucun cycle
+ * périodique pendant qu'un onglet est masqué, et attente progressive (30 s doublées à chaque cycle qui
+ * échoue, plafonnée à 2 min) tant que le réseau ou le serveur ne répond pas. Le retour du réseau, une
+ * action de l'utilisateur ou le retour au premier plan (si aucun cycle récent n'a eu lieu depuis) relance
+ * aussitôt et remet l'attente à 30 s. Une seule exécution à la fois (`running`) : un déclenchement
+ * pendant un cycle en cours attend la fin du cycle courant plutôt que d'en empiler un second. Entre onglets, un
  * verrou du navigateur (`navigator.locks`) tient un seul cycle à la fois sur l'appareil : sans lui, un
  * onglet enverrait une commande plus récente pendant qu'un lot plus ancien est encore en vol dans un
  * autre (INV-SYN-04).
@@ -14,7 +18,32 @@ import { runPullCycle } from './pull.js';
 import { runAttachmentUploadCycle } from './attachment-upload.js';
 import { resetInterruptedPushes } from './outbox.js';
 
-const PERIODIC_INTERVAL_MS = 30_000;
+/** Cadence du moteur (MP-12, AV-319) ; surchargeable pour les tests. */
+export interface SyncEngineTiming {
+  /** Attente entre deux cycles périodiques quand tout va bien. */
+  readonly intervalMs: number;
+  /**
+   * Plafond de l'attente après des cycles qui échouent. Court à dessein : tant qu'un cycle n'a pas
+   * réussi, l'appareil s'affiche « hors ligne » et ses saisies sont étiquetées hors ligne
+   * (`connectivity.ts`) ; sur un Wi-Fi sans Internet, aucun événement `online` ne le ramène.
+   */
+  readonly maxBackoffMs: number;
+  /** Un onglet qui redevient visible relance un cycle si le dernier date de plus que cela. */
+  readonly visibleResyncMs: number;
+}
+export const DEFAULT_SYNC_TIMING: SyncEngineTiming = {
+  intervalMs: 30_000,
+  maxBackoffMs: 2 * 60_000,
+  visibleResyncMs: 15_000,
+};
+/** Attente avant le prochain cycle périodique après `failureStreak` cycles consécutifs en échec. */
+export function nextCycleDelayMs(
+  failureStreak: number,
+  timing: SyncEngineTiming = DEFAULT_SYNC_TIMING,
+): number {
+  const doublings = Math.min(Math.max(0, Math.floor(failureStreak)), 10);
+  return Math.min(timing.maxBackoffMs, timing.intervalMs * 2 ** doublings);
+}
 const MAX_PUSH_BATCHES_PER_CYCLE = 20; // borne de sécurité (outbox anormalement longue)
 /** Nom du verrou du navigateur qui tient un seul cycle de synchronisation à la fois sur l'appareil. */
 export const SYNC_LOCK_NAME = 'gic-sync';
@@ -129,19 +158,74 @@ async function syncCycle(deps: SyncEngineDeps, exclusive: boolean): Promise<Sync
   return pushed || pullResult.changeCount > 0 ? 'SYNCED' : 'NOTHING_TO_DO';
 }
 
+function pageHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
+/** Durées mesurées sur l'horloge monotone : un réglage de l'heure de l'appareil ne les fausse pas. */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
 export class SyncEngine {
   private running: Promise<SyncCycleOutcome> | undefined;
   /** Déclenchement reçu pendant un cycle : un nouveau cycle suit (une saisie part sans attendre). */
   private rerunRequested = false;
+  private started = false;
   private stopped = false;
-  private intervalId: ReturnType<typeof setInterval> | undefined;
-  private readonly onlineListener = () => void this.trigger();
+  private timerId: ReturnType<typeof setTimeout> | undefined;
+  /** Cycles consécutifs en échec (hors réseau, erreur du serveur) : allonge l'attente périodique. */
+  private failureStreak = 0;
+  private lastCycleEndedAt = -Infinity;
+  private cycleStartedAt = -Infinity;
+  /** Dernier passage de l'onglet en arrière-plan (un cycle commencé avant est suspect). */
+  private hiddenAt = -Infinity;
+  private readonly onlineListener = () => {
+    this.failureStreak = 0;
+    this.scheduleNext();
+    void this.trigger();
+  };
+  private readonly visibilityListener = () => {
+    if (this.stopped) return;
+    if (pageHidden()) {
+      this.hiddenAt = monotonicNow();
+      return;
+    }
+    // Retour au premier plan : l'utilisateur est là, on n'attend pas le prochain cycle périodique.
+    this.failureStreak = 0;
+    this.scheduleNext();
+    const now = monotonicNow();
+    if (this.running) {
+      // Un cycle commencé avant la mise en arrière-plan, ou long, a pu perdre sa connexion pendant la
+      // veille : un cycle neuf suit le sien. Un cycle récent suffit.
+      if (
+        this.hiddenAt >= this.cycleStartedAt ||
+        now - this.cycleStartedAt >= this.timing.visibleResyncMs
+      ) {
+        void this.trigger();
+      }
+      return;
+    }
+    if (now - this.lastCycleEndedAt >= this.timing.visibleResyncMs) void this.trigger();
+  };
 
-  constructor(private readonly deps: SyncEngineDeps) {}
+  constructor(
+    private readonly deps: SyncEngineDeps,
+    private readonly timing: SyncEngineTiming = DEFAULT_SYNC_TIMING,
+  ) {}
+
+  /** Attente prévue avant le prochain cycle périodique (allongée après des échecs). */
+  get nextDelayMs(): number {
+    return nextCycleDelayMs(this.failureStreak, this.timing);
+  }
 
   start(): void {
+    this.started = true;
     window.addEventListener('online', this.onlineListener);
-    this.intervalId = setInterval(() => void this.trigger(), PERIODIC_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.visibilityListener);
+    }
+    this.scheduleNext();
     // Le premier cycle reprend les envois interrompus (onglet fermé, appareil éteint pendant l'envoi).
     void this.trigger();
   }
@@ -149,7 +233,30 @@ export class SyncEngine {
   stop(): void {
     this.stopped = true;
     window.removeEventListener('online', this.onlineListener);
-    if (this.intervalId !== undefined) clearInterval(this.intervalId);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityListener);
+    }
+    if (this.timerId !== undefined) clearTimeout(this.timerId);
+  }
+
+  /**
+   * Seule fonction qui arme la minuterie périodique : elle remplace l'échéance déjà armée, pour que le
+   * délai suive toujours l'état courant (retour du réseau, du premier plan, cycle qui vient de finir).
+   */
+  private scheduleNext(): void {
+    if (this.timerId !== undefined) clearTimeout(this.timerId);
+    this.timerId = undefined;
+    if (this.stopped || !this.started) return;
+    this.timerId = setTimeout(() => void this.periodicTick(), this.nextDelayMs);
+  }
+
+  /** Cycle périodique : sauté pendant qu'un onglet est masqué (NFR-09), puis le suivant est planifié. */
+  private async periodicTick(): Promise<void> {
+    try {
+      if (!pageHidden() && !this.stopped) await this.trigger();
+    } finally {
+      this.scheduleNext();
+    }
   }
 
   /**
@@ -172,7 +279,20 @@ export class SyncEngine {
     let outcome: SyncCycleOutcome;
     do {
       this.rerunRequested = false;
-      outcome = await runSyncCycle({ ...this.deps, isStopped: () => this.stopped });
+      this.cycleStartedAt = monotonicNow();
+      try {
+        outcome = await runSyncCycle({ ...this.deps, isStopped: () => this.stopped });
+      } catch (error) {
+        // Réponse inattendue du serveur, base locale pleine ou fermée : le serveur est joignable, le
+        // cycle recommencera plus tard, sans rejet non géré et en comptant l'échec (attente allongée).
+        console.error('Cycle de synchronisation en échec', error);
+        outcome = 'SERVER_ERROR';
+      }
+      this.lastCycleEndedAt = monotonicNow();
+      if (outcome === 'OFFLINE' || outcome === 'SERVER_ERROR') this.failureStreak += 1;
+      else if (outcome === 'SYNCED' || outcome === 'NOTHING_TO_DO') this.failureStreak = 0;
+      // Le délai du prochain cycle périodique suit le décompte d'échecs, quelle que soit l'origine du cycle.
+      this.scheduleNext();
       // Un cycle interrompu ne dit rien de l'état du serveur.
       if (outcome !== 'STOPPED') this.deps.onCycleComplete?.(outcome);
     } while (

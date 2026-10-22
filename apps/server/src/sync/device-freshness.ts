@@ -6,8 +6,8 @@
  * modules sont lus par leur API publique.
  *
  * - **Dernier contact** = le plus récent de : connexion (`identity_devices.last_seen_at`), dernier envoi
- *   (`last_push_at`) et dernier pull (`last_pull_at`, écrit à chaque pull depuis P5-19) de la ligne
- *   `_device`. Un appareil est **en retard** sans contact depuis plus de
+ *   (`last_push_at`) et dernier pull (`last_pull_at`, écrit depuis P5-19 au plus une fois par pas de
+ *   `sync.pull_record_grain_seconds`, 60 s : MP-12, AV-319) de la ligne `_device`. Un appareil est **en retard** sans contact depuis plus de
  *   `analytics.freshness_warning_hours` heures (2 par défaut).
  * - **Opérations restantes** : dernier total déclaré à un envoi (`pending_reported`, P5-07), par
  *   appareil et par auteur (tablette partagée) — `null` quand l'appareil n'a rien déclaré.

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { createTestDb, type GicDatabase } from '../storage/db.js';
-import { runSyncCycle, SyncEngine } from './engine.js';
+import { DEFAULT_SYNC_TIMING, nextCycleDelayMs, runSyncCycle, SyncEngine } from './engine.js';
 import type { PushCycleResult } from './push.js';
 import type { PullCycleResult } from './pull.js';
 import type { UploadCycleResult } from './attachment-upload.js';
@@ -278,5 +278,336 @@ describe('sync/engine (runSyncCycle)', () => {
     const engine = new SyncEngine({ ...deps(), onCycleComplete });
     await engine.trigger();
     expect(onCycleComplete).toHaveBeenCalledWith('NOTHING_TO_DO');
+  });
+});
+
+describe('sync/engine (cadence, MP-12 / AV-319)', () => {
+  let db: GicDatabase;
+  const timing = { intervalMs: 1_000, maxBackoffMs: 8_000, visibleResyncMs: 15_000 };
+  /** Moteurs démarrés par un test : arrêtés à la fin (minuteries et écouteurs). */
+  const started: SyncEngine[] = [];
+  /** Cycles menés à leur terme par les moteurs du test (un cycle en vol d'un test précédent ne compte pas). */
+  let cycles = 0;
+  let outcomes: string[] = [];
+
+  function engineOf(overrides: Partial<typeof timing> = {}): SyncEngine {
+    return new SyncEngine(
+      {
+        db,
+        clock,
+        idGenerator,
+        deviceId: 'device-1',
+        onSessionInvalid: vi.fn(),
+        onCycleComplete: (outcome) => {
+          cycles += 1;
+          outcomes.push(outcome);
+        },
+      },
+      { ...timing, ...overrides },
+    );
+  }
+
+  /** Passe l'onglet à `state` et prévient comme le navigateur (événement `visibilitychange`). */
+  function setVisibility(state: 'visible' | 'hidden', dispatch = true): void {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    if (dispatch) document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  beforeEach(() => {
+    db = createTestDb(`test-engine-cadence-${Math.random()}`);
+    cycles = 0;
+    outcomes = [];
+    pushMock.mockReset();
+    pullMock.mockReset();
+    uploadMock.mockReset();
+    uploadMock.mockResolvedValue({ outcome: 'NOTHING_TO_UPLOAD', sent: 0 });
+    pushMock.mockResolvedValue({ outcome: 'NOTHING_TO_PUSH' });
+    pullMock.mockResolvedValue({ outcome: 'SYNCED', changeCount: 0 });
+  });
+
+  afterEach(async () => {
+    for (const engine of started.splice(0)) engine.stop();
+    vi.restoreAllMocks();
+    // L'accesseur posé par le test retombe sur celui du document.
+    delete (document as unknown as Record<string, unknown>).visibilityState;
+    await db.delete();
+  });
+
+  it('attente entre deux cycles : 30 s, doublées à chaque échec, plafonnées à 2 min', () => {
+    const delays = [0, 1, 2, 3, 4, 5, 50].map((streak) => nextCycleDelayMs(streak));
+    expect(delays).toEqual([30_000, 60_000, 120_000, 120_000, 120_000, 120_000, 120_000]);
+    expect(DEFAULT_SYNC_TIMING).toEqual({
+      intervalMs: 30_000,
+      maxBackoffMs: 120_000,
+      visibleResyncMs: 15_000,
+    });
+    // Une série négative ou fractionnaire ne fait jamais descendre sous l'intervalle.
+    expect(nextCycleDelayMs(-3)).toBe(30_000);
+    expect(nextCycleDelayMs(1.9)).toBe(60_000);
+    expect(nextCycleDelayMs(2, { intervalMs: 10, maxBackoffMs: 25, visibleResyncMs: 0 })).toBe(25);
+    // L'exposant est borné : un intervalle nul avec des milliers d'échecs ne donne pas NaN.
+    expect(nextCycleDelayMs(5_000, { intervalMs: 0, maxBackoffMs: 25, visibleResyncMs: 0 })).toBe(
+      0,
+    );
+  });
+
+  it('hors ligne ou erreur du serveur : l’attente double ; un cycle réussi la ramène à l’intervalle', async () => {
+    const engine = engineOf();
+    expect(engine.nextDelayMs).toBe(1_000);
+
+    pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(2_000);
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(4_000);
+
+    pushMock.mockResolvedValue({ outcome: 'SERVER_ERROR' });
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(8_000);
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(8_000); // plafond
+
+    pushMock.mockResolvedValue({ outcome: 'NOTHING_TO_PUSH' });
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(1_000);
+  });
+
+  it('session invalide : l’attente ne change pas', async () => {
+    const engine = engineOf();
+    pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(2_000);
+
+    pushMock.mockResolvedValue({ outcome: 'SESSION_INVALID' });
+    await engine.trigger();
+    expect(engine.nextDelayMs).toBe(2_000);
+  });
+
+  it('un cycle qui lève (réponse inattendue, base locale fermée) : issue SERVER_ERROR, attente allongée, aucun rejet', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    pullMock.mockRejectedValue(new Error('base locale fermée'));
+    const engine = engineOf();
+    await expect(engine.trigger()).resolves.toBe('SERVER_ERROR');
+    expect(engine.nextDelayMs).toBe(2_000);
+    expect(outcomes).toEqual(['SERVER_ERROR']);
+    expect(logged).toHaveBeenCalled();
+  });
+
+  it('un cycle qui lève ne tue pas la boucle périodique', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    setVisibility('visible', false);
+    pullMock.mockRejectedValue(new Error('réponse sans corps'));
+    const engine = engineOf({ intervalMs: 10, maxBackoffMs: 40 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3));
+  });
+
+  describe('minuterie réellement armée', () => {
+    // Durées peu courantes : elles se distinguent des autres minuteries du navigateur de test.
+    const armed = { intervalMs: 7_000, maxBackoffMs: 56_000, visibleResyncMs: 15_000 };
+    const ours = [7_000, 14_000, 28_000, 56_000];
+    function lastArmedDelay(spy: {
+      mock: { calls: readonly (readonly unknown[])[] };
+    }): number | undefined {
+      const delays = spy.mock.calls
+        .map((call) => call[1])
+        .filter((delay): delay is number => typeof delay === 'number' && ours.includes(delay));
+      return delays.at(-1);
+    }
+
+    it('au démarrage, l’intervalle ; après un cycle en échec, l’attente doublée', async () => {
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+      const engine = engineOf(armed);
+      started.push(engine);
+      engine.start();
+      expect(lastArmedDelay(setTimer)).toBe(7_000);
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      expect(lastArmedDelay(setTimer)).toBe(14_000);
+    });
+
+    it('retour du réseau : la minuterie déjà armée est remplacée, et l’attente repart de l’intervalle', async () => {
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+      pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+      const engine = engineOf(armed);
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      window.dispatchEvent(new Event('online'));
+      await vi.waitFor(() => expect(cycles).toBe(2));
+      // Un seul échec depuis le retour du réseau (14 s), pas deux (28 s).
+      expect(lastArmedDelay(setTimer)).toBe(14_000);
+      expect(clearTimer).toHaveBeenCalled();
+
+      pushMock.mockResolvedValue({ outcome: 'NOTHING_TO_PUSH' });
+      window.dispatchEvent(new Event('online'));
+      await vi.waitFor(() => expect(cycles).toBe(3));
+      expect(lastArmedDelay(setTimer)).toBe(7_000);
+    });
+
+    it('retour au premier plan : l’attente accumulée est remise à l’intervalle aussitôt', async () => {
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+      const engine = engineOf({ ...armed, visibleResyncMs: 60_000 });
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      await engine.trigger();
+      expect(lastArmedDelay(setTimer)).toBe(28_000);
+
+      setVisibility('hidden');
+      setVisibility('visible'); // dernier cycle trop récent pour en relancer un
+      expect(cycles).toBe(2);
+      expect(engine.nextDelayMs).toBe(7_000);
+      expect(lastArmedDelay(setTimer)).toBe(7_000);
+    });
+
+    it('un moteur non démarré (ou arrêté) n’arme aucune minuterie', async () => {
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      const notStarted = engineOf(armed);
+      await notStarted.trigger();
+      expect(lastArmedDelay(setTimer)).toBeUndefined();
+
+      const stopped = engineOf(armed);
+      stopped.start();
+      stopped.stop();
+      setTimer.mockClear();
+      await stopped.trigger();
+      expect(lastArmedDelay(setTimer)).toBeUndefined();
+    });
+
+    it('un cycle lancé par une saisie replanifie la minuterie sur l’état courant', async () => {
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      const engine = engineOf(armed);
+      started.push(engine);
+      engine.start();
+      await vi.waitFor(() => expect(cycles).toBe(1));
+      pushMock.mockResolvedValue({ outcome: 'SERVER_ERROR' });
+      await engine.trigger(); // comme submitCommand
+      expect(lastArmedDelay(setTimer)).toBe(14_000);
+    });
+  });
+
+  it('onglet masqué : aucun cycle périodique ; le cycle de démarrage a lieu', async () => {
+    setVisibility('hidden', false);
+    const engine = engineOf({ intervalMs: 20, maxBackoffMs: 40 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBe(1));
+    // Plusieurs échéances périodiques passent : toutes sautées.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(cycles).toBe(1);
+
+    // La chaîne de minuteries survit à l'onglet masqué : revenu au premier plan (sans événement), un
+    // cycle périodique repart seul.
+    setVisibility('visible', false);
+    await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(2));
+  });
+
+  it('onglet visible : les cycles périodiques reprennent', async () => {
+    setVisibility('visible', false);
+    const engine = engineOf({ intervalMs: 20, maxBackoffMs: 40 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(3));
+  });
+
+  it('passage en arrière-plan : aucun cycle, l’attente accumulée est gardée', async () => {
+    pushMock.mockResolvedValue({ outcome: 'OFFLINE' });
+    const engine = engineOf({ intervalMs: 60_000, maxBackoffMs: 240_000, visibleResyncMs: 0 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBe(1));
+    expect(engine.nextDelayMs).toBe(120_000);
+
+    setVisibility('hidden');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(cycles).toBe(1);
+    expect(engine.nextDelayMs).toBe(120_000);
+  });
+
+  it('retour au premier plan : cycle aussitôt si le dernier est ancien, sinon rien', async () => {
+    setVisibility('hidden', false);
+    const engine = engineOf({ intervalMs: 60_000, maxBackoffMs: 120_000, visibleResyncMs: 300 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBe(1));
+
+    // Retour aussitôt après le dernier cycle : trop tôt, aucun cycle.
+    setVisibility('visible');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(cycles).toBe(1);
+
+    // Plus tard que le délai : un cycle part.
+    setVisibility('hidden');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    setVisibility('visible');
+    await vi.waitFor(() => expect(cycles).toBe(2));
+  });
+
+  it('retour au premier plan pendant un cycle récent : aucun second cycle n’est mis en file', async () => {
+    let resolvePush!: (value: PushCycleResult) => void;
+    pushMock.mockImplementationOnce(
+      () =>
+        new Promise<PushCycleResult>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    const engine = engineOf({ intervalMs: 60_000, maxBackoffMs: 120_000, visibleResyncMs: 60_000 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+
+    setVisibility('visible'); // l'onglet n'a jamais été masqué : le cycle est récent
+    resolvePush({ outcome: 'NOTHING_TO_PUSH' });
+    await vi.waitFor(() => expect(cycles).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(cycles).toBe(1);
+  });
+
+  it('retour au premier plan pendant un cycle commencé avant la mise en arrière-plan : un cycle neuf le suit', async () => {
+    let resolvePush!: (value: PushCycleResult) => void;
+    pushMock.mockImplementationOnce(
+      () =>
+        new Promise<PushCycleResult>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    const engine = engineOf({ intervalMs: 60_000, maxBackoffMs: 120_000, visibleResyncMs: 60_000 });
+    started.push(engine);
+    engine.start();
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+
+    // Le téléphone se verrouille en plein cycle ; au réveil la connexion en vol est perdue.
+    setVisibility('hidden');
+    setVisibility('visible');
+    resolvePush({ outcome: 'OFFLINE' });
+    await vi.waitFor(() => expect(cycles).toBe(2));
+    expect(outcomes).toEqual(['OFFLINE', 'NOTHING_TO_DO']);
+  });
+
+  it('arrêt : plus de minuterie ni d’écouteur', async () => {
+    setVisibility('visible', false);
+    const engine = engineOf({ intervalMs: 20, maxBackoffMs: 40, visibleResyncMs: 0 });
+    engine.start();
+    await vi.waitFor(() => expect(cycles).toBeGreaterThanOrEqual(2));
+    const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+    const removeFromDocument = vi.spyOn(document, 'removeEventListener');
+    const removeFromWindow = vi.spyOn(window, 'removeEventListener');
+    engine.stop();
+    expect(clearTimer).toHaveBeenCalled();
+    expect(removeFromDocument).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    expect(removeFromWindow).toHaveBeenCalledWith('online', expect.any(Function));
+    clearTimer.mockRestore();
+    removeFromDocument.mockRestore();
+    removeFromWindow.mockRestore();
+    await new Promise((resolve) => setTimeout(resolve, 30)); // un cycle en vol se termine
+    const settled = pullMock.mock.calls.length;
+    window.dispatchEvent(new Event('online'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(pullMock.mock.calls.length).toBe(settled);
   });
 });

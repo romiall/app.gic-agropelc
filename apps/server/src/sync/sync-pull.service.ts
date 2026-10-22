@@ -33,10 +33,20 @@ import { currentSettingValue } from '../modules/organization/application/public/
 
 /** Fenêtre de stabilisation de la numérotation du flux (AV-198) : valeur semée si le paramètre manque. */
 export const PULL_SETTLE_DEFAULT_SECONDS = 120;
+/**
+ * Pas d'enregistrement du dernier pull (MP-12, AV-319) : `last_pull_at` n'est réécrit que s'il a plus
+ * de cette durée. Un appareil tire une trentaine de jeux toutes les 30 s ; chaque tirage réécrivait
+ * deux lignes (appareil et auteur), soit des milliers d'écritures par heure pour un seuil de retard
+ * de deux heures. Valeur semée si le paramètre manque.
+ */
+export const PULL_RECORD_GRAIN_DEFAULT_SECONDS = 60;
+export const PULL_RECORD_GRAIN_KEY = 'sync.pull_record_grain_seconds';
 export const SYNC_PULL_OPTIONS = Symbol('SYNC_PULL_OPTIONS');
 export interface SyncPullOptions {
   /** Remplace le paramètre (tests de la mécanique du curseur : 0 = aucune retenue). */
   readonly settleSeconds?: number;
+  /** Remplace `sync.pull_record_grain_seconds` (tests : 0 = chaque tirage écrit). */
+  readonly recordGrainSeconds?: number;
 }
 
 export interface SyncPullContext {
@@ -132,20 +142,39 @@ export class SyncPullService {
       : PULL_SETTLE_DEFAULT_SECONDS;
   }
 
+  private async recordGrainSeconds(now: Date): Promise<number> {
+    if (this.options?.recordGrainSeconds !== undefined) return this.options.recordGrainSeconds;
+    const value = await currentSettingValue(this.db, {
+      key: PULL_RECORD_GRAIN_KEY,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+      at: now,
+    });
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : PULL_RECORD_GRAIN_DEFAULT_SECONDS;
+  }
+
   /**
    * Dernier pull de l'appareil (ligne `_device`) et de l'auteur (`_a:<utilisateur>`) : `last_pull_at`
    * (dictionnaire `sync.device_sync_state`), base de la fraîcheur d'un appareil (P5-19, AV-202) — une
    * tablette en ligne mais sans rien à envoyer tire le flux sans jamais pousser. Écrit pour un appareil
    * connu seulement (`INSERT … SELECT`) ; aucune autre colonne n'est touchée (BR-DIS-014 lit
-   * `last_push_at`).
+   * `last_push_at`). Une valeur qui a moins d'un pas (`sync.pull_record_grain_seconds`, AV-319) n'est
+   * pas réécrite : MySQL ne modifie pas une ligne dont la valeur ne change pas, donc aucune écriture
+   * durable ; la fraîcheur se lit à l'heure, avec une résolution d'une minute.
    */
   private async recordPull(ctx: SyncPullContext): Promise<void> {
     const deviceId = toBin(ctx.authenticatedDeviceId);
+    const grain = await this.recordGrainSeconds(ctx.now);
     for (const dataset of [DEVICE_DATASET, authorDataset(ctx.authenticatedUserId)]) {
       await sql`
         INSERT INTO sync_device_sync_state (device_id, dataset, last_pull_at)
         SELECT d.id, ${dataset}, ${ctx.now} FROM identity_devices d WHERE d.id = ${deviceId}
-        ON DUPLICATE KEY UPDATE last_pull_at = GREATEST(COALESCE(last_pull_at, ${ctx.now}), ${ctx.now})
+        ON DUPLICATE KEY UPDATE last_pull_at = IF(
+          last_pull_at IS NULL OR last_pull_at < ${ctx.now} - INTERVAL ${grain} SECOND,
+          ${ctx.now},
+          last_pull_at)
       `.execute(this.db);
     }
   }

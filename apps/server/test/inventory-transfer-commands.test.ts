@@ -44,6 +44,7 @@ function buildEnvelope(
     readonly aggregate_id: string;
     readonly payload: unknown;
     readonly occurred_at?: string;
+    readonly captured_offline?: boolean;
   },
 ): Record<string, unknown> {
   const occurredAt = overrides.occurred_at ?? OCCURRED_AT;
@@ -537,12 +538,15 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
       // MP-11 : le valideur lit le numéro du transfert, pas son identifiant technique.
       const request = await db
         .selectFrom('approvals_approval_requests')
-        .select('subject_summary')
+        .select(['subject_summary', 'amount_xaf'])
         .where('id', '=', toBin(requestId!))
         .executeTakeFirstOrThrow();
       expect(request.subject_summary).toBe(
         `Écart de réception sur transfert ${pendingRow.doc_number}`,
       );
+      // MP-12 : le valideur voit la valeur de l'écart (5 unités manquantes à 500 F), masquée sans
+      // droit de valorisation (RC-05) ; elle était absente de la demande.
+      expect(Number(request.amount_xaf)).toBe(2_500);
 
       const approveResult = await pipeline.handle(
         buildEnvelope(approver, {
@@ -689,5 +693,199 @@ describe('inventory.transfer.* (P2-04, SM-TRANSFER)', () => {
     expect(receiveResult.status === 'REJECTED' && receiveResult.error.code).toBe(
       'CONTROL_POLICY_MISSING',
     );
+  });
+
+  describe('politique de l’écart de réception : choix de la politique (MP-12, AV-318)', () => {
+    async function dispatchOne(productId: string) {
+      const transferId = freshUuid();
+      const dispatched = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'inventory.transfer.dispatch',
+          aggregate_type: 'STOCK_TRANSFER',
+          aggregate_id: transferId,
+          payload: {
+            fromLocationId: storeA,
+            toLocationId: storeB,
+            lines: [{ productId, unitCode: 'TETE', quantityBase: 10 }],
+          },
+        }),
+        adminCtx(),
+      );
+      expect(dispatched.status).toBe('APPLIED');
+      const line = await db
+        .selectFrom('inventory_stock_transfer_lines')
+        .select(['id'])
+        .where('transfer_id', '=', toBin(transferId))
+        .executeTakeFirstOrThrow();
+      return { transferId, lineId: fromBin(line.id) };
+    }
+
+    const receiveGap = (
+      target: CommandPipelineService,
+      transfer: { transferId: string; lineId: string },
+      capturedOffline: boolean,
+    ) =>
+      target.handle(
+        buildEnvelope(admin, {
+          command_type: 'inventory.transfer.receive',
+          aggregate_type: 'STOCK_TRANSFER',
+          aggregate_id: transfer.transferId,
+          payload: {
+            transferId: transfer.transferId,
+            lines: [{ transferLineId: transfer.lineId, receivedQtyBase: 7 }],
+          },
+          captured_offline: capturedOffline,
+        }),
+        adminCtx(),
+      );
+
+    /** Politique posée directement (statut actif), à retirer ensuite : la table n'est jamais purgée. */
+    async function insertPolicy(input: {
+      readonly validFrom: Date;
+      readonly requiresApproval: boolean;
+    }): Promise<string> {
+      const id = freshUuid();
+      await db
+        .insertInto('approvals_control_policies')
+        .values({
+          id: toBin(id),
+          code: `TRF_MP12_${id.slice(-10)}`,
+          version: 1,
+          operation_type: 'TRANSFER_DISCREPANCY',
+          condition: JSON.stringify({}),
+          requires_approval: input.requiresApproval ? 1 : 0,
+          approver_permission: input.requiresApproval
+            ? 'inventory.transfer_discrepancy.approve'
+            : null,
+          approver_scope: 'SITE',
+          valid_from: input.validFrom,
+          status: 'ACTIVE',
+          created_by: toBin(admin),
+        })
+        .execute();
+      return id;
+    }
+
+    const retirePolicy = (id: string) =>
+      db
+        .updateTable('approvals_control_policies')
+        .set({ status: 'RETIRED', valid_to: new Date(OCCURRED_AT) })
+        .where('id', '=', toBin(id))
+        .execute();
+
+    it('hors ligne, écart reçu avant l’entrée en vigueur de la politique : fait accompli accepté au repli sur la réception ; en ligne, refusé', async () => {
+      const productId = await insertProduct(admin);
+      await openingBalance(productId, storeA, 40);
+      const offlineTransfer = await dispatchOne(productId);
+      const onlineTransfer = await dispatchOne(productId);
+
+      const receivedAt = new Date(new Date(OCCURRED_AT).getTime() + 2 * 60 * 60 * 1000);
+      const laterRegistry = new CommandHandlerRegistry();
+      registerTransferCommands(
+        laterRegistry,
+        new ApprovalDecisionHandlerRegistry(),
+        idGenerator,
+        new DocumentSequenceService(),
+      );
+      const laterPipeline = new CommandPipelineService(
+        db,
+        laterRegistry,
+        new FixedClock(receivedAt),
+        idGenerator,
+      );
+
+      const outcome = await withoutActivePolicies(
+        'TRANSFER_DISCREPANCY',
+        new Date(OCCURRED_AT),
+        async () => {
+          // En vigueur 30 minutes avant la réception de la commande, après la réception réelle (09:00).
+          const policyId = await insertPolicy({
+            validFrom: new Date(receivedAt.getTime() - 30 * 60 * 1000),
+            requiresApproval: true,
+          });
+          try {
+            return {
+              offline: await receiveGap(laterPipeline, offlineTransfer, true),
+              online: await receiveGap(laterPipeline, onlineTransfer, false),
+            };
+          } finally {
+            await retirePolicy(policyId);
+          }
+        },
+      );
+
+      expect(outcome.offline.status).toBe('APPLIED');
+      const row = await db
+        .selectFrom('inventory_stock_transfers')
+        .select(['status', 'approval_request_id'])
+        .where('id', '=', toBin(offlineTransfer.transferId))
+        .executeTakeFirstOrThrow();
+      expect(row.status).toBe('DISCREPANCY_PENDING');
+      expect(row.approval_request_id).not.toBeNull();
+
+      expect(outcome.online.status).toBe('REJECTED');
+      expect(outcome.online.status === 'REJECTED' && outcome.online.error.code).toBe(
+        'CONTROL_POLICY_MISSING',
+      );
+    });
+
+    it('une version révisée sans approbateur n’est pas retenue : la demande suit la politique qui se décide', async () => {
+      const productId = await insertProduct(admin);
+      await openingBalance(productId, storeA, 40);
+      const transfer = await dispatchOne(productId);
+      const at = new Date(OCCURRED_AT);
+
+      const result = await withoutActivePolicies('TRANSFER_DISCREPANCY', at, async () => {
+        const decidable = await insertPolicy({
+          validFrom: new Date(at.getTime() - 2 * 60 * 60 * 1000),
+          requiresApproval: true,
+        });
+        const undecidable = await insertPolicy({
+          validFrom: new Date(at.getTime() - 60 * 60 * 1000),
+          requiresApproval: false,
+        });
+        try {
+          return { decidable, received: await receiveGap(pipeline, transfer, false) };
+        } finally {
+          await retirePolicy(decidable);
+          await retirePolicy(undecidable);
+        }
+      });
+
+      expect(result.received.status).toBe('APPLIED');
+      const row = await db
+        .selectFrom('inventory_stock_transfers')
+        .select('approval_request_id')
+        .where('id', '=', toBin(transfer.transferId))
+        .executeTakeFirstOrThrow();
+      const request = await db
+        .selectFrom('approvals_approval_requests')
+        .select('policy_id')
+        .where('id', '=', row.approval_request_id!)
+        .executeTakeFirstOrThrow();
+      expect(fromBin(request.policy_id!)).toBe(result.decidable);
+    });
+
+    it('seule une politique sans approbateur est en vigueur : l’écart est refusé (CONTROL_POLICY_MISSING), jamais une demande sans décideur', async () => {
+      const productId = await insertProduct(admin);
+      await openingBalance(productId, storeA, 40);
+      const transfer = await dispatchOne(productId);
+      const at = new Date(OCCURRED_AT);
+
+      const result = await withoutActivePolicies('TRANSFER_DISCREPANCY', at, async () => {
+        const undecidable = await insertPolicy({
+          validFrom: new Date(at.getTime() - 60 * 60 * 1000),
+          requiresApproval: false,
+        });
+        try {
+          return await receiveGap(pipeline, transfer, false);
+        } finally {
+          await retirePolicy(undecidable);
+        }
+      });
+
+      expect(result.status).toBe('REJECTED');
+      expect(result.status === 'REJECTED' && result.error.code).toBe('CONTROL_POLICY_MISSING');
+    });
   });
 });

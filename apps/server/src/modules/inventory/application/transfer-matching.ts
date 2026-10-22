@@ -70,7 +70,7 @@ import { recordConflict, resolveOpenConflicts } from '../../../platform/sync/con
 import { recordAudit } from '../../../audit/record-audit.js';
 import { currentSettingValue } from '../../organization/application/public/index.js';
 import {
-  currentPolicies,
+  decidablePolicyFor,
   requestApproval,
   type ActiveControlPolicy,
 } from '../../approvals/application/public/index.js';
@@ -475,10 +475,7 @@ export async function discrepancyPolicy(
   at: Date,
   now: Date,
 ): Promise<ActiveControlPolicy | null> {
-  const atFact = await currentPolicies(uow, 'TRANSFER_DISCREPANCY', at);
-  if (atFact[0] !== undefined) return atFact[0];
-  const current = await currentPolicies(uow, 'TRANSFER_DISCREPANCY', now);
-  return current[0] ?? null;
+  return (await decidablePolicyFor(uow, 'TRANSFER_DISCREPANCY', at, now)) ?? null;
 }
 
 // --- Réception d'un transfert expédié ------------------------------------------------------------
@@ -562,6 +559,8 @@ export async function applyTransferReceipt(
   const dispatchMoves = await activeDocumentMoves(uow, transfer.id, 'TRANSFER_DISPATCH');
 
   const products = [...new Set(input.lines.map((line) => line.productId))];
+  // Valeur de l'écart (au coût) : montrée au valideur, masquée sans droit de valorisation (RC-05).
+  let discrepancyValueXaf = 0;
   // ADR-038 N5 : soldes de tous les produits de la destination, triés, avant le premier mouvement.
   await lockPhysicalStockCouples(
     uow,
@@ -585,7 +584,7 @@ export async function applyTransferReceipt(
         lotId: line.lotId,
       }));
     for (const planned of planTransferReceipt(pieces, lines)) {
-      await recordStockMove(uow, deps, {
+      const recorded = await recordStockMove(uow, deps, {
         productId,
         lotId: planned.lotId,
         quantityBase: planned.quantityMilli / 1000,
@@ -603,6 +602,9 @@ export async function applyTransferReceipt(
         capturedOffline: input.capturedOffline,
         allowNegative: true,
       });
+      if (planned.kind === 'DISCREPANCY') {
+        for (const move of recorded) discrepancyValueXaf += move.valueXaf;
+      }
     }
   }
 
@@ -631,6 +633,7 @@ export async function applyTransferReceipt(
       siteId: transfer.siteId,
       requestedBy: input.receivedBy,
       requestedAt: input.receivedAt,
+      amountXaf: discrepancyValueXaf,
       policyId: input.policy!.id,
       policyVersion: input.policy!.version,
     });

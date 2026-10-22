@@ -96,6 +96,16 @@ def collect_definitions() -> dict[str, set[str]]:
     return defined
 
 
+def duplicate_definitions() -> dict[str, list[str]]:
+    """Identifiants définis plus d'une fois (un second AV-318 passait sans alerte)."""
+    seen: dict[str, dict[str, int]] = {k: {} for k in PATTERNS}
+    for family, pattern, rx in DEFINITIONS:
+        for path in sorted(DOCS.glob(pattern)):
+            for ref in rx.findall(path.read_text(encoding="utf-8")):
+                seen[family][ref] = seen[family].get(ref, 0) + 1
+    return {k: sorted(r for r, n in v.items() if n > 1) for k, v in seen.items() if any(n > 1 for n in v.values())}
+
+
 def check() -> int:
     defined = collect_definitions()
     missing: dict[str, dict[str, set[str]]] = {}
@@ -118,6 +128,14 @@ def check() -> int:
         for family in sorted(missing):
             for ref in sorted(missing[family]):
                 print(f"  {ref}  <- {', '.join(sorted(missing[family][ref]))}")
+    duplicates = duplicate_definitions()
+    if not duplicates:
+        print("OK : aucun identifiant défini deux fois.")
+    else:
+        status = 1
+        print("Identifiants définis plus d'une fois :")
+        for family in sorted(duplicates):
+            print(f"  {family} : {', '.join(duplicates[family])}")
     links = broken_links()
     if not links:
         print("OK : aucun lien relatif cassé.")

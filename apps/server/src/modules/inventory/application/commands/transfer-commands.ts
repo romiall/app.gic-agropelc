@@ -50,7 +50,7 @@ import {
 } from '../../../../platform/kysely/uuid-columns.js';
 import { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
 import {
-  currentPolicies,
+  decidablePolicyFor,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
 import { findProductLotTracking, findUnit } from '../../../catalog/application/public/index.js';
@@ -816,8 +816,15 @@ ${refusal}`
       );
     }
     const occurredAt = new Date(envelope.occurred_at);
+    const origin = await loadCommandOrigin(uow, envelope.command_id);
+    // Hors ligne, une politique révisée entre la réception réelle et l'envoi ne rend pas le fait refusé.
     const policy = shape.discrepancy
-      ? ((await currentPolicies(uow, 'TRANSFER_DISCREPANCY', occurredAt))[0] ?? null)
+      ? ((await decidablePolicyFor(
+          uow,
+          'TRANSFER_DISCREPANCY',
+          occurredAt,
+          offline ? origin.receivedAt : undefined,
+        )) ?? null)
       : null;
     if (shape.discrepancy && policy === null) {
       return rejected(
@@ -825,7 +832,6 @@ ${refusal}`
         'Aucune politique de contrôle TRANSFER_DISCREPANCY configurée (approvals.policy.set).',
       );
     }
-    const origin = await loadCommandOrigin(uow, envelope.command_id);
     const outcome = await applyTransferReceipt(uow, deps, {
       transfer,
       lines,

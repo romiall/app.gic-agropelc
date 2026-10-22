@@ -53,7 +53,7 @@ import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { activeZoneAssignmentsAt } from '../../../identity/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import {
-  currentPolicies,
+  decidablePolicyFor,
   requestApproval,
   type ApprovalDecisionHandlerRegistry,
 } from '../../../approvals/application/public/index.js';
@@ -349,9 +349,16 @@ async function requestOverride(
     readonly zoneId: string;
     readonly occurredAt: Date;
     readonly summary: string;
+    /** Fait constaté hors ligne : réception de la commande, repli si aucune politique n'était en vigueur. */
+    readonly offlineFallbackAt?: Date;
   },
 ): Promise<string | undefined> {
-  const policy = (await currentPolicies(uow, 'CHECKIN_OVERRIDE', input.occurredAt))[0];
+  const policy = await decidablePolicyFor(
+    uow,
+    'CHECKIN_OVERRIDE',
+    input.occurredAt,
+    input.offlineFallbackAt,
+  );
   if (!policy) return undefined;
   const requestId = idGenerator.newId();
   await requestApproval(uow, {
@@ -527,6 +534,7 @@ function buildHandlers(
           zoneId: zone.id,
           occurredAt,
           summary: `Prise de service acceptée sur l'appareil, refusée par le serveur (${serverResult})`,
+          ...(envelope.captured_offline ? { offlineFallbackAt: origin.receivedAt } : {}),
         });
         await openSession(
           uow,
@@ -650,6 +658,7 @@ function buildHandlers(
       zoneId: zone.id,
       occurredAt,
       summary: `Dérogation de prise de service après ${refusals.length} refus`,
+      ...(envelope.captured_offline ? { offlineFallbackAt: origin.receivedAt } : {}),
     });
     if (approvalRequestId === undefined) {
       return rejected(

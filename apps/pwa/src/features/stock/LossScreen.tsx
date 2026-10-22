@@ -4,7 +4,7 @@
  * commentaire si la catégorie ou le motif l'exige, lot facultatif. Commande `inventory.loss.declare`
  * (agrégat `STOCK_LOSS`), utilisable hors ligne ; le numéro `PRT-…` revient avec la réponse. Selon la
  * politique de contrôle, la perte est enregistrée ou part en validation (la quantité est alors mise de
- * côté). La photo justificative n'est pas encore proposée par l'appareil (besoin S-16).
+ * côté). La photo de la perte est facultative (AV-288) et jointe à la saisie seulement (ADR-046).
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
