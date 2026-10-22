@@ -255,6 +255,15 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `analytics.query_max_period_days` | 1096 | AV-421 (P9-14) : période détaillée au plus, en jours (trois ans, D11 §8) ; entier > 0, sinon 1 096 |
 | `analytics.query_max_concurrent_per_user` | 2 | AV-421 (P9-14) : requêtes simultanées au plus par utilisateur (ADR-078 §1) ; entier > 0, sinon 2 |
 | `analytics.scope_max_candidates` | 500 | AV-423 (P9-14) : candidats (sites, zones, utilisateurs) au plus par sorte dans l'étendue exacte des lignes ; entier > 0, sinon 500 ; au-delà, l'étendue est tronquée et signalée |
+| `analytics.pending_approvals_count_cap` | 500 | ADR-076 §4 (P9-17) : plafond du compteur de validations en attente d'un tableau (balayage borné) ; entier > 0, sinon 500 |
+| `analytics.snapshot_active_days` | 7 | AV-430, AV-498 (P9-18) : un utilisateur est actif pour les instantanés si une session ouverte sur un appareil en service a servi depuis ce nombre de jours ; entier > 0, sinon 7 |
+| `analytics.snapshot_batch_size` | 50 | AV-498 (P9-18) : utilisateurs traités au plus par exécution de la tâche d'instantanés (reprise par une tâche de suite) ; entier > 0, sinon 50 |
+| `analytics.export_max_rows` | 100000 | AV-433 (P9-20, NFR-13) : lignes d'un export au plus ; au-delà, l'export termine `FAILED` `QUERY_LIMIT_EXCEEDED`, jamais tronqué ; entier > 0, sinon 100 000 |
+| `analytics.export_max_seconds` | 120 | AV-433 (P9-20) : durée de calcul d'un export au plus, en secondes ; entier > 0, sinon 120 |
+| `analytics.export_file_hours` | 24 | AV-433, AV-497 (P9-20) : validité du fichier d'un export, en heures, comptée depuis la demande (l'échéance est immuable) ; entier > 0, sinon 24 |
+| `analytics.export_max_pending_per_user` | 3 | AV-497 (P9-20) : exports en file ou en cours au plus par demandeur ; entier > 0, sinon 3 |
+| `analytics.export_file_retention_days` | 30 | AV-437 (P9-22, ADR-078 §8) : le fichier d'un export est supprimé du stockage ce nombre de jours après la demande (la ligne est conservée) ; entier > 0, sinon 30 |
+| `analytics.query_log_retention_days` | 90 | AV-437 (P9-22, ADR-078 §8) : les lignes du journal des requêtes de l'explorateur de plus de ce nombre de jours sont supprimées ; entier > 0, sinon 90 |
 | `communication.push_group_minutes` | 15 | AV-416, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
 | `communication.direct_notification_disabled_types` | `[]` | AV-481 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
 | `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 |

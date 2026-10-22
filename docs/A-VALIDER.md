@@ -410,6 +410,12 @@ Classification (PM §45) :
 | AV-492 | Conversion d'un compte fusionné | SECONDAIRE | P9 | Un compte fusionné n'est compté ni à la création ni à la conversion (la fusion recopie la conversion sur le compte conservé) ; `commercialEffort` compte les deux : écart à corriger dans `crm` | OUVERT |
 | AV-493 | Achats : date d'un bon de commande et taux de service | SECONDAIRE | P9 | Un bon est daté de son approbation (à défaut de sa création) ; un bon approuvé et pas envoyé compte comme commandé ; KPI-APP-01 « BC clôturés » se lit par le rapprochement d'un bon | OUVERT |
 | AV-494 | Soldes de stock, valeur, trésorerie : mesures sans signe ni filtre | SECONDAIRE | P9 | Solde et valeur : tous les emplacements du jeu (filtre `location_type`), disponible nul hors emplacement physique, soldes à zéro omis ; entrées et sorties de trésorerie : flux bruts (`movement_type`, `is_reversal`) | OUVERT |
+| AV-495 | Tableaux : étendue non représentable par une portée de lecture | SECONDAIRE | P9 | Un bloc dont l'étendue exacte de l'utilisateur (sites et personnes à la fois, ou plus de clauses qu'une portée de lecture n'en exprime) n'est pas représentable est `unavailable` (`SCOPE_UNSUPPORTED`) sans faire échouer le tableau ; l'explorateur, lui, la juge exactement ; les valeurs au coût de la finance (dépenses, marges) ne se calculent que sous une portée `ALL` ou de sites | OUVERT |
+| AV-496 | Vues sauvegardées : propriétaire seul, vue par défaut d'un rôle | SECONDAIRE | P9 | Une vue ne se modifie, ne se partage et ne se supprime que par son créateur (introuvable pour tout autre) ; la vue par défaut d'un rôle doit être partagée avec ce rôle, remplace la précédente (une seule par rôle) et se retire en retirant le partage ; nom unique par propriétaire | OUVERT |
+| AV-497 | Exports : échéance, file par demandeur, étendue tronquée, abandon | SECONDAIRE | P9 | Échéance fixée à la demande (`analytics.export_file_hours`, 24 h, immuable par déclencheur) ; au plus 3 exports en file ou en cours par demandeur ; une étendue exacte tronquée faute de place fait terminer l'export en `FAILED` (`SCOPE_TRUNCATED`), jamais en fichier partiel ; un export encore en file plus d'un jour est abandonné (`EXPORT_ABANDONED`) ; fichier supprimé 30 jours après la demande | OUVERT |
+| AV-498 | Instantanés personnels : lot, contenu, retrait | SECONDAIRE | P9 | Lot de 50 utilisateurs par exécution (`analytics.snapshot_batch_size`) avec reprise ; contenu = indicateurs des blocs sans les liens d'exploration ; un tableau qui ne peut être calculé garde son instantané daté ; les instantanés des utilisateurs devenus inactifs sont retirés au dernier lot de la passe | OUVERT |
+| AV-499 | Document source d'une ligne : dimensions de document et routes | SECONDAIRE | P9 | Chaque jeu de lignes détaillées gagne une dimension de document (vente, commande, encaissement, mouvement, perte, visite, session, coût, dépense, trésorerie, bon) ; la ligne porte son identifiant et la route de lecture du document, ou de sa liste quand aucune lecture par identifiant n'existe | OUVERT |
+| AV-500 | Charge : index non ajoutés avant mesure, jeu de ventes seul | SECONDAIRE | P9 | Aucun index de jour métier n'est ajouté tant que le jeu de charge (ventes) ne le justifie pas ; le jeu ne génère ni encaissements ni mouvements : il mesure le chemin le plus lourd, les lignes de vente ; les jeux dont la vue date par une expression (commandes, visites, sessions, coûts, achats) restent à mesurer avant tout index | OUVERT |
 
 ---
 
@@ -3059,6 +3065,48 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) solde et valeur sans filtre d'emplacement additionnent tous les emplacements du jeu (la dimension `location_type` les sépare), disponible nul hors emplacement physique, soldes à zéro omis ; entrées et sorties bruts, `movement_type` et la dimension `is_reversal` pour les isoler ; écart net lu par type de mouvement ; (b) mesures signées dédiées (écart net, flux net hors virements), à ajouter avec les tableaux (P9-17) si la Direction le demande ; (c) emplacements physiques seuls par défaut (écarté : le transit est du stock de l'entreprise).
 - **Recommandation** : (a).
 - **Impact** : `analytics_f_stock_balance` (migration `20261201090500`), `analytics_f_cash` (migration `20261201090600`, colonne `is_reversal`), catalogue (dimension `is_reversal` de la trésorerie), dictionnaire. Défaut implémenté : (a). Non paramétrable.
+
+### AV-495 — Tableaux : étendue non représentable par une portée de lecture — SECONDAIRE
+- **Question** : Que fait un bloc de tableau quand l'étendue exacte de l'utilisateur ne se traduit pas en une portée de lecture des fonctions de référence (sites et personnes à la fois, ou plus de clauses qu'elle n'en porte) ?
+- **Pourquoi** : les fonctions de référence des modules prennent une portée `ReadScope` (sites et/ou personnes, en ET), alors que l'étendue exacte de l'explorateur est une union de clauses (site A ou équipe B). Les traduire en élargissant donnerait à l'utilisateur plus que son droit ; en rétrécissant, un chiffre trompeur. **DÉDUIT**.
+- **Choix** : (a) le bloc est `unavailable` (`SCOPE_UNSUPPORTED`), le tableau reste rendu, l'explorateur donne le chiffre exact ; les valeurs au coût de la finance ne se calculent que sous `ALL` ou des sites ; (b) étendre les fonctions de référence à l'union ; (c) refuser tout le tableau.
+- **Recommandation** : (a).
+- **Impact** : `analytics-api/dashboards/scope-adapter.ts` et `dashboard-blocks.ts` ; [ADR-076](decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md) §3. Défaut implémenté : (a). Non paramétrable.
+
+### AV-496 — Vues sauvegardées : propriétaire seul, vue par défaut d'un rôle — SECONDAIRE
+- **Question** : Qui peut modifier, partager, supprimer une vue, et comment une vue devient-elle la vue par défaut d'un rôle ?
+- **Pourquoi** : BR-ANA-007 (un partage ne donne aucun droit) et la clé unique `is_default_for_role` de la base (une vue par défaut par rôle). La permission `analytics.view.share` de la Direction est `ALL`, celle du responsable commercial `TEAM` : elle ne dit pas qui possède une vue. **DÉDUIT**.
+- **Choix** : (a) propriétaire seul pour tout, la vue d'un autre est introuvable (existence opaque) ; la vue par défaut doit être partagée avec le rôle, remplace la précédente, tombe si le partage est retiré ; nom unique par propriétaire ; (b) la Direction gère toute vue ; (c) vues par défaut sans partage préalable.
+- **Recommandation** : (a).
+- **Impact** : `modules/analytics/application/commands/view-commands.ts`, `views/view-store.ts` ; [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §1. Défaut implémenté : (a). Non paramétrable.
+
+### AV-497 — Exports : échéance, file par demandeur, étendue tronquée, abandon — SECONDAIRE
+- **Question** : Quand un export échoit-il, combien un demandeur peut-il en avoir à la fois, que devient un export dont l'étendue exacte a été tronquée, et que devient une tâche perdue ?
+- **Pourquoi** : le déclencheur de `analytics_export_jobs` interdit de changer `expires_at` ; un utilisateur à la gestion large pourrait occuper la file du worker ; un export fait avec une étendue tronquée (`scopeMaxCandidates`) serait plus étroit que le droit sans que le fichier le dise ; une tâche aux cinq rejeux épuisés laisse une ligne `QUEUED`. **DÉDUIT**.
+- **Choix** : (a) échéance posée à la demande (`analytics.export_file_hours`, 24), 3 exports en file ou en cours (`analytics.export_max_pending_per_user`), étendue tronquée = `FAILED` `SCOPE_TRUNCATED`, abandon après un jour (`EXPORT_ABANDONED`), fichier supprimé 30 jours après la demande (`analytics.export_file_retention_days`) ; (b) échéance posée à la fin du calcul (déclencheur à modifier) ; (c) fichier partiel avec avertissement.
+- **Recommandation** : (a).
+- **Impact** : `modules/analytics/application/exports/`, `commands/export-commands.ts`, `maintenance/purge.ts` ; [ADR-077](decisions/ADR-077-vues-sauvegardees-et-exports-audites.md) §3 et §6, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §8. Défaut implémenté : (a). Paramétrable : durée, plafond, rétention.
+
+### AV-498 — Instantanés personnels : lot, contenu, retrait — SECONDAIRE
+- **Question** : Combien d'utilisateurs une exécution de la tâche d'instantanés traite-t-elle, que contient un instantané, et quand une ligne est-elle retirée ?
+- **Pourquoi** : une exécution est une seule transaction de worker ; calculer un tableau coûte une trentaine de lectures ; l'appareil n'a pas besoin des liens d'exploration (en ligne seulement) ; un instantané d'un utilisateur parti ne doit pas rester lisible. **DÉDUIT**.
+- **Choix** : (a) 50 utilisateurs par exécution avec une tâche de reprise, indicateurs sans liens, instantané conservé (daté) quand le tableau ne peut être calculé, retrait des utilisateurs inactifs au dernier lot ; (b) 200 utilisateurs (valeur initiale de l'ADR-078) ; (c) calcul à la demande seulement.
+- **Recommandation** : (a).
+- **Impact** : `analytics-api/jobs/kpi-snapshots-refresh-job.ts`, `analytics/application/snapshots/snapshot-store.ts` ; [ADR-076](decisions/ADR-076-tableaux-tour-de-controle-et-instantanes.md) §5, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §3. Défaut implémenté : (a). Paramétrable : `analytics.snapshot_batch_size`, `analytics.snapshot_active_days`.
+
+### AV-499 — Document source d'une ligne : dimensions de document et routes — SECONDAIRE
+- **Question** : Comment une ligne de l'explorateur désigne-t-elle le document dont elle provient (BR-ANA-010, niveau 2) ?
+- **Pourquoi** : les vues exposent déjà l'identifiant du document de chaque ligne (`sale_id`, `payment_id`, `move_id`…) sans que le catalogue le déclare ; toutes les lectures n'ont pas de route par identifiant (mouvements, pertes, visites, sessions, coûts, trésorerie). **DÉDUIT**.
+- **Choix** : (a) une dimension de document par jeu de lignes détaillées, déclarée au catalogue avec le type et la route (route de la liste quand aucune lecture par identifiant n'existe) ; la ligne la porte quand l'exploration regroupe par cette dimension ; (b) nouvelle lecture de trace ; (c) rien.
+- **Recommandation** : (a).
+- **Impact** : `packages/domain/src/analytics-catalog.ts` (`DOCUMENT_SOURCES`), contrat `catalogDatasetSchema.source`, `analytics-explorer.controller.ts` ; [ADR-075](decisions/ADR-075-une-seule-definition-par-indicateur-et-periodes.md) §6. Défaut implémenté : (a). Non paramétrable.
+
+### AV-500 — Charge : index non ajoutés avant mesure, jeu de ventes seul — SECONDAIRE
+- **Question** : Faut-il ajouter dès maintenant des index de jour métier aux tables dont la vue date par une expression, et que génère le jeu de charge ?
+- **Pourquoi** : ADR-078 §4 : aucun index sans requête mesurée. Les vues de commandes, visites, sessions, coûts et achats datent par `CONVERT_TZ(...)` sur un horodatage : un index sur l'horodatage seul ne sert pas tant que la requête ne filtre pas la colonne brute. Générer tous les satellites d'un million de ventes (encaissements, mouvements, coûts) demande une connaissance fine de chaque contrainte pour un gain de mesure faible. **DÉDUIT**.
+- **Choix** : (a) aucun index avant la mesure ; jeu de ventes (`sales_sales`, `sales_sale_lines`) seul, déterministe, à la demande ; (b) index de précaution sur les horodatages ; (c) jeu complet de satellites.
+- **Recommandation** : (a).
+- **Impact** : `db/load/p9-load-set.ts`, `apps/server/test/perf/analytics.perf.ts`, suivi de P9 §7. Défaut implémenté : (a). Non paramétrable.
 
 ---
 

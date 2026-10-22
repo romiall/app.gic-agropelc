@@ -63,6 +63,12 @@ Faits de la plateforme :
 - La charge est une propriété testée (plans, bornes, concurrence, délai), pas une promesse ; le rapport de mesure de la clôture dit ce qui a été mesuré et ce qui ne l'a pas été.
 - Les purges de l'application sont des tâches récurrentes de `communication` et `analytics`, avec leur test (une donnée en deçà de la durée n'est jamais supprimée) ; celle des alertes passe par la procédure de maintenance.
 
+## Révision du 22/10/2026 (P9-22)
+
+- **Voie longue du worker (§3, AV-500)** : `platform/jobs/job-lanes.ts` liste les tâches longues (`analytics.export.run`, `analytics.kpi_snapshots.refresh`) ; `WorkerService.start` joue deux boucles concurrentes, la voie courte (ordonnanceur, consommateurs, tâches courtes : `JobRunner.claimAndProcessOne({ excludeJobTypes })`) et la voie longue (`{ jobTypes }`), de sorte qu'un export de 120 s ne retarde ni une alerte ni une tâche courte. `runOnce()` (tests, passe unique) joue les deux voies à la suite. Le lot d'instantanés est de 50 utilisateurs (AV-498) et non de 200.
+- **Purges (§8)** : `analytics.maintenance.purge_daily` (quotidienne) supprime les lignes du journal des requêtes de plus de `analytics.query_log_retention_days` jours (90), passe `EXPIRED` les exports échus, supprime les fichiers d'export `analytics.export_file_retention_days` jours (30) après la demande, abandonne les exports perdus ; les instantanés des inactifs sont retirés par la tâche d'instantanés.
+- **Index et mesure (§4 et §5, AV-500)** : aucun index n'est ajouté. Le jeu de charge (`pnpm --filter @gic/db load:p9 [ventes] [jours]`, ventes et lignes de vente seulement, déterministe, base jetable) et les mesures (`pnpm --filter @gic/server test:perf` : p95 de la tour sur 7 et 366 jours, de l'explorateur à 90 jours, durée d'un export de 100 000 lignes) décident ; le résultat figure dans la démonstration de clôture, avec ce qui n'a pas été mesuré (encaissements, mouvements, coûts, facteur 10 de H-06).
+
 ## Tests
 
 Bornes (période, lignes, durée, concurrence), plans `EXPLAIN` sans balayage complet, tâches par pages et reprise après interruption, tâche longue sans retard du consommateur, purges (limites incluses et exclues, rôle de maintenance), métriques de délai et de retard.

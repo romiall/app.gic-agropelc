@@ -43,6 +43,12 @@ Faits du code :
 - Un bloc indisponible est visible et explicite, pas masqué.
 - Le registre des indicateurs dit, pour chaque indicateur, s'il se lit par une fonction existante ou à créer : l'estimation des incréments P9-15 et P9-16 en dépend.
 
+## Révision du 22/10/2026 (P9-17 et P9-18)
+
+- **Tableaux (§1 à §4)** : `buildDashboard` compose les blocs de D11 §7.2 en parallèle, chacun isolé (`guarded` : un bloc en échec est `unavailable`, la page reste rendue) ; une valeur au coût est `null` sans `inventory.valuation.read` ; la période précédente n'est calculée que pour les flux (`kpiHasPreviousPeriod`) ; les dépenses et les marges ne se calculent que sous une portée `ALL` ou de sites (AV-495). La route lit dans un instantané en lecture seule (`REPEATABLE READ`).
+- **Instantanés (§5 à §7, AV-498)** : la tâche `analytics.kpi_snapshots.refresh` (toutes les 15 minutes) traite `analytics.snapshot_batch_size` utilisateurs actifs (50), dans l'ordre de leur identifiant, et dépose une tâche de reprise si le lot est plein ; le dernier lot retire les instantanés des utilisateurs inactifs. Un utilisateur actif est un compte actif dont une session ouverte, sur un appareil en service, a servi depuis `analytics.snapshot_active_days` jours (7). Pour chaque tableau dont il détient la permission et chaque période (`TODAY`, `WEEK`, `MONTH`), l'instantané écrase la ligne (indicateurs sans liens d'exploration) et publie une ligne du jeu `kpi` (portée `USER`) quand le contenu change ou au plus toutes les heures ; un tableau dont la permission a disparu est supprimé et publié en `DELETE`.
+- **Lecture** : `GET /analytics/snapshots/me` ne sert que les lignes de l'appelant (`@SelfScoped()`).
+
 ## Tests
 
 Contrat par bloc (forme, `previousPeriod` des seuls flux, `unavailable`), non-régression du schéma du tableau de distribution, cohérence avec l'accueil (ADR-075), mesure masquée sans `inventory.valuation.read`, périmètre (`OWN` ne voit que ses lignes ; utilisateur à portées multiples), tâche d'instantanés (étendue de l'utilisateur, droit retiré = lignes supprimées et `DELETE` publié, aucune ligne sans appareil actif, reprise par lots), publication du jeu `kpi` par le pull réel, compteur de validations plafonné, p95 sur le jeu de charge (ADR-078).
