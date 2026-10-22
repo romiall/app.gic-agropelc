@@ -1,6 +1,7 @@
 # Dictionnaire — schéma `analytics`
 
 > Le module `analytics` **lit** les autres modules via des vues ; il n'écrit que ses propres tables (D11 ; BR-ANA-006 à 009).
+> Sous MySQL les tables s'appellent `analytics_saved_views`, `analytics_export_jobs`, `analytics_kpi_snapshots` et `analytics_query_log` (migration `20261201090300`, P9-13).
 
 ## analytics.saved_views
 
@@ -11,14 +12,15 @@
 | [STD-ID] | | | | |
 | `owner_user_id` | uuid → identity.users | Non | — | |
 | `name` | label | Non | — | |
-| `dataset` | code | Non | — | Jeu de faits (`f_sales_line`…) |
-| `definition` | json | Non | — | Filtres, colonnes, groupements, agrégats, tri (schéma versionné de la couche sémantique) |
+| `name` | label | Non | — | Unique par propriétaire |
+| `dataset` | code | Non | — | Jeu de faits (`f_sales_line`…), de la forme `f_*` |
+| `definition` | json | Non | — | Objet : filtres, colonnes, groupements, agrégats, tri (schéma versionné de la couche sémantique) |
 | `catalog_version` | int | Non | — | Version du catalogue à la sauvegarde ; un champ disparu rend la vue `OUTDATED` (ADR-077 §2) |
-| `shared_with_roles` | text[] | Non | `{}` | Partage (BR-ANA-007) |
-| `is_default_for_role` | code | Oui | — | Vue par défaut d'un rôle |
+| `shared_with_roles` | json (tableau de codes de rôle) | Non | `[]` | Partage (BR-ANA-007) |
+| `is_default_for_role` | code | Oui | — | Vue par défaut d'un rôle : une seule vue par rôle |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **Suppr.** Suppression physique autorisée par le propriétaire (objet de confort, non métier), auditée.
+- **PK** `id`. **UQ** `(owner_user_id, name)`, `(is_default_for_role)` (les valeurs nulles ne se heurtent pas). **IX** `(dataset)`. **Suppr.** Suppression physique autorisée par le propriétaire (objet de confort, non métier), auditée. Le propriétaire et l'identité sont immuables (déclencheur).
 
 ## analytics.export_jobs
 
@@ -31,7 +33,9 @@
 | `dataset` | code | Non | — | |
 | `definition` | json | Non | — | Requête exportée |
 | `format` | enum(`CSV`,`XLSX`) | Non | — | AV-067 |
-| `row_count` | int | Oui | — | |
+| `row_count` | int | Oui | — | Nombre de lignes exportées (renseigné pour `DONE` et `EXPIRED`) |
+| `duration_ms` | int | Oui | — | Durée du calcul (audit, BR-ANA-008) |
+| `command_id` | uuid | Oui | — | Commande de demande : un rejeu ne crée pas un second export (unique) |
 | `status` | enum(`QUEUED`,`RUNNING`,`DONE`,`FAILED`,`EXPIRED`) | Non | `QUEUED` | |
 | `storage_key` | varchar(200) | Oui | — | Fichier ; téléchargement authentifié du demandeur, valable 24 h (ADR-077 §5) |
 | `catalog_version` | int | Non | — | Version du catalogue figée à la demande |
@@ -39,7 +43,7 @@
 | `expires_at` | ts | Non | — | Fin de validité du téléchargement |
 | `created_at`, `finished_at` | ts | | | |
 
-- **PK** `id`. **Suppr.** Fichier purgé après 30 jours ; ligne conservée (audit, BR-ANA-008).
+- **PK** `id`. **UQ** `(command_id)`. **IX** `(requested_by, created_at)`, `(status, created_at)`. **Contraintes** : tant que l'export est `QUEUED` ou `RUNNING` il n'a pas de `finished_at`, terminé il en a une ; `DONE` a son `storage_key` et son `row_count` ; `FAILED` a son `error_code`. **Immuabilité** (déclencheur) : demandeur, jeu, définition, format, version du catalogue et échéance ne changent jamais ; un export `FAILED` ou `EXPIRED` est figé ; un export `DONE` ne peut qu'expirer. **Suppr.** Fichier purgé après 30 jours ; ligne conservée (audit, BR-ANA-008) — aucune suppression (déclencheur), et l'application n'a pas le privilège `DELETE`.
 
 ## analytics.kpi_snapshots
 
@@ -53,7 +57,7 @@
 | `payload` | json | Non | — | Valeurs des indicateurs |
 | `computed_at` | ts | Non | — | Affiché comme « à jour au » |
 
-- **PK** `(user_id, scope_key, period_key)`. **Suppr.** Écrasé à chaque calcul ; supprimé (avec publication d'un `DELETE` au flux) à la perte du droit du tableau ou de l'appareil actif. **Offline** DL (jeu `kpi`, portée `USER`).
+- **PK** `(user_id, scope_key, period_key)`. **IX** `(computed_at)` (reprise de la tâche par ancienneté). **Suppr.** Écrasé à chaque calcul ; supprimé (avec publication d'un `DELETE` au flux) à la perte du droit du tableau ou de l'appareil actif. **Offline** DL (jeu `kpi`, portée `USER`).
 
 ## analytics.query_log
 
@@ -71,7 +75,7 @@
 | `duration_ms` | int | Oui | — | |
 | `created_at` | ts | Non | `now()` | |
 
-- **PK** `id`. **IX** `(created_at)`, `(user_id, created_at)`. **Suppr.** `PURGE_TECHNIQUE` après 90 jours (AV-437).
+- **PK** `id`. **IX** `(created_at)`, `(user_id, created_at)`. **Ajout seul** (déclencheur contre les modifications). **Suppr.** `PURGE_TECHNIQUE` après 90 jours (AV-437).
 
 ## Jeux de faits (vues de lecture)
 

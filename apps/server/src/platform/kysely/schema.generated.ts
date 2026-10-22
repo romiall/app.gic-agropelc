@@ -23,6 +23,60 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export interface AnalyticsExportJobs {
+  catalog_version: number;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  dataset: string;
+  definition: Json;
+  duration_ms: number | null;
+  error_code: string | null;
+  expires_at: Date;
+  finished_at: Date | null;
+  format: string;
+  id: Buffer;
+  requested_by: Buffer;
+  row_count: number | null;
+  status: Generated<string>;
+  storage_key: string | null;
+}
+
+export interface AnalyticsKpiSnapshots {
+  computed_at: Date;
+  payload: Json;
+  period_key: string;
+  scope_key: string;
+  user_id: Buffer;
+}
+
+export interface AnalyticsQueryLog {
+  created_at: Generated<Date>;
+  dataset: string;
+  definition: Json;
+  duration_ms: number | null;
+  error_code: string | null;
+  id: Buffer;
+  outcome: string;
+  row_count: number | null;
+  user_id: Buffer;
+}
+
+export interface AnalyticsSavedViews {
+  catalog_version: number;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  dataset: string;
+  definition: Json;
+  id: Buffer;
+  is_default_for_role: string | null;
+  name: string;
+  owner_user_id: Buffer;
+  shared_with_roles: Generated<Json>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface ApprovalsApprovalRequests {
   active_pending_key: string | null;
   amount_xaf: number | null;
@@ -2529,6 +2583,10 @@ export interface SyncSyncConflicts {
 }
 
 export interface DB {
+  analytics_export_jobs: AnalyticsExportJobs;
+  analytics_kpi_snapshots: AnalyticsKpiSnapshots;
+  analytics_query_log: AnalyticsQueryLog;
+  analytics_saved_views: AnalyticsSavedViews;
   approvals_approval_requests: ApprovalsApprovalRequests;
   approvals_control_policies: ApprovalsControlPolicies;
   attachments_attachments: AttachmentsAttachments;

@@ -10,6 +10,208 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `analytics_export_jobs`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_export_jobs` (
+  `id` binary(16) NOT NULL,
+  `requested_by` binary(16) NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `format` varchar(4) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'QUEUED',
+  `row_count` int DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `storage_key` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `catalog_version` int NOT NULL,
+  `error_code` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `expires_at` datetime(6) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `finished_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_analytics_export_jobs_command` (`command_id`),
+  KEY `ix_analytics_export_jobs_requester` (`requested_by`,`created_at`),
+  KEY `ix_analytics_export_jobs_status` (`status`,`created_at`),
+  CONSTRAINT `fk_analytics_export_jobs_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_export_jobs_catalog` CHECK ((`catalog_version` >= 1)),
+  CONSTRAINT `ck_analytics_export_jobs_dataset` CHECK (regexp_like(`dataset`,_utf8mb4'^f_[a-z_]+$')),
+  CONSTRAINT `ck_analytics_export_jobs_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_export_jobs_done` CHECK (((`status` not in (_utf8mb4'DONE',_utf8mb4'EXPIRED')) or (`row_count` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_failed` CHECK (((`status` <> _utf8mb4'FAILED') or (`error_code` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_file` CHECK (((`status` <> _utf8mb4'DONE') or (`storage_key` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_finished` CHECK (((`status` in (_utf8mb4'QUEUED',_utf8mb4'RUNNING')) = (`finished_at` is null))),
+  CONSTRAINT `ck_analytics_export_jobs_format` CHECK ((`format` in (_utf8mb4'CSV',_utf8mb4'XLSX'))),
+  CONSTRAINT `ck_analytics_export_jobs_status` CHECK ((`status` in (_utf8mb4'QUEUED',_utf8mb4'RUNNING',_utf8mb4'DONE',_utf8mb4'FAILED',_utf8mb4'EXPIRED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_export_jobs_update_guard` BEFORE UPDATE ON `analytics_export_jobs` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.requested_by <=> OLD.requested_by AND NEW.dataset <=> OLD.dataset
+          AND NEW.definition <=> OLD.definition AND NEW.format <=> OLD.format
+          AND NEW.catalog_version <=> OLD.catalog_version AND NEW.created_at <=> OLD.created_at
+          AND NEW.expires_at <=> OLD.expires_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : définition, demandeur et échéance immuables (BR-ANA-008).';
+  END IF;
+  IF OLD.status = 'FAILED' OR OLD.status = 'EXPIRED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : export terminé, immuable.';
+  END IF;
+  IF OLD.status = 'DONE' AND NEW.status <> 'EXPIRED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : un export réussi ne peut qu''expirer.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_export_jobs_no_delete` BEFORE DELETE ON `analytics_export_jobs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : suppression interdite (trace d''audit, BR-ANA-008).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `analytics_kpi_snapshots`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_kpi_snapshots` (
+  `user_id` binary(16) NOT NULL,
+  `scope_key` varchar(100) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `period_key` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `payload` json NOT NULL,
+  `computed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`user_id`,`scope_key`,`period_key`),
+  KEY `ix_analytics_kpi_snapshots_computed` (`computed_at`),
+  CONSTRAINT `fk_analytics_kpi_snapshots_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_kpi_snapshots_payload` CHECK ((json_type(`payload`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_kpi_snapshots_period` CHECK ((`period_key` in (_utf8mb4'TODAY',_utf8mb4'WEEK',_utf8mb4'MONTH')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `analytics_query_log`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_query_log` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `outcome` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `error_code` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `row_count` int DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_analytics_query_log_created` (`created_at`),
+  KEY `ix_analytics_query_log_user` (`user_id`,`created_at`),
+  CONSTRAINT `fk_analytics_query_log_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_query_log_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_query_log_outcome` CHECK ((`outcome` in (_utf8mb4'OK',_utf8mb4'REFUSED',_utf8mb4'LIMIT',_utf8mb4'ERROR')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_query_log_no_update` BEFORE UPDATE ON `analytics_query_log` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_query_log : ajout seul.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `analytics_saved_views`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_saved_views` (
+  `id` binary(16) NOT NULL,
+  `owner_user_id` binary(16) NOT NULL,
+  `name` varchar(120) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `catalog_version` int NOT NULL,
+  `shared_with_roles` json NOT NULL DEFAULT (json_array()),
+  `is_default_for_role` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_analytics_saved_views_owner_name` (`owner_user_id`,`name`),
+  UNIQUE KEY `uq_analytics_saved_views_default_role` (`is_default_for_role`),
+  KEY `ix_analytics_saved_views_dataset` (`dataset`),
+  KEY `fk_analytics_saved_views_created_by` (`created_by`),
+  KEY `fk_analytics_saved_views_updated_by` (`updated_by`),
+  CONSTRAINT `fk_analytics_saved_views_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_analytics_saved_views_owner` FOREIGN KEY (`owner_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_analytics_saved_views_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_saved_views_catalog` CHECK ((`catalog_version` >= 1)),
+  CONSTRAINT `ck_analytics_saved_views_dataset` CHECK (regexp_like(`dataset`,_utf8mb4'^f_[a-z_]+$')),
+  CONSTRAINT `ck_analytics_saved_views_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_saved_views_roles` CHECK ((json_type(`shared_with_roles`) = _utf8mb4'ARRAY'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_saved_views_update_guard` BEFORE UPDATE ON `analytics_saved_views` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.owner_user_id <=> OLD.owner_user_id
+          AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_saved_views : identité et propriétaire immuables.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `approvals_approval_requests`
 --
 
@@ -9705,5 +9907,6 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261102090000'),
   ('20261201090000'),
   ('20261201090100'),
-  ('20261201090200');
+  ('20261201090200'),
+  ('20261201090300');
 UNLOCK TABLES;
