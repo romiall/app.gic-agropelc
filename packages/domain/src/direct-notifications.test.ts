@@ -39,13 +39,14 @@ const plan = (eventType: DirectNotificationEventType, payload: unknown, aggregat
   planDirectNotification({ eventType, aggregateId, payload });
 
 describe('types directs', () => {
-  it('les cinq événements retenus, et eux seulement', () => {
+  it('les six événements retenus, et eux seulement', () => {
     expect([...DIRECT_NOTIFICATION_EVENT_TYPES]).toEqual([
       'ApprovalRequested',
       'ApprovalGranted',
       'ApprovalRejected',
       'StockTransferRequested',
       'StockTransferDispatched',
+      'AnalyticsExportCompleted',
     ]);
     for (const type of DIRECT_NOTIFICATION_EVENT_TYPES) {
       expect(isDirectNotificationEventType(type)).toBe(true);
@@ -276,5 +277,61 @@ describe('désactivation par type (AV-481)', () => {
     for (const value of [undefined, null, 'ApprovalGranted', 3, { ApprovalGranted: true }, []]) {
       expect(disabledDirectNotificationTypes(value).size).toBe(0);
     }
+  });
+});
+
+describe('fin d’un export (P9-20 ; ADR-077 §7)', () => {
+  const EXPORT = '01900000-0000-7000-8000-000000000003';
+  const finished = (extra: Record<string, unknown> = {}) => ({
+    export_id: EXPORT,
+    requested_by: REQUESTER,
+    dataset: 'f_sales_line',
+    format: 'CSV',
+    status: 'DONE',
+    row_count: 120,
+    ...extra,
+  });
+
+  it('prévient le demandeur seul, de nature EXPORT, sans aucune donnée de l’export', () => {
+    const done = plan('AnalyticsExportCompleted', finished(), EXPORT);
+    expect(done).toMatchObject({
+      eventType: 'AnalyticsExportCompleted',
+      kind: 'EXPORT',
+      sourceType: 'ANALYTICS_EXPORT',
+      sourceId: EXPORT,
+      audience: { kind: 'USERS', userIds: [REQUESTER] },
+      title: 'Export prêt',
+    });
+    expect(done.body).not.toMatch(/120|f_sales_line/);
+  });
+
+  it('un échec dit pourquoi, en langage clair : limite, droit retiré, catalogue changé, étendue trop large', () => {
+    const reason = (errorCode: string | null) =>
+      plan('AnalyticsExportCompleted', finished({ status: 'FAILED', error_code: errorCode }), EXPORT).body;
+    expect(reason('QUERY_LIMIT_EXCEEDED')).toContain('affinez');
+    expect(reason('FORBIDDEN')).toContain('droit');
+    expect(reason('CATALOG_OUTDATED')).toContain('catalogue');
+    expect(reason('SCOPE_TRUNCATED')).toContain('périmètre');
+    expect(reason('AUTRE_CODE')).toContain('erreur de production');
+    expect(reason(null)).toBe('Votre export n’a pas pu être produit.');
+    expect(
+      plan('AnalyticsExportCompleted', finished({ status: 'FAILED', error_code: 'FORBIDDEN' }), EXPORT).title,
+    ).toBe('Export non produit');
+  });
+
+  it('une charge fautive lève : demandeur ou statut manquant, statut inconnu', () => {
+    expect(() => plan('AnalyticsExportCompleted', { status: 'DONE' }, EXPORT)).toThrow(
+      DirectNotificationPayloadError,
+    );
+    expect(() =>
+      plan('AnalyticsExportCompleted', { requested_by: REQUESTER }, EXPORT),
+    ).toThrow(DirectNotificationPayloadError);
+    expect(() =>
+      plan('AnalyticsExportCompleted', finished({ status: 'QUEUED' }), EXPORT),
+    ).toThrow(DirectNotificationPayloadError);
+  });
+
+  it('les autres plans ne portent pas de nature particulière (DIRECT par défaut)', () => {
+    expect(plan('ApprovalRequested', requested()).kind).toBeUndefined();
   });
 });

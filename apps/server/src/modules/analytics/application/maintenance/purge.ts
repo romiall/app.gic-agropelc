@@ -12,7 +12,8 @@
  * - **Instantanés** : ceux des utilisateurs inactifs sont retirés par la tâche d'instantanés elle-même
  *   (`analytics.kpi_snapshots.refresh`, dernier lot de la passe).
  */
-import type { Clock } from '@gic/domain';
+import type { Clock, IdGenerator } from '@gic/domain';
+import { recordAudit } from '../../../../audit/record-audit.js';
 import type { ChunkStorage } from '../../../../platform/storage/chunk-storage.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
@@ -49,7 +50,7 @@ async function days(uow: UnitOfWork, key: string, at: Date, fallback: number): P
 
 export async function runAnalyticsPurge(
   uow: UnitOfWork,
-  deps: { readonly clock: Clock; readonly storage: ChunkStorage },
+  deps: { readonly clock: Clock; readonly idGenerator: IdGenerator; readonly storage: ChunkStorage },
 ): Promise<PurgeOutcome> {
   const now = deps.clock.now();
   const queryLogDays = await days(uow, QUERY_LOG_RETENTION_KEY, now, DEFAULT_QUERY_LOG_RETENTION_DAYS);
@@ -92,6 +93,18 @@ export async function runAnalyticsPurge(
       errorCode: 'EXPORT_ABANDONED',
       durationMs: 0,
       finishedAt: now,
+    });
+    // Une fin sans calcul est tout de même auditée (INV-ANA-01) : au nom du demandeur, motif dans le code d'erreur.
+    await recordAudit(uow, deps, {
+      occurredAt: now,
+      actorUserId: job.requestedBy,
+      actorRoles: [],
+      action: 'analytics.export.abandoned',
+      entityType: 'ANALYTICS_EXPORT',
+      entityId: job.id,
+      after: { dataset: job.dataset, format: job.format, status: 'FAILED', error_code: 'EXPORT_ABANDONED' },
+      result: 'FAILED',
+      errorCode: 'EXPORT_ABANDONED',
     });
     exportsAbandoned += 1;
   }

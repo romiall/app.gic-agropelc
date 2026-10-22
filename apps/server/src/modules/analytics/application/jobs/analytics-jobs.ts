@@ -62,7 +62,11 @@ export class AnalyticsJobs implements OnModuleInit {
       );
     });
     this.handlers.register(ANALYTICS_PURGE_JOB_TYPE, async (uow) => {
-      const outcome = await runAnalyticsPurge(uow, { clock: this.clock, storage: this.storage });
+      const outcome = await runAnalyticsPurge(uow, {
+        clock: this.clock,
+        idGenerator: this.idGenerator,
+        storage: this.storage,
+      });
       this.logger.log(
         `Purge de l’analyse : ${outcome.queryLogDeleted} requête(s) du journal, ` +
           `${outcome.exportsExpired} export(s) expiré(s), ${outcome.exportFilesDeleted} fichier(s) supprimé(s), ` +

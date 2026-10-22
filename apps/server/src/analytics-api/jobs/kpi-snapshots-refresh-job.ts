@@ -80,6 +80,42 @@ export function snapshotKpisOf(
   );
 }
 
+/**
+ * Recalcule les instantanés d'un utilisateur : un par tableau de rôle dont il détient la permission et par période
+ * (`TODAY`, `WEEK`, `MONTH`) ; supprime (et publie en `DELETE`) ceux d'un tableau dont il n'a plus la permission.
+ * `saved` : instantanés écrits ; `published` : lignes publiées au flux (contenu changé ou à rafraîchir) ; `deleted` :
+ * instantanés supprimés.
+ */
+export async function refreshSnapshotsOf(
+  uow: UnitOfWork,
+  userId: string,
+  now: Date,
+): Promise<{ readonly saved: number; readonly published: number; readonly deleted: number }> {
+  const today = businessDayOf(now);
+  const keep = new Set<string>();
+  let saved = 0;
+  let published = 0;
+  for (const code of ROLE_DASHBOARD_CODES) {
+    for (const periodKey of SNAPSHOT_PERIOD_KEYS) {
+      const period = resolveAnalyticsPeriod({ code: periodKey, today });
+      const dashboard = await buildDashboard(uow, { userId, at: now, code, period });
+      if (dashboard === null) continue; // permission du tableau absente : pas d'instantané
+      keep.add(snapshotPair(code, periodKey));
+      const written = await saveSnapshot(uow, {
+        userId,
+        scopeKey: code,
+        periodKey,
+        kpis: snapshotKpisOf(dashboard.blocks),
+        computedAt: now,
+      });
+      if (written) published += 1;
+      saved += 1;
+    }
+  }
+  const deleted = await deleteSnapshotsExcept(uow, userId, keep);
+  return { saved, published, deleted };
+}
+
 export async function runKpiSnapshotsRefresh(
   uow: UnitOfWork,
   deps: { readonly clock: Clock; readonly jobs: JobsService; readonly logger?: Logger },
@@ -88,7 +124,6 @@ export async function runKpiSnapshotsRefresh(
   const payload = payloadSchema.safeParse(rawPayload);
   const afterUserId = payload.success ? (payload.data.afterUserId ?? null) : null;
   const now = deps.clock.now();
-  const today = businessDayOf(now);
   const activeDays = await positiveIntSetting(uow, SNAPSHOT_ACTIVE_DAYS_KEY, now, DEFAULT_ACTIVE_DAYS);
   const batchSize = await positiveIntSetting(uow, SNAPSHOT_BATCH_SIZE_KEY, now, DEFAULT_BATCH_SIZE);
   const since = new Date(now.getTime() - activeDays * DAY_MS);
@@ -100,26 +135,10 @@ export async function runKpiSnapshotsRefresh(
   let failed = 0;
   for (const userId of users) {
     try {
-      const keep = new Set<string>();
-      for (const code of ROLE_DASHBOARD_CODES) {
-        for (const periodKey of SNAPSHOT_PERIOD_KEYS) {
-          const period = resolveAnalyticsPeriod({ code: periodKey, today });
-          const dashboard = await buildDashboard(uow, { userId, at: now, code, period });
-          if (dashboard === null) continue; // permission du tableau absente : pas d'instantané
-          keep.add(snapshotPair(code, periodKey));
-          if (await saveSnapshot(uow, {
-            userId,
-            scopeKey: code,
-            periodKey,
-            kpis: snapshotKpisOf(dashboard.blocks),
-            computedAt: now,
-          })) {
-            published += 1;
-          }
-          saved += 1;
-        }
-      }
-      deleted += await deleteSnapshotsExcept(uow, userId, keep);
+      const done = await refreshSnapshotsOf(uow, userId, now);
+      saved += done.saved;
+      published += done.published;
+      deleted += done.deleted;
     } catch (error) {
       failed += 1;
       deps.logger?.error(

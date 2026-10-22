@@ -367,3 +367,60 @@ describe('validateExploration (BR-ANA-006, D11 §8)', () => {
     });
   });
 });
+
+describe('document source d’une ligne (P9-21 ; BR-ANA-010 niveau 2, AV-499)', () => {
+  const withSource = ANALYTICS_DATASETS.filter((dataset) => dataset.source !== undefined);
+
+  it('onze jeux de lignes détaillées déclarent leur document ; les jeux d’agrégats n’en ont pas', () => {
+    expect(withSource.map((dataset) => dataset.code).sort()).toEqual([
+      'f_attendance',
+      'f_cash',
+      'f_costs',
+      'f_expenses',
+      'f_losses',
+      'f_orders',
+      'f_payments',
+      'f_prospecting',
+      'f_purchases',
+      'f_sales_line',
+      'f_stock_moves',
+    ]);
+    expect(datasetOf('f_stock_balance')!.source).toBeUndefined();
+    expect(datasetOf('f_production_daily')!.source).toBeUndefined();
+  });
+
+  it('la dimension du document existe dans le jeu, de type id, et la route est une route de lecture', () => {
+    for (const dataset of withSource) {
+      const source = dataset.source!;
+      const dimension = dataset.dimensions.find((d) => d.name === source.dimension);
+      expect(dimension, `${dataset.code} : dimension ${source.dimension}`).toBeDefined();
+      expect(dimension!.type).toBe('id');
+      expect(source.type).toMatch(/^[A-Z_]+$/);
+      expect(source.route).toMatch(/^\/api\/v1\/[a-z-]+(\/\{id\})?$/);
+    }
+    expect(datasetOf('f_sales_line')!.source).toEqual({
+      dimension: 'sale_id',
+      type: 'SALE',
+      route: '/api/v1/sales/{id}',
+    });
+  });
+
+  it('regrouper par le document est une exploration valide (une ligne par document)', () => {
+    const result = validateExploration(
+      {
+        dataset: 'f_sales_line',
+        period: { code: 'WEEK' },
+        dimensions: ['sale_id'],
+        measures: ['revenue'],
+        filters: [],
+        sort: [],
+      },
+      CONTEXT,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('le catalogue reste sain (noms uniques, périodes et portées déclarées)', () => {
+    expect(analyticsCatalogIssues()).toEqual([]);
+  });
+});

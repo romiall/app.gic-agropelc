@@ -384,7 +384,7 @@ Fichier : [`domaines/D14-SYN-synchronisation.md`](domaines/D14-SYN-synchronisati
 |---|---|---|
 | BR-SYN-001 | Chemin d'écriture unique : toute écriture, en ligne ou hors ligne, est une commande identifiée par un UUIDv7 généré à la création (`command… | D (ADR-007) |
 | BR-SYN-002 | Idempotence : le serveur n'applique qu'une fois un `command_id`. Un renvoi du même identifiant avec le même contenu renvoie le résultat enr… | C (PM §29 ; INV-SYN-01) |
-| BR-SYN-003 | Chaque appareil numérote ses commandes par une séquence strictement croissante (`device_seq`). Un trou non comblé après 24 h lève `DEVICE_S… | D (PM §37 « synchronisation falsifiée ») |
+| BR-SYN-003 | Chaque appareil numérote ses commandes par une séquence strictement croissante (`device_seq`). Un trou non comblé après `sync.seq_gap_alert… | D (PM §37 « synchronisation falsifiée ») |
 | BR-SYN-004 | Le serveur applique les commandes d'un appareil dans l'ordre de `device_seq` (sur un appareil partagé : l'ordre de chaque couple appareil/a… | D |
 | BR-SYN-005 | États côté appareil : `LOCAL_ONLY` (brouillon non soumis), `PENDING_SYNC`, `SYNCING`, `SYNCED`, `SYNCED_WITH_WARNING`, `CONFLICT`, `REJECTE… | C (PM §5) / D (`SYNCED_WITH_WARNING`) |
 | BR-SYN-006 | Résultats côté serveur. `APPLIED` → `SYNCED`. `APPLIED_WITH_WARNINGS` : appliquée, avec anomalie ou conflit informatif ouvert → `SYNCED_WIT… | D |

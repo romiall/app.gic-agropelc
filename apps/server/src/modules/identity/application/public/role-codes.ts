@@ -20,3 +20,19 @@ export async function unknownRoleCodes(
   const known = new Set(rows.map((row) => row.code));
   return codes.filter((code) => !known.has(code));
 }
+
+/**
+ * Verrou de ligne du rôle de code `code`, tenu jusqu'à la fin de la transaction de l'appelant : sérialise, par rôle,
+ * les commandes qui posent la vue par défaut de ce rôle (P9-19) — une seule vue par défaut par rôle, et la seconde
+ * commande doit voir la première validée. Rend `false` si le rôle n'existe pas. Lecture avec verrou : `identity`
+ * reste le seul à écrire `identity_roles`.
+ */
+export async function lockRoleByCode(uow: Transaction<DB>, code: string): Promise<boolean> {
+  const row = await uow
+    .selectFrom('identity_roles')
+    .select('id')
+    .where('code', '=', code)
+    .forUpdate()
+    .executeTakeFirst();
+  return row !== undefined;
+}

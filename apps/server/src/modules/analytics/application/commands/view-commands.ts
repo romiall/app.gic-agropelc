@@ -37,7 +37,7 @@ import type {
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
-import { unknownRoleCodes } from '../../../identity/application/public/index.js';
+import { lockRoleByCode, unknownRoleCodes } from '../../../identity/application/public/index.js';
 import { explorationDefinitionFrom } from '../query/exploration-definition.js';
 import { validateExplorationForUser } from '../query/validate-for-user.js';
 import {
@@ -217,37 +217,50 @@ function share(deps: ViewCommandDeps): CommandHandler<AnalyticsViewSharePayload>
 function setDefault(): CommandHandler<AnalyticsViewSetDefaultPayload> {
   return async (uow, envelope) => {
     if (envelope.captured_offline) return ONLINE_REQUIRED;
-    const author = envelope.author_user_id;
-    const view = await ownViewOf(uow, envelope.aggregate_id, author);
-    if (view === undefined) return NOT_FOUND;
-
     const roleCode = envelope.payload.roleCode;
-    let replaced: StoredView | undefined;
-    if (roleCode !== null) {
-      if (!view.sharedWithRoles.includes(roleCode)) {
-        return rejected(
-          'VIEW_NOT_SHARED_WITH_ROLE',
-          'La vue doit être partagée avec ce rôle avant d’en être la vue par défaut.',
-        );
-      }
-      // Une seule vue par défaut par rôle : l'ancienne est libérée avant de poser la nouvelle.
-      replaced = await defaultViewOfRole(uow, roleCode, view.id);
-      if (replaced !== undefined) {
-        await setViewDefault(uow, { id: replaced.id, roleCode: null, updatedBy: author });
-      }
+    // Une seule vue par défaut par rôle : les poses concurrentes du même rôle se suivent (verrou de la ligne du rôle,
+    // tenu jusqu'à la validation, pris avant tout verrou de ligne de vue : même ordre pour tous).
+    if (roleCode !== null && !(await lockRoleByCode(uow, roleCode))) {
+      return rejected('ROLE_UNKNOWN', `Rôle inconnu : ${roleCode}.`);
     }
-    await setViewDefault(uow, { id: view.id, roleCode, updatedBy: author });
-    return {
-      status: 'APPLIED',
-      serverRefs: { viewId: view.id },
-      audit: {
-        before: {
-          ...snapshot(view),
-          ...(replaced !== undefined ? { replaced_view_id: replaced.id } : {}),
-        },
-        after: { ...snapshot(view), is_default_for_role: roleCode },
+    return applySetDefault(uow, envelope.aggregate_id, envelope.author_user_id, roleCode);
+  };
+}
+
+async function applySetDefault(
+  uow: UnitOfWork,
+  viewId: string,
+  author: string,
+  roleCode: string | null,
+): Promise<CommandHandlerOutcome> {
+  const view = await ownViewOf(uow, viewId, author);
+  if (view === undefined) return NOT_FOUND;
+
+  let replaced: StoredView | undefined;
+  if (roleCode !== null) {
+    if (!view.sharedWithRoles.includes(roleCode)) {
+      return rejected(
+        'VIEW_NOT_SHARED_WITH_ROLE',
+        'La vue doit être partagée avec ce rôle avant d’en être la vue par défaut.',
+      );
+    }
+    // Une seule vue par défaut par rôle : l'ancienne est libérée avant de poser la nouvelle.
+    replaced = await defaultViewOfRole(uow, roleCode, view.id);
+    if (replaced !== undefined) {
+      await setViewDefault(uow, { id: replaced.id, roleCode: null, updatedBy: author });
+    }
+  }
+  await setViewDefault(uow, { id: view.id, roleCode, updatedBy: author });
+  return {
+    status: 'APPLIED',
+    serverRefs: { viewId: view.id },
+    audit: {
+      before: {
+        ...snapshot(view),
+        ...(replaced !== undefined ? { replaced_view_id: replaced.id } : {}),
       },
-    };
+      after: { ...snapshot(view), is_default_for_role: roleCode },
+    },
   };
 }
 
