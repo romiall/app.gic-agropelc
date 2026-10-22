@@ -38,7 +38,7 @@ Contrôler les approvisionnements. Pour chaque fournisseur, savoir ce qui a ét�
 | UC-APP-09 | Traiter une réception en quarantaine ou une réception sans BC | `approvals.request.approve` / `reject` | RESP_ACHATS | Non |
 | UC-APP-10 | Clôturer le reliquat d'un bon de commande ; annuler un bon de commande | `procurement.order.close_remaining`, `procurement.order.cancel` | RESP_ACHATS | Non |
 | UC-APP-11 | Annuler une réception comptabilisée | `procurement.receipt.request_cancellation` | MAGASINIER → validation RESP_ACHATS | Non |
-| UC-APP-12 | Suivre reliquats, retards, écarts et rapprochement | requête (ECR-APP-05) | RESP_ACHATS, FINANCE | Non |
+| UC-APP-12 | Suivre reliquats, retards, écarts et rapprochement | requête (ECR-APP-05) | RESP_ACHATS, FINANCE, DIRECTION (AV-302) | Non |
 
 ## 5. Entrées
 

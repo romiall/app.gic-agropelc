@@ -235,9 +235,8 @@ export class AttachmentUploadController {
 
   /**
    * Contenu d'une pièce reçue (MP-10, AV-286) : son auteur, qui lit le document propriétaire dans sa
-   * portée (réception : `procurement.order.read` sur le site ; perte : `inventory.loss.read` sur le
-   * site ou la zone, ou sa propre déclaration, AV-094), ou qui peut décider une validation en attente
-   * sur ce document. Refus audité ; jamais mis en cache.
+   * portée (réception, perte, dépense, facture fournisseur : règles de `attachment-access.ts`), ou qui
+   * peut décider une validation en attente sur ce document. Refus audité ; jamais mis en cache.
    */
   @Get(':id/content')
   @UseGuards(AuthGuard)

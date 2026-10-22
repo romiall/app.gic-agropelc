@@ -90,6 +90,49 @@ describe('MenuScreen (navigation par rôle, hors ligne)', () => {
     );
   });
 
+  it('deux rôles portant la même action vers deux écrans : un lien par écran, une action commune une fois (revue de P8E-10)', async () => {
+    const action = (label: string) => ({
+      code: 'RECEIPTS',
+      label,
+      hint: null,
+      route: null,
+      primary: false,
+    });
+    const section = (role: string, label: string) => ({
+      role,
+      roleLabel: role,
+      scopeLabel: 'Votre site',
+      actions: [
+        action(label),
+        { code: 'SYNC_STATUS', label: 'Synchronisation', hint: null, route: null, primary: false },
+      ],
+      kpis: [],
+      activity: [],
+    });
+    await rememberNavigation(getDb(), clock, 'user-1', {
+      user: { fullName: 'Awa Mbarga', roles: ['RESP_FERME', 'RESP_ACHATS'] },
+      sections: [
+        section('RESP_FERME', 'Réceptions de la ferme'),
+        section('RESP_ACHATS', 'Suivi des réceptions'),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <MenuScreen onLogout={() => undefined} />
+      </MemoryRouter>,
+    );
+    const actions = await screen.findByRole('region', { name: 'Actions du jour' });
+    expect(within(actions).getByRole('link', { name: /Réceptions de la ferme/ })).toHaveAttribute(
+      'href',
+      '/achats/receptions',
+    );
+    expect(within(actions).getByRole('link', { name: /Suivi des réceptions/ })).toHaveAttribute(
+      'href',
+      '/achats/rapprochement',
+    );
+    expect(within(actions).getAllByRole('link', { name: /Synchronisation/ })).toHaveLength(1);
+  });
+
   it('la déconnexion se fait depuis le menu', async () => {
     const onLogout = vi.fn();
     render(

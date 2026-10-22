@@ -69,6 +69,7 @@ export function ExpenseScreen() {
   const follow = searchParams.get('vue') === 'suivi';
   // Suivi : rôles qui lisent les dépenses des autres (rôles inconnus de l'appareil : proposé).
   const mayFollow = holdsAnyRole(navigation?.roles ?? [], ROLE_SETS.expenseFollow);
+  const showFollow = follow && mayFollow;
 
   // Navigation mémorisée encore en lecture : la vue dépend des rôles.
   if (!userId || navigation === undefined) {
@@ -101,7 +102,12 @@ export function ExpenseScreen() {
           </Link>
         </nav>
       ) : null}
-      {follow && mayFollow ? <ExpenseFollowUp userId={userId} /> : <ExpenseEntry userId={userId} />}
+      {/* La saisie reste montée, masquée, pendant le suivi : le brouillon et la photo ne se perdent pas
+          en changeant de vue (revue de P8E-10). */}
+      <div hidden={showFollow}>
+        <ExpenseEntry userId={userId} />
+      </div>
+      {showFollow ? <ExpenseFollowUp userId={userId} /> : null}
     </section>
   );
 }

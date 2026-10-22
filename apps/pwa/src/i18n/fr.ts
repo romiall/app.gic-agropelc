@@ -2796,6 +2796,8 @@ export const fr = {
     scan_uploading: 'Photo de la facture en cours d’envoi.',
     scan_refused: 'Photo de la facture refusée par le serveur.',
     scan_missing: 'Photo de la facture jamais reçue par le serveur.',
+    online_only:
+      'Lecture en ligne seulement : reconnectez-vous pour afficher les factures et les dettes.',
     attach_scan: 'Joindre la photo de la facture {{doc}}',
     lines_show: 'Voir les lignes de {{doc}}',
     lines_hide: 'Masquer les lignes de {{doc}}',
@@ -3228,6 +3230,7 @@ export const fr = {
     invoices_link: 'Ouvrir les factures fournisseurs',
   },
   supplier_payment: {
+    online_only: 'Lecture en ligne seulement : reconnectez-vous pour afficher les paiements.',
     offline_banner:
       'Hors ligne : les paiements affichés peuvent être périmés ; affectations, annulations et enregistrement attendent le retour du réseau.',
     form_offline:
@@ -3518,7 +3521,7 @@ export const fr = {
       REJECTED: 'Refusées',
       CANCELLED: 'Annulées',
     },
-    closed_window: 'Les {{days}} derniers jours.',
+    closed_window: 'Dépenses saisies depuis moins de {{days}} jours.',
     by: 'Saisie par {{name}}',
     captured_offline: 'saisie hors ligne',
     charged_to: 'À la charge de {{name}} (rejet après paiement).',
@@ -3527,6 +3530,7 @@ export const fr = {
     view_receipt: 'Voir le justificatif de {{doc}}',
     receipt_uploading: 'Justificatif en cours d’envoi par l’auteur.',
     receipt_refused: 'Justificatif refusé par le serveur : l’auteur doit le renvoyer.',
+    receipt_missing: 'Justificatif jamais reçu par le serveur : l’auteur doit le renvoyer.',
     decide_link: 'Décider dans les validations',
     pay_open: 'Payer {{doc}}',
     pay_account_label: 'Compte qui paie',

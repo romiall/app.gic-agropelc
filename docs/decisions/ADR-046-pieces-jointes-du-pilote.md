@@ -22,20 +22,21 @@ MP-10 rend la photo utilisable de bout en bout : prise sur le téléphone, stock
 2. **Propriétaires connus.** Le propriétaire d'une pièce est le document de l'opération : son type d'agrégat et l'identifiant choisi par l'appareil (`@gic/contracts`, `ATTACHMENT_OWNER_TYPES`).
    - `GOODS_RECEIPT` : bon de livraison d'une réception d'achat (nature `DELIVERY_NOTE`).
    - `STOCK_LOSS` : photo d'une perte ou d'une mortalité (nature `PHOTO`).
+   - `EXPENSE` et `SUPPLIER_INVOICE` (natures `RECEIPT`, `INVOICE`) : justificatif d'une dépense ou d'une facture fournisseur, cité par l'opération ([ADR-047](ADR-047-ecrans-de-la-finance-p8.md) §3).
 
    Un autre propriétaire est refusé à l'enregistrement (revue de MP-10) ; un nouveau s'ajoute à la liste.
-   - `EXPENSE` et `SUPPLIER_INVOICE` (natures `RECEIPT`, `INVOICE`) : justificatif d'une dépense ou d'une facture fournisseur, cité par l'opération ([ADR-047](ADR-047-ecrans-de-la-finance-p8.md) §3).
 3. **Pièce citée ou rattachée.**
    - Une réception **cite** sa photo dans `attachment_ids` : c'est sa « photo présente » (BR-APP-014), et une validation de réception l'exige.
+   - Une dépense ou une facture fournisseur **cite** sa pièce comme une réception ([ADR-047](ADR-047-ecrans-de-la-finance-p8.md) §3).
    - Une perte ou une mortalité ne la cite **pas** : la pièce reste rattachée par son propriétaire. L'approbation d'une mortalité vérifie la photo (nature `PHOTO`) du document (AV-107). Une photo de perte reste facultative (AV-288). Une pièce qui n'arriverait jamais ne fige ainsi aucune validation.
-   - Une pièce exigée par une validation, refusée ou jamais enregistrée, est remplacée par une autre pièce reçue du même document, de même nature si elle est connue (AV-290) : la liste figée d'une demande ne bloque plus l'approbation à vie.
+   - Une pièce exigée par une validation, refusée ou jamais enregistrée, est remplacée par une autre pièce reçue du même document, de même nature si elle est connue, et déposée par l'auteur du document, le demandeur de la validation (AV-290, revue de P8E-05) : la liste figée d'une demande ne bloque plus l'approbation à vie. La photo d'une mortalité, non citée, garde sa règle propre : une photo du document, de tout auteur habilité (AV-107).
 4. **Régularisation de la photo manquante (AV-285).** À la fin de l'envoi, une pièce `DELIVERY_NOTE` d'une `GOODS_RECEIPT`, reçue et vérifiée, dont l'auteur est le réceptionnaire ou peut enregistrer des réceptions sur le site de la réception, clôt le conflit informatif `RECEIPT_PHOTO_MISSING` de la réception (`COMPENSATE`, la pièce en référence, dans la transaction de fin d'envoi ; rangs N11 puis N14 d'ADR-038). Le Resp. achats peut toujours le clore à la main avec un motif (`sync.conflict.dismiss`). Joindre une photo après coup passe par la seule commande d'enregistrement : l'opération d'origine, déjà envoyée, ne change jamais.
 5. **Lecture protégée (AV-286).** `GET /api/v1/attachments/{id}/content` rend les octets d'une pièce `AVAILABLE`, sans mise en cache (`private, no-store`, `nosniff`). Peuvent la lire :
    - son auteur ;
    - qui peut décider une validation en attente sur le document (le valideur voit ce qu'il décide) ;
-   - qui lit le document dans sa portée : réception, `procurement.order.read` sur son site ; perte, `inventory.loss.read` sur son site ou sa zone, ou sa propre déclaration (AV-094).
+   - qui lit le document dans sa portée : réception, `procurement.order.read` sur son site ; perte, `inventory.loss.read` sur son site ou sa zone, ou sa propre déclaration (AV-094) ; dépense, `finance.expense.read` sur son site ou sa propre dépense ; facture, `finance.payable.read` en portée `ALL` (ADR-047 §3).
 
-   Tout autre accès est refusé (403 audité). La file de validation liste les pièces du document de chaque demande. L'URL signée reste pour le stockage objet (AV-091).
+   Tout autre accès est refusé (403 audité). La file de validation liste les pièces du document de chaque demande ; pour une dépense ou une facture, celles de l'auteur seulement (revue de P8E-10). L'URL signée reste pour le stockage objet (AV-091).
 6. **Fin de l'envoi.** L'empreinte **et** la signature du fichier (premiers octets conformes au type déclaré) sont vérifiées ; sinon `QUARANTINED`. Un morceau qui dépasse la taille annoncée est refusé (400). Un envoi sur une pièce qui n'en accepte plus rend son statut (`details.upload_status`), pour que l'appareil sache si elle est reçue ou à reprendre. La fin est **rejouable** : si tous les octets sont sur le stockage sans que la fin ait été enregistrée, la session suivante ou le renvoi du dernier morceau la constate ; une pièce déjà finalisée ne change plus d'état (une seule fin enregistrée).
 7. **Sur l'appareil.**
    - Photo recodée en JPEG (côté long 1 280 px, qualité 0,7 puis par paliers jusqu'à 400 Ko), empreinte SHA-256. Le recodage retire les métadonnées EXIF.

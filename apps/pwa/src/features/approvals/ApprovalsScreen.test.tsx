@@ -11,6 +11,7 @@ import {
   actionsFor,
   blockReason,
   commandOf,
+  commentMax,
   EMPTY_DECISION,
   inboxPath,
   optionsFor,
@@ -113,6 +114,20 @@ describe('Validations : logique (ECR-ADM-08, ADR-018)', () => {
       decisionOption: 'CARRIER',
       decisionData: { reason: 'Manque' },
     });
+  });
+
+  it('écart de facture : motif de 500 caractères au plus, au refus comme à l’acceptation (revue de P8E-10)', () => {
+    const invoice = request({ operationType: 'INVOICE_MISMATCH' });
+    expect(commentMax(invoice, 'REJECT')).toBe(500);
+    expect(commentMax(invoice, 'APPROVE')).toBe(200);
+    expect(
+      blockReason(invoice, 'REJECT', { ...EMPTY_DECISION, comment: 'x'.repeat(500) }),
+    ).toBeNull();
+    expect(blockReason(invoice, 'REJECT', { ...EMPTY_DECISION, comment: 'x'.repeat(501) })).toBe(
+      'TOO_LONG',
+    );
+    // Un autre type garde les 2 000 caractères.
+    expect(commentMax(request({ operationType: 'EXPENSE' }), 'REJECT')).toBe(2000);
   });
 
   it('ce qui empêche d’envoyer : pièce attendue, motif du refus, longueur, auto-validation', () => {

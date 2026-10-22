@@ -1088,6 +1088,64 @@ describe('Paiements fournisseurs (ECR-FIN-04, P8E-06)', () => {
     expect(screen.getByRole('button', { name: 'Relire les paiements' })).toBeInTheDocument();
   });
 
+  it('affectation d’une avance : les montants déjà prévus par la Direction sont annoncés et déduits de « Répartir » (revue de P8E-10)', async () => {
+    await rememberRoles(['FINANCE']);
+    const base = baseRoutes();
+    const planned = base[`/api/v1/supplier-payments/${PENDING_OTHER}`] as {
+      supplier_payment: SupplierPaymentDetail;
+    };
+    serve({
+      ...base,
+      [`/api/v1/supplier-payments/${PENDING_OTHER}`]: {
+        supplier_payment: {
+          ...planned.supplier_payment,
+          allocations: [{ ...planned.supplier_payment.allocations[0]!, amountXaf: 280_000 }],
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await showGroup(user, 'ADVANCES');
+    const advance = await screen.findByRole('listitem', { name: 'PF-2026-000004' });
+    await user.click(
+      within(advance).getByRole('button', { name: 'Affecter l’avance de PF-2026-000004' }),
+    );
+    // La facture A (300 000) a déjà 280 000 prévus : 20 000 restent affectables, puis la facture B.
+    expect(
+      await within(advance).findByText(
+        /^Déjà prévu : 280\s000 F CFA par PF-2026-000002, en attente de la Direction\.$/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(await within(advance).findByRole('button', { name: /^Répartir/ }));
+    expect(within(advance).getByLabelText(/^FF-2026-000001/)).toHaveValue('20000');
+    expect(within(advance).getByLabelText(/^FF-2026-000002/)).toHaveValue('30000');
+  });
+
+  it('affectation d’une avance : paiements en attente illisibles — annoncé, relançable (revue de P8E-10)', async () => {
+    await rememberRoles(['FINANCE']);
+    const pendingPath = `/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200&supplier_id=${SUPPLIER}`;
+    serve({ ...baseRoutes(), [pendingPath]: BROKEN });
+    const user = userEvent.setup();
+    renderScreen();
+    await showGroup(user, 'ADVANCES');
+    const advance = await screen.findByRole('listitem', { name: 'PF-2026-000004' });
+    await user.click(
+      within(advance).getByRole('button', { name: 'Affecter l’avance de PF-2026-000004' }),
+    );
+    expect(
+      await within(advance).findByText(/^Paiements en attente de ce fournisseur indisponibles/),
+    ).toBeInTheDocument();
+    serve(baseRoutes());
+    await user.click(
+      within(advance).getByRole('button', { name: 'Relire les paiements en attente' }),
+    );
+    await waitFor(() =>
+      expect(
+        within(advance).queryByText(/^Paiements en attente de ce fournisseur indisponibles/),
+      ).toBeNull(),
+    );
+  });
+
   it('opérations en attente au retour sur l’écran : annulation annoncée et bloquante, paiement repris ; hors ligne : brouillon gardé', async () => {
     await rememberRoles(['FINANCE']);
     await submitCommand({
@@ -1156,5 +1214,17 @@ describe('Paiements fournisseurs (ECR-FIN-04, P8E-06)', () => {
     await waitFor(() =>
       expect(within(mine).getByRole('button', { name: 'Annuler PF-2026-000001' })).toBeEnabled(),
     );
+  });
+
+  it('ouvert hors ligne, rien de lu : « en ligne seulement » pour la liste des paiements (revue de P8E-10)', async () => {
+    await rememberRoles(['FINANCE']);
+    act(() => reportSyncOutcome('OFFLINE'));
+    renderScreen();
+    expect(
+      await screen.findByText(
+        'Lecture en ligne seulement : reconnectez-vous pour afficher les paiements.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Chargement des données de l’appareil…')).toBeNull();
   });
 });

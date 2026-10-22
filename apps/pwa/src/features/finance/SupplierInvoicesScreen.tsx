@@ -193,8 +193,8 @@ function Payables({
       ) : null}
       {!data ? (
         read.failed ? null : (
-          <p className="home-muted" aria-busy="true">
-            {t('sales.loading')}
+          <p className="home-muted" aria-busy={online}>
+            {t(online ? 'sales.loading' : 'supplier_invoice.online_only')}
           </p>
         )
       ) : (
@@ -639,8 +639,8 @@ function InvoiceList({
       ) : null}
       {!data ? (
         read.failed ? null : (
-          <p className="home-muted" aria-busy="true">
-            {t('sales.loading')}
+          <p className="home-muted" aria-busy={online}>
+            {t(online ? 'sales.loading' : 'supplier_invoice.online_only')}
           </p>
         )
       ) : (

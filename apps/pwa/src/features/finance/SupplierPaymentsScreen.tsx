@@ -45,6 +45,7 @@ import type {
 import { familyReloadKey, useCommandFamily } from './command-family.js';
 import { userName } from './expense-format.js';
 import { PaymentForm } from './PaymentForm.js';
+import { pendingPaymentsPath, readPending } from './pending-payments.js';
 import {
   INVOICE_MAX_PAGES,
   INVOICE_PAGE_LIMIT,
@@ -55,6 +56,7 @@ import {
   allocatePayload,
   autoAllocation,
   MAX_PAYMENT_REASON,
+  netOfPlanned,
   PAYMENT_GROUP_ORDER,
   PAYMENT_MAX_PAGES,
   payableInvoices,
@@ -63,6 +65,7 @@ import {
   paymentListPaths,
   paymentsOfGroup,
   planPreviewForAllocation,
+  plannedByInvoice,
   shownAllocations,
   type PaymentGroup,
   type SupplierPaymentDetail,
@@ -268,6 +271,14 @@ function PaymentList({
     online,
     reloadKey,
   );
+  // Paiements du fournisseur en attente de la Direction : leurs affectations prévues ne sont pas
+  // déduites du reste dû par le serveur, l'approbation serait refusée (revue de P8E-10).
+  const planning = useOnlineRead(
+    allocating ? pendingPaymentsPath(allocating.supplierId) : null,
+    readPending,
+    online,
+    reloadKey,
+  );
 
   // Retour sur l'écran avec une opération en attente : son résultat est annoncé.
   const adopt = last ? undefined : lastWaitingCommand(managed, FAMILY, userId);
@@ -330,6 +341,7 @@ function PaymentList({
       (entry) => entry.supplierId === item.supplierId,
     );
     const invoices = payableInvoices(supplierPayables?.invoices ?? []);
+    const planned = plannedByInvoice(planning.data?.details ?? []);
     const plan = planPreviewForAllocation({
       supplierId: item.supplierId,
       availableXaf: item.unallocatedXaf,
@@ -389,7 +401,9 @@ function PaymentList({
               type="button"
               className="secondary"
               ref={firstFieldRef}
-              onClick={() => setAllocations(autoAllocation(invoices, item.unallocatedXaf))}
+              onClick={() =>
+                setAllocations(autoAllocation(netOfPlanned(invoices, planned), item.unallocatedXaf))
+              }
             >
               {t('supplier_payment.spread')}
             </button>
@@ -413,10 +427,30 @@ function PaymentList({
                     }))
                   }
                 />
+                {planned[invoice.invoiceId] ? (
+                  <p className="text-warn">
+                    {t('supplier_payment.planned_on_invoice', {
+                      amount: formatMoney(planned[invoice.invoiceId]!.amountXaf),
+                      docs: planned[invoice.invoiceId]!.docNumbers.join(', '),
+                    })}
+                  </p>
+                ) : null}
               </div>
             ))}
           </>
         )}
+        {planning.failed ? (
+          <p className="text-warn" role="status">
+            {planning.denied
+              ? t('supplier_payment.form_denied')
+              : t('supplier_payment.pending_failed')}{' '}
+            {planning.denied ? null : (
+              <button type="button" className="secondary" onClick={planning.retry}>
+                {t('supplier_payment.retry_pending')}
+              </button>
+            )}
+          </p>
+        ) : null}
         {plan.error ? (
           <p className="error-message" role="alert">
             {t(`supplier_payment.plan_error.${plan.error}`, {
@@ -655,8 +689,8 @@ function PaymentList({
       ) : null}
       {!data ? (
         read.failed ? null : (
-          <p className="home-muted" aria-busy="true">
-            {t('sales.loading')}
+          <p className="home-muted" aria-busy={online}>
+            {t(online ? 'sales.loading' : 'supplier_payment.online_only')}
           </p>
         )
       ) : (

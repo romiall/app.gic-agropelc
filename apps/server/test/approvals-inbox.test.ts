@@ -547,6 +547,72 @@ describe('MP-07 : file de validation', { timeout: 180_000 }, () => {
     ).toBe(false);
   });
 
+  it('revue de P8E-10 : pour une dépense ou une facture, la file ne présente que les pièces de l’auteur', async () => {
+    const base = await db
+      .selectFrom('approvals_approval_requests')
+      .select([
+        'operation_type',
+        'site_id',
+        'requested_by',
+        'requested_at',
+        'policy_id',
+        'policy_version',
+      ])
+      .where('id', '=', toBin(requests.lossS1!))
+      .executeTakeFirstOrThrow();
+    const content = Buffer.from('justificatif');
+    const insertAttachment = async (ownerType: string, ownerId: Buffer, createdBy: Buffer) => {
+      const id = freshUuid();
+      await db
+        .insertInto('attachments_attachments')
+        .values({
+          id: toBin(id),
+          owner_type: ownerType,
+          owner_id: ownerId,
+          kind: 'RECEIPT',
+          mime_type: 'image/jpeg',
+          size_bytes: content.length,
+          uploaded_bytes: content.length,
+          sha256: createHash('sha256').update(content).digest('hex'),
+          storage_key: `attachments/${freshUuid()}`,
+          upload_status: 'AVAILABLE',
+          captured_at: new Date(),
+          occurred_at: new Date(),
+          created_by: createdBy,
+        })
+        .execute();
+      return id;
+    };
+    for (const subjectType of ['EXPENSE', 'SUPPLIER_INVOICE']) {
+      const documentId = toBin(freshUuid());
+      const requestId = freshUuid();
+      await db
+        .insertInto('approvals_approval_requests')
+        .values({
+          id: toBin(requestId),
+          operation_type: base.operation_type,
+          subject_type: subjectType,
+          subject_id: documentId,
+          subject_summary: `P8E-10 ${subjectType}`,
+          ...(base.site_id ? { site_id: base.site_id } : {}),
+          requested_by: base.requested_by,
+          requested_at: base.requested_at,
+          policy_id: base.policy_id,
+          policy_version: base.policy_version,
+          created_by: base.requested_by,
+        })
+        .execute();
+      // `inboxOf` ne retient que les demandes déclarées dans `requests`.
+      requests[`document_${subjectType}`] = requestId;
+      const own = await insertAttachment(subjectType, documentId, base.requested_by);
+      await insertAttachment(subjectType, documentId, toBin(admin.userId));
+      const entry = (await inboxOf(respFerme)).find((item) => item.id === requestId);
+      expect(entry?.attachments, subjectType).toEqual([
+        { id: own, kind: 'RECEIPT', uploadStatus: 'AVAILABLE' },
+      ]);
+    }
+  });
+
   it('catalogue de décision fidèle aux gestionnaires des modules (ADR-018)', () => {
     const registry = app.get<ApprovalDecisionHandlerRegistry>(APPROVAL_DECISION_HANDLER_REGISTRY);
     // Type sans aucun appelant de `requestApproval` à ce jour.

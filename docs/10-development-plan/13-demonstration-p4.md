@@ -107,7 +107,7 @@ Parcours de bout en bout du plan : WF-01 hors caisse PDV (AT-001, vente hors lig
 
 ## 4. Ce qui reste hors périmètre de P4
 
-- **Écrans PWA** ECR-VEN-01 à 06, ECR-FIN-01, volet ventes d'ECR-CRM-03 : l'API, les jeux hors ligne et la logique partagée (`packages/domain`) sont prêts ; l'appareil n'applique encore que les jeux de P0 (`apps/pwa/src/sync/pull.ts`). *Suite* : ECR-VEN-01 à 06 livrés par le fork des écrans (fusion du 12/10/2026), ECR-FIN-01 en P8E-09 (16/10/2026).
+- **Écrans PWA** ECR-VEN-01 à 06, ECR-FIN-01, volet ventes d'ECR-CRM-03 : l'API, les jeux hors ligne et la logique partagée (`packages/domain`) sont prêts ; l'appareil n'applique encore que les jeux de P0 (`apps/pwa/src/sync/pull.ts`). *Suite* : ECR-VEN-01 à 06 livrés par le fork des écrans (fusion du 12/10/2026), ECR-FIN-01 en P8E-09 (21/10/2026).
 - **Sessions de caisse, quotas d'appareil, caisse du PDV** : P5 (le jeu `cash` portera la session ouverte ; le blocage sur l'appareil au-delà de l'allocation, AV-025, est appliqué par la PWA).
 - **Alertes** `OVERDUE_RECEIVABLE`, vente non livrée (AV-132), stock négatif : P9 (les événements existent).
 - **Finance opérationnelle** (dépenses, factures, dettes, rapprochement) : P8.

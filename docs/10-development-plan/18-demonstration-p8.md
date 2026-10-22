@@ -4,7 +4,7 @@
 >
 > État arrêté le 13/10/2026, à la fin du code serveur de P8 (P8-01 à P8-15). La phase a été menée en parallèle de la session principale, sur la branche `claude/p8-finance` (worktree `.claude/worktrees/p8-finance`), avec des commits locaux seulement : **rien n'est poussé**. La session principale l'a intégré le 13/10/2026 : fusion, renumérotation sans trou des AV (numéros provisoires 350 à 366, devenus AV-263 à AV-279) et des ADR (060 à 062, devenus ADR-042 à ADR-044), mise à jour de `CLAUDE.md` et de `PROMPT-DE-REPRISE.md`. Suivi détaillé : [`17-suivi-p8.md`](17-suivi-p8.md).
 >
-> Les écrans de P8 (ECR-FIN-02 à 06, ECR-APP-05) ne sont pas commencés : ils attendent le feu vert de la session principale.
+> Les écrans de P8 (ECR-FIN-01 à 06, ECR-APP-05) ont été livrés ensuite par le lot P8E (21/10/2026), mené par la session principale : voir le plan §4 (P8E-01 à P8E-10), [`15-ecrans-pwa.md`](15-ecrans-pwa.md) et [ADR-047](../decisions/ADR-047-ecrans-de-la-finance-p8.md).
 
 ---
 
@@ -121,7 +121,7 @@ Le détail et les points laissés à la session principale sont au §6 du suivi.
 
 ## 7. Ce qui reste
 
-- **Écrans de P8** : ECR-FIN-02 à 06 et ECR-APP-05, après le feu vert de la session principale.
+- **Écrans de P8** : livrés (ECR-FIN-01 à 06 et ECR-APP-05, lot P8E, plan §4) ; reste leur vérification dans le navigateur et sur appareil, renvoyée à plus tard (décision du porteur du 14/10/2026).
 - **DoD** : « marge d'un lot pilote validée par la Direction ». Le calcul est démontré sur l'exemple de la stratégie finance (AT-026) ; la validation sur un lot réel appartient au pilote.
 - **Hors de P8**, signalés à la session principale (suivi §6) :
   - aucune garde hors ligne sur `approvals.request.approve` (B4, corrigé par la session principale dans son lot MP-07) ;

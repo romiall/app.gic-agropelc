@@ -68,10 +68,15 @@ export const ROLE_CATALOG: Readonly<Record<string, RoleDefinition>> = {
     scopeKind: 'ALL',
     conflictRoles: ['FINANCE'],
     actions: [
-      action('RECEIVABLES', 'Créances', { primary: true, hint: 'Suivi et relances' }),
+      // Indice : la liste montre les retards, aucune relance n'y est enregistrée (AV-304).
+      action('RECEIVABLES', 'Créances', { primary: true, hint: 'Suivi des retards' }),
       action('PAYMENTS', 'Encaissements'),
       action('CASH_SESSIONS', 'Valider les caisses'),
-      action('EXPENSES', 'Dépenses et fournisseurs'),
+      action('EXPENSES', 'Dépenses'),
+      // Revue de P8E-10 : factures et paiements fournisseurs, accessibles de l'accueil comme le suivi
+      // des dépenses (AV-298).
+      action('SUPPLIER_INVOICES', 'Factures fournisseurs'),
+      action('SUPPLIER_PAYMENTS', 'Paiements fournisseurs'),
     ],
   },
   RESP_COMMERCIAL: {

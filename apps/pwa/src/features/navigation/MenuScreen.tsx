@@ -34,8 +34,10 @@ export function MenuScreen({ onLogout }: MenuScreenProps) {
   const actions = (navigation?.sections ?? []).flatMap((section) =>
     section.actions.flatMap((action) => {
       const route = routeOfAction(action, section.role);
-      if (!route || route === '/' || seen.has(action.code)) return [];
-      seen.add(action.code);
+      // Une action dont le code est commun à deux rôles peut mener à deux écrans (RECEIPTS : réception
+      // pour le responsable de ferme, rapprochement pour le responsable des achats) : un lien par route.
+      if (!route || route === '/' || seen.has(`${action.code}|${route}`)) return [];
+      seen.add(`${action.code}|${route}`);
       return [{ ...action, route }];
     }),
   );
@@ -57,7 +59,7 @@ export function MenuScreen({ onLogout }: MenuScreenProps) {
           <div className="home-actions">
             {actions.map((action) => (
               <Link
-                key={action.code}
+                key={`${action.code}|${action.route}`}
                 to={action.route}
                 className={`action${action.primary ? ' action-primary' : ''}`}
               >

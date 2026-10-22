@@ -197,11 +197,11 @@ Note : l'identifiant `ECR-PRD-05` n'est pas attribué. La collecte d'œufs fait 
 | ECR-APP-02 | Demande d'achat | Tous les demandeurs, RESP_ACHATS | Oui (création) | P6 |
 | ECR-APP-03 | Bons de commande | RESP_ACHATS | Non | P6 |
 | ECR-APP-04 | RÉCEPTIONNER | MAGASINIER, RESP_FERME | Oui | P6 |
-| ECR-APP-05 | Rapprochement commande / réception / facture | RESP_ACHATS, FINANCE | Non | P8 |
+| ECR-APP-05 | Rapprochement commande / réception / facture | RESP_ACHATS, FINANCE, DIRECTION (AV-302) | Non | P8 |
 | ECR-FIN-01 | Créances (âge, retards ; encaissement par ECR-VEN-06, AV-304) | FINANCE, DIRECTION, RESP_COMMERCIAL | Non | P4/P8 |
 | ECR-FIN-02 | + DÉPENSE | Tous les rôles autorisés | Oui | P8 |
-| ECR-FIN-03 | Factures fournisseurs | FINANCE | Non | P8 |
-| ECR-FIN-04 | Paiements fournisseurs | FINANCE | Non | P8 |
+| ECR-FIN-03 | Factures fournisseurs | FINANCE ; DIRECTION (décisions) et RESP_ACHATS (lecture) (AV-298) | Non | P8 |
+| ECR-FIN-04 | Paiements fournisseurs | FINANCE ; DIRECTION (annulation d'un décaissé) et RESP_ACHATS (lecture) (AV-298) | Non | P8 |
 | ECR-FIN-05 | Trésorerie : comptes, remises de fonds, sessions de caisse à valider | FINANCE | Non | P5/P8 |
 | ECR-FIN-06 | Coûts et marges (période, pertes, lot ; axes produit, PDV et commercial avec l'explorateur de P9, AV-299) | FINANCE, DIRECTION | Non | P8 |
 | ECR-FIN-07 | Remises de fonds sur l'appareil : envoi, annulation de ses remises en transit, réception avec écart annoncé (UC-FIN-07 ; créé à l'intégration des écrans de P5, AV-239) | Détenteurs de `finance.cash_transfer.record` : RESP_COMMERCIAL, COMMERCIAL_TERRAIN, COMMERCIAL_SEDENTAIRE, VENDEUR_PDV, RESP_FERME, FINANCE | Oui | P5 |

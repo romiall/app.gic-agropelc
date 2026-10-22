@@ -414,7 +414,9 @@ export function ExpenseFollowUp({
                 {t(
                   attachment.uploadStatus === 'PENDING_UPLOAD'
                     ? 'expense.receipt_uploading'
-                    : 'expense.receipt_refused',
+                    : attachment.uploadStatus === 'MISSING'
+                      ? 'expense.receipt_missing'
+                      : 'expense.receipt_refused',
                 )}
               </p>
             ),

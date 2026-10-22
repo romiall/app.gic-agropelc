@@ -85,11 +85,15 @@ export function commentRule(view: ApprovalView, action: ApprovalAction): 'REQUIR
   return action === 'REJECT' || specOf(view).approveReasonRequired ? 'REQUIRED' : 'OPTIONAL';
 }
 
-/** Longueur maximale du motif : celle d'une donnée de décision quand il en devient une. */
+/**
+ * Longueur maximale du motif : celle d'une donnée de décision quand il en devient une, et celle de la
+ * colonne où le module propriétaire le recopie quand elle est plus courte (écart de facture, 500).
+ */
 export function commentMax(view: ApprovalView, action: ApprovalAction): number {
+  const own = specOf(view).commentMax ?? APPROVAL_COMMENT_MAX;
   return action === 'APPROVE' && specOf(view).approveReasonRequired
-    ? APPROVAL_DECISION_DATA_MAX
-    : APPROVAL_COMMENT_MAX;
+    ? Math.min(APPROVAL_DECISION_DATA_MAX, own)
+    : own;
 }
 
 /** Choix proposés pour une décision. */

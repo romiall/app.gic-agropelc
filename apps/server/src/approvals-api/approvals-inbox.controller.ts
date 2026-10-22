@@ -44,6 +44,8 @@ import { parseOrThrow, ReadAccess, uuidParam } from '../read-api/read-access.js'
 const REQUEST_READ = 'approvals.request.read';
 const INBOX_DEFAULT_LIMIT = 50;
 const INBOX_MAX_LIMIT = 200;
+/** Documents financiers dont seul l'auteur dépose le justificatif (ADR-047 §3). */
+const AUTHOR_ONLY_SUBJECTS: ReadonlySet<string> = new Set(['EXPENSE', 'SUPPLIER_INVOICE']);
 
 const inboxQuerySchema = z.object({
   types: z.string().trim().min(1).max(1000).optional(),
@@ -137,13 +139,21 @@ export class ApprovalsInboxController {
         requestedByName: names.get(item.requestedBy) ?? null,
         requestedAt: item.requestedAt.toISOString(),
         attachmentsPending,
-        attachments: (owned.get(`${item.subjectType}:${item.subjectId}`) ?? []).map(
-          (attachment) => ({
+        attachments: (owned.get(`${item.subjectType}:${item.subjectId}`) ?? [])
+          // Dépense et facture : le justificatif est celui de l'auteur du document, comme dans
+          // `GET /expenses` et `/supplier-invoices` (revue de P8E-10) ; l'enregistrement d'une pièce ne
+          // vérifie pas le droit de son auteur sur le document (AV-093). Réception et perte : la photo
+          // d'un tiers habilité reste présentée (AV-285).
+          .filter(
+            (attachment) =>
+              !AUTHOR_ONLY_SUBJECTS.has(item.subjectType) ||
+              attachment.createdBy === item.requestedBy,
+          )
+          .map((attachment) => ({
             id: attachment.id,
             kind: attachment.kind,
             uploadStatus: attachment.uploadStatus,
-          }),
-        ),
+          })),
         selfRequest: item.selfRequest,
         unavailableOptions,
       });

@@ -18,7 +18,7 @@ import { formatBusinessDate } from '../home/format-home.js';
 import type { SupplierView } from '../procurement/suppliers.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
-import { readPages, readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
+import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import { parseXaf } from '../sales/sale-form.js';
 import {
@@ -29,8 +29,9 @@ import {
   submitCommand,
   useOutboxCommand,
 } from '../sales/submit.js';
-import type { CashAccountItem, SupplierPaymentItem } from '../treasury/treasury.js';
+import type { CashAccountItem } from '../treasury/treasury.js';
 import type { PayablesResponse } from './supplier-invoice.js';
+import { pendingPaymentsPath, readPending } from './pending-payments.js';
 import {
   accountsForMethod,
   allocationsOnInvoices,
@@ -39,8 +40,6 @@ import {
   MAX_PAYMENT_COMMENT,
   MAX_PAYMENT_REFERENCE,
   netOfPlanned,
-  PAYMENT_MAX_PAGES,
-  PAYMENT_PAGE_LIMIT,
   payableInvoices,
   paymentIssues,
   paymentMethodsFor,
@@ -50,33 +49,9 @@ import {
   pendingSummary,
   plannedByInvoice,
   type PaymentDraft,
-  type SupplierPaymentDetail,
 } from './supplier-payment.js';
 
 const RECORD = 'finance.supplier_payment.record';
-
-/** Détails lus des paiements en attente d'un fournisseur (au-delà : seul le total est connu). */
-const PENDING_DETAILS_MAX = 20;
-
-interface PendingRead {
-  readonly payments: readonly SupplierPaymentItem[];
-  readonly details: readonly SupplierPaymentDetail[];
-}
-
-/** Paiements du fournisseur en attente de la Direction, avec leurs affectations prévues. */
-async function readPending(path: string): Promise<ReadResult<PendingRead>> {
-  const list = await readPages<SupplierPaymentItem>([path], 'supplier_payments', PAYMENT_MAX_PAGES);
-  if (!list.ok) return list;
-  const details: SupplierPaymentDetail[] = [];
-  for (const payment of list.data.items.slice(0, PENDING_DETAILS_MAX)) {
-    const read = await readPath<{ readonly supplier_payment: SupplierPaymentDetail }>(
-      `/api/v1/supplier-payments/${payment.id}`,
-    );
-    if (!read.ok) return read;
-    details.push(read.data.supplier_payment);
-  }
-  return { ok: true, data: { payments: list.data.items, details } };
-}
 
 export function PaymentForm({
   userId,
@@ -133,9 +108,7 @@ export function PaymentForm({
     reloadKey,
   );
   const pending = useOnlineRead(
-    supplierId
-      ? `/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=${PAYMENT_PAGE_LIMIT}&supplier_id=${supplierId}`
-      : null,
+    supplierId ? pendingPaymentsPath(supplierId) : null,
     readPending,
     online,
     reloadKey,

@@ -888,6 +888,23 @@ describe('Trésorerie (ECR-FIN-05)', () => {
     ).toHaveAttribute('href', '/validations?types=SUPPLIER_PAYMENT');
   });
 
+  it('retour sur l’onglet : la trésorerie et les paiements fournisseurs en attente sont relus (revue de P8E-10)', async () => {
+    await rememberRoles(['DIRECTION']);
+    renderScreen();
+    await screen.findByRole('listitem', { name: 'PF-2026-000004' });
+    const pendingPath = '/api/v1/supplier-payments?status=PENDING_APPROVAL&limit=200';
+    const accountsPath = '/api/v1/cash-accounts';
+    const readsOf = (path: string) =>
+      request.mock.calls.filter(([, called]) => called === path).length;
+    const pendingReads = readsOf(pendingPath);
+    const accountReads = readsOf(accountsPath);
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(readsOf(pendingPath)).toBe(pendingReads + 1));
+    await waitFor(() => expect(readsOf(accountsPath)).toBe(accountReads + 1));
+  });
+
   it('P8E-04 (AV-300) : paiements fournisseurs — panne, refus, fournisseurs illisibles, liste partielle', async () => {
     serve({
       ...baseRoutes(),

@@ -117,3 +117,6 @@ Réfutés : B7 (accepté par ADR-043 §6 : la décision est refusée proprement,
 - A7 : l'annulation d'une dépense de frais généraux et `production.overhead.allocate` ne partagent aucun verrou. Le même trou existe déjà dans `inventory.overhead.cancel` (P7). Le correctif est un verrou partagé sur la répartition du mois.
 - A6 : un justificatif exigé entre 10 000 et 50 000 n'est jamais vérifié à l'arrivée du fichier. Cela relève d'une alerte asynchrone, en P9.
 
+## 7. Écrans de P8 (lot P8E, session principale)
+
+Les écrans ECR-FIN-01 à 06 et ECR-APP-05 ont été livrés après l'intégration de P8 par le lot P8E (15/10 au 22/10/2026, dix incréments) : conception dans [ADR-047](../decisions/ADR-047-ecrans-de-la-finance-p8.md), AV-290 et AV-298 à AV-307, backlog au plan §4, détail des écrans dans [`15-ecrans-pwa.md`](15-ecrans-pwa.md) §11. Côté serveur, le lot a ajouté les pièces des dépenses et des factures (propriétaires `EXPENSE` et `SUPPLIER_INVOICE`), le motif d'écart recopié sur la facture, la fiche de dépense enrichie, l'action d'accueil « + Dépense », les quantités livrées, rejetées et en quarantaine sur les lignes des bons de commande, et la borne de 500 caractères du motif d'une décision d'écart. Reste, pour clore P8 : la marge d'un lot pilote validée par la Direction (DoD), sur un lot réel.

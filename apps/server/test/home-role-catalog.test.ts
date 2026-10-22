@@ -5,11 +5,17 @@ import { ROLE_CATALOG } from '../src/home-api/role-catalog.js';
 const codesOf = (role: string) => ROLE_CATALOG[role]!.actions.map((action) => action.code);
 
 describe('Accueil : actions par rôle', () => {
-  it('« + Dépense » pour les rôles de terrain qui dépensent ; la Finance garde « Dépenses et fournisseurs »', () => {
+  it('« + Dépense » pour les rôles de terrain qui dépensent ; la Finance a le suivi des dépenses, les factures et les paiements fournisseurs', () => {
     for (const role of ['COMMERCIAL_TERRAIN', 'VENDEUR_PDV', 'RESP_FERME']) {
       expect(codesOf(role), role).toContain('NEW_EXPENSE');
     }
-    expect(codesOf('FINANCE')).toContain('EXPENSES');
+    expect(codesOf('FINANCE')).toEqual(
+      expect.arrayContaining(['EXPENSES', 'SUPPLIER_INVOICES', 'SUPPLIER_PAYMENTS']),
+    );
+    const finance = Object.fromEntries(
+      ROLE_CATALOG.FINANCE!.actions.map((action) => [action.code, action.label]),
+    );
+    expect(finance.EXPENSES).toBe('Dépenses');
     // Les autres rôles autorisés passent par le menu (AV-298).
     for (const role of ['DIRECTION', 'RESP_PRODUCTION', 'MAGASINIER', 'RESP_ACHATS']) {
       expect(codesOf(role), role).not.toContain('NEW_EXPENSE');

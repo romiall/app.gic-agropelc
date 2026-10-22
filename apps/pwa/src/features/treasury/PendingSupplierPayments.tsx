@@ -16,6 +16,7 @@ import {
   readPages,
   readPath,
   useOnlineRead,
+  useRefreshOnVisible,
   type Pages,
   type ReadResult,
 } from '../sales/online-read.js';
@@ -84,6 +85,8 @@ export function PendingSupplierPayments({
     online,
     reloadKey,
   );
+  // Une décision de la Direction, prise ailleurs, change cette liste (revue de P8E-10).
+  useRefreshOnVisible(read.retry);
   const short = (id: string) => `…${id.slice(-4)}`;
   const nameOf = (id: string) =>
     id === userId

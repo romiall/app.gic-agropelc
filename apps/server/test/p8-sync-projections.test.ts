@@ -34,6 +34,7 @@ import {
   tx,
   type Actor,
 } from './cash-transfer-fixtures.js';
+import { newSupplier } from './supplier-ledger-fixtures.js';
 
 describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_000 }, () => {
   let idGenerator: IdGenerator;
@@ -206,6 +207,36 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
     expect(latest(await pull(fin, 'cash'), 'EXPENSE', id)?.data ?? null).toBeNull();
   });
 
+  it('dépense à payer d’un fournisseur, puis annulée : fournisseur et motif d’annulation projetés (ADR-047 §10, revue de P8E-10)', async () => {
+    const supplierId = await newSupplier(terrain.userId);
+    const id = freshUuid();
+    await send(terrain, 'finance.expense.record', 'EXPENSE', id, recently(30), {
+      categoryId: category.CARBURANT,
+      amountXaf: 3_000,
+      description: 'Gasoil à payer',
+      siteId: site,
+      paidNow: false,
+      supplierId,
+    });
+    expect(latest(await pull(terrain, 'cash'), 'EXPENSE', id)?.data).toMatchObject({
+      id,
+      status: 'RECORDED',
+      paid_now: false,
+      supplier_id: supplierId,
+      paid_at: null,
+      cancel_reason: null,
+    });
+    await send(terrain, 'finance.expense.cancel', 'EXPENSE', id, recently(20), {
+      reason: 'Livraison annulée',
+    });
+    expect(latest(await pull(terrain, 'cash'), 'EXPENSE', id)?.data).toMatchObject({
+      id,
+      status: 'CANCELLED',
+      supplier_id: supplierId,
+      cancel_reason: 'Livraison annulée',
+    });
+  });
+
   it('projection : ligne GLOBAL de repli jamais servie ; au-delà de 30 jours, plus servie', async () => {
     const project = resolveEntityProjection('EXPENSE')!;
     const id = await recordExpense(terrain, recently(30));
@@ -247,10 +278,21 @@ describe('P8-10 : jeux hors ligne de la finance opérationnelle', { timeout: 60_
         .where('id', '=', toBin(pending))
         .executeTakeFirstOrThrow();
       expect(row.status).toBe('PAID_PENDING_APPROVAL');
+      // Revue de P8E-10 : la fiche porte la demande de validation, pas seulement un champ nul.
+      const request = await db
+        .selectFrom('approvals_approval_requests')
+        .select('id')
+        .where('subject_id', '=', toBin(pending))
+        .where('operation_type', '=', 'EXPENSE')
+        .executeTakeFirstOrThrow();
       await touchedDaysAgo(pending, 40);
       expect(
         await project(db, pending, { scopeType: 'USER', scopeId: terrain.userId }),
-      ).toMatchObject({ id: pending, status: 'PAID_PENDING_APPROVAL' });
+      ).toMatchObject({
+        id: pending,
+        status: 'PAID_PENDING_APPROVAL',
+        approval_request_id: fromBin(request.id),
+      });
     } finally {
       await neutralizePolicy(policyId);
     }

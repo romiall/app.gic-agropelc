@@ -202,6 +202,21 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     await db.attachmentBlobs.clear();
   });
 
+  it('passer au suivi puis revenir à la saisie : le brouillon est gardé, la saisie masquée pendant le suivi (revue de P8E-10)', async () => {
+    await asRoles(['FINANCE']);
+    const user = userEvent.setup();
+    renderAt();
+    await user.selectOptions(await screen.findByLabelText('Catégorie'), EXPENSE_IDS.transport);
+    await user.type(screen.getByLabelText('Montant (F CFA)'), '4200');
+    await user.click(screen.getByRole('link', { name: 'Suivi des dépenses' }));
+    expect(await screen.findByLabelText('Dépenses')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enregistrer la dépense' })).toBeNull();
+    await user.click(screen.getByRole('link', { name: 'Saisir une dépense' }));
+    expect(screen.getByLabelText('Montant (F CFA)')).toHaveValue('4200');
+    expect(screen.getByLabelText('Catégorie')).toHaveValue(EXPENSE_IDS.transport);
+    expect(screen.queryByLabelText('Dépenses')).toBeNull();
+  });
+
   it('hors ligne : payée par la caisse du PDV, justificatif cité, site et imputation proposés', async () => {
     offline();
     const user = userEvent.setup();
@@ -577,7 +592,14 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
           item({
             id: SECOND,
             docNumber: 'DEP-PDV-YDE-2026-000009',
-            attachments: [{ id: RECEIPT, kind: 'RECEIPT', uploadStatus: 'QUARANTINED' }],
+            attachments: [
+              { id: RECEIPT, kind: 'RECEIPT', uploadStatus: 'QUARANTINED' },
+              {
+                id: '01900000-0000-7000-8000-0000000000e9',
+                kind: 'RECEIPT',
+                uploadStatus: 'MISSING',
+              },
+            ],
           }),
         ],
         next_cursor: null,
@@ -603,6 +625,12 @@ describe('Dépenses (ECR-FIN-02, P8E-03)', () => {
     const refused = screen.getByRole('listitem', { name: 'DEP-PDV-YDE-2026-000009' });
     expect(
       within(refused).getByText('Justificatif refusé par le serveur : l’auteur doit le renvoyer.'),
+    ).toBeInTheDocument();
+    // Pièce jamais reçue : distinguée d'une pièce refusée (revue de P8E-10).
+    expect(
+      within(refused).getByText(
+        'Justificatif jamais reçu par le serveur : l’auteur doit le renvoyer.',
+      ),
     ).toBeInTheDocument();
     // La Direction ne paie pas ; elle annule la dépense d'un autre (approbateur).
     expect(within(card).queryByRole('button', { name: /^Payer/ })).toBeNull();

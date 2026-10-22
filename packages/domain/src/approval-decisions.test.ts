@@ -18,6 +18,15 @@ describe('approval-decisions (MP-07, ECR-ADM-08)', () => {
     });
   });
 
+  it('écart de facture : motif recopié sur la facture, borné à 500 caractères (revue de P8E-10)', () => {
+    expect(approvalDecisionSpec('INVOICE_MISMATCH')).toEqual({
+      rejectable: true,
+      approveReasonRequired: true,
+      commentMax: 500,
+    });
+    expect(approvalDecisionSpec('SUPPLIER_PAYMENT').commentMax).toBeUndefined();
+  });
+
   it('pertes et mortalités : issue du refus, erreur de déclaration par défaut (AV-038) ; montant au coût', () => {
     for (const type of ['LOSS_DECLARATION', 'MORTALITY']) {
       expect(approvalDecisionSpec(type).rejectOptions).toEqual({
@@ -39,7 +48,7 @@ describe('approval-decisions (MP-07, ECR-ADM-08)', () => {
       { key: 'correctedReference', required: false },
     ]);
     expect(approvalDecisionSpec('PRICE_OVERRIDE').recordOnly).toBe(true);
-    expect(approvalDecisionSpec('INVOICE_MISMATCH')).toEqual({
+    expect(approvalDecisionSpec('INVOICE_MISMATCH')).toMatchObject({
       rejectable: true,
       approveReasonRequired: true,
     });

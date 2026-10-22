@@ -17,6 +17,7 @@
  */
 import type { Transaction } from 'kysely';
 import { sql } from 'kysely';
+import { approvalDecisionSpec } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
@@ -129,6 +130,13 @@ export async function decideApprovalRequest(
       'SELF_APPROVAL_FORBIDDEN',
       "L'approbateur doit être différent du demandeur ; seule la Direction valide sa propre demande, explicitement (BR-ADM-017).",
     );
+  }
+
+  // Motif plus long que la colonne où le module propriétaire le recopie (revue de P8E-10) : refus propre,
+  // la demande reste en attente, au lieu d'une erreur SQL rejouée sans fin.
+  const commentMax = approvalDecisionSpec(row.operation_type).commentMax;
+  if (commentMax !== undefined && (input.comment?.trim().length ?? 0) > commentMax) {
+    return refused('COMMENT_TOO_LONG', `Motif limité à ${commentMax} caractères.`);
   }
 
   if (input.decision === 'APPROVED') {

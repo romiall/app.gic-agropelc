@@ -339,6 +339,55 @@ describe('P8-07 : factures fournisseurs', { timeout: 60_000 }, () => {
     expect(await invoicedOf(s2.poLineId)).toBe(97);
   });
 
+  it('motif d’une décision d’écart plus long que la facture ne peut le porter : refus propre, demande en attente (revue de P8E-10)', async () => {
+    // La file accepte 2 000 caractères, la facture en garde 500 (`approval_reason`, `dispute_reason`).
+    const refused = await wf09();
+    const first = await recordInvoice(fin1, invoicePayload(refused, 97));
+    const firstRequestId = fromBin((await requestOf(first.id))!.id);
+    const tooLong = 'x'.repeat(501);
+    const exact = 'y'.repeat(500);
+    for (const verb of ['approve', 'reject']) {
+      expect(
+        codeOf(
+          await run(dir, `approvals.request.${verb}`, firstRequestId, at('14:00'), {
+            requestId: firstRequestId,
+            comment: tooLong,
+          }),
+        ),
+        verb,
+      ).toBe('COMMENT_TOO_LONG');
+    }
+    expect((await requestOf(first.id))?.status).toBe('PENDING');
+    expect((await invoiceRow(first.id))?.status).toBe('MISMATCH');
+    // Au plus 500 caractères : le refus conteste la facture avec ce motif entier.
+    expect(
+      codeOf(
+        await run(dir, 'approvals.request.reject', firstRequestId, at('14:30'), {
+          requestId: firstRequestId,
+          comment: exact,
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect(await invoiceRow(first.id)).toMatchObject({ status: 'DISPUTED', dispute_reason: exact });
+
+    // L'acceptation de l'écart garde elle aussi le motif entier.
+    const accepted = await wf09();
+    const second = await recordInvoice(fin1, invoicePayload(accepted, 96));
+    const secondRequestId = fromBin((await requestOf(second.id))!.id);
+    expect(
+      codeOf(
+        await run(dir, 'approvals.request.approve', secondRequestId, at('14:45'), {
+          requestId: secondRequestId,
+          comment: exact,
+        }),
+      ),
+    ).toBe('APPLIED');
+    expect(await invoiceRow(second.id)).toMatchObject({
+      status: 'APPROVED',
+      approval_reason: exact,
+    });
+  });
+
   it('demande rejetée → DISPUTED ; retrait refusé ; facture payée : annulation refusée', async () => {
     const s = await wf09();
     const { id } = await recordInvoice(fin1, invoicePayload(s, 99));

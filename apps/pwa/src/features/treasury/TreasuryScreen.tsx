@@ -23,7 +23,13 @@ import { formatBusinessDay, formatClockTime, formatDateTime } from '../home/form
 import { useRememberedNavigation } from '../navigation/navigation-store.js';
 import { CommandResult } from '../sales/CommandResult.js';
 import { formatMoney } from '../sales/format.js';
-import { readPages, readPath, useOnlineRead, type ReadResult } from '../sales/online-read.js';
+import {
+  readPages,
+  readPath,
+  useOnlineRead,
+  useRefreshOnVisible,
+  type ReadResult,
+} from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
 import {
   isBlockingWait,
@@ -181,6 +187,8 @@ export function TreasuryScreen() {
     online,
     reloadKey,
   );
+  // Soldes et sessions changent hors de cet appareil : relus au retour sur l'onglet (revue de P8E-10).
+  useRefreshOnVisible(read.retry);
 
   if (!refs || !userId) {
     return (

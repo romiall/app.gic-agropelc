@@ -1077,4 +1077,17 @@ describe('Factures fournisseurs (ECR-FIN-03, P8E-05)', () => {
     );
     expect(within(form).getByLabelText('Ligne 1 : désignation')).toHaveValue('Poulet de chair');
   });
+
+  it('ouvert hors ligne, rien de lu : « en ligne seulement » pour les dettes et les factures, pas un chargement sans fin (revue de P8E-10)', async () => {
+    await rememberRoles(['FINANCE']);
+    act(() => reportSyncOutcome('OFFLINE'));
+    renderScreen();
+    expect(
+      await screen.findAllByText(
+        'Lecture en ligne seulement : reconnectez-vous pour afficher les factures et les dettes.',
+      ),
+    ).toHaveLength(2);
+    expect(screen.queryByText('Chargement des données de l’appareil…')).toBeNull();
+    expect(screen.queryByRole('listitem', { name: 'FF-2026-000007' })).toBeNull();
+  });
 });

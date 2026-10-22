@@ -53,6 +53,12 @@ export interface ApprovalDecisionSpec {
   readonly recordOnly?: boolean;
   /** Montant de la demande = valeur au coût (RC-05). */
   readonly amountIsCost?: boolean;
+  /**
+   * Longueur maximale du motif quand le module propriétaire l'écrit dans une colonne plus courte que
+   * `APPROVAL_COMMENT_MAX` (revue de P8E-10) : au-delà, le serveur refuse la décision, la demande reste
+   * en attente.
+   */
+  readonly commentMax?: number;
 }
 
 const LOSS_REJECT: ApprovalDecisionOptions = {
@@ -80,7 +86,8 @@ export const APPROVAL_DECISION_SPECS: Readonly<Record<string, ApprovalDecisionSp
   // P8 (ADR-043 §5) : l'écart de rapprochement d'une facture s'approuve en motivant ; refusé, la facture
   // passe contestée. Dépenses et paiements fournisseurs : approuver ou refuser simplement (plafond de
   // l'approbateur vérifié par le serveur, AV-263).
-  INVOICE_MISMATCH: { rejectable: true, approveReasonRequired: true },
+  // Le motif est recopié sur la facture (`approval_reason`, `dispute_reason` : 500 caractères).
+  INVOICE_MISMATCH: { rejectable: true, approveReasonRequired: true, commentMax: 500 },
   PRICE_OVERRIDE: { rejectable: true, recordOnly: true },
   CREDIT_LIMIT_EXCEEDED: { rejectable: true, recordOnly: true },
   CASH_VARIANCE: { rejectable: false, approveReasonRequired: true },

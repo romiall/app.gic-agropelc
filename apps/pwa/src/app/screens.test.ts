@@ -42,8 +42,16 @@ describe('app/screens — registre et navigation par rôle', () => {
       `${ROUTES.approvals}?types=PRICE_OVERRIDE`,
     );
     expect(routeOfAction({ code: 'VALIDATIONS', route: null }, 'ADMIN')).toBeNull();
-    // P8E-03 (AV-298) : « + Dépense » des rôles de terrain ; « Dépenses et fournisseurs » de la
-    // Finance mène au suivi ; jamais pour l'Admin (sans `finance.expense.record`).
+    // P8E-03 (AV-298) : « + Dépense » des rôles de terrain ; « Dépenses » de la Finance mène au
+    // suivi ; jamais pour l'Admin (sans `finance.expense.record`).
+    // Revue de P8E-10 : les factures et les paiements fournisseurs ont leur action d'accueil.
+    expect(routeOfAction({ code: 'SUPPLIER_INVOICES', route: null }, 'FINANCE')).toBe(
+      ROUTES.supplierInvoices,
+    );
+    expect(routeOfAction({ code: 'SUPPLIER_PAYMENTS', route: null }, 'FINANCE')).toBe(
+      ROUTES.supplierPayments,
+    );
+    expect(routeOfAction({ code: 'SUPPLIER_PAYMENTS', route: null }, 'ADMIN')).toBeNull();
     expect(routeOfAction({ code: 'NEW_EXPENSE', route: null }, 'VENDEUR_PDV')).toBe(
       ROUTES.expenses,
     );

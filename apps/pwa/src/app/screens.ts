@@ -806,8 +806,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: false,
   },
   {
-    // P8E-03 (ADR-047 §2, AV-298) : « + Dépense » des rôles de terrain ; « Dépenses et fournisseurs »
-    // de la Finance mène au suivi.
+    // P8E-03 (ADR-047 §2, AV-298) : « + Dépense » des rôles de terrain ; « Dépenses » de la Finance
+    // mène au suivi.
     id: 'ECR-FIN-02',
     path: ROUTES.expenses,
     labelKey: 'expenses',
@@ -818,24 +818,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     offline: true,
   },
   {
-    // P8E-05 (ADR-047 §4, AV-298) : Finance (saisie, décisions), Direction (décisions), Achats (lecture).
+    // P8E-05 (ADR-047 §4, AV-298) : Finance (saisie, décisions), Direction (décisions), Achats (lecture) ;
+    // action « Factures fournisseurs » de l'accueil de la Finance (revue de P8E-10).
     id: 'ECR-FIN-03',
     path: ROUTES.supplierInvoices,
     labelKey: 'supplier_invoices',
     group: 'finance',
     roles: ROLE_SETS.payableRead,
-    actionCodes: [],
+    actionCodes: ['SUPPLIER_INVOICES'],
     offline: false,
   },
   {
     // P8E-06 (ADR-047 §4, AV-298) : Finance (saisie, avances), Direction (annulation d'un décaissé,
-    // décision dans la file), Achats (lecture).
+    // décision dans la file), Achats (lecture) ; action « Paiements fournisseurs » de l'accueil de la
+    // Finance (revue de P8E-10).
     id: 'ECR-FIN-04',
     path: ROUTES.supplierPayments,
     labelKey: 'supplier_payments',
     group: 'finance',
     roles: ROLE_SETS.payableRead,
-    actionCodes: [],
+    actionCodes: ['SUPPLIER_PAYMENTS'],
     offline: false,
   },
   {
