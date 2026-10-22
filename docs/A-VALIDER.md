@@ -2518,7 +2518,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : BR-ANA-006 : 10 000 / 100 000 / 15 s (« D », sécurité et performance) ; D11 §8 : trois ans et `QUERY_LIMIT_EXCEEDED` ; la concurrence par utilisateur est une garde de charge (RISK-13). **CONFIRMÉ** (limites) / **DÉDUIT** (concurrence, erreur plutôt que troncature).
 - **Choix** : (a) valeurs de D11 en paramètres `analytics.*`, `LIMIT + 1` et erreur au dépassement, export en `FAILED` ; (b) troncature signalée par `truncated` ; (c) sans limite de concurrence.
 - **Recommandation** : (a).
-- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §8, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §1. Défaut implémenté : (a). Paramétrable.
+- **Impact** : [ADR-074](decisions/ADR-074-couche-semantique-et-explorateur.md) §8 et sa révision P9-14, [ADR-078](decisions/ADR-078-charge-paliers-analytiques-et-retention.md) §1. Défaut implémenté : (a), avec une précision : une limite de lignes **demandée** par l'utilisateur, plus petite que le plafond, est un « premier N » voulu (les N premières lignes sans erreur, le total sur toutes) ; seul le plafond est une erreur. Paramétrable : `analytics.query_max_rows`, `analytics.query_max_execution_ms`, `analytics.query_max_period_days`, `analytics.query_max_concurrent_per_user`.
 
 ### AV-422 — Mesures protégées : refus ou masquage — SECONDAIRE
 - **Question** : Que voit un utilisateur sans `inventory.valuation.read` qui demande le coût, la marge ou une valeur au coût ?

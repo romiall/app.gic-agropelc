@@ -250,6 +250,11 @@ Catalogue initial des clés (valeurs par défaut, références AV) :
 | `inventory.blind_receipt_match_mode` | `SUBSET` | AV-177 : règle de rapprochement d'une réception sans document (`SUBSET` : produits reçus inclus dans les produits expédiés ; `EXACT` : mêmes produits et mêmes quantités) ; lue au site, puis globale |
 | `analytics.freshness_warning_hours` | 2 | BR-ANA-005 |
 | `analytics.dashboard_max_period_days` | 366 | AV-207 (P5-20) : durée maximale, en jours, d'une période bornée (`from`/`to`) d'un tableau de bord ; entier > 0, sinon 366 |
+| `analytics.query_max_rows` | 10000 | AV-421 (P9-14) : lignes affichées au plus par l'explorateur (BR-ANA-006) ; au-delà, `QUERY_LIMIT_EXCEEDED` ; entier > 0, sinon 10 000 |
+| `analytics.query_max_execution_ms` | 15000 | AV-421 (P9-14) : durée d'exécution maximale d'une requête de l'explorateur, en millisecondes (`MAX_EXECUTION_TIME`) ; entier > 0, sinon 15 000 |
+| `analytics.query_max_period_days` | 1096 | AV-421 (P9-14) : période détaillée au plus, en jours (trois ans, D11 §8) ; entier > 0, sinon 1 096 |
+| `analytics.query_max_concurrent_per_user` | 2 | AV-421 (P9-14) : requêtes simultanées au plus par utilisateur (ADR-078 §1) ; entier > 0, sinon 2 |
+| `analytics.scope_max_candidates` | 500 | AV-423 (P9-14) : candidats (sites, zones, utilisateurs) au plus par sorte dans l'étendue exacte des lignes ; entier > 0, sinon 500 ; au-delà, l'étendue est tronquée et signalée |
 | `communication.push_group_minutes` | 15 | AV-416, D13 §14 (P9-03) : fenêtre de regroupement des notifications push d'un même type pour un utilisateur |
 | `communication.direct_notification_disabled_types` | `[]` | AV-481 (P9-11) : types d'événements dont la notification directe est désactivée (`ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `StockTransferRequested`, `StockTransferDispatched`) ; une valeur qui n'est pas une liste de types connus ne désactive rien |
 | `communication.consumer_lag_alert_seconds` | 300 | AV-412, AV-438 (P9-03) : retard d'un consommateur d'événements au-delà duquel il est signalé ; nombre > 0 plafonné à dix ans, sinon 300 |

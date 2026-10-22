@@ -333,6 +333,17 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-207',
   },
+  // P9-14 (ADR-074 §8, ADR-078 §1 ; AV-421, AV-423) : limites de l'explorateur, lues à chaque requête.
+  { key: 'analytics.query_max_rows', value: 10000, isClientVisible: false, ref: 'AV-421' },
+  { key: 'analytics.query_max_execution_ms', value: 15000, isClientVisible: false, ref: 'AV-421' },
+  { key: 'analytics.query_max_period_days', value: 1096, isClientVisible: false, ref: 'AV-421' },
+  {
+    key: 'analytics.query_max_concurrent_per_user',
+    value: 2,
+    isClientVisible: false,
+    ref: 'AV-421',
+  },
+  { key: 'analytics.scope_max_candidates', value: 500, isClientVisible: false, ref: 'AV-423' },
   // P9-03 (ADR-071, ADR-072, ADR-078 ; AV-400 à AV-442) : seuils, délais et durées des alertes. Un seul
   // lieu des seuils (AV-400) : lus par le détecteur, dans le module qui porte la donnée.
   {
