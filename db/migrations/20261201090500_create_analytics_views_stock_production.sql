@@ -5,7 +5,9 @@
 -- colonne générée de la table source quand elle existe, portée dérivée dans la vue, documents annulés exclus.
 -- migrate:up transaction:false
 
--- Mouvements de stock : une ligne par mouvement (les contre-écritures sont des mouvements à part entière).
+-- Mouvements de stock : une ligne par mouvement (les contre-écritures sont des mouvements à part entière, de même
+-- `move_type` que le mouvement qu'elles défont : `is_reversal` et `source_doc_type` les distinguent, comme le
+-- font les flux d'un emplacement).
 -- Le site d'une extrémité se déduit de son emplacement ; un emplacement virtuel n'en a pas. Le titulaire
 -- n'existe que pour un emplacement mobile. `value_xaf` est une valeur au coût (mesure protégée).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_stock_moves AS
@@ -16,6 +18,8 @@ SELECT
   m.from_location_id,
   m.to_location_id,
   m.move_type,
+  m.is_reversal,
+  m.source_doc_type,
   rc.code AS reason_code,
   m.lot_id AS stock_lot_id,
   fl.site_id AS from_site_id,
@@ -32,14 +36,19 @@ LEFT JOIN catalog_reason_codes rc ON rc.id = m.reason_code_id;
 -- Soldes de stock : jeu d'état, lu à l'instant de la lecture. Comme `GET /stock` : le disponible exclut le
 -- réservé, et l'alloué sauf sur un emplacement à garde exclusive (`availableQty`) ; la valeur est le solde
 -- multiplié par le coût unitaire moyen courant arrondi au franc, arrondie au franc (BR-STK-054,
--- `stockValueXaf`) — pas la valeur du registre. Le lot de stock est vide pour un produit sans suivi par lot
--- (clé nulle de la table source).
+-- `stockValueXaf`) — pas la valeur du registre (AV-487). Le lot de stock est vide pour un produit sans suivi par
+-- lot (clé nulle de la table source). Les emplacements virtuels qui ne sont que la source ou le puits d'un
+-- mouvement (fournisseur, client, perte, production, consommation, ajustement, ouverture) n'ont pas de stock et
+-- n'entrent pas ; restent les emplacements physiques, le transit, les pertes en attente de validation et les
+-- marchandises vendues à livrer, que `location_type` distingue (KPI-STK-02 les annonce à part, AV-256). L'alloué
+-- reste nul dans la projection (ADR-033 §3) : les quotas d'appareil se lisent dans le tableau de distribution.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_stock_balance AS
 SELECT
   b.location_id,
   b.product_id,
   CASE WHEN b.lot_key <> UNHEX('00000000000000000000000000000000') THEN b.lot_key END AS stock_lot_id,
   p.stock_family AS family,
+  l.location_type,
   l.site_id,
   l.custodian_user_id,
   b.qty_on_hand AS balance_base,
@@ -52,10 +61,13 @@ SELECT
 FROM inventory_stock_balances b
 JOIN organization_locations l ON l.id = b.location_id
 JOIN catalog_products p ON p.id = b.product_id
-LEFT JOIN inventory_product_valuations v ON v.product_id = b.product_id;
+LEFT JOIN inventory_product_valuations v ON v.product_id = b.product_id
+WHERE l.is_virtual = 0 OR l.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER');
 
--- Pertes déclarées : déclarations non annulées, avec leur statut (une perte rejetée et rendue n'en est pas une,
--- mais elle reste lisible par le statut). Comme `lossValueSummary`, la valeur est le coût figé de la déclaration.
+-- Pertes déclarées : déclarations non annulées, avec leur statut. Comme `lossValueSummary`, la quantité et la
+-- valeur (coût figé de la déclaration) ne comptent que les pertes constatées (enregistrée, approuvée, non
+-- justifiée, en cours d'annulation) ; celles en attente de validation sont dans les colonnes `pending_*` ; une
+-- déclaration rejetée et rendue n'est pas une perte (lignes lisibles par le statut, mesures vides).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_losses AS
 SELECT
   d.business_date AS business_day,
@@ -69,8 +81,12 @@ SELECT
   d.declared_by,
   d.status,
   d.site_id,
-  d.quantity_base,
-  d.value_xaf
+  CASE WHEN d.status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING')
+       THEN d.quantity_base END AS quantity_base,
+  CASE WHEN d.status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING')
+       THEN d.value_xaf END AS value_xaf,
+  CASE WHEN d.status = 'PENDING_APPROVAL' THEN d.quantity_base END AS pending_quantity_base,
+  CASE WHEN d.status = 'PENDING_APPROVAL' THEN d.value_xaf END AS pending_value_xaf
 FROM inventory_loss_declarations d
 LEFT JOIN catalog_reason_codes rc ON rc.id = d.reason_code_id
 WHERE d.status <> 'CANCELLED';

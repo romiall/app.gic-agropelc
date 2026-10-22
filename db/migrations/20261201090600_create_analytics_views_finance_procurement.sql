@@ -6,9 +6,9 @@
 -- migrate:up transaction:false
 
 -- Dépenses (KPI-FIN-04) : toutes les dépenses vivantes, avec leur statut — ni annulées, ni refusées avant
--- paiement. Les dépenses valides de `expensesSummary` sont celles de statut RECORDED, APPROVED, PAID ; celles
--- en attente de validation (PENDING_APPROVAL, PAID_PENDING_APPROVAL) et payées puis refusées
--- (PAID_REJECTED, non justifiées) restent lisibles par le statut.
+-- paiement. Comme `expensesSummary`, `amount_xaf` ne compte que les dépenses valides (RECORDED, APPROVED, PAID) ;
+-- celles en attente de validation (PENDING_APPROVAL, PAID_PENDING_APPROVAL) sont dans `pending_xaf`, celles
+-- payées puis refusées (PAID_REJECTED, non justifiées) dans `unjustified_xaf`.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_expenses AS
 SELECT
   e.business_date AS business_day,
@@ -18,13 +18,15 @@ SELECT
   e.site_id,
   e.status,
   e.created_by,
-  e.amount_xaf
+  CASE WHEN e.status IN ('RECORDED', 'APPROVED', 'PAID') THEN e.amount_xaf END AS amount_xaf,
+  CASE WHEN e.status IN ('PENDING_APPROVAL', 'PAID_PENDING_APPROVAL') THEN e.amount_xaf END AS pending_xaf,
+  CASE WHEN e.status = 'PAID_REJECTED' THEN e.amount_xaf END AS unjustified_xaf
 FROM finance_expenses e
 WHERE e.status NOT IN ('CANCELLED', 'REJECTED');
 
 -- Mouvements de trésorerie : une ligne par mouvement ; une contre-écriture est un mouvement de sens inverse.
--- Le site et le titulaire se déduisent du compte (une caisse personnelle a un titulaire, un compte central
--- n'a pas de site).
+-- Le site se déduit du compte (un compte central n'en a pas) ; la personne est le titulaire du compte, à défaut
+-- son responsable, comme la lecture du module `finance`.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_cash AS
 SELECT
   m.business_date AS business_day,
@@ -32,14 +34,15 @@ SELECT
   m.cash_account_id,
   m.movement_type,
   a.site_id,
-  a.holder_user_id,
+  COALESCE(a.holder_user_id, a.responsible_user_id) AS holder_user_id,
   CASE WHEN m.direction = 'IN' THEN m.amount_xaf ELSE 0 END AS inflow_xaf,
   CASE WHEN m.direction = 'OUT' THEN m.amount_xaf ELSE 0 END AS outflow_xaf
 FROM finance_cash_movements m
 JOIN finance_cash_accounts a ON a.id = m.cash_account_id;
 
--- Achats : deux sortes de faits dans les colonnes des mesures qu'ils portent. Les lignes des bons de commande
--- engagés (ni brouillon, ni annulés), au jour du bon : quantité commandée et montant commandé. Les lignes des
+-- Achats : deux sortes de faits dans les colonnes des mesures qu'ils portent. Les lignes non annulées des bons de
+-- commande engagés (ni brouillon, ni en attente d'approbation, ni annulés), au jour du bon : quantité commandée
+-- et montant commandé (le total du bon exclut une ligne annulée). Les lignes des
 -- réceptions comptabilisées (statuts dont les quantités comptent au bon, `purchaseOrderMatching`), au jour de
 -- la réception : livré, rejeté et accepté (livré moins rejeté). Le site est celui du bon ou de la réception,
 -- l'auteur celui du document.
@@ -59,7 +62,7 @@ SELECT
   pol.line_total_xaf AS amount_xaf
 FROM procurement_purchase_order_lines pol
 JOIN procurement_purchase_orders po ON po.id = pol.order_id
-WHERE po.status NOT IN ('DRAFT', 'CANCELLED')
+WHERE po.status NOT IN ('DRAFT', 'PENDING_APPROVAL', 'CANCELLED') AND pol.status <> 'CANCELLED'
 UNION ALL
 SELECT
   CAST(CONVERT_TZ(r.occurred_at, '+00:00', '+01:00') AS DATE) AS business_day,

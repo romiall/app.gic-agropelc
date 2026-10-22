@@ -11,7 +11,7 @@ import { afterAll, describe, expect, it, type TestContext } from 'vitest';
 import { sql, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../src/platform/kysely/database.js';
-import { fromBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   cashAccountBalance,
   expensesSummary,
@@ -19,6 +19,12 @@ import {
 import { purchaseOrderMatching } from '../src/modules/procurement/application/public/index.js';
 import { closeTestDb } from './helpers.js';
 import { snapshot } from './analytics-view-seeds.js';
+import {
+  cloneCashMovementOnHolderlessAccount,
+  cloneOrderLine,
+  cloneOrderWithStatus,
+  cloneReceipts,
+} from './analytics-view-seeds-stock.js';
 
 afterAll(closeTestDb);
 
@@ -51,35 +57,27 @@ describe('analytics_f_expenses', () => {
       enough(ctx, reference.count, 1, 'dépenses valides');
       const view = await rows<{
         code: string;
-        status: string;
         amount: string;
         n: string;
+        pending: string;
+        unjustified: string;
       }>(
         trx,
-        sql`SELECT c.code AS code, v.status AS status, SUM(v.amount_xaf) AS amount, COUNT(*) AS n
+        sql`SELECT c.code AS code, COALESCE(SUM(v.amount_xaf), 0) AS amount, SUM(v.amount_xaf IS NOT NULL) AS n,
+                   COALESCE(SUM(v.pending_xaf), 0) AS pending, COALESCE(SUM(v.unjustified_xaf), 0) AS unjustified
               FROM analytics_f_expenses v
               JOIN finance_expense_categories c ON c.id = v.category_id
              WHERE v.business_day BETWEEN ${FROM_DAY} AND ${TO_DAY}
-             GROUP BY c.code, v.status`,
+             GROUP BY c.code`,
       );
-      const valid = new Set(['RECORDED', 'APPROVED', 'PAID']);
-      const byCategory = new Map<string, { amount: number; count: number }>();
-      let pending = 0;
-      let unjustified = 0;
-      for (const row of view) {
-        if (valid.has(row.status)) {
-          const current = byCategory.get(row.code) ?? { amount: 0, count: 0 };
-          byCategory.set(row.code, {
-            amount: current.amount + Number(row.amount),
-            count: current.count + Number(row.n),
-          });
-        } else if (row.status === 'PENDING_APPROVAL' || row.status === 'PAID_PENDING_APPROVAL') {
-          pending += Number(row.amount);
-        } else if (row.status === 'PAID_REJECTED') {
-          unjustified += Number(row.amount);
-        }
-      }
-      expect(byCategory).toEqual(
+      // Les catégories sans dépense valide n'ont pas de ligne chez la référence : seules celles qui en ont comptent.
+      expect(
+        new Map(
+          view
+            .filter((row) => Number(row.n) > 0)
+            .map((row) => [row.code, { amount: Number(row.amount), count: Number(row.n) }]),
+        ),
+      ).toEqual(
         new Map(
           reference.byCategory.map((line) => [
             line.code,
@@ -87,8 +85,12 @@ describe('analytics_f_expenses', () => {
           ]),
         ),
       );
-      expect(pending).toBe(reference.pendingXaf);
-      expect(unjustified).toBe(reference.unjustifiedXaf);
+      expect(view.reduce((total, row) => total + Number(row.pending), 0)).toBe(
+        reference.pendingXaf,
+      );
+      expect(view.reduce((total, row) => total + Number(row.unjustified), 0)).toBe(
+        reference.unjustifiedXaf,
+      );
     });
   });
 
@@ -105,8 +107,8 @@ describe('analytics_f_expenses', () => {
         sql`SELECT (SELECT COUNT(*) FROM analytics_f_expenses WHERE status IN ('CANCELLED', 'REJECTED')) AS leaked,
                    (SELECT COUNT(*) FROM analytics_f_expenses) AS view_n,
                    (SELECT COUNT(*) FROM finance_expenses WHERE status NOT IN ('CANCELLED', 'REJECTED')) AS source_n,
-                   COALESCE(SUM(v.site_id <> e.site_id OR v.created_by <> e.created_by), 0) AS wrong_site,
-                   COALESCE(SUM(v.business_day <> DATE(CONVERT_TZ(e.occurred_at, '+00:00', '+01:00'))), 0) AS wrong_day
+                   COALESCE(SUM(NOT (v.site_id <=> e.site_id) OR NOT (v.created_by <=> e.created_by)), 0) AS wrong_site,
+                   COALESCE(SUM(NOT (v.business_day <=> DATE(CONVERT_TZ(e.occurred_at, '+00:00', '+01:00')))), 0) AS wrong_day
               FROM analytics_f_expenses v JOIN finance_expenses e ON e.id = v.expense_id`,
       );
       enough(ctx, Number(check!.source_n), 1, 'dépenses vivantes');
@@ -134,7 +136,7 @@ describe('analytics_f_cash', () => {
     });
   });
 
-  it('un mouvement est une entrée ou une sortie, jamais les deux ; site et titulaire viennent du compte', async (ctx) => {
+  it('un mouvement est une entrée ou une sortie, jamais les deux ; site et titulaire (à défaut le responsable) viennent du compte', async (ctx) => {
     await snapshot(async (trx) => {
       const [check] = await rows<{
         checked: string;
@@ -148,7 +150,8 @@ describe('analytics_f_cash', () => {
         sql`SELECT COUNT(*) AS checked,
                    SUM(v.inflow_xaf > 0 AND v.outflow_xaf > 0) AS both_ways,
                    SUM(v.inflow_xaf + v.outflow_xaf <> m.amount_xaf) AS wrong_amount,
-                   SUM(NOT (v.site_id <=> a.site_id) OR NOT (v.holder_user_id <=> a.holder_user_id)) AS wrong_account,
+                   SUM(NOT (v.site_id <=> a.site_id)
+                    OR NOT (v.holder_user_id <=> COALESCE(a.holder_user_id, a.responsible_user_id))) AS wrong_account,
                    (SELECT COUNT(*) FROM analytics_f_cash) AS view_n,
                    (SELECT COUNT(*) FROM finance_cash_movements) AS source_n
               FROM analytics_f_cash v
@@ -160,6 +163,20 @@ describe('analytics_f_cash', () => {
       expect(Number(check!.wrong_amount)).toBe(0);
       expect(Number(check!.wrong_account)).toBe(0);
       expect(Number(check!.view_n)).toBe(Number(check!.source_n));
+    });
+  });
+});
+
+describe('analytics_f_cash (compte sans titulaire)', () => {
+  it('la personne d’un mouvement sur un compte sans titulaire est le responsable du compte (copie)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const seeded = await cloneCashMovementOnHolderlessAccount(trx, '2019-03-04');
+      enough(ctx, seeded ? 1 : 0, 1, 'compte de trésorerie sans titulaire');
+      const [row] = await rows<{ person: Buffer | null }>(
+        trx,
+        sql`SELECT holder_user_id AS person FROM analytics_f_cash WHERE movement_id = ${toBin(seeded!.movementId)}`,
+      );
+      expect(row!.person ? fromBin(row!.person) : null).toBe(seeded!.responsibleUserId);
     });
   });
 });
@@ -241,7 +258,7 @@ describe('analytics_f_purchases', () => {
                        GROUP BY v.order_id, po.total_xaf HAVING SUM(v.amount_xaf) <> po.total_xaf) x) AS wrong_total,
                    (SELECT COUNT(*) FROM analytics_f_purchases v
                       JOIN procurement_purchase_orders po ON po.id = v.order_id
-                     WHERE v.receipt_id IS NULL AND po.status IN ('DRAFT', 'CANCELLED')) AS leaked_orders,
+                     WHERE v.receipt_id IS NULL AND po.status IN ('DRAFT', 'PENDING_APPROVAL', 'CANCELLED')) AS leaked_orders,
                    (SELECT COUNT(*) FROM analytics_f_purchases v
                       JOIN procurement_goods_receipts r ON r.id = v.receipt_id
                      WHERE r.status NOT IN ('POSTED', 'POSTED_PENDING_REVIEW', 'REVIEW_REJECTED', 'CANCELLATION_PENDING')) AS leaked_receipts,
@@ -253,6 +270,89 @@ describe('analytics_f_purchases', () => {
       expect(Number(check!.leaked_orders)).toBe(0);
       expect(Number(check!.leaked_receipts)).toBe(0);
       expect(Number(check!.accepted_gap)).toBe(0);
+    });
+  });
+
+  it('seules les réceptions comptabilisées entrent, au jour de la réception (copies, une par statut)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const receipts = await cloneReceipts(trx, '2019-03-04', [
+        { status: 'POSTED', delivered: 1 },
+        { status: 'POSTED_PENDING_REVIEW', delivered: 2 },
+        { status: 'REVIEW_REJECTED', delivered: 4 },
+        { status: 'CANCELLATION_PENDING', delivered: 8 },
+        { status: 'QUARANTINED', delivered: 16 },
+        { status: 'REJECTED', delivered: 32 },
+        { status: 'CANCELLED', delivered: 64 },
+      ]);
+      enough(ctx, receipts ? 1 : 0, 1, 'réception modèle');
+      const [day] = await rows<{ delivered: string; accepted: string }>(
+        trx,
+        sql`SELECT COALESCE(SUM(delivered_quantity), 0) AS delivered, COALESCE(SUM(accepted_quantity), 0) AS accepted
+              FROM analytics_f_purchases
+             WHERE order_id = ${toBin(receipts!.orderId)} AND product_id = ${toBin(receipts!.productId)}
+               AND receipt_id IS NOT NULL AND business_day = '2019-03-04'`,
+      );
+      expect(Number(day!.delivered)).toBe(1 + 2 + 4 + 8);
+      expect(Number(day!.accepted)).toBe(1 + 2 + 4 + 8);
+    });
+  });
+
+  it('le commandé et le montant commandé de chaque produit d’un bon sont ceux de ses lignes non annulées (copies de lignes)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const added = await cloneOrderLine(trx);
+      const cancelled = await cloneOrderLine(trx, 'CANCELLED');
+      enough(ctx, added && cancelled ? 1 : 0, 1, 'ligne de bon de commande modèle');
+      const source = await rows<{
+        order_id: Buffer;
+        product_id: Buffer;
+        ordered: string;
+        amount: string;
+      }>(
+        trx,
+        sql`SELECT l.order_id, l.product_id, SUM(l.ordered_qty_base) AS ordered, SUM(l.line_total_xaf) AS amount
+              FROM procurement_purchase_order_lines l
+              JOIN procurement_purchase_orders po ON po.id = l.order_id
+             WHERE po.status NOT IN ('DRAFT', 'PENDING_APPROVAL', 'CANCELLED') AND l.status <> 'CANCELLED'
+             GROUP BY l.order_id, l.product_id`,
+      );
+      const view = await rows<{
+        order_id: Buffer;
+        product_id: Buffer;
+        ordered: string;
+        amount: string;
+      }>(
+        trx,
+        sql`SELECT order_id, product_id, SUM(ordered_quantity) AS ordered, SUM(amount_xaf) AS amount
+              FROM analytics_f_purchases WHERE receipt_id IS NULL GROUP BY order_id, product_id`,
+      );
+      const key = (row: { order_id: Buffer; product_id: Buffer }) =>
+        `${fromBin(row.order_id)}|${fromBin(row.product_id)}`;
+      expect(
+        new Map(view.map((row) => [key(row), [Number(row.ordered), Number(row.amount)]])),
+      ).toEqual(
+        new Map(source.map((row) => [key(row), [Number(row.ordered), Number(row.amount)]])),
+      );
+      const own = view.find((row) => key(row) === `${added!.orderId}|${added!.productId}`);
+      expect(Number(own!.amount)).toBeGreaterThanOrEqual(added!.lineTotalXaf);
+    });
+  });
+
+  it('un bon en attente d’approbation, brouillon ou annulé n’entre pas, un bon approuvé entre (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const orders = new Map<string, string>();
+      for (const status of ['PENDING_APPROVAL', 'DRAFT', 'CANCELLED', 'APPROVED']) {
+        const copy = await cloneOrderWithStatus(trx, status);
+        if (copy) orders.set(status, copy.orderId);
+      }
+      enough(ctx, orders.size === 4 ? 1 : 0, 1, 'bon de commande modèle');
+      for (const [status, orderId] of orders) {
+        const [count] = await rows<{ n: string }>(
+          trx,
+          sql`SELECT COUNT(*) AS n FROM analytics_f_purchases
+               WHERE order_id = ${toBin(orderId)} AND receipt_id IS NULL`,
+        );
+        expect(Number(count!.n), status).toBe(status === 'APPROVED' ? 1 : 0);
+      }
     });
   });
 

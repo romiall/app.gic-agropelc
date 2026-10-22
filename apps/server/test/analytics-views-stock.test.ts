@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it, type TestContext } from 'vitest';
 import { sql, type Transaction } from 'kysely';
 import { businessDayEndUtc, businessDayOf, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../src/platform/kysely/database.js';
-import { fromBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   costObjectBreakdown,
   costObjectConsumptionsByDay,
@@ -23,6 +23,12 @@ import {
 } from '../src/modules/inventory/application/public/index.js';
 import { closeTestDb } from './helpers.js';
 import { snapshot } from './analytics-view-seeds.js';
+import {
+  cloneConsumptions,
+  cloneEggCollections,
+  cloneLossDeclarations,
+  seedReservedBalances,
+} from './analytics-view-seeds-stock.js';
 
 afterAll(closeTestDb);
 
@@ -53,13 +59,13 @@ describe('analytics_f_stock_moves', () => {
         sql`SELECT m.to_location_id AS loc
               FROM analytics_f_stock_moves m
               JOIN organization_locations l ON l.id = m.to_location_id AND l.is_virtual = 0
+             WHERE m.business_day BETWEEN ${FROM_DAY} AND ${TO_DAY}
              GROUP BY m.to_location_id ORDER BY COUNT(*) DESC LIMIT 8`,
       );
-      enough(ctx, locations.length, 1, 'emplacements physiques ayant reçu des mouvements');
+      const prepared = [];
       for (const { loc } of locations) {
-        const locationId = fromBin(loc);
         const flows = await locationFlows(trx, {
-          locationIds: [locationId],
+          locationIds: [fromBin(loc)],
           period: { fromDay: FROM_DAY, toDay: TO_DAY },
         });
         const view = await rows<{
@@ -90,7 +96,20 @@ describe('analytics_f_stock_moves', () => {
                WHERE (to_location_id = ${loc} OR from_location_id = ${loc}) AND business_day <= ${TO_DAY}
                GROUP BY product_id`,
         );
+        prepared.push({ locationId: fromBin(loc), flows, view });
+      }
+      enough(
+        ctx,
+        prepared.reduce((total, entry) => total + entry.flows.length, 0),
+        1,
+        'flux d’emplacement physique',
+      );
+      for (const { locationId, flows, view } of prepared) {
         const byProduct = new Map(view.map((row) => [fromBin(row.product_id), row]));
+        // Mêmes produits des deux côtés : la vue n'invente pas de produit, la référence n'en perd aucun.
+        expect(new Set(byProduct.keys()), locationId).toEqual(
+          new Set(flows.map((f) => f.productId)),
+        );
         for (const flow of flows) {
           const row = byProduct.get(flow.productId);
           const label = `${locationId}/${flow.productId}`;
@@ -136,9 +155,13 @@ describe('analytics_f_stock_moves', () => {
         wrong_from: string;
         wrong_to: string;
         wrong_holder: string;
+        wrong_kind: string;
       }>(
         trx,
-        sql`SELECT SUM(NOT (v.from_site_id <=> fl.site_id)) AS wrong_from,
+        sql`SELECT SUM(NOT (v.is_reversal <=> m.is_reversal)
+                    OR NOT (v.source_doc_type <=> m.source_doc_type)
+                    OR NOT (v.move_type <=> m.move_type)) AS wrong_kind,
+                   SUM(NOT (v.from_site_id <=> fl.site_id)) AS wrong_from,
                    SUM(NOT (v.to_site_id <=> tl.site_id)) AS wrong_to,
                    SUM(NOT (v.from_custodian_user_id <=> fl.custodian_user_id)
                     OR NOT (v.to_custodian_user_id <=> tl.custodian_user_id)) AS wrong_holder
@@ -150,6 +173,7 @@ describe('analytics_f_stock_moves', () => {
       expect(Number(sites!.wrong_from)).toBe(0);
       expect(Number(sites!.wrong_to)).toBe(0);
       expect(Number(sites!.wrong_holder)).toBe(0);
+      expect(Number(sites!.wrong_kind)).toBe(0);
     });
   });
 
@@ -159,7 +183,7 @@ describe('analytics_f_stock_moves', () => {
         trx,
         sql`SELECT COUNT(*) AS checked,
                    SUM(NOT (v.reason_code <=> rc.code)) AS wrong_code,
-                   SUM(v.business_day <> DATE(CONVERT_TZ(m.occurred_at, '+00:00', '+01:00'))) AS wrong_day
+                   SUM(NOT (v.business_day <=> DATE(CONVERT_TZ(m.occurred_at, '+00:00', '+01:00')))) AS wrong_day
               FROM analytics_f_stock_moves v
               JOIN inventory_stock_moves m ON m.id = v.move_id
               LEFT JOIN catalog_reason_codes rc ON rc.id = m.reason_code_id
@@ -175,15 +199,25 @@ describe('analytics_f_stock_moves', () => {
 describe('analytics_f_stock_balance', () => {
   it('rend, pour chaque emplacement, les soldes de GET /stock : solde, alloué, disponible, valeur', async (ctx) => {
     await snapshot(async (trx) => {
-      const locations = await rows<{ id: Buffer; custody_mode: string | null }>(
-        trx,
-        sql`SELECT l.id, l.custody_mode
+      // Les soldes de la base d'essai n'ont ni réservé ni alloué et aucun emplacement à garde par appareil : on en
+      // amorce un de chaque mode de garde AVANT de choisir les emplacements comparés (le mode lu est le nouveau).
+      const seeded = await seedReservedBalances(trx);
+      const locations: { id: Buffer; custody_mode: string | null }[] = [];
+      locations.push(
+        ...(await rows<{ id: Buffer; custody_mode: string | null }>(
+          trx,
+          sql`SELECT l.id, l.custody_mode
               FROM analytics_f_stock_balance b
               JOIN organization_locations l ON l.id = b.location_id
              GROUP BY l.id, l.custody_mode ORDER BY COUNT(*) DESC LIMIT 10`,
+        )),
       );
-      enough(ctx, locations.length, 1, 'emplacements ayant des soldes');
-      let compared = 0;
+      for (const balance of seeded) {
+        if (!locations.some((known) => fromBin(known.id) === balance.locationId)) {
+          locations.push({ id: toBin(balance.locationId), custody_mode: balance.custodyMode });
+        }
+      }
+      const prepared = [];
       for (const location of locations) {
         const balances = await listStockBalances(trx, {
           locationId: fromBin(location.id),
@@ -201,22 +235,71 @@ describe('analytics_f_stock_balance', () => {
           sql`SELECT product_id, stock_lot_id, balance_base, allocated_base, available_base, value_xaf
                 FROM analytics_f_stock_balance WHERE location_id = ${location.id}`,
         );
-        const key = (product: Buffer, lot: Buffer | null) =>
-          `${fromBin(product)}|${lot === null ? '' : fromBin(lot)}`;
+        prepared.push({ locationId: fromBin(location.id), balances, view });
+      }
+      enough(
+        ctx,
+        prepared.reduce((total, entry) => total + entry.balances.length, 0),
+        1,
+        'soldes non nuls',
+      );
+      const key = (product: Buffer | string, lot: Buffer | string | null) =>
+        `${typeof product === 'string' ? product : fromBin(product)}|${
+          lot === null ? '' : typeof lot === 'string' ? lot : fromBin(lot)
+        }`;
+      for (const { locationId, balances, view } of prepared) {
         const byKey = new Map(view.map((row) => [key(row.product_id, row.stock_lot_id), row]));
         for (const balance of balances) {
-          const row = byKey.get(`${balance.productId}|${balance.lotId ?? ''}`);
-          const label = `${fromBin(location.id)}/${balance.productId}/${balance.lotId ?? '-'}`;
+          const row = byKey.get(key(balance.productId, balance.lotId));
+          const label = `${locationId}/${balance.productId}/${balance.lotId ?? '-'}`;
           expect(row, label).toBeDefined();
           near(Number(row!.balance_base), balance.qtyOnHand, `${label} solde`);
           near(Number(row!.allocated_base), balance.qtyAllocated, `${label} alloué`);
           near(Number(row!.available_base), balance.qtyAvailable, `${label} disponible`);
           // `+ 0` : la référence rend `-0` pour un petit solde négatif arrondi à zéro.
           expect(Number(row!.value_xaf) + 0, `${label} valeur`).toBe(balance.valueXaf + 0);
-          compared += 1;
+        }
+        // Une ligne de la vue que `GET /stock` ne rend pas est entièrement à zéro (il omet ces lignes).
+        const known = new Set(balances.map((balance) => key(balance.productId, balance.lotId)));
+        for (const row of view) {
+          if (known.has(key(row.product_id, row.stock_lot_id))) continue;
+          expect(Number(row.balance_base), `${locationId} ligne en trop`).toBe(0);
+          expect(Number(row.allocated_base), `${locationId} ligne en trop`).toBe(0);
+          expect(Number(row.available_base), `${locationId} ligne en trop`).toBe(0);
         }
       }
-      enough(ctx, compared, 1, 'soldes non nuls');
+    });
+  });
+
+  it('n’y figurent ni source ni puits de mouvement ; le transit, les pertes en attente et l’à-livrer y figurent', async (ctx) => {
+    await snapshot(async (trx) => {
+      const [check] = await rows<{
+        sinks: string;
+        view_n: string;
+        source_n: string;
+        wrong_type: string;
+      }>(
+        trx,
+        sql`SELECT COALESCE(SUM(v.location_type IN ('V_SUPPLIER', 'V_CUSTOMER', 'V_LOSS', 'V_PRODUCTION',
+                                                     'V_CONSUMPTION', 'V_ADJUSTMENT', 'V_OPENING')), 0) AS sinks,
+                   COUNT(*) AS view_n,
+                   COALESCE(SUM(NOT (v.location_type <=> l.location_type)), 0) AS wrong_type,
+                   (SELECT COUNT(*) FROM inventory_stock_balances b
+                      JOIN organization_locations x ON x.id = b.location_id
+                     WHERE x.is_virtual = 0 OR x.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER')) AS source_n
+              FROM analytics_f_stock_balance v JOIN organization_locations l ON l.id = v.location_id`,
+      );
+      enough(ctx, Number(check!.view_n), 1, 'soldes');
+      expect(Number(check!.sinks)).toBe(0);
+      expect(Number(check!.wrong_type)).toBe(0);
+      expect(Number(check!.view_n)).toBe(Number(check!.source_n));
+      const [kinds] = await rows<{ virtual_sources: string }>(
+        trx,
+        sql`SELECT (SELECT COUNT(*) FROM inventory_stock_balances b
+                      JOIN organization_locations x ON x.id = b.location_id
+                     WHERE x.is_virtual = 1 AND x.location_type NOT IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER')) AS virtual_sources`,
+      );
+      enough(ctx, Number(kinds!.virtual_sources), 1, 'soldes d’emplacements source ou puits');
     });
   });
 
@@ -232,7 +315,7 @@ describe('analytics_f_stock_balance', () => {
         sql`SELECT COUNT(*) AS checked,
                    SUM(v.stock_lot_id IS NOT NULL AND b.lot_key = UNHEX('00000000000000000000000000000000')) AS lot_with_key,
                    SUM(v.stock_lot_id IS NULL AND b.lot_key <> UNHEX('00000000000000000000000000000000')) AS lotless_without_key,
-                   SUM(v.family <> p.stock_family) AS wrong_family
+                   SUM(NOT (v.family <=> p.stock_family)) AS wrong_family
               FROM analytics_f_stock_balance v
               JOIN inventory_stock_balances b ON b.location_id = v.location_id AND b.product_id = v.product_id
                    AND (b.lot_key <=> COALESCE(v.stock_lot_id, UNHEX('00000000000000000000000000000000')))
@@ -247,13 +330,22 @@ describe('analytics_f_stock_balance', () => {
 });
 
 describe('analytics_f_losses', () => {
-  it('rend, par produit, les déclarations, quantités et valeurs comme lossValueSummary', async (ctx) => {
+  it('rend, par produit et par lot, les déclarations, quantités et valeurs constatées ou en attente comme lossValueSummary', async (ctx) => {
     await snapshot(async (trx) => {
       const fromUtc = businessDayStartUtc(FROM_DAY);
       const toUtc = businessDayEndUtc(TO_DAY);
+      const references = new Map<'product' | 'lot', Awaited<ReturnType<typeof lossValueSummary>>>();
       for (const groupBy of ['product', 'lot'] as const) {
-        const reference = await lossValueSummary(trx, { fromUtc, toUtc, groupBy });
-        enough(ctx, reference.length, 1, `groupes de pertes (${groupBy})`);
+        references.set(groupBy, await lossValueSummary(trx, { fromUtc, toUtc, groupBy }));
+      }
+      enough(
+        ctx,
+        Math.min(...[...references.values()].map((reference) => reference.length)),
+        1,
+        'groupes de pertes par produit et par lot',
+      );
+      for (const groupBy of ['product', 'lot'] as const) {
+        const reference = references.get(groupBy)!;
         const column = groupBy === 'product' ? 'product_id' : 'production_lot_id';
         const view = await rows<{
           key: Buffer;
@@ -265,13 +357,11 @@ describe('analytics_f_losses', () => {
         }>(
           trx,
           sql`SELECT ${sql.ref(column)} AS \`key\`,
-                     SUM(status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING')) AS declarations,
-                     COALESCE(SUM(CASE WHEN status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING')
-                                       THEN quantity_base END), 0) AS quantity,
-                     COALESCE(SUM(CASE WHEN status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING')
-                                       THEN value_xaf END), 0) AS value,
-                     COALESCE(SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN quantity_base END), 0) AS pending_quantity,
-                     COALESCE(SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN value_xaf END), 0) AS pending_value
+                     SUM(quantity_base IS NOT NULL) AS declarations,
+                     COALESCE(SUM(quantity_base), 0) AS quantity,
+                     COALESCE(SUM(value_xaf), 0) AS value,
+                     COALESCE(SUM(pending_quantity_base), 0) AS pending_quantity,
+                     COALESCE(SUM(pending_value_xaf), 0) AS pending_value
                 FROM analytics_f_losses
                WHERE business_day BETWEEN ${FROM_DAY} AND ${TO_DAY}
                  AND status IN ('RECORDED', 'APPROVED', 'REJECTED_UNJUSTIFIED', 'CANCELLATION_PENDING', 'PENDING_APPROVAL')
@@ -279,6 +369,7 @@ describe('analytics_f_losses', () => {
                GROUP BY ${sql.ref(column)}`,
         );
         const byKey = new Map(view.map((row) => [fromBin(row.key), row]));
+        expect(byKey.size, groupBy).toBe(reference.length);
         for (const line of reference) {
           const id = groupBy === 'product' ? line.productId : line.productionLotId;
           const row = byKey.get(id!);
@@ -294,6 +385,38 @@ describe('analytics_f_losses', () => {
           );
         }
       }
+    });
+  });
+
+  it('une perte rejetée et rendue n’est pas une perte, une perte en attente est à part (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const lot = await cloneLossDeclarations(trx, '2019-03-04', [
+        { status: 'RECORDED', category: 'CASSE', quantity: 1 },
+        { status: 'PENDING_APPROVAL', category: 'CASSE', quantity: 2 },
+        { status: 'REJECTED_RETURNED', category: 'CASSE', quantity: 4 },
+        { status: 'CANCELLED', category: 'CASSE', quantity: 8 },
+      ]);
+      enough(ctx, lot ? 1 : 0, 1, 'déclaration de perte modèle');
+      const [day] = await rows<{
+        counted: string;
+        value: string;
+        pending: string;
+        pending_value: string;
+        line_count: string;
+      }>(
+        trx,
+        sql`SELECT COALESCE(SUM(quantity_base), 0) AS counted, COALESCE(SUM(value_xaf), 0) AS value,
+                   COALESCE(SUM(pending_quantity_base), 0) AS pending,
+                   COALESCE(SUM(pending_value_xaf), 0) AS pending_value, COUNT(*) AS line_count
+              FROM analytics_f_losses
+             WHERE production_lot_id = ${toBin(lot!)} AND business_day = '2019-03-04'`,
+      );
+      expect(Number(day!.counted)).toBe(1);
+      expect(Number(day!.value)).toBe(100);
+      expect(Number(day!.pending)).toBe(2);
+      expect(Number(day!.pending_value)).toBe(200);
+      // L'annulée n'a pas de ligne ; la rejetée et rendue en a une, sans mesure.
+      expect(Number(day!.line_count)).toBe(3);
     });
   });
 
@@ -342,6 +465,63 @@ describe('analytics_f_production_daily', () => {
         );
         near(Number(view!.heads), reference.countedQuantity, `lot ${lotId}`);
       }
+    });
+  });
+
+  it('la mortalité comptée suit les statuts du résumé du lot, hors annulée, en attente et autre catégorie (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const lot = await cloneLossDeclarations(trx, '2019-03-04', [
+        { status: 'RECORDED', category: 'MORTALITE', quantity: 1 },
+        { status: 'APPROVED', category: 'MORTALITE', quantity: 2 },
+        { status: 'REJECTED_UNJUSTIFIED', category: 'MORTALITE', quantity: 4 },
+        { status: 'CANCELLATION_PENDING', category: 'MORTALITE', quantity: 8 },
+        { status: 'PENDING_APPROVAL', category: 'MORTALITE', quantity: 16 },
+        { status: 'REJECTED_RETURNED', category: 'MORTALITE', quantity: 32 },
+        { status: 'CANCELLED', category: 'MORTALITE', quantity: 64 },
+        { status: 'RECORDED', category: 'CASSE', quantity: 128 },
+      ]);
+      enough(ctx, lot ? 1 : 0, 1, 'déclaration de mortalité modèle');
+      const [day] = await rows<{ heads: string }>(
+        trx,
+        sql`SELECT COALESCE(SUM(mortality_heads), 0) AS heads FROM analytics_f_production_daily
+             WHERE lot_id = ${toBin(lot!)} AND business_day = '2019-03-04'`,
+      );
+      expect(Number(day!.heads)).toBe(1 + 2 + 4 + 8);
+    });
+  });
+
+  it('seul l’aliment enregistré est compté, ni l’annulé ni une autre nature (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const lot = await cloneConsumptions(trx, '2019-03-04', [
+        { status: 'RECORDED', costType: 'ALIMENT', quantity: 1 },
+        { status: 'CANCELLED', costType: 'ALIMENT', quantity: 2 },
+        { status: 'RECORDED', costType: 'VETERINAIRE', quantity: 4 },
+      ]);
+      enough(ctx, lot ? 1 : 0, 1, 'consommation d’aliment modèle');
+      const [day] = await rows<{ feed: string }>(
+        trx,
+        sql`SELECT COALESCE(SUM(feed_quantity), 0) AS feed FROM analytics_f_production_daily
+             WHERE lot_id = ${toBin(lot!)} AND business_day = '2019-03-04'`,
+      );
+      expect(Number(day!.feed)).toBe(1);
+    });
+  });
+
+  it('seules les collectes d’œufs enregistrées sont comptées, au jour de la collecte (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const lot = await cloneEggCollections(trx, '2019-03-04', [
+        { status: 'RECORDED', collected: 3 },
+        { status: 'CANCELLED', collected: 5 },
+      ]);
+      enough(ctx, lot ? 1 : 0, 1, 'collecte d’œufs modèle');
+      const [day] = await rows<{ collected: string; sellable: string }>(
+        trx,
+        sql`SELECT COALESCE(SUM(eggs_collected), 0) AS collected, COALESCE(SUM(eggs_sellable), 0) AS sellable
+              FROM analytics_f_production_daily
+             WHERE lot_id = ${toBin(lot!)} AND business_day = '2019-03-04'`,
+      );
+      expect(Number(day!.collected)).toBe(3);
+      expect(Number(day!.sellable)).toBe(3);
     });
   });
 
@@ -454,8 +634,8 @@ describe('analytics_f_production_daily', () => {
       }>(
         trx,
         sql`SELECT COUNT(*) AS checked,
-                   SUM(v.site_id <> pl.site_id) AS wrong_site,
-                   SUM(v.lot_type <> pl.lot_type) AS wrong_type,
+                   SUM(NOT (v.site_id <=> pl.site_id)) AS wrong_site,
+                   SUM(NOT (v.lot_type <=> pl.lot_type)) AS wrong_type,
                    SUM(NOT (v.building_id <=> CASE WHEN ml.location_type = 'BUILDING' THEN ml.id ELSE ml.parent_location_id END)) AS wrong_building
               FROM analytics_f_production_daily v
               JOIN production_production_lots pl ON pl.id = v.lot_id
@@ -526,7 +706,7 @@ describe('analytics_f_costs', () => {
         trx,
         sql`SELECT COUNT(*) AS checked,
                    SUM(v.amount_xaf <> CASE WHEN e.direction = 'DEBIT' THEN e.amount_xaf ELSE -e.amount_xaf END) AS wrong_sign,
-                   SUM(v.business_day <> DATE(CONVERT_TZ(e.occurred_at, '+00:00', '+01:00'))) AS wrong_day
+                   SUM(NOT (v.business_day <=> DATE(CONVERT_TZ(e.occurred_at, '+00:00', '+01:00')))) AS wrong_day
               FROM analytics_f_costs v JOIN inventory_cost_entries e ON e.id = v.entry_id`,
       );
       enough(ctx, Number(check!.checked), 1, 'écritures de coût');

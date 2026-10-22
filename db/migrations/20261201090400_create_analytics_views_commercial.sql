@@ -17,8 +17,10 @@
 -- Lignes de vente (KPI-COM-07 à 10, 13 à 15) : une ligne de vente, ou une ligne d'annulation appliquée
 -- (négative, à la date d'application), comme `saleActivityArms` (`sales/application/public/period-activity.ts`).
 -- Deux dates : `business_day` (jour de l'événement) et `sale_day` (jour de la vente d'origine). La remise
--- n'est pas contre-passée par une annulation ; le coût est celui des mouvements `SALE` de la ligne (figé
--- à la vente) et, pour une annulation, celui des retours `CUSTOMER_RETURN` de sa ligne.
+-- n'est pas contre-passée par une annulation ; le coût d'une vente est celui figé à la vente sur la ligne
+-- (`sales_sale_lines.cost_xaf`, somme des mouvements `SALE` de la ligne) et celui d'une annulation la somme des
+-- retours `CUSTOMER_RETURN` de sa ligne. La portée par personne (`owner_user_id`) est celle de la lecture du
+-- module `sales` (`GET /sales`) : le commercial, à défaut le vendeur.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_sales_line AS
 SELECT
   s.business_date AS business_day,
@@ -37,6 +39,7 @@ SELECT
   s.customer_category_id_snapshot AS customer_category_id,
   s.commercial_user_id,
   s.seller_user_id,
+  COALESCE(s.commercial_user_id, s.seller_user_id) AS owner_user_id,
   s.sale_type,
   s.payment_status,
   l.quantity_base,
@@ -65,6 +68,7 @@ SELECT
   s.customer_category_id_snapshot AS customer_category_id,
   s.commercial_user_id,
   s.seller_user_id,
+  COALESCE(s.commercial_user_id, s.seller_user_id) AS owner_user_id,
   s.sale_type,
   s.payment_status,
   -cl.quantity_base AS quantity_base,
@@ -86,27 +90,29 @@ JOIN sales_sale_lines l ON l.id = cl.sale_line_id
 JOIN sales_sales s ON s.id = l.sale_id
 JOIN catalog_products p ON p.id = l.product_id;
 
--- Lignes de commande (KPI-COM-06) : commandes engagées (ni brouillon ni annulées), datées de la commande ;
--- la zone est celle du compte client (la commande ne porte pas de zone).
+-- Lignes de commande (KPI-COM-06 « confirmées dans P ») : commandes engagées (ni brouillon ni annulées), au jour
+-- de leur confirmation (`occurred_at` est la création du brouillon, immuable ; repli sur lui sans confirmation).
+-- La zone est celle du site, comme la lecture du module `sales` ; la portée par personne est le commercial.
+-- `delivered_quantity` est le cumul livré à ce jour des commandes datées de la période, pas la livraison faite
+-- pendant la période.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_orders AS
 SELECT
-  CAST(CONVERT_TZ(o.occurred_at, '+00:00', '+01:00') AS DATE) AS business_day,
+  CAST(CONVERT_TZ(COALESCE(o.confirmed_at, o.occurred_at), '+00:00', '+01:00') AS DATE) AS business_day,
   o.id AS order_id,
   ol.id AS line_id,
   o.customer_id,
   o.commercial_user_id,
-  o.created_by,
   o.channel_code AS channel,
   ol.product_id,
   o.status,
   o.site_id,
-  cu.zone_id,
+  st.zone_id,
   ol.quantity_base AS ordered_quantity,
   ol.delivered_quantity_base AS delivered_quantity,
   ol.line_total_xaf AS amount_xaf
 FROM sales_sales_order_lines ol
 JOIN sales_sales_orders o ON o.id = ol.order_id
-JOIN crm_customers cu ON cu.id = o.customer_id
+JOIN organization_sites st ON st.id = o.site_id
 WHERE o.status NOT IN ('DRAFT', 'CANCELLED');
 
 -- Encaissements (KPI-FIN-01, KPI-DIS-06) : un encaissement confirmé à son jour métier (enregistré, en demande
@@ -144,14 +150,15 @@ WHERE p.status = 'CANCELLED' AND p.cancelled_at IS NOT NULL;
 -- enregistrée, conversion (rattachée au titulaire à l'instant de la conversion) — comme `commercialEffort`
 -- (`crm/application/public/activity-query.ts`). La zone est celle du compte ; un contact collecté est un compte
 -- créé avec un téléphone. Les colonnes `*_id` des mesures ne sont renseignées que sur l'événement qui les porte.
+-- La portée par personne est `user_id`, l'acteur de l'événement (acquéreur, auteur de la visite, titulaire à la
+-- conversion), comme le module `crm` (une visite se lit par son auteur) ; une conversion sans titulaire reste
+-- comptée (`user_id` vide : visible des seules portées sans restriction de personne).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_prospecting AS
 SELECT
   CAST(CONVERT_TZ(c.acquired_at, '+00:00', '+01:00') AS DATE) AS business_day,
   _utf8mb4'ACCOUNT' COLLATE utf8mb4_0900_as_cs AS event_kind,
   c.acquired_by_user_id AS user_id,
   c.zone_id,
-  c.acquired_by_user_id,
-  c.owner_user_id,
   c.source_code AS source,
   c.stage,
   NULL AS result,
@@ -168,8 +175,6 @@ SELECT
   _utf8mb4'VISIT' COLLATE utf8mb4_0900_as_cs AS event_kind,
   v.user_id,
   cu.zone_id,
-  cu.acquired_by_user_id,
-  cu.owner_user_id,
   cu.source_code AS source,
   v.customer_stage_at_visit AS stage,
   rc.code AS result,
@@ -188,8 +193,6 @@ SELECT
   _utf8mb4'CONVERSION' COLLATE utf8mb4_0900_as_cs AS event_kind,
   a.user_id,
   c.zone_id,
-  c.acquired_by_user_id,
-  c.owner_user_id,
   c.source_code AS source,
   c.stage,
   NULL AS result,
@@ -199,19 +202,22 @@ SELECT
   NULL AS visit_id,
   c.id AS converted_customer_id
 FROM crm_customers c
-JOIN crm_customer_assignments a
+LEFT JOIN crm_customer_assignments a
   ON a.customer_id = c.id AND a.valid_from <= c.converted_at
  AND (a.valid_to IS NULL OR a.valid_to > c.converted_at)
 WHERE c.converted_at IS NOT NULL;
 
--- Présences (KPI-COM-17) : une ligne par session de travail, au jour de son début ; la session ne porte ni
--- site ni zone (portée par la personne seulement). Un jour de présence est un jour distinct avec une session
--- acceptée (sans dérogation exigée, ou dérogation approuvée) ; la durée n'existe que pour une session terminée.
+-- Présences (KPI-COM-17) : une ligne par session de travail, au jour de son début ; la session ne porte pas de
+-- site mais la zone déclarée au pointage (portée par la zone et par la personne, comme la lecture du module
+-- `fieldwork`). Un jour de présence est un jour distinct avec une session acceptée (sans dérogation exigée, ou
+-- dérogation approuvée) ; les sessions et la durée comptent toutes les sessions, dérogations comprises (la
+-- dimension `override` et le statut permettent de les écarter) ; la durée n'existe que pour une session terminée.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_attendance AS
 SELECT
   CAST(CONVERT_TZ(w.started_at, '+00:00', '+01:00') AS DATE) AS business_day,
   w.id AS session_id,
   w.user_id,
+  w.declared_zone_id AS zone_id,
   w.status,
   (w.override_status <> 'NOT_REQUIRED') AS override,
   CASE WHEN w.override_status IN ('NOT_REQUIRED', 'APPROVED')

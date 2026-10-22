@@ -151,7 +151,18 @@ describe('catalogue et vues analytics_f_*', () => {
   // Une vue fusionnée à table unique (ou une jointure) se laisse écrire avec les droits de l'application sur la
   // table de base, quel que soit le droit sur la vue : toutes les vues sont donc `ALGORITHM = TEMPTABLE`, non
   // modifiables par construction.
+  it('aucune vue n’est modifiable : MySQL les déclare non modifiables', async () => {
+    const { rows } = await sql<{ table_name: string; is_updatable: string }>`
+      SELECT TABLE_NAME AS table_name, IS_UPDATABLE AS is_updatable
+        FROM INFORMATION_SCHEMA.VIEWS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'analytics\\_f\\_%'
+    `.execute(db);
+    expect(rows).toHaveLength(13);
+    for (const row of rows) expect(row.is_updatable, row.table_name).toBe('NO');
+  });
+
   it('l’application n’a que le droit de lire les vues, et aucune écriture n’aboutit', async () => {
+    const views = await viewColumns();
     const { rows } = await sql<Record<string, string>>`SHOW GRANTS FOR CURRENT_USER`.execute(db);
     const grants = rows.map((row) => Object.values(row)[0]!);
     for (const dataset of ANALYTICS_DATASETS) {
@@ -160,16 +171,17 @@ describe('catalogue et vues analytics_f_*', () => {
       for (const grant of own) {
         expect(/^GRANT SELECT ON /.test(grant), `${dataset.view} : ${grant}`).toBe(true);
       }
+      // Une colonne qui existe vraiment dans la vue : le refus vient de la vue, pas d'un nom inconnu.
+      const column = sql.ref([...views.get(dataset.view)!.keys()][0]!);
       const attempts: ReadonlyArray<readonly [string, ReturnType<typeof sql>]> = [
         ['DELETE', sql`DELETE FROM ${sql.table(dataset.view)} WHERE 1 = 0`],
-        [
-          'UPDATE',
-          sql`UPDATE ${sql.table(dataset.view)} SET business_day = business_day WHERE 1 = 0`,
-        ],
-        ['INSERT', sql`INSERT INTO ${sql.table(dataset.view)} (business_day) VALUES (NULL)`],
+        ['UPDATE', sql`UPDATE ${sql.table(dataset.view)} SET ${column} = ${column} WHERE 1 = 0`],
+        ['INSERT', sql`INSERT INTO ${sql.table(dataset.view)} (${column}) VALUES (NULL)`],
       ];
       for (const [name, statement] of attempts) {
-        await expect(statement.execute(db), `${dataset.view} ${name}`).rejects.toThrow();
+        await expect(statement.execute(db), `${dataset.view} ${name}`).rejects.toThrow(
+          /not updatable|not insertable|denied/i,
+        );
       }
     }
   });

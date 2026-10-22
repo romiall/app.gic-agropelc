@@ -103,7 +103,7 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     scope: {
       SITE: ['site_id'],
       ZONE: ['zone_id'],
-      PERSON: ['seller_user_id', 'commercial_user_id'],
+      PERSON: ['owner_user_id'],
     },
     dimensions: [
       dim('business_day', 'Jour de l’événement', 'date'),
@@ -151,9 +151,9 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     temporality: 'FLOW',
     permissions: ['sales.order.read'],
     periodDimension: 'business_day',
-    scope: { SITE: ['site_id'], ZONE: ['zone_id'], PERSON: ['commercial_user_id', 'created_by'] },
+    scope: { SITE: ['site_id'], ZONE: ['zone_id'], PERSON: ['commercial_user_id'] },
     dimensions: [
-      dim('business_day', 'Jour de la commande', 'date'),
+      dim('business_day', 'Jour de confirmation', 'date'),
       dim('customer_id', 'Client', 'id'),
       dim('commercial_user_id', 'Commercial', 'id'),
       dim('channel', 'Canal', 'code'),
@@ -165,7 +165,7 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     measures: [
       distinct('orders_count', 'Commandes', 'order_id'),
       sum('ordered_quantity', 'Quantité commandée', 'ordered_quantity', 'quantity'),
-      sum('delivered_quantity', 'Quantité livrée', 'delivered_quantity', 'quantity'),
+      sum('delivered_quantity', 'Quantité livrée à ce jour', 'delivered_quantity', 'quantity'),
       sum('amount', 'Montant', 'amount_xaf', 'xaf'),
     ],
   },
@@ -205,6 +205,8 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
       dim('from_location_id', 'Emplacement source', 'id'),
       dim('to_location_id', 'Emplacement destination', 'id'),
       dim('move_type', 'Type de mouvement', 'code'),
+      dim('is_reversal', 'Contre-écriture', 'boolean'),
+      dim('source_doc_type', 'Document source', 'code'),
       dim('reason_code', 'Motif', 'code'),
       dim('stock_lot_id', 'Lot de stock', 'id'),
       dim('from_site_id', 'Site source', 'id'),
@@ -228,6 +230,7 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
       dim('product_id', 'Produit', 'id'),
       dim('stock_lot_id', 'Lot de stock', 'id'),
       dim('family', 'Famille', 'code'),
+      dim('location_type', "Type d'emplacement", 'code'),
       dim('site_id', 'Site', 'id'),
     ],
     measures: [
@@ -258,8 +261,17 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
       dim('site_id', 'Site', 'id'),
     ],
     measures: [
-      sum('quantity', 'Quantité', 'quantity_base', 'quantity'),
-      sum('value', 'Valeur', 'value_xaf', 'xaf', { protected: true }),
+      sum('quantity', 'Quantité constatée', 'quantity_base', 'quantity'),
+      sum('value', 'Valeur constatée', 'value_xaf', 'xaf', { protected: true }),
+      sum(
+        'pending_quantity',
+        'Quantité en attente de validation',
+        'pending_quantity_base',
+        'quantity',
+      ),
+      sum('pending_value', 'Valeur en attente de validation', 'pending_value_xaf', 'xaf', {
+        protected: true,
+      }),
     ],
   },
   {
@@ -269,7 +281,7 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     temporality: 'FLOW',
     permissions: ['crm.customer.read', 'crm.visit.read'],
     periodDimension: 'business_day',
-    scope: { ZONE: ['zone_id'], PERSON: ['user_id', 'acquired_by_user_id', 'owner_user_id'] },
+    scope: { ZONE: ['zone_id'], PERSON: ['user_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
       dim('event_kind', 'Événement (création, visite, conversion)', 'code'),
@@ -294,18 +306,25 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     temporality: 'FLOW',
     permissions: ['fieldwork.session.read'],
     periodDimension: 'business_day',
-    // La session ne porte ni site ni zone : portée par la personne seulement (règle fermée, AV-424).
-    scope: { PERSON: ['user_id'] },
+    // La session ne porte pas de site mais la zone déclarée au pointage : portée par la zone et par la personne
+    // (règle fermée pour le site, AV-424).
+    scope: { ZONE: ['zone_id'], PERSON: ['user_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
       dim('user_id', 'Utilisateur', 'id'),
+      dim('zone_id', 'Zone déclarée', 'id'),
       dim('status', 'Statut', 'code'),
       dim('override', 'Dérogation', 'boolean'),
     ],
     measures: [
       distinct('presence_days', 'Jours de présence', 'accepted_day_key'),
-      sum('sessions', 'Sessions', 'session_count', 'count'),
-      sum('duration_minutes', 'Durée (minutes)', 'duration_minutes', 'minutes'),
+      sum('sessions', 'Sessions (dérogations comprises)', 'session_count', 'count'),
+      sum(
+        'duration_minutes',
+        'Durée (minutes, dérogations comprises)',
+        'duration_minutes',
+        'minutes',
+      ),
     ],
   },
   {
@@ -371,7 +390,11 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
       dim('site_id', 'Site', 'id'),
       dim('status', 'Statut', 'code'),
     ],
-    measures: [sum('amount', 'Montant', 'amount_xaf', 'xaf')],
+    measures: [
+      sum('amount', 'Dépenses valides', 'amount_xaf', 'xaf'),
+      sum('pending', 'En attente de validation', 'pending_xaf', 'xaf'),
+      sum('unjustified', 'Payées puis refusées (non justifiées)', 'unjustified_xaf', 'xaf'),
+    ],
   },
   {
     code: 'f_cash',

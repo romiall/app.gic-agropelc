@@ -5,8 +5,9 @@
  * Chaque vue est rapprochée de **la définition qui existe déjà** — les fonctions publiques que l'accueil et
  * le tableau de distribution utilisent (`salesActivityByDay`, `cashedActivity`, `commercialEffort`,
  * `saleCostsInPeriod`) — ou, à défaut de fonction publique, d'un calcul indépendant en TypeScript sur les
- * lignes sources. Tout se lit dans un seul instantané (`REPEATABLE READ`) : la base d'essai est partagée et
- * d'autres essais y écrivent pendant la lecture.
+ * lignes sources. Tout se lit dans un seul instantané (`REPEATABLE READ`, toujours annulé) : la base d'essai est
+ * partagée et d'autres essais y écrivent pendant la lecture. Les exclusions et les dates sont éprouvées sur des
+ * **copies** de lignes réelles (`analytics-view-seeds.ts`), jamais validées.
  */
 import { afterAll, describe, expect, it, type TestContext } from 'vitest';
 import { sql, type Transaction } from 'kysely';
@@ -38,7 +39,6 @@ const TO_DAY = '2026-12-31';
 
 type Trx = Transaction<DB>;
 
-/** Un instantané unique : les lectures de la vue et de la référence portent sur les mêmes lignes. */
 async function rows<T extends Record<string, unknown>>(
   trx: Trx,
   query: ReturnType<typeof sql<T>>,
@@ -49,7 +49,7 @@ async function rows<T extends Record<string, unknown>>(
 /**
  * La base d'essai est partagée : ces rapprochements portent sur les lignes que les autres essais y ont
  * laissées. Une base trop pauvre pour que le contrôle ait un sens **saute** l'essai (visible au rapport),
- * elle ne le fait ni échouer ni passer à vide.
+ * elle ne le fait ni échouer ni passer à vide. Toujours appelée **avant** la première assertion.
  */
 function enough(ctx: TestContext, actual: number, minimum: number, what: string): void {
   if (actual < minimum) ctx.skip(`${what} : ${actual} en base, ${minimum} au moins nécessaires`);
@@ -114,12 +114,20 @@ describe('analytics_f_sales_line', () => {
           sql`(seller_user_id = ${toBin(person)} OR commercial_user_id = ${toBin(person)})`,
         ],
       ];
-      for (const [label, scope, predicate] of scopes) {
-        const reference = await salesActivityByDay(trx, scope, {
-          fromDay: FROM_DAY,
-          toDay: TO_DAY,
-        });
-        enough(ctx, reference.length, 1, `jours de vente (${label})`);
+      const references = new Map<string, Awaited<ReturnType<typeof salesActivityByDay>>>();
+      for (const [label, scope] of scopes) {
+        references.set(
+          label,
+          await salesActivityByDay(trx, scope, { fromDay: FROM_DAY, toDay: TO_DAY }),
+        );
+      }
+      enough(
+        ctx,
+        Math.min(...[...references.values()].map((reference) => reference.length)),
+        1,
+        'jours de vente par site et par personne',
+      );
+      for (const [label, , predicate] of scopes) {
         const view = await rows<{ day: string; net: string }>(
           trx,
           sql`SELECT DATE_FORMAT(business_day, '%Y-%m-%d') AS day, SUM(amount_xaf) AS net
@@ -128,9 +136,23 @@ describe('analytics_f_sales_line', () => {
                GROUP BY business_day`,
         );
         expect(new Map(view.map((r) => [r.day, Number(r.net)])), label).toEqual(
-          new Map(reference.map((day) => [day.day, day.netXaf])),
+          new Map(references.get(label)!.map((day) => [day.day, day.netXaf])),
         );
       }
+    });
+  });
+
+  it('la portée par personne est celle de GET /sales : le commercial, à défaut le vendeur', async (ctx) => {
+    await snapshot(async (trx) => {
+      const [check] = await rows<{ checked: string; wrong: string; fallback: string }>(
+        trx,
+        sql`SELECT COUNT(*) AS checked,
+                   COALESCE(SUM(NOT (v.owner_user_id <=> COALESCE(s.commercial_user_id, s.seller_user_id))), 0) AS wrong,
+                   COALESCE(SUM(s.commercial_user_id IS NULL AND v.owner_user_id <=> s.seller_user_id), 0) AS fallback
+              FROM analytics_f_sales_line v JOIN sales_sales s ON s.id = v.sale_id`,
+      );
+      enough(ctx, Number(check!.checked), 1, 'lignes de vente');
+      expect(Number(check!.wrong)).toBe(0);
     });
   });
 
@@ -178,18 +200,23 @@ describe('analytics_f_sales_line', () => {
     });
   });
 
-  it('la marge d’une ligne est son montant moins son coût, annulation comprise', async () => {
+  it('la marge d’une ligne est son montant moins son coût, annulation comprise', async (ctx) => {
     await snapshot(async (trx) => {
-      const [bad] = await rows<{ n: string }>(
+      const [totals] = await rows<{
+        n: string;
+        bad: string;
+        amount: string;
+        cost: string;
+        margin: string;
+      }>(
         trx,
-        sql`SELECT COUNT(*) AS n FROM analytics_f_sales_line WHERE margin_xaf <> amount_xaf - cost_xaf`,
-      );
-      expect(Number(bad!.n)).toBe(0);
-      const [totals] = await rows<{ amount: string; cost: string; margin: string }>(
-        trx,
-        sql`SELECT SUM(amount_xaf) AS amount, SUM(cost_xaf) AS cost, SUM(margin_xaf) AS margin
+        sql`SELECT COUNT(*) AS n, COALESCE(SUM(margin_xaf <> amount_xaf - cost_xaf), 0) AS bad,
+                   COALESCE(SUM(amount_xaf), 0) AS amount, COALESCE(SUM(cost_xaf), 0) AS cost,
+                   COALESCE(SUM(margin_xaf), 0) AS margin
               FROM analytics_f_sales_line`,
       );
+      enough(ctx, Number(totals!.n), 1, 'lignes de vente');
+      expect(Number(totals!.bad)).toBe(0);
       expect(Number(totals!.margin)).toBe(Number(totals!.amount) - Number(totals!.cost));
     });
   });
@@ -215,9 +242,9 @@ describe('analytics_f_sales_line', () => {
     });
   });
 
-  it('l’annulation d’une ligne remisée est une ligne négative sans remise, la vente garde la sienne (copie)', async (ctx) => {
+  it('l’annulation d’une ligne remisée : ligne négative sans remise, coût et marge du retour de stock (copie)', async (ctx) => {
     await snapshot(async (trx) => {
-      const cancellation = await cloneDiscountedCancellation(trx, '2019-03-07');
+      const cancellation = await cloneDiscountedCancellation(trx, '2019-03-07', true);
       enough(ctx, cancellation ? 1 : 0, 1, 'ligne de vente remisée');
       const line = toBin(cancellation!.lineId);
       const lines = await rows<{
@@ -227,10 +254,11 @@ describe('analytics_f_sales_line', () => {
         amount: string;
         quantity: string;
         cost: string;
+        margin: string;
       }>(
         trx,
         sql`SELECT event_kind, DATE_FORMAT(business_day, '%Y-%m-%d') AS day, discount_xaf AS discount,
-                   amount_xaf AS amount, quantity_base AS quantity, cost_xaf AS cost
+                   amount_xaf AS amount, quantity_base AS quantity, cost_xaf AS cost, margin_xaf AS margin
               FROM analytics_f_sales_line WHERE line_id = ${line} AND (event_kind = 'SALE' OR business_day = '2019-03-07')`,
       );
       const cancelled = lines.filter((row) => row.event_kind === 'CANCELLATION');
@@ -238,7 +266,12 @@ describe('analytics_f_sales_line', () => {
       expect(Number(cancelled[0]!.discount)).toBe(0);
       expect(Number(cancelled[0]!.amount)).toBe(-cancellation!.amountXaf);
       expect(Number(cancelled[0]!.quantity)).toBe(-cancellation!.quantityBase);
-      expect(Number(cancelled[0]!.cost)).toBeLessThanOrEqual(0);
+      // Le coût d'une annulation est négatif : celui du retour de stock de sa ligne (non nul).
+      expect(cancellation!.returnedValueXaf).toBeGreaterThan(0);
+      expect(Number(cancelled[0]!.cost)).toBe(-cancellation!.returnedValueXaf);
+      expect(Number(cancelled[0]!.margin)).toBe(
+        -cancellation!.amountXaf + cancellation!.returnedValueXaf,
+      );
       const sold = lines.filter((row) => row.event_kind === 'SALE');
       expect(sold).toHaveLength(1);
       expect(Number(sold[0]!.discount)).toBe(cancellation!.discountXaf);
@@ -391,7 +424,7 @@ describe('analytics_f_prospecting', () => {
       const users = await rows<{ user_id: Buffer }>(
         trx,
         sql`SELECT user_id FROM analytics_f_prospecting
-             WHERE business_day BETWEEN ${FROM_DAY} AND ${TO_DAY}
+             WHERE business_day BETWEEN ${FROM_DAY} AND ${TO_DAY} AND user_id IS NOT NULL
              GROUP BY user_id ORDER BY COUNT(DISTINCT event_kind) DESC, COUNT(*) DESC LIMIT 12`,
       );
       enough(ctx, users.length, 1, 'personnes ayant une activité de prospection');
@@ -424,6 +457,30 @@ describe('analytics_f_prospecting', () => {
     });
   });
 
+  it('la personne d’un événement est son acteur : acquéreur du compte, auteur de la visite', async (ctx) => {
+    await snapshot(async (trx) => {
+      const [check] = await rows<{ accounts: string; visits: string; wrong: string }>(
+        trx,
+        sql`SELECT COALESCE(SUM(v.event_kind = 'ACCOUNT'), 0) AS accounts,
+                   COALESCE(SUM(v.event_kind = 'VISIT'), 0) AS visits,
+                   COALESCE(SUM(
+                     (v.event_kind = 'ACCOUNT' AND NOT (v.user_id <=> c.acquired_by_user_id))
+                  OR (v.event_kind = 'VISIT' AND NOT (v.user_id <=> cv.user_id))), 0) AS wrong
+              FROM analytics_f_prospecting v
+              LEFT JOIN crm_customers c ON v.event_kind = 'ACCOUNT' AND c.id = v.created_customer_id
+              LEFT JOIN crm_visits cv ON v.event_kind = 'VISIT' AND cv.id = v.visit_id
+             WHERE v.event_kind IN ('ACCOUNT', 'VISIT')`,
+      );
+      enough(
+        ctx,
+        Math.min(Number(check!.accounts), Number(check!.visits)),
+        1,
+        'comptes et visites',
+      );
+      expect(Number(check!.wrong)).toBe(0);
+    });
+  });
+
   it('un compte créé sans téléphone, ou au téléphone vide, n’est pas un contact collecté (copies)', async (ctx) => {
     await snapshot(async (trx) => {
       const empty = await cloneProspect(trx, '');
@@ -444,14 +501,8 @@ describe('analytics_f_prospecting', () => {
     });
   });
 
-  it('le titulaire d’une conversion est celui de l’historique à l’instant de la conversion', async (ctx) => {
+  it('chaque conversion est comptée, au titulaire de l’historique à l’instant de la conversion (calcul indépendant)', async (ctx) => {
     await snapshot(async (trx) => {
-      const before = await reassignConvertedCustomer(trx, 'BEFORE');
-      const after = await reassignConvertedCustomer(
-        trx,
-        'AFTER',
-        before ? [before.customerId] : [],
-      );
       const customers = await trx
         .selectFrom('crm_customers')
         .select(['id', 'converted_at'])
@@ -470,29 +521,49 @@ describe('analytics_f_prospecting', () => {
       const expected = new Set<string>();
       for (const customer of customers) {
         const at = customer.converted_at!.getTime();
-        for (const assignment of byCustomer.get(fromBin(customer.id)) ?? []) {
-          if (
+        const holders = (byCustomer.get(fromBin(customer.id)) ?? []).filter(
+          (assignment) =>
             assignment.valid_from.getTime() <= at &&
-            (assignment.valid_to === null || assignment.valid_to.getTime() > at)
-          ) {
-            expected.add(`${fromBin(customer.id)}|${fromBin(assignment.user_id)}`);
-          }
+            (assignment.valid_to === null || assignment.valid_to.getTime() > at),
+        );
+        // Un compte converti sans titulaire à cet instant reste compté (personne vide).
+        if (holders.length === 0) expected.add(`${fromBin(customer.id)}|`);
+        for (const holder of holders) {
+          expected.add(`${fromBin(customer.id)}|${fromBin(holder.user_id)}`);
         }
       }
-      const view = await rows<{ customer: Buffer; user_id: Buffer }>(
+      const view = await rows<{ customer: Buffer; user_id: Buffer | null }>(
         trx,
         sql`SELECT converted_customer_id AS customer, user_id FROM analytics_f_prospecting
              WHERE event_kind = 'CONVERSION'`,
       );
       expect(
-        new Set(view.map((row) => `${fromBin(row.customer)}|${fromBin(row.user_id)}`)),
+        new Set(
+          view.map((row) => `${fromBin(row.customer)}|${row.user_id ? fromBin(row.user_id) : ''}`),
+        ),
       ).toEqual(expected);
-      for (const seeded of [before, after]) {
-        if (seeded === undefined) continue;
-        const holders = view
-          .filter((row) => fromBin(row.customer) === seeded.customerId)
-          .map((row) => fromBin(row.user_id));
-        expect(holders, seeded.customerId).toEqual([seeded.holderAtConversion]);
+    });
+  });
+
+  it('le titulaire d’une conversion suit l’historique : changé avant la conversion, changé après (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const before = await reassignConvertedCustomer(trx, 'BEFORE');
+      const after = await reassignConvertedCustomer(
+        trx,
+        'AFTER',
+        before ? [before.customerId] : [],
+      );
+      enough(ctx, before && after ? 1 : 0, 1, 'compte converti à titulaire unique et ouvert');
+      for (const seeded of [before!, after!]) {
+        const holders = await rows<{ user_id: Buffer | null }>(
+          trx,
+          sql`SELECT user_id FROM analytics_f_prospecting
+               WHERE event_kind = 'CONVERSION' AND converted_customer_id = ${toBin(seeded.customerId)}`,
+        );
+        expect(
+          holders.map((row) => (row.user_id ? fromBin(row.user_id) : null)),
+          seeded.customerId,
+        ).toEqual([seeded.holderAtConversion]);
       }
     });
   });
@@ -519,7 +590,7 @@ describe('analytics_f_prospecting', () => {
       const [check] = await rows<{ checked: string; wrong_zone: string; wrong_result: string }>(
         trx,
         sql`SELECT COUNT(*) AS checked,
-                   SUM(v.zone_id <> c.zone_id) AS wrong_zone,
+                   SUM(NOT (v.zone_id <=> c.zone_id)) AS wrong_zone,
                    SUM(NOT (v.result <=> rc.code)) AS wrong_result
               FROM analytics_f_prospecting v
               JOIN crm_visits cv ON cv.id = v.visit_id
@@ -574,6 +645,20 @@ describe('analytics_f_attendance', () => {
     });
   });
 
+  it('la zone d’une session est la zone déclarée au pointage', async (ctx) => {
+    await snapshot(async (trx) => {
+      const [check] = await rows<{ checked: string; wrong: string; no_zone: string }>(
+        trx,
+        sql`SELECT COUNT(*) AS checked, COALESCE(SUM(NOT (v.zone_id <=> w.declared_zone_id)), 0) AS wrong,
+                   COALESCE(SUM(v.zone_id IS NULL), 0) AS no_zone
+              FROM analytics_f_attendance v JOIN fieldwork_work_sessions w ON w.id = v.session_id`,
+      );
+      enough(ctx, Number(check!.checked), 1, 'sessions de travail');
+      expect(Number(check!.wrong)).toBe(0);
+      expect(Number(check!.no_zone)).toBe(0);
+    });
+  });
+
   it('une session commencée à 23 h 30 UTC est du lendemain à Douala (copie)', async (ctx) => {
     await snapshot(async (trx) => {
       const session = await cloneWorkSession(trx, '2019-03-04T23:30:00.000Z');
@@ -612,7 +697,7 @@ describe('analytics_f_attendance', () => {
 });
 
 describe('analytics_f_orders', () => {
-  it('rend les lignes des commandes engagées, par jour, comme un calcul indépendant', async (ctx) => {
+  it('rend les lignes des commandes engagées, au jour de leur confirmation, comme un calcul indépendant', async (ctx) => {
     await snapshot(async (trx) => {
       const lines = await trx
         .selectFrom('sales_sales_order_lines as l')
@@ -620,6 +705,7 @@ describe('analytics_f_orders', () => {
         .select([
           'o.id as order_id',
           'o.occurred_at',
+          'o.confirmed_at',
           'o.status',
           'l.quantity_base',
           'l.delivered_quantity_base',
@@ -632,7 +718,7 @@ describe('analytics_f_orders', () => {
         { orders: Set<string>; ordered: number; delivered: number; amount: number }
       >();
       for (const line of lines) {
-        const day = businessDayOf(line.occurred_at);
+        const day = businessDayOf(line.confirmed_at ?? line.occurred_at);
         const entry = expected.get(day) ?? {
           orders: new Set<string>(),
           ordered: 0,
@@ -692,17 +778,35 @@ describe('analytics_f_orders', () => {
     });
   });
 
-  it('ni brouillon ni commande annulée ; la zone est celle du compte client', async (ctx) => {
+  it('la zone est celle du site de la commande, comme la lecture du module sales', async (ctx) => {
     await snapshot(async (trx) => {
       const [check] = await rows<{ excluded: string; wrong_zone: string; checked: string }>(
         trx,
         sql`SELECT (SELECT COUNT(*) FROM analytics_f_orders WHERE status IN ('DRAFT', 'CANCELLED')) AS excluded,
-                   SUM(v.zone_id <> c.zone_id) AS wrong_zone, COUNT(*) AS checked
-              FROM analytics_f_orders v JOIN crm_customers c ON c.id = v.customer_id`,
+                   COALESCE(SUM(NOT (v.zone_id <=> st.zone_id)), 0) AS wrong_zone, COUNT(*) AS checked
+              FROM analytics_f_orders v
+              JOIN sales_sales_orders o ON o.id = v.order_id
+              JOIN organization_sites st ON st.id = o.site_id`,
       );
       enough(ctx, Number(check!.checked), 1, 'lignes de commande');
       expect(Number(check!.excluded)).toBe(0);
       expect(Number(check!.wrong_zone)).toBe(0);
+    });
+  });
+
+  it('une commande confirmée un autre jour que sa création est du jour de la confirmation (copie)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const orderId = await cloneOrder(trx, 'CONFIRMED', {
+        occurredAt: '2019-03-04T09:00:00.000Z',
+        confirmedAt: '2019-03-06T09:00:00.000Z',
+      });
+      enough(ctx, orderId ? 1 : 0, 1, 'commande modèle');
+      const [row] = await rows<{ day: string }>(
+        trx,
+        sql`SELECT DATE_FORMAT(MIN(business_day), '%Y-%m-%d') AS day FROM analytics_f_orders
+             WHERE order_id = ${toBin(orderId!)}`,
+      );
+      expect(row!.day).toBe('2019-03-06');
     });
   });
 });

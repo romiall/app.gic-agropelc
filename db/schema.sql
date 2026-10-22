@@ -103,6 +103,7 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `business_day`,
  1 AS `session_id`,
  1 AS `user_id`,
+ 1 AS `zone_id`,
  1 AS `status`,
  1 AS `override`,
  1 AS `accepted_day_key`,
@@ -158,7 +159,9 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `site_id`,
  1 AS `status`,
  1 AS `created_by`,
- 1 AS `amount_xaf`*/;
+ 1 AS `amount_xaf`,
+ 1 AS `pending_xaf`,
+ 1 AS `unjustified_xaf`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -180,7 +183,9 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `status`,
  1 AS `site_id`,
  1 AS `quantity_base`,
- 1 AS `value_xaf`*/;
+ 1 AS `value_xaf`,
+ 1 AS `pending_quantity_base`,
+ 1 AS `pending_value_xaf`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -195,7 +200,6 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `line_id`,
  1 AS `customer_id`,
  1 AS `commercial_user_id`,
- 1 AS `created_by`,
  1 AS `channel`,
  1 AS `product_id`,
  1 AS `status`,
@@ -255,8 +259,6 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `event_kind`,
  1 AS `user_id`,
  1 AS `zone_id`,
- 1 AS `acquired_by_user_id`,
- 1 AS `owner_user_id`,
  1 AS `source`,
  1 AS `stage`,
  1 AS `result`,
@@ -311,6 +313,7 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `customer_category_id`,
  1 AS `commercial_user_id`,
  1 AS `seller_user_id`,
+ 1 AS `owner_user_id`,
  1 AS `sale_type`,
  1 AS `payment_status`,
  1 AS `quantity_base`,
@@ -331,6 +334,7 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `product_id`,
  1 AS `stock_lot_id`,
  1 AS `family`,
+ 1 AS `location_type`,
  1 AS `site_id`,
  1 AS `custodian_user_id`,
  1 AS `balance_base`,
@@ -352,6 +356,8 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `from_location_id`,
  1 AS `to_location_id`,
  1 AS `move_type`,
+ 1 AS `is_reversal`,
+ 1 AS `source_doc_type`,
  1 AS `reason_code`,
  1 AS `stock_lot_id`,
  1 AS `from_site_id`,
@@ -10095,7 +10101,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_attendance` AS select cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date) AS `business_day`,`w`.`id` AS `session_id`,`w`.`user_id` AS `user_id`,`w`.`status` AS `status`,(`w`.`override_status` <> 'NOT_REQUIRED') AS `override`,(case when (`w`.`override_status` in ('NOT_REQUIRED','APPROVED')) then concat(hex(`w`.`user_id`),'|',cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date)) end) AS `accepted_day_key`,1 AS `session_count`,(case when (`w`.`ended_at` is not null) then timestampdiff(MINUTE,`w`.`started_at`,`w`.`ended_at`) end) AS `duration_minutes` from `fieldwork_work_sessions` `w` */;
+/*!50001 VIEW `analytics_f_attendance` AS select cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date) AS `business_day`,`w`.`id` AS `session_id`,`w`.`user_id` AS `user_id`,`w`.`declared_zone_id` AS `zone_id`,`w`.`status` AS `status`,(`w`.`override_status` <> 'NOT_REQUIRED') AS `override`,(case when (`w`.`override_status` in ('NOT_REQUIRED','APPROVED')) then concat(hex(`w`.`user_id`),'|',cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date)) end) AS `accepted_day_key`,1 AS `session_count`,(case when (`w`.`ended_at` is not null) then timestampdiff(MINUTE,`w`.`started_at`,`w`.`ended_at`) end) AS `duration_minutes` from `fieldwork_work_sessions` `w` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10113,7 +10119,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_cash` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `movement_id`,`m`.`cash_account_id` AS `cash_account_id`,`m`.`movement_type` AS `movement_type`,`a`.`site_id` AS `site_id`,`a`.`holder_user_id` AS `holder_user_id`,(case when (`m`.`direction` = 'IN') then `m`.`amount_xaf` else 0 end) AS `inflow_xaf`,(case when (`m`.`direction` = 'OUT') then `m`.`amount_xaf` else 0 end) AS `outflow_xaf` from (`finance_cash_movements` `m` join `finance_cash_accounts` `a` on((`a`.`id` = `m`.`cash_account_id`))) */;
+/*!50001 VIEW `analytics_f_cash` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `movement_id`,`m`.`cash_account_id` AS `cash_account_id`,`m`.`movement_type` AS `movement_type`,`a`.`site_id` AS `site_id`,coalesce(`a`.`holder_user_id`,`a`.`responsible_user_id`) AS `holder_user_id`,(case when (`m`.`direction` = 'IN') then `m`.`amount_xaf` else 0 end) AS `inflow_xaf`,(case when (`m`.`direction` = 'OUT') then `m`.`amount_xaf` else 0 end) AS `outflow_xaf` from (`finance_cash_movements` `m` join `finance_cash_accounts` `a` on((`a`.`id` = `m`.`cash_account_id`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10149,7 +10155,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_expenses` AS select `e`.`business_date` AS `business_day`,`e`.`id` AS `expense_id`,`e`.`category_id` AS `category_id`,`e`.`cost_object_type` AS `cost_object_type`,`e`.`site_id` AS `site_id`,`e`.`status` AS `status`,`e`.`created_by` AS `created_by`,`e`.`amount_xaf` AS `amount_xaf` from `finance_expenses` `e` where (`e`.`status` not in ('CANCELLED','REJECTED')) */;
+/*!50001 VIEW `analytics_f_expenses` AS select `e`.`business_date` AS `business_day`,`e`.`id` AS `expense_id`,`e`.`category_id` AS `category_id`,`e`.`cost_object_type` AS `cost_object_type`,`e`.`site_id` AS `site_id`,`e`.`status` AS `status`,`e`.`created_by` AS `created_by`,(case when (`e`.`status` in ('RECORDED','APPROVED','PAID')) then `e`.`amount_xaf` end) AS `amount_xaf`,(case when (`e`.`status` in ('PENDING_APPROVAL','PAID_PENDING_APPROVAL')) then `e`.`amount_xaf` end) AS `pending_xaf`,(case when (`e`.`status` = 'PAID_REJECTED') then `e`.`amount_xaf` end) AS `unjustified_xaf` from `finance_expenses` `e` where (`e`.`status` not in ('CANCELLED','REJECTED')) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10167,7 +10173,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_losses` AS select `d`.`business_date` AS `business_day`,`d`.`id` AS `loss_id`,`d`.`category` AS `category`,`rc`.`code` AS `reason_code`,`d`.`product_id` AS `product_id`,`d`.`lot_id` AS `stock_lot_id`,`d`.`production_lot_id` AS `production_lot_id`,`d`.`location_id` AS `location_id`,`d`.`declared_by` AS `declared_by`,`d`.`status` AS `status`,`d`.`site_id` AS `site_id`,`d`.`quantity_base` AS `quantity_base`,`d`.`value_xaf` AS `value_xaf` from (`inventory_loss_declarations` `d` left join `catalog_reason_codes` `rc` on((`rc`.`id` = `d`.`reason_code_id`))) where (`d`.`status` <> 'CANCELLED') */;
+/*!50001 VIEW `analytics_f_losses` AS select `d`.`business_date` AS `business_day`,`d`.`id` AS `loss_id`,`d`.`category` AS `category`,`rc`.`code` AS `reason_code`,`d`.`product_id` AS `product_id`,`d`.`lot_id` AS `stock_lot_id`,`d`.`production_lot_id` AS `production_lot_id`,`d`.`location_id` AS `location_id`,`d`.`declared_by` AS `declared_by`,`d`.`status` AS `status`,`d`.`site_id` AS `site_id`,(case when (`d`.`status` in ('RECORDED','APPROVED','REJECTED_UNJUSTIFIED','CANCELLATION_PENDING')) then `d`.`quantity_base` end) AS `quantity_base`,(case when (`d`.`status` in ('RECORDED','APPROVED','REJECTED_UNJUSTIFIED','CANCELLATION_PENDING')) then `d`.`value_xaf` end) AS `value_xaf`,(case when (`d`.`status` = 'PENDING_APPROVAL') then `d`.`quantity_base` end) AS `pending_quantity_base`,(case when (`d`.`status` = 'PENDING_APPROVAL') then `d`.`value_xaf` end) AS `pending_value_xaf` from (`inventory_loss_declarations` `d` left join `catalog_reason_codes` `rc` on((`rc`.`id` = `d`.`reason_code_id`))) where (`d`.`status` <> 'CANCELLED') */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10185,7 +10191,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_orders` AS select cast(convert_tz(`o`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`o`.`id` AS `order_id`,`ol`.`id` AS `line_id`,`o`.`customer_id` AS `customer_id`,`o`.`commercial_user_id` AS `commercial_user_id`,`o`.`created_by` AS `created_by`,`o`.`channel_code` AS `channel`,`ol`.`product_id` AS `product_id`,`o`.`status` AS `status`,`o`.`site_id` AS `site_id`,`cu`.`zone_id` AS `zone_id`,`ol`.`quantity_base` AS `ordered_quantity`,`ol`.`delivered_quantity_base` AS `delivered_quantity`,`ol`.`line_total_xaf` AS `amount_xaf` from ((`sales_sales_order_lines` `ol` join `sales_sales_orders` `o` on((`o`.`id` = `ol`.`order_id`))) join `crm_customers` `cu` on((`cu`.`id` = `o`.`customer_id`))) where (`o`.`status` not in ('DRAFT','CANCELLED')) */;
+/*!50001 VIEW `analytics_f_orders` AS select cast(convert_tz(coalesce(`o`.`confirmed_at`,`o`.`occurred_at`),'+00:00','+01:00') as date) AS `business_day`,`o`.`id` AS `order_id`,`ol`.`id` AS `line_id`,`o`.`customer_id` AS `customer_id`,`o`.`commercial_user_id` AS `commercial_user_id`,`o`.`channel_code` AS `channel`,`ol`.`product_id` AS `product_id`,`o`.`status` AS `status`,`o`.`site_id` AS `site_id`,`st`.`zone_id` AS `zone_id`,`ol`.`quantity_base` AS `ordered_quantity`,`ol`.`delivered_quantity_base` AS `delivered_quantity`,`ol`.`line_total_xaf` AS `amount_xaf` from ((`sales_sales_order_lines` `ol` join `sales_sales_orders` `o` on((`o`.`id` = `ol`.`order_id`))) join `organization_sites` `st` on((`st`.`id` = `o`.`site_id`))) where (`o`.`status` not in ('DRAFT','CANCELLED')) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10239,7 +10245,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_prospecting` AS select cast(convert_tz(`c`.`acquired_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'ACCOUNT' collate utf8mb4_0900_as_cs) AS `event_kind`,`c`.`acquired_by_user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`acquired_by_user_id` AS `acquired_by_user_id`,`c`.`owner_user_id` AS `owner_user_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,`c`.`id` AS `created_customer_id`,(case when ((`c`.`phone_primary` is not null) and (`c`.`phone_primary` <> '')) then `c`.`id` end) AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,NULL AS `converted_customer_id` from `crm_customers` `c` where (`c`.`stage` <> 'MERGED') union all select cast(convert_tz(`v`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'VISIT' collate utf8mb4_0900_as_cs) AS `event_kind`,`v`.`user_id` AS `user_id`,`cu`.`zone_id` AS `zone_id`,`cu`.`acquired_by_user_id` AS `acquired_by_user_id`,`cu`.`owner_user_id` AS `owner_user_id`,`cu`.`source_code` AS `source`,`v`.`customer_stage_at_visit` AS `stage`,`rc`.`code` AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,(case when (`v`.`customer_stage_at_visit` = 'PROSPECT') then `v`.`customer_id` end) AS `visited_prospect_id`,`v`.`id` AS `visit_id`,NULL AS `converted_customer_id` from ((`crm_visits` `v` join `crm_customers` `cu` on((`cu`.`id` = `v`.`customer_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `v`.`outcome_reason_code_id`))) where (`v`.`status` = 'RECORDED') union all select cast(convert_tz(`c`.`converted_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'CONVERSION' collate utf8mb4_0900_as_cs) AS `event_kind`,`a`.`user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`acquired_by_user_id` AS `acquired_by_user_id`,`c`.`owner_user_id` AS `owner_user_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,`c`.`id` AS `converted_customer_id` from (`crm_customers` `c` join `crm_customer_assignments` `a` on(((`a`.`customer_id` = `c`.`id`) and (`a`.`valid_from` <= `c`.`converted_at`) and ((`a`.`valid_to` is null) or (`a`.`valid_to` > `c`.`converted_at`))))) where (`c`.`converted_at` is not null) */;
+/*!50001 VIEW `analytics_f_prospecting` AS select cast(convert_tz(`c`.`acquired_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'ACCOUNT' collate utf8mb4_0900_as_cs) AS `event_kind`,`c`.`acquired_by_user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,`c`.`id` AS `created_customer_id`,(case when ((`c`.`phone_primary` is not null) and (`c`.`phone_primary` <> '')) then `c`.`id` end) AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,NULL AS `converted_customer_id` from `crm_customers` `c` where (`c`.`stage` <> 'MERGED') union all select cast(convert_tz(`v`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'VISIT' collate utf8mb4_0900_as_cs) AS `event_kind`,`v`.`user_id` AS `user_id`,`cu`.`zone_id` AS `zone_id`,`cu`.`source_code` AS `source`,`v`.`customer_stage_at_visit` AS `stage`,`rc`.`code` AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,(case when (`v`.`customer_stage_at_visit` = 'PROSPECT') then `v`.`customer_id` end) AS `visited_prospect_id`,`v`.`id` AS `visit_id`,NULL AS `converted_customer_id` from ((`crm_visits` `v` join `crm_customers` `cu` on((`cu`.`id` = `v`.`customer_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `v`.`outcome_reason_code_id`))) where (`v`.`status` = 'RECORDED') union all select cast(convert_tz(`c`.`converted_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'CONVERSION' collate utf8mb4_0900_as_cs) AS `event_kind`,`a`.`user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,`c`.`id` AS `converted_customer_id` from (`crm_customers` `c` left join `crm_customer_assignments` `a` on(((`a`.`customer_id` = `c`.`id`) and (`a`.`valid_from` <= `c`.`converted_at`) and ((`a`.`valid_to` is null) or (`a`.`valid_to` > `c`.`converted_at`))))) where (`c`.`converted_at` is not null) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10257,7 +10263,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_purchases` AS select cast(convert_tz(`po`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`po`.`id` AS `order_id`,NULL AS `receipt_id`,`po`.`supplier_id` AS `supplier_id`,`pol`.`product_id` AS `product_id`,`po`.`site_id` AS `site_id`,`po`.`created_by` AS `created_by`,`pol`.`ordered_qty_base` AS `ordered_quantity`,NULL AS `delivered_quantity`,NULL AS `rejected_quantity`,NULL AS `accepted_quantity`,`pol`.`line_total_xaf` AS `amount_xaf` from (`procurement_purchase_order_lines` `pol` join `procurement_purchase_orders` `po` on((`po`.`id` = `pol`.`order_id`))) where (`po`.`status` not in ('DRAFT','CANCELLED')) union all select cast(convert_tz(`r`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`r`.`purchase_order_id` AS `order_id`,`r`.`id` AS `receipt_id`,`r`.`supplier_id` AS `supplier_id`,`rl`.`product_id` AS `product_id`,`r`.`site_id` AS `site_id`,`r`.`created_by` AS `created_by`,NULL AS `ordered_quantity`,`rl`.`qty_delivered_base` AS `delivered_quantity`,`rl`.`qty_rejected_base` AS `rejected_quantity`,(`rl`.`qty_delivered_base` - `rl`.`qty_rejected_base`) AS `accepted_quantity`,NULL AS `amount_xaf` from (`procurement_goods_receipt_lines` `rl` join `procurement_goods_receipts` `r` on((`r`.`id` = `rl`.`receipt_id`))) where (`r`.`status` in ('POSTED','POSTED_PENDING_REVIEW','REVIEW_REJECTED','CANCELLATION_PENDING')) */;
+/*!50001 VIEW `analytics_f_purchases` AS select cast(convert_tz(`po`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`po`.`id` AS `order_id`,NULL AS `receipt_id`,`po`.`supplier_id` AS `supplier_id`,`pol`.`product_id` AS `product_id`,`po`.`site_id` AS `site_id`,`po`.`created_by` AS `created_by`,`pol`.`ordered_qty_base` AS `ordered_quantity`,NULL AS `delivered_quantity`,NULL AS `rejected_quantity`,NULL AS `accepted_quantity`,`pol`.`line_total_xaf` AS `amount_xaf` from (`procurement_purchase_order_lines` `pol` join `procurement_purchase_orders` `po` on((`po`.`id` = `pol`.`order_id`))) where ((`po`.`status` not in ('DRAFT','PENDING_APPROVAL','CANCELLED')) and (`pol`.`status` <> 'CANCELLED')) union all select cast(convert_tz(`r`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`r`.`purchase_order_id` AS `order_id`,`r`.`id` AS `receipt_id`,`r`.`supplier_id` AS `supplier_id`,`rl`.`product_id` AS `product_id`,`r`.`site_id` AS `site_id`,`r`.`created_by` AS `created_by`,NULL AS `ordered_quantity`,`rl`.`qty_delivered_base` AS `delivered_quantity`,`rl`.`qty_rejected_base` AS `rejected_quantity`,(`rl`.`qty_delivered_base` - `rl`.`qty_rejected_base`) AS `accepted_quantity`,NULL AS `amount_xaf` from (`procurement_goods_receipt_lines` `rl` join `procurement_goods_receipts` `r` on((`r`.`id` = `rl`.`receipt_id`))) where (`r`.`status` in ('POSTED','POSTED_PENDING_REVIEW','REVIEW_REJECTED','CANCELLATION_PENDING')) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10275,7 +10281,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_sales_line` AS select `s`.`business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'SALE' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,(case when (`s`.`status` <> 'CANCELLED') then `s`.`id` end) AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,`l`.`quantity_base` AS `quantity_base`,`l`.`line_total_xaf` AS `amount_xaf`,`l`.`discount_xaf` AS `discount_xaf`,coalesce(`l`.`cost_xaf`,0) AS `cost_xaf`,(`l`.`line_total_xaf` - coalesce(`l`.`cost_xaf`,0)) AS `margin_xaf` from ((`sales_sale_lines` `l` join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) union all select `c`.`applied_business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'CANCELLATION' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,NULL AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,-(`cl`.`quantity_base`) AS `quantity_base`,-(`cl`.`amount_xaf`) AS `amount_xaf`,0 AS `discount_xaf`,-(coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `cost_xaf`,(-(`cl`.`amount_xaf`) + coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `margin_xaf` from ((((`sales_sale_cancellation_lines` `cl` join `sales_sale_cancellations` `c` on(((`c`.`id` = `cl`.`cancellation_id`) and (`c`.`status` = 'APPLIED')))) join `sales_sale_lines` `l` on((`l`.`id` = `cl`.`sale_line_id`))) join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) */;
+/*!50001 VIEW `analytics_f_sales_line` AS select `s`.`business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'SALE' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,(case when (`s`.`status` <> 'CANCELLED') then `s`.`id` end) AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,coalesce(`s`.`commercial_user_id`,`s`.`seller_user_id`) AS `owner_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,`l`.`quantity_base` AS `quantity_base`,`l`.`line_total_xaf` AS `amount_xaf`,`l`.`discount_xaf` AS `discount_xaf`,coalesce(`l`.`cost_xaf`,0) AS `cost_xaf`,(`l`.`line_total_xaf` - coalesce(`l`.`cost_xaf`,0)) AS `margin_xaf` from ((`sales_sale_lines` `l` join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) union all select `c`.`applied_business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'CANCELLATION' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,NULL AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,coalesce(`s`.`commercial_user_id`,`s`.`seller_user_id`) AS `owner_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,-(`cl`.`quantity_base`) AS `quantity_base`,-(`cl`.`amount_xaf`) AS `amount_xaf`,0 AS `discount_xaf`,-(coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `cost_xaf`,(-(`cl`.`amount_xaf`) + coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `margin_xaf` from ((((`sales_sale_cancellation_lines` `cl` join `sales_sale_cancellations` `c` on(((`c`.`id` = `cl`.`cancellation_id`) and (`c`.`status` = 'APPLIED')))) join `sales_sale_lines` `l` on((`l`.`id` = `cl`.`sale_line_id`))) join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10293,7 +10299,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_stock_balance` AS select `b`.`location_id` AS `location_id`,`b`.`product_id` AS `product_id`,(case when (`b`.`lot_key` <> unhex('00000000000000000000000000000000')) then `b`.`lot_key` end) AS `stock_lot_id`,`p`.`stock_family` AS `family`,`l`.`site_id` AS `site_id`,`l`.`custodian_user_id` AS `custodian_user_id`,`b`.`qty_on_hand` AS `balance_base`,`b`.`qty_allocated` AS `allocated_base`,(case when (`l`.`custody_mode` in ('EXCLUSIVE_USER','EXCLUSIVE_DEVICE')) then (`b`.`qty_on_hand` - `b`.`qty_reserved`) else ((`b`.`qty_on_hand` - `b`.`qty_reserved`) - `b`.`qty_allocated`) end) AS `available_base`,round((`b`.`qty_on_hand` * floor((coalesce(`v`.`avg_unit_cost_xaf`,0) + 0.5))),0) AS `value_xaf` from (((`inventory_stock_balances` `b` join `organization_locations` `l` on((`l`.`id` = `b`.`location_id`))) join `catalog_products` `p` on((`p`.`id` = `b`.`product_id`))) left join `inventory_product_valuations` `v` on((`v`.`product_id` = `b`.`product_id`))) */;
+/*!50001 VIEW `analytics_f_stock_balance` AS select `b`.`location_id` AS `location_id`,`b`.`product_id` AS `product_id`,(case when (`b`.`lot_key` <> unhex('00000000000000000000000000000000')) then `b`.`lot_key` end) AS `stock_lot_id`,`p`.`stock_family` AS `family`,`l`.`location_type` AS `location_type`,`l`.`site_id` AS `site_id`,`l`.`custodian_user_id` AS `custodian_user_id`,`b`.`qty_on_hand` AS `balance_base`,`b`.`qty_allocated` AS `allocated_base`,(case when (`l`.`custody_mode` in ('EXCLUSIVE_USER','EXCLUSIVE_DEVICE')) then (`b`.`qty_on_hand` - `b`.`qty_reserved`) else ((`b`.`qty_on_hand` - `b`.`qty_reserved`) - `b`.`qty_allocated`) end) AS `available_base`,round((`b`.`qty_on_hand` * floor((coalesce(`v`.`avg_unit_cost_xaf`,0) + 0.5))),0) AS `value_xaf` from (((`inventory_stock_balances` `b` join `organization_locations` `l` on((`l`.`id` = `b`.`location_id`))) join `catalog_products` `p` on((`p`.`id` = `b`.`product_id`))) left join `inventory_product_valuations` `v` on((`v`.`product_id` = `b`.`product_id`))) where ((`l`.`is_virtual` = 0) or (`l`.`location_type` in ('V_TRANSIT','V_PENDING_LOSS','V_TO_DELIVER'))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -10311,7 +10317,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=TEMPTABLE */
 /*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
-/*!50001 VIEW `analytics_f_stock_moves` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `move_id`,`m`.`product_id` AS `product_id`,`m`.`from_location_id` AS `from_location_id`,`m`.`to_location_id` AS `to_location_id`,`m`.`move_type` AS `move_type`,`rc`.`code` AS `reason_code`,`m`.`lot_id` AS `stock_lot_id`,`fl`.`site_id` AS `from_site_id`,`tl`.`site_id` AS `to_site_id`,`fl`.`custodian_user_id` AS `from_custodian_user_id`,`tl`.`custodian_user_id` AS `to_custodian_user_id`,`m`.`quantity` AS `quantity_base`,`m`.`value_xaf` AS `value_xaf` from (((`inventory_stock_moves` `m` join `organization_locations` `fl` on((`fl`.`id` = `m`.`from_location_id`))) join `organization_locations` `tl` on((`tl`.`id` = `m`.`to_location_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `m`.`reason_code_id`))) */;
+/*!50001 VIEW `analytics_f_stock_moves` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `move_id`,`m`.`product_id` AS `product_id`,`m`.`from_location_id` AS `from_location_id`,`m`.`to_location_id` AS `to_location_id`,`m`.`move_type` AS `move_type`,`m`.`is_reversal` AS `is_reversal`,`m`.`source_doc_type` AS `source_doc_type`,`rc`.`code` AS `reason_code`,`m`.`lot_id` AS `stock_lot_id`,`fl`.`site_id` AS `from_site_id`,`tl`.`site_id` AS `to_site_id`,`fl`.`custodian_user_id` AS `from_custodian_user_id`,`tl`.`custodian_user_id` AS `to_custodian_user_id`,`m`.`quantity` AS `quantity_base`,`m`.`value_xaf` AS `value_xaf` from (((`inventory_stock_moves` `m` join `organization_locations` `fl` on((`fl`.`id` = `m`.`from_location_id`))) join `organization_locations` `tl` on((`tl`.`id` = `m`.`to_location_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `m`.`reason_code_id`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;

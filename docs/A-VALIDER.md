@@ -401,10 +401,11 @@ Classification (PM §45) :
 | AV-483 | Jeu hors ligne `comms` : contenu, portée et rendu des alertes | SECONDAIRE | P9 | Trois types émis par `communication` en portée `USER` à chaque écriture : alertes de la **boîte** de l'utilisateur, notifications `IN_APP` non lues, notes ; texte rendu pour son destinataire ; supervision, conflits et plafond de 50 en ligne | OUVERT |
 | AV-484 | Notifications dans le jeu hors ligne : non lues `IN_APP`, sortie à la lecture | SECONDAIRE | P9 | Une ligne par notification écrite, une sortie à la lecture (une, toutes, ou lecture de la note) ; jamais l'envoi `WEB_PUSH` | OUVERT |
 | AV-485 | Notes dans le jeu hors ligne : détenteurs, état de lecture, retrait | SECONDAIRE | P9 | Utilisateurs notifiés à la publication et lecteurs après coup ; l'état de lecture voyage dans la note ; sortie à l'archivage ; expiration masquée par l'appareil | OUVERT |
-| AV-486 | Mortalité comptée d'un lot : deux définitions dans la production | SECONDAIRE | P9 | La vue suit le résumé du lot (la mortalité non justifiée compte) ; la série par jour de l'écran du lot ne la compte pas | OUVERT |
+| AV-486 | Mortalité comptée d'un lot : statuts comptés et sort de la mortalité refusée | SECONDAIRE | P9 | La vue suit le résumé du lot ; or une mortalité refusée comme non justifiée est reclassée `INEXPLIQUEE` et ne compte plus comme mortalité nulle part | OUVERT |
 | AV-487 | Valeur d'un solde de stock : deux définitions | SECONDAIRE | P9 | La vue suit BR-STK-054 (solde × coût unitaire moyen courant, comme `GET /stock`) ; l'accueil additionne la valeur du registre | OUVERT |
 | AV-488 | Remise et coût d'une ligne de vente annulée | SECONDAIRE | P9 | Remise non contre-passée ; coût d'une annulation = retours de stock de sa ligne ; marge = montant − coût | OUVERT |
 | AV-489 | Jeu des achats : facturé et payé hors du jeu | SECONDAIRE | P9 | Quantités commandées, livrées, rejetées, acceptées et montant commandé ; le facturé et le payé se lisent dans les dettes fournisseurs | OUVERT |
+| AV-490 | Pertes et dépenses : constaté, en attente et non justifié en colonnes distinctes | SECONDAIRE | P9 | Comme `lossValueSummary` et `expensesSummary` : seul le constaté entre dans la mesure principale ; l'en attente et le non justifié sont à part | OUVERT |
 
 ---
 
@@ -2990,13 +2991,13 @@ Politique par défaut, paramétrable :
 - **Recommandation** : (a).
 - **Impact** : `communication` (`commands/note-commands.ts`, `sync-changes.ts`), `sync/communication-projections.ts`, [ADR-073](decisions/ADR-073-notes-de-direction.md) §4, AT-048. Défaut implémenté : (a). Non paramétrable.
 
-### AV-486 — Mortalité comptée d'un lot : deux définitions dans la production — SECONDAIRE
-- **Question** : Quels statuts de déclaration de mortalité comptent comme têtes mortes ?
-- **Pourquoi** : `lotMortalitySummary` (indicateurs du lot, taux de mortalité, AV-113) compte les déclarations `RECORDED`, `APPROVED`, `REJECTED_UNJUSTIFIED` et `CANCELLATION_PENDING` ; `productionLotMortalityByDay` (série jour par jour de l'écran du lot) n'en compte que trois, sans la mortalité non justifiée. La somme de la série ne retombe donc pas sur le total du lot dès qu'une mortalité a été refusée comme non justifiée. **DÉDUIT** (constat de code).
-- **Choix** : (a) la vue `analytics_f_production_daily` suit le résumé du lot : les bêtes sont mortes, le refus de la justification ne les ressuscite pas ; (b) suivre la série par jour (trois statuts).
-- **Limites** : sur un lot portant une mortalité non justifiée, l'explorateur et la série jour par jour de l'écran du lot diffèrent tant que celle-ci n'est pas alignée.
-- **Recommandation** : (a), puis aligner `productionLotMortalityByDay` (module `inventory`, hors du périmètre de P9).
-- **Impact** : `analytics_f_production_daily` (migration `20261201090500`) ; `inventory/application/public/production-aggregates.ts` non modifié. Défaut implémenté : (a). Non paramétrable.
+### AV-486 — Mortalité comptée d'un lot : statuts comptés et sort de la mortalité refusée — SECONDAIRE
+- **Question** : Quels statuts de déclaration de mortalité comptent comme têtes mortes, et que devient une mortalité refusée comme non justifiée ?
+- **Pourquoi** : `lotMortalitySummary` (indicateurs du lot, taux de mortalité, AV-113) compte les déclarations `RECORDED`, `APPROVED`, `REJECTED_UNJUSTIFIED` et `CANCELLATION_PENDING` ; `productionLotMortalityByDay` (série jour par jour de l'écran du lot) n'en compte que trois, sans `REJECTED_UNJUSTIFIED`. En pratique l'écart est vide : la décision de rejet « non justifiée » reclasse la déclaration en catégorie `INEXPLIQUEE` (`inventory/application/public/loss-declaration.ts`), et ni l'une ni l'autre des deux fonctions ne la compte plus comme mortalité (elles ne lisent que `category = 'MORTALITE'`). Les animaux sont pourtant morts : la mortalité refusée sort des indicateurs de mortalité du lot et n'apparaît que comme perte inexpliquée imputée au déclarant (AV-038). **DÉDUIT** (constat de code).
+- **Choix** : (a) la vue `analytics_f_production_daily` suit le résumé du lot (quatre statuts, catégorie `MORTALITE`) : mêmes chiffres que l'écran du lot et que la série ; la mortalité refusée n'y figure pas, comme partout ailleurs ; (b) compter aussi les déclarations `INEXPLIQUEE` d'un lot de production comme mortalité (changerait l'indicateur du lot, hors du périmètre de P9).
+- **Limites** : le taux de mortalité d'un lot ne compte pas les animaux morts dont la déclaration a été refusée comme non justifiée ; à trancher avec la Direction (AV-038, AV-113).
+- **Recommandation** : (a) pour P9, et décider avec la Direction si une mortalité refusée doit rester dans les têtes mortes du lot.
+- **Impact** : `analytics_f_production_daily` (migration `20261201090500`) ; `inventory` et `production` non modifiés. Défaut implémenté : (a). Non paramétrable.
 
 ### AV-487 — Valeur d'un solde de stock : deux définitions — SECONDAIRE
 - **Question** : La valeur du stock est-elle le solde multiplié par le coût unitaire moyen courant, ou la somme signée des valeurs figées du registre ?
@@ -3004,11 +3005,11 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) la vue suit BR-STK-054 : `ROUND(solde × coût unitaire moyen arrondi au franc)` ; (b) la valeur du registre.
 - **Limites** : l'explorateur et l'accueil peuvent différer de quelques francs par ligne.
 - **Recommandation** : (a), puis aligner l'accueil.
-- **Impact** : `analytics_f_stock_balance.value_xaf` (migration `20261201090500`). Défaut implémenté : (a). Non paramétrable.
+- **Impact** : `analytics_f_stock_balance.value_xaf` (migration `20261201090500`). Défaut implémenté : (a). Non paramétrable. La vue exclut aussi les emplacements qui ne sont que la source ou le puits d'un mouvement (fournisseur, client, perte, production, consommation, ajustement, ouverture : aucun stock) et garde le transit, les pertes en attente de validation et l'à-livrer, distingués par `location_type` (KPI-STK-02, AV-256).
 
 ### AV-488 — Remise et coût d'une ligne de vente annulée — SECONDAIRE
 - **Question** : Une annulation contre-passe-t-elle la remise de la ligne annulée, et quel coût porte-t-elle ?
-- **Pourquoi** : une ligne d'annulation porte un montant et une quantité, pas de remise ; le coût figé d'une vente est celui de ses mouvements `SALE`, celui d'une annulation celui des retours `CUSTOMER_RETURN` de sa ligne (ADR-029), comme `saleCostsInPeriod`. **DÉDUIT**.
+- **Pourquoi** : une ligne d'annulation porte un montant et une quantité, pas de remise ; le coût figé d'une vente est celui de sa ligne (`sales_sale_lines.cost_xaf`, somme des mouvements `SALE` de la ligne à la vente), celui d'une annulation la somme des retours `CUSTOMER_RETURN` de sa ligne (ADR-029), comme `saleCostsInPeriod`. **DÉDUIT**.
 - **Choix** : (a) la remise est la remise accordée sur les lignes vendues, nulle sur une annulation ; le coût d'une annulation est négatif (coût des retours de stock de sa ligne) et sa marge vaut −montant + coût retourné ; une ligne sans sortie de stock a un coût nul (sa marge égale son montant) ; (b) remise contre-passée au prorata (écarté : arrondis sans valeur métier).
 - **Recommandation** : (a).
 - **Impact** : `analytics_f_sales_line` (migration `20261201090400`). Défaut implémenté : (a). Non paramétrable.
@@ -3019,6 +3020,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) `analytics_f_purchases` porte les quantités commandées, livrées, rejetées et acceptées et le montant commandé ; le facturé et le payé se lisent dans les dettes ; (b) un jeu des factures fournisseurs, à ajouter si la Direction le demande.
 - **Recommandation** : (a).
 - **Impact** : `analytics_f_purchases` (migration `20261201090600`), catalogue (libellé « Montant commandé »). Défaut implémenté : (a). Non paramétrable.
+
+### AV-490 — Pertes et dépenses : constaté, en attente et non justifié en colonnes distinctes — SECONDAIRE
+- **Question** : Une perte en attente de validation, une perte rejetée et rendue, une dépense en attente ou payée puis refusée entrent-elles dans le total de l'explorateur ?
+- **Pourquoi** : `lossValueSummary` ne compte que les pertes constatées (`RECORDED`, `APPROVED`, `REJECTED_UNJUSTIFIED`, `CANCELLATION_PENDING`) et rend l'en attente à part ; une perte rejetée et rendue n'est pas une perte. `expensesSummary` ne compte que les dépenses valides (`RECORDED`, `APPROVED`, `PAID`), rend à part l'en attente (`PENDING_APPROVAL`, `PAID_PENDING_APPROVAL`) et les payées puis refusées (`PAID_REJECTED`, non justifiées). Une mesure de l'explorateur n'a pas de condition de statut : un total sans colonnes distinctes mélangerait ces sens. **DÉDUIT**.
+- **Choix** : (a) la mesure principale ne compte que le constaté ou le valide (`quantity_base` et `value_xaf` ; `amount_xaf`) ; l'en attente et le non justifié sont des mesures à part (`pending_quantity_base`, `pending_value_xaf` ; `pending_xaf`, `unjustified_xaf`) ; le statut reste une dimension ; (b) tout sommer et laisser l'utilisateur filtrer le statut (écarté : un total sans filtre contredirait les écrans de la finance).
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_losses` (migration `20261201090500`), `analytics_f_expenses` (migration `20261201090600`), catalogue (mesures `pending_quantity`, `pending_value`, `pending`, `unjustified`). Défaut implémenté : (a). Non paramétrable.
 
 ---
 

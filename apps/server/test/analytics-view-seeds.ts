@@ -9,8 +9,8 @@ import type { DB } from '../src/platform/kysely/database.js';
 import { fromBin } from '../src/platform/kysely/uuid-columns.js';
 import { db, freshUuid } from './helpers.js';
 
-type Trx = Transaction<DB>;
-type Row = Record<string, unknown>;
+export type Trx = Transaction<DB>;
+export type Row = Record<string, unknown>;
 
 const ROLLBACK = Symbol('rollback');
 
@@ -65,7 +65,12 @@ const asParameter = (value: unknown): unknown =>
     : value;
 
 /** Copie `source` dans `table` avec les surcharges (hors colonnes calculées). */
-async function insertCopy(trx: Trx, table: string, source: Row, overrides: Row): Promise<void> {
+export async function insertCopy(
+  trx: Trx,
+  table: string,
+  source: Row,
+  overrides: Row,
+): Promise<void> {
   const generated = await generatedColumns(trx, table);
   const values = Object.entries({ ...source, ...overrides }).filter(
     ([name]) => !generated.has(name),
@@ -76,9 +81,14 @@ async function insertCopy(trx: Trx, table: string, source: Row, overrides: Row):
   `.execute(trx);
 }
 
-const newId = (): Buffer => Buffer.from(freshUuid().replaceAll('-', ''), 'hex');
+export const atDay = (day: string): Date => new Date(`${day}T09:00:00.000Z`);
 
-async function firstRow(trx: Trx, query: ReturnType<typeof sql<Row>>): Promise<Row | undefined> {
+export const newId = (): Buffer => Buffer.from(freshUuid().replaceAll('-', ''), 'hex');
+
+export async function firstRow(
+  trx: Trx,
+  query: ReturnType<typeof sql<Row>>,
+): Promise<Row | undefined> {
   return (await query.execute(trx)).rows[0];
 }
 
@@ -86,18 +96,19 @@ async function firstRow(trx: Trx, query: ReturnType<typeof sql<Row>>): Promise<R
 export async function cloneOrder(
   trx: Trx,
   status: 'DRAFT' | 'CANCELLED' | 'CONFIRMED',
+  dates: { readonly occurredAt?: string; readonly confirmedAt?: string } = {},
 ): Promise<string | undefined> {
   const order = await firstRow(
     trx,
     sql`SELECT o.* FROM sales_sales_orders o
          WHERE o.status NOT IN ('DRAFT', 'CANCELLED')
            AND EXISTS (SELECT 1 FROM sales_sales_order_lines l WHERE l.order_id = o.id)
-         LIMIT 1`,
+         ORDER BY o.id LIMIT 1`,
   );
   if (!order) return undefined;
   const line = await firstRow(
     trx,
-    sql`SELECT * FROM sales_sales_order_lines WHERE order_id = ${order.id} LIMIT 1`,
+    sql`SELECT * FROM sales_sales_order_lines WHERE order_id = ${order.id} ORDER BY id LIMIT 1`,
   );
   if (!line) return undefined;
   const id = newId();
@@ -107,6 +118,8 @@ export async function cloneOrder(
     command_id: null,
     local_ref: null,
     status,
+    ...(dates.occurredAt ? { occurred_at: new Date(dates.occurredAt) } : {}),
+    ...(dates.confirmedAt ? { confirmed_at: new Date(dates.confirmedAt) } : {}),
     ...(status === 'CANCELLED'
       ? { cancelled_at: order.occurred_at, cancelled_by: order.created_by }
       : {}),
@@ -131,7 +144,7 @@ export async function cloneCancelledPayment(
 ): Promise<ClonedPayment | undefined> {
   const payment = await firstRow(
     trx,
-    sql`SELECT * FROM sales_customer_payments WHERE status = 'CANCELLED' AND amount_xaf > 0 LIMIT 1`,
+    sql`SELECT * FROM sales_customer_payments WHERE status = 'CANCELLED' AND amount_xaf > 0 ORDER BY id LIMIT 1`,
   );
   if (!payment) return undefined;
   const movement = await firstRow(
@@ -167,7 +180,7 @@ export async function cloneCancelledPayment(
 export async function cloneProspect(trx: Trx, phone: string | null): Promise<string | undefined> {
   const customer = await firstRow(
     trx,
-    sql`SELECT * FROM crm_customers WHERE stage = 'PROSPECT' AND lat IS NOT NULL LIMIT 1`,
+    sql`SELECT * FROM crm_customers WHERE stage = 'PROSPECT' AND lat IS NOT NULL ORDER BY id LIMIT 1`,
   );
   if (!customer) return undefined;
   const id = newId();
@@ -191,12 +204,19 @@ export interface ClonedCancellation {
   readonly discountXaf: number;
   readonly amountXaf: number;
   readonly quantityBase: number;
+  /** Valeur au coût du retour de stock de la ligne d'annulation (0 : aucun retour). */
+  readonly returnedValueXaf: number;
 }
 
-/** Une annulation appliquée, ajoutée à une vente existante, d'une ligne remisée (`discount_xaf > 0`). */
+/**
+ * Une annulation appliquée, ajoutée à une vente existante, d'une ligne remisée (`discount_xaf > 0`), avec, si
+ * `withReturn`, le retour de stock `CUSTOMER_RETURN` de la ligne annulée, valorisé à la valeur exacte du
+ * mouvement de vente qu'il défait en entier (le dernier retour solde l'origine, INV-STK-17).
+ */
 export async function cloneDiscountedCancellation(
   trx: Trx,
   appliedDay: string,
+  withReturn = false,
 ): Promise<ClonedCancellation | undefined> {
   const line = await firstRow(
     trx,
@@ -204,12 +224,14 @@ export async function cloneDiscountedCancellation(
           JOIN sales_sales s ON s.id = l.sale_id
          WHERE l.discount_xaf > 0 AND l.quantity_base > 0
            AND NOT EXISTS (SELECT 1 FROM sales_sale_cancellation_lines x WHERE x.sale_line_id = l.id)
-         LIMIT 1`,
+           AND EXISTS (SELECT 1 FROM inventory_stock_moves m
+                        WHERE m.move_type = 'SALE' AND m.source_line_id = l.id AND m.value_xaf >= 2)
+         ORDER BY l.id LIMIT 1`,
   );
   if (!line) return undefined;
   const cancellation = await firstRow(
     trx,
-    sql`SELECT * FROM sales_sale_cancellations WHERE status = 'APPLIED' AND order_id IS NULL LIMIT 1`,
+    sql`SELECT * FROM sales_sale_cancellations WHERE status = 'APPLIED' AND order_id IS NULL ORDER BY id LIMIT 1`,
   );
   if (!cancellation) return undefined;
   const id = newId();
@@ -228,18 +250,55 @@ export async function cloneDiscountedCancellation(
     occurred_at: at,
     applied_at: at,
   });
+  const cancellationLineId = newId();
   await insertCopy(
     trx,
     'sales_sale_cancellation_lines',
     { cancellation_id: id, sale_line_id: line.id },
-    { id: newId(), quantity_base: line.quantity_base, amount_xaf: amount },
+    { id: cancellationLineId, quantity_base: line.quantity_base, amount_xaf: amount },
   );
+  let returnedValueXaf = 0;
+  if (withReturn) {
+    const movement = await firstRow(
+      trx,
+      sql`SELECT * FROM inventory_stock_moves
+           WHERE move_type = 'CUSTOMER_RETURN' AND origin_move_id IS NOT NULL ORDER BY id LIMIT 1`,
+    );
+    if (!movement) return undefined;
+    // Le retour défait un mouvement `SALE` de la ligne (INV-STK-17 : jamais plus que l'origine).
+    const origin = await firstRow(
+      trx,
+      sql`SELECT * FROM inventory_stock_moves
+           WHERE move_type = 'SALE' AND source_line_id = ${line.id} AND value_xaf >= 2 ORDER BY id LIMIT 1`,
+    );
+    if (!origin) return undefined;
+    returnedValueXaf = Number(origin.value_xaf);
+    await insertCopy(trx, 'inventory_stock_moves', movement, {
+      id: newId(),
+      command_id: null,
+      reverses_move_id: null,
+      origin_move_id: origin.id,
+      origin_seq: 1,
+      from_location_id: origin.to_location_id,
+      to_location_id: origin.from_location_id,
+      product_id: origin.product_id,
+      lot_id: origin.lot_id,
+      quantity: origin.quantity,
+      unit_cost_xaf: origin.unit_cost_xaf,
+      source_doc_type: 'SALE_CANCELLATION',
+      source_doc_id: id,
+      source_line_id: cancellationLineId,
+      value_xaf: returnedValueXaf,
+      occurred_at: at,
+    });
+  }
   return {
     saleId: fromBin(line.sale_id as Buffer),
     lineId: fromBin(line.id as Buffer),
     discountXaf: Number(line.discount_xaf),
     amountXaf: amount,
     quantityBase: Number(line.quantity_base),
+    returnedValueXaf,
   };
 }
 
@@ -271,12 +330,12 @@ export async function reassignConvertedCustomer(
          WHERE c.converted_at IS NOT NULL AND a.valid_to IS NULL AND a.valid_from < c.converted_at
            AND TIMESTAMPDIFF(MINUTE, a.valid_from, c.converted_at) > 120 ${exclusion}
            AND (SELECT COUNT(*) FROM crm_customer_assignments x WHERE x.customer_id = c.id) = 1
-         LIMIT 1`,
+         ORDER BY c.id LIMIT 1`,
   );
   if (!found) return undefined;
   const other = await firstRow(
     trx,
-    sql`SELECT id FROM identity_users WHERE id <> ${found.user_id} LIMIT 1`,
+    sql`SELECT id FROM identity_users WHERE id <> ${found.user_id} ORDER BY id LIMIT 1`,
   );
   if (!other) return undefined;
   const from = (found.valid_from as Date).getTime();
@@ -312,7 +371,7 @@ export async function cloneWorkSession(
   const session = await firstRow(
     trx,
     sql`SELECT * FROM fieldwork_work_sessions
-         WHERE status = 'CLOSED' AND override_status = 'NOT_REQUIRED' AND ended_at IS NOT NULL LIMIT 1`,
+         WHERE status = 'CLOSED' AND override_status = 'NOT_REQUIRED' AND ended_at IS NOT NULL ORDER BY id LIMIT 1`,
   );
   if (!session) return undefined;
   const id = newId();

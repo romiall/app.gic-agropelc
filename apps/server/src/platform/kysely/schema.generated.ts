@@ -50,12 +50,13 @@ export interface AnalyticsFAttendance {
   session_id: Buffer;
   status: Generated<string>;
   user_id: Buffer;
+  zone_id: Buffer;
 }
 
 export interface AnalyticsFCash {
   business_day: Date | null;
   cash_account_id: Buffer;
-  holder_user_id: Buffer | null;
+  holder_user_id: Generated<Buffer>;
   inflow_xaf: Generated<number>;
   movement_id: Buffer;
   movement_type: string;
@@ -75,14 +76,16 @@ export interface AnalyticsFCosts {
 }
 
 export interface AnalyticsFExpenses {
-  amount_xaf: number;
+  amount_xaf: number | null;
   business_day: Date | null;
   category_id: Buffer;
   cost_object_type: string | null;
   created_by: Buffer;
   expense_id: Buffer;
+  pending_xaf: number | null;
   site_id: Buffer;
   status: string;
+  unjustified_xaf: number | null;
 }
 
 export interface AnalyticsFLosses {
@@ -91,14 +94,16 @@ export interface AnalyticsFLosses {
   declared_by: Buffer;
   location_id: Buffer;
   loss_id: Buffer;
+  pending_quantity_base: Decimal | null;
+  pending_value_xaf: number | null;
   product_id: Buffer;
   production_lot_id: Buffer | null;
-  quantity_base: Decimal;
+  quantity_base: Decimal | null;
   reason_code: string | null;
   site_id: Buffer;
   status: string;
   stock_lot_id: Buffer | null;
-  value_xaf: number;
+  value_xaf: number | null;
 }
 
 export interface AnalyticsFOrders {
@@ -106,7 +111,6 @@ export interface AnalyticsFOrders {
   business_day: Date | null;
   channel: string;
   commercial_user_id: Buffer;
-  created_by: Buffer;
   customer_id: Buffer;
   delivered_quantity: Generated<Decimal>;
   line_id: Buffer;
@@ -145,17 +149,15 @@ export interface AnalyticsFProductionDaily {
 }
 
 export interface AnalyticsFProspecting {
-  acquired_by_user_id: Generated<Buffer>;
   business_day: Date | null;
   contact_customer_id: Buffer | null;
   converted_customer_id: Buffer | null;
   created_customer_id: Buffer | null;
   event_kind: string | null;
-  owner_user_id: Buffer | null;
   result: string | null;
   source: Generated<string>;
   stage: Generated<string>;
-  user_id: Generated<Buffer>;
+  user_id: Buffer | null;
   visit_id: Buffer | null;
   visited_prospect_id: Buffer | null;
   zone_id: Generated<Buffer>;
@@ -189,6 +191,7 @@ export interface AnalyticsFSalesLine {
   event_kind: string | null;
   line_id: Generated<Buffer>;
   margin_xaf: Decimal | null;
+  owner_user_id: Generated<Buffer>;
   payment_status: string | null;
   pos_id: Generated<Buffer>;
   product_category_id: Generated<Buffer>;
@@ -209,6 +212,7 @@ export interface AnalyticsFStockBalance {
   custodian_user_id: Buffer | null;
   family: string;
   location_id: Buffer;
+  location_type: string;
   product_id: Buffer;
   site_id: Buffer | null;
   stock_lot_id: Buffer | null;
@@ -220,11 +224,13 @@ export interface AnalyticsFStockMoves {
   from_custodian_user_id: Buffer | null;
   from_location_id: Buffer;
   from_site_id: Buffer | null;
+  is_reversal: Generated<number>;
   move_id: Buffer;
   move_type: string;
   product_id: Buffer;
   quantity_base: Decimal;
   reason_code: string | null;
+  source_doc_type: string;
   stock_lot_id: Buffer | null;
   to_custodian_user_id: Buffer | null;
   to_location_id: Buffer;

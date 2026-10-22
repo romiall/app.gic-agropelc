@@ -66,6 +66,7 @@ describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', 
     );
     expect(protectedMeasures.sort()).toEqual([
       'f_costs.amount',
+      'f_losses.pending_value',
       'f_losses.value',
       'f_purchases.amount',
       'f_sales_line.cost',
@@ -87,10 +88,10 @@ describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', 
     );
   });
 
-  it('f_attendance : portée par la personne seulement (règle fermée pour site et zone)', () => {
+  it('f_attendance : portée par la zone déclarée et par la personne (règle fermée pour le site)', () => {
     const attendance = datasetOf('f_attendance')!;
     expect(attendance.scope.SITE).toBeUndefined();
-    expect(attendance.scope.ZONE).toBeUndefined();
+    expect(attendance.scope.ZONE).toEqual(['zone_id']);
     expect(attendance.scope.PERSON).toEqual(['user_id']);
   });
 
