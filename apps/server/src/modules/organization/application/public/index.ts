@@ -7,7 +7,7 @@
  */
 export { listSettingHistory, currentSettingValue } from './setting-query.js';
 export type { SettingScopeType, SettingVersion, SettingFilter } from './setting-query.js';
-export { listSiteIdsInZones } from './site-query.js';
+export { listSiteIdsInZones, listZoneIdsWithDescendants } from './site-query.js';
 // P5-17 : lectures de la structure pour la couche de transport (`GET /sites`, `/locations`, `/points-of-sale`).
 export { findSite, listLocations, listPointsOfSale, listSites } from './structure-query.js';
 export type { LocationSummary, PointOfSaleSummary, SiteSummary } from './structure-query.js';

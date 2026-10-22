@@ -17,6 +17,8 @@ export interface ActiveAssignment {
   readonly scopeType: string;
   readonly scopeSiteId: string | null;
   readonly scopeZoneId: string | null;
+  /** Équipe d'une affectation de portée `TEAM` (P9-14 : membres candidats de l'étendue exacte). */
+  readonly scopeTeamId: string | null;
 }
 
 async function activeAssignmentsAt(
@@ -28,6 +30,7 @@ async function activeAssignmentsAt(
     .selectFrom('identity_user_role_assignments as a')
     .innerJoin('identity_roles as r', 'r.id', 'a.role_id')
     .select(['r.code', 'r.is_active', 'a.scope_type', 'a.scope_site_id', 'a.scope_zone_id'])
+    .select('a.scope_team_id')
     .select(['a.valid_to', 'a.revoked_at'])
     .where('a.user_id', '=', toBin(userId))
     .where('a.valid_from', '<=', at)
@@ -44,6 +47,7 @@ async function activeAssignmentsAt(
       scopeType: row.scope_type,
       scopeSiteId: row.scope_site_id ? fromBin(row.scope_site_id) : null,
       scopeZoneId: row.scope_zone_id ? fromBin(row.scope_zone_id) : null,
+      scopeTeamId: row.scope_team_id ? fromBin(row.scope_team_id) : null,
     }));
 }
 

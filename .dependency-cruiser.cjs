@@ -57,7 +57,7 @@ const MODULE_GRAPH = {
   ],
   communication: ['identity', 'organization'],
   sync: ['identity'],
-  analytics: ['identity'],
+  analytics: ['identity', 'organization'], // P9-14 : sites et zones d'une affectation (étendue exacte)
   integrations: ['identity', 'crm'], // + lecture de sales, exprimée à part (accès en lecture seule)
 };
 
