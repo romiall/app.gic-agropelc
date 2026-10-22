@@ -344,6 +344,34 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     ref: 'AV-421',
   },
   { key: 'analytics.scope_max_candidates', value: 500, isClientVisible: false, ref: 'AV-423' },
+  // P9-17 à P9-18 (ADR-076) : plafond du compte des validations en attente d'un tableau, et
+  // instantanés personnels d'indicateurs (utilisateurs actifs depuis N jours, taille d'un lot par exécution).
+  {
+    key: 'analytics.pending_approvals_count_cap',
+    value: 500,
+    isClientVisible: false,
+    ref: 'ADR-076',
+  },
+  { key: 'analytics.snapshot_active_days', value: 7, isClientVisible: false, ref: 'ADR-076' },
+  { key: 'analytics.snapshot_batch_size', value: 50, isClientVisible: false, ref: 'ADR-076' },
+  // P9-20 à P9-22 (ADR-077 §3, ADR-078 §6 ; AV-433, AV-437) : exports (lignes, durée, validité du fichier, file par
+  // demandeur) et rétention des données techniques de l'analyse.
+  { key: 'analytics.export_max_rows', value: 100000, isClientVisible: false, ref: 'AV-433' },
+  { key: 'analytics.export_max_seconds', value: 120, isClientVisible: false, ref: 'AV-433' },
+  { key: 'analytics.export_file_hours', value: 24, isClientVisible: false, ref: 'AV-433' },
+  {
+    key: 'analytics.export_max_pending_per_user',
+    value: 3,
+    isClientVisible: false,
+    ref: 'AV-433',
+  },
+  {
+    key: 'analytics.export_file_retention_days',
+    value: 30,
+    isClientVisible: false,
+    ref: 'AV-437',
+  },
+  { key: 'analytics.query_log_retention_days', value: 90, isClientVisible: false, ref: 'AV-437' },
   // P9-03 (ADR-071, ADR-072, ADR-078 ; AV-400 à AV-442) : seuils, délais et durées des alertes. Un seul
   // lieu des seuils (AV-400) : lus par le détecteur, dans le module qui porte la donnée.
   {

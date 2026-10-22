@@ -67,7 +67,7 @@ export function createDirectNotificationHandler(
       const inserted = await insertNotification(uow, deps.idGenerator, {
         userId,
         channel: 'IN_APP',
-        kind: 'DIRECT',
+        kind: plan.kind ?? 'DIRECT',
         sourceType: plan.sourceType,
         sourceId: plan.sourceId,
         sourceEventId: event.eventId,

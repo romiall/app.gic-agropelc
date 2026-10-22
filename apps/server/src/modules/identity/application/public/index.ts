@@ -63,3 +63,6 @@ export {
 export type { DeviceScopeAnchor } from './device-scope.js';
 export { pendingDeviceApprovalsFor } from './pending-device-approvals.js';
 export type { PendingDeviceApprovals } from './pending-device-approvals.js';
+
+// P9-19 : rôles actifs désignés par le partage d'une vue sauvegardée.
+export { unknownRoleCodes } from './role-codes.js';

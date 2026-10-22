@@ -12,12 +12,15 @@
  * `fieldwork.session.auto_close`), `ProductionJobsModule` (P9-09, saisie du jour manquante, coût
  * standard manquant), `ProcurementJobsModule` (P9-09, réception incomplète, photo de réception) et
  * `ApprovalsJobsModule` (P9-09, validation en attente depuis longtemps) et `SyncJobsModule` (P9-10, erreurs de
- * synchronisation, appareil sans synchronisation, horloge décalée, trou de séquence).
+ * synchronisation, appareil sans synchronisation, horloge décalée, trou de séquence) et `AnalyticsJobsModule`
+ * (P9-18, instantanés personnels d’indicateurs ; P9-20, calcul des exports ; P9-22, purges).
  */
 import { Module } from '@nestjs/common';
 import { PlatformModule } from '../platform/platform.module.js';
 import { ChainVerificationModule } from '../audit/chain-verification.module.js';
 import { SyncJobsModule } from '../sync/sync-jobs.module.js';
+import { AnalyticsSnapshotsJobsModule } from '../analytics-api/analytics-snapshots-jobs.module.js';
+import { AnalyticsJobsModule } from '../modules/analytics/analytics-jobs.module.js';
 import { InventoryJobsModule } from '../modules/inventory/inventory-jobs.module.js';
 import { FinanceJobsModule } from '../modules/finance/finance-jobs.module.js';
 import { ProductionJobsModule } from '../modules/production/production-jobs.module.js';
@@ -34,6 +37,8 @@ import { WorkerService } from './worker.service.js';
     PlatformModule,
     ChainVerificationModule,
     SyncJobsModule,
+    AnalyticsSnapshotsJobsModule,
+    AnalyticsJobsModule,
     InventoryJobsModule,
     FinanceJobsModule,
     ProductionJobsModule,

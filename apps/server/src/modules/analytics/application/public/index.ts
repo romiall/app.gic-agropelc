@@ -40,3 +40,25 @@ export {
   runExploration,
 } from '../query/run-exploration.js';
 export type { ExplorationLimit, ExplorationResult } from '../query/run-exploration.js';
+export {
+  KPI_DATASET,
+  KPI_ENTITY_TYPE,
+  SNAPSHOT_PERIOD_KEYS,
+  SNAPSHOT_REPUBLISH_MS,
+  activeSnapshotUsers,
+  deleteSnapshotsExcept,
+  deleteSnapshotsOfInactiveUsers,
+  listSnapshotsOf,
+  readSnapshot,
+  saveSnapshot,
+  snapshotEntityId,
+  snapshotPair,
+} from '../snapshots/snapshot-store.js';
+export type { SnapshotKey, SnapshotPeriodKey, StoredSnapshot } from '../snapshots/snapshot-store.js';
+
+// P9-19 : vues sauvegardées (lecture avec exécutabilité) ; P9-20 : exports (lecture du demandeur, clé du fichier).
+export { VIEWS_LIST_LIMIT, listReadableViews, readReadableView } from '../views/view-read.js';
+export type { ReadableView, ViewExecutability } from '../views/view-read.js';
+export { exportStorageKey, exportsPage, readExport } from '../exports/export-store.js';
+export type { ExportFormat, ExportStatus, StoredExport } from '../exports/export-store.js';
+export { explorationDefinitionFrom } from '../query/exploration-definition.js';

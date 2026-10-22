@@ -18,6 +18,7 @@ import type { DB } from '../platform/kysely/database.js';
 import { fromBin, fromBinOrNull, toBin } from '../platform/kysely/uuid-columns.js';
 import { codeEntityId } from '../platform/sync/code-entity-id.js';
 import { COMMUNICATION_PROJECTIONS } from './communication-projections.js';
+import { KPI_PROJECTIONS } from './kpi-projections.js';
 
 /** Périmètre de la ligne `change_feed` projetée (P2-06) : nécessaire quand la clé réelle de
  * l'entité est composite (`STOCK_BALANCE` : produit × emplacement) ou quand seule une ligne
@@ -2553,6 +2554,7 @@ const ENTITY_PROJECTIONS: Record<string, EntityProjectionReader> = {
 
   // P9-12 : jeu `comms` (alertes, notifications, notes) — lecteurs dans `communication-projections.ts`.
   ...COMMUNICATION_PROJECTIONS,
+  ...KPI_PROJECTIONS,
 };
 
 export function resolveEntityProjection(entityType: string): EntityProjectionReader | undefined {

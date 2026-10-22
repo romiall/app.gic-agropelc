@@ -22,6 +22,7 @@ export const DIRECT_NOTIFICATION_EVENT_TYPES = [
   'ApprovalRejected',
   'StockTransferRequested',
   'StockTransferDispatched',
+  'AnalyticsExportCompleted',
 ] as const;
 export type DirectNotificationEventType = (typeof DIRECT_NOTIFICATION_EVENT_TYPES)[number];
 
@@ -66,7 +67,10 @@ export type DirectAudience =
     };
 
 /** Type de l'objet source de la notification (colonne `source_type`). */
-export type DirectNotificationSourceType = 'APPROVAL_REQUEST' | 'STOCK_TRANSFER';
+export type DirectNotificationSourceType =
+  | 'APPROVAL_REQUEST'
+  | 'STOCK_TRANSFER'
+  | 'ANALYTICS_EXPORT';
 
 export interface DirectNotificationPlan {
   readonly eventType: DirectNotificationEventType;
@@ -75,6 +79,8 @@ export interface DirectNotificationPlan {
   readonly body: string;
   readonly sourceType: DirectNotificationSourceType;
   readonly sourceId: string;
+  /** Nature de la notification : `DIRECT` par défaut, `EXPORT` pour la fin d'un export (P9-20, ADR-077 §7). */
+  readonly kind?: 'EXPORT';
 }
 
 type Payload = Readonly<Record<string, unknown>>;
@@ -187,6 +193,43 @@ function transferPlan(
   };
 }
 
+/** Libellé court du motif d'échec d'un export (`analytics_export_jobs.error_code`). */
+const EXPORT_FAILURE_REASONS: Readonly<Record<string, string>> = {
+  QUERY_LIMIT_EXCEEDED: 'trop de lignes ou trop long : affinez la période, les filtres ou les regroupements',
+  FORBIDDEN: 'un droit nécessaire a été retiré',
+  FORBIDDEN_MEASURE: 'la valeur au coût n’est plus accessible à votre compte',
+  CATALOG_OUTDATED: 'le catalogue a changé : refaites l’export',
+  SCOPE_TRUNCATED: 'votre périmètre est trop étendu pour un export complet',
+};
+
+/**
+ * Fin d'un export (P9-20 ; ADR-077 §7) : le demandeur est prévenu, quelle que soit l'issue, sans aucune donnée
+ * de l'export dans le message.
+ */
+function exportPlan(aggregateId: string, payload: Payload): DirectNotificationPlan {
+  const eventType = 'AnalyticsExportCompleted';
+  const requester = requiredString(eventType, payload, 'requested_by');
+  const status = requiredString(eventType, payload, 'status');
+  if (status !== 'DONE' && status !== 'FAILED') {
+    throw new DirectNotificationPayloadError(eventType, '« status » doit être DONE ou FAILED');
+  }
+  const errorCode = optionalString(eventType, payload, 'error_code');
+  const reason =
+    errorCode === null ? '' : ` : ${EXPORT_FAILURE_REASONS[errorCode] ?? 'erreur de production'}`;
+  return {
+    eventType,
+    kind: 'EXPORT',
+    audience: { kind: 'USERS', userIds: [requester] },
+    title: status === 'DONE' ? 'Export prêt' : 'Export non produit',
+    body:
+      status === 'DONE'
+        ? 'Votre export est prêt : il se télécharge pendant 24 heures.'
+        : `Votre export n’a pas pu être produit${reason}.`,
+    sourceType: 'ANALYTICS_EXPORT',
+    sourceId: aggregateId,
+  };
+}
+
 /**
  * Plan de notification d'un événement d'un type direct (`isDirectNotificationEventType` le décide, avant).
  * Lève `DirectNotificationPayloadError` si la charge ne tient pas son contrat.
@@ -205,6 +248,8 @@ export function planDirectNotification(event: {
     case 'StockTransferRequested':
     case 'StockTransferDispatched':
       return transferPlan(event.eventType, event.aggregateId, payload);
+    case 'AnalyticsExportCompleted':
+      return exportPlan(event.aggregateId, payload);
   }
 }
 

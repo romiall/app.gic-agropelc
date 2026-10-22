@@ -27,9 +27,12 @@ import { CommunicationJobsModule } from './modules/communication/communication-j
 import { CommunicationRecipientsModule } from './communication-api/communication-recipients.module.js';
 import { CommunicationApiModule } from './communication-api/communication-api.module.js';
 import { AnalyticsApiModule } from './analytics-api/analytics-api.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
 import { SyncJobsModule } from './sync/sync-jobs.module.js';
+import { AnalyticsSnapshotsJobsModule } from './analytics-api/analytics-snapshots-jobs.module.js';
+import { AnalyticsJobsModule } from './modules/analytics/analytics-jobs.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
 import { IdentityApiModule } from './identity-api/identity-api.module.js';
@@ -74,6 +77,7 @@ import { RootController } from './health/root.controller.js';
     FieldworkJobsModule,
     CrmModule,
     CommunicationModule,
+    AnalyticsModule,
     CommunicationJobsModule,
     CommunicationRecipientsModule,
     CommunicationApiModule,
@@ -81,6 +85,8 @@ import { RootController } from './health/root.controller.js';
     CommandsModule,
     ChainVerificationModule,
     SyncJobsModule,
+    AnalyticsSnapshotsJobsModule,
+    AnalyticsJobsModule,
     AuditApiModule,
     OrganizationApiModule,
     IdentityApiModule,
