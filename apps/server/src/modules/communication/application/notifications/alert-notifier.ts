@@ -35,6 +35,7 @@ import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { evaluateAccess } from '../../../identity/application/public/index.js';
 import { currentSettingValue } from '../../../organization/application/public/index.js';
 import type { AfterRaise } from '../events/alerts-consumer.js';
+import { recordAlertChanges } from '../sync-changes.js';
 import type { AlertRecipientResolver } from '../recipients/recipient-resolver.js';
 import { resolveAlertRecipients } from '../recipients/resolve-recipients.js';
 import {
@@ -85,6 +86,13 @@ export async function addRecipients(
       .ignore()
       .execute();
   }
+  // Jeu hors ligne `comms` : l'alerte entre dans la boîte des destinataires ajoutés.
+  await recordAlertChanges(
+    uow,
+    alertId,
+    'UPSERT',
+    recipients.map((recipient) => recipient.userId),
+  );
 }
 
 async function pushGroupMinutes(uow: UnitOfWork, at: Date): Promise<number> {

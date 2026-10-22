@@ -22,6 +22,7 @@ export type {
 export {
   decodeNotificationCursor,
   listAlertRuleItems,
+  notificationBodies,
   notificationPage,
 } from './notification-read.js';
 export type {

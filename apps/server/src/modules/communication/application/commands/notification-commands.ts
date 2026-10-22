@@ -27,16 +27,18 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { recordNotificationChanges } from '../sync-changes.js';
 
 const READ_PERMISSION = 'comm.alert.read';
 
 const readNotifications: CommandHandler<NotificationReadPayload> = async (uow, envelope) => {
   const at = new Date(envelope.occurred_at);
   const payload = envelope.payload;
+  const author = envelope.author_user_id;
   const base = uow
-    .updateTable('communication_notifications')
-    .set({ read_at: sql<Date>`GREATEST(created_at, ${at})` })
-    .where('user_id', '=', toBin(envelope.author_user_id))
+    .selectFrom('communication_notifications')
+    .select(['id', 'channel'])
+    .where('user_id', '=', toBin(author))
     .where('read_at', 'is', null);
   // « Toutes » : celles que l'utilisateur avait sous les yeux à l'instant de son geste, jamais celles
   // créées ensuite (une commande hors ligne arrive plus tard).
@@ -44,10 +46,30 @@ const readNotifications: CommandHandler<NotificationReadPayload> = async (uow, e
     payload.notificationIds !== undefined
       ? base.where('id', 'in', payload.notificationIds.map(toBin))
       : base.where('created_at', '<=', at);
-  const result = await query.execute();
+  const targets = await query.forUpdate().execute();
+  if (targets.length > 0) {
+    await uow
+      .updateTable('communication_notifications')
+      .set({ read_at: sql<Date>`GREATEST(created_at, ${at})` })
+      .where(
+        'id',
+        'in',
+        targets.map((target) => target.id),
+      )
+      .where('read_at', 'is', null)
+      .execute();
+    // Jeu hors ligne `comms` : les notifications lues sortent des non lues de l'appareil.
+    await recordNotificationChanges(
+      uow,
+      targets
+        .filter((target) => target.channel === 'IN_APP')
+        .map((target) => ({ id: fromBin(target.id), userId: author })),
+      'SCOPE_EXIT',
+    );
+  }
   return {
     status: 'APPLIED',
-    serverRefs: { marked: String(Number(result[0]?.numUpdatedRows ?? 0)) },
+    serverRefs: { marked: String(targets.length) },
   };
 };
 

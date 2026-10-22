@@ -123,7 +123,7 @@ export async function notificationPage(
     .execute();
   const page = rows.slice(0, input.limit);
   const last = page[page.length - 1];
-  const bodies = await currentBodies(executor, input.userId, page, input.at);
+  const bodies = await notificationBodies(executor, input.userId, page, input.at);
   const unread = await executor
     .selectFrom('communication_notifications')
     .select((eb) => eb.fn.countAll<number>().as('n'))
@@ -159,9 +159,9 @@ export async function notificationPage(
  * Corps courant des notifications `IN_APP` d'alerte dont le message porte une valeur au coût : rendu à
  * nouveau selon le droit du lecteur **à la lecture** (RC-05) — une valeur reçue pendant que le droit
  * `inventory.valuation.read` était détenu ne reste pas lisible après sa perte. Les autres notifications
- * gardent leur texte d'origine.
+ * gardent leur texte d'origine. Servi aussi par le jeu hors ligne `comms` (P9-12).
  */
-async function currentBodies(
+export async function notificationBodies(
   executor: Executor,
   userId: string,
   rows: readonly { id: Buffer; channel: string; alert_id: Buffer | null }[],

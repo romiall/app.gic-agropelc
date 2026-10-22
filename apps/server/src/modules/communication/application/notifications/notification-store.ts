@@ -5,6 +5,7 @@
 import type { IdGenerator, NotificationKind } from '@gic/domain';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { recordNotificationChanges } from '../sync-changes.js';
 
 export type { NotificationKind };
 /** `ALERT` : levée ou occurrence ; `ALERT_ESCALATION` : escalade (jamais regroupée, ADR-072 §6). */
@@ -28,9 +29,9 @@ export interface NewNotification {
   readonly deliveredAt?: Date | null;
 }
 
-function valuesOf(idGenerator: IdGenerator, row: NewNotification) {
+function valuesOf(id: string, row: NewNotification) {
   return {
-    id: toBin(idGenerator.newId()),
+    id: toBin(id),
     user_id: toBin(row.userId),
     channel: row.channel,
     kind: row.kind,
@@ -54,12 +55,18 @@ export async function insertNotification(
   idGenerator: IdGenerator,
   row: NewNotification,
 ): Promise<boolean> {
+  const id = idGenerator.newId();
   const result = await uow
     .insertInto('communication_notifications')
-    .values(valuesOf(idGenerator, row))
+    .values(valuesOf(id, row))
     .ignore()
     .executeTakeFirst();
-  return Number(result.numInsertedOrUpdatedRows ?? 0) > 0;
+  const inserted = Number(result.numInsertedOrUpdatedRows ?? 0) > 0;
+  // Jeu hors ligne `comms` : une notification `IN_APP` rejoint l'appareil de son destinataire.
+  if (inserted && row.channel === 'IN_APP') {
+    await recordNotificationChanges(uow, [{ id, userId: row.userId }], 'UPSERT');
+  }
+  return inserted;
 }
 
 /** Lignes par instruction d'une insertion groupée (valeur technique, pas un seuil métier). */
@@ -79,14 +86,44 @@ export async function insertNotifications(
   const chunkSize = Math.max(1, options.chunkSize ?? NOTIFICATION_INSERT_CHUNK);
   let written = 0;
   for (let start = 0; start < rows.length; start += chunkSize) {
+    const chunk = rows
+      .slice(start, start + chunkSize)
+      .map((row) => ({ id: idGenerator.newId(), row }));
     const result = await uow
       .insertInto('communication_notifications')
-      .values(rows.slice(start, start + chunkSize).map((row) => valuesOf(idGenerator, row)))
+      .values(chunk.map(({ id, row }) => valuesOf(id, row)))
       .ignore()
       .executeTakeFirst();
-    written += Number(result.numInsertedOrUpdatedRows ?? 0);
+    const inserted = Number(result.numInsertedOrUpdatedRows ?? 0);
+    written += inserted;
+    // Jeu hors ligne `comms` : les notifications `IN_APP` écrites rejoignent l'appareil de leur destinataire.
+    // Si le lot a ignoré des lignes (rejeu), seules celles qui existent vraiment sont publiées.
+    const published = chunk.filter(({ row }) => row.channel === 'IN_APP');
+    if (published.length === 0 || inserted === 0) continue;
+    const existing =
+      inserted === chunk.length
+        ? published
+        : await existingOf(
+            uow,
+            published.map(({ id }) => id),
+          ).then((ids) => published.filter(({ id }) => ids.has(id)));
+    await recordNotificationChanges(
+      uow,
+      existing.map(({ id, row }) => ({ id, userId: row.userId })),
+      'UPSERT',
+    );
   }
   return written;
+}
+
+/** Parmi ces identifiants, ceux qui sont réellement des notifications (le lot en a pu ignorer). */
+async function existingOf(uow: UnitOfWork, ids: readonly string[]): Promise<ReadonlySet<string>> {
+  const rows = await uow
+    .selectFrom('communication_notifications')
+    .select('id')
+    .where('id', 'in', ids.map(toBin))
+    .execute();
+  return new Set(rows.map((row) => fromBin(row.id)));
 }
 
 /**

@@ -20,7 +20,10 @@ import {
   createAlertNotifier,
   type AlertNotifierDeps,
 } from '../src/modules/communication/application/notifications/alert-notifier.js';
-import { insertNotifications } from '../src/modules/communication/application/notifications/notification-store.js';
+import {
+  insertNotification,
+  insertNotifications,
+} from '../src/modules/communication/application/notifications/notification-store.js';
 import { dispatchPendingPushes } from '../src/modules/communication/application/notifications/push-dispatch.js';
 import type {
   PushMessage,
@@ -1375,9 +1378,56 @@ describe('P9-11 : insertion groupée des notifications', () => {
         expect(
           await insertNotifications(uow, idGenerator, [...rows, rowFor(extra, eventId)], options),
         ).toBe(1);
+        // Jeu hors ligne `comms` : une ligne de flux par notification écrite, aucune pour une ligne ignorée.
+        for (const userId of [...users, extra]) {
+          const feed = await uow
+            .selectFrom('sync_change_feed')
+            .select('entity_id')
+            .where('dataset', '=', 'comms')
+            .where('entity_type', '=', 'NOTIFICATION')
+            .where('scope_id', '=', toBin(userId))
+            .execute();
+          expect(feed, `lot ${chunkSize}`).toHaveLength(1);
+          const own = await notificationsOf(uow, userId);
+          expect(feed[0]!.entity_id.equals(own[0]!.id), `lot ${chunkSize}`).toBe(true);
+        }
       });
     }
   });
+
+  it('une ligne ignorée (rejeu) ne publie aucune ligne de flux ; seul le canal IN_APP est publié', () =>
+    rolledBack(async (uow) => {
+      const [user, other] = await Promise.all([newUser(), newUser()]);
+      const eventId = freshUuid();
+      const feedOf = (userId: string) =>
+        uow
+          .selectFrom('sync_change_feed')
+          .select('entity_id')
+          .where('dataset', '=', 'comms')
+          .where('entity_type', '=', 'NOTIFICATION')
+          .where('scope_id', '=', toBin(userId))
+          .execute();
+      // Une notification, puis le même événement rejoué : une seule ligne de flux.
+      expect(await insertNotification(uow, idGenerator, rowFor(user, eventId))).toBe(true);
+      expect(await insertNotification(uow, idGenerator, rowFor(user, eventId))).toBe(false);
+      expect(await feedOf(user)).toHaveLength(1);
+      // L'envoi push n'est jamais dans le jeu de l'appareil, seul ou dans un lot.
+      expect(
+        await insertNotification(uow, idGenerator, {
+          ...rowFor(user, freshUuid()),
+          channel: 'WEB_PUSH',
+        }),
+      ).toBe(true);
+      expect(await feedOf(user)).toHaveLength(1);
+      const mixed = freshUuid();
+      expect(
+        await insertNotifications(uow, idGenerator, [
+          rowFor(other, mixed),
+          { ...rowFor(other, mixed), channel: 'WEB_PUSH' },
+        ]),
+      ).toBe(2);
+      expect(await feedOf(other)).toHaveLength(1);
+    }));
 
   it('une liste vide n’écrit rien', () =>
     rolledBack(async (uow) => {

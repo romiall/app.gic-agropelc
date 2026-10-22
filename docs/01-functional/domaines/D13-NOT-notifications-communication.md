@@ -119,7 +119,7 @@ Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `Sto
 
 ## 12. Fonctionnement hors ligne
 
-Les alertes et notes de l'utilisateur sont téléchargées : 50 dernières alertes ouvertes, notes non expirées. La prise en compte d'une alerte et l'accusé de lecture d'une note fonctionnent hors ligne. Les alertes locales (ex. « stock de votre allocation < 5 ») sont calculées sur l'appareil, sans passer par le serveur.
+Les alertes et notes de l'utilisateur sont téléchargées (jeu `comms`, P9-12, AV-483 à AV-485) : sa boîte d'alertes ouvertes, ses notifications non lues, ses notes non expirées avec son état de lecture. La prise en compte d'une alerte et l'accusé de lecture d'une note fonctionnent hors ligne. Les alertes locales (ex. « stock de votre allocation < 5 ») sont calculées sur l'appareil, sans passer par le serveur.
 
 ## 13. Permissions
 

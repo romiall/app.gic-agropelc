@@ -27,6 +27,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { codeEntityId } from '../../../../platform/sync/code-entity-id.js';
+import { recordAlertChanges } from '../sync-changes.js';
 
 /** Nom du type d'entité de la clé de sujet composite (UUID version 5, ADR-071 §5). */
 export const ALERT_SUBJECT_ENTITY = 'ALERT_SUBJECT';
@@ -87,6 +88,8 @@ export interface RaiseOutcome {
 
 interface OpenAlertRow {
   readonly id: Buffer;
+  readonly title: string;
+  readonly message: string;
   readonly severity: string;
   readonly occurrences: number;
   readonly critical_since: Date | null;
@@ -97,7 +100,16 @@ interface OpenAlertRow {
 async function lockOpenByKey(uow: UnitOfWork, dedupKey: string): Promise<OpenAlertRow | undefined> {
   return uow
     .selectFrom('communication_alerts')
-    .select(['id', 'severity', 'occurrences', 'critical_since', 'last_pass_id', 'last_detected_at'])
+    .select([
+      'id',
+      'title',
+      'message',
+      'severity',
+      'occurrences',
+      'critical_since',
+      'last_pass_id',
+      'last_detected_at',
+    ])
     .where('open_dedup_key', '=', dedupKey)
     .forUpdate()
     .executeTakeFirst();
@@ -183,6 +195,11 @@ export async function raiseAlert(
       })
       .where('id', '=', row.id)
       .execute();
+    // Jeu hors ligne `comms` : la boîte des destinataires reçoit l'état courant quand il change à leurs yeux
+    // (gravité, titre, message), non à chaque occurrence d'une alerte d'état revue à chaque passe.
+    if (next !== current || rendered.title !== row.title || rendered.message !== row.message) {
+      await recordAlertChanges(uow, fromBin(row.id), 'UPSERT');
+    }
     if (raisedToCritical) {
       await publishAlertEvent(uow, deps, {
         eventType: 'AlertRaised',
@@ -342,6 +359,8 @@ async function closeAlert(
     })
     .where('id', '=', alertId)
     .execute();
+  // Jeu hors ligne `comms` : l'alerte sort de la boîte de ses destinataires.
+  await recordAlertChanges(uow, fromBin(alertId), 'SCOPE_EXIT');
   await publishAlertEvent(uow, deps, {
     eventType: 'AlertResolved',
     alertId,
@@ -418,6 +437,7 @@ export async function markAcknowledged(
     })
     .where('id', '=', toBin(alert.id))
     .execute();
+  await recordAlertChanges(uow, alert.id, 'UPSERT');
   await publishAlertEvent(uow, deps, {
     eventType: 'AlertAcknowledged',
     alertId: toBin(alert.id),
@@ -455,6 +475,7 @@ export async function markClosedManually(
     })
     .where('id', '=', toBin(alert.id))
     .execute();
+  await recordAlertChanges(uow, alert.id, 'SCOPE_EXIT');
   await publishAlertEvent(uow, deps, {
     eventType: 'AlertResolved',
     alertId: toBin(alert.id),
@@ -569,6 +590,7 @@ export async function markEscalated(
     .where('escalated_at', 'is', null)
     .execute();
   if (Number(result[0]?.numUpdatedRows ?? 0) === 0) return null;
+  await recordAlertChanges(uow, alert.id, 'UPSERT');
   return publishAlertEvent(uow, deps, {
     eventType: 'AlertEscalated',
     alertId: toBin(alert.id),

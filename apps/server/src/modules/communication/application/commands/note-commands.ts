@@ -47,8 +47,9 @@ import type {
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
-import { toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { insertNotifications } from '../notifications/notification-store.js';
+import { noteHolderIds, recordNoteChanges, recordNotificationChanges } from '../sync-changes.js';
 import type { NoteAudienceResolver } from '../notes/note-audience-resolver.js';
 import { publishNoteEvent } from '../notes/note-events.js';
 import {
@@ -335,6 +336,8 @@ function publish(deps: NoteCommandDeps): CommandHandler<NotePublishPayload> {
         deliveredAt: publishedAt,
       })),
     );
+    // Jeu hors ligne `comms` : la note rejoint l'appareil de chaque destinataire (ADR-073 §4).
+    await recordNoteChanges(uow, noteId, recipients, 'UPSERT');
     return {
       status: 'APPLIED',
       serverRefs: {
@@ -384,6 +387,8 @@ function archive(deps: NoteCommandDeps): CommandHandler<NoteArchivePayload> {
       archivedAt,
       reason: envelope.payload.reason,
     });
+    // Jeu hors ligne `comms` : la note sort de l'appareil de ceux qui la détiennent.
+    await recordNoteChanges(uow, noteId, await noteHolderIds(uow, noteId), 'SCOPE_EXIT');
     await publishNoteEvent(uow, deps, {
       eventType: 'InternalNoteArchived',
       noteId,
@@ -483,13 +488,36 @@ function acknowledge(deps: NoteCommandDeps): CommandHandler<NoteAcknowledgePaylo
 
     if (changed) {
       // La note lue (ou accusée) n'attend plus l'utilisateur dans son centre de notifications.
-      await uow
-        .updateTable('communication_notifications')
-        .set({ read_at: sql<Date>`GREATEST(created_at, ${factAt})` })
+      const unread = await uow
+        .selectFrom('communication_notifications')
+        .select(['id', 'channel'])
         .where('user_id', '=', toBin(author))
         .where('note_id', '=', toBin(noteId))
         .where('read_at', 'is', null)
+        .forUpdate()
         .execute();
+      if (unread.length > 0) {
+        await uow
+          .updateTable('communication_notifications')
+          .set({ read_at: sql<Date>`GREATEST(created_at, ${factAt})` })
+          .where(
+            'id',
+            'in',
+            unread.map((notification) => notification.id),
+          )
+          .where('read_at', 'is', null)
+          .execute();
+      }
+      // Jeu hors ligne `comms` : ses notifications de la note sortent des non lues, et la note revient
+      // avec l'état de lecture que le serveur vient d'enregistrer.
+      await recordNotificationChanges(
+        uow,
+        unread
+          .filter((notification) => notification.channel === 'IN_APP')
+          .map((notification) => ({ id: fromBin(notification.id), userId: author })),
+        'SCOPE_EXIT',
+      );
+      await recordNoteChanges(uow, noteId, [author], 'UPSERT');
       await publishNoteEvent(uow, deps, {
         eventType: 'InternalNoteAcknowledged',
         noteId,

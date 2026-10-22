@@ -45,6 +45,14 @@ Contraintes du projet :
 - Des ajouts de `platform/` sont nécessaires et signalés à la session principale (suivi §3) : table des événements sautés par le runner de consommateurs (ADR-071 §12), isolation des tâches longues dans le worker (ADR-078 §3), suppression et lecture en flux du port de stockage (ADR-077 §5). Ils sont additifs : aucun comportement existant ne change.
 - Le placement d'un détecteur suit le graphe : `INACTIVE_COMMERCIAL` est dans `sales` (qui importe `crm` et `fieldwork`), pas dans `fieldwork` ; la part « % des ventes » de `HIGH_LOSS` est dans `sales` (ADR-071 §2).
 
+## Révision (P9-12, 22/10/2026)
+
+Le jeu hors ligne `comms` (§6) est livré ; le texte ci-dessus reste la décision d'origine.
+
+1. **Émission.** `communication` écrit une ligne de flux **par destinataire**, en portée `USER`, dans la transaction de chaque écriture (`sync-changes.ts`) : types `ALERT` (boîte de l'utilisateur), `NOTIFICATION` (`IN_APP` non lue) et `NOTE` (avec l'état de lecture de l'utilisateur). Les sorties sont des lignes `SCOPE_EXIT` (alerte close, notification lue, note retirée). AV-483 à AV-485.
+2. **Lecteurs.** `sync/communication-projections.ts` (fichier propre à P9) est inscrit dans `ENTITY_PROJECTIONS` par une seule ligne ; il signe localement la forme d'un lecteur (importer `entity-projections.ts` créerait un cycle, règle `no-circular`). Un lecteur ne sert une ligne que si elle est en portée `USER` de l'utilisateur qui télécharge, et rend le texte pour lui en appelant les lectures de `communication` (valeur au coût, RC-05).
+3. **Hors du jeu.** La supervision par la portée, les conflits et le plafond de 50 restent en ligne ; les demandes de validation de l'utilisateur sont servies par `APPROVAL_REQUEST` (P2).
+
 ## Tests
 
 Graphe de dépendances (dependency-cruiser) : `communication` n'importe que `identity` et `organization` ; aucun module propriétaire n'importe `communication` ni `analytics`. Chaque événement de déclenchement a un test de production (module propriétaire) et un test de consommation (`communication`).

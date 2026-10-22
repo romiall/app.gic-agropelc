@@ -151,7 +151,7 @@
 | `last_pass_id` | varchar(64) | Oui | — | Identité de la dernière passe de détection qui a revu l'alerte d'état ; sert à la résolution par marqueur (ADR-071 §3) |
 
 - **PK** `id`. **UQ** `open_dedup_key` (INV-NOT-01 : au plus une alerte ouverte par type et objet ; les valeurs `NULL` ne se heurtent pas). **IX** `(status, severity, first_detected_at)`, `(site_id, status)`, `(owner_user_id, status)`.
-- **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans. **Offline** DL (50 dernières ouvertes du périmètre).
+- **Suppr.** `IMMUABLE` après résolution ; purge après 2 ans. **Offline** DL (la boîte de l'utilisateur : alertes ouvertes dont il est destinataire, jeu `comms`, entité `ALERT` ; la supervision par la portée reste en ligne — P9-12, AV-483).
 
 ## communication.alert_recipients
 
@@ -165,7 +165,7 @@
 | `role_code` | code | Oui | — | Rôle par lequel l'utilisateur est destinataire |
 | `added_at` | ts | Non | `now()` | |
 
-- **PK** `(alert_id, user_id)`. **IX** `(user_id, alert_id)`. **Suppr.** Suit l'alerte (purge à 2 ans). **Offline** DL (via les alertes ouvertes).
+- **PK** `(alert_id, user_id)`. **IX** `(user_id, alert_id)`. **Suppr.** Suit l'alerte (purge à 2 ans). **Offline** DL (via les alertes ouvertes de la boîte : une ligne de flux à l'ajout d'un destinataire).
 
 ## communication.notifications
 
@@ -187,7 +187,7 @@
 | `created_at` | ts | Non | `now()` | |
 | `delivered_at`, `read_at` | ts | Oui | — | Seuls champs qui évoluent, chacun une fois. `delivered_at` : posé à la création pour `IN_APP` ; pour `WEB_PUSH`, à l'envoi accepté par au moins un abonnement (tâche `communication.push.dispatch`) ; une ligne jamais livrée est abandonnée après la fenêtre de reprise |
 
-- **PK** `id`. **UQ** `(user_id, channel, source_event_id)`. **IX** `(user_id, read_at, created_at)`, `(alert_id)`, `(user_id, alert_type, channel, created_at)`. **Suppr.** `PURGE_TECHNIQUE` 90 jours après lecture. **Offline** DL (non lues).
+- **PK** `id`. **UQ** `(user_id, channel, source_event_id)`. **IX** `(user_id, read_at, created_at)`, `(alert_id)`, `(user_id, alert_type, channel, created_at)`. **Suppr.** `PURGE_TECHNIQUE` 90 jours après lecture. **Offline** DL (non lues `IN_APP`, jeu `comms`, entité `NOTIFICATION` ; sortie à la lecture, jamais l'envoi `WEB_PUSH` — P9-12, AV-484).
 
 ## communication.push_subscriptions
 
@@ -224,7 +224,7 @@
 | `command_id` | uuid | Oui | — | Idempotence de la publication (unique) |
 | [STD-AUDIT] | | | | |
 
-- **PK** `id`. **Suppr.** `ARCHIVED` (un brouillon abandonné aussi : aucune suppression physique, INV-GLO-03) ; immuable une fois publiée, **audiences comprises** : déclencheurs d'immuabilité sur `internal_notes` et `note_audiences` (BR-NOT-006). **Offline** DL en portée `USER` (notes publiées non expirées des utilisateurs résolus à la publication).
+- **PK** `id`. **Suppr.** `ARCHIVED` (un brouillon abandonné aussi : aucune suppression physique, INV-GLO-03) ; immuable une fois publiée, **audiences comprises** : déclencheurs d'immuabilité sur `internal_notes` et `note_audiences` (BR-NOT-006). **Offline** DL en portée `USER`, jeu `comms`, entité `NOTE` (notes publiées non expirées des utilisateurs résolus à la publication, avec leur état de lecture ; sortie au retrait — P9-12, AV-485).
 
 ## communication.note_audiences
 
@@ -250,4 +250,4 @@
 | `acknowledged_at` | ts | Oui | — | |
 | `command_id` | uuid | Oui | — | |
 
-- **PK** `(note_id, user_id)`. **Suppr.** `IMMUABLE`. **Offline** CR.
+- **PK** `(note_id, user_id)`. **Suppr.** `IMMUABLE`. **Offline** CR (la lecture et l'accusé sont saisis sur l'appareil ; leur état revient dans la note du jeu `comms`).
