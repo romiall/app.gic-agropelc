@@ -41,6 +41,197 @@ export interface AnalyticsExportJobs {
   storage_key: string | null;
 }
 
+export interface AnalyticsFAttendance {
+  accepted_day_key: string | null;
+  business_day: Date | null;
+  duration_minutes: number | null;
+  override: Generated<number>;
+  session_count: Generated<number>;
+  session_id: Buffer;
+  status: Generated<string>;
+  user_id: Buffer;
+}
+
+export interface AnalyticsFCash {
+  business_day: Date | null;
+  cash_account_id: Buffer;
+  holder_user_id: Buffer | null;
+  inflow_xaf: Generated<number>;
+  movement_id: Buffer;
+  movement_type: string;
+  outflow_xaf: Generated<number>;
+  site_id: Buffer | null;
+}
+
+export interface AnalyticsFCosts {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  cost_object_id: Buffer;
+  cost_object_type: string;
+  cost_type: string;
+  created_by: Buffer;
+  entry_id: Buffer;
+  site_id: Buffer | null;
+}
+
+export interface AnalyticsFExpenses {
+  amount_xaf: number;
+  business_day: Date | null;
+  category_id: Buffer;
+  cost_object_type: string | null;
+  created_by: Buffer;
+  expense_id: Buffer;
+  site_id: Buffer;
+  status: string;
+}
+
+export interface AnalyticsFLosses {
+  business_day: Date | null;
+  category: string;
+  declared_by: Buffer;
+  location_id: Buffer;
+  loss_id: Buffer;
+  product_id: Buffer;
+  production_lot_id: Buffer | null;
+  quantity_base: Decimal;
+  reason_code: string | null;
+  site_id: Buffer;
+  status: string;
+  stock_lot_id: Buffer | null;
+  value_xaf: number;
+}
+
+export interface AnalyticsFOrders {
+  amount_xaf: number;
+  business_day: Date | null;
+  channel: string;
+  commercial_user_id: Buffer;
+  created_by: Buffer;
+  customer_id: Buffer;
+  delivered_quantity: Generated<Decimal>;
+  line_id: Buffer;
+  order_id: Buffer;
+  ordered_quantity: Decimal;
+  product_id: Buffer;
+  site_id: Buffer;
+  status: Generated<string>;
+  zone_id: Buffer;
+}
+
+export interface AnalyticsFPayments {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  cash_account_id: Generated<Buffer>;
+  customer_id: Buffer | null;
+  event_kind: string | null;
+  payment_id: Generated<Buffer>;
+  payment_method: Generated<string>;
+  received_by_user_id: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFProductionDaily {
+  average_weight_kg: Decimal | null;
+  building_id: Buffer | null;
+  business_day: Date | null;
+  eggs_collected: number | null;
+  eggs_sellable: number | null;
+  feed_quantity: Decimal | null;
+  lot_id: Buffer | null;
+  lot_type: Generated<string>;
+  mortality_heads: Decimal | null;
+  recorded_by: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFProspecting {
+  acquired_by_user_id: Generated<Buffer>;
+  business_day: Date | null;
+  contact_customer_id: Buffer | null;
+  converted_customer_id: Buffer | null;
+  created_customer_id: Buffer | null;
+  event_kind: string | null;
+  owner_user_id: Buffer | null;
+  result: string | null;
+  source: Generated<string>;
+  stage: Generated<string>;
+  user_id: Generated<Buffer>;
+  visit_id: Buffer | null;
+  visited_prospect_id: Buffer | null;
+  zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFPurchases {
+  accepted_quantity: Decimal | null;
+  amount_xaf: number | null;
+  business_day: Date | null;
+  created_by: Generated<Buffer>;
+  delivered_quantity: Decimal | null;
+  order_id: Buffer | null;
+  ordered_quantity: Decimal | null;
+  product_id: Generated<Buffer>;
+  receipt_id: Buffer | null;
+  rejected_quantity: Decimal | null;
+  site_id: Generated<Buffer>;
+  supplier_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFSalesLine {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  channel: Generated<string>;
+  commercial_user_id: Buffer | null;
+  cost_xaf: Generated<Decimal>;
+  counted_sale_id: Buffer | null;
+  customer_category_id: Buffer | null;
+  customer_id: Buffer | null;
+  discount_xaf: Generated<number>;
+  event_kind: string | null;
+  line_id: Generated<Buffer>;
+  margin_xaf: Decimal | null;
+  payment_status: string | null;
+  pos_id: Generated<Buffer>;
+  product_category_id: Generated<Buffer>;
+  product_id: Generated<Buffer>;
+  quantity_base: Generated<Decimal>;
+  sale_day: Date | null;
+  sale_id: Generated<Buffer>;
+  sale_type: Generated<string>;
+  seller_user_id: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+  zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFStockBalance {
+  allocated_base: Generated<Decimal>;
+  available_base: Generated<Decimal>;
+  balance_base: Generated<Decimal>;
+  custodian_user_id: Buffer | null;
+  family: string;
+  location_id: Buffer;
+  product_id: Buffer;
+  site_id: Buffer | null;
+  stock_lot_id: Buffer | null;
+  value_xaf: Generated<Decimal>;
+}
+
+export interface AnalyticsFStockMoves {
+  business_day: Date | null;
+  from_custodian_user_id: Buffer | null;
+  from_location_id: Buffer;
+  from_site_id: Buffer | null;
+  move_id: Buffer;
+  move_type: string;
+  product_id: Buffer;
+  quantity_base: Decimal;
+  reason_code: string | null;
+  stock_lot_id: Buffer | null;
+  to_custodian_user_id: Buffer | null;
+  to_location_id: Buffer;
+  to_site_id: Buffer | null;
+  value_xaf: number;
+}
+
 export interface AnalyticsKpiSnapshots {
   computed_at: Date;
   payload: Json;
@@ -2584,6 +2775,19 @@ export interface SyncSyncConflicts {
 
 export interface DB {
   analytics_export_jobs: AnalyticsExportJobs;
+  analytics_f_attendance: AnalyticsFAttendance;
+  analytics_f_cash: AnalyticsFCash;
+  analytics_f_costs: AnalyticsFCosts;
+  analytics_f_expenses: AnalyticsFExpenses;
+  analytics_f_losses: AnalyticsFLosses;
+  analytics_f_orders: AnalyticsFOrders;
+  analytics_f_payments: AnalyticsFPayments;
+  analytics_f_production_daily: AnalyticsFProductionDaily;
+  analytics_f_prospecting: AnalyticsFProspecting;
+  analytics_f_purchases: AnalyticsFPurchases;
+  analytics_f_sales_line: AnalyticsFSalesLine;
+  analytics_f_stock_balance: AnalyticsFStockBalance;
+  analytics_f_stock_moves: AnalyticsFStockMoves;
   analytics_kpi_snapshots: AnalyticsKpiSnapshots;
   analytics_query_log: AnalyticsQueryLog;
   analytics_saved_views: AnalyticsSavedViews;

@@ -61,6 +61,14 @@ Faits du code :
 - La permission de lecture du domaine **est** l'accès au jeu : `analytics.explore` ouvre l'outil, pas les données.
 - Le calcul d'étendue coûte au plus quelques centaines d'évaluations de droits en cache ; la tâche d'instantanés le mutualise (ADR-076).
 
+## Révision du 22/10/2026 (P9-13)
+
+- **Vues non modifiables.** Les treize vues sont créées `ALGORITHM = TEMPTABLE SQL SECURITY INVOKER` : un essai de P9-13 a montré qu'une vue fusionnée à table unique (`analytics_f_expenses`) laisse passer un `UPDATE` avec les droits de l'application sur la table de base, quel que soit le droit sur la vue (et une jointure se laisse écrire colonne par colonne). Une vue matérialisée à la lecture n'est pas modifiable ; la condition de période et de portée du compilateur est poussée dans la vue (plan `EXPLAIN` vérifié : le filtre de jour s'applique à la lecture de la table source, ses index sont utilisés). Un test de la base tente `INSERT`, `UPDATE` et `DELETE` sur chaque vue.
+- **Libellés constants.** Les colonnes `event_kind` portent explicitement la collation de la base (`utf8mb4_0900_as_cs`) : sans elle, la collation de la connexion qui crée la vue entre en conflit avec celle des paramètres de la requête (`Illegal mix of collations`).
+- **Portée des encaissements** : le receveur (`received_by_user_id`), comme `cashedActivity` et la lecture du module (le catalogue citait `created_by`).
+- **Écarts entre fonctions publiques** : quand deux définitions coexistent dans le code, la vue suit la plus proche de la définition métier et l'écart est tracé (mortalité comptée : AV-486 ; valeur d'un solde : AV-487 ; remise et coût d'une annulation : AV-488 ; facturé et payé hors du jeu des achats : AV-489).
+- **Index (§9).** Aucun index n'est ajouté par P9-13 : sur la base d'essai (au plus quelques dizaines de milliers de lignes par table) le plan `EXPLAIN` choisit le parcours complet avec ou sans index, et un essai d'index fonctionnel sur le jour métier calculé n'a pas été utilisé par l'optimiseur. Les index qu'un volume réel justifie (coûts, visites, sessions, commandes, réceptions : tables sans colonne de jour métier générée) sont ceux de P9-22, mesurés sur le volume de [ADR-078](ADR-078-charge-paliers-analytiques-et-retention.md).
+
 ## Tests
 
 Catalogue valide (toutes colonnes existent dans la vue ; migration descendante) ; **grille d'étendue** : chaque portée maximale (`ALL`, `SITE`, `ZONE`, `TEAM`, `OWN`) sous chaque affectation (globale, site, zone, équipe) — pour un échantillon de lignes, la clause compilée ne rend **jamais** une ligne que `evaluateAccess` refuse, et rend celles qu'il accepte hors combinaisons non énumérables ; étendue vide ; mesures protégées (refus exact = masquage de la lecture HTTP) ; limites (lignes, durée, période, `LIMIT + 1`) ; injection (nom de champ, tri, valeur hostiles) ; mélange de colonnes de période ; équivalence avec les fonctions publiques (ADR-075) ; mutations sur la clause de portée.

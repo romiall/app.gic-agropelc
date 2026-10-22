@@ -401,6 +401,10 @@ Classification (PM §45) :
 | AV-483 | Jeu hors ligne `comms` : contenu, portée et rendu des alertes | SECONDAIRE | P9 | Trois types émis par `communication` en portée `USER` à chaque écriture : alertes de la **boîte** de l'utilisateur, notifications `IN_APP` non lues, notes ; texte rendu pour son destinataire ; supervision, conflits et plafond de 50 en ligne | OUVERT |
 | AV-484 | Notifications dans le jeu hors ligne : non lues `IN_APP`, sortie à la lecture | SECONDAIRE | P9 | Une ligne par notification écrite, une sortie à la lecture (une, toutes, ou lecture de la note) ; jamais l'envoi `WEB_PUSH` | OUVERT |
 | AV-485 | Notes dans le jeu hors ligne : détenteurs, état de lecture, retrait | SECONDAIRE | P9 | Utilisateurs notifiés à la publication et lecteurs après coup ; l'état de lecture voyage dans la note ; sortie à l'archivage ; expiration masquée par l'appareil | OUVERT |
+| AV-486 | Mortalité comptée d'un lot : deux définitions dans la production | SECONDAIRE | P9 | La vue suit le résumé du lot (la mortalité non justifiée compte) ; la série par jour de l'écran du lot ne la compte pas | OUVERT |
+| AV-487 | Valeur d'un solde de stock : deux définitions | SECONDAIRE | P9 | La vue suit BR-STK-054 (solde × coût unitaire moyen courant, comme `GET /stock`) ; l'accueil additionne la valeur du registre | OUVERT |
+| AV-488 | Remise et coût d'une ligne de vente annulée | SECONDAIRE | P9 | Remise non contre-passée ; coût d'une annulation = retours de stock de sa ligne ; marge = montant − coût | OUVERT |
+| AV-489 | Jeu des achats : facturé et payé hors du jeu | SECONDAIRE | P9 | Quantités commandées, livrées, rejetées, acceptées et montant commandé ; le facturé et le payé se lisent dans les dettes fournisseurs | OUVERT |
 
 ---
 
@@ -2985,6 +2989,36 @@ Politique par défaut, paramétrable :
 - **Limites** : un utilisateur affecté après la publication n'a la note par le flux qu'à sa première lecture en ligne (ADR-073 §4, AV-419) ; un utilisateur dont l'affectation est retirée garde la note sur son appareil jusqu'au retrait ou à l'expiration ; l'accusé saisi sur l'appareil revient confirmé par le flux à la synchronisation ; une note expirée déjà détenue n'est retirée que par l'appareil.
 - **Recommandation** : (a).
 - **Impact** : `communication` (`commands/note-commands.ts`, `sync-changes.ts`), `sync/communication-projections.ts`, [ADR-073](decisions/ADR-073-notes-de-direction.md) §4, AT-048. Défaut implémenté : (a). Non paramétrable.
+
+### AV-486 — Mortalité comptée d'un lot : deux définitions dans la production — SECONDAIRE
+- **Question** : Quels statuts de déclaration de mortalité comptent comme têtes mortes ?
+- **Pourquoi** : `lotMortalitySummary` (indicateurs du lot, taux de mortalité, AV-113) compte les déclarations `RECORDED`, `APPROVED`, `REJECTED_UNJUSTIFIED` et `CANCELLATION_PENDING` ; `productionLotMortalityByDay` (série jour par jour de l'écran du lot) n'en compte que trois, sans la mortalité non justifiée. La somme de la série ne retombe donc pas sur le total du lot dès qu'une mortalité a été refusée comme non justifiée. **DÉDUIT** (constat de code).
+- **Choix** : (a) la vue `analytics_f_production_daily` suit le résumé du lot : les bêtes sont mortes, le refus de la justification ne les ressuscite pas ; (b) suivre la série par jour (trois statuts).
+- **Limites** : sur un lot portant une mortalité non justifiée, l'explorateur et la série jour par jour de l'écran du lot diffèrent tant que celle-ci n'est pas alignée.
+- **Recommandation** : (a), puis aligner `productionLotMortalityByDay` (module `inventory`, hors du périmètre de P9).
+- **Impact** : `analytics_f_production_daily` (migration `20261201090500`) ; `inventory/application/public/production-aggregates.ts` non modifié. Défaut implémenté : (a). Non paramétrable.
+
+### AV-487 — Valeur d'un solde de stock : deux définitions — SECONDAIRE
+- **Question** : La valeur du stock est-elle le solde multiplié par le coût unitaire moyen courant, ou la somme signée des valeurs figées du registre ?
+- **Pourquoi** : D11 KPI-STK-02 écrit « Σ solde × coût unitaire courant » et `GET /stock` l'applique (BR-STK-054, `stockValueXaf`) ; l'accueil (`inventory/application/public/home-metrics.ts`) additionne `stock_balances.value_xaf`, la valeur du registre. Les deux ne coïncident qu'à l'arrondi du coût moyen près. **DÉDUIT**.
+- **Choix** : (a) la vue suit BR-STK-054 : `ROUND(solde × coût unitaire moyen arrondi au franc)` ; (b) la valeur du registre.
+- **Limites** : l'explorateur et l'accueil peuvent différer de quelques francs par ligne.
+- **Recommandation** : (a), puis aligner l'accueil.
+- **Impact** : `analytics_f_stock_balance.value_xaf` (migration `20261201090500`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-488 — Remise et coût d'une ligne de vente annulée — SECONDAIRE
+- **Question** : Une annulation contre-passe-t-elle la remise de la ligne annulée, et quel coût porte-t-elle ?
+- **Pourquoi** : une ligne d'annulation porte un montant et une quantité, pas de remise ; le coût figé d'une vente est celui de ses mouvements `SALE`, celui d'une annulation celui des retours `CUSTOMER_RETURN` de sa ligne (ADR-029), comme `saleCostsInPeriod`. **DÉDUIT**.
+- **Choix** : (a) la remise est la remise accordée sur les lignes vendues, nulle sur une annulation ; le coût d'une annulation est négatif (coût des retours de stock de sa ligne) et sa marge vaut −montant + coût retourné ; une ligne sans sortie de stock a un coût nul (sa marge égale son montant) ; (b) remise contre-passée au prorata (écarté : arrondis sans valeur métier).
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_sales_line` (migration `20261201090400`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-489 — Jeu des achats : facturé et payé hors du jeu — SECONDAIRE
+- **Question** : L'explorateur des achats donne-t-il aussi le facturé et le payé ?
+- **Pourquoi** : le dictionnaire d'origine citait « facturé, montants » ; la facture et le paiement sont des documents de la finance (P8), rapprochés par `purchaseOrderMatching` et lus dans les dettes fournisseurs ; le catalogue (ADR-074) ne déclare aucune mesure facturée. **DÉDUIT**.
+- **Choix** : (a) `analytics_f_purchases` porte les quantités commandées, livrées, rejetées et acceptées et le montant commandé ; le facturé et le payé se lisent dans les dettes ; (b) un jeu des factures fournisseurs, à ajouter si la Direction le demande.
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_purchases` (migration `20261201090600`), catalogue (libellé « Montant commandé »). Défaut implémenté : (a). Non paramétrable.
 
 ---
 
