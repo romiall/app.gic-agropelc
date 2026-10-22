@@ -44,3 +44,5 @@ export type {
 
 export { OPERATION_TYPES } from '../commands/operation-types.js';
 export type { OperationType } from '../commands/operation-types.js';
+export { countPendingApprovalsFor } from './pending-count.js';
+export type { PendingApprovalsCount } from './pending-count.js';

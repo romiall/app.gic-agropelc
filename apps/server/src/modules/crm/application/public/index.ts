@@ -42,3 +42,10 @@ export type {
 } from './activity-query.js';
 /** P4-11 : l'encours d'un compte change avec ses ventes et encaissements (jeu `customers`). */
 export { emitCustomerChange } from '../sync-changes.js';
+export {
+  conversionCohort,
+  ORDER_TAKEN_REASON_CODE,
+  portfolioActivity,
+  visitToOrderRate,
+} from './portfolio-activity.js';
+export type { ConversionCohort, PortfolioActivity, VisitToOrderRate } from './portfolio-activity.js';

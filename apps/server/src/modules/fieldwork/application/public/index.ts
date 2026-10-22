@@ -13,3 +13,5 @@ export {
   SessionRejectedListenerRegistry,
 } from '../session-rejection.js';
 export type { SessionRejectedListener } from '../session-rejection.js';
+export { attendanceDays } from './attendance-indicators.js';
+export type { AttendanceDays } from './attendance-indicators.js';

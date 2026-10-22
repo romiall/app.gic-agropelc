@@ -39,3 +39,10 @@ export type { ProductionOverview } from './home-metrics.js';
 
 // P8-11 (ADR-044 §1, AV-279) : lots de stock des produits d'abattage d'un lot (CA de la marge de lot).
 export { slaughterStockLotIds } from './lot-sale-lots.js';
+export {
+  REARING_LOT_STATUSES,
+  cumulativeMortalityRate,
+  eggSummary,
+  hatchRate,
+} from './production-indicators.js';
+export type { CumulativeMortality, EggSummary, HatchRate } from './production-indicators.js';

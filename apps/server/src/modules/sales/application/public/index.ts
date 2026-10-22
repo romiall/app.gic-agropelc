@@ -64,3 +64,5 @@ export {
   flaggedSalesOfDay,
 } from './period-activity.js';
 export type { ActivityPeriod, CashedActivityRow, SalesActivityDay } from './period-activity.js';
+export { ordersActivity, repurchaseRate } from './sales-indicators.js';
+export type { OrdersActivity, RepurchaseRate } from './sales-indicators.js';

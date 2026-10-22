@@ -232,3 +232,16 @@ export { hasNegativeStock, isAllocationOvercommitted } from './stock-conflict-co
 // P8-11 (ADR-044 §3 ; BR-FIN-044, KPI-FIN-08 ; AT-041) : valeur des pertes d'une période.
 export { LOSS_SUMMARY_GROUPS, dayLossByLocation, lossValueSummary } from './loss-summary.js';
 export type { DayLossLine, LossSummaryGroup, LossSummaryLine } from './loss-summary.js';
+export {
+  COVERAGE_SALES_DAYS,
+  countedMortalityOfLots,
+  inventoryVarianceSummary,
+  mortalitySummary,
+  stockCoverage,
+} from './stock-indicators.js';
+export type {
+  InventoryVariance,
+  MortalityDay,
+  MortalitySummary,
+  StockCoverageLine,
+} from './stock-indicators.js';

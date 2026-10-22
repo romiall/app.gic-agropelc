@@ -56,19 +56,13 @@ describe('registre des indicateurs (BR-ANA-009, ADR-075 §1)', () => {
     }
   });
 
-  it('les fonctions à créer en P9-15 sont listées par module propriétaire', () => {
-    const toCreate = kpisToCreate();
-    expect(toCreate.length).toBeGreaterThan(0);
-    expect(toCreate.every((k) => k.state === 'TO_CREATE')).toBe(true);
-    expect(toCreate.map((k) => k.code)).toEqual(
-      expect.arrayContaining([
-        'KPI-STK-05',
-        'KPI-COM-12',
-        'KPI-COM-15',
-        'KPI-PRD-02',
-        'KPI-PRD-03',
-      ]),
-    );
+  it('toutes les fonctions de référence créées en P9-15 existent : plus aucun indicateur à créer', () => {
+    expect(kpisToCreate()).toEqual([]);
+    for (const code of ['KPI-STK-05', 'KPI-COM-12', 'KPI-COM-15', 'KPI-PRD-02', 'KPI-PRD-03']) {
+      expect(kpiDefinitionOf(code)?.state).toBe('EXISTING');
+    }
+    // La mortalité d'un périmètre lit les déclarations de pertes : fonction d'`inventory`.
+    expect(kpiDefinitionOf('KPI-PRD-02')?.module).toBe('inventory');
   });
 
   it('la période précédente ne vaut que pour un flux (ADR-076 §2)', () => {

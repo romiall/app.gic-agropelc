@@ -4,7 +4,7 @@
  * et que l'explorateur doit reproduire par sa vue (test d'équivalence, AT-054).
  *
  * `state` dit où en est la fonction : `EXISTING` (livrée avant P9, API publique du module),
- * `TO_CREATE` (fichier nouveau de l'API publique du module propriétaire, P9-15) ou `TO_VERIFY`
+ * `TO_CREATE` (fichier nouveau de l'API publique du module propriétaire ; plus aucun depuis P9-15) ou `TO_VERIFY`
  * (existence ou forme à confirmer au moment de la brancher). Un indicateur à créer n'entre pas dans un
  * tableau avant sa fonction de référence et son test.
  */
@@ -40,7 +40,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'crm',
     reference: 'portfolioActivity',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_prospecting', measure: 'accounts_created' },
   }),
   kpi({
@@ -49,7 +49,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'crm',
     reference: 'portfolioActivity',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_prospecting', measure: 'prospects_visited' },
   }),
   kpi({
@@ -58,7 +58,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'crm',
     reference: 'portfolioActivity',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_prospecting', measure: 'visits' },
   }),
   kpi({
@@ -67,7 +67,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'crm',
     reference: 'portfolioActivity',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_prospecting', measure: 'contacts_collected' },
   }),
   kpi({
@@ -76,7 +76,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'crm',
     reference: 'portfolioActivity',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_prospecting', measure: 'conversions' },
   }),
   kpi({
@@ -85,7 +85,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'sales',
     reference: 'ordersActivity',
-    state: 'TO_VERIFY',
+    state: 'EXISTING',
     explorer: { dataset: 'f_orders', measure: 'orders_count' },
   }),
   kpi({
@@ -129,7 +129,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'crm',
     reference: 'conversionCohort',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-COM-12',
@@ -137,7 +137,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'crm',
     reference: 'visitToOrderRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-COM-13',
@@ -161,7 +161,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'sales',
     reference: 'repurchaseRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-COM-16',
@@ -177,7 +177,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'fieldwork',
     reference: 'attendanceDays',
-    state: 'TO_VERIFY',
+    state: 'EXISTING',
     explorer: { dataset: 'f_attendance', measure: 'presence_days' },
   }),
   kpi({
@@ -223,7 +223,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'inventory',
     reference: 'inventoryVarianceSummary',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_stock_moves', measure: 'quantity' },
   }),
   kpi({
@@ -232,7 +232,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'inventory',
     reference: 'stockCoverage',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-STK-06',
@@ -320,9 +320,9 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     code: 'KPI-PRD-02',
     label: 'Mortalité',
     nature: 'FLOW',
-    module: 'production',
+    module: 'inventory',
     reference: 'mortalitySummary',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_production_daily', measure: 'mortality' },
   }),
   kpi({
@@ -331,7 +331,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'production',
     reference: 'cumulativeMortalityRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-PRD-04',
@@ -357,7 +357,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'FLOW',
     module: 'production',
     reference: 'eggSummary',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_production_daily', measure: 'eggs_collected' },
   }),
   kpi({
@@ -366,7 +366,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'production',
     reference: 'eggSummary',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-PRD-08',
@@ -374,7 +374,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'production',
     reference: 'hatchRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
   }),
   kpi({
     code: 'KPI-PRD-09',
@@ -496,7 +496,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'procurement',
     reference: 'supplierServiceRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_purchases', measure: 'accepted' },
   }),
   kpi({
@@ -505,7 +505,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     nature: 'RATIO',
     module: 'procurement',
     reference: 'receiptRejectRate',
-    state: 'TO_CREATE',
+    state: 'EXISTING',
     explorer: { dataset: 'f_purchases', measure: 'rejected' },
   }),
   // --- Exploitation -----------------------------------------------------------------------------------
@@ -533,7 +533,7 @@ export function kpiDefinitionOf(code: string): KpiDefinition | undefined {
   return BY_CODE.get(code);
 }
 
-/** Indicateurs dont la fonction de référence reste à écrire (P9-15). */
+/** Indicateurs dont la fonction de référence reste à écrire (vide depuis P9-15). */
 export function kpisToCreate(): readonly KpiDefinition[] {
   return KPI_CATALOG.filter((k) => k.state === 'TO_CREATE');
 }
