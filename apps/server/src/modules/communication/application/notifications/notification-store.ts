@@ -28,6 +28,26 @@ export interface NewNotification {
   readonly deliveredAt?: Date | null;
 }
 
+function valuesOf(idGenerator: IdGenerator, row: NewNotification) {
+  return {
+    id: toBin(idGenerator.newId()),
+    user_id: toBin(row.userId),
+    channel: row.channel,
+    kind: row.kind,
+    alert_id: row.alertId == null ? null : toBin(row.alertId),
+    alert_type: row.alertType ?? null,
+    note_id: row.noteId == null ? null : toBin(row.noteId),
+    source_type: row.sourceType,
+    source_id: row.sourceId === null ? null : toBin(row.sourceId),
+    source_event_id: row.sourceEventId === null ? null : toBin(row.sourceEventId),
+    title: row.title,
+    body: row.body,
+    link: row.link,
+    created_at: row.createdAt,
+    delivered_at: row.deliveredAt ?? null,
+  };
+}
+
 /** Insère une notification ; faux si l'événement source l'avait déjà produite pour ce couple. */
 export async function insertNotification(
   uow: UnitOfWork,
@@ -36,26 +56,37 @@ export async function insertNotification(
 ): Promise<boolean> {
   const result = await uow
     .insertInto('communication_notifications')
-    .values({
-      id: toBin(idGenerator.newId()),
-      user_id: toBin(row.userId),
-      channel: row.channel,
-      kind: row.kind,
-      alert_id: row.alertId == null ? null : toBin(row.alertId),
-      alert_type: row.alertType ?? null,
-      note_id: row.noteId == null ? null : toBin(row.noteId),
-      source_type: row.sourceType,
-      source_id: row.sourceId === null ? null : toBin(row.sourceId),
-      source_event_id: row.sourceEventId === null ? null : toBin(row.sourceEventId),
-      title: row.title,
-      body: row.body,
-      link: row.link,
-      created_at: row.createdAt,
-      delivered_at: row.deliveredAt ?? null,
-    })
+    .values(valuesOf(idGenerator, row))
     .ignore()
     .executeTakeFirst();
   return Number(result.numInsertedOrUpdatedRows ?? 0) > 0;
+}
+
+/** Lignes par instruction d'une insertion groupée (valeur technique, pas un seuil métier). */
+export const NOTIFICATION_INSERT_CHUNK = 200;
+
+/**
+ * Insère plusieurs notifications par lots d'une instruction chacun ; renvoie le nombre de lignes écrites
+ * (une ligne déjà produite par le même événement pour le même couple (utilisateur, canal) est ignorée,
+ * comme pour {@link insertNotification}).
+ */
+export async function insertNotifications(
+  uow: UnitOfWork,
+  idGenerator: IdGenerator,
+  rows: readonly NewNotification[],
+  options: { readonly chunkSize?: number } = {},
+): Promise<number> {
+  const chunkSize = Math.max(1, options.chunkSize ?? NOTIFICATION_INSERT_CHUNK);
+  let written = 0;
+  for (let start = 0; start < rows.length; start += chunkSize) {
+    const result = await uow
+      .insertInto('communication_notifications')
+      .values(rows.slice(start, start + chunkSize).map((row) => valuesOf(idGenerator, row)))
+      .ignore()
+      .executeTakeFirst();
+    written += Number(result.numInsertedOrUpdatedRows ?? 0);
+  }
+  return written;
 }
 
 /**

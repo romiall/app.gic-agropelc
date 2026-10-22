@@ -5,8 +5,12 @@
  * - **Centre de notes (`INBOX`)** : les notes **publiées et non expirées** dont l'audience touche le lecteur à
  *   l'instant de la lecture (la règle du domaine, évaluée à la lecture : une affectation postérieure à la
  *   publication voit la note, ADR-073 §3), plus récentes d'abord. Chaque note porte l'état du lecteur (lue,
- *   accusée) ; le compteur des accusés attendus est exact. Une note archivée ou expirée n'y figure plus.
- *   Au plus {@link NOTE_INBOX_SCAN_MAX} notes publiées sont examinées par lecture.
+ *   accusée) ; une note archivée ou expirée n'y figure plus. Sont examinées par lecture : les
+ *   {@link NOTE_INBOX_SCAN_MAX} notes publiées les plus récentes **et** les {@link NOTE_INBOX_SCAN_MAX} plus
+ *   récentes des notes à accusé requis que le lecteur n'a pas accusées, **toutes audiences confondues** (le
+ *   filtre d'audience vient après) : une note à accuser ne disparaît pas parce que d'autres notes l'ont
+ *   dépassée (ADR-073 §5). Le compteur des accusés attendus et la liste sont exacts sur ce qui est examiné ;
+ *   `truncated` dit qu'un des deux ensembles a dépassé son plafond (AV-479).
  * - **Gestion (`MANAGE`, `comm.note.publish`)** : toutes les notes — brouillons **du lecteur seulement**, notes
  *   publiées et archivées, quelle que soit leur audience — avec leur audience.
  * - **Fiche** : un lecteur voit une note publiée (même expirée) qui le touche ; jamais un brouillon ni une note
@@ -85,6 +89,8 @@ export interface NotePage {
   readonly items: readonly NoteReadItem[];
   /** Notes à accusé requis que le lecteur n'a pas encore accusées (centre de notes, quel que soit le filtre). */
   readonly pendingAcknowledgements: number;
+  /** Le balayage du centre de notes a atteint son plafond : des notes plus anciennes n'ont pas été examinées. */
+  readonly truncated: boolean;
   readonly nextCursor: string | null;
 }
 
@@ -118,8 +124,12 @@ interface NoteRow {
   readonly created_by: Buffer;
 }
 
-/** Instant de tri d'une note : sa publication, à défaut sa création (brouillon). */
-const sortAt = (row: NoteRow): Date => row.published_at ?? row.created_at;
+/**
+ * Instant de tri de la gestion : la publication, à défaut la création (brouillon), **tronqué à la
+ * milliseconde** comme le curseur (une `Date` JavaScript) : la création d'un brouillon est écrite à la
+ * microseconde par la base, et un curseur plus grossier que le tri sauterait des lignes (revue de P9-11).
+ */
+const SORT_AT = sql<Date>`TIMESTAMPADD(MICROSECOND, -(MICROSECOND(COALESCE(published_at, created_at)) % 1000), COALESCE(published_at, created_at))`;
 
 async function audiencesOf(
   executor: Executor,
@@ -184,21 +194,63 @@ function toItem(
   };
 }
 
+interface InboxScan {
+  readonly items: NoteReadItem[];
+  readonly truncated: boolean;
+}
+
 /** Notes publiées, non expirées, qui touchent le lecteur, de la plus récente à la plus ancienne. */
 async function inboxItems(
   executor: Executor,
   resolver: NoteAudienceResolver,
-  input: { readonly userId: string; readonly at: Date },
-): Promise<NoteReadItem[]> {
-  const rows = await executor
+  input: {
+    readonly userId: string;
+    readonly at: Date;
+    readonly recentMax: number;
+    readonly pendingMax: number;
+  },
+): Promise<InboxScan> {
+  const open = executor
     .selectFrom('communication_internal_notes')
     .select(NOTE_COLUMNS)
     .where('status', '=', 'PUBLISHED')
-    .where((eb) => eb.or([eb('expires_at', 'is', null), eb('expires_at', '>', input.at)]))
+    .where((eb) => eb.or([eb('expires_at', 'is', null), eb('expires_at', '>', input.at)]));
+  const recent = await open
     .orderBy('published_at', 'desc')
     .orderBy('id', 'desc')
-    .limit(NOTE_INBOX_SCAN_MAX)
+    .limit(input.recentMax + 1)
     .execute();
+  // Les notes à accuser non accusées par le lecteur sont toujours examinées, même plus anciennes que les plus
+  // récentes : sinon une accumulation de notes la ferait sortir du centre alors que l'accusé manque.
+  const unacknowledged = await open
+    .where('requires_ack', '=', 1)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('communication_note_acknowledgements as a')
+            .select('a.note_id')
+            .whereRef('a.note_id', '=', 'communication_internal_notes.id')
+            .where('a.user_id', '=', toBin(input.userId))
+            .where('a.acknowledged_at', 'is not', null),
+        ),
+      ),
+    )
+    .orderBy('published_at', 'desc')
+    .orderBy('id', 'desc')
+    .limit(input.pendingMax + 1)
+    .execute();
+  const truncated = recent.length > input.recentMax || unacknowledged.length > input.pendingMax;
+  const rows = [...recent.slice(0, input.recentMax)];
+  const scanned = new Set(rows.map((row) => fromBin(row.id)));
+  for (const row of unacknowledged.slice(0, input.pendingMax)) {
+    if (!scanned.has(fromBin(row.id))) rows.push(row);
+  }
+  rows.sort(
+    (a, b) =>
+      b.published_at!.getTime() - a.published_at!.getTime() ||
+      (fromBin(b.id) > fromBin(a.id) ? 1 : -1),
+  );
   const audiences = await audiencesOf(
     executor,
     rows.map((row) => row.id),
@@ -215,7 +267,7 @@ async function inboxItems(
     input.userId,
     kept.map((row) => row.id),
   );
-  return kept.map((row) => toItem(row, null, states.get(fromBin(row.id))));
+  return { items: kept.map((row) => toItem(row, null, states.get(fromBin(row.id)))), truncated };
 }
 
 const isPending = (item: NoteReadItem): boolean => item.requiresAck && item.acknowledgedAt === null;
@@ -235,10 +287,19 @@ export async function notePage(
     readonly pendingOnly?: boolean;
     readonly after?: NoteCursor;
     readonly limit: number;
+    /** Plafonds de balayage du centre de notes (valeurs techniques ; {@link NOTE_INBOX_SCAN_MAX} par défaut). */
+    readonly scan?: { readonly recent?: number; readonly pending?: number };
   },
 ): Promise<NotePage> {
-  const inbox = await inboxItems(executor, resolver, input);
+  const scan = await inboxItems(executor, resolver, {
+    userId: input.userId,
+    at: input.at,
+    recentMax: input.scan?.recent ?? NOTE_INBOX_SCAN_MAX,
+    pendingMax: input.scan?.pending ?? NOTE_INBOX_SCAN_MAX,
+  });
+  const inbox = scan.items;
   const pendingAcknowledgements = inbox.filter(isPending).length;
+  const { truncated } = scan;
 
   if (input.scope === 'INBOX') {
     const after = input.after;
@@ -255,14 +316,14 @@ export async function notePage(
       candidates.length > input.limit && last !== undefined
         ? encodeNoteCursor({ at: last.publishedAt!, id: last.id })
         : null;
-    return { items, pendingAcknowledgements, nextCursor };
+    return { items, pendingAcknowledgements, truncated, nextCursor };
   }
 
   // Gestion : brouillons du lecteur seulement ; notes publiées et archivées de tous.
-  const sortKey = sql<Date>`COALESCE(published_at, created_at)`;
   let query = executor
     .selectFrom('communication_internal_notes')
     .select(NOTE_COLUMNS)
+    .select(SORT_AT.as('sort_at'))
     .where((eb) =>
       eb.or([eb('status', '<>', 'DRAFT'), eb('created_by', '=', toBin(input.userId))]),
     );
@@ -271,11 +332,11 @@ export async function notePage(
   }
   if (input.after !== undefined) {
     query = query.where(
-      sql<boolean>`(COALESCE(published_at, created_at), id) < (${input.after.at}, ${toBin(input.after.id)})`,
+      sql<boolean>`(${SORT_AT}, id) < (${input.after.at}, ${toBin(input.after.id)})`,
     );
   }
   const rows = await query
-    .orderBy(sortKey, 'desc')
+    .orderBy(SORT_AT, 'desc')
     .orderBy('id', 'desc')
     .limit(input.limit + 1)
     .execute();
@@ -289,9 +350,9 @@ export async function notePage(
   const last = page[page.length - 1];
   const nextCursor =
     rows.length > input.limit && last !== undefined
-      ? encodeNoteCursor({ at: sortAt(last), id: fromBin(last.id) })
+      ? encodeNoteCursor({ at: last.sort_at, id: fromBin(last.id) })
       : null;
-  return { items, pendingAcknowledgements, nextCursor };
+  return { items, pendingAcknowledgements, truncated, nextCursor };
 }
 
 /** Fiche d'une note ; `null` si elle n'existe pas ou n'est pas visible du lecteur (404 opaque). */
@@ -312,14 +373,16 @@ export async function noteDetail(
     .where('id', '=', toBin(input.id))
     .executeTakeFirst();
   if (row === undefined) return null;
-  const audience = (await audiencesOf(executor, [row.id])).get(input.id) ?? [];
+  // Clé en minuscules, quelle que soit la casse de l'identifiant demandé (`toBin` accepte les deux).
+  const noteId = fromBin(row.id);
+  const audience = (await audiencesOf(executor, [row.id])).get(noteId) ?? [];
   if (row.status === 'DRAFT') {
     if (!input.canManage || fromBin(row.created_by) !== input.userId) return null;
   } else if (!input.canManage) {
     if (row.status !== 'PUBLISHED') return null;
     if (!(await resolver.includesUserAt(executor, input.userId, audience, input.at))) return null;
   }
-  const state = (await acknowledgementsOf(executor, input.userId, [row.id])).get(input.id);
+  const state = (await acknowledgementsOf(executor, input.userId, [row.id])).get(noteId);
   return toItem(row, input.canManage ? audience : null, state);
 }
 
@@ -345,6 +408,7 @@ export async function noteAcknowledgementFollowUp(
     .where('id', '=', toBin(input.id))
     .executeTakeFirst();
   if (row === undefined) return null;
+  const noteId = fromBin(row.id);
   const author = fromBin(row.created_by);
   if (row.status === 'DRAFT' && author !== input.userId) return null;
 
@@ -352,7 +416,7 @@ export async function noteAcknowledgementFollowUp(
   // Un brouillon n'a pas d'audience : il n'a été notifié à personne.
   if (row.status === 'DRAFT') {
     return {
-      noteId: input.id,
+      noteId,
       requiresAck,
       audienceSize: 0,
       read: 0,
@@ -361,7 +425,7 @@ export async function noteAcknowledgementFollowUp(
     };
   }
 
-  const entries = (await audiencesOf(executor, [row.id])).get(input.id) ?? [];
+  const entries = (await audiencesOf(executor, [row.id])).get(noteId) ?? [];
   // L'auteur sait ce qu'il a publié : il n'est pas attendu, sauf s'il a lui-même lu ou accusé la note.
   const audience = (await resolver.usersInAudienceAt(executor, entries, input.at)).filter(
     (userId) => userId !== author,
@@ -377,7 +441,7 @@ export async function noteAcknowledgementFollowUp(
   const readBy = new Set(acks.map((ack) => fromBin(ack.user_id)));
   const done = requiresAck ? acknowledgedBy : readBy;
   return {
-    noteId: input.id,
+    noteId,
     requiresAck,
     audienceSize: new Set([...audience, ...readBy]).size,
     read: readBy.size,

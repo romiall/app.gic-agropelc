@@ -166,13 +166,19 @@ describe('lectures de communication', () => {
     };
     expect(noteItemSchema.safeParse(note).success).toBe(true);
     expect(noteItemSchema.safeParse({ ...note, status: 'DELETED' }).success).toBe(false);
-    expect(
+    const noteList = (extra: Record<string, unknown>) =>
       noteListResponseSchema.safeParse({
         items: [note],
         pendingAcknowledgements: 1,
+        truncated: false,
         nextCursor: null,
-      }).success,
-    ).toBe(true);
+        ...extra,
+      }).success;
+    expect(noteList({})).toBe(true);
+    expect(noteList({ truncated: true })).toBe(true);
+    // L'indicateur de troncature est obligatoire et booléen (AV-479).
+    expect(noteList({ truncated: undefined })).toBe(false);
+    expect(noteList({ truncated: 'oui' })).toBe(false);
     expect(
       noteAcknowledgementsResponseSchema.safeParse({
         noteId: A,

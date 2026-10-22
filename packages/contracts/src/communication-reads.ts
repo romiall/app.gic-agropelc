@@ -85,7 +85,10 @@ export const notificationItemSchema = z.object({
   link: z.string().max(200).nullable(),
   alertId: uuid.nullable(),
   noteId: uuid.nullable(),
-  /** Objet source d'une notification directe (`APPROVAL_REQUEST`, `STOCK_TRANSFER`) : de quoi ouvrir l'écran concerné. */
+  /**
+   * Objet source de la notification : `ALERT` (l'alerte), `ALERT_ESCALATION`, `NOTE` (la note),
+   * `APPROVAL_REQUEST` ou `STOCK_TRANSFER` (notification directe) — de quoi ouvrir l'écran concerné ; nul sinon.
+   */
   sourceType: z.string().max(40).nullable(),
   sourceId: uuid.nullable(),
   createdAt: instant,
@@ -154,8 +157,10 @@ export type NoteItem = z.infer<typeof noteItemSchema>;
 
 export const noteListResponseSchema = z.object({
   items: z.array(noteItemSchema),
-  /** Notes à accusé requis non encore accusées par le lecteur. */
+  /** Notes à accusé requis non encore accusées par le lecteur (sur ce que le balayage a examiné, AV-479). */
   pendingAcknowledgements: count,
+  /** Vrai si le balayage du centre de notes a atteint son plafond : des notes plus anciennes n'ont pas été examinées. */
+  truncated: z.boolean(),
   nextCursor: z.string().max(200).nullable(),
 });
 export type NoteListResponse = z.infer<typeof noteListResponseSchema>;

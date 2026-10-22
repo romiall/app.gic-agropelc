@@ -48,7 +48,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
-import { insertNotification } from '../notifications/notification-store.js';
+import { insertNotifications } from '../notifications/notification-store.js';
 import type { NoteAudienceResolver } from '../notes/note-audience-resolver.js';
 import { publishNoteEvent } from '../notes/note-events.js';
 import {
@@ -121,6 +121,7 @@ async function checkContent(
   uow: UnitOfWork,
   deps: NoteCommandDeps,
   noteId: string,
+  authorId: string,
   content: NoteContent,
   entries: readonly NoteAudienceEntry[],
 ): Promise<CommandHandlerOutcome | null> {
@@ -132,7 +133,9 @@ async function checkContent(
     if (content.relatedEntityId === noteId) {
       return rejected('NOTE_RELATED_INVALID', 'Une note ne peut pas se référencer elle-même.');
     }
-    if ((await readNote(uow, content.relatedEntityId)) === undefined) {
+    // Le brouillon d'un autre est introuvable (revue de P9-11) : sa référence ne révèle pas son existence.
+    const related = await readNote(uow, content.relatedEntityId);
+    if (related === undefined || (related.status === 'DRAFT' && related.createdBy !== authorId)) {
       return rejected('NOTE_RELATED_INVALID', 'La note référencée est introuvable.');
     }
   }
@@ -219,7 +222,14 @@ function saveDraft(deps: NoteCommandDeps): CommandHandler<NoteDraftSavePayload> 
     const noteId = envelope.aggregate_id;
     const content = contentOf(envelope.payload);
     const entries = normalizeNoteAudience(envelope.payload.audience);
-    const invalid = await checkContent(uow, deps, noteId, content, entries);
+    const invalid = await checkContent(
+      uow,
+      deps,
+      noteId,
+      envelope.author_user_id,
+      content,
+      entries,
+    );
     if (invalid !== null) return invalid;
 
     const written = await writeDraft(uow, {
@@ -269,7 +279,7 @@ function publish(deps: NoteCommandDeps): CommandHandler<NotePublishPayload> {
       );
     }
     const entries = normalizeNoteAudience(envelope.payload.audience);
-    const invalid = await checkContent(uow, deps, noteId, content, entries);
+    const invalid = await checkContent(uow, deps, noteId, author, content, entries);
     if (invalid !== null) return invalid;
 
     const written = await writeDraft(uow, {
@@ -305,11 +315,15 @@ function publish(deps: NoteCommandDeps): CommandHandler<NotePublishPayload> {
       },
     });
     const body = noteNotificationBody(content);
-    for (const userId of recipients) {
-      await insertNotification(uow, deps.idGenerator, {
+    // Par lots : une audience large (tout le personnel) ne se traduit pas en autant d'écritures séparées dans la
+    // transaction qui tient le verrou de la note (revue de P9-11).
+    await insertNotifications(
+      uow,
+      deps.idGenerator,
+      recipients.map((userId) => ({
         userId,
-        channel: 'IN_APP',
-        kind: 'NOTE',
+        channel: 'IN_APP' as const,
+        kind: 'NOTE' as const,
         noteId,
         sourceType: 'NOTE',
         sourceId: noteId,
@@ -319,8 +333,8 @@ function publish(deps: NoteCommandDeps): CommandHandler<NotePublishPayload> {
         link: null,
         createdAt: publishedAt,
         deliveredAt: publishedAt,
-      });
-    }
+      })),
+    );
     return {
       status: 'APPLIED',
       serverRefs: {

@@ -732,7 +732,7 @@ export type {
   NoteAudienceEntry,
   NoteAudienceType,
 } from './note-audience.js';
-// Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-483).
+// Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-482).
 export {
   DIRECT_NOTIFICATION_COMMENT_MAX,
   DIRECT_NOTIFICATION_EVENT_TYPES,

@@ -131,7 +131,11 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
   const codeOf = (response: { json: () => { error?: { code?: string }; code?: string } }) =>
     response.json().error?.code ?? response.json().code;
 
-  /** Toute la gestion (base partagée : on suit les pages jusqu'au bout, 200 notes par page). */
+  /**
+   * La gestion, de la plus récente à la plus ancienne, jusqu'aux notes de ce fichier : base partagée, donc on
+   * s'arrête dès qu'une note publiée antérieure au début du test est passée (toutes les notes du test sont plus
+   * récentes), au lieu de lire toute la table, qui grossit à chaque exécution de la suite.
+   */
   const manageAll = async (actor: Actor, query = ''): Promise<Map<string, NoteItem>> => {
     const found = new Map<string, NoteItem>();
     let cursor: string | null = null;
@@ -142,7 +146,10 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       const body = noteListResponseSchema.parse(response.json());
       for (const item of body.items) found.set(item.id, item);
       cursor = body.nextCursor;
-      if (cursor === null) break;
+      const passedStart = body.items.some(
+        (item) => item.publishedAt !== null && Date.parse(item.publishedAt) < testStartedAt,
+      );
+      if (cursor === null || passedStart) break;
     }
     return found;
   };
@@ -154,7 +161,11 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
     return body.items.map((item) => item.id);
   };
 
+  /** Quatre heures avant le fichier : aucune note du test n'est publiée avant (la plus ancienne, trois heures). */
+  let testStartedAt = 0;
+
   beforeAll(async () => {
+    testStartedAt = Date.now() - 4 * HOUR_MS;
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     registerCorrelationId(app, app.get(ID_GENERATOR));
@@ -205,9 +216,9 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
         .status,
     ).toBe('APPLIED');
 
-    // Une note expirée depuis hier : écrite directement (la commande refuse une expiration passée).
+    // Une note expirée depuis une heure : écrite directement (la commande refuse une expiration passée).
     notes.expired = freshUuid();
-    const published = new Date(clock.now().getTime() - 48 * HOUR_MS);
+    const published = new Date(clock.now().getTime() - 3 * HOUR_MS);
     await db
       .insertInto('communication_internal_notes')
       .values({
@@ -228,7 +239,7 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       .set({
         status: 'PUBLISHED',
         published_at: published,
-        expires_at: new Date(published.getTime() + 24 * HOUR_MS),
+        expires_at: new Date(published.getTime() + 2 * HOUR_MS),
       })
       .where('id', '=', toBin(notes.expired))
       .execute();
@@ -287,6 +298,8 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       const response = await get(sellerA, '/api/v1/notes');
       const body = noteListResponseSchema.parse(response.json());
       expect(body.pendingAcknowledgements).toBe(1);
+      // Le balayage tronqué est signalé dans la réponse (vrai ou faux selon la taille de la base partagée).
+      expect(typeof body.truncated).toBe('boolean');
       const a = body.items.find((item) => item.id === notes.a)!;
       expect(a).toMatchObject({
         title: 'Prix du site A',
@@ -383,6 +396,25 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       expect(denied[0]!.error_code).toBe('NOT_FOUND');
     });
 
+    it('l’identifiant en majuscules lit la même note, avec la même audience et le même refus', async () => {
+      const upper = (id: string) => id.toUpperCase();
+      const reader = await get(sellerA, `/api/v1/notes/${upper(notes.a)}`);
+      expect(reader.statusCode, reader.body).toBe(200);
+      expect(noteItemSchema.parse(reader.json())).toMatchObject({ id: notes.a });
+      expect((await get(sellerA, `/api/v1/notes/${upper(notes.b)}`)).statusCode).toBe(404);
+      // La gestion reçoit l'audience réelle, et le suivi les mêmes comptes.
+      const managed = noteItemSchema.parse(
+        (await get(director, `/api/v1/notes/${upper(notes.a)}`)).json(),
+      );
+      expect(managed.audience).toEqual([{ type: 'SITE', ref: siteA }]);
+      const lower = await get(director, `/api/v1/notes/${notes.a}/acknowledgements`);
+      const capital = await get(director, `/api/v1/notes/${upper(notes.a)}/acknowledgements`);
+      expect(capital.statusCode, capital.body).toBe(200);
+      expect(noteAcknowledgementsResponseSchema.parse(capital.json())).toEqual(
+        noteAcknowledgementsResponseSchema.parse(lower.json()),
+      );
+    });
+
     it('une note expirée reste lisible de qui elle touche ; archivée ou en brouillon : introuvable pour un lecteur', async () => {
       expect((await get(sellerA, `/api/v1/notes/${notes.expired}`)).statusCode).toBe(200);
       expect((await get(sellerA, `/api/v1/notes/${notes.archived}`)).statusCode).toBe(404);
@@ -443,7 +475,12 @@ describe('P9-11 (2/3) : lectures HTTP des notes de direction', { timeout: 300_00
       const body = noteAcknowledgementsResponseSchema.parse(response.json());
       // Note du site A à accusé requis : le vendeur du site A (a accusé) et l'affectation de zone qui le couvre.
       expect(body).toMatchObject({ noteId: notes.a, audienceSize: 2, read: 1, acknowledged: 1 });
-      expect(body.missing).toEqual([{ userId: zoneStaff.userId, fullName: 'Test' }]);
+      const staff = await db
+        .selectFrom('identity_users')
+        .select('full_name')
+        .where('id', '=', toBin(zoneStaff.userId))
+        .executeTakeFirstOrThrow();
+      expect(body.missing).toEqual([{ userId: zoneStaff.userId, fullName: staff.full_name }]);
 
       // Note simple : les manquants sont ceux qui ne l'ont pas lue.
       const simple = noteAcknowledgementsResponseSchema.parse(

@@ -329,6 +329,7 @@ export class CommunicationReadController {
     return {
       items: page.items.map(presentNote),
       pendingAcknowledgements: page.pendingAcknowledgements,
+      truncated: page.truncated,
       nextCursor: page.nextCursor,
     };
   }

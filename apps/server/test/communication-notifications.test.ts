@@ -20,6 +20,7 @@ import {
   createAlertNotifier,
   type AlertNotifierDeps,
 } from '../src/modules/communication/application/notifications/alert-notifier.js';
+import { insertNotifications } from '../src/modules/communication/application/notifications/notification-store.js';
 import { dispatchPendingPushes } from '../src/modules/communication/application/notifications/push-dispatch.js';
 import type {
   PushMessage,
@@ -1336,5 +1337,50 @@ describe('P9-05 : durcissement après la revue adverse', () => {
       const sender = new FakeSender(true);
       await dispatchPendingPushes(uow, { clock, sender });
       expect(sender.sent.filter((s) => s.message.alertId === alertId)).toEqual([]);
+    }));
+});
+
+describe('P9-11 : insertion groupée des notifications', () => {
+  const rowFor = (userId: string, sourceEventId: string) => ({
+    userId,
+    channel: 'IN_APP' as const,
+    kind: 'DIRECT' as const,
+    sourceType: 'APPROVAL_REQUEST',
+    sourceId: freshUuid(),
+    sourceEventId,
+    title: 'Titre',
+    body: 'Corps',
+    link: null,
+    createdAt: NOW,
+    deliveredAt: NOW,
+  });
+
+  it('par lots : aucune ligne perdue ni doublée, quel que soit le découpage ; un rejeu n’écrit rien', async () => {
+    const users = await Promise.all(Array.from({ length: 5 }, () => newUser()));
+    for (const chunkSize of [1, 2, 3, 5, 8, undefined]) {
+      await rolledBack(async (uow) => {
+        const eventId = freshUuid();
+        const rows = users.map((userId) => rowFor(userId, eventId));
+        const options = chunkSize === undefined ? {} : { chunkSize };
+        expect(await insertNotifications(uow, idGenerator, rows, options), `lot ${chunkSize}`).toBe(
+          5,
+        );
+        for (const userId of users) {
+          expect(await notificationsOf(uow, userId), `lot ${chunkSize}`).toHaveLength(1);
+        }
+        // Même événement, mêmes destinataires : rien de plus.
+        expect(await insertNotifications(uow, idGenerator, rows, options)).toBe(0);
+        // Un destinataire de plus : seule sa ligne est écrite.
+        const extra = await newUser();
+        expect(
+          await insertNotifications(uow, idGenerator, [...rows, rowFor(extra, eventId)], options),
+        ).toBe(1);
+      });
+    }
+  });
+
+  it('une liste vide n’écrit rien', () =>
+    rolledBack(async (uow) => {
+      expect(await insertNotifications(uow, idGenerator, [])).toBe(0);
     }));
 });

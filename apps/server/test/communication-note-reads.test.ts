@@ -4,6 +4,7 @@
  * d'audience et la base partagée. L'horloge est maîtrisée : l'expiration, le tri et le curseur se jugent à
  * l'instant près ; plusieurs notes publiées au même instant exercent le départage par identifiant.
  */
+import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixedClock, Uuidv7Generator } from '@gic/domain';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
@@ -17,6 +18,7 @@ import {
 } from '../src/modules/communication/application/public/index.js';
 import { encodeNoteCursor } from '../src/modules/communication/application/public/note-read.js';
 import { IdentityNoteAudienceResolver } from '../src/communication-api/identity-note-audience-resolver.js';
+import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -61,10 +63,37 @@ describe('notes de direction : lectures (P9-11 (2/3))', () => {
   let manager: Actor; // zone de X et de Y
   let nobody: Actor; // site d'une autre zone
 
-  async function newActor(trx: Parameters<typeof insertTestDevice>[0]): Promise<Actor> {
-    const id = await insertTestUser(trx);
+  async function newActor(
+    trx: Parameters<typeof insertTestDevice>[0],
+    options: { status?: 'ACTIVE' | 'SUSPENDED' } = {},
+  ): Promise<Actor> {
+    const id = await insertTestUser(trx, options);
     return { id, deviceId: await insertTestDevice(trx, id, { status: 'ACTIVE' }) };
   }
+
+  /** Un lecteur et un site propres au test : seules ses notes le touchent. */
+  const newSiteReader = (options: { status?: 'ACTIVE' | 'SUSPENDED' } = {}) =>
+    db.transaction().execute(async (trx) => {
+      const admin = await insertTestUser(trx);
+      const site = await insertTestSite(trx, admin, await insertTestZone(trx, admin));
+      const role = await insertTestRole(trx, admin, { allowedScopeTypes: ['SITE'] });
+      await grantTestPermission(trx, role, 'comm.note.read', admin);
+      const actor = await newActor(trx, options);
+      await assignTestRole(trx, actor.id, role, admin, { scopeType: 'SITE', scopeSiteId: site });
+      return { actor, site };
+    });
+
+  /**
+   * Une seconde entière tirée au hasard dans le passé lointain : aucune autre note de la base partagée n'y
+   * tombe, quelles que soient les exécutions voisines.
+   */
+  const pastBand = (): number =>
+    Math.floor(
+      (NOW_MS -
+        (60 + Math.floor(Math.random() * 400)) * 86_400_000 -
+        Math.floor(Math.random() * 86_400_000)) /
+        1000,
+    ) * 1000;
 
   beforeAll(async () => {
     const idGenerator = new Uuidv7Generator(clock);
@@ -401,6 +430,38 @@ describe('notes de direction : lectures (P9-11 (2/3))', () => {
       // Une page de quatre notes les contient toutes, dans le même ordre.
       expect(idsOf(await manage(publisher, { limit: 4, after: start }))).toEqual(expected);
     });
+
+    it('pagination de la gestion : des brouillons créés dans la même milliseconde ne sont ni sautés ni doublés', async () => {
+      // La base écrit la création d'un brouillon à la microseconde, le curseur n'est précis qu'à la milliseconde.
+      const band = pastBand();
+      const stamp = (fraction: string) =>
+        `${new Date(band).toISOString().slice(0, 19).replace('T', ' ')}.${fraction}`;
+      const draftAt = async (fraction: string): Promise<string> => {
+        const id = freshUuid();
+        await sql`INSERT INTO communication_internal_notes
+            (id, title, body, category, status, created_at, created_by, updated_by)
+          VALUES (${toBin(id)}, 'Brouillon à la microseconde', 'Corps', 'INFORMATION', 'DRAFT',
+            ${stamp(fraction)}, ${toBin(publisher.id)}, ${toBin(publisher.id)})`.execute(db);
+        return id;
+      };
+      const earlier = await draftAt('100000');
+      const sameMs = [await draftAt('123456'), await draftAt('123200'), await draftAt('123900')];
+      const expected = [...[...sameMs].sort().reverse(), earlier];
+      const start = { at: new Date(band + 1000), id: 'ffffffff-ffff-ffff-ffff-ffffffffffff' };
+
+      for (const limit of [1, 2, 3]) {
+        const collected: string[] = [];
+        let after: ReturnType<typeof decodeNoteCursor> = start;
+        for (let page = 0; page < 10 && after !== null; page += 1) {
+          const part = await manage(publisher, { limit, after });
+          collected.push(...idsOf(part));
+          if (collected.length >= expected.length) break;
+          expect(part.nextCursor, `limite ${limit}`).not.toBeNull();
+          after = decodeNoteCursor(part.nextCursor!);
+        }
+        expect(collected.slice(0, expected.length), `limite ${limit}`).toEqual(expected);
+      }
+    });
   });
 
   describe('fiche', () => {
@@ -565,6 +626,160 @@ describe('notes de direction : lectures (P9-11 (2/3))', () => {
         acknowledged: 0,
         missingUserIds: [],
       });
+    });
+  });
+
+  describe('plafond de balayage du centre de notes', () => {
+    it('une note à accuser reste dans le centre au-delà du plafond ; le reste est tronqué et signalé', async (context) => {
+      const reader = await newSiteReader();
+      const band = pastBand();
+      const own: Audience = [{ type: 'SITE', ref: reader.site }];
+      const pending = await publish(
+        'À accuser, ancienne',
+        own,
+        { requiresAck: true },
+        { when: new Date(band).toISOString() },
+      );
+      const simpleOld = await publish(
+        'Simple, ancienne',
+        own,
+        {},
+        { when: new Date(band + 1).toISOString() },
+      );
+      // Une note à accuser qui vise un autre site n'est pas attendue de ce lecteur.
+      const foreign = await publish(
+        'À accuser, ailleurs',
+        [{ type: 'SITE', ref: siteX }],
+        { requiresAck: true },
+        { when: new Date(band + 2).toISOString() },
+      );
+      await publish('Récente', own, {}, { when: tick(50) });
+
+      // Notes à accuser du système, tous lecteurs confondus : le plafond de ces notes les couvre toutes.
+      const unacknowledged = await db
+        .selectFrom('communication_internal_notes')
+        .select((eb) => eb.fn.countAll<number>().as('n'))
+        .where('status', '=', 'PUBLISHED')
+        .where('requires_ack', '=', 1)
+        .executeTakeFirstOrThrow();
+      // Balayer des milliers de notes d'une base d'essai très ancienne n'apprendrait rien de plus.
+      if (Number(unacknowledged.n) > 5000) context.skip();
+      const scan = { recent: 1, pending: Number(unacknowledged.n) + 100 };
+
+      // Plafond de une note récente : seule la plus récente du système est balayée, la note à accuser s'y ajoute.
+      const capped = await inbox(reader.actor, at(1), { scan });
+      expect(capped.truncated).toBe(true);
+      expect(idsOf(capped)).toContain(pending);
+      expect(idsOf(capped)).not.toContain(simpleOld);
+      expect(idsOf(capped)).not.toContain(foreign);
+      expect(capped.pendingAcknowledgements).toBe(1);
+      // La gestion signale de même le plafond atteint du compteur.
+      expect((await manage(publisher, { scan: { recent: 1 } })).truncated).toBe(true);
+      const onlyPending = await inbox(reader.actor, at(1), { scan, pendingOnly: true });
+      expect(idsOf(onlyPending)).toEqual([pending]);
+
+      // Lue sans être accusée, elle reste attendue.
+      await run(
+        reader.actor,
+        'communication.note.acknowledge',
+        pending,
+        { kind: 'READ' },
+        at(1.5).toISOString(),
+      );
+      const read = await inbox(reader.actor, at(1.6), { scan });
+      expect(idsOf(read)).toContain(pending);
+      expect(read.items.find((item) => item.id === pending)).toMatchObject({
+        readAt: at(1.5),
+        acknowledgedAt: null,
+      });
+      expect(read.pendingAcknowledgements).toBe(1);
+
+      // Accusée, elle sort du centre ; le plafond reste atteint.
+      await run(
+        reader.actor,
+        'communication.note.acknowledge',
+        pending,
+        { kind: 'ACKNOWLEDGE' },
+        at(2).toISOString(),
+      );
+      const after = await inbox(reader.actor, at(3), { scan });
+      expect(idsOf(after)).not.toContain(pending);
+      expect(after.pendingAcknowledgements).toBe(0);
+      expect(after.truncated).toBe(true);
+    });
+
+    it('un plafond qui couvre toutes les notes publiées ne tronque rien', async (context) => {
+      const total = await db
+        .selectFrom('communication_internal_notes')
+        .select((eb) => eb.fn.countAll<number>().as('n'))
+        .where('status', '=', 'PUBLISHED')
+        .executeTakeFirstOrThrow();
+      // Balayer des dizaines de milliers de notes d'une base d'essai très ancienne n'apprend rien de plus.
+      if (Number(total.n) > 3000) context.skip();
+      const reader = await newSiteReader();
+      const note = await publish('Seule', [{ type: 'SITE', ref: reader.site }], {
+        requiresAck: true,
+      });
+      const cap = Number(total.n) + 100;
+      const page = await inbox(reader.actor, at(1), { scan: { recent: cap, pending: cap } });
+      expect(page.truncated).toBe(false);
+      expect(idsOf(page)).toEqual([note]);
+      expect(page.pendingAcknowledgements).toBe(1);
+
+      // Le seul plafond des notes à accuser suffit à signaler la troncature (une note attendue au moins).
+      const pendingCapped = await inbox(reader.actor, at(1), { scan: { recent: cap, pending: 0 } });
+      expect(pendingCapped.truncated).toBe(true);
+    });
+  });
+
+  describe('utilisateur suspendu', () => {
+    it('affecté au site mais suspendu, il ne voit rien : ni centre de notes, ni fiche', async () => {
+      const suspendedReader = await newSiteReader({ status: 'SUSPENDED' });
+      const activeReader = await newSiteReader();
+      const own = (site: string): Audience => [{ type: 'SITE', ref: site }];
+      const note = await publish('Pour le suspendu', own(suspendedReader.site));
+      const control = await publish('Pour l’actif', own(activeReader.site));
+
+      expect(idsOf(await inbox(suspendedReader.actor, at(1)))).toEqual([]);
+      const detail = (actor: Actor, id: string) =>
+        noteDetail(db, resolver, { userId: actor.id, at: at(1), id, canManage: false });
+      expect(await detail(suspendedReader.actor, note)).toBeNull();
+      // Le même montage avec un utilisateur actif voit sa note.
+      expect(idsOf(await inbox(activeReader.actor, at(1)))).toEqual([control]);
+      expect(await detail(activeReader.actor, control)).toMatchObject({ id: control });
+    });
+  });
+
+  describe('identifiant en majuscules', () => {
+    it('la fiche et le suivi lisent la même audience qu’avec l’identifiant en minuscules', async () => {
+      const noteId = await publish('Casse', [{ type: 'SITE', ref: siteX }], { requiresAck: true });
+      const upper = noteId.toUpperCase();
+      expect(upper).not.toBe(noteId);
+      const detail = (actor: Actor, canManage: boolean) =>
+        noteDetail(db, resolver, { userId: actor.id, at: at(1), id: upper, canManage });
+
+      // Un lecteur visé la lit (l'audience a bien été retrouvée) ; un lecteur d'un autre site, non.
+      await run(
+        staffX,
+        'communication.note.acknowledge',
+        noteId,
+        { kind: 'READ' },
+        at(2).toISOString(),
+      );
+      expect(await detail(staffX, false)).toMatchObject({
+        id: noteId,
+        audience: null,
+        readAt: at(2),
+      });
+      expect(await detail(staffY, false)).toBeNull();
+      // La gestion reçoit l'audience réelle, pas une audience vide.
+      expect((await detail(publisher, true))!.audience).toEqual([{ type: 'SITE', ref: siteX }]);
+
+      const followUp = (id: string) =>
+        noteAcknowledgementFollowUp(db, resolver, { userId: publisher.id, at: at(1), id });
+      const lower = await followUp(noteId);
+      expect(lower).toMatchObject({ noteId, audienceSize: 2 });
+      expect(await followUp(upper)).toEqual(lower);
     });
   });
 

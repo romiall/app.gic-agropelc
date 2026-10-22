@@ -1,5 +1,5 @@
 /**
- * Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-483 ; ADR-072 §4 ;
+ * Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-482 ; ADR-072 §4 ;
  * D13 §7). Un événement métier qui n'est pas une alerte — une demande de validation, sa décision, un
  * transfert demandé ou expédié — prévient la personne qui doit agir ou qui attendait la réponse. Sans
  * entrée-sortie : le consommateur de `communication` résout le plan avec le port des destinataires.

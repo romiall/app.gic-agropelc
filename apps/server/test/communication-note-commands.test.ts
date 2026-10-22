@@ -431,6 +431,34 @@ describe('notes de direction : commandes (P9-11)', () => {
     });
   });
 
+  describe('note référencée : opacité du brouillon d’un autre', () => {
+    it('le brouillon d’un autre n’est pas référençable : la même réponse qu’une note inconnue ; le sien, si', async () => {
+      const draftId = freshUuid();
+      await save(director, draftId, noteBody([{ type: 'SITE', ref: siteChild }]));
+      const related = { relatedEntityType: 'INTERNAL_NOTE', relatedEntityId: draftId };
+      const audience: Audience[] = [{ type: 'SITE', ref: siteChild }];
+
+      const unknown = await save(secondPublisher, freshUuid(), {
+        ...noteBody(audience),
+        relatedEntityType: 'INTERNAL_NOTE',
+        relatedEntityId: freshUuid(),
+      });
+      for (const attempt of [
+        await save(secondPublisher, freshUuid(), { ...noteBody(audience), ...related }),
+        await publish(secondPublisher, freshUuid(), { ...noteBody(audience), ...related }),
+      ]) {
+        expect(attempt).toEqual(expect.objectContaining({ status: 'REJECTED' }));
+        expect(attempt).toMatchObject({ error: { code: 'NOTE_RELATED_INVALID' } });
+        expect((attempt as { error?: { message_fr?: string } }).error?.message_fr).toBe(
+          (unknown as { error?: { message_fr?: string } }).error?.message_fr,
+        );
+      }
+      // L'auteur du brouillon peut le référencer (note corrective préparée à l'avance).
+      const own = await save(director, freshUuid(), { ...noteBody(audience), ...related });
+      expect(own.status).toBe('APPLIED');
+    });
+  });
+
   // ---- Publication -----------------------------------------------------------------------------------------
 
   describe('communication.note.publish', () => {
@@ -529,6 +557,26 @@ describe('notes de direction : commandes (P9-11)', () => {
       expect(await audienceRows(noteId)).toEqual([`SITE:${siteChild}`]);
       expect(await recipientsOf(noteId)).not.toContain(otherSiteStaff.id);
       expect(await recipientsOf(noteId)).toContain(siteStaff.id);
+    });
+
+    it('deux publications simultanées de la même note : une seule aboutit, une seule série de notifications', async () => {
+      const noteId = freshUuid();
+      const payload = noteBody([{ type: 'SITE', ref: siteChild }]);
+      const results = await Promise.all([
+        publish(director, noteId, payload),
+        publish(director, noteId, payload),
+      ]);
+      expect(results.filter((result) => result.status === 'APPLIED')).toHaveLength(1);
+      const refused = results.find((result) => result.status === 'REJECTED');
+      expect(refused).toBeDefined();
+      expect(['NOTE_EXISTS', 'NOTE_ALREADY_PUBLISHED']).toContain(
+        (refused as { error: { code: string } }).error.code,
+      );
+      expect((await noteRow(noteId))!.status).toBe('PUBLISHED');
+      expect(await eventsOf('InternalNotePublished', noteId)).toHaveLength(1);
+      const recipients = await recipientsOf(noteId);
+      expect(new Set(recipients).size).toBe(recipients.length);
+      expect(recipients.length).toBeGreaterThan(0);
     });
 
     it('rejeu de la même commande : une seule note, des notifications non doublées', async () => {
@@ -667,6 +715,19 @@ describe('notes de direction : commandes (P9-11)', () => {
       expect((await noteRow(noteId))!.archive_reason).toBe('Prix erroné');
     });
 
+    it('l’archivage n’est jamais antérieur à la publication, même si l’horloge du serveur retarde', async () => {
+      const noteId = freshUuid();
+      await publish(director, noteId, noteBody([{ type: 'SITE', ref: siteChild }]));
+      const result = await archive(secondPublisher, noteId, 'Horloge en retard', {
+        occurredAt: at(-1),
+        processedAt: at(-1),
+      });
+      expect(result.status).toBe('APPLIED');
+      expect((await noteRow(noteId))!.archived_at!.toISOString()).toBe(NOW);
+      const [event] = await eventsOf('InternalNoteArchived', noteId);
+      expect(event!.occurred_at.toISOString()).toBe(NOW);
+    });
+
     it('abandonne un brouillon (le sien seulement) ; une note inconnue est introuvable ; en ligne seulement', async () => {
       const draftId = freshUuid();
       await save(director, draftId, noteBody([{ type: 'SITE', ref: siteChild }]));
@@ -775,12 +836,20 @@ describe('notes de direction : commandes (P9-11)', () => {
       expect((await ackRow(noteId, siteStaff.id))!.read_at.toISOString()).toBe(NOW);
     });
 
-    it('hors audience : appliqué sans effet, rien d’enregistré ; l’utilisateur suspendu non plus', async () => {
+    it('hors audience : appliqué sans effet, rien d’enregistré ; l’utilisateur suspendu est mis en conflit par le pipeline', async () => {
       const noteId = await publishedNote([{ type: 'SITE', ref: siteChild }]);
       const outside = await acknowledge(otherSiteStaff, noteId);
       expect(outside.status).toBe('APPLIED');
       expect(outside.server_refs).toMatchObject({ recorded: 'false', reason: 'NOT_IN_AUDIENCE' });
       expect(await ackRow(noteId, otherSiteStaff.id)).toBeUndefined();
+      expect(await eventsOf('InternalNoteAcknowledged', noteId)).toEqual([]);
+
+      // Affecté au site mais suspendu : le pipeline retient la commande avant le gestionnaire (conflit à
+      // arbitrer, BR-SYN-007), rien n'est enregistré. La règle d'audience ne le retient pas non plus : voir les
+      // destinataires de la publication et la visibilité du centre de notes (lectures).
+      const suspendedAck = await acknowledge(suspended, noteId);
+      expect(suspendedAck.status).toBe('CONFLICT');
+      expect(await ackRow(noteId, suspended.id)).toBeUndefined();
       expect(await eventsOf('InternalNoteAcknowledged', noteId)).toEqual([]);
     });
 
