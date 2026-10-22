@@ -10,7 +10,9 @@
  * - pour chaque site, zone et utilisateur **candidat**, `evaluateAccess` est appelée sur une ressource qui ne
  *   porte que cet attribut (`{siteId}`, `{zoneId}`, `{ownerUserId}`) : un élément retenu est donc visible
  *   « par un octroi, pour toute ressource portant cet attribut » — la clause ne rend jamais plus que
- *   `evaluateAccess` (les attributs en plus d'une ligne ne retirent jamais un droit) ;
+ *   `evaluateAccess`. Exception, traitée à part : la zone d'une ligne qui porte aussi un site. Sans zone propre,
+ *   `evaluateAccess` la déduit du site ; avec elle, elle juge celle-ci, qui peut différer. Un site n'est donc
+ *   « lu pour lui-même » que s'il l'est avec une zone inexistante, et sinon « lu par sa zone » (`viaZoneIds`) ;
  * - une permission `OWN` sous une affectation de site ou de zone exige le couple (périmètre, soi) : essayé pour
  *   chaque site et zone candidats, retenu sous forme de clause conjonctive ;
  * - une ressource qui ne porte « aucun site précis » (portée `SITE` sous une affectation globale) est sondée par
@@ -54,11 +56,36 @@ export type ScopeClause =
   | { readonly type: 'ANY_SITE' }
   /** La ligne porte une zone (quelle qu'elle soit). */
   | { readonly type: 'ANY_ZONE' }
-  | { readonly type: 'SITES'; readonly ids: readonly string[] }
-  | { readonly type: 'ZONES'; readonly ids: readonly string[] }
+  /**
+   * Sites lus pour eux-mêmes (`ids` : affectation de site, quelle que soit la zone de la ligne) et sites lus par
+   * leur zone (`viaZoneIds` : affectation de zone). Un jeu qui porte la zone propre de la ligne lit ces derniers
+   * par `ZONES` : la zone d'une ligne peut différer de celle de son site.
+   */
+  | {
+      readonly type: 'SITES';
+      readonly ids: readonly string[];
+      readonly viaZoneIds: readonly string[];
+    }
+  /**
+   * Zones lues sans exiger de site (`ids` : portée `ZONE`) et zones lues pour une ligne qui porte aussi un site
+   * (`withSiteIds` : portée `SITE` sous une affectation de zone ; sans objet pour un jeu sans colonne de site).
+   */
+  | {
+      readonly type: 'ZONES';
+      readonly ids: readonly string[];
+      readonly withSiteIds: readonly string[];
+    }
   | { readonly type: 'PERSONS'; readonly ids: readonly string[] }
-  /** Site dans la liste **et** personne = l'utilisateur (permission `OWN` sous une affectation de site). */
-  | { readonly type: 'SITES_AND_SELF'; readonly ids: readonly string[]; readonly userId: string }
+  /**
+   * Site dans la liste **et** personne = l'utilisateur (permission `OWN` sous une affectation de site ; `viaZoneIds` :
+   * sous une affectation de zone, lus par leur site pour un jeu sans colonne de zone).
+   */
+  | {
+      readonly type: 'SITES_AND_SELF';
+      readonly ids: readonly string[];
+      readonly viaZoneIds: readonly string[];
+      readonly userId: string;
+    }
   /** Zone dans la liste **et** personne = l'utilisateur (permission `OWN` sous une affectation de zone). */
   | { readonly type: 'ZONES_AND_SELF'; readonly ids: readonly string[]; readonly userId: string }
   /** La ligne porte un site **et** une personne de la liste (portée `SITE` sous une affectation d'équipe). */
@@ -165,21 +192,41 @@ export async function resolveExactScope(
     return kept;
   };
 
+  // Un site se lit pour lui-même (affectation de site : la zone de la ligne n'y change rien, jugée avec une zone
+  // qui n'existe pas) ou par sa zone (affectation de zone : `evaluateAccess` déduit la zone du site, mais une
+  // ligne qui porte sa propre zone est jugée sur celle-ci).
   const sites = anySite ? [] : await filter(siteCandidates.ids, (siteId) => ({ siteId }));
+  const pureSites = await filter(sites, (siteId) => ({ siteId, zoneId: SCOPE_PROBE_ID }));
+  const pureSiteSet = new Set(pureSites);
+  const viaZoneSites = sites.filter((siteId) => !pureSiteSet.has(siteId));
   const zones = anyZone ? [] : await filter(zoneCandidates.ids, (zoneId) => ({ zoneId }));
+  const zoneSet = new Set(zones);
+  // Portée `SITE` sous une affectation de zone : la zone suffit pourvu que la ligne porte un site.
+  const zonesWithSite =
+    anySite || anyZone
+      ? []
+      : (await filter(zoneCandidates.ids, (zoneId) => ({ zoneId, siteId: SCOPE_PROBE_ID }))).filter(
+          (zoneId) => !zoneSet.has(zoneId),
+        );
   const persons = await filter(personCandidates.ids, (ownerUserId) => ({ ownerUserId }));
 
   // Couples (périmètre, soi) : seulement là où ni le périmètre seul ni soi seul ne suffisent.
   const selfAlone = persons.includes(input.userId);
   const pairSites: string[] = [];
+  const pairViaZoneSites: string[] = [];
   const pairZones: string[] = [];
   if (!selfAlone) {
+    const siteSet = new Set(sites);
     for (const siteId of siteCandidates.ids) {
-      if (anySite || sites.includes(siteId)) continue;
-      if (await allowed({ siteId, ownerUserId: input.userId })) pairSites.push(siteId);
+      if (anySite || pureSiteSet.has(siteId)) continue;
+      if (await allowed({ siteId, zoneId: SCOPE_PROBE_ID, ownerUserId: input.userId })) {
+        pairSites.push(siteId);
+      } else if (!siteSet.has(siteId) && (await allowed({ siteId, ownerUserId: input.userId }))) {
+        pairViaZoneSites.push(siteId);
+      }
     }
     for (const zoneId of zoneCandidates.ids) {
-      if (anyZone || zones.includes(zoneId)) continue;
+      if (anyZone || zoneSet.has(zoneId)) continue;
       if (await allowed({ zoneId, ownerUserId: input.userId })) pairZones.push(zoneId);
     }
   }
@@ -200,15 +247,24 @@ export async function resolveExactScope(
   const clauses: ScopeClause[] = [];
   if (anySite) clauses.push({ type: 'ANY_SITE' });
   if (anyZone) clauses.push({ type: 'ANY_ZONE' });
-  if (sites.length > 0) clauses.push({ type: 'SITES', ids: sites });
-  if (zones.length > 0) clauses.push({ type: 'ZONES', ids: zones });
+  if (pureSites.length > 0 || viaZoneSites.length > 0) {
+    clauses.push({ type: 'SITES', ids: pureSites, viaZoneIds: viaZoneSites });
+  }
+  if (zones.length > 0 || zonesWithSite.length > 0) {
+    clauses.push({ type: 'ZONES', ids: zones, withSiteIds: zonesWithSite });
+  }
   if (persons.length > 0) clauses.push({ type: 'PERSONS', ids: persons });
   if (anySitePersons.length > 0)
     clauses.push({ type: 'ANY_SITE_AND_PERSONS', ids: anySitePersons });
   if (anyZonePersons.length > 0)
     clauses.push({ type: 'ANY_ZONE_AND_PERSONS', ids: anyZonePersons });
-  if (pairSites.length > 0) {
-    clauses.push({ type: 'SITES_AND_SELF', ids: pairSites, userId: input.userId });
+  if (pairSites.length > 0 || pairViaZoneSites.length > 0) {
+    clauses.push({
+      type: 'SITES_AND_SELF',
+      ids: pairSites,
+      viaZoneIds: pairViaZoneSites,
+      userId: input.userId,
+    });
   }
   if (pairZones.length > 0) {
     clauses.push({ type: 'ZONES_AND_SELF', ids: pairZones, userId: input.userId });

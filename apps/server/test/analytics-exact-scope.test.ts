@@ -131,6 +131,21 @@ function rowsOf(world: Omit<World, 'rows'>, userId: string, mate: string): reado
   return rowsFor(world, [userId, mate, world.other]);
 }
 
+/**
+ * Lignes dont la zone propre diffère de celle de leur site (une vente hors point de vente porte la zone du
+ * client ou du pointage, non celle du site) : le module juge la ressource `{siteId, zoneId}` de la ligne.
+ */
+function divergentRowsFor(world: Omit<World, 'rows'>, owners: readonly string[]): readonly Row[] {
+  const pairs: ReadonlyArray<readonly [string, string]> = [
+    [world.site3, world.zoneA],
+    [world.site1, world.zoneB],
+    [world.site2, world.zoneB],
+  ];
+  return pairs.flatMap(([siteId, zoneId]) =>
+    owners.map((ownerUserId) => ({ siteId, zoneId, ownerUserId })),
+  );
+}
+
 interface GrantSpec {
   readonly maxScope: MaxScope;
   readonly scopeType: AssignmentKind;
@@ -471,6 +486,38 @@ describe('étendue exacte : jeux qui ne portent qu’une partie des attributs', 
     });
   });
 
+  it('un jeu qui porte le site et la zone propre de la ligne (zone différente de celle du site) : la grille entière', async () => {
+    await withTestUow(async (trx) => {
+      const base = await buildWorld(trx);
+      const report: string[] = [];
+      let divergentReadable = 0;
+      for (const maxScope of MAX_SCOPES) {
+        for (const assignment of ASSIGNMENTS) {
+          const { userId, mate } = await grantUser(trx, base, maxScope, assignment);
+          const owners = [userId, mate, base.other];
+          const rows = [...rowsFor(base, owners), ...divergentRowsFor(base, owners)];
+          const scope = await resolveExactScope(trx, { userId, permission: PERMISSION, at: AT });
+          const selected = await selectedBy(trx, rows, [scopeCondition(DATASET, scope)]);
+          const allowed = await allowedRows(trx, userId, PERMISSION, rows);
+          const tooWide = [...selected].filter((key) => !allowed.has(key)).length;
+          const missing = [...allowed].filter((key) => !selected.has(key)).length;
+          if (tooWide > 0)
+            report.push(`${maxScope}/${assignment} : ${tooWide} ligne(s) rendue(s) à tort`);
+          if (missing > 0) {
+            report.push(
+              `${maxScope}/${assignment} : ${missing} ligne(s) autorisée(s) non rendue(s)`,
+            );
+          }
+          divergentReadable += divergentRowsFor(base, owners).filter((row) =>
+            allowed.has(keyOf(row)),
+          ).length;
+        }
+      }
+      expect(report).toEqual([]);
+      expect(divergentReadable).toBeGreaterThan(0);
+    });
+  });
+
   it('SITE ou ZONE sous une affectation d’équipe : les membres de l’équipe affectée, non ceux d’une équipe dirigée', async () => {
     await withTestUow(async (trx) => {
       const base = await buildWorld(trx);
@@ -516,6 +563,35 @@ describe('étendue exacte : jeux qui ne portent qu’une partie des attributs', 
       const personOnly = projection('personne seule');
       const selected = await selectedBy(trx, rows, [scopeCondition(personOnly.dataset, scope)]);
       expect(ownersOf(selected)).toEqual(new Set([userId, mate, m2]));
+    });
+  });
+
+  it('deux octrois sous des affectations de zone, de portées maximales différentes : l’union des deux', async () => {
+    await withTestUow(async (trx) => {
+      const base = await buildWorld(trx);
+      const userId = await insertTestUser(trx);
+      const mate = await insertTestUser(trx);
+      // Portée `ZONE` sur la zone A (et sa descendante) et portée `SITE` sur la zone B : les zones lues sans
+      // exiger de site et celles lues pour une ligne qui porte un site coexistent dans la même clause.
+      await addGrant(trx, base, userId, {
+        maxScope: 'ZONE',
+        scopeType: 'ZONE',
+        scopeZoneId: base.zoneA,
+      });
+      await addGrant(trx, base, userId, {
+        maxScope: 'SITE',
+        scopeType: 'ZONE',
+        scopeZoneId: base.zoneB,
+      });
+      const owners = [userId, mate, base.other];
+      const rows = [...rowsFor(base, owners), ...divergentRowsFor(base, owners)];
+      const scope = await resolveExactScope(trx, { userId, permission: PERMISSION, at: AT });
+      const judged = await judgeProjections(trx, userId, rows, scope);
+      expect(judged.report).toEqual([]);
+      const selected = await selectedBy(trx, rows, [scopeCondition(DATASET, scope)]);
+      expect(selected).toEqual(await allowedRows(trx, userId, PERMISSION, rows));
+      const zonesRead = new Set([...selected].map((key) => key.split('|')[1]));
+      expect(zonesRead).toEqual(new Set([base.zoneA, base.zoneAa, base.zoneB]));
     });
   });
 
