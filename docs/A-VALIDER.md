@@ -322,6 +322,16 @@ Classification (PM §45) :
 | AV-305 | Créances hors de la liste et écarts avec l'accueil (ECR-FIN-01) | SECONDAIRE | P8 | Écran tel quel, ventes sans échéance annoncées comme exclues ; correctifs serveur groupés (nom et compte conservé dans les lignes, montant sans échéance, action du signal, titulaire unique, date inexistante refusée) | OUVERT |
 | AV-306 | Pièce citée par une opération : existence, document et auteur non vérifiés | SECONDAIRE | P8 | Présomption conservée jusqu'au pilote ; contrôle serveur groupé avec AV-093 et AV-293 | OUVERT |
 | AV-307 | Poste de bureau des rôles de bureau et exception de RC-02 | SECONDAIRE | P8 | Approuvé comme tout appareil (défaut implémenté) ; exemption à décider | OUVERT |
+| AV-308 | Référence de la pièce papier : champ dédié ou généralisation de `local_ref` | IMPORTANTE | PP | Champ dédié, sans unicité (doublon signalé, jamais rejeté) | OUVERT |
+| AV-309 | Rendu des pièces : composants de la PWA, police libre, consultation et impression sur le même rendu | IMPORTANTE | PP | Un composant par type de pièce, alimenté hors ligne ; police libre embarquée | OUVERT |
+| AV-310 | Mentions de la pièce imprimée : numéro, duplicata, annulation, données personnelles | SECONDAIRE | PP | Numéro de l'application, DUPLICATA, bandeau ANNULÉE, mêmes droits qu'à l'écran | OUVERT |
+| AV-311 | Journal de caisse imprimé : contenu hors ligne et pagination | SECONDAIRE | PP | Complet en ligne, partiel hors ligne, feuilles de 28 lignes avec report | OUVERT |
+| AV-312 | Registre des carnets : contrôle de continuité | SECONDAIRE | PP | Manques et doublons d'après les références saisies, à la demande | OUVERT |
+| AV-313 | Présence du personnel non commercial | IMPORTANTE | PP | Table légère alimentée par la fiche PT ; usage statistique, pas de paie | OUVERT |
+| AV-314 | Bilan hebdomadaire du commercial | SECONDAIRE | PP | Entité propre et écran ; chiffres calculés, jamais saisis | OUVERT |
+| AV-315 | Veille marché dans la visite | SECONDAIRE | PP | Table fille de la visite (fournisseur ou concurrent, produit, unité, prix) | OUVERT |
+| AV-316 | Profil commercial du client | IMPORTANTE | PP | Trois champs sur le compte ; demande de crédit distincte de la décision | OUVERT |
+| AV-317 | Écran de report et import par lots des pièces papier | IMPORTANTE | PP | Report par type de pièce ; import validé avant chargement, par les commandes existantes | OUVERT |
 
 ---
 
@@ -536,6 +546,7 @@ Politique par défaut, paramétrable :
 - **Question** : les prix sont-ils TTC ? Certains produits sont-ils exonérés ? Des factures fiscales normalisées sont-elles nécessaires ?
 - **Recommandation** : prix saisis et affichés TTC. Pas de ventilation fiscale au MVP. Les colonnes `tax_rate` et `tax_amount_xaf` sont prévues à 0 dans les lignes de vente et d'achat pour permettre l'évolution.
 - **Décision** (porteur du projet, 30/09/2026) : **prix TTC, reçu numérique simple** (recommandation) : pas de ventilation fiscale ni de facture normalisée ; colonnes `tax_rate` et `tax_amount_xaf` à 0
+- **Confirmation du porteur (20/10/2026, D3)** : la facture client reste hors de l'application pour l'instant (REQ-309). À rouvrir si la facturation électronique annoncée par la loi de finances 2026 s'impose (points légaux à valider avec le comptable).
 
 ### AV-042 — Valorisation du stock — IMPORTANTE
 - **Choix** : CMUP, FIFO, coût standard.
@@ -646,6 +657,7 @@ Politique par défaut, paramétrable :
 
 ### AV-072 — Reprise de données — IMPORTANTE
 - **Recommandation** : modèles CSV d'import pour clients, fournisseurs, produits et lots en cours. Le stock initial est chargé par un **inventaire d'ouverture** (`OPENING`), donc tracé comme n'importe quel mouvement.
+- **Extension demandée (porteur, 20/10/2026, D11)** : import par lots de l'historique des pièces papier, validé avant chargement et passant par les commandes existantes ; voir AV-317.
 
 ### AV-073 — Hébergement et données personnelles — IMPORTANTE — **TRANCHÉ**
 - **Décision** (confirmée par le porteur du projet) : hébergement chez **Hostinger**, **sans VPS**. Base de données MySQL (conséquence : [ADR-023](decisions/ADR-023-mysql.md)) ; calcul et hébergement du domaine chez le même fournisseur ([ADR-024](decisions/ADR-024-hebergement-hostinger.md)). Région : celle proposée par Hostinger ; vérification de la conformité à la réglementation camerounaise sur les données personnelles toujours à la charge de GIC, au moment du déploiement.
@@ -666,6 +678,7 @@ Politique par défaut, paramétrable :
 
 ### AV-078 — Saisie rétroactive — IMPORTANTE
 - **Recommandation** : `occurred_at` peut précéder l'heure de création sur l'appareil d'au plus 72 h. Au-delà de 24 h, une justification est obligatoire et l'opération est signalée. Au-delà de 72 h, la saisie est refusée, sauf si une validation l'autorise.
+- **Confirmation du porteur (20/10/2026, D12)** : pour le report d'une pièce papier, 24 h conseillées et 72 h au maximum, valeurs actuelles et paramétrables. Le point reste OUVERT pour l'application de la fenêtre à toutes les commandes (prévue avant la production) ; voir AV-317.
 
 ### AV-079 — Langues — SECONDAIRE
 - **Recommandation** : interface en français, architecture i18n prête pour l'anglais.
@@ -2339,6 +2352,76 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) poste de bureau enregistré comme appareil de type navigateur de bureau et approuvé comme tout appareil (défaut implémenté, traçable, un seul chemin) ; (b) exemption du back-office web de ces quatre rôles, sans approbation.
 - **Recommandation** : (a) pour le pilote ; (b) à revoir quand le back-office web est exposé hors du réseau de GIC.
 - **Impact** : `docs/07-security-rbac/01-rbac.md` (RC-02, à aligner une fois tranché), `apps/server/src/modules/identity/application/public/device-check.ts`, ADR-047. Défaut implémenté : (a).
+
+### AV-308 — Référence de la pièce papier : champ dédié ou généralisation de `local_ref` — IMPORTANTE
+- **Question** : où garder le numéro imprimé sur un carnet (saisi à la main) : un champ dédié commun à toutes les opérations, ou le champ `local_ref` existant ?
+- **Pourquoi** : le porteur a choisi « un champ pièce papier commun à toutes les opérations » (D2, 20/10/2026, **CONFIRMÉ**). Il croyait le champ absent pour le transfert, la perte, l'inventaire et la remise de fonds : or `local_ref varchar(20)` existe sur 13 tables (liste dans `docs/10-development-plan/19-pieces-papier.md` §3) et manque sur la visite, la session de travail, la session de caisse, les paiements et factures fournisseurs, les pesées et les collectes d'œufs. `local_ref` est aujourd'hui une référence **générée** par l'appareil (`{CODE_APPAREIL}-{seq6}`, conventions §1.4) et sert à signaler un doublon (`LOCAL_REF_DUPLICATE` pour la dépense) ; le numéro d'un carnet est **saisi** et propre à un type de pièce. **CONFIRMÉ** (schéma, code)
+- **Choix** : (a) réutiliser `local_ref` avec un préfixe de pièce (`RE-000123`) : aucune migration sur les 13 tables, mais deux sens dans un même champ et rien pour les tables sans `local_ref` ; (b) colonne dédiée (`paper_ref` : code de la pièce et numéro) facultative sur chaque table d'opération concernée, sans contrainte d'unicité : un doublon est signalé par un conflit informatif, jamais rejeté (BR-SYN-007), index par type de pièce, site et numéro.
+- **Recommandation** : (b), conforme au choix du porteur et sans ambiguïté pour le contrôle de continuité (AV-312).
+- **Impact** : migrations par module propriétaire (hors des plages réservées de la session P9), contrats de commande (champ facultatif), jeux hors ligne, projections, écrans de saisie ; dictionnaire des tables. À trancher en PP-0. Défaut retenu pour la conception : (b). Rien n'est implémenté.
+
+### AV-309 — Rendu des pièces : composants de la PWA, police libre, consultation et impression sur le même rendu — IMPORTANTE
+- **Question** : comment l'application reproduit-elle la mise en page des pièces papier, à l'écran et à l'impression, y compris hors ligne ?
+- **Pourquoi** : le porteur veut imprimer chaque opération dans la mise en page de la pièce (D1) et consulter une opération dans cette même mise en page (22/10/2026). **CONFIRMÉ**. Les gabarits d'origine (`pieces-papier/gabarits/*.html`) utilisent *Segoe UI* et *Bahnschrift*, polices Windows non redistribuables et absentes des téléphones ; le logo doit être disponible hors ligne ; la prise en charge de `@page size` est limitée sur iOS ; les imprimantes de bureau sont souvent en noir et blanc ; le montant en lettres demande une fonction pure en français (règle 6). **DÉDUIT**
+- **Choix** : (a) un composant de la PWA par type de pièce, alimenté par les données locales de l'opération, le même pour l'écran de consultation et pour l'impression (`window.print()`, `@page` A5 paysage ou A4 portrait), police libre embarquée, logo dans le pré-cache du service worker, repli sans `@page` ; la souche n'est pas imprimée ; (b) PDF produit par le serveur : écarté, il exclut le hors ligne (D1).
+- **Recommandation** : (a). Les rubriques de chaque composant sont comparées à `CORRESPONDANCE-APPLICATION.xlsx` par un test ; pas de source HTML commune avec le dossier papier.
+- **Impact** : `apps/pwa` (composants, feuille d'impression, service worker), `packages/domain` (montant en lettres), écrans de détail à ajouter pour les opérations qui n'en ont pas, ADR « impression des pièces » à rédiger en PP-0. Défaut retenu pour la conception : (a).
+
+### AV-310 — Mentions de la pièce imprimée : numéro, duplicata, annulation, données personnelles — SECONDAIRE
+- **Question** : que porte une pièce imprimée par l'application, et qui peut l'imprimer ?
+- **Pourquoi** : la pièce est un support probant ; l'application ne supprime rien (ADR-006) ; une réimpression ne doit pas passer pour l'original ; la pièce porte des données personnelles (nom, téléphone du client) et, parfois, des coûts. **DÉDUIT**
+- **Choix** : (a) numéro imprimé = `doc_number` s'il est connu, sinon le numéro de la pièce papier (AV-308), sinon `local_ref` hors ligne ; réimpression marquée « DUPLICATA » avec sa date ; opération annulée marquée par un bandeau « ANNULÉE » ; nom et téléphone du client imprimés seulement pour qui les voit déjà à l'écran ; valeurs au coût jamais imprimées sans droit de valorisation (RC-05) ; imprimer n'est pas une écriture et n'ajoute aucune permission ; (b) en plus, tracer chaque impression dans le journal d'audit (écrit côté serveur : impossible hors ligne sans envoi d'une commande).
+- **Recommandation** : (a) ; (b) seulement si la Direction veut tracer les réimpressions (option « 2 exemplaires, client et comptabilité » à décider avec le porteur).
+- **Impact** : composants de pièce ; aucune migration. Défaut retenu pour la conception : (a).
+
+### AV-311 — Journal de caisse imprimé : contenu hors ligne et pagination — SECONDAIRE
+- **Question** : que montre le journal d'un compte hors ligne, et comment se répartit un jour de plus de 28 opérations ?
+- **Pourquoi** : le porteur veut un journal par compte de trésorerie imprimé par l'application (D4), valable aussi pour la caisse d'un commercial (D5, sans comptage par coupures). Les mouvements sont dans `finance_cash_movements` (lecture `GET /cash-accounts/{id}/movements`, ECR-FIN-05) ; la session de caisse ne concerne que la caisse d'un point de vente (BR-FIN-002, BR-FIN-010) ; la feuille papier compte 28 lignes, le porteur parle de 25 à 40 opérations par jour. Le jeu hors ligne `cash` ne porte qu'une partie des mouvements. **CONFIRMÉ** (schéma, code, dossier papier)
+- **Choix** : (a) en ligne, état complet d'un compte pour un jour métier (fuseau `Africa/Douala`) ; hors ligne, mouvements du jeu `cash` de l'appareil, état marqué « partiel » ; feuilles de 28 lignes avec report du sous-total ; pour un compte en espèces, rapprochement avec la session de caisse (fonds d'ouverture, entrées, sorties, solde théorique, comptage, écart) ; pour mobile money et banque, totaux par mode sans comptage ; (b) en ligne seulement.
+- **Recommandation** : (a).
+- **Impact** : PWA (état et composant de pièce FJC et JE), lecture existante ; aucune migration. Défaut retenu pour la conception : (a).
+
+### AV-312 — Registre des carnets : contrôle de continuité — SECONDAIRE
+- **Question** : comment l'application contrôle-t-elle la continuité des numéros d'un carnet, sachant que le registre reste sur papier ?
+- **Pourquoi** : choix du porteur (D7, 20/10/2026) : registre papier et contrôle par les références saisies. **CONFIRMÉ**. Dépend de AV-308. Il faut dire quelle plage est « attendue » et qui consulte.
+- **Choix** : (a) d'après les seules références saisies, par type de pièce et par site : numéros manquants entre le plus petit et le plus grand saisis, doublons ; état consulté à la demande par la Finance et le responsable de site ; aucune table nouvelle ; (b) plages attendues saisies à la remise d'un carnet (nouvelle entité) avec alerte de manque.
+- **Recommandation** : (a) maintenant ; (b) et l'alerte avec le catalogue d'alertes de P9.
+- **Impact** : PWA et lecture ; aucune migration en (a). Défaut retenu pour la conception : (a).
+
+### AV-313 — Présence du personnel non commercial — IMPORTANTE
+- **Question** : l'application enregistre-t-elle la présence des ouvriers et du personnel administratif, pour quel usage, et sous quelle forme ?
+- **Pourquoi** : choix du porteur (D6) : petite table de présence alimentée chaque semaine à partir de la fiche PT. Le pointage couvre aujourd'hui les seuls commerciaux de terrain (`fieldwork.work_sessions`, `analytics.f_attendance`, ECR-TER-02) ; ouvriers et administratifs n'ont peut-être pas de compte. Ce sont des données personnelles. Il ne faut pas compter deux fois les jours de présence des commerciaux. **CONFIRMÉ** (choix), **À VALIDER** (usage)
+- **Choix** : (a) table légère (jour, personne, site, arrivée, départ, code d'absence, source `PAPER`, lot d'import hebdomadaire), `user_id` facultatif et nom de la personne ; usage statistique et de suivi, sans paie ; portée de lecture au site et à la Direction ; (b) un compte utilisateur pour tout le personnel : écarté ici ; (c) hors application.
+- **Recommandation** : (a) ; l'usage (paie, discipline, statistiques) est à confirmer par le porteur avant PP-E.
+- **Impact** : nouvelle table (module propriétaire à décider en PP-0), import hebdomadaire (AV-317), `analytics.f_attendance` (P9). Défaut retenu pour la conception : (a).
+
+### AV-314 — Bilan hebdomadaire du commercial — SECONDAIRE
+- **Question** : quelle entité porte le bilan hebdomadaire du commercial et que contient-elle ?
+- **Pourquoi** : choix du porteur (D8) : fiche papier BH et écran dans l'application. Le bilan n'existe pas ; `communication.internal_notes` est la note de direction (sens inverse) et ne convient pas. Le principe du contexte métier veut qu'aucun indicateur ne soit saisi. **CONFIRMÉ**
+- **Choix** : (a) entité « bilan hebdomadaire » (commercial, lundi de la semaine, réussites, difficultés, besoins et demandes à la direction, priorités, informations du marché, vu par le responsable, commentaire du responsable) ; chiffres (visites sur place, nouveaux prospects et clients, CA, encaissé, casses et pertes) calculés depuis les données existantes ; (b) réutiliser les notes de direction : écarté.
+- **Recommandation** : (a), en coordination avec la session P9 (plages d'AV, d'ADR et de migrations réservées).
+- **Impact** : nouvelle entité, commandes `crm` ou `analytics` selon le propriétaire retenu en PP-0, écran. Défaut retenu pour la conception : (a).
+
+### AV-315 — Veille marché dans la visite — SECONDAIRE
+- **Question** : comment enregistrer le fournisseur ou le concurrent et le prix constaté pendant une visite ?
+- **Pourquoi** : choix du porteur (D9) : rubriques structurées sur la fiche de visite et dans la visite. La visite a des notes, un résultat et une prochaine action, **rien** sur le fournisseur ou le prix d'un concurrent. Plusieurs produits peuvent être relevés par visite. **CONFIRMÉ**
+- **Choix** : (a) table fille de la visite (visite, type fournisseur ou concurrent, nom en libellé libre, produit, unité, prix constaté) ; (b) colonnes sur la visite : écartées (un seul relevé).
+- **Recommandation** : (a) ; un référentiel de concurrents plus tard, si la veille s'étend.
+- **Impact** : le CRM (P3) est clos : migration, contrat de la commande de visite, jeu hors ligne `crm_activity`, fiche VC. Défaut retenu pour la conception : (a).
+
+### AV-316 — Profil commercial du client — IMPORTANTE
+- **Question** : où et comment enregistrer le produit d'intérêt, le potentiel par jour et le mode de paiement habituel d'un client ?
+- **Pourquoi** : choix du porteur (D10). Le compte client a `credit_allowed`, `credit_limit_xaf`, `payment_terms_days`, `business_activity`, `category_id`, pas ces trois informations. `credit_allowed` est une **décision du responsable** (AV-028) : la demande de paiement différé du commercial est distincte. La fusion « champ par champ avec version » des comptes modifiés sur deux appareils doit couvrir les nouveaux champs. **CONFIRMÉ**
+- **Choix** : (a) trois champs sur le compte (produit d'intérêt, potentiel par jour en quantité et unité, mode de paiement habituel) et une demande de crédit (`credit_requested`) distincte de `credit_allowed` ; versions par champ, doublons et fusion étendus ; (b) table séparée « profil » : écartée, le compte reste le propriétaire.
+- **Recommandation** : (a).
+- **Impact** : `crm_customers` (migration), commandes de compte, matrice des conflits, jeu hors ligne `customers`, fiche VC. Défaut retenu pour la conception : (a).
+
+### AV-317 — Écran de report et import par lots des pièces papier — IMPORTANTE
+- **Question** : comment une pièce papier, ou un lot de pièces anciennes, entre-t-elle dans l'application, par qui, et que devient une ligne en erreur ?
+- **Pourquoi** : choix du porteur (D11) : écran de report pour le courant, import par lots pour l'historique, délai de 24 h conseillées et 72 h au maximum (D12). L'import étend AV-072 (modèles CSV : clients, fournisseurs, produits, lots, inventaire d'ouverture). Toute écriture passe par les commandes idempotentes (règle 3). **CONFIRMÉ** (choix), **À VALIDER** (qui, où séjournent les lignes en attente, reprise sur erreur, colonnes hors modèle)
+- **Choix** : (a) **écran « Reporter une pièce papier »** par type de pièce, champs dans l'ordre de la pièce, date et heure de la pièce = heure métier, numéro de la pièce (AV-308), doublon signalé, photo de la pièce jointe (ADR-012, ADR-046), annulation par contre-écriture ; **import** de fichiers Excel ou CSV avec fichier modèle tiré de `CORRESPONDANCE-APPLICATION.xlsx`, lignes en attente côté serveur, validation avant chargement du lot, clé d'import par ligne pour l'idempotence, rapport d'erreurs et reprise ligne par ligne, colonnes hors modèle listées au rapport et ignorées ; importeurs : Admin, Finance, responsable de site dans sa portée ; (b) import réservé à l'Admin, sans écran de report.
+- **Recommandation** : (a). Le jeu de données de GIC est nécessaire pour PP-C ; l'Excel `fiches-terrain/commercial/` est un premier jeu de test.
+- **Impact** : écran PWA, module d'import avec tables d'attente (PP-C), modèles de fichier ; fenêtre d'antidatage d'AV-078 appliquée aux commandes concernées. Défaut retenu pour la conception : (a).
 
 ---
 

@@ -2,7 +2,7 @@
 
 > Extraction **fidèle** des exigences explicites des sources, sans interprétation. Toutes ces exigences sont **CONFIRMÉES**.
 > Chaque exigence est tracée jusqu'aux tests dans [`../10-development-plan/02-matrice-tracabilite.md`](../10-development-plan/02-matrice-tracabilite.md).
-> Plages de numérotation : `REQ-001` à `REQ-199` = exigences métier du **CM** ; `REQ-201` et suivants = contraintes techniques imposées par le **PM**.
+> Plages de numérotation : `REQ-001` à `REQ-199` = exigences métier du **CM** ; `REQ-201` et suivants = contraintes techniques imposées par le **PM**. `REQ-301` et suivants = exigences exprimées par le **porteur** après la clôture du cadrage (§3), hors CM et PM.
 
 ---
 
@@ -188,3 +188,21 @@
 | REQ-213 | Base relationnelle considérée comme option naturelle, choix justifié ; pas de NoSQL pour simplifier le frontend. | PM §47 |
 | REQ-214 | Pas de microservices par principe ; simplicité opérationnelle sans sacrifier les frontières fonctionnelles. | PM §34 |
 | REQ-215 | Pas de génération de l'application avant stabilisation du cadrage. | PM §51 |
+
+---
+
+## 3. Exigences ajoutées par le porteur après le cadrage
+
+> Ces exigences ne viennent ni du CM ni du PM (qui restent inchangés) : elles ont été exprimées par le porteur du projet le 20/10/2026 (douze choix d'intégration des pièces papier, dossier `pieces-papier/`) et le 22/10/2026 (toute opération imprimable et consultable en mise en page de pièce). Elles sont **CONFIRMÉES** comme besoins ; leur conception est instruite par les points AV-308 à AV-317 ([`../A-VALIDER.md`](../A-VALIDER.md)). Cadrage du lot : [`../10-development-plan/19-pieces-papier.md`](../10-development-plan/19-pieces-papier.md).
+
+| ID | Exigence | Source |
+|---|---|---|
+| REQ-301 | Toute opération de l'application est imprimable, depuis le téléphone ou l'ordinateur, y compris hors ligne, sur papier blanc, dans la mise en page de la pièce papier GIC AGROPELC correspondante (mêmes rubriques, même charte, même logo, numéro de l'application). | Porteur, 20/10/2026 (D1) et 22/10/2026 |
+| REQ-302 | Une opération consultée dans l'application peut l'être en mise en page de pièce : consultation et impression partagent le même rendu. | Porteur, 22/10/2026 |
+| REQ-303 | Quand l'application est indisponible, l'opération s'écrit sur une pièce papier numérotée, puis se reporte dans l'application : numéro de pièce papier commun à toutes les opérations (D2), écran de report pour le courant et import par lots pour l'historique (D11), délai de report de 24 h conseillées et 72 h au maximum, valeurs paramétrables (D12). | Porteur, 20/10/2026 |
+| REQ-304 | L'application imprime un journal de caisse par compte de trésorerie (D4) ; la même feuille sert à la caisse d'un point de vente, d'un commercial et à la caisse centrale (D5) ; la feuille vierge reste le secours. | Porteur, 20/10/2026 |
+| REQ-305 | Le registre des carnets reste sur papier ; l'application contrôle la continuité des numéros d'après les références saisies (D7). | Porteur, 20/10/2026 |
+| REQ-306 | Une table de présence simple, alimentée chaque semaine à partir de la fiche de pointage papier (D6). | Porteur, 20/10/2026 |
+| REQ-307 | Un bilan hebdomadaire du commercial : fiche papier et écran dans l'application (D8). | Porteur, 20/10/2026 |
+| REQ-308 | La visite porte une veille marché structurée (fournisseur ou concurrent, prix constaté) (D9) et le compte client un profil commercial (produit d'intérêt, potentiel par jour, mode de paiement habituel) (D10). | Porteur, 20/10/2026 |
+| REQ-309 | La facture client reste hors de l'application pour l'instant (D3) ; exclusion, AV-041 reste en vigueur. | Porteur, 20/10/2026 |

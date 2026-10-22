@@ -1,7 +1,7 @@
 # Matrice de traçabilité (Livrable n°17)
 
 > Section 34 du format final (PM §48 ; PM §42). Chaîne : **besoin → règle métier → module → entités → tables → API → écran → test d'acceptation**.
-> Une ligne par exigence source ([`../01-functional/00-exigences-sources.md`](../01-functional/00-exigences-sources.md)) : 84 exigences du CM (REQ-001 à REQ-084) et 15 contraintes du PM (REQ-201 à REQ-215).
+> Une ligne par exigence source ([`../01-functional/00-exigences-sources.md`](../01-functional/00-exigences-sources.md)) : 84 exigences du CM (REQ-001 à REQ-084) et 15 contraintes du PM (REQ-201 à REQ-215), puis 9 exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-309, §15bis).
 > **Usage pendant le développement** : à la fin de chaque phase, vérifier que chaque ligne de la phase a ses tests verts ; toute exigence retirée ou modifiée exige une décision tracée (ADR ou registre `A-VALIDER.md`). Une ligne n'est jamais supprimée.
 
 **Conventions de lecture**
@@ -189,6 +189,22 @@
 | REQ-215 | Pas de génération de l'application avant stabilisation du cadrage | [`04-checklist-demarrage.md`](04-checklist-demarrage.md) | — | — | — | — | — | Checklist de démarrage cochée | Avant P0 |
 
 ---
+
+## 15bis. Exigences ajoutées par le porteur après le cadrage (REQ-301 à REQ-309)
+
+Lot « Pièces papier » (PP), planifié le 22/10/2026, **non commencé** : cadrage dans [`19-pieces-papier.md`](19-pieces-papier.md), conception et défauts dans AV-308 à AV-317. Les tests d'acceptation (`AT-*`) sont à rédiger en PP-0 ; aucune ligne n'est vérifiée avant le début du lot.
+
+| REQ | Besoin (résumé) | Règles | Modules | Entités | Tables | API | Écrans | Tests | Phase |
+|---|---|---|---|---|---|---|---|---|---|
+| REQ-301 | Toute opération imprimable dans la mise en page de la pièce papier, hors ligne comprise | ADR-006 ; ADR-021 ; AV-309, AV-310 | PWA, domain | Pièce imprimable (composant par type de pièce) | — (lecture des données locales) | — | ECR-VEN-05 (reçu imprimable, à généraliser) | À rédiger en PP-0 : vente imprimée hors ligne, rubriques conformes à la correspondance papier, duplicata, opération annulée | PP-A |
+| REQ-302 | Consultation d'une opération en mise en page de pièce | ADR-021 ; AV-309 | PWA | Pièce imprimable | — | — | Détails d'opération (inventaire en PP-0) | À rédiger en PP-0 | PP-A |
+| REQ-303 | Secours papier puis report : numéro de pièce commun, écran de report, import par lots, délai 24 h et 72 h | BR-SYN-007 ; ADR-012 ; ADR-046 ; AV-072 ; AV-078 ; AV-308, AV-317 | sync, sales, finance, inventory, procurement, attachments, PWA | Numéro de pièce papier ; lot d'import | `local_ref` existant ou colonne dédiée (AV-308) ; tables d'attente d'import (PP-C) | commandes existantes | À définir en PP-0 | À rédiger en PP-0 : report d'une pièce, doublon signalé, pièce hors fenêtre | PP-B, PP-C |
+| REQ-304 | Journal de caisse par compte, caisse du commercial comprise | BR-FIN-002 ; BR-FIN-010 ; AV-311 | finance, PWA | Mouvement de trésorerie ; session de caisse | `finance.cash_movements`, `finance.cash_sessions` | `GET /cash-accounts/{id}/movements` | ECR-FIN-05 (trésorerie) | À rédiger en PP-0 : journal égal aux mouvements, pagination, hors ligne partiel | PP-A |
+| REQ-305 | Contrôle de continuité des carnets | AV-308 ; AV-312 | PWA | Numéro de pièce papier | références saisies | lecture à définir | À définir en PP-0 | À rédiger en PP-0 : manque et doublon détectés | PP-B |
+| REQ-306 | Présence du personnel, alimentée par la fiche de pointage | AV-313 | À décider en PP-0 (frontières de modules) | Présence | À créer | À définir | À définir | À rédiger en PP-0 | PP-E |
+| REQ-307 | Bilan hebdomadaire du commercial | AV-314 | À décider en PP-0, coordination P9 | Bilan hebdomadaire | À créer | À définir | À définir | À rédiger en PP-0 | PP-E |
+| REQ-308 | Veille marché dans la visite et profil commercial du client | AV-315 ; AV-316 | crm, PWA | Ligne de veille marché ; compte client | `crm.visits` (table fille à créer), `crm.customers` | commandes de visite et de compte existantes, étendues | Écrans de visite et de compte client existants | À rédiger en PP-0 | PP-D |
+| REQ-309 | Facture client hors application (exclusion) | AV-041 | — | — | — | — | — | Revue de périmètre | — |
 
 ## 16. Contrôle de couverture
 

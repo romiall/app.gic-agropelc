@@ -35,6 +35,7 @@
 | **P8** Finance opérationnelle (M, 3 sem.) | Coûts, marges, dettes | Dépenses (imputées), factures fournisseurs et rapprochement, paiements fournisseurs, dettes, coûts de lot complets, marges, valeur des pertes | P4, P6, P7 | Vue financière opérationnelle complète | INV-FIN-07, 08 ; AT-025, 040, 041 | Code serveur terminé le 13/10/2026, en parallèle de la session principale ([démonstration](18-demonstration-p8.md)) ; écrans livrés par le lot P8E (P8E-02 à P8E-09, 21/10/2026) ; restent la clôture du lot (P8E-10) et la marge d'un lot pilote validée par la Direction |
 | **P9** Analytics et direction (L, 4 sem.) | Tour de contrôle et analyse flexible | Couche sémantique, jeux de faits, tour de contrôle, tableaux par rôle complets, explorateur, vues sauvegardées, exports, catalogue complet d'alertes, notes de direction | P4 à P8 | Direction autonome sur ses questions (CM §62) | AT-038, 039, 043, 045, 046, 048, 054 ; NFR-12, 13 | Non commencée |
 | **P10** Intégration Kommo (M, 2 à 3 sem.) | Parcours digital continu | Liens externes, webhooks entrants, messages sortants, anti-boucle, supervision, rejeu | P3, P4 ; AV-068 tranché | Leads qualifiés convertis en clients GIC ; enrichissement Kommo | INV-KOM-* ; AT-044 | Non commencée |
+| **PP** Pièces papier (lot transverse, hors chemin critique) | Imprimer et consulter toute opération dans la mise en page des pièces papier GIC, reporter les pièces de secours | Pièces imprimables et consultables (BV, RE, BD, RF, BL, CC, BC, BR, BT, DA, FP, FI, FL), journal de caisse (FJC, JE), numéro de pièce papier, report et import par lots, veille marché et profil client, présence, bilan hebdomadaire | Données de P4 à P8 ; coordination avec la session P9 pour PP-E | Toute opération s'imprime en pièce, hors ligne comprise, et une pièce de secours se reporte | REQ-301 à REQ-309 ; `AT-*` à rédiger en PP-0 | Planifié le 22/10/2026, non commencé ; cadrage [`19-pieces-papier.md`](19-pieces-papier.md) |
 
 Durée indicative totale : environ 37 à 40 semaines de développement pour 2 développeurs, hors recette et formation (AV-084).
 
@@ -400,6 +401,21 @@ P8 est menée **en parallèle de la session principale** (branche `claude/p8-fin
 | Prérequis | AV-068 (**bloquante pour cette phase**), AV-069 à AV-071 ; accès sandbox Kommo |
 | Risques | RISK-14 |
 | DoD | Deux semaines sans message `DEAD` non expliqué |
+
+### Lot Pièces papier (PP) — transverse, hors chemin critique
+
+**Origine** : dossier `pieces-papier/` remis par le porteur le 20/10/2026 (25 pièces papier aux couleurs de GIC AGROPELC et douze choix d'intégration) et demande du 22/10/2026 : toutes les opérations doivent être imprimables, et une opération consultée doit l'être en mise en page de pièce. **Décision du porteur du 22/10/2026** : ce n'est pas la priorité ; le besoin entre dans le plan, sans date. Cadrage complet (douze choix, catalogue des pièces, conception cible) : [`19-pieces-papier.md`](19-pieces-papier.md). Exigences REQ-301 à REQ-309 ; AV-308 à AV-317 ouverts, défauts paramétrables, aucun bloquant ; ADR « impression des pièces » à rédiger en PP-0. Le dossier `pieces-papier/` n'est pas suivi par git ; ses points utiles sont repris dans le cadrage.
+
+| Lot | Contenu | Taille |
+|---|---|---|
+| PP-0 | Instruction : AV-308 à AV-312 et AV-317 relus avec le porteur, ADR « impression des pièces », inventaire des opérations sans vue de détail, `AT-*` à rédiger, ordre des pièces à imprimer en premier | S |
+| PP-A | Impression et consultation : socle (police libre, `@page`, logo en cache, montant en lettres, duplicata, bandeau « annulée »), BV, RE, BD, BL, CC, RF, BR, BT d'abord, puis BC, DA, FP, FI, FL ; journal de caisse FJC et JE ; action « Voir la pièce / Imprimer » sur chaque détail d'opération. Aucun schéma | L |
+| PP-B | Report : numéro de la pièce papier (AV-308), écran « Reporter une pièce papier », contrôle de continuité des carnets (AV-312), fenêtre d'antidatage d'AV-078 appliquée aux commandes concernées | L |
+| PP-C | Import par lots : modèles, zone d'attente, validation avant chargement, rapport d'erreurs, clé d'import (AV-317, AV-072) ; jeu de données GIC requis | L |
+| PP-D | CRM : veille marché dans la visite (AV-315), profil commercial du client (AV-316), fiche VC | M |
+| PP-E | Présence du personnel (AV-313) et bilan hebdomadaire (AV-314), fiches PT et BH ; coordination avec la session P9 | M |
+
+**Ordre recommandé** (DÉDUIT, à valider avec le porteur) : PP-0, puis PP-A et PP-B avant de distribuer des carnets aux sites, car un secours papier ne vaut que si l'on peut ensuite reporter ; PP-C à PP-E peuvent suivre le pilote. **Hors périmètre** : facture client (REQ-309), papeterie (EL, BN, CV), registre RC (resté sur papier), paie à partir des présences.
 
 ## 5. Transition cadrage → développement
 

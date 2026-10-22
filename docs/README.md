@@ -63,7 +63,7 @@
 |---|---|
 | [`00-reference/00-conventions.md`](00-reference/00-conventions.md) | Statuts, formats d'identifiants, règles de nommage, blocs standard |
 | [`00-reference/01-compte-rendu-comprehension.md`](00-reference/01-compte-rendu-comprehension.md) | Contrôle de compréhension initial ; contradictions C-01 à C-12 entre les sources et leur résolution |
-| [`01-functional/00-exigences-sources.md`](01-functional/00-exigences-sources.md) | Extraction fidèle des exigences des sources (REQ-001 à REQ-084, REQ-201 à REQ-215) |
+| [`01-functional/00-exigences-sources.md`](01-functional/00-exigences-sources.md) | Extraction fidèle des exigences des sources (REQ-001 à REQ-084, REQ-201 à REQ-215, puis REQ-301 à REQ-309 ajoutées par le porteur) |
 | [`02-domain-model/05-strategie-finance-couts.md`](02-domain-model/05-strategie-finance-couts.md) | Finance opérationnelle, valorisation et coûts de lot, avec exemple chiffré |
 | [`10-development-plan/06-passage-au-developpement.md`](10-development-plan/06-passage-au-developpement.md) | Structure cible du dépôt, backlog ordonné de P0, règles de travail des sessions de développement |
 | [`10-development-plan/07-demonstration-p0.md`](10-development-plan/07-demonstration-p0.md) | Démonstration de sortie de la phase P0 (P0-18) : tests d'acceptation, parcours hors ligne, éléments encore ouverts |
@@ -76,6 +76,7 @@
 | [`10-development-plan/14-demonstration-p5.md`](10-development-plan/14-demonstration-p5.md) | Démonstration de sortie de la phase P5 : sessions de caisse, remises de fonds, quotas d'appareil, garde des emplacements, réception sans document, tableau de distribution et accueil sur une seule définition, jeux hors ligne, revue adverse, invariants INV-FIN, INV-STK et INV-DIS, AV ouverts |
 | [`10-development-plan/15-ecrans-pwa.md`](10-development-plan/15-ecrans-pwa.md) | Suivi du fork « Écrans PWA » : incréments F-01 à F-55, statut de chaque écran, vérifications, besoins côté serveur, AV et ADR proposés, clôture (fusionné le 12/10/2026) ; écrans de P5 en cours dans le même fork |
 | [`10-development-plan/16-besoins-serveur-des-ecrans.md`](10-development-plan/16-besoins-serveur-des-ecrans.md) | Besoins serveur relevés par les écrans (S-01 et suivants) : statut vérifié contre le code à chaque intégration du fork, et où chacun est traité (P5-23, lot transverse) |
+| [`10-development-plan/19-pieces-papier.md`](10-development-plan/19-pieces-papier.md) | Lot « Pièces papier » (PP), planifié le 22/10/2026 : douze choix du porteur, catalogue des 25 pièces et leur rattachement à l'application, conception cible, lots PP-0 et PP-A à PP-E |
 | [`_tools/check_refs.py`](_tools/check_refs.py) | Contrôle des identifiants et des liens de la documentation ; régénération de l'index des règles |
 
 ## 3. Parcours de lecture conseillés
