@@ -71,6 +71,11 @@ export const analyticsQueryResponseSchema = z.object({
   /** Totaux des mesures additives ; `null` si une mesure n'est pas additive. */
   totals: z.record(z.string(), z.number()).nullable(),
   freshness: analyticsFreshnessSchema,
+  /**
+   * Vrai si l'étendue des lignes lisibles a été coupée faute de place (plafond de candidats, AV-423) : le résultat
+   * est alors plus étroit que le droit du lecteur, jamais plus large.
+   */
+  scopeTruncated: z.boolean().default(false),
 });
 export type AnalyticsQueryResponse = z.infer<typeof analyticsQueryResponseSchema>;
 
