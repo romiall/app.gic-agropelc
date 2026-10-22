@@ -704,6 +704,7 @@ export type {
   MeasureUnit,
   ResolvedFilter,
   ScopeKind,
+  SourceDocumentDefinition,
 } from './analytics-catalog.js';
 export { KPI_CATALOG, kpiDefinitionOf, kpiHasPreviousPeriod, kpisToCreate } from './kpi-catalog.js';
 export type { KpiDefinition, KpiNature, KpiReferenceState } from './kpi-catalog.js';

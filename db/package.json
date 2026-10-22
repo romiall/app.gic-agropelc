@@ -12,6 +12,7 @@
     "new": "dbmate --migrations-dir ./migrations new",
     "seed": "tsx seeds/run.ts",
     "create-local-admin": "tsx seeds/create-local-admin.ts",
+    "load:p9": "tsx load/p9-load-set.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -99,6 +99,11 @@ export const catalogDatasetSchema = z.object({
   temporality: z.enum(['FLOW', 'STATE']),
   dimensions: z.array(catalogDimensionSchema),
   measures: z.array(catalogMeasureSchema),
+  /**
+   * Document source d'une ligne (BR-ANA-010, niveau 2) : regrouper par `dimension` donne, à chaque ligne, l'identifiant
+   * et la route du document (vente, encaissement, mouvement de stock…).
+   */
+  source: z.object({ dimension: z.string(), type: z.string() }).nullable().optional(),
 });
 /** `GET /analytics/catalog` : les jeux que le lecteur peut explorer, avec ses mesures permises. */
 export const analyticsCatalogResponseSchema = z.object({
@@ -121,6 +126,9 @@ export function catalogDatasetView(
       label: d.label,
       type: d.type satisfies DimensionType,
     })),
+    ...(dataset.source !== undefined
+      ? { source: { dimension: dataset.source.dimension, type: dataset.source.type } }
+      : {}),
     measures: dataset.measures.map((m) => ({
       name: m.name,
       label: m.label,

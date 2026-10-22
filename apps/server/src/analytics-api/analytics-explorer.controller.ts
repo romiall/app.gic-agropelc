@@ -103,6 +103,21 @@ function definitionFrom(input: z.input<typeof explorationDefinitionSchema>): Exp
   };
 }
 
+/**
+ * Document source d'une ligne (BR-ANA-010, niveau 2 ; P9-21) : présent quand l'exploration regroupe par la dimension
+ * du document du jeu (`dataset.source`) et que la ligne la renseigne ; `null` sinon (ligne agrégée).
+ */
+export function sourceOf(
+  dataset: DatasetDefinition,
+  values: Readonly<Record<string, string | number | boolean | null>>,
+): { readonly type: string; readonly id: string; readonly route: string } | null {
+  const source = dataset.source;
+  if (source === undefined) return null;
+  const id = values[source.dimension];
+  if (typeof id !== 'string' || id === '') return null;
+  return { type: source.type, id, route: source.route.replace('{id}', id) };
+}
+
 interface RequestContext {
   readonly request: AuthenticatedRequest;
   readonly userId: string;
@@ -316,7 +331,7 @@ export class AnalyticsExplorerController {
         ...(column.unit !== undefined ? { unit: column.unit } : {}),
         ...(column.dimensionType !== undefined ? { dimensionType: column.dimensionType } : {}),
       })),
-      rows: result.rows.map((values) => ({ values })),
+      rows: result.rows.map((values) => ({ values, source: sourceOf(plan.dataset, values) })),
       rowCount: result.rowCount,
       totals: result.totals,
       freshness,

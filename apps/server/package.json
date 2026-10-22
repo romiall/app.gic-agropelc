@@ -16,6 +16,7 @@
     "approve-device": "tsx scripts/approve-device.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:coverage": "vitest run --coverage",
     "db:codegen": "kysely-codegen --dialect mysql --url \"$DATABASE_URL\" --out-file src/platform/kysely/schema.generated.ts"
   },

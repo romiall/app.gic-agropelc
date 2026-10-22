@@ -59,6 +59,20 @@ export interface DatasetDefinition {
   readonly scope: Readonly<Partial<Record<ScopeKind, readonly string[]>>>;
   readonly dimensions: readonly DimensionDefinition[];
   readonly measures: readonly MeasureDefinition[];
+  /**
+   * Document source d'une ligne (BR-ANA-010, niveau 2) : quand l'exploration regroupe par la dimension du document,
+   * chaque ligne porte l'identifiant et la route de lecture du document (P9-21).
+   */
+  readonly source?: SourceDocumentDefinition;
+}
+
+export interface SourceDocumentDefinition {
+  /** Dimension (de type `id`) qui porte l'identifiant du document de la ligne. */
+  readonly dimension: string;
+  /** Nature du document (vente, encaissement, mouvement de stock, perte, session…). */
+  readonly type: string;
+  /** Route de lecture du document ; `{id}` est remplacé par son identifiant (sinon, route de la liste). */
+  readonly route: string;
 }
 
 const dim = (
@@ -92,7 +106,7 @@ const distinct = (
   ...extra,
 });
 
-export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
+const BASE_DATASETS: readonly DatasetDefinition[] = [
   {
     code: 'f_sales_line',
     label: 'Lignes de vente',
@@ -442,6 +456,93 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     ],
   },
 ];
+
+/**
+ * Document source de chaque jeu dont une ligne détaillée est un document (P9-21 ; ADR-075 §6, AV-428) : la dimension
+ * est ajoutée au jeu, à côté de ses dimensions déclarées. Les jeux d'agrégats (soldes, production du jour) n'en ont pas.
+ */
+const DOCUMENT_SOURCES: Readonly<
+  Record<string, SourceDocumentDefinition & { readonly label: string }>
+> = {
+  f_sales_line: {
+    dimension: 'sale_id',
+    label: 'Vente (document)',
+    type: 'SALE',
+    route: '/api/v1/sales/{id}',
+  },
+  f_orders: {
+    dimension: 'order_id',
+    label: 'Commande (document)',
+    type: 'ORDER',
+    route: '/api/v1/orders/{id}',
+  },
+  f_payments: {
+    dimension: 'payment_id',
+    label: 'Encaissement (document)',
+    type: 'PAYMENT',
+    route: '/api/v1/payments/{id}',
+  },
+  f_stock_moves: {
+    dimension: 'move_id',
+    label: 'Mouvement de stock (document)',
+    type: 'STOCK_MOVE',
+    route: '/api/v1/stock-moves',
+  },
+  f_losses: {
+    dimension: 'loss_id',
+    label: 'Perte (document)',
+    type: 'LOSS',
+    route: '/api/v1/losses',
+  },
+  f_prospecting: {
+    dimension: 'visit_id',
+    label: 'Visite (document)',
+    type: 'VISIT',
+    route: '/api/v1/visits',
+  },
+  f_attendance: {
+    dimension: 'session_id',
+    label: 'Session de travail (document)',
+    type: 'WORK_SESSION',
+    route: '/api/v1/work-sessions',
+  },
+  f_costs: {
+    dimension: 'entry_id',
+    label: 'Écriture de coût (document)',
+    type: 'COST_ENTRY',
+    route: '/api/v1/costs',
+  },
+  f_expenses: {
+    dimension: 'expense_id',
+    label: 'Dépense (document)',
+    type: 'EXPENSE',
+    route: '/api/v1/expenses/{id}',
+  },
+  f_cash: {
+    dimension: 'movement_id',
+    label: 'Mouvement de trésorerie (document)',
+    type: 'CASH_MOVEMENT',
+    route: '/api/v1/cash-accounts',
+  },
+  f_purchases: {
+    dimension: 'order_id',
+    label: 'Bon de commande (document)',
+    type: 'PURCHASE_ORDER',
+    route: '/api/v1/purchase-orders/{id}',
+  },
+};
+
+function withDocumentSource(dataset: DatasetDefinition): DatasetDefinition {
+  const source = DOCUMENT_SOURCES[dataset.code];
+  if (source === undefined) return dataset;
+  return {
+    ...dataset,
+    dimensions: [...dataset.dimensions, dim(source.dimension, source.label, 'id')],
+    source: { dimension: source.dimension, type: source.type, route: source.route },
+  };
+}
+
+export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = BASE_DATASETS.map(withDocumentSource);
 
 const DATASETS_BY_CODE: ReadonlyMap<string, DatasetDefinition> = new Map(
   ANALYTICS_DATASETS.map((dataset) => [dataset.code, dataset]),
