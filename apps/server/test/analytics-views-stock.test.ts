@@ -28,12 +28,15 @@ import {
   cloneEggCollections,
   cloneLossDeclarations,
   seedReservedBalances,
+  seedVirtualBalances,
+  VIRTUAL_SINK_TYPES,
+  VIRTUAL_STOCK_TYPES,
 } from './analytics-view-seeds-stock.js';
 
 afterAll(closeTestDb);
 
-const FROM_DAY = '2026-01-01';
-const TO_DAY = '2026-12-31';
+const FROM_DAY = '2020-01-01';
+const TO_DAY = '2099-12-31';
 
 type Trx = Transaction<DB>;
 
@@ -106,26 +109,45 @@ describe('analytics_f_stock_moves', () => {
       );
       for (const { locationId, flows, view } of prepared) {
         const byProduct = new Map(view.map((row) => [fromBin(row.product_id), row]));
-        // Mêmes produits des deux côtés : la vue n'invente pas de produit, la référence n'en perd aucun.
-        expect(new Set(byProduct.keys()), locationId).toEqual(
-          new Set(flows.map((f) => f.productId)),
-        );
+        // La vue n'invente pas de produit : chaque produit qu'elle porte est dans la référence.
+        const known = new Set(flows.map((f) => f.productId));
+        for (const productId of byProduct.keys())
+          expect(known.has(productId), productId).toBe(true);
         for (const flow of flows) {
           const row = byProduct.get(flow.productId);
           const label = `${locationId}/${flow.productId}`;
-          expect(row, label).toBeDefined();
-          near(Number(row!.closing), flow.closingQty, `${label} solde`);
-          expect(Number(row!.closing_value), `${label} valeur`).toBe(flow.closingValueXaf);
-          near(Number(row!.sold ?? 0), flow.soldQty, `${label} vendu`);
-          near(Number(row!.returned ?? 0), flow.returnedQty, `${label} retours`);
-          near(Number(row!.lost ?? 0), flow.lostQty, `${label} pertes`);
+          if (row === undefined) {
+            // Un produit sans mouvement sur L : la référence n'y porte que des flux hors du registre de L
+            // (envoyé vers L, écarts de transfert, pertes confirmées).
+            expect(
+              [
+                flow.closingQty,
+                flow.soldQty,
+                flow.returnedQty,
+                flow.inventoryLossQty,
+                flow.inventoryGainQty,
+              ],
+              label,
+            ).toEqual([0, 0, 0, 0, 0]);
+            continue;
+          }
+          near(Number(row.closing), flow.closingQty, `${label} solde`);
+          expect(Number(row.closing_value), `${label} valeur`).toBe(flow.closingValueXaf);
+          near(Number(row.sold ?? 0), flow.soldQty, `${label} vendu`);
+          near(Number(row.returned ?? 0), flow.returnedQty, `${label} retours`);
+          // `lostQty` de la référence : pertes, pertes d'inventaire et confirmations de pertes de l'emplacement.
           near(
-            Number(row!.inventory_lost ?? 0),
+            Number(row.lost ?? 0),
+            flow.lostQty - flow.inventoryLossQty - flow.lossConfirmedQty,
+            `${label} pertes`,
+          );
+          near(
+            Number(row.inventory_lost ?? 0),
             flow.inventoryLossQty,
             `${label} pertes d’inventaire`,
           );
           near(
-            Number(row!.inventory_gain ?? 0),
+            Number(row.inventory_gain ?? 0),
             flow.inventoryGainQty,
             `${label} gains d’inventaire`,
           );
@@ -202,19 +224,23 @@ describe('analytics_f_stock_balance', () => {
       // Les soldes de la base d'essai n'ont ni réservé ni alloué et aucun emplacement à garde par appareil : on en
       // amorce un de chaque mode de garde AVANT de choisir les emplacements comparés (le mode lu est le nouveau).
       const seeded = await seedReservedBalances(trx);
-      const locations: { id: Buffer; custody_mode: string | null }[] = [];
+      const locations: { id: Buffer; custody_mode: string | null; is_virtual: number }[] = [];
       locations.push(
-        ...(await rows<{ id: Buffer; custody_mode: string | null }>(
+        ...(await rows<{ id: Buffer; custody_mode: string | null; is_virtual: number }>(
           trx,
-          sql`SELECT l.id, l.custody_mode
+          sql`SELECT l.id, l.custody_mode, l.is_virtual
               FROM analytics_f_stock_balance b
               JOIN organization_locations l ON l.id = b.location_id
-             GROUP BY l.id, l.custody_mode ORDER BY COUNT(*) DESC LIMIT 10`,
+             GROUP BY l.id, l.custody_mode, l.is_virtual ORDER BY COUNT(*) DESC LIMIT 10`,
         )),
       );
       for (const balance of seeded) {
         if (!locations.some((known) => fromBin(known.id) === balance.locationId)) {
-          locations.push({ id: toBin(balance.locationId), custody_mode: balance.custodyMode });
+          locations.push({
+            id: toBin(balance.locationId),
+            custody_mode: balance.custodyMode,
+            is_virtual: 0,
+          });
         }
       }
       const prepared = [];
@@ -235,7 +261,12 @@ describe('analytics_f_stock_balance', () => {
           sql`SELECT product_id, stock_lot_id, balance_base, allocated_base, available_base, value_xaf
                 FROM analytics_f_stock_balance WHERE location_id = ${location.id}`,
         );
-        prepared.push({ locationId: fromBin(location.id), balances, view });
+        prepared.push({
+          locationId: fromBin(location.id),
+          isVirtual: Number(location.is_virtual) === 1,
+          balances,
+          view,
+        });
       }
       enough(
         ctx,
@@ -247,7 +278,7 @@ describe('analytics_f_stock_balance', () => {
         `${typeof product === 'string' ? product : fromBin(product)}|${
           lot === null ? '' : typeof lot === 'string' ? lot : fromBin(lot)
         }`;
-      for (const { locationId, balances, view } of prepared) {
+      for (const { locationId, isVirtual, balances, view } of prepared) {
         const byKey = new Map(view.map((row) => [key(row.product_id, row.stock_lot_id), row]));
         for (const balance of balances) {
           const row = byKey.get(key(balance.productId, balance.lotId));
@@ -255,24 +286,90 @@ describe('analytics_f_stock_balance', () => {
           expect(row, label).toBeDefined();
           near(Number(row!.balance_base), balance.qtyOnHand, `${label} solde`);
           near(Number(row!.allocated_base), balance.qtyAllocated, `${label} alloué`);
-          near(Number(row!.available_base), balance.qtyAvailable, `${label} disponible`);
+          // Le disponible n'existe que sur un emplacement physique : zéro ailleurs (transit, pertes en attente, à-livrer).
+          near(
+            Number(row!.available_base),
+            isVirtual ? 0 : balance.qtyAvailable,
+            `${label} disponible`,
+          );
           // `+ 0` : la référence rend `-0` pour un petit solde négatif arrondi à zéro.
           expect(Number(row!.value_xaf) + 0, `${label} valeur`).toBe(balance.valueXaf + 0);
         }
-        // Une ligne de la vue que `GET /stock` ne rend pas est entièrement à zéro (il omet ces lignes).
+        // La vue n'a aucune ligne de plus que `GET /stock` : les soldes entièrement à zéro, qu'il omet, sont omis.
         const known = new Set(balances.map((balance) => key(balance.productId, balance.lotId)));
-        for (const row of view) {
-          if (known.has(key(row.product_id, row.stock_lot_id))) continue;
-          expect(Number(row.balance_base), `${locationId} ligne en trop`).toBe(0);
-          expect(Number(row.allocated_base), `${locationId} ligne en trop`).toBe(0);
-          expect(Number(row.available_base), `${locationId} ligne en trop`).toBe(0);
-        }
+        const extra = view
+          .map((row) => key(row.product_id, row.stock_lot_id))
+          .filter((viewKey) => !known.has(viewKey));
+        expect(extra, `${locationId} lignes en trop`).toEqual([]);
       }
     });
   });
 
-  it('n’y figurent ni source ni puits de mouvement ; le transit, les pertes en attente et l’à-livrer y figurent', async (ctx) => {
+  it('le transit, les pertes en attente et l’à-livrer y figurent sans disponible ; ni source, ni puits, ni solde à zéro', async (ctx) => {
     await snapshot(async (trx) => {
+      // La base d'essai peut ne porter aucun solde virtuel : un de chaque type, et un solde à zéro, sont amorcés.
+      const seeded = await seedVirtualBalances(trx);
+      const withStock = seeded.virtual.filter((entry) =>
+        (VIRTUAL_STOCK_TYPES as readonly string[]).includes(entry.locationType),
+      );
+      const sinks = seeded.virtual.filter((entry) =>
+        (VIRTUAL_SINK_TYPES as readonly string[]).includes(entry.locationType),
+      );
+      enough(ctx, withStock.length, 1, 'emplacements virtuels qui portent du stock');
+      enough(ctx, sinks.length, 1, 'emplacements source ou puits');
+      enough(
+        ctx,
+        seeded.zeroBalance === undefined ? 0 : 1,
+        1,
+        'solde à zéro sur un emplacement physique',
+      );
+      enough(ctx, seeded.reservedOnly === undefined ? 0 : 1, 1, 'solde réservé sans stock');
+      enough(ctx, seeded.allocatedOnly === undefined ? 0 : 1, 1, 'solde alloué sans stock');
+      for (const entry of withStock) {
+        const [row] = await rows<{
+          location_type: string;
+          balance_base: string;
+          available_base: string;
+          value_xaf: string;
+        }>(
+          trx,
+          sql`SELECT location_type, balance_base, available_base, value_xaf
+                FROM analytics_f_stock_balance
+               WHERE location_id = ${toBin(entry.locationId)} AND product_id = ${toBin(entry.productId)}`,
+        );
+        const label = `${entry.locationType} ${entry.locationId}`;
+        expect(row, label).toBeDefined();
+        expect(row!.location_type, label).toBe(entry.locationType);
+        near(Number(row!.balance_base), 7, `${label} solde`);
+        // De la marchandise en transit, en perte en attente ou vendue à livrer n'est pas disponible.
+        expect(Number(row!.available_base), `${label} disponible`).toBe(0);
+        const [reference] = await listStockBalances(trx, {
+          locationId: entry.locationId,
+          custodyMode: null,
+          productId: entry.productId,
+        });
+        expect(Number(row!.value_xaf) + 0, `${label} valeur`).toBe(reference!.valueXaf + 0);
+      }
+      // Un solde réservé ou alloué sans stock reste une ligne : il n'est pas omis comme un solde entièrement à zéro.
+      for (const [label, kept] of [
+        ['réservé', seeded.reservedOnly!],
+        ['alloué', seeded.allocatedOnly!],
+      ] as const) {
+        const [present] = await rows<{ n: string }>(
+          trx,
+          sql`SELECT COUNT(*) AS n FROM analytics_f_stock_balance
+               WHERE location_id = ${toBin(kept.locationId)} AND product_id = ${toBin(kept.productId)}`,
+        );
+        expect(Number(present!.n), `solde ${label} sans stock`).toBe(1);
+      }
+      for (const entry of [...sinks, ...(seeded.zeroBalance ? [seeded.zeroBalance] : [])]) {
+        const [absent] = await rows<{ n: string }>(
+          trx,
+          sql`SELECT COUNT(*) AS n FROM analytics_f_stock_balance
+               WHERE location_id = ${toBin(entry.locationId)} AND product_id = ${toBin(entry.productId)}`,
+        );
+        expect(Number(absent!.n), `${entry.locationType} ${entry.locationId}`).toBe(0);
+      }
       const [check] = await rows<{
         sinks: string;
         view_n: string;
@@ -286,20 +383,13 @@ describe('analytics_f_stock_balance', () => {
                    COALESCE(SUM(NOT (v.location_type <=> l.location_type)), 0) AS wrong_type,
                    (SELECT COUNT(*) FROM inventory_stock_balances b
                       JOIN organization_locations x ON x.id = b.location_id
-                     WHERE x.is_virtual = 0 OR x.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER')) AS source_n
+                     WHERE (x.is_virtual = 0 OR x.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER'))
+                       AND (b.qty_on_hand <> 0 OR b.qty_reserved <> 0 OR b.qty_allocated <> 0)) AS source_n
               FROM analytics_f_stock_balance v JOIN organization_locations l ON l.id = v.location_id`,
       );
-      enough(ctx, Number(check!.view_n), 1, 'soldes');
       expect(Number(check!.sinks)).toBe(0);
       expect(Number(check!.wrong_type)).toBe(0);
       expect(Number(check!.view_n)).toBe(Number(check!.source_n));
-      const [kinds] = await rows<{ virtual_sources: string }>(
-        trx,
-        sql`SELECT (SELECT COUNT(*) FROM inventory_stock_balances b
-                      JOIN organization_locations x ON x.id = b.location_id
-                     WHERE x.is_virtual = 1 AND x.location_type NOT IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER')) AS virtual_sources`,
-      );
-      enough(ctx, Number(kinds!.virtual_sources), 1, 'soldes d’emplacements source ou puits');
     });
   });
 

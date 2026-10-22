@@ -26,6 +26,7 @@ import {
   snapshot,
   cloneCancelledPayment,
   cloneDiscountedCancellation,
+  cloneMergedConvertedCustomer,
   cloneOrder,
   cloneProspect,
   cloneWorkSession,
@@ -34,8 +35,8 @@ import {
 
 afterAll(closeTestDb);
 
-const FROM_DAY = '2026-01-01';
-const TO_DAY = '2026-12-31';
+const FROM_DAY = '2020-01-01';
+const TO_DAY = '2099-12-31';
 
 type Trx = Transaction<DB>;
 
@@ -152,6 +153,8 @@ describe('analytics_f_sales_line', () => {
               FROM analytics_f_sales_line v JOIN sales_sales s ON s.id = v.sale_id`,
       );
       enough(ctx, Number(check!.checked), 1, 'lignes de vente');
+      // Sans vente sans commercial, un mutant « le commercial seul » passerait : l'essai saute plutôt que passer.
+      enough(ctx, Number(check!.fallback), 1, 'lignes de vente sans commercial');
       expect(Number(check!.wrong)).toBe(0);
     });
   });
@@ -281,35 +284,41 @@ describe('analytics_f_sales_line', () => {
 
   it('une annulation est une ligne négative à la date d’application, la date de la vente reste lisible', async (ctx) => {
     await snapshot(async (trx) => {
-      const sample = await rows<{
-        business_day: unknown;
-        sale_day: unknown;
-        applied: unknown;
-        sale_business: unknown;
-        quantity_base: string;
-        amount_xaf: string;
-        cl_quantity: string;
-        cl_amount: string;
-      }>(
-        trx,
-        sql`SELECT v.business_day, v.sale_day, c.applied_business_date AS applied,
-                   s.business_date AS sale_business, v.quantity_base, v.amount_xaf,
-                   cl.quantity_base AS cl_quantity, cl.amount_xaf AS cl_amount
-              FROM analytics_f_sales_line v
-              JOIN sales_sale_cancellation_lines cl ON cl.sale_line_id = v.line_id
-              JOIN sales_sale_cancellations c ON c.id = cl.cancellation_id AND c.status = 'APPLIED'
-              JOIN sales_sales s ON s.id = v.sale_id
-             WHERE v.event_kind = 'CANCELLATION' AND v.amount_xaf = -cl.amount_xaf
-               AND v.business_day = c.applied_business_date
-             LIMIT 200`,
-      );
-      enough(ctx, sample.length, 1, 'lignes d’annulation appliquées');
-      for (const row of sample) {
-        expect(dayText(row.business_day)).toBe(dayText(row.applied));
-        expect(dayText(row.sale_day)).toBe(dayText(row.sale_business));
-        expect(Number(row.quantity_base)).toBe(-Number(row.cl_quantity));
-        expect(Number(row.amount_xaf)).toBe(-Number(row.cl_amount));
-      }
+      // Une annulation copiée, appliquée un autre jour que sa vente : la comparaison distingue les deux dates.
+      const copy = await cloneDiscountedCancellation(trx, '2019-03-07', false);
+      enough(ctx, copy ? 1 : 0, 1, 'ligne de vente remisée');
+      const sums = async (sourceDay: string, viewDay: string) => {
+        const source = await rows<{ day: string; quantity: string; amount: string }>(
+          trx,
+          sql.raw<{ day: string; quantity: string; amount: string }>(
+            `SELECT DATE_FORMAT(${sourceDay}, '%Y-%m-%d') AS day, -SUM(cl.quantity_base) AS quantity,
+                    -SUM(cl.amount_xaf) AS amount
+               FROM sales_sale_cancellation_lines cl
+               JOIN sales_sale_cancellations c ON c.id = cl.cancellation_id AND c.status = 'APPLIED'
+               JOIN sales_sale_lines l ON l.id = cl.sale_line_id
+               JOIN sales_sales s ON s.id = l.sale_id
+              GROUP BY ${sourceDay}`,
+          ),
+        );
+        const view = await rows<{ day: string; quantity: string; amount: string }>(
+          trx,
+          sql.raw<{ day: string; quantity: string; amount: string }>(
+            `SELECT DATE_FORMAT(${viewDay}, '%Y-%m-%d') AS day, SUM(quantity_base) AS quantity,
+                    SUM(amount_xaf) AS amount
+               FROM analytics_f_sales_line WHERE event_kind = 'CANCELLATION' GROUP BY ${viewDay}`,
+          ),
+        );
+        const asMap = (list: typeof source) =>
+          new Map(list.map((row) => [row.day, [Number(row.quantity), Number(row.amount)]]));
+        return { source: asMap(source), view: asMap(view) };
+      };
+      // Le jour de l'événement est le jour d'application ; le jour de la vente reste celui de la vente d'origine.
+      const byApplied = await sums('c.applied_business_date', 'business_day');
+      expect(byApplied.view).toEqual(byApplied.source);
+      expect(byApplied.view.has('2019-03-07')).toBe(true);
+      const bySale = await sums('s.business_date', 'sale_day');
+      expect(bySale.view).toEqual(bySale.source);
+      expect(bySale.view.has('2019-03-07')).toBe(false);
       // Seules les annulations appliquées entrent ; une demande ou un refus n'écrit aucune ligne.
       const [counts] = await rows<{ view_lines: string; applied_lines: string }>(
         trx,
@@ -507,6 +516,7 @@ describe('analytics_f_prospecting', () => {
         .selectFrom('crm_customers')
         .select(['id', 'converted_at'])
         .where('converted_at', 'is not', null)
+        .where('stage', '<>', 'MERGED')
         .execute();
       enough(ctx, customers.length, 1, 'comptes convertis');
       const assignments = await trx
@@ -565,6 +575,22 @@ describe('analytics_f_prospecting', () => {
           seeded.customerId,
         ).toEqual([seeded.holderAtConversion]);
       }
+    });
+  });
+
+  it('la conversion reprise par le compte conservé d’une fusion n’est comptée qu’une fois (copie)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const merged = await cloneMergedConvertedCustomer(trx);
+      enough(ctx, merged ? 1 : 0, 1, 'compte converti');
+      const counted = await rows<{ customer: Buffer }>(
+        trx,
+        sql`SELECT converted_customer_id AS customer FROM analytics_f_prospecting
+             WHERE event_kind = 'CONVERSION'
+               AND converted_customer_id IN (${sql.join([merged!.keptId, merged!.mergedId].map(toBin))})`,
+      );
+      const ids = counted.map((row) => fromBin(row.customer));
+      expect(ids).toContain(merged!.keptId);
+      expect(ids).not.toContain(merged!.mergedId);
     });
   });
 
@@ -692,6 +718,31 @@ describe('analytics_f_attendance', () => {
       enough(ctx, Number(check!.refused), 1, 'sessions à dérogation refusée ou en attente');
       expect(Number(check!.accepted_key_on_refused)).toBe(0);
       expect(Number(check!.flagged)).toBeGreaterThanOrEqual(Number(check!.refused));
+    });
+  });
+});
+
+describe('analytics_f_attendance (dérogations)', () => {
+  it('une dérogation en attente ou refusée n’est pas un jour de présence, une dérogation approuvée l’est (copies)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const pending = await cloneWorkSession(trx, '2019-03-04T09:00:00.000Z', 'PENDING');
+      const rejected = await cloneWorkSession(trx, '2019-03-05T09:00:00.000Z', 'REJECTED');
+      const approved = await cloneWorkSession(trx, '2019-03-06T09:00:00.000Z', 'APPROVED');
+      enough(ctx, pending && rejected && approved ? 1 : 0, 1, 'session de travail terminée');
+      for (const [label, session, accepted] of [
+        ['en attente', pending!, false],
+        ['refusée', rejected!, false],
+        ['approuvée', approved!, true],
+      ] as const) {
+        const [row] = await rows<{ override: number; key: string | null; sessions: string }>(
+          trx,
+          sql`SELECT override, accepted_day_key AS \`key\`, session_count AS sessions
+                FROM analytics_f_attendance WHERE session_id = ${toBin(session)}`,
+        );
+        expect(Number(row!.override), `${label} : dérogation signalée`).toBe(1);
+        expect(row!.key !== null, `${label} : jour de présence`).toBe(accepted);
+        expect(Number(row!.sessions), `${label} : session comptée`).toBe(1);
+      }
     });
   });
 });

@@ -24,15 +24,18 @@ SELECT
 FROM finance_expenses e
 WHERE e.status NOT IN ('CANCELLED', 'REJECTED');
 
--- Mouvements de trésorerie : une ligne par mouvement ; une contre-écriture est un mouvement de sens inverse.
--- Le site se déduit du compte (un compte central n'en a pas) ; la personne est le titulaire du compte, à défaut
--- son responsable, comme la lecture du module `finance`.
+-- Mouvements de trésorerie : une ligne par mouvement ; une contre-écriture est un mouvement de sens inverse et de
+-- même type (`is_reversal` la distingue : un encaissement annulé donne une entrée et une sortie `CUSTOMER_PAYMENT`).
+-- Les entrées et les sorties sont des flux bruts, virements internes et écarts de caisse compris (filtrer
+-- `movement_type`, AV-494). Le site se déduit du compte (un compte central n'en a pas) ; la personne est le
+-- titulaire du compte, à défaut son responsable, comme la lecture du module `finance`.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_cash AS
 SELECT
   m.business_date AS business_day,
   m.id AS movement_id,
   m.cash_account_id,
   m.movement_type,
+  m.is_reversal,
   a.site_id,
   COALESCE(a.holder_user_id, a.responsible_user_id) AS holder_user_id,
   CASE WHEN m.direction = 'IN' THEN m.amount_xaf ELSE 0 END AS inflow_xaf,
@@ -41,14 +44,15 @@ FROM finance_cash_movements m
 JOIN finance_cash_accounts a ON a.id = m.cash_account_id;
 
 -- Achats : deux sortes de faits dans les colonnes des mesures qu'ils portent. Les lignes non annulées des bons de
--- commande engagés (ni brouillon, ni en attente d'approbation, ni annulés), au jour du bon : quantité commandée
--- et montant commandé (le total du bon exclut une ligne annulée). Les lignes des
+-- commande engagés (ni brouillon, ni en attente d'approbation, ni annulés), au jour de l'approbation du bon (à
+-- défaut de sa création) : quantité commandée et montant commandé (le total du bon exclut une ligne annulée) ;
+-- un bon approuvé et pas encore envoyé compte comme commandé (AV-493). Les lignes des
 -- réceptions comptabilisées (statuts dont les quantités comptent au bon, `purchaseOrderMatching`), au jour de
 -- la réception : livré, rejeté et accepté (livré moins rejeté). Le site est celui du bon ou de la réception,
 -- l'auteur celui du document.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_purchases AS
 SELECT
-  CAST(CONVERT_TZ(po.occurred_at, '+00:00', '+01:00') AS DATE) AS business_day,
+  CAST(CONVERT_TZ(COALESCE(po.approved_at, po.occurred_at), '+00:00', '+01:00') AS DATE) AS business_day,
   po.id AS order_id,
   NULL AS receipt_id,
   po.supplier_id,

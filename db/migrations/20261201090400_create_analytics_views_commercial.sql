@@ -151,8 +151,11 @@ WHERE p.status = 'CANCELLED' AND p.cancelled_at IS NOT NULL;
 -- (`crm/application/public/activity-query.ts`). La zone est celle du compte ; un contact collecté est un compte
 -- créé avec un téléphone. Les colonnes `*_id` des mesures ne sont renseignées que sur l'événement qui les porte.
 -- La portée par personne est `user_id`, l'acteur de l'événement (acquéreur, auteur de la visite, titulaire à la
--- conversion), comme le module `crm` (une visite se lit par son auteur) ; une conversion sans titulaire reste
--- comptée (`user_id` vide : visible des seules portées sans restriction de personne).
+-- conversion), comme `commercialEffort` (BR-CRM-019) : une visite se lit par son auteur comme dans le module `crm`,
+-- mais un compte ou une conversion se lit ici par l'acteur de l'événement, non par le titulaire courant que juge
+-- `GET /customers` (AV-491). Une conversion sans titulaire reste comptée (`user_id` vide : visible des seules
+-- portées sans restriction de personne) ; un compte fusionné n'est compté ni à la création ni à la conversion,
+-- sa conversion étant reprise par le compte conservé (AV-492).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_prospecting AS
 SELECT
   CAST(CONVERT_TZ(c.acquired_at, '+00:00', '+01:00') AS DATE) AS business_day,
@@ -205,7 +208,7 @@ FROM crm_customers c
 LEFT JOIN crm_customer_assignments a
   ON a.customer_id = c.id AND a.valid_from <= c.converted_at
  AND (a.valid_to IS NULL OR a.valid_to > c.converted_at)
-WHERE c.converted_at IS NOT NULL;
+WHERE c.converted_at IS NOT NULL AND c.stage <> 'MERGED';
 
 -- Présences (KPI-COM-17) : une ligne par session de travail, au jour de son début ; la session ne porte pas de
 -- site mais la zone déclarée au pointage (portée par la zone et par la personne, comme la lecture du module

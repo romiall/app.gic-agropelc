@@ -5,9 +5,11 @@
 -- colonne générée de la table source quand elle existe, portée dérivée dans la vue, documents annulés exclus.
 -- migrate:up transaction:false
 
--- Mouvements de stock : une ligne par mouvement (les contre-écritures sont des mouvements à part entière, de même
--- `move_type` que le mouvement qu'elles défont : `is_reversal` et `source_doc_type` les distinguent, comme le
--- font les flux d'un emplacement).
+-- Mouvements de stock : une ligne par mouvement (les contre-écritures sont des mouvements à part entière :
+-- `is_reversal` et `source_doc_type` les distinguent, comme le font les flux d'un emplacement). Leur `move_type`
+-- n'est pas toujours celui du mouvement qu'elles défont (une consommation annulée est `CONSUMPTION_REVERSAL`,
+-- une réception annulée `SUPPLIER_RETURN`, une production annulée échange `PRODUCTION_INPUT` et
+-- `PRODUCTION_OUTPUT`) : un filtre sur un type seul ne voit pas toujours l'annulation, d'où `is_reversal`.
 -- Le site d'une extrémité se déduit de son emplacement ; un emplacement virtuel n'en a pas. Le titulaire
 -- n'existe que pour un emplacement mobile. `value_xaf` est une valeur au coût (mesure protégée).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_stock_moves AS
@@ -40,8 +42,12 @@ LEFT JOIN catalog_reason_codes rc ON rc.id = m.reason_code_id;
 -- lot (clé nulle de la table source). Les emplacements virtuels qui ne sont que la source ou le puits d'un
 -- mouvement (fournisseur, client, perte, production, consommation, ajustement, ouverture) n'ont pas de stock et
 -- n'entrent pas ; restent les emplacements physiques, le transit, les pertes en attente de validation et les
--- marchandises vendues à livrer, que `location_type` distingue (KPI-STK-02 les annonce à part, AV-256). L'alloué
--- reste nul dans la projection (ADR-033 §3) : les quotas d'appareil se lisent dans le tableau de distribution.
+-- marchandises vendues à livrer, que `location_type` distingue (KPI-STK-02 les annonce à part, AV-256) : le solde et
+-- la valeur sans filtre d'emplacement les additionnent, l'accueil ne somme que les emplacements physiques
+-- (filtrer `location_type`, AV-494). Le disponible n'existe que sur un emplacement physique : zéro ailleurs
+-- (de la marchandise en transit, en perte en attente ou déjà vendue n'est pas disponible). Les soldes entièrement
+-- à zéro (que la projection conserve) sont omis, comme `GET /stock`. L'alloué reste nul dans la projection
+-- (ADR-033 §3) : les quotas d'appareil se lisent dans le tableau de distribution.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_stock_balance AS
 SELECT
   b.location_id,
@@ -53,7 +59,8 @@ SELECT
   l.custodian_user_id,
   b.qty_on_hand AS balance_base,
   b.qty_allocated AS allocated_base,
-  CASE WHEN l.custody_mode IN ('EXCLUSIVE_USER', 'EXCLUSIVE_DEVICE')
+  CASE WHEN l.is_virtual = 1 THEN 0
+       WHEN l.custody_mode IN ('EXCLUSIVE_USER', 'EXCLUSIVE_DEVICE')
        THEN b.qty_on_hand - b.qty_reserved
        ELSE b.qty_on_hand - b.qty_reserved - b.qty_allocated
   END AS available_base,
@@ -62,7 +69,8 @@ FROM inventory_stock_balances b
 JOIN organization_locations l ON l.id = b.location_id
 JOIN catalog_products p ON p.id = b.product_id
 LEFT JOIN inventory_product_valuations v ON v.product_id = b.product_id
-WHERE l.is_virtual = 0 OR l.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER');
+WHERE (l.is_virtual = 0 OR l.location_type IN ('V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER'))
+  AND (b.qty_on_hand <> 0 OR b.qty_reserved <> 0 OR b.qty_allocated <> 0);
 
 -- Pertes déclarées : déclarations non annulées, avec leur statut. Comme `lossValueSummary`, la quantité et la
 -- valeur (coût figé de la déclaration) ne comptent que les pertes constatées (enregistrée, approuvée, non

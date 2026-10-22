@@ -334,7 +334,8 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     temporality: 'FLOW',
     permissions: ['production.lot.read'],
     periodDimension: 'business_day',
-    scope: { SITE: ['site_id'], PERSON: ['recorded_by'] },
+    // Les lectures de production ne jugent que le site du lot : pas de portée par personne (jamais plus large).
+    scope: { SITE: ['site_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
       dim('lot_id', 'Lot', 'id'),
@@ -365,7 +366,8 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     // Un coût est une valeur : le jeu entier exige le droit de valorisation (AV-422, AV-424).
     permissions: ['inventory.valuation.read'],
     periodDimension: 'business_day',
-    scope: { SITE: ['site_id'], PERSON: ['created_by'] },
+    // Un coût se lit par le site de son objet (comme les lectures de production) : pas de portée par personne.
+    scope: { SITE: ['site_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
       dim('cost_object_type', "Type d'objet de coût", 'code'),
@@ -408,6 +410,7 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
       dim('business_day', 'Jour', 'date'),
       dim('cash_account_id', 'Compte', 'id'),
       dim('movement_type', 'Type de mouvement', 'code'),
+      dim('is_reversal', 'Contre-écriture', 'boolean'),
       dim('site_id', 'Site', 'id'),
     ],
     measures: [
@@ -422,7 +425,8 @@ export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = [
     temporality: 'FLOW',
     permissions: ['procurement.order.read'],
     periodDimension: 'business_day',
-    scope: { SITE: ['site_id'], PERSON: ['created_by'] },
+    // Les lectures des bons et des réceptions ne jugent que le site : pas de portée par personne.
+    scope: { SITE: ['site_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
       dim('supplier_id', 'Fournisseur', 'id'),

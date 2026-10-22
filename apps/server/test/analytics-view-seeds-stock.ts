@@ -6,7 +6,7 @@
 import { sql } from 'kysely';
 import { fromBin } from '../src/platform/kysely/uuid-columns.js';
 import { freshUuid } from './helpers.js';
-import { atDay, firstRow, insertCopy, newId, type Trx } from './analytics-view-seeds.js';
+import { atDay, firstRow, insertCopy, newId, type Row, type Trx } from './analytics-view-seeds.js';
 
 export interface SeededBalance {
   readonly locationId: string;
@@ -48,6 +48,96 @@ export async function seedReservedBalances(trx: Trx): Promise<readonly SeededBal
   }
   await reserve(await pick('SHARED'), 'SHARED');
   return seeded;
+}
+
+export interface SeededVirtualBalance {
+  readonly locationId: string;
+  readonly locationType: string;
+  readonly productId: string;
+}
+
+/** Types d'emplacement virtuel qui ne sont que la source ou le puits d'un mouvement : sans stock, hors de la vue. */
+export const VIRTUAL_SINK_TYPES = ['V_SUPPLIER', 'V_LOSS', 'V_CUSTOMER'] as const;
+/** Types d'emplacement virtuel qui portent du stock (transit, pertes en attente, vendu à livrer). */
+export const VIRTUAL_STOCK_TYPES = ['V_TRANSIT', 'V_PENDING_LOSS', 'V_TO_DELIVER'] as const;
+
+/**
+ * Un solde de 7 sur un emplacement de chaque type virtuel (les trois qui portent du stock et trois sources ou
+ * puits) et un solde entièrement à zéro sur un emplacement physique : la base d'essai peut n'en porter aucun.
+ * Les soldes sont insérés ou fixés dans la transaction de l'essai ; `zeroBalance` est la ligne à zéro.
+ */
+export async function seedVirtualBalances(trx: Trx): Promise<{
+  readonly virtual: readonly SeededVirtualBalance[];
+  readonly zeroBalance: SeededVirtualBalance | undefined;
+  readonly reservedOnly: SeededVirtualBalance | undefined;
+  readonly allocatedOnly: SeededVirtualBalance | undefined;
+}> {
+  const product = await firstRow(trx, sql`SELECT id FROM catalog_products ORDER BY id LIMIT 1`);
+  if (!product) {
+    return {
+      virtual: [],
+      zeroBalance: undefined,
+      reservedOnly: undefined,
+      allocatedOnly: undefined,
+    };
+  }
+  const productId = fromBin(product.id as Buffer);
+  const noLot = sql`UNHEX('00000000000000000000000000000000')`;
+  const virtual: SeededVirtualBalance[] = [];
+  for (const locationType of [...VIRTUAL_STOCK_TYPES, ...VIRTUAL_SINK_TYPES]) {
+    const location = await firstRow(
+      trx,
+      sql`SELECT id FROM organization_locations WHERE location_type = ${locationType} ORDER BY id LIMIT 1`,
+    );
+    if (!location) continue;
+    await sql`INSERT INTO inventory_stock_balances
+                (location_id, product_id, lot_key, qty_on_hand, qty_reserved, qty_allocated, last_move_at)
+              VALUES (${location.id}, ${product.id}, ${noLot}, 7, 0, 0, UTC_TIMESTAMP(6))
+              ON DUPLICATE KEY UPDATE qty_on_hand = 7, qty_reserved = 0, qty_allocated = 0`.execute(
+      trx,
+    );
+    virtual.push({ locationId: fromBin(location.id as Buffer), locationType, productId });
+  }
+  const store = await firstRow(
+    trx,
+    sql`SELECT l.id FROM organization_locations l
+         WHERE l.location_type = 'STORE' AND l.is_virtual = 0
+           AND NOT EXISTS (SELECT 1 FROM inventory_stock_balances b
+                            WHERE b.location_id = l.id AND b.product_id = ${product.id})
+         ORDER BY l.id LIMIT 1`,
+  );
+  let zeroBalance: SeededVirtualBalance | undefined;
+  if (store) {
+    await sql`INSERT INTO inventory_stock_balances
+                (location_id, product_id, lot_key, qty_on_hand, qty_reserved, qty_allocated, last_move_at)
+              VALUES (${store.id}, ${product.id}, ${noLot}, 0, 0, 0, UTC_TIMESTAMP(6))`.execute(
+      trx,
+    );
+    zeroBalance = { locationId: fromBin(store.id as Buffer), locationType: 'STORE', productId };
+  }
+  // Un solde sans stock mais réservé et alloué reste une ligne de `GET /stock` : il n'est pas omis.
+  const others = (
+    await sql<Row>`SELECT id FROM catalog_products WHERE id <> ${product.id} ORDER BY id LIMIT 2`.execute(
+      trx,
+    )
+  ).rows;
+  const insertAt = async (other: Row | undefined, reserved: number, allocated: number) => {
+    if (!store || !other) return undefined;
+    await sql`INSERT INTO inventory_stock_balances
+                (location_id, product_id, lot_key, qty_on_hand, qty_reserved, qty_allocated, last_move_at)
+              VALUES (${store.id}, ${other.id}, ${noLot}, 0, ${reserved}, ${allocated}, UTC_TIMESTAMP(6))
+              ON DUPLICATE KEY UPDATE qty_on_hand = 0, qty_reserved = ${reserved}, qty_allocated = ${allocated}`.execute(
+      trx,
+    );
+    return {
+      locationId: fromBin(store.id as Buffer),
+      locationType: 'STORE',
+      productId: fromBin(other.id as Buffer),
+    };
+  };
+  const reservedOnly = await insertAt(others[0], 1, 0);
+  const allocatedOnly = await insertAt(others[1], 0, 2);
+  return { virtual, zeroBalance, reservedOnly, allocatedOnly };
 }
 
 /**
@@ -213,21 +303,27 @@ export async function cloneReceipts(
   };
 }
 
-/** Une ligne de plus, d'un autre produit et d'un autre montant (statut au choix), sur un bon de commande engagé. */
+/**
+ * Une ligne de plus, d'un produit que le bon ne commande pas encore (le `nth`-ième, pour des copies de produits
+ * distincts) et d'un autre montant (statut au choix), sur un bon de commande engagé.
+ */
 export async function cloneOrderLine(
   trx: Trx,
   lineStatus = 'OPEN',
+  nth = 0,
 ): Promise<{ orderId: string; productId: string; lineTotalXaf: number } | undefined> {
   const line = await firstRow(
     trx,
     sql`SELECT l.* FROM procurement_purchase_order_lines l
           JOIN procurement_purchase_orders o ON o.id = l.order_id
-         WHERE o.status NOT IN ('DRAFT', 'CANCELLED') ORDER BY l.id LIMIT 1`,
+         WHERE o.status NOT IN ('DRAFT', 'PENDING_APPROVAL', 'CANCELLED') ORDER BY l.id LIMIT 1`,
   );
   if (!line) return undefined;
   const product = await firstRow(
     trx,
-    sql`SELECT id FROM catalog_products WHERE id <> ${line.product_id} ORDER BY id LIMIT 1`,
+    sql`SELECT id FROM catalog_products
+         WHERE id NOT IN (SELECT product_id FROM procurement_purchase_order_lines WHERE order_id = ${line.order_id})
+         ORDER BY id LIMIT 1 OFFSET ${nth}`,
   );
   if (!product) return undefined;
   const next = await firstRow(
@@ -255,10 +351,14 @@ export async function cloneOrderLine(
   };
 }
 
-/** Une copie d'un bon de commande engagé, dans le statut demandé, avec une copie de sa première ligne. */
+/**
+ * Une copie d'un bon de commande engagé, dans le statut demandé, avec une copie de sa première ligne ;
+ * `overrides` fixe d'autres colonnes du bon (dates de création et d'approbation par exemple).
+ */
 export async function cloneOrderWithStatus(
   trx: Trx,
   status: string,
+  overrides: Readonly<Record<string, unknown>> = {},
 ): Promise<{ orderId: string; productId: string } | undefined> {
   const order = await firstRow(
     trx,
@@ -283,6 +383,7 @@ export async function cloneOrderWithStatus(
     ...(status === 'CANCELLED'
       ? { cancelled_at: order.occurred_at, cancelled_by: order.created_by }
       : {}),
+    ...overrides,
   });
   await insertCopy(trx, 'procurement_purchase_order_lines', line, {
     id: newId(),

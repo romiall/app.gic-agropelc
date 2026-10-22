@@ -18,7 +18,7 @@ import {
 } from '../src/modules/finance/application/public/index.js';
 import { purchaseOrderMatching } from '../src/modules/procurement/application/public/index.js';
 import { closeTestDb } from './helpers.js';
-import { snapshot } from './analytics-view-seeds.js';
+import { atDay, snapshot } from './analytics-view-seeds.js';
 import {
   cloneCashMovementOnHolderlessAccount,
   cloneOrderLine,
@@ -28,8 +28,8 @@ import {
 
 afterAll(closeTestDb);
 
-const FROM_DAY = '2026-01-01';
-const TO_DAY = '2026-12-31';
+const FROM_DAY = '2020-01-01';
+const TO_DAY = '2099-12-31';
 
 type Trx = Transaction<DB>;
 
@@ -143,11 +143,15 @@ describe('analytics_f_cash', () => {
         both_ways: string;
         wrong_amount: string;
         wrong_account: string;
+        wrong_reversal: string;
+        reversals: string;
         view_n: string;
         source_n: string;
       }>(
         trx,
         sql`SELECT COUNT(*) AS checked,
+                   COALESCE(SUM(NOT (v.is_reversal <=> m.is_reversal)), 0) AS wrong_reversal,
+                   COALESCE(SUM(m.is_reversal = 1), 0) AS reversals,
                    SUM(v.inflow_xaf > 0 AND v.outflow_xaf > 0) AS both_ways,
                    SUM(v.inflow_xaf + v.outflow_xaf <> m.amount_xaf) AS wrong_amount,
                    SUM(NOT (v.site_id <=> a.site_id)
@@ -159,6 +163,9 @@ describe('analytics_f_cash', () => {
               JOIN finance_cash_accounts a ON a.id = m.cash_account_id`,
       );
       enough(ctx, Number(check!.checked), 1, 'mouvements de trésorerie');
+      // Sans contre-écriture, un mutant qui n'expose pas `is_reversal` passerait : l'essai saute plutôt.
+      enough(ctx, Number(check!.reversals), 1, 'contre-écritures de trésorerie');
+      expect(Number(check!.wrong_reversal)).toBe(0);
       expect(Number(check!.both_ways)).toBe(0);
       expect(Number(check!.wrong_amount)).toBe(0);
       expect(Number(check!.wrong_account)).toBe(0);
@@ -206,7 +213,8 @@ describe('analytics_f_purchases', () => {
             accepted: 0,
           };
           expected.set(line.productId, {
-            ordered: current.ordered + line.orderedQtyBase,
+            // Une ligne annulée n'est plus commandée (la vue l'écarte) ; ses réceptions éventuelles restent.
+            ordered: current.ordered + (line.status === 'CANCELLED' ? 0 : line.orderedQtyBase),
             delivered: current.delivered + line.deliveredQtyBase,
             rejected: current.rejected + line.rejectedQtyBase,
             accepted: current.accepted + line.acceptedQtyBase,
@@ -226,15 +234,24 @@ describe('analytics_f_purchases', () => {
                      COALESCE(SUM(accepted_quantity), 0) AS accepted
                 FROM analytics_f_purchases WHERE order_id = ${orderBin} GROUP BY product_id`,
         );
-        expect(view.length, orderId).toBe(expected.size);
-        for (const row of view) {
-          const line = expected.get(fromBin(row.product_id));
-          const label = `${orderId}/${fromBin(row.product_id)}`;
-          expect(line, label).toBeDefined();
-          near(Number(row.ordered), line!.ordered, `${label} commandé`);
-          near(Number(row.delivered), line!.delivered, `${label} livré`);
-          near(Number(row.rejected), line!.rejected, `${label} rejeté`);
-          near(Number(row.accepted), line!.accepted, `${label} accepté`);
+        const byProduct = new Map(view.map((row) => [fromBin(row.product_id), row]));
+        // La vue n'invente pas de produit ; un produit qu'elle n'a pas (ligne annulée sans réception) est à zéro.
+        for (const productId of byProduct.keys()) {
+          expect(expected.has(productId), `${orderId}/${productId}`).toBe(true);
+        }
+        for (const [productId, line] of expected) {
+          const row = byProduct.get(productId);
+          const label = `${orderId}/${productId}`;
+          if (row === undefined) {
+            expect([line.ordered, line.delivered, line.rejected, line.accepted], label).toEqual([
+              0, 0, 0, 0,
+            ]);
+            continue;
+          }
+          near(Number(row.ordered), line.ordered, `${label} commandé`);
+          near(Number(row.delivered), line.delivered, `${label} livré`);
+          near(Number(row.rejected), line.rejected, `${label} rejeté`);
+          near(Number(row.accepted), line.accepted, `${label} accepté`);
         }
       }
     });
@@ -300,7 +317,7 @@ describe('analytics_f_purchases', () => {
   it('le commandé et le montant commandé de chaque produit d’un bon sont ceux de ses lignes non annulées (copies de lignes)', async (ctx) => {
     await snapshot(async (trx) => {
       const added = await cloneOrderLine(trx);
-      const cancelled = await cloneOrderLine(trx, 'CANCELLED');
+      const cancelled = await cloneOrderLine(trx, 'CANCELLED', 1);
       enough(ctx, added && cancelled ? 1 : 0, 1, 'ligne de bon de commande modèle');
       const source = await rows<{
         order_id: Buffer;
@@ -332,8 +349,14 @@ describe('analytics_f_purchases', () => {
       ).toEqual(
         new Map(source.map((row) => [key(row), [Number(row.ordered), Number(row.amount)]])),
       );
+      // Le produit de la ligne ajoutée est nouveau pour le bon : sa ligne vaut exactement le montant ajouté ; celui de
+      // la ligne annulée n'a aucune ligne.
       const own = view.find((row) => key(row) === `${added!.orderId}|${added!.productId}`);
-      expect(Number(own!.amount)).toBeGreaterThanOrEqual(added!.lineTotalXaf);
+      expect(Number(own!.amount)).toBe(added!.lineTotalXaf);
+      expect(Number(own!.ordered)).toBe(3);
+      expect(view.some((row) => key(row) === `${cancelled!.orderId}|${cancelled!.productId}`)).toBe(
+        false,
+      );
     });
   });
 
@@ -353,6 +376,22 @@ describe('analytics_f_purchases', () => {
         );
         expect(Number(count!.n), status).toBe(status === 'APPROVED' ? 1 : 0);
       }
+    });
+  });
+
+  it('un bon est daté de son approbation, non de la création de son brouillon (copie)', async (ctx) => {
+    await snapshot(async (trx) => {
+      const copy = await cloneOrderWithStatus(trx, 'APPROVED', {
+        occurred_at: atDay('2019-03-01'),
+        approved_at: atDay('2019-03-05'),
+      });
+      enough(ctx, copy ? 1 : 0, 1, 'bon de commande modèle');
+      const days = await rows<{ day: string }>(
+        trx,
+        sql`SELECT DATE_FORMAT(business_day, '%Y-%m-%d') AS day FROM analytics_f_purchases
+             WHERE order_id = ${toBin(copy!.orderId)} AND receipt_id IS NULL`,
+      );
+      expect(days.map((row) => row.day)).toEqual(['2019-03-05']);
     });
   });
 

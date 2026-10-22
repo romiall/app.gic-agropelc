@@ -406,6 +406,10 @@ Classification (PM §45) :
 | AV-488 | Remise et coût d'une ligne de vente annulée | SECONDAIRE | P9 | Remise non contre-passée ; coût d'une annulation = retours de stock de sa ligne ; marge = montant − coût | OUVERT |
 | AV-489 | Jeu des achats : facturé et payé hors du jeu | SECONDAIRE | P9 | Quantités commandées, livrées, rejetées, acceptées et montant commandé ; le facturé et le payé se lisent dans les dettes fournisseurs | OUVERT |
 | AV-490 | Pertes et dépenses : constaté, en attente et non justifié en colonnes distinctes | SECONDAIRE | P9 | Comme `lossValueSummary` et `expensesSummary` : seul le constaté entre dans la mesure principale ; l'en attente et le non justifié sont à part | OUVERT |
+| AV-491 | Prospection : comptes et conversions lus par l'acteur de l'événement | SECONDAIRE | P9 | La personne est l'acquéreur du compte, l'auteur de la visite, le titulaire à la conversion (effort individuel, BR-CRM-019) et non le titulaire courant que juge `GET /customers` | OUVERT |
+| AV-492 | Conversion d'un compte fusionné | SECONDAIRE | P9 | Un compte fusionné n'est compté ni à la création ni à la conversion (la fusion recopie la conversion sur le compte conservé) ; `commercialEffort` compte les deux : écart à corriger dans `crm` | OUVERT |
+| AV-493 | Achats : date d'un bon de commande et taux de service | SECONDAIRE | P9 | Un bon est daté de son approbation (à défaut de sa création) ; un bon approuvé et pas envoyé compte comme commandé ; KPI-APP-01 « BC clôturés » se lit par le rapprochement d'un bon | OUVERT |
+| AV-494 | Soldes de stock, valeur, trésorerie : mesures sans signe ni filtre | SECONDAIRE | P9 | Solde et valeur : tous les emplacements du jeu (filtre `location_type`), disponible nul hors emplacement physique, soldes à zéro omis ; entrées et sorties de trésorerie : flux bruts (`movement_type`, `is_reversal`) | OUVERT |
 
 ---
 
@@ -3027,6 +3031,34 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) la mesure principale ne compte que le constaté ou le valide (`quantity_base` et `value_xaf` ; `amount_xaf`) ; l'en attente et le non justifié sont des mesures à part (`pending_quantity_base`, `pending_value_xaf` ; `pending_xaf`, `unjustified_xaf`) ; le statut reste une dimension ; (b) tout sommer et laisser l'utilisateur filtrer le statut (écarté : un total sans filtre contredirait les écrans de la finance).
 - **Recommandation** : (a).
 - **Impact** : `analytics_f_losses` (migration `20261201090500`), `analytics_f_expenses` (migration `20261201090600`), catalogue (mesures `pending_quantity`, `pending_value`, `pending`, `unjustified`). Défaut implémenté : (a). Non paramétrable.
+
+### AV-491 — Prospection : comptes et conversions lus par l'acteur de l'événement — SECONDAIRE
+- **Question** : L'explorateur de l'activité commerciale lit-il un compte créé et une conversion par la personne qui les a produits (acquéreur, titulaire à la conversion) ou par le titulaire courant du compte ?
+- **Pourquoi** : `commercialEffort` (BR-CRM-019) attribue la création du compte à son acquéreur et la conversion au titulaire à l'instant de la conversion, pour mesurer l'effort de chaque personne. `GET /customers/{id}` juge le compte sur son titulaire courant, son site de rattachement et sa zone, et exige `crm.customer.read` en plus de `crm.visit.read`. Un commercial en portée propriétaire qui a acquis un compte puis l'a cédé voit donc encore l'événement dans l'explorateur, mais plus le compte dans la liste ; le nouveau titulaire n'en voit aucun. Seules les visites suivent l'auteur dans les deux lectures. **DÉDUIT**.
+- **Choix** : (a) acteur de l'événement (effort individuel, cohérent avec les indicateurs de l'accueil) ; (b) titulaire courant (cohérent avec la liste des comptes, mais l'effort d'un commercial qui cède ses comptes disparaît de sa lecture).
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_prospecting` (`user_id`), ADR-074 §2 (« comme le module `crm` » réservé aux visites), dictionnaire. Défaut implémenté : (a). Non paramétrable.
+
+### AV-492 — Conversion d'un compte fusionné — SECONDAIRE
+- **Question** : La conversion portée par un compte absorbé dans une fusion compte-t-elle ?
+- **Pourquoi** : la fusion (`customer-commands.ts`) laisse `converted_at` sur le compte absorbé (stade `MERGED`) et le recopie sur le compte conservé ; `commercialEffort` compte les deux, donc un même client converti deux fois (KPI-COM-05 gonflé, y compris pour deux titulaires si les affectations diffèrent). La création, elle, exclut déjà les comptes fusionnés. **DÉDUIT**.
+- **Choix** : (a) exclure les comptes fusionnés des conversions comme de la création (la conversion est celle du compte conservé) ; (b) suivre `commercialEffort` (écart nul, double compte).
+- **Recommandation** : (a), et corriger `commercialEffort` dans `crm` (signalé à la session principale, suivi §4).
+- **Impact** : `analytics_f_prospecting` (bras `CONVERSION`), suivi §4. Défaut implémenté : (a). Non paramétrable.
+
+### AV-493 — Achats : date d'un bon de commande et taux de service — SECONDAIRE
+- **Question** : À quelle date le commandé et le montant commandé d'un bon sont-ils comptés, et le taux de service (KPI-APP-01, « BC clôturés dans la période ») se lit-il dans l'explorateur ?
+- **Pourquoi** : `occurred_at` d'un bon est la création de son brouillon : un bon créé fin septembre et approuvé début octobre entrait dans septembre, et une lecture de septembre faite avant l'approbation ne le comptait pas. Le jeu ne porte ni le statut du bon ni sa date de clôture, et le livré et l'accepté sont datés de la réception : le taux de service d'un mois divisait des acceptés du mois par des commandés créés dans le mois. **DÉDUIT**.
+- **Choix** : (a) date d'approbation (`approved_at`, à défaut `occurred_at`) : le bon est engagé à cette date ; un bon approuvé et pas encore envoyé compte comme commandé ; le taux de service d'une période se lit commandé contre accepté de la même période, et le rapprochement d'un bon (`purchaseOrderMatching`) donne le taux de service « BC clôturés » ; (b) date d'envoi (`sent_at`, absente d'un bon approuvé non envoyé) ; (c) date de création (écartée : rétroactive).
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_purchases` (migration `20261201090600`), D11 (KPI-APP-01 approchée). Défaut implémenté : (a). Non paramétrable.
+
+### AV-494 — Soldes de stock, valeur, trésorerie : mesures sans signe ni filtre — SECONDAIRE
+- **Question** : Que somment « Solde », « Valeur », « Disponible », « Entrées » et « Sorties » sans filtre, et comment lire un écart d'inventaire net ?
+- **Pourquoi** : le jeu des soldes garde le transit, les pertes en attente et l'à-livrer, que l'accueil ne somme pas (il ne somme que les emplacements physiques) ; un disponible de marchandise en transit, en perte en attente ou déjà vendue n'a pas de sens ; `GET /stock` omet les soldes entièrement à zéro. Les entrées et sorties de trésorerie sont des flux bruts : un encaissement annulé donne une entrée et une sortie du même type, un virement interne et un écart de caisse gonflent les deux. Les mesures additives ne sont pas signées : un écart d'inventaire net (KPI-STK-04, gains moins pertes) ne sort qu'en gains et pertes séparés. **DÉDUIT**.
+- **Choix** : (a) solde et valeur sans filtre d'emplacement additionnent tous les emplacements du jeu (la dimension `location_type` les sépare), disponible nul hors emplacement physique, soldes à zéro omis ; entrées et sorties bruts, `movement_type` et la dimension `is_reversal` pour les isoler ; écart net lu par type de mouvement ; (b) mesures signées dédiées (écart net, flux net hors virements), à ajouter avec les tableaux (P9-17) si la Direction le demande ; (c) emplacements physiques seuls par défaut (écarté : le transit est du stock de l'entreprise).
+- **Recommandation** : (a).
+- **Impact** : `analytics_f_stock_balance` (migration `20261201090500`), `analytics_f_cash` (migration `20261201090600`, colonne `is_reversal`), catalogue (dimension `is_reversal` de la trésorerie), dictionnaire. Défaut implémenté : (a). Non paramétrable.
 
 ---
 

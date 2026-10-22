@@ -58,6 +58,7 @@ export interface AnalyticsFCash {
   cash_account_id: Buffer;
   holder_user_id: Generated<Buffer>;
   inflow_xaf: Generated<number>;
+  is_reversal: Generated<number>;
   movement_id: Buffer;
   movement_type: string;
   outflow_xaf: Generated<number>;

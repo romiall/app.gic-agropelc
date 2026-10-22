@@ -101,7 +101,7 @@ export async function cloneOrder(
   const order = await firstRow(
     trx,
     sql`SELECT o.* FROM sales_sales_orders o
-         WHERE o.status NOT IN ('DRAFT', 'CANCELLED')
+         WHERE o.status NOT IN ('DRAFT', 'CANCELLED', 'CLOSED') AND o.closed_at IS NULL
            AND EXISTS (SELECT 1 FROM sales_sales_order_lines l WHERE l.order_id = o.id)
          ORDER BY o.id LIMIT 1`,
   );
@@ -363,10 +363,14 @@ export async function reassignConvertedCustomer(
   };
 }
 
-/** Une copie d'une session de travail terminée, commencée à l'instant UTC donné (ISO 8601). */
+/**
+ * Une copie d'une session de travail terminée, commencée à l'instant UTC donné (ISO 8601), avec le statut de
+ * dérogation demandé (une session à dérogation porte sa raison).
+ */
 export async function cloneWorkSession(
   trx: Trx,
   startedAtUtc: string,
+  overrideStatus: 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED' = 'NOT_REQUIRED',
 ): Promise<string | undefined> {
   const session = await firstRow(
     trx,
@@ -381,6 +385,37 @@ export async function cloneWorkSession(
     command_id: null,
     started_at: startedAt,
     ended_at: new Date(startedAt.getTime() + 30 * 60_000),
+    override_status: overrideStatus,
+    override_reason: overrideStatus === 'NOT_REQUIRED' ? null : 'copie d’essai',
   });
   return fromBin(id);
+}
+
+export interface MergedConversion {
+  readonly keptId: string;
+  readonly mergedId: string;
+}
+
+/**
+ * Une fusion de comptes dont les deux comptes portent la même conversion : le compte absorbé (`MERGED`) garde
+ * son `converted_at` alors que le compte conservé le porte aussi (reprise de la conversion par la fusion).
+ * Le compte conservé est un compte converti existant ; l'absorbé en est une copie fusionnée.
+ */
+export async function cloneMergedConvertedCustomer(
+  trx: Trx,
+): Promise<MergedConversion | undefined> {
+  const kept = await firstRow(
+    trx,
+    sql`SELECT * FROM crm_customers WHERE stage = 'CUSTOMER' AND converted_at IS NOT NULL ORDER BY id LIMIT 1`,
+  );
+  if (!kept) return undefined;
+  const id = newId();
+  await insertCopy(trx, 'crm_customers', kept, {
+    id,
+    command_id: null,
+    phone_key: null,
+    stage: 'MERGED',
+    merged_into_id: kept.id,
+  });
+  return { keptId: fromBin(kept.id as Buffer), mergedId: fromBin(id) };
 }
