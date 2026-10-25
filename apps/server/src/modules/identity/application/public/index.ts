@@ -44,6 +44,9 @@ export type {
 export { deviceUserCounts, userFullName, userFullNames } from './user-summary.js';
 // MP-08 (ECR-ADM-04 partiel) : lecture des comptes pour `GET /users`.
 export { USER_STATUSES, listUsersPage } from './user-query.js';
+// MP-13 (ECR-ADM-04 complet) : affectations actives de plusieurs comptes, avec leur identifiant.
+export { listActiveAssignmentsOfUsers } from './assignment-listing.js';
+export type { ListedAssignment } from './assignment-listing.js';
 export type { UserStatus, UserSummary } from './user-query.js';
 export type { DeviceUserCounts } from './user-summary.js';
 

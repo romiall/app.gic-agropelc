@@ -43,7 +43,7 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 
 | ID | Cas d'usage | Commande technique | Acteur | Hors ligne |
 |---|---|---|---|---|
-| UC-ADM-01 | Créer ou modifier un utilisateur | `identity.user.create`, `identity.user.update` | ADMIN | Non |
+| UC-ADM-01 | Créer ou modifier un utilisateur (création depuis l'écran : `POST /users`, route hors commandes, mot de passe provisoire, première affectation facultative ; MP-13, AV-325 ; `identity.user.update` non enregistrée) | `identity.user.create`, `identity.user.update` | ADMIN | Non |
 | UC-ADM-02 | Désactiver ou réactiver un utilisateur | `identity.user.deactivate`, `identity.user.reactivate` | ADMIN | Non |
 | UC-ADM-03 | Affecter ou révoquer un rôle sur un périmètre | `identity.role_assignment.grant`, `identity.role_assignment.revoke` | ADMIN | Non |
 | UC-ADM-04 | Configurer les permissions d'un rôle | `identity.role.set_permissions` | ADMIN | Non |

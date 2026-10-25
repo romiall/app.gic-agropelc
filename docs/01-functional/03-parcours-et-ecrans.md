@@ -113,7 +113,7 @@ Colonnes : identifiant | écran | rôles principaux | hors ligne (Oui / Partiel 
 | ECR-ADM-01 | Connexion et enrôlement de l'appareil | Tous | Non | P0 |
 | ECR-ADM-02 | Déverrouillage par PIN, changement d'utilisateur sur appareil partagé | Tous | Oui | P0 |
 | ECR-ADM-03 | Accueil par rôle (actions du jour + indicateurs) | Tous | Oui | P0 (squelette), enrichi à chaque phase |
-| ECR-ADM-04 | Utilisateurs et affectations de rôle | ADMIN | Non | P0 (cadrage) ; partiel en MP-08 (liste des comptes, réinitialisation du mot de passe) ; création et affectations à planifier (AV-257) |
+| ECR-ADM-04 | Utilisateurs et affectations de rôle | ADMIN | Non | P0 (cadrage) ; partiel en MP-08 (liste des comptes, réinitialisation du mot de passe) ; complété en MP-13 (création d'un compte, ajout et retrait de rôle sur `GLOBAL` ou `SITE`, suspension, réactivation et désactivation ; zones et équipes avec S-19 et S-28 ; rôles figés, AV-257) |
 | ECR-ADM-05 | Appareils (approbation, blocage, déclaration de perte, rattachement à un site) | ADMIN, responsables dans leur portée (BR-ADM-025) ; lecture seule pour la Direction et le magasinier | Non | P0 (cadrage), livré en MP-06 |
 | ECR-ADM-06 | Organisation : sites, emplacements, zones, géorepères, équipes, PDV | ADMIN | Non | P0/P1 |
 | ECR-ADM-07 | Paramètres et politiques de contrôle | ADMIN (Direction pour les seuils) | Non | P0/P2 |

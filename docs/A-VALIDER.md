@@ -339,6 +339,8 @@ Classification (PM §45) :
 | AV-322 | Appareil enrôlé et jamais approuvé : ancienneté dans le signal d'accueil | SECONDAIRE | MP | Signal inchangé, appareils refusés par l'Admin ; **non implémenté** | OUVERT |
 | AV-323 | Opérations sans pièce papier propre | SECONDAIRE | PP | Mise en page générique à la charte (logo, couleurs, numéro de l'application, rubriques de la commande) | OUVERT |
 | AV-324 | Identité de la société imprimée sur les pièces | SECONDAIRE | PP | Paramètres de l'organisation ; rubrique vide imprimée en pointillés | OUVERT |
+| AV-325 | Création d'un compte par l'Admin : mot de passe provisoire hors du journal des commandes | IMPORTANTE | MP | Route en ligne `POST /users` hors journal, comme la réinitialisation (ADR-045) ; **implémenté** (MP-13) | OUVERT |
+| AV-326 | Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes | SECONDAIRE | MP | `GLOBAL` et `SITE` ; zones et équipes avec `GET /zones` et `GET /teams` (S-19, S-28) ; **implémenté** (MP-13) | OUVERT |
 
 ---
 
@@ -2479,6 +2481,20 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) paramètres de l'organisation (`organization.system_settings`, historisés) lus par les pièces, une rubrique vide imprimée en pointillés à compléter à la main ; (b) constantes du paquet de la PWA ; (c) saisie dans l'écran des paramètres (ECR-ADM-07, non livré).
 - **Recommandation** : (a).
 - **Impact** : nouveaux paramètres semés vides, composants de pièce, tâche de PP-0 ; la validation de la Direction sur le jeu de pièces est un préalable de PP-A à confirmer avec le porteur. Défaut retenu pour la conception : (a).
+
+### AV-325 — Création d'un compte par l'Admin : mot de passe provisoire hors du journal des commandes — IMPORTANTE
+- **Question** : comment l'écran des comptes (ECR-ADM-04) crée-t-il un compte, sachant qu'il faut un mot de passe provisoire que l'Admin saisit ?
+- **Pourquoi** : sans écran de création, aucun compte du pilote ne se crée depuis l'application (seul `db:create-local-admin` existe). La commande `identity.user.create` existe, mais son mot de passe, masqué dans la boîte de réception, les événements et l'audit (ADR-045), reste en clair dans la file d'envoi (IndexedDB) de l'appareil de l'Admin jusqu'à l'application de la commande. La réinitialisation d'un mot de passe a déjà tranché ce point (AV-252) : route en ligne hors du journal. **CONFIRMÉ** (code)
+- **Choix** : (a) route en ligne `POST /users` hors du journal des commandes (même exception nommée qu'ADR-045) : compte, mot de passe provisoire et première affectation facultative écrits dans une transaction, audit `identity.user.create` sans mot de passe ni téléphone, mot de passe jamais conservé sur l'appareil ; (b) commande `identity.user.create` émise par la file d'envoi (mot de passe en clair dans IndexedDB jusqu'à l'envoi) ; (c) script d'installation `db:create-user` (palliatif sans écran).
+- **Recommandation** : (a).
+- **Impact** : `apps/server/src/modules/identity/api/user-create.controller.ts`, `identity/application/role-assignment-writer.ts` (écriture partagée avec `identity.role_assignment.grant`), écran des comptes, ADR-045 (extension), D01 UC-ADM-01, `08-api`, `02-securite`. Défaut implémenté (MP-13, 22/10/2026) : (a). La commande `identity.user.create` reste disponible pour les scripts et l'import (AV-072). **Reste** : la modification du nom, du téléphone et du courriel (`identity.user.update` n'est pas enregistrée).
+
+### AV-326 — Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes — SECONDAIRE
+- **Question** : quels types de périmètre l'écran propose-t-il à l'Admin quand il donne un rôle (`GLOBAL`, `SITE`, `ZONE`, `TEAM`) ?
+- **Pourquoi** : la commande `identity.role_assignment.grant` accepte les quatre types, dans la limite de ce que chaque rôle permet (`allowed_scope_types`). L'écran doit proposer une liste de sites, de zones ou d'équipes : les sites sont lus (jeu `org`, `GET /sites`), mais `GET /zones` et `GET /teams` n'existent pas (S-19, S-28). **CONFIRMÉ** (code)
+- **Choix** : (a) `GLOBAL` et `SITE` seulement, selon ce que le rôle permet ; zones et équipes quand leurs lectures existeront ; (b) saisie libre d'identifiants de zone et d'équipe : écartée ; (c) attendre S-19 et S-28 avant de livrer l'écran.
+- **Recommandation** : (a). Les permissions d'un rôle ne se modifient pas depuis l'application (AV-257, rôles figés, choix (a)).
+- **Impact** : `apps/pwa/src/features/users/users.ts` (`ASSIGNABLE_SCOPES`), `GET /roles` (rôles actifs et périmètres permis). Un rôle qui ne permet ni `GLOBAL` ni `SITE` (zone ou équipe seulement) est signalé « indisponible ici ». Défaut implémenté (MP-13, 22/10/2026) : (a).
 
 ---
 

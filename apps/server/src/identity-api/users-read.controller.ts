@@ -8,9 +8,12 @@
  * (`enrollerLocators`, la règle des appareils, BR-ADM-025) ; une portée `ALL` voit tout. La liste est
  * filtrée élément par élément : une page peut être plus courte que `limit`, suivre `next_cursor`.
  *
- * Chaque compte porte ses rôles actifs et l'action que le lecteur peut y faire (`actions.resetPassword` :
- * `identity.user.manage`, sauf son propre compte et un compte désactivé ; AV-252, AV-281). Jamais le
- * mot de passe ni son empreinte ; l'utilisateur système n'est jamais listé.
+ * Chaque compte porte ses affectations de rôle actives (identifiant, rôle, périmètre : l'écran révoque par
+ * l'identifiant, MP-13) et les actions que le lecteur peut y faire : `resetPassword`, `suspend`, `reactivate`,
+ * `deactivate` (`identity.user.manage`, jamais sur son propre compte pour suspendre, désactiver ou
+ * réinitialiser ; un compte désactivé ne se réinitialise ni ne se suspend ; AV-252, AV-281) et `manageRoles`
+ * (`identity.role_assignment.manage`, sauf compte désactivé). Jamais le mot de passe ni son empreinte ;
+ * l'utilisateur système n'est jamais listé.
  */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -22,9 +25,9 @@ import { RequiresPermission } from '../platform/http/authorization.decorators.js
 import { AuthGuard, type AuthenticatedRequest } from '../modules/identity/api/auth.guard.js';
 import {
   USER_STATUSES,
-  activeRoleAssignmentsAt,
   enrollerLocators,
   evaluateAccess,
+  listActiveAssignmentsOfUsers,
   listUsersPage,
   locatorsInScope,
   type ResourceLocator,
@@ -34,6 +37,7 @@ import { parseOrThrow, ReadAccess, uuidParam } from '../read-api/read-access.js'
 
 const USER_READ = 'identity.user.read';
 const USER_MANAGE = 'identity.user.manage';
+const ROLE_ASSIGNMENT_MANAGE = 'identity.role_assignment.manage';
 const USERS_DEFAULT_LIMIT = 50;
 const USERS_MAX_LIMIT = 200;
 /** Lectures successives au plus pour remplir une page filtrée par la portée. */
@@ -153,8 +157,16 @@ export class UsersReadController {
     users: readonly UserSummary[],
   ) {
     const presented = [];
+    const assignmentsOf = await listActiveAssignmentsOfUsers(
+      this.db,
+      users.map((user) => user.id),
+      now,
+    );
     for (const user of users) {
-      const roles = await activeRoleAssignmentsAt(this.db, user.id, now);
+      const assignments = assignmentsOf.get(user.id) ?? [];
+      const self = user.id === readerId;
+      const canManage = await scope(USER_MANAGE, user);
+      const canAssign = await scope(ROLE_ASSIGNMENT_MANAGE, user);
       presented.push({
         id: user.id,
         fullName: user.fullName,
@@ -165,12 +177,26 @@ export class UsersReadController {
         mustChangePassword: user.mustChangePassword,
         lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
-        roles: [...new Set(roles.map((assignment) => assignment.roleCode))].sort(),
+        roles: [...new Set(assignments.map((assignment) => assignment.roleCode))].sort(),
+        assignments: assignments.map((assignment) => ({
+          id: assignment.id,
+          roleId: assignment.roleId,
+          roleCode: assignment.roleCode,
+          roleName: assignment.roleName,
+          scopeType: assignment.scopeType,
+          scopeSiteId: assignment.scopeSiteId,
+          scopeZoneId: assignment.scopeZoneId,
+          scopeTeamId: assignment.scopeTeamId,
+          validFrom: assignment.validFrom.toISOString(),
+          validTo: assignment.validTo?.toISOString() ?? null,
+        })),
         actions: {
-          resetPassword:
-            user.id !== readerId &&
-            user.status !== 'DEACTIVATED' &&
-            (await scope(USER_MANAGE, user)),
+          resetPassword: !self && user.status !== 'DEACTIVATED' && canManage,
+          suspend: !self && user.status === 'ACTIVE' && canManage,
+          reactivate: (user.status === 'SUSPENDED' || user.status === 'DEACTIVATED') && canManage,
+          deactivate:
+            !self && (user.status === 'ACTIVE' || user.status === 'SUSPENDED') && canManage,
+          manageRoles: user.status !== 'DEACTIVATED' && canAssign,
         },
       });
     }

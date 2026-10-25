@@ -18,8 +18,9 @@ MP-08 livre le changement imposé du mot de passe provisoire (AV-251) et la réi
 1. **Mots de passe par des routes en ligne, hors du journal des commandes.**
    - `POST /auth/change-password` : l'utilisateur, avec son mot de passe actuel.
    - `POST /users/{id}/reset-password` : l'Admin (`identity.user.manage`).
+   - `POST /users` (MP-13, AV-325) : création d'un compte par l'Admin avec son mot de passe provisoire et, facultativement, une première affectation de rôle (`identity.user.manage` et, avec un rôle, `identity.role_assignment.manage`).
 
-   Les deux routes sont écrites par le module propriétaire (`identity`). Elles ne passent ni par `sync.command_inbox`, ni par un événement, ni par la file d'envoi de l'appareil. Elles ne rendent jamais le mot de passe. Leur audit (`identity.user.change_password`, `identity.user.reset_password`) n'en porte que les effets (`must_change_password`, sessions révoquées).
+   Les trois routes sont écrites par le module propriétaire (`identity`). Elles ne passent ni par `sync.command_inbox`, ni par un événement, ni par la file d'envoi de l'appareil. Elles ne rendent jamais le mot de passe. Leur audit (`identity.user.change_password`, `identity.user.reset_password`, `identity.user.create`) n'en porte que les effets (`must_change_password`, sessions révoquées).
 
    C'est une **exception nommée** au chemin d'écriture unique, comme `/auth/*`. Aucune autre écriture métier n'en bénéficie.
 2. **Charge conservée sans secret.** Le pipeline des commandes applique la liste fermée de masquage (`audit/redact.ts`) à la charge utile qu'il conserve :

@@ -25,6 +25,7 @@ import type {
 } from '../../../../platform/sync/command-handler-registry.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { hasOtherActiveAdminAssignment } from './admin-guard.js';
+import { insertRoleAssignment } from '../role-assignment-writer.js';
 
 const scopeTypeSchema = z.enum(['GLOBAL', 'SITE', 'ZONE', 'TEAM']);
 
@@ -92,70 +93,24 @@ const grant: CommandHandler<GrantPayload> = async (uow, envelope) => {
 
   const { userId, roleId, scopeType, scopeSiteId, scopeZoneId, scopeTeamId, validTo } =
     envelope.payload;
-
-  const targetUser = await uow
-    .selectFrom('identity_users')
-    .select('id')
-    .where('id', '=', toBin(userId))
-    .executeTakeFirst();
-  if (!targetUser) return notFound('Utilisateur introuvable.');
-
-  const role = await uow
-    .selectFrom('identity_roles')
-    .select(['is_active', 'allowed_scope_types'])
-    .where('id', '=', toBin(roleId))
-    .executeTakeFirst();
-  if (!role) return notFound('Rôle introuvable.');
-  if (!role.is_active) return invalid('ROLE_INACTIVE', 'Ce rôle est désactivé.');
-  const allowedScopeTypes = role.allowed_scope_types as readonly string[];
-  if (!allowedScopeTypes.includes(scopeType)) {
-    return invalid(
-      'SCOPE_TYPE_NOT_ALLOWED',
-      `Le rôle n'autorise pas le type de périmètre ${scopeType} (roles.allowed_scope_types).`,
-    );
+  // Contrôles et écriture partagés avec la création d'un compte (`POST /users`, MP-13, AV-325).
+  const refusal = await insertRoleAssignment(uow, {
+    assignmentId: envelope.aggregate_id,
+    userId,
+    roleId,
+    scopeType,
+    scopeSiteId,
+    scopeZoneId,
+    scopeTeamId,
+    validFrom: new Date(envelope.occurred_at),
+    ...(validTo !== undefined ? { validTo: new Date(validTo) } : {}),
+    createdBy: envelope.author_user_id,
+  });
+  if (refusal) {
+    return refusal.code === 'NOT_FOUND'
+      ? notFound(refusal.message)
+      : invalid(refusal.code, refusal.message);
   }
-
-  if (scopeSiteId !== undefined) {
-    const site = await uow
-      .selectFrom('organization_sites')
-      .select('id')
-      .where('id', '=', toBin(scopeSiteId))
-      .executeTakeFirst();
-    if (!site) return notFound('Site introuvable (scopeSiteId).');
-  }
-  if (scopeZoneId !== undefined) {
-    const zone = await uow
-      .selectFrom('organization_zones')
-      .select('id')
-      .where('id', '=', toBin(scopeZoneId))
-      .executeTakeFirst();
-    if (!zone) return notFound('Zone introuvable (scopeZoneId).');
-  }
-  if (scopeTeamId !== undefined) {
-    const team = await uow
-      .selectFrom('organization_teams')
-      .select('id')
-      .where('id', '=', toBin(scopeTeamId))
-      .executeTakeFirst();
-    if (!team) return notFound('Équipe introuvable (scopeTeamId).');
-  }
-
-  const occurredAt = new Date(envelope.occurred_at);
-  await uow
-    .insertInto('identity_user_role_assignments')
-    .values({
-      id: assignmentId,
-      user_id: toBin(userId),
-      role_id: toBin(roleId),
-      scope_type: scopeType,
-      scope_site_id: scopeSiteId !== undefined ? toBin(scopeSiteId) : null,
-      scope_zone_id: scopeZoneId !== undefined ? toBin(scopeZoneId) : null,
-      scope_team_id: scopeTeamId !== undefined ? toBin(scopeTeamId) : null,
-      valid_from: occurredAt,
-      valid_to: validTo !== undefined ? new Date(validTo) : null,
-      created_by: toBin(envelope.author_user_id),
-    })
-    .execute();
   return { status: 'APPLIED' };
 };
 
