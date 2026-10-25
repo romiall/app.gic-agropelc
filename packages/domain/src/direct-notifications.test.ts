@@ -307,7 +307,11 @@ describe('fin d’un export (P9-20 ; ADR-077 §7)', () => {
 
   it('un échec dit pourquoi, en langage clair : limite, droit retiré, catalogue changé, étendue trop large', () => {
     const reason = (errorCode: string | null) =>
-      plan('AnalyticsExportCompleted', finished({ status: 'FAILED', error_code: errorCode }), EXPORT).body;
+      plan(
+        'AnalyticsExportCompleted',
+        finished({ status: 'FAILED', error_code: errorCode }),
+        EXPORT,
+      ).body;
     expect(reason('QUERY_LIMIT_EXCEEDED')).toContain('affinez');
     expect(reason('FORBIDDEN')).toContain('droit');
     expect(reason('CATALOG_OUTDATED')).toContain('catalogue');
@@ -315,7 +319,11 @@ describe('fin d’un export (P9-20 ; ADR-077 §7)', () => {
     expect(reason('AUTRE_CODE')).toContain('erreur de production');
     expect(reason(null)).toBe('Votre export n’a pas pu être produit.');
     expect(
-      plan('AnalyticsExportCompleted', finished({ status: 'FAILED', error_code: 'FORBIDDEN' }), EXPORT).title,
+      plan(
+        'AnalyticsExportCompleted',
+        finished({ status: 'FAILED', error_code: 'FORBIDDEN' }),
+        EXPORT,
+      ).title,
     ).toBe('Export non produit');
   });
 
@@ -323,12 +331,12 @@ describe('fin d’un export (P9-20 ; ADR-077 §7)', () => {
     expect(() => plan('AnalyticsExportCompleted', { status: 'DONE' }, EXPORT)).toThrow(
       DirectNotificationPayloadError,
     );
-    expect(() =>
-      plan('AnalyticsExportCompleted', { requested_by: REQUESTER }, EXPORT),
-    ).toThrow(DirectNotificationPayloadError);
-    expect(() =>
-      plan('AnalyticsExportCompleted', finished({ status: 'QUEUED' }), EXPORT),
-    ).toThrow(DirectNotificationPayloadError);
+    expect(() => plan('AnalyticsExportCompleted', { requested_by: REQUESTER }, EXPORT)).toThrow(
+      DirectNotificationPayloadError,
+    );
+    expect(() => plan('AnalyticsExportCompleted', finished({ status: 'QUEUED' }), EXPORT)).toThrow(
+      DirectNotificationPayloadError,
+    );
   });
 
   it('les autres plans ne portent pas de nature particulière (DIRECT par défaut)', () => {

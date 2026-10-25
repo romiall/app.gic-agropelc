@@ -26,8 +26,12 @@ import {
 import { analyticsQueryResponseSchema, dashboardResponseSchema } from '@gic/contracts';
 import { verifyChainRange } from '../src/audit/verify-chain.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { JobRunner } from '../src/platform/jobs/job-runner.js';
-import { periodRevenue, salesActivityByDay } from '../src/modules/sales/application/public/index.js';
+import {
+  periodRevenue,
+  salesActivityByDay,
+} from '../src/modules/sales/application/public/index.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -52,6 +56,7 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
   let s1: Actor;
   let teamLead: Actor;
   let ownSeller: Actor;
+  let originalAssignments: Buffer[] = [];
   let product: Awaited<ReturnType<PosWorld['product']>>;
   let c0: string;
   let c1: string;
@@ -77,8 +82,10 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     });
     return response;
   };
-  const sale = (actor: Actor, customer: string, quantity: number, occurredAt: string) =>
-    world.ok(actor, {
+  const sale = (actor: Actor, customer: string, quantity: number, occurredAt: string) => {
+    // L'horloge du serveur ne précède jamais l'instant de l'opération (OCCURRED_AT_FUTURE).
+    world.setNow(occurredAt);
+    return world.ok(actor, {
       type: 'sales.sale.record',
       aggregateType: 'SALE',
       occurredAt,
@@ -89,6 +96,7 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
         payments: [],
       },
     });
+  };
   /** L'identifiant de la vente créée, relu par sa référence de commande. */
   const saleIdOf = async (commandId: string): Promise<string> =>
     fromBin(
@@ -109,20 +117,20 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     c0 = await world.customer('Client A P9');
     c1 = await world.customer('Client B P9');
 
-    world.setNow(at('09:00'));
     const a = await sale(s0, c0, 10, at('09:00'));
     const b = await sale(s1, c1, 6, at('10:00'));
     const c = await sale(s0, c0, 4, at('11:00'));
     saleIds.A = await saleIdOf(a.command_id);
     saleIds.B = await saleIdOf(b.command_id);
     saleIds.C = await saleIdOf(c.command_id);
-    world.setNow(at('12:00'));
+    // Annulation dans le délai direct (BR-VEN-028) : elle s'applique tout de suite, sans validation.
+    world.setNow(at('11:05'));
     cancellationId = freshUuid();
     await world.ok(s0, {
       type: 'sales.sale.cancel',
       aggregateType: 'SALE_CANCELLATION',
       aggregateId: cancellationId,
-      occurredAt: at('12:00'),
+      occurredAt: at('11:05'),
       payload: { saleId: saleIds.C, comment: 'Erreur de saisie' },
     });
 
@@ -130,14 +138,29 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     const manager = await tx((trx) => insertTestUser(trx));
     const teamId = await tx((trx) => insertTestTeam(trx, manager, world.root));
     await tx((trx) => insertTestTeamMembership(trx, teamId, s0.userId, world.root));
-    teamLead = await newActor('RESP_COMMERCIAL', world.root, { scopeType: 'TEAM', scopeTeamId: teamId });
+    teamLead = await newActor('RESP_COMMERCIAL', world.root, {
+      scopeType: 'TEAM',
+      scopeTeamId: teamId,
+    });
 
-    // Un vendeur « explorateur » à portée OWN, sans droit de valorisation.
+    // Un vendeur « explorateur » à portée OWN, sans droit de valorisation : le vendeur s0, dont les affectations
+    // d'origine (site) sont retirées au moment de l'essai pour qu'il ne reste que la portée OWN.
+    originalAssignments = (
+      await db
+        .selectFrom('identity_user_role_assignments')
+        .select('id')
+        .where('user_id', '=', toBin(s0.userId))
+        .execute()
+    ).map((row) => row.id);
     ownSeller = await tx(async (trx) => {
       const userId = s0.userId;
       const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
       const roleId = await insertTestRole(trx, world.root, { allowedScopeTypes: ['GLOBAL'] });
-      for (const permission of ['analytics.explore', 'analytics.dashboard.commercial', 'sales.sale.read']) {
+      for (const permission of [
+        'analytics.explore',
+        'analytics.dashboard.commercial',
+        'sales.sale.read',
+      ]) {
         await grantTestPermission(trx, roleId, permission, world.root, {
           maxScope: permission === 'analytics.explore' ? 'ALL' : 'OWN',
         });
@@ -145,6 +168,8 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
       await assignTestRole(trx, userId, roleId, world.root);
       return { userId, deviceId };
     });
+    // Les octrois sont mis en cache par processus : la nouvelle affectation se déclare au cache.
+    invalidateUser(s0.userId);
   }, 180_000);
 
   afterAll(async () => {
@@ -176,7 +201,8 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     const result = analyticsQueryResponseSchema.parse(response.json());
     const cell = (seller: Actor, customer: string) =>
       result.rows.find(
-        (row) => row.values['seller_user_id'] === seller.userId && row.values['customer_id'] === customer,
+        (row) =>
+          row.values['seller_user_id'] === seller.userId && row.values['customer_id'] === customer,
       )?.values;
     // A (10) + C (4) − annulation de C (4) = 10 pour s0 / c0 ; B (6) pour s1 / c1.
     expect(cell(s0, c0)).toMatchObject({ revenue: 10 * PRICE });
@@ -258,7 +284,18 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
   it('AT-045 : l’enquête sur la vente annulée dit qui, quand, depuis quel appareil, avant et après ; la chaîne se vérifie', async () => {
     const entries = await db
       .selectFrom('audit_audit_log')
-      .select(['seq', 'occurred_at', 'recorded_at', 'actor_user_id', 'device_id', 'action', 'entity_type', 'before', 'after', 'result'])
+      .select([
+        'seq',
+        'occurred_at',
+        'recorded_at',
+        'actor_user_id',
+        'device_id',
+        'action',
+        'entity_type',
+        'before',
+        'after',
+        'result',
+      ])
       .where('entity_id', 'in', [toBin(cancellationId), toBin(saleIds.C)])
       .orderBy('seq')
       .execute();
@@ -270,7 +307,7 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     expect(fromBin(cancel!.device_id!)).toBe(s0.deviceId);
     expect(cancel!.result).toBe('SUCCESS');
     // Heure réelle de l'opération et heure d'enregistrement par le serveur : deux dates distinctes.
-    expect(cancel!.occurred_at.toISOString()).toBe(at('12:00'));
+    expect(cancel!.occurred_at.toISOString()).toBe(at('11:05'));
     expect(cancel!.recorded_at).toBeInstanceOf(Date);
     expect(cancel!.after).toBeTruthy();
     // La lecture HTTP de l'audit (Direction) retrouve l'annulation par son identifiant.
@@ -309,7 +346,9 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     });
     expect(request.status, JSON.stringify(request)).toMatch(/^APPLIED/);
     // La tâche d'export, réclamée par le worker (gestionnaire réel de l'application).
-    const outcome = await world.app.get(JobRunner).claimAndProcessOne({ jobTypes: ['analytics.export.run'] });
+    const outcome = await world.app
+      .get(JobRunner)
+      .claimAndProcessOne({ jobTypes: ['analytics.export.run'] });
     expect(outcome).toMatchObject({ claimed: true, result: 'DONE' });
     const row = await db
       .selectFrom('analytics_export_jobs')
@@ -337,17 +376,34 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
       'analytics.export.downloaded',
     ]);
     // Le fichier n'est pas celui d'un autre : la Direction, qui voit tout, ne télécharge pas l'export de l'équipe.
-    expect((await get(world.dir, `/api/v1/analytics/exports/${exportId}/download`)).statusCode).toBe(404);
+    expect(
+      (await get(world.dir, `/api/v1/analytics/exports/${exportId}/download`)).statusCode,
+    ).toBe(404);
   });
 
   it('AT-054 : un vendeur à portée OWN lit les mêmes ventes sur le tableau commercial et l’explorateur, sans coût ni marge', async () => {
-    const dashboardResponse = await get(ownSeller, '/api/v1/analytics/dashboards/commercial?period=WEEK');
+    // Seule la portée OWN reste à s0 : ses affectations d'origine (site) sont révoquées avant l'essai.
+    await db
+      .updateTable('identity_user_role_assignments')
+      .set({ revoked_at: new Date(at('12:30')) })
+      .where('id', 'in', originalAssignments)
+      .execute();
+    invalidateUser(s0.userId);
+    const dashboardResponse = await get(
+      ownSeller,
+      '/api/v1/analytics/dashboards/commercial?period=WEEK',
+    );
     expect(dashboardResponse.statusCode, dashboardResponse.body).toBe(200);
     const dashboard = dashboardResponseSchema.parse(dashboardResponse.json());
     const revenueKpi = KPI_CATALOG.find(
-      (kpi) => kpi.explorer?.dataset === 'f_sales_line' && kpi.explorer.measure === 'revenue' && kpi.nature === 'FLOW',
+      (kpi) =>
+        kpi.explorer?.dataset === 'f_sales_line' &&
+        kpi.explorer.measure === 'revenue' &&
+        kpi.nature === 'FLOW',
     )!;
-    const shown = dashboard.blocks.flatMap((block) => block.kpis).find((kpi) => kpi.code === revenueKpi.code);
+    const shown = dashboard.blocks
+      .flatMap((block) => block.kpis)
+      .find((kpi) => kpi.code === revenueKpi.code);
     expect(shown, revenueKpi.code).toBeDefined();
 
     const explored = await query(ownSeller, {
@@ -356,7 +412,8 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
       measures: ['revenue'],
     });
     expect(explored.statusCode, explored.body).toBe(200);
-    const exploredRevenue = analyticsQueryResponseSchema.parse(explored.json()).rows[0]?.values['revenue'] ?? 0;
+    const exploredRevenue =
+      analyticsQueryResponseSchema.parse(explored.json()).rows[0]?.values['revenue'] ?? 0;
     // Le vendeur ne voit que ses lignes : la vente A (10) ; la vente C est annulée dans la semaine ; B n'est pas la sienne.
     expect(exploredRevenue).toBe(10 * PRICE);
     expect(shown!.value).toBe(exploredRevenue);

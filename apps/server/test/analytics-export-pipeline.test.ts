@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { ANALYTICS_CATALOG_VERSION } from '@gic/domain';
 import { LocalFsChunkStorage } from '../src/platform/storage/local-fs-chunk-storage.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { runExport } from '../src/modules/analytics/application/exports/run-export.js';
 import { exportStorageKey } from '../src/modules/analytics/application/exports/export-store.js';
 import { runAnalyticsPurge } from '../src/modules/analytics/application/maintenance/purge.js';
@@ -32,7 +33,6 @@ describe('P9-20 : exports audités', () => {
   const directory = mkdtempSync(join(tmpdir(), 'gic-export-'));
   const storage = new LocalFsChunkStorage(directory);
   let admin: string;
-  let exporter: CommandActor;
 
   /** Exports demandés par l'essai : leurs tâches en file sont retirées à la fin (aucune tâche orpheline pour les autres essais). */
   const requested: string[] = [];
@@ -70,7 +70,11 @@ describe('P9-20 : exports audités', () => {
     db
       .transaction()
       .execute((trx) =>
-        runExport(trx, { clock: harness.clock, idGenerator: harness.idGenerator, storage }, exportId),
+        runExport(
+          trx,
+          { clock: harness.clock, idGenerator: harness.idGenerator, storage },
+          exportId,
+        ),
       );
   const rowOf = (exportId: string) =>
     db
@@ -82,7 +86,9 @@ describe('P9-20 : exports audités', () => {
     const { rows } = await sql<{ n: string }>`
       SELECT COUNT(*) AS n FROM (
         SELECT sale_id FROM analytics_f_sales_line
-         WHERE business_day BETWEEN ${WINDOW_START} AND ${TODAY} GROUP BY sale_id LIMIT 5) t`.execute(db);
+         WHERE business_day BETWEEN ${WINDOW_START} AND ${TODAY} GROUP BY sale_id LIMIT 5) t`.execute(
+      db,
+    );
     return Number(rows[0]!.n);
   };
   const auditOf = (exportId: string, action: string) =>
@@ -95,7 +101,6 @@ describe('P9-20 : exports audités', () => {
 
   beforeAll(async () => {
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    exporter = await actorWith(admin, ['analytics.export', 'sales.sale.read']);
   });
   afterAll(async () => {
     rmSync(directory, { recursive: true, force: true });
@@ -125,13 +130,17 @@ describe('P9-20 : exports audités', () => {
         row_count: null,
         finished_at: null,
       });
-      expect(row!.expires_at.getTime() - new Date('2026-10-22T09:00:00.000Z').getTime()).toBe(24 * 3_600_000);
+      expect(row!.expires_at.getTime() - new Date('2026-10-22T09:00:00.000Z').getTime()).toBe(
+        24 * 3_600_000,
+      );
       const jobs = await db
         .selectFrom('platform_jobs')
         .select(['job_type', 'payload', 'status'])
         .where('job_type', '=', 'analytics.export.run')
         .execute();
-      expect(jobs.some((job) => (job.payload as { exportId: string }).exportId === exportId)).toBe(true);
+      expect(jobs.some((job) => (job.payload as { exportId: string }).exportId === exportId)).toBe(
+        true,
+      );
       const events = await db
         .selectFrom('platform_domain_events')
         .select('payload')
@@ -139,11 +148,17 @@ describe('P9-20 : exports audités', () => {
         .where('aggregate_id', '=', toBin(exportId))
         .execute();
       expect(events).toHaveLength(1);
-      expect(events[0]!.payload).toMatchObject({ export_id: exportId, requested_by: actor.id, format: 'CSV' });
+      expect(events[0]!.payload).toMatchObject({
+        export_id: exportId,
+        requested_by: actor.id,
+        format: 'CSV',
+      });
       const audit = await auditOf(exportId, REQUEST);
       expect(audit).toHaveLength(1);
       expect(audit[0]!.result).toBe('SUCCESS');
-      expect((audit[0]!.after as { definition: { dataset: string } }).definition.dataset).toBe('f_sales_line');
+      expect((audit[0]!.after as { definition: { dataset: string } }).definition.dataset).toBe(
+        'f_sales_line',
+      );
     });
 
     it('un identifiant déjà connu du même demandeur est rendu appliqué sans second effet ; celui d’un autre est introuvable', async () => {
@@ -154,9 +169,14 @@ describe('P9-20 : exports audités', () => {
       expect((await request(actor, exportId)).status).toBe('APPLIED');
       const { rows } = await sql<{ n: string }>`
         SELECT COUNT(*) AS n FROM platform_jobs
-         WHERE job_type = 'analytics.export.run' AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.exportId')) = ${exportId}`.execute(db);
+         WHERE job_type = 'analytics.export.run' AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.exportId')) = ${exportId}`.execute(
+        db,
+      );
       expect(Number(rows[0]!.n)).toBe(1);
-      expect(await request(other, exportId)).toMatchObject({ status: 'REJECTED', error: { code: 'NOT_FOUND' } });
+      expect(await request(other, exportId)).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'NOT_FOUND' },
+      });
     });
 
     it('refus : hors ligne, catalogue périmé, sans le droit d’exporter, jeu illisible, mesure au coût sans droit', async () => {
@@ -182,9 +202,14 @@ describe('P9-20 : exports audités', () => {
         await request(actor, freshUuid(), { definition: definition({ measures: ['margin'] }) }),
       ).toMatchObject({ status: 'REJECTED', error: { code: 'FORBIDDEN_MEASURE' } });
       // Un export financier exige les deux droits : avec `inventory.valuation.read`, la même demande passe.
-      const finance = await actorWith(admin, ['analytics.export', 'sales.sale.read', 'inventory.valuation.read']);
+      const finance = await actorWith(admin, [
+        'analytics.export',
+        'sales.sale.read',
+        'inventory.valuation.read',
+      ]);
       expect(
-        (await request(finance, freshUuid(), { definition: definition({ measures: ['margin'] }) })).status,
+        (await request(finance, freshUuid(), { definition: definition({ measures: ['margin'] }) }))
+          .status,
       ).toBe('APPLIED');
     });
 
@@ -222,12 +247,16 @@ describe('P9-20 : exports audités', () => {
       const lines = file.split('\r\n');
       expect(lines.pop()).toBe('');
       expect(lines).toHaveLength(expected + 1);
-      expect(lines[0]).toBe('﻿Vente (document);Chiffre d\'affaires');
+      expect(lines[0]).toBe("﻿Vente (document);Chiffre d'affaires");
 
       const completed = await auditOf(exportId, 'analytics.export.completed');
       expect(completed).toHaveLength(1);
       expect(completed[0]!.result).toBe('SUCCESS');
-      expect(completed[0]!.after).toMatchObject({ status: 'DONE', row_count: expected, dataset: 'f_sales_line' });
+      expect(completed[0]!.after).toMatchObject({
+        status: 'DONE',
+        row_count: expected,
+        dataset: 'f_sales_line',
+      });
       const events = await db
         .selectFrom('platform_domain_events')
         .select('payload')
@@ -257,10 +286,17 @@ describe('P9-20 : exports audités', () => {
         .set({ revoked_at: new Date('2026-10-22T08:00:00.000Z') })
         .where('user_id', '=', toBin(actor.id))
         .execute();
+      // Les octrois sont mis en cache par processus : une révocation écrite en base se déclare au cache.
+      invalidateUser(actor.id);
       const outcome = await run(exportId);
       expect(outcome).toEqual({ status: 'FAILED', errorCode: 'FORBIDDEN' });
       const row = await rowOf(exportId);
-      expect(row).toMatchObject({ status: 'FAILED', error_code: 'FORBIDDEN', storage_key: null, row_count: null });
+      expect(row).toMatchObject({
+        status: 'FAILED',
+        error_code: 'FORBIDDEN',
+        storage_key: null,
+        row_count: null,
+      });
       expect(await storage.uploadedBytes(exportStorageKey(exportId))).toBe(0);
       const completed = await auditOf(exportId, 'analytics.export.completed');
       expect(completed).toEqual([
@@ -306,7 +342,13 @@ describe('P9-20 : exports audités', () => {
       harness.clock.setTo(new Date(Date.now() + 25 * 86_400_000));
       let outcome = await db
         .transaction()
-        .execute((trx) => runAnalyticsPurge(trx, { clock: harness.clock, idGenerator: harness.idGenerator, storage }));
+        .execute((trx) =>
+          runAnalyticsPurge(trx, {
+            clock: harness.clock,
+            idGenerator: harness.idGenerator,
+            storage,
+          }),
+        );
       expect(outcome.exportsExpired).toBeGreaterThanOrEqual(1);
       expect((await rowOf(done))!.status).toBe('EXPIRED');
       expect(await storage.uploadedBytes(key)).toBeGreaterThan(0);
@@ -321,7 +363,13 @@ describe('P9-20 : exports audités', () => {
       harness.clock.setTo(new Date(Date.now() + 32 * 86_400_000));
       outcome = await db
         .transaction()
-        .execute((trx) => runAnalyticsPurge(trx, { clock: harness.clock, idGenerator: harness.idGenerator, storage }));
+        .execute((trx) =>
+          runAnalyticsPurge(trx, {
+            clock: harness.clock,
+            idGenerator: harness.idGenerator,
+            storage,
+          }),
+        );
       expect(outcome.exportFilesDeleted).toBeGreaterThanOrEqual(1);
       expect(await storage.uploadedBytes(key)).toBe(0);
       expect((await rowOf(done))!.status).toBe('EXPIRED');
@@ -341,14 +389,38 @@ describe('P9-20 : exports audités', () => {
         })
         .execute();
       harness.clock.setTo(new Date(Date.now() + 80 * 86_400_000));
-      await db.transaction().execute((trx) => runAnalyticsPurge(trx, { clock: harness.clock, idGenerator: harness.idGenerator, storage }));
+      await db
+        .transaction()
+        .execute((trx) =>
+          runAnalyticsPurge(trx, {
+            clock: harness.clock,
+            idGenerator: harness.idGenerator,
+            storage,
+          }),
+        );
       expect(
-        await db.selectFrom('analytics_query_log').select('id').where('id', '=', toBin(logId)).executeTakeFirst(),
+        await db
+          .selectFrom('analytics_query_log')
+          .select('id')
+          .where('id', '=', toBin(logId))
+          .executeTakeFirst(),
       ).toBeDefined();
       harness.clock.setTo(new Date(Date.now() + 100 * 86_400_000));
-      await db.transaction().execute((trx) => runAnalyticsPurge(trx, { clock: harness.clock, idGenerator: harness.idGenerator, storage }));
+      await db
+        .transaction()
+        .execute((trx) =>
+          runAnalyticsPurge(trx, {
+            clock: harness.clock,
+            idGenerator: harness.idGenerator,
+            storage,
+          }),
+        );
       expect(
-        await db.selectFrom('analytics_query_log').select('id').where('id', '=', toBin(logId)).executeTakeFirst(),
+        await db
+          .selectFrom('analytics_query_log')
+          .select('id')
+          .where('id', '=', toBin(logId))
+          .executeTakeFirst(),
       ).toBeUndefined();
     });
   });

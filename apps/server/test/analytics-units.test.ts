@@ -49,16 +49,34 @@ describe('instantané : indicateurs sans lien d’exploration (P9-18)', () => {
             previousValue: 2,
             variationPct: 50,
             explore: {
-              definition: { dataset: 'f_sales_line', dimensions: [], measures: ['sales_count'], filters: [], sort: [] },
+              definition: {
+                dataset: 'f_sales_line',
+                dimensions: [],
+                measures: ['sales_count'],
+                filters: [],
+                sort: [],
+              },
             },
             alertType: null,
           },
         ],
       },
-      { kpis: [{ code: 'KPI-STK-01', label: 'Stock', unit: 'quantity', value: null, explore: null }] },
+      {
+        kpis: [
+          { code: 'KPI-STK-01', label: 'Stock', unit: 'quantity', value: null, explore: null },
+        ],
+      },
     ]);
     expect(kpis).toEqual([
-      { code: 'KPI-COM-07', label: 'Ventes', unit: 'count', value: 3, previousValue: 2, variationPct: 50, alertType: null },
+      {
+        code: 'KPI-COM-07',
+        label: 'Ventes',
+        unit: 'count',
+        value: 3,
+        previousValue: 2,
+        variationPct: 50,
+        alertType: null,
+      },
       { code: 'KPI-STK-01', label: 'Stock', unit: 'quantity', value: null },
     ]);
     expect(snapshotKpisOf([])).toEqual([]);
@@ -118,10 +136,17 @@ describe('voie longue du worker (P9-22 ; ADR-078 §3)', () => {
     const runner = new JobRunner(db, registry, clock);
     // Les types sont restreints aux deux de l'essai : aucune autre tâche de la base partagée n'est réclamée.
     const mine = { jobTypes: [short, long] };
-    const shortId = await db.transaction().execute((trx) => jobs.enqueue(trx, { jobType: short, payload: {} }));
-    const longId = await db.transaction().execute((trx) => jobs.enqueue(trx, { jobType: long, payload: {} }));
+    const shortId = await db
+      .transaction()
+      .execute((trx) => jobs.enqueue(trx, { jobType: short, payload: {} }));
+    const longId = await db
+      .transaction()
+      .execute((trx) => jobs.enqueue(trx, { jobType: long, payload: {} }));
 
-    const first = await runner.claimAndProcessOne({ ...mine, excludeJobTypes: LONG_RUNNING_JOB_TYPES });
+    const first = await runner.claimAndProcessOne({
+      ...mine,
+      excludeJobTypes: LONG_RUNNING_JOB_TYPES,
+    });
     expect(first).toEqual({ claimed: true, jobId: shortId, result: 'DONE' });
     expect(
       await runner.claimAndProcessOne({ ...mine, excludeJobTypes: LONG_RUNNING_JOB_TYPES }),

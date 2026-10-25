@@ -33,10 +33,7 @@ import { readExplorerLimits } from '../query/limits.js';
 import { ExplorationLimitError, executeExploration } from '../query/run-exploration.js';
 import { explorationDefinitionFrom } from '../query/exploration-definition.js';
 import { resolveExactScope, type ExactScope } from '../scope/exact-scope.js';
-import {
-  VALUATION_PERMISSION,
-  validateExplorationForUser,
-} from '../query/validate-for-user.js';
+import { VALUATION_PERMISSION, validateExplorationForUser } from '../query/validate-for-user.js';
 import { csvHeader, csvRows } from './csv-writer.js';
 import { publishExportEvent } from './export-events.js';
 import { readExportSettings } from './export-settings.js';
@@ -76,7 +73,11 @@ async function writeInChunks(
   let offset = 0;
   for (const part of parts) {
     for (let start = 0; start < part.length; start += EXPORT_CHUNK_BYTES) {
-      offset = await storage.appendChunk(key, offset, part.subarray(start, start + EXPORT_CHUNK_BYTES));
+      offset = await storage.appendChunk(
+        key,
+        offset,
+        part.subarray(start, start + EXPORT_CHUNK_BYTES),
+      );
     }
   }
   return offset;
@@ -97,7 +98,9 @@ function readPermissions(plan: ExplorationPlan): readonly string[] {
   return [
     ...new Set([
       ...plan.dataset.permissions,
-      ...(plan.measures.some((measure) => measure.protected === true) ? [VALUATION_PERMISSION] : []),
+      ...(plan.measures.some((measure) => measure.protected === true)
+        ? [VALUATION_PERMISSION]
+        : []),
     ]),
   ];
 }
@@ -118,7 +121,9 @@ export async function runExport(
   const key = exportStorageKey(job.id);
 
   const conclude = async (
-    outcome: { readonly status: 'DONE'; readonly rowCount: number } | { readonly status: 'FAILED'; readonly errorCode: string },
+    outcome:
+      | { readonly status: 'DONE'; readonly rowCount: number }
+      | { readonly status: 'FAILED'; readonly errorCode: string },
   ): Promise<RunExportOutcome> => {
     const finishedAt = deps.clock.now();
     const durationMs = elapsedMs();
@@ -183,7 +188,8 @@ export async function runExport(
   if (rights !== null) return conclude({ status: 'FAILED', errorCode: rights });
 
   const parsed = explorationDefinitionSchema.safeParse(job.definition);
-  if (!parsed.success) return conclude({ status: 'FAILED', errorCode: 'ANALYTICS_DEFINITION_INVALID' });
+  if (!parsed.success)
+    return conclude({ status: 'FAILED', errorCode: 'ANALYTICS_DEFINITION_INVALID' });
   const definition = explorationDefinitionFrom(parsed.data);
   const validation = await validateExplorationForUser(uow, {
     userId: job.requestedBy,
@@ -242,7 +248,8 @@ async function revalidateRights(
 ): Promise<string | null> {
   const active = await checkUserActive(uow, toBin(job.requestedBy), at);
   if (!active.ok) return 'FORBIDDEN';
-  if (!(await hasPermissionAt(uow, toBin(job.requestedBy), EXPORT_PERMISSION, at))) return 'FORBIDDEN';
+  if (!(await hasPermissionAt(uow, toBin(job.requestedBy), EXPORT_PERMISSION, at)))
+    return 'FORBIDDEN';
   if (job.catalogVersion !== ANALYTICS_CATALOG_VERSION) return 'CATALOG_OUTDATED';
   return null;
 }

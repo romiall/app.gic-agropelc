@@ -274,6 +274,7 @@ export type {
   AnalyticsExportFormat,
   AnalyticsExportRequestPayload,
   AnalyticsQueryRequest,
+  AnalyticsViewDeletePayload,
   AnalyticsViewSavePayload,
   AnalyticsViewSetDefaultPayload,
   AnalyticsViewSharePayload,

@@ -542,7 +542,8 @@ function withDocumentSource(dataset: DatasetDefinition): DatasetDefinition {
   };
 }
 
-export const ANALYTICS_DATASETS: readonly DatasetDefinition[] = BASE_DATASETS.map(withDocumentSource);
+export const ANALYTICS_DATASETS: readonly DatasetDefinition[] =
+  BASE_DATASETS.map(withDocumentSource);
 
 const DATASETS_BY_CODE: ReadonlyMap<string, DatasetDefinition> = new Map(
   ANALYTICS_DATASETS.map((dataset) => [dataset.code, dataset]),

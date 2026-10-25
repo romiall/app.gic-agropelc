@@ -9,7 +9,17 @@
  * EXPORT_FAILED` en échec, `410 EXPORT_EXPIRED` après l'échéance ou fichier purgé) ; le fichier est lu par morceaux ;
  * chaque téléchargement écrit une ligne d'audit (`AnalyticsExportDownloaded`, acteur, appareil).
  */
-import { Controller, Get, HttpCode, Inject, Param, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Req,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
@@ -152,9 +162,7 @@ export class AnalyticsExportsController {
     );
     const extension = job.format === 'CSV' ? 'csv' : 'xlsx';
     const filename = `export-${job.dataset}-${businessDayOf(job.createdAt)}.${extension}`;
-    reply
-      .header('Cache-Control', 'private, no-store')
-      .header('X-Content-Type-Options', 'nosniff');
+    reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff');
     return new StreamableFile(Readable.from(this.storage.readChunks(key, DOWNLOAD_CHUNK_BYTES)), {
       type: CONTENT_TYPES[job.format],
       disposition: `attachment; filename="${filename}"`,

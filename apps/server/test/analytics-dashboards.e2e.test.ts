@@ -30,7 +30,16 @@ import { actorWith, type CommandActor } from './analytics-command-fixtures.js';
 import { closeTestDb, db, freshUuid, insertTestUser, signTestAccessToken } from './helpers.js';
 
 const BLOCK_ORDER = {
-  direction: ['PRODUCTION', 'STOCK', 'DISTRIBUTION', 'VENTES', 'FINANCES', 'EQUIPES', 'ALERTES', 'COORDINATION'],
+  direction: [
+    'PRODUCTION',
+    'STOCK',
+    'DISTRIBUTION',
+    'VENTES',
+    'FINANCES',
+    'EQUIPES',
+    'ALERTES',
+    'COORDINATION',
+  ],
   commercial: ['COMMERCIAL', 'VENTES', 'EQUIPES', 'ALERTES'],
   stock: ['STOCK', 'DISTRIBUTION', 'ALERTES'],
   production: ['PRODUCTION', 'ALERTES'],
@@ -106,7 +115,10 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
 
   describe('droits et période', () => {
     it('401 sans jeton ; 403 audité sans la permission du tableau ; une permission d’un autre tableau ne suffit pas', async () => {
-      expect((await app.inject({ method: 'GET', url: '/api/v1/analytics/dashboards/direction' })).statusCode).toBe(401);
+      expect(
+        (await app.inject({ method: 'GET', url: '/api/v1/analytics/dashboards/direction' }))
+          .statusCode,
+      ).toBe(401);
       const refused = await get(nobody, '/api/v1/analytics/dashboards/direction');
       expect(refused.statusCode).toBe(403);
       const denied = await db
@@ -115,9 +127,13 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         .where('actor_user_id', '=', toBin(nobody.id))
         .where('action', '=', 'access.denied')
         .execute();
-      expect(denied).toEqual([{ entity_type: 'ANALYTICS_DASHBOARD_DIRECTION', error_code: 'FORBIDDEN' }]);
+      expect(denied).toEqual([
+        { entity_type: 'ANALYTICS_DASHBOARD_DIRECTION', error_code: 'FORBIDDEN' },
+      ]);
       // `analytics.dashboard.stock` ne donne pas le tableau de direction.
-      expect((await get(stockHolder, '/api/v1/analytics/dashboards/direction')).statusCode).toBe(403);
+      expect((await get(stockHolder, '/api/v1/analytics/dashboards/direction')).statusCode).toBe(
+        403,
+      );
       expect((await get(stockHolder, '/api/v1/analytics/dashboards/stock')).statusCode).toBe(200);
     });
 
@@ -127,8 +143,17 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       expect(today.period.days).toBe(1);
       expect(today.previousPeriod.days).toBe(1);
       const range = await dashboard(direction, 'direction', 'from=2026-10-01&to=2026-10-10');
-      expect(range.period).toMatchObject({ code: 'CUSTOM', fromDay: '2026-10-01', toDay: '2026-10-10', days: 10 });
-      expect(range.previousPeriod).toMatchObject({ fromDay: '2026-09-21', toDay: '2026-09-30', days: 10 });
+      expect(range.period).toMatchObject({
+        code: 'CUSTOM',
+        fromDay: '2026-10-01',
+        toDay: '2026-10-10',
+        days: 10,
+      });
+      expect(range.previousPeriod).toMatchObject({
+        fromDay: '2026-09-21',
+        toDay: '2026-09-30',
+        days: 10,
+      });
       for (const query of [
         'period=MONTH&from=2026-10-01&to=2026-10-10',
         'from=2026-10-01',
@@ -136,7 +161,10 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         'from=2020-01-01&to=2026-10-01',
         'period=SIECLE',
       ]) {
-        expect((await get(direction, `/api/v1/analytics/dashboards/direction?${query}`)).statusCode, query).toBe(400);
+        expect(
+          (await get(direction, `/api/v1/analytics/dashboards/direction?${query}`)).statusCode,
+          query,
+        ).toBe(400);
       }
     });
   });
@@ -150,7 +178,10 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         expect(response.blocks.map((block) => block.code)).toEqual(blocks);
         for (const block of response.blocks) {
           if (block.unavailable !== null) expect(block.kpis).toEqual([]);
-          else expect(block.kpis.length + block.details.length).toBeGreaterThan(0);
+          // Seul le bloc de distribution peut être vide : sans point de vente dans la portée, rien à lire (jamais « tout »).
+          else if (block.code !== 'DISTRIBUTION') {
+            expect(block.kpis.length + block.details.length, block.code).toBeGreaterThan(0);
+          }
         }
         expect(response.freshness.staleAfterHours).toBeGreaterThan(0);
         expect(response.computedAt).toBe(response.freshness.computedAt);
@@ -161,9 +192,12 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       const response = await dashboard(direction, 'direction');
       for (const block of response.blocks) {
         for (const kpi of block.kpis) {
-          expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
+          // Les compteurs d'alertes et de validations (`KPI-OPS-*`) ne sont pas des indicateurs du registre de D11 §7.1.
+          if (!kpi.code.startsWith('KPI-OPS-')) expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
           const hasPrevious = kpi.previousValue !== undefined;
-          expect(hasPrevious, `${kpi.code} période précédente`).toBe(kpiHasPreviousPeriod(kpi.code));
+          expect(hasPrevious, `${kpi.code} période précédente`).toBe(
+            kpiHasPreviousPeriod(kpi.code),
+          );
         }
       }
     });
@@ -190,10 +224,14 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
     it('l’instantané personnel d’une période égale le tableau de la même période', async () => {
       await db.transaction().execute((trx) => refreshSnapshotsOf(trx, stockHolder.id, clock.now()));
       const snapshots = await listSnapshotsOf(db, stockHolder.id);
-      const month = snapshots.find((snapshot) => snapshot.periodKey === 'MONTH' && snapshot.scopeKey === 'stock');
+      const month = snapshots.find(
+        (snapshot) => snapshot.periodKey === 'MONTH' && snapshot.scopeKey === 'stock',
+      );
       expect(month).toBeDefined();
       const live = await dashboard(stockHolder, 'stock', 'period=MONTH');
-      const liveKpis = live.blocks.flatMap((block) => block.kpis.map(({ explore: _explore, ...rest }) => rest));
+      const liveKpis = live.blocks.flatMap((block) =>
+        block.kpis.map(({ explore: _explore, ...rest }) => rest),
+      );
       expect(month!.kpis).toEqual(JSON.parse(JSON.stringify(liveKpis)));
     });
 
@@ -209,7 +247,10 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
           const response = await app.inject({
             method: 'POST',
             url: '/api/v1/analytics/query',
-            headers: { authorization: `Bearer ${tokens.get(direction.userId)!}`, 'content-type': 'application/json' },
+            headers: {
+              authorization: `Bearer ${tokens.get(direction.userId)!}`,
+              'content-type': 'application/json',
+            },
             payload: JSON.stringify({
               definition: {
                 dataset: definition.explorer.dataset,
@@ -225,7 +266,8 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
           const row = analyticsQueryResponseSchema.parse(response.json()).rows[0];
           const explored = row?.values[definition.explorer.measure] ?? 0;
           compared.push(kpi.code);
-          if (Number(explored) !== kpi.value) gaps.push(`${kpi.code} : tableau ${kpi.value}, explorateur ${explored}`);
+          if (Number(explored) !== kpi.value)
+            gaps.push(`${kpi.code} : tableau ${kpi.value}, explorateur ${explored}`);
         }
       }
       expect(compared.length).toBeGreaterThan(0);
@@ -241,9 +283,15 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
 
     it('étendue totale, vide, « tout site » : tout, rien, tout', async () => {
       expect(await readScopeOf(db, { kind: 'ALL' })).toBe(ALL_SCOPE);
-      expect(await readScopeOf(db, { kind: 'CLAUSES', clauses: [], truncated: false })).toEqual({ siteIds: [] });
+      expect(await readScopeOf(db, { kind: 'CLAUSES', clauses: [], truncated: false })).toEqual({
+        siteIds: [],
+      });
       expect(
-        await readScopeOf(db, { kind: 'CLAUSES', clauses: [{ type: 'ANY_SITE' }], truncated: false }),
+        await readScopeOf(db, {
+          kind: 'CLAUSES',
+          clauses: [{ type: 'ANY_SITE' }],
+          truncated: false,
+        }),
       ).toBe(ALL_SCOPE);
     });
 
@@ -256,7 +304,11 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
         }),
       ).toEqual({ siteIds: [siteA, siteB] });
       expect(
-        await readScopeOf(db, { kind: 'CLAUSES', clauses: [{ type: 'PERSONS', ids: [user, other] }], truncated: false }),
+        await readScopeOf(db, {
+          kind: 'CLAUSES',
+          clauses: [{ type: 'PERSONS', ids: [user, other] }],
+          truncated: false,
+        }),
       ).toEqual({ userIds: [user, other] });
       expect(
         await readScopeOf(db, {

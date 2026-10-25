@@ -55,7 +55,11 @@ export async function listReadableViews(
   for (const view of views) {
     readable.push({
       view,
-      executability: await viewExecutability(executor, { userId: input.userId, view, at: input.at }),
+      executability: await viewExecutability(executor, {
+        userId: input.userId,
+        view,
+        at: input.at,
+      }),
     });
   }
   return readable;

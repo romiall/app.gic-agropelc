@@ -186,7 +186,11 @@ export async function defaultViewOfRole(
 /** Pose (ou retire, `null`) la vue par défaut d'un rôle sur la vue ; l'ancienne vue du rôle doit déjà être libérée. */
 export async function setViewDefault(
   uow: Transaction<DB>,
-  input: { readonly id: string; readonly roleCode: string | null; readonly updatedBy: string | null },
+  input: {
+    readonly id: string;
+    readonly roleCode: string | null;
+    readonly updatedBy: string | null;
+  },
 ): Promise<void> {
   await uow
     .updateTable('analytics_saved_views')
@@ -220,7 +224,10 @@ export async function visibleViews(
     .selectFrom('analytics_saved_views')
     .select(COLUMNS)
     .where((eb) =>
-      eb.or([eb('owner_user_id', '=', toBin(input.userId)), eb(sharedWithReader, '=', sql<boolean>`TRUE`)]),
+      eb.or([
+        eb('owner_user_id', '=', toBin(input.userId)),
+        eb(sharedWithReader, '=', sql<boolean>`TRUE`),
+      ]),
     )
     .orderBy('updated_at', 'desc')
     .orderBy('id')

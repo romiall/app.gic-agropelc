@@ -15,7 +15,8 @@ import {
   salesDefinition,
   type CommandActor,
 } from './analytics-command-fixtures.js';
-import { closeTestDb, db, freshUuid, insertTestUser } from './helpers.js';
+import { closeTestDb, db, freshUuid, insertTestUser, withTestUow } from './helpers.js';
+import { insertExport, markExportFailed } from '../src/modules/analytics/application/exports/export-store.js';
 
 afterAll(closeTestDb);
 
@@ -24,13 +25,6 @@ async function offenders(query: ReturnType<typeof sql<{ ref: string }>>): Promis
   const { rows } = await query.execute(db);
   return rows.map((row) => row.ref);
 }
-
-const triggersOf = async (table: string): Promise<string[]> =>
-  (
-    await sql<{ name: string }>`
-      SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS
-       WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ${table}`.execute(db)
-  ).rows.map((row) => row.name);
 
 describe('P9-23 : invariants des alertes et des notes (INV-NOT)', () => {
   it('INV-NOT-01 : au plus une alerte ouverte par type et objet', async () => {
@@ -41,26 +35,9 @@ describe('P9-23 : invariants des alertes et des notes (INV-NOT)', () => {
     ).toEqual([]);
   });
 
-  it('INV-NOT-02 et 03 : les déclencheurs d’immuabilité des alertes et des notes existent', async () => {
-    expect(await triggersOf('communication_alerts')).toEqual(
-      expect.arrayContaining(['trg_communication_alerts_update_guard', 'trg_communication_alerts_purge_guard']),
-    );
-    expect(await triggersOf('communication_internal_notes')).toEqual(
-      expect.arrayContaining([
-        'trg_communication_internal_notes_update_guard',
-        'trg_communication_internal_notes_no_delete',
-      ]),
-    );
-    expect(await triggersOf('communication_note_audiences')).toEqual(
-      expect.arrayContaining([
-        'trg_communication_note_audiences_insert_guard',
-        'trg_communication_note_audiences_update_guard',
-        'trg_communication_note_audiences_delete_guard',
-      ]),
-    );
-  });
-
-  it('INV-NOT-02 : une alerte résolue ou écartée refuse toute modification ; une note publiée aussi', async () => {
+  // Les déclencheurs eux-mêmes sont éprouvés par les essais de schéma du paquet `db` (rôle propriétaire : le compte de
+  // l'application ne voit pas `information_schema.TRIGGERS`) ; ici, leur effet sur les lignes réelles de la base.
+  it('INV-NOT-02 et 03 : une alerte résolue ou écartée refuse toute modification ; une note publiée aussi', async () => {
     const resolved = await db
       .selectFrom('communication_alerts')
       .select('id')
@@ -123,27 +100,54 @@ describe('P9-23 : invariants de l’analyse (INV-ANA)', () => {
             OR (status IN ('QUEUED', 'RUNNING') <=> (finished_at IS NOT NULL))
          LIMIT 20`),
     ).toEqual([]);
-    expect(await triggersOf('analytics_export_jobs')).toEqual(
-      expect.arrayContaining(['trg_analytics_export_jobs_update_guard', 'trg_analytics_export_jobs_no_delete']),
-    );
-    const finished = await db
-      .selectFrom('analytics_export_jobs')
-      .select('id')
-      .where('status', 'in', ['FAILED', 'EXPIRED'])
-      .limit(1)
-      .executeTakeFirst();
-    if (finished !== undefined) {
+  });
+
+  it('INV-ANA-01 : une ligne d’export terminée est figée et ne se supprime pas (essai dans une transaction annulée)', async () => {
+    await withTestUow(async (trx) => {
+      const user = await insertTestUser(trx);
+      const id = freshUuid();
+      await insertExport(trx, {
+        id,
+        requestedBy: user,
+        dataset: 'f_sales_line',
+        definition: salesDefinition(),
+        format: 'CSV',
+        catalogVersion: ANALYTICS_CATALOG_VERSION,
+        commandId: freshUuid(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+      await markExportFailed(trx, {
+        id,
+        errorCode: 'ESSAI',
+        durationMs: 1,
+        finishedAt: new Date(),
+      });
       await expect(
-        db
+        trx.updateTable('analytics_export_jobs').set({ error_code: 'MODIFIE' }).where('id', '=', toBin(id)).execute(),
+      ).rejects.toThrow();
+      await expect(
+        trx.deleteFrom('analytics_export_jobs').where('id', '=', toBin(id)).execute(),
+      ).rejects.toThrow();
+      // La demande ne peut pas non plus changer le jeu ou l'échéance avant la fin.
+      const open = freshUuid();
+      await insertExport(trx, {
+        id: open,
+        requestedBy: user,
+        dataset: 'f_sales_line',
+        definition: salesDefinition(),
+        format: 'CSV',
+        catalogVersion: ANALYTICS_CATALOG_VERSION,
+        commandId: freshUuid(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+      await expect(
+        trx
           .updateTable('analytics_export_jobs')
-          .set({ error_code: 'MODIFIE' })
-          .where('id', '=', finished.id)
+          .set({ expires_at: new Date(Date.now() + 2 * 86_400_000) })
+          .where('id', '=', toBin(open))
           .execute(),
       ).rejects.toThrow();
-      await expect(
-        db.deleteFrom('analytics_export_jobs').where('id', '=', finished.id).execute(),
-      ).rejects.toThrow();
-    }
+    });
   });
 
   it('INV-ANA-02 : la vue par défaut d’un rôle est partagée avec ce rôle', async () => {

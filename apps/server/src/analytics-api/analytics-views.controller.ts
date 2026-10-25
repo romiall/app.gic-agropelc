@@ -32,13 +32,15 @@ function viewResponse(readable: ReadableView): z.input<typeof savedViewSchema> {
     name: view.name,
     dataset: view.dataset,
     // Une définition illisible (vue ancienne) reste listée : elle est `OUTDATED`, jamais cachée ni réécrite.
-    definition: explorationDefinitionSchema.catch({
-      dataset: view.dataset,
-      dimensions: [],
-      measures: ['unavailable'],
-      filters: [],
-      sort: [],
-    }).parse(view.definition),
+    definition: explorationDefinitionSchema
+      .catch({
+        dataset: view.dataset,
+        dimensions: [],
+        measures: ['unavailable'],
+        filters: [],
+        sort: [],
+      })
+      .parse(view.definition),
     catalogVersion: view.catalogVersion,
     ownerUserId: view.ownerUserId,
     sharedWithRoles: [...view.sharedWithRoles],

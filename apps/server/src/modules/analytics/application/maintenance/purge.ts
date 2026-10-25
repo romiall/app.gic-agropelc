@@ -50,11 +50,25 @@ async function days(uow: UnitOfWork, key: string, at: Date, fallback: number): P
 
 export async function runAnalyticsPurge(
   uow: UnitOfWork,
-  deps: { readonly clock: Clock; readonly idGenerator: IdGenerator; readonly storage: ChunkStorage },
+  deps: {
+    readonly clock: Clock;
+    readonly idGenerator: IdGenerator;
+    readonly storage: ChunkStorage;
+  },
 ): Promise<PurgeOutcome> {
   const now = deps.clock.now();
-  const queryLogDays = await days(uow, QUERY_LOG_RETENTION_KEY, now, DEFAULT_QUERY_LOG_RETENTION_DAYS);
-  const fileDays = await days(uow, EXPORT_FILE_RETENTION_KEY, now, DEFAULT_EXPORT_FILE_RETENTION_DAYS);
+  const queryLogDays = await days(
+    uow,
+    QUERY_LOG_RETENTION_KEY,
+    now,
+    DEFAULT_QUERY_LOG_RETENTION_DAYS,
+  );
+  const fileDays = await days(
+    uow,
+    EXPORT_FILE_RETENTION_KEY,
+    now,
+    DEFAULT_EXPORT_FILE_RETENTION_DAYS,
+  );
 
   let queryLogDeleted = 0;
   const logCutoff = new Date(now.getTime() - queryLogDays * DAY_MS);
@@ -102,7 +116,12 @@ export async function runAnalyticsPurge(
       action: 'analytics.export.abandoned',
       entityType: 'ANALYTICS_EXPORT',
       entityId: job.id,
-      after: { dataset: job.dataset, format: job.format, status: 'FAILED', error_code: 'EXPORT_ABANDONED' },
+      after: {
+        dataset: job.dataset,
+        format: job.format,
+        status: 'FAILED',
+        error_code: 'EXPORT_ABANDONED',
+      },
       result: 'FAILED',
       errorCode: 'EXPORT_ABANDONED',
     });

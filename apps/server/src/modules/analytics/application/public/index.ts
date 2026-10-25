@@ -54,7 +54,11 @@ export {
   snapshotEntityId,
   snapshotPair,
 } from '../snapshots/snapshot-store.js';
-export type { SnapshotKey, SnapshotPeriodKey, StoredSnapshot } from '../snapshots/snapshot-store.js';
+export type {
+  SnapshotKey,
+  SnapshotPeriodKey,
+  StoredSnapshot,
+} from '../snapshots/snapshot-store.js';
 
 // P9-19 : vues sauvegardées (lecture avec exécutabilité) ; P9-20 : exports (lecture du demandeur, clé du fichier).
 export { VIEWS_LIST_LIMIT, listReadableViews, readReadableView } from '../views/view-read.js';

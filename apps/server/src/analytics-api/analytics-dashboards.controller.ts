@@ -97,7 +97,9 @@ export class AnalyticsDashboardsController {
     const query = parseOrThrow(querySchema, rawQuery);
     const now = this.clock.now();
     const access = new ReadAccess(this.db, this.deps, dashboardPermission(code));
-    await access.requirePermission(request, now, { type: `ANALYTICS_DASHBOARD_${code.toUpperCase()}` });
+    await access.requirePermission(request, now, {
+      type: `ANALYTICS_DASHBOARD_${code.toUpperCase()}`,
+    });
     const period = await resolveDashboardPeriod(this.db, now, query);
     const response = await this.db
       .transaction()

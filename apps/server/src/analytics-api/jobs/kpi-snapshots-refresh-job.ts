@@ -17,11 +17,7 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { z } from 'zod';
 import type { DashboardKpi } from '@gic/contracts';
-import {
-  businessDayOf,
-  resolveAnalyticsPeriod,
-  type Clock,
-} from '@gic/domain';
+import { businessDayOf, resolveAnalyticsPeriod, type Clock } from '@gic/domain';
 import { CLOCK } from '../../platform/clock.provider.js';
 import {
   JOB_HANDLER_REGISTRY,
@@ -75,9 +71,7 @@ async function positiveIntSetting(
 export function snapshotKpisOf(
   blocks: readonly { readonly kpis: readonly DashboardKpi[] }[],
 ): readonly Omit<DashboardKpi, 'explore'>[] {
-  return blocks.flatMap((block) =>
-    block.kpis.map(({ explore: _explore, ...kpi }) => kpi),
-  );
+  return blocks.flatMap((block) => block.kpis.map(({ explore: _explore, ...kpi }) => kpi));
 }
 
 /**
@@ -124,7 +118,12 @@ export async function runKpiSnapshotsRefresh(
   const payload = payloadSchema.safeParse(rawPayload);
   const afterUserId = payload.success ? (payload.data.afterUserId ?? null) : null;
   const now = deps.clock.now();
-  const activeDays = await positiveIntSetting(uow, SNAPSHOT_ACTIVE_DAYS_KEY, now, DEFAULT_ACTIVE_DAYS);
+  const activeDays = await positiveIntSetting(
+    uow,
+    SNAPSHOT_ACTIVE_DAYS_KEY,
+    now,
+    DEFAULT_ACTIVE_DAYS,
+  );
   const batchSize = await positiveIntSetting(uow, SNAPSHOT_BATCH_SIZE_KEY, now, DEFAULT_BATCH_SIZE);
   const since = new Date(now.getTime() - activeDays * DAY_MS);
   const users = await activeSnapshotUsers(uow, { since, afterUserId, limit: batchSize });

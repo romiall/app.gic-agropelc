@@ -73,9 +73,9 @@ try {
      SELECT ROW_NUMBER() OVER (ORDER BY p.id) - 1, p.id, p.name, p.base_unit_code
        FROM catalog_products p WHERE p.status = 'ACTIVE' ORDER BY p.id LIMIT ${PRODUCTS}`,
   );
-  const [[{ n: productCount }]] = (await conn.query(`SELECT COUNT(*) AS n FROM p9_load_products`)) as unknown as [
-    [{ n: number }],
-  ];
+  const [[{ n: productCount }]] = (await conn.query(
+    `SELECT COUNT(*) AS n FROM p9_load_products`,
+  )) as unknown as [[{ n: number }]];
   if (productCount === 0) throw new Error('Aucun produit actif pour le jeu de charge.');
 
   // Début de la plage : DAYS jours se terminant à la date du jour (UTC).
@@ -132,9 +132,12 @@ try {
       [reason.id],
     );
     inserted += to - from + 1;
-    console.log(`  + ${inserted}/${SALES} ventes`);
+    process.stdout.write(`  + ${inserted}/${SALES} ventes
+`);
   }
-  console.log(`Jeu de charge P9 : ${SALES} ventes sur ${DAYS} jours (site, emplacement et zone de référence).`);
+  process.stdout
+    .write(`Jeu de charge P9 : ${SALES} ventes sur ${DAYS} jours (site, emplacement et zone de référence).
+`);
 } finally {
   await conn.end();
 }

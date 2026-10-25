@@ -42,7 +42,10 @@ export async function readExportSettings(
   const read = async (key: string): Promise<unknown> =>
     currentSettingValue(executor, { key, scopeType: 'GLOBAL', scopeId: null, at });
   return {
-    maxRows: positiveInteger(await read(EXPORT_SETTING_KEYS.maxRows), DEFAULT_EXPORT_SETTINGS.maxRows),
+    maxRows: positiveInteger(
+      await read(EXPORT_SETTING_KEYS.maxRows),
+      DEFAULT_EXPORT_SETTINGS.maxRows,
+    ),
     maxSeconds: positiveInteger(
       await read(EXPORT_SETTING_KEYS.maxSeconds),
       DEFAULT_EXPORT_SETTINGS.maxSeconds,

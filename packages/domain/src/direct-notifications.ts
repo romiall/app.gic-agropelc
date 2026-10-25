@@ -68,9 +68,7 @@ export type DirectAudience =
 
 /** Type de l'objet source de la notification (colonne `source_type`). */
 export type DirectNotificationSourceType =
-  | 'APPROVAL_REQUEST'
-  | 'STOCK_TRANSFER'
-  | 'ANALYTICS_EXPORT';
+  'APPROVAL_REQUEST' | 'STOCK_TRANSFER' | 'ANALYTICS_EXPORT';
 
 export interface DirectNotificationPlan {
   readonly eventType: DirectNotificationEventType;
@@ -195,7 +193,8 @@ function transferPlan(
 
 /** Libellé court du motif d'échec d'un export (`analytics_export_jobs.error_code`). */
 const EXPORT_FAILURE_REASONS: Readonly<Record<string, string>> = {
-  QUERY_LIMIT_EXCEEDED: 'trop de lignes ou trop long : affinez la période, les filtres ou les regroupements',
+  QUERY_LIMIT_EXCEEDED:
+    'trop de lignes ou trop long : affinez la période, les filtres ou les regroupements',
   FORBIDDEN: 'un droit nécessaire a été retiré',
   FORBIDDEN_MEASURE: 'la valeur au coût n’est plus accessible à votre compte',
   CATALOG_OUTDATED: 'le catalogue a changé : refaites l’export',

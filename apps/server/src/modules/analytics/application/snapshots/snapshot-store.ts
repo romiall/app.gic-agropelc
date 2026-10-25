@@ -42,6 +42,26 @@ export const snapshotEntityId = (key: SnapshotKey): string =>
 
 const pairOf = (scopeKey: string, periodKey: string): string => `${scopeKey}|${periodKey}`;
 
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sortKeys(record[key])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Forme canonique d'un contenu JSON (clés triées) : MySQL range les clés d'un objet JSON à sa façon (par longueur,
+ * puis par ordre alphabétique), si bien que le contenu relu n'a pas l'ordre des clés du contenu écrit ; seule la
+ * valeur compte pour décider de republier.
+ */
+const canonicalJson = (value: unknown): string => JSON.stringify(sortKeys(value));
+
 /**
  * Écrase l'instantané ; rend `true` si une ligne du flux a été publiée (contenu changé, première écriture ou
  * date à rafraîchir). `kpis` est le contenu des indicateurs (JSON) ; `computedAt` l'instant du calcul.
@@ -74,8 +94,8 @@ export async function saveSnapshot(
     .execute();
   const unchanged =
     previous !== undefined &&
-    JSON.stringify((previous.payload as { kpis?: unknown } | null)?.kpis ?? null) ===
-      JSON.stringify(input.kpis) &&
+    canonicalJson((previous.payload as { kpis?: unknown } | null)?.kpis ?? null) ===
+      canonicalJson(input.kpis) &&
     input.computedAt.getTime() - previous.computed_at.getTime() < SNAPSHOT_REPUBLISH_MS;
   if (unchanged) return false;
   await recordChanges(executor, [

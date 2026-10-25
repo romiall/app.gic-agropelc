@@ -47,7 +47,11 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
   let noExplore: CommandActor & { roleCode: string };
 
   const get = (actor: CommandActor, url: string) =>
-    app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${tokens.get(actor.id)!}` } });
+    app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: `Bearer ${tokens.get(actor.id)!}` },
+    });
   const definition = (extra: Record<string, unknown> = {}) =>
     salesDefinition({
       period: { code: 'CUSTOM', fromDay: '2024-01-01', toDay: TODAY },
@@ -77,7 +81,12 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
     const jwtKeys = app.get(JWT_KEYS);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    owner = await actorWith(admin, ['analytics.explore', 'analytics.view.share', 'analytics.export', 'sales.sale.read']);
+    owner = await actorWith(admin, [
+      'analytics.explore',
+      'analytics.view.share',
+      'analytics.export',
+      'sales.sale.read',
+    ]);
     reader = await actorWith(admin, ['analytics.explore', 'analytics.export', 'sales.sale.read']);
     outsider = await actorWith(admin, ['analytics.explore', 'analytics.export', 'sales.sale.read']);
     auditor = await actorWith(admin, ['audit.log.read', 'analytics.explore']);
@@ -115,18 +124,24 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
         definition: definition(),
         catalogVersion: ANALYTICS_CATALOG_VERSION,
       });
-      await harness.run(owner, 'analytics.view.share', 'SAVED_VIEW', viewId, { roles: [reader.roleCode] });
+      await harness.run(owner, 'analytics.view.share', 'SAVED_VIEW', viewId, {
+        roles: [reader.roleCode],
+      });
 
       const asReader = await get(reader, '/api/v1/analytics/views');
       expect(asReader.statusCode, asReader.body).toBe(200);
-      const listed = (asReader.json() as { views: unknown[] }).views.map((view) => savedViewSchema.parse(view));
+      const listed = (asReader.json() as { views: unknown[] }).views.map((view) =>
+        savedViewSchema.parse(view),
+      );
       expect(listed.find((view) => view.id === viewId)).toMatchObject({
         ownerUserId: owner.id,
         executability: 'OK',
         sharedWithRoles: [reader.roleCode],
       });
       const asOutsider = await get(outsider, '/api/v1/analytics/views');
-      expect((asOutsider.json() as { views: { id: string }[] }).views.some((view) => view.id === viewId)).toBe(false);
+      expect(
+        (asOutsider.json() as { views: { id: string }[] }).views.some((view) => view.id === viewId),
+      ).toBe(false);
 
       const one = await get(reader, `/api/v1/analytics/views/${viewId}`);
       expect(one.statusCode).toBe(200);
@@ -142,10 +157,14 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
       });
       const hidden = await get(outsider, `/api/v1/analytics/views/${viewId}`);
       expect(hidden.statusCode).toBe(404);
-      expect((await deniedOf(outsider, 'ANALYTICS_VIEW')).some((row) => idOf(row.entity_id) === viewId)).toBe(true);
+      expect(
+        (await deniedOf(outsider, 'ANALYTICS_VIEW')).some((row) => idOf(row.entity_id) === viewId),
+      ).toBe(true);
       expect((await get(outsider, `/api/v1/analytics/views/${freshUuid()}`)).statusCode).toBe(404);
       expect((await get(noExplore, '/api/v1/analytics/views')).statusCode).toBe(403);
-      expect((await app.inject({ method: 'GET', url: '/api/v1/analytics/views' })).statusCode).toBe(401);
+      expect((await app.inject({ method: 'GET', url: '/api/v1/analytics/views' })).statusCode).toBe(
+        401,
+      );
     });
   });
 
@@ -157,16 +176,26 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
       override: Record<string, unknown> = {},
     ): Promise<string> {
       const exportId = freshUuid();
-      const result = await server.run(actor, 'analytics.export.request', 'ANALYTICS_EXPORT', exportId, {
-        definition: definition(override),
-        format,
-        catalogVersion: ANALYTICS_CATALOG_VERSION,
-      });
+      const result = await server.run(
+        actor,
+        'analytics.export.request',
+        'ANALYTICS_EXPORT',
+        exportId,
+        {
+          definition: definition(override),
+          format,
+          catalogVersion: ANALYTICS_CATALOG_VERSION,
+        },
+      );
       expect(result.status, JSON.stringify(result)).toBe('APPLIED');
       const outcome = await db
         .transaction()
         .execute((trx) =>
-          runExport(trx, { clock: server.clock, idGenerator: server.idGenerator, storage }, exportId),
+          runExport(
+            trx,
+            { clock: server.clock, idGenerator: server.idGenerator, storage },
+            exportId,
+          ),
         );
       expect(outcome.status).toBe('DONE');
       return exportId;
@@ -176,8 +205,14 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
       const exportId = await finishedExport(owner);
       const list = await get(owner, '/api/v1/analytics/exports');
       expect(list.statusCode, list.body).toBe(200);
-      const jobs = (list.json() as { exports: unknown[] }).exports.map((job) => exportJobSchema.parse(job));
-      expect(jobs.find((job) => job.id === exportId)).toMatchObject({ status: 'DONE', format: 'CSV', dataset: 'f_sales_line' });
+      const jobs = (list.json() as { exports: unknown[] }).exports.map((job) =>
+        exportJobSchema.parse(job),
+      );
+      expect(jobs.find((job) => job.id === exportId)).toMatchObject({
+        status: 'DONE',
+        format: 'CSV',
+        dataset: 'f_sales_line',
+      });
 
       const one = await get(owner, `/api/v1/analytics/exports/${exportId}`);
       expect(exportJobSchema.parse(one.json())).toMatchObject({ id: exportId, status: 'DONE' });
@@ -185,7 +220,9 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
       const file = await get(owner, `/api/v1/analytics/exports/${exportId}/download`);
       expect(file.statusCode, file.body).toBe(200);
       expect(file.headers['content-type']).toContain('text/csv');
-      expect(String(file.headers['content-disposition'])).toContain('attachment; filename="export-f_sales_line-');
+      expect(String(file.headers['content-disposition'])).toContain(
+        'attachment; filename="export-f_sales_line-',
+      );
       expect(String(file.headers['cache-control'])).toContain('no-store');
       expect(file.body.startsWith('﻿Vente (document);')).toBe(true);
       const audit = await db
@@ -209,16 +246,27 @@ describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000
     it('aucun autre rôle ne télécharge ni ne lit : un tiers et un administrateur (audit.log.read) reçoivent 404, audité', async () => {
       const exportId = await finishedExport(owner);
       for (const actor of [outsider, reader]) {
-        for (const url of [`/api/v1/analytics/exports/${exportId}`, `/api/v1/analytics/exports/${exportId}/download`]) {
+        for (const url of [
+          `/api/v1/analytics/exports/${exportId}`,
+          `/api/v1/analytics/exports/${exportId}/download`,
+        ]) {
           expect((await get(actor, url)).statusCode).toBe(404);
         }
       }
       // L'administrateur n'a pas `analytics.export` : refus 403 ; avec le droit d'exporter mais pas d'être le demandeur : 404.
-      expect((await get(auditor, `/api/v1/analytics/exports/${exportId}/download`)).statusCode).toBe(403);
-      expect((await deniedOf(outsider, 'ANALYTICS_EXPORT')).some((row) => idOf(row.entity_id) === exportId)).toBe(true);
+      expect(
+        (await get(auditor, `/api/v1/analytics/exports/${exportId}/download`)).statusCode,
+      ).toBe(403);
+      expect(
+        (await deniedOf(outsider, 'ANALYTICS_EXPORT')).some(
+          (row) => idOf(row.entity_id) === exportId,
+        ),
+      ).toBe(true);
       // Le tiers ne voit pas l'export dans sa liste.
       const list = await get(outsider, '/api/v1/analytics/exports');
-      expect((list.json() as { exports: { id: string }[] }).exports.some((job) => job.id === exportId)).toBe(false);
+      expect(
+        (list.json() as { exports: { id: string }[] }).exports.some((job) => job.id === exportId),
+      ).toBe(false);
     });
 
     it('un export échu (24 h) est refusé 410 et listé EXPIRED, un export en file 409', async () => {

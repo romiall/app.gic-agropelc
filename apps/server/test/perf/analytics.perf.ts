@@ -67,10 +67,13 @@ describe('P9-22 : charge de l’analyse', () => {
       { sub: direction.userId, device_id: direction.deviceId, session_id: freshUuid() },
       clock.now(),
     );
-    const { rows } = await sql<{ n: string }>`SELECT COUNT(*) AS n FROM sales_sales WHERE doc_number LIKE 'LOAD-%'`.execute(db);
-    expect(Number(rows[0]?.n ?? 0), 'le jeu de charge est chargé (pnpm --filter @gic/db load:p9)').toBeGreaterThan(
-      0,
-    );
+    const { rows } = await sql<{
+      n: string;
+    }>`SELECT COUNT(*) AS n FROM sales_sales WHERE doc_number LIKE 'LOAD-%'`.execute(db);
+    expect(
+      Number(rows[0]?.n ?? 0),
+      'le jeu de charge est chargé (pnpm --filter @gic/db load:p9)',
+    ).toBeGreaterThan(0);
   });
 
   afterAll(async () => {
@@ -80,15 +83,21 @@ describe('P9-22 : charge de l’analyse', () => {
 
   it.each([
     ['7 jours', 'period=WEEK'],
-    ['366 jours', `from=${new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`],
+    [
+      '366 jours',
+      `from=${new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`,
+    ],
   ])('tour de contrôle sur %s : p95 ≤ 3 s', async (label, period) => {
     const samples: number[] = [];
     for (let run = 0; run < RUNS; run += 1) {
-      const { ms, result } = await timed(() => get(`/api/v1/analytics/dashboards/direction?${period}`));
+      const { ms, result } = await timed(() =>
+        get(`/api/v1/analytics/dashboards/direction?${period}`),
+      );
       expect(result.statusCode, result.body).toBe(200);
       samples.push(ms);
     }
-    console.log(`tour de contrôle ${label} : p95 ${p95(samples)} ms (${samples.join(', ')})`);
+    process.stdout.write(`tour de contrôle ${label} : p95 ${p95(samples)} ms (${samples.join(', ')})
+`);
     expect(p95(samples)).toBeLessThanOrEqual(DASHBOARD_P95_MS);
   });
 
@@ -115,7 +124,8 @@ describe('P9-22 : charge de l’analyse', () => {
       expect(result.statusCode, result.body).toBe(200);
       samples.push(ms);
     }
-    console.log(`explorateur 90 jours : p95 ${p95(samples)} ms (${samples.join(', ')})`);
+    process.stdout.write(`explorateur 90 jours : p95 ${p95(samples)} ms (${samples.join(', ')})
+`);
     expect(p95(samples)).toBeLessThanOrEqual(EXPLORER_P95_MS);
   });
 
@@ -146,11 +156,14 @@ describe('P9-22 : charge de l’analyse', () => {
     );
     const storage = app.get<ChunkStorage>(CHUNK_STORAGE);
     const { ms, result } = await timed(() =>
-      db.transaction().execute((trx) =>
-        runExport(trx, { clock, idGenerator: app.get(ID_GENERATOR), storage }, exportId),
-      ),
+      db
+        .transaction()
+        .execute((trx) =>
+          runExport(trx, { clock, idGenerator: app.get(ID_GENERATOR), storage }, exportId),
+        ),
     );
-    console.log(`export de 100 000 lignes : ${ms} ms (${JSON.stringify(result)})`);
+    process.stdout.write(`export de 100 000 lignes : ${ms} ms (${JSON.stringify(result)})
+`);
     expect(result).toEqual({ status: 'DONE', rowCount: 100_000 });
     expect(ms).toBeLessThan(EXPORT_MAX_MS);
   });

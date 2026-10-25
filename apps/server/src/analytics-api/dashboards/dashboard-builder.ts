@@ -9,9 +9,7 @@ import { DASHBOARD_CODES, type DashboardCode, type DashboardResponse } from '@gi
 import { businessDayOf, type AnalyticsPeriod } from '@gic/domain';
 import type { DB } from '../../platform/kysely/database.js';
 import { toBin } from '../../platform/kysely/uuid-columns.js';
-import {
-  hasPermissionAt,
-} from '../../modules/identity/application/public/index.js';
+import { hasPermissionAt } from '../../modules/identity/application/public/index.js';
 import { currentSettingValue } from '../../modules/organization/application/public/index.js';
 import {
   readExplorerLimits,
@@ -31,7 +29,16 @@ export const ROLE_DASHBOARD_CODES: readonly DashboardCode[] = DASHBOARD_CODES.fi
 
 /** Blocs de chaque tableau, dans l'ordre de D11 §7.2. */
 export const DASHBOARD_BLOCKS: Readonly<Record<DashboardCode, readonly BlockCode[]>> = {
-  direction: ['PRODUCTION', 'STOCK', 'DISTRIBUTION', 'VENTES', 'FINANCES', 'EQUIPES', 'ALERTES', 'COORDINATION'],
+  direction: [
+    'PRODUCTION',
+    'STOCK',
+    'DISTRIBUTION',
+    'VENTES',
+    'FINANCES',
+    'EQUIPES',
+    'ALERTES',
+    'COORDINATION',
+  ],
   commercial: ['COMMERCIAL', 'VENTES', 'EQUIPES', 'ALERTES'],
   stock: ['STOCK', 'DISTRIBUTION', 'ALERTES'],
   production: ['PRODUCTION', 'ALERTES'],
@@ -111,4 +118,3 @@ export async function buildDashboard(
     computedAt: input.at.toISOString(),
   };
 }
-

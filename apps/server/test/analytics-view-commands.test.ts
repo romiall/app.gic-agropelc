@@ -49,7 +49,11 @@ describe('P9-19 : vues sauvegardées', () => {
 
   beforeAll(async () => {
     const admin = await db.transaction().execute((trx) => insertTestUser(trx));
-    owner = await actorWith(admin, ['analytics.explore', 'analytics.view.share', 'sales.sale.read']);
+    owner = await actorWith(admin, [
+      'analytics.explore',
+      'analytics.view.share',
+      'sales.sale.read',
+    ]);
     stranger = await actorWith(admin, ['analytics.explore', 'sales.sale.read']);
     reader = await actorWith(admin, ['analytics.explore', 'sales.sale.read']);
     blind = await actorWith(admin, ['analytics.explore']);
@@ -129,7 +133,11 @@ describe('P9-19 : vues sauvegardées', () => {
         }),
       ).toMatchObject({ status: 'REJECTED', error: { code: 'CATALOG_OUTDATED' } });
       expect(
-        await save(owner, freshUuid(), content(uniqueName('Inconnu'), salesDefinition({ measures: ['nope'] }))),
+        await save(
+          owner,
+          freshUuid(),
+          content(uniqueName('Inconnu'), salesDefinition({ measures: ['nope'] })),
+        ),
       ).toMatchObject({ status: 'REJECTED', error: { code: 'ANALYTICS_FIELD_UNKNOWN' } });
       // Le jeu des ventes n'est pas lisible sans `sales.sale.read`.
       expect(await save(blind, freshUuid(), content(uniqueName('Aveugle')))).toMatchObject({
@@ -138,7 +146,11 @@ describe('P9-19 : vues sauvegardées', () => {
       });
       // Une mesure au coût exige `inventory.valuation.read`.
       expect(
-        await save(owner, freshUuid(), content(uniqueName('Marge'), salesDefinition({ measures: ['margin'] }))),
+        await save(
+          owner,
+          freshUuid(),
+          content(uniqueName('Marge'), salesDefinition({ measures: ['margin'] })),
+        ),
       ).toMatchObject({ status: 'REJECTED', error: { code: 'FORBIDDEN_MEASURE' } });
     });
 
@@ -174,7 +186,11 @@ describe('P9-19 : vues sauvegardées', () => {
         .where('event_type', '=', 'SavedViewShared')
         .execute();
       expect(events).toHaveLength(1);
-      expect(events[0]!.payload).toMatchObject({ view_id: viewId, roles: [targetRole], previous_roles: [] });
+      expect(events[0]!.payload).toMatchObject({
+        view_id: viewId,
+        roles: [targetRole],
+        previous_roles: [],
+      });
     });
 
     it('sans `analytics.view.share`, partager est refusé par le pipeline', async () => {
@@ -200,12 +216,14 @@ describe('P9-19 : vues sauvegardées', () => {
       ).toMatchObject({ status: 'REJECTED', error: { code: 'VIEW_NOT_SHARED_WITH_ROLE' } });
 
       expect(
-        (await harness.run(owner, SET_DEFAULT, 'SAVED_VIEW', first, { roleCode: targetRole })).status,
+        (await harness.run(owner, SET_DEFAULT, 'SAVED_VIEW', first, { roleCode: targetRole }))
+          .status,
       ).toBe('APPLIED');
       expect((await rowOf(first))!.is_default_for_role).toBe(targetRole);
       // La seconde remplace la première : une seule vue par défaut par rôle.
       expect(
-        (await harness.run(owner, SET_DEFAULT, 'SAVED_VIEW', second, { roleCode: targetRole })).status,
+        (await harness.run(owner, SET_DEFAULT, 'SAVED_VIEW', second, { roleCode: targetRole }))
+          .status,
       ).toBe('APPLIED');
       expect((await rowOf(first))!.is_default_for_role).toBeNull();
       expect((await rowOf(second))!.is_default_for_role).toBe(targetRole);
@@ -256,16 +274,26 @@ describe('P9-19 : vues sauvegardées', () => {
         view: { name, ownerUserId: owner.id },
       });
       // Le propriétaire la voit aussi ; un tiers sans le rôle partagé non.
-      expect((await listReadableViews(db, { userId: owner.id, at })).some((e) => e.view.id === viewId)).toBe(true);
-      expect((await listReadableViews(db, { userId: stranger.id, at })).some((e) => e.view.id === viewId)).toBe(false);
+      expect(
+        (await listReadableViews(db, { userId: owner.id, at })).some((e) => e.view.id === viewId),
+      ).toBe(true);
+      expect(
+        (await listReadableViews(db, { userId: stranger.id, at })).some(
+          (e) => e.view.id === viewId,
+        ),
+      ).toBe(false);
       expect(await readReadableView(db, { userId: stranger.id, viewId, at })).toBeUndefined();
-      expect(await readReadableView(db, { userId: reader.id, viewId: freshUuid(), at })).toBeUndefined();
+      expect(
+        await readReadableView(db, { userId: reader.id, viewId: freshUuid(), at }),
+      ).toBeUndefined();
     });
 
     it('UNAVAILABLE sans le droit de lire le jeu ; OUTDATED quand un champ a disparu (jamais réécrite)', async () => {
       const viewId = freshUuid();
       await save(owner, viewId, content(uniqueName('Exécutabilité')));
-      await harness.run(owner, SHARE, 'SAVED_VIEW', viewId, { roles: [targetRole, blind.roleCode] });
+      await harness.run(owner, SHARE, 'SAVED_VIEW', viewId, {
+        roles: [targetRole, blind.roleCode],
+      });
       const at = new Date(NOW);
 
       const asBlind = await readReadableView(db, { userId: blind.id, viewId, at });
@@ -274,7 +302,9 @@ describe('P9-19 : vues sauvegardées', () => {
       // Un champ du catalogue qui disparaît : la définition stockée cite une mesure inconnue.
       await db
         .updateTable('analytics_saved_views')
-        .set({ definition: JSON.stringify({ ...salesDefinition(), measures: ['mesure_disparue'] }) })
+        .set({
+          definition: JSON.stringify({ ...salesDefinition(), measures: ['mesure_disparue'] }),
+        })
         .where('id', '=', toBin(viewId))
         .execute();
       const asReader = await readReadableView(db, { userId: reader.id, viewId, at });

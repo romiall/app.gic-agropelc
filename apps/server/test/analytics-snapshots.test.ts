@@ -15,6 +15,7 @@ import { CLOCK } from '../src/platform/clock.provider.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { invalidateUser } from '../src/modules/identity/application/rbac/rbac-cache.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import {
   KPI_DATASET,
@@ -103,11 +104,9 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
     const result = await refresh(holder.id);
     expect(result).toEqual({ saved: 3, published: 3, deleted: 0 });
     const snapshots = await listSnapshotsOf(db, holder.id);
-    expect(snapshots.map((snapshot) => `${snapshot.scopeKey}|${snapshot.periodKey}`).sort()).toEqual([
-      'stock|MONTH',
-      'stock|TODAY',
-      'stock|WEEK',
-    ]);
+    expect(
+      snapshots.map((snapshot) => `${snapshot.scopeKey}|${snapshot.periodKey}`).sort(),
+    ).toEqual(['stock|MONTH', 'stock|TODAY', 'stock|WEEK']);
     for (const snapshot of snapshots) {
       const parsed = kpiSnapshotSchema.parse({
         scopeKey: snapshot.scopeKey,
@@ -120,7 +119,9 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
     }
     const feed = await feedOf(holder.id);
     expect(feed).toHaveLength(3);
-    expect(feed.every((row) => row.change_type === 'UPSERT' && row.scope_type === 'USER')).toBe(true);
+    expect(feed.every((row) => row.change_type === 'UPSERT' && row.scope_type === 'USER')).toBe(
+      true,
+    );
   });
 
   it('un second calcul au même contenu, moins d’une heure plus tard, ne republie rien ; une heure plus tard, la date est republiée', async () => {
@@ -140,7 +141,9 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
     expect(own).toMatchObject({ id: entityId, scope_key: 'stock' });
     expect(await reader(db, entityId, { scopeType: 'USER', scopeId: nobody.id })).toBeUndefined();
     expect(await reader(db, entityId, { scopeType: 'GLOBAL', scopeId: null })).toBeUndefined();
-    expect(await reader(db, freshUuid(), { scopeType: 'USER', scopeId: holder.id })).toBeUndefined();
+    expect(
+      await reader(db, freshUuid(), { scopeType: 'USER', scopeId: holder.id }),
+    ).toBeUndefined();
   });
 
   it('GET /analytics/snapshots/me : les lignes de l’appelant seulement', async () => {
@@ -151,14 +154,20 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
     });
     expect(mine.statusCode, mine.body).toBe(200);
     const body = mine.json() as { snapshots: unknown[] };
-    expect(body.snapshots.map((row) => kpiSnapshotSchema.parse(row).scopeKey)).toEqual(['stock', 'stock', 'stock']);
+    expect(body.snapshots.map((row) => kpiSnapshotSchema.parse(row).scopeKey)).toEqual([
+      'stock',
+      'stock',
+      'stock',
+    ]);
     const none = await app.inject({
       method: 'GET',
       url: '/api/v1/analytics/snapshots/me',
       headers: { authorization: `Bearer ${tokens.get(nobody.id)!}` },
     });
     expect((none.json() as { snapshots: unknown[] }).snapshots).toEqual([]);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/analytics/snapshots/me' })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/analytics/snapshots/me' })).statusCode,
+    ).toBe(401);
   });
 
   it('droit retiré : les instantanés du tableau sont supprimés et la suppression est publiée (DELETE)', async () => {
@@ -167,6 +176,8 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
       .set({ revoked_at: new Date(now().getTime() - HOUR_MS) })
       .where('user_id', '=', toBin(holder.id))
       .execute();
+    // Les octrois sont mis en cache par processus : une révocation écrite en base se déclare au cache.
+    invalidateUser(holder.id);
     const result = await refresh(holder.id);
     expect(result).toEqual({ saved: 0, published: 0, deleted: 3 });
     expect(await listSnapshotsOf(db, holder.id)).toEqual([]);
@@ -188,7 +199,11 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
       const all = new Set<string>();
       let after: string | null = null;
       for (;;) {
-        const page: readonly string[] = await activeSnapshotUsers(db, { since, afterUserId: after, limit: 500 });
+        const page: readonly string[] = await activeSnapshotUsers(db, {
+          since,
+          afterUserId: after,
+          limit: 500,
+        });
         if (page.length === 0) break;
         page.forEach((id) => all.add(id));
         after = page[page.length - 1]!;
@@ -219,11 +234,15 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
       expect(await listSnapshotsOf(db, lapsed.id)).toHaveLength(3);
 
       const since = new Date(now().getTime() - 7 * 24 * HOUR_MS);
-      const removed = await db.transaction().execute((trx) => deleteSnapshotsOfInactiveUsers(trx, since));
+      const removed = await db
+        .transaction()
+        .execute((trx) => deleteSnapshotsOfInactiveUsers(trx, since));
       expect(removed).toBeGreaterThanOrEqual(3);
       expect(await listSnapshotsOf(db, lapsed.id)).toEqual([]);
       expect(await listSnapshotsOf(db, active.id)).toHaveLength(3);
-      expect((await feedOf(lapsed.id)).filter((row) => row.change_type === 'DELETE')).toHaveLength(3);
+      expect((await feedOf(lapsed.id)).filter((row) => row.change_type === 'DELETE')).toHaveLength(
+        3,
+      );
     });
   });
 
@@ -231,7 +250,9 @@ describe('P9-18 : instantanés personnels d’indicateurs', { timeout: 120_000 }
     const user = await db.transaction().execute((trx) => insertTestUser(trx));
     const key = { userId: user, scopeKey: 'stock', periodKey: 'TODAY' } as const;
     const at = now();
-    const kpi = (value: number) => [{ code: 'KPI-STK-01', label: 'Stock', unit: 'quantity', value }];
+    const kpi = (value: number) => [
+      { code: 'KPI-STK-01', label: 'Stock', unit: 'quantity', value },
+    ];
     const write = (kpis: readonly unknown[], computedAt: Date) =>
       db.transaction().execute((trx) => saveSnapshot(trx, { ...key, kpis, computedAt }));
     expect(await write(kpi(1), at)).toBe(true);

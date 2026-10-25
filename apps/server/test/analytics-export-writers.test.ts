@@ -45,7 +45,8 @@ function readZip(archive: Buffer): Map<string, Buffer> {
     const commentLength = archive.readUInt16LE(offset + 32);
     const local = archive.readUInt32LE(offset + 42);
     const name = archive.subarray(offset + 46, offset + 46 + nameLength).toString('utf8');
-    const dataStart = local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
+    const dataStart =
+      local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
     const raw = archive.subarray(dataStart, dataStart + compressed);
     const data = method === 8 ? inflateRawSync(raw) : raw;
     expect(data.length).toBe(size);
@@ -123,7 +124,14 @@ describe('classeur XLSX', () => {
   });
 
   it('lettres de colonne : 0 → A, 25 → Z, 26 → AA, 701 → ZZ, 702 → AAA', () => {
-    expect([0, 25, 26, 51, 701, 702].map(columnLetters)).toEqual(['A', 'Z', 'AA', 'AZ', 'ZZ', 'AAA']);
+    expect([0, 25, 26, 51, 701, 702].map(columnLetters)).toEqual([
+      'A',
+      'Z',
+      'AA',
+      'AZ',
+      'ZZ',
+      'AAA',
+    ]);
   });
 
   it('la feuille : entête en gras, nombres numériques, date en série stylée, texte en ligne protégé, valeur absente omise', () => {
@@ -131,10 +139,12 @@ describe('classeur XLSX', () => {
       { business_day: '2026-10-22', customer: '=cmd|calc', revenue: 15000 },
       { business_day: '2026-10-23', customer: 'A & <B>', revenue: null },
     ]);
-    expect(xml).toContain('<c r="A1" t="inlineStr" s="2"><is><t xml:space="preserve">Jour</t></is></c>');
+    expect(xml).toContain(
+      '<c r="A1" t="inlineStr" s="2"><is><t xml:space="preserve">Jour</t></is></c>',
+    );
     expect(xml).toContain(`<c r="A2" s="1"><v>${excelSerialOfDay('2026-10-22')}</v></c>`);
     // Aucune formule : la chaîne reste en ligne, avec son apostrophe.
-    expect(xml).toContain("<t xml:space=\"preserve\">'=cmd|calc</t>");
+    expect(xml).toContain('<t xml:space="preserve">\'=cmd|calc</t>');
     expect(xml).not.toContain('<f>');
     expect(xml).toContain('<c r="C2"><v>15000</v></c>');
     expect(xml).toContain('A &amp; &lt;B&gt;');
@@ -143,7 +153,11 @@ describe('classeur XLSX', () => {
 
   it('le classeur est une archive complète : types de contenu, relations, classeur, styles, feuille', () => {
     const entries = readZip(
-      buildXlsx(COLUMNS, [{ business_day: '2026-10-22', customer: 'Dupont', revenue: 1 }], 'Export f_sales_line'),
+      buildXlsx(
+        COLUMNS,
+        [{ business_day: '2026-10-22', customer: 'Dupont', revenue: 1 }],
+        'Export f_sales_line',
+      ),
     );
     expect([...entries.keys()].sort()).toEqual([
       '[Content_Types].xml',
@@ -153,7 +167,9 @@ describe('classeur XLSX', () => {
       'xl/workbook.xml',
       'xl/worksheets/sheet1.xml',
     ]);
-    expect(entries.get('xl/workbook.xml')!.toString('utf8')).toContain('name="Export f_sales_line"');
+    expect(entries.get('xl/workbook.xml')!.toString('utf8')).toContain(
+      'name="Export f_sales_line"',
+    );
     expect(entries.get('xl/worksheets/sheet1.xml')!.toString('utf8')).toContain('Dupont');
     // Nom de feuille : caractères interdits remplacés, 31 caractères au plus.
     const long = readZip(buildXlsx(COLUMNS, [], 'a/b:c*d?e[f]g'.padEnd(60, 'x')));

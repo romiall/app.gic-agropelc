@@ -28,11 +28,7 @@ export function csvCell(value: ExplorationValue): string {
 
 /** La ligne d'entête (BOM comprise) : les libellés des colonnes. */
 export function csvHeader(columns: readonly CompiledColumn[]): string {
-  return (
-    CSV_BOM +
-    columns.map((column) => csvCell(column.label)).join(SEPARATOR) +
-    LINE_END
-  );
+  return CSV_BOM + columns.map((column) => csvCell(column.label)).join(SEPARATOR) + LINE_END;
 }
 
 /** Les lignes de données, une chaîne par appel (écriture par morceaux). */

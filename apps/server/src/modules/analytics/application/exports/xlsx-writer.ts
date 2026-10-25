@@ -27,13 +27,17 @@ export function excelSerialOfDay(day: string): number | null {
   return Number.isFinite(serial) ? serial : null;
 }
 
-const xmlText = (text: string): string =>
-  text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // Caractères de contrôle interdits en XML 1.0 (hors tabulation, retours).
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+/** Caractères de contrôle interdits en XML 1.0 (hors tabulation, saut de ligne, retour chariot). */
+const isXmlControl = (code: number): boolean =>
+  code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+
+const xmlText = (text: string): string => {
+  let clean = '';
+  for (const character of text) {
+    if (!isXmlControl(character.charCodeAt(0))) clean += character;
+  }
+  return clean.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+};
 
 /** Nom de colonne de feuille : 0 → A, 25 → Z, 26 → AA. */
 export function columnLetters(index: number): string {
@@ -83,9 +87,7 @@ export function sheetXml(
       return `<row r="${number}">${cells}</row>`;
     })
     .join('');
-  return (
-    `${XML_HEAD}<worksheet xmlns="${MAIN_NS}"><sheetData><row r="1">${header}</row>${body}</sheetData></worksheet>`
-  );
+  return `${XML_HEAD}<worksheet xmlns="${MAIN_NS}"><sheetData><row r="1">${header}</row>${body}</sheetData></worksheet>`;
 }
 
 /** Le classeur complet (une feuille nommée `sheetName`, 31 caractères au plus, sans `[]:*?/\`). */
