@@ -32,6 +32,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const OCCURRED_AT = '2026-10-02T09:00:00.000Z';
@@ -383,23 +384,9 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
     // laisser une politique INVENTORY_ADJUSTMENT active (le describe suivant en crée une,
     // jamais retirée après ses propres tests — ces commandes commitent réellement, jamais de
     // rollback). On retire donc ici toutes les politiques actives de ce type, puis on restaure
-    // exactement celles qui l'étaient.
-    const activeAdjustmentPolicies = await db
-      .selectFrom('approvals_control_policies')
-      .select('id')
-      .where('operation_type', '=', 'INVENTORY_ADJUSTMENT')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    await db
-      .updateTable('approvals_control_policies')
-      .set({ status: 'RETIRED', valid_to: new Date(OCCURRED_AT) })
-      .where('operation_type', '=', 'INVENTORY_ADJUSTMENT')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-
-    let result: Awaited<ReturnType<typeof pipeline.handle>>;
-    try {
-      result = await pipeline.handle(
+    // exactement celles qui l'étaient (statut et `valid_to`).
+    const result = await withoutActivePolicies('INVENTORY_ADJUSTMENT', new Date(OCCURRED_AT), () =>
+      pipeline.handle(
         buildEnvelope(admin, {
           command_type: 'inventory.count.submit',
           aggregate_type: 'INVENTORY_COUNT',
@@ -407,16 +394,8 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
           payload: { countId },
         }),
         adminCtx(),
-      );
-    } finally {
-      for (const row of activeAdjustmentPolicies) {
-        await db
-          .updateTable('approvals_control_policies')
-          .set({ status: 'ACTIVE', valid_to: null })
-          .where('id', '=', row.id)
-          .execute();
-      }
-    }
+      ),
+    );
     expect(result.status).toBe('REJECTED');
     expect(result.status === 'REJECTED' && result.error.code).toBe('CONTROL_POLICY_MISSING');
 

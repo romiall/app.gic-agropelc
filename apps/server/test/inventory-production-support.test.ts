@@ -47,6 +47,7 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  withoutActivePolicies,
 } from './helpers.js';
 
 const DAY = '2026-10-08';
@@ -131,6 +132,10 @@ describe('P7-02 : prérequis inventory de la production', () => {
         code: `${operationType}_${policyId.slice(-8)}`,
         operationType,
         validFrom: occurredAt,
+        // Bornée à la journée de test, comme celles des autres tests de production : base
+        // partagée et persistante, une politique sans fin finirait par s'imposer à tout test
+        // dépendant de l'heure réelle le jour où la date réelle atteint `DAY`.
+        validTo: at('23:59:59'),
         ...extra,
       },
     );
@@ -488,19 +493,9 @@ describe('P7-02 : prérequis inventory de la production', () => {
     expect(fromBin((await lossRow(chicks)).incubation_batch_id!)).toBe(incubationBatchId);
 
     // Sans aucune politique MORTALITY active : refus de configuration (AV-048).
-    const active = await db
-      .selectFrom('approvals_control_policies')
-      .select('id')
-      .where('operation_type', '=', 'MORTALITY')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    await db
-      .updateTable('approvals_control_policies')
-      .set({ status: 'RETIRED', valid_to: new Date(at('00:00:00', '2020-01-01')) })
-      .where('operation_type', '=', 'MORTALITY')
-      .where('status', '=', 'ACTIVE')
-      .execute();
-    try {
+    // Les politiques retirées sont restaurées à l'identique (statut et `valid_to`) : celles des
+    // autres tests, bornées à leur journée, ne doivent pas devenir des politiques sans fin.
+    await withoutActivePolicies('MORTALITY', new Date(at('00:00:00', '2020-01-01')), async () => {
       expect(
         code(
           await run(
@@ -513,15 +508,7 @@ describe('P7-02 : prérequis inventory de la production', () => {
           ),
         ),
       ).toBe('CONTROL_POLICY_MISSING');
-    } finally {
-      for (const row of active) {
-        await db
-          .updateTable('approvals_control_policies')
-          .set({ status: 'ACTIVE', valid_to: null })
-          .where('id', '=', row.id)
-          .execute();
-      }
-    }
+    });
   });
 
   it('consommation valorisée à 0 XAF : enregistrée sans écriture de coût, nature conservée, annulable', async () => {

@@ -62,6 +62,8 @@ import {
   insertTestSite,
   insertTestUser,
   insertTestZone,
+  neutralizePolicy,
+  retireActivePolicies,
 } from './helpers.js';
 
 const NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
@@ -89,6 +91,8 @@ describe('P7-13 : saisie du jour d’une semaine hors ligne', () => {
   let farmManager: Actor;
   let productionManager: Actor;
   let policyAdmin: Actor;
+  let policyId: string | undefined;
+  let restorePolicies: (() => Promise<void>) | undefined;
   let buildingId: string;
   let storeId: string;
   let feedId: string;
@@ -387,7 +391,14 @@ describe('P7-13 : saisie du jour d’une semaine hors ligne', () => {
     });
 
     // Toute mortalité validée (AV-048), sans photo pour ce test, sur la semaine.
-    const policyId = freshUuid();
+    // Base partagée et persistante : `currentPolicies` retient la politique entrée en vigueur le
+    // plus récemment parmi TOUTES les politiques MORTALITY actives, y compris celles que les
+    // autres tests datent d'un jour fixe, qui devanceraient celle-ci dès que la semaine du test
+    // les atteint. Les mortalités de la semaine s'étalent sur sept jours : aucune date d'entrée en
+    // vigueur ne suffit à les devancer toutes. On retire donc les politiques existantes le temps
+    // du fichier (restaurées à l'identique en `afterAll`).
+    restorePolicies = await retireActivePolicies('MORTALITY', new Date(on(9, '00:00')));
+    policyId = freshUuid();
     await online(policyAdmin, 'approvals.policy.set', 'CONTROL_POLICY', policyId, on(9, '00:00'), {
       code: `MORTALITY_${policyId.slice(-8)}`,
       operationType: 'MORTALITY',
@@ -497,6 +508,10 @@ describe('P7-13 : saisie du jour d’une semaine hors ligne', () => {
   });
 
   afterAll(async () => {
+    // Sa politique couvre l'heure réelle (jusqu'à 10 minutes après le test) : la rendre vide pour
+    // qu'elle ne devance pas, le même jour, la politique d'un test daté de ce jour.
+    if (policyId !== undefined) await neutralizePolicy(policyId);
+    await restorePolicies?.();
     await closeTestDb();
   });
 
