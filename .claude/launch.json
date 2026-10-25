@@ -1,0 +1,52 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server:dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@gic/server",
+        "exec",
+        "tsx",
+        "watch",
+        "--env-file=C:/xampp/htdocs/app.gic-agropelc/apps/server/.env",
+        "src/main.ts"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "pwa:dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "pwa:dev"],
+      "port": 5173
+    },
+    {
+      "name": "fork-pwa:server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "C:/xampp/htdocs/app.gic-agropelc/.claude/worktrees/pwa-ecrans",
+        "--filter",
+        "@gic/server",
+        "exec",
+        "tsx",
+        "watch",
+        "--env-file=C:/xampp/htdocs/app.gic-agropelc/.claude/worktrees/pwa-ecrans/apps/server/.env",
+        "src/main.ts"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "fork-pwa:pwa",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "C:/xampp/htdocs/app.gic-agropelc/.claude/worktrees/pwa-ecrans",
+        "run",
+        "pwa:dev"
+      ],
+      "port": 5173
+    }
+  ]
+}

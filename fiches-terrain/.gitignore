@@ -1,0 +1,4 @@
+# Fichiers temporaires d'Excel et caches Python des scripts de génération
+~$*
+__pycache__/
+*.pyc

@@ -1,0 +1,3434 @@
+{
+  "CMR-ELEV-0024": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0003": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0001": {
+    "status_str": "+237 6 99 50 41 09 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-AGR-0004": {
+    "status_str": "+237 2 22 25 23 87 | WA : OUI (+237699689296)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0005": {
+    "status_str": "+237 6 99 46 65 58 | WA : OUI (+237678886303)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0014": {
+    "status_str": "WA : OUI (+237650747070)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0010": {
+    "status_str": "WA : OUI (+237672142796)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0011": {
+    "status_str": "WA : OUI (+237697065119)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0004": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-AGR-0005": {
+    "status_str": "+237 2 22 25 23 87 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0006": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0016": {
+    "status_str": "WA : OUI (+237674727205)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0020": {
+    "status_str": "WA : OUI (+237690946832)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-GRO-0001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0021": {
+    "status_str": "WA : OUI (+237659937882)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0023": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0025": {
+    "status_str": "WA : OUI (+237658545019)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0011": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0012": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0007": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0009": {
+    "status_str": "+237 6 96 46 96 37 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0004": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-DLA-BOU-005": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0013": {
+    "status_str": "WA : OUI (+237699822008)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0002": {
+    "status_str": "+237 2 33 43 44 87 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0015": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0008": {
+    "status_str": "+237 6 55 93 16 13 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-YAO-BOU-002": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REV-0003": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0022": {
+    "status_str": "WA : OUI (+237694233943)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0019": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-MAL-01257": {
+    "status_str": "+237 6 74 25 72 92 | WA : OUI (+237699994960)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0018": {
+    "status_str": "+237 6 74 25 72 92 | WA : OUI (+237699994960)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-BAN-2077": {
+    "status_str": "WA : OUI (+237694233943)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0010": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0016": {
+    "status_str": "+237 6 90 02 53 30 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0036": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-DOU-3163": {
+    "status_str": "WA : OUI (+237656006444)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0003": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0039": {
+    "status_str": "+237 2 33 43 77 59 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0038": {
+    "status_str": "+237 6 79 50 48 77 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0037": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0002": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-DLA-BOU-001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-DLA-BOU-004": {
+    "status_str": "WA : OUI (+237656005555)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0003": {
+    "status_str": "WA : OUI (+237650343811)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0007": {
+    "status_str": "WA : OUI (+237699600511)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0001": {
+    "status_str": "WA : OUI (+237694536371)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0006": {
+    "status_str": "WA : OUI (+237656006444)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0002": {
+    "status_str": "WA : OUI (+237675444361)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0026": {
+    "status_str": "WA : OUI (+237699062998)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0009": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0027": {
+    "status_str": "WA : OUI (+237657230442)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0023": {
+    "status_str": "+237 6 55 33 95 00 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0024": {
+    "status_str": "WA : OUI (+237694026434)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0010": {
+    "status_str": "WA : OUI (+237699912923)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0012": {
+    "status_str": "WA : OUI (+237695364392)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0008": {
+    "status_str": "+237 6 79 72 17 64 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0011": {
+    "status_str": "+237 6 71 15 92 58 | WA : OUI (+237695572596)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0013": {
+    "status_str": "+237 6 77 23 52 27 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0015": {
+    "status_str": "WA : OUI (+237690402417)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0014": {
+    "status_str": "WA : OUI (+237671864688)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0025": {
+    "status_str": "WA : OUI (+237656953789)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-OBA-2204": {
+    "status_str": "WA : OUI (+237690402417)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0005": {
+    "status_str": "WA : OUI (+237691431439)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0006": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0005": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0034": {
+    "status_str": "+237 6 79 50 41 49 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0007": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0033": {
+    "status_str": "+237 6 77 50 09 15 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-YAO-BOU-003": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0004": {
+    "status_str": "WA : OUI (+237670433331)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-REST-0008": {
+    "status_str": "WA : OUI (+237690040404)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-HOT-0035": {
+    "status_str": "+237 6 73 44 49 99 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-INS-0001": {
+    "status_str": "+237 6 50 40 09 00 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-INS-0006": {
+    "status_str": "+237 6 81 33 88 64 | WA : OUI (+237699684612)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-INS-0004": {
+    "status_str": "WA : OUI (+237672592695)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0017": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-INS-0007": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-ELEV-0018": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "CMR-INS-0005": {
+    "status_str": "+237 6 97 91 48 64 | WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "GAB-ELEV-0004": {
+    "status_str": "WA : OUI (+24174977811)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "COG-HOT-0001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "COG-HOT-0002": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "COG-HOT-0004": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "TCD-HOT-0003": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "TCD-ELEV-0001": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "RCA-ELEV-0002": {
+    "status_str": "WA : OUI (+23674239852)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "RCA-HOT-0002": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "GNQ-GNL-00025": {
+    "status_str": "WA : NON",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "GNQ-HOT-0001": {
+    "status_str": "WA : OUI (+240222476840)",
+    "checked_at": "2026-10-15T23:00:00Z"
+  },
+  "+237233443338": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.137Z"
+  },
+  "+237233445393": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.197Z"
+  },
+  "+237233131179": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.198Z"
+  },
+  "+237233362609": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.198Z"
+  },
+  "+237243609311": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.198Z"
+  },
+  "+237233431573": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233431662": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233393719": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233393296": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233424218": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237242079991": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233426855": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233391355": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233392374": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233471891": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233370410": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233426876": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233430908": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.199Z"
+  },
+  "+237233393066": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233403801": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233429592": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237243399923": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233438063": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233060729": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233409943": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233131149": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.200Z"
+  },
+  "+237233001112": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237233408810": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237243321621": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237222212779": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237233393833": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237233470100": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237233472126": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.201Z"
+  },
+  "+237233354613": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.202Z"
+  },
+  "+237233432804": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.202Z"
+  },
+  "+237242628726": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.202Z"
+  },
+  "+237233432050": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.202Z"
+  },
+  "+237222252281": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.202Z"
+  },
+  "+237222236422": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222478211": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222221808": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237243657555": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237233423671": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222035477": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222809095": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222221841": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222210227": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222223354": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222214886": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.203Z"
+  },
+  "+237222237040": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.204Z"
+  },
+  "+237242107152": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.204Z"
+  },
+  "+237222223311": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.205Z"
+  },
+  "+237222237806": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.205Z"
+  },
+  "+237222218938": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.205Z"
+  },
+  "+237222201940": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.205Z"
+  },
+  "+237233441672": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.206Z"
+  },
+  "+237233060604": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.206Z"
+  },
+  "+237243111191": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.207Z"
+  },
+  "+237233407650": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237233391568": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237233376680": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237233062894": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237233402021": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237242081499": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237222637666": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.208Z"
+  },
+  "+237233461919": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.209Z"
+  },
+  "+237243066281": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.209Z"
+  },
+  "+237233430923": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.209Z"
+  },
+  "+237243394070": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233392870": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233426815": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233438734": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233405265": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233370224": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233420600": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233154818": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.210Z"
+  },
+  "+237233401621": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233410676": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233392616": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233426933": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233372805": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233370858": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237223342305": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233434078": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233403795": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233014388": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233413151": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233041895": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233430032": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233428384": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.211Z"
+  },
+  "+237233394170": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237222992077": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237233332251": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237233375734": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237233322280": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237233332646": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237233438728": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.212Z"
+  },
+  "+237222251083": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.213Z"
+  },
+  "+237222208474": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.213Z"
+  },
+  "+237222222197": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222305310": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222101751": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222230585": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222204947": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222234065": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.214Z"
+  },
+  "+237222203277": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233444625": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233080490": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233446087": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233438675": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233361484": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237243363271": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233362070": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237222242301": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237222039082": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237222242451": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.215Z"
+  },
+  "+237233438500": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233470054": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233403583": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233391577": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233471475": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233421221": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233407930": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233423190": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233409658": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233406042": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233407757": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237233420762": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.216Z"
+  },
+  "+237243001620": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233431848": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233423072": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233122188": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233048231": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233425071": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.217Z"
+  },
+  "+237233423706": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233424391": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233424618": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237222228009": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233371109": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233431683": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233372801": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237243080460": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237243156084": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233392916": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233432485": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233063817": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233478201": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.218Z"
+  },
+  "+237233430332": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.219Z"
+  },
+  "+237233151014": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.219Z"
+  },
+  "+237233429921": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.219Z"
+  },
+  "+237233407571": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.219Z"
+  },
+  "+237233061612": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.219Z"
+  },
+  "+237243010477": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.222Z"
+  },
+  "+237233425057": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233425767": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237223342959": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233420267": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233430724": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233446000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233392309": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233396720": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233422262": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233416776": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233375431": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233434491": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233421648": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.223Z"
+  },
+  "+237233426298": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237233428322": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237222842312": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237222272081": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237233461701": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237233481066": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237243213975": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.224Z"
+  },
+  "+237233473707": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237233490013": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237233491895": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237243387285": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237233431823": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237222319939": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.226Z"
+  },
+  "+237242007516": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222223997": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222224208": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222234609": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222224508": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222210590": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222210503": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222203662": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222231729": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222203245": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222231721": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222300649": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222301007": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222301071": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237242518795": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.227Z"
+  },
+  "+237222204166": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.228Z"
+  },
+  "+237222223240": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.228Z"
+  },
+  "+237222223819": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.228Z"
+  },
+  "+237222305250": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.228Z"
+  },
+  "+237222307963": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.228Z"
+  },
+  "+237233084213": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222316239": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222213835": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237243291725": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222215391": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222239099": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222223388": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222223383": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222235376": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222229316": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222230887": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222304014": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237242033024": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237243856486": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.229Z"
+  },
+  "+237222204302": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237222209064": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237243556063": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237222206217": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237242916481": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237222282448": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237233348621": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.230Z"
+  },
+  "+237233486313": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.231Z"
+  },
+  "+237233193479": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.231Z"
+  },
+  "+237243645858": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.231Z"
+  },
+  "+237233441960": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.232Z"
+  },
+  "+237233444137": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.232Z"
+  },
+  "+237233361188": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.232Z"
+  },
+  "+237233363631": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.232Z"
+  },
+  "+237233363793": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.233Z"
+  },
+  "+237233363425": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.233Z"
+  },
+  "+237233446750": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.233Z"
+  },
+  "+237242484818": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.233Z"
+  },
+  "+237243564819": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.234Z"
+  },
+  "+237233324048": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.234Z"
+  },
+  "+237233323331": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.234Z"
+  },
+  "+237233323174": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.235Z"
+  },
+  "+237233323671": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.235Z"
+  },
+  "+237233322074": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.235Z"
+  },
+  "+237233415024": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.235Z"
+  },
+  "+237222251455": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.236Z"
+  },
+  "+237233425161": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.236Z"
+  },
+  "+237233425488": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.236Z"
+  },
+  "+237242262204": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.237Z"
+  },
+  "+237233422082": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.237Z"
+  },
+  "+237233434643": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.237Z"
+  },
+  "+237243008949": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233477000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233414717": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233408925": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233431345": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233413241": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.238Z"
+  },
+  "+237233404839": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237233472025": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237242651084": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237233371735": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237233433527": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237243012663": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237243858583": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.239Z"
+  },
+  "+237233392106": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237222500000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237243043354": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233102655": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233405433": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233141610": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237222206819": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233420218": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233422058": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233407409": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.240Z"
+  },
+  "+237233474978": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.244Z"
+  },
+  "+237233411561": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.244Z"
+  },
+  "+237233397817": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.244Z"
+  },
+  "+237233393448": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.244Z"
+  },
+  "+237233409940": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.245Z"
+  },
+  "+237233422834": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.246Z"
+  },
+  "+237243063768": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.246Z"
+  },
+  "+237233373397": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233332999": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233437933": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233426102": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237243667666": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233375761": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233373897": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237243546363": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233425770": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233432515": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233425647": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.247Z"
+  },
+  "+237233437422": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.248Z"
+  },
+  "+237233423015": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.248Z"
+  },
+  "+237243758960": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.248Z"
+  },
+  "+237242068261": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.248Z"
+  },
+  "+237233391450": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.249Z"
+  },
+  "+237233407852": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.249Z"
+  },
+  "+237233430790": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.249Z"
+  },
+  "+237233122702": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237243097605": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237233472421": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237233406994": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237233391718": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237233430464": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.250Z"
+  },
+  "+237233431095": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.251Z"
+  },
+  "+237243420002": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.252Z"
+  },
+  "+237233426910": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.252Z"
+  },
+  "+237243601005": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.253Z"
+  },
+  "+237242700030": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.253Z"
+  },
+  "+237222700307": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.253Z"
+  },
+  "+237233423549": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.253Z"
+  },
+  "+237233423310": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.253Z"
+  },
+  "+237234422650": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.254Z"
+  },
+  "+237243207770": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.254Z"
+  },
+  "+237233372523": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.254Z"
+  },
+  "+237243173630": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233431842": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233429259": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233503403": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233409652": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233405135": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.255Z"
+  },
+  "+237233429177": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.256Z"
+  },
+  "+237233425676": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.256Z"
+  },
+  "+237233437823": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.256Z"
+  },
+  "+237233437798": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.256Z"
+  },
+  "+237233477450": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237233371252": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237233050120": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237222736284": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237222284662": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237222283578": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237233464474": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.257Z"
+  },
+  "+237222272381": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.258Z"
+  },
+  "+237243635345": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.259Z"
+  },
+  "+237243255110": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.259Z"
+  },
+  "+237243662516": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.260Z"
+  },
+  "+237222461134": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.260Z"
+  },
+  "+237233354291": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.260Z"
+  },
+  "+237233354219": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.260Z"
+  },
+  "+237233332100": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.260Z"
+  },
+  "+237233333005": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.261Z"
+  },
+  "+237233426741": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.262Z"
+  },
+  "+237222041707": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.263Z"
+  },
+  "+237243565453": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.265Z"
+  },
+  "+237222252380": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.265Z"
+  },
+  "+237233493348": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.265Z"
+  },
+  "+237233491217": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.265Z"
+  },
+  "+237233493004": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.265Z"
+  },
+  "+237242027577": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237233351006": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237242361989": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237222317575": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237242016285": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237222238060": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237222313132": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.266Z"
+  },
+  "+237242007536": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.267Z"
+  },
+  "+237222226598": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.267Z"
+  },
+  "+237222304488": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222232884": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222229420": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222302282": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222200594": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222802639": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222228688": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222234969": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222206595": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237233426938": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237233424160": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222234871": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222211924": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.268Z"
+  },
+  "+237222029979": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237242011789": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237222214301": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237243549797": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237242100464": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237243539599": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.269Z"
+  },
+  "+237222223591": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222211641": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222109684": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222210554": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222225634": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237242062436": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237242669537": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222301840": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237242036175": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.270Z"
+  },
+  "+237222214403": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.271Z"
+  },
+  "+237222228594": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.271Z"
+  },
+  "+237243592331": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.271Z"
+  },
+  "+237222230105": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.271Z"
+  },
+  "+237222223689": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.272Z"
+  },
+  "+237222210367": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.272Z"
+  },
+  "+237222035834": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.273Z"
+  },
+  "+237222231373": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.273Z"
+  },
+  "+237233013954": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.273Z"
+  },
+  "+237222208653": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.274Z"
+  },
+  "+237222232054": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.274Z"
+  },
+  "+237243682865": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.274Z"
+  },
+  "+237222239660": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.274Z"
+  },
+  "+237222230331": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222211642": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222209536": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222311503": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222212235": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222207815": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237222239321": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.275Z"
+  },
+  "+237233422890": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+237222216053": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24101700051": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24111452234": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24101702342": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+241011772460": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24101728522": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+241011743180": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24101775248": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24111762108": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+241011778341": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+24101733055": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.276Z"
+  },
+  "+241011704559": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101722216": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101701876": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101740038": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+241011726276": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101561256": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+241011555384": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101724712": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24111764803": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101743659": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+24101766965": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+241011747723": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.277Z"
+  },
+  "+241011743136": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+24101730000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+24101761458": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011451158": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011707731": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011743356": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011737078": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011555246": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011552631": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.278Z"
+  },
+  "+241011552860": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.279Z"
+  },
+  "+24101552460": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.279Z"
+  },
+  "+241011552001": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.279Z"
+  },
+  "+24101677725": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.279Z"
+  },
+  "+24101775748": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.279Z"
+  },
+  "+24111442170": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.280Z"
+  },
+  "+24101766971": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.280Z"
+  },
+  "+24101732023": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.280Z"
+  },
+  "+241011441635": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.281Z"
+  },
+  "+24101731531": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.281Z"
+  },
+  "+24111445522": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.281Z"
+  },
+  "+24111448888": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.281Z"
+  },
+  "+24101732431": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.282Z"
+  },
+  "+24101701300": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.283Z"
+  },
+  "+24101731625": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.283Z"
+  },
+  "+241011448008": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.283Z"
+  },
+  "+24111447625": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.284Z"
+  },
+  "+24101730013": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.284Z"
+  },
+  "+24101448080": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.285Z"
+  },
+  "+24111768763": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.285Z"
+  },
+  "+241011445555": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.285Z"
+  },
+  "+24101448000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.285Z"
+  },
+  "+24101772020": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.285Z"
+  },
+  "+24101721020": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.286Z"
+  },
+  "+24101441122": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.286Z"
+  },
+  "+24101861296": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.286Z"
+  },
+  "+24111593457": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.286Z"
+  },
+  "+24101050505": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.288Z"
+  },
+  "+24101561253": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.288Z"
+  },
+  "+24101562397": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.288Z"
+  },
+  "+24101550451": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.289Z"
+  },
+  "+23522681335": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691555": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691048": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691167": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522520810": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522514171": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522523007": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522527826": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522516351": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522514771": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522516240": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522518679": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522514141": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522517117": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522523730": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522522320": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522527024": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522520630": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522510375": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522527006": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522523983": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522523503": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522519716": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522681747": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522508255": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691022": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691562": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691365": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522691641": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522510076": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.295Z"
+  },
+  "+23522518905": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522518206": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522515386": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522530319": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522514119": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522523432": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522514483": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522523836": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522517737": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522527035": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522522193": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522515134": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522528187": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522514651": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522517052": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522518612": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522511007": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522519256": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522515383": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522511260": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522517686": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522514863": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522517962": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522527119": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522520213": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522516277": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522520362": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522519005": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522522727": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522514062": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522515102": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522526675": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522518318": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.296Z"
+  },
+  "+23522515228": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.297Z"
+  },
+  "+23522518906": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.297Z"
+  },
+  "+23522518700": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.297Z"
+  },
+  "+23522514919": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.297Z"
+  },
+  "+23522514923": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.297Z"
+  },
+  "+23522522614": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522514513": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522512028": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522523108": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522529861": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522515242": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522513900": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522514074": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522515933": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522517597": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522511574": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522524170": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522514906": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522511815": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522510564": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522517470": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522530630": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522515669": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522681265": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522681165": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522681105": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522691401": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522691497": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522530862": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522510398": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522515183": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522515857": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522304222": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522519079": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522516295": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522523543": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522510365": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522519511": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522510311": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522530100": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.298Z"
+  },
+  "+23522524398": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522522881": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522681535": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522535552": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522534249": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522517838": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522533521": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522515470": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522531253": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522710759": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522523072": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522520006": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522533262": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522523315": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522523311": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522524858": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522520704": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522516769": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522520215": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522519426": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522521035": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522519701": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522517171": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522523840": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23522526532": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.299Z"
+  },
+  "+23621614940": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621613352": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621611729": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621613987": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621610279": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621616619": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621616305": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621612217": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621611727": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+23621616730": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333098693": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333092429": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333083176": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333092537": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333093563": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333081787": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333081452": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333083843": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.300Z"
+  },
+  "+240333082900": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333091168": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333092529": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333093885": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333092334": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333092757": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333093238": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333090962": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333090862": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333072998": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333082582": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333088166": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333082368": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333088157": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333083281": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333082508": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333083240": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333072468": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333040710": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333092492": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.302Z"
+  },
+  "+240333090707": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333096818": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333093338": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333090524": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333082437": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333099169": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333096811": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333096609": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333091895": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333098965": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333093732": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333091026": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333092090": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333094101": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333094685": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333072786": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333091377": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333094498": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333072090": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333074498": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.303Z"
+  },
+  "+240333093185": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240333098052": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240333093609": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240333094824": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240333093319": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240333070205": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 092 200": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 091 900": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 098 585": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 088 000": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 092 666": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 094 504": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 084 101": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 082 101": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 088 956": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 098 411": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 096 606": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 099 535": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 091 730": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 090 559": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 092 712": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 092 074": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 073 313": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.304Z"
+  },
+  "+240 333 072 172": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 098 231": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 163": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 096 897": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 099 313": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 578": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 098 568": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 295": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 065": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 090 567": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 587": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 436": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 098 127": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 851": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 090 778": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 728": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 510": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 835": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 195": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 412": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 746": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 624": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 083 806": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 548": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 082 502": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 096 099": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 081 802": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 093 365": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 292": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 096 669": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 145": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 094 574": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 090 968": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 116": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 881": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 499": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 096 432": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 091 472": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 927": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 092 186": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 088 102": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.305Z"
+  },
+  "+240 333 090 769": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.310Z"
+  },
+  "+240 333 082 923": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 098 452": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 092 011": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 082 475": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 072 196": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 070 012": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 099 575": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 099 577": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 081 066": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 081 067": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 081 069": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 070 200": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 096 352": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 081 764": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 093 337": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 082 721": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 082 918": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 082 956": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 092 958": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.311Z"
+  },
+  "+240 333 091 111": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.312Z"
+  },
+  "+240 333 082 939": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.313Z"
+  },
+  "+240 333 084 991": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.313Z"
+  },
+  "+240 333 091 246": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.313Z"
+  },
+  "+240 333 094 714": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.313Z"
+  },
+  "+240 333 091 642": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.313Z"
+  },
+  "+240 333 994 361": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.314Z"
+  },
+  "+240 333 091 187": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.314Z"
+  },
+  "+240 333 082 277": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 092 912": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 082 610": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 096 251": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 082 262": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 092 020": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 094 793": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 092 010": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 093 234": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.315Z"
+  },
+  "+240 333 640 964": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 090 099": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 070 150": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 072 310": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 082 140": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 083 250": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 081 420": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 083 510": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 070 340": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 072 250": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 072 400": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 084 120": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 085 200": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 086 100": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  },
+  "+240 333 082 780": {
+    "status_str": "WA : NON (Ligne Fixe uniquement)",
+    "checked_at": "2026-10-16T10:40:29.316Z"
+  }
+}

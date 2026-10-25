@@ -1,0 +1,20 @@
+{
+  "_aide": "Renseignez ces champs UNE fois, puis relancez : node pieces-papier/_generation/build.mjs all. Un champ vide donne une ligne pointillée à compléter à la main. Ne jamais inventer une valeur. « rccm » reprend le numéro fourni sous l'intitulé « N° RCCM/autorisation » : à confirmer (RCCM ou autorisation du GIC). « validation_comptable_facture » passe à true quand le comptable a validé la facture : tant que c'est false, le fichier d'impression de la facture n'est pas produit.",
+  "raison_sociale": "GIC AGROPELC",
+  "forme_juridique": "",
+  "siege": "",
+  "bp": "7633 Douala",
+  "ville": "Douala",
+  "telephones": "+237 699 348 371",
+  "email": "",
+  "site_web": "",
+  "rccm": "24/034CMR/LT/01/GIC/004000/004000002",
+  "niu": "M032416655486P",
+  "regime_fiscal": "",
+  "banque": "",
+  "compte_bancaire": "",
+  "mobile_money": "",
+  "capital": "",
+  "representant_legal": "",
+  "validation_comptable_facture": false
+}
