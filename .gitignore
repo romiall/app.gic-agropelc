@@ -28,3 +28,8 @@ apps/pwa/playwright-report/
 
 # Tests
 *.lcov
+
+# Worktrees git imbriqués (leur contenu voyage par les branches) et sessions WhatsApp Web
+.claude/worktrees/
+.wwebjs_cache/
+.wwebjs_auth/
