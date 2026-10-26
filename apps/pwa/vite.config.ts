@@ -57,7 +57,7 @@ export default defineConfig({
         // Précache versionné des fichiers statiques (05-stack.md §2.2) : l'API (/api/**)
         // n'est jamais mise en cache par le service worker — un écran hors ligne lit la base
         // locale (Dexie), jamais le réseau (règle d'architecture, 01-architecture-offline.md).
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },

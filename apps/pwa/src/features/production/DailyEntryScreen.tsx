@@ -26,6 +26,8 @@ import { PhotoField } from '../attachments/PhotoField.js';
 import { AttachPhoto } from '../attachments/PhotoViews.js';
 import type { ProductionLotData } from '../sales/types.js';
 import { checkTransferLine, type TransferLineDraft } from '../stock/transfer.js';
+import { demandeSuiviLot, lundiDe } from '../pieces/adaptateurs-stock.js';
+import { PieceAction } from '../pieces/PieceAction.js';
 import {
   consumableProducts,
   farmLocations,
@@ -689,6 +691,11 @@ export function DailyEntryScreen() {
       <p>
         <Link to={ROUTES.lotSheetFor(lot.id)}>{t('production.to_sheet')}</Link>
       </p>
+      <PieceAction
+        cle={`FL:${lot.id}:${lundiDe(today)}`}
+        libelle={t('piece.lot_week')}
+        demande={() => demandeSuiviLot(lot, lundiDe(today), refs)}
+      />
       <fieldset className="choice-group">
         <legend>{t('production.kind_label')}</legend>
         {KINDS.map((value) => (
