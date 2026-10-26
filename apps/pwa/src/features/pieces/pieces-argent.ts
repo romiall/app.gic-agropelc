@@ -82,7 +82,9 @@ export function bonDeVente(d: DonneesBV, ctx: Contexte): PieceRendue {
       fmt: 'a5l',
       code: 'BV',
       titre: 'Bon de vente',
-      sous: 'Vente de secours — application indisponible',
+      // Le sous-titre du carnet (« Vente de secours — application indisponible ») est faux quand
+      // l'application imprime : laissé vide (porteur, 26/10/2026).
+      sous: '',
       marges: SOUCHE,
       n: d.numero,
       page: numeroPage(i, feuilles.length),

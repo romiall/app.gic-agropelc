@@ -15,8 +15,9 @@
 .champ .v { flex: 1; min-width: 0; font: 400 7.6pt/1.15 var(--f-texte); color: var(--encre); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: .4mm; }
 .champ .v.num { text-align: right; }
 .champ.haut, .champ.double { position: relative; }
-.champ.haut .v, .champ.double .v { white-space: normal; align-self: stretch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; padding-top: .6mm; }
-.champ.haut .v { -webkit-line-clamp: 2; }
+/* champ haut ou double : le libellé reste en bas à gauche, le texte occupe la hauteur au-dessus */
+.champ.haut .v, .champ.double .v { position: absolute; top: .8mm; left: 0; right: 0; bottom: 3.4mm; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding: 0; text-align: left; }
+.champ.double .v { -webkit-line-clamp: 3; }
 .champ .v + .u { margin-left: 1.2mm; }
 
 /* case cochée */
@@ -26,6 +27,8 @@
 /* tableau rempli */
 table.lignes td.val { font: 400 7pt/1.1 var(--f-texte); color: var(--encre); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 table.lignes td.val.r { text-align: right; }
+table.lignes td.val.l { white-space: normal; }
+table.lignes td.val .t2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.05; overflow-wrap: anywhere; }
 table.lignes td.val.c { text-align: center; }
 table.lignes tr.total td.val { font-weight: 700; text-align: right; }
 
@@ -38,7 +41,7 @@ table.lignes tr.total td.val { font-weight: 700; text-align: right; }
 .sign .nom .v { color: var(--encre); font-size: 6.4pt; }
 .report .f .v { font: 600 6.2pt/1 var(--f-texte); color: var(--encre); border-bottom: .3pt solid var(--gris); padding: 0 .6mm .2mm; }
 .numero .n-val { white-space: nowrap; }
-.numero .n-val.long { font-size: 10pt; letter-spacing: .02em; padding-top: .8mm; }
+.numero .n-val.long { font-size: 8.6pt; letter-spacing: 0; padding-top: 1mm; }
 .pied .annule.coche::before { content: "✕"; display: inline-flex; align-items: center; justify-content: center; font: 700 6pt/1 var(--f-texte); color: var(--encre); }
 .pied .page { color: var(--vert-fonce); font-weight: 600; margin-right: 2mm; }
 

@@ -166,8 +166,11 @@ export function lignes({
         if (c.n) return `<td class="n">${row ? premierNumero + i : i + 1}</td>`;
         if (prefill && k === decal) return `<td class="pre">${prefill[i] ?? ''}</td>`;
         const v = row?.[k - decal];
-        if (present(v))
-          return `<td class="val ${c.al ?? 'l'}${c.g ? ' grise' : ''}">${esc(v)}</td>`;
+        if (present(v)) {
+          // Texte : deux lignes au plus dans la hauteur de la ligne, jamais une ligne qui grandit.
+          const t = (c.al ?? 'l') === 'l' ? `<span class="t2">${esc(v)}</span>` : esc(v);
+          return `<td class="val ${c.al ?? 'l'}${c.g ? ' grise' : ''}">${t}</td>`;
+        }
         return `<td class="${c.u ? 'u' : ''} ${c.g ? 'grise' : ''}">${c.u ? esc(c.u) : ''}</td>`;
       })
       .join('')}</tr>`;

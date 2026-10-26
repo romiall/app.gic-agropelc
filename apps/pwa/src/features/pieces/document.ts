@@ -17,7 +17,7 @@ import type { PieceRendue } from './piece.js';
 export const LOGO_PIECES: string = logo;
 
 const police = (famille: string, poids: number, url: string) =>
-  `@font-face{font-family:"${famille}";font-weight:${poids};font-style:normal;font-display:block;src:url("${url}") format("woff2")}`;
+  `@font-face{font-family:"${famille}";font-weight:${poids};font-style:normal;font-display:block;size-adjust:${famille === 'GIC Texte' ? '94%' : '100%'};src:url("${url}") format("woff2")}`;
 
 const POLICES = [
   police('GIC Texte', 400, texte400),
