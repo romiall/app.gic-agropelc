@@ -6,7 +6,7 @@
 const ZONE = 'Africa/Douala';
 const ENTIER = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 const QUANTITE = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 });
-const espaces = (s: string) => s.replace(/[  ]/g, ' ');
+const espaces = (s: string) => s.replace(/[\u00a0\u202f]/g, ' ');
 
 /** « 50 000 » ; `null` : case vierge. */
 export function xafPiece(montant: number | null | undefined): string | null {
