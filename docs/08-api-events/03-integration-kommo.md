@@ -1,5 +1,7 @@
 # Intégration Kommo (spécification technique)
 
+> **Reportée** (décision du porteur du 26/10/2026) : la phase P10 est hors du périmètre actuel, le CRM est entièrement géré dans GIC. Cette spécification est conservée pour une reprise éventuelle ; voir [`01-plan-developpement.md`](../10-development-plan/01-plan-developpement.md) §4 P10.
+
 > Section 24 du format final (PM §48). Règles fonctionnelles : D15 (BR-KOM-*). Décision : ADR-009. Répond au PM §16.
 > Hypothèse technique à vérifier (AV-068) : Kommo expose une API REST (v4) authentifiée par jeton OAuth 2 d'intégration, et des webhooks configurables sur les leads et les contacts. **Aucun appel n'est codé avant cette vérification sur le compte réel.**
 

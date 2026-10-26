@@ -18,7 +18,7 @@
 | P6 Production / P7 Approvisionnement | **Inversé** : P6 Approvisionnement, P7 Production | `production` dépend de `procurement` (mise en place par achat direct, fournisseurs, intrants reçus). La chaîne du CM §4 est APPROVISIONNER → RECEVOIR → PRODUIRE |
 | P8 Finance opérationnelle | **Conservé, réduit** | Le socle de trésorerie est déjà en P4. Restent : dépenses, factures et paiements fournisseurs, rapprochement, coûts et marges |
 | P9 Analytics et direction | **Conservé** | Les tableaux de bord de rôle simples sont livrés au fil des phases ; P9 apporte la tour de contrôle, l'explorateur, les exports, les alertes avancées et les notes |
-| P10 Kommo | **Conservé** | Dépend du CRM et des ventes ; bloqué par AV-068 |
+| P10 Kommo | **Reportée hors du périmètre** (décision du porteur du 26/10/2026) | Aucun abonnement Kommo acheté (contraintes financières) ; le CRM est entièrement géré dans GIC (P3) ; la phase pourra être reprise plus tard, AV-068 restant alors bloquant |
 
 ## 2. Vue d'ensemble
 
@@ -34,7 +34,7 @@
 | **P7** Production (L, 4 sem.) | Production suivie par lot | Lots (chair, pondeuses, porcs), mise en place (stock interne ou achat direct), saisie du jour, mortalité avec seuils, consommations imputées, pesées, collectes d'œufs, incubation, sortie vers commercialisation, clôture, coût par tête | P2, P6 | Fermes équipées ; indicateurs de lot | INV-PRD-*, INV-OEU-01, INV-INC-01 ; AT-026 à 029, 052, 053 | Code terminé (P7-01 à P7-13, 30/09/2026 ; périmètre élargi des 27 et 28/09/2026) ; écrans PWA ECR-PRD-01 à 04, 06 et 07 livrés par le fork « Écrans PWA », fusionné le 12/10/2026 ([`15-ecrans-pwa.md`](15-ecrans-pwa.md)) ; dépenses directes (P8), alertes (P9) restent ; CA et marge des lots livrés en P4 — voir [`12-demonstration-p7.md`](12-demonstration-p7.md) |
 | **P8** Finance opérationnelle (M, 3 sem.) | Coûts, marges, dettes | Dépenses (imputées), factures fournisseurs et rapprochement, paiements fournisseurs, dettes, coûts de lot complets, marges, valeur des pertes | P4, P6, P7 | Vue financière opérationnelle complète | INV-FIN-07, 08 ; AT-025, 040, 041 | Code serveur terminé le 13/10/2026, en parallèle de la session principale ([démonstration](18-demonstration-p8.md)) ; écrans livrés par le lot P8E (P8E-02 à P8E-09, 21/10/2026) ; restent la clôture du lot (P8E-10) et la marge d'un lot pilote validée par la Direction |
 | **P9** Analytics et direction (L, 4 sem.) | Tour de contrôle et analyse flexible | Couche sémantique, jeux de faits, tour de contrôle, tableaux par rôle complets, explorateur, vues sauvegardées, exports, catalogue complet d'alertes, notes de direction | P4 à P8 | Direction autonome sur ses questions (CM §62) | AT-038, 039, 043, 045, 046, 048, 054 ; NFR-12, 13 | Non commencée |
-| **P10** Intégration Kommo (M, 2 à 3 sem.) | Parcours digital continu | Liens externes, webhooks entrants, messages sortants, anti-boucle, supervision, rejeu | P3, P4 ; AV-068 tranché | Leads qualifiés convertis en clients GIC ; enrichissement Kommo | INV-KOM-* ; AT-044 | Non commencée |
+| **P10** Intégration Kommo (M, 2 à 3 sem.) — **reportée, hors du périmètre au 26/10/2026** | Parcours digital continu | Liens externes, webhooks entrants, messages sortants, anti-boucle, supervision, rejeu | P3, P4 ; AV-068 tranché | Leads qualifiés convertis en clients GIC ; enrichissement Kommo | INV-KOM-* ; AT-044 | Non commencée |
 | **PP** Pièces papier (lot transverse, hors chemin critique) | Imprimer et consulter toute opération dans la mise en page des pièces papier GIC, reporter les pièces de secours | Pièces imprimables et consultables (BV, RE, BD, RF, BL, CC, BC, BR, BT, DA, FP, FI, FL), journal de caisse (FJC, JE), numéro de pièce papier, report et import par lots, veille marché et profil client, présence, bilan hebdomadaire | Données de P4 à P8 ; coordination avec la session P9 pour PP-E | Toute opération s'imprime en pièce, hors ligne comprise, et une pièce de secours se reporte | REQ-301 à REQ-309 ; `AT-*` à rédiger en PP-0 | Planifié le 22/10/2026, non commencé ; cadrage [`19-pieces-papier.md`](19-pieces-papier.md) |
 
 Durée indicative totale : environ 37 à 40 semaines de développement pour 2 développeurs, hors recette et formation (AV-084).
@@ -47,7 +47,7 @@ Durée indicative totale : environ 37 à 40 semaines de développement pour 2 d�
 | **R2** | P4, P5 | Même pilote, puis tous les PDV de Douala | Ventes et encaissements, caisse, distribution |
 | **R3** | P6, P7 | 1 ferme, puis toutes | Achats, réceptions, production |
 | **R4** | P8, P9 | Direction, Finance | Finance opérationnelle, tour de contrôle, analyse |
-| **R5** | P10 | Commerciaux sédentaires | Intégration Kommo |
+| **R5** | P10 (reportée le 26/10/2026) | Commerciaux sédentaires | Intégration Kommo, si la phase est reprise |
 
 Chaque release est précédée d'une reprise de données ciblée (AV-072) et d'une formation courte (NFR-35).
 
@@ -431,6 +431,8 @@ P8 est menée **en parallèle de la session principale** (branche `claude/p8-fin
 | P9-26 | Clôture : démonstration `22-demonstration-p9.md`, matrice §17.11, plan ; suite complète verte sur une base neuve |
 
 ### P10 — Intégration Kommo
+
+> **Reportée, hors du périmètre actuel** (décision du porteur du 26/10/2026) : l'abonnement Kommo prévu avec le promoteur n'est pas acheté, faute de moyens. Le CRM (comptes, pipeline, visites, interactions, conversion) reste entièrement dans GIC, tel que livré en P3 et P4 ; aucun code d'intégration n'est écrit. La fiche ci-dessous est conservée pour une reprise éventuelle ; AV-019 et AV-068 à AV-071 restent ouverts sans objet immédiat.
 
 | Rubrique | Contenu |
 |---|---|

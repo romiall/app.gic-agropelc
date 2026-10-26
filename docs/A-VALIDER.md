@@ -35,7 +35,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-016 | Structure des objectifs commerciaux | SECONDAIRE | P3 | Objectif par utilisateur ou équipe, période, métrique | OUVERT |
 | AV-017 | Catégories de clients | SECONDAIRE | P1 | 5 catégories initiales semées, configurables | **TRANCHÉ** (voir journal §3) |
 | AV-018 | Sources de prospects et canaux de vente | SECONDAIRE | P1 | Référentiels configurables | OUVERT |
-| AV-019 | Interactions des canaux Kommo stockées dans GIC | SECONDAIRE | P10 | Non : lien et compteurs seulement | OUVERT |
+| AV-019 | Interactions des canaux Kommo stockées dans GIC | SECONDAIRE | P10 | Non : lien et compteurs seulement | OUVERT (P10 reportée le 26/10/2026) |
 | AV-020 | Commissions commerciales | SECONDAIRE | Futur | Hors MVP ; attribution conservée | OUVERT |
 | AV-021 | Prise de service hors zone : refus ou acceptation signalée | IMPORTANTE | P3 | Refus + tentative conservée + dérogation | OUVERT |
 | AV-022 | Rayon de tolérance et précision GPS maximale | SECONDAIRE | P3 | 500 m (CM) ; précision ≤ 150 m | OUVERT |
@@ -84,10 +84,10 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-065 | Alertes initiales et seuils | SECONDAIRE | P9 | Liste CM §54 ; seuils configurables | OUVERT |
 | AV-066 | Accusé de lecture des notes de direction | SECONDAIRE | P9 | Optionnel par note | OUVERT |
 | AV-067 | Formats et restrictions d'export | SECONDAIRE | P9 | CSV + XLSX ; exports audités | OUVERT |
-| AV-068 | Capacités du compte Kommo (API, webhooks, pipelines, champs) | IMPORTANTE | P10 | À vérifier ; bloquante pour P10 uniquement | OUVERT |
-| AV-069 | Déclencheur de création d'un client GIC depuis Kommo | IMPORTANTE | P10 | Statut Kommo « qualifié » configurable | OUVERT |
-| AV-070 | Données remontées de GIC vers Kommo | SECONDAIRE | P10 | Exemple CM §46 | OUVERT |
-| AV-071 | Correspondance utilisateurs GIC ↔ Kommo | SECONDAIRE | P10 | Table de correspondance explicite | OUVERT |
+| AV-068 | Capacités du compte Kommo (API, webhooks, pipelines, champs) | IMPORTANTE | P10 | À vérifier ; bloquante pour P10 uniquement | OUVERT (P10 reportée le 26/10/2026) |
+| AV-069 | Déclencheur de création d'un client GIC depuis Kommo | IMPORTANTE | P10 | Statut Kommo « qualifié » configurable | OUVERT (P10 reportée le 26/10/2026) |
+| AV-070 | Données remontées de GIC vers Kommo | SECONDAIRE | P10 | Exemple CM §46 | OUVERT (P10 reportée le 26/10/2026) |
+| AV-071 | Correspondance utilisateurs GIC ↔ Kommo | SECONDAIRE | P10 | Table de correspondance explicite | OUVERT (P10 reportée le 26/10/2026) |
 | AV-072 | Reprise des données existantes | IMPORTANTE | P1/P2 | Modèles CSV + inventaire d'ouverture | OUVERT |
 | AV-073 | Hébergement, localisation et protection des données | IMPORTANTE | P0 | Hostinger, sans VPS ; région selon l'offre | **TRANCHÉ** (voir journal §3) |
 | AV-074 | Durées de conservation | SECONDAIRE | P0/P9 | Audit et finance 10 ans ; GPS 2 ans ; photos 5 ans | OUVERT |
@@ -3437,3 +3437,4 @@ Politique par défaut, paramétrable :
 | 14/10/2026 | AV-287 | Photos en attente non chiffrées pour l'instant ; chiffrement de tout le stockage local avant la production | Porteur du projet |
 | 14/10/2026 | AV-288 | Photo d'une perte toujours facultative ; seule la mortalité l'exige | Porteur du projet |
 | 14/10/2026 | AV-282 | Blocage immédiat : session, compte et appareil vérifiés à chaque requête, avec un cache de quelques secondes | Porteur du projet |
+| 26/10/2026 | AV-068 | Phase P10 (intégration Kommo) reportée hors du périmètre : pas d'abonnement Kommo, CRM entièrement géré dans GIC ; AV-019 et AV-068 à AV-071 restent ouverts pour une reprise éventuelle | Porteur du projet |
