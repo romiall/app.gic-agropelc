@@ -9,6 +9,8 @@
  * tableau avant sa fonction de référence et son test.
  */
 
+import type { ExplorationFilter } from './analytics-catalog.js';
+
 /** Nature : un flux (somme sur la période), un solde ou un état à un instant, ou un ratio dérivé. */
 export type KpiNature = 'FLOW' | 'INSTANT' | 'RATIO';
 export type KpiReferenceState = 'EXISTING' | 'TO_CREATE' | 'TO_VERIFY';
@@ -22,8 +24,15 @@ export interface KpiDefinition {
   /** Nom de la fonction de référence. */
   readonly reference: string;
   readonly state: KpiReferenceState;
-  /** Jeu et mesure de l'explorateur qui reproduisent l'indicateur (absent : pas de vue). */
-  readonly explorer?: { readonly dataset: string; readonly measure: string };
+  /**
+   * Jeu, mesure et filtres de l'explorateur qui reproduisent **exactement** l'indicateur (AT-054) ; absent quand
+   * aucune mesure de l'explorateur ne lui est égale (AV-329), le lien d'exploration du tableau restant un détail.
+   */
+  readonly explorer?: {
+    readonly dataset: string;
+    readonly measure: string;
+    readonly filters?: readonly ExplorationFilter[];
+  };
   /** Valeur au coût : masquée ou refusée sans `inventory.valuation.read` (RC-05). */
   readonly protected?: boolean;
 }
@@ -215,7 +224,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     module: 'inventory',
     reference: 'lossValueSummary',
     state: 'EXISTING',
-    explorer: { dataset: 'f_losses', measure: 'quantity' },
+    // Nombre de déclarations : l'explorateur ne compte pas les déclarations (AV-329).
   }),
   kpi({
     code: 'KPI-STK-04',
@@ -224,7 +233,7 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     module: 'inventory',
     reference: 'inventoryVarianceSummary',
     state: 'EXISTING',
-    explorer: { dataset: 'f_stock_moves', measure: 'quantity' },
+    // Gains moins pertes : les mouvements de l'explorateur ne sont pas signés (AV-329).
   }),
   kpi({
     code: 'KPI-STK-05',
@@ -323,7 +332,12 @@ export const KPI_CATALOG: readonly KpiDefinition[] = [
     module: 'inventory',
     reference: 'mortalitySummary',
     state: 'EXISTING',
-    explorer: { dataset: 'f_production_daily', measure: 'mortality' },
+    // Toutes les déclarations de mortalité constatées, lot de production ou non (AV-329).
+    explorer: {
+      dataset: 'f_losses',
+      measure: 'quantity',
+      filters: [{ field: 'category', op: 'EQ', value: 'MORTALITE' }],
+    },
   }),
   kpi({
     code: 'KPI-PRD-03',

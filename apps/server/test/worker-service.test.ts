@@ -34,15 +34,23 @@ describe('WorkerService.runOnce — isolation des étapes (P5-16)', () => {
     vi.restoreAllMocks();
   });
 
-  it('un tour sans échec : ordonnanceur, chaque consommateur, puis les tâches jusqu’à épuisement', async () => {
-    const claims = [{ claimed: true, jobId: 'j1', result: 'DONE' }, { claimed: false }];
+  it('un tour sans échec : ordonnanceur, chaque consommateur, puis les tâches jusqu’à épuisement, voie courte puis voie longue (P9-22)', async () => {
+    const claims = [
+      { claimed: true, jobId: 'j1', result: 'DONE' },
+      { claimed: false },
+      { claimed: false },
+    ];
     const { service, scheduler, eventRunner, jobRunner } = build({
       claim: async () => claims.shift()!,
     });
     await service.runOnce();
     expect(scheduler.enqueueDue).toHaveBeenCalledTimes(1);
     expect(eventRunner.processOnce.mock.calls.map(([name]) => name)).toEqual(['alpha', 'beta']);
-    expect(jobRunner.claimAndProcessOne).toHaveBeenCalledTimes(2);
+    const lanes = jobRunner.claimAndProcessOne.mock.calls.map(([lane]) => lane as object);
+    expect(lanes).toHaveLength(3);
+    expect(lanes[0]).toHaveProperty('excludeJobTypes');
+    expect(lanes[1]).toHaveProperty('excludeJobTypes');
+    expect(lanes[2]).toHaveProperty('jobTypes');
   });
 
   it('l’ordonnanceur et un consommateur en échec sont journalisés ; les autres étapes tournent quand même', async () => {
@@ -57,7 +65,8 @@ describe('WorkerService.runOnce — isolation des étapes (P5-16)', () => {
     });
     await expect(service.runOnce()).resolves.toBeUndefined();
     expect(eventRunner.processOnce.mock.calls.map(([name]) => name)).toEqual(['alpha', 'beta']);
-    expect(jobRunner.claimAndProcessOne).toHaveBeenCalledTimes(1);
+    // Une réclamation par voie (courte, puis longue).
+    expect(jobRunner.claimAndProcessOne).toHaveBeenCalledTimes(2);
     const messages = logged.mock.calls.map(([message]) => String(message));
     expect(messages).toHaveLength(2);
     expect(messages[0]).toContain('ordonnanceur indisponible');
@@ -72,7 +81,9 @@ describe('WorkerService.runOnce — isolation des étapes (P5-16)', () => {
       },
     });
     await expect(service.runOnce()).resolves.toBeUndefined();
-    expect(logged).toHaveBeenCalledTimes(1);
+    // Chaque voie (courte, puis longue) consigne son propre échec.
+    expect(logged).toHaveBeenCalledTimes(2);
     expect(String(logged.mock.calls[0]![0])).toContain('connexion perdue');
+    expect(String(logged.mock.calls[1]![0])).toContain('tâches longues');
   });
 });

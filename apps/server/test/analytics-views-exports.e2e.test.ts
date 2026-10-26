@@ -34,7 +34,9 @@ import { closeTestDb, db, freshUuid, insertTestUser, signTestAccessToken } from 
 const idOf = (value: Buffer | null): string | null => (value === null ? null : fromBin(value));
 
 describe('P9-19 et P9-20 : lectures des vues et des exports', { timeout: 120_000 }, () => {
-  const harness = new AnalyticsCommandHarness();
+  // Instant réel (non `NOW`, fixé au 22/10/2026) : l'API juge l'échéance d'un export (24 h) sur l'horloge système ;
+  // à une date figée, le fichier serait déjà expiré dès le lendemain de l'écriture du test.
+  const harness = new AnalyticsCommandHarness(new Date().toISOString());
   let app: NestFastifyApplication;
   let clock: Clock;
   let storage: ChunkStorage;

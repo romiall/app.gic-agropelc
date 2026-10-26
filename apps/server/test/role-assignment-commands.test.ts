@@ -364,9 +364,11 @@ describe('identity.role_assignment.{grant,revoke} (P0-10)', () => {
     // forcément l'événement qui nous intéresse si d'autres fichiers, exécutés en parallèle,
     // en ont déjà écrit davantage — on vide donc la file jusqu'à un lot incomplet (tête du
     // flux atteinte), comme le ferait `rbac-cache-poller.ts` au fil de plusieurs tours.
+    // `settleSeconds: 0` : un trou récent laissé par une commande refusée plus haut dans la suite (transaction
+    // annulée) ne doit pas retenir l'événement pendant la fenêtre de stabilisation (la file est mono-écrivain ici).
     let batch;
     do {
-      batch = await runner.processOnce('identity.rbac_cache', { batchSize: 500 });
+      batch = await runner.processOnce('identity.rbac_cache', { batchSize: 500, settleSeconds: 0 });
     } while (batch.processed + batch.failed === 500);
 
     // Invalidé : la nouvelle lecture recharge depuis la base et voit l'octroi.
@@ -391,7 +393,7 @@ describe('identity.role_assignment.{grant,revoke} (P0-10)', () => {
       await hasPermissionAt(db, toBin(target), RBAC_CACHE_DEMO_PERMISSION, afterRevocation),
     ).toBe(true);
     do {
-      batch = await runner.processOnce('identity.rbac_cache', { batchSize: 500 });
+      batch = await runner.processOnce('identity.rbac_cache', { batchSize: 500, settleSeconds: 0 });
     } while (batch.processed + batch.failed === 500);
     expect(
       await hasPermissionAt(db, toBin(target), RBAC_CACHE_DEMO_PERMISSION, afterRevocation),

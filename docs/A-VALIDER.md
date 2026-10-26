@@ -9,7 +9,7 @@ Classification (PM §45) :
 - **IMPORTANTE** : peut être décidée pendant le développement, avant la phase concernée.
 - **SECONDAIRE** : peut rester configurable ou être reportée.
 
-Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 329, puis le 451. Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
+Numérotation : les points de P9, menés sous les numéros provisoires 400 à 500, sont renumérotés **AV-350 à AV-450** à l'intégration du 26/10/2026 (numéro provisoire moins 50) ; la plage 330 à 349 reste réservée au fork des écrans ; le prochain numéro libre est le 451 (le 329 a servi à l'intégration). Les numéros AV-350 à AV-366 cités dans l'historique de P8 ([`PROMPT-LANCEMENT-P8.md`](../PROMPT-LANCEMENT-P8.md)) étaient provisoires et désignent aujourd'hui AV-263 à AV-279.
 
 ---
 
@@ -345,6 +345,7 @@ Numérotation : les points de P9, menés sous les numéros provisoires 400 à 50
 | AV-326 | Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes | SECONDAIRE | MP | `GLOBAL` et `SITE` ; zones et équipes avec `GET /zones` et `GET /teams` (S-19, S-28) ; **implémenté** (MP-13) | OUVERT |
 | AV-327 | L'Admin gère-t-il les rôles de son propre compte ? | SECONDAIRE | MP | Oui, comme les autres comptes ; INV-ADM-01 garde un ADMIN actif ; **implémenté** (MP-13) | OUVERT |
 | AV-328 | Suspendre ou désactiver son propre compte | SECONDAIRE | MP | Refusé (`OWN_ACCOUNT`) : un autre Admin le fait ; **implémenté** (MP-13) | OUVERT |
+| AV-329 | Indicateurs des tableaux sans mesure égale dans l'explorateur (AT-054) | SECONDAIRE | P9 | Mortalité lue dans `f_losses` (catégorie `MORTALITE`) ; « Pertes » (nombre de déclarations) et « Écarts d'inventaire » (valeur nette) sans équivalent déclaré ; nouveaux clients comptés aussi sans titulaire hors portée personnelle | OUVERT |
 | AV-350 | Seuils des alertes : où les paramétrer | SECONDAIRE | P9 | Seuils dans `organization.system_settings` (historisés) ; `alert_rules` ne porte ni seuil ni paramètre de détection | OUVERT |
 | AV-351 | Gravité d'une alerte dont le niveau varie | SECONDAIRE | P9 | Gravité fixée à la levée par l'événement ; relèvement seulement, jamais d'abaissement tant que l'alerte est ouverte ; `critical_since` mesure l'escalade | OUVERT |
 | AV-352 | Types d'alerte ajoutés au catalogue ; types sans source | SECONDAIRE | P9 | Six types ajoutés (`ALLOCATION_EXPIRED`, `ALLOCATION_REVOCATION_PENDING`, `SALE_UNDELIVERED`, `CONSUMER_FAILED`, `LEDGER_MISMATCH`, `CASH_MISMATCH`) ; `KOMMO_SYNC_FAILED` au catalogue, règle désactivée jusqu'à P10 | OUVERT |
@@ -2614,6 +2615,14 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) refusé par la commande (`OWN_ACCOUNT`) : un autre Admin le fait ; (b) permis, l'écran le masquant seulement ; (c) permis avec confirmation renforcée.
 - **Recommandation** : (a) : l'écran et le serveur disent la même chose, et un Admin ne se coupe pas l'accès par erreur.
 - **Impact** : `user-commands.ts` (`OWN_ACCOUNT`, identifiants comparés sans la casse), SM-USER, D01 §14, test `identity-users-admin.test.ts`. Défaut implémenté (MP-13, 26/10/2026) : (a).
+
+### AV-329 — Indicateurs des tableaux sans mesure égale dans l'explorateur (AT-054) — SECONDAIRE
+
+- **Question** : AT-054 exige « les mêmes chiffres partout ». À l'intégration de P9 (26/10/2026), quatre indicateurs du tableau de la Direction différaient de la mesure d'explorateur que le registre (`kpi-catalog.ts`) leur associait : mortalité (KPI-PRD-02), pertes (KPI-STK-03), écarts d'inventaire (KPI-STK-04), nouveaux clients (KPI-COM-05). Que faut-il aligner, et sur quoi ?
+- **Pourquoi** : DÉDUIT de la lecture du code. La mortalité du tableau compte toutes les déclarations `MORTALITE` constatées, alors que `f_production_daily` ne garde que celles rattachées à un lot de production. Le tableau compte le **nombre** de déclarations de pertes, et l'explorateur n'a pas de mesure de comptage sur `f_losses`. L'écart d'inventaire est une **valeur nette** (gains moins pertes), alors que les mouvements de `f_stock_moves` ne sont pas signés. Enfin, le tableau ne comptait une conversion que si le client avait un titulaire, alors que la vue la compte aussi sans titulaire.
+- **Choix** : (a) aligner les définitions : mortalité lue dans `f_losses` filtrée sur la catégorie `MORTALITE` (le registre accepte des filtres) ; pas d'équivalent déclaré pour les pertes et les écarts d'inventaire, dont le lien d'exploration reste un détail ; conversion sans titulaire comptée dans la portée d'un site ou entière, jamais dans celle d'une personne ; (b) ajouter à l'explorateur une mesure de comptage et des mouvements signés ; (c) changer les tableaux pour reprendre les mesures actuelles de l'explorateur.
+- **Recommandation** : (a) maintenant ; (b) quand un utilisateur demandera ces deux explorations.
+- **Impact** : `packages/domain/src/kpi-catalog.ts` (filtres de l'explorateur), `dashboard-blocks.ts` (lien de la mortalité), `portfolio-activity.ts` (`LEFT JOIN` des affectations), `analytics-dashboards.e2e.test.ts` (AT-054). Défaut implémenté : (a).
 
 ### AV-350 — Seuils des alertes : où les paramétrer — SECONDAIRE
 - **Question** : Les seuils des alertes (D13 §7.1) sont-ils portés par `alert_rules.thresholds` (dictionnaire) ou par `organization.system_settings` ?

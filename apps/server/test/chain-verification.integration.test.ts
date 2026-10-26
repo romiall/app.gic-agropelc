@@ -85,6 +85,9 @@ describe('Vérification du chaînage d’audit (P0-07, INV-AUD-01)', () => {
           actorRoles: ['ADMIN'],
           action: 'test.chain_verify.b',
           entityType: 'TEST',
+          // Identifiant reçu en majuscules (paramètre d'URL) : haché sous sa forme stockée, la ligne se
+          // recalcule (non-régression de l'intégration de P9).
+          entityId: idGenerator.newId().toUpperCase(),
           result: 'SUCCESS',
         },
       ),

@@ -257,6 +257,7 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
                 dataset: definition.explorer.dataset,
                 period: { code: 'MONTH' },
                 measures: [definition.explorer.measure],
+                filters: [...(definition.explorer.filters ?? [])],
               },
             }),
           });

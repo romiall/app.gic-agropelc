@@ -148,7 +148,11 @@ function exploreLink(
   context: DashboardContext,
   dataset: string,
   measures: readonly string[],
-  options: { readonly dimensions?: readonly string[]; readonly state?: boolean } = {},
+  options: {
+    readonly dimensions?: readonly string[];
+    readonly state?: boolean;
+    readonly filters?: NonNullable<DashboardKpi['explore']>['definition']['filters'];
+  } = {},
 ): DashboardKpi['explore'] {
   return {
     definition: {
@@ -164,7 +168,7 @@ function exploreLink(
           }),
       dimensions: [...(options.dimensions ?? [])],
       measures: [...measures],
-      filters: [],
+      filters: [...(options.filters ?? [])],
       sort: [],
     },
   };
@@ -461,8 +465,9 @@ export async function productionBlock(context: DashboardContext): Promise<Dashbo
         value: mortality.total,
         previous: previousMortality.total,
         canReadValuation: can,
-        explore: exploreLink(context, 'f_production_daily', ['mortality'], {
+        explore: exploreLink(context, 'f_losses', ['quantity'], {
           dimensions: ['business_day'],
+          filters: [{ field: 'category', op: 'EQ', value: 'MORTALITE' }],
         }),
         alertType: 'HIGH_MORTALITY',
       }),

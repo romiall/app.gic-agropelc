@@ -15,7 +15,7 @@
 import type { Clock, IdGenerator } from '@gic/domain';
 import type { UnitOfWork } from '../platform/unit-of-work.js';
 import { jsonValue } from '../platform/kysely/json-value.js';
-import { toBin, toBinOrNull } from '../platform/kysely/uuid-columns.js';
+import { fromBin, toBin, toBinOrNull } from '../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../platform/kysely/bool-column.js';
 import { computeAuditRowHash, GENESIS_PREV_HASH, type AuditCanonFields } from './hash-chain.js';
 import { redactSecrets } from './redact.js';
@@ -82,17 +82,17 @@ export async function recordAudit(
     id,
     occurred_at: entry.occurredAt.toISOString(),
     recorded_at: recordedAt.toISOString(),
-    actor_user_id: entry.actorUserId,
+    actor_user_id: storedUuid(entry.actorUserId),
     actor_roles: entry.actorRoles,
-    device_id: entry.deviceId ?? null,
+    device_id: storedUuidOrNull(entry.deviceId),
     action: entry.action,
     entity_type: entry.entityType,
-    entity_id: entry.entityId ?? null,
+    entity_id: storedUuidOrNull(entry.entityId),
     before,
     after,
     reason: entry.reason ?? null,
     result: entry.result,
-    command_id: entry.commandId ?? null,
+    command_id: storedUuidOrNull(entry.commandId),
   };
   const { rowHash } = computeAuditRowHash(prevHash, canonFields);
 
@@ -134,4 +134,17 @@ export async function recordAudit(
     .execute();
 
   return { seq: nextSeq, id, rowHash };
+}
+
+/**
+ * Identifiant tel que la vérification le relira (`fromBin` de la colonne binaire) : un identifiant reçu en
+ * majuscules (paramètre d'URL, P9) était haché tel quel puis stocké en binaire, si bien que la ligne ne se
+ * recalculait plus (`HASH_MISMATCH`, INV-AUD-01). On hache donc la forme stockée.
+ */
+function storedUuid(value: string): string {
+  return fromBin(toBin(value));
+}
+
+function storedUuidOrNull(value: string | null | undefined): string | null {
+  return value === null || value === undefined ? null : storedUuid(value);
 }

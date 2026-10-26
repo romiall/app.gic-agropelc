@@ -8,7 +8,9 @@
  * - **Visites** : visites enregistrées (non annulées).
  * - **Contacts collectés** : comptes créés avec un téléphone renseigné.
  * - **Nouveaux clients** : conversions (`converted_at` dans la période), au titulaire à l'instant de la
- *   conversion ; un compte fusionné n'est compté qu'une fois, par le compte conservé (AV-442).
+ *   conversion ; un compte fusionné n'est compté qu'une fois, par le compte conservé (AV-442). Une conversion
+ *   sans titulaire compte dans la portée d'un site ou entière, jamais dans celle d'une personne (comme la vue
+ *   `analytics_f_prospecting`, AT-054, AV-329).
  * - **Taux de conversion (cohorte)** : prospects créés dans la période et convertis à ce jour ÷ prospects créés.
  * - **Taux visite → commande** : visites de résultat `COMMANDE_PRISE` ÷ visites.
  *
@@ -71,7 +73,7 @@ export async function portfolioActivity(
   const conversions = await sql<{ converted: unknown }>`
     SELECT COUNT(DISTINCT c.id) AS converted
       FROM crm_customers c
-      JOIN crm_customer_assignments a
+      LEFT JOIN crm_customer_assignments a
         ON a.customer_id = c.id AND a.valid_from <= c.converted_at
        AND (a.valid_to IS NULL OR a.valid_to > c.converted_at)
      WHERE c.converted_at >= ${window.fromUtc} AND c.converted_at < ${window.toUtc}

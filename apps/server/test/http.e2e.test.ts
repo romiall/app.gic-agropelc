@@ -11,6 +11,8 @@ import { z } from 'zod';
 import type { Clock } from '@gic/domain';
 import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
+import { EVENT_CONSUMER_REGISTRY } from '../src/platform/events/event-consumer-registry.provider.js';
+import type { EventConsumerRegistry } from '../src/platform/events/event-consumer-registry.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
@@ -108,13 +110,40 @@ describe('POST /api/v1/commands, GET /health (câblage NestJS + Fastify)', () =>
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
-  it('GET /health/ready répond 200 (base joignable, retard du worker sous seuil)', async () => {
+  it('GET /health/ready : 200 sous le seuil de retard du worker, 503 WORKER_LAG au-delà', async () => {
+    // La base d'essai est partagée par toute la suite et aucun worker n'y draine les consommateurs : le retard
+    // dépend des fichiers déjà joués (P9 en écrit bien plus de 1 000). On recalcule donc le retard comme la sonde
+    // (consommateurs enregistrés, position la plus basse) et l'on vérifie la réponse attendue pour ce retard.
+    const names = app.get<EventConsumerRegistry>(EVENT_CONSUMER_REGISTRY).names();
+    const lagNow = async (): Promise<number> => {
+      const head = await db
+        .selectFrom('platform_domain_events')
+        .select(({ fn }) => fn.max('seq').as('maxSeq'))
+        .executeTakeFirst();
+      const maxSeq = Number(head?.maxSeq ?? 0);
+      const offsets = await db
+        .selectFrom('platform_event_consumer_offsets')
+        .select(({ fn }) => fn.min('last_seq').as('minLastSeq'))
+        .where('consumer_name', 'in', names)
+        .executeTakeFirst();
+      return Math.max(0, maxSeq - Number(offsets?.minLastSeq ?? maxSeq));
+    };
+    expect(names.length).toBeGreaterThan(0);
+    const before = await lagNow();
     const response = await app.inject({ method: 'GET', url: '/health/ready' });
-    expect(response.statusCode).toBe(200);
+    const after = await lagNow();
     const body = response.json();
-    expect(body.status).toBe('ok');
-    expect(body.checks.database).toBe('ok');
-    expect(typeof body.checks.worker_lag_events).toBe('number');
+    if (response.statusCode === 200) {
+      expect(body.status).toBe('ok');
+      expect(body.checks.database).toBe('ok');
+      expect(typeof body.checks.worker_lag_events).toBe('number');
+      expect(body.checks.worker_lag_events).toBeLessThanOrEqual(1000);
+    } else {
+      expect(response.statusCode).toBe(503);
+      expect(body.error.code).toBe('WORKER_LAG');
+      // Retard réel au-delà du seuil au moment de la sonde (bornes lues avant et après).
+      expect(Math.max(before, after)).toBeGreaterThan(1000);
+    }
   });
 
   it('POST /api/v1/commands sans Authorization renvoie 401 (apiErrorSchema)', async () => {
