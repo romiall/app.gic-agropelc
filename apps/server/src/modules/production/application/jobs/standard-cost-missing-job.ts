@@ -1,6 +1,6 @@
 /**
  * `production.products.standard_cost_check` (P9-09 ; D13 §7.1 `STANDARD_COST_MISSING`, AV-124, ADR-027 ;
- * AV-463) : chaque jour à 07:45 (heure de Douala), publie un événement `StandardCostMissing` par produit
+ * AV-413) : chaque jour à 07:45 (heure de Douala), publie un événement `StandardCostMissing` par produit
  * **entré en stock par la production récemment sans coût standard défini**, puis le marqueur de fin de
  * passe, qui résout l'alerte des produits dont le coût est défini ou sortis de la fenêtre de revue.
  *
@@ -11,7 +11,7 @@
  *   (30) ; un produit qui n'est plus produit sort de la revue et son alerte se ferme.
  * - **Condition** : aucun coût standard n'est défini **à l'instant de la passe**. Les versions de coût ne
  *   font que s'ajouter : « aucun coût maintenant » implique « aucun coût à la date de l'entrée » ; tester
- *   la date de l'entrée ferait renaître chaque nuit l'alerte d'un coût défini après coup (AV-463). Les
+ *   la date de l'entrée ferait renaître chaque nuit l'alerte d'un coût défini après coup (AV-413). Les
  *   entrées déjà valorisées sans coût standard ne sont pas revalorisées : l'écart reste dans le résultat
  *   du lot producteur (ADR-027).
  * - **Résolution immédiate** : `catalog.product_standard_cost.set` publie `StandardCostSet` ; cette passe

@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `CHECKIN_SUSPICIOUS` (D13 §7.1, BR-TER-010, AV-468) — `CheckInSuspicious` publié par
+ * P9-10 : alerte `CHECKIN_SUSPICIOUS` (D13 §7.1, BR-TER-010, AV-418) — `CheckInSuspicious` publié par
  * `fieldwork.checkin.record` quand le pointage porte au moins un signal. Les pointages passent par le vrai
  * pipeline de commande (base partagée : zone, agents et pointages neufs).
  */
@@ -224,10 +224,10 @@ describe('CHECKIN_SUSPICIOUS : pointage à signal, à l’enregistrement (P9-10)
       business_day: DAY,
       captured_offline: true,
     });
-    // Ni latitude ni longitude : la charge utile est conservée en entier avec l'alerte (ADR-071 §4).
+    // Ni latitude ni longitude : la charge utile est conservée en entier avec l'alerte (ADR-061 §4).
     expect(JSON.stringify(event!.payload)).not.toMatch(/"(lat|lng|latitude|longitude)"/);
     expect(event!.commandId).not.toBeNull();
-    // Daté de la détection par le serveur, comme les alertes critiques de stock (AV-457 étendu, AV-468).
+    // Daté de la détection par le serveur, comme les alertes critiques de stock (AV-407 étendu, AV-418).
     expect(event!.occurredAt.toISOString()).toBe(NOW);
   });
 

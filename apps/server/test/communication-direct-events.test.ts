@@ -1,5 +1,5 @@
 /**
- * P9-11 (3/3) : les producteurs des notifications directes (AV-439, AV-480) et la chaîne entière, à travers
+ * P9-11 (3/3) : les producteurs des notifications directes (AV-389, AV-430) et la chaîne entière, à travers
  * les vraies fonctions et commandes des modules propriétaires, la vraie base et le vrai résolveur de
  * destinataires : `ApprovalRequested` (`requestApproval`), `ApprovalGranted` et `ApprovalRejected` (décision),
  * `StockTransferRequested` et `StockTransferDispatched` (commandes de transfert). Chaque événement est lu dans

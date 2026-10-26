@@ -1,5 +1,5 @@
 /**
- * Jeux de faits de finance et d'achats de la couche sémantique (P9-13 ; ADR-074 §2, ADR-075) : dépenses,
+ * Jeux de faits de finance et d'achats de la couche sémantique (P9-13 ; ADR-064 §2, ADR-065) : dépenses,
  * mouvements de trésorerie, achats (commandes et réceptions).
  *
  * Chaque vue est rapprochée de la définition qui existe déjà — `expensesSummary` (KPI-FIN-04),

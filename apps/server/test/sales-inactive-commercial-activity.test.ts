@@ -1,6 +1,6 @@
 /**
  * P9-07 : ce qui compte comme « activité » d'un commercial pour l'alerte `INACTIVE_COMMERCIAL`
- * (BR-TER-013, AV-409, AV-444) et lecture de ses deux réglages. Test unitaire : les API publiques de
+ * (BR-TER-013, AV-359, AV-394) et lecture de ses deux réglages. Test unitaire : les API publiques de
  * `fieldwork` (prises de service) et de `crm` (visites) sont simulées, la lecture des ventes est un
  * `uow` factice ; le détecteur complet, la population suivie et le marqueur sont éprouvés par
  * `sales-acceptance.test.ts`.

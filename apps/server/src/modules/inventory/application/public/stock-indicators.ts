@@ -1,8 +1,8 @@
 /**
- * Indicateurs de stock sans fonction publique avant P9 (P9-15 ; KPI-PRD-02, KPI-STK-04 et 05, ADR-075 §1) :
+ * Indicateurs de stock sans fonction publique avant P9 (P9-15 ; KPI-PRD-02, KPI-STK-04 et 05, ADR-065 §1) :
  * - **Mortalité** d'un périmètre, par jour et sur les sept derniers jours (KPI-PRD-02) : déclarations de la
  *   catégorie `MORTALITE`, constatées (`RECORDED`, `APPROVED`, `REJECTED_UNJUSTIFIED`, `CANCELLATION_PENDING`) ;
- *   celles en attente de validation sont à part (AV-486, comme `lossValueSummary`) ;
+ *   celles en attente de validation sont à part (AV-436, comme `lossValueSummary`) ;
  * - **Écarts d'inventaire** (KPI-STK-04) : gains moins pertes des mouvements `INVENTORY_GAIN` et
  *   `INVENTORY_LOSS`, en quantité et en valeur (valeur au coût : protégée) ; une contre-écriture compte en sens
  *   inverse ;

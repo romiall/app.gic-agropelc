@@ -1,5 +1,5 @@
 /**
- * Destinataires d'une notification directe (P9-11 (3/3) ; AV-439, AV-480 ; ADR-072 §2). Le plan du domaine
+ * Destinataires d'une notification directe (P9-11 (3/3) ; AV-389, AV-430 ; ADR-062 §2). Le plan du domaine
  * dit **qui** (les titulaires d'une permission sur un périmètre, ou des utilisateurs désignés) ; ici
  * seulement l'orchestration des lectures du port, jugées à l'instant `at` du traitement (RC-01, BR-NOT-001).
  *

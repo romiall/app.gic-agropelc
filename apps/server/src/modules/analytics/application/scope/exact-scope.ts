@@ -1,6 +1,6 @@
 /**
  * Étendue exacte des lignes qu'un utilisateur peut lire pour une permission de lecture (P9-14 ; BR-ANA-004,
- * ADR-074 §4, AV-423) — l'étendue qui borne l'explorateur, les exports et les instantanés.
+ * ADR-064 §4, AV-373) — l'étendue qui borne l'explorateur, les exports et les instantanés.
  *
  * MySQL n'a pas de sécurité au niveau des lignes et une requête d'agrégat ne se juge pas ligne à ligne : l'étendue
  * se calcule **avant** la requête et se compile en clause `WHERE` (`scope-sql.ts`). Elle ne se déduit pas de

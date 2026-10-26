@@ -102,7 +102,7 @@ async function insertProduct(admin: string): Promise<string> {
   return productId;
 }
 
-/** Événements de détection d'alertes d'un inventaire (P9-08, AV-456), dans l'ordre de publication. */
+/** Événements de détection d'alertes d'un inventaire (P9-08, AV-406), dans l'ordre de publication. */
 async function countEvents(countId: string, eventType: string) {
   const rows = await db
     .selectFrom('platform_domain_events')
@@ -618,7 +618,7 @@ describe('inventory.count.* (P2-04, SM-INVENTORY-COUNT)', () => {
       expect(request.subject_summary).toBe(`Écart d'inventaire ${row.doc_number}`);
       expect(Number(request.amount_xaf)).toBeGreaterThan(0);
 
-      // P9-08 (AV-456) : l'alerte accompagne la demande de validation, sans rien comptabiliser.
+      // P9-08 (AV-406) : l'alerte accompagne la demande de validation, sans rien comptabiliser.
       const detected = await countEvents(countId, 'InventoryVarianceDetected');
       expect(detected).toHaveLength(1);
       expect(detected[0]).toMatchObject({

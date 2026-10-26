@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /**
- * Mesures de charge de P9 (P9-22 ; ADR-078 §5), lancées à la demande (`pnpm --filter @gic/server test:perf`) sur une
+ * Mesures de charge de P9 (P9-22 ; ADR-068 §5), lancées à la demande (`pnpm --filter @gic/server test:perf`) sur une
  * base jetable chargée par `pnpm --filter @gic/db load:p9`. Hors de la suite par défaut : les fichiers `*.perf.ts`
  * ne sont pas des `*.test.ts`.
  */

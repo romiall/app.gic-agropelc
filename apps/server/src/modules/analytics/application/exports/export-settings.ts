@@ -1,5 +1,5 @@
 /**
- * Réglages des exports (P9-20 ; ADR-077 §3, ADR-078 ; NFR-13, AV-433) : lus de `organization.system_settings`
+ * Réglages des exports (P9-20 ; ADR-067 §3, ADR-068 ; NFR-13, AV-383) : lus de `organization.system_settings`
  * (historisés) à l'instant de la demande et du calcul, avec le défaut de la spécification quand une valeur manque ou
  * est mal formée. Aucune limite n'est codée ailleurs.
  */
@@ -10,7 +10,7 @@ import { currentSettingValue } from '../../../organization/application/public/in
 export interface ExportSettings {
   /** Lignes au plus (NFR-13 : 100 000) ; au-delà, l'export termine `FAILED`, jamais tronqué. */
   readonly maxRows: number;
-  /** Durée de calcul au plus, en secondes (ADR-077 §3 : 120). */
+  /** Durée de calcul au plus, en secondes (ADR-067 §3 : 120). */
   readonly maxSeconds: number;
   /** Durée de validité du fichier, en heures (dictionnaire : 24). */
   readonly fileHours: number;

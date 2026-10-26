@@ -14,7 +14,7 @@ import {
 // Mercredi 14 octobre 2026.
 const TODAY = '2026-10-14';
 
-describe('resolveAnalyticsPeriod (BR-ANA-002, ADR-075 §3)', () => {
+describe('resolveAnalyticsPeriod (BR-ANA-002, ADR-065 §3)', () => {
   it('étend les périodes nommées de business-day.ts sans les réécrire', () => {
     for (const code of BUSINESS_PERIOD_CODES) {
       const period = resolveAnalyticsPeriod({ code, today: TODAY });

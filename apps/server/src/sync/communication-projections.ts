@@ -1,5 +1,5 @@
 /**
- * Lecteurs de projection du jeu hors ligne `comms` (P9-12 ; ADR-070 §6, ADR-073 §4 ; AV-483 à AV-486 ;
+ * Lecteurs de projection du jeu hors ligne `comms` (P9-12 ; ADR-060 §6, ADR-063 §4 ; AV-433 à AV-436 ;
  * 06-offline-sync/01-architecture-offline.md §3.1) : la boîte d'alertes, les notifications non lues et les
  * notes de l'utilisateur, avec son état de lecture. Fichier propre à P9, inscrit dans `ENTITY_PROJECTIONS`
  * (`entity-projections.ts`) par une seule ligne ; les demandes de validation de l'utilisateur (`comms`
@@ -8,7 +8,7 @@
  * - **Portée `USER` seulement, et celle de l'utilisateur qui télécharge** : les lignes sont émises par
  *   `communication` (une par destinataire, `modules/communication/application/sync-changes.ts`) ; une ligne
  *   `GLOBAL` (le repli générique du pipeline) ou d'un autre utilisateur ne sert jamais rien.
- * - **Le texte est rendu pour son destinataire** (RC-05, AV-440) : une valeur au coût n'est dans le message
+ * - **Le texte est rendu pour son destinataire** (RC-05, AV-390) : une valeur au coût n'est dans le message
  *   d'une alerte ou d'une notification que si l'utilisateur détient `inventory.valuation.read` sur le site de
  *   l'alerte ; les lectures HTTP de `communication` font le rendu, ce fichier ne le recopie pas.
  * - **Un élément qui n'est plus servable** (alerte close, notification lue, note retirée ou expirée) n'est
@@ -45,7 +45,7 @@ export const COMMUNICATION_PROJECTIONS: Readonly<Record<string, ProjectionReader
   /**
    * Une alerte ouverte de la boîte de l'utilisateur (dictionnaire `communication.alerts` : « Offline DL »).
    * Seule la boîte (les destinataires inscrits) voyage ; la supervision par la portée reste en ligne
-   * (AV-483). Sans la charge utile brute : seuls les champs non protégés (`payload` public).
+   * (AV-433). Sans la charge utile brute : seuls les champs non protégés (`payload` public).
    */
   ALERT: async (executor, entityId, context) => {
     const userId = userOf(context);

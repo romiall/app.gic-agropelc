@@ -1,6 +1,6 @@
 /**
  * `production.lots.daily_entry_check` (P9-09 ; D13 §7.1 `DAILY_ENTRY_MISSING`, D07 §14, BR-PRD-008 ;
- * AV-462) : chaque jour à 10:00 (heure de Douala), publie un événement `DailyEntryMissing` par lot en
+ * AV-412) : chaque jour à 10:00 (heure de Douala), publie un événement `DailyEntryMissing` par lot en
  * cours **sans aucune saisie la veille**, puis le marqueur de fin de passe, qui résout l'alerte des lots
  * qui ont rattrapé leur saisie (une alerte d'état par lot : elle porte le **dernier** jour manquant).
  *
@@ -19,7 +19,7 @@
  *   observation (dont « RAS », AV-117), collecte d'œufs non annulée. Une saisie rétroactive ou hors ligne
  *   synchronisée **avant** la passe est vue ; synchronisée après, elle n'est jamais relue (chaque passe
  *   examine un seul jour) : l'alerte d'état du lot porte « le dernier jour manquant » et se ferme à la
- *   première passe dont le jour examiné a une saisie (accepté comme `INACTIVE_COMMERCIAL`, AV-444).
+ *   première passe dont le jour examiné a une saisie (accepté comme `INACTIVE_COMMERCIAL`, AV-394).
  * Aucun lot n'est modifié.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';

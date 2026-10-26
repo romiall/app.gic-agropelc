@@ -1,6 +1,6 @@
 /**
  * `sales.receivables.overdue_daily` (P4-09 ; BR-FIN-007 : « l'alerte `OVERDUE_RECEIVABLE` est levée
- * chaque jour à 07:00 » ; P9-07 : passe de détection à identité, ADR-071 §3) : publie un événement
+ * chaque jour à 07:00 » ; P9-07 : passe de détection à identité, ADR-061 §3) : publie un événement
  * `ReceivableOverdue` par vente dont l'échéance est dépassée et le solde dû positif, puis le marqueur de
  * fin de passe `AlertDetectionPassCompleted`. Le consommateur d'alertes (`communication`) lève ou met à
  * jour l'alerte de chaque vente revue, et **résout** celles que la passe ne revoit plus (créance réglée).
@@ -69,7 +69,7 @@ export class ReceivablesOverdueJob implements OnModuleInit {
         });
         if (inserted) published += 1;
       }
-      // La passe a vu toutes les créances échues : ce qu'elle n'a pas revu est réglé (ADR-071 §3).
+      // La passe a vu toutes les créances échues : ce qu'elle n'a pas revu est réglé (ADR-061 §3).
       await publishPassCompleted(uow, {
         producerModule: 'sales',
         alertType: 'OVERDUE_RECEIVABLE',

@@ -1,6 +1,6 @@
 /**
- * P9-05 : destinataires et notifications d'une alerte (ADR-072 §1, §4, §6, §7 ; BR-NOT-001, 004, 005,
- * 008 ; AV-413, AV-416, AV-417, AV-440). Le résolveur est un double contrôlé (la résolution par rôle et
+ * P9-05 : destinataires et notifications d'une alerte (ADR-062 §1, §4, §6, §7 ; BR-NOT-001, 004, 005,
+ * 008 ; AV-363, AV-366, AV-367, AV-390). Le résolveur est un double contrôlé (la résolution par rôle et
  * périmètre est testée avec l'adaptateur réel dans `communication-recipients.test.ts`) ; les utilisateurs,
  * les abonnements et les alertes sont réels. Chaque test s'exécute dans une transaction annulée.
  */
@@ -391,7 +391,7 @@ describe('P9-05 : destinataires et notifications d’une alerte', () => {
         (await notificationsOf(uow, subscribed, alertId)).map((n) => n.channel).sort(),
       ).toEqual(['IN_APP', 'WEB_PUSH']);
 
-      // Canal désactivé (aucune clé ni bibliothèque : AV-415) : même abonné, in-app seulement. Un autre
+      // Canal désactivé (aucune clé ni bibliothèque : AV-365) : même abonné, in-app seulement. Un autre
       // abonné (hors du créneau de regroupement de `subscribed`) le montre sans ambiguïté.
       const session2 = freshUuid();
       await handleAlertEvent(

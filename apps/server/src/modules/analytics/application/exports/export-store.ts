@@ -1,5 +1,5 @@
 /**
- * Tâches d'export (P9-20 ; ADR-077 §3 et §6, dictionnaire `analytics.export_jobs`) : le module `analytics` est le
+ * Tâches d'export (P9-20 ; ADR-067 §3 et §6, dictionnaire `analytics.export_jobs`) : le module `analytics` est le
  * seul à écrire `analytics_export_jobs`. Une ligne naît `QUEUED` avec la définition **telle que validée à la demande**
  * et la version du catalogue ; la tâche `analytics.export.run` la termine `DONE` ou `FAILED` (jamais en levant pour un
  * échec métier) ; la purge la passe `EXPIRED` à l'échéance `expires_at` (24 h après la demande, immuable : trigger). La ligne n'est jamais supprimée : elle

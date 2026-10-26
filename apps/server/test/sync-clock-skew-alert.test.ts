@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `CLOCK_SKEW` (D13 §7.1, BR-SYN-011, AV-216, AV-474) — `sync.devices.clock_skew_check` publie
+ * P9-10 : alerte `CLOCK_SKEW` (D13 §7.1, BR-SYN-011, AV-216, AV-424) — `sync.devices.clock_skew_check` publie
  * un `ClockSkewDetected` par appareil actif dont le dernier envoi accusait un écart d'horloge au-delà de
  * `sync.clock_skew_flag_minutes`, puis le marqueur de passe. Horloge dans le passé lointain (2019),
  * transactions annulées.

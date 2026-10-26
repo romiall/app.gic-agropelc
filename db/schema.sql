@@ -1459,7 +1459,7 @@ DELIMITER ;;
   IF OLD.status = 'ACKNOWLEDGED' AND NEW.status = 'OPEN' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : une alerte prise en compte ne redevient pas ouverte.';
   END IF;
-  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-401) ; le compteur ne recule pas.
+  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-351) ; le compteur ne recule pas.
   IF FIELD(NEW.severity, 'INFO', 'WARNING', 'CRITICAL') < FIELD(OLD.severity, 'INFO', 'WARNING', 'CRITICAL') THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : la gravité d''une alerte ouverte ne baisse pas.';
   END IF;

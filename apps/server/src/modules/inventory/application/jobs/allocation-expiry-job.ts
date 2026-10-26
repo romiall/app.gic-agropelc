@@ -3,7 +3,7 @@
  * date `valid_until` : l'appareil cesse de l'utiliser et émet la libération à la synchronisation
  * suivante ; le serveur ne libère jamais seul — alerte au responsable »). Aucun quota n'est modifié.
  *
- * P9-08 (ADR-071 §3, AV-460) : deux passes de détection d'état à identité, dans la même transaction.
+ * P9-08 (ADR-061 §3, AV-410) : deux passes de détection d'état à identité, dans la même transaction.
  *
  * - **`AllocationExpired`** : un événement par quota **actif** dont la date de validité est atteinte, puis
  *   le marqueur de fin de passe qui résout les alertes des quotas libérés ou révoqués depuis. Plus de

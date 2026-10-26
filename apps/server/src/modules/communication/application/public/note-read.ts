@@ -1,16 +1,16 @@
 /**
- * Lecture des notes de direction (P9-11 (2/3) ; ADR-073 §3, §5, §6 ; D13 UC-NOT-05 et 06 ; AV-479) :
+ * Lecture des notes de direction (P9-11 (2/3) ; ADR-063 §3, §5, §6 ; D13 UC-NOT-05 et 06 ; AV-429) :
  * le centre de notes d'un lecteur, la fiche d'une note, le suivi des accusés pour la Direction.
  *
  * - **Centre de notes (`INBOX`)** : les notes **publiées et non expirées** dont l'audience touche le lecteur à
  *   l'instant de la lecture (la règle du domaine, évaluée à la lecture : une affectation postérieure à la
- *   publication voit la note, ADR-073 §3), plus récentes d'abord. Chaque note porte l'état du lecteur (lue,
+ *   publication voit la note, ADR-063 §3), plus récentes d'abord. Chaque note porte l'état du lecteur (lue,
  *   accusée) ; une note archivée ou expirée n'y figure plus. Sont examinées par lecture : les
  *   {@link NOTE_INBOX_SCAN_MAX} notes publiées les plus récentes **et** les {@link NOTE_INBOX_SCAN_MAX} plus
  *   récentes des notes à accusé requis que le lecteur n'a pas accusées, **toutes audiences confondues** (le
  *   filtre d'audience vient après) : une note à accuser ne disparaît pas parce que d'autres notes l'ont
- *   dépassée (ADR-073 §5). Le compteur des accusés attendus et la liste sont exacts sur ce qui est examiné ;
- *   `truncated` dit qu'un des deux ensembles a dépassé son plafond (AV-479).
+ *   dépassée (ADR-063 §5). Le compteur des accusés attendus et la liste sont exacts sur ce qui est examiné ;
+ *   `truncated` dit qu'un des deux ensembles a dépassé son plafond (AV-429).
  * - **Gestion (`MANAGE`, `comm.note.publish`)** : toutes les notes — brouillons **du lecteur seulement**, notes
  *   publiées et archivées, quelle que soit leur audience — avec leur audience.
  * - **Fiche** : un lecteur voit une note publiée (même expirée) qui le touche ; jamais un brouillon ni une note

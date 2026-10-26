@@ -1,5 +1,5 @@
 /**
- * `GET /api/v1/analytics/snapshots/me` (P9-18 ; ADR-076 §5 à §7, AT-054) : les instantanés personnels d'indicateurs de
+ * `GET /api/v1/analytics/snapshots/me` (P9-18 ; ADR-066 §5 à §7, AT-054) : les instantanés personnels d'indicateurs de
  * l'appelant — un par `(tableau, période)` —, avec leur date de calcul (« à jour au »). Route **propre à
  * l'appelant** (`@SelfScoped()`) : l'identité vient du jeton, jamais d'un paramètre, donc jamais l'instantané d'un
  * autre. Même contenu que le jeu hors ligne `kpi` : la route sert aux clients en ligne et aux tests.

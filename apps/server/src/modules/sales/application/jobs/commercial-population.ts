@@ -1,5 +1,5 @@
 /**
- * Population suivie par l'alerte `INACTIVE_COMMERCIAL` (P9-07 ; BR-TER-013, AV-409 ; besoin B1) : les
+ * Population suivie par l'alerte `INACTIVE_COMMERCIAL` (P9-07 ; BR-TER-013, AV-359 ; besoin B1) : les
  * utilisateurs **actifs** titulaires d'une affectation de rôle commercial **avant le jour examiné**
  * (un commercial affecté à 14 h n'est pas alerté pour la matinée). `identity` n'expose que la lecture
  * « par utilisateur » : cette requête inverse est isolée ici, remplaçable par une fonction publique

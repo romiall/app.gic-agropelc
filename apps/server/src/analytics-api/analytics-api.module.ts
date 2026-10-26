@@ -1,5 +1,5 @@
 /**
- * Composition transport de l'explorateur (P9-14, ADR-074), des tableaux (P9-17), des instantanés (P9-18), des vues
+ * Composition transport de l'explorateur (P9-14, ADR-064), des tableaux (P9-17), des instantanés (P9-18), des vues
  * sauvegardées (P9-19) et des exports (P9-20) : la requête rencontre le catalogue du domaine, les
  * vues `analytics_f_*`, l'étendue exacte (`identity`, `organization`) et la fraîcheur des appareils (`sync`) — cette
  * rencontre vit ici, jamais dans le module `analytics`.

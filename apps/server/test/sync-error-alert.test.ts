@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `SYNC_ERROR` (D13 §7.1, AV-442, AV-471) — `sync.errors.alert_check` publie un
+ * P9-10 : alerte `SYNC_ERROR` (D13 §7.1, AV-392, AV-421) — `sync.errors.alert_check` publie un
  * `SyncErrorDetected` par couple (appareil, code d'erreur) puis le marqueur de passe. Les passes lisent la
  * base partagée : horloge dans le passé lointain (2019), transactions annulées, lignes insérées directement.
  */
@@ -138,7 +138,7 @@ describe('SYNC_ERROR : erreurs de synchronisation par appareil et par code (P9-1
         occurrences: 1,
       });
       expect(elsewhere!.payload).not.toHaveProperty('site_id');
-      // Ni message d'erreur ni charge utile de commande dans l'événement (ADR-071 §4).
+      // Ni message d'erreur ni charge utile de commande dans l'événement (ADR-061 §4).
       expect(JSON.stringify(forbidden!.payload)).not.toMatch(
         /error_message|command_type|"payload"/,
       );

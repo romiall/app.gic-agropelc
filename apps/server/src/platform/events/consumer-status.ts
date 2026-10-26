@@ -1,5 +1,5 @@
 /**
- * État des consommateurs d'événements (P9-10 ; AV-412, AV-475) : position, retard et événements sautés de
+ * État des consommateurs d'événements (P9-10 ; AV-362, AV-425) : position, retard et événements sautés de
  * chaque consommateur, lus dans les tables que la plateforme possède (`platform_event_consumer_offsets`,
  * `platform_event_consumer_failures`, `platform_domain_events`). Lecture seule, sans verrou ; le détecteur
  * `CONSUMER_FAILED` de `communication` s'en sert, et la supervision pourra s'en servir aussi (retard en
@@ -16,7 +16,7 @@
  * - **Événements sautés** : lignes de `platform_event_consumer_failures` dans `(failedSince, now]` ; la borne
  *   haute est indispensable (une horloge de test dans le passé ne doit rien voir des lignes réelles). Agrégés
  *   en base : un gestionnaire qui échoue sur tout événement écrit une ligne par événement.
- * - Le message d'erreur d'un saut n'est **jamais** lu ici : il peut porter des données personnelles (ADR-071 §4).
+ * - Le message d'erreur d'un saut n'est **jamais** lu ici : il peut porter des données personnelles (ADR-061 §4).
  */
 import { sql } from 'kysely';
 import type { UnitOfWork } from '../unit-of-work.js';

@@ -1,5 +1,5 @@
 /**
- * P9-20 — écrivains d'export (ADR-077 §4) : CSV (BOM, séparateur `;`, point décimal, guillemets, injection de
+ * P9-20 — écrivains d'export (ADR-067 §4) : CSV (BOM, séparateur `;`, point décimal, guillemets, injection de
  * formule), ZIP (CRC-32, relecture) et XLSX (archive relue : entrées attendues, cellules numériques, dates en numéro de
  * série, chaînes en ligne protégées contre l'injection de formule). Sans base de données.
  */

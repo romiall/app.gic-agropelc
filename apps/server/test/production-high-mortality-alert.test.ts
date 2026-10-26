@@ -1,6 +1,6 @@
 /**
  * P9-09 : alerte `HIGH_MORTALITY` (D13 §7.1 « mortalité journalière > 0,5 % de l'effectif ou > 20 têtes »,
- * AV-121, AV-406, AV-461) — `HighMortalityDetected` publié par `production.mortality.record` quand le cumul
+ * AV-121, AV-356, AV-411) — `HighMortalityDetected` publié par `production.mortality.record` quand le cumul
  * du jour métier **du fait** d'un lot atteint un seuil. Les saisies passent par le vrai pipeline de
  * commande (base partagée : fermes, produits et lots neufs ; seuils propres au site pour les cas
  * paramétrés, jamais globaux).
@@ -371,7 +371,7 @@ describe('HIGH_MORTALITY : cumul du jour d’un lot, à la saisie (P9-09)', () =
     ).map((row) => toDomainEvent(row));
   }
 
-  it('la commande lit le cumul en lecture confirmée, sous le verrou du lot (concurrence, AV-461)', () => {
+  it('la commande lit le cumul en lecture confirmée, sous le verrou du lot (concurrence, AV-411)', () => {
     expect(registry.resolve('production.mortality.record', 1)?.isolationLevel).toBe(
       'read committed',
     );

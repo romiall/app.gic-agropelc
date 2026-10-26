@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `CONSUMER_FAILED` (D13 §7.1, ADR-071 §12, ADR-078 §7, AV-412, AV-475) —
+ * P9-10 : alerte `CONSUMER_FAILED` (D13 §7.1, ADR-061 §12, ADR-068 §7, AV-362, AV-425) —
  * `communication.consumers.failure_check` publie un `ConsumerFailureDetected` par consommateur d'événements en
  * échec (événement sauté dans la fenêtre, ou retard au-delà du seuil), puis le marqueur de passe. La passe lit
  * toutes les positions de la base partagée : horloge dans le passé lointain (2019), si bien que ses lignes réelles
@@ -203,7 +203,7 @@ describe('CONSUMER_FAILED : consommateur d’événements en échec (P9-10)', ()
         business_day: TODAY,
         pass_id: expect.stringContaining('CONSUMER_FAILED'),
       });
-      // Ni le message d'erreur ni le type de l'événement sauté : données possiblement personnelles (ADR-071 §4).
+      // Ni le message d'erreur ni le type de l'événement sauté : données possiblement personnelles (ADR-061 §4).
       const serialized = JSON.stringify(event!.payload);
       expect(serialized).not.toContain('699000000');
       expect(serialized).not.toContain('test.skipped_event');

@@ -925,7 +925,7 @@ export async function applyDeferredMatch(
 }
 
 /**
- * P9-08 (AV-458) : l'expédition est reçue par le rapprochement d'une réception sans document. Les
+ * P9-08 (AV-408) : l'expédition est reçue par le rapprochement d'une réception sans document. Les
  * résolveurs de `TRANSFER_NOT_RECEIVED` (commandes de réception, d'annulation, de refus et de retour)
  * portent l'identifiant de l'expédition ; le rapprochement, lui, est une commande de la **réception** :
  * sans cet événement, l'alerte attendrait la passe quotidienne suivante. Publié aux deux chemins de

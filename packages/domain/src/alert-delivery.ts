@@ -1,6 +1,6 @@
 /**
  * Livraison des alertes : canaux par gravité, regroupement des push, escalade (P9 ; BR-NOT-004,
- * BR-NOT-005 ; D13 §14 ; ADR-072 §4, §6, §7 ; AV-414, AV-416, AV-417).
+ * BR-NOT-005 ; D13 §14 ; ADR-062 §4, §6, §7 ; AV-364, AV-366, AV-367).
  *
  * Fonctions pures : le serveur fournit l'instant et les paramètres (`communication.push_group_minutes`,
  * `escalation_hours` de la règle).
@@ -10,7 +10,7 @@ import type { AlertSeverity, AlertStatus } from './alerts.js';
 export const NOTIFICATION_CHANNELS = ['IN_APP', 'WEB_PUSH'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
-/** Nature d'une notification : alerte, note de direction, notification directe d'un événement (AV-439), fin d'un export. */
+/** Nature d'une notification : alerte, note de direction, notification directe d'un événement (AV-389), fin d'un export. */
 export const NOTIFICATION_KINDS = ['ALERT', 'NOTE', 'DIRECT', 'EXPORT'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -39,7 +39,7 @@ export type PushGroupDecision =
   { readonly send: true } | { readonly send: false; readonly nextSlotAt: Date };
 
 /**
- * Regroupement des push (D13 §14, AV-416) : le premier push d'un couple (utilisateur, type) part ; les
+ * Regroupement des push (D13 §14, AV-366) : le premier push d'un couple (utilisateur, type) part ; les
  * suivants, dans le créneau, restent en notification in-app et sont comptés au push du créneau suivant.
  * `lastPushAt` est l'instant du dernier push **envoyé** au couple.
  */
@@ -59,7 +59,7 @@ export function pushGroupDecision(input: {
     : { send: false, nextSlotAt: nextSlot };
 }
 
-/** Échéance d'escalade : `critical_since` + `escalation_hours` (ADR-072 §7). */
+/** Échéance d'escalade : `critical_since` + `escalation_hours` (ADR-062 §7). */
 export function escalationDueAt(criticalSince: Date, escalationHours: number): Date {
   const hours =
     Number.isFinite(escalationHours) && escalationHours > 0
@@ -104,7 +104,7 @@ export function escalationTitle(title: string): string {
 
 /**
  * Corps du push qui ouvre un nouveau créneau de regroupement : il compte les alertes du même type tues
- * dans le créneau précédent (D13 §14, AV-416). Borné à la longueur de la colonne.
+ * dans le créneau précédent (D13 §14, AV-366). Borné à la longueur de la colonne.
  */
 export function groupedPushBody(body: string, suppressed: number): string {
   if (!Number.isFinite(suppressed) || suppressed <= 0) return body;

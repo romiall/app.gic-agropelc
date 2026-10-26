@@ -7,7 +7,7 @@
  * les gestionnaires de commande.
  *
  * Le canal Web Push par défaut est désactivé : aucune bibliothèque ni clé VAPID tant que le porteur n'a
- * pas tranché AV-415. Un adaptateur réel remplace le jeton sans autre changement.
+ * pas tranché AV-365. Un adaptateur réel remplace le jeton sans autre changement.
  */
 import { Module } from '@nestjs/common';
 import { AlertsConsumerRegistrar } from './application/events/register-alerts-consumer.js';

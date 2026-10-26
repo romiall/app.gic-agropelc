@@ -1,8 +1,8 @@
 /**
  * `procurement.receipts.attachment_missing_check` (P9-09 ; D13 §7.1 `ATTACHMENT_MISSING`, BR-APP-014,
- * AV-285, AV-407, AV-449, AV-467) : la part « réceptions » de l'alerte de pièce manquante, chaque jour à
+ * AV-285, AV-357, AV-399, AV-417) : la part « réceptions » de l'alerte de pièce manquante, chaque jour à
  * 06:15 ; passe à identité de **portée `GOODS_RECEIPT`** (la part « dépenses » de `finance` a la sienne :
- * le marqueur d'une portée ne résout que les alertes de sa portée, ADR-071 §3). Publie un événement
+ * le marqueur d'une portée ne résout que les alertes de sa portée, ADR-061 §3). Publie un événement
  * `AttachmentMissingDetected` par réception dont la photo du bon de livraison, exigée, n'est toujours pas
  * disponible après `attachments.missing_alert_days` jours (7), puis le marqueur de fin de passe, qui
  * résout les alertes des réceptions revues en règle (pièce arrivée, réception annulée ou rejetée) ou sorties
@@ -14,7 +14,7 @@
  *   réception, réglage historisé) ; l'exigence n'est pas mémorisée sur la réception. Une réception dont la
  *   photo est **déclarée mais jamais reçue** (aucun conflit `RECEIPT_PHOTO_MISSING`) est le cas visé.
  * - **Présence** : une pièce `AVAILABLE` de nature `DELIVERY_NOTE` rattachée à la réception (même
- *   critère que la régularisation du conflit, AV-285). L'auteur de la pièce n'est pas contrôlé (AV-467).
+ *   critère que la régularisation du conflit, AV-285). L'auteur de la pièce n'est pas contrôlé (AV-417).
  * - **Délai** : depuis la réception par le serveur (`received_at_server`, à défaut la création), non la date
  *   du fait : une réception hors ligne ancienne n'alerte pas dès sa synchronisation.
  * - **Réceptions examinées** : comptabilisées, en revue, en quarantaine ou en annulation demandée ; ni

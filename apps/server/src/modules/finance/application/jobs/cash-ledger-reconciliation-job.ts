@@ -6,7 +6,7 @@
  * - sessions de caisse : INV-FIN-05, 06, 11, BR-DIS-006 (`verifyCashSessions`, lectures sans verrou) ;
  * - dépenses et documents fournisseurs : INV-FIN-07 et 08 (P8-12).
  *
- * **Un écart ne fait plus échouer la tâche** (ADR-071 §3) : une tâche qui lève voit ses écritures
+ * **Un écart ne fait plus échouer la tâche** (ADR-061 §3) : une tâche qui lève voit ses écritures
  * annulées par le point de sauvegarde du `JobRunner`, donc l'événement ne partirait jamais. La tâche
  * publie un événement `CashMismatchDetected` **par compte et par jour métier** (les sections sans compte
  * partagent la clé `NONE`), journalise le détail, puis se termine en succès : l'alerte `CASH_MISMATCH`

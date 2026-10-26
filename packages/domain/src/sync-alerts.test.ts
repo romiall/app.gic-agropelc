@@ -61,7 +61,7 @@ describe('réglages de synchronisation : défauts et bornes', () => {
   });
 });
 
-describe('syncErrorCodeOf — regroupement des causes (AV-471)', () => {
+describe('syncErrorCodeOf — regroupement des causes (AV-421)', () => {
   it('le code détaillé est ramené à sa famille', () => {
     expect(
       syncErrorCodeOf({ errorCode: 'VALIDATION_ERROR:quantity', openConflictType: null }),
@@ -92,7 +92,7 @@ describe('syncErrorCodeOf — regroupement des causes (AV-471)', () => {
   });
 });
 
-describe('deviceStaleness — appareil actif sans synchronisation (AV-472)', () => {
+describe('deviceStaleness — appareil actif sans synchronisation (AV-422)', () => {
   const base = {
     activatedAt: at('2026-10-01T08:00:00.000Z'),
     staleHours: 24,
@@ -174,7 +174,7 @@ describe('deviceStaleness — appareil actif sans synchronisation (AV-472)', () 
   });
 });
 
-describe('trous de séquence (AV-473)', () => {
+describe('trous de séquence (AV-423)', () => {
   const gap = (from: number, to: number, openedAt: string) => ({
     from,
     to,

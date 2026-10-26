@@ -1,5 +1,5 @@
 /**
- * P9-19 — vues sauvegardées (ADR-077 §1 et §2 ; BR-ANA-007 ; AV-432, AV-435, AV-496 ; AT-046) : les commandes
+ * P9-19 — vues sauvegardées (ADR-067 §1 et §2 ; BR-ANA-007 ; AV-382, AV-385, AV-446 ; AT-046) : les commandes
  * `analytics.view.save`, `.share`, `.set_default` et `.delete` par le vrai pipeline de commande (droits, audit),
  * puis la lecture avec exécutabilité (`listReadableViews`). Acteurs à rôle d'essai sur la base partagée.
  */

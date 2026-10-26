@@ -8,7 +8,7 @@ import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 /**
  * Zones d'un ensemble de zones **et de leurs descendantes** (fermeture transitive `organization_zone_ancestors`,
- * chaque zone étant sa propre ancêtre) : l'étendue exacte d'une permission de portée zone (P9-14, ADR-074 §4).
+ * chaque zone étant sa propre ancêtre) : l'étendue exacte d'une permission de portée zone (P9-14, ADR-064 §4).
  */
 export async function listZoneIdsWithDescendants(
   executor: Kysely<DB> | Transaction<DB>,

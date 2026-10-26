@@ -1,7 +1,7 @@
 /**
- * Règles d'alerte semées (P9-03 ; D13 §7.1 ; BR-NOT-001 ; ADR-071 ; AV-402, AV-413, AV-417) : une règle
+ * Règles d'alerte semées (P9-03 ; D13 §7.1 ; BR-NOT-001 ; ADR-061 ; AV-352, AV-363, AV-367) : une règle
  * par type du catalogue, avec la gravité par défaut, les rôles destinataires, le mode de résolution et
- * l'escalade de D13. Les seuils ne sont pas des règles : ce sont des paramètres système (AV-400).
+ * l'escalade de D13. Les seuils ne sont pas des règles : ce sont des paramètres système (AV-350).
  *
  * Ce paquet n'importe pas `@gic/domain` : le catalogue y est dupliqué sous forme de données, et un test
  * du serveur (`communication-seed.test.ts`) vérifie l'égalité avec `ALERT_CATALOG`. Ce seed ne réécrit
@@ -37,7 +37,7 @@ function rule(
   };
 }
 
-/** 36 règles : les 30 types de D13 §7.1 puis les 6 ajoutés par AV-402. */
+/** 36 règles : les 30 types de D13 §7.1 puis les 6 ajoutés par AV-352. */
 export const ALERT_RULES: readonly AlertRuleSeed[] = [
   rule('STOCK_LOW', 'WARNING', ['MAGASINIER', 'VENDEUR_PDV'], 'AUTO'),
   rule('STOCK_OUT', 'CRITICAL', ['MAGASINIER', 'VENDEUR_PDV', 'RESP_COMMERCIAL'], 'AUTO', {
@@ -75,10 +75,10 @@ export const ALERT_RULES: readonly AlertRuleSeed[] = [
   rule('TRANSFER_UNMATCHED', 'WARNING', ['MAGASINIER', 'RESP_FERME'], 'MANUAL'),
   rule('LOT_EXPIRING', 'WARNING', ['MAGASINIER'], 'AUTO'),
   rule('ATTACHMENT_MISSING', 'WARNING', [], 'AUTO'),
-  // P10 : source absente, règle semée désactivée (AV-402).
+  // P10 : source absente, règle semée désactivée (AV-352).
   rule('KOMMO_SYNC_FAILED', 'WARNING', ['ADMIN'], 'MANUAL', { enabled: false }),
   rule('AUDIT_CHAIN_BROKEN', 'CRITICAL', ['ADMIN', 'DIRECTION'], 'MANUAL', { escalationHours: 4 }),
-  // AV-402 : types ajoutés au catalogue de D13.
+  // AV-352 : types ajoutés au catalogue de D13.
   rule('ALLOCATION_EXPIRED', 'WARNING', ['MAGASINIER', 'RESP_FERME'], 'AUTO'),
   rule('ALLOCATION_REVOCATION_PENDING', 'WARNING', ['MAGASINIER', 'RESP_FERME'], 'AUTO'),
   rule('SALE_UNDELIVERED', 'WARNING', ['RESP_COMMERCIAL'], 'AUTO'),

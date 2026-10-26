@@ -4,7 +4,7 @@
  *   délai de la photo se compte en jours, `attachments.missing_alert_days`) ;
  * - `procurement.orders.receipt_incomplete_check` : chaque jour à 07:15 — le retard de livraison se compte
  *   en jours métier (`procurement.receipt_incomplete_alert_days`) : la passe suit le changement de jour de
- *   Douala (AV-410 : « tâche quotidienne pour le retard »).
+ *   Douala (AV-360 : « tâche quotidienne pour le retard »).
  * Constantes techniques de planification, pas des seuils métier.
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';

@@ -1,5 +1,5 @@
 /**
- * P9-10 (revue adverse, constat 23 ; D13 `DEVICE_SEQ_GAP`, AV-473) : les restes que l'appareil déclare à
+ * P9-10 (revue adverse, constat 23 ; D13 `DEVICE_SEQ_GAP`, AV-423) : les restes que l'appareil déclare à
  * l'envoi expliquent les numéros de sa suite qui manquent à la boîte des commandes — de bout en bout, par le
  * vrai service d'envoi (`SyncPushService`) et le vrai pipeline, sur une tablette partagée.
  *
@@ -40,7 +40,7 @@ import {
 const DAY = '2026-10-08';
 const at = (hhmm: string) => `${DAY}T${hhmm}:00.000Z`;
 
-describe('restes déclarés par l’appareil et trous de séquence (P9-10, AV-473)', () => {
+describe('restes déclarés par l’appareil et trous de séquence (P9-10, AV-423)', () => {
   let clock: Clock;
   let services: { push: SyncPushService; pull: SyncPullService };
   let userA: string;

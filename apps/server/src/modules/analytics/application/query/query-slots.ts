@@ -1,5 +1,5 @@
 /**
- * Requêtes simultanées par utilisateur (P9-14 ; ADR-078 §1, RISK-13) : au plus `analytics.query_max_concurrent_per_user`
+ * Requêtes simultanées par utilisateur (P9-14 ; ADR-068 §1, RISK-13) : au plus `analytics.query_max_concurrent_per_user`
  * requêtes de l'explorateur en cours pour un même utilisateur, quel que soit le processus du serveur qui les sert.
  *
  * Un « emplacement » est un verrou nommé MySQL (`GET_LOCK`, sans attente) tenu par **la connexion qui exécute la

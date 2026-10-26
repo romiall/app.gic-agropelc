@@ -683,7 +683,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       });
     }
 
-    // Signal d'alerte `PRICE_MISMATCH` (INFO, P9-07, AV-445) : un événement par vente, jamais un rejet.
+    // Signal d'alerte `PRICE_MISMATCH` (INFO, P9-07, AV-395) : un événement par vente, jamais un rejet.
     await publishPriceMismatchDetected(uow, idGenerator, {
       documentType: 'SALE',
       documentId: saleId,

@@ -1,5 +1,5 @@
 /**
- * Lecture des notifications d'un utilisateur et des règles d'alerte (P9-06 ; ADR-072 §4 ; D13 §4).
+ * Lecture des notifications d'un utilisateur et des règles d'alerte (P9-06 ; ADR-062 §4 ; D13 §4).
  *
  * - **Notifications** : celles de l'utilisateur seulement (`user_id`), canal `IN_APP` par défaut (les
  *   lignes `WEB_PUSH` ne sont que l'envoi du même message) ; plus récentes d'abord, curseur sur

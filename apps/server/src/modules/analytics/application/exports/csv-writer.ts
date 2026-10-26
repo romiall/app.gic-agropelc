@@ -1,5 +1,5 @@
 /**
- * CSV d'export (P9-20 ; ADR-077 §4) : UTF-8 avec BOM (Excel), séparateur `;`, point décimal, dates ISO, entêtes en
+ * CSV d'export (P9-20 ; ADR-067 §4) : UTF-8 avec BOM (Excel), séparateur `;`, point décimal, dates ISO, entêtes en
  * libellés français, fins de ligne `\r\n`. **Injection de formule** : toute cellule texte commençant par `=`, `+`,
  * `-`, `@` (ou une tabulation / un retour chariot) est préfixée d'une apostrophe ; un nombre n'est jamais préfixé
  * (un montant négatif reste un nombre).

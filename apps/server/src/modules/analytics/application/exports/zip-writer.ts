@@ -1,5 +1,5 @@
 /**
- * Archive ZIP minimale (P9-20 ; ADR-077 §4) : un XLSX est une archive d'entrées XML. Écrite avec `node:zlib`
+ * Archive ZIP minimale (P9-20 ; ADR-067 §4) : un XLSX est une archive d'entrées XML. Écrite avec `node:zlib`
  * (compression `deflate` brute) et un CRC-32 de table, sans dépendance. Format ZIP « classique » (pas de ZIP64) :
  * au plus 65 535 entrées et 4 Gio, très au-delà d'un classeur d'export (100 000 lignes).
  */

@@ -153,7 +153,7 @@ describe('décision (ApprovalGranted, ApprovalRejected)', () => {
   });
 
   it('un motif trop long est tronqué à la limite, ellipse comprise', () => {
-    // La limite des trois cents caractères est celle du contrat de l'AV-480.
+    // La limite des trois cents caractères est celle du contrat de l'AV-430.
     expect(DIRECT_NOTIFICATION_COMMENT_MAX).toBe(300);
     const long = 'a'.repeat(DIRECT_NOTIFICATION_COMMENT_MAX + 50);
     const body = plan('ApprovalRejected', decided({ comment: long }))!.body;
@@ -266,7 +266,7 @@ describe('transferts (StockTransferRequested, StockTransferDispatched)', () => {
   });
 });
 
-describe('désactivation par type (AV-481)', () => {
+describe('désactivation par type (AV-431)', () => {
   it('seule une liste de types connus désactive quelque chose', () => {
     expect([
       ...disabledDirectNotificationTypes(['ApprovalGranted', 'StockTransferDispatched']),
@@ -280,7 +280,7 @@ describe('désactivation par type (AV-481)', () => {
   });
 });
 
-describe('fin d’un export (P9-20 ; ADR-077 §7)', () => {
+describe('fin d’un export (P9-20 ; ADR-067 §7)', () => {
   const EXPORT = '01900000-0000-7000-8000-000000000003';
   const finished = (extra: Record<string, unknown> = {}) => ({
     export_id: EXPORT,

@@ -423,7 +423,7 @@ describe('applyAlertCommand (SM-ALERT)', () => {
     ).toEqual({ ok: true, changed: true, status: 'RESOLVED' });
   });
 
-  it('une alerte d’état ne se résout pas à la main et ne s’écarte pas (AV-404)', () => {
+  it('une alerte d’état ne se résout pas à la main et ne s’écarte pas (AV-354)', () => {
     expect(
       applyAlertCommand({ status: 'OPEN', command: 'RESOLVE', definition: state, text: 'ok' }),
     ).toMatchObject({ ok: false, code: 'ALERT_RESOLVE_NOT_ALLOWED' });
@@ -461,7 +461,7 @@ describe('applyAlertCommand (SM-ALERT)', () => {
   });
 });
 
-describe('alertsResolvedByPass (ADR-071 §3)', () => {
+describe('alertsResolvedByPass (ADR-061 §3)', () => {
   const open = [
     { id: 'a1', alertType: 'OVERDUE_RECEIVABLE', status: 'OPEN', lastPassId: 'old' },
     { id: 'a2', alertType: 'OVERDUE_RECEIVABLE', status: 'ACKNOWLEDGED', lastPassId: 'new' },

@@ -1,5 +1,5 @@
 /**
- * Étendue exacte des lignes lisibles (P9-14 ; BR-ANA-004, ADR-074 §4, AV-423) : la grille portée maximale ×
+ * Étendue exacte des lignes lisibles (P9-14 ; BR-ANA-004, ADR-064 §4, AV-373) : la grille portée maximale ×
  * affectation, jugée **ligne à ligne contre `evaluateAccess`** sur des lignes réelles d'un monde de test
  * (zones imbriquées, sites, équipe, trois propriétaires).
  *

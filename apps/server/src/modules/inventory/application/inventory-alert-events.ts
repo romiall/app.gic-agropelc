@@ -1,5 +1,5 @@
 /**
- * Événements de détection d'alertes d'`inventory` (P9-08 ; ADR-071 §2 à §5 ; D13 §7.1 ; AV-405, AV-406).
+ * Événements de détection d'alertes d'`inventory` (P9-08 ; ADR-061 §2 à §5 ; D13 §7.1 ; AV-355, AV-356).
  * Le module qui porte la donnée détecte et publie ; la corrélation, la déduplication et la résolution sont
  * l'affaire du consommateur `communication.alerts`, jamais importé ici.
  *
@@ -13,7 +13,7 @@
  * **Date de détection** : un fait saisi hors ligne porte la date où il s'est produit ; l'alerte, elle, est
  * détectée à l'application sur le serveur. Les événements d'état de ce module sont donc datés de l'instant
  * du serveur (`clock`, à défaut l'horloge du serveur) : l'escalade d'une alerte critique (4 h) compte
- * depuis sa détection, et un résolveur ne précède jamais la levée qu'il ferme (AV-457). Le **jour métier**
+ * depuis sa détection, et un résolveur ne précède jamais la levée qu'il ferme (AV-407). Le **jour métier**
  * de la charge utile reste celui du fait (perte du jour, négatif du jour).
  */
 import {
@@ -42,7 +42,7 @@ export interface InventoryAlertDeps {
   readonly clock?: Clock | undefined;
 }
 
-/** Instant de détection : horloge de l'appelant, à défaut celle du serveur (AV-457). */
+/** Instant de détection : horloge de l'appelant, à défaut celle du serveur (AV-407). */
 export function detectionInstant(deps: { readonly clock?: Clock | undefined }): Date {
   return deps.clock?.now() ?? new Date();
 }
@@ -178,14 +178,14 @@ export interface StockEndpointDelta {
 }
 
 /**
- * Transitions de seuil des extrémités **physiques** d'un mouvement (AV-405) : pour chaque extrémité qui a
+ * Transitions de seuil des extrémités **physiques** d'un mouvement (AV-355) : pour chaque extrémité qui a
  * un seuil actif, l'état avant (disponible après − variation du mouvement) et l'état après (somme des
  * soldes du couple, lue après l'écriture) donnent les niveaux levés ou terminés. Sans seuil actif (cas le
  * plus fréquent), une seule lecture par clé et rien d'autre.
  *
  * La somme des soldes est une lecture simple : les verrous de l'ordre d'`inventory` (ADR-038) sont ceux
  * déjà pris par le mouvement et cette lecture n'en ajoute aucun ; l'instantané peut ignorer un autre
- * lot du couple modifié depuis le début de la transaction, que le filet horaire corrige (AV-405).
+ * lot du couple modifié depuis le début de la transaction, que le filet horaire corrige (AV-355).
  */
 export async function publishStockLevelTransitions(
   uow: UnitOfWork,
@@ -275,7 +275,7 @@ export interface ReplenishmentEventInput {
 
 /**
  * `ReplenishmentSuggested` : un point de vente dont la suggestion de réapprovisionnement
- * (cible − disponible − transit entrant) est positive (AV-452). Publié par la passe horaire, qui ferme
+ * (cible − disponible − transit entrant) est positive (AV-402). Publié par la passe horaire, qui ferme
  * aussi les alertes qu'elle ne revoit plus (réapprovisionné, transit entrant suffisant).
  */
 export async function publishReplenishmentSuggested(
@@ -310,7 +310,7 @@ export async function publishReplenishmentSuggested(
 }
 
 /**
- * Transitions causées par un **changement de seuil** (`inventory.threshold.set`, AV-405) : changer le
+ * Transitions causées par un **changement de seuil** (`inventory.threshold.set`, AV-355) : changer le
  * minimum change l'état du couple sans aucun mouvement. Avant : l'ancien seuil (sans seuil, aucune alerte
  * ouverte : état correct) ; après : le nouveau, sur le solde physique courant.
  */
@@ -424,7 +424,7 @@ export interface HighLossEventInput {
   readonly locationLabel: string;
   readonly siteId: string | null;
   readonly businessDay: string;
-  /** Cumul du jour de l'emplacement (déclarations comptées, mortalité exclue : AV-453) ; `null` : plusieurs produits. */
+  /** Cumul du jour de l'emplacement (déclarations comptées, mortalité exclue : AV-403) ; `null` : plusieurs produits. */
   readonly lossQuantity: number | null;
   readonly lossValueXaf: number;
   readonly declarations: number;

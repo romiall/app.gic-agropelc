@@ -590,7 +590,7 @@ function buildHandlers(
         created_by: toBin(userId),
       })
       .execute();
-    // Alerte `CHECKIN_SUSPICIOUS` (P9-10, AV-468) : après l'écriture du pointage, jamais avant un rejet
+    // Alerte `CHECKIN_SUSPICIOUS` (P9-10, AV-418) : après l'écriture du pointage, jamais avant un rejet
     // (un événement annulé consommerait un numéro de séquence).
     await signalSuspiciousCheckin(
       uow,

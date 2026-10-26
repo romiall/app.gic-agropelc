@@ -1,5 +1,5 @@
 /**
- * Codes de rôle actifs inconnus d'une liste (P9-19 ; partage d'une vue sauvegardée, ADR-077 §1). Lecture seule de
+ * Codes de rôle actifs inconnus d'une liste (P9-19 ; partage d'une vue sauvegardée, ADR-067 §1). Lecture seule de
  * `identity_roles` pour un autre module : l'écriture reste à `identity`.
  */
 import type { Kysely, Transaction } from 'kysely';

@@ -1,7 +1,7 @@
 /**
  * `finance.cash_sessions.open_long_check` (P5-12 ; BR-DIS-006 : « une session ouverte depuis plus de
  * 24 h déclenche une alerte » ; D13 `CASH_SESSION_OPEN_LONG` ; P9-07 : passe de détection à identité,
- * ADR-071 §3). Publie un événement `CashSessionOpenLongDetected` par session **ouverte** depuis plus de
+ * ADR-061 §3). Publie un événement `CashSessionOpenLongDetected` par session **ouverte** depuis plus de
  * `finance.cash_session_force_close_hours` (réglage du site, à défaut global, à défaut 24), puis le
  * marqueur de fin de passe : l'alerte d'état se résout seule quand la session n'est plus revue (clôture
  * ordinaire ou d'office). Aucune session n'est modifiée : la clôture d'office reste une décision de la

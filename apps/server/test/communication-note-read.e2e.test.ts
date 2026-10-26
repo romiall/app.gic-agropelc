@@ -2,7 +2,7 @@
  * P9-11 (2/3) — lectures HTTP des notes de direction, de bout en bout : NestJS + Fastify, `app.inject()`, notes
  * écrites par le vrai pipeline (commandes `communication.note.*`), rôles réels du seed.
  *
- * Démontre (ADR-073 §3, §5, §6 ; BR-NOT-006 ; RC-07, RC-09 ; AV-476, AV-479) : le centre de notes d'un lecteur
+ * Démontre (ADR-063 §3, §5, §6 ; BR-NOT-006 ; RC-07, RC-09 ; AV-426, AV-429) : le centre de notes d'un lecteur
  * (publiées, non expirées, qui le touchent ; jamais brouillon, archivée, expirée ni note d'un autre site) ; les
  * affectations de zone voient les notes des sites qu'elles couvrent ; l'accusé retire la note des accusés
  * attendus ; la fiche (404 opaque audité hors audience) ; la gestion (brouillons du lecteur seulement, audience

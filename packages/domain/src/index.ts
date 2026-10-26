@@ -428,7 +428,7 @@ export {
 } from './stock-alerts.js';
 export type { PosReplenishScope, StockAlertLevel, StockLevelChange } from './stock-alerts.js';
 
-// Alertes de production (P9-09 ; D13 §7.1, AV-121, AV-124, AV-461 à AV-463).
+// Alertes de production (P9-09 ; D13 §7.1, AV-121, AV-124, AV-411 à AV-413).
 export {
   DEFAULT_DAILY_ENTRY_WORKING_DAYS,
   DEFAULT_HIGH_MORTALITY_ALERT_HEADS,
@@ -446,7 +446,7 @@ export {
   standardCostAlertLookbackDaysOrDefault,
 } from './production-alerts.js';
 export type { HighMortalityCause } from './production-alerts.js';
-// Alertes d'achats, de validations et de pièces (P9-09 ; BR-APP-015, AV-408, AV-410, AV-407, AV-449).
+// Alertes d'achats, de validations et de pièces (P9-09 ; BR-APP-015, AV-358, AV-360, AV-357, AV-399).
 export {
   DEFAULT_RECEIPT_INCOMPLETE_ALERT_DAYS,
   receiptIncompleteAlertDaysOrDefault,
@@ -580,7 +580,7 @@ export {
 export type { ApprovalDecisionOptions, ApprovalDecisionSpec } from './approval-decisions.js';
 
 // P9 : alertes (catalogue, traitement d'un événement, rendu, livraison), périodes d'analyse, registre
-// des indicateurs et couche sémantique de l'explorateur (ADR-070 à ADR-078).
+// des indicateurs et couche sémantique de l'explorateur (ADR-060 à ADR-068).
 export {
   ALERT_CATALOG,
   ALERT_DETECTOR_MODULES,
@@ -716,7 +716,7 @@ export {
   newPasswordProblem,
 } from './password.js';
 export type { NewPasswordProblem } from './password.js';
-// Audience des notes de direction (P9-11 ; ADR-073, AV-476) : règle pure partagée lecture / accusé / publication.
+// Audience des notes de direction (P9-11 ; ADR-063, AV-426) : règle pure partagée lecture / accusé / publication.
 export {
   NOTE_AUDIENCE_ALL_REF,
   assignmentInAudience,
@@ -733,7 +733,7 @@ export type {
   NoteAudienceEntry,
   NoteAudienceType,
 } from './note-audience.js';
-// Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-482).
+// Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-389, AV-430 à AV-432).
 export {
   DIRECT_NOTIFICATION_COMMENT_MAX,
   DIRECT_NOTIFICATION_EVENT_TYPES,

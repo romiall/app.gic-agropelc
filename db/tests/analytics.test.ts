@@ -1,5 +1,5 @@
-// Module `analytics` après la migration 20261201090300 (P9-13 ; BR-ANA-007 à 009 ; ADR-074, ADR-076 à
-// ADR-078) : vues sauvegardées (une par nom et par propriétaire, une seule vue par défaut par rôle), exports
+// Module `analytics` après la migration 20261201090300 (P9-13 ; BR-ANA-007 à 009 ; ADR-064, ADR-066 à
+// ADR-068) : vues sauvegardées (une par nom et par propriétaire, une seule vue par défaut par rôle), exports
 // (états cohérents, définition immuable, jamais supprimés), instantanés (une ligne par utilisateur, tableau et
 // période), journal des requêtes (ajout seul). Chaque test crée ses données dans une transaction annulée.
 import { describe, expect, it } from 'vitest';

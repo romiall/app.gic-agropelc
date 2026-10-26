@@ -30,8 +30,8 @@ Tu travailles **en parallèle** de la session principale, sur ta propre branche,
 | Migrations | versions **`20261201xxxxxx`** seulement ; la session principale garde `20261102` à `20261130` |
 | AV | numéros provisoires **AV-400 à AV-449** (les numéros 350 à 399 de P8 ne sont plus réservés : ne pas les réutiliser) |
 | ADR | numéros provisoires **ADR-070 à ADR-079** |
-| Suivi | `docs/10-development-plan/19-suivi-p9.md` |
-| Démonstration de sortie | `docs/10-development-plan/20-demonstration-p9.md` |
+| Suivi | `docs/10-development-plan/21-suivi-p9.md` |
+| Démonstration de sortie | `docs/10-development-plan/22-demonstration-p9.md` |
 | Matrice | nouvelle sous-section **§17.11** « Phase P9 » (§17.9 est le lot MP, §17.10 la phase P8) |
 
 **Bases et ports interdits** : `gic_agropelc_dev` (démonstration du porteur), `gic_agropelc_test`, `gic_agropelc_mp8i` (référence de la session principale) et toute autre base existante ; aucun serveur sur les ports 3000 ou 5173 (les tests serveur passent par `app.inject`).
@@ -96,7 +96,7 @@ Lire aussi : D11 (analytics), D12 (audit), D13 (notifications et communication),
 1. **P9-01, conception** : cartographier le code et les documents cités (lecteurs parallèles), arrêter les ADR de ta plage, ouvrir les AV de ta plage avec leurs défauts, écrire le **backlog de P9** dans le plan §4 (incréments ordonnés, chacun commité avec ses tests et ses documents). Le présenter brièvement à la session principale, puis continuer avec les défauts.
 2. **Incréments, en séquentiel**. Sous-agents : Sonnet quand il suffit, Opus quand c'est nécessaire ; seulement pour les revues et les lectures parallélisables. Chaque correctif est vérifié par mutation sur la base jetable.
 3. **Revue adverse** en fin de serveur (chercheurs, puis vérificateurs sceptiques), puis correctifs.
-4. **Clôture serveur** : balayage des invariants sur toute la base ; tests d'acceptation de P9 automatisés ; suite complète verte sur une base **neuve** ; `20-demonstration-p9.md` ; matrice §17.11 ; `python docs/_tools/check_refs.py` sans référence orpheline ni lien cassé.
+4. **Clôture serveur** : balayage des invariants sur toute la base ; tests d'acceptation de P9 automatisés ; suite complète verte sur une base **neuve** ; `22-demonstration-p9.md` ; matrice §17.11 ; `python docs/_tools/check_refs.py` sans référence orpheline ni lien cassé.
 
 ## 6. Coordination avec la session principale
 

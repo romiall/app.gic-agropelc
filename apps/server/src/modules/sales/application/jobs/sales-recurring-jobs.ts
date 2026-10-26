@@ -1,9 +1,9 @@
 /**
  * Récurrences des tâches de `sales` (P9-07 ; ordonnanceur `platform/jobs/job-scheduler.ts`) : des passes
  * quotidiennes de détection d'alertes d'état, dont les créneaux sont des constantes de planification
- * (AV-411) et non des seuils métier (les seuils restent des paramètres système lus par chaque tâche) :
+ * (AV-361) et non des seuils métier (les seuils restent des paramètres système lus par chaque tâche) :
  * - `sales.losses.sales_share_check` (P9-08) : 06:45 — pertes des deux derniers jours clos rapportées au CA
- *   net du site (`HIGH_LOSS`, AV-455) ;
+ *   net du site (`HIGH_LOSS`, AV-405) ;
  * - `sales.receivables.overdue_daily` (P4-09) : 07:00 — BR-FIN-007 « l'alerte est levée chaque jour à
  *   07:00 » ;
  * - `sales.orders.undelivered_check` : 07:30 — vente confirmée non livrée (AV-132) ;

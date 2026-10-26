@@ -1,5 +1,5 @@
 /**
- * P9-04 (ADR-071 §12, AV-412) : un événement sauté par un consommateur après ses essais est consigné
+ * P9-04 (ADR-061 §12, AV-362) : un événement sauté par un consommateur après ses essais est consigné
  * dans `platform_event_consumer_failures` (ajout seul) ; `last_error` n'en garde que le dernier message,
  * réécrit par le premier événement traité ensuite — la trace ne dépend donc pas de lui.
  */

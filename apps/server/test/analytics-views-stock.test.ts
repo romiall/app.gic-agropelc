@@ -1,5 +1,5 @@
 /**
- * Jeux de faits de stock et de production de la couche sémantique (P9-13 ; ADR-074 §2, §3 et §7, ADR-075) :
+ * Jeux de faits de stock et de production de la couche sémantique (P9-13 ; ADR-064 §2, §3 et §7, ADR-065) :
  * mouvements, soldes, pertes, production du jour par lot, écritures de coût.
  *
  * Chaque vue est rapprochée de la définition qui existe déjà — `locationFlows` (flux d'un emplacement),

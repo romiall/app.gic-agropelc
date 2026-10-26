@@ -1,6 +1,6 @@
 /**
- * `communication.consumers.failure_check` (P9-10 ; D13 §7.1 `CONSUMER_FAILED`, ADR-071 §12, ADR-078 §7 ;
- * AV-412, AV-475) : toutes les cinq minutes, publie un événement `ConsumerFailureDetected` par consommateur
+ * `communication.consumers.failure_check` (P9-10 ; D13 §7.1 `CONSUMER_FAILED`, ADR-061 §12, ADR-068 §7 ;
+ * AV-362, AV-425) : toutes les cinq minutes, publie un événement `ConsumerFailureDetected` par consommateur
  * d'événements **en échec** — au moins un événement sauté après cinq essais dans les
  * `communication.consumer_failure_window_hours` dernières heures (24), ou un retard de position strictement
  * supérieur à `communication.consumer_lag_alert_seconds` (300) — puis le marqueur de fin de passe : un
@@ -8,7 +8,7 @@
  *
  * - **Consommateurs surveillés** : toutes les positions enregistrées (`platform_event_consumer_offsets`), quel que
  *   soit le processus qui les draine. Le sujet est le nom du consommateur seul : une alerte par consommateur,
- *   d'état, qui reste ouverte tant que l'une des deux conditions dure (D13 et l'ADR-071 §12 disaient « un par
+ *   d'état, qui reste ouverte tant que l'une des deux conditions dure (D13 et l'ADR-061 §12 disaient « un par
  *   consommateur et par jour métier » : le catalogue, plus précis, fait foi).
  * - **Retard** : l'âge du plus ancien événement non traité (jamais un comptage). Il n'est pas la mesure d'un
  *   arrêt : un consommateur au repos n'a pas de retard, et un consommateur qui n'a jamais tourné n'a pas de ligne.
@@ -17,7 +17,7 @@
  *   suivants, dont celui-ci ; quand il est en retard, l'alerte se lève après le rattrapage ; quand le worker est
  *   arrêté, ni cette tâche ni lui ne tournent. D'où le journal d'erreur de chaque passe (supervision
  *   indépendante de l'alerte) ; une sonde externe sur le retard en secondes est renvoyée à P9-22.
- * - **Données** : ni le message d'erreur ni le type de l'événement sauté ne sont lus ou publiés (ADR-071 §4).
+ * - **Données** : ni le message d'erreur ni le type de l'événement sauté ne sont lus ou publiés (ADR-061 §4).
  *   L'événement ne dépend que des positions : il ne rejoue rien.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';

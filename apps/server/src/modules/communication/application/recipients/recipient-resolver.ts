@@ -1,5 +1,5 @@
 /**
- * Port du résolveur de destinataires (P9-05 ; ADR-072 §2 ; BR-NOT-001, BR-NOT-008 ; besoin B1).
+ * Port du résolveur de destinataires (P9-05 ; ADR-062 §2 ; BR-NOT-001, BR-NOT-008 ; besoin B1).
  *
  * `identity` répond « quels rôles a cet utilisateur ? », jamais « quels utilisateurs tiennent ce rôle dans
  * ce périmètre ? ». Le module `communication` exprime donc son besoin par ce port ; l'adaptateur

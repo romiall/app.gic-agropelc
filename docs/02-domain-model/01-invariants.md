@@ -152,12 +152,12 @@
 | INV-KOM-01 | (système, type externe, identifiant externe) correspond à une seule entité GIC. | Doublons d'intégration | DB (`UNIQUE`) | I |
 | INV-KOM-02 | Un webhook (clé de déduplication) n'est traité qu'une fois. | Double création depuis Kommo | DB (`UNIQUE`) | S |
 | INV-KOM-03 | GIC ne modifie jamais un champ dont Kommo est propriétaire. | Double responsabilité (CM §59) | CODE (mapping déclaratif) | U |
-| INV-NOT-01 | Au plus une alerte ouverte par (type, objet concerné). | Accumulation de notifications (CM §54) | DB (colonne générée `open_dedup_key` sous index unique : MySQL n'a pas d'index partiel, ADR-071 §6) | I |
+| INV-NOT-01 | Au plus une alerte ouverte par (type, objet concerné). | Accumulation de notifications (CM §54) | DB (colonne générée `open_dedup_key` sous index unique : MySQL n'a pas d'index partiel, ADR-061 §6) | I |
 | INV-NOT-02 | Une alerte résolue ou écartée n'est plus modifiée ; la gravité d'une alerte ouverte ne baisse pas. | Perte de l'historique d'une alerte (ADR-006), alerte critique masquée | DB (déclencheur) | I |
 | INV-NOT-03 | Une note de direction publiée est immuable, audience comprise ; une note n'est jamais supprimée. | Consigne modifiée après accusé de lecture (BR-NOT-006) | DB (déclencheurs sur la note et son audience) | I |
 | INV-ANA-01 | Un export est audité à la demande et à sa fin (réussie, échouée ou abandonnée) ; sa ligne n'est jamais supprimée, ne change plus une fois terminée, et un export réussi ne peut qu'expirer. | Export sans trace, fichier de données sorti sans qu'on sache qui, quand et quoi (BR-ANA-008) | DB (déclencheurs) + CODE (audit à chaque étape) | I |
 | INV-ANA-02 | La vue sauvegardée par défaut d'un rôle est partagée avec ce rôle ; un rôle a au plus une vue par défaut. | Vue « par défaut » que son rôle ne voit pas, deux vues par défaut ambiguës (BR-ANA-007) | DB (clé unique) + TX (verrou du rôle) | I |
-| INV-ANA-03 | Un instantané personnel appartient à un utilisateur, un tableau de rôle et une période (`TODAY`, `WEEK`, `MONTH`) ; il est écrasé, jamais cumulé. | Instantanés d'âges différents côte à côte, tableau hors catalogue servi à l'appareil (ADR-076 §5) | DB (clé primaire, contrôle de la période) + CODE (tableaux du catalogue) | I |
+| INV-ANA-03 | Un instantané personnel appartient à un utilisateur, un tableau de rôle et une période (`TODAY`, `WEEK`, `MONTH`) ; il est écrasé, jamais cumulé. | Instantanés d'âges différents côte à côte, tableau hors catalogue servi à l'appareil (ADR-066 §5) | DB (clé primaire, contrôle de la période) + CODE (tableaux du catalogue) | I |
 
 ## 11. Couverture des exemples du PM §28
 

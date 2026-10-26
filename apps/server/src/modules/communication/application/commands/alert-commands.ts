@@ -1,5 +1,5 @@
 /**
- * Commandes d'alerte (P9-04 ; SM-ALERT ; UC-NOT-02 et 04 ; ADR-071 §9, ADR-072 §8 ; AV-404, AV-418) :
+ * Commandes d'alerte (P9-04 ; SM-ALERT ; UC-NOT-02 et 04 ; ADR-061 §9, ADR-062 §8 ; AV-354, AV-368) :
  * `communication.alert.acknowledge` (hors ligne possible), `.resolve`, `.dismiss`, et
  * `communication.alert_rule.set` (en ligne).
  *
@@ -57,7 +57,7 @@ const rejected = (errorCode: string, messageFr: string): CommandHandlerOutcome =
 
 const notFound = rejected('NOT_FOUND', 'Alerte introuvable.');
 
-/** Destinataire de l'alerte, ou portée de `comm.alert.manage` qui la couvre (ADR-072 §3). */
+/** Destinataire de l'alerte, ou portée de `comm.alert.manage` qui la couvre (ADR-062 §3). */
 async function canActOn(
   uow: UnitOfWork,
   alert: LockedAlert,

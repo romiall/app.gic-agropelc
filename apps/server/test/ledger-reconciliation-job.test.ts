@@ -1,5 +1,5 @@
 /**
- * `inventory.ledger.reconcile_daily` (P2-07, P5-16, P9-08 ; AV-402, AV-459) : un écart du registre n'est plus
+ * `inventory.ledger.reconcile_daily` (P2-07, P5-16, P9-08 ; AV-352, AV-409) : un écart du registre n'est plus
  * un échec de tâche mais une alerte `LEDGER_MISMATCH` — un événement `LedgerMismatchDetected` par site et
  * par jour métier, publié dans la transaction de la tâche, qui se termine en succès. Les deux
  * vérifications sont simulées (aucune altération de la base d'essai partagée, que d'autres fichiers
@@ -102,7 +102,7 @@ async function detectedEvents(uow: UnitOfWork, siteKey: string, businessDay: str
   ).map((row) => toDomainEvent(row));
 }
 
-describe('LedgerReconciliationJob — alerte LEDGER_MISMATCH au lieu d’un échec (P9-08, AV-459)', () => {
+describe('LedgerReconciliationJob — alerte LEDGER_MISMATCH au lieu d’un échec (P9-08, AV-409)', () => {
   it('un écart par site : un événement par site et par jour, la tâche réussit', () =>
     rolledBack(async (uow) => {
       const { siteA, siteB, locationA, locationB } = await twoSites(uow);

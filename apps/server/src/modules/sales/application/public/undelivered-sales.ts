@@ -3,7 +3,7 @@
  * AV-132). Lecture seule, même définition du reste à livrer que `toDeliverByLocation` (vendu − annulé −
  * livré, ADR-028) : une vente livrée en totalité, annulée ou dont la demande d'annulation est en cours
  * n'est plus listée. L'ancienneté se compte depuis le jour métier de la vente (sa confirmation) ou, s'il
- * est postérieur, depuis le jour de livraison demandé par le client (AV-451) : une livraison planifiée
+ * est postérieur, depuis le jour de livraison demandé par le client (AV-401) : une livraison planifiée
  * n'est pas en retard avant sa date.
  *
  * La lecture part des **commandes ouvertes** (`sales_sales_orders.status`, indexé) plutôt que de toute la

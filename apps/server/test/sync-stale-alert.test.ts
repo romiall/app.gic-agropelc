@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `SYNC_STALE` (D13 §7.1, AV-472) — `sync.devices.stale_check` publie un `DeviceSyncStale` par
+ * P9-10 : alerte `SYNC_STALE` (D13 §7.1, AV-422) — `sync.devices.stale_check` publie un `DeviceSyncStale` par
  * appareil actif sans synchronisation depuis plus de `sync.stale_hours` heures, puis le marqueur de passe.
  * Horloge dans le passé lointain (2019), transactions annulées : les appareils des autres suites ont une
  * activation postérieure, donc jamais « en retard ».

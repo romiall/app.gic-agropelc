@@ -1,5 +1,5 @@
 /**
- * `sales.losses.sales_share_check` (P9-08 ; D13 §7.1 `HIGH_LOSS`, AV-406, AV-455) : la part « % du CA » de
+ * `sales.losses.sales_share_check` (P9-08 ; D13 §7.1 `HIGH_LOSS`, AV-356, AV-405) : la part « % du CA » de
  * l'alerte de pertes anormales. Les pertes sont de vraies déclarations (insertion directe, transaction
  * annulée) lues par `inventory.dayLossByLocation` ; le CA net du site est simulé (`soldByLocation` a ses
  * propres tests, P5-19) pour maîtriser le dénominateur sans fabriquer des ventes.

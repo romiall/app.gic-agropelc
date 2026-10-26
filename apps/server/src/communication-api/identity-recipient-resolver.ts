@@ -1,5 +1,5 @@
 /**
- * Adaptateur du port `AlertRecipientResolver` (P9-05 ; ADR-072 §2 ; besoin B1) : les destinataires d'une
+ * Adaptateur du port `AlertRecipientResolver` (P9-05 ; ADR-062 §2 ; besoin B1) : les destinataires d'une
  * alerte se trouvent **par rôle et par périmètre**, requête inverse que ni `identity` ni `organization`
  * n'exposent. Ce fichier est le seul à la porter : les lectures des affectations, des équipes et des
  * zones y sont isolées pour que des fonctions publiques d'`identity` et d'`organization` les remplacent

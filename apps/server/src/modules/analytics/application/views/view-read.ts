@@ -1,5 +1,5 @@
 /**
- * Lecture des vues sauvegardées pour un lecteur (P9-19 ; ADR-077 §2, BR-ANA-007) : les vues qu'il voit (les siennes et
+ * Lecture des vues sauvegardées pour un lecteur (P9-19 ; ADR-067 §2, BR-ANA-007) : les vues qu'il voit (les siennes et
  * celles partagées avec l'un de ses rôles) avec leur **exécutabilité**, calculée contre le catalogue et les droits du
  * lecteur **sans lire aucune donnée** — `OK`, `OUTDATED` (un champ a disparu ou la définition n'est plus valide, jamais
  * réécrite en silence) ou `UNAVAILABLE` (jeu ou valeur au coût illisible pour lui).

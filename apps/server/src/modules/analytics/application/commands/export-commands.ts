@@ -1,12 +1,12 @@
 /**
- * Commande de demande d'export (P9-20 ; ADR-077 §3, §7 et §8, BR-ANA-008, UC-ANA-05, AT-046) :
- * `analytics.export.request` (permission `analytics.export`, **en ligne**). Toujours asynchrone (AV-433) : la commande
+ * Commande de demande d'export (P9-20 ; ADR-067 §3, §7 et §8, BR-ANA-008, UC-ANA-05, AT-046) :
+ * `analytics.export.request` (permission `analytics.export`, **en ligne**). Toujours asynchrone (AV-383) : la commande
  * valide la demande, crée la ligne `QUEUED` (définition figée, version du catalogue), dépose la tâche
  * `analytics.export.run` et publie `AnalyticsExportRequested` ; le calcul, les droits revérifiés et le fichier sont
  * du worker (`run-export.ts`).
  *
  * - **Validée comme à l'écran** : jeu lisible, définition valide contre le catalogue, mesure au coût réservée à
- *   `inventory.valuation.read` (un export financier exige donc les deux droits, AV-434), plafond de lignes de
+ *   `inventory.valuation.read` (un export financier exige donc les deux droits, AV-384), plafond de lignes de
  *   l'export (`analytics.export_max_rows`) ; version du catalogue égale à la version courante.
  * - **Garde-fou** : au plus `analytics.export_max_pending_per_user` exports en file ou en cours par demandeur
  *   (`EXPORT_BACKLOG`), pour qu'un utilisateur n'occupe pas la file.

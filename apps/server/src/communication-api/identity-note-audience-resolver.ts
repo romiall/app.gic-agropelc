@@ -1,5 +1,5 @@
 /**
- * Adaptateur du port `NoteAudienceResolver` (P9-11 ; ADR-073 §3, §4 ; AV-476) : charge la géographie (zones,
+ * Adaptateur du port `NoteAudienceResolver` (P9-11 ; ADR-063 §3, §4 ; AV-426) : charge la géographie (zones,
  * ancêtres, sites) et les affectations actives, puis laisse la **règle pure du domaine** (`note-audience.ts`)
  * décider qui est touché. Comme `identity-recipient-resolver.ts`, il isole en un seul fichier les lectures des
  * tables `identity_*` et `organization_*` que ni `identity` ni `organization` n'exposent encore (besoin B1).

@@ -1,6 +1,6 @@
 /**
  * Règles pures de l'alerte `APPROVAL_PENDING_LONG` (P9-09 ; D13 §7.1, SM-APPROVAL « délai de 24 h
- * dépassé », AV-408, AV-466) : une demande de validation en attente depuis au moins `approvals.
+ * dépassé », AV-358, AV-416) : une demande de validation en attente depuis au moins `approvals.
  * pending_long_hours` heures. Sans entrée-sortie ; aucune fonction ne lève.
  */
 

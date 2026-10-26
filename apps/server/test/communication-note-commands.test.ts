@@ -1,6 +1,6 @@
 /**
- * P9-11 (1/3) : commandes des notes de direction (ADR-073 ; D13 UC-NOT-05 et 06 ; BR-NOT-006, BR-NOT-007 ;
- * AT-048 ; AV-476 à AV-478) — `communication.note.save_draft`, `.publish`, `.archive` et `.acknowledge`, par le
+ * P9-11 (1/3) : commandes des notes de direction (ADR-063 ; D13 UC-NOT-05 et 06 ; BR-NOT-006, BR-NOT-007 ;
+ * AT-048 ; AV-426 à AV-428) — `communication.note.save_draft`, `.publish`, `.archive` et `.acknowledge`, par le
  * vrai pipeline de commande, le vrai résolveur d'audience et la base partagée (utilisateurs, rôles, zones,
  * sites et notes neufs : les audiences ne nomment que des objets propres au test, jamais `ALL`).
  */
@@ -875,7 +875,7 @@ describe('notes de direction : commandes (P9-11)', () => {
       expect(await ackRow(noteId, lateStaff.id)).toBeUndefined();
       const after = await acknowledge(lateStaff, noteId, 'ACKNOWLEDGE', { occurredAt: at(5) });
       expect(after.server_refs).toMatchObject({ recorded: 'true', changed: 'true' });
-      // Visible en ligne, jamais reçue par la publication (limite assumée, AV-419).
+      // Visible en ligne, jamais reçue par la publication (limite assumée, AV-369).
       expect(await recipientsOf(noteId)).not.toContain(lateStaff.id);
     });
 

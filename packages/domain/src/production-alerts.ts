@@ -1,5 +1,5 @@
 /**
- * Règles pures des alertes de production (P9-09 ; D13 §7.1 ; AV-406, AV-121, AV-124 ; AV-461 à AV-463).
+ * Règles pures des alertes de production (P9-09 ; D13 §7.1 ; AV-356, AV-121, AV-124 ; AV-411 à AV-413).
  * Partagées par les détecteurs du module `production`, sans entrée-sortie : l'appelant fournit l'état déjà
  * lu. Aucune fonction ne lève : un détecteur « sur fait » s'exécute dans la transaction d'un fait accompli,
  * qu'une donnée de réglage invalide ne doit jamais faire échouer (BR-SYN-007).
@@ -40,7 +40,7 @@ export function highMortalityAlertHeadsOrDefault(value: unknown): number {
 }
 
 /**
- * Effectif de référence du taux du jour (AV-461) : l'effectif en élevage **au début du jour métier**
+ * Effectif de référence du taux du jour (AV-411) : l'effectif en élevage **au début du jour métier**
  * (précédent du taux de ponte, AV-116). Un lot mis en place le jour même n'a pas d'effectif en début de
  * journée : l'appelant fournit alors l'effectif de repli (effectif en fin de saisie plus les morts du
  * jour). Sans effectif positif, la référence est 0 : seul le seuil absolu s'applique.
@@ -101,7 +101,7 @@ export const DEFAULT_DAILY_ENTRY_WORKING_DAYS: readonly number[] = [1, 2, 3, 4, 
 
 /**
  * `production.daily_entry_working_days` : liste de numéros ISO de 1 à 7. Une liste vide, absente ou sans
- * aucun numéro valide revient aux sept jours (AV-462).
+ * aucun numéro valide revient aux sept jours (AV-412).
  */
 export function dailyEntryWorkingDaysOrDefault(value: unknown): readonly number[] {
   if (!Array.isArray(value)) return DEFAULT_DAILY_ENTRY_WORKING_DAYS;
@@ -114,7 +114,7 @@ export function dailyEntryWorkingDaysOrDefault(value: unknown): readonly number[
 }
 
 /**
- * Une saisie est attendue d'un lot le jour examiné (AV-462) : lot en cours (`ACTIVE` ou `SELLING`), mis en
+ * Une saisie est attendue d'un lot le jour examiné (AV-412) : lot en cours (`ACTIVE` ou `SELLING`), mis en
  * place **avant** ce jour (le jour de la mise en place compte une entrée de lot, en général aucune saisie),
  * avec des animaux en élevage à la fin du jour (un lot en vente vidé par les ventes n'a plus rien à saisir).
  * `startDay` et `examinedDay` sont des jours métier `AAAA-MM-JJ`.
@@ -132,7 +132,7 @@ export function dailyEntryExpected(input: {
 
 // --- Coût standard manquant (STANDARD_COST_MISSING) ---------------------------------------------------
 
-/** Repli de la fenêtre de revue des entrées de production sans coût standard (AV-463). */
+/** Repli de la fenêtre de revue des entrées de production sans coût standard (AV-413). */
 export const DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS = 30;
 
 /**

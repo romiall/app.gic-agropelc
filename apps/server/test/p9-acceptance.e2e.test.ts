@@ -264,7 +264,7 @@ describe('P9-24 : acceptation de l’analyse', { timeout: 300_000 }, () => {
     expect(saleMove?.commandId).toEqual(expect.any(String));
   });
 
-  it('AV-426 : le chiffre d’affaires de periodRevenue égale celui de la référence (period-activity) ; seul le nombre de ventes diffère (annulées comprises)', async () => {
+  it('AV-376 : le chiffre d’affaires de periodRevenue égale celui de la référence (period-activity) ; seul le nombre de ventes diffère (annulées comprises)', async () => {
     const siteIds = [world.siteP];
     const revenue = await periodRevenue(db, {
       fromUtc: businessDayStartUtc(DAY),

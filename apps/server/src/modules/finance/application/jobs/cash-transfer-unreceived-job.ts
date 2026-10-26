@@ -1,6 +1,6 @@
 /**
  * `finance.cash_transfers.unreceived_check` (P5-15 ; AV-158 : alerte à 48 h ; D13 §7.1
- * `CASH_TRANSFER_NOT_RECEIVED` ; P9-07 : passe de détection à identité, ADR-071 §3). Publie un événement
+ * `CASH_TRANSFER_NOT_RECEIVED` ; P9-07 : passe de détection à identité, ADR-061 §3). Publie un événement
  * `CashTransferUnreceived` par remise **envoyée et jamais reçue ni annulée** depuis plus de
  * `finance.cash_transfer_unreceived_hours` heures (48 par défaut, une valeur invalide revient au défaut),
  * puis le marqueur de fin de passe : l'alerte d'état se résout quand la remise n'est plus revue

@@ -387,7 +387,7 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       .where('aggregate_id', '=', toBin(transferId))
       .where('event_type', 'like', 'StockTransfer%')
       .execute();
-    // L'expédition a publié le sien (P9-11 (3/3), AV-480) ; le balayage ajoute le seul écart, ni réception ni rapprochement.
+    // L'expédition a publié le sien (P9-11 (3/3), AV-430) ; le balayage ajoute le seul écart, ni réception ni rapprochement.
     expect(events.map((e) => e.event_type).sort()).toEqual([
       'StockTransferDiscrepancyDetected',
       'StockTransferDispatched',
@@ -767,7 +767,7 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       .execute();
     expect(underDispatch).toHaveLength(0);
 
-    // P9-08 (AV-458) : l'expédition rapprochée par la réception tardive est « reçue » : un événement sous son
+    // P9-08 (AV-408) : l'expédition rapprochée par la réception tardive est « reçue » : un événement sous son
     // identifiant ferme l'alerte `TRANSFER_NOT_RECEIVED` sans attendre la passe suivante.
     const onDispatch = await db
       .selectFrom('platform_domain_events')

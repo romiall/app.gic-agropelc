@@ -1,6 +1,6 @@
 /**
  * P9-09 : alertes d'achats **sur fait**, à travers le vrai pipeline (D13 §7.1, BR-APP-015, BR-APP-012 ;
- * AV-410, AV-464, AV-465) :
+ * AV-360, AV-414, AV-415) :
  * - `RECEIPT_INCOMPLETE` : à chaque changement des quantités acceptées d'un bon de commande (réception
  *   comptabilisée, quarantaine approuvée, annulation de réception), `ReceiptIncompleteDetected` si le bon
  *   a un reliquat et une date prévue dépassée de plus de 2 jours ou une quantité rejetée, sinon
@@ -364,7 +364,7 @@ describe('RECEIPT_INCOMPLETE et quarantaine : détection sur fait (P9-09)', () =
     }
   });
 
-  it('la réception est enregistrée en lecture confirmée, sous le verrou du bon (AV-464)', () => {
+  it('la réception est enregistrée en lecture confirmée, sous le verrou du bon (AV-414)', () => {
     expect(registry.resolve('procurement.receipt.record', 1)?.isolationLevel).toBe(
       'read committed',
     );

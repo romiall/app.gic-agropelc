@@ -1,6 +1,6 @@
 /**
- * Indicateurs d'approvisionnement sans fonction publique avant P9 (P9-15 ; KPI-APP-01 et 02, ADR-075 §1,
- * AV-493) :
+ * Indicateurs d'approvisionnement sans fonction publique avant P9 (P9-15 ; KPI-APP-01 et 02, ADR-065 §1,
+ * AV-443) :
  * - **Taux de service fournisseur** : quantités acceptées ÷ quantités commandées de la période. Le commandé est
  *   celui des lignes non annulées des bons engagés (ni brouillon, ni en attente d'approbation, ni annulés), au
  *   jour de l'approbation du bon ; l'accepté, celui des lignes des réceptions comptabilisées (livré moins rejeté),

@@ -3,7 +3,7 @@
  * - `communication.alerts.escalate` : toutes les 10 minutes (BR-NOT-005 : l'écart toléré sur une échéance
  *   de plusieurs heures est de quelques minutes) ;
  * - `communication.push.dispatch` : chaque minute (BR-NOT-004 : push « immédiat » après validation) ;
- * - `communication.consumers.failure_check` : toutes les cinq minutes (P9-10, AV-475) — le retard toléré est de
+ * - `communication.consumers.failure_check` : toutes les cinq minutes (P9-10, AV-425) — le retard toléré est de
  *   300 s (`communication.consumer_lag_alert_seconds`) : la passe le rattrape à une cadence du même ordre.
  * Constantes techniques de planification, pas des seuils métier (comme `inventory-recurring-jobs.ts`).
  */

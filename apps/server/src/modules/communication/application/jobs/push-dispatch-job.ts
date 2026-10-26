@@ -1,5 +1,5 @@
 /**
- * `communication.push.dispatch` (P9-05 ; ADR-072 §5 ; BR-NOT-004) : envoie, après validation de la
+ * `communication.push.dispatch` (P9-05 ; ADR-062 §5 ; BR-NOT-004) : envoie, après validation de la
  * transaction qui les a créées, les notifications Web Push en attente. Voir
  * `notifications/push-dispatch.ts`. Récurrence : chaque minute.
  */

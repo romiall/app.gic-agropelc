@@ -1,5 +1,5 @@
 /**
- * P9-11 (2/3) : lecture des notes de direction (ADR-073 §3, §5, §6 ; AV-476, AV-479) au niveau des fonctions
+ * P9-11 (2/3) : lecture des notes de direction (ADR-063 §3, §5, §6 ; AV-426, AV-429) au niveau des fonctions
  * publiques de `communication` — centre de notes, gestion, fiche, suivi des accusés — avec le vrai résolveur
  * d'audience et la base partagée. L'horloge est maîtrisée : l'expiration, le tri et le curseur se jugent à
  * l'instant près ; plusieurs notes publiées au même instant exercent le départage par identifiant.

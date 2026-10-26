@@ -1,5 +1,5 @@
 // Module `communication` après la migration 20261201090100 (P9-03 ; SM-ALERT, BR-NOT-002 à 008,
-// INV-NOT-01 ; ADR-071 à ADR-073) : règles, alertes (déduplication par colonne générée sous index
+// INV-NOT-01 ; ADR-061 à ADR-063) : règles, alertes (déduplication par colonne générée sous index
 // unique, immuabilité après résolution, gravité qui ne baisse pas), destinataires, notifications,
 // abonnements push, notes de direction (publiée = immuable, audiences comprises) et accusés. Chaque
 // test crée ses données dans une transaction annulée.
@@ -212,7 +212,7 @@ describe('communication_alerts — cohérence et immuabilité', () => {
       ).rejects.toThrow(/critical_since déjà posé/);
     }));
 
-  it('la gravité d’une alerte ouverte ne baisse pas ; le compteur ne recule pas (AV-401)', () =>
+  it('la gravité d’une alerte ouverte ne baisse pas ; le compteur ne recule pas (AV-351)', () =>
     withRollback(async (conn) => {
       const id = await alert(conn, { severity: 'CRITICAL' });
       await expect(
@@ -500,7 +500,7 @@ async function note(conn: PoolConnection, author: Buffer, status = 'DRAFT'): Pro
   return id;
 }
 
-describe('communication_internal_notes (BR-NOT-006, ADR-073)', () => {
+describe('communication_internal_notes (BR-NOT-006, ADR-063)', () => {
   it('brouillon modifiable ; publiée : contenu et audience figés ; archivée : immuable', () =>
     withRollback(async (conn) => {
       const author = await user(conn);

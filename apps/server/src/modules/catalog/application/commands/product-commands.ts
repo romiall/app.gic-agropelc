@@ -369,14 +369,14 @@ const standardCostSet =
         created_by: toBin(envelope.author_user_id),
       })
       .execute();
-    // P9-09 (AV-463) : ferme l'alerte `STANDARD_COST_MISSING` du produit sans attendre la passe quotidienne.
+    // P9-09 (AV-413) : ferme l'alerte `STANDARD_COST_MISSING` du produit sans attendre la passe quotidienne.
     // Un rejeu est reconnu plus haut (la version existe déjà) : un événement par version de coût.
     await publishDetectionEvent(uow, idGenerator, {
       eventType: 'StandardCostSet',
       producerModule: 'catalog',
       aggregateType: 'PRODUCT_STANDARD_COST',
       aggregateId: envelope.aggregate_id,
-      // Instant serveur (AV-457) : un événement de résolution ne précède jamais la détection qu'il ferme,
+      // Instant serveur (AV-407) : un événement de résolution ne précède jamais la détection qu'il ferme,
       // même pour une commande saisie hors ligne et datée de l'appareil.
       occurredAt: new Date(),
       commandId: envelope.command_id,

@@ -1,6 +1,6 @@
 /**
  * `POST /api/v1/analytics/query` et `GET /api/v1/analytics/catalog` (P9-14 ; UC-ANA-03, BR-ANA-004, 006, 007, 009 ;
- * ADR-074 ; AV-421 à AV-425). L'explorateur : une définition déclarative (jeu, dimensions, mesures, filtres, tri,
+ * ADR-064 ; AV-371 à AV-375). L'explorateur : une définition déclarative (jeu, dimensions, mesures, filtres, tri,
  * limite), ou une vue sauvegardée à exécuter, validée par le catalogue du domaine puis compilée en SQL sur la vue
  * `analytics_f_*` du jeu — jamais de SQL libre.
  *
@@ -13,7 +13,7 @@
  *
  * Refus et limites : 400 (définition), 403 (`FORBIDDEN`, `FORBIDDEN_MEASURE`, audités), 422 (`QUERY_LIMIT_EXCEEDED`,
  * détail `limit` = `rows` ou `time`), 429 (`QUERY_LIMIT_EXCEEDED`, détail `limit` = `concurrency`). Chaque requête,
- * refus compris, laisse une ligne du journal technique `analytics_query_log` (ADR-074 §10).
+ * refus compris, laisse une ligne du journal technique `analytics_query_log` (ADR-064 §10).
  */
 import type { z } from 'zod';
 import { Body, Controller, Get, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';

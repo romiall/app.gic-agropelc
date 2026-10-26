@@ -1,5 +1,5 @@
 /**
- * Composition d'un tableau de bord pour un utilisateur (P9-17 ; ADR-076 §1 et §2) : appelée par les routes
+ * Composition d'un tableau de bord pour un utilisateur (P9-17 ; ADR-066 §1 et §2) : appelée par les routes
  * `GET /analytics/dashboards/{code}` et par la tâche d'instantanés, qui produisent donc **les mêmes chiffres**
  * (AT-054). Le périmètre est l'étendue exacte de la permission `analytics.dashboard.<code>` de l'utilisateur,
  * jamais élargie ; les blocs se calculent en parallèle et chacun est isolé.

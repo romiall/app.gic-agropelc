@@ -2,7 +2,7 @@
  * P9-06 — lectures HTTP de la communication, de bout en bout : NestJS + Fastify, `app.inject()`, alertes
  * levées par le vrai consommateur, rôles réels du seed.
  *
- * Démontre (ADR-072 §3, BR-NOT-001, BR-NOT-008, RC-04, RC-05, RC-07, RC-09) : la liste est la boîte du
+ * Démontre (ADR-062 §3, BR-NOT-001, BR-NOT-008, RC-04, RC-05, RC-07, RC-09) : la liste est la boîte du
  * lecteur plus sa supervision, jugée exactement ligne à ligne (`ALL`, `SITE`, `OWN`, `TEAM`) ; une alerte
  * sans site est invisible sous `SITE` ; la boîte vaut droit de lecture ; le résumé suit la liste ; la
  * valeur au coût n'est rendue qu'avec `inventory.valuation.read` et n'est jamais dans la charge utile ;

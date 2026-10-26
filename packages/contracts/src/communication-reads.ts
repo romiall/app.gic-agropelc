@@ -1,10 +1,10 @@
 /**
- * Réponses des lectures de `communication` (P9 ; ADR-072 §3, ADR-073 ; D13 §4 UC-NOT-03) :
+ * Réponses des lectures de `communication` (P9 ; ADR-062 §3, ADR-063 ; D13 §4 UC-NOT-03) :
  * `GET /api/v1/alerts`, `/alerts/{id}`, `/alerts/summary`, `/notifications`, `/notes`. Partagées entre le
  * serveur et la PWA (centre d'alertes ECR-NOT-01, notes ECR-NOT-02).
  *
  * Le titre et le message d'une alerte sont **rendus pour le lecteur** : une valeur au coût n'y figure que
- * s'il détient `inventory.valuation.read` (ADR-071 §11, AV-440).
+ * s'il détient `inventory.valuation.read` (ADR-061 §11, AV-390).
  */
 import {
   ALERT_NATURES,
@@ -69,7 +69,7 @@ export const alertSummarySchema = z.object({
   open: count,
   acknowledged: count,
   bySeverity: z.object({ INFO: count, WARNING: count, CRITICAL: count }),
-  /** Vrai si le balayage borné s'est arrêté avant la fin (« plus de N », ADR-078). */
+  /** Vrai si le balayage borné s'est arrêté avant la fin (« plus de N », ADR-068). */
   truncated: z.boolean(),
   computedAt: instant,
 });
@@ -78,7 +78,7 @@ export type AlertSummary = z.infer<typeof alertSummarySchema>;
 export const notificationItemSchema = z.object({
   id: uuid,
   channel: z.enum(NOTIFICATION_CHANNELS),
-  /** Nature : alerte, note de direction, notification directe d'un événement, fin d'un export (AV-439). */
+  /** Nature : alerte, note de direction, notification directe d'un événement, fin d'un export (AV-389). */
   kind: z.enum(NOTIFICATION_KINDS),
   title: z.string().min(1).max(200),
   body: z.string().max(1000),
@@ -107,7 +107,7 @@ export type NotificationListResponse = z.infer<typeof notificationListResponseSc
 /**
  * `GET /alert-rules` : règles d'alerte (réservé à `comm.alert_rule.manage`). Les gravités et modes de
  * résolution admis viennent du catalogue du domaine : l'écran ne propose que ce que `alert_rule.set`
- * acceptera. Les seuils ne sont pas ici : ce sont des paramètres système (AV-400).
+ * acceptera. Les seuils ne sont pas ici : ce sont des paramètres système (AV-350).
  */
 export const alertRuleItemSchema = z.object({
   alertType: z.enum(ALERT_TYPES),
@@ -157,7 +157,7 @@ export type NoteItem = z.infer<typeof noteItemSchema>;
 
 export const noteListResponseSchema = z.object({
   items: z.array(noteItemSchema),
-  /** Notes à accusé requis non encore accusées par le lecteur (sur ce que le balayage a examiné, AV-479). */
+  /** Notes à accusé requis non encore accusées par le lecteur (sur ce que le balayage a examiné, AV-429). */
   pendingAcknowledgements: count,
   /** Vrai si le balayage du centre de notes a atteint son plafond : des notes plus anciennes n'ont pas été examinées. */
   truncated: z.boolean(),
@@ -165,7 +165,7 @@ export const noteListResponseSchema = z.object({
 });
 export type NoteListResponse = z.infer<typeof noteListResponseSchema>;
 
-/** `GET /notes/{id}/acknowledgements` : suivi pour la Direction (ADR-073 §6). */
+/** `GET /notes/{id}/acknowledgements` : suivi pour la Direction (ADR-063 §6). */
 export const noteAcknowledgementsResponseSchema = z.object({
   noteId: uuid,
   audienceSize: count,

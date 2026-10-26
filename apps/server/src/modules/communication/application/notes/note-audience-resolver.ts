@@ -1,5 +1,5 @@
 /**
- * Port du résolveur d'audience des notes de direction (P9-11 ; ADR-073 §3, §4 ; BR-NOT-006 ; AV-476).
+ * Port du résolveur d'audience des notes de direction (P9-11 ; ADR-063 §3, §4 ; BR-NOT-006 ; AV-426).
  *
  * `communication` ne lit ni les affectations de rôle ni la géographie : il exprime son besoin par ce port, comme
  * pour les destinataires d'alerte (`recipients/recipient-resolver.ts`, besoin B1). L'adaptateur

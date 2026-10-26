@@ -1,5 +1,5 @@
 /**
- * Lignes du flux de changements du jeu `comms` (P9-12 ; ADR-070 §6, ADR-073 §4 ; AV-483 à AV-486 ;
+ * Lignes du flux de changements du jeu `comms` (P9-12 ; ADR-060 §6, ADR-063 §4 ; AV-433 à AV-436 ;
  * 06-offline-sync/01-architecture-offline.md §3.1) : alertes de la boîte de l'utilisateur, notifications
  * non lues, notes et leur état de lecture. **Une ligne par destinataire** en portée `USER` (jamais `GLOBAL`,
  * `SITE` ni `ZONE` : un rôle n'est pas une portée du flux, et une alerte ou une note ne doit atteindre que ses

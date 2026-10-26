@@ -59,7 +59,7 @@ export async function requestApproval(
     })
     .execute();
   await recordRequesterChange(executor, input.requestId, input.requestedBy);
-  // P9-11 (3/3, AV-480) : la demande prévient les approbateurs de sa politique.
+  // P9-11 (3/3, AV-430) : la demande prévient les approbateurs de sa politique.
   await publishApprovalRequested(executor, {
     requestId: input.requestId,
     operationType: input.operationType,

@@ -1,6 +1,6 @@
 /**
  * Règles pures des alertes de synchronisation (P9-10 ; D13 §7.1 `SYNC_ERROR`, `SYNC_STALE`, `DEVICE_SEQ_GAP`,
- * `CLOCK_SKEW` ; AV-442, AV-471 à AV-474) : réglages et règles de décision, sans entrée-sortie. Aucune
+ * `CLOCK_SKEW` ; AV-392, AV-421 à AV-424) : réglages et règles de décision, sans entrée-sortie. Aucune
  * fonction ne lève.
  */
 
@@ -11,11 +11,11 @@ export const MAX_SYNC_STALE_HORIZON_DAYS = 3_650;
 
 /** `sync.stale_hours` (D13 §7.1 : appareil actif sans synchronisation depuis plus de 24 h). */
 export const DEFAULT_SYNC_STALE_HOURS = 24;
-/** `sync.error_alert_window_hours` (AV-442 : fenêtre de 24 h). */
+/** `sync.error_alert_window_hours` (AV-392 : fenêtre de 24 h). */
 export const DEFAULT_SYNC_ERROR_WINDOW_HOURS = 24;
 /** `sync.seq_gap_alert_hours` (BR-SYN-003, D13 §7.1 : trou de séquence non comblé depuis plus de 24 h). */
 export const DEFAULT_SYNC_SEQ_GAP_HOURS = 24;
-/** `sync.stale_horizon_days` : au-delà, un appareil silencieux est tenu pour abandonné (AV-472). */
+/** `sync.stale_horizon_days` : au-delà, un appareil silencieux est tenu pour abandonné (AV-422). */
 export const DEFAULT_SYNC_STALE_HORIZON_DAYS = 30;
 /** Codes d'erreur qui ne signalent aucun défaut de l'appareil : décision de l'Admin, conséquence d'un autre rejet. */
 export const DEFAULT_SYNC_ERROR_EXCLUDED_CODES: readonly string[] = [
@@ -108,7 +108,7 @@ export interface DeviceStaleness {
 /**
  * Appareil actif sans synchronisation « depuis plus de » `staleHours` (borne exclue), mesuré depuis le plus
  * récent du dernier contact et de l'activation ; il cesse d'être signalé au-delà de l'horizon d'oubli
- * (AV-472, appareil abandonné sans être retiré).
+ * (AV-422, appareil abandonné sans être retiré).
  */
 export function deviceStaleness(input: DeviceStalenessInput): DeviceStaleness {
   const sinceAt =
@@ -152,7 +152,7 @@ export function agedSequenceGaps(
 /**
  * Vrai si les restes déclarés par l'appareil suffisent à expliquer **tous** les numéros manquants : une
  * commande encore dans son outbox (tablette partagée dont un auteur n'a pas ouvert sa session, envoi
- * interrompu) n'est pas perdue. Sans déclaration (`null`), rien n'est supposé (AV-473).
+ * interrompu) n'est pas perdue. Sans déclaration (`null`), rien n'est supposé (AV-423).
  */
 export function gapsExplainedByPending(
   gaps: readonly { readonly from: number; readonly to: number }[],
@@ -186,7 +186,7 @@ export function parseKnownGaps(value: unknown): readonly KnownGap[] {
 /**
  * Plages de `current` que la mémoire ne couvre pas encore : une plage **contenue** dans une plage déjà signalée
  * n'est pas nouvelle (le trou s'est réduit parce qu'une commande tardive est arrivée, ou scindé), alors qu'une
- * plage nouvelle ou plus large l'est (AV-473).
+ * plage nouvelle ou plus large l'est (AV-423).
  */
 export function unsignaledSequenceGaps<T extends { readonly from: number; readonly to: number }>(
   current: readonly T[],

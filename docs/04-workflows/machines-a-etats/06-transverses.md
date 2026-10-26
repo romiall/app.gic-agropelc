@@ -93,7 +93,7 @@ stateDiagram-v2
 | `PENDING` | `approvals.request.approve` | Approbateur autorisé ; ≠ demandeur (sauf `SELF_APPROVED` Direction) ; pièces requises reçues | `APPROVED` | `ApprovalGranted` ; le gestionnaire enregistré par le module propriétaire exécute la transition de son document dans la même transaction (ADR-018) | Selon le document | Selon le document | Permission `*.approve` du type |
 | `PENDING` | `approvals.request.reject` | Motif obligatoire ; décision choisie parmi les issues du type (ex. AV-038) | `REJECTED` | `ApprovalRejected` → transition du document | Selon le document | Selon le document | idem |
 | `PENDING` | Retrait du demandeur, ou annulation du document | Le module propriétaire peut refuser le retrait par une garde enregistrée auprès d'`approvals` (P5-15 : écart d'une remise de fonds, `CASH_TRANSFER_DISCREPANCY_NOT_WITHDRAWABLE`, AV-174) | `CANCELLED` | `ApprovalCancelled` | — | — | Demandeur / `system` |
-| `PENDING` | Délai de 24 h dépassé | — | `PENDING` (escaladée) | `escalated_at` posé une fois par `approvals.requests.pending_long_check` (AV-466) ; `ApprovalPendingLong` lève l'alerte `APPROVAL_PENDING_LONG` aux approbateurs et à la Direction (pas d'`AlertEscalated` : réservé aux alertes `CRITICAL`, ADR-072 §7) | — | — | `system` |
+| `PENDING` | Délai de 24 h dépassé | — | `PENDING` (escaladée) | `escalated_at` posé une fois par `approvals.requests.pending_long_check` (AV-416) ; `ApprovalPendingLong` lève l'alerte `APPROVAL_PENDING_LONG` aux approbateurs et à la Direction (pas d'`AlertEscalated` : réservé aux alertes `CRITICAL`, ADR-062 §7) | — | — | `system` |
 
 **Hors ligne** : aucune décision hors ligne (l'approbateur doit voir l'état à jour).
 

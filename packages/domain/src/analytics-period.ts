@@ -1,5 +1,5 @@
 /**
- * Résolveur de périodes d'analyse (P9 ; BR-ANA-002 ; ADR-075 §3 ; AV-207) : extension de
+ * Résolveur de périodes d'analyse (P9 ; BR-ANA-002 ; ADR-065 §3 ; AV-207) : extension de
  * `BUSINESS_PERIOD_CODES`, `businessPeriodOf` et `businessPeriodDays` (`business-day.ts`), pas une
  * seconde implémentation. Il ajoute :
  * - la plage personnalisée (`CUSTOM`, jours métier inclus) ;

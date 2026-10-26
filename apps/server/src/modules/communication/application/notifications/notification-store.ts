@@ -1,5 +1,5 @@
 /**
- * Écriture des notifications (P9-05 ; ADR-072 §4 à §6 ; BR-NOT-004). Une ligne par destinataire et par
+ * Écriture des notifications (P9-05 ; ADR-062 §4 à §6 ; BR-NOT-004). Une ligne par destinataire et par
  * canal ; idempotente par (utilisateur, canal, événement source) : un événement rejoué ne double rien.
  */
 import type { IdGenerator, NotificationKind } from '@gic/domain';
@@ -8,7 +8,7 @@ import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { recordNotificationChanges } from '../sync-changes.js';
 
 export type { NotificationKind };
-/** `ALERT` : levée ou occurrence ; `ALERT_ESCALATION` : escalade (jamais regroupée, ADR-072 §6). */
+/** `ALERT` : levée ou occurrence ; `ALERT_ESCALATION` : escalade (jamais regroupée, ADR-062 §6). */
 export type NotificationSourceType = 'ALERT' | 'ALERT_ESCALATION' | (string & {});
 
 export interface NewNotification {

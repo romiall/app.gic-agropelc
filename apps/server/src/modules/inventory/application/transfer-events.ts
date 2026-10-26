@@ -1,6 +1,6 @@
 /**
  * Événements de transfert pour les notifications directes (P9-11 (3/3) ; catalogue d'événements §2.4 ;
- * AV-439, AV-480) : `StockTransferRequested` à la demande d'un transfert (prévient les expéditeurs du site
+ * AV-389, AV-430) : `StockTransferRequested` à la demande d'un transfert (prévient les expéditeurs du site
  * source) et `StockTransferDispatched` à son expédition (prévient les réceptionnaires du site
  * destinataire), écrits dans `platform_domain_events` dans la transaction de la commande.
  *

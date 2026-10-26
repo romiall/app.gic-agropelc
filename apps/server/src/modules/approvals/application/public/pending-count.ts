@@ -1,5 +1,5 @@
 /**
- * Compteur de validations en attente d'un utilisateur (P9-15 ; ADR-076 §4) : le nombre de demandes qu'il peut
+ * Compteur de validations en attente d'un utilisateur (P9-15 ; ADR-066 §4) : le nombre de demandes qu'il peut
  * décider à l'instant de la lecture, selon la **même évaluation exacte** que sa file (`approvalInboxPage` :
  * `evaluateAccess` demande par demande, jamais un `COUNT` SQL qui rendrait un sur-ensemble).
  *

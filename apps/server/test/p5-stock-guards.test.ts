@@ -54,7 +54,7 @@ describe('P5-23 — gardes des commandes de stock', { timeout: 300_000 }, () => 
       payments: [momo(quantity * PRICE)],
     },
   });
-  /** Événements `StockTransfer*` d'un transfert, dans l'ordre de publication (P9-11 (3/3), AV-480). */
+  /** Événements `StockTransfer*` d'un transfert, dans l'ordre de publication (P9-11 (3/3), AV-430). */
   const transferEventsOf = async (transferId: string): Promise<string[]> =>
     (
       await db

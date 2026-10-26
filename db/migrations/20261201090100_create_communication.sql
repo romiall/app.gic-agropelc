@@ -1,13 +1,13 @@
 -- Module `communication` (P9-03) : règles d'alerte, alertes, destinataires, notifications, abonnements
 -- Web Push, notes de direction, audiences et accusés.
 -- Source : docs/03-data/dictionnaire/10-approvals-attachments-communication.md ; D13 ; SM-ALERT ;
--- BR-NOT-001 à 008 ; INV-NOT-01 ; ADR-071 à ADR-073 ; AV-400 à AV-420, AV-438 à AV-442.
+-- BR-NOT-001 à 008 ; INV-NOT-01 ; ADR-061 à ADR-063 ; AV-350 à AV-370, AV-388 à AV-392.
 --
 -- Principes portés par le schéma :
 -- - INV-NOT-01 : au plus une alerte ouverte par (type, sujet) — colonne générée `open_dedup_key` sous
 --   index unique (MySQL n'a pas d'index partiel ; les valeurs NULL ne se heurtent pas) ;
 -- - rien ne disparaît (ADR-006) : une alerte résolue ou écartée est immuable ; une note publiée est
---   immuable, audiences comprises ; la gravité d'une alerte ouverte ne baisse jamais (AV-401) ;
+--   immuable, audiences comprises ; la gravité d'une alerte ouverte ne baisse jamais (AV-351) ;
 -- - la purge des alertes (2 ans après résolution) n'est possible que par le rôle de maintenance :
 --   `gic_app` n'a pas `DELETE` sur les tables immuables (03-historisation-suppression.md §4) ;
 -- - les états sont vérifiés par CHECK ; les déclencheurs ne sont qu'un filet (le code décide) ;
@@ -16,7 +16,7 @@
 -- migrate:up transaction:false
 
 -- Règles d'alerte (BR-NOT-001) : activation, gravité, destinataires, résolution, escalade. Les seuils ne
--- sont pas ici : ce sont des paramètres `organization_system_settings` (AV-400).
+-- sont pas ici : ce sont des paramètres `organization_system_settings` (AV-350).
 CREATE TABLE communication_alert_rules (
   alert_type        VARCHAR(40)  NOT NULL,
   enabled           BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -65,7 +65,7 @@ BEGIN
 END;
 
 -- Alertes (SM-ALERT ; BR-NOT-002 à 005 ; INV-NOT-01). Le message est le rendu neutre (sans valeur au
--- coût) ; les valeurs protégées restent des champs séparés de `payload` (ADR-071 §11, AV-440).
+-- coût) ; les valeurs protégées restent des champs séparés de `payload` (ADR-061 §11, AV-390).
 CREATE TABLE communication_alerts (
   id                 BINARY(16)    NOT NULL,
   alert_type         VARCHAR(40)   NOT NULL,
@@ -153,7 +153,7 @@ BEGIN
   IF OLD.status = 'ACKNOWLEDGED' AND NEW.status = 'OPEN' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : une alerte prise en compte ne redevient pas ouverte.';
   END IF;
-  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-401) ; le compteur ne recule pas.
+  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-351) ; le compteur ne recule pas.
   IF FIELD(NEW.severity, 'INFO', 'WARNING', 'CRITICAL') < FIELD(OLD.severity, 'INFO', 'WARNING', 'CRITICAL') THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : la gravité d''une alerte ouverte ne baisse pas.';
   END IF;
@@ -169,7 +169,7 @@ BEGIN
   END IF;
 END;
 
--- Purge technique (ADR-078 §8) : seules les alertes résolues ou écartées depuis plus de deux ans, et
+-- Purge technique (ADR-068 §8) : seules les alertes résolues ou écartées depuis plus de deux ans, et
 -- seulement par le rôle de maintenance (`gic_app` n'a pas DELETE).
 CREATE TRIGGER trg_communication_alerts_purge_guard BEFORE DELETE ON communication_alerts FOR EACH ROW
 BEGIN
@@ -179,7 +179,7 @@ BEGIN
   END IF;
 END;
 
--- Destinataires explicites d'une alerte (ADR-072 §1) : sa boîte. Ajout seul ; supprimés avec l'alerte.
+-- Destinataires explicites d'une alerte (ADR-062 §1) : sa boîte. Ajout seul ; supprimés avec l'alerte.
 CREATE TABLE communication_alert_recipients (
   alert_id   BINARY(16)   NOT NULL,
   user_id    BINARY(16)   NOT NULL,
@@ -205,7 +205,7 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_recipients : suppression directe interdite (suit l''alerte).';
 END;
 
--- Notes de direction (BR-NOT-006, 007 ; ADR-073) : brouillon modifiable, puis publiée et immuable,
+-- Notes de direction (BR-NOT-006, 007 ; ADR-063) : brouillon modifiable, puis publiée et immuable,
 -- puis archivée. Aucune suppression physique (table de transaction, INV-GLO-03).
 CREATE TABLE communication_internal_notes (
   id                   BINARY(16)    NOT NULL,
@@ -327,8 +327,8 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : suppression interdite.';
 END;
 
--- Notifications par utilisateur (BR-NOT-004 ; ADR-072 §4) : une ligne par destinataire et par canal.
--- Purge technique 90 jours après lecture (ADR-078 §8) : `gic_app` peut supprimer. Idempotence d'un
+-- Notifications par utilisateur (BR-NOT-004 ; ADR-062 §4) : une ligne par destinataire et par canal.
+-- Purge technique 90 jours après lecture (ADR-068 §8) : `gic_app` peut supprimer. Idempotence d'un
 -- consommateur rejoué : unicité (utilisateur, canal, événement source).
 CREATE TABLE communication_notifications (
   id               BINARY(16)    NOT NULL,

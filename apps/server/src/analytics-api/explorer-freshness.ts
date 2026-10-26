@@ -1,5 +1,5 @@
 /**
- * Fraîcheur d'une lecture de l'explorateur (P9-14 ; BR-ANA-005, ADR-075 §7) : l'instant du calcul (l'explorateur lit
+ * Fraîcheur d'une lecture de l'explorateur (P9-14 ; BR-ANA-005, ADR-065 §7) : l'instant du calcul (l'explorateur lit
  * les vues à l'instant de la requête) et les appareils **du périmètre** sans contact depuis plus de
  * `analytics.freshness_warning_hours` — les ventes de ces appareils peuvent manquer au chiffre affiché.
  *

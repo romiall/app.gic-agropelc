@@ -1,5 +1,5 @@
 /**
- * Fenêtres et ratios communs des fonctions de référence des indicateurs (P9-15 ; ADR-075 §1) : une période est
+ * Fenêtres et ratios communs des fonctions de référence des indicateurs (P9-15 ; ADR-065 §1) : une période est
  * soit des jours métier inclus, soit des instants UTC `[from, to[` ; un ratio est arrondi à 4 décimales (demi
  * supérieur, D07 « Taux ») et vaut `null` quand le dénominateur est nul — jamais une valeur trompeuse.
  */

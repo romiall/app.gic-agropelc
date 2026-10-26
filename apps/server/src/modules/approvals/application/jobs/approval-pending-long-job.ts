@@ -1,16 +1,16 @@
 /**
  * `approvals.requests.pending_long_check` (P9-09 ; D13 §7.1 `APPROVAL_PENDING_LONG`, SM-APPROVAL « délai
- * de 24 h dépassé », AV-408, AV-466) : toutes les heures, publie un événement `ApprovalPendingLong` par
+ * de 24 h dépassé », AV-358, AV-416) : toutes les heures, publie un événement `ApprovalPendingLong` par
  * demande de validation **encore en attente depuis au moins `approvals.pending_long_hours` heures** (24),
  * puis le marqueur de fin de passe, qui résout les alertes des demandes décidées, retirées ou annulées
  * (y compris par une façade d'un module propriétaire, dont l'événement du pipeline ne désigne pas la demande).
  *
  * - **Référence du délai** : la réception par le serveur (`created_at`), non la date du fait
  *   (`requested_at`) : une demande saisie hors ligne puis synchronisée tard n'alerte pas dès sa
- *   synchronisation (AV-449, AV-466).
+ *   synchronisation (AV-399, AV-416).
  * - **Destinataires** : la charge utile porte `approver_permission` (la politique figée sur la demande),
  *   `requester_user_id` et le périmètre (`site_id`, `zone_id`) : le consommateur résout les titulaires de la
- *   permission dans le périmètre du demandeur, demandeur exclu (ADR-072), et la Direction par la règle.
+ *   permission dans le périmètre du demandeur, demandeur exclu (ADR-062), et la Direction par la règle.
  * - **`escalated_at`** : posé **une fois**, par ce module et nulle part ailleurs, au premier constat du
  *   dépassement (SM-APPROVAL : « escaladée ») ; jamais remis à `NULL`, reste posé si le délai est relevé.
  *   La passe republie **toutes** les demandes en retard (y compris déjà escaladées), sinon son marqueur
@@ -20,7 +20,7 @@
  *   réclame (aucune promotion S vers X, aucun verrou sur les politiques ni sur des plages) ; une décision
  *   qui arrive ensuite attend la fin de la passe. Une demande verrouillée par une décision en cours est
  *   sautée : la passe est alors **partielle** et ne publie **pas** son marqueur (une passe partielle ne
- *   résout rien, ADR-071 §3) ; la passe suivante, libre du verrou, ferme ou republie.
+ *   résout rien, ADR-061 §3) ; la passe suivante, libre du verrou, ferme ou republie.
  * - **Valeurs au coût** : ni le résumé ni le montant de la demande n'entrent dans la charge utile (RC-05).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';

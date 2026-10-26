@@ -1,5 +1,5 @@
 /**
- * P9-09 : lecture des seuils de mortalité par `siteThenGlobalSetting` (AV-121, AV-461) — une valeur de
+ * P9-09 : lecture des seuils de mortalité par `siteThenGlobalSetting` (AV-121, AV-411) — une valeur de
  * site inexploitable (chaîne, `null`, négative) ne masque pas un réglage global valide ; le réglage
  * du site prime quand il est valide. Les réglages sont simulés (les réglages globaux de la base partagée
  * sont immuables et ne se posent pas dans un test).

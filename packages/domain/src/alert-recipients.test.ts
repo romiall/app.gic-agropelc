@@ -11,7 +11,7 @@ import {
 const user = (id: string, origin: RecipientCandidate['origin'], roleCode: string | null = null) =>
   ({ userId: id, origin, roleCode }) satisfies RecipientCandidate;
 
-describe('rôles effectifs d’une levée (AV-443)', () => {
+describe('rôles effectifs d’une levée (AV-393)', () => {
   const catalogRoles = ['FINANCE'];
 
   it('règle jamais modifiée : le déclencheur a ses propres rôles', () => {
@@ -65,7 +65,7 @@ describe('rôles effectifs d’une levée (AV-443)', () => {
   });
 });
 
-describe('fusion et repli (ADR-072 §1)', () => {
+describe('fusion et repli (ADR-062 §1)', () => {
   it('un utilisateur n’a qu’une ligne : la première origine l’emporte, l’ordre est stable', () => {
     const merged = mergeRecipients([
       user('u1', 'RULE', 'MAGASINIER'),

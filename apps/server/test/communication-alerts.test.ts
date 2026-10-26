@@ -1,5 +1,5 @@
 /**
- * P9-04 : socle des alertes (ADR-071 ; SM-ALERT ; BR-NOT-002 à 005 ; INV-NOT-01) — consommateur
+ * P9-04 : socle des alertes (ADR-061 ; SM-ALERT ; BR-NOT-002 à 005 ; INV-NOT-01) — consommateur
  * `communication.alerts` (levée, déduplication, redélivrance, relèvement de gravité, résolution par
  * condition et par passe, règle désactivée, concurrence) et commandes `communication.alert.*` et
  * `communication.alert_rule.set` (accès, fait accompli, transitions, règles).

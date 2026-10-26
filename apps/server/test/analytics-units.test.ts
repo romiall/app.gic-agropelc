@@ -110,7 +110,7 @@ describe('document source d’une ligne (P9-21)', () => {
   });
 });
 
-describe('voie longue du worker (P9-22 ; ADR-078 §3)', () => {
+describe('voie longue du worker (P9-22 ; ADR-068 §3)', () => {
   const NOW = new Date('2026-09-24T12:00:00.000Z');
 
   it('les tâches longues sont l’export et les instantanés', () => {

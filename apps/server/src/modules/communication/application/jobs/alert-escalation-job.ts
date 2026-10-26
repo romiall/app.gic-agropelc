@@ -1,5 +1,5 @@
 /**
- * `communication.alerts.escalate` (P9-05 ; BR-NOT-005 ; ADR-072 §7) : escalade les alertes critiques non
+ * `communication.alerts.escalate` (P9-05 ; BR-NOT-005 ; ADR-062 §7) : escalade les alertes critiques non
  * prises en compte dont l'échéance est passée. Voir `alerts/alert-escalation.ts`. Récurrence : toutes les
  * dix minutes (`communication-recurring-jobs.ts`).
  */

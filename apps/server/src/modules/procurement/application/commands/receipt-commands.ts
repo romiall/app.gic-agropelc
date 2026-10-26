@@ -233,7 +233,7 @@ async function postReceipt(
 
 /**
  * Ajoute (`sign` = 1) ou retire (−1) les quantités acceptées des lignes de BC ; statuts suivent.
- * `RECEIPT_INCOMPLETE` (P9-09, AV-464) : l'état du BC est publié à chaque changement de ses quantités ;
+ * `RECEIPT_INCOMPLETE` (P9-09, AV-414) : l'état du BC est publié à chaque changement de ses quantités ;
  * `excludeReceiptId` écarte du rejeté cumulé la réception en cours d'annulation.
  */
 async function applyToOrder(
@@ -671,7 +671,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
 
     if (status === 'QUARANTINED') {
-      // `DUPLICATE_SUSPECTED` (P9-09, AV-465) : la quarantaine lève l'alerte du RESP_ACHATS, avec ses raisons.
+      // `DUPLICATE_SUSPECTED` (P9-09, AV-415) : la quarantaine lève l'alerte du RESP_ACHATS, avec ses raisons.
       await publishGoodsReceiptQuarantined(uow, deps, {
         receiptId,
         docNumber,
@@ -955,7 +955,7 @@ export function registerReceiptCommands(
     payloadSchema: recordPayloadSchema,
     permissionCode: 'procurement.receipt.record',
     handler: handlers.record,
-    // P9-09 (AV-464) : l'état du bon est relu après son verrou (`FOR UPDATE`, qui sérialise les réceptions
+    // P9-09 (AV-414) : l'état du bon est relu après son verrou (`FOR UPDATE`, qui sérialise les réceptions
     // d'un même bon) ; en lecture confirmée, ces lectures voient les réceptions validées entre-temps, au
     // lieu d'un instantané antérieur au verrou (même raisonnement que `production.mortality.record`).
     isolationLevel: 'read committed',

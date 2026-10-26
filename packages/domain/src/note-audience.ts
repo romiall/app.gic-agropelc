@@ -1,5 +1,5 @@
 /**
- * Audience d'une note de direction (P9-11 ; ADR-073 §2 à §4 ; BR-NOT-006 ; AV-476) : qui une note touche, jugé par
+ * Audience d'une note de direction (P9-11 ; ADR-063 §2 à §4 ; BR-NOT-006 ; AV-426) : qui une note touche, jugé par
  * **une seule règle pure**, partagée par la lecture en ligne (un lecteur), l'accusé (un utilisateur) et la
  * résolution à la publication (tous les utilisateurs touchés, pour les notifications et le flux hors ligne). Sans
  * entrée-sortie : l'adaptateur de `communication-api/` charge la géographie et les affectations, cette règle

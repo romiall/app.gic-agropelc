@@ -1,5 +1,5 @@
 /**
- * Règles pures des alertes de stock (P9-08 ; D13 §7.1 ; AV-405, AV-406 ; AV-452 à AV-461). Partagées par
+ * Règles pures des alertes de stock (P9-08 ; D13 §7.1 ; AV-355, AV-356 ; AV-402 à AV-411). Partagées par
  * les détecteurs du module `inventory` (transitions sur mouvement, passes planifiées) et du module `sales`
  * (part « % du CA » de `HIGH_LOSS`), sans entrée-sortie : l'appelant fournit l'état déjà lu.
  *
@@ -41,7 +41,7 @@ export function stockThresholdStateOf(input: {
 }
 
 /**
- * Événements de transition entre deux états de seuil (AV-405) : les fins de condition d'abord, puis les
+ * Événements de transition entre deux états de seuil (AV-355) : les fins de condition d'abord, puis les
  * levées. `OK → LOW` : `{LOW, vrai}` ; `OUT → LOW` : `{OUT, faux}` et `{LOW, vrai}` ; `LOW → OK` :
  * `{LOW, faux}` ; `LOW → OUT` : `{LOW, faux}` et `{OUT, vrai}` ; sans changement d'état : rien (une
  * sortie qui laisse le couple dans le même état n'ajoute aucun événement).
@@ -67,7 +67,7 @@ export function stockLevelOfState(state: StockThresholdState): StockAlertLevel |
 // --- Réapprovisionnement d'un point de vente (POS_REPLENISH) -----------------------------------------
 
 /**
- * Condition de `POS_REPLENISH` (AV-452) : `BELOW_TARGET` (défaut, D13 §7.1 littéral : la suggestion
+ * Condition de `POS_REPLENISH` (AV-402) : `BELOW_TARGET` (défaut, D13 §7.1 littéral : la suggestion
  * « cible − disponible − transit entrant » est positive) ou `BELOW_MINIMUM` (la suggestion est positive
  * **et** le point de vente est sous son minimum).
  */
@@ -180,7 +180,7 @@ export function lossSalesSharePct(lossValueXaf: number, salesNetXaf: number): nu
 }
 
 /**
- * La perte du jour atteint la part des ventes du jour (AV-406, AV-455) : ventes nettes strictement
+ * La perte du jour atteint la part des ventes du jour (AV-356, AV-405) : ventes nettes strictement
  * positives (sans vente, la part n'est pas définie : le seuil absolu seul s'applique), perte positive,
  * `perte × 100 ≥ ventes × pourcentage` (borne atteinte comprise).
  */

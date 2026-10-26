@@ -1,7 +1,7 @@
 /**
- * Lectures de la communication (P9-06 ; D13 §4 UC-NOT-03 ; ADR-072 §3 ; AT-046 en partie) :
+ * Lectures de la communication (P9-06 ; D13 §4 UC-NOT-03 ; ADR-062 §3 ; AT-046 en partie) :
  * `GET /api/v1/alerts`, `/alerts/summary`, `/alerts/{id}`, `/notifications` et `/alert-rules`, et (P9-11)
- * `/notes`, `/notes/{id}` et `/notes/{id}/acknowledgements` (ADR-073, AV-479).
+ * `/notes`, `/notes/{id}` et `/notes/{id}/acknowledgements` (ADR-063, AV-429).
  *
  * - **Droit** : `comm.alert.read` (tous les rôles) ; `comm.alert_rule.manage` pour les règles (RC-01) ;
  *   `comm.note.read` pour le centre de notes, `comm.note.publish` pour la gestion des notes et le suivi des

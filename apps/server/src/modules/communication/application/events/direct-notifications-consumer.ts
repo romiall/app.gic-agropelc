@@ -1,5 +1,5 @@
 /**
- * Consommateur `communication.direct` (P9-11 (3/3) ; AV-439, AV-480, AV-481 ; ADR-072 §4) : transforme les
+ * Consommateur `communication.direct` (P9-11 (3/3) ; AV-389, AV-430, AV-431 ; ADR-062 §4) : transforme les
  * événements du catalogue dont la conséquence est « notification » — une demande de validation, sa
  * décision, un transfert demandé ou expédié — en notifications `IN_APP` de nature `DIRECT`, adressées à la
  * personne qui doit agir ou qui attendait la réponse.
@@ -7,8 +7,8 @@
  * - **Au moins une fois** : l'unicité (utilisateur, canal, événement source) de `communication.
  *   notifications` rend un événement rejoué sans effet ; aucun marqueur à part.
  * - **Un type par réglage** : `communication.direct_notification_disabled_types` désactive les
- *   notifications d'un type, sans arrêter l'événement (AV-481).
- * - **Destinataires** jugés à l'instant du traitement, par le port du résolveur (ADR-072 §2) ; l'auteur du
+ *   notifications d'un type, sans arrêter l'événement (AV-431).
+ * - **Destinataires** jugés à l'instant du traitement, par le port du résolveur (ADR-062 §2) ; l'auteur du
  *   fait n'est jamais prévenu.
  * - **Charge fautive** : l'exception remonte au coureur de consommateurs, qui consigne l'échec et alerte
  *   (`CONSUMER_FAILED`) ; jamais d'événement ignoré en silence.

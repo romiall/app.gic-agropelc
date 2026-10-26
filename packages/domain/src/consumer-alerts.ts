@@ -1,14 +1,14 @@
 /**
- * Règles pures de l'alerte `CONSUMER_FAILED` (P9-10 ; D13 §7.1, ADR-071 §12, ADR-078 §7, AV-412, AV-475) :
+ * Règles pures de l'alerte `CONSUMER_FAILED` (P9-10 ; D13 §7.1, ADR-061 §12, ADR-068 §7, AV-362, AV-425) :
  * un consommateur d'événements en échec — un événement sauté après cinq essais, ou un retard de position
  * au-delà de `communication.consumer_lag_alert_seconds`. Sans entrée-sortie ; aucune fonction ne lève.
  */
 
-/** Repli du retard toléré (ADR-078 §7 : volontairement au-dessus de la fenêtre de stabilisation de 120 s). */
+/** Repli du retard toléré (ADR-068 §7 : volontairement au-dessus de la fenêtre de stabilisation de 120 s). */
 export const DEFAULT_CONSUMER_LAG_ALERT_SECONDS = 300;
 /** Plafond du retard toléré (dix ans, en secondes) : au-delà, l'alerte ne se lèverait jamais. */
 export const MAX_CONSUMER_LAG_ALERT_SECONDS = 315_360_000;
-/** Repli de la fenêtre des événements sautés (AV-475 : un jour). */
+/** Repli de la fenêtre des événements sautés (AV-425 : un jour). */
 export const DEFAULT_CONSUMER_FAILURE_WINDOW_HOURS = 24;
 /** Plafond de la fenêtre des événements sautés (dix ans) : au-delà, l'instant de coupure serait invalide. */
 export const MAX_CONSUMER_FAILURE_WINDOW_HOURS = 87_600;

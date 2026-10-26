@@ -1,7 +1,7 @@
 /**
  * `finance.expenses.attachment_missing_check` (P9-07 ; D13 §7.1 `ATTACHMENT_MISSING`, BR-FIN-020 :
- * justificatif exigé au-delà du seuil ; AV-407, AV-449). Passe de détection quotidienne à identité et
- * **portée `EXPENSE`** (ADR-071 §3 ; les réceptions sans photo ont leur propre passe, P9-09) : publie un
+ * justificatif exigé au-delà du seuil ; AV-357, AV-399). Passe de détection quotidienne à identité et
+ * **portée `EXPENSE`** (ADR-061 §3 ; les réceptions sans photo ont leur propre passe, P9-09) : publie un
  * événement `AttachmentMissingDetected` par dépense dont le justificatif n'est toujours pas disponible
  * après `attachments.missing_alert_days` jours (7), puis le marqueur de fin de passe de sa portée, qui
  * résout les alertes des dépenses revues en règle (pièce arrivée, dépense annulée ou rejetée) ou sorties
@@ -11,9 +11,9 @@
  * - **Dépenses examinées** : non annulées ni rejetées, au-dessus du seuil de justificatif
  *   (`finance.expense_photo_threshold_xaf`, lu à la date de la dépense : réglage historisé), reçues par le
  *   serveur depuis au moins N jours et au plus `attachments.missing_alert_horizon_days` jours (90 ;
- *   borne le balayage, au moins un jour de plus que le délai, AV-449). Une dépense qui sort de
- *   l'horizon sans pièce n'est plus revue : son alerte se ferme à la passe suivante (décision d'AV-449).
- * - **Référence du délai** (AV-449, DÉDUIT) : la réception par le serveur (`received_at_server`, à défaut
+ *   borne le balayage, au moins un jour de plus que le délai, AV-399). Une dépense qui sort de
+ *   l'horizon sans pièce n'est plus revue : son alerte se ferme à la passe suivante (décision d'AV-399).
+ * - **Référence du délai** (AV-399, DÉDUIT) : la réception par le serveur (`received_at_server`, à défaut
  *   la création), non la date du fait : une dépense hors ligne ancienne n'alerte pas dès sa synchronisation.
  * - **Présence** : une pièce `AVAILABLE` rattachée à la dépense (`owner_type = EXPENSE`), via l'API
  *   publique d'`attachments`. Une pièce déclarée mais jamais reçue (en attente, en quarantaine) compte
@@ -92,7 +92,7 @@ export class ExpenseAttachmentMissingJob implements OnModuleInit {
           occurredAt: now,
         });
       if (delayDays === 0) {
-        // Désactivée (AV-407) : aucun sujet, mais une passe complète : les alertes déjà ouvertes se ferment.
+        // Désactivée (AV-357) : aucun sujet, mais une passe complète : les alertes déjà ouvertes se ferment.
         await complete();
         this.logger.log('Justificatifs de dépense manquants : alerte désactivée (0 jour).');
         return;

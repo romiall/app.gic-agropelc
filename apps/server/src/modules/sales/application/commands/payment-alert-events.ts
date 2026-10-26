@@ -1,5 +1,5 @@
 /**
- * Signal d'alerte `DUPLICATE_SUSPECTED` pour un encaissement signalé en doublon (P9-07 ; ADR-071 §2, §4 ;
+ * Signal d'alerte `DUPLICATE_SUSPECTED` pour un encaissement signalé en doublon (P9-07 ; ADR-061 §2, §4 ;
  * D13 §7.1 ; BR-FIN-005, BR-FIN-006). Un événement par encaissement signalé, publié dans la transaction
  * de la commande, à côté du conflit de synchronisation : le conflit sert à la file de traitement, l'alerte
  * prévient la Finance. Jamais un rejet (BR-SYN-007) : la publication n'écrit rien d'autre.

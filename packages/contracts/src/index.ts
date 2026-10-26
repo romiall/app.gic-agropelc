@@ -193,7 +193,7 @@ export type {
   SupplierPaymentCancelPayload,
 } from './finance-operations-commands.js';
 
-// P9 : commandes et lectures de `communication` et d'`analytics` (ADR-071 à ADR-077).
+// P9 : commandes et lectures de `communication` et d'`analytics` (ADR-061 à ADR-067).
 export {
   COMMUNICATION_COMMAND_TYPES,
   NOTE_AUDIENCE_MAX,

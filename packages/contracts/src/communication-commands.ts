@@ -1,5 +1,5 @@
 /**
- * Charges utiles des commandes du module `communication` (P9 ; ADR-071 à ADR-073 ; D13 §4) : prise en
+ * Charges utiles des commandes du module `communication` (P9 ; ADR-061 à ADR-063 ; D13 §4) : prise en
  * compte, résolution et écart d'une alerte, règles d'alerte, notifications, abonnement Web Push, notes de
  * direction. Contrat partagé entre l'appareil (prise en compte et accusé hors ligne, UC-NOT-02 et 06) et
  * le serveur, qui l'importe pour valider (un seul schéma).
@@ -36,7 +36,7 @@ export type AlertAcknowledgePayload = z.infer<typeof alertAcknowledgePayloadSche
 export const alertResolvePayloadSchema = z.object({ comment: text(500) });
 export type AlertResolvePayload = z.infer<typeof alertResolvePayloadSchema>;
 
-/** `communication.alert.dismiss` — motif obligatoire ; réservé aux alertes d'événement (AV-404). */
+/** `communication.alert.dismiss` — motif obligatoire ; réservé aux alertes d'événement (AV-354). */
 export const alertDismissPayloadSchema = z.object({ reason: text(500) });
 export type AlertDismissPayload = z.infer<typeof alertDismissPayloadSchema>;
 
@@ -44,7 +44,7 @@ export type AlertDismissPayload = z.infer<typeof alertDismissPayloadSchema>;
 
 /**
  * `communication.alert_rule.set` — en ligne ; au moins un champ à modifier. Les seuils ne sont pas ici :
- * ce sont des paramètres `system_settings` (AV-400). La gravité doit être l'une de celles que le type
+ * ce sont des paramètres `system_settings` (AV-350). La gravité doit être l'une de celles que le type
  * admet : le serveur le contrôle (le schéma ne connaît pas le type par l'enveloppe).
  */
 export const alertRuleSetPayloadSchema = z

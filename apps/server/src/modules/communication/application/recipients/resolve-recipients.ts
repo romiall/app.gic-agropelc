@@ -1,5 +1,5 @@
 /**
- * Calcul des destinataires d'une alerte (P9-05 ; ADR-072 §1, §7 ; BR-NOT-001 ; D13 §7.1, §14).
+ * Calcul des destinataires d'une alerte (P9-05 ; ADR-062 §1, §7 ; BR-NOT-001 ; D13 §7.1, §14).
  *
  * Origines, par priorité : `RULE` (titulaires des rôles de la règle dont l'affectation couvre l'objet),
  * `OWNER` (propriétaire désigné par l'événement), `TEAM_MANAGER` (responsable de l'équipe du

@@ -1,5 +1,5 @@
 /**
- * Fraîcheur d'une lecture de l'explorateur (P9-14 (3/4) ; BR-ANA-005, ADR-075 §7) : les appareils **du périmètre**
+ * Fraîcheur d'une lecture de l'explorateur (P9-14 (3/4) ; BR-ANA-005, ADR-065 §7) : les appareils **du périmètre**
  * de l'étendue — ceux des points de vente que l'étendue atteint — et ceux d'entre eux sans contact depuis plus de
  * `analytics.freshness_warning_hours`. La base d'essai est partagée : chaque essai compare la fraîcheur avant et
  * après l'ajout, dans la transaction annulée de l'essai, de deux appareils rattachés à un point de vente (l'un

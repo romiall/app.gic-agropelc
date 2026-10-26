@@ -1,6 +1,6 @@
 /**
- * Destinataires d'une alerte (P9 ; BR-NOT-001, BR-NOT-008 ; D13 §7.1, §14 ; ADR-072 §1, §7, §9 ; AV-413,
- * AV-417, AV-443) : origines, rôles effectifs d'une levée, fusion sans doublon et repli sur la Direction.
+ * Destinataires d'une alerte (P9 ; BR-NOT-001, BR-NOT-008 ; D13 §7.1, §14 ; ADR-062 §1, §7, §9 ; AV-363,
+ * AV-367, AV-393) : origines, rôles effectifs d'une levée, fusion sans doublon et repli sur la Direction.
  *
  * Fonctions pures : l'accès aux affectations, aux équipes et aux permissions est celui du serveur (port
  * `AlertRecipientResolver`) ; ici seulement les règles qui décident de qui est retenu.
@@ -36,7 +36,7 @@ const sameSet = (a: readonly string[], b: readonly string[]): boolean => {
 };
 
 /**
- * Rôles destinataires effectifs d'une levée (AV-443). Un déclencheur peut avoir ses propres rôles
+ * Rôles destinataires effectifs d'une levée (AV-393). Un déclencheur peut avoir ses propres rôles
  * (`DUPLICATE_SUSPECTED` : la Finance pour un paiement, le responsable commercial pour un client) ; tant
  * que la règle du type n'a pas été modifiée par un administrateur, ils s'appliquent. Une règle modifiée
  * vaut pour tout le type : le réglage de l'administrateur n'est jamais contourné par un déclencheur.
@@ -89,7 +89,7 @@ export function planRecipients(input: {
 
 /**
  * Destinataires à ajouter à une alerte ouverte à une occurrence suivante : ceux que le calcul retient et
- * que l'alerte n'a pas encore. Un destinataire n'est jamais retiré (ADR-072 §9).
+ * que l'alerte n'a pas encore. Un destinataire n'est jamais retiré (ADR-062 §9).
  */
 export function recipientsToAdd(
   planned: readonly RecipientCandidate[],

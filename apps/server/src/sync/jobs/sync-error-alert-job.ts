@@ -1,5 +1,5 @@
 /**
- * `sync.errors.alert_check` (P9-10 ; D13 §7.1 `SYNC_ERROR`, AV-442, AV-471) : toutes les heures, publie un
+ * `sync.errors.alert_check` (P9-10 ; D13 §7.1 `SYNC_ERROR`, AV-392, AV-421) : toutes les heures, publie un
  * événement `SyncErrorDetected` par couple (appareil, code d'erreur) ayant reçu des commandes rejetées ou en
  * conflit dans les `sync.error_alert_window_hours` dernières heures (24), puis le marqueur de fin de passe :
  * l'alerte d'un couple qui n'est plus vu (fenêtre écoulée, conflit refermé) se ferme seule (« Auto — conflit
@@ -20,7 +20,7 @@
  *   sont pas signalés (décision de l'Admin, conséquence d'un autre rejet).
  * - **Propriétaire** : l'auteur de la commande la plus récente du couple (un seul `user_id` est lu par l'alerte).
  * - **Données** : ni le message d'erreur ni la charge utile de la commande n'entrent dans l'événement
- *   (données métier ou personnelles possibles, ADR-071 §4).
+ *   (données métier ou personnelles possibles, ADR-061 §4).
  * - Une erreur technique fait lever la tâche (le point de sauvegarde du `JobRunner` annule tout) : jamais de
  *   marqueur partiel.
  */

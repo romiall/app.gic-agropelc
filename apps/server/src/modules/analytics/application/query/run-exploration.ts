@@ -1,5 +1,5 @@
 /**
- * Exécution d'une exploration compilée (P9-14 ; BR-ANA-006, ADR-074 §8, ADR-078 §1).
+ * Exécution d'une exploration compilée (P9-14 ; BR-ANA-006, ADR-064 §8, ADR-068 §1).
  *
  * - **Une seule connexion** pour l'emplacement de concurrence (verrou nommé, `query-slots.ts`) et pour la lecture :
  *   le verrou vit autant que la requête.

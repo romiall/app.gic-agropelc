@@ -1,11 +1,11 @@
 /**
- * Jours de présence d'un périmètre (P9-15 ; KPI-COM-17, ADR-075 §1) : jours distincts (par personne, au jour
+ * Jours de présence d'un périmètre (P9-15 ; KPI-COM-17, ADR-065 §1) : jours distincts (par personne, au jour
  * métier du début de la session) avec une session de travail acceptée — sans dérogation exigée, ou dérogation
  * approuvée — comme la vue `analytics_f_attendance`. Une session sans dérogation approuvée (en attente, refusée)
  * ne compte pas comme jour de présence.
  *
  * Périmètre (`ReadScope`) : la session ne porte pas de site mais la zone déclarée au pointage : seules les
- * personnes sont jugées ; un périmètre de sites ne lit rien (règle fermée, AV-424).
+ * personnes sont jugées ; un périmètre de sites ne lit rien (règle fermée, AV-374).
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';

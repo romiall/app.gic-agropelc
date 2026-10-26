@@ -1,5 +1,5 @@
 /**
- * Indicateurs de production sans fonction publique avant P9 (P9-15 ; KPI-PRD-03, 06, 07 et 08, ADR-075 §1) :
+ * Indicateurs de production sans fonction publique avant P9 (P9-15 ; KPI-PRD-03, 06, 07 et 08, ADR-065 §1) :
  * - **Taux de mortalité cumulé** (KPI-PRD-03, AV-049, AV-116) : mortalité constatée ÷ effectif initial (somme des
  *   entrées), pour les lots en élevage (`ACTIVE`, `SELLING`) du périmètre ;
  * - **Œufs** (KPI-PRD-06 et 07) : collectés, commercialisables, à couver, cassés et non conformes des collectes

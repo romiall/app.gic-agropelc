@@ -1,5 +1,5 @@
 /**
- * `sync.devices.clock_skew_check` (P9-10 ; D13 §7.1 `CLOCK_SKEW`, BR-SYN-011, AV-216, AV-474) : toutes les
+ * `sync.devices.clock_skew_check` (P9-10 ; D13 §7.1 `CLOCK_SKEW`, BR-SYN-011, AV-216, AV-424) : toutes les
  * heures, publie un événement `ClockSkewDetected` par appareil actif dont le **dernier envoi** (dans les
  * `sync.stale_hours` dernières heures) accusait un écart d'horloge au-delà de `sync.clock_skew_flag_minutes`
  * (5 minutes), puis le marqueur de fin de passe : un appareil remis à l'heure (son envoi suivant est dans la

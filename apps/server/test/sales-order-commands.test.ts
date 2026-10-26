@@ -590,7 +590,7 @@ describe('sales.order.* — confirmation (P4-06)', () => {
     expect(await onHandAt(product.id, storeId)).toBe(0);
   });
 
-  it('P9-07 : commande saisie hors ligne au prix périmé — conflit PRICE_MISMATCH et signal d’alerte (AV-445)', async () => {
+  it('P9-07 : commande saisie hors ligne au prix périmé — conflit PRICE_MISMATCH et signal d’alerte (AV-395)', async () => {
     // Deux versions d'une même règle : v1 jusqu'à 08:00, v2 (4 800) ensuite.
     const productId = freshUuid();
     await db

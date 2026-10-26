@@ -1,5 +1,5 @@
 /**
- * Commandes des vues sauvegardées (P9-19 ; ADR-077 §1, BR-ANA-007, UC-ANA-04, AV-432, AV-435, AV-496) :
+ * Commandes des vues sauvegardées (P9-19 ; ADR-067 §1, BR-ANA-007, UC-ANA-04, AV-382, AV-385, AV-446) :
  * `analytics.view.save` et `analytics.view.delete` (permission `analytics.explore`), `analytics.view.share` et
  * `analytics.view.set_default` (permission `analytics.view.share`). **Toutes en ligne** : hors ligne, la commande est
  * refusée `ONLINE_REQUIRED`.
@@ -148,7 +148,7 @@ function save(deps: ViewCommandDeps): CommandHandler<AnalyticsViewSavePayload> {
   };
 }
 
-/** Écrit `SavedViewShared` (ADR-077 §9) : l'audit et la synchronisation le lisent, aucun module n'agit dessus. */
+/** Écrit `SavedViewShared` (ADR-067 §9) : l'audit et la synchronisation le lisent, aucun module n'agit dessus. */
 async function publishShared(
   uow: UnitOfWork,
   deps: ViewCommandDeps,

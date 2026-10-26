@@ -1,7 +1,7 @@
 /**
  * `GET /api/v1/analytics/dashboards/distribution` (P5-20 ; ECR-DIS-04, D05 BR-DIS-010, KPI-DIS-01 à 07,
  * AT-042 ; AV-164, AV-204 à AV-207 ; ADR-035). Servi par la couche de transport avant le module
- * d'analyse (P9), qui le reprend sans changement de contrat (ADR-076 §3).
+ * d'analyse (P9), qui le reprend sans changement de contrat (ADR-066 §3).
  *
  * Droit : `analytics.dashboard.distribution` (01-rbac.md §5.1 : Direction et Finance `ALL`, Resp.
  * commercial `ZONE`, Vendeur et Magasinier `SITE`). Périmètre (AV-204) : les PDV que la permission

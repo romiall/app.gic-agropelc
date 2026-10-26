@@ -1,5 +1,5 @@
 /**
- * `sync.devices.stale_check` (P9-10 ; D13 §7.1 `SYNC_STALE`, AV-472) : toutes les heures, publie un événement
+ * `sync.devices.stale_check` (P9-10 ; D13 §7.1 `SYNC_STALE`, AV-422) : toutes les heures, publie un événement
  * `DeviceSyncStale` par appareil **actif** sans synchronisation depuis plus de `sync.stale_hours` heures (24),
  * puis le marqueur de fin de passe : un appareil qui se synchronise de nouveau, qui est bloqué, perdu ou retiré,
  * ou que l'horizon d'oubli écarte, voit son alerte se fermer seule.

@@ -1,15 +1,15 @@
 /**
- * Publication des événements de détection d'alertes (P9-07 ; ADR-071 §3, §4 ; INV-NOT-01). Outil commun
+ * Publication des événements de détection d'alertes (P9-07 ; ADR-061 §3, §4 ; INV-NOT-01). Outil commun
  * des modules propriétaires : un module détecte dans ses données (sur fait, sur transition ou par passe
  * planifiée) et publie ; la corrélation, la déduplication et la résolution sont l'affaire du consommateur
  * `communication.alerts`, qui n'est jamais importé ici (frontières de modules).
  *
  * - **Idempotence d'un événement de passe** : l'identifiant de l'événement est dérivé de (type, sujet,
  *   passe) ; une passe rejouée (même créneau, tâche reprise) ne publie pas deux fois le même sujet. C'est
- *   la clé (`pass_id`, sujet) de l'ADR-071 §3 — l'unicité de l'alerte ouverte reste portée par la base.
+ *   la clé (`pass_id`, sujet) de l'ADR-061 §3 — l'unicité de l'alerte ouverte reste portée par la base.
  *   Un rejeu est reconnu **avant** l'insertion : un `INSERT IGNORE` sur une clé en double consomme tout de
  *   même un numéro de séquence, et le trou ainsi laissé retarde les consommateurs de la fenêtre de
- *   stabilisation (120 s, AV-438).
+ *   stabilisation (120 s, AV-388).
  * - **Identité de passe** : propre à la passe et identique à son rejeu ; elle est reportée dans chaque
  *   événement et dans le marqueur. Le consommateur résout, au marqueur, les alertes d'état du type dont
  *   la dernière passe est une autre : la comparaison se fait par identité, jamais par horloge.

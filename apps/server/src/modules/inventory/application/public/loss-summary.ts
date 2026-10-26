@@ -109,7 +109,7 @@ export interface DayLossLine {
   readonly declarations: number;
   /**
    * Quantité de base perdue, **seulement** quand une seule référence de produit est en jeu ; `null` sinon
-   * (la somme de quantités de produits d'unités différentes n'a pas de sens, AV-453). La valeur reste, elle,
+   * (la somme de quantités de produits d'unités différentes n'a pas de sens, AV-403). La valeur reste, elle,
    * toujours cumulable.
    */
   readonly quantityBase: number | null;
@@ -124,7 +124,7 @@ export interface DayLossLine {
  *
  * Statuts comptés : ceux de {@link lossValueSummary} **et** les déclarations en attente de validation —
  * une perte déclarée alerte aussitôt, sans attendre la décision (D13 : « sur perte »). `excludeCategories`
- * retire des catégories du cumul (la mortalité par défaut : elle a son alerte, `HIGH_MORTALITY`, AV-453).
+ * retire des catégories du cumul (la mortalité par défaut : elle a son alerte, `HIGH_MORTALITY`, AV-403).
  */
 export async function dayLossByLocation(
   executor: Kysely<DB> | Transaction<DB>,

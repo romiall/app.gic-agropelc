@@ -1,5 +1,5 @@
 /**
- * P9-12 : jeu hors ligne `comms` (ADR-070 §6, ADR-073 §4 ; AV-483 à AV-486 ; AT-048 hors ligne) — alertes de la
+ * P9-12 : jeu hors ligne `comms` (ADR-060 §6, ADR-063 §4 ; AV-433 à AV-436 ; AT-048 hors ligne) — alertes de la
  * boîte, notifications non lues, notes avec l'état de lecture de l'utilisateur — par le **vrai** pull
  * (`SyncPullService`), les vraies commandes (accusé, lecture, publication, archivage), le vrai consommateur
  * d'alertes et la base partagée. Chaque test crée ses utilisateurs, sites, alertes et notes ; le curseur de
@@ -887,7 +887,7 @@ describe('jeu hors ligne comms (P9-12)', () => {
         });
         return actor;
       });
-      // Jamais reçue par la publication (limite assumée, ADR-073 §4) ; reçue dès qu'il la lit.
+      // Jamais reçue par la publication (limite assumée, ADR-063 §4) ; reçue dès qu'il la lit.
       expect(last(await pull(late), 'NOTE', noteId)).toBeUndefined();
       await command(
         late,

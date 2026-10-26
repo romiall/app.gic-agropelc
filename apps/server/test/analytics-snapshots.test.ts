@@ -1,5 +1,5 @@
 /**
- * P9-18 — instantanés personnels d'indicateurs (ADR-076 §5 à §7 ; AV-430, AV-431, AV-498 ; AT-054) : le calcul par
+ * P9-18 — instantanés personnels d'indicateurs (ADR-066 §5 à §7 ; AV-380, AV-381, AV-448 ; AT-054) : le calcul par
  * utilisateur (`refreshSnapshotsOf`), la publication au flux du jeu hors ligne `kpi` (portée `USER`, republication au
  * changement ou toutes les heures), la suppression à la perte du droit, les utilisateurs actifs (compte, session,
  * appareil, ancienneté), le retrait des inactifs, le lecteur du jeu `kpi` et la route `GET /analytics/snapshots/me`.

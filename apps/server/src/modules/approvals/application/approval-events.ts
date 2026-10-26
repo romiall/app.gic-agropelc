@@ -1,5 +1,5 @@
 /**
- * Événements des demandes de validation (P9-11 (3/3) ; catalogue d'événements §2.2 ; AV-439, AV-480) :
+ * Événements des demandes de validation (P9-11 (3/3) ; catalogue d'événements §2.2 ; AV-389, AV-430) :
  * `ApprovalRequested` à la création d'une demande, `ApprovalGranted` ou `ApprovalRejected` à sa décision,
  * écrits dans `platform_domain_events` dans la transaction de l'opération qui les provoque. Ils servent les
  * notifications directes de `communication` (les approbateurs de la politique, puis le demandeur).
@@ -8,7 +8,7 @@
  * reçoivent pas de générateur d'identifiants, et une demande n'est créée et décidée qu'une fois.
  *
  * La charge utile ne porte **jamais** le résumé de la demande ni son contenu : il peut décrire une valeur
- * au coût (RC-05, AV-440) et les notifications partent à des personnes qui n'en ont pas toutes le droit.
+ * au coût (RC-05, AV-390) et les notifications partent à des personnes qui n'en ont pas toutes le droit.
  */
 import type { Kysely } from 'kysely';
 import type { DB } from '../../../platform/kysely/database.js';

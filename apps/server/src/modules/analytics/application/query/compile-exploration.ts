@@ -1,5 +1,5 @@
 /**
- * Compilateur de l'explorateur (P9-14 ; BR-ANA-006, ADR-074 §5, §6 et §8) : transforme un plan d'exploration
+ * Compilateur de l'explorateur (P9-14 ; BR-ANA-006, ADR-064 §5, §6 et §8) : transforme un plan d'exploration
  * **déjà validé** par le domaine (`validateExploration`) en SQL sur la vue `analytics_f_*` du jeu.
  *
  * - **Aucun texte de l'utilisateur dans le SQL** : les noms de colonne, de vue et d'agrégat viennent du catalogue,

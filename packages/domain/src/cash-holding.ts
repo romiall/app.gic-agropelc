@@ -1,12 +1,12 @@
 /**
- * Encaisse élevée ou sans remise (alerte `CASH_HOLDING_HIGH`, D09 §14, P9-07 ; AV-447). Règle pure
+ * Encaisse élevée ou sans remise (alerte `CASH_HOLDING_HIGH`, D09 §14, P9-07 ; AV-397). Règle pure
  * partagée : la tâche planifiée de `finance` lui fournit le solde projeté, les jours écoulés depuis la
  * référence et les deux seuils déjà lus.
  *
  * - **Montant** : solde strictement supérieur à `finance.cash_holding_max_xaf`.
  * - **Durée** : solde positif et strictement plus de `finance.cash_holding_max_days` jours métier sans
  *   remise (un compte vide n'a rien à remettre : DÉDUIT). Le détecteur compte la durée depuis la plus
- *   récente de la dernière remise et de l'entrée de l'espèce encore détenue (AV-447).
+ *   récente de la dernière remise et de l'entrée de l'espèce encore détenue (AV-397).
  * - Un seuil **nul désactive** son critère (convention des autres paramètres : 0 = sans limite) ; une
  *   valeur négative, non entière ou illisible revient au défaut (jamais une désactivation silencieuse).
  */

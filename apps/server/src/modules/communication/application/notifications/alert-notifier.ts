@@ -1,6 +1,6 @@
 /**
- * Destinataires et notifications d'une alerte levée (P9-05 ; ADR-072 §1, §4, §6, §9 ; BR-NOT-001, 004,
- * 008 ; AV-413, AV-416, AV-440). Branché sur le consommateur `communication.alerts` (`afterRaise`), dans
+ * Destinataires et notifications d'une alerte levée (P9-05 ; ADR-062 §1, §4, §6, §9 ; BR-NOT-001, 004,
+ * 008 ; AV-363, AV-366, AV-390). Branché sur le consommateur `communication.alerts` (`afterRaise`), dans
  * sa transaction, **sous le verrou de la ligne d'alerte** (rang N10b, ADR-038).
  *
  * - À la **création** : les destinataires sont calculés et inscrits ; tous sont notifiés.
@@ -8,11 +8,11 @@
  *   ceux qui sont encore actifs sont notifiés (le message change de gravité).
  * - Les destinataires sont jugés à l'instant du **traitement**, non à celui de l'événement : une alerte
  *   ouverte s'adresse à ceux qui peuvent agir maintenant (BR-NOT-001), et l'événement est consommé en
- *   quelques secondes (ADR-072 §1, révision P9-05).
+ *   quelques secondes (ADR-062 §1, révision P9-05).
  * - À une **occurrence ordinaire** : seuls les destinataires nouvellement ajoutés sont notifiés ; on
  *   n'en retire jamais, et une occurrence répétée ne répète pas la notification.
  * - Le texte est **rendu pour chaque destinataire** : une valeur au coût n'y figure que s'il détient
- *   `inventory.valuation.read` sur le site de l'alerte (AV-440).
+ *   `inventory.valuation.read` sur le site de l'alerte (AV-390).
  */
 import {
   DEFAULT_PUSH_GROUP_MINUTES,

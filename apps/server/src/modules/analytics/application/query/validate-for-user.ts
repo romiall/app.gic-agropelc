@@ -1,5 +1,5 @@
 /**
- * Validation d'une définition d'exploration **pour un utilisateur** (P9-19, P9-20 ; ADR-074 §4 et §7, ADR-077 §3) :
+ * Validation d'une définition d'exploration **pour un utilisateur** (P9-19, P9-20 ; ADR-064 §4 et §7, ADR-067 §3) :
  * le jeu est-il lisible (chacune de ses permissions de lecture), la définition est-elle valide contre le catalogue,
  * les limites et le droit de valorisation (`inventory.valuation.read`) de l'utilisateur ? Sert à la sauvegarde d'une
  * vue, à la demande d'un export et, une seconde fois, au calcul de l'export (les droits sont revérifiés à l'instant

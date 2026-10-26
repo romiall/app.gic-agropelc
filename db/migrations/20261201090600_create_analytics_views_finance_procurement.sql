@@ -1,6 +1,6 @@
 -- Module `analytics` (P9-13) : jeux de faits de finance et d'achats de la couche sémantique — dépenses,
 -- mouvements de trésorerie, achats (commandes et réceptions).
--- Source : docs/decisions/ADR-074 (§2, §7) ; ADR-075 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-004, BR-ANA-009.
+-- Source : docs/decisions/ADR-064 (§2, §7) ; ADR-065 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-004, BR-ANA-009.
 -- Mêmes principes que `20261201090400` : lecture seule (`SQL SECURITY INVOKER`), `business_day` alias de la
 -- colonne générée de la table source quand elle existe, portée dérivée dans la vue, documents annulés exclus.
 -- migrate:up transaction:false
@@ -27,7 +27,7 @@ WHERE e.status NOT IN ('CANCELLED', 'REJECTED');
 -- Mouvements de trésorerie : une ligne par mouvement ; une contre-écriture est un mouvement de sens inverse et de
 -- même type (`is_reversal` la distingue : un encaissement annulé donne une entrée et une sortie `CUSTOMER_PAYMENT`).
 -- Les entrées et les sorties sont des flux bruts, virements internes et écarts de caisse compris (filtrer
--- `movement_type`, AV-494). Le site se déduit du compte (un compte central n'en a pas) ; la personne est le
+-- `movement_type`, AV-444). Le site se déduit du compte (un compte central n'en a pas) ; la personne est le
 -- titulaire du compte, à défaut son responsable, comme la lecture du module `finance`.
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_cash AS
 SELECT
@@ -46,7 +46,7 @@ JOIN finance_cash_accounts a ON a.id = m.cash_account_id;
 -- Achats : deux sortes de faits dans les colonnes des mesures qu'ils portent. Les lignes non annulées des bons de
 -- commande engagés (ni brouillon, ni en attente d'approbation, ni annulés), au jour de l'approbation du bon (à
 -- défaut de sa création) : quantité commandée et montant commandé (le total du bon exclut une ligne annulée) ;
--- un bon approuvé et pas encore envoyé compte comme commandé (AV-493). Les lignes des
+-- un bon approuvé et pas encore envoyé compte comme commandé (AV-443). Les lignes des
 -- réceptions comptabilisées (statuts dont les quantités comptent au bon, `purchaseOrderMatching`), au jour de
 -- la réception : livré, rejeté et accepté (livré moins rejeté). Le site est celui du bon ou de la réception,
 -- l'auteur celui du document.

@@ -696,7 +696,7 @@ describe('P7-02 : prérequis inventory de la production', () => {
       .where('id', '=', toBin(countId))
       .executeTakeFirstOrThrow();
     expect(count.status).toBe('PENDING_APPROVAL'); // 1 tête × 500 XAF, sous le seuil en valeur
-    // P9-08 (AV-456) : l'alerte accompagne aussi la validation exigée par les animaux, sous le seuil.
+    // P9-08 (AV-406) : l'alerte accompagne aussi la validation exigée par les animaux, sous le seuil.
     const detected = await db
       .selectFrom('platform_domain_events')
       .select('payload')

@@ -2,7 +2,7 @@
  * `inventory.ledger.reconcile_daily` (P2-07 ; stratégie stock §3.1, INV-STK-01 et INV-STK-03 :
  * « un job quotidien compare la projection au registre et lève `LEDGER_MISMATCH` »).
  *
- * P9-08 (AV-402, AV-459) : un écart n'est plus un **échec de tâche** mais une alerte. Pour chaque site
+ * P9-08 (AV-352, AV-409) : un écart n'est plus un **échec de tâche** mais une alerte. Pour chaque site
  * touché, la tâche publie `LedgerMismatchDetected` (sujet : site × jour métier) dans la transaction du
  * `JobRunner`, journalise l'erreur et **se termine en succès** — l'échec de tâche, qui annulerait les
  * événements publiés, ne porte plus l'écart. Les anomalies sans site (conservation d'un produit sur tous
@@ -11,8 +11,8 @@
  *
  * - **Identité** : (type, créneau) : un rejeu du même créneau ne republie rien. Le sujet de l'alerte est
  *   (site, jour métier) : une anomalie qui persiste lève une **nouvelle** alerte chaque jour métier (même
- *   principe qu'AV-448 pour la trésorerie) ; le compteur d'occurrences ne compte que les passes du même
- *   jour. Une alerte résolue puis une anomalie toujours présente du même jour en crée une nouvelle (AV-404).
+ *   principe qu'AV-398 pour la trésorerie) ; le compteur d'occurrences ne compte que les passes du même
+ *   jour. Une alerte résolue puis une anomalie toujours présente du même jour en crée une nouvelle (AV-354).
  * - La correction n'est jamais automatique : `rebuildStockBalances` reste une procédure de maintenance
  *   déclenchée par un responsable après analyse de l'écart.
  * - La charge utile porte les nombres par catégorie et un échantillon **borné** (pas de volume non borné
@@ -99,7 +99,7 @@ async function sitesOfLocations(
 }
 
 /**
- * Regroupe les anomalies de la vérification par site (D06, AV-459) : un solde, un « à livrer », un
+ * Regroupe les anomalies de la vérification par site (D06, AV-409) : un solde, un « à livrer », un
  * dépassement de quotas, un négatif → le site de l'emplacement ; une vente au règlement incohérent → celui
  * de l'emplacement du mouvement d'origine ; un quota → celui de son emplacement ; un transit → le site du
  * transfert ; la conservation d'un produit → global.

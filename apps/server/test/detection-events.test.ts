@@ -1,5 +1,5 @@
 /**
- * P9-07 : publication des événements de détection (ADR-071 §3) — idempotence par (type, sujet, passe),
+ * P9-07 : publication des événements de détection (ADR-061 §3) — idempotence par (type, sujet, passe),
  * identité de passe, marqueur de passe complète, et bout en bout avec le consommateur d'alertes : ce que
  * la passe suivante ne revoit pas est résolu, ce qu'elle revoit reste ouvert.
  */

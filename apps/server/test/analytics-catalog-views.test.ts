@@ -1,5 +1,5 @@
 /**
- * Le catalogue de la couche sémantique et les treize vues `analytics_f_*` (P9-13 ; ADR-074 §1 et §2) : tout
+ * Le catalogue de la couche sémantique et les treize vues `analytics_f_*` (P9-13 ; ADR-064 §1 et §2) : tout
  * ce que le catalogue cite — dimensions, mesures, colonnes de portée, colonnes de période — existe dans la
  * vue de son jeu, avec un type qui convient à l'usage déclaré ; chaque permission citée existe ; les vues
  * sont en lecture (`SQL SECURITY INVOKER`, `SELECT` seulement) et n'acceptent aucune écriture.

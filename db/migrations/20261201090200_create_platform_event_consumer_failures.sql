@@ -1,5 +1,5 @@
--- Espace de noms `platform` (suite) : événements sautés par un consommateur (P9-04 ; ADR-071 §12,
--- AV-412 ; 08-api-events/02-catalogue-evenements.md §3 « Échecs »). Le runner saute un événement
+-- Espace de noms `platform` (suite) : événements sautés par un consommateur (P9-04 ; ADR-061 §12,
+-- AV-362 ; 08-api-events/02-catalogue-evenements.md §3 « Échecs »). Le runner saute un événement
 -- après ses essais et avance la position ; `last_error` n'en garde que le dernier message, réécrit par
 -- le premier événement traité ensuite. Cette table d'ajout seul consigne chaque saut (consommateur,
 -- position, événement, erreur) pour que l'alerte technique `CONSUMER_FAILED` ne dépende pas d'un

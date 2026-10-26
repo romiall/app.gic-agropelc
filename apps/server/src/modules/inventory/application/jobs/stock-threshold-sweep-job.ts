@@ -1,6 +1,6 @@
 /**
- * `inventory.alerts.stock_threshold_sweep` (P9-08 ; D13 §7.1 ; AV-405 : « passe horaire en filet » ;
- * AV-452 : réapprovisionnement) : trois passes de détection d'état sur les seuils actifs, dans une seule
+ * `inventory.alerts.stock_threshold_sweep` (P9-08 ; D13 §7.1 ; AV-355 : « passe horaire en filet » ;
+ * AV-402 : réapprovisionnement) : trois passes de détection d'état sur les seuils actifs, dans une seule
  * transaction et une seule lecture (`stockThresholdsOf`, trois requêtes quel que soit le nombre de
  * seuils) — `STOCK_LOW`, `STOCK_OUT` et `POS_REPLENISH`.
  *
@@ -18,7 +18,7 @@
  *
  * Course passe / mouvement : un mouvement validé après l'instantané de la passe et avant son marqueur
  * peut voir son alerte résolue à tort jusqu'à la transition suivante ou à la passe suivante (une heure au
- * plus) ; la fenêtre est celle d'une transaction de quelques requêtes (AV-405).
+ * plus) ; la fenêtre est celle d'une transaction de quelques requêtes (AV-355).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {

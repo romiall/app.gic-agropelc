@@ -1,5 +1,5 @@
 /**
- * P9-11 (3/3) : consommateur `communication.direct` (AV-439, AV-480, AV-481 ; ADR-072 §4). Le résolveur est un
+ * P9-11 (3/3) : consommateur `communication.direct` (AV-389, AV-430, AV-431 ; ADR-062 §4). Le résolveur est un
  * double contrôlé qui enregistre ses appels (la résolution par permission et périmètre est testée avec
  * l'adaptateur réel dans `communication-recipients.test.ts` et de bout en bout dans
  * `communication-direct-events.test.ts`) ; les utilisateurs et les notifications sont réels. Chaque test

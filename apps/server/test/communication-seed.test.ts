@@ -1,4 +1,4 @@
-// Règles d'alerte semées et paramètres des détecteurs (P9-03 ; D13 §7.1 ; ADR-071 §8 ; AV-400, AV-402) :
+// Règles d'alerte semées et paramètres des détecteurs (P9-03 ; D13 §7.1 ; ADR-061 §8 ; AV-350, AV-352) :
 // le seed (`db/seeds/communication-references.ts`, sans dépendance au domaine) doit rester égal au
 // catalogue du domaine (`ALERT_CATALOG`), et chaque seuil cité par le catalogue doit exister dans les
 // paramètres système semés. Aucune base de données : la dérive est une erreur de dépôt, pas d'exécution.
@@ -66,7 +66,7 @@ describe('paramètres des détecteurs', () => {
     }
   });
 
-  it('les durées de rétention et le regroupement des push sont semés (ADR-078 §8, AV-416)', () => {
+  it('les durées de rétention et le regroupement des push sont semés (ADR-068 §8, AV-366)', () => {
     for (const key of [
       'communication.push_group_minutes',
       'communication.consumer_lag_alert_seconds',
@@ -80,7 +80,7 @@ describe('paramètres des détecteurs', () => {
     expect(value('communication.push_group_minutes')).toBe(15);
     expect(value('communication.alert_retention_days')).toBe(730);
     expect(value('communication.notification_retention_days')).toBe(90);
-    // Aucun type de notification directe n'est désactivé par défaut (AV-481).
+    // Aucun type de notification directe n'est désactivé par défaut (AV-431).
     expect(value('communication.direct_notification_disabled_types')).toEqual([]);
     expect(value('approvals.pending_long_hours')).toBe(24);
     expect(value('attachments.missing_alert_days')).toBe(7);

@@ -1,6 +1,6 @@
 /**
- * Détection d'alertes de production **sur fait** (P9-09 ; D13 §7.1 ; ADR-071 §2, §3 ; AV-406, AV-121 ;
- * AV-461) : l'événement est publié dans la transaction du fait accompli, par le module propriétaire de
+ * Détection d'alertes de production **sur fait** (P9-09 ; D13 §7.1 ; ADR-061 §2, §3 ; AV-356, AV-121 ;
+ * AV-411) : l'événement est publié dans la transaction du fait accompli, par le module propriétaire de
  * la donnée, sans jamais en faire échouer la commande (BR-SYN-007) — aucune fonction de ce fichier ne
  * lève sur une donnée (réglage invalide, libellé absent, effectif nul).
  *
@@ -10,13 +10,13 @@
  *   antidatée alimente l'alerte du jour du fait sans toucher à celle d'aujourd'hui.
  * - **Effectif de référence** : l'effectif en élevage au début du jour métier (précédent du taux de
  *   ponte, AV-116) ; pour un lot mis en place le jour même, l'effectif après la saisie plus les morts du
- *   jour ; sans effectif positif, seul le seuil absolu s'applique et le taux est omis (AV-461).
+ *   jour ; sans effectif positif, seul le seuil absolu s'applique et le taux est omis (AV-411).
  * - **Seuils** : `production.high_mortality_alert_pct` et `production.high_mortality_alert_heads`
  *   (site, à défaut global ; repli 0,5 et 20 : un fait antidaté avant la date d'effet du réglage lit un
  *   réglage absent) ; comparaisons strictes (`packages/domain/src/production-alerts.ts`).
  * - **Cadence** : un événement par saisie tant que le cumul du jour reste au seuil ; l'alerte (un
- *   sujet lot × jour) compte les occurrences, et une alerte résolue renaît à la saisie suivante (AV-404).
- * - **Date de l'événement** : l'instant serveur (AV-457) — l'escalade de 4 h se compte depuis la
+ *   sujet lot × jour) compte les occurrences, et une alerte résolue renaît à la saisie suivante (AV-354).
+ * - **Date de l'événement** : l'instant serveur (AV-407) — l'escalade de 4 h se compte depuis la
  *   détection, jamais depuis une date d'appareil ancienne ; le jour métier reste celui du fait.
  */
 import {

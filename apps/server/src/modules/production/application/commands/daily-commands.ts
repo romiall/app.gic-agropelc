@@ -158,7 +158,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       },
     );
     if (!result.ok) return result.outcome;
-    // `HIGH_MORTALITY` (P9-09, AV-461) : sur le fait, avant les deux retours (le lot clos hors ligne est un
+    // `HIGH_MORTALITY` (P9-09, AV-411) : sur le fait, avant les deux retours (le lot clos hors ligne est un
     // fait appliqué : son alerte complète le conflit `LOT_CLOSED`). Ne lève jamais.
     await signalHighMortality(uow, deps, {
       lotId: lot.id,

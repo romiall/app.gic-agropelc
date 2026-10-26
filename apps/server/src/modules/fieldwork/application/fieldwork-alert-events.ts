@@ -1,5 +1,5 @@
 /**
- * Signal d'alerte `CHECKIN_SUSPICIOUS` (P9-10 ; ADR-071 §2, §4 ; D13 §7.1 ; BR-TER-010, AV-468). Détecteur
+ * Signal d'alerte `CHECKIN_SUSPICIOUS` (P9-10 ; ADR-061 §2, §4 ; D13 §7.1 ; BR-TER-010, AV-418). Détecteur
  * **sur fait** : publié dans la transaction de `fieldwork.checkin.record`, après l'écriture du pointage et
  * avant le retour de la commande. Jamais un rejet (BR-SYN-007) : le signal accompagne un pointage déjà
  * enregistré ; il ne bloque rien (limite L-02).
@@ -10,7 +10,7 @@
  * - Le sujet est le pointage (agrégat `GEO_CHECKIN`) : un événement par pointage, car une même commande
  *   n'est appliquée qu'une fois (rejeu reconnu avant l'écriture) et le gestionnaire sort avant ce point
  *   pour tout rejet.
- * - La charge utile ne porte ni latitude ni longitude (ADR-071 §4 : elle est conservée en entier avec
+ * - La charge utile ne porte ni latitude ni longitude (ADR-061 §4 : elle est conservée en entier avec
  *   l'alerte) ; la distance au centre du géorepère et la précision suffisent à l'écran d'action.
  */
 import {
@@ -48,7 +48,7 @@ export interface SuspiciousCheckinSignal {
 
 /**
  * Publie `CheckInSuspicious` si le pointage porte au moins un signal ; vrai si publié. L'événement est daté
- * de la détection par le serveur (AV-457) : un pointage appliqué tard après une synchronisation hors ligne
+ * de la détection par le serveur (AV-407) : un pointage appliqué tard après une synchronisation hors ligne
  * se lève à son application, le jour métier et l'instant du fait restant dans la charge utile.
  */
 export async function signalSuspiciousCheckin(

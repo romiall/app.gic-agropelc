@@ -1,5 +1,5 @@
 /**
- * Catalogue déclaratif des alertes (P9 ; D13 §7.1 ; ADR-071, ADR-072 ; AV-400 à AV-412, AV-438 à AV-442).
+ * Catalogue déclaratif des alertes (P9 ; D13 §7.1 ; ADR-061, ADR-062 ; AV-350 à AV-362, AV-388 à AV-392).
  *
  * Une seule définition par type, exécutée à l'identique par le consommateur `communication.alerts`, par
  * les détecteurs des modules propriétaires (qui y lisent les noms d'événements et les champs attendus)
@@ -30,7 +30,7 @@ export type AlertNature = (typeof ALERT_NATURES)[number];
 export const ALERT_RESOLUTION_MODES = ['AUTO', 'MANUAL'] as const;
 export type AlertResolutionMode = (typeof ALERT_RESOLUTION_MODES)[number];
 
-/** Module qui porte la donnée et publie l'événement (ADR-071 §2 : le placement suit le graphe). */
+/** Module qui porte la donnée et publie l'événement (ADR-061 §2 : le placement suit le graphe). */
 export const ALERT_DETECTOR_MODULES = [
   'sales',
   'finance',
@@ -47,7 +47,7 @@ export const ALERT_DETECTOR_MODULES = [
 ] as const;
 export type AlertDetectorModule = (typeof ALERT_DETECTOR_MODULES)[number];
 
-/** Types d'alerte : les 30 de D13 §7.1 puis les 6 ajoutés par AV-402. */
+/** Types d'alerte : les 30 de D13 §7.1 puis les 6 ajoutés par AV-352. */
 export const ALERT_TYPES = [
   'STOCK_LOW',
   'STOCK_OUT',
@@ -79,7 +79,7 @@ export const ALERT_TYPES = [
   'ATTACHMENT_MISSING',
   'KOMMO_SYNC_FAILED',
   'AUDIT_CHAIN_BROKEN',
-  // AV-402
+  // AV-352
   'ALLOCATION_EXPIRED',
   'ALLOCATION_REVOCATION_PENDING',
   'SALE_UNDELIVERED',
@@ -89,7 +89,7 @@ export const ALERT_TYPES = [
 ] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
 
-/** Événement porté par le marqueur de fin de passe d'un détecteur d'état (ADR-071 §3). */
+/** Événement porté par le marqueur de fin de passe d'un détecteur d'état (ADR-061 §3). */
 export const ALERT_PASS_COMPLETED_EVENT = 'AlertDetectionPassCompleted';
 
 /** Charge utile d'un événement de déclenchement : champs en `snake_case`, valeurs JSON. */
@@ -110,7 +110,7 @@ export interface AlertMessageField {
   readonly key: string;
   readonly label: string;
   readonly kind?: AlertFieldKind;
-  /** Valeur au coût (RC-05, BR-ANA-004) : jamais rendue sans `inventory.valuation.read` (AV-440). */
+  /** Valeur au coût (RC-05, BR-ANA-004) : jamais rendue sans `inventory.valuation.read` (AV-390). */
   readonly protected?: boolean;
 }
 
@@ -119,11 +119,11 @@ export interface AlertTypeDefinition {
   readonly nature: AlertNature;
   readonly detectorModule: AlertDetectorModule;
   readonly defaultSeverity: AlertSeverity;
-  /** Gravités qu'un événement peut porter pour ce type (AV-401). */
+  /** Gravités qu'un événement peut porter pour ce type (AV-351). */
   readonly severities: readonly AlertSeverity[];
   readonly resolution: AlertResolutionMode;
   readonly subjectType: string;
-  /** Champs composant un sujet composite (ADR-071 §5) ; absent : l'agrégat de l'événement. */
+  /** Champs composant un sujet composite (ADR-061 §5) ; absent : l'agrégat de l'événement. */
   readonly subjectParts?: readonly string[];
   /** Écran d'action (`ECR-…`), D13 BR-NOT-001. */
   readonly actionScreen: string | null;
@@ -293,7 +293,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     teamManager: false,
     approvers: false,
     escalationHours: 4,
-    // Seuil absolu : `inventory` ; part des ventes du jour : `sales` (ADR-071 §2, AV-406).
+    // Seuil absolu : `inventory` ; part des ventes du jour : `sales` (ADR-061 §2, AV-356).
     raisedBy: [{ eventType: 'HighLossDetected' }, { eventType: 'HighLossSalesShareDetected' }],
     resolvedBy: [],
     settings: ['inventory.high_loss_alert_xaf', 'sales.high_loss_alert_sales_pct'],
@@ -302,7 +302,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { key: 'location_label', label: 'Emplacement' },
       { key: 'business_day', label: 'Jour', kind: 'date' },
       // Absente (champ omis du message) quand la perte du jour porte sur plusieurs produits : la somme
-      // de quantités d'unités différentes n'a pas de sens (AV-453).
+      // de quantités d'unités différentes n'a pas de sens (AV-403).
       { key: 'loss_quantity', label: 'Quantité perdue', kind: 'quantity' },
       { key: 'loss_value_xaf', label: 'Valeur perdue', kind: 'xaf', protected: true },
     ],
@@ -316,7 +316,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     severities: ['CRITICAL'],
     resolution: 'MANUAL',
     // P9-09 : la mortalité est « journalière » (D13) : une alerte par lot **et par jour métier** ; la
-    // deuxième journée d'une épidémie n'est pas absorbée par l'alerte non résolue de la veille (AV-461).
+    // deuxième journée d'une épidémie n'est pas absorbée par l'alerte non résolue de la veille (AV-411).
     subjectType: 'LOT_DAY',
     subjectParts: ['lot_id', 'business_day'],
     actionScreen: 'ECR-PRD-03',
@@ -333,7 +333,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { key: 'lot_label', label: 'Lot' },
       { key: 'business_day', label: 'Jour', kind: 'date' },
       { key: 'heads', label: 'Têtes mortes', kind: 'integer' },
-      // `null` (champ omis du message) sans effectif de référence : seul le seuil absolu a joué (AV-461).
+      // `null` (champ omis du message) sans effectif de référence : seul le seuil absolu a joué (AV-411).
       // Rendu à la française (« 2,5 ») : un taux est une quantité à deux décimales.
       { key: 'rate_pct', label: 'Taux du jour (%)', kind: 'quantity' },
     ],
@@ -356,7 +356,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     raisedBy: [{ eventType: 'DailyEntryMissing' }],
     // P9-09 : `production.daily.record` est un code de permission, jamais un type d'événement, et les
     // événements des saisies ont le document (non le lot) pour agrégat : aucun ne peut désigner le sujet.
-    // Le marqueur de passe ferme l'alerte du lot qui a rattrapé sa saisie (AV-462).
+    // Le marqueur de passe ferme l'alerte du lot qui a rattrapé sa saisie (AV-412).
     resolvedBy: [],
     settings: ['production.daily_entry_working_days'],
     messageTitle: 'Saisie du jour manquante',
@@ -409,7 +409,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'ReceiptIncompleteDetected' }],
     // P9-09 : le bon annulé, et l'état « complet » publié à chaque réception (`ReceiptIncompleteCleared`,
-    // sujet : le bon) ferment aussitôt ; le marqueur de la passe quotidienne ferme le reste (AV-464).
+    // sujet : le bon) ferment aussitôt ; le marqueur de la passe quotidienne ferme le reste (AV-414).
     resolvedBy: [
       { eventType: 'procurement.order.close_remaining' },
       { eventType: 'procurement.order.cancel' },
@@ -441,7 +441,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     escalationHours: null,
     raisedBy: [{ eventType: 'InventoryVarianceDetected' }],
     resolvedBy: [{ eventType: 'InventoryAdjusted' }],
-    // Seuil d'alerte = seuil d'approbation de l'écart (AV-456) : l'alerte accompagne la demande.
+    // Seuil d'alerte = seuil d'approbation de l'écart (AV-406) : l'alerte accompagne la demande.
     settings: ['inventory.count_approval_threshold_xaf'],
     messageTitle: "Écart d'inventaire à valider",
     messageFields: [
@@ -775,20 +775,20 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     actionScreen: null,
     recipientRoles: ['FINANCE'],
     // Le compte client porte son titulaire (`owner_user_id`) : un responsable commercial affecté à l'équipe
-    // reçoit l'alerte par ses commerciaux (P9-10, AV-469). Encaissements et réceptions n'ont pas ce champ.
+    // reçoit l'alerte par ses commerciaux (P9-10, AV-419). Encaissements et réceptions n'ont pas ce champ.
     ownerFields: ['owner_user_id'],
     teamManager: true,
     approvers: false,
     escalationHours: null,
-    // Trois producteurs (ADR-071 §2) : encaissement (`sales`), compte client (`crm`), réception (`procurement`).
+    // Trois producteurs (ADR-061 §2) : encaissement (`sales`), compte client (`crm`), réception (`procurement`).
     raisedBy: [
       { eventType: 'PaymentFlaggedDuplicate', recipientRoles: ['FINANCE'] },
       { eventType: 'CustomerDuplicateSuspected', recipientRoles: ['RESP_COMMERCIAL'] },
       { eventType: 'GoodsReceiptQuarantined', recipientRoles: ['RESP_ACHATS'] },
     ],
     // La décision de la Finance sur un encaissement en doublon ferme aussi l'alerte (P9-07) ; la décision
-    // sur la quarantaine d'une réception ferme celle de la réception (P9-09, AV-465) ; la fusion de deux
-    // comptes ferme celle du compte qui n'est plus un doublon en attente (P9-10, AV-469).
+    // sur la quarantaine d'une réception ferme celle de la réception (P9-09, AV-415) ; la fusion de deux
+    // comptes ferme celle du compte qui n'est plus un doublon en attente (P9-10, AV-419).
     resolvedBy: [
       { eventType: 'PaymentDuplicateDecided' },
       { eventType: 'GoodsReceiptQuarantineDecided' },
@@ -800,7 +800,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
       { key: 'kind', label: 'Objet' },
       { key: 'reference', label: 'Référence' },
       // Réception en quarantaine : la raison (bon de livraison déjà reçu, dépassement du reliquat, bon non
-      // réceptionnable) ; absent des deux autres producteurs, donc omis de leur message (P9-09, AV-465).
+      // réceptionnable) ; absent des deux autres producteurs, donc omis de leur message (P9-09, AV-415).
       { key: 'reason_label', label: 'Motif' },
     ],
     sourceAvailable: true,
@@ -899,7 +899,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     resolution: 'AUTO',
     subjectType: 'STOCK_LOT',
     // P9-08 : un lot peut être en stock sur plusieurs sites, et un lot de collecte ou d'abattage porte
-    // plusieurs produits : l'alerte est celle du lot à un site pour un produit (AV-454).
+    // plusieurs produits : l'alerte est celle du lot à un site pour un produit (AV-404).
     subjectParts: ['lot_id', 'site_id', 'product_id'],
     actionScreen: 'ECR-STK-01',
     recipientRoles: ['MAGASINIER'],
@@ -935,7 +935,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     raisedBy: [{ eventType: 'AttachmentMissingDetected' }],
     resolvedBy: [],
     // Deux producteurs : `finance` (dépenses, portée EXPENSE) et `procurement` (photos de réception, portée
-    // GOODS_RECEIPT), ADR-071 §2 ; le champ `detectorModule` désigne le premier.
+    // GOODS_RECEIPT), ADR-061 §2 ; le champ `detectorModule` désigne le premier.
     settings: [
       'attachments.missing_alert_days',
       'attachments.missing_alert_horizon_days',
@@ -1117,7 +1117,7 @@ export const ALERT_CATALOG: Readonly<Record<AlertType, AlertTypeDefinition>> = {
     resolution: 'MANUAL',
     subjectType: 'LEDGER_RECONCILIATION',
     // `site_key` : le site, ou `GLOBAL` pour une anomalie sans site (conservation par produit, emplacement
-    // virtuel global) ; l'alerte d'une anomalie globale n'a alors pas de site (AV-459).
+    // virtuel global) ; l'alerte d'une anomalie globale n'a alors pas de site (AV-409).
     subjectParts: ['site_key', 'business_day'],
     actionScreen: 'ECR-STK-07',
     recipientRoles: ['RESP_FERME', 'MAGASINIER', 'DIRECTION', 'ADMIN'],
@@ -1185,21 +1185,21 @@ export function compareAlertSeverity(a: AlertSeverity, b: AlertSeverity): number
 }
 
 /**
- * Gravité d'une alerte ouverte après une nouvelle occurrence (AV-401) : une occurrence plus grave relève
+ * Gravité d'une alerte ouverte après une nouvelle occurrence (AV-351) : une occurrence plus grave relève
  * l'alerte, aucune ne l'abaisse tant qu'elle est ouverte.
  */
 export function raisedSeverity(current: AlertSeverity, incoming: AlertSeverity): AlertSeverity {
   return compareAlertSeverity(incoming, current) > 0 ? incoming : current;
 }
 
-/** Clé de déduplication : `<type>:<sujet>` (INV-NOT-01, ADR-071 §6). */
+/** Clé de déduplication : `<type>:<sujet>` (INV-NOT-01, ADR-061 §6). */
 export function alertDedupKey(type: AlertType, subjectKey: string): string {
   return `${type}:${subjectKey}`;
 }
 
 /**
  * Clé de sujet d'un type donné : l'identifiant de l'agrégat de l'événement, ou le nom canonique du
- * sujet composite (`TYPE_DE_SUJET:partie1:partie2`, ADR-071 §5). `undefined` si une partie manque.
+ * sujet composite (`TYPE_DE_SUJET:partie1:partie2`, ADR-061 §5). `undefined` si une partie manque.
  */
 export function alertSubjectKey(
   definition: AlertTypeDefinition,

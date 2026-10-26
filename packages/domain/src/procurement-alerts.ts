@@ -1,5 +1,5 @@
 /**
- * Règle pure de l'alerte `RECEIPT_INCOMPLETE` (P9-09 ; BR-APP-015, D13 §7.1 ; AV-410, AV-464). Partagée par
+ * Règle pure de l'alerte `RECEIPT_INCOMPLETE` (P9-09 ; BR-APP-015, D13 §7.1 ; AV-360, AV-414). Partagée par
  * la tâche planifiée et par le détecteur « sur réception » du module `procurement`, sans entrée-sortie :
  * l'appelant fournit l'état du bon de commande déjà lu.
  *

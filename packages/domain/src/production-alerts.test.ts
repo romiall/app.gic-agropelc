@@ -111,7 +111,7 @@ describe('highMortalityCause : comparaisons strictes (D13 « > 0,5 % de l’effe
   });
 });
 
-describe('effectif de référence et taux du jour (AV-461)', () => {
+describe('effectif de référence et taux du jour (AV-411)', () => {
   it('l’effectif en début de journée prime ; le repli sert un lot mis en place le jour même', () => {
     expect(mortalityReferenceHeadcount({ startOfDayHeadcount: 800, fallbackHeadcount: 1000 })).toBe(
       800,
@@ -139,7 +139,7 @@ describe('effectif de référence et taux du jour (AV-461)', () => {
   });
 });
 
-describe('saisie du jour attendue (AV-462)', () => {
+describe('saisie du jour attendue (AV-412)', () => {
   it('sept jours par défaut ; une liste valide est triée et dédoublonnée', () => {
     expect(DEFAULT_DAILY_ENTRY_WORKING_DAYS).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(dailyEntryWorkingDaysOrDefault(undefined)).toEqual([1, 2, 3, 4, 5, 6, 7]);
@@ -181,7 +181,7 @@ describe('saisie du jour attendue (AV-462)', () => {
   });
 });
 
-describe('fenêtre de revue du coût standard (AV-463)', () => {
+describe('fenêtre de revue du coût standard (AV-413)', () => {
   it('30 jours par défaut ; un entier strictement positif est conservé', () => {
     expect(DEFAULT_STANDARD_COST_ALERT_LOOKBACK_DAYS).toBe(30);
     for (const bad of [undefined, null, 0, -7, 1.5, '30', Number.NaN]) {

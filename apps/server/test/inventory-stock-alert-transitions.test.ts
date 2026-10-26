@@ -1,5 +1,5 @@
 /**
- * P9-08 : détection sur mouvement des alertes de stock (AV-405, AV-457) — `StockThresholdBreached`
+ * P9-08 : détection sur mouvement des alertes de stock (AV-355, AV-407) — `StockThresholdBreached`
  * (`STOCK_LOW`, `STOCK_OUT`) aux extrémités physiques d'un mouvement, `StockNegativeDetected`
  * (`STOCK_NEGATIVE`), et les transitions d'un changement de seuil. Chaque cas tourne dans une transaction
  * annulée (les événements sont immuables, la base d'essai est partagée) ; le consommateur d'alertes est
@@ -143,7 +143,7 @@ async function alertOf(uow: UnitOfWork, type: string, locationId: string, produc
     .executeTakeFirst();
 }
 
-describe('transitions de seuil sur mouvement (P9-08, AV-405)', () => {
+describe('transitions de seuil sur mouvement (P9-08, AV-355)', () => {
   it('sortie puis entrées : un événement par franchissement, rien tant que l’état ne change pas', () =>
     rolledBack(async (uow) => {
       const { admin, store, product } = await world(uow);
@@ -256,7 +256,7 @@ describe('transitions de seuil sur mouvement (P9-08, AV-405)', () => {
         location_label: 'Emplacement de test',
         product_label: 'Produit de test',
         site_id: site,
-        // Le jour métier est celui du fait ; la détection est datée de l'horloge du serveur (AV-457).
+        // Le jour métier est celui du fait ; la détection est datée de l'horloge du serveur (AV-407).
         business_day: '2026-10-10',
       });
       expect(event!.occurredAt.toISOString()).toBe(DETECTED_AT.toISOString());

@@ -47,7 +47,7 @@ const D13_TYPES = [
   'AUDIT_CHAIN_BROKEN',
 ];
 
-describe('catalogue des alertes (D13 §7.1, AV-402)', () => {
+describe('catalogue des alertes (D13 §7.1, AV-352)', () => {
   it('porte les trente types de D13 puis les six ajoutés, sans doublon', () => {
     expect(ALERT_TYPES.slice(0, 30)).toEqual(D13_TYPES);
     expect(ALERT_TYPES.slice(30)).toEqual([
@@ -112,7 +112,7 @@ describe('catalogue des alertes (D13 §7.1, AV-402)', () => {
     expect(withProtected).toEqual(['HIGH_LOSS', 'INVENTORY_VARIANCE']);
   });
 
-  it('placement des détecteurs imposé par le graphe (ADR-071 §2)', () => {
+  it('placement des détecteurs imposé par le graphe (ADR-061 §2)', () => {
     expect(alertDefinitionOf('INACTIVE_COMMERCIAL').detectorModule).toBe('sales');
     expect(alertDefinitionOf('OVERDUE_RECEIVABLE').detectorModule).toBe('sales');
     expect(alertDefinitionOf('HIGH_MORTALITY').detectorModule).toBe('production');
@@ -140,7 +140,7 @@ describe('gravité et clés', () => {
     expect(compareAlertSeverity('WARNING', 'WARNING')).toBe(0);
   });
 
-  it('une occurrence plus grave relève l’alerte, aucune ne l’abaisse (AV-401)', () => {
+  it('une occurrence plus grave relève l’alerte, aucune ne l’abaisse (AV-351)', () => {
     expect(raisedSeverity('WARNING', 'CRITICAL')).toBe('CRITICAL');
     expect(raisedSeverity('CRITICAL', 'WARNING')).toBe('CRITICAL');
     expect(raisedSeverity('INFO', 'INFO')).toBe('INFO');

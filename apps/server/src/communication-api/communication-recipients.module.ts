@@ -1,7 +1,7 @@
 /**
- * Fournit les adaptateurs du résolveur de destinataires d'alerte (P9-05 ; ADR-072 §2) et du résolveur
- * d'audience des notes (P9-11 ; ADR-073 §3) au module `communication`.
- * Module **global** : `communication` ne peut pas importer la couche de transport (ADR-070), il
+ * Fournit les adaptateurs du résolveur de destinataires d'alerte (P9-05 ; ADR-062 §2) et du résolveur
+ * d'audience des notes (P9-11 ; ADR-063 §3) au module `communication`.
+ * Module **global** : `communication` ne peut pas importer la couche de transport (ADR-060), il
  * réclame le port par son jeton ; l'API et le worker importent ce module au démarrage.
  */
 import { Global, Module } from '@nestjs/common';

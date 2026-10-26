@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `AUDIT_CHAIN_BROKEN` (D13 §7.1, BR-AUD-006, AV-470) — `audit.chain.verify_daily` publie
+ * P9-10 : alerte `AUDIT_CHAIN_BROKEN` (D13 §7.1, BR-AUD-006, AV-420) — `audit.chain.verify_daily` publie
  * `AuditChainBroken` puis se termine en succès (plus d'exception qui annulerait l'événement), sur une
  * fenêtre qui part du jour métier précédent le créneau planifié (deux jours métier en marche normale). `audit_audit_log` interdit tout UPDATE (INV-AUD-01) : une rupture réelle
  * ne peut pas être fabriquée en base, la vérification du chaînage (`verifyChainRange`) est donc simulée —
@@ -170,7 +170,7 @@ describe('AUDIT_CHAIN_BROKEN : vérification quotidienne de la chaîne d’audit
     });
   });
 
-  it('fenêtre : du début du jour métier précédent à la dernière entrée (AV-470)', async () => {
+  it('fenêtre : du début du jour métier précédent à la dernière entrée (AV-420)', async () => {
     verify.mockResolvedValue({ checked: 7, ok: true, brokenAtSeq: null, reason: null });
     await rolledBack(async (uow) => {
       const outcome = await runChainVerification(uow, deps(RUN_AT()), {});
@@ -226,7 +226,7 @@ describe('AUDIT_CHAIN_BROKEN : vérification quotidienne de la chaîne d’audit
     });
   });
 
-  describe('verificationWindowStart : début de la fenêtre, du créneau planifié (AV-470)', () => {
+  describe('verificationWindowStart : début de la fenêtre, du créneau planifié (AV-420)', () => {
     const now = () => new Date(RUN_AT());
     const dayStart = (iso: string) => businessDayStartUtc(businessDayOf(new Date(iso)));
     const oneDayBefore = (date: Date) => new Date(date.getTime() - 86_400_000);

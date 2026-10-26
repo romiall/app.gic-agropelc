@@ -1,5 +1,5 @@
 /**
- * P9-08 : alerte `HIGH_LOSS` du seuil absolu (D13 §7.1, AV-406, AV-453) — `HighLossDetected` publié à la
+ * P9-08 : alerte `HIGH_LOSS` du seuil absolu (D13 §7.1, AV-356, AV-403) — `HighLossDetected` publié à la
  * déclaration d'une perte quand le cumul du jour métier du fait, pour l'emplacement, atteint
  * `inventory.high_loss_alert_xaf` ; lecture partagée `dayLossByLocation` (statuts comptés, mortalité
  * exclue). Les déclarations passent par le vrai pipeline de commande (base partagée : emplacement et

@@ -1,12 +1,12 @@
 /**
- * Tâches du module `analytics` (P9-20, P9-22) : `analytics.export.run` (calcul d'un export, ADR-077 §3) et
- * `analytics.maintenance.purge_daily` (purges, ADR-078 §6), enregistrées au démarrage dans le registre des tâches de
+ * Tâches du module `analytics` (P9-20, P9-22) : `analytics.export.run` (calcul d'un export, ADR-067 §3) et
+ * `analytics.maintenance.purge_daily` (purges, ADR-068 §6), enregistrées au démarrage dans le registre des tâches de
  * la plateforme ; la purge est aussi inscrite à l'ordonnanceur (une fois par jour).
  *
  * - **Export** : la charge est `{ exportId }` ; une charge illisible est consignée et abandonnée (rejouer ne la
  *   réparerait pas). Le gestionnaire ne lève que pour une erreur technique à rejouer (`run-export.ts`).
  * - **Isolation** : l'export est une tâche longue (jusqu'à `analytics.export_max_seconds`) ; il s'exécute dans la
- *   file des tâches du worker, jamais dans le consommateur d'alertes (ADR-078 §3).
+ *   file des tâches du worker, jamais dans le consommateur d'alertes (ADR-068 §3).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { z } from 'zod';

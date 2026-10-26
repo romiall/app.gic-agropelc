@@ -1,6 +1,6 @@
 /**
  * Récurrence de la tâche d'instantanés personnels d'indicateurs (ordonnanceur `platform/jobs/job-scheduler.ts`,
- * P9-18) : toutes les 15 minutes (ADR-076 §5 : la fraîcheur d'un instantané se mesure à son « à jour au »).
+ * P9-18) : toutes les 15 minutes (ADR-066 §5 : la fraîcheur d'un instantané se mesure à son « à jour au »).
  * Constante technique de planification, pas un seuil métier.
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';

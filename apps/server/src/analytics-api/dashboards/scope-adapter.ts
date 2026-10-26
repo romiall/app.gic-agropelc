@@ -1,6 +1,6 @@
 /**
- * De l'étendue exacte au périmètre des fonctions de référence (P9-17 ; ADR-075 §4) : les fonctions de référence des
- * modules prennent un `ReadScope` (sites ET personnes), l'étendue exacte d'un utilisateur (ADR-074 §4) est une union
+ * De l'étendue exacte au périmètre des fonctions de référence (P9-17 ; ADR-065 §4) : les fonctions de référence des
+ * modules prennent un `ReadScope` (sites ET personnes), l'étendue exacte d'un utilisateur (ADR-064 §4) est une union
  * de clauses. L'adaptateur ne traduit que ce qui se dit **exactement** en `ReadScope` ; le reste est `null`, jamais
  * une approximation plus large :
  * - étendue totale ou « tout site / toute zone » : tout (`ALL_SCOPE`) ;

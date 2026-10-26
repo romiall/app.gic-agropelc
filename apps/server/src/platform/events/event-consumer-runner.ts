@@ -116,7 +116,7 @@ export class EventConsumerRunner {
         failed++;
         batchError = errorMessageOf(lastError);
         // `last_error` est réécrit par le premier événement traité ensuite : le saut est consigné
-        // à part (ajout seul), avant d'avancer la position (ADR-071 §12, AV-412). Un rejeu avant la
+        // à part (ajout seul), avant d'avancer la position (ADR-061 §12, AV-362). Un rejeu avant la
         // position ne le double pas (unicité consommateur × position).
         await this.recordFailure(consumerName, event, batchError, maxAttempts);
       }

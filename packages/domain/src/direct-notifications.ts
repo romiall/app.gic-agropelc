@@ -1,5 +1,5 @@
 /**
- * Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-439, AV-480 à AV-482 ; ADR-072 §4 ;
+ * Notifications directes d'événements du catalogue (P9-11 (3/3) ; AV-389, AV-430 à AV-432 ; ADR-062 §4 ;
  * D13 §7). Un événement métier qui n'est pas une alerte — une demande de validation, sa décision, un
  * transfert demandé ou expédié — prévient la personne qui doit agir ou qui attendait la réponse. Sans
  * entrée-sortie : le consommateur de `communication` résout le plan avec le port des destinataires.
@@ -9,7 +9,7 @@
  *   site destinataire), ou le demandeur désigné par l'événement. L'auteur du fait n'est jamais prévenu de
  *   ce qu'il vient de faire ; une demande sans approbateur retombe sur la Direction (comme une alerte).
  * - **Quoi** : un message court, **sans valeur ni résumé de l'objet** — le résumé d'une demande peut
- *   porter une valeur au coût (RC-05, AV-440) et la notification part à des personnes qui n'ont pas
+ *   porter une valeur au coût (RC-05, AV-390) et la notification part à des personnes qui n'ont pas
  *   forcément ce droit ; le libellé du type d'opération suffit, la file de validation donne le détail.
  * - **Charge utile fautive** : un événement d'un type direct dont la charge ne tient pas son contrat lève
  *   une `DirectNotificationPayloadError` — l'échec est consigné et alerté (`CONSUMER_FAILED`), jamais tu.
@@ -77,7 +77,7 @@ export interface DirectNotificationPlan {
   readonly body: string;
   readonly sourceType: DirectNotificationSourceType;
   readonly sourceId: string;
-  /** Nature de la notification : `DIRECT` par défaut, `EXPORT` pour la fin d'un export (P9-20, ADR-077 §7). */
+  /** Nature de la notification : `DIRECT` par défaut, `EXPORT` pour la fin d'un export (P9-20, ADR-067 §7). */
   readonly kind?: 'EXPORT';
 }
 
@@ -202,7 +202,7 @@ const EXPORT_FAILURE_REASONS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Fin d'un export (P9-20 ; ADR-077 §7) : le demandeur est prévenu, quelle que soit l'issue, sans aucune donnée
+ * Fin d'un export (P9-20 ; ADR-067 §7) : le demandeur est prévenu, quelle que soit l'issue, sans aucune donnée
  * de l'export dans le message.
  */
 function exportPlan(aggregateId: string, payload: Payload): DirectNotificationPlan {
@@ -254,7 +254,7 @@ export function planDirectNotification(event: {
 
 /**
  * `communication.direct_notification_disabled_types` : la liste des types dont la notification est
- * désactivée (AV-481). Une valeur qui n'est pas une liste de textes désactive rien (tout reste actif).
+ * désactivée (AV-431). Une valeur qui n'est pas une liste de textes désactive rien (tout reste actif).
  */
 export function disabledDirectNotificationTypes(
   value: unknown,

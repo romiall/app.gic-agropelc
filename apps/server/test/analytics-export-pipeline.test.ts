@@ -1,5 +1,5 @@
 /**
- * P9-20 et P9-22 — exports audités (ADR-077 §3 à §8 ; BR-ANA-008 ; AV-433, AV-434, AV-497 ; AT-046) : la commande
+ * P9-20 et P9-22 — exports audités (ADR-067 §3 à §8 ; BR-ANA-008 ; AV-383, AV-384, AV-447 ; AT-046) : la commande
  * `analytics.export.request` par le vrai pipeline, la tâche de calcul `runExport` sur un stockage local temporaire
  * (CSV et XLSX relus, droit retiré entre la demande et le calcul : `FAILED` sans levée, rejeu sans fichier partiel,
  * tâche déjà terminée sans second effet), puis la purge quotidienne. Acteurs à rôle d'essai sur la base partagée.

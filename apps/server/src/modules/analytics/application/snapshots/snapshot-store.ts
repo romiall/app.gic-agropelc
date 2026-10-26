@@ -1,5 +1,5 @@
 /**
- * Instantanés personnels d'indicateurs (P9-18 ; ADR-076 §5 à §7, dictionnaire `analytics.kpi_snapshots`) : une ligne
+ * Instantanés personnels d'indicateurs (P9-18 ; ADR-066 §5 à §7, dictionnaire `analytics.kpi_snapshots`) : une ligne
  * par `(utilisateur, tableau, période)`, **écrasée** à chaque passe, avec l'instant du calcul (« à jour au »). Le
  * module `analytics` est le seul à écrire `analytics_kpi_snapshots` ; la tâche (`analytics-api/jobs/`) calcule le
  * contenu avec les mêmes fonctions que les tableaux, sous l'étendue exacte de l'utilisateur.

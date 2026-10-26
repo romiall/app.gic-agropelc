@@ -1,5 +1,5 @@
 /**
- * P9-05 : adaptateur du résolveur de destinataires (ADR-072 §1, §2 ; BR-NOT-001, BR-NOT-008). Les
+ * P9-05 : adaptateur du résolveur de destinataires (ADR-062 §1, §2 ; BR-NOT-001, BR-NOT-008). Les
  * affectations sont jugées comme `evaluateAccess` : `GLOBAL` couvre tout, `SITE` le site, `ZONE` la zone et
  * ses descendantes, `TEAM` l'équipe dont un propriétaire est membre ; un utilisateur inactif, une
  * affectation révoquée ou échue n'est jamais renvoyé. La base est partagée : chaque test crée son

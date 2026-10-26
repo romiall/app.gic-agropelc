@@ -200,7 +200,7 @@ export async function decideApprovalRequest(
     .where('id', '=', requestId)
     .execute();
   await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
-  // P9-11 (3/3, AV-480) : la décision prévient le demandeur (accordée ou refusée, avec le motif).
+  // P9-11 (3/3, AV-430) : la décision prévient le demandeur (accordée ou refusée, avec le motif).
   await publishApprovalDecided(uow, {
     requestId: fromBin(row.id),
     operationType: row.operation_type,

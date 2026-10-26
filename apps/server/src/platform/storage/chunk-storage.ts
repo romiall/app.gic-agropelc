@@ -19,7 +19,7 @@ export interface ChunkStorage {
   readAll(key: string): Promise<Buffer>;
   /**
    * Supprime le fichier de `key` ; sans effet s'il n'existe pas (rejeu d'une tâche, purge). Ajout de P9-20
-   * (exports, ADR-077 §5).
+   * (exports, ADR-067 §5).
    */
   delete(key: string): Promise<void>;
   /** Lit le fichier de `key` par morceaux d'au plus `chunkSize` octets, sans le charger en entier (P9-20). */

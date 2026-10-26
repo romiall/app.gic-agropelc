@@ -1,5 +1,5 @@
 /**
- * Commandes de notification et d'abonnement Web Push (P9-05 ; D13 §4, UC-NOT-04 et 07 ; ADR-072 §4, §5) :
+ * Commandes de notification et d'abonnement Web Push (P9-05 ; D13 §4, UC-NOT-04 et 07 ; ADR-062 §4, §5) :
  * `communication.notification.read` (hors ligne possible), `communication.push.subscribe` et
  * `communication.push.unsubscribe`.
  *

@@ -1,13 +1,13 @@
 /**
- * Consommateur `communication.alerts` (P9-04 ; ADR-070 §2, ADR-071 ; D13 §11 ; SM-ALERT) : transforme les
+ * Consommateur `communication.alerts` (P9-04 ; ADR-060 §2, ADR-061 ; D13 §11 ; SM-ALERT) : transforme les
  * événements de déclenchement publiés par les modules propriétaires en alertes dédoublonnées, et résout
  * les alertes d'état quand leur condition disparaît.
  *
  * - **Au moins une fois** : seuls les événements du catalogue des déclencheurs sont marqués
  *   (`platform_event_consumer_marks`, première instruction) ; un événement rejoué ne change plus rien.
  * - **Règle** : une règle absente ou désactivée n'empêche pas l'événement d'être publié, elle empêche
- *   l'alerte (ADR-071 §8). Une résolution, elle, s'applique toujours (condition disparue).
- * - **Marqueur de passe** : n'est traité que complet et par identité de passe (ADR-071 §3).
+ *   l'alerte (ADR-061 §8). Une résolution, elle, s'applique toujours (condition disparue).
+ * - **Marqueur de passe** : n'est traité que complet et par identité de passe (ADR-061 §3).
  * - Aucune lecture des tables d'un autre module : tout ce qu'il faut est dans l'événement.
  */
 import { Logger } from '@nestjs/common';

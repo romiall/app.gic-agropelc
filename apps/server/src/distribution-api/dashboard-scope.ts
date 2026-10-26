@@ -1,5 +1,5 @@
 /**
- * Périmètre d'un tableau de distribution (P9-17 ; ADR-076 §3, extrait du contrôleur de P5-20 sans changement de
+ * Périmètre d'un tableau de distribution (P9-17 ; ADR-066 §3, extrait du contrôleur de P5-20 sans changement de
  * comportement) : les points de vente que la permission `analytics.dashboard.distribution` atteint pour un
  * utilisateur, leurs cibles de lecture (emplacements, comptes de trésorerie, sites) et les droits annexes par
  * site (valeurs, détail de caisse, receveurs, auteurs d'un appareil — AV-205, AV-206).

@@ -1,7 +1,7 @@
 -- Module `analytics` (P9-13) : vues sauvegardées, exports audités, instantanés d'indicateurs personnels et
 -- journal des requêtes de l'explorateur.
--- Source : docs/03-data/dictionnaire/12-analytics.md ; D11 ; BR-ANA-004 à 009 ; ADR-074, ADR-076, ADR-077,
--- ADR-078 ; AV-421 à AV-438.
+-- Source : docs/03-data/dictionnaire/12-analytics.md ; D11 ; BR-ANA-004 à 009 ; ADR-064, ADR-066, ADR-067,
+-- ADR-068 ; AV-371 à AV-388.
 --
 -- Principes portés par le schéma :
 -- - le module `analytics` lit les autres modules par des vues (migrations suivantes) et n'écrit que ces
@@ -14,7 +14,7 @@
 -- migrate:up transaction:false
 
 -- Vues sauvegardées (BR-ANA-007) : un partage ne donne aucun droit supplémentaire, le lecteur exécute la
--- définition avec ses propres droits ; un champ disparu du catalogue rend la vue obsolète (ADR-077 §2).
+-- définition avec ses propres droits ; un champ disparu du catalogue rend la vue obsolète (ADR-067 §2).
 CREATE TABLE analytics_saved_views (
   id                   BINARY(16)    NOT NULL,
   owner_user_id        BINARY(16)    NOT NULL,
@@ -51,7 +51,7 @@ BEGIN
   END IF;
 END;
 
--- Exports (BR-ANA-008, ADR-077) : file de tâches ; la définition est celle qui a été validée à la demande,
+-- Exports (BR-ANA-008, ADR-067) : file de tâches ; la définition est celle qui a été validée à la demande,
 -- le catalogue est figé par sa version. La ligne n'est jamais supprimée.
 CREATE TABLE analytics_export_jobs (
   id               BINARY(16)    NOT NULL,
@@ -109,7 +109,7 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : suppression interdite (trace d''audit, BR-ANA-008).';
 END;
 
--- Instantanés d'indicateurs personnels (ADR-076 §5) : une ligne par utilisateur, tableau et période ; le
+-- Instantanés d'indicateurs personnels (ADR-066 §5) : une ligne par utilisateur, tableau et période ; le
 -- périmètre est celui, exact, de l'utilisateur à l'instant du calcul. Écrasé à chaque calcul.
 CREATE TABLE analytics_kpi_snapshots (
   user_id      BINARY(16)    NOT NULL,
@@ -125,8 +125,8 @@ CREATE TABLE analytics_kpi_snapshots (
   CONSTRAINT fk_analytics_kpi_snapshots_user FOREIGN KEY (user_id) REFERENCES identity_users (id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 
--- Journal technique des requêtes de l'explorateur (ADR-074 §10) : un refus de droit ou de limite y figure
--- aussi (RC-09). Ajout seul ; purgé après 90 jours (AV-437).
+-- Journal technique des requêtes de l'explorateur (ADR-064 §10) : un refus de droit ou de limite y figure
+-- aussi (RC-09). Ajout seul ; purgé après 90 jours (AV-387).
 CREATE TABLE analytics_query_log (
   id           BINARY(16)    NOT NULL,
   user_id      BINARY(16)    NOT NULL,

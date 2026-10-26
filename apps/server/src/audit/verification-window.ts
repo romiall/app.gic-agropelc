@@ -1,5 +1,5 @@
 /**
- * Fenêtre de vérification de la chaîne d'audit (P9-10, AV-470) : où elle commence, en date puis en numéro de ligne.
+ * Fenêtre de vérification de la chaîne d'audit (P9-10, AV-420) : où elle commence, en date puis en numéro de ligne.
  *
  * - **Date** : le début du jour métier qui précède celui du **créneau planifié** de la tâche, non celui de
  *   l'instant d'exécution. Après un arrêt du worker, l'ordonnanceur ne dépose qu'une tâche (les créneaux

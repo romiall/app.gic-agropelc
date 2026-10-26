@@ -1,5 +1,5 @@
 /**
- * `analytics.kpi_snapshots.refresh` (P9-18 ; ADR-076 §5 à §7, AT-054) : toutes les 15 minutes, recalcule
+ * `analytics.kpi_snapshots.refresh` (P9-18 ; ADR-066 §5 à §7, AT-054) : toutes les 15 minutes, recalcule
  * l'instantané personnel d'indicateurs des utilisateurs **actifs** — un compte actif dont une session ouverte sur
  * un appareil en service a servi depuis `analytics.snapshot_active_days` jours (7) — pour chaque tableau de rôle
  * dont il détient la permission et pour chaque période (`TODAY`, `WEEK`, `MONTH`).

@@ -442,7 +442,7 @@ function buildHandlers(idGenerator: IdGenerator) {
           resolution: 'crm.customer.merge (BR-CRM-007)',
         },
       });
-      // Alerte `DUPLICATE_SUSPECTED` du compte client (P9-10, AV-469) : après le conflit, jamais un rejet.
+      // Alerte `DUPLICATE_SUSPECTED` du compte client (P9-10, AV-419) : après le conflit, jamais un rejet.
       await publishCustomerDuplicateSuspected(uow, idGenerator, {
         customerId,
         displayName: p.displayName,
@@ -958,7 +958,7 @@ function buildHandlers(idGenerator: IdGenerator) {
       resolvedAt: at,
       refs: [keptId],
     });
-    // Fin de l'état de doublon en attente (P9-10, AV-469) : le compte absorbé qui portait un
+    // Fin de l'état de doublon en attente (P9-10, AV-419) : le compte absorbé qui portait un
     // `duplicate_of_id` disparaît, et le compte conservé n'est plus le doublon de l'absorbé. Les autres
     // doublons repointés vers le compte conservé gardent leur alerte (leur état est inchangé).
     const resolvedCustomers: string[] = [];

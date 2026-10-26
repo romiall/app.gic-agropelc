@@ -1,5 +1,5 @@
 /**
- * P9-08 : passes planifiées de détection d'`inventory` (ADR-071 §3) — filet horaire des seuils de stock
+ * P9-08 : passes planifiées de détection d'`inventory` (ADR-061 §3) — filet horaire des seuils de stock
  * (`STOCK_LOW`, `STOCK_OUT`, `POS_REPLENISH`), transferts expédiés non reçus, lots bientôt périmés. Chaque
  * cas tourne dans une transaction annulée (événements immuables, base d'essai partagée) ; le consommateur
  * d'alertes est appelé dans la même transaction pour vérifier la levée et la résolution par marqueur.
@@ -662,7 +662,7 @@ async function dispatchedTransfer(
   return id;
 }
 
-describe('tâche inventory.alerts.transfer_not_received_check (P9-08, AV-458)', () => {
+describe('tâche inventory.alerts.transfer_not_received_check (P9-08, AV-408)', () => {
   it('signale le transfert standard expédié au-delà du délai, avec ses destinataires ; marqueur', () =>
     rolledBack(async (uow) => {
       const { admin, site, otherSite, store, otherStore } = await world(uow);
@@ -847,7 +847,7 @@ async function lot(
   return id;
 }
 
-describe('tâche inventory.alerts.lot_expiring_daily (P9-08, AV-454)', () => {
+describe('tâche inventory.alerts.lot_expiring_daily (P9-08, AV-404)', () => {
   it('lots périmant dans l’horizon ou déjà périmés, avec du stock physique ; un événement par lot et site', () =>
     rolledBack(async (uow) => {
       const { admin, site, otherSite, store, otherStore } = await world(uow);

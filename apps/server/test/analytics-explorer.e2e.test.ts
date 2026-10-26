@@ -3,7 +3,7 @@
  * (NestJS + Fastify, `app.inject()`), rôles réels du seed (Direction, Finance, Responsable commercial, Responsable
  * de production, Vendeur) et rôles d'essai à portée de site.
  *
- * Démontre (BR-ANA-004, 006, 007, 009, ADR-074, ADR-078 ; AT-046, lecture) : le droit d'ouvrir l'outil et celui
+ * Démontre (BR-ANA-004, 006, 007, 009, ADR-064, ADR-068 ; AT-046, lecture) : le droit d'ouvrir l'outil et celui
  * de lire le jeu sont distincts ; chaque ligne rendue est dans l'étendue exacte du lecteur (site, équipe) ; une
  * mesure au coût sans `inventory.valuation.read` est refusée et le refus est audité ; la définition est validée
  * par le catalogue (400) ; les limites sont des erreurs (422 lignes, 429 concurrence), jamais une troncature ;

@@ -7,7 +7,7 @@
  * l'écriture technique qui intéresse cette tâche, pas l'heure métier de l'événement, qui peut être
  * rétroactive de plusieurs jours, AV-078).
  *
- * - **Couverture** (AV-470) : exécutée une fois par jour à 03:00 (`AuditRecurringJobs`), la fenêtre
+ * - **Couverture** (AV-420) : exécutée une fois par jour à 03:00 (`AuditRecurringJobs`), la fenêtre
  *   commence au début du jour métier **précédent le créneau planifié** (`scheduledFor`) : toute entrée est
  *   vérifiée par au moins une exécution (une entrée écrite avant 03:00 l'est dans la même journée, une entrée
  *   écrite après l'est le lendemain), alors qu'une fenêtre « du jour » laisserait sans contrôle tout ce qui est
@@ -23,7 +23,7 @@
  *   vérification est consignée ; un plafond de lignes ou un point de reprise relèvent de P9-22.
  * - **Rupture** (P9-10) : la tâche ne lève plus. Une exception ferait annuler par le point de sauvegarde du
  *   `JobRunner` tout ce que le gestionnaire a écrit — dont l'événement — puis reprendrait la tâche sans fin
- *   (ADR-071 §3) ; elle publie `AuditChainBroken` puis se termine en succès, et consigne l'erreur au journal.
+ *   (ADR-061 §3) ; elle publie `AuditChainBroken` puis se termine en succès, et consigne l'erreur au journal.
  *   Sans rupture, rien n'est publié : l'alerte est un événement à résolution manuelle (`resolvedBy` vide),
  *   un contrôle réussi ultérieur ne prouvant pas la réparation d'une ligne immuable.
  * - **Partition et sujet** : aucune partition physique n'existe (ADR-023) ; la « partition » est le mois

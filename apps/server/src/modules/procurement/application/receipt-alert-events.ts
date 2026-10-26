@@ -1,6 +1,6 @@
 /**
  * Détection d'alertes d'achats (P9-09 ; D13 §7.1 `RECEIPT_INCOMPLETE` et `DUPLICATE_SUSPECTED` côté
- * réception ; BR-APP-015, BR-APP-012 ; ADR-071 §2, §3 ; AV-410, AV-464, AV-465).
+ * réception ; BR-APP-015, BR-APP-012 ; ADR-061 §2, §3 ; AV-360, AV-414, AV-415).
  *
  * - **`RECEIPT_INCOMPLETE`** : un bon de commande (BC) avec un reliquat, dont la date prévue est dépassée
  *   de plus de `procurement.receipt_incomplete_alert_days` jours **ou** dont une réception comptée porte une
@@ -52,7 +52,7 @@ export interface ProcurementAlertDeps {
   readonly clock?: Clock | undefined;
 }
 
-/** Instant de détection : horloge de l'appelant, à défaut celle du serveur (AV-457). */
+/** Instant de détection : horloge de l'appelant, à défaut celle du serveur (AV-407). */
 function detectionInstant(deps: { readonly clock?: Clock | undefined }): Date {
   return deps.clock?.now() ?? new Date();
 }

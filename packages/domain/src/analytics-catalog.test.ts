@@ -60,7 +60,7 @@ describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', 
     }
   });
 
-  it('valeurs au coût : coût, marge, valeur du stock, perte, achat, coût sont protégés (AV-422)', () => {
+  it('valeurs au coût : coût, marge, valeur du stock, perte, achat, coût sont protégés (AV-372)', () => {
     const protectedMeasures = ANALYTICS_DATASETS.flatMap((d) =>
       d.measures.filter((m) => m.protected === true).map((m) => `${d.code}.${m.name}`),
     );
@@ -76,7 +76,7 @@ describe('catalogue de la couche sémantique (D11, dictionnaire 12-analytics)', 
     ]);
   });
 
-  it('f_sales_line : deux dates, pas de dimension « lot » (grain ligne × événement, AV-424)', () => {
+  it('f_sales_line : deux dates, pas de dimension « lot » (grain ligne × événement, AV-374)', () => {
     const sales = datasetOf('f_sales_line')!;
     const names = sales.dimensions.map((d) => d.name);
     expect(names).toContain('business_day');
@@ -235,7 +235,7 @@ describe('validateExploration (BR-ANA-006, D11 §8)', () => {
     ).toMatchObject({ ok: false, code: 'ANALYTICS_DEFINITION_INVALID', field: 'period' });
   });
 
-  it('deux mesures de dates différentes : ANALYTICS_MIXED_PERIOD_BASIS (ADR-074 §3)', () => {
+  it('deux mesures de dates différentes : ANALYTICS_MIXED_PERIOD_BASIS (ADR-064 §3)', () => {
     expect(
       validateExploration(weeklySales({ measures: ['revenue', 'net_by_sale_date'] }), CONTEXT),
     ).toMatchObject({ ok: false, code: 'ANALYTICS_MIXED_PERIOD_BASIS' });
@@ -368,7 +368,7 @@ describe('validateExploration (BR-ANA-006, D11 §8)', () => {
   });
 });
 
-describe('document source d’une ligne (P9-21 ; BR-ANA-010 niveau 2, AV-499)', () => {
+describe('document source d’une ligne (P9-21 ; BR-ANA-010 niveau 2, AV-449)', () => {
   const withSource = ANALYTICS_DATASETS.filter((dataset) => dataset.source !== undefined);
 
   it('onze jeux de lignes détaillées déclarent leur document ; les jeux d’agrégats n’en ont pas', () => {

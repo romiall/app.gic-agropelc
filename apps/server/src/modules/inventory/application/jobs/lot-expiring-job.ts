@@ -1,12 +1,12 @@
 /**
  * `inventory.alerts.lot_expiring_daily` (P9-08 ; D13 §7.1 `LOT_EXPIRING` : « lot périmant sous 15 jours »,
- * planifiée, AV-454) : une passe quotidienne qui publie `LotExpiringDetected` pour chaque lot **ouvert**
+ * planifiée, AV-404) : une passe quotidienne qui publie `LotExpiringDetected` pour chaque lot **ouvert**
  * dont la date de péremption est au plus à `inventory.lot_expiring_days` jours (15 par défaut), déjà
  * dépassée comprise, **et** dont du stock reste sur un emplacement physique, un événement par lot et par
  * site ; le marqueur de fin de passe résout les alertes des lots écoulés, transférés hors du site, clos ou
  * dont la date a été repoussée.
  *
- * - **Périmètre** (AV-454) : tout lot qui porte une date de péremption (réception fournisseur, collecte
+ * - **Périmètre** (AV-404) : tout lot qui porte une date de péremption (réception fournisseur, collecte
  *   d'œufs, abattage), pas seulement le lot fournisseur : l'œuf périme aussi. Un lot biologique de
  *   production n'a pas de date de péremption (aucun signalement).
  * - **Sujet** : le lot **à un site** (un lot peut être réparti sur plusieurs sites, chaque magasinier voit

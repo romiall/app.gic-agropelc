@@ -133,7 +133,7 @@ describe('lectures de communication', () => {
         nextCursor: null,
       }).success;
     expect(list(notification)).toBe(true);
-    // Notification directe : nature et objet source de l'événement (AV-439).
+    // Notification directe : nature et objet source de l'événement (AV-389).
     expect(
       list({
         ...notification,
@@ -176,7 +176,7 @@ describe('lectures de communication', () => {
       }).success;
     expect(noteList({})).toBe(true);
     expect(noteList({ truncated: true })).toBe(true);
-    // L'indicateur de troncature est obligatoire et booléen (AV-479).
+    // L'indicateur de troncature est obligatoire et booléen (AV-429).
     expect(noteList({ truncated: undefined })).toBe(false);
     expect(noteList({ truncated: 'oui' })).toBe(false);
     expect(

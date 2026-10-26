@@ -1,6 +1,6 @@
 /**
- * `sales.commercial.inactivity_check` (P9-07 ; BR-TER-013, D13 §7.1 `INACTIVE_COMMERCIAL`, AV-409,
- * ADR-071 §2, §3) : chaque jour à 08:00, publie un événement `InactiveCommercialDetected` par commercial
+ * `sales.commercial.inactivity_check` (P9-07 ; BR-TER-013, D13 §7.1 `INACTIVE_COMMERCIAL`, AV-359,
+ * ADR-061 §2, §3) : chaque jour à 08:00, publie un événement `InactiveCommercialDetected` par commercial
  * sans **aucune** activité le jour ouvré précédent, puis le marqueur de fin de passe.
  *
  * - **Activité** (BR-TER-013) : une prise de service, une visite enregistrée ou une vente le jour
@@ -10,7 +10,7 @@
  *   examiné non ouvré ne publie **rien, pas même le marqueur** ; les alertes ouvertes persistent
  *   jusqu'au prochain jour ouvré examiné.
  * - **Population** : utilisateurs actifs affectés avant le jour examiné à un rôle de
- *   `sales.inactive_commercial_role_codes` (`COMMERCIAL_TERRAIN` par défaut, AV-444).
+ *   `sales.inactive_commercial_role_codes` (`COMMERCIAL_TERRAIN` par défaut, AV-394).
  * - Lectures seules par les API publiques de `fieldwork` et `crm` ; les ventes sont à `sales`.
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';

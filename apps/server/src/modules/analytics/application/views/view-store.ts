@@ -1,5 +1,5 @@
 /**
- * Vues sauvegardées (P9-19 ; ADR-077 §1 et §2, BR-ANA-007, dictionnaire `analytics.saved_views`) : le module
+ * Vues sauvegardées (P9-19 ; ADR-067 §1 et §2, BR-ANA-007, dictionnaire `analytics.saved_views`) : le module
  * `analytics` est le seul à écrire `analytics_saved_views`. Une vue appartient à son créateur ; le partage se fait
  * par rôles (liste dans `shared_with_roles`) et **ne donne aucun droit** : l'exécutant la lit avec ses propres droits.
  * Une seule vue est la vue par défaut d'un rôle (clé unique de la base).

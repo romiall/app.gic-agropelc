@@ -1,5 +1,5 @@
 /**
- * P9-05 : commandes de notification et d'abonnement Web Push (D13 §4, UC-NOT-04 et 07 ; ADR-072 §4, §5) —
+ * P9-05 : commandes de notification et d'abonnement Web Push (D13 §4, UC-NOT-04 et 07 ; ADR-062 §4, §5) —
  * `communication.notification.read` (hors ligne possible, jamais sur les notifications d'un autre),
  * `communication.push.subscribe` (lié à l'appareil authentifié, point de terminaison repris par la session
  * courante) et `communication.push.unsubscribe`. Passage par le vrai pipeline de commandes.

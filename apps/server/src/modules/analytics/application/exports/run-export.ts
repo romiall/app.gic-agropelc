@@ -1,5 +1,5 @@
 /**
- * Calcul d'un export (P9-20 ; ADR-077 §3 à §8, BR-ANA-008, AT-046) : tâche `analytics.export.run`, exécutée par le
+ * Calcul d'un export (P9-20 ; ADR-067 §3 à §8, BR-ANA-008, AT-046) : tâche `analytics.export.run`, exécutée par le
  * worker dans la transaction de la tâche.
  *
  * - **Ne lève jamais pour un échec métier** : droit retiré, définition devenue obsolète, limite de lignes ou de durée,

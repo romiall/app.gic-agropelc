@@ -1,5 +1,5 @@
 /**
- * Lecteur de projection du jeu hors ligne `kpi` (P9-18 ; ADR-076 §6, ADR-070 §6) : l'instantané personnel
+ * Lecteur de projection du jeu hors ligne `kpi` (P9-18 ; ADR-066 §6, ADR-060 §6) : l'instantané personnel
  * d'indicateurs de l'utilisateur, une ligne par `(tableau, période)`, **en portée `USER` seulement et celle de
  * l'utilisateur qui télécharge**. L'appareil affiche ses indicateurs locaux et, en regard, cet instantané daté
  * (`computed_at`, « à jour au ») ; la tour de contrôle et l'explorateur restent en ligne.

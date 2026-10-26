@@ -1,5 +1,5 @@
 /**
- * Classeur XLSX minimal (P9-20 ; ADR-077 §4) : OOXML à une feuille, sans dépendance. Chaînes en `inlineStr`
+ * Classeur XLSX minimal (P9-20 ; ADR-067 §4) : OOXML à une feuille, sans dépendance. Chaînes en `inlineStr`
  * (aucune table de chaînes partagées), nombres numériques, dates `AAAA-MM-JJ` en numéro de série avec le format
  * `yyyy-mm-dd`, booléens `Oui` / `Non`. Une cellule texte commençant par `=`, `+`, `-` ou `@` est préfixée d'une
  * apostrophe (injection de formule) ; elle reste une chaîne en ligne, jamais une formule.

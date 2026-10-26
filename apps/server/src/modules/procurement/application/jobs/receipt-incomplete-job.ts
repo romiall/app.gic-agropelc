@@ -1,6 +1,6 @@
 /**
  * `procurement.orders.receipt_incomplete_check` (P9-09 ; D13 §7.1 `RECEIPT_INCOMPLETE`, BR-APP-015 ;
- * AV-410, AV-464) : chaque jour à 07:15 (heure de Douala, après le changement de jour métier), publie un
+ * AV-360, AV-414) : chaque jour à 07:15 (heure de Douala, après le changement de jour métier), publie un
  * événement `ReceiptIncompleteDetected` par bon de commande **encore en cours de réception** (`SENT`,
  * `PARTIALLY_RECEIVED`) qui présente un reliquat et dont la date prévue est dépassée de plus de
  * `procurement.receipt_incomplete_alert_days` jours (2) ou qui porte une quantité rejetée, puis le

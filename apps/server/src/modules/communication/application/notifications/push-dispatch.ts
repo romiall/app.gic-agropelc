@@ -1,5 +1,5 @@
 /**
- * Envoi des notifications Web Push en attente (P9-05 ; ADR-072 §5 ; BR-NOT-004 ; D13 §14). La ligne
+ * Envoi des notifications Web Push en attente (P9-05 ; ADR-062 §5 ; BR-NOT-004 ; D13 §14). La ligne
  * `WEB_PUSH` est créée dans la transaction du consommateur ; l'envoi se fait ici, **après sa validation**
  * (tâche `communication.push.dispatch`, chaque minute).
  *
@@ -7,7 +7,7 @@
  *   envoi accepté puis une transaction perdue donnent un doublon toléré. L'état de livraison est tenu par
  *   notification, pas par abonnement : dès qu'un appareil a reçu le push, la ligne est livrée (le
  *   canal in-app reste complet pour les autres) — un état par appareil demanderait une table dédiée,
- *   à décider avec l'adaptateur réel (AV-415).
+ *   à décider avec l'adaptateur réel (AV-365).
  * - Un abonnement qui répond « disparu » (410) est révoqué ; une panne reste une ligne en attente, reprise
  *   au passage suivant, dans la fenêtre technique de reprise.
  * - Une alerte résolue ou écartée avant l'envoi n'est plus poussée (bruit).

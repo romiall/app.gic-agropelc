@@ -1,6 +1,6 @@
 /**
  * `GET /api/v1/analytics/dashboards/{direction, commercial, stock, production, finance}` (P9-17 ; UC-ANA-01,
- * ADR-076 §1 et §2, AT-038, AT-054). Un tableau de rôle et la tour de contrôle (`direction`) : des blocs d'indicateurs
+ * ADR-066 §1 et §2, AT-038, AT-054). Un tableau de rôle et la tour de contrôle (`direction`) : des blocs d'indicateurs
  * calculés par les fonctions de référence des modules propriétaires, dans le périmètre exact de la permission
  * `analytics.dashboard.<code>` (jamais élargi), avec la période précédente des seuls flux, la fraîcheur et un lien
  * d'exploration par indicateur. Une valeur au coût est `null` sans `inventory.valuation.read` (ADR-035) ; un bloc qui

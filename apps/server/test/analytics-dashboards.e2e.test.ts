@@ -1,5 +1,5 @@
 /**
- * P9-16 et P9-17 — tableaux de rôle et tour de contrôle (ADR-075, ADR-076 ; BR-ANA-001, 002, 005, 009 ; AT-038,
+ * P9-16 et P9-17 — tableaux de rôle et tour de contrôle (ADR-065, ADR-066 ; BR-ANA-001, 002, 005, 009 ; AT-038,
  * AT-054) : NestJS + Fastify (`app.inject()`), rôles réels du seed et rôles d'essai. Démontre la structure et l'ordre des
  * blocs (D11 §7.2), le droit par tableau (401, 403 audité), la période (nommée ou plage, 400 sinon), la période
  * précédente des seuls flux, le masquage des valeurs au coût sans `inventory.valuation.read`, l'égalité du tableau et
@@ -275,7 +275,7 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
     });
   });
 
-  describe('traduction exacte de l’étendue en portée de lecture (AV-495)', () => {
+  describe('traduction exacte de l’étendue en portée de lecture (AV-445)', () => {
     const user = freshUuid();
     const other = freshUuid();
     const siteA = freshUuid();

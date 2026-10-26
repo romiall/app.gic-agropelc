@@ -1,6 +1,6 @@
 /**
- * Couche sémantique de l'explorateur (P9 ; D11 §7 et §8 ; BR-ANA-004, 006, 007, 009 ; ADR-074 ; AV-421
- * à AV-425). Le catalogue **déclare** les jeux de faits, leurs dimensions et leurs mesures : l'explorateur
+ * Couche sémantique de l'explorateur (P9 ; D11 §7 et §8 ; BR-ANA-004, 006, 007, 009 ; ADR-064 ; AV-371
+ * à AV-375). Le catalogue **déclare** les jeux de faits, leurs dimensions et leurs mesures : l'explorateur
  * n'accepte que ce qui y figure (aucune requête libre). Le compilateur du serveur ne construit son SQL
  * qu'à partir des noms déclarés ici, sur la vue `analytics_f_*` du jeu.
  *
@@ -14,7 +14,7 @@ import {
 } from './analytics-period.js';
 import { DomainError } from './errors.js';
 
-/** Version du catalogue, figée dans une vue sauvegardée et dans un export (ADR-077). */
+/** Version du catalogue, figée dans une vue sauvegardée et dans un export (ADR-067). */
 export const ANALYTICS_CATALOG_VERSION = 1;
 
 export type DimensionType = 'date' | 'id' | 'code' | 'text' | 'boolean' | 'number';
@@ -37,9 +37,9 @@ export interface MeasureDefinition {
   /** Colonne de la vue sur laquelle porte l'agrégat. */
   readonly column: string;
   readonly unit: MeasureUnit;
-  /** Valeur au coût : exige `inventory.valuation.read` (BR-ANA-004, RC-05 ; AV-422). */
+  /** Valeur au coût : exige `inventory.valuation.read` (BR-ANA-004, RC-05 ; AV-372). */
   readonly protected?: boolean;
-  /** Dimension de date sur laquelle le filtre de période de cette mesure porte (ADR-074 §3). */
+  /** Dimension de date sur laquelle le filtre de période de cette mesure porte (ADR-064 §3). */
   readonly periodDimension?: string;
   /** Faux : ni sommable ni cumulable (comptes distincts, moyennes) — aucun total n'est rendu. */
   readonly additive: boolean;
@@ -321,7 +321,7 @@ const BASE_DATASETS: readonly DatasetDefinition[] = [
     permissions: ['fieldwork.session.read'],
     periodDimension: 'business_day',
     // La session ne porte pas de site mais la zone déclarée au pointage : portée par la zone et par la personne
-    // (règle fermée pour le site, AV-424).
+    // (règle fermée pour le site, AV-374).
     scope: { ZONE: ['zone_id'], PERSON: ['user_id'] },
     dimensions: [
       dim('business_day', 'Jour', 'date'),
@@ -377,7 +377,7 @@ const BASE_DATASETS: readonly DatasetDefinition[] = [
     label: 'Écritures de coût',
     view: 'analytics_f_costs',
     temporality: 'FLOW',
-    // Un coût est une valeur : le jeu entier exige le droit de valorisation (AV-422, AV-424).
+    // Un coût est une valeur : le jeu entier exige le droit de valorisation (AV-372, AV-374).
     permissions: ['inventory.valuation.read'],
     periodDimension: 'business_day',
     // Un coût se lit par le site de son objet (comme les lectures de production) : pas de portée par personne.
@@ -458,7 +458,7 @@ const BASE_DATASETS: readonly DatasetDefinition[] = [
 ];
 
 /**
- * Document source de chaque jeu dont une ligne détaillée est un document (P9-21 ; ADR-075 §6, AV-428) : la dimension
+ * Document source de chaque jeu dont une ligne détaillée est un document (P9-21 ; ADR-065 §6, AV-378) : la dimension
  * est ajoutée au jeu, à côté de ses dimensions déclarées. Les jeux d'agrégats (soldes, production du jour) n'en ont pas.
  */
 const DOCUMENT_SOURCES: Readonly<
@@ -799,7 +799,7 @@ function resolveFilter(
 /**
  * Valide une définition d'exploration contre le catalogue et rend le plan normalisé que le compilateur
  * exécute. N'accepte que des jeux, dimensions, mesures et filtres déclarés (BR-ANA-006). Ne dit rien des
- * droits de lecture du jeu ni de l'étendue des lignes : ce sont des contrôles du serveur (ADR-074 §4).
+ * droits de lecture du jeu ni de l'étendue des lignes : ce sont des contrôles du serveur (ADR-064 §4).
  */
 export function validateExploration(
   definition: ExplorationDefinition,
@@ -869,7 +869,7 @@ export function validateExploration(
     filters.push(resolved.filter);
   }
 
-  // Colonne de période : toutes les mesures doivent partager la même (ADR-074 §3).
+  // Colonne de période : toutes les mesures doivent partager la même (ADR-064 §3).
   const bases = new Set(
     measures.map((m) => m.periodDimension ?? dataset.periodDimension).filter((b) => b !== null),
   );

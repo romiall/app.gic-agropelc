@@ -1,7 +1,7 @@
 /**
  * P9-09 : passes planifiées de `procurement` — `procurement.orders.receipt_incomplete_check`
- * (`RECEIPT_INCOMPLETE`, BR-APP-015, AV-410, AV-464) et `procurement.receipts.attachment_missing_check`
- * (`ATTACHMENT_MISSING` des réceptions, BR-APP-014, AV-407, AV-449, AV-467). Les passes lisent la base
+ * (`RECEIPT_INCOMPLETE`, BR-APP-015, AV-360, AV-414) et `procurement.receipts.attachment_missing_check`
+ * (`ATTACHMENT_MISSING` des réceptions, BR-APP-014, AV-357, AV-399, AV-417). Les passes lisent la base
  * partagée : horloge dans le passé lointain, transactions annulées, bons et réceptions insérés
  * directement ; la liste des bons ouverts est restreinte aux bons du cas (lecture simulée).
  */
@@ -272,7 +272,7 @@ async function eventsOf(
     .reverse();
 }
 
-describe('procurement.orders.receipt_incomplete_check (P9-09, AV-464)', () => {
+describe('procurement.orders.receipt_incomplete_check (P9-09, AV-414)', () => {
   it('inscrite à l’ordonnanceur : photo de réception à 06:15, réception incomplète à 07:15', () => {
     const registry = new RecurringJobRegistry();
     new ProcurementRecurringJobs(registry).onModuleInit();
@@ -476,7 +476,7 @@ describe('procurement.orders.receipt_incomplete_check (P9-09, AV-464)', () => {
     }));
 });
 
-describe('procurement.receipts.attachment_missing_check (P9-09, AV-467)', () => {
+describe('procurement.receipts.attachment_missing_check (P9-09, AV-417)', () => {
   const scoped = (slot: string) => `ATTACHMENT_MISSING:GOODS_RECEIPT:${slot}`;
   const missing = (uow: UnitOfWork, ids: readonly string[]) =>
     eventsOf(uow, 'AttachmentMissingDetected', (p) => ids.includes(String(p['document_id'])));

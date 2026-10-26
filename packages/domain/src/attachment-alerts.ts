@@ -1,6 +1,6 @@
 /**
  * Règles pures de l'alerte `ATTACHMENT_MISSING` (P9-07 pour les dépenses, P9-09 pour les réceptions ;
- * D13 §7.1, AV-407, AV-449, AV-467) : partagées par les tâches de `finance` (justificatifs de dépense) et de
+ * D13 §7.1, AV-357, AV-399, AV-417) : partagées par les tâches de `finance` (justificatifs de dépense) et de
  * `procurement` (photo du bon de livraison), sans entrée-sortie.
  *
  * Le délai se compte depuis la **réception par le serveur** du document (non la date du fait : un document
@@ -9,7 +9,7 @@
 
 /** Repli du délai de la pièce (D13 §7.1 : sept jours après la réception par le serveur). */
 export const DEFAULT_ATTACHMENT_MISSING_ALERT_DAYS = 7;
-/** Repli de l'horizon de revue (AV-449 : 90 jours). */
+/** Repli de l'horizon de revue (AV-399 : 90 jours). */
 export const DEFAULT_ATTACHMENT_MISSING_HORIZON_DAYS = 90;
 export const ATTACHMENT_DAY_MS = 86_400_000;
 /** Plafond d'un délai ou d'un horizon (dix ans) : au-delà, la date de borne ne serait plus valide. */

@@ -1,6 +1,6 @@
 -- Module `analytics` (P9-13) : jeux de faits commerciaux de la couche sémantique — lignes de vente,
 -- lignes de commande, encaissements, activité de prospection, présences.
--- Source : docs/decisions/ADR-074 (§2, §3) ; ADR-075 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-003, BR-ANA-009.
+-- Source : docs/decisions/ADR-064 (§2, §3) ; ADR-065 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-003, BR-ANA-009.
 --
 -- Principes communs à toutes les vues `analytics_f_*` :
 -- - `SQL SECURITY INVOKER`, lecture seule : les droits sont ceux du lecteur sur les tables sources ;
@@ -153,9 +153,9 @@ WHERE p.status = 'CANCELLED' AND p.cancelled_at IS NOT NULL;
 -- La portée par personne est `user_id`, l'acteur de l'événement (acquéreur, auteur de la visite, titulaire à la
 -- conversion), comme `commercialEffort` (BR-CRM-019) : une visite se lit par son auteur comme dans le module `crm`,
 -- mais un compte ou une conversion se lit ici par l'acteur de l'événement, non par le titulaire courant que juge
--- `GET /customers` (AV-491). Une conversion sans titulaire reste comptée (`user_id` vide : visible des seules
+-- `GET /customers` (AV-441). Une conversion sans titulaire reste comptée (`user_id` vide : visible des seules
 -- portées sans restriction de personne) ; un compte fusionné n'est compté ni à la création ni à la conversion,
--- sa conversion étant reprise par le compte conservé (AV-492).
+-- sa conversion étant reprise par le compte conservé (AV-442).
 CREATE ALGORITHM = TEMPTABLE SQL SECURITY INVOKER VIEW analytics_f_prospecting AS
 SELECT
   CAST(CONVERT_TZ(c.acquired_at, '+00:00', '+01:00') AS DATE) AS business_day,

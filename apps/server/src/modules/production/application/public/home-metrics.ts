@@ -2,7 +2,7 @@
  * Chiffres de `production` pour l'accueil par rôle (ADR-030 ; KPI-PRD-01).
  * Lecture seule : lots en cours et effectif. Le périmètre est le site du lot. L'alerte « saisie du jour
  * manquante » (`DAILY_ENTRY_MISSING`) n'est pas calculée ici : elle est levée par la passe
- * `production.lots.daily_entry_check` (P9-09, AV-462, `hasDailyEntryOn`), dont la définition de la
+ * `production.lots.daily_entry_check` (P9-09, AV-412, `hasDailyEntryOn`), dont la définition de la
  * « saisie du jour » (aucune table d'en-tête) ne doit pas être recréée par cet aperçu.
  */
 import type { Kysely, Transaction } from 'kysely';

@@ -1,9 +1,9 @@
 /**
- * Récurrence de la tâche d'audit (ordonnanceur `platform/jobs/job-scheduler.ts`, P9-10, AV-470) :
+ * Récurrence de la tâche d'audit (ordonnanceur `platform/jobs/job-scheduler.ts`, P9-10, AV-420) :
  * `audit.chain.verify_daily` chaque jour à 03:00, heure de Douala — après le registre de stock (02:00) et la
  * trésorerie (02:30), sur le créneau le plus calme de l'écriture ; la fenêtre de deux jours métier de la
  * tâche couvre ainsi toute entrée par au moins une exécution. Constante technique de planification, pas un
- * seuil métier (AV-411).
+ * seuil métier (AV-361).
  */
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import {

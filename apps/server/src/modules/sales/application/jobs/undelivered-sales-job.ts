@@ -1,12 +1,12 @@
 /**
- * `sales.orders.undelivered_check` (P9-07 ; D13 §7.1 `SALE_UNDELIVERED`, AV-132, ADR-071 §3) : publie un
+ * `sales.orders.undelivered_check` (P9-07 ; D13 §7.1 `SALE_UNDELIVERED`, AV-132, ADR-061 §3) : publie un
  * événement `SaleUndeliveredDetected` par vente sur commande confirmée dont une partie reste à livrer
  * depuis plus de `sales.undelivered_alert_days` jours (7 par défaut), puis le marqueur de fin de passe.
  * Une vente livrée en totalité, annulée ou redevenue récente n'est plus revue : l'alerte est résolue par
  * le marqueur.
  *
  * - **Ancienneté** : jours métier écoulés depuis la confirmation de la vente (AV-132) ou, si elle est
- *   postérieure, depuis la date de livraison demandée (AV-451) ; « plus de N jours » : exactement N jours
+ *   postérieure, depuis la date de livraison demandée (AV-401) ; « plus de N jours » : exactement N jours
  *   n'alerte pas.
  * - **Passe** : globale (une identité pour tout le type), complète en une transaction.
  */

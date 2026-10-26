@@ -1,7 +1,7 @@
 /**
  * `sales.losses.sales_share_check` (P9-08 ; D13 §7.1 `HIGH_LOSS` : « valeur des pertes d'un emplacement sur
- * 1 jour ≥ … ou ≥ 5 % des ventes du jour » ; AV-406, AV-455). Part « % du CA » de l'alerte, dans `sales`
- * parce que le CA est sa donnée (ADR-071 §2) ; le seuil absolu est publié par `inventory` à chaque perte.
+ * 1 jour ≥ … ou ≥ 5 % des ventes du jour » ; AV-356, AV-405). Part « % du CA » de l'alerte, dans `sales`
+ * parce que le CA est sa donnée (ADR-061 §2) ; le seuil absolu est publié par `inventory` à chaque perte.
  *
  * - **Jours examinés** : les deux derniers jours métier **clos** (la veille et l'avant-veille) : le CA du
  *   jour n'est connu qu'une fois le jour fini, et les faits saisis hors ligne arrivent après coup. Un
@@ -11,10 +11,10 @@
  *   site) ; une perte d'un emplacement qui ne vend pas (poulailler, magasin d'intrants) se compare ainsi à
  *   l'activité de son site. Sans vente ce jour-là, la part n'est pas définie : seul le seuil absolu joue.
  * - **Pertes** : celles de `inventory.dayLossByLocation` (déclarations constatées, en attente, non
- *   justifiées, en annulation) ; la mortalité n'y entre pas (`HIGH_MORTALITY`, AV-453).
+ *   justifiées, en annulation) ; la mortalité n'y entre pas (`HIGH_MORTALITY`, AV-403).
  * - **Ce que le seuil absolu a déjà signalé n'est pas republié** : une perte qui atteint le seuil absolu du
  *   site a déjà levé l'alerte à la déclaration (`HighLossDetected`, même définition du cumul) ; la republier
- *   le lendemain ferait renaître une alerte que le responsable a résolue ou écartée (AV-404). La part du CA
+ *   le lendemain ferait renaître une alerte que le responsable a résolue ou écartée (AV-354). La part du CA
  *   ne couvre donc que les pertes **sous** le seuil absolu.
  * - **Règles à la date du jour examiné** : le pourcentage et le seuil absolu sont lus à la fin du jour
  *   examiné (comme le fait `inventory` à la déclaration), pas à la date de la tâche.
@@ -57,7 +57,7 @@ export const HIGH_LOSS_ABSOLUTE_KEY = 'inventory.high_loss_alert_xaf';
 
 /**
  * Jours métier clos examinés à chaque passe (la veille et l'avant-veille : faits saisis après coup).
- * Constante de planification, non paramétrable (AV-455) : une perte synchronisée plus tard n'est plus
+ * Constante de planification, non paramétrable (AV-405) : une perte synchronisée plus tard n'est plus
  * examinée.
  */
 export const SALES_SHARE_LOOKBACK_DAYS = 2;

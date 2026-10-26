@@ -1,5 +1,5 @@
 /**
- * Signal d'alerte `PRICE_MISMATCH` (INFO ; P9-07 ; ADR-071 §2, §4 ; D13 §7.1, BR-VEN-029, AV-445) : le
+ * Signal d'alerte `PRICE_MISMATCH` (INFO ; P9-07 ; ADR-061 §2, §4 ; D13 §7.1, BR-VEN-029, AV-395) : le
  * prix figé par l'appareil hors ligne diffère du prix que le serveur aurait résolu à la date du fait. La
  * vente directe et la commande saisies hors ligne sont appliquées telles quelles (jamais un rejet,
  * BR-SYN-007) ; le conflit de synchronisation sert à la file de traitement, l'alerte prévient le

@@ -1,6 +1,6 @@
 /**
- * Escalade des alertes critiques non prises en compte (P9-05 ; BR-NOT-005, SM-ALERT ; ADR-072 §7 ;
- * AV-417). Tâche `communication.alerts.escalate` : une alerte `CRITICAL` encore `OPEN` dont
+ * Escalade des alertes critiques non prises en compte (P9-05 ; BR-NOT-005, SM-ALERT ; ADR-062 §7 ;
+ * AV-367). Tâche `communication.alerts.escalate` : une alerte `CRITICAL` encore `OPEN` dont
  * `critical_since + escalation_hours` est passé reçoit, **une seule fois**, un niveau de destinataires
  * supérieur (rôles `escalation_roles` de la règle, origine `ESCALATION`), des notifications d'escalade
  * jamais regroupées et l'événement `AlertEscalated`.
@@ -8,7 +8,7 @@
  * - L'échéance se mesure depuis `critical_since` (la levée ou le relèvement en `CRITICAL`), pas depuis
  *   la première détection.
  * - Une prise en compte appliquée avant l'escalade l'arrête ; jugée à l'état serveur au moment de son
- *   application, une prise en compte hors ligne arrivée après n'a aucun effet sur elle (AV-417).
+ *   application, une prise en compte hors ligne arrivée après n'a aucun effet sur elle (AV-367).
  * - **L'escalade n'est consommée qu'une fois ses destinataires connus** : sans titulaire actif du niveau
  *   supérieur dans le périmètre, rien n'est posé et l'alerte reste candidate au passage suivant (un
  *   titulaire affecté plus tard est alerté). Une erreur imprévue sur une alerte annule ses écritures

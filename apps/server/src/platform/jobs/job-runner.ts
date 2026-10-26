@@ -48,7 +48,7 @@ export class JobRunner {
    * `jobTypes` restreint la réclamation à ces types (utile à un worker spécialisé, ou pour
    * isoler une démonstration/un test des autres tâches en attente dans la même table
    * partagée) ; omis, n'importe quelle tâche due peut être réclamée. `excludeJobTypes` écarte ces types (la voie
-   * courte du worker exclut les tâches longues, qu'une voie distincte réclame : `job-lanes.ts`, ADR-078 §3).
+   * courte du worker exclut les tâches longues, qu'une voie distincte réclame : `job-lanes.ts`, ADR-068 §3).
    */
   async claimAndProcessOne(
     options: {

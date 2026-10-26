@@ -1,5 +1,5 @@
 /**
- * Limites de l'explorateur (P9-14 ; BR-ANA-006, ADR-074 §8, ADR-078 §1, AV-421) : valeurs de `organization.system_settings`
+ * Limites de l'explorateur (P9-14 ; BR-ANA-006, ADR-064 §8, ADR-068 §1, AV-371) : valeurs de `organization.system_settings`
  * (historisées), lues à l'instant de la requête, avec le défaut de D11 quand une valeur manque ou est mal formée.
  * Aucune limite n'est codée ailleurs.
  */
@@ -17,9 +17,9 @@ export interface ExplorerLimits {
   readonly maxExecutionMs: number;
   /** Période détaillée au plus, en jours (D11 §8 : trois ans). */
   readonly maxDetailDays: number;
-  /** Requêtes simultanées au plus par utilisateur (ADR-078 §1 : 2). */
+  /** Requêtes simultanées au plus par utilisateur (ADR-068 §1 : 2). */
   readonly maxConcurrentPerUser: number;
-  /** Candidats par sorte de l'étendue exacte (AV-423 : 500). */
+  /** Candidats par sorte de l'étendue exacte (AV-373 : 500). */
   readonly scopeMaxCandidates: number;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Compilateur et exécution de l'explorateur (P9-14 (2/4) ; BR-ANA-006, ADR-074 §5, §6 et §8) : chaque jeu, chaque
+ * Compilateur et exécution de l'explorateur (P9-14 (2/4) ; BR-ANA-006, ADR-064 §5, §6 et §8) : chaque jeu, chaque
  * dimension et chaque mesure du catalogue se compile en SQL valide ; les valeurs rendues suivent la source ; chaque
  * opérateur de filtre est rapproché d'un calcul indépendant ; l'étendue des lignes restreint le résultat ; les
  * limites (lignes, durée, concurrence) sont des erreurs, jamais une troncature silencieuse ; aucun texte de

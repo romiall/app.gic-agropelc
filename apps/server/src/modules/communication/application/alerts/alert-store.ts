@@ -1,5 +1,5 @@
 /**
- * Écriture des alertes (P9-04 ; ADR-071 §4, §6, §7, §9, §10 ; SM-ALERT ; INV-NOT-01). Fonctions de la
+ * Écriture des alertes (P9-04 ; ADR-061 §4, §6, §7, §9, §10 ; SM-ALERT ; INV-NOT-01). Fonctions de la
  * couche d'application, appelées dans la transaction du consommateur `communication.alerts` ou d'une
  * commande `communication.alert.*`. La ligne d'alerte est verrouillée (`FOR UPDATE`, rang N10b de
  * l'ADR-038) avant toute lecture qui décide d'une écriture.
@@ -29,7 +29,7 @@ import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-
 import { codeEntityId } from '../../../../platform/sync/code-entity-id.js';
 import { recordAlertChanges } from '../sync-changes.js';
 
-/** Nom du type d'entité de la clé de sujet composite (UUID version 5, ADR-071 §5). */
+/** Nom du type d'entité de la clé de sujet composite (UUID version 5, ADR-061 §5). */
 export const ALERT_SUBJECT_ENTITY = 'ALERT_SUBJECT';
 
 export interface AlertRule {
@@ -153,7 +153,7 @@ async function publishAlertEvent(
 
 /**
  * Levée (ou nouvelle occurrence) d'une alerte. La règle désactivée ou absente n'est pas appelée ici : le
- * consommateur ne lève rien (ADR-071 §8).
+ * consommateur ne lève rien (ADR-061 §8).
  */
 export async function raiseAlert(
   uow: UnitOfWork,
@@ -163,7 +163,7 @@ export async function raiseAlert(
   causationEventId: string | null,
 ): Promise<RaiseOutcome> {
   const definition = alertDefinitionOf(action.alertType);
-  // Gravité : celle de l'événement si le type l'admet, sinon celle de la règle (AV-401).
+  // Gravité : celle de l'événement si le type l'admet, sinon celle de la règle (AV-351).
   const incoming: AlertSeverity = action.declaredSeverity ?? rule.severity;
   const rendered = renderAlertMessage(action.alertType, action.payload, { showProtected: false });
   const causation = causationEventId === null ? null : toBin(causationEventId);
@@ -301,7 +301,7 @@ export async function resolveByCondition(
 }
 
 /**
- * Résolution à la fin d'une passe **complète** (ADR-071 §3) : les alertes d'état ouvertes du type que la
+ * Résolution à la fin d'une passe **complète** (ADR-061 §3) : les alertes d'état ouvertes du type que la
  * passe n'a pas revues (identité de passe, jamais l'horloge).
  */
 export async function resolveByPass(
@@ -490,7 +490,7 @@ export async function markClosedManually(
   });
 }
 
-// --- Escalade (BR-NOT-005 ; ADR-072 §7) ---------------------------------------------------------------------
+// --- Escalade (BR-NOT-005 ; ADR-062 §7) ---------------------------------------------------------------------
 
 export interface EscalationAlertRow {
   readonly id: string;

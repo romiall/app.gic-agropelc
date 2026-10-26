@@ -1,6 +1,6 @@
 /**
- * Définition d'exploration et charges utiles des commandes du module `analytics` (P9 ; D11 §4 ; ADR-074,
- * ADR-077) : requête de l'explorateur, vues sauvegardées, exports. La **forme** est validée ici (un seul
+ * Définition d'exploration et charges utiles des commandes du module `analytics` (P9 ; D11 §4 ; ADR-064,
+ * ADR-067) : requête de l'explorateur, vues sauvegardées, exports. La **forme** est validée ici (un seul
  * schéma pour le serveur et la PWA) ; la **sémantique** (jeux, dimensions, mesures déclarés, droits,
  * limites) l'est par `validateExploration` du domaine, jamais par ce schéma.
  *
@@ -48,7 +48,7 @@ export const explorationPeriodSchema = z
 
 /**
  * Définition d'une exploration (`POST /api/v1/analytics/query`, vue sauvegardée, export). Bornes de
- * structure seulement : nombre de dimensions, de mesures, de filtres et de tris (ADR-074).
+ * structure seulement : nombre de dimensions, de mesures, de filtres et de tris (ADR-064).
  */
 export const explorationDefinitionSchema = z.object({
   dataset: identifier,
@@ -78,7 +78,7 @@ export type AnalyticsQueryRequest = z.infer<typeof analyticsQueryRequestSchema>;
 export const analyticsViewSavePayloadSchema = z.object({
   name: text(120),
   definition: explorationDefinitionSchema,
-  /** Version du catalogue de la définition (ADR-077 §2). */
+  /** Version du catalogue de la définition (ADR-067 §2). */
   catalogVersion: z.number().int().min(1),
 });
 export type AnalyticsViewSavePayload = z.infer<typeof analyticsViewSavePayloadSchema>;

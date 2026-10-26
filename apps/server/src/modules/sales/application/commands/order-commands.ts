@@ -388,7 +388,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
   /**
    * Insère les lignes (prix convenu figé) ; un prix périmé saisi hors ligne ouvre `PRICE_MISMATCH` (conflit
    * de synchronisation, et alerte INFO pour le responsable commercial : un événement par appel, P9-07,
-   * AV-445).
+   * AV-395).
    */
   async function insertOrderLines(
     uow: Uow,

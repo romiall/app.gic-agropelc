@@ -273,7 +273,7 @@ export interface RecordedMove {
 export interface RecordMoveDeps {
   readonly idGenerator: IdGenerator;
   /**
-   * Horloge de détection des alertes de stock (P9-08, AV-457) : à défaut, celle du serveur. Un fait saisi
+   * Horloge de détection des alertes de stock (P9-08, AV-407) : à défaut, celle du serveur. Un fait saisi
    * hors ligne garde sa date dans le registre ; l'alerte qu'il déclenche est détectée à l'application.
    */
   readonly clock?: Clock;
@@ -1123,7 +1123,7 @@ export async function lockPhysicalStockCouples(
  * alors produire **plusieurs** mouvements (un par lot traversé). Sinon, un seul mouvement.
  *
  * P9-08 : une fois le mouvement écrit, les extrémités physiques dont le seuil change d'état et le solde
- * physique devenu négatif publient leurs événements de détection (AV-405), dans la même transaction.
+ * physique devenu négatif publient leurs événements de détection (AV-355), dans la même transaction.
  */
 export async function recordStockMove(
   uow: Transaction<DB>,

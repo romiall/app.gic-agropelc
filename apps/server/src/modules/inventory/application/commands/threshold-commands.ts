@@ -93,7 +93,7 @@ const setHandler =
       stockThresholdChange(envelope.aggregate_id, locationId),
     ]);
 
-    // P9-08 (AV-405) : changer le minimum change l'état du couple sans aucun mouvement.
+    // P9-08 (AV-355) : changer le minimum change l'état du couple sans aucun mouvement.
     await publishThresholdSetTransitions(
       uow,
       { idGenerator },

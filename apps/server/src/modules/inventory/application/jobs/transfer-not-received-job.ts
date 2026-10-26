@@ -1,6 +1,6 @@
 /**
  * `inventory.alerts.transfer_not_received_check` (P9-08 ; D13 §7.1 `TRANSFER_NOT_RECEIVED` : « transfert
- * expédié non reçu depuis plus de 48 h », planifiée ; AV-458) : une passe quotidienne qui publie
+ * expédié non reçu depuis plus de 48 h », planifiée ; AV-408) : une passe quotidienne qui publie
  * `StockTransferNotReceived` pour chaque transfert **standard** expédié (`DISPATCHED`) dont le délai
  * `inventory.transfer_not_received_hours` (site de l'expéditeur, à défaut global, 48 h) est échu, puis le
  * marqueur de fin de passe qui **résout** les alertes des transferts reçus, annulés, refusés ou retournés

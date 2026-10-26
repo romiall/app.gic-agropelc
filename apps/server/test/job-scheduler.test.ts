@@ -347,7 +347,7 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'INTERVAL',
       intervalSeconds: 3600,
     });
-    // P9-10 : vérification quotidienne de la chaîne d'audit, à 03:00 (AV-470).
+    // P9-10 : vérification quotidienne de la chaîne d'audit, à 03:00 (AV-420).
     const audit = new RecurringJobRegistry();
     new AuditRecurringJobs(audit).onModuleInit();
     expect(audit.list()).toEqual(AUDIT_RECURRING_JOBS);
@@ -355,7 +355,7 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'DAILY',
       localTime: '03:00',
     });
-    // P9-10 : alertes de synchronisation, toutes les heures (AV-471 à AV-474).
+    // P9-10 : alertes de synchronisation, toutes les heures (AV-421 à AV-424).
     const sync = new RecurringJobRegistry();
     new SyncRecurringJobs(sync).onModuleInit();
     expect(sync.list()).toEqual(SYNC_RECURRING_JOBS);

@@ -1,5 +1,5 @@
 /**
- * Compilation de l'étendue exacte en clause `WHERE` sur la vue d'un jeu de faits (P9-14 ; ADR-074 §4 et §5).
+ * Compilation de l'étendue exacte en clause `WHERE` sur la vue d'un jeu de faits (P9-14 ; ADR-064 §4 et §5).
  *
  * Les colonnes de portée viennent du catalogue (`DatasetDefinition.scope`), jamais d'un texte de l'utilisateur ;
  * les identifiants sont des paramètres. Une ligne est lisible si **l'une** des colonnes d'un type de portée

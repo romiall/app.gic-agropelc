@@ -1,5 +1,5 @@
 /**
- * Activité commerciale d'un périmètre (P9-15 ; KPI-COM-01 à 05, 11 et 12, ADR-075 §1) : fonctions de référence
+ * Activité commerciale d'un périmètre (P9-15 ; KPI-COM-01 à 05, 11 et 12, ADR-065 §1) : fonctions de référence
  * des tableaux de la tour de contrôle et du tableau commercial. Elles reproduisent, sur les tables du module
  * `crm`, les définitions que la vue `analytics_f_prospecting` expose à l'explorateur (test d'équivalence).
  *
@@ -8,7 +8,7 @@
  * - **Visites** : visites enregistrées (non annulées).
  * - **Contacts collectés** : comptes créés avec un téléphone renseigné.
  * - **Nouveaux clients** : conversions (`converted_at` dans la période), au titulaire à l'instant de la
- *   conversion ; un compte fusionné n'est compté qu'une fois, par le compte conservé (AV-492).
+ *   conversion ; un compte fusionné n'est compté qu'une fois, par le compte conservé (AV-442).
  * - **Taux de conversion (cohorte)** : prospects créés dans la période et convertis à ce jour ÷ prospects créés.
  * - **Taux visite → commande** : visites de résultat `COMMANDE_PRISE` ÷ visites.
  *

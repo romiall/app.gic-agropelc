@@ -1,5 +1,5 @@
 /**
- * Période d'un tableau de bord (P9-16 ; AV-207, ADR-075 §3) : une période nommée (`period`, défaut `TODAY`) ou une
+ * Période d'un tableau de bord (P9-16 ; AV-207, ADR-065 §3) : une période nommée (`period`, défaut `TODAY`) ou une
  * plage `from`/`to` (jours métier inclus, au plus `analytics.dashboard_max_period_days` jours), résolue par le
  * résolveur commun du domaine (`resolveAnalyticsPeriod`) — la même pour le tableau de distribution, la tour de
  * contrôle, les tableaux de rôle et les instantanés. Une période invalide ou trop longue est une erreur 400.

@@ -496,7 +496,7 @@ function buildCountCommands(
       .execute();
 
     await recordCountChange(uow, row);
-    // P9-08 (AV-456) : l'alerte accompagne la demande de validation ; un inventaire sans écart n'en lève pas.
+    // P9-08 (AV-406) : l'alerte accompagne la demande de validation ; un inventaire sans écart n'en lève pas.
     const linesWithVariance = computed.filter((entry) => Math.abs(entry.variance) >= 0.0005).length;
     if (linesWithVariance > 0) {
       await publishInventoryVarianceEvent(uow, deps, {
@@ -594,7 +594,7 @@ function registerInventoryAdjustmentDecisionHandler(
           .where('id', '=', row.id)
           .execute();
         await recordCountChange(uow, row);
-        // P9-08 : ferme l'alerte `INVENTORY_VARIANCE` du même inventaire (AV-456).
+        // P9-08 : ferme l'alerte `INVENTORY_VARIANCE` du même inventaire (AV-406).
         await publishInventoryAdjustedEvent(uow, deps, {
           countId: ctx.subjectId,
           locationId,
@@ -619,7 +619,7 @@ function registerInventoryAdjustmentDecisionHandler(
     });
 }
 
-/** Écart net signé des lignes comptées (quantités d'unités différentes : indicateur grossier, AV-456). */
+/** Écart net signé des lignes comptées (quantités d'unités différentes : indicateur grossier, AV-406). */
 function netVarianceQuantity(computed: readonly { readonly variance: number }[]): number {
   return Math.round(computed.reduce((sum, entry) => sum + entry.variance, 0) * 1000) / 1000;
 }

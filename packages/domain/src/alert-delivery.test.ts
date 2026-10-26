@@ -14,7 +14,7 @@ import {
 const T0 = new Date('2026-10-14T08:00:00.000Z');
 const plus = (base: Date, minutes: number) => new Date(base.getTime() + minutes * 60_000);
 
-describe('canaux par gravité (BR-NOT-004, AV-414)', () => {
+describe('canaux par gravité (BR-NOT-004, AV-364)', () => {
   it('INFO : centre d’alertes seulement ; WARNING : in-app ; CRITICAL : in-app et push', () => {
     expect(notificationChannelsFor('INFO')).toEqual([]);
     expect(notificationChannelsFor('WARNING')).toEqual(['IN_APP']);
@@ -22,7 +22,7 @@ describe('canaux par gravité (BR-NOT-004, AV-414)', () => {
   });
 });
 
-describe('regroupement des push (D13 §14, AV-416)', () => {
+describe('regroupement des push (D13 §14, AV-366)', () => {
   it('le premier push d’un couple part', () => {
     expect(pushGroupDecision({ lastPushAt: null, now: T0, groupMinutes: 15 })).toEqual({
       send: true,
@@ -52,7 +52,7 @@ describe('regroupement des push (D13 §14, AV-416)', () => {
   });
 });
 
-describe('escalade (BR-NOT-005, ADR-072 §7)', () => {
+describe('escalade (BR-NOT-005, ADR-062 §7)', () => {
   const critical = {
     status: 'OPEN' as const,
     severity: 'CRITICAL' as const,
@@ -86,7 +86,7 @@ describe('escalade (BR-NOT-005, ADR-072 §7)', () => {
   });
 });
 
-describe('textes des notifications (ADR-072 §6, §7 ; AV-416)', () => {
+describe('textes des notifications (ADR-062 §6, §7 ; AV-366)', () => {
   it('l’escalade est un autre message que la levée', () => {
     expect(escalationTitle('Perte anormale')).toBe('Escalade : Perte anormale');
   });

@@ -1,6 +1,6 @@
 /**
- * Commandes des notes de direction (P9-11 ; ADR-073 ; D13 UC-NOT-05 et 06, BR-NOT-006, BR-NOT-007 ; AV-419,
- * AV-476 à AV-478) : `communication.note.save_draft`, `.publish` et `.archive` (Direction, `comm.note.publish`,
+ * Commandes des notes de direction (P9-11 ; ADR-063 ; D13 UC-NOT-05 et 06, BR-NOT-006, BR-NOT-007 ; AV-369,
+ * AV-426 à AV-428) : `communication.note.save_draft`, `.publish` et `.archive` (Direction, `comm.note.publish`,
  * **en ligne**) et `communication.note.acknowledge` (tout titulaire de `comm.note.read`, hors ligne possible,
  * AT-048).
  *
@@ -12,7 +12,7 @@
  *   l'instant de publication **du serveur**, références d'audience connues ; puis la note est figée (les
  *   déclencheurs de la base l'imposent aussi). L'audience est **résolue à la publication** : une notification
  *   `IN_APP` par utilisateur touché (l'auteur excepté), idempotente par l'événement `InternalNotePublished` ;
- *   les affectations postérieures voient la note en ligne sans la recevoir (limite assumée, AV-419).
+ *   les affectations postérieures voient la note en ligne sans la recevoir (limite assumée, AV-369).
  * - **Accusé** : idempotent par (note, utilisateur) ; `READ` crée la ligne de lecture, `ACKNOWLEDGE` la complète
  *   une fois. Jugé à la date du **fait** (jamais avant la publication) : une note archivée ou expirée depuis la
  *   lecture hors ligne est accusée à sa date, sans rejet (BR-SYN-007). Un utilisateur que l'audience ne touchait
@@ -336,7 +336,7 @@ function publish(deps: NoteCommandDeps): CommandHandler<NotePublishPayload> {
         deliveredAt: publishedAt,
       })),
     );
-    // Jeu hors ligne `comms` : la note rejoint l'appareil de chaque destinataire (ADR-073 §4).
+    // Jeu hors ligne `comms` : la note rejoint l'appareil de chaque destinataire (ADR-063 §4).
     await recordNoteChanges(uow, noteId, recipients, 'UPSERT');
     return {
       status: 'APPLIED',

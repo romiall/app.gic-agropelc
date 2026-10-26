@@ -1,5 +1,5 @@
 /**
- * `sync.devices.seq_gap_check` (P9-10 ; D13 §7.1 `DEVICE_SEQ_GAP`, BR-SYN-003, AV-473) : toutes les heures,
+ * `sync.devices.seq_gap_check` (P9-10 ; D13 §7.1 `DEVICE_SEQ_GAP`, BR-SYN-003, AV-423) : toutes les heures,
  * publie un événement `DeviceSequenceGapDetected` par appareil actif dont la suite des `device_seq` reçus
  * (`sync_command_inbox`) présente un **trou non comblé depuis plus de `sync.seq_gap_alert_hours` heures** (24)
  * qu'aucune commande en attente sur l'appareil n'explique. Alerte d'événement à résolution manuelle : aucun
@@ -26,7 +26,7 @@
  *   attente : son signal est ailleurs, et sa mémoire de plages est conservée) : la table n'est jamais chargée
  *   en mémoire. Le coût n'est pas borné dans le temps : l'agrégat parcourt l'index entier et la fenêtre relit
  *   tous les numéros de chaque appareil actif incomplet, y compris celui dont le trou est définitif (refus
- *   avant l'écriture de la boîte) ; à mesurer en P9-22 (AV-473).
+ *   avant l'écriture de la boîte) ; à mesurer en P9-22 (AV-423).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';

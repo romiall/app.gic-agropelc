@@ -1,6 +1,6 @@
 /**
- * Signal d'alerte `DUPLICATE_SUSPECTED` pour un compte client créé en doublon (P9-10 ; ADR-071 §2, §4 ;
- * D13 §7.1 ; BR-CRM-006, BR-CRM-007, AV-469). Détecteur **sur fait**, publié dans la transaction de
+ * Signal d'alerte `DUPLICATE_SUSPECTED` pour un compte client créé en doublon (P9-10 ; ADR-061 §2, §4 ;
+ * D13 §7.1 ; BR-CRM-006, BR-CRM-007, AV-419). Détecteur **sur fait**, publié dans la transaction de
  * `crm.customer.create`, à côté du conflit informatif `DUPLICATE_CUSTOMER` : le conflit sert à la file de
  * traitement, l'alerte prévient le responsable commercial. Jamais un rejet (BR-SYN-007).
  *
@@ -10,7 +10,7 @@
  *   paire : deux doublons d'un même compte ont chacun leur alerte, et la clé reste celle d'un sujet simple
  *   (l'identifiant du compte), sans collision avec les encaissements et les réceptions du même type d'alerte.
  * - La charge utile ne porte ni téléphone, ni nom du compte d'origine : elle est conservée en entier avec
- *   l'alerte (ADR-071 §4, RC-07). Le nom du nouveau compte sert de référence lisible (aucun code client).
+ *   l'alerte (ADR-061 §4, RC-07). Le nom du nouveau compte sert de référence lisible (aucun code client).
  * - La **fusion** (`crm.customer.merge`) met fin à l'état de doublon en attente et publie
  *   `CustomerDuplicateResolved` : pour le compte absorbé qui portait un `duplicate_of_id`, et pour le compte
  *   conservé dont le `duplicate_of_id` désignait l'absorbé.

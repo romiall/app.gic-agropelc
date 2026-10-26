@@ -1,5 +1,5 @@
 /**
- * Traitement pur d'un événement de déclenchement et cycle de vie d'une alerte (P9 ; ADR-071 ; SM-ALERT ;
+ * Traitement pur d'un événement de déclenchement et cycle de vie d'une alerte (P9 ; ADR-061 ; SM-ALERT ;
  * BR-NOT-002, BR-NOT-003 ; INV-NOT-01 ; BR-SYN-007).
  *
  * Aucune entrée-sortie : le consommateur `communication.alerts` (serveur) lit l'événement, appelle
@@ -43,7 +43,7 @@ export interface AlertRaiseAction {
   /**
    * Gravité effective si la règle n'est pas lue : celle que l'événement déclare quand le type l'admet,
    * sinon la gravité par défaut du catalogue. Le consommateur préfère `declaredSeverity`, puis la
-   * gravité **de la règle** (un administrateur peut l'avoir modifiée, AV-401).
+   * gravité **de la règle** (un administrateur peut l'avoir modifiée, AV-351).
    */
   readonly severity: AlertSeverity;
   /** Gravité portée par l'événement et admise par le type ; `null` si absente ou non admise. */
@@ -57,13 +57,13 @@ export interface AlertRaiseAction {
   readonly actionScreen: string | null;
   /** Jour métier du fait (absent : celui de l'événement, calculé par l'appelant). */
   readonly businessDay: string | null;
-  /** Identité de la passe de détection qui a produit l'événement (ADR-071 §3) ; `null` hors passe. */
+  /** Identité de la passe de détection qui a produit l'événement (ADR-061 §3) ; `null` hors passe. */
   readonly passId: string | null;
   readonly occurredAt: Date;
   readonly payload: AlertEventPayload;
 }
 
-/** Fin de la condition d'un sujet (événement de résolution, AV-403). */
+/** Fin de la condition d'un sujet (événement de résolution, AV-353). */
 export interface AlertResolveAction {
   readonly kind: 'RESOLVE';
   readonly alertType: AlertType;
@@ -73,7 +73,7 @@ export interface AlertResolveAction {
   readonly occurredAt: Date;
 }
 
-/** Marqueur de fin d'une passe **complète** de détection (ADR-071 §3). */
+/** Marqueur de fin d'une passe **complète** de détection (ADR-061 §3). */
 export interface AlertPassCompletedAction {
   readonly kind: 'PASS_COMPLETED';
   readonly alertType: AlertType;
@@ -160,7 +160,7 @@ function matches(trigger: AlertTrigger, payload: AlertEventPayload): boolean {
  *
  * - **Levée** : le sujet est l'agrégat de l'événement ou le sujet composite du type ; sans sujet
  *   exploitable, aucune alerte n'est levée et un constat `SUBJECT_MISSING` est rendu.
- * - **Gravité** : celle de la charge utile si le type l'admet, sinon la gravité par défaut (AV-401).
+ * - **Gravité** : celle de la charge utile si le type l'admet, sinon la gravité par défaut (AV-351).
  * - **Marqueur de passe** : `alert_type` connu et `pass_id` non vide, sinon `PASS_MARKER_INVALID`.
  */
 export function alertFromEvent(event: AlertEventInput): AlertFromEventResult {
@@ -289,11 +289,11 @@ const isClosed = (status: AlertStatus): boolean => status === 'RESOLVED' || stat
  * Transition demandée sur une alerte (SM-ALERT).
  *
  * - `ACKNOWLEDGE` : `OPEN` → `ACKNOWLEDGED` ; déjà prise en compte ou close : **sans effet**, jamais un
- *   rejet (BR-SYN-007 : un fait accompli hors ligne n'est pas refusé pour un état métier, AV-418).
+ *   rejet (BR-SYN-007 : un fait accompli hors ligne n'est pas refusé pour un état métier, AV-368).
  * - `RESOLVE` : commentaire obligatoire ; réservée aux alertes d'événement ou à résolution manuelle
  *   (une alerte d'état se résout seule quand la condition disparaît, BR-NOT-003).
  * - `DISMISS` : motif obligatoire ; réservé aux alertes d'événement (écarter une alerte d'état dont la
- *   condition dure la ferait renaître à la passe suivante, AV-404).
+ *   condition dure la ferait renaître à la passe suivante, AV-354).
  * - `AUTO_RESOLVE` : le système, sur condition disparue ; sans commentaire.
  */
 export function applyAlertCommand(input: AlertTransitionInput): AlertTransition {
@@ -357,7 +357,7 @@ export interface OpenAlertForPass {
 }
 
 /**
- * Alertes à résoudre quand une passe complète de détection se termine (ADR-071 §3) : ouvertes, du type
+ * Alertes à résoudre quand une passe complète de détection se termine (ADR-061 §3) : ouvertes, du type
  * de la passe, d'état à résolution automatique, que cette passe n'a pas revues (`last_pass_id` différent,
  * jamais l'horloge). Une alerte levée hors passe (`last_pass_id` nul) est donc résolue si la passe,
  * complète, ne l'a pas revue.

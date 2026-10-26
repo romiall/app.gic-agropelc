@@ -1,5 +1,5 @@
 /**
- * Écriture des notes de direction (P9-11 ; ADR-073 ; BR-NOT-006) : verrou de la ligne, brouillon, audience,
+ * Écriture des notes de direction (P9-11 ; ADR-063 ; BR-NOT-006) : verrou de la ligne, brouillon, audience,
  * publication et archivage. Les règles d'immuabilité sont aussi dans la base (déclencheurs de
  * `20261201090100_create_communication.sql`) : ces fonctions ne font que les respecter, dans l'ordre qu'elles
  * imposent (l'audience ne s'écrit que sous un brouillon, la publication est le dernier acte).

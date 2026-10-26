@@ -1,8 +1,8 @@
 /**
- * Événements des exports (P9-20 ; ADR-077 §7, catalogue d'événements) : `AnalyticsExportRequested` (la demande) et
+ * Événements des exports (P9-20 ; ADR-067 §7, catalogue d'événements) : `AnalyticsExportRequested` (la demande) et
  * `AnalyticsExportCompleted` (la fin : `DONE` ou `FAILED`), écrits dans `platform_domain_events` dans la transaction
  * qui les produit. Le consommateur `communication.direct` prévient le demandeur à la fin (`AnalyticsExportCompleted`) ;
- * `analytics` n'importe pas `communication` (ADR-070). Aucune donnée de l'export n'est dans l'événement.
+ * `analytics` n'importe pas `communication` (ADR-060). Aucune donnée de l'export n'est dans l'événement.
  */
 import type { IdGenerator } from '@gic/domain';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';

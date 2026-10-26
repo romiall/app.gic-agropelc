@@ -1,5 +1,5 @@
 /**
- * Purges techniques de l'analyse (P9-22 ; ADR-078 §6, dictionnaire `analytics.*`) : tâche quotidienne
+ * Purges techniques de l'analyse (P9-22 ; ADR-068 §6, dictionnaire `analytics.*`) : tâche quotidienne
  * `analytics.maintenance.purge_daily`.
  *
  * - **Journal des requêtes** (`analytics_query_log`, `PURGE_TECHNIQUE`) : lignes de plus de

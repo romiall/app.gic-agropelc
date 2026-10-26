@@ -4,7 +4,7 @@
  * - `inventory.allocations.expiry_daily` (P5-08) : chaque jour à 00:05, heure de Douala — juste
  *   après la fin du jour métier, validité par défaut d'un quota (AV-160) ;
  * - `inventory.ledger.reconcile_daily` (P2-07) : chaque jour à 02:00, heure de Douala, hors activité ;
- * - détecteurs d'alertes de stock (P9-08, AV-411, AV-452, AV-454, AV-458) : seuils de stock et
+ * - détecteurs d'alertes de stock (P9-08, AV-361, AV-402, AV-404, AV-408) : seuils de stock et
  *   réapprovisionnement toutes les heures (filet des transitions), péremption des lots chaque jour à 06:00
  *   et transferts expédiés non reçus chaque jour à 06:30, heure de Douala (D13 §7.1).
  * Constantes techniques de planification, pas des seuils métier. Les tâches quotidiennes des autres

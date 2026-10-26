@@ -1,13 +1,13 @@
 /**
  * `finance.cash_holdings.high_check` (P9-07 ; D09 §14 : « solde > plafond **ou** aucune remise depuis
- * plus de 3 jours » ; D13 `CASH_HOLDING_HIGH` ; AV-447). Passe de détection à identité (ADR-071 §3) :
+ * plus de 3 jours » ; D13 `CASH_HOLDING_HIGH` ; AV-397). Passe de détection à identité (ADR-061 §3) :
  * publie un événement `CashHoldingHighDetected` par compte de **caisse utilisateur** actif dont le solde
  * dépasse le plafond (`finance.cash_holding_max_xaf`) ou dont l'espèce détenue n'a pas fait l'objet d'une
  * remise depuis plus de `finance.cash_holding_max_days` jours métier, puis le marqueur de fin de passe :
  * l'alerte d'état se résout seule quand le compte n'est plus revu (remise envoyée, solde retombé, compte
  * inactif).
  *
- * - **Référence de la durée** (AV-447, défaut) : la plus récente de l'envoi de la dernière remise non
+ * - **Référence de la durée** (AV-397, défaut) : la plus récente de l'envoi de la dernière remise non
  *   annulée et de l'entrée de l'espèce encore détenue (FIFO : les remises consomment les plus anciennes
  *   entrées, `cashHeldSince`). Un compte vidé puis réalimenté n'est donc pas signalé « sans remise depuis
  *   trois semaines » dès sa première entrée.

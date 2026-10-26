@@ -33,7 +33,7 @@ const line = (overrides: Partial<ReceiptIncompleteLine> = {}): ReceiptIncomplete
   ...overrides,
 });
 
-describe('receiptIncompleteState (BR-APP-015, AV-410, AV-464)', () => {
+describe('receiptIncompleteState (BR-APP-015, AV-360, AV-414)', () => {
   const base = { today: '2026-10-20', thresholdDays: 2 };
 
   it('délai : 2 jours exactement n’alertent pas, le troisième jour oui (strict)', () => {
@@ -136,7 +136,7 @@ describe('receiptIncompleteState (BR-APP-015, AV-410, AV-464)', () => {
   });
 });
 
-describe('demande de validation en attente depuis longtemps (AV-408, AV-466)', () => {
+describe('demande de validation en attente depuis longtemps (AV-358, AV-416)', () => {
   const created = new Date('2026-10-19T08:00:00.000Z');
 
   it('24 h par défaut ; un nombre fini strictement positif est conservé', () => {
@@ -172,7 +172,7 @@ describe('demande de validation en attente depuis longtemps (AV-408, AV-466)', (
   });
 });
 
-describe('pièce manquante (AV-407, AV-449, AV-467)', () => {
+describe('pièce manquante (AV-357, AV-399, AV-417)', () => {
   it('délai : 7 jours par défaut, 0 désactive, une valeur invalide revient au défaut', () => {
     expect(DEFAULT_ATTACHMENT_MISSING_ALERT_DAYS).toBe(7);
     expect(attachmentMissingAlertDaysOrDefault(0)).toBe(0);

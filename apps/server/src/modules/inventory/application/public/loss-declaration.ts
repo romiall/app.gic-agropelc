@@ -307,10 +307,10 @@ export async function declareLoss(
 }
 
 /**
- * `HIGH_LOSS` (P9-08 ; D13 §7.1 « sur perte », AV-406, AV-453) : une perte déclarée porte le cumul du jour
+ * `HIGH_LOSS` (P9-08 ; D13 §7.1 « sur perte », AV-356, AV-403) : une perte déclarée porte le cumul du jour
  * métier **du fait** de l'emplacement au seuil `inventory.high_loss_alert_xaf` (site, à défaut global,
  * 50 000 XAF) ; un événement par déclaration tant que le seuil est atteint (le compteur d'occurrences de
- * l'alerte avance, une alerte résolue renaît à la déclaration suivante, AV-404). Les déclarations en
+ * l'alerte avance, une alerte résolue renaît à la déclaration suivante, AV-354). Les déclarations en
  * attente de validation comptent ; la mortalité, qui a sa propre alerte (`HIGH_MORTALITY`) et se valorise
  * par tête, n'entre pas dans le cumul.
  */

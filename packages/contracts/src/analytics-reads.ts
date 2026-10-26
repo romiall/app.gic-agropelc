@@ -1,5 +1,5 @@
 /**
- * Réponses des lectures d'`analytics` (P9 ; D11 §4, §7.2 ; ADR-074 à ADR-077) :
+ * Réponses des lectures d'`analytics` (P9 ; D11 §4, §7.2 ; ADR-064 à ADR-067) :
  * - `POST /api/v1/analytics/query` (explorateur) et `GET /api/v1/analytics/catalog` ;
  * - `GET /api/v1/analytics/dashboards/{code}` (tour de contrôle et tableaux de rôle ; le tableau de
  *   distribution garde son contrat, `distribution-dashboard.ts`) ;
@@ -7,7 +7,7 @@
  *
  * Tout indicateur est **calculé** (BR-ANA-001). Une mesure masquée (valeur au coût sans
  * `inventory.valuation.read`) vaut `null` dans un tableau et est refusée par l'explorateur
- * (`FORBIDDEN_MEASURE`, ADR-074 §7).
+ * (`FORBIDDEN_MEASURE`, ADR-064 §7).
  */
 import {
   ALERT_SEVERITIES,
@@ -72,7 +72,7 @@ export const analyticsQueryResponseSchema = z.object({
   totals: z.record(z.string(), z.number()).nullable(),
   freshness: analyticsFreshnessSchema,
   /**
-   * Vrai si l'étendue des lignes lisibles a été coupée faute de place (plafond de candidats, AV-423) : le résultat
+   * Vrai si l'étendue des lignes lisibles a été coupée faute de place (plafond de candidats, AV-373) : le résultat
    * est alors plus étroit que le droit du lecteur, jamais plus large.
    */
   scopeTruncated: z.boolean().default(false),
@@ -172,7 +172,7 @@ export const dashboardKpiSchema = z.object({
   unit: z.enum(['xaf', 'quantity', 'count', 'pct', 'ratio', 'text']),
   /** Valeur courante ; `null` si masquée ou non disponible (jamais une valeur trompeuse). */
   value: z.number().finite().nullable(),
-  /** Valeur de la période précédente : pour les flux seulement (ADR-076 §2). */
+  /** Valeur de la période précédente : pour les flux seulement (ADR-066 §2). */
   previousValue: z.number().finite().nullable().optional(),
   variationPct: z.number().finite().nullable().optional(),
   /** Lien d'exploration vers l'explorateur (BR-ANA-010, niveau 1). */
@@ -241,7 +241,7 @@ export const savedViewSchema = z.object({
   ownerUserId: uuid,
   sharedWithRoles: z.array(z.string()),
   isDefaultForRole: z.string().nullable(),
-  /** Exécutabilité pour le lecteur : sans données (ADR-077 §2). */
+  /** Exécutabilité pour le lecteur : sans données (ADR-067 §2). */
   executability: z.enum(['OK', 'OUTDATED', 'UNAVAILABLE']),
   updatedAt: instant,
 });

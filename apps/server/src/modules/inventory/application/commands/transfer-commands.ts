@@ -427,7 +427,7 @@ function buildTransferCommands(
         })
         .execute();
     }
-    // P9-11 (3/3, AV-480) : la demande prévient les expéditeurs du site source.
+    // P9-11 (3/3, AV-430) : la demande prévient les expéditeurs du site source.
     await publishTransferEvent(uow, {
       eventType: 'StockTransferRequested',
       transferId,
@@ -688,7 +688,7 @@ ${refusal}`
     }
 
     await recordTransferChanges(uow, transfer);
-    // P9-11 (3/3, AV-480) : l'expédition prévient les réceptionnaires du site destinataire.
+    // P9-11 (3/3, AV-430) : l'expédition prévient les réceptionnaires du site destinataire.
     await publishTransferEvent(uow, {
       eventType: 'StockTransferDispatched',
       transferId: fromBin(transfer.id),

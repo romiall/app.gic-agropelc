@@ -1,5 +1,5 @@
 /**
- * Indicateurs de ventes sans fonction publique avant P9 (P9-15 ; KPI-COM-06 et 15, ADR-075 §1) :
+ * Indicateurs de ventes sans fonction publique avant P9 (P9-15 ; KPI-COM-06 et 15, ADR-065 §1) :
  * - **Commandes** (KPI-COM-06) : commandes engagées (ni brouillon ni annulées) au jour de leur confirmation
  *   (`confirmed_at`, à défaut `occurred_at`), comme la vue `analytics_f_orders` ;
  * - **Taux de réachat** (KPI-COM-15) : clients ayant au moins deux ventes dans la période ÷ clients ayant au

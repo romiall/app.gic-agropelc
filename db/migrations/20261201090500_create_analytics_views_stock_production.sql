@@ -1,6 +1,6 @@
 -- Module `analytics` (P9-13) : jeux de faits de stock et de production de la couche sémantique — mouvements,
 -- soldes, pertes, production du jour par lot, écritures de coût.
--- Source : docs/decisions/ADR-074 (§2, §7) ; ADR-075 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-004, BR-ANA-009.
+-- Source : docs/decisions/ADR-064 (§2, §7) ; ADR-065 ; D11 §7 et §8 ; BR-ANA-002, BR-ANA-004, BR-ANA-009.
 -- Mêmes principes que `20261201090400` : lecture seule (`SQL SECURITY INVOKER`), `business_day` alias de la
 -- colonne générée de la table source quand elle existe, portée dérivée dans la vue, documents annulés exclus.
 -- migrate:up transaction:false
@@ -38,13 +38,13 @@ LEFT JOIN catalog_reason_codes rc ON rc.id = m.reason_code_id;
 -- Soldes de stock : jeu d'état, lu à l'instant de la lecture. Comme `GET /stock` : le disponible exclut le
 -- réservé, et l'alloué sauf sur un emplacement à garde exclusive (`availableQty`) ; la valeur est le solde
 -- multiplié par le coût unitaire moyen courant arrondi au franc, arrondie au franc (BR-STK-054,
--- `stockValueXaf`) — pas la valeur du registre (AV-487). Le lot de stock est vide pour un produit sans suivi par
+-- `stockValueXaf`) — pas la valeur du registre (AV-437). Le lot de stock est vide pour un produit sans suivi par
 -- lot (clé nulle de la table source). Les emplacements virtuels qui ne sont que la source ou le puits d'un
 -- mouvement (fournisseur, client, perte, production, consommation, ajustement, ouverture) n'ont pas de stock et
 -- n'entrent pas ; restent les emplacements physiques, le transit, les pertes en attente de validation et les
 -- marchandises vendues à livrer, que `location_type` distingue (KPI-STK-02 les annonce à part, AV-256) : le solde et
 -- la valeur sans filtre d'emplacement les additionnent, l'accueil ne somme que les emplacements physiques
--- (filtrer `location_type`, AV-494). Le disponible n'existe que sur un emplacement physique : zéro ailleurs
+-- (filtrer `location_type`, AV-444). Le disponible n'existe que sur un emplacement physique : zéro ailleurs
 -- (de la marchandise en transit, en perte en attente ou déjà vendue n'est pas disponible). Les soldes entièrement
 -- à zéro (que la projection conserve) sont omis, comme `GET /stock`. L'alloué reste nul dans la projection
 -- (ADR-033 §3) : les quotas d'appareil se lisent dans le tableau de distribution.

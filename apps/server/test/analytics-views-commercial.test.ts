@@ -1,5 +1,5 @@
 /**
- * Jeux de faits commerciaux de la couche sémantique (P9-13 ; ADR-074 §2 et §3, ADR-075) : lignes de vente,
+ * Jeux de faits commerciaux de la couche sémantique (P9-13 ; ADR-064 §2 et §3, ADR-065) : lignes de vente,
  * lignes de commande, encaissements, activité de prospection, présences.
  *
  * Chaque vue est rapprochée de **la définition qui existe déjà** — les fonctions publiques que l'accueil et

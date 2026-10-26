@@ -14,7 +14,7 @@
  * Le serveur ne révoque ni ne libère jamais seul : le drapeau n'appelle que la décision d'un
  * responsable (`inventory.allocation.revoke`). Chaque quota nouvellement signalé publie
  * `AllocationRevocationPending` (alerte `ALLOCATION_REVOCATION_PENDING`, P9-08) ; la levée du signal
- * publie `AllocationRevocationCleared`, qui ferme l'alerte (AV-460). Au moins une fois : rejouer un
+ * publie `AllocationRevocationCleared`, qui ferme l'alerte (AV-410). Au moins une fois : rejouer un
  * événement ne change plus rien, donc ne publie plus rien.
  */
 import { sql } from 'kysely';
@@ -165,7 +165,7 @@ async function clearFlags(
         quota.version + 1,
       ),
     ]);
-    // P9-08 : la condition de l'alerte `ALLOCATION_REVOCATION_PENDING` a pris fin (AV-460).
+    // P9-08 : la condition de l'alerte `ALLOCATION_REVOCATION_PENDING` a pris fin (AV-410).
     await publishDetectionEvent(uow, idGenerator, {
       eventType: 'AllocationRevocationCleared',
       producerModule: 'inventory',

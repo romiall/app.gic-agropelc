@@ -1,6 +1,6 @@
 /**
- * P9-19 et P9-20 — lectures HTTP des vues sauvegardées et des exports (ADR-077 §2 et §6 ; BR-ANA-007, BR-ANA-008 ;
- * AV-434 ; AT-046) : NestJS + Fastify (`app.inject()`). Les vues sont listées avec leur exécutabilité, une vue
+ * P9-19 et P9-20 — lectures HTTP des vues sauvegardées et des exports (ADR-067 §2 et §6 ; BR-ANA-007, BR-ANA-008 ;
+ * AV-384 ; AT-046) : NestJS + Fastify (`app.inject()`). Les vues sont listées avec leur exécutabilité, une vue
  * invisible est introuvable ; l'export n'est lu et téléchargé que par son demandeur — un administrateur qui détient
  * `audit.log.read` n'ouvre pas le fichier d'autrui —, le fichier est servi en flux, chaque téléchargement est audité,
  * un export échu est refusé (410).

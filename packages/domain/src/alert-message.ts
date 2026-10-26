@@ -1,5 +1,5 @@
 /**
- * Rendu du titre et du message d'une alerte (P9 ; ADR-071 §11, ADR-072 §4 ; AV-440 ; RC-05, BR-ANA-004).
+ * Rendu du titre et du message d'une alerte (P9 ; ADR-061 §11, ADR-062 §4 ; AV-390 ; RC-05, BR-ANA-004).
  *
  * Le message est **rendu pour un lecteur** : une valeur au coût (champ `protected` du catalogue) n'y
  * figure que si le lecteur détient `inventory.valuation.read` sur le site de l'alerte ; sinon le message

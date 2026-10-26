@@ -1,5 +1,5 @@
 /**
- * Lecture des alertes (P9-06 ; ADR-072 §3 ; BR-NOT-001, BR-NOT-008 ; UC-NOT-03 ; RC-04, RC-05) : la liste,
+ * Lecture des alertes (P9-06 ; ADR-062 §3 ; BR-NOT-001, BR-NOT-008 ; UC-NOT-03 ; RC-04, RC-05) : la liste,
  * le détail et le résumé d'un utilisateur sont **sa boîte** (alertes dont il est destinataire) **plus** sa
  * supervision (alertes de l'étendue de `comm.alert.read`).
  *
@@ -11,7 +11,7 @@
  * - **Pagination** : par curseur sur (dernière détection, identifiant) ; une page peut être plus courte
  *   que `limit` (plafond de balayage) : suivre `nextCursor` jusqu'à `null`.
  * - **Rendu pour le lecteur** : titre et message sont rendus pour lui ; une valeur au coût n'y figure que
- *   s'il détient `inventory.valuation.read` sur le site de l'alerte (RC-05, AV-440). La charge utile
+ *   s'il détient `inventory.valuation.read` sur le site de l'alerte (RC-05, AV-390). La charge utile
  *   exposée ne porte que les champs du message qui ne sont pas protégés.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
@@ -41,7 +41,7 @@ const VALUATION_READ = 'inventory.valuation.read';
 const PAGE = 200;
 /** Lectures successives au plus pour remplir une page filtrée par la portée. */
 const MAX_SCANS = 10;
-/** Lignes au plus balayées par le résumé hors portée `ALL` (ADR-078). */
+/** Lignes au plus balayées par le résumé hors portée `ALL` (ADR-068). */
 const SUMMARY_SCAN_CAP = 2000;
 
 export type AlertVisibility = 'RECIPIENT' | 'SUPERVISION';
@@ -368,7 +368,7 @@ async function visibilityOf(
   row: AlertRow,
 ): Promise<readonly AlertVisibility[]> {
   const visibility: AlertVisibility[] = [];
-  // La boîte vaut droit de lecture pour la durée d'ouverture de l'alerte seulement (ADR-072 §9, §10) :
+  // La boîte vaut droit de lecture pour la durée d'ouverture de l'alerte seulement (ADR-062 §9, §10) :
   // une alerte close ne se lit plus que par la supervision.
   if (row.recipient_user_id !== null && OPEN_STATUSES.includes(row.status as AlertStatus)) {
     visibility.push('RECIPIENT');

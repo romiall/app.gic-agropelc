@@ -1,5 +1,5 @@
 /**
- * P9-07 : réglages de la tâche `finance.expenses.attachment_missing_check` (AV-407, AV-449) — 0 jour
+ * P9-07 : réglages de la tâche `finance.expenses.attachment_missing_check` (AV-357, AV-399) — 0 jour
  * désactive l'alerte (aucun sujet, mais une passe complète : les alertes ouvertes se ferment), une valeur
  * invalide revient aux défauts, l'horizon ne descend jamais sous le délai plus un jour, le seuil de
  * justificatif est lu à l'instant de la dépense. Test unitaire : les réglages, l'API d'`attachments` et la

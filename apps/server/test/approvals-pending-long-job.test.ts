@@ -1,6 +1,6 @@
 /**
  * P9-09 : `approvals.requests.pending_long_check` (D13 §7.1 `APPROVAL_PENDING_LONG`, SM-APPROVAL « délai
- * de 24 h dépassé », AV-408, AV-466) — passe horaire à identité : un événement par demande en attente
+ * de 24 h dépassé », AV-358, AV-416) — passe horaire à identité : un événement par demande en attente
  * depuis au moins 24 h (réception par le serveur), `escalated_at` posé une fois, marqueur en dernier ; une
  * demande verrouillée par une décision en cours est sautée. Les demandes sont insérées directement (la
  * date de réception est maîtrisée), horloge dans le passé lointain, transactions annulées.
@@ -165,7 +165,7 @@ const escalatedAt = (uow: UnitOfWork, id: string) =>
     .executeTakeFirstOrThrow()
     .then((row) => row.escalated_at);
 
-describe('approvals.requests.pending_long_check (P9-09, AV-408, AV-466)', () => {
+describe('approvals.requests.pending_long_check (P9-09, AV-358, AV-416)', () => {
   it('inscrite à l’ordonnanceur, toutes les heures', () => {
     const registry = new RecurringJobRegistry();
     new ApprovalsRecurringJobs(registry).onModuleInit();

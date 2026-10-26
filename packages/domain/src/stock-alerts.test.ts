@@ -38,7 +38,7 @@ describe('stockThresholdStateOf (BR-STK-051)', () => {
   });
 });
 
-describe('stockLevelChanges (AV-405)', () => {
+describe('stockLevelChanges (AV-355)', () => {
   it('sans changement d’état : aucun événement', () => {
     expect(stockLevelChanges('OK', 'OK')).toEqual([]);
     expect(stockLevelChanges('STOCK_LOW', 'STOCK_LOW')).toEqual([]);
@@ -73,7 +73,7 @@ describe('stockLevelChanges (AV-405)', () => {
   });
 });
 
-describe('POS_REPLENISH (AV-452)', () => {
+describe('POS_REPLENISH (AV-402)', () => {
   it('portée par défaut : sous la cible ; valeur invalide : défaut', () => {
     expect(DEFAULT_POS_REPLENISH_SCOPE).toBe('BELOW_TARGET');
     expect(posReplenishScopeOrDefault('BELOW_MINIMUM')).toBe('BELOW_MINIMUM');
@@ -103,7 +103,7 @@ describe('POS_REPLENISH (AV-452)', () => {
   });
 });
 
-describe('TRANSFER_NOT_RECEIVED (AV-458)', () => {
+describe('TRANSFER_NOT_RECEIVED (AV-408)', () => {
   it('repli à 48 h pour un paramètre absent, nul, négatif ou non numérique', () => {
     expect(DEFAULT_TRANSFER_NOT_RECEIVED_HOURS).toBe(48);
     expect(transferNotReceivedHoursOrDefault(24)).toBe(24);
@@ -125,7 +125,7 @@ describe('TRANSFER_NOT_RECEIVED (AV-458)', () => {
   });
 });
 
-describe('LOT_EXPIRING (AV-454)', () => {
+describe('LOT_EXPIRING (AV-404)', () => {
   it('repli à 15 jours ; 0 admis (périmé ou périmant aujourd’hui)', () => {
     expect(DEFAULT_LOT_EXPIRING_DAYS).toBe(15);
     expect(lotExpiringDaysOrDefault(30)).toBe(30);
@@ -150,7 +150,7 @@ describe('LOT_EXPIRING (AV-454)', () => {
   });
 });
 
-describe('HIGH_LOSS (AV-406, AV-453)', () => {
+describe('HIGH_LOSS (AV-356, AV-403)', () => {
   it('seuil absolu : repli à 50 000, 0 admis, borne atteinte comprise', () => {
     expect(DEFAULT_HIGH_LOSS_ALERT_XAF).toBe(50_000);
     expect(highLossAlertXafOrDefault(80_000)).toBe(80_000);
@@ -166,7 +166,7 @@ describe('HIGH_LOSS (AV-406, AV-453)', () => {
   });
 });
 
-describe('HIGH_LOSS : part des ventes du jour (AV-406, AV-455)', () => {
+describe('HIGH_LOSS : part des ventes du jour (AV-356, AV-405)', () => {
   it('pourcentage : repli à 5, strictement positif', () => {
     expect(DEFAULT_HIGH_LOSS_SALES_PCT).toBe(5);
     expect(highLossSalesPctOrDefault(2.5)).toBe(2.5);

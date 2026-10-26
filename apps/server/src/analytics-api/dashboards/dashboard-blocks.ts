@@ -1,6 +1,6 @@
 /**
- * Blocs des tableaux de bord et de la tour de contrôle (P9-17 ; D11 §7.2, ADR-076 §2 et §4). Un bloc **ne lit aucune
- * table** : il appelle les fonctions de référence du registre des indicateurs (ADR-075 §1) dans le périmètre de
+ * Blocs des tableaux de bord et de la tour de contrôle (P9-17 ; D11 §7.2, ADR-066 §2 et §4). Un bloc **ne lit aucune
+ * table** : il appelle les fonctions de référence du registre des indicateurs (ADR-065 §1) dans le périmètre de
  * l'utilisateur, calcule la valeur de la période précédente pour les **flux seulement**, masque les valeurs au
  * coût sans `inventory.valuation.read` (valeur `null`, jamais une erreur) et porte un lien d'exploration vers
  * l'explorateur (BR-ANA-010, niveau 1).

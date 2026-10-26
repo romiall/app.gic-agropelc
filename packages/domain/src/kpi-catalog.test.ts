@@ -15,7 +15,7 @@ const D11_CODES = [
   'KPI-OPS-02',
 ];
 
-describe('registre des indicateurs (BR-ANA-009, ADR-075 §1)', () => {
+describe('registre des indicateurs (BR-ANA-009, ADR-065 §1)', () => {
   it('couvre chaque code de D11 §7.1 et les codes locaux de distribution, sans doublon', () => {
     const codes = KPI_CATALOG.map((k) => k.code);
     expect(new Set(codes).size).toBe(codes.length);
@@ -65,7 +65,7 @@ describe('registre des indicateurs (BR-ANA-009, ADR-075 §1)', () => {
     expect(kpiDefinitionOf('KPI-PRD-02')?.module).toBe('inventory');
   });
 
-  it('la période précédente ne vaut que pour un flux (ADR-076 §2)', () => {
+  it('la période précédente ne vaut que pour un flux (ADR-066 §2)', () => {
     expect(kpiHasPreviousPeriod('KPI-COM-08')).toBe(true);
     expect(kpiHasPreviousPeriod('KPI-FIN-01')).toBe(true);
     expect(kpiHasPreviousPeriod('KPI-STK-02')).toBe(false);

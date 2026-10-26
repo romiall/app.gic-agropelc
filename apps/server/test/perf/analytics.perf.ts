@@ -1,5 +1,5 @@
 /**
- * P9-22 — mesures de charge de l'analyse (ADR-078 §5 ; NFR-12, NFR-13, NFR-15) sur une base jetable chargée par
+ * P9-22 — mesures de charge de l'analyse (ADR-068 §5 ; NFR-12, NFR-13, NFR-15) sur une base jetable chargée par
  * `pnpm --filter @gic/db load:p9`. Lancées à la demande (`pnpm --filter @gic/server test:perf`), hors de la suite par
  * défaut. Chaque mesure est répétée ; le p95 est comparé au seuil de l'ADR :
  *

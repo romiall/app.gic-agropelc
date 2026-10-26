@@ -248,7 +248,7 @@ describe('inventory.threshold.set (P2-04)', () => {
     expect(result.status === 'REJECTED' && result.error.code).toMatch(/^VALIDATION_ERROR/);
   });
 
-  it('P9-08 (AV-405) : premier seuil sur stock vide, minimum relevé puis abaissé, rejeu — un événement par franchissement', async () => {
+  it('P9-08 (AV-355) : premier seuil sur stock vide, minimum relevé puis abaissé, rejeu — un événement par franchissement', async () => {
     const site = await db
       .selectFrom('organization_locations')
       .select('site_id')

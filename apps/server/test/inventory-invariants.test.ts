@@ -559,7 +559,7 @@ describe('invariants du stock (P2-07)', () => {
       ]);
       expect(verification.conservationBreaches).toEqual([{ productId, totalQty: 5 }]);
       // Le job, lui, vérifie toute la base : il voit au moins cette altération, la signale par un
-      // événement `LedgerMismatchDetected` du site (P9-08, AV-459) et se termine en succès. Transaction
+      // événement `LedgerMismatchDetected` du site (P9-08, AV-409) et se termine en succès. Transaction
       // annulée : les événements sont immuables, la base d'essai est partagée.
       const siteA = fromBin(
         (

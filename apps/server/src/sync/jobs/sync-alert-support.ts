@@ -1,5 +1,5 @@
 /**
- * Éléments communs des tâches d'alerte de synchronisation (P9-10 ; AV-471 à AV-474) : lecture des appareils
+ * Éléments communs des tâches d'alerte de synchronisation (P9-10 ; AV-421 à AV-424) : lecture des appareils
  * (libellé, titulaire, site, statut) et des réglages globaux. `identity_devices` est une référence
  * universelle en lecture (graphe des dépendances, note 1), comme dans `device-freshness.ts`.
  */

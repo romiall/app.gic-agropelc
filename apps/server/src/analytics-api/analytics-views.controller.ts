@@ -1,5 +1,5 @@
 /**
- * `GET /api/v1/analytics/views` et `GET /api/v1/analytics/views/{id}` (P9-19 ; UC-ANA-04, BR-ANA-007, ADR-077 §2,
+ * `GET /api/v1/analytics/views` et `GET /api/v1/analytics/views/{id}` (P9-19 ; UC-ANA-04, BR-ANA-007, ADR-067 §2,
  * AT-046). Les vues sauvegardées que le lecteur voit — les siennes et celles partagées avec l'un de ses rôles — avec leur
  * **exécutabilité** pour lui (`OK`, `OUTDATED`, `UNAVAILABLE`), calculée contre le catalogue et ses droits **sans lire
  * de données**. Une vue qu'il ne voit pas est introuvable (existence opaque, refus audité). L'exécution d'une vue est

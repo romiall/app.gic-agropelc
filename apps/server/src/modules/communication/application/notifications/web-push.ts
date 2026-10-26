@@ -1,11 +1,11 @@
 /**
- * Port d'envoi Web Push (P9-05 ; ADR-072 §5 ; D13 §14 ; AV-415). Aucune bibliothèque Web Push ni clé VAPID
+ * Port d'envoi Web Push (P9-05 ; ADR-062 §5 ; D13 §14 ; AV-365). Aucune bibliothèque Web Push ni clé VAPID
  * n'est installée : l'adaptateur par défaut est **désactivé** et le dit (`enabled = false`). Les
  * notifications restent alors `IN_APP`, comme D13 §14 le prévoit « sans clé ou sans abonnement valide » ;
  * jamais une notification n'est marquée « envoyée » sans l'avoir été.
  */
 
-/** Jeton d'injection ; remplacé par un adaptateur réel quand le porteur a tranché AV-415. */
+/** Jeton d'injection ; remplacé par un adaptateur réel quand le porteur a tranché AV-365. */
 export const WEB_PUSH_SENDER = Symbol('WEB_PUSH_SENDER');
 
 export interface PushTarget {

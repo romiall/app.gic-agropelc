@@ -1,6 +1,6 @@
 /**
  * `GET /api/v1/analytics/exports`, `/exports/{id}` et `/exports/{id}/download` (P9-20 ; UC-ANA-05, BR-ANA-008,
- * ADR-077 §6, AV-434, AT-046). L'état et le fichier d'un export sont **réservés au demandeur** : aucun autre rôle ne
+ * ADR-067 §6, AV-384, AT-046). L'état et le fichier d'un export sont **réservés au demandeur** : aucun autre rôle ne
  * télécharge, titulaire de `audit.log.read` compris — l'audit lit la ligne d'export (jeu, filtres, colonnes, lignes),
  * pas le fichier, sans quoi l'ouvrir élargirait le périmètre et les mesures protégées par une voie latérale. L'export
  * d'un autre est introuvable (refus audité). Permission : `analytics.export`, revérifiée à chaque appel.

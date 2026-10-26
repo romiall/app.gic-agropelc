@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ALERT_TYPES, alertDefinitionOf } from './alerts.js';
 import { alertCarriesProtectedValue, renderAlertMessage } from './alert-message.js';
 
-describe('SYNC_STALE : dernière synchronisation et départ du silence (P9-10, AV-472)', () => {
+describe('SYNC_STALE : dernière synchronisation et départ du silence (P9-10, AV-422)', () => {
   const render = (payload: Record<string, unknown>) =>
     renderAlertMessage('SYNC_STALE', payload, { showProtected: false }).message;
 
@@ -42,7 +42,7 @@ describe('SYNC_STALE : dernière synchronisation et départ du silence (P9-10, A
   });
 });
 
-describe('renderAlertMessage (ADR-071 §11, AV-440)', () => {
+describe('renderAlertMessage (ADR-061 §11, AV-390)', () => {
   const payload = {
     location_label: 'PDV Bonabéri',
     business_day: '2026-10-14',

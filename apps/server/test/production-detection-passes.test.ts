@@ -1,7 +1,7 @@
 /**
  * P9-09 : passes planifiées de `production` — `production.lots.daily_entry_check` (`DAILY_ENTRY_MISSING`,
- * D13 §7.1, D07 §14, AV-462) et `production.products.standard_cost_check` (`STANDARD_COST_MISSING`,
- * AV-124, AV-463). Les passes lisent la base partagée : horloge dans le passé lointain (aucun lot ni
+ * D13 §7.1, D07 §14, AV-412) et `production.products.standard_cost_check` (`STANDARD_COST_MISSING`,
+ * AV-124, AV-413). Les passes lisent la base partagée : horloge dans le passé lointain (aucun lot ni
  * collecte d'un autre fichier n'y est daté), transactions annulées, lots et entrées insérés directement.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -377,7 +377,7 @@ async function eventsOf(
 const missingFor = (uow: UnitOfWork, lotIds: readonly string[]) =>
   eventsOf(uow, 'DailyEntryMissing', (payload) => lotIds.includes(String(payload['lot_id'])));
 
-describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
+describe('production.lots.daily_entry_check (P9-09, AV-412)', () => {
   it('inscrite à l’ordonnanceur, chaque jour à 10:00 ; coût standard à 07:45', () => {
     expect(PRODUCTION_RECURRING_JOBS).toContainEqual({
       jobType: DAILY_ENTRY_MISSING_JOB_TYPE,
@@ -648,7 +648,7 @@ describe('production.lots.daily_entry_check (P9-09, AV-462)', () => {
     }));
 });
 
-describe('production.products.standard_cost_check (P9-09, AV-463)', () => {
+describe('production.products.standard_cost_check (P9-09, AV-413)', () => {
   const TODAY = '2019-03-12';
   const costSlot = new Date('2019-03-12T06:45:00.000Z');
   const costClock = new FixedClock(costSlot);
@@ -758,7 +758,7 @@ describe('production.products.standard_cost_check (P9-09, AV-463)', () => {
       await setStandardCost(uow, w.admin, free, 0, new Date('2019-01-01T00:00:00.000Z'));
       await setStandardCost(uow, w.admin, future, 25, new Date('2019-03-13T00:00:00.000Z'));
       // Défini après l'entrée : « aucun coût à la date de l'entrée » ne doit pas rouvrir l'alerte
-      // chaque nuit (AV-463 : on teste l'instant de la passe).
+      // chaque nuit (AV-413 : on teste l'instant de la passe).
       await setStandardCost(uow, w.admin, late, 25, new Date('2019-03-11T12:00:00.000Z'));
       await costRunner(costClock)(uow, { scheduledFor: costSlot.toISOString() });
 

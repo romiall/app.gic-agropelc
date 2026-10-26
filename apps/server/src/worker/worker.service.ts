@@ -10,7 +10,7 @@
  * (job-runner.ts, event-consumer-runner.ts), donc aucun état supplémentaire à purger à
  * l'arrêt.
  *
- * Deux voies (P9-22, ADR-078 §3) : la voie courte (ordonnanceur, consommateurs, tâches courtes) et la voie longue
+ * Deux voies (P9-22, ADR-068 §3) : la voie courte (ordonnanceur, consommateurs, tâches courtes) et la voie longue
  * (`LONG_RUNNING_JOB_TYPES` : calcul d'un export, instantanés), deux boucles concurrentes de `start()` ; un export de
  * 120 s ne retarde ainsi ni une alerte ni une tâche courte. `runOnce()` (tests, passe unique) joue les deux voies.
  *

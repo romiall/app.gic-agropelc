@@ -1,5 +1,5 @@
 /**
- * Registre des indicateurs (P9 ; D11 §7.1 ; BR-ANA-009 ; ADR-075 §1) : un enregistrement par code `KPI-*`
+ * Registre des indicateurs (P9 ; D11 §7.1 ; BR-ANA-009 ; ADR-065 §1) : un enregistrement par code `KPI-*`
  * avec sa **fonction de référence** — celle que le tableau de bord, l'accueil et l'instantané appellent,
  * et que l'explorateur doit reproduire par sa vue (test d'équivalence, AT-054).
  *
@@ -539,7 +539,7 @@ export function kpisToCreate(): readonly KpiDefinition[] {
 }
 
 /**
- * La valeur « de la période précédente » n'a de sens que pour un flux (ADR-076 §2) : un solde, un
+ * La valeur « de la période précédente » n'a de sens que pour un flux (ADR-066 §2) : un solde, un
  * effectif ou une couverture à l'instant ne se comparent pas à un instant passé.
  */
 export function kpiHasPreviousPeriod(code: string): boolean {

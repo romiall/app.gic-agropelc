@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `DUPLICATE_SUSPECTED` du compte client (D13 §7.1, BR-CRM-006, BR-CRM-007, AV-469) —
+ * P9-10 : alerte `DUPLICATE_SUSPECTED` du compte client (D13 §7.1, BR-CRM-006, BR-CRM-007, AV-419) —
  * `CustomerDuplicateSuspected` publié par `crm.customer.create` quand un doublon de téléphone est enregistré
  * hors ligne ; `CustomerDuplicateResolved` publié par `crm.customer.merge` quand le compte n'est plus un
  * doublon en attente. Les commandes passent par le vrai pipeline, avec les rôles réels du seed.
@@ -243,7 +243,7 @@ describe('DUPLICATE_SUSPECTED : compte client en doublon, à la création hors l
       business_day: DAY,
       captured_offline: true,
     });
-    // ADR-071 §4, RC-07 : ni le téléphone, ni le nom du compte d'origine dans la charge utile.
+    // ADR-061 §4, RC-07 : ni le téléphone, ni le nom du compte d'origine dans la charge utile.
     const serialized = JSON.stringify(event!.payload);
     expect(serialized).not.toContain(first.phone);
     expect(serialized).not.toContain('Mokolo');

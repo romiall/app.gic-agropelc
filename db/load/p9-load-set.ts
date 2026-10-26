@@ -1,5 +1,5 @@
 /**
- * Jeu de charge déterministe de P9 (P9-22 ; ADR-078 §5, NFR-12, NFR-13, RISK-13) : un million de lignes de vente (et
+ * Jeu de charge déterministe de P9 (P9-22 ; ADR-068 §5, NFR-12, NFR-13, RISK-13) : un million de lignes de vente (et
  * leurs ventes) sur 366 jours, inséré directement dans `sales_sales` et `sales_sale_lines` à partir des références
  * déjà semées de la base visée (site, emplacement, zone, utilisateur, canal, produits, motif). Hors de la suite par
  * défaut ; lancé à la demande :
@@ -13,7 +13,7 @@
  * générateur est sans effet (les ventes déjà présentes sont écartées).
  *
  * Volume par défaut : 250 000 ventes de 1 à 4 lignes, soit 625 000 lignes ; `ventes = 400000` approche le million
- * de lignes de l'ADR-078. Les « satellites » lus par les tableaux (encaissements, mouvements) ne sont pas générés :
+ * de lignes de l'ADR-068. Les « satellites » lus par les tableaux (encaissements, mouvements) ne sont pas générés :
  * le jeu mesure le chemin le plus lourd, les lignes de vente (`analytics_f_sales_line`).
  */
 import { connectUtc } from '../seeds/connection.js';

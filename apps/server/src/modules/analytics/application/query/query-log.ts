@@ -1,5 +1,5 @@
 /**
- * Journal technique des requêtes de l'explorateur (P9-14 ; ADR-074 §10, RC-09, BR-AUD-009) : une ligne par requête,
+ * Journal technique des requêtes de l'explorateur (P9-14 ; ADR-064 §10, RC-09, BR-AUD-009) : une ligne par requête,
  * y compris un refus de droit ou de limite. Table `analytics_query_log` (ajout seul, purgée après 90 jours).
  * Le journal technique ne remplace pas l'audit d'un refus de droit (`access.denied`), qui reste écrit par la couche
  * de transport.

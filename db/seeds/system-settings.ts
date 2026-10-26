@@ -336,115 +336,115 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'AV-207',
   },
-  // P9-14 (ADR-074 §8, ADR-078 §1 ; AV-421, AV-423) : limites de l'explorateur, lues à chaque requête.
-  { key: 'analytics.query_max_rows', value: 10000, isClientVisible: false, ref: 'AV-421' },
-  { key: 'analytics.query_max_execution_ms', value: 15000, isClientVisible: false, ref: 'AV-421' },
-  { key: 'analytics.query_max_period_days', value: 1096, isClientVisible: false, ref: 'AV-421' },
+  // P9-14 (ADR-064 §8, ADR-068 §1 ; AV-371, AV-373) : limites de l'explorateur, lues à chaque requête.
+  { key: 'analytics.query_max_rows', value: 10000, isClientVisible: false, ref: 'AV-371' },
+  { key: 'analytics.query_max_execution_ms', value: 15000, isClientVisible: false, ref: 'AV-371' },
+  { key: 'analytics.query_max_period_days', value: 1096, isClientVisible: false, ref: 'AV-371' },
   {
     key: 'analytics.query_max_concurrent_per_user',
     value: 2,
     isClientVisible: false,
-    ref: 'AV-421',
+    ref: 'AV-371',
   },
-  { key: 'analytics.scope_max_candidates', value: 500, isClientVisible: false, ref: 'AV-423' },
-  // P9-17 à P9-18 (ADR-076) : plafond du compte des validations en attente d'un tableau, et
+  { key: 'analytics.scope_max_candidates', value: 500, isClientVisible: false, ref: 'AV-373' },
+  // P9-17 à P9-18 (ADR-066) : plafond du compte des validations en attente d'un tableau, et
   // instantanés personnels d'indicateurs (utilisateurs actifs depuis N jours, taille d'un lot par exécution).
   {
     key: 'analytics.pending_approvals_count_cap',
     value: 500,
     isClientVisible: false,
-    ref: 'ADR-076',
+    ref: 'ADR-066',
   },
-  { key: 'analytics.snapshot_active_days', value: 7, isClientVisible: false, ref: 'ADR-076' },
-  { key: 'analytics.snapshot_batch_size', value: 50, isClientVisible: false, ref: 'ADR-076' },
-  // P9-20 à P9-22 (ADR-077 §3, ADR-078 §6 ; AV-433, AV-437) : exports (lignes, durée, validité du fichier, file par
+  { key: 'analytics.snapshot_active_days', value: 7, isClientVisible: false, ref: 'ADR-066' },
+  { key: 'analytics.snapshot_batch_size', value: 50, isClientVisible: false, ref: 'ADR-066' },
+  // P9-20 à P9-22 (ADR-067 §3, ADR-068 §6 ; AV-383, AV-387) : exports (lignes, durée, validité du fichier, file par
   // demandeur) et rétention des données techniques de l'analyse.
-  { key: 'analytics.export_max_rows', value: 100000, isClientVisible: false, ref: 'AV-433' },
-  { key: 'analytics.export_max_seconds', value: 120, isClientVisible: false, ref: 'AV-433' },
-  { key: 'analytics.export_file_hours', value: 24, isClientVisible: false, ref: 'AV-433' },
+  { key: 'analytics.export_max_rows', value: 100000, isClientVisible: false, ref: 'AV-383' },
+  { key: 'analytics.export_max_seconds', value: 120, isClientVisible: false, ref: 'AV-383' },
+  { key: 'analytics.export_file_hours', value: 24, isClientVisible: false, ref: 'AV-383' },
   {
     key: 'analytics.export_max_pending_per_user',
     value: 3,
     isClientVisible: false,
-    ref: 'AV-433',
+    ref: 'AV-383',
   },
   {
     key: 'analytics.export_file_retention_days',
     value: 30,
     isClientVisible: false,
-    ref: 'AV-437',
+    ref: 'AV-387',
   },
-  { key: 'analytics.query_log_retention_days', value: 90, isClientVisible: false, ref: 'AV-437' },
-  // P9-03 (ADR-071, ADR-072, ADR-078 ; AV-400 à AV-442) : seuils, délais et durées des alertes. Un seul
-  // lieu des seuils (AV-400) : lus par le détecteur, dans le module qui porte la donnée.
+  { key: 'analytics.query_log_retention_days', value: 90, isClientVisible: false, ref: 'AV-387' },
+  // P9-03 (ADR-061, ADR-062, ADR-068 ; AV-350 à AV-392) : seuils, délais et durées des alertes. Un seul
+  // lieu des seuils (AV-350) : lus par le détecteur, dans le module qui porte la donnée.
   {
     key: 'communication.push_group_minutes',
     value: 15,
     isClientVisible: false,
-    ref: 'D13 §14, AV-416',
+    ref: 'D13 §14, AV-366',
   },
   {
     key: 'communication.consumer_lag_alert_seconds',
     value: 300,
     isClientVisible: false,
-    ref: 'AV-412, AV-438',
+    ref: 'AV-362, AV-388',
   },
-  // P9-10 (AV-475) : fenêtre glissante des événements sautés qui maintiennent `CONSUMER_FAILED` ouverte.
+  // P9-10 (AV-425) : fenêtre glissante des événements sautés qui maintiennent `CONSUMER_FAILED` ouverte.
   {
     key: 'communication.consumer_failure_window_hours',
     value: 24,
     isClientVisible: false,
-    ref: 'AV-412, AV-475',
+    ref: 'AV-362, AV-425',
   },
-  // P9-11 (3/3, AV-481) : types d'événements dont la notification directe est désactivée (aucun par défaut).
+  // P9-11 (3/3, AV-431) : types d'événements dont la notification directe est désactivée (aucun par défaut).
   {
     key: 'communication.direct_notification_disabled_types',
     value: [],
     isClientVisible: false,
-    ref: 'AV-439, AV-481',
+    ref: 'AV-389, AV-431',
   },
-  { key: 'communication.alert_retention_days', value: 730, isClientVisible: false, ref: 'AV-437' },
+  { key: 'communication.alert_retention_days', value: 730, isClientVisible: false, ref: 'AV-387' },
   {
     key: 'communication.notification_retention_days',
     value: 90,
     isClientVisible: false,
-    ref: 'AV-437',
+    ref: 'AV-387',
   },
   {
     key: 'approvals.pending_long_hours',
     value: 24,
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-408',
+    ref: 'D13 §7.1, AV-358',
   },
   {
     key: 'attachments.missing_alert_days',
     value: 7,
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-407',
+    ref: 'D13 §7.1, AV-357',
   },
   {
     key: 'attachments.missing_alert_horizon_days',
     value: 90,
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-449',
+    ref: 'D13 §7.1, AV-399',
   },
   {
     key: 'procurement.receipt_incomplete_alert_days',
     value: 2,
     isClientVisible: false,
-    ref: 'BR-APP-015, AV-410',
+    ref: 'BR-APP-015, AV-360',
   },
   {
     key: 'inventory.high_loss_alert_xaf',
     value: 50_000,
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-406',
+    ref: 'D13 §7.1, AV-356',
   },
   {
     key: 'sales.high_loss_alert_sales_pct',
     value: 5,
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-406',
+    ref: 'D13 §7.1, AV-356',
   },
   {
     key: 'inventory.transfer_not_received_hours',
@@ -458,56 +458,56 @@ export const SYSTEM_SETTINGS: readonly SystemSettingSeed[] = [
     isClientVisible: false,
     ref: 'D13 §7.1, AV-065',
   },
-  // P9-08 (AV-452) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (D13 littéral : la suggestion
+  // P9-08 (AV-402) : condition de l'alerte `POS_REPLENISH` — `BELOW_TARGET` (D13 littéral : la suggestion
   // « cible − disponible − transit entrant » est positive) ou `BELOW_MINIMUM` (aussi sous le minimum).
   {
     key: 'inventory.replenish_alert_scope',
     value: 'BELOW_TARGET',
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-452',
+    ref: 'D13 §7.1, AV-402',
   },
   // BR-TER-013 : lundi à samedi par défaut (numéros ISO des jours, 1 = lundi).
   {
     key: 'sales.commercial_working_days',
     value: ['1', '2', '3', '4', '5', '6'],
     isClientVisible: false,
-    ref: 'BR-TER-013, AV-409',
+    ref: 'BR-TER-013, AV-359',
   },
-  // AV-444 : rôles suivis par l'alerte d'inactivité (BR-TER-013 dit « commercial terrain »).
+  // AV-394 : rôles suivis par l'alerte d'inactivité (BR-TER-013 dit « commercial terrain »).
   {
     key: 'sales.inactive_commercial_role_codes',
     value: ['COMMERCIAL_TERRAIN'],
     isClientVisible: false,
-    ref: 'BR-TER-013, AV-444',
+    ref: 'BR-TER-013, AV-394',
   },
   { key: 'sync.stale_hours', value: 24, isClientVisible: false, ref: 'D13 §7.1' },
-  { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-442' },
-  // P9-10 (AV-471) : codes d'erreur de synchronisation qui ne sont pas un défaut de l'appareil (décision de
+  { key: 'sync.error_alert_window_hours', value: 24, isClientVisible: false, ref: 'AV-392' },
+  // P9-10 (AV-421) : codes d'erreur de synchronisation qui ne sont pas un défaut de l'appareil (décision de
   // l'Admin, conséquence d'un autre rejet) et que `SYNC_ERROR` ne signale pas.
   {
     key: 'sync.error_alert_excluded_codes',
     value: ['COMMAND_DISCARDED', 'DEPENDENCY_REJECTED'],
     isClientVisible: false,
-    ref: 'AV-442, AV-471',
+    ref: 'AV-392, AV-421',
   },
-  // P9-10 (AV-472) : jours de silence au-delà desquels un appareil actif est tenu pour abandonné (0 : jamais).
-  { key: 'sync.stale_horizon_days', value: 30, isClientVisible: false, ref: 'AV-472' },
-  // P9-10 (AV-473) : heures après lesquelles un trou de séquence non comblé est signalé (BR-SYN-003).
-  { key: 'sync.seq_gap_alert_hours', value: 24, isClientVisible: false, ref: 'BR-SYN-003, AV-473' },
-  // P9-09 (AV-462) : jours de la semaine (numéros ISO, 1 = lundi) où une saisie du jour est attendue d'un
+  // P9-10 (AV-422) : jours de silence au-delà desquels un appareil actif est tenu pour abandonné (0 : jamais).
+  { key: 'sync.stale_horizon_days', value: 30, isClientVisible: false, ref: 'AV-422' },
+  // P9-10 (AV-423) : heures après lesquelles un trou de séquence non comblé est signalé (BR-SYN-003).
+  { key: 'sync.seq_gap_alert_hours', value: 24, isClientVisible: false, ref: 'BR-SYN-003, AV-423' },
+  // P9-09 (AV-412) : jours de la semaine (numéros ISO, 1 = lundi) où une saisie du jour est attendue d'un
   // lot en cours (`DAILY_ENTRY_MISSING`) ; tous les jours par défaut, un élevage ne s'arrête pas.
   {
     key: 'production.daily_entry_working_days',
     value: ['1', '2', '3', '4', '5', '6', '7'],
     isClientVisible: false,
-    ref: 'D13 §7.1, AV-462',
+    ref: 'D13 §7.1, AV-412',
   },
-  // P9-09 (AV-463) : fenêtre (jours) des entrées de production revues par `STANDARD_COST_MISSING`.
+  // P9-09 (AV-413) : fenêtre (jours) des entrées de production revues par `STANDARD_COST_MISSING`.
   {
     key: 'production.standard_cost_alert_lookback_days',
     value: 30,
     isClientVisible: false,
-    ref: 'AV-124, AV-463',
+    ref: 'AV-124, AV-413',
   },
   // pricing.max_discount_pct.<ROLE> (AV-026, 0/5/15 selon le rôle) : voir
   // ROLE_DISCOUNT_SETTINGS dans rbac-data.ts, dérivé de la matrice RBAC plutôt que

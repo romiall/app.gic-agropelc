@@ -1,5 +1,5 @@
 /**
- * P9-10 : alerte `DEVICE_SEQ_GAP` (D13 §7.1, BR-SYN-003, AV-473) — `sync.devices.seq_gap_check` publie un
+ * P9-10 : alerte `DEVICE_SEQ_GAP` (D13 §7.1, BR-SYN-003, AV-423) — `sync.devices.seq_gap_check` publie un
  * `DeviceSequenceGapDetected` par appareil actif dont un trou de `device_seq` reste ouvert depuis plus de
  * `sync.seq_gap_alert_hours` heures sans être expliqué par les restes déclarés de l'appareil ; les plages déjà
  * signalées sont mémorisées dans `known_gaps`. Horloge dans le passé lointain (2019), transactions annulées.

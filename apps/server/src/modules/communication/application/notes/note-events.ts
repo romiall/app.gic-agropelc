@@ -1,5 +1,5 @@
 /**
- * Événements explicites des notes de direction (P9-11 ; D13 §10 ; catalogue d'événements §2.9 ; ADR-073 §7) :
+ * Événements explicites des notes de direction (P9-11 ; D13 §10 ; catalogue d'événements §2.9 ; ADR-063 §7) :
  * `InternalNotePublished`, `InternalNoteArchived` et `InternalNoteAcknowledged`, écrits dans
  * `platform_domain_events` dans la transaction de la commande. Ils servent la synchronisation (jeu `comms`) et
  * l'audit : **aucun autre module ne les consomme pour agir** (BR-NOT-007 : une note ne porte aucun effet métier).
