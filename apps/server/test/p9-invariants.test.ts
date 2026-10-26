@@ -16,7 +16,10 @@ import {
   type CommandActor,
 } from './analytics-command-fixtures.js';
 import { closeTestDb, db, freshUuid, insertTestUser, withTestUow } from './helpers.js';
-import { insertExport, markExportFailed } from '../src/modules/analytics/application/exports/export-store.js';
+import {
+  insertExport,
+  markExportFailed,
+} from '../src/modules/analytics/application/exports/export-store.js';
 
 afterAll(closeTestDb);
 
@@ -123,7 +126,11 @@ describe('P9-23 : invariants de l’analyse (INV-ANA)', () => {
         finishedAt: new Date(),
       });
       await expect(
-        trx.updateTable('analytics_export_jobs').set({ error_code: 'MODIFIE' }).where('id', '=', toBin(id)).execute(),
+        trx
+          .updateTable('analytics_export_jobs')
+          .set({ error_code: 'MODIFIE' })
+          .where('id', '=', toBin(id))
+          .execute(),
       ).rejects.toThrow();
       await expect(
         trx.deleteFrom('analytics_export_jobs').where('id', '=', toBin(id)).execute(),

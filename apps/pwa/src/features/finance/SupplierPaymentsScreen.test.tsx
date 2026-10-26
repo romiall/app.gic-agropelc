@@ -867,7 +867,8 @@ describe('Paiements fournisseurs (ECR-FIN-04, P8E-06)', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Corriger la saisie' }));
     // La saisie est gardée : il suffit de la corriger.
-    expect(within(form).getByLabelText('Montant payé (F CFA)')).toHaveValue('300000');
+    // Le formulaire revient au rendu suivant : l'attendre (lent sous la couverture de la CI).
+    expect(await within(form).findByLabelText('Montant payé (F CFA)')).toHaveValue('300000');
     await waitFor(() =>
       expect(within(form).getByLabelText('Fournisseur du paiement')).toHaveFocus(),
     );

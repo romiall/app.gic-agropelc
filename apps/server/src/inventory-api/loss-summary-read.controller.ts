@@ -42,8 +42,7 @@ const lineKey = (line: {
   readonly productionLotId: string | null;
   readonly category: string | null;
   readonly reasonCodeId: string | null;
-}): string =>
-  [line.productId, line.productionLotId, line.category, line.reasonCodeId].join('|');
+}): string => [line.productId, line.productionLotId, line.category, line.reasonCodeId].join('|');
 
 @Controller('api/v1')
 export class LossSummaryReadController {

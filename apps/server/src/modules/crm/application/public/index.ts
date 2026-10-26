@@ -48,4 +48,8 @@ export {
   portfolioActivity,
   visitToOrderRate,
 } from './portfolio-activity.js';
-export type { ConversionCohort, PortfolioActivity, VisitToOrderRate } from './portfolio-activity.js';
+export type {
+  ConversionCohort,
+  PortfolioActivity,
+  VisitToOrderRate,
+} from './portfolio-activity.js';

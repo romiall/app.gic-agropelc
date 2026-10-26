@@ -59,7 +59,9 @@ export async function resolveDashboardPeriod(
       throw new ApiError(
         400,
         'VALIDATION_ERROR',
-        error.code === 'PERIOD_TOO_LONG' ? `Période limitée à ${maxDays} jours.` : 'Période invalide.',
+        error.code === 'PERIOD_TOO_LONG'
+          ? `Période limitée à ${maxDays} jours.`
+          : 'Période invalide.',
       );
     }
     throw error;

@@ -340,15 +340,13 @@ describe('P9-20 : exports audités', () => {
 
       // Vingt-cinq jours après la demande : échu (24 h), fichier encore présent (moins de 30 jours).
       harness.clock.setTo(new Date(Date.now() + 25 * 86_400_000));
-      let outcome = await db
-        .transaction()
-        .execute((trx) =>
-          runAnalyticsPurge(trx, {
-            clock: harness.clock,
-            idGenerator: harness.idGenerator,
-            storage,
-          }),
-        );
+      let outcome = await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        }),
+      );
       expect(outcome.exportsExpired).toBeGreaterThanOrEqual(1);
       expect((await rowOf(done))!.status).toBe('EXPIRED');
       expect(await storage.uploadedBytes(key)).toBeGreaterThan(0);
@@ -361,15 +359,13 @@ describe('P9-20 : exports audités', () => {
 
       // Trente-deux jours après la demande : le fichier est supprimé, la ligne reste.
       harness.clock.setTo(new Date(Date.now() + 32 * 86_400_000));
-      outcome = await db
-        .transaction()
-        .execute((trx) =>
-          runAnalyticsPurge(trx, {
-            clock: harness.clock,
-            idGenerator: harness.idGenerator,
-            storage,
-          }),
-        );
+      outcome = await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        }),
+      );
       expect(outcome.exportFilesDeleted).toBeGreaterThanOrEqual(1);
       expect(await storage.uploadedBytes(key)).toBe(0);
       expect((await rowOf(done))!.status).toBe('EXPIRED');
@@ -389,15 +385,13 @@ describe('P9-20 : exports audités', () => {
         })
         .execute();
       harness.clock.setTo(new Date(Date.now() + 80 * 86_400_000));
-      await db
-        .transaction()
-        .execute((trx) =>
-          runAnalyticsPurge(trx, {
-            clock: harness.clock,
-            idGenerator: harness.idGenerator,
-            storage,
-          }),
-        );
+      await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        }),
+      );
       expect(
         await db
           .selectFrom('analytics_query_log')
@@ -406,15 +400,13 @@ describe('P9-20 : exports audités', () => {
           .executeTakeFirst(),
       ).toBeDefined();
       harness.clock.setTo(new Date(Date.now() + 100 * 86_400_000));
-      await db
-        .transaction()
-        .execute((trx) =>
-          runAnalyticsPurge(trx, {
-            clock: harness.clock,
-            idGenerator: harness.idGenerator,
-            storage,
-          }),
-        );
+      await db.transaction().execute((trx) =>
+        runAnalyticsPurge(trx, {
+          clock: harness.clock,
+          idGenerator: harness.idGenerator,
+          storage,
+        }),
+      );
       expect(
         await db
           .selectFrom('analytics_query_log')

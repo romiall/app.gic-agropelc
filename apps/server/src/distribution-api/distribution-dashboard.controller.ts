@@ -82,12 +82,7 @@ export class DistributionDashboardController {
       ...(query.site_id !== undefined ? { siteId: query.site_id } : {}),
     });
     if (scope.status === 'SITE_NOT_VISIBLE') {
-      return this.access.deny(
-        request,
-        now,
-        { type: 'SITE', id: query.site_id! },
-        'OUT_OF_SCOPE',
-      );
+      return this.access.deny(request, now, { type: 'SITE', id: query.site_id! }, 'OUT_OF_SCOPE');
     }
 
     // Un seul instantané pour toutes les lectures (comme `ledger-reconciliation.ts`) : une vente validée

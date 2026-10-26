@@ -10,7 +10,12 @@
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { num, ratio, type DayWindow, type UtcWindow } from '../../../../platform/indicator-window.js';
+import {
+  num,
+  ratio,
+  type DayWindow,
+  type UtcWindow,
+} from '../../../../platform/indicator-window.js';
 import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;

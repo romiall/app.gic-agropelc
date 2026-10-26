@@ -175,13 +175,16 @@ export async function stockCoverage(
     .map((row) => {
       const productId = fromBin(row.product);
       const availableQuantity = num(row.qty);
-      const averageDailySold = Math.round(((soldBy.get(productId) ?? 0) / COVERAGE_SALES_DAYS) * 1000) / 1000;
+      const averageDailySold =
+        Math.round(((soldBy.get(productId) ?? 0) / COVERAGE_SALES_DAYS) * 1000) / 1000;
       return {
         productId,
         availableQuantity,
         averageDailySold,
         coverageDays:
-          averageDailySold > 0 ? Math.round((availableQuantity / averageDailySold) * 10) / 10 : null,
+          averageDailySold > 0
+            ? Math.round((availableQuantity / averageDailySold) * 10) / 10
+            : null,
       };
     })
     .sort((a, b) => (a.coverageDays ?? Infinity) - (b.coverageDays ?? Infinity));
@@ -193,4 +196,3 @@ function shiftDay(day: string, days: number): string {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
-

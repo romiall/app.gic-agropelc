@@ -18,7 +18,12 @@ import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
 type Executor = Kysely<DB> | Transaction<DB>;
 
 /** Statuts de réception dont les quantités comptent au bon (`purchaseOrderMatching`). */
-const COUNTED_RECEIPT_STATUSES = ['POSTED', 'POSTED_PENDING_REVIEW', 'REVIEW_REJECTED', 'CANCELLATION_PENDING'] as const;
+const COUNTED_RECEIPT_STATUSES = [
+  'POSTED',
+  'POSTED_PENDING_REVIEW',
+  'REVIEW_REJECTED',
+  'CANCELLATION_PENDING',
+] as const;
 const receiptStatuses = sql.join(COUNTED_RECEIPT_STATUSES.map((status) => sql`${status}`));
 
 /** Les achats ne se jugent que par le site : un périmètre de personnes est un périmètre vide. */

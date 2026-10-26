@@ -8,3 +8,7 @@ docs/**/*.md
 # Généré par kysely-codegen (apps/server/package.json, db:codegen) : reformater ici serait
 # défait au prochain `db:codegen`, comme pnpm-lock.yaml ci-dessus.
 apps/server/src/platform/kysely/schema.generated.ts
+# Fichiers du porteur versionnés tels quels (CLAUDE.md, « Reprise ») : ne pas les reformater.
+pieces-papier/
+scratch/
+.claude/

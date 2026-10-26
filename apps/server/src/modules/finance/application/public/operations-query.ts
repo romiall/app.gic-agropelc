@@ -69,7 +69,10 @@ export interface ExpenseFilter {
    * l'auteur est l'un de ces utilisateurs. Sur-ensemble des dépenses visibles, que le transport affine
    * élément par élément ; deux listes vides : aucune dépense.
    */
-  readonly anyOf?: { readonly siteIds: readonly string[]; readonly ownerUserIds: readonly string[] };
+  readonly anyOf?: {
+    readonly siteIds: readonly string[];
+    readonly ownerUserIds: readonly string[];
+  };
   readonly fromUtc?: Date;
   readonly toUtc?: Date;
   readonly siteId?: string;
@@ -164,10 +167,22 @@ export async function listExpenses(
       qb.where((eb) =>
         eb.or([
           ...(anyOf!.siteIds.length > 0
-            ? [eb('e.site_id', 'in', anyOf!.siteIds.map((id) => toBin(id)))]
+            ? [
+                eb(
+                  'e.site_id',
+                  'in',
+                  anyOf!.siteIds.map((id) => toBin(id)),
+                ),
+              ]
             : []),
           ...(anyOf!.ownerUserIds.length > 0
-            ? [eb('e.created_by', 'in', anyOf!.ownerUserIds.map((id) => toBin(id)))]
+            ? [
+                eb(
+                  'e.created_by',
+                  'in',
+                  anyOf!.ownerUserIds.map((id) => toBin(id)),
+                ),
+              ]
             : []),
         ]),
       ),

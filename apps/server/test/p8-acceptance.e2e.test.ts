@@ -83,7 +83,12 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
     expect(response.statusCode, response.body).toBe(200);
     return response.json();
   };
-  const decide = (actor: Actor, verb: 'approve' | 'reject', requestId: string, occurredAt: string) =>
+  const decide = (
+    actor: Actor,
+    verb: 'approve' | 'reject',
+    requestId: string,
+    occurredAt: string,
+  ) =>
     run(actor, `approvals.request.${verb}`, 'APPROVAL_REQUEST', requestId, occurredAt, {
       requestId,
       comment: verb === 'approve' ? 'Accord de la Direction' : 'Dépense non justifiée',
@@ -249,21 +254,28 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
     world.setNow(at('10:00'));
     const invoiceId = freshUuid();
     const recorded = await ok(
-      run(world.fin, 'finance.supplier_invoice.record', 'SUPPLIER_INVOICE', invoiceId, at('10:00'), {
-        supplierId,
-        supplierInvoiceRef: `F-${invoiceId.slice(-8)}`,
-        invoiceDate: DAY,
-        purchaseOrderId: orderId,
-        lines: [
-          {
-            poLineId,
-            description: 'Aliment démarrage',
-            quantity: 98,
-            unitPriceXaf: 15_000,
-            lineTotalXaf: 1_470_000,
-          },
-        ],
-      }),
+      run(
+        world.fin,
+        'finance.supplier_invoice.record',
+        'SUPPLIER_INVOICE',
+        invoiceId,
+        at('10:00'),
+        {
+          supplierId,
+          supplierInvoiceRef: `F-${invoiceId.slice(-8)}`,
+          invoiceDate: DAY,
+          purchaseOrderId: orderId,
+          lines: [
+            {
+              poLineId,
+              description: 'Aliment démarrage',
+              quantity: 98,
+              unitPriceXaf: 15_000,
+              lineTotalXaf: 1_470_000,
+            },
+          ],
+        },
+      ),
     );
     expect(recorded.status === 'APPLIED' && recorded.server_refs?.status).toBe('MISMATCH');
     expect((await matching()).lines[0].invoicedQtyBase).toBe(0);
@@ -273,7 +285,14 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
 
     // La Direction accepte l'écart (trois sacs livrés hors bon) : facture approuvée, dette ouverte.
     world.setNow(at('11:00'));
-    await ok(decide(world.dir, 'approve', await requestOf('finance_supplier_invoices', invoiceId), at('11:00')));
+    await ok(
+      decide(
+        world.dir,
+        'approve',
+        await requestOf('finance_supplier_invoices', invoiceId),
+        at('11:00'),
+      ),
+    );
     expect((await matching()).lines[0].invoicedQtyBase).toBe(98);
     expect(await payables()).toMatchObject({ balanceXaf: 1_470_000, overdueXaf: 0 });
 
@@ -283,14 +302,21 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
     world.setNow(at('12:00'));
     const paymentId = freshUuid();
     const pending = await ok(
-      run(world.fin, 'finance.supplier_payment.record', 'SUPPLIER_PAYMENT', paymentId, at('12:00'), {
-        supplierId,
-        amountXaf: 1_470_000,
-        paymentMethodCode: 'VIREMENT',
-        fromAccountId: bank,
-        externalReference: `VIR-${paymentId.slice(-10)}`,
-        allocations: [{ invoiceId, amountXaf: 1_470_000 }],
-      }),
+      run(
+        world.fin,
+        'finance.supplier_payment.record',
+        'SUPPLIER_PAYMENT',
+        paymentId,
+        at('12:00'),
+        {
+          supplierId,
+          amountXaf: 1_470_000,
+          paymentMethodCode: 'VIREMENT',
+          fromAccountId: bank,
+          externalReference: `VIR-${paymentId.slice(-10)}`,
+          allocations: [{ invoiceId, amountXaf: 1_470_000 }],
+        },
+      ),
     );
     expect(pending.status === 'APPLIED' && pending.server_refs?.status).toBe('PENDING_APPROVAL');
     expect(await balanceOf(bank)).toBe(5_000_000);
@@ -325,7 +351,8 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
     });
     expect((await payables())?.balanceXaf ?? 0).toBe(0);
     expect(
-      (await verifySupplierLedger(db, { invoiceIds: [invoiceId], paymentIds: [paymentId] })).breaches,
+      (await verifySupplierLedger(db, { invoiceIds: [invoiceId], paymentIds: [paymentId] }))
+        .breaches,
     ).toEqual([]);
   });
 
@@ -380,16 +407,22 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
 
   it('journée de PDV hors ligne avec dépenses : payées pendant la session, conformes ou en validation a posteriori, sorties de l’attendu ; décisions de la Finance', async () => {
     const categories = new Map(
-      (
-        await db.selectFrom('finance_expense_categories').select(['id', 'code']).execute()
-      ).map((row) => [row.code, fromBin(row.id)]),
+      (await db.selectFrom('finance_expense_categories').select(['id', 'code']).execute()).map(
+        (row) => [row.code, fromBin(row.id)],
+      ),
     );
     const product = await world.product('Poulet du jour');
     await world.stockIn(product.id, 100, at('06:00'));
     world.setNow(at('07:00'));
     const tablet = world.tablet(seller);
     tablet.goOffline();
-    const enqueue = (type: string, aggregateType: string, occurredAt: string, payload: unknown, aggregateId?: string) =>
+    const enqueue = (
+      type: string,
+      aggregateType: string,
+      occurredAt: string,
+      payload: unknown,
+      aggregateId?: string,
+    ) =>
       tablet.enqueue(seller.userId, {
         type,
         aggregateType,
@@ -398,10 +431,16 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
         ...(aggregateId !== undefined ? { aggregateId } : {}),
       });
     const session = freshUuid();
-    enqueue('finance.cash_session.open', 'CASH_SESSION', at('07:55'), {
-      cashAccountId: world.posAcc,
-      countedXaf: 0,
-    }, session);
+    enqueue(
+      'finance.cash_session.open',
+      'CASH_SESSION',
+      at('07:55'),
+      {
+        cashAccountId: world.posAcc,
+        countedXaf: 0,
+      },
+      session,
+    );
     const sale = enqueue('sales.sale.record', 'SALE', at('09:00'), {
       fromLocationId: world.counter,
       lines: [world.line(product, 60)],
@@ -433,7 +472,13 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
     // Au-delà du seuil du justificatif, sans photo : appliquée, validation a posteriori.
     const fuel = expense('CARBURANT', 15_000, at('12:00'), 'D3');
     const expected = 60 * PRICE - 2_000 - 3_000 - 15_000;
-    enqueue('finance.cash_session.close', 'CASH_SESSION', at('18:00'), { countedXaf: expected }, session);
+    enqueue(
+      'finance.cash_session.close',
+      'CASH_SESSION',
+      at('18:00'),
+      { countedXaf: expected },
+      session,
+    );
 
     world.setNow(at('19:00'));
     tablet.goOnline();
@@ -472,8 +517,12 @@ describe('P8-13 : acceptation de la finance opérationnelle', { timeout: 300_000
 
     // La Finance décide : le vétérinaire est accepté, le carburant sans reçu est rejeté après paiement.
     world.setNow(at('20:00'));
-    await ok(decide(world.fin, 'approve', await requestOf('finance_expenses', vet.id), at('20:00')));
-    await ok(decide(world.fin, 'reject', await requestOf('finance_expenses', fuel.id), at('20:05')));
+    await ok(
+      decide(world.fin, 'approve', await requestOf('finance_expenses', vet.id), at('20:00')),
+    );
+    await ok(
+      decide(world.fin, 'reject', await requestOf('finance_expenses', fuel.id), at('20:05')),
+    );
     expect((await expenseRow(vet.id)).status).toBe('PAID');
     const rejected = await db
       .selectFrom('finance_expenses as e')

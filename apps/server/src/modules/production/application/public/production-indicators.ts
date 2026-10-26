@@ -13,7 +13,12 @@
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
-import { num, ratio, type DayWindow, type UtcWindow } from '../../../../platform/indicator-window.js';
+import {
+  num,
+  ratio,
+  type DayWindow,
+  type UtcWindow,
+} from '../../../../platform/indicator-window.js';
 import { scopeSql, type ReadScope } from '../../../../platform/read-scope.js';
 import { countedMortalityOfLots } from '../../../inventory/application/public/index.js';
 
@@ -65,7 +70,9 @@ export async function eggSummary(
   scope: ReadScope,
   window: DayWindow,
 ): Promise<EggSummary> {
-  const { rows } = await sql<Record<'collected' | 'marketable' | 'hatching' | 'broken' | 'nonconf', unknown>>`
+  const { rows } = await sql<
+    Record<'collected' | 'marketable' | 'hatching' | 'broken' | 'nonconf', unknown>
+  >`
     SELECT COALESCE(SUM(e.collected_qty), 0) AS collected,
            COALESCE(SUM(e.marketable_qty), 0) AS marketable,
            COALESCE(SUM(e.hatching_qty), 0) AS hatching,

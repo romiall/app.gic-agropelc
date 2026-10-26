@@ -282,8 +282,9 @@ export async function quantityExcessSinceRequest(
     .where('id', '=', toBin(invoice.id))
     .executeTakeFirstOrThrow();
   const raw: unknown = stored.mismatch_details;
-  const recorded = (typeof raw === 'string' ? JSON.parse(raw) : (raw ?? [])) as
-    readonly InvoiceMismatchDetail[];
+  const recorded = (
+    typeof raw === 'string' ? JSON.parse(raw) : (raw ?? [])
+  ) as readonly InvoiceMismatchDetail[];
   const lines = await uow
     .selectFrom('finance_supplier_invoice_lines')
     .select(['po_line_id', 'quantity_base', 'unit_price_xaf', 'line_total_xaf'])
@@ -310,7 +311,12 @@ export async function quantityExcessSinceRequest(
     })),
     printedTotalXaf: null,
     qtyTolerancePct: await numberSettingAt(uow, 'finance.invoice_match_qty_tolerance_pct', at, 0),
-    priceToleranceXaf: await numberSettingAt(uow, 'finance.invoice_match_price_tolerance_xaf', at, 0),
+    priceToleranceXaf: await numberSettingAt(
+      uow,
+      'finance.invoice_match_price_tolerance_xaf',
+      at,
+      0,
+    ),
     withoutOrderMode: 'REVIEW',
   });
   return quantityExcessSince(recorded, current);

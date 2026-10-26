@@ -68,7 +68,10 @@ export async function resolveDashboardScope(
   );
   if (input.siteId !== undefined) {
     const requested = configured[0];
-    if (requested === undefined || !(await allows(DISTRIBUTION_DASHBOARD_READ, resourceOf(requested)))) {
+    if (
+      requested === undefined ||
+      !(await allows(DISTRIBUTION_DASHBOARD_READ, resourceOf(requested)))
+    ) {
       return { status: 'SITE_NOT_VISIBLE' };
     }
   }

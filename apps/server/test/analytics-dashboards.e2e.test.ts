@@ -193,7 +193,8 @@ describe('P9-16 et P9-17 : tableaux de rôle', { timeout: 180_000 }, () => {
       for (const block of response.blocks) {
         for (const kpi of block.kpis) {
           // Les compteurs d'alertes et de validations (`KPI-OPS-*`) ne sont pas des indicateurs du registre de D11 §7.1.
-          if (!kpi.code.startsWith('KPI-OPS-')) expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
+          if (!kpi.code.startsWith('KPI-OPS-'))
+            expect(kpiDefinitionOf(kpi.code), kpi.code).toBeDefined();
           const hasPrevious = kpi.previousValue !== undefined;
           expect(hasPrevious, `${kpi.code} période précédente`).toBe(
             kpiHasPreviousPeriod(kpi.code),

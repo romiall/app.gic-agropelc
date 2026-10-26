@@ -18,6 +18,10 @@ export default [
       '**/dev-dist/**',
       '**/node_modules/**',
       '**/*.d.ts',
+      // Fichiers du porteur versionnés tels quels (CLAUDE.md, « Reprise ») : hors du code du projet.
+      'pieces-papier/**',
+      'scratch/**',
+      '.claude/**',
     ],
   },
   js.configs.recommended,

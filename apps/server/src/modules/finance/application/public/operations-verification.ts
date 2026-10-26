@@ -52,7 +52,10 @@ const idFilter = (column: string, ids: readonly string[] | undefined) =>
       ? sql`FALSE`
       : sql`${sql.ref(column)} IN (${sql.join(ids.map((id) => toBin(id)))})`;
 
-async function rowsOf<T>(executor: Executor, query: ReturnType<typeof sql<T>>): Promise<readonly T[]> {
+async function rowsOf<T>(
+  executor: Executor,
+  query: ReturnType<typeof sql<T>>,
+): Promise<readonly T[]> {
   return (await query.execute(executor)).rows;
 }
 
@@ -112,7 +115,11 @@ export async function verifyExpenses(
        WHERE ${where} AND e.status = 'PAID_REJECTED' AND (c.id IS NULL OR c.is_system = FALSE)
 `,
   )) {
-    breaches.push({ ref: row.ref, invariant: 'EXPENSE_RECLASSIFICATION', detail: 'catégorie système absente' });
+    breaches.push({
+      ref: row.ref,
+      invariant: 'EXPENSE_RECLASSIFICATION',
+      detail: 'catégorie système absente',
+    });
   }
   for (const row of await rowsOf<{ ref: string }>(
     executor,
@@ -163,9 +170,23 @@ export async function verifySupplierLedger(
       detail: `payé ${row.paid} ≠ affectations actives ${row.allocated}`,
     });
   }
-  for (const row of await rowsOf<{ ref: string; status: string; amount: string; active: string; planned: string; unallocated: string }>(
+  for (const row of await rowsOf<{
+    ref: string;
+    status: string;
+    amount: string;
+    active: string;
+    planned: string;
+    unallocated: string;
+  }>(
     executor,
-    sql<{ ref: string; status: string; amount: string; active: string; planned: string; unallocated: string }>`
+    sql<{
+      ref: string;
+      status: string;
+      amount: string;
+      active: string;
+      planned: string;
+      unallocated: string;
+    }>`
       SELECT p.doc_number AS ref, p.status AS status, p.amount_xaf AS amount, p.unallocated_xaf AS unallocated,
              COALESCE(SUM(CASE WHEN a.status = 'ACTIVE' THEN a.amount_xaf ELSE 0 END), 0) AS active,
              COALESCE(SUM(CASE WHEN a.status = 'PLANNED' THEN a.amount_xaf ELSE 0 END), 0) AS planned
