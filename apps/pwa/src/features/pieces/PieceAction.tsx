@@ -26,7 +26,13 @@ export function PieceAction({ demande, cle, annulee = false, libelle }: PieceAct
       setOuverte(false);
       return;
     }
-    setPreparee(demande());
+    let prete: DemandePiece | null = null;
+    try {
+      prete = demande();
+    } catch {
+      // Données incohérentes : on affiche l'erreur plutôt que de casser l'écran.
+    }
+    setPreparee(prete);
     setOuverte(true);
   };
 
