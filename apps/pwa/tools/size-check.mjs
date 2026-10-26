@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Budget de bundle NFR-05 : JS initial <= 300 Ko gzip. Tant qu'aucun découpage par rôle
-// n'existe (squelette P0-14, un seul rôle vide), tous les chunks JS de `dist/` sont chargés
-// au premier affichage — le total mesuré ici EST le JS initial. Dès qu'un écran accessible
-// seulement après authentification (ou propre à un rôle) sera chargé par `React.lazy`, ce
-// script devra exclure ses chunks (non requis avant l'interaction qui les charge).
+// Budget de bundle NFR-05 : JS initial <= 300 Ko gzip. Le JS initial est ce que la page charge avant toute
+// interaction : les scripts et préchargements (`modulepreload`) de `dist/index.html`, le service worker et
+// Workbox (fichiers à la racine de `dist/`, `workbox-window`). Les écrans chargés à la demande (`React.lazy`,
+// App.tsx) en sont exclus : ils ne sont demandés qu'à l'ouverture de leur écran (et mis en cache par le
+// service worker pour le hors-ligne). Leur total est affiché à part, pour mémoire.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
@@ -38,12 +38,29 @@ if (files.length === 0) {
   process.exit(2);
 }
 
+const html = readFileSync(join(distDir, 'index.html'), 'utf8');
+const referenced = new Set(
+  [...html.matchAll(/(?:src|href)="\/?([^"]+\.js)"/g)].map((match) => join(distDir, match[1])),
+);
+const isInitial = (file) =>
+  referenced.has(file) ||
+  !file.startsWith(join(distDir, 'assets')) ||
+  file.replace(distDir, '').includes('workbox-window');
+
 let totalGzip = 0;
+let lazyGzip = 0;
 for (const file of files) {
   const gzipSize = gzipSync(readFileSync(file)).length;
+  if (!isInitial(file)) {
+    lazyGzip += gzipSize;
+    continue;
+  }
   totalGzip += gzipSize;
   console.log(`  ${file.replace(distDir, 'dist')} : ${(gzipSize / 1024).toFixed(1)} Ko gzip`);
 }
+console.log(
+  `Écrans chargés à la demande (gzip, hors budget) : ${(lazyGzip / 1024).toFixed(1)} Ko.`,
+);
 
 const totalKo = totalGzip / 1024;
 console.log(
