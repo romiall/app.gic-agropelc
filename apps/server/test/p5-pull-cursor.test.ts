@@ -115,7 +115,10 @@ describe('P5-23 — numérotation validée dans le désordre (AV-198)', () => {
     const kept = freshUuid();
     await db.insertInto('sync_change_feed').values(feedRow(dataset, kept)).execute();
     // Récent : retenu ; avec une fenêtre nulle (trou tenu pour définitif) : avancé.
-    const retained = await new SyncPullService(db).pull({ dataset, cursor: start, limit: 100 }, ctx);
+    const retained = await new SyncPullService(db).pull(
+      { dataset, cursor: start, limit: 100 },
+      ctx,
+    );
     expect(retained.next_cursor).toBe(start);
     const settled = await new SyncPullService(db, { settleSeconds: 0 }).pull(
       { dataset, cursor: start, limit: 100 },

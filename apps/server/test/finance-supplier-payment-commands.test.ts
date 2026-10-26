@@ -481,7 +481,10 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
       transfer(supplierId, 150_000, [{ invoiceId: invoiceId.toUpperCase(), amountXaf: 50_000 }]),
     );
     expect(codeOf(result)).toBe('APPLIED');
-    expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'PARTIALLY_PAID', paid_xaf: 50_000 });
+    expect(await invoiceRow(invoiceId)).toMatchObject({
+      status: 'PARTIALLY_PAID',
+      paid_xaf: 50_000,
+    });
     // Complément de 100 000 sur la même facture : une seule affectation active, de 150 000.
     expect(
       codeOf(
@@ -490,7 +493,10 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
         }),
       ),
     ).toBe('APPLIED');
-    expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'PARTIALLY_PAID', paid_xaf: 150_000 });
+    expect(await invoiceRow(invoiceId)).toMatchObject({
+      status: 'PARTIALLY_PAID',
+      paid_xaf: 150_000,
+    });
     expect(
       (await allocationsOf(id)).map((allocation) => [allocation.amount_xaf, allocation.status]),
     ).toEqual([
@@ -503,7 +509,9 @@ describe('P8-08 : paiements fournisseurs', { timeout: 60_000 }, () => {
     ).toEqual([]);
     // Annulation du paiement : la facture revient à zéro, tout reste cohérent.
     expect(
-      codeOf(await run(dir, 'finance.supplier_payment.cancel', id, at('13:00'), { reason: 'Erreur' })),
+      codeOf(
+        await run(dir, 'finance.supplier_payment.cancel', id, at('13:00'), { reason: 'Erreur' }),
+      ),
     ).toBe('APPLIED');
     expect(await invoiceRow(invoiceId)).toMatchObject({ status: 'APPROVED', paid_xaf: 0 });
     expect(

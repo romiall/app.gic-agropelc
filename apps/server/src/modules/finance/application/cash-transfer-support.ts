@@ -122,7 +122,12 @@ export async function loadSiteRef(
   uow: Uow,
   siteId: string,
 ): Promise<
-  | { readonly id: string; readonly code: string; readonly zoneId: string; readonly siteType: string }
+  | {
+      readonly id: string;
+      readonly code: string;
+      readonly zoneId: string;
+      readonly siteType: string;
+    }
   | undefined
 > {
   const row = await uow

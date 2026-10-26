@@ -143,7 +143,9 @@ describe('CashLedgerReconciliationJob — comptes, remises et sessions (P5-22)',
       expenses: {
         ok: false,
         checked: 5,
-        breaches: [{ ref: 'DEP-1', invariant: 'EXPENSE_COST', detail: 'coût net 0 pour 9000 attendu' }],
+        breaches: [
+          { ref: 'DEP-1', invariant: 'EXPENSE_COST', detail: 'coût net 0 pour 9000 attendu' },
+        ],
       } as never,
       suppliers: {
         ok: false,

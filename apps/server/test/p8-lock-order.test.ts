@@ -43,7 +43,14 @@ import {
   insertTestZone,
   neutralizePolicy,
 } from './helpers.js';
-import { fund, newAccount, newActor, newPosSite, tx, type Actor } from './cash-transfer-fixtures.js';
+import {
+  fund,
+  newAccount,
+  newActor,
+  newPosSite,
+  tx,
+  type Actor,
+} from './cash-transfer-fixtures.js';
 import { newOrder, newSupplier } from './supplier-ledger-fixtures.js';
 
 const DAY = '2026-10-06';
@@ -53,7 +60,9 @@ const ROUNDS = 4;
 const retried = (results: readonly CommandResult[]) =>
   results.filter((result) => result.status === 'RETRY_LATER');
 const applied = (results: readonly CommandResult[]) =>
-  results.filter((result) => result.status === 'APPLIED' || result.status === 'APPLIED_WITH_WARNINGS');
+  results.filter(
+    (result) => result.status === 'APPLIED' || result.status === 'APPLIED_WITH_WARNINGS',
+  );
 
 describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeout: 300_000 }, () => {
   let idGenerator: IdGenerator;
@@ -187,7 +196,10 @@ describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeou
     );
     return Number(rows[0]?.q ?? 0);
   };
-  const requestIdOf = async (table: 'finance_supplier_invoices' | 'finance_supplier_payments', id: string) => {
+  const requestIdOf = async (
+    table: 'finance_supplier_invoices' | 'finance_supplier_payments',
+    id: string,
+  ) => {
     const row = await db
       .selectFrom(table)
       .select('approval_request_id')
@@ -196,9 +208,7 @@ describe('P8-12 : ordre de verrouillage de la finance opérationnelle', { timeou
     return fromBin(row.approval_request_id!);
   };
   const expectLedgerOk = async (invoiceIds: readonly string[], paymentIds: readonly string[]) =>
-    expect(
-      (await verifySupplierLedger(db, { invoiceIds, paymentIds })).breaches,
-    ).toEqual([]);
+    expect((await verifySupplierLedger(db, { invoiceIds, paymentIds })).breaches).toEqual([]);
 
   beforeAll(async () => {
     const clock = new FixedClock(new Date(NOW));

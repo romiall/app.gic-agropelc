@@ -336,11 +336,20 @@ describe('revue de P8-14 : produit, écart apparu depuis la demande, référence
   it('produit saisi différent de celui de la ligne de BC : PRODUCT_MISMATCH ; même produit, quelle que soit la casse : conforme', () => {
     const withProduct = (productId: string) =>
       match({
-        order: { supplierId: 'fournisseur', lines: [{ ...order().lines[0]!, productId: 'aliment' }] },
+        order: {
+          supplierId: 'fournisseur',
+          lines: [{ ...order().lines[0]!, productId: 'aliment' }],
+        },
         lines: [{ ...line(95), productId }],
       });
     expect(withProduct('autre').details).toEqual([
-      { reason: 'PRODUCT_MISMATCH', lineIndex: 0, poLineId: 'ligne-bc', expected: null, actual: null },
+      {
+        reason: 'PRODUCT_MISMATCH',
+        lineIndex: 0,
+        poLineId: 'ligne-bc',
+        expected: null,
+        actual: null,
+      },
     ]);
     expect(withProduct('ALIMENT').conforming).toBe(true);
   });

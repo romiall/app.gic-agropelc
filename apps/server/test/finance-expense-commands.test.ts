@@ -717,18 +717,23 @@ describe('P8-05 : dépenses', { timeout: 60_000 }, () => {
         paidNow: false,
       });
     // Saisie sur un site, imputée à un autre : refusée (la portée vérifiée est celle de la saisie).
-    expect(codeOf((await attempt(shop, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' })).result)).toBe(
-      'COST_OBJECT_INVALID',
-    );
+    expect(
+      codeOf((await attempt(shop, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' })).result),
+    ).toBe('COST_OBJECT_INVALID');
     // Frais généraux d'une espèce sur un point de vente : aucune répartition possible, refusés.
-    expect(codeOf((await attempt(shop, { type: 'SITE', id: shop, speciesGroup: 'VOLAILLE' })).result)).toBe(
-      'SITE_NOT_FARM',
-    );
+    expect(
+      codeOf((await attempt(shop, { type: 'SITE', id: shop, speciesGroup: 'VOLAILLE' })).result),
+    ).toBe('SITE_NOT_FARM');
     // Sur la ferme elle-même : acceptés, FRAIS_GENERAUX de l'espèce.
     const ok = await attempt(farm, { type: 'SITE', id: farm, speciesGroup: 'VOLAILLE' });
     expect(codeOf(ok.result)).toBe('APPLIED');
     expect(await costsOf(ok.id)).toEqual([
-      expect.objectContaining({ object: 'SITE', objectId: farm, costType: 'FRAIS_GENERAUX', species: 'VOLAILLE' }),
+      expect.objectContaining({
+        object: 'SITE',
+        objectId: farm,
+        costType: 'FRAIS_GENERAUX',
+        species: 'VOLAILLE',
+      }),
     ]);
   });
 });

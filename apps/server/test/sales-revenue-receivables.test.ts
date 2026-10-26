@@ -614,59 +614,63 @@ describe('créances, CA et marges (P4-09)', () => {
 
   // La tâche des créances balaie toutes les ventes ouvertes de la base partagée (persistante, qui
   // grossit à chaque exécution) : délai explicite plutôt que les 20 s par défaut.
-  it('créances : échéance, jours de retard et tranches ; la tâche publie un événement par vente et par jour', { timeout: 60_000 }, async () => {
-    const customer = await newCustomer({ credit: true });
-    const product = await sellable(1000);
-    await stock(product.id, 5, 600);
-    const first = await orderSale(customer, product, 2, '09:00:00');
-    const second = await orderSale(customer, product, 3, '10:00:00');
-    expect(
-      (await pay({ customerId: customer, amountXaf: 500 }, at('11:00:00'))).result.status,
-    ).toBe('APPLIED');
-    const due = (await saleRow(first)).due_date as unknown as Date | string;
-    expect(due).not.toBeNull();
+  it(
+    'créances : échéance, jours de retard et tranches ; la tâche publie un événement par vente et par jour',
+    { timeout: 60_000 },
+    async () => {
+      const customer = await newCustomer({ credit: true });
+      const product = await sellable(1000);
+      await stock(product.id, 5, 600);
+      const first = await orderSale(customer, product, 2, '09:00:00');
+      const second = await orderSale(customer, product, 3, '10:00:00');
+      expect(
+        (await pay({ customerId: customer, amountXaf: 500 }, at('11:00:00'))).result.status,
+      ).toBe('APPLIED');
+      const due = (await saleRow(first)).due_date as unknown as Date | string;
+      expect(due).not.toBeNull();
 
-    const today = await listReceivables(db, { today: DAY, customerIds: [customer] });
-    expect(today.map((line) => [line.saleId, line.balanceDueXaf, line.overdue])).toEqual([
-      [first, 1500, false],
-      [second, 3000, false],
-    ]);
-    // 45 jours plus tard (échéance par défaut à 30 jours) : 15 jours de retard, tranche 0-30.
-    const later = await listReceivables(db, {
-      today: '2026-11-26',
-      customerIds: [customer],
-      overdueOnly: true,
-    });
-    expect(later.map((line) => [line.daysOverdue, line.bucket])).toEqual([
-      [15, '0-30'],
-      [15, '0-30'],
-    ]);
-    expect(summarizeReceivables(later)).toEqual({
-      totalXaf: 4500,
-      overdueXaf: 4500,
-      count: 2,
-      buckets: { '0-30': 4500, '31-60': 0, '61-90': 0, '>90': 0 },
-    });
+      const today = await listReceivables(db, { today: DAY, customerIds: [customer] });
+      expect(today.map((line) => [line.saleId, line.balanceDueXaf, line.overdue])).toEqual([
+        [first, 1500, false],
+        [second, 3000, false],
+      ]);
+      // 45 jours plus tard (échéance par défaut à 30 jours) : 15 jours de retard, tranche 0-30.
+      const later = await listReceivables(db, {
+        today: '2026-11-26',
+        customerIds: [customer],
+        overdueOnly: true,
+      });
+      expect(later.map((line) => [line.daysOverdue, line.bucket])).toEqual([
+        [15, '0-30'],
+        [15, '0-30'],
+      ]);
+      expect(summarizeReceivables(later)).toEqual({
+        totalXaf: 4500,
+        overdueXaf: 4500,
+        count: 2,
+        buckets: { '0-30': 4500, '31-60': 0, '61-90': 0, '>90': 0 },
+      });
 
-    const registry = new JobHandlerRegistry();
-    const job = new ReceivablesOverdueJob(
-      new FixedClock(new Date('2026-11-26T07:00:00.000Z')),
-      idGenerator,
-      registry,
-    );
-    job.onModuleInit();
-    const handler = registry.resolve(RECEIVABLES_OVERDUE_JOB_TYPE)!;
-    await db.transaction().execute((trx) => handler(trx, {}));
-    await db.transaction().execute((trx) => handler(trx, {}));
-    const events = await db
-      .selectFrom('platform_domain_events')
-      .select(['aggregate_id', 'payload'])
-      .where('event_type', '=', 'ReceivableOverdue')
-      .where('aggregate_id', 'in', [toBin(first), toBin(second)])
-      .execute();
-    expect(events).toHaveLength(2);
-    expect(events.map((e) => (e.payload as { days_overdue: number }).days_overdue)).toEqual([
-      15, 15,
-    ]);
-  });
+      const registry = new JobHandlerRegistry();
+      const job = new ReceivablesOverdueJob(
+        new FixedClock(new Date('2026-11-26T07:00:00.000Z')),
+        idGenerator,
+        registry,
+      );
+      job.onModuleInit();
+      const handler = registry.resolve(RECEIVABLES_OVERDUE_JOB_TYPE)!;
+      await db.transaction().execute((trx) => handler(trx, {}));
+      await db.transaction().execute((trx) => handler(trx, {}));
+      const events = await db
+        .selectFrom('platform_domain_events')
+        .select(['aggregate_id', 'payload'])
+        .where('event_type', '=', 'ReceivableOverdue')
+        .where('aggregate_id', 'in', [toBin(first), toBin(second)])
+        .execute();
+      expect(events).toHaveLength(2);
+      expect(events.map((e) => (e.payload as { days_overdue: number }).days_overdue)).toEqual([
+        15, 15,
+      ]);
+    },
+  );
 });
