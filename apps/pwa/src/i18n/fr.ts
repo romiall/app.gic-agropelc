@@ -8,6 +8,7 @@ export const fr = {
     name: 'GIC AGROPELC',
     tagline: 'Gestion intégrée du groupement',
     footer: 'Application professionnelle · utilisable hors ligne',
+    screen_loading: 'Ouverture de l’écran…',
   },
   auth: {
     login_title: 'Connexion',
