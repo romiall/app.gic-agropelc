@@ -53,6 +53,7 @@ export function AccountMovements({
   const extra = older && older.base === first ? older : null;
   const items = [...(first?.movements ?? []), ...(extra?.items ?? [])];
   const next = extra ? extra.next : (first?.next_cursor ?? null);
+  const todayItems = items.filter((m) => businessDayOf(new Date(m.occurredAt)) === today);
 
   const loadMore = async () => {
     if (!first || !next) return;
@@ -130,10 +131,15 @@ export function AccountMovements({
           {t('treasury.movements_failed')}
         </p>
       ) : null}
-      {/* Feuille journalière de caisse (lot PP, D4) : mouvements du jour métier déjà chargés. */}
-      {refs ? (
+      {/* Feuille journalière de caisse (lot PP, D4) : mouvements du jour métier, offerte seulement
+          quand ils sont tous chargés (dernière page atteinte, ou un mouvement d'un jour antérieur
+          chargé). La clé porte le contenu : une feuille complétée depuis n'est pas un duplicata. */}
+      {refs && (!next || items.some((m) => businessDayOf(new Date(m.occurredAt)) < today)) ? (
         <PieceAction
-          cle={`FJC:${accountId}:${today}`}
+          cle={`FJC:${accountId}:${today}:${todayItems.length}:${todayItems.reduce(
+            (sum, m) => sum + (m.direction === 'IN' ? m.amountXaf : -m.amountXaf),
+            0,
+          )}`}
           libelle={t('piece.cash_sheet_today')}
           demande={() =>
             demandeFeuilleCaisse({
@@ -141,18 +147,16 @@ export function AccountMovements({
               jour: today,
               session: null,
               refs,
-              mouvements: items
-                .filter((m) => businessDayOf(new Date(m.occurredAt)) === today)
-                .map((m) => ({
-                  occurredAt: m.occurredAt,
-                  direction: m.direction,
-                  montant: m.amountXaf,
-                  piece: null,
-                  libelle: t(`treasury.movement_type.${m.movementType}`, {
-                    defaultValue: m.movementType,
-                  }),
-                  moyen: null,
-                })),
+              mouvements: todayItems.map((m) => ({
+                occurredAt: m.occurredAt,
+                direction: m.direction,
+                montant: m.amountXaf,
+                piece: null,
+                libelle: t(`treasury.movement_type.${m.movementType}`, {
+                  defaultValue: m.movementType,
+                }),
+                moyen: null,
+              })),
             })
           }
         />

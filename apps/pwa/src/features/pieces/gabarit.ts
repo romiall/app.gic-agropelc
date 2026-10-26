@@ -163,7 +163,7 @@ export function lignes({
     const row = rows[i];
     return `<tr>${all
       .map((c, k) => {
-        if (c.n) return `<td class="n">${row ? premierNumero + i : i + 1}</td>`;
+        if (c.n) return `<td class="n">${premierNumero + i}</td>`;
         if (prefill && k === decal) return `<td class="pre">${prefill[i] ?? ''}</td>`;
         const v = row?.[k - decal];
         if (present(v)) {

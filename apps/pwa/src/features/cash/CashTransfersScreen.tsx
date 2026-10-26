@@ -260,7 +260,11 @@ export function CashTransfersScreen() {
         {stateText(view)}
       </p>
       {/* Bordereau de remise de fonds (lot PP). */}
-      <PieceAction cle={`RF:${view.id}`} demande={() => demandeRemiseDeFonds(view, refs, null)} />
+      <PieceAction
+        cle={`RF:${view.id}`}
+        annulee={view.status === 'CANCELLED'}
+        demande={() => demandeRemiseDeFonds(view, refs, null)}
+      />
       {actions}
     </li>
   );

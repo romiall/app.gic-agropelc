@@ -43,9 +43,11 @@ export function PieceImprimable({ demande, cle, annulee = false }: PieceImprimab
   const cadre = useRef<HTMLIFrameElement>(null);
   const boite = useRef<HTMLDivElement>(null);
   const [largeur, setLargeur] = useState(0);
-  const [duplicata, setDuplicata] = useState<string | null>(null);
+  // Date de la première impression sur cet appareil. Dès qu'elle est connue, l'aperçu porte déjà
+  // la mention « DUPLICATA » : chaque impression suivante part directement du geste de l'utilisateur.
+  const [deja, setDeja] = useState<string | null>(() => premiereImpression(cle));
   const [enAttente, setEnAttente] = useState(false);
-  const deja = premiereImpression(cle);
+  const duplicata = useMemo(() => (deja ? datePiece(clock.now().toISOString()) : null), [deja]);
 
   const rendu = useMemo(() => {
     try {
@@ -82,14 +84,25 @@ export function PieceImprimable({ demande, cle, annulee = false }: PieceImprimab
   const echelle = largeur > 0 ? Math.min(1, largeur / cadreL) : 1;
 
   const imprimer = () => {
-    const maintenant = clock.now();
     if (deja) {
-      // Réimpression : la pièce est recalculée avec la mention, puis imprimée à son chargement.
-      setDuplicata(datePiece(maintenant.toISOString()));
+      void imprimerCadre(cadre.current);
+      return;
+    }
+    const ailleurs = premiereImpression(cle);
+    if (ailleurs) {
+      // Imprimée depuis l'ouverture (autre onglet, ou fin d'impression non signalée) : la pièce est
+      // recalculée avec la mention, puis imprimée à son chargement.
+      setDeja(ailleurs);
       setEnAttente(true);
       return;
     }
-    noterImpression(cle, maintenant);
+    // Le navigateur ne dit pas si l'impression a été annulée : la première impression est notée dès
+    // l'ouverture de la boîte d'impression (AV-310).
+    noterImpression(cle, clock.now());
+    const w = cadre.current?.contentWindow;
+    const apres = () => setDeja(premiereImpression(cle));
+    if (w) w.addEventListener('afterprint', apres, { once: true });
+    else apres();
     void imprimerCadre(cadre.current);
   };
 

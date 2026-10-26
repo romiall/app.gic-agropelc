@@ -59,5 +59,7 @@ describe('amountXafInFrenchWords', () => {
   it('écrit « de » après un multiple exact du million', () => {
     expect(amountXafInFrenchWords(2_000_000)).toBe('Deux millions de francs CFA');
     expect(amountXafInFrenchWords(2_000_001)).toBe('Deux millions un francs CFA');
+    expect(amountXafInFrenchWords(0)).toBe('Zéro franc CFA');
+    expect(amountXafInFrenchWords(1)).toBe('Un franc CFA');
   });
 });

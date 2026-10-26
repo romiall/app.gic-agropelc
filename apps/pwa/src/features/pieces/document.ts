@@ -7,6 +7,7 @@ import charte from './charte.css?raw';
 import valeurs from './valeurs.css?raw';
 import texte400 from '@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2?url';
 import texte600 from '@fontsource/noto-sans/files/noto-sans-latin-600-normal.woff2?url';
+import texte700 from '@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff2?url';
 import titre600 from '@fontsource/barlow-semi-condensed/files/barlow-semi-condensed-latin-600-normal.woff2?url';
 import titre700 from '@fontsource/barlow-semi-condensed/files/barlow-semi-condensed-latin-700-normal.woff2?url';
 import logo from './assets/logo-gic.png';
@@ -22,7 +23,7 @@ const police = (famille: string, poids: number, url: string) =>
 const POLICES = [
   police('GIC Texte', 400, texte400),
   police('GIC Texte', 600, texte600),
-  police('GIC Texte', 700, texte600),
+  police('GIC Texte', 700, texte700),
   police('GIC Titre', 600, titre600),
   police('GIC Titre', 700, titre700),
 ].join('\n');
@@ -31,5 +32,5 @@ const POLICES = [
 export function documentPiece(piece: PieceRendue, base = ''): string {
   const [w, h] = DIMENSIONS[piece.fmt];
   const baseTag = base ? `<base href="${esc(base)}">` : '';
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">${baseTag}<title>${esc(piece.code)} — ${esc(piece.titre)}</title><style>${POLICES}\n${charte}\n${valeurs}\n@page{size:${w}mm ${h}mm;margin:0}</style></head><body data-pages="${piece.pages.length}">${piece.pages.join('\n')}</body></html>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">${baseTag}<title>${esc(piece.code)} — ${esc(piece.titre)}</title><style>${POLICES}\n${charte}\n${valeurs}\n@page{size:${w}mm ${h}mm;margin:0}</style></head><body data-pages="${piece.pages.length}">${piece.pages.join('\n')}</body></html>`;
 }

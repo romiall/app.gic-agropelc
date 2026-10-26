@@ -211,7 +211,7 @@ export function bonLivraison(d: DonneesBL, ctx: Contexte): PieceRendue {
           { h: 13 },
         ),
       ].join(''),
-      ex: EX3_DEST.replace('destinataire', 'client'),
+      ex: EX3_DEST,
       mention: 'Une livraison partielle = un bon de livraison — le reste à livrer reste dû',
     }),
   );

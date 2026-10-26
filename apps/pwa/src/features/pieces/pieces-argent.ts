@@ -729,7 +729,7 @@ export function facture(d: DonneesFA, ctx: Contexte): PieceRendue {
           'Arrêtée la présente facture à la somme de (en lettres)',
           24,
           2,
-          derniere ? enLettres(d.netAPayer) : null,
+          derniere ? enLettres(d.totalTtc) : null,
         ),
         signatures(
           [

@@ -130,7 +130,8 @@ export function demandeBonReception(
   const lieu = refs.locations.find((l) => l.id === br.location_id);
   const site = lieu?.site_id ? refs.sites.get(lieu.site_id)?.name : undefined;
   const rejets = br.lines.some((l) => (nombre(l.qty_rejected_base) ?? 0) > 0);
-  const toutRejete = br.lines.every((l) => (nombre(l.qty_accepted_base) ?? 0) === 0);
+  const toutRejete =
+    br.lines.length > 0 && br.lines.every((l) => (nombre(l.qty_accepted_base) ?? 0) === 0);
   return {
     code: 'BR',
     donnees: {
@@ -156,7 +157,14 @@ export function demandeBonReception(
           peremption: null,
         };
       }),
-      constat: toutRejete ? 'refus total' : rejets ? 'réserves (voir observations)' : 'conforme',
+      constat:
+        br.lines.length === 0
+          ? null
+          : toutRejete
+            ? 'refus total'
+            : rejets
+              ? 'réserves (voir observations)'
+              : 'conforme',
       photo: null,
       observations: null,
     },

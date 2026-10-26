@@ -45,9 +45,8 @@ export function demandeDecaissementDepense(
   imputation: string | null,
 ): DemandePiece {
   const categorie = refs.expenseCategories.find((c) => c.id === depense.categoryId)?.label ?? null;
-  const caisse = depense.paidFromAccountId
-    ? nomCompte(refs, depense.paidFromAccountId)
-    : (refs.sites.get(depense.siteId)?.name ?? null);
+  // Le site n'est pas une caisse : sans compte connu, la case reste à remplir.
+  const caisse = nomCompte(refs, depense.paidFromAccountId);
   return {
     code: 'BD',
     donnees: {
@@ -141,7 +140,8 @@ export function demandeRemiseDeFonds(
       numero: numeroImprime(remise.docNumber),
       remettant: nomUtilisateur(refs, remise.sentBy),
       origine: nomCompte(refs, remise.fromAccountId),
-      destinataire: remise.carrierName,
+      // `carrierName` est le porteur des fonds, pas le destinataire qui les compte : case vide.
+      destinataire: null,
       destination: nomCompte(refs, remise.toAccountId),
       de: origine(refs, remise.fromAccountId),
       vers:
@@ -251,6 +251,17 @@ const COLONNE: Readonly<Record<string, number>> = {
   Chèque: 4,
 };
 
+/**
+ * Encaissements portés au journal : l'argent reçu et retenu. Sont écartés l'encaissement annulé,
+ * refusé, et le doublon présumé tant qu'il n'est pas confirmé (il compterait deux fois le même
+ * argent). Un remboursement est une sortie (BD), il ne réduit pas l'encaissement.
+ */
+export function encaissementsDuJournal<T extends { readonly status: string }>(
+  paiements: readonly T[],
+): T[] {
+  return paiements.filter((p) => p.status === 'RECORDED' || p.status === 'CANCELLATION_REQUESTED');
+}
+
 /** Journal des encaissements d'une période : une ligne par encaissement, au montant de son mode. */
 export function demandeJournalEncaissements(input: {
   readonly paiements: readonly CustomerPaymentData[];
@@ -260,8 +271,7 @@ export function demandeJournalEncaissements(input: {
   readonly tenuPar: string | null;
   readonly refs: Refs;
 }): DemandePiece {
-  const lignes: LigneJournalEncaissements[] = [...input.paiements]
-    .filter((p) => p.status !== 'CANCELLED')
+  const lignes: LigneJournalEncaissements[] = encaissementsDuJournal(input.paiements)
     .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at))
     .map((p) => {
       const parMode: [number | null, number | null, number | null, number | null, number | null] = [

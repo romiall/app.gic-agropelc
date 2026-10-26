@@ -10,7 +10,13 @@ import type { SaleView } from '../sales/recent-sales.js';
 import type { OrderView } from '../sales/open-orders.js';
 import type { CustomerPaymentData } from '../sales/types.js';
 import charte from './charte.css?raw';
-import { demandeBonDeVente, demandeBonLivraison, numeroImprime } from './adaptateurs-ventes.js';
+import {
+  demandeBonDeVente,
+  demandeBonLivraison,
+  demandeFacture,
+  demandeRecuDeVente,
+  numeroImprime,
+} from './adaptateurs-ventes.js';
 import { demandeFeuilleCaisse, demandeJournalEncaissements } from './adaptateurs-finance.js';
 import { lundiDe } from './adaptateurs-stock.js';
 import type { DemandePiece } from './demande.js';
@@ -97,6 +103,17 @@ describe('rendu des pièces', () => {
     expect(piece.pages[0]).toContain(`page 1/${piece.pages.length}`);
   });
 
+  it('pagination : les lignes vides de la feuille suivante continuent la numérotation', () => {
+    const ligne = X.EXEMPLE_BV.lignes[0]!;
+    const piece = rendrePiece(
+      { code: 'BV', donnees: { ...X.EXEMPLE_BV, lignes: Array.from({ length: 7 }, () => ligne) } },
+      CTX,
+    );
+    expect(piece.pages).toHaveLength(2);
+    const numeros = [...piece.pages[1]!.matchAll(/<td class="n">(\d+)<\/td>/g)].map((m) => m[1]);
+    expect(numeros).toEqual(['6', '7', '8', '9', '10']);
+  });
+
   it('les valeurs saisies sont échappées', () => {
     const piece = rendrePiece(
       { code: 'BV', donnees: { ...X.EXEMPLE_BV, client: '<script>x</script>' } },
@@ -144,6 +161,7 @@ function refs(partiel: Partial<SalesReferences> = {}): SalesReferences {
     cashAccounts: [],
     cashTransferTargets: [],
     expenseCategories: [],
+    products: [],
     ...partiel,
   } as unknown as SalesReferences;
 }
@@ -320,7 +338,7 @@ describe('adaptateurs', () => {
   });
 
   it('journal des encaissements : une colonne par mode, encaissements annulés exclus', () => {
-    const paiement = (id: string, mode: string, montant: number, status = 'ACTIVE') =>
+    const paiement = (id: string, mode: string, montant: number, status = 'RECORDED') =>
       ({
         id,
         doc_number: id,
@@ -339,6 +357,8 @@ describe('adaptateurs', () => {
         paiement('E1', 'CHEQUE', 300),
         paiement('E22', 'ESPECES', 100),
         paiement('X', 'ESPECES', 9, 'CANCELLED'),
+        paiement('Y', 'ESPECES', 9, 'REJECTED'),
+        paiement('Z', 'ESPECES', 9, 'SUSPECT_DUPLICATE'),
       ],
       site: 'Douala',
       du: '2026-10-20',
@@ -351,5 +371,136 @@ describe('adaptateurs', () => {
       [null, null, null, null, 300],
       [100, null, null, null, null],
     ]);
+  });
+
+  const ligneVente = (l: Partial<SaleView['lines'][number]>) => ({
+    productId: 'p1',
+    productName: 'Œufs',
+    quantity: 2,
+    unitCode: 'PLATEAU_30',
+    unitPriceXaf: 100,
+    discountXaf: 0,
+    lineTotalXaf: 6000,
+    cancelledXaf: 0,
+    ...l,
+  });
+  const produits = [
+    { id: 'p1', base_unit_code: 'OEUF', pricing_mode: 'PER_UNIT' },
+    { id: 'p2', base_unit_code: 'TETE', pricing_mode: 'PER_WEIGHT' },
+  ];
+
+  it('prix par unité de base ramené à l’unité vendue ; au poids, poids et prix au kg', () => {
+    const vente = {
+      ...VENTE,
+      lines: [
+        ligneVente({}),
+        ligneVente({
+          productId: 'p2',
+          productName: 'Poulet',
+          quantity: 12,
+          unitCode: 'TETE',
+          unitPriceXaf: 2500,
+          lineTotalXaf: 69000,
+        }),
+      ],
+    } as SaleView;
+    const d = demandeBonDeVente(
+      vente,
+      refs({ products: produits } as unknown as Partial<SalesReferences>),
+    );
+    if (d.code !== 'BV') throw new Error('BV attendu');
+    expect(d.donnees.lignes[0]).toMatchObject({ quantite: '2', prixUnitaire: 3000, montant: 6000 });
+    expect(d.donnees.lignes[1]).toMatchObject({
+      quantite: '12',
+      poidsKg: '27,6',
+      prixUnitaire: 2500,
+    });
+    const fa = demandeFacture(
+      vente,
+      refs({ products: produits } as unknown as Partial<SalesReferences>),
+    );
+    if (fa.code !== 'FA') throw new Error('FA attendu');
+    expect(fa.donnees.lignes[1]).toMatchObject({
+      unite: 'kg',
+      quantite: '27,6',
+      prixUnitaireHt: 2500,
+    });
+  });
+
+  it('annulation partielle : ligne annulée retirée, ligne entamée réduite, total = lignes', () => {
+    const vente = {
+      ...VENTE,
+      id: 'v2',
+      status: 'CONFIRMED',
+      netTotalXaf: 4500,
+      lines: [
+        ligneVente({ lineTotalXaf: 6000, cancelledXaf: 3000 }),
+        ligneVente({
+          productName: 'Œufs bis',
+          lineTotalXaf: 1500,
+          quantity: 1,
+          unitPriceXaf: 50,
+          cancelledXaf: 1500,
+        }),
+      ],
+    } as SaleView;
+    const d = demandeBonDeVente(
+      vente,
+      refs({
+        products: produits,
+        sales: [
+          {
+            id: 'v2',
+            payments: [],
+            lines: [
+              { quantity_base: 60, cancelled_quantity_base: 30 },
+              { quantity_base: 30, cancelled_quantity_base: 30 },
+            ],
+          },
+        ],
+      } as unknown as Partial<SalesReferences>),
+    );
+    if (d.code !== 'BV') throw new Error('BV attendu');
+    expect(d.donnees.lignes).toHaveLength(1);
+    expect(d.donnees.lignes[0]).toMatchObject({ quantite: '1', prixUnitaire: 3000, montant: 3000 });
+    expect(d.donnees.total).toBe(3000);
+  });
+
+  it('reçu : reste dû juste après cet encaissement, objet vide s’il règle autre chose aussi', () => {
+    const p = (id: string, at: string, montant: number) =>
+      ({
+        id,
+        doc_number: id,
+        status: 'RECORDED',
+        customer_id: null,
+        site_id: 's',
+        payment_method_code: 'ESPECES',
+        amount_xaf: montant,
+        external_reference: null,
+        received_by_user_id: 'u',
+        unallocated_xaf: 0,
+        occurred_at: at,
+      }) as CustomerPaymentData;
+    const re1 = p('RE-1', '2026-10-26T08:00:00Z', 10000);
+    const re2 = p('RE-2', '2026-10-26T09:00:00Z', 25000);
+    const r = refs({
+      payments: [re1, re2],
+      sales: [
+        {
+          id: 'v3',
+          lines: [],
+          payments: [
+            { payment_id: 'RE-1', amount_xaf: 10000, status: 'ACTIVE' },
+            { payment_id: 'RE-2', amount_xaf: 20000, status: 'ACTIVE' },
+          ],
+        },
+      ],
+    } as unknown as Partial<SalesReferences>);
+    const vente = { ...VENTE, id: 'v3', docNumber: 'VTE-3', netTotalXaf: 30000 } as SaleView;
+    const d1 = demandeRecuDeVente(vente, re1, r);
+    const d2 = demandeRecuDeVente(vente, re2, r);
+    if (d1.code !== 'RE' || d2.code !== 'RE') throw new Error('RE attendu');
+    expect(d1.donnees).toMatchObject({ resteDu: 20000, objet: 'vente', objetNumero: 'VTE-3' });
+    expect(d2.donnees).toMatchObject({ resteDu: 0, objet: null, montant: 25000 });
   });
 });

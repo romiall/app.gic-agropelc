@@ -557,31 +557,36 @@ function PaymentList({
             {t('supplier_payment.cancel_reason', { reason: item.cancelReason })}
           </p>
         ) : null}
-        {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur. */}
-        <PieceAction
-          cle={`BD:${item.id}`}
-          annulee={item.status === 'CANCELLED'}
-          demande={() =>
-            refs
-              ? demandeDecaissementFournisseur(
-                  {
-                    docNumber: item.docNumber,
-                    fournisseur: supplierOf(item.supplierId),
-                    compteId: item.fromAccountId,
-                    occurredAt: item.disbursedAt ?? item.occurredAt,
-                    creePar: item.createdBy,
-                    decidePar: item.decidedBy,
-                    montant: item.amountXaf,
-                    avance: item.unallocatedXaf >= item.amountXaf,
-                    factures: [],
-                    moyen: item.paymentMethodCode,
-                    reference: item.externalReference,
-                  },
-                  refs,
-                )
-              : null
-          }
-        />
+        {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur, seulement une fois
+            l'argent sorti (en attente de la Direction ou refusé : aucun décaissement). */}
+        {item.status === 'RECORDED' || (item.status === 'CANCELLED' && item.disbursedAt) ? (
+          <PieceAction
+            cle={`BD:${item.id}`}
+            annulee={item.status === 'CANCELLED'}
+            demande={() =>
+              refs
+                ? demandeDecaissementFournisseur(
+                    {
+                      docNumber: item.docNumber,
+                      // Fournisseur inconnu de la liste : case laissée vide, jamais un identifiant.
+                      fournisseur:
+                        suppliers.find((supplier) => supplier.id === item.supplierId)?.name ?? null,
+                      compteId: item.fromAccountId,
+                      occurredAt: item.disbursedAt ?? item.occurredAt,
+                      creePar: item.createdBy,
+                      decidePar: item.decidedBy,
+                      montant: item.amountXaf,
+                      avance: item.unallocatedXaf >= item.amountXaf,
+                      factures: [],
+                      moyen: item.paymentMethodCode,
+                      reference: item.externalReference,
+                    },
+                    refs,
+                  )
+                : null
+            }
+          />
+        ) : null}
         <button
           type="button"
           className="secondary"

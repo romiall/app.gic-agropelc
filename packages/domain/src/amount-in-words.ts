@@ -99,5 +99,7 @@ export function amountXafInFrenchWords(value: number): string {
   const words = integerInFrenchWords(value);
   // « un million de francs », « deux millions de francs » : « de » après un multiple exact.
   const of = /(?:million|milliard|billion)s?$/.test(words) ? ' de' : '';
-  return `${words.charAt(0).toUpperCase()}${words.slice(1)}${of} francs CFA`;
+  // « zéro franc », « un franc » : singulier en dessous de deux.
+  const franc = Math.abs(value) < 2 ? 'franc' : 'francs';
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}${of} ${franc} CFA`;
 }

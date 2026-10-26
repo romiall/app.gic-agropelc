@@ -213,7 +213,10 @@ function plusJours(jour: string, n: number): string {
 
 /**
  * Suivi d'un lot pour une semaine (lundi à dimanche) : une ligne par jour, reprise des saisies du
- * jour servies à l'appareil (30 jours). Une saisie annulée n'est pas reprise.
+ * jour servies à l'appareil (30 jours). Une saisie annulée n'est pas reprise ; une mortalité rejetée
+ * avec retour en stock (`REJECTED_RETURNED`) non plus, alors qu'une mortalité jugée non justifiée
+ * reste une tête sortie du lot (AV-038). Les colonnes « Aliment » ne reprennent que les
+ * consommations d'aliment (`cost_type` `ALIMENT`), en kg quand l'unité le permet.
  */
 export function demandeSuiviLot(lot: ProductionLotData, lundi: string, refs: Refs): DemandePiece {
   const jours = JOURS_SEMAINE.map((_, i) => plusJours(lundi, i));
@@ -222,8 +225,18 @@ export function demandeSuiviLot(lot: ProductionLotData, lundi: string, refs: Ref
   ) => xs.filter((x) => x.production_lot_id === lot.id && x.status !== 'CANCELLED');
   const jourDe = (iso: string) => businessDayOf(new Date(iso));
   const somme = (xs: readonly (number | null)[]) => xs.reduce<number>((s, x) => s + (x ?? 0), 0);
-  const pertes = duLot(refs.lotLosses).filter((l) => l.category === 'MORTALITE');
-  const conso = duLot(refs.lotConsumptions);
+  const pertes = duLot(refs.lotLosses).filter(
+    (l) => l.category === 'MORTALITE' && l.status !== 'REJECTED_RETURNED',
+  );
+  const conso = duLot(refs.lotConsumptions).filter((c) => c.cost_type === 'ALIMENT');
+  // Kilogrammes d'une consommation : saisie en kg, ou produit dont l'unité de base est le kg ;
+  // sinon inconnus (la case du jour reste vide plutôt qu'une somme d'unités différentes).
+  const kg = (c: (typeof conso)[number]): number | null =>
+    c.unit_code === 'KG'
+      ? c.quantity
+      : produit(refs, c.product_id)?.base_unit_code === 'KG'
+        ? c.quantity_base
+        : null;
   const pesees = duLot(refs.lotWeighings);
   const obs = refs.lotObservations.filter((o) => o.production_lot_id === lot.id);
   const oeufs = duLot(refs.eggCollections);
@@ -251,7 +264,7 @@ export function demandeSuiviLot(lot: ProductionLotData, lundi: string, refs: Ref
         [...new Set(a.map((c) => produit(refs, c.product_id)?.name ?? ''))]
           .filter(Boolean)
           .join(', ') || null,
-      alimentKg: n(somme(a.map((c) => (c.unit_code === 'KG' ? c.quantity : c.quantity_base)))),
+      alimentKg: a.some((c) => kg(c) === null) ? null : n(somme(a.map(kg))),
       peseeEchantillon: p ? q(p.sample_size) : null,
       peseePoidsMoyenG: p ? q(p.avg_weight_g) : null,
       oeufsCollectes: n(somme(o.map((e) => e.collected_qty))),
@@ -284,7 +297,10 @@ export function demandeSuiviLot(lot: ProductionLotData, lundi: string, refs: Ref
         total('mortaliteNombre'),
         null,
         null,
-        total('alimentKg'),
+        // Un jour aux kilogrammes inconnus rend le total de la semaine inconnu.
+        conso.some((c) => jours.includes(jourDe(c.occurred_at)) && kg(c) === null)
+          ? null
+          : total('alimentKg'),
         null,
         null,
         total('oeufsCollectes'),

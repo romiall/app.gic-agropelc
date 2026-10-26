@@ -23,20 +23,31 @@ Deux autres décisions du porteur, le même jour : la **facture** (FA) est impri
 2. **Une pièce est un document autonome** posé dans une `iframe` (`srcdoc`) :
    - feuille de style du papier isolée de l'application ;
    - `@page` à la taille de la pièce (A5 paysage, A4 portrait…, marges nulles : le cadre de la pièce porte ses propres marges) ;
-   - impression par `contentWindow.print()`, après le chargement des polices.
+   - impression par `contentWindow.print()`, après le chargement des polices ;
+   - aucun script dans la pièce : le document porte une politique de sécurité `script-src 'none'` (défense en profondeur, toutes les valeurs étant déjà échappées).
    - Le même rendu sert à consulter l'opération (REQ-302) et à l'imprimer (REQ-301). Tout est calculé sur l'appareil, à partir des données déjà chargées par l'écran : utilisable hors ligne. Le logo et les polices sont dans le pré-cache du service worker (`png` et `woff2`).
 3. **Polices.** Les gabarits demandent *Segoe UI* et *Bahnschrift*. Elles restent en tête de la pile : un poste Windows imprime avec elles. Ailleurs, l'application embarque deux polices libres de mêmes proportions :
-   - Noto Sans pour le texte, réduite à 94 % (`size-adjust`) pour garder la chasse de Segoe UI ;
+   - Noto Sans pour le texte (normal, demi-gras et gras), réduite à 94 % (`size-adjust`) pour garder la chasse de Segoe UI ;
    - Barlow Semi Condensed pour les titres.
    - Contrôle : les 16 pièces, rendues avec ces polices et comparées aux aperçus du porteur, tiennent dans leur cadre sans débordement.
 4. **Pas de souche** (D1). Le corps de la pièce occupe toute la feuille, avec les marges de la souche (fonction `standard`).
 5. **Mentions** (AV-310 (a)) :
    - numéro imprimé : `doc_number`, sinon la référence locale, sinon « EN ATTENTE » ;
-   - réimpression : tampon « DUPLICATA » avec sa date, décidé par un marqueur local écrit à la première impression ;
+   - réimpression : tampon « DUPLICATA » avec sa date, décidé par un marqueur local écrit à la première impression ; dès que la pièce a été imprimée sur l'appareil, l'aperçu porte déjà le tampon, si bien que chaque réimpression part directement du geste de l'utilisateur ;
+   - le navigateur ne dit pas si l'impression a été annulée : la première impression est notée à l'ouverture de la boîte d'impression, et une impression annulée rend la suivante « DUPLICATA » ;
+   - pour un registre (FJC, JE), la clé du marqueur porte le contenu (nombre de lignes et total) : une feuille complétée depuis la dernière impression est une autre feuille, pas un duplicata ;
    - opération annulée : tampon « ANNULÉE » et case « pièce annulée » cochée.
    - Imprimer n'est pas une écriture métier : aucune commande, aucune migration, aucune permission.
-6. **Pagination.** Au-delà des lignes du gabarit, la pièce passe sur une feuille suivante numérotée « page i/n ». Le journal des encaissements reporte ses totaux d'une feuille à l'autre.
-7. **Données.** Des adaptateurs purs (`adaptateurs-ventes.ts`, `-finance.ts`, `-achats.ts`, `-stock.ts`) traduisent les données des écrans en rubriques de la pièce. Une valeur inconnue reste la ligne pointillée du papier, à compléter à la main : on n'invente jamais une valeur. Le montant en lettres est une fonction pure de `packages/domain` (`amountXafInFrenchWords`, règle 6).
+6. **Pagination.** Au-delà des lignes du gabarit, la pièce passe sur une feuille suivante numérotée « page i/n », dont les lignes poursuivent la numérotation. Le journal des encaissements, dont la case du numéro est « Page N° », y porte le numéro de feuille et reporte ses totaux d'une feuille à l'autre.
+7. **Données.** Des adaptateurs purs (`adaptateurs-ventes.ts`, `-finance.ts`, `-achats.ts`, `-stock.ts`) traduisent les données des écrans en rubriques de la pièce. Une valeur inconnue reste la ligne pointillée du papier, à compléter à la main : on n'invente jamais une valeur (un porteur de fonds n'est pas le destinataire, l'auteur d'une commande n'est pas son commercial, un fournisseur inconnu n'est pas un bout d'identifiant). Le montant en lettres est une fonction pure de `packages/domain` (`amountXafInFrenchWords`, règle 6). Règles retenues après la revue adverse du 26/10/2026 :
+   - **prix** : le serveur tarife par unité de base, ou au kg pour un produit vendu au poids. La pièce ramène le prix à l'unité vendue quand il tombe juste (2 plateaux à 3 000), sinon écrit la quantité et le prix en unité de base ; au poids, elle écrit le poids et le prix au kg (la facture compte alors en kg). Le poids et la quantité tarifée se lisent dans le montant brut, arrondis à trois décimales (DÉDUIT, exact dès 1 000 XAF le kg) ;
+   - **annulation partielle** : une ligne annulée en entier n'est plus imprimée, une ligne entamée l'est pour sa part restante ; le total imprimé est la somme des lignes. Une vente annulée en entier garde ses lignes d'origine sous le tampon « ANNULÉE » ;
+   - **reçu** : le « reste dû » est le solde de la vente juste après cet encaissement, pas celui du jour de l'impression ; un encaissement qui règle aussi autre chose laisse l'objet à écrire ;
+   - **journal des encaissements** : seuls les encaissements retenus (`RECORDED`, `CANCELLATION_REQUESTED`) ; ni annulés, ni refusés, ni doublons présumés ; un remboursement est une sortie (BD) ;
+   - **bon de décaissement** : seulement une fois l'argent sorti (dépense payée ; paiement fournisseur enregistré, ou annulé après décaissement) ;
+   - **bon de réception** : pas pour une réception en quarantaine ou refusée (non comptabilisée) ;
+   - **feuille de caisse** : offerte seulement quand tous les mouvements du jour sont chargés ;
+   - **suivi de lot** : les consommations d'aliment seulement, en kg quand l'unité le permet (sinon la case reste vide) ; une mortalité rejetée avec retour en stock n'est pas comptée, une mortalité jugée non justifiée l'est (AV-038).
 8. **Seize pièces** sont imprimables depuis leur écran :
 
    | Pièces | Écran |
@@ -58,7 +69,8 @@ Deux autres décisions du porteur, le même jour : la **facture** (FA) est impri
 
    Les autres pièces (VC, PT, BH, RC, papeterie) n'ont pas d'opération correspondante dans l'application aujourd'hui.
 9. **Facture** (choix du porteur du 26/10/2026) :
-   - imprimée sans la mention « modèle provisoire » ;
+   - imprimée sans la mention « modèle provisoire », et son pied dit seulement « Facture numérotée en continu » : la réserve « les mentions légales et le taux de TVA sont à valider avec le comptable avant impression » du gabarit est levée par la validation du comptable ;
+   - la somme en lettres est celle du total TTC, non du reste à payer ;
    - prix TTC et TVA à 0, conformément à AV-041 ;
    - le régime de TVA et la mention d'exonération restent à cocher à la main tant qu'AV-451 n'est pas tranché.
 10. **Identité de la société.** Elle est copiée de `identite.json` dans `identite.ts` (AV-324, choix (b), provisoire). Une rubrique vide s'imprime en pointillés. Le défaut d'AV-324 (paramètres de l'organisation) reste à construire.
@@ -66,7 +78,7 @@ Deux autres décisions du porteur, le même jour : la **facture** (FA) est impri
 ## Conséquences
 
 - Une modification d'une pièce par le porteur se reprend en recopiant `pieces.css` et, si le balisage change, la fonction concernée de `gabarit.ts` ; le test de fidélité le signale.
-- Les pièces s'impriment depuis un téléphone ou un ordinateur, hors ligne comprise. Sur iOS, `@page size` est mal pris en charge : l'utilisateur choisit le format dans la boîte d'impression.
+- Les pièces s'impriment depuis un téléphone ou un ordinateur, hors ligne comprise. Sur iOS, `@page size` est mal pris en charge : l'utilisateur choisit le format dans la boîte d'impression. **À vérifier sur appareil** : sur certains navigateurs mobiles (iOS Safari, versions de Chrome Android), `print()` appelé sur une `iframe` peut imprimer la page entière ; le service worker doit aussi servir le logo et les polices à l'`iframe` `srcdoc` hors ligne (prévu par la spécification, non essayé sur un téléphone).
 - Le marqueur de réimpression n'est connu que de l'appareil (AV-310) : une pièce imprimée sur un autre appareil n'y est pas reconnue comme déjà imprimée.
 
 ### Limites connues

@@ -8,7 +8,10 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PieceAction } from '../pieces/PieceAction.js';
-import { demandeJournalEncaissements } from '../pieces/adaptateurs-finance.js';
+import {
+  demandeJournalEncaissements,
+  encaissementsDuJournal,
+} from '../pieces/adaptateurs-finance.js';
 import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { ROUTES } from '../../app/screens.js';
@@ -113,7 +116,7 @@ export function SalesListScreen() {
       {/* Journal des encaissements (lot PP, JE) : les encaissements servis à l'appareil (7 jours). */}
       {refs.payments.length > 0 ? (
         <PieceAction
-          cle={`JE:${journalPeriod(refs.payments).au}`}
+          cle={journalKey(refs.payments)}
           libelle={t('piece.receipts_journal')}
           demande={() => {
             const { du, au } = journalPeriod(refs.payments);
@@ -135,6 +138,23 @@ export function SalesListScreen() {
 }
 
 /** Période couverte par les encaissements servis : du premier au dernier jour métier. */
+/**
+ * Clé de réimpression du journal : sa période et son contenu. Un journal qui a reçu un encaissement
+ * depuis la dernière impression est une autre feuille, pas un duplicata.
+ */
+function journalKey(
+  payments: readonly {
+    readonly occurred_at: string;
+    readonly status: string;
+    readonly amount_xaf: number;
+  }[],
+) {
+  const { du, au } = journalPeriod(payments);
+  const active = encaissementsDuJournal(payments);
+  const total = active.reduce((sum, payment) => sum + payment.amount_xaf, 0);
+  return `JE:${du}:${au}:${active.length}:${total}`;
+}
+
 function journalPeriod(payments: readonly { readonly occurred_at: string }[]) {
   const days = payments.map((payment) => businessDayOf(new Date(payment.occurred_at))).sort();
   return { du: days[0] ?? '', au: days[days.length - 1] ?? '' };

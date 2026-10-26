@@ -25,7 +25,11 @@ import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { saveErrorKey, submitCommand } from './submit.js';
 import { PieceAction } from '../pieces/PieceAction.js';
-import { demandeBonDeVente, demandeFacture, demandeRecu } from '../pieces/adaptateurs-ventes.js';
+import {
+  demandeBonDeVente,
+  demandeFacture,
+  demandeRecuDeVente,
+} from '../pieces/adaptateurs-ventes.js';
 
 /** Encaissements actifs d'une vente servie par le serveur (reçus imprimables). */
 function salePayments(saleId: string, refs: SalesReferences) {
@@ -351,14 +355,7 @@ export function SaleDetailScreen() {
           cle={`RE:${payment.id}`}
           annulee={payment.status === 'CANCELLED'}
           libelle={t('piece.receipt_of', { doc: payment.doc_number })}
-          demande={() =>
-            demandeRecu(
-              payment,
-              refs,
-              { type: 'vente', numero: sale.docNumber },
-              sale.balanceDueXaf,
-            )
-          }
+          demande={() => demandeRecuDeVente(sale, payment, refs)}
         />
       ))}
       {cancellable && foreignPending ? (

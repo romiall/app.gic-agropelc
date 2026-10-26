@@ -25,6 +25,8 @@ describe('Voir et imprimer une pièce (REQ-301, REQ-302)', () => {
     render(<PieceAction cle="RE:2" demande={() => ({ code: 'RE', donnees: EXEMPLE_RE })} />);
     await userEvent.click(screen.getByRole('button', { name: 'Voir la pièce' }));
     expect(screen.getByText(/25\/10\/2026/)).toBeTruthy();
+    // L'aperçu porte déjà la mention : l'impression part directement du clic.
+    expect(screen.getByTitle(/RE/).getAttribute('srcdoc')).toContain('Duplicata');
   });
 
   it('données absentes ou incohérentes : un message, pas une erreur de l’écran', async () => {
