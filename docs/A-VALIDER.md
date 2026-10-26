@@ -323,9 +323,9 @@ Classification (PM §45) :
 | AV-306 | Pièce citée par une opération : existence, document et auteur non vérifiés | SECONDAIRE | P8 | Présomption conservée jusqu'au pilote ; contrôle serveur groupé avec AV-093 et AV-293 | OUVERT |
 | AV-307 | Poste de bureau des rôles de bureau et exception de RC-02 | SECONDAIRE | P8 | Approuvé comme tout appareil (défaut implémenté) ; exemption à décider | OUVERT |
 | AV-308 | Référence de la pièce papier : champ dédié ou généralisation de `local_ref` | IMPORTANTE | PP | Champ dédié, sans unicité (doublon signalé, jamais rejeté) | OUVERT |
-| AV-309 | Rendu des pièces : composants de la PWA, police libre, consultation et impression sur le même rendu | IMPORTANTE | PP | Un composant par type de pièce, alimenté hors ligne ; police libre embarquée | OUVERT |
-| AV-310 | Mentions de la pièce imprimée : numéro, duplicata, annulation, données personnelles | SECONDAIRE | PP | Numéro de l'application, DUPLICATA, bandeau ANNULÉE, mêmes droits qu'à l'écran | OUVERT |
-| AV-311 | Journal de caisse imprimé : contenu hors ligne et pagination | SECONDAIRE | PP | Complet en ligne, partiel hors ligne, feuilles de 28 lignes avec report | OUVERT |
+| AV-309 | Rendu des pièces : composants de la PWA, police libre, consultation et impression sur le même rendu | IMPORTANTE | PP | Balisage et charte du papier repris à l'identique, alimentés hors ligne ; police libre embarquée ; **implémenté** (ADR-048) | OUVERT |
+| AV-310 | Mentions de la pièce imprimée : numéro, duplicata, annulation, données personnelles | SECONDAIRE | PP | Numéro de l'application, DUPLICATA, bandeau ANNULÉE, mêmes droits qu'à l'écran ; **implémenté** (ADR-048) | OUVERT |
+| AV-311 | Journal de caisse imprimé : contenu hors ligne et pagination | SECONDAIRE | PP | Complet en ligne, partiel hors ligne, feuilles de 28 lignes avec report ; FJC et JE livrés, lecture des mouvements à étendre | OUVERT |
 | AV-312 | Registre des carnets : contrôle de continuité | SECONDAIRE | PP | Manques et doublons d'après les références saisies, à la demande | OUVERT |
 | AV-313 | Présence du personnel non commercial | IMPORTANTE | PP | Table légère alimentée par la fiche PT ; usage statistique, pas de paie | OUVERT |
 | AV-314 | Bilan hebdomadaire du commercial | SECONDAIRE | PP | Entité propre et écran ; chiffres calculés, jamais saisis | OUVERT |
@@ -338,9 +338,10 @@ Classification (PM §45) :
 | AV-321 | Quantités préremplies à la réception d'un transfert et d'un bon de commande | SECONDAIRE | MP | Préremplies à l'expédié ou au reste (comportement actuel) | OUVERT |
 | AV-322 | Appareil enrôlé et jamais approuvé : ancienneté dans le signal d'accueil | SECONDAIRE | MP | Signal inchangé, appareils refusés par l'Admin ; **non implémenté** | OUVERT |
 | AV-323 | Opérations sans pièce papier propre | SECONDAIRE | PP | Mise en page générique à la charte (logo, couleurs, numéro de l'application, rubriques de la commande) | OUVERT |
-| AV-324 | Identité de la société imprimée sur les pièces | SECONDAIRE | PP | Paramètres de l'organisation ; rubrique vide imprimée en pointillés | OUVERT |
+| AV-324 | Identité de la société imprimée sur les pièces | SECONDAIRE | PP | Paramètres de l'organisation ; rubrique vide imprimée en pointillés ; provisoirement copie de `identite.json` (ADR-048) | OUVERT |
 | AV-325 | Création d'un compte par l'Admin : mot de passe provisoire hors du journal des commandes | IMPORTANTE | MP | Route en ligne `POST /users` hors journal, comme la réinitialisation (ADR-045) ; **implémenté** (MP-13) | OUVERT |
 | AV-326 | Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes | SECONDAIRE | MP | `GLOBAL` et `SITE` ; zones et équipes avec `GET /zones` et `GET /teams` (S-19, S-28) ; **implémenté** (MP-13) | OUVERT |
+| AV-451 | Facture imprimée : régime de TVA et mention d'exonération | IMPORTANTE | PP | Rien de coché, rubriques laissées à remplir à la main ; TVA à 0 (AV-041) | OUVERT |
 
 ---
 
@@ -556,6 +557,7 @@ Politique par défaut, paramétrable :
 - **Recommandation** : prix saisis et affichés TTC. Pas de ventilation fiscale au MVP. Les colonnes `tax_rate` et `tax_amount_xaf` sont prévues à 0 dans les lignes de vente et d'achat pour permettre l'évolution.
 - **Décision** (porteur du projet, 30/09/2026) : **prix TTC, reçu numérique simple** (recommandation) : pas de ventilation fiscale ni de facture normalisée ; colonnes `tax_rate` et `tax_amount_xaf` à 0
 - **Confirmation du porteur (20/10/2026, D3)** : la facture client reste hors de l'application pour l'instant (REQ-309). À rouvrir si la facturation électronique annoncée par la loi de finances 2026 s'impose (points légaux à valider avec le comptable).
+- **Décision du porteur (26/10/2026)** : la facture (FA) est imprimée par l'application, dans le modèle du dossier papier, que le comptable a validé ; D3 et l'exclusion de REQ-309 sont levés. Le choix du 30/09 reste : prix TTC, TVA à 0 (colonne « Taux TVA » à 0 %, TVA nulle, total TTC égal au total HT). Le régime de TVA et la mention d'exonération imprimés sont l'objet d'AV-451. Mise en œuvre : ADR-048.
 
 ### AV-042 — Valorisation du stock — IMPORTANTE
 - **Choix** : CMUP, FIFO, coût standard.
@@ -2376,6 +2378,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) un composant de la PWA par type de pièce, alimenté par les données locales de l'opération, le même pour l'écran de consultation et pour l'impression (`window.print()`, `@page` A5 paysage, A5 portrait, A4 portrait ou A4 paysage selon la pièce), police libre embarquée, logo dans le pré-cache du service worker, repli sans `@page` ; la souche n'est pas imprimée ; (b) PDF produit par le serveur : écarté, il exclut le hors ligne (D1).
 - **Recommandation** : (a). Les rubriques de chaque composant sont comparées à `CORRESPONDANCE-APPLICATION.xlsx` par un test, dont l'oracle (extraction versionnée de la feuille « Champs » du classeur du porteur, aujourd'hui hors du dépôt) est à verser dans `docs/` ou en fixture en PP-0 ; pas de source HTML commune avec le dossier papier. Le dossier d'origine tolère, à défaut de mise en page identique, le respect de la charte (vert, orange doré, logo) : **DÉDUIT**, à confirmer par le porteur.
 - **Impact** : `apps/pwa` (composants, feuille d'impression, service worker), `packages/domain` (montant en lettres), écrans de détail à ajouter pour les opérations qui n'en ont pas, ADR « impression des pièces » à rédiger en PP-0. Défaut retenu pour la conception : (a).
+- **Mise en œuvre (26/10/2026, ADR-048)** : (a), précisé par la demande du porteur du même jour (« que les modèles soient exactement tels que je les ai conçus ») : la feuille `pieces.css` est copiée à l'octet et le balisage de `_generation/lib.mjs` est porté en TypeScript, au lieu d'un composant redessiné par pièce ; un test vérifie la copie. Polices du gabarit en tête, Noto Sans (à 94 %) et Barlow Semi Condensed embarquées en repli. Seize pièces imprimables. **Reste** : la comparaison automatisée des rubriques à `CORRESPONDANCE-APPLICATION.xlsx` ; les opérations sans pièce propre (AV-323).
 
 ### AV-310 — Mentions de la pièce imprimée : numéro, duplicata, annulation, données personnelles — SECONDAIRE
 - **Question** : que porte une pièce imprimée par l'application, et qui peut l'imprimer ?
@@ -2383,6 +2386,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) numéro imprimé = `doc_number` s'il est connu, sinon le numéro de la pièce papier (AV-308), sinon `local_ref` hors ligne ; réimpression marquée « DUPLICATA » avec sa date, décidée par un marqueur local écrit sur l'appareil à la première impression (une impression faite sur un autre appareil, hors ligne avant l'envoi ou après un effacement des données du navigateur n'est pas reconnue ; la trace serveur est l'option (b)) ; opération annulée marquée par un bandeau « ANNULÉE » ; nom et téléphone du client imprimés seulement pour qui les voit déjà à l'écran ; valeurs au coût jamais imprimées sans droit de valorisation (RC-05) ; imprimer n'est pas une écriture métier (aucune commande, aucune migration, aucune permission ; seul le marqueur local est écrit) ; (b) en plus, tracer chaque impression dans le journal d'audit (écrit côté serveur : impossible hors ligne sans envoi d'une commande).
 - **Recommandation** : (a) ; (b) seulement si la Direction veut tracer les réimpressions (option « 2 exemplaires, client et comptabilité » à décider avec le porteur).
 - **Impact** : composants de pièce ; aucune migration. Défaut retenu pour la conception : (a).
+- **Mise en œuvre (26/10/2026, ADR-048)** : (a). Sans numéro du serveur ni référence locale, la pièce porte « EN ATTENTE » ; le numéro de la pièce papier (AV-308) n'existe pas encore. Les droits sont ceux de l'écran qui montre la pièce : aucune pièce imprimée ne porte de valeur au coût.
 
 ### AV-311 — Journal de caisse imprimé : contenu hors ligne et pagination — SECONDAIRE
 - **Question** : que montre le journal d'un compte hors ligne, et comment se répartit un jour de plus de 28 opérations ?
@@ -2390,6 +2394,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) en ligne, état complet d'un compte pour un jour métier (fuseau `Africa/Douala`) ; hors ligne, journal reconstruit localement et marqué « partiel » (il ne peut montrer ni les paiements fournisseurs, ni les encaissements de plus de 7 jours, ni les mouvements d'un autre auteur sur une caisse partagée) ; feuilles de 28 lignes avec report du sous-total ; pied de feuille par type de compte : `CAISSE_PDV`, rapprochement avec la session de caisse (fonds d'ouverture, entrées, sorties, solde théorique, comptage, écart) ; `CAISSE_UTILISATEUR`, totaux sans comptage ; `CAISSE_CENTRALE`, à décider en PP-0 ; mobile money et banque, totaux par mode sans comptage ; (b) en ligne seulement.
 - **Recommandation** : (a).
 - **Impact** : PWA (état et composant de pièce FJC et JE) ; lecture existante **à étendre** (jointure sur le document source pour le numéro, le libellé et le mode, ou composition côté PWA : à trancher en PP-0), tri par `occurred_at` fait côté PWA sur un jour (200 lignes au plus par page) ; aucune migration. Défaut retenu pour la conception : (a).
+- **Mise en œuvre (26/10/2026, ADR-048)** : FJC est imprimable depuis les mouvements d'un compte (en ligne), pour le jour métier, triée par `occurred_at`, paginée à 28 lignes ; le libellé est le type de mouvement, le numéro de pièce et la session restent vides tant que la lecture n'est pas étendue. JE est imprimable depuis la liste des ventes, sur les encaissements des 7 derniers jours de l'appareil, totaux reportés de feuille en feuille. **Reste** : l'extension de `GET /cash-accounts/{id}/movements`, le journal reconstruit hors ligne et sa mention « partiel ».
 
 ### AV-312 — Registre des carnets : contrôle de continuité — SECONDAIRE
 - **Question** : comment l'application contrôle-t-elle la continuité des numéros d'un carnet, sachant que le registre reste sur papier ?
@@ -2481,6 +2486,7 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) paramètres de l'organisation (`organization.system_settings`, historisés) lus par les pièces, une rubrique vide imprimée en pointillés à compléter à la main ; (b) constantes du paquet de la PWA ; (c) saisie dans l'écran des paramètres (ECR-ADM-07, non livré).
 - **Recommandation** : (a).
 - **Impact** : nouveaux paramètres semés vides, composants de pièce, tâche de PP-0 ; la validation de la Direction sur le jeu de pièces est un préalable de PP-A à confirmer avec le porteur. Défaut retenu pour la conception : (a).
+- **Mise en œuvre provisoire (26/10/2026, ADR-048)** : (b), copie de `pieces-papier/charte/identite.json` dans `apps/pwa/src/features/pieces/identite.ts`, vérifiée par un test ; une rubrique vide s'imprime en pointillés. **Reste** : (a). Le drapeau `validation_comptable_facture` du fichier du porteur vaut encore `false` alors que le comptable a validé la facture (porteur, 26/10/2026) : il ne pilote que le générateur du dossier papier, pas l'application, et n'est pas modifié par le projet.
 
 ### AV-325 — Création d'un compte par l'Admin : mot de passe provisoire hors du journal des commandes — IMPORTANTE
 - **Question** : comment l'écran des comptes (ECR-ADM-04) crée-t-il un compte, sachant qu'il faut un mot de passe provisoire que l'Admin saisit ?
@@ -2495,6 +2501,13 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) `GLOBAL` et `SITE` seulement, selon ce que le rôle permet ; zones et équipes quand leurs lectures existeront ; (b) saisie libre d'identifiants de zone et d'équipe : écartée ; (c) attendre S-19 et S-28 avant de livrer l'écran.
 - **Recommandation** : (a). Les permissions d'un rôle ne se modifient pas depuis l'application (AV-257, rôles figés, choix (a)).
 - **Impact** : `apps/pwa/src/features/users/users.ts` (`ASSIGNABLE_SCOPES`), `GET /roles` (rôles actifs et périmètres permis). Un rôle qui ne permet ni `GLOBAL` ni `SITE` (zone ou équipe seulement) est signalé « indisponible ici ». Défaut implémenté (MP-13, 22/10/2026) : (a).
+
+### AV-451 — Facture imprimée : régime de TVA et mention d'exonération — IMPORTANTE
+- **Question** : quelle case « Régime TVA » la facture imprimée coche-t-elle (assujetti ou non assujetti), et quelle mention d'exonération porte-t-elle ?
+- **Pourquoi** : le porteur fait imprimer la facture par l'application (26/10/2026). Le modèle validé par le comptable porte une rubrique « Régime TVA » et une rubrique « Mention d'exonération ». AV-041 fixe des prix TTC et une TVA à 0, sans dire si GIC AGROPELC est assujetti ni sous quel texte une vente est exonérée. `identite.json` laisse `regime_fiscal` vide. **CONFIRMÉ** (modèle, AV-041), le reste **À VALIDER** avec le comptable.
+- **Choix** : (a) rien de coché, les deux rubriques laissées en pointillés, à remplir à la main ; (b) « non assujetti » coché et une mention fixe, en paramètre ; (c) régime et mention lus dans l'identité de la société (AV-324) et appliqués à toutes les factures.
+- **Recommandation** : (c) dès que le comptable a donné le régime et la mention ; (a) d'ici là.
+- **Impact** : `apps/pwa/src/features/pieces/adaptateurs-ventes.ts` (`demandeFacture`), identité de la société (AV-324). Aucune migration. Défaut implémenté (ADR-048, 26/10/2026) : (a).
 
 ---
 
@@ -2580,3 +2593,4 @@ Politique par défaut, paramétrable :
 | 14/10/2026 | AV-287 | Photos en attente non chiffrées pour l'instant ; chiffrement de tout le stockage local avant la production | Porteur du projet |
 | 14/10/2026 | AV-288 | Photo d'une perte toujours facultative ; seule la mortalité l'exige | Porteur du projet |
 | 14/10/2026 | AV-282 | Blocage immédiat : session, compte et appareil vérifiés à chaque requête, avec un cache de quelques secondes | Porteur du projet |
+| 26/10/2026 | AV-041 | La facture est imprimée par l'application dans le modèle validé par le comptable ; prix TTC, TVA à 0 inchangés (régime et mention : AV-451) | Porteur du projet |

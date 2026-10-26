@@ -1,6 +1,6 @@
 # Lot « Pièces papier » (PP) — cadrage
 
-> **Statut : planifié le 22/10/2026, non commencé.** Aucun code n'est écrit. Le porteur a demandé que ce besoin entre dans le plan sans en faire la priorité du moment. Ce document garde la substance des douze choix du porteur, parce que le dossier d'origine (`pieces-papier/`, produit par une autre session le 20/10/2026) n'est pas suivi par git.
+> **Statut : planifié le 22/10/2026 ; PP-A livré pour seize pièces le 26/10/2026** ([ADR-048](../decisions/ADR-048-impression-des-pieces-papier.md), suivi au §7). PP-B à PP-E ne sont pas commencés. Le porteur a demandé que ce besoin entre dans le plan sans en faire la priorité du moment. Ce document garde la substance des douze choix du porteur ; le dossier d'origine (`pieces-papier/`, produit par une autre session le 20/10/2026) est versionné depuis le 26/10/2026.
 > Classement des informations : **CONFIRMÉ** (dit par le porteur ou vérifié dans le dépôt), **DÉDUIT** (conséquence argumentée), **À VALIDER** (point `AV-nnn`, défaut paramétrable, aucun bloquant).
 
 ---
@@ -22,7 +22,7 @@ Les exigences correspondantes sont REQ-301 à REQ-309 ([`../01-functional/00-exi
 |---|---|---|---|
 | D1 | Impression | Page complète sur papier blanc, depuis la PWA (impression par le navigateur, hors ligne comprise) ; le numéro imprimé est celui de l'application | REQ-301, AV-309, AV-310 |
 | D2 | Numéro de la pièce papier | Un champ « pièce papier » commun à toutes les opérations | REQ-303, AV-308 |
-| D3 | Facture client | Hors application pour l'instant | REQ-309, AV-041 inchangé |
+| D3 | Facture client | Hors application pour l'instant ; **levé le 26/10/2026** : la facture est imprimée par l'application, modèle validé par le comptable | REQ-309, AV-041, AV-451 |
 | D4 | Journal de caisse | Un journal par compte de trésorerie, imprimé par l'application ; la feuille vierge reste le secours | REQ-304, AV-311 |
 | D5 | Commerciaux | La même feuille de caisse, case « caisse du commercial » ; plus de comptage par coupures | REQ-304, AV-311 |
 | D6 | Pointage | Table « présence » simple, alimentée chaque semaine à partir de la fiche PT | REQ-306, AV-313 |
@@ -60,14 +60,14 @@ Les pièces sont des carnets à souches autocopiants (série « Argent » en A5 
 | PT | Présence et pointage | présence hebdomadaire (secours du pointage numérique) | à créer | — | PP-E |
 | BH | Bilan hebdomadaire du commercial | bilan hebdomadaire | à créer | — | PP-E |
 | RC | Registre de suivi des carnets | registre papier ; contrôle de continuité dans l'application | aucune | — | PP-B |
-| FA | Facture (modèle provisoire) | **hors application** (D3, AV-041) | — | — | — |
+| FA | Facture | facture d'une vente à un client nommé (26/10/2026 ; prix TTC, TVA à 0, AV-041 ; régime et mention : AV-451) | `sales_sales` | oui | PP-A |
 | EL | Papier à en-tête | papeterie, aucune impression par l'application | — | — | — |
 | BN-G, BN-R, BN-T | Blocs-notes général, de réunion, de terrain | papeterie | — | — | — |
 | CV | Couvertures de carnet | papeterie | — | — | — |
 
 Constats vérifiés dans le dépôt le 22/10/2026 (**CONFIRMÉ**) :
 
-- Le reçu d'une vente est déjà imprimable : bouton qui appelle `window.print()` (`apps/pwa/src/features/sales/SaleDetailScreen.tsx`) et feuille `@media print` (`apps/pwa/src/app/app.css`), ECR-VEN-05. Le mécanisme est à généraliser, pas à inventer.
+- Le reçu d'une vente est déjà imprimable : bouton qui appelle `window.print()` (`apps/pwa/src/features/sales/SaleDetailScreen.tsx`) et feuille `@media print` (`apps/pwa/src/app/app.css`), ECR-VEN-05. Le mécanisme est à généraliser, pas à inventer. Depuis le 26/10/2026, ce bouton est remplacé par le bon de vente (ADR-048).
 - `local_ref varchar(20)` existe sur 13 tables : `sales_sales`, `sales_sales_orders`, `sales_customer_payments`, `sales_delivery_notes`, `sales_sale_cancellations`, `procurement_purchase_requests`, `procurement_purchase_orders`, `procurement_goods_receipts`, `inventory_stock_transfers`, `inventory_loss_declarations`, `inventory_inventory_counts`, `finance_expenses`, `finance_cash_transfers`. Il n'existe pas sur `crm_visits`, `fieldwork_work_sessions`, `finance_cash_sessions`, `finance_supplier_payments`, `finance_supplier_invoices`, `inventory_consumptions`, ni sur les tables de pesée et de collecte d'œufs. Ce champ est, par convention, une référence d'appareil (`{CODE_APPAREIL}-{seq6}`, [`../03-data/01-identifiants-et-conventions.md`](../03-data/01-identifiants-et-conventions.md) §1.4) ; huit commandes l'acceptent (vente, commande, encaissement, livraison, réception, demande d'achat, dépense, remise de fonds), la PWA ne l'envoie dans aucune charge utile, il est unique par appareil (hors bons de commande fournisseur) et immuable. Le numéro d'un carnet, lui, est **saisi à la main** : c'est l'objet d'AV-308.
 - Dans la PWA, trois écrans seulement sont des écrans de détail nommés comme tels : la vente, la commande client et la session de caisse (`SaleDetailScreen`, `OrderDetailScreen`, `SessionDetail`). Les autres opérations sont consultables par liste, suivi ou fiche : savoir lesquelles n'ont pas de vue de détail suffisante pour porter une pièce est la première tâche de PP-0 (**À VÉRIFIER**).
 - Les mouvements d'un compte de trésorerie sont dans `finance_cash_movements` ; `GET /cash-accounts/{id}/movements` existe mais ne rend ni numéro de pièce, ni libellé, ni mode de paiement, ni session : il est à étendre (AV-311). Le jeu hors ligne `cash` ne porte aucun mouvement. La session de caisse ne concerne que la caisse d'un point de vente ; la caisse d'un commercial n'a pas de session.
@@ -75,6 +75,8 @@ Constats vérifiés dans le dépôt le 22/10/2026 (**CONFIRMÉ**) :
 - `communication.internal_notes` est la **note de direction** (de la direction vers une audience) : mauvais sens pour un bilan de commercial.
 
 ## 4. Conception cible (DÉDUIT, à fixer par l'ADR de PP-0)
+
+> **Fixée le 26/10/2026 par [ADR-048](../decisions/ADR-048-impression-des-pieces-papier.md)**, qui remplace le point 1 : la pièce n'est pas un composant redessiné, elle reprend à l'identique le balisage et la feuille de style du dossier papier, dans un document autonome (`iframe`) imprimé par `contentWindow.print()`. Les points 2, 3 et 7 sont mis en œuvre ; les points 4 à 6 restent à faire.
 
 1. **Une pièce, un composant.** Chaque type de pièce est un composant de la PWA qui reproduit ses rubriques, alimenté par les données **locales** de l'opération (IndexedDB), donc utilisable hors ligne. Le même composant sert à **consulter** l'opération (REQ-302) et à l'**imprimer** (`window.print()`, `@page` A5 paysage, A5 portrait, A4 portrait ou A4 paysage selon la pièce). La souche n'est pas imprimée : le corps occupe la feuille. Aucune commande métier ni migration : imprimer, c'est lire (seul un marqueur local de réimpression est écrit sur l'appareil, AV-310).
 2. **Logique partagée dans `packages/domain`** : le montant en lettres (reçus, bons de caisse) est une fonction pure en français (règle 6 de `CLAUDE.md`), identique sur l'appareil et le serveur.
@@ -99,7 +101,7 @@ Tailles **indicatives**. Dépendances : le lot ne démarre qu'avec ses AV tranch
 
 **Ordre recommandé (DÉDUIT, à valider avec le porteur).** Le secours papier ne vaut que si l'on sait ensuite **reporter** : PP-A (imprimer) et PP-B (reporter) forment le minimum à avoir avant de distribuer des carnets aux sites. PP-C, PP-D et PP-E peuvent suivre le pilote. Le porteur a dit le 22/10/2026 que ce lot n'est pas la priorité ; il n'a donc pas de date, et le choix de son rang revient au porteur (suite du projet, `PROMPT-DE-REPRISE.md` §5).
 
-**Hors périmètre.** La facture client (D3) ; la papeterie (EL, BN, CV) ; l'impression d'un carnet ou d'une souche ; la paie à partir des présences (défaut d'AV-313, à confirmer) ; l'enregistrement des numéros de carnet distribués (le registre RC reste sur papier, sauf si le porteur retient AV-312 (b)).
+**Hors périmètre.** La papeterie (EL, BN, CV) ; l'impression d'un carnet ou d'une souche ; la paie à partir des présences (défaut d'AV-313, à confirmer) ; l'enregistrement des numéros de carnet distribués (le registre RC reste sur papier, sauf si le porteur retient AV-312 (b)).
 
 ## 6. Règles de travail du lot
 
@@ -113,3 +115,4 @@ Tailles **indicatives**. Dépendances : le lot ne démarre qu'avec ses AV tranch
 | Date | Lot | État |
 |---|---|---|
 | 22/10/2026 | Cadrage | Fait : exigences REQ-301 à REQ-309, AV-308 à AV-317, matrice §15bis, plan §4, ce document. Aucun code. |
+| 26/10/2026 | PP-0 (en partie), PP-A | Fait : [ADR-048](../decisions/ADR-048-impression-des-pieces-papier.md) ; moteur de rendu fidèle (charte copiée à l'octet, balisage de `_generation/lib.mjs` porté en TypeScript, polices libres de repli, logo en pré-cache) ; montant en lettres dans `packages/domain` ; seize pièces imprimables et consultables depuis leur écran : BV, FA, RE, CC, BL, BD, RF, FJC, JE, DA, BC, BR, BT, FI, FP, FL ; duplicata, annulée, pagination ; comparaison visuelle des seize pièces aux aperçus du porteur (`pieces-papier/apercu/`). Décisions du porteur : mise en page exacte, facture comprise, pas de souche, sous-titre du bon de vente vide. **Reste** : AV-451 (facture), extension de la lecture des mouvements (AV-311), identité en paramètres (AV-324), comparaison automatisée à `CORRESPONDANCE-APPLICATION.xlsx`, opérations sans pièce propre (AV-323), `AT-*`, vérification sur imprimante et sur téléphone. |

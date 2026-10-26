@@ -141,7 +141,7 @@ export function demandeBonDeVente(sale: SaleView, refs: Refs): DemandePiece {
 /**
  * Facture d'une vente (FA, choix du porteur du 26/10/2026). Prix TTC, TVA à 0 (AV-041) : le prix
  * unitaire et le montant sont ceux de la vente, la TVA vaut 0 ; le régime de TVA et la mention
- * d'exonération restent à cocher à la main tant qu'AV-327 n'est pas tranché.
+ * d'exonération restent à cocher à la main tant qu'AV-451 n'est pas tranché.
  */
 export function demandeFacture(sale: SaleView, refs: Refs): DemandePiece {
   const c = client(refs, sale.customerId);

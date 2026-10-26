@@ -2,7 +2,7 @@
  * Identité de GIC AGROPELC imprimée dans l'en-tête des pièces : copie de
  * `pieces-papier/charte/identite.json` (vérifiée par un test). Une valeur vide donne la ligne
  * pointillée du papier, à compléter à la main ; on n'invente jamais une valeur. Rendre ces valeurs
- * modifiables dans l'application est l'objet d'AV-328.
+ * modifiables dans l'application est l'objet d'AV-324.
  */
 export interface Identite {
   readonly raison_sociale: string;
