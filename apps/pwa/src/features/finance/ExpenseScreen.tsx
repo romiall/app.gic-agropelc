@@ -11,6 +11,8 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeDecaissementDepense } from '../pieces/adaptateurs-finance.js';
 import { Link, useSearchParams } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -744,6 +746,24 @@ function MyExpenses({
         view={view}
         userId={userId}
         label={t('expense.attach_receipt', { label: labelOf(view) })}
+      />
+      {/* Bon de décaissement (lot PP) : la dépense dans la mise en page de la pièce de caisse. */}
+      <PieceAction
+        cle={`BD:${view.id}`}
+        annulee={view.status === 'CANCELLED'}
+        demande={() =>
+          demandeDecaissementDepense(
+            view,
+            refs,
+            userId,
+            imputationLabel(
+              t,
+              { type: view.costObjectType, id: view.costObjectId, speciesGroup: view.speciesGroup },
+              refs.productionLots,
+              refs.incubationBatches,
+            ) || null,
+          )
+        }
       />
       {actions}
     </li>

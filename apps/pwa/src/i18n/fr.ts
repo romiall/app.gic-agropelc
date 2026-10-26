@@ -4475,5 +4475,7 @@ export const fr = {
     error: 'La pièce n’a pas pu être préparée.',
     invoice: 'Facture',
     receipt_of: 'Reçu {{doc}}',
+    cash_sheet_today: 'Feuille de caisse du jour',
+    receipts_journal: 'Journal des encaissements (7 jours)',
   },
 } as const;

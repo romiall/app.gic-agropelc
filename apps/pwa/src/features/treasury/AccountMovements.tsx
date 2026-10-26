@@ -10,6 +10,11 @@ import { formatDateTime } from '../home/format-home.js';
 import { formatMoney } from '../sales/format.js';
 import { readPath, useOnlineRead } from '../sales/online-read.js';
 import { MovementDocument } from './MovementDocument.js';
+import { businessDayOf } from '@gic/domain';
+import { clock } from '../../platform/composition.js';
+import { useSalesReferences } from '../sales/references.js';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeFeuilleCaisse } from '../pieces/adaptateurs-finance.js';
 import type { CashMovementItem, CashMovementsPage } from './treasury.js';
 
 /** Taille d'une page de mouvements (défaut du serveur). */
@@ -34,6 +39,8 @@ export function AccountMovements({
   readonly reloadKey: string;
 }) {
   const { t } = useTranslation();
+  const refs = useSalesReferences();
+  const today = businessDayOf(clock.now());
   const path = `/api/v1/cash-accounts/${accountId}/movements?limit=${MOVEMENTS_PAGE}`;
   const read = useOnlineRead<CashMovementsPage>(
     path,
@@ -122,6 +129,33 @@ export function AccountMovements({
         <p className="alert alert-error" role="alert">
           {t('treasury.movements_failed')}
         </p>
+      ) : null}
+      {/* Feuille journalière de caisse (lot PP, D4) : mouvements du jour métier déjà chargés. */}
+      {refs ? (
+        <PieceAction
+          cle={`FJC:${accountId}:${today}`}
+          libelle={t('piece.cash_sheet_today')}
+          demande={() =>
+            demandeFeuilleCaisse({
+              compteId: accountId,
+              jour: today,
+              session: null,
+              refs,
+              mouvements: items
+                .filter((m) => businessDayOf(new Date(m.occurredAt)) === today)
+                .map((m) => ({
+                  occurredAt: m.occurredAt,
+                  direction: m.direction,
+                  montant: m.amountXaf,
+                  piece: null,
+                  libelle: t(`treasury.movement_type.${m.movementType}`, {
+                    defaultValue: m.movementType,
+                  }),
+                  moyen: null,
+                })),
+            })
+          }
+        />
       ) : null}
       {next ? (
         <button

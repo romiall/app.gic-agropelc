@@ -13,6 +13,8 @@
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeDecaissementFournisseur } from '../pieces/adaptateurs-finance.js';
 import { Link } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -555,6 +557,31 @@ function PaymentList({
             {t('supplier_payment.cancel_reason', { reason: item.cancelReason })}
           </p>
         ) : null}
+        {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur. */}
+        <PieceAction
+          cle={`BD:${item.id}`}
+          annulee={item.status === 'CANCELLED'}
+          demande={() =>
+            refs
+              ? demandeDecaissementFournisseur(
+                  {
+                    docNumber: item.docNumber,
+                    fournisseur: supplierOf(item.supplierId),
+                    compteId: item.fromAccountId,
+                    occurredAt: item.disbursedAt ?? item.occurredAt,
+                    creePar: item.createdBy,
+                    decidePar: item.decidedBy,
+                    montant: item.amountXaf,
+                    avance: item.unallocatedXaf >= item.amountXaf,
+                    factures: [],
+                    moyen: item.paymentMethodCode,
+                    reference: item.externalReference,
+                  },
+                  refs,
+                )
+              : null
+          }
+        />
         <button
           type="button"
           className="secondary"
