@@ -24,6 +24,16 @@ import { waitsForOtherUser } from './pending.js';
 import { settingValue } from './stock.js';
 import { MAX_COMMENT_LENGTH } from './sale-form.js';
 import { saveErrorKey, submitCommand } from './submit.js';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeBonDeVente, demandeFacture, demandeRecu } from '../pieces/adaptateurs-ventes.js';
+
+/** Encaissements actifs d'une vente servie par le serveur (reçus imprimables). */
+function salePayments(saleId: string, refs: SalesReferences) {
+  const sale = refs.sales.find((candidate) => candidate.id === saleId);
+  if (!sale) return [];
+  const ids = new Set(sale.payments.filter((p) => p.status === 'ACTIVE').map((p) => p.payment_id));
+  return refs.payments.filter((payment) => ids.has(payment.id));
+}
 
 const DEFAULT_CANCEL_MINUTES = 15;
 
@@ -299,9 +309,6 @@ export function SaleDetailScreen() {
       ) : null}
 
       <div className="result-actions no-print">
-        <button type="button" className="secondary" onClick={() => window.print()}>
-          {t('sales.detail.print')}
-        </button>
         {sale.customerId &&
         customer &&
         sale.balanceDueXaf > 0 &&
@@ -323,6 +330,37 @@ export function SaleDetailScreen() {
           </button>
         ) : null}
       </div>
+      {/* Pièces papier remplies (lot PP) : bon de vente, facture, reçus des encaissements. */}
+      <PieceAction
+        cle={`BV:${sale.id}`}
+        annulee={sale.status === 'CANCELLED'}
+        libelle={t('sales.detail.print')}
+        demande={() => demandeBonDeVente(sale, refs)}
+      />
+      {sale.customerId ? (
+        <PieceAction
+          cle={`FA:${sale.id}`}
+          annulee={sale.status === 'CANCELLED'}
+          libelle={t('piece.invoice')}
+          demande={() => demandeFacture(sale, refs)}
+        />
+      ) : null}
+      {salePayments(sale.id, refs).map((payment) => (
+        <PieceAction
+          key={payment.id}
+          cle={`RE:${payment.id}`}
+          annulee={payment.status === 'CANCELLED'}
+          libelle={t('piece.receipt_of', { doc: payment.doc_number })}
+          demande={() =>
+            demandeRecu(
+              payment,
+              refs,
+              { type: 'vente', numero: sale.docNumber },
+              sale.balanceDueXaf,
+            )
+          }
+        />
+      ))}
       {cancellable && foreignPending ? (
         <p id="sale-foreign-pending" className="home-muted">
           {t('sync.foreign_pending')}

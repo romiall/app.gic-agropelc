@@ -11,6 +11,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeCommandeClient } from '../pieces/adaptateurs-ventes.js';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { formatBusinessDay } from '../home/format-home.js';
@@ -362,6 +364,8 @@ export function OrderDetailScreen() {
           ) : null}
         </div>
       )}
+      {/* Bon de commande client (lot PP) : consultation et impression dans la mise en page du carnet. */}
+      <PieceAction cle={`CC:${order.id}`} demande={() => demandeCommandeClient(order, refs)} />
     </section>
   );
 }
