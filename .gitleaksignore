@@ -1,0 +1,3 @@
+# Faux positifs de gitleaks (empreinte : commit:fichier:règle:ligne). Témoin de fuite d'un test
+# (MP-13), pas un secret ; marqué `gitleaks:allow` depuis le commit suivant.
+876dbe35fe975af8f22b88065e207064f2eb3974:apps/server/test/identity-users-admin.test.ts:generic-api-key:910
