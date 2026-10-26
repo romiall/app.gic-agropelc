@@ -13,18 +13,20 @@
  *
  * Le serveur ne révoque ni ne libère jamais seul : le drapeau n'appelle que la décision d'un
  * responsable (`inventory.allocation.revoke`). Chaque quota nouvellement signalé publie
- * `AllocationRevocationPending` (l'alerte elle-même est l'objet de P9). Au moins une fois : rejouer
- * un événement ne change plus rien, donc ne publie plus rien.
+ * `AllocationRevocationPending` (alerte `ALLOCATION_REVOCATION_PENDING`, P9-08) ; la levée du signal
+ * publie `AllocationRevocationCleared`, qui ferme l'alerte (AV-460). Au moins une fois : rejouer un
+ * événement ne change plus rien, donc ne publie plus rien.
  */
 import { sql } from 'kysely';
-import type { IdGenerator } from '@gic/domain';
+import { businessDayOf, type IdGenerator } from '@gic/domain';
 import type { EventConsumerRegistry } from '../../../../platform/events/event-consumer-registry.js';
 import type { DomainEvent } from '../../../../platform/events/domain-event.js';
 import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { recordChanges } from '../../../../platform/sync/change-feed.js';
-import { jsonValue } from '../../../../platform/kysely/json-value.js';
-import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { publishDetectionEvent } from '../../../../platform/events/detection-events.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { allocationChange } from '../sync-changes.js';
+import { productAlertLabel } from '../inventory-alert-events.js';
 
 export const ALLOCATION_REVOCATION_CONSUMER_NAME = 'inventory.allocation_revocation';
 
@@ -52,7 +54,7 @@ export function registerAllocationRevocationConsumer(
       return;
     }
     const clearing = CLEARING_EVENTS[event.eventType];
-    if (clearing) await clearFlags(uow, event, clearing);
+    if (clearing) await clearFlags(uow, idGenerator, event, clearing);
   });
 }
 
@@ -71,9 +73,11 @@ async function flagQuotas(
       'a.holder_device_id as holder_device_id',
       'a.holder_user_id as holder_user_id',
       'a.product_id as product_id',
+      'a.location_id as location_id',
       'a.quantity_remaining as remaining',
       'a.version as version',
       'l.site_id as site_id',
+      'l.name as location_name',
     ])
     .where(holderColumn, '=', toBin(event.aggregateId))
     .where('a.status', '=', 'ACTIVE')
@@ -95,39 +99,51 @@ async function flagQuotas(
         quota.version + 1,
       ),
     ]);
-    await uow
-      .insertInto('platform_domain_events')
-      .values({
-        event_id: toBin(idGenerator.newId()),
-        event_type: 'AllocationRevocationPending',
-        producer_module: 'inventory',
-        aggregate_type: 'STOCK_ALLOCATION',
-        aggregate_id: quota.id,
-        occurred_at: event.occurredAt,
-        payload: jsonValue({
-          allocation_id: fromBin(quota.id),
-          reason: signalling.reason,
-          holder_user_id: fromBin(quota.holder_user_id as Buffer),
-          holder_device_id: fromBin(quota.holder_device_id as Buffer),
-          product_id: fromBin(quota.product_id),
-          remaining: quota.remaining,
-          site_id: quota.site_id === null ? null : fromBin(quota.site_id),
-        }),
-        command_id: null,
-        causation_id: toBin(event.eventId),
-      })
-      .execute();
+    // Fait de l'appareil ou de l'utilisateur : détection sur fait, sans passe ; la chaîne de causalité
+    // garde l'événement d'identité à l'origine du drapeau.
+    await publishDetectionEvent(uow, idGenerator, {
+      eventType: 'AllocationRevocationPending',
+      producerModule: 'inventory',
+      aggregateType: 'STOCK_ALLOCATION',
+      aggregateId: fromBin(quota.id),
+      occurredAt: event.occurredAt,
+      causationId: event.eventId,
+      payload: {
+        allocation_id: fromBin(quota.id),
+        reason: signalling.reason,
+        holder_user_id: fromBin(quota.holder_user_id as Buffer),
+        holder_device_id: fromBin(quota.holder_device_id as Buffer),
+        product_id: fromBin(quota.product_id),
+        product_label: await productAlertLabel(uow, fromBin(quota.product_id)),
+        location_id: fromBin(quota.location_id),
+        location_label: quota.location_name,
+        remaining: Number(quota.remaining),
+        site_id: fromBinOrNull(quota.site_id),
+        business_day: businessDayOf(event.occurredAt),
+      },
+    });
   }
 }
 
 /** Lève le signal des quotas de l'appareil (ou de l'utilisateur) dont l'autre moitié est en service. */
-async function clearFlags(uow: UnitOfWork, event: DomainEvent, by: HolderKind): Promise<void> {
+async function clearFlags(
+  uow: UnitOfWork,
+  idGenerator: IdGenerator,
+  event: DomainEvent,
+  by: HolderKind,
+): Promise<void> {
   const holderColumn = by === 'DEVICE' ? 'a.holder_device_id' : 'a.holder_user_id';
   const flagged = await uow
     .selectFrom('inventory_stock_allocations as a')
     .innerJoin('identity_users as u', 'u.id', 'a.holder_user_id')
     .innerJoin('identity_devices as d', 'd.id', 'a.holder_device_id')
-    .select(['a.id as id', 'a.holder_device_id as holder_device_id', 'a.version as version'])
+    .innerJoin('organization_locations as l', 'l.id', 'a.location_id')
+    .select([
+      'a.id as id',
+      'a.holder_device_id as holder_device_id',
+      'a.version as version',
+      'l.site_id as site_id',
+    ])
     .where(holderColumn, '=', toBin(event.aggregateId))
     .where('a.status', '=', 'ACTIVE')
     .where('a.revocation_pending', '=', 1)
@@ -149,5 +165,20 @@ async function clearFlags(uow: UnitOfWork, event: DomainEvent, by: HolderKind): 
         quota.version + 1,
       ),
     ]);
+    // P9-08 : la condition de l'alerte `ALLOCATION_REVOCATION_PENDING` a pris fin (AV-460).
+    await publishDetectionEvent(uow, idGenerator, {
+      eventType: 'AllocationRevocationCleared',
+      producerModule: 'inventory',
+      aggregateType: 'STOCK_ALLOCATION',
+      aggregateId: fromBin(quota.id),
+      occurredAt: event.occurredAt,
+      causationId: event.eventId,
+      payload: {
+        allocation_id: fromBin(quota.id),
+        cleared_by: event.eventType,
+        site_id: fromBinOrNull(quota.site_id),
+        business_day: businessDayOf(event.occurredAt),
+      },
+    });
   }
 }

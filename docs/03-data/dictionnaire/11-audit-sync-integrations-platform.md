@@ -77,7 +77,7 @@
 | `device_sent_at` | ts | Oui | — | |
 | `received_at` | ts | Non | `now()` | |
 | `applied_at` | ts | Oui | — | |
-| `claimed_at` | ts | Oui | — | Dernière réclamation du traitement (insertion ou reprise) ; l'abandon d'une ligne `RECEIVED` se mesure depuis elle (`received_at` reste la première réception). Modifiable (P5-21, AV-210) |
+| `claimed_at` | ts | Oui | — | Dernière réclamation du traitement (insertion ou reprise) ; l'abandon d'une ligne `RECEIVED` se mesure depuis elle (`received_at` reste la première réception), de même que la date du rejet d'une commande retenue puis rejetée par le pipeline (alerte `SYNC_ERROR`, AV-471). Modifiable (P5-21, AV-210) |
 | `clock_skew_ms` | int | Oui | — | Écart mesuré du lot (serveur − appareil), borné à ±2 147 483 647 ms (AV-227) |
 | `clock_suspect` | boolean | Non | false | Horloge suspecte, décidée à la réception au seuil `sync.clock_skew_flag_minutes` (P5-23, AV-216) ; figée (déclencheur) ; source de `[STD-ORIGIN].clock_suspect` |
 | `captured_offline` | boolean | Non | false | |
@@ -148,7 +148,7 @@
 | `bootstrapped_at` | ts | Oui | — | |
 | `needs_rebootstrap` | boolean | Non | false | |
 
-Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]`), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations restant à envoyer **après** le dernier lot, déclaré par l'appareil dans `pending_by_author` ; nul si non déclaré), `app_version`. `last_device_seq` est le plus grand `device_seq` reçu (P5-07). Sur un appareil partagé (AV-007), une ligne supplémentaire par auteur, `dataset = '_a:<utilisateur>'` (32 caractères hexadécimaux), porte son dernier envoi, son plus grand `device_seq` et ses opérations restantes.
+Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_seq`, `known_gaps` (json — tableau technique de paires `[début, fin]`, ex. `[[45,47],[103,105]]` ; équivalent PostgreSQL : `int8range[]` ; **écrit depuis P9-10** par `sync.devices.seq_gap_check` : plages de `device_seq` déjà signalées par `DEVICE_SEQ_GAP`, effacé quand la suite est complète, AV-473), `last_clock_skew_ms`, `pending_reported` (nombre d'opérations restant à envoyer **après** le dernier lot, déclaré par l'appareil dans `pending_by_author` ; nul si non déclaré), `app_version`. `last_device_seq` est le plus grand `device_seq` reçu (P5-07). Sur un appareil partagé (AV-007), une ligne supplémentaire par auteur, `dataset = '_a:<utilisateur>'` (32 caractères hexadécimaux), porte son dernier envoi, son plus grand `device_seq` et ses opérations restantes.
 
 - **PK** `(device_id, dataset)`. **Suppr.** Technique (suit l'appareil). **Offline** SRV.
 
@@ -261,6 +261,8 @@ Et, par appareil (ligne `dataset = '_device'`) : `last_push_at`, `last_device_se
 | `updated_at` | ts | Non | `now()` | |
 | `last_error` | text | Oui | — | |
 
+**Surveillance (P9-10, AV-475)** : la passe `communication.consumers.failure_check` examine **toutes** les lignes (retard = âge du plus ancien événement de numéro supérieur à `last_seq`). L'application n'a pas le droit de supprimer une ligne : renommer ou retirer un consommateur impose une migration qui renomme ou apure sa ligne, sinon `CONSUMER_FAILED` le signale à jamais ; un consommateur neuf part de `last_seq = 0` et rejoue l'historique (retard transitoire au déploiement, à amorcer avec la tête du flux).
+
 ## platform.document_sequences
 
 **Responsabilité** : compteurs de numérotation.
@@ -340,3 +342,26 @@ consommateurs réels (alertes, projections, Kommo…) restent hors périmètre P
 - **Suppr.** Ajout seul (comme `domain_events`) : la preuve d'idempotence tient à ce qu'une
   seconde écriture pour la même clé échoue (contrainte PK) plutôt que d'écraser la première —
   ni `UPDATE` ni `DELETE` pour l'application.
+
+## platform.event_consumer_failures
+
+**Responsabilité** : événements **sautés** par un consommateur après ses essais (P9-04 ; ADR-071 §12,
+AV-412 ; catalogue d'événements §3 « Échecs »). Le runner saute l'événement et avance la position ;
+`event_consumer_offsets.last_error` n'en garde que le dernier message, réécrit à `NULL` par le premier
+événement traité ensuite. Cette table consigne chaque saut pour que l'alerte technique `CONSUMER_FAILED`
+(ADMIN) ne repose pas sur un champ éphémère.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `id` | bigint | Non | auto | |
+| `consumer_name` | code | Non | — | Même espace de noms que `event_consumer_offsets` |
+| `event_seq` | bigint | Non | — | `platform_domain_events.seq` |
+| `event_id` | uuid | Non | — | `platform_domain_events.event_id` (sans FK) |
+| `event_type` | varchar(80) | Non | — | |
+| `error_message` | varchar(1000) | Non | — | Dernier message d'erreur |
+| `attempts` | smallint | Non | — | Essais effectués |
+| `failed_at` | ts | Non | `now()` | |
+
+- **PK** `id`. **UQ** `(consumer_name, event_seq)` : un saut n'est consigné qu'une fois. **IX** `(failed_at)`.
+- **Suppr.** Ajout seul (`SELECT` et `INSERT` seulement pour l'application).
+- **Implémentation** : migration `20261201090200_create_platform_event_consumer_failures.sql`.

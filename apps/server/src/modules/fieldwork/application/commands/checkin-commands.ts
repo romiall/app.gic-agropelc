@@ -36,6 +36,7 @@ import {
   haversineDistanceM,
   resolveSessionEnd,
   type CheckinResult,
+  type CheckinSuspicionFlag,
   type Clock,
   type Geofence,
   type GeoPoint,
@@ -59,6 +60,7 @@ import {
 } from '../../../approvals/application/public/index.js';
 import type { SessionRejectedListenerRegistry } from '../session-rejection.js';
 import { emitWorkSessionChanges } from '../sync-changes.js';
+import { signalSuspiciousCheckin } from '../fieldwork-alert-events.js';
 
 type Uow = Transaction<DB>;
 
@@ -175,7 +177,7 @@ async function suspicionFlags(
   occurredAt: Date,
   position: GeoPoint | null,
   accuracyM: number | null,
-): Promise<readonly string[]> {
+): Promise<readonly CheckinSuspicionFlag[]> {
   if (position === null) return [];
   const maxSpeedKmh = await numberSetting(
     uow,
@@ -588,6 +590,26 @@ function buildHandlers(
         created_by: toBin(userId),
       })
       .execute();
+    // Alerte `CHECKIN_SUSPICIOUS` (P9-10, AV-468) : après l'écriture du pointage, jamais avant un rejet
+    // (un événement annulé consommerait un numéro de séquence).
+    await signalSuspiciousCheckin(
+      uow,
+      { idGenerator, clock },
+      {
+        checkinId,
+        userId,
+        zoneId: zone.id,
+        checkinType: payload.checkinType,
+        serverResult,
+        flags,
+        distanceM,
+        accuracyM: payload.accuracyM,
+        occurredAt,
+        workSessionId: sessionId,
+        commandId: envelope.command_id,
+        capturedOffline: envelope.captured_offline,
+      },
+    );
     return { status: 'APPLIED' };
   };
 

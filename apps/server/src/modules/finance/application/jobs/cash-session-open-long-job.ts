@@ -1,17 +1,19 @@
 /**
  * `finance.cash_sessions.open_long_check` (P5-12 ; BR-DIS-006 : « une session ouverte depuis plus de
- * 24 h déclenche une alerte » ; D13 `CASH_SESSION_OPEN_LONG`). Publie un événement
- * `CashSessionOpenLongDetected` par session **ouverte** depuis plus de
- * `finance.cash_session_force_close_hours` (réglage du site, à défaut global, à défaut 24), au plus un
- * par session et par jour métier (rejouable). Aucune session n'est modifiée : la clôture d'office reste
- * une décision de la Finance (`finance.cash_session.force_close`). L'alerte (consommateur NOT) relève
- * de P9 ; la planification, du déploiement (P0-17), comme les autres tâches quotidiennes.
+ * 24 h déclenche une alerte » ; D13 `CASH_SESSION_OPEN_LONG` ; P9-07 : passe de détection à identité,
+ * ADR-071 §3). Publie un événement `CashSessionOpenLongDetected` par session **ouverte** depuis plus de
+ * `finance.cash_session_force_close_hours` (réglage du site, à défaut global, à défaut 24), puis le
+ * marqueur de fin de passe : l'alerte d'état se résout seule quand la session n'est plus revue (clôture
+ * ordinaire ou d'office). Aucune session n'est modifiée : la clôture d'office reste une décision de la
+ * Finance (`finance.cash_session.force_close`).
+ *
+ * La tâche est horaire (le seuil se compte en heures) : un événement par session et **par passe** ;
+ * le compteur d'occurrences de l'alerte compte des heures, sans renotification. Un rejeu du même
+ * créneau ne republie rien (identifiants d'événement dérivés de la passe).
  */
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
-  businessDayEndUtc,
   businessDayOf,
-  businessDayStartUtc,
   cashSessionOpenLongerThan,
   type Clock,
   type IdGenerator,
@@ -20,11 +22,16 @@ import { CLOCK } from '../../../../platform/clock.provider.js';
 import { ID_GENERATOR } from '../../../../platform/id-generator.provider.js';
 import { fromBin } from '../../../../platform/kysely/uuid-columns.js';
 import {
+  detectionPassId,
+  passSlotOf,
+  publishDetectionEvent,
+  publishPassCompleted,
+} from '../../../../platform/events/detection-events.js';
+import {
   JOB_HANDLER_REGISTRY,
   type JobHandlerRegistry,
 } from '../../../../platform/jobs/job-handler-registry.provider.js';
 import { cashSetting } from '../cash-session-ledger.js';
-import { publishCashSessionEvent } from '../cash-session-events.js';
 
 export const CASH_SESSION_OPEN_LONG_JOB_TYPE = 'finance.cash_sessions.open_long_check';
 
@@ -42,11 +49,10 @@ export class CashSessionOpenLongJob implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.registry.register(CASH_SESSION_OPEN_LONG_JOB_TYPE, async (uow) => {
+    this.registry.register(CASH_SESSION_OPEN_LONG_JOB_TYPE, async (uow, payload) => {
       const now = this.clock.now();
       const today = businessDayOf(now);
-      const dayStart = businessDayStartUtc(today);
-      const dayEnd = businessDayEndUtc(today);
+      const passId = detectionPassId('CASH_SESSION_OPEN_LONG', passSlotOf(payload, now));
       // Sessions ouvertes (une par caisse de PDV au plus, INV-FIN-06) ; le seuil se lit par site.
       const candidates = await uow
         .selectFrom('finance_cash_sessions')
@@ -61,38 +67,35 @@ export class CashSessionOpenLongJob implements OnModuleInit {
         const setting = await cashSetting(uow, 'forceCloseHours', siteId, now);
         const thresholdHours = Number.isFinite(setting) && setting > 0 ? setting : DEFAULT_HOURS;
         if (!cashSessionOpenLongerThan(session.opened_at, now, thresholdHours)) continue;
-        const already = await uow
-          .selectFrom('platform_domain_events')
-          .select('seq')
-          .where('event_type', '=', 'CashSessionOpenLongDetected')
-          .where('aggregate_id', '=', session.id)
-          .where('occurred_at', '>=', dayStart)
-          .where('occurred_at', '<', dayEnd)
-          .executeTakeFirst();
-        if (already) continue;
         const sessionId = fromBin(session.id);
-        await publishCashSessionEvent(
-          uow,
-          { idGenerator: this.idGenerator },
-          {
-            eventType: 'CashSessionOpenLongDetected',
-            sessionId,
-            occurredAt: now,
-            commandId: null,
-            payload: {
-              session_id: sessionId,
-              cash_account_id: fromBin(session.cash_account_id),
-              site_id: siteId,
-              opened_by: fromBin(session.opened_by),
-              opened_at: session.opened_at.toISOString(),
-              hours_open: Math.floor((now.getTime() - session.opened_at.getTime()) / 3_600_000),
-              threshold_hours: thresholdHours,
-              business_day: today,
-            },
+        const inserted = await publishDetectionEvent(uow, this.idGenerator, {
+          eventType: 'CashSessionOpenLongDetected',
+          producerModule: 'finance',
+          aggregateType: 'CASH_SESSION',
+          aggregateId: sessionId,
+          occurredAt: now,
+          passId,
+          payload: {
+            session_id: sessionId,
+            cash_account_id: fromBin(session.cash_account_id),
+            site_id: siteId,
+            opened_by: fromBin(session.opened_by),
+            opened_at: session.opened_at.toISOString(),
+            hours_open: Math.floor((now.getTime() - session.opened_at.getTime()) / 3_600_000),
+            threshold_hours: thresholdHours,
+            business_day: today,
           },
-        );
-        published += 1;
+        });
+        if (inserted) published += 1;
       }
+      // Passe complète : une session close depuis la passe précédente n'est plus revue, donc résolue.
+      await publishPassCompleted(uow, {
+        producerModule: 'finance',
+        alertType: 'CASH_SESSION_OPEN_LONG',
+        passId,
+        businessDay: today,
+        occurredAt: now,
+      });
       this.logger.log(`Sessions de caisse ouvertes trop longtemps (${today}) : ${published}.`);
     });
   }

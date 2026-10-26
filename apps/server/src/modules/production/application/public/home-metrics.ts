@@ -1,8 +1,9 @@
 /**
  * Chiffres de `production` pour l'accueil par rôle (ADR-030 ; KPI-PRD-01).
  * Lecture seule : lots en cours et effectif. Le périmètre est le site du lot. L'alerte « saisie du jour
- * manquante » (`DAILY_ENTRY_MISSING`) suivra avec le module de notifications : elle exige une définition
- * précise de la « saisie du jour » qui n'existe pas encore (aucune table d'en-tête de saisie).
+ * manquante » (`DAILY_ENTRY_MISSING`) n'est pas calculée ici : elle est levée par la passe
+ * `production.lots.daily_entry_check` (P9-09, AV-462, `hasDailyEntryOn`), dont la définition de la
+ * « saisie du jour » (aucune table d'en-tête) ne doit pas être recréée par cet aperçu.
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
@@ -32,7 +33,9 @@ export async function productionOverview(
         status,
         ...(siteIds !== undefined ? { siteIds } : {}),
         limit: 200,
-        ...(cursor !== undefined ? { cursor } : {}),
+        // Le curseur d'une page est l'identifiant du dernier lot rendu : `beforeId` (`cursor` n'est pas un
+        // filtre de `listProductionLots` ; l'ignorer relisait la première page sans fin dès 201 lots).
+        ...(cursor !== undefined ? { beforeId: cursor } : {}),
       });
       lots.push(...page.items);
       if (page.nextCursor === null) break;

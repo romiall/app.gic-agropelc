@@ -44,6 +44,7 @@ import type {
 import { loadCommandOrigin } from '../../../../platform/sync/command-origin.js';
 import { recordConflict } from '../../../../platform/sync/conflicts.js';
 import type { DocumentSequenceService } from '../../../../platform/document-sequences/document-sequence.service.js';
+import { publishPriceMismatchDetected, type PriceMismatchLine } from './price-alert-events.js';
 import { jsonValue } from '../../../../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../../../../platform/kysely/uuid-columns.js';
 import { requestApproval } from '../../../approvals/application/public/index.js';
@@ -546,6 +547,8 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         created_by: toBin(author),
       })
       .execute();
+    // Lignes en écart de prix (hors ligne) : un seul signal par vente, publié après les verrous (P9-07).
+    const priceMismatches: PriceMismatchLine[] = [];
     for (const line of lines) {
       const cost = costs.get(line.id);
       await uow
@@ -596,6 +599,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
           },
         });
         warnings.add('PRICE_MISMATCH');
+        priceMismatches.push({
+          lineId: line.id,
+          productId: line.productId,
+          productLabel: line.productName,
+          appliedPriceXaf: line.priced.unitPriceXaf,
+          expectedPriceXaf: line.priced.serverUnitPriceXaf,
+          declaredListPriceXaf: line.priced.listUnitPriceXaf,
+        });
       }
       if (line.productInactive) {
         await recordConflict(uow, {
@@ -671,6 +682,21 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         historyId: idGenerator.newId(),
       });
     }
+
+    // Signal d'alerte `PRICE_MISMATCH` (INFO, P9-07, AV-445) : un événement par vente, jamais un rejet.
+    await publishPriceMismatchDetected(uow, idGenerator, {
+      documentType: 'SALE',
+      documentId: saleId,
+      docNumber,
+      siteId: site.id,
+      zoneId,
+      lines: priceMismatches,
+      sellerUserId: author,
+      commercialUserId,
+      capturedOffline: offline,
+      occurredAt: at,
+      commandId: envelope.command_id,
+    });
 
     const serverRefs: Record<string, string> = { docNumber };
     for (const [index, number] of written.docNumbers) serverRefs[`payment${index + 1}`] = number;

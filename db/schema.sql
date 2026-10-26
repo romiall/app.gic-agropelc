@@ -10,6 +10,484 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `analytics_export_jobs`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_export_jobs` (
+  `id` binary(16) NOT NULL,
+  `requested_by` binary(16) NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `format` varchar(4) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'QUEUED',
+  `row_count` int DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `storage_key` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `catalog_version` int NOT NULL,
+  `error_code` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `expires_at` datetime(6) NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `finished_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_analytics_export_jobs_command` (`command_id`),
+  KEY `ix_analytics_export_jobs_requester` (`requested_by`,`created_at`),
+  KEY `ix_analytics_export_jobs_status` (`status`,`created_at`),
+  CONSTRAINT `fk_analytics_export_jobs_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_export_jobs_catalog` CHECK ((`catalog_version` >= 1)),
+  CONSTRAINT `ck_analytics_export_jobs_dataset` CHECK (regexp_like(`dataset`,_utf8mb4'^f_[a-z_]+$')),
+  CONSTRAINT `ck_analytics_export_jobs_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_export_jobs_done` CHECK (((`status` not in (_utf8mb4'DONE',_utf8mb4'EXPIRED')) or (`row_count` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_failed` CHECK (((`status` <> _utf8mb4'FAILED') or (`error_code` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_file` CHECK (((`status` <> _utf8mb4'DONE') or (`storage_key` is not null))),
+  CONSTRAINT `ck_analytics_export_jobs_finished` CHECK (((`status` in (_utf8mb4'QUEUED',_utf8mb4'RUNNING')) = (`finished_at` is null))),
+  CONSTRAINT `ck_analytics_export_jobs_format` CHECK ((`format` in (_utf8mb4'CSV',_utf8mb4'XLSX'))),
+  CONSTRAINT `ck_analytics_export_jobs_status` CHECK ((`status` in (_utf8mb4'QUEUED',_utf8mb4'RUNNING',_utf8mb4'DONE',_utf8mb4'FAILED',_utf8mb4'EXPIRED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_export_jobs_update_guard` BEFORE UPDATE ON `analytics_export_jobs` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.requested_by <=> OLD.requested_by AND NEW.dataset <=> OLD.dataset
+          AND NEW.definition <=> OLD.definition AND NEW.format <=> OLD.format
+          AND NEW.catalog_version <=> OLD.catalog_version AND NEW.created_at <=> OLD.created_at
+          AND NEW.expires_at <=> OLD.expires_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : définition, demandeur et échéance immuables (BR-ANA-008).';
+  END IF;
+  IF OLD.status = 'FAILED' OR OLD.status = 'EXPIRED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : export terminé, immuable.';
+  END IF;
+  IF OLD.status = 'DONE' AND NEW.status <> 'EXPIRED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : un export réussi ne peut qu''expirer.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_export_jobs_no_delete` BEFORE DELETE ON `analytics_export_jobs` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_export_jobs : suppression interdite (trace d''audit, BR-ANA-008).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Temporary view structure for view `analytics_f_attendance`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_attendance` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `session_id`,
+ 1 AS `user_id`,
+ 1 AS `zone_id`,
+ 1 AS `status`,
+ 1 AS `override`,
+ 1 AS `accepted_day_key`,
+ 1 AS `session_count`,
+ 1 AS `duration_minutes`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_cash`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_cash` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `movement_id`,
+ 1 AS `cash_account_id`,
+ 1 AS `movement_type`,
+ 1 AS `is_reversal`,
+ 1 AS `site_id`,
+ 1 AS `holder_user_id`,
+ 1 AS `inflow_xaf`,
+ 1 AS `outflow_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_costs`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_costs` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `entry_id`,
+ 1 AS `cost_object_type`,
+ 1 AS `cost_object_id`,
+ 1 AS `cost_type`,
+ 1 AS `site_id`,
+ 1 AS `created_by`,
+ 1 AS `amount_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_expenses`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_expenses` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `expense_id`,
+ 1 AS `category_id`,
+ 1 AS `cost_object_type`,
+ 1 AS `site_id`,
+ 1 AS `status`,
+ 1 AS `created_by`,
+ 1 AS `amount_xaf`,
+ 1 AS `pending_xaf`,
+ 1 AS `unjustified_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_losses`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_losses` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `loss_id`,
+ 1 AS `category`,
+ 1 AS `reason_code`,
+ 1 AS `product_id`,
+ 1 AS `stock_lot_id`,
+ 1 AS `production_lot_id`,
+ 1 AS `location_id`,
+ 1 AS `declared_by`,
+ 1 AS `status`,
+ 1 AS `site_id`,
+ 1 AS `quantity_base`,
+ 1 AS `value_xaf`,
+ 1 AS `pending_quantity_base`,
+ 1 AS `pending_value_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_orders`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_orders` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `order_id`,
+ 1 AS `line_id`,
+ 1 AS `customer_id`,
+ 1 AS `commercial_user_id`,
+ 1 AS `channel`,
+ 1 AS `product_id`,
+ 1 AS `status`,
+ 1 AS `site_id`,
+ 1 AS `zone_id`,
+ 1 AS `ordered_quantity`,
+ 1 AS `delivered_quantity`,
+ 1 AS `amount_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_payments`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_payments` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `event_kind`,
+ 1 AS `payment_id`,
+ 1 AS `payment_method`,
+ 1 AS `cash_account_id`,
+ 1 AS `site_id`,
+ 1 AS `received_by_user_id`,
+ 1 AS `customer_id`,
+ 1 AS `amount_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_production_daily`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_production_daily` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `lot_id`,
+ 1 AS `lot_type`,
+ 1 AS `site_id`,
+ 1 AS `building_id`,
+ 1 AS `recorded_by`,
+ 1 AS `mortality_heads`,
+ 1 AS `feed_quantity`,
+ 1 AS `eggs_collected`,
+ 1 AS `eggs_sellable`,
+ 1 AS `average_weight_kg`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_prospecting`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_prospecting` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `event_kind`,
+ 1 AS `user_id`,
+ 1 AS `zone_id`,
+ 1 AS `source`,
+ 1 AS `stage`,
+ 1 AS `result`,
+ 1 AS `created_customer_id`,
+ 1 AS `contact_customer_id`,
+ 1 AS `visited_prospect_id`,
+ 1 AS `visit_id`,
+ 1 AS `converted_customer_id`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_purchases`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_purchases` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `order_id`,
+ 1 AS `receipt_id`,
+ 1 AS `supplier_id`,
+ 1 AS `product_id`,
+ 1 AS `site_id`,
+ 1 AS `created_by`,
+ 1 AS `ordered_quantity`,
+ 1 AS `delivered_quantity`,
+ 1 AS `rejected_quantity`,
+ 1 AS `accepted_quantity`,
+ 1 AS `amount_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_sales_line`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_sales_line` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `sale_day`,
+ 1 AS `event_kind`,
+ 1 AS `sale_id`,
+ 1 AS `line_id`,
+ 1 AS `counted_sale_id`,
+ 1 AS `product_id`,
+ 1 AS `product_category_id`,
+ 1 AS `site_id`,
+ 1 AS `pos_id`,
+ 1 AS `zone_id`,
+ 1 AS `channel`,
+ 1 AS `customer_id`,
+ 1 AS `customer_category_id`,
+ 1 AS `commercial_user_id`,
+ 1 AS `seller_user_id`,
+ 1 AS `owner_user_id`,
+ 1 AS `sale_type`,
+ 1 AS `payment_status`,
+ 1 AS `quantity_base`,
+ 1 AS `amount_xaf`,
+ 1 AS `discount_xaf`,
+ 1 AS `cost_xaf`,
+ 1 AS `margin_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_stock_balance`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_stock_balance` AS SELECT
+ 1 AS `location_id`,
+ 1 AS `product_id`,
+ 1 AS `stock_lot_id`,
+ 1 AS `family`,
+ 1 AS `location_type`,
+ 1 AS `site_id`,
+ 1 AS `custodian_user_id`,
+ 1 AS `balance_base`,
+ 1 AS `allocated_base`,
+ 1 AS `available_base`,
+ 1 AS `value_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `analytics_f_stock_moves`
+--
+
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `analytics_f_stock_moves` AS SELECT
+ 1 AS `business_day`,
+ 1 AS `move_id`,
+ 1 AS `product_id`,
+ 1 AS `from_location_id`,
+ 1 AS `to_location_id`,
+ 1 AS `move_type`,
+ 1 AS `is_reversal`,
+ 1 AS `source_doc_type`,
+ 1 AS `reason_code`,
+ 1 AS `stock_lot_id`,
+ 1 AS `from_site_id`,
+ 1 AS `to_site_id`,
+ 1 AS `from_custodian_user_id`,
+ 1 AS `to_custodian_user_id`,
+ 1 AS `quantity_base`,
+ 1 AS `value_xaf`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Table structure for table `analytics_kpi_snapshots`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_kpi_snapshots` (
+  `user_id` binary(16) NOT NULL,
+  `scope_key` varchar(100) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `period_key` varchar(20) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `payload` json NOT NULL,
+  `computed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`user_id`,`scope_key`,`period_key`),
+  KEY `ix_analytics_kpi_snapshots_computed` (`computed_at`),
+  CONSTRAINT `fk_analytics_kpi_snapshots_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_kpi_snapshots_payload` CHECK ((json_type(`payload`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_kpi_snapshots_period` CHECK ((`period_key` in (_utf8mb4'TODAY',_utf8mb4'WEEK',_utf8mb4'MONTH')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `analytics_query_log`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_query_log` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `outcome` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `error_code` varchar(60) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `row_count` int DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_analytics_query_log_created` (`created_at`),
+  KEY `ix_analytics_query_log_user` (`user_id`,`created_at`),
+  CONSTRAINT `fk_analytics_query_log_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_query_log_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_query_log_outcome` CHECK ((`outcome` in (_utf8mb4'OK',_utf8mb4'REFUSED',_utf8mb4'LIMIT',_utf8mb4'ERROR')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_query_log_no_update` BEFORE UPDATE ON `analytics_query_log` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_query_log : ajout seul.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `analytics_saved_views`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `analytics_saved_views` (
+  `id` binary(16) NOT NULL,
+  `owner_user_id` binary(16) NOT NULL,
+  `name` varchar(120) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `dataset` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `definition` json NOT NULL,
+  `catalog_version` int NOT NULL,
+  `shared_with_roles` json NOT NULL DEFAULT (json_array()),
+  `is_default_for_role` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_analytics_saved_views_owner_name` (`owner_user_id`,`name`),
+  UNIQUE KEY `uq_analytics_saved_views_default_role` (`is_default_for_role`),
+  KEY `ix_analytics_saved_views_dataset` (`dataset`),
+  KEY `fk_analytics_saved_views_created_by` (`created_by`),
+  KEY `fk_analytics_saved_views_updated_by` (`updated_by`),
+  CONSTRAINT `fk_analytics_saved_views_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_analytics_saved_views_owner` FOREIGN KEY (`owner_user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_analytics_saved_views_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_analytics_saved_views_catalog` CHECK ((`catalog_version` >= 1)),
+  CONSTRAINT `ck_analytics_saved_views_dataset` CHECK (regexp_like(`dataset`,_utf8mb4'^f_[a-z_]+$')),
+  CONSTRAINT `ck_analytics_saved_views_definition` CHECK ((json_type(`definition`) = _utf8mb4'OBJECT')),
+  CONSTRAINT `ck_analytics_saved_views_roles` CHECK ((json_type(`shared_with_roles`) = _utf8mb4'ARRAY'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_analytics_saved_views_update_guard` BEFORE UPDATE ON `analytics_saved_views` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.owner_user_id <=> OLD.owner_user_id
+          AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'analytics_saved_views : identité et propriétaire immuables.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
 -- Table structure for table `approvals_approval_requests`
 --
 
@@ -768,6 +1246,587 @@ CREATE TABLE `catalog_units` (
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_catalog_units_no_delete` BEFORE DELETE ON `catalog_units` FOR EACH ROW BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'catalog_units : suppression physique interdite (INV-GLO-03) ; utiliser is_active=false.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_alert_recipients`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alert_recipients` (
+  `alert_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `origin` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `role_code` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `added_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`alert_id`,`user_id`),
+  KEY `ix_communication_alert_recipients_user` (`user_id`,`alert_id`),
+  CONSTRAINT `fk_communication_alert_recipients_alert` FOREIGN KEY (`alert_id`) REFERENCES `communication_alerts` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_communication_alert_recipients_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alert_recipients_origin` CHECK ((`origin` in (_utf8mb4'RULE',_utf8mb4'OWNER',_utf8mb4'TEAM_MANAGER',_utf8mb4'APPROVER',_utf8mb4'ESCALATION',_utf8mb4'FALLBACK')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_recipients_update_guard` BEFORE UPDATE ON `communication_alert_recipients` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_recipients : ajout seul.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_recipients_no_delete` BEFORE DELETE ON `communication_alert_recipients` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_recipients : suppression directe interdite (suit l''alerte).';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_alert_rules`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alert_rules` (
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `severity` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `recipient_roles` json NOT NULL,
+  `resolution_mode` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `escalation_hours` smallint DEFAULT NULL,
+  `escalation_roles` json NOT NULL DEFAULT (json_array(_utf8mb4'DIRECTION')),
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`alert_type`),
+  KEY `fk_communication_alert_rules_updated_by` (`updated_by`),
+  CONSTRAINT `fk_communication_alert_rules_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alert_rules_escalation` CHECK (((`escalation_hours` is null) or (`escalation_hours` between 1 and 168))),
+  CONSTRAINT `ck_communication_alert_rules_resolution` CHECK ((`resolution_mode` in (_utf8mb4'AUTO',_utf8mb4'MANUAL'))),
+  CONSTRAINT `ck_communication_alert_rules_roles` CHECK (((json_type(`recipient_roles`) = _utf8mb4'ARRAY') and (json_type(`escalation_roles`) = _utf8mb4'ARRAY'))),
+  CONSTRAINT `ck_communication_alert_rules_severity` CHECK ((`severity` in (_utf8mb4'INFO',_utf8mb4'WARNING',_utf8mb4'CRITICAL'))),
+  CONSTRAINT `ck_communication_alert_rules_type` CHECK ((`alert_type` in (_utf8mb4'STOCK_LOW',_utf8mb4'STOCK_OUT',_utf8mb4'POS_REPLENISH',_utf8mb4'STOCK_NEGATIVE',_utf8mb4'HIGH_LOSS',_utf8mb4'HIGH_MORTALITY',_utf8mb4'DAILY_ENTRY_MISSING',_utf8mb4'STANDARD_COST_MISSING',_utf8mb4'RECEIPT_INCOMPLETE',_utf8mb4'INVENTORY_VARIANCE',_utf8mb4'OVERDUE_RECEIVABLE',_utf8mb4'CASH_VARIANCE',_utf8mb4'CASH_HOLDING_HIGH',_utf8mb4'CASH_SESSION_OPEN_LONG',_utf8mb4'CASH_TRANSFER_NOT_RECEIVED',_utf8mb4'SYNC_ERROR',_utf8mb4'SYNC_STALE',_utf8mb4'DEVICE_SEQ_GAP',_utf8mb4'CLOCK_SKEW',_utf8mb4'INACTIVE_COMMERCIAL',_utf8mb4'CHECKIN_SUSPICIOUS',_utf8mb4'PRICE_MISMATCH',_utf8mb4'DUPLICATE_SUSPECTED',_utf8mb4'APPROVAL_PENDING_LONG',_utf8mb4'TRANSFER_NOT_RECEIVED',_utf8mb4'TRANSFER_UNMATCHED',_utf8mb4'LOT_EXPIRING',_utf8mb4'ATTACHMENT_MISSING',_utf8mb4'KOMMO_SYNC_FAILED',_utf8mb4'AUDIT_CHAIN_BROKEN',_utf8mb4'ALLOCATION_EXPIRED',_utf8mb4'ALLOCATION_REVOCATION_PENDING',_utf8mb4'SALE_UNDELIVERED',_utf8mb4'CONSUMER_FAILED',_utf8mb4'LEDGER_MISMATCH',_utf8mb4'CASH_MISMATCH')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_rules_update_guard` BEFORE UPDATE ON `communication_alert_rules` FOR EACH ROW BEGIN
+  IF NOT (NEW.alert_type <=> OLD.alert_type AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_rules : type d''alerte immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alert_rules_no_delete` BEFORE DELETE ON `communication_alert_rules` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alert_rules : suppression interdite ; désactiver la règle.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_alerts`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_alerts` (
+  `id` binary(16) NOT NULL,
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `nature` varchar(5) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `severity` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `status` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'OPEN',
+  `subject_type` varchar(40) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `subject_id` binary(16) NOT NULL,
+  `site_id` binary(16) DEFAULT NULL,
+  `zone_id` binary(16) DEFAULT NULL,
+  `owner_user_id` binary(16) DEFAULT NULL,
+  `action_screen` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `title` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `message` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '',
+  `payload` json NOT NULL,
+  `dedup_key` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `open_dedup_key` varchar(200) COLLATE utf8mb4_0900_as_cs GENERATED ALWAYS AS ((case when (`status` in (_utf8mb4'OPEN',_utf8mb4'ACKNOWLEDGED')) then `dedup_key` else NULL end)) STORED,
+  `occurrences` int NOT NULL DEFAULT '1',
+  `first_detected_at` datetime(6) NOT NULL,
+  `last_detected_at` datetime(6) NOT NULL,
+  `business_day` date DEFAULT NULL,
+  `last_pass_id` varchar(64) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `critical_since` datetime(6) DEFAULT NULL,
+  `escalated_at` datetime(6) DEFAULT NULL,
+  `acknowledged_by` binary(16) DEFAULT NULL,
+  `acknowledged_at` datetime(6) DEFAULT NULL,
+  `resolved_by` binary(16) DEFAULT NULL,
+  `resolved_at` datetime(6) DEFAULT NULL,
+  `resolution_kind` varchar(20) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `resolution_comment` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_alerts_open_dedup` (`open_dedup_key`),
+  KEY `ix_communication_alerts_status` (`status`,`severity`,`first_detected_at`),
+  KEY `ix_communication_alerts_site` (`site_id`,`status`),
+  KEY `ix_communication_alerts_owner` (`owner_user_id`,`status`),
+  KEY `ix_communication_alerts_type` (`alert_type`,`status`),
+  KEY `ix_communication_alerts_subject` (`subject_type`,`subject_id`),
+  KEY `ix_communication_alerts_escalation` (`status`,`severity`,`escalated_at`,`critical_since`),
+  KEY `fk_communication_alerts_acknowledged_by` (`acknowledged_by`),
+  KEY `fk_communication_alerts_resolved_by` (`resolved_by`),
+  CONSTRAINT `fk_communication_alerts_acknowledged_by` FOREIGN KEY (`acknowledged_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_alerts_resolved_by` FOREIGN KEY (`resolved_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_alerts_type` FOREIGN KEY (`alert_type`) REFERENCES `communication_alert_rules` (`alert_type`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_alerts_ack` CHECK (((`acknowledged_at` is null) = (`acknowledged_by` is null))),
+  CONSTRAINT `ck_communication_alerts_closed` CHECK ((((`status` in (_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')) = (`resolved_at` is not null)) and ((`status` in (_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')) = (`resolution_kind` is not null)))),
+  CONSTRAINT `ck_communication_alerts_critical` CHECK (((`severity` = _utf8mb4'CRITICAL') = (`critical_since` is not null))),
+  CONSTRAINT `ck_communication_alerts_dismissed` CHECK (((`resolution_kind` is null) or ((`resolution_kind` = _utf8mb4'DISMISSED') = (`status` = _utf8mb4'DISMISSED')))),
+  CONSTRAINT `ck_communication_alerts_escalated` CHECK (((`escalated_at` is null) or (`critical_since` is not null))),
+  CONSTRAINT `ck_communication_alerts_kind` CHECK (((`resolution_kind` is null) or (`resolution_kind` in (_utf8mb4'CONDITION_CLEARED',_utf8mb4'PASS',_utf8mb4'MANUAL',_utf8mb4'DISMISSED')))),
+  CONSTRAINT `ck_communication_alerts_manual` CHECK (((`resolution_kind` is null) or (`resolution_kind` not in (_utf8mb4'MANUAL',_utf8mb4'DISMISSED')) or ((`resolved_by` is not null) and (`resolution_comment` is not null)))),
+  CONSTRAINT `ck_communication_alerts_nature` CHECK ((`nature` in (_utf8mb4'STATE',_utf8mb4'EVENT'))),
+  CONSTRAINT `ck_communication_alerts_occurrences` CHECK ((`occurrences` >= 1)),
+  CONSTRAINT `ck_communication_alerts_severity` CHECK ((`severity` in (_utf8mb4'INFO',_utf8mb4'WARNING',_utf8mb4'CRITICAL'))),
+  CONSTRAINT `ck_communication_alerts_status` CHECK ((`status` in (_utf8mb4'OPEN',_utf8mb4'ACKNOWLEDGED',_utf8mb4'RESOLVED',_utf8mb4'DISMISSED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alerts_update_guard` BEFORE UPDATE ON `communication_alerts` FOR EACH ROW BEGIN
+  IF OLD.status IN ('RESOLVED', 'DISMISSED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : alerte résolue ou écartée, immuable (ADR-006).';
+  END IF;
+  IF NOT (NEW.id <=> OLD.id AND NEW.alert_type <=> OLD.alert_type AND NEW.nature <=> OLD.nature
+          AND NEW.subject_type <=> OLD.subject_type AND NEW.subject_id <=> OLD.subject_id
+          AND NEW.dedup_key <=> OLD.dedup_key AND NEW.first_detected_at <=> OLD.first_detected_at
+          AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : identité de l''alerte immuable.';
+  END IF;
+  IF OLD.status = 'ACKNOWLEDGED' AND NEW.status = 'OPEN' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : une alerte prise en compte ne redevient pas ouverte.';
+  END IF;
+  -- Une occurrence plus grave relève l'alerte, aucune ne l'abaisse (AV-401) ; le compteur ne recule pas.
+  IF FIELD(NEW.severity, 'INFO', 'WARNING', 'CRITICAL') < FIELD(OLD.severity, 'INFO', 'WARNING', 'CRITICAL') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : la gravité d''une alerte ouverte ne baisse pas.';
+  END IF;
+  IF NEW.occurrences < OLD.occurrences THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : le compteur d''occurrences ne recule pas.';
+  END IF;
+  -- L'escalade et le point de départ de l'échéance ne s'effacent pas.
+  IF OLD.escalated_at IS NOT NULL AND NOT (NEW.escalated_at <=> OLD.escalated_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : escalade déjà posée.';
+  END IF;
+  IF OLD.critical_since IS NOT NULL AND NOT (NEW.critical_since <=> OLD.critical_since) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : critical_since déjà posé.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_alerts_purge_guard` BEFORE DELETE ON `communication_alerts` FOR EACH ROW BEGIN
+  IF NOT (OLD.status IN ('RESOLVED', 'DISMISSED')
+          AND OLD.resolved_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 730 DAY)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_alerts : seules les alertes closes depuis plus de 2 ans se purgent.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_internal_notes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_internal_notes` (
+  `id` binary(16) NOT NULL,
+  `title` varchar(160) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `body` text COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `category` varchar(15) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `related_entity_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `related_entity_id` binary(16) DEFAULT NULL,
+  `requires_ack` tinyint(1) NOT NULL DEFAULT '0',
+  `status` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT 'DRAFT',
+  `published_at` datetime(6) DEFAULT NULL,
+  `expires_at` datetime(6) DEFAULT NULL,
+  `archived_at` datetime(6) DEFAULT NULL,
+  `archive_reason` varchar(500) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `created_by` binary(16) NOT NULL,
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `updated_by` binary(16) DEFAULT NULL,
+  `version` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_internal_notes_command` (`command_id`),
+  KEY `ix_communication_internal_notes_status` (`status`,`published_at`),
+  KEY `fk_communication_internal_notes_created_by` (`created_by`),
+  KEY `fk_communication_internal_notes_updated_by` (`updated_by`),
+  CONSTRAINT `fk_communication_internal_notes_created_by` FOREIGN KEY (`created_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_internal_notes_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_internal_notes_archived` CHECK (((`status` = _utf8mb4'ARCHIVED') = (`archived_at` is not null))),
+  CONSTRAINT `ck_communication_internal_notes_category` CHECK ((`category` in (_utf8mb4'PRIX',_utf8mb4'INSTRUCTION',_utf8mb4'PROCEDURE',_utf8mb4'INFORMATION'))),
+  CONSTRAINT `ck_communication_internal_notes_expiry` CHECK (((`expires_at` is null) or (`published_at` is null) or (`expires_at` > `published_at`))),
+  CONSTRAINT `ck_communication_internal_notes_published` CHECK (((`status` <> _utf8mb4'PUBLISHED') or (`published_at` is not null))),
+  CONSTRAINT `ck_communication_internal_notes_related` CHECK (((`related_entity_type` is null) = (`related_entity_id` is null))),
+  CONSTRAINT `ck_communication_internal_notes_status` CHECK ((`status` in (_utf8mb4'DRAFT',_utf8mb4'PUBLISHED',_utf8mb4'ARCHIVED')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_internal_notes_update_guard` BEFORE UPDATE ON `communication_internal_notes` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.created_at <=> OLD.created_at AND NEW.created_by <=> OLD.created_by) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : identité de la note immuable.';
+  END IF;
+  IF OLD.status = 'ARCHIVED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : note archivée, immuable.';
+  END IF;
+  IF OLD.status = 'PUBLISHED' THEN
+    IF NOT (NEW.title <=> OLD.title AND NEW.body <=> OLD.body AND NEW.category <=> OLD.category
+            AND NEW.related_entity_type <=> OLD.related_entity_type AND NEW.related_entity_id <=> OLD.related_entity_id
+            AND NEW.requires_ack <=> OLD.requires_ack AND NEW.published_at <=> OLD.published_at
+            AND NEW.expires_at <=> OLD.expires_at) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : note publiée, immuable (BR-NOT-006) ; publier une note corrective.';
+    END IF;
+    IF NEW.status NOT IN ('PUBLISHED', 'ARCHIVED') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : une note publiée ne revient pas au brouillon.';
+    END IF;
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_internal_notes_no_delete` BEFORE DELETE ON `communication_internal_notes` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_internal_notes : suppression interdite ; archiver la note.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_note_acknowledgements`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_note_acknowledgements` (
+  `note_id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `read_at` datetime(6) NOT NULL,
+  `acknowledged_at` datetime(6) DEFAULT NULL,
+  `command_id` binary(16) DEFAULT NULL,
+  PRIMARY KEY (`note_id`,`user_id`),
+  KEY `ix_communication_note_acknowledgements_user` (`user_id`,`acknowledged_at`),
+  CONSTRAINT `fk_communication_note_acknowledgements_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_note_acknowledgements_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_acknowledgements_update_guard` BEFORE UPDATE ON `communication_note_acknowledgements` FOR EACH ROW BEGIN
+  IF NOT (NEW.note_id <=> OLD.note_id AND NEW.user_id <=> OLD.user_id AND NEW.read_at <=> OLD.read_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : lecture immuable.';
+  END IF;
+  IF OLD.acknowledged_at IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : accusé déjà enregistré, immuable.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_acknowledgements_no_delete` BEFORE DELETE ON `communication_note_acknowledgements` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_acknowledgements : suppression interdite.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_note_audiences`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_note_audiences` (
+  `note_id` binary(16) NOT NULL,
+  `audience_type` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `audience_ref` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '*',
+  PRIMARY KEY (`note_id`,`audience_type`,`audience_ref`),
+  CONSTRAINT `fk_communication_note_audiences_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_note_audiences_ref` CHECK (((`audience_type` = _utf8mb4'ALL') = (`audience_ref` = _utf8mb4'*'))),
+  CONSTRAINT `ck_communication_note_audiences_type` CHECK ((`audience_type` in (_utf8mb4'ALL',_utf8mb4'ROLE',_utf8mb4'SITE',_utf8mb4'ZONE',_utf8mb4'USER')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_insert_guard` BEFORE INSERT ON `communication_note_audiences` FOR EACH ROW BEGIN
+  IF (SELECT status FROM communication_internal_notes WHERE id = NEW.note_id) <> 'DRAFT' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : audience figée dès la publication de la note.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_update_guard` BEFORE UPDATE ON `communication_note_audiences` FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : modification interdite ; retirer puis ajouter la ligne d''un brouillon.';
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_note_audiences_delete_guard` BEFORE DELETE ON `communication_note_audiences` FOR EACH ROW BEGIN
+  IF (SELECT status FROM communication_internal_notes WHERE id = OLD.note_id) <> 'DRAFT' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_note_audiences : audience figée dès la publication de la note.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_notifications`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_notifications` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `channel` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `kind` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `alert_id` binary(16) DEFAULT NULL,
+  `alert_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `note_id` binary(16) DEFAULT NULL,
+  `source_type` varchar(40) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `source_id` binary(16) DEFAULT NULL,
+  `source_event_id` binary(16) DEFAULT NULL,
+  `title` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `body` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '',
+  `link` varchar(200) COLLATE utf8mb4_0900_as_cs DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `delivered_at` datetime(6) DEFAULT NULL,
+  `read_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_notifications_event` (`user_id`,`channel`,`source_event_id`),
+  KEY `ix_communication_notifications_user` (`user_id`,`read_at`,`created_at`),
+  KEY `ix_communication_notifications_alert` (`alert_id`),
+  KEY `ix_communication_notifications_push` (`user_id`,`alert_type`,`channel`,`created_at`),
+  KEY `fk_communication_notifications_note` (`note_id`),
+  CONSTRAINT `fk_communication_notifications_alert` FOREIGN KEY (`alert_id`) REFERENCES `communication_alerts` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_communication_notifications_note` FOREIGN KEY (`note_id`) REFERENCES `communication_internal_notes` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_notifications_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_communication_notifications_alert` CHECK (((`kind` <> _utf8mb4'ALERT') or (`alert_type` is not null))),
+  CONSTRAINT `ck_communication_notifications_channel` CHECK ((`channel` in (_utf8mb4'IN_APP',_utf8mb4'WEB_PUSH'))),
+  CONSTRAINT `ck_communication_notifications_kind` CHECK ((`kind` in (_utf8mb4'ALERT',_utf8mb4'NOTE',_utf8mb4'DIRECT',_utf8mb4'EXPORT'))),
+  CONSTRAINT `ck_communication_notifications_note` CHECK (((`kind` <> _utf8mb4'NOTE') or (`note_id` is not null)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_notifications_update_guard` BEFORE UPDATE ON `communication_notifications` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.user_id <=> OLD.user_id AND NEW.channel <=> OLD.channel AND NEW.kind <=> OLD.kind
+          AND NEW.alert_id <=> OLD.alert_id AND NEW.alert_type <=> OLD.alert_type AND NEW.note_id <=> OLD.note_id
+          AND NEW.source_type <=> OLD.source_type AND NEW.source_id <=> OLD.source_id
+          AND NEW.source_event_id <=> OLD.source_event_id AND NEW.title <=> OLD.title AND NEW.body <=> OLD.body
+          AND NEW.link <=> OLD.link AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_notifications : seules la livraison et la lecture évoluent.';
+  END IF;
+  IF OLD.read_at IS NOT NULL AND NOT (NEW.read_at <=> OLD.read_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_notifications : date de lecture déjà posée.';
+  END IF;
+END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `communication_push_subscriptions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `communication_push_subscriptions` (
+  `id` binary(16) NOT NULL,
+  `user_id` binary(16) NOT NULL,
+  `device_id` binary(16) NOT NULL,
+  `endpoint` varchar(500) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `p256dh` varchar(200) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `auth` varchar(100) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `revoked_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_communication_push_subscriptions_endpoint` (`endpoint`),
+  KEY `ix_communication_push_subscriptions_user` (`user_id`,`revoked_at`),
+  KEY `fk_communication_push_subscriptions_device` (`device_id`),
+  CONSTRAINT `fk_communication_push_subscriptions_device` FOREIGN KEY (`device_id`) REFERENCES `identity_devices` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_communication_push_subscriptions_user` FOREIGN KEY (`user_id`) REFERENCES `identity_users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`gic_migrator`@`%`*/ /*!50003 TRIGGER `trg_communication_push_subscriptions_update_guard` BEFORE UPDATE ON `communication_push_subscriptions` FOR EACH ROW BEGIN
+  IF NOT (NEW.id <=> OLD.id AND NEW.user_id <=> OLD.user_id AND NEW.device_id <=> OLD.device_id
+          AND NEW.endpoint <=> OLD.endpoint AND NEW.p256dh <=> OLD.p256dh AND NEW.auth <=> OLD.auth
+          AND NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_push_subscriptions : seule la révocation évolue.';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL AND NOT (NEW.revoked_at <=> OLD.revoked_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'communication_push_subscriptions : révocation déjà posée.';
+  END IF;
 END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -4106,6 +5165,23 @@ CREATE TABLE `inventory_product_valuations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `inventory_overhead_pool_locks`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inventory_overhead_pool_locks` (
+  `site_id` binary(16) NOT NULL,
+  `species_group` varchar(10) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `period` char(7) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`site_id`,`species_group`,`period`),
+  CONSTRAINT `ck_inventory_overhead_pool_locks_period` CHECK (regexp_like(`period`,_utf8mb4'^[0-9]{4}-(0[1-9]|1[0-2])$')),
+  CONSTRAINT `ck_inventory_overhead_pool_locks_species` CHECK ((`species_group` in (_utf8mb4'VOLAILLE',_utf8mb4'PORC')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `inventory_stock_allocation_entries`
 --
 
@@ -5493,6 +6569,27 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Table structure for table `platform_event_consumer_failures`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `platform_event_consumer_failures` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `consumer_name` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `event_seq` bigint unsigned NOT NULL,
+  `event_id` binary(16) NOT NULL,
+  `event_type` varchar(80) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `error_message` varchar(1000) COLLATE utf8mb4_0900_as_cs NOT NULL,
+  `attempts` smallint NOT NULL,
+  `failed_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_platform_event_consumer_failures_event` (`consumer_name`,`event_seq`),
+  KEY `ix_platform_event_consumer_failures_failed` (`failed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `platform_event_consumer_marks`
@@ -8993,6 +10090,240 @@ DELIMITER ;
 --
 
 --
+-- Final view structure for view `analytics_f_attendance`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_attendance`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_attendance` AS select cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date) AS `business_day`,`w`.`id` AS `session_id`,`w`.`user_id` AS `user_id`,`w`.`declared_zone_id` AS `zone_id`,`w`.`status` AS `status`,(`w`.`override_status` <> 'NOT_REQUIRED') AS `override`,(case when (`w`.`override_status` in ('NOT_REQUIRED','APPROVED')) then concat(hex(`w`.`user_id`),'|',cast(convert_tz(`w`.`started_at`,'+00:00','+01:00') as date)) end) AS `accepted_day_key`,1 AS `session_count`,(case when (`w`.`ended_at` is not null) then timestampdiff(MINUTE,`w`.`started_at`,`w`.`ended_at`) end) AS `duration_minutes` from `fieldwork_work_sessions` `w` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_cash`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_cash`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_cash` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `movement_id`,`m`.`cash_account_id` AS `cash_account_id`,`m`.`movement_type` AS `movement_type`,`m`.`is_reversal` AS `is_reversal`,`a`.`site_id` AS `site_id`,coalesce(`a`.`holder_user_id`,`a`.`responsible_user_id`) AS `holder_user_id`,(case when (`m`.`direction` = 'IN') then `m`.`amount_xaf` else 0 end) AS `inflow_xaf`,(case when (`m`.`direction` = 'OUT') then `m`.`amount_xaf` else 0 end) AS `outflow_xaf` from (`finance_cash_movements` `m` join `finance_cash_accounts` `a` on((`a`.`id` = `m`.`cash_account_id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_costs`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_costs`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_costs` AS select cast(convert_tz(`e`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`e`.`id` AS `entry_id`,`e`.`cost_object_type` AS `cost_object_type`,`e`.`cost_object_id` AS `cost_object_id`,`e`.`cost_type` AS `cost_type`,(case `e`.`cost_object_type` when 'SITE' then `e`.`cost_object_id` when 'PRODUCTION_LOT' then `pl`.`site_id` when 'INCUBATION_BATCH' then `ib`.`site_id` end) AS `site_id`,`e`.`created_by` AS `created_by`,(case when (`e`.`direction` = 'DEBIT') then `e`.`amount_xaf` else -(`e`.`amount_xaf`) end) AS `amount_xaf` from ((`inventory_cost_entries` `e` left join `production_production_lots` `pl` on(((`e`.`cost_object_type` = 'PRODUCTION_LOT') and (`pl`.`id` = `e`.`cost_object_id`)))) left join `production_incubation_batches` `ib` on(((`e`.`cost_object_type` = 'INCUBATION_BATCH') and (`ib`.`id` = `e`.`cost_object_id`)))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_expenses`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_expenses`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_expenses` AS select `e`.`business_date` AS `business_day`,`e`.`id` AS `expense_id`,`e`.`category_id` AS `category_id`,`e`.`cost_object_type` AS `cost_object_type`,`e`.`site_id` AS `site_id`,`e`.`status` AS `status`,`e`.`created_by` AS `created_by`,(case when (`e`.`status` in ('RECORDED','APPROVED','PAID')) then `e`.`amount_xaf` end) AS `amount_xaf`,(case when (`e`.`status` in ('PENDING_APPROVAL','PAID_PENDING_APPROVAL')) then `e`.`amount_xaf` end) AS `pending_xaf`,(case when (`e`.`status` = 'PAID_REJECTED') then `e`.`amount_xaf` end) AS `unjustified_xaf` from `finance_expenses` `e` where (`e`.`status` not in ('CANCELLED','REJECTED')) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_losses`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_losses`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_losses` AS select `d`.`business_date` AS `business_day`,`d`.`id` AS `loss_id`,`d`.`category` AS `category`,`rc`.`code` AS `reason_code`,`d`.`product_id` AS `product_id`,`d`.`lot_id` AS `stock_lot_id`,`d`.`production_lot_id` AS `production_lot_id`,`d`.`location_id` AS `location_id`,`d`.`declared_by` AS `declared_by`,`d`.`status` AS `status`,`d`.`site_id` AS `site_id`,(case when (`d`.`status` in ('RECORDED','APPROVED','REJECTED_UNJUSTIFIED','CANCELLATION_PENDING')) then `d`.`quantity_base` end) AS `quantity_base`,(case when (`d`.`status` in ('RECORDED','APPROVED','REJECTED_UNJUSTIFIED','CANCELLATION_PENDING')) then `d`.`value_xaf` end) AS `value_xaf`,(case when (`d`.`status` = 'PENDING_APPROVAL') then `d`.`quantity_base` end) AS `pending_quantity_base`,(case when (`d`.`status` = 'PENDING_APPROVAL') then `d`.`value_xaf` end) AS `pending_value_xaf` from (`inventory_loss_declarations` `d` left join `catalog_reason_codes` `rc` on((`rc`.`id` = `d`.`reason_code_id`))) where (`d`.`status` <> 'CANCELLED') */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_orders`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_orders`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_orders` AS select cast(convert_tz(coalesce(`o`.`confirmed_at`,`o`.`occurred_at`),'+00:00','+01:00') as date) AS `business_day`,`o`.`id` AS `order_id`,`ol`.`id` AS `line_id`,`o`.`customer_id` AS `customer_id`,`o`.`commercial_user_id` AS `commercial_user_id`,`o`.`channel_code` AS `channel`,`ol`.`product_id` AS `product_id`,`o`.`status` AS `status`,`o`.`site_id` AS `site_id`,`st`.`zone_id` AS `zone_id`,`ol`.`quantity_base` AS `ordered_quantity`,`ol`.`delivered_quantity_base` AS `delivered_quantity`,`ol`.`line_total_xaf` AS `amount_xaf` from ((`sales_sales_order_lines` `ol` join `sales_sales_orders` `o` on((`o`.`id` = `ol`.`order_id`))) join `organization_sites` `st` on((`st`.`id` = `o`.`site_id`))) where (`o`.`status` not in ('DRAFT','CANCELLED')) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_payments`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_payments`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_payments` AS select `p`.`business_date` AS `business_day`,(_utf8mb4'PAYMENT' collate utf8mb4_0900_as_cs) AS `event_kind`,`p`.`id` AS `payment_id`,`p`.`payment_method_code` AS `payment_method`,`p`.`cash_account_id` AS `cash_account_id`,`p`.`site_id` AS `site_id`,`p`.`received_by_user_id` AS `received_by_user_id`,`p`.`customer_id` AS `customer_id`,`p`.`amount_xaf` AS `amount_xaf` from `sales_customer_payments` `p` where (`p`.`status` in ('RECORDED','CANCELLATION_REQUESTED','CANCELLED')) union all select cast(convert_tz(`p`.`cancelled_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'CANCELLATION' collate utf8mb4_0900_as_cs) AS `event_kind`,`p`.`id` AS `payment_id`,`p`.`payment_method_code` AS `payment_method`,`p`.`cash_account_id` AS `cash_account_id`,`p`.`site_id` AS `site_id`,`p`.`received_by_user_id` AS `received_by_user_id`,`p`.`customer_id` AS `customer_id`,-(`p`.`amount_xaf`) AS `amount_xaf` from `sales_customer_payments` `p` where ((`p`.`status` = 'CANCELLED') and (`p`.`cancelled_at` is not null)) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_production_daily`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_production_daily`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_production_daily` AS select `d`.`business_date` AS `business_day`,`d`.`production_lot_id` AS `lot_id`,`pl`.`lot_type` AS `lot_type`,`pl`.`site_id` AS `site_id`,(case when (`ml`.`location_type` = 'BUILDING') then `ml`.`id` else `ml`.`parent_location_id` end) AS `building_id`,`d`.`declared_by` AS `recorded_by`,`d`.`quantity_base` AS `mortality_heads`,NULL AS `feed_quantity`,NULL AS `eggs_collected`,NULL AS `eggs_sellable`,NULL AS `average_weight_kg` from ((`inventory_loss_declarations` `d` join `production_production_lots` `pl` on((`pl`.`id` = `d`.`production_lot_id`))) left join `organization_locations` `ml` on((`ml`.`id` = `pl`.`main_location_id`))) where ((`d`.`category` = 'MORTALITE') and (`d`.`status` in ('RECORDED','APPROVED','REJECTED_UNJUSTIFIED','CANCELLATION_PENDING'))) union all select cast(convert_tz(`c`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`c`.`cost_object_id` AS `lot_id`,`pl`.`lot_type` AS `lot_type`,`pl`.`site_id` AS `site_id`,(case when (`ml`.`location_type` = 'BUILDING') then `ml`.`id` else `ml`.`parent_location_id` end) AS `building_id`,`c`.`recorded_by` AS `recorded_by`,NULL AS `mortality_heads`,`c`.`quantity_base` AS `feed_quantity`,NULL AS `eggs_collected`,NULL AS `eggs_sellable`,NULL AS `average_weight_kg` from ((`inventory_consumptions` `c` join `production_production_lots` `pl` on((`pl`.`id` = `c`.`cost_object_id`))) left join `organization_locations` `ml` on((`ml`.`id` = `pl`.`main_location_id`))) where ((`c`.`cost_object_type` = 'PRODUCTION_LOT') and (`c`.`cost_type` = 'ALIMENT') and (`c`.`status` = 'RECORDED')) union all select `e`.`collection_date` AS `business_day`,`e`.`production_lot_id` AS `lot_id`,`pl`.`lot_type` AS `lot_type`,`pl`.`site_id` AS `site_id`,(case when (`ml`.`location_type` = 'BUILDING') then `ml`.`id` else `ml`.`parent_location_id` end) AS `building_id`,`e`.`created_by` AS `recorded_by`,NULL AS `mortality_heads`,NULL AS `feed_quantity`,`e`.`collected_qty` AS `eggs_collected`,`e`.`marketable_qty` AS `eggs_sellable`,NULL AS `average_weight_kg` from ((`production_egg_collections` `e` join `production_production_lots` `pl` on((`pl`.`id` = `e`.`production_lot_id`))) left join `organization_locations` `ml` on((`ml`.`id` = `pl`.`main_location_id`))) where (`e`.`status` = 'RECORDED') union all select cast(convert_tz(`w`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`w`.`production_lot_id` AS `lot_id`,`pl`.`lot_type` AS `lot_type`,`pl`.`site_id` AS `site_id`,(case when (`ml`.`location_type` = 'BUILDING') then `ml`.`id` else `ml`.`parent_location_id` end) AS `building_id`,`w`.`created_by` AS `recorded_by`,NULL AS `mortality_heads`,NULL AS `feed_quantity`,NULL AS `eggs_collected`,NULL AS `eggs_sellable`,(`w`.`avg_weight_g` / 1000) AS `average_weight_kg` from ((`production_lot_weighings` `w` join `production_production_lots` `pl` on((`pl`.`id` = `w`.`production_lot_id`))) left join `organization_locations` `ml` on((`ml`.`id` = `pl`.`main_location_id`))) where (`w`.`status` = 'RECORDED') */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_prospecting`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_prospecting`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_prospecting` AS select cast(convert_tz(`c`.`acquired_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'ACCOUNT' collate utf8mb4_0900_as_cs) AS `event_kind`,`c`.`acquired_by_user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,`c`.`id` AS `created_customer_id`,(case when ((`c`.`phone_primary` is not null) and (`c`.`phone_primary` <> '')) then `c`.`id` end) AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,NULL AS `converted_customer_id` from `crm_customers` `c` where (`c`.`stage` <> 'MERGED') union all select cast(convert_tz(`v`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'VISIT' collate utf8mb4_0900_as_cs) AS `event_kind`,`v`.`user_id` AS `user_id`,`cu`.`zone_id` AS `zone_id`,`cu`.`source_code` AS `source`,`v`.`customer_stage_at_visit` AS `stage`,`rc`.`code` AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,(case when (`v`.`customer_stage_at_visit` = 'PROSPECT') then `v`.`customer_id` end) AS `visited_prospect_id`,`v`.`id` AS `visit_id`,NULL AS `converted_customer_id` from ((`crm_visits` `v` join `crm_customers` `cu` on((`cu`.`id` = `v`.`customer_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `v`.`outcome_reason_code_id`))) where (`v`.`status` = 'RECORDED') union all select cast(convert_tz(`c`.`converted_at`,'+00:00','+01:00') as date) AS `business_day`,(_utf8mb4'CONVERSION' collate utf8mb4_0900_as_cs) AS `event_kind`,`a`.`user_id` AS `user_id`,`c`.`zone_id` AS `zone_id`,`c`.`source_code` AS `source`,`c`.`stage` AS `stage`,NULL AS `result`,NULL AS `created_customer_id`,NULL AS `contact_customer_id`,NULL AS `visited_prospect_id`,NULL AS `visit_id`,`c`.`id` AS `converted_customer_id` from (`crm_customers` `c` left join `crm_customer_assignments` `a` on(((`a`.`customer_id` = `c`.`id`) and (`a`.`valid_from` <= `c`.`converted_at`) and ((`a`.`valid_to` is null) or (`a`.`valid_to` > `c`.`converted_at`))))) where ((`c`.`converted_at` is not null) and (`c`.`stage` <> 'MERGED')) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_purchases`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_purchases`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_purchases` AS select cast(convert_tz(coalesce(`po`.`approved_at`,`po`.`occurred_at`),'+00:00','+01:00') as date) AS `business_day`,`po`.`id` AS `order_id`,NULL AS `receipt_id`,`po`.`supplier_id` AS `supplier_id`,`pol`.`product_id` AS `product_id`,`po`.`site_id` AS `site_id`,`po`.`created_by` AS `created_by`,`pol`.`ordered_qty_base` AS `ordered_quantity`,NULL AS `delivered_quantity`,NULL AS `rejected_quantity`,NULL AS `accepted_quantity`,`pol`.`line_total_xaf` AS `amount_xaf` from (`procurement_purchase_order_lines` `pol` join `procurement_purchase_orders` `po` on((`po`.`id` = `pol`.`order_id`))) where ((`po`.`status` not in ('DRAFT','PENDING_APPROVAL','CANCELLED')) and (`pol`.`status` <> 'CANCELLED')) union all select cast(convert_tz(`r`.`occurred_at`,'+00:00','+01:00') as date) AS `business_day`,`r`.`purchase_order_id` AS `order_id`,`r`.`id` AS `receipt_id`,`r`.`supplier_id` AS `supplier_id`,`rl`.`product_id` AS `product_id`,`r`.`site_id` AS `site_id`,`r`.`created_by` AS `created_by`,NULL AS `ordered_quantity`,`rl`.`qty_delivered_base` AS `delivered_quantity`,`rl`.`qty_rejected_base` AS `rejected_quantity`,(`rl`.`qty_delivered_base` - `rl`.`qty_rejected_base`) AS `accepted_quantity`,NULL AS `amount_xaf` from (`procurement_goods_receipt_lines` `rl` join `procurement_goods_receipts` `r` on((`r`.`id` = `rl`.`receipt_id`))) where (`r`.`status` in ('POSTED','POSTED_PENDING_REVIEW','REVIEW_REJECTED','CANCELLATION_PENDING')) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_sales_line`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_sales_line`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_sales_line` AS select `s`.`business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'SALE' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,(case when (`s`.`status` <> 'CANCELLED') then `s`.`id` end) AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,coalesce(`s`.`commercial_user_id`,`s`.`seller_user_id`) AS `owner_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,`l`.`quantity_base` AS `quantity_base`,`l`.`line_total_xaf` AS `amount_xaf`,`l`.`discount_xaf` AS `discount_xaf`,coalesce(`l`.`cost_xaf`,0) AS `cost_xaf`,(`l`.`line_total_xaf` - coalesce(`l`.`cost_xaf`,0)) AS `margin_xaf` from ((`sales_sale_lines` `l` join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) union all select `c`.`applied_business_date` AS `business_day`,`s`.`business_date` AS `sale_day`,(_utf8mb4'CANCELLATION' collate utf8mb4_0900_as_cs) AS `event_kind`,`s`.`id` AS `sale_id`,`l`.`id` AS `line_id`,NULL AS `counted_sale_id`,`l`.`product_id` AS `product_id`,`p`.`category_id` AS `product_category_id`,`s`.`site_id` AS `site_id`,`s`.`from_location_id` AS `pos_id`,`s`.`zone_id` AS `zone_id`,`s`.`channel_code` AS `channel`,`s`.`customer_id` AS `customer_id`,`s`.`customer_category_id_snapshot` AS `customer_category_id`,`s`.`commercial_user_id` AS `commercial_user_id`,`s`.`seller_user_id` AS `seller_user_id`,coalesce(`s`.`commercial_user_id`,`s`.`seller_user_id`) AS `owner_user_id`,`s`.`sale_type` AS `sale_type`,`s`.`payment_status` AS `payment_status`,-(`cl`.`quantity_base`) AS `quantity_base`,-(`cl`.`amount_xaf`) AS `amount_xaf`,0 AS `discount_xaf`,-(coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `cost_xaf`,(-(`cl`.`amount_xaf`) + coalesce((select sum(`r`.`value_xaf`) from `inventory_stock_moves` `r` where ((`r`.`source_doc_type` = 'SALE_CANCELLATION') and (`r`.`source_doc_id` = `c`.`id`) and (`r`.`source_line_id` = `cl`.`id`) and (`r`.`move_type` = 'CUSTOMER_RETURN'))),0)) AS `margin_xaf` from ((((`sales_sale_cancellation_lines` `cl` join `sales_sale_cancellations` `c` on(((`c`.`id` = `cl`.`cancellation_id`) and (`c`.`status` = 'APPLIED')))) join `sales_sale_lines` `l` on((`l`.`id` = `cl`.`sale_line_id`))) join `sales_sales` `s` on((`s`.`id` = `l`.`sale_id`))) join `catalog_products` `p` on((`p`.`id` = `l`.`product_id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_stock_balance`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_stock_balance`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_stock_balance` AS select `b`.`location_id` AS `location_id`,`b`.`product_id` AS `product_id`,(case when (`b`.`lot_key` <> unhex('00000000000000000000000000000000')) then `b`.`lot_key` end) AS `stock_lot_id`,`p`.`stock_family` AS `family`,`l`.`location_type` AS `location_type`,`l`.`site_id` AS `site_id`,`l`.`custodian_user_id` AS `custodian_user_id`,`b`.`qty_on_hand` AS `balance_base`,`b`.`qty_allocated` AS `allocated_base`,(case when (`l`.`is_virtual` = 1) then 0 when (`l`.`custody_mode` in ('EXCLUSIVE_USER','EXCLUSIVE_DEVICE')) then (`b`.`qty_on_hand` - `b`.`qty_reserved`) else ((`b`.`qty_on_hand` - `b`.`qty_reserved`) - `b`.`qty_allocated`) end) AS `available_base`,round((`b`.`qty_on_hand` * floor((coalesce(`v`.`avg_unit_cost_xaf`,0) + 0.5))),0) AS `value_xaf` from (((`inventory_stock_balances` `b` join `organization_locations` `l` on((`l`.`id` = `b`.`location_id`))) join `catalog_products` `p` on((`p`.`id` = `b`.`product_id`))) left join `inventory_product_valuations` `v` on((`v`.`product_id` = `b`.`product_id`))) where (((`l`.`is_virtual` = 0) or (`l`.`location_type` in ('V_TRANSIT','V_PENDING_LOSS','V_TO_DELIVER'))) and ((`b`.`qty_on_hand` <> 0) or (`b`.`qty_reserved` <> 0) or (`b`.`qty_allocated` <> 0))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `analytics_f_stock_moves`
+--
+
+/*!50001 DROP VIEW IF EXISTS `analytics_f_stock_moves`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=TEMPTABLE */
+/*!50013 DEFINER=`gic_migrator`@`%` SQL SECURITY INVOKER */
+/*!50001 VIEW `analytics_f_stock_moves` AS select `m`.`business_date` AS `business_day`,`m`.`id` AS `move_id`,`m`.`product_id` AS `product_id`,`m`.`from_location_id` AS `from_location_id`,`m`.`to_location_id` AS `to_location_id`,`m`.`move_type` AS `move_type`,`m`.`is_reversal` AS `is_reversal`,`m`.`source_doc_type` AS `source_doc_type`,`rc`.`code` AS `reason_code`,`m`.`lot_id` AS `stock_lot_id`,`fl`.`site_id` AS `from_site_id`,`tl`.`site_id` AS `to_site_id`,`fl`.`custodian_user_id` AS `from_custodian_user_id`,`tl`.`custodian_user_id` AS `to_custodian_user_id`,`m`.`quantity` AS `quantity_base`,`m`.`value_xaf` AS `value_xaf` from (((`inventory_stock_moves` `m` join `organization_locations` `fl` on((`fl`.`id` = `m`.`from_location_id`))) join `organization_locations` `tl` on((`tl`.`id` = `m`.`to_location_id`))) left join `catalog_reason_codes` `rc` on((`rc`.`id` = `m`.`reason_code_id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
 -- Final view structure for view `finance_v_payables`
 --
 
@@ -9083,5 +10414,12 @@ INSERT INTO `schema_migrations` (version) VALUES
   ('20261013090200'),
   ('20261013090300'),
   ('20261101090000'),
-  ('20261102090000');
+  ('20261102090000'),
+  ('20261201090000'),
+  ('20261201090100'),
+  ('20261201090200'),
+  ('20261201090300'),
+  ('20261201090400'),
+  ('20261201090500'),
+  ('20261201090600');
 UNLOCK TABLES;

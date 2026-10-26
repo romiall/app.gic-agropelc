@@ -80,6 +80,11 @@ import {
   type Uow,
 } from './shared.js';
 import { emitGoodsReceiptChange, emitPurchaseOrderChange } from '../sync-changes.js';
+import {
+  publishGoodsReceiptQuarantineDecided,
+  publishGoodsReceiptQuarantined,
+  signalReceiptIncomplete,
+} from '../receipt-alert-events.js';
 
 const lineSchema = z.object({
   poLineId: z.string().uuid().optional(),
@@ -222,13 +227,18 @@ async function postReceipt(
     });
   }
   if (receipt.purchase_order_id) {
-    await applyToOrder(uow, receipt.purchase_order_id, lines, +1);
+    await applyToOrder(uow, deps, receipt.purchase_order_id, lines, +1);
   }
 }
 
-/** Ajoute (`sign` = 1) ou retire (−1) les quantités acceptées des lignes de BC ; statuts suivent. */
+/**
+ * Ajoute (`sign` = 1) ou retire (−1) les quantités acceptées des lignes de BC ; statuts suivent.
+ * `RECEIPT_INCOMPLETE` (P9-09, AV-464) : l'état du BC est publié à chaque changement de ses quantités ;
+ * `excludeReceiptId` écarte du rejeté cumulé la réception en cours d'annulation.
+ */
 async function applyToOrder(
   uow: Uow,
+  deps: { readonly idGenerator: IdGenerator },
   orderId: Buffer,
   receiptLines: readonly {
     readonly po_line_id: Buffer | null;
@@ -236,6 +246,7 @@ async function applyToOrder(
     readonly qty_rejected_base: string;
   }[],
   sign: 1 | -1,
+  excludeReceiptId?: string,
 ): Promise<void> {
   const order = await uow
     .selectFrom('procurement_purchase_orders')
@@ -297,6 +308,11 @@ async function applyToOrder(
     .where('id', '=', order.id)
     .execute();
   await emitPurchaseOrderChange(uow, fromBin(order.id));
+  await signalReceiptIncomplete(uow, deps, {
+    orderId: fromBin(order.id),
+    trigger: sign === 1 ? 'RECEIPT' : 'RECEIPT_CANCELLATION',
+    ...(excludeReceiptId !== undefined ? { excludeReceiptId } : {}),
+  });
 }
 
 /** Forme `AAAA-MM-JJ` d'une colonne `DATE` lue (pilote en UTC : minuit UTC du jour). */
@@ -335,7 +351,7 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
     const supplier = await uow
       .selectFrom('procurement_suppliers')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'name'])
       .where('id', '=', toBin(p.supplierId))
       .executeTakeFirst();
     if (!supplier) return rejected('REFERENCE_INVALID', 'Fournisseur inconnu.');
@@ -655,6 +671,21 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     }
 
     if (status === 'QUARANTINED') {
+      // `DUPLICATE_SUSPECTED` (P9-09, AV-465) : la quarantaine lève l'alerte du RESP_ACHATS, avec ses raisons.
+      await publishGoodsReceiptQuarantined(uow, deps, {
+        receiptId,
+        docNumber,
+        purchaseOrderId: p.purchaseOrderId ?? null,
+        supplierId: p.supplierId,
+        supplierLabel: supplier.name,
+        siteId: location.site.id,
+        reasons: quarantineReasons,
+        approvalRequestId,
+        supplierDeliveryNoteRef: p.supplierDeliveryNoteRef ?? null,
+        occurredAt: at,
+        capturedOffline: offline,
+        commandId: envelope.command_id,
+      });
       return {
         status: 'APPLIED_WITH_WARNINGS',
         warnings: ['RECEIPT_QUARANTINED', ...photoWarnings],
@@ -804,6 +835,12 @@ function registerReceiptDecisions(
     if (ctx.decision === 'REJECTED') {
       await setStatus(uow, receipt.id, 'REJECTED', ctx.decidedBy);
       await emitGoodsReceiptChange(uow, ctx.subjectId);
+      await publishGoodsReceiptQuarantineDecided(uow, deps, {
+        receiptId: ctx.subjectId,
+        decision: 'REJECTED',
+        decidedBy: ctx.decidedBy,
+        decidedAt: ctx.decidedAt,
+      });
       return;
     }
     if (receipt.purchase_order_id) {
@@ -834,6 +871,12 @@ function registerReceiptDecisions(
       capturedOffline: false,
     });
     await emitGoodsReceiptChange(uow, ctx.subjectId);
+    await publishGoodsReceiptQuarantineDecided(uow, deps, {
+      receiptId: ctx.subjectId,
+      decision: 'APPROVED',
+      decidedBy: ctx.decidedBy,
+      decidedAt: ctx.decidedAt,
+    });
   });
 
   // BR-APP-013 : annulation — inverses des entrées au coût d'origine, reliquats rétablis.
@@ -886,7 +929,7 @@ function registerReceiptDecisions(
         .select(['po_line_id', 'qty_delivered_base', 'qty_rejected_base'])
         .where('receipt_id', '=', receipt.id)
         .execute();
-      await applyToOrder(uow, receipt.purchase_order_id, lines, -1);
+      await applyToOrder(uow, deps, receipt.purchase_order_id, lines, -1, ctx.subjectId);
     }
     // [STD-CANCEL] : auteur et motif de la demande d'annulation, validation qui l'autorise.
     await setStatus(uow, receipt.id, 'CANCELLED', ctx.decidedBy, {
@@ -912,6 +955,10 @@ export function registerReceiptCommands(
     payloadSchema: recordPayloadSchema,
     permissionCode: 'procurement.receipt.record',
     handler: handlers.record,
+    // P9-09 (AV-464) : l'état du bon est relu après son verrou (`FOR UPDATE`, qui sérialise les réceptions
+    // d'un même bon) ; en lecture confirmée, ces lectures voient les réceptions validées entre-temps, au
+    // lieu d'un instantané antérieur au verrou (même raisonnement que `production.mortality.record`).
+    isolationLevel: 'read committed',
   });
   registry.register({
     commandType: 'procurement.receipt.request_cancellation',

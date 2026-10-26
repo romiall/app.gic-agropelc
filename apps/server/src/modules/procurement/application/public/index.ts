@@ -46,3 +46,5 @@ export {
   invoicedQuantitiesOfOrder,
 } from './invoicing.js';
 export type { InvoicingOrder, InvoicingOrderLine, InvoicingReceiptLine } from './invoicing.js';
+export { receiptRejectRate, supplierServiceRate } from './supply-indicators.js';
+export type { ReceiptRejectRate, SupplierServiceRate } from './supply-indicators.js';

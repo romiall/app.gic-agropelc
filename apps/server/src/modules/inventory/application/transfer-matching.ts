@@ -44,8 +44,10 @@ import { sql, type Kysely, type Transaction } from 'kysely';
 import {
   allocateReceivedToLines,
   blindReceiptMatchModeOrDefault,
+  businessDayOf,
   chooseBlindReceiptForDispatch,
   chooseDispatchForBlindReceipt,
+  elapsedHours,
   isUnmatchedOverdue,
   planTransferReceipt,
   unmatchedHoursOrDefault,
@@ -65,6 +67,7 @@ import {
   toBinOrNull,
 } from '../../../platform/kysely/uuid-columns.js';
 import { jsonValue } from '../../../platform/kysely/json-value.js';
+import { publishDetectionEvent } from '../../../platform/events/detection-events.js';
 import { recordChanges } from '../../../platform/sync/change-feed.js';
 import { recordConflict, resolveOpenConflicts } from '../../../platform/sync/conflicts.js';
 import { recordAudit } from '../../../audit/record-audit.js';
@@ -84,6 +87,7 @@ import { virtualLocationId } from './commands/shared.js';
 import { milliToText, quantityToMilli } from './allocation-ledger.js';
 import { stockOwnerRole } from './allocation-consumption.js';
 import { transferChanges } from './sync-changes.js';
+import { detectionInstant, locationAlertInfos } from './inventory-alert-events.js';
 
 type Uow = Transaction<DB>;
 
@@ -883,6 +887,31 @@ export async function applyDeferredMatch(
     comment: 'Réception sans document rapprochée de son expédition (P5-16).',
     refs: [dispatch.header.id],
   });
+  // P9-08 : le rapprochement tardif ferme l'alerte `TRANSFER_UNMATCHED` (sujet : la réception). Le
+  // rapprochement immédiat (à l'enregistrement de la réception) n'a jamais levé d'alerte.
+  await publishDetectionEvent(uow, deps.idGenerator, {
+    eventType: 'BlindReceiptMatched',
+    producerModule: 'inventory',
+    aggregateType: 'STOCK_TRANSFER',
+    aggregateId: receipt.header.id,
+    occurredAt: detectionInstant(deps),
+    payload: {
+      receipt_id: receipt.header.id,
+      transfer_id: dispatch.header.id,
+      matched_by: input.resolvedBy,
+      matched_at: input.matchedAt.toISOString(),
+      site_id: receipt.header.siteId,
+      business_day: businessDayOf(input.matchedAt),
+    },
+    ...(input.triggerCommandId !== null ? { commandId: input.triggerCommandId } : {}),
+  });
+  await publishTransferMatchedByBlindReceipt(uow, deps, {
+    dispatch: dispatch.header,
+    receiptId: receipt.header.id,
+    status: outcome.status,
+    matchedAt: input.matchedAt,
+    commandId: input.triggerCommandId,
+  });
   if (outcome.overReceived) {
     await recordOverReceipt(uow, deps, {
       transfer: dispatch.header,
@@ -893,6 +922,41 @@ export async function applyDeferredMatch(
     });
   }
   return outcome;
+}
+
+/**
+ * P9-08 (AV-458) : l'expédition est reçue par le rapprochement d'une réception sans document. Les
+ * résolveurs de `TRANSFER_NOT_RECEIVED` (commandes de réception, d'annulation, de refus et de retour)
+ * portent l'identifiant de l'expédition ; le rapprochement, lui, est une commande de la **réception** :
+ * sans cet événement, l'alerte attendrait la passe quotidienne suivante. Publié aux deux chemins de
+ * rapprochement (immédiat à l'enregistrement de la réception, tardif).
+ */
+export async function publishTransferMatchedByBlindReceipt(
+  uow: Uow,
+  deps: RecordMoveDeps,
+  input: {
+    readonly dispatch: TransferHeader;
+    readonly receiptId: string;
+    readonly status: string;
+    readonly matchedAt: Date;
+    readonly commandId: string | null;
+  },
+): Promise<void> {
+  await publishDetectionEvent(uow, deps.idGenerator, {
+    eventType: 'TransferMatchedByBlindReceipt',
+    producerModule: 'inventory',
+    aggregateType: 'STOCK_TRANSFER',
+    aggregateId: input.dispatch.id,
+    occurredAt: detectionInstant(deps),
+    payload: {
+      transfer_id: input.dispatch.id,
+      receipt_id: input.receiptId,
+      status: input.status,
+      site_id: input.dispatch.siteId,
+      business_day: businessDayOf(input.matchedAt),
+    },
+    ...(input.commandId !== null ? { commandId: input.commandId } : {}),
+  });
 }
 
 /** Réception sans document `UNMATCHED` → `MATCHED`, liée à son transfert (un seul, UNIQUE). */
@@ -1153,28 +1217,33 @@ async function sweepPair(
       details,
     });
     const destination = await locationFacts(uow, header.toLocationId);
-    await uow
-      .insertInto('platform_domain_events')
-      .values({
-        event_id: toBin(deps.idGenerator.newId()),
-        event_type: 'StockTransferUnmatched',
-        producer_module: 'inventory',
-        aggregate_type: 'STOCK_TRANSFER',
-        aggregate_id: toBin(header.id),
-        occurred_at: now,
-        payload: jsonValue({
-          transfer_id: header.id,
-          from_location_id: header.fromLocationId,
-          to_location_id: header.toLocationId,
-          site_id: header.siteId,
-          destination_site_id: destination?.siteId ?? null,
-          occurred_at: header.occurredAt.toISOString(),
-          hours,
-          lines: details.lines,
-        }),
-        command_id: null,
-      })
-      .execute();
+    const labels = await locationAlertInfos(uow, [header.fromLocationId, header.toLocationId]);
+    // P9-08 : numéro du document et délais lisibles dans le message ; au plus un événement par réception
+    // (garde `unmatched_signalled_at`), sans passe : l'alerte se ferme au rapprochement tardif
+    // (`BlindReceiptMatched`, publié sous l'identifiant de la réception).
+    await publishDetectionEvent(uow, deps.idGenerator, {
+      eventType: 'StockTransferUnmatched',
+      producerModule: 'inventory',
+      aggregateType: 'STOCK_TRANSFER',
+      aggregateId: header.id,
+      occurredAt: now,
+      payload: {
+        transfer_id: header.id,
+        doc_number: header.docNumber,
+        from_location_id: header.fromLocationId,
+        to_location_id: header.toLocationId,
+        from_location_label: labels.get(header.fromLocationId)?.name ?? null,
+        to_location_label: labels.get(header.toLocationId)?.name ?? null,
+        site_id: header.siteId,
+        destination_site_id: destination?.siteId ?? null,
+        occurred_at: header.occurredAt.toISOString(),
+        // Seuil du paramètre ; le temps écoulé suit (le message affiche le temps écoulé).
+        hours,
+        hours_elapsed: elapsedHours(header.occurredAt, now),
+        business_day: businessDayOf(now),
+        lines: details.lines,
+      },
+    });
     await uow
       .updateTable('inventory_stock_transfers')
       .set({ unmatched_signalled_at: now })

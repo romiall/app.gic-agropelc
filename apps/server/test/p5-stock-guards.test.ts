@@ -54,6 +54,17 @@ describe('P5-23 — gardes des commandes de stock', { timeout: 300_000 }, () => 
       payments: [momo(quantity * PRICE)],
     },
   });
+  /** Événements `StockTransfer*` d'un transfert, dans l'ordre de publication (P9-11 (3/3), AV-480). */
+  const transferEventsOf = async (transferId: string): Promise<string[]> =>
+    (
+      await db
+        .selectFrom('platform_domain_events')
+        .select('event_type')
+        .where('aggregate_id', '=', toBin(transferId))
+        .where('event_type', 'like', 'StockTransfer%')
+        .orderBy('seq')
+        .execute()
+    ).map((row) => row.event_type);
   const conflicts = (type: string, entityId: string) =>
     db
       .selectFrom('sync_sync_conflicts')
@@ -220,6 +231,10 @@ describe('P5-23 — gardes des commandes de stock', { timeout: 300_000 }, () => 
     ]).toEqual(['DISPATCHED', world.store, world.counter]);
     expect(await world.onHand(product.id, world.store)).toBe(25);
     expect(await conflicts('TRANSFER_REQUEST_CLOSED', directId!)).toHaveLength(1);
+    // La demande refusée n'a publié que sa demande ; l'expédition directe qui la remplace publie la sienne,
+    // sous son propre identifiant (notification du site destinataire).
+    expect(await transferEventsOf(declined)).toEqual(['StockTransferRequested']);
+    expect(await transferEventsOf(directId!)).toEqual(['StockTransferDispatched']);
 
     // Une demande expédiée en ligne puis « réexpédiée » hors ligne : quarantaine, sans effet.
     const shipped = await request('Seconde demande');
@@ -230,6 +245,11 @@ describe('P5-23 — gardes des commandes de stock', { timeout: 300_000 }, () => 
     expect(await world.onHand(product.id, world.store)).toBe(20);
     const quarantined = await conflicts('TRANSFER_DISPATCH_CONFLICT', shipped);
     expect(quarantined.map((row) => Number(row.applied))).toEqual([0]);
+    // La quarantaine n'a rien expédié : aucun second « expédié », donc aucune notification de plus.
+    expect(await transferEventsOf(shipped)).toEqual([
+      'StockTransferRequested',
+      'StockTransferDispatched',
+    ]);
   });
 
   it('S-40 : mouvement interne au même site et sous la garde de l’auteur — autre site refusé ; stock mobile d’un autre refusé en ligne, signalé hors ligne', async () => {

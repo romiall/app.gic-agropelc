@@ -323,6 +323,8 @@ export async function cashTransfersInTransit(
 export interface CashTransferMismatch {
   readonly transferId: string;
   readonly docNumber: string;
+  /** Compte source de la remise : rattache l'écart à un compte pour l'alerte `CASH_MISMATCH` (P9-07). */
+  readonly fromAccountId: string;
   /** Code de l'anomalie (ex. `OUT_MOVEMENT_MISMATCH`, `UNEXPECTED_MOVEMENT`). */
   readonly issue: string;
   readonly detail: string;
@@ -410,7 +412,13 @@ export async function verifyCashTransfers(
   for (const row of rows) {
     const t = toSummary(row);
     const report = (issue: string, detail: string) =>
-      mismatches.push({ transferId: t.id, docNumber: t.docNumber, issue, detail });
+      mismatches.push({
+        transferId: t.id,
+        docNumber: t.docNumber,
+        fromAccountId: t.fromAccountId,
+        issue,
+        detail,
+      });
     const movements = movementsByTransfer.get(t.id) ?? [];
     const byId = new Map(movements.map((m) => [m.id, m]));
 

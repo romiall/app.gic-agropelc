@@ -41,6 +41,8 @@ import { registerLocationCommands } from '../src/modules/organization/applicatio
 import { LocationDeactivationGuardRegistry } from '../src/modules/organization/application/public/index.js';
 import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { jsonValue } from '../src/platform/kysely/json-value.js';
+import type { UnitOfWork } from '../src/platform/unit-of-work.js';
+import { rolledBack } from './communication-test-kit.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -497,6 +499,8 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
           variance_xaf: 20_000,
           severity: 'CRITICAL',
           imputed_user_id: pos.vendor,
+          tolerated: false, // tolérance par défaut : 0 (P9-07)
+          business_day: expect.stringMatching(/^2026-10-\d\d$/),
         }),
       ]);
     });
@@ -1024,13 +1028,26 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       expect(Number(row3.variance_xaf)).toBe(-500);
       expect(await varianceMovements(s3)).toHaveLength(1); // INV-FIN-11 : l'écart toléré est posé
       await assertClosingVarianceInvariant(s3);
+      // P9-07 : l'écart toléré est un constat sans alerte (drapeau `tolerated`), avec son jour métier ;
+      // l'événement de clôture porte `auto_validated`, qui ferme une alerte levée à l'ouverture.
+      expect(await events(s3, 'CashVarianceDetected')).toEqual([
+        expect.objectContaining({
+          phase: 'CLOSING',
+          variance_xaf: -500,
+          tolerated: true,
+          business_day: '2026-10-06',
+        }),
+      ]);
+      expect(await events(s3, 'CashSessionClosed')).toEqual([
+        expect.objectContaining({ auto_validated: true, status: 'VALIDATED' }),
+      ]);
 
       const big = await newPos();
       const s4 = await openOk(big, 0, t('6', '07:00'));
       await movement(big.accountId, 50_000, t('6', '09:00'));
       await closeSession(big, s4, 38_000, t('6', '18:00'));
       expect(await events(s4, 'CashVarianceDetected')).toEqual([
-        expect.objectContaining({ variance_xaf: -12_000, severity: 'CRITICAL' }),
+        expect.objectContaining({ variance_xaf: -12_000, severity: 'CRITICAL', tolerated: false }),
       ]);
     });
 
@@ -1529,7 +1546,7 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       return jobs.resolve(CASH_SESSION_OPEN_LONG_JOB_TYPE)!;
     }
 
-    it('une alerte par session ouverte depuis plus du seuil et par jour métier ; ni session récente ni close', async () => {
+    it('une alerte par session ouverte depuis plus du seuil et par passe horaire ; ni session récente ni close', async () => {
       const longPos = await newPos();
       const long = await openOk(longPos, 0, t('7', '08:00'));
       const shortPos = await newPos();
@@ -1538,25 +1555,69 @@ describe('P5-12 : sessions de caisse (ouverture, clôture, clôture forcée)', (
       const closed = await openOk(closedPos, 0, t('7', '06:00'));
       await closeSession(closedPos, closed, 0, t('7', '20:00'));
       const handler = job();
+      const eventsIn = async (uow: UnitOfWork, sessionId: string) =>
+        (
+          await uow
+            .selectFrom('platform_domain_events')
+            .select('payload')
+            .where('event_type', '=', 'CashSessionOpenLongDetected')
+            .where('aggregate_id', '=', toBin(sessionId))
+            .orderBy('seq')
+            .execute()
+        ).map((row) => row.payload as Record<string, unknown>);
+      // Créneau propre à l'exécution : un marqueur validé par une exécution antérieure (identifiant
+      // dérivé de (type, passe)) ne doit jamais satisfaire l'assertion à la place du marqueur publié.
+      const runSlot = freshUuid().slice(-8);
+      const slot = () => ({ scheduledFor: `${clock.now().toISOString()}|${runSlot}` });
       clock.setTo(new Date(t('8', '14:00'))); // 30 h après `long`, 2 h après `short`
       try {
-        await tx((trx) => handler(trx, {}));
-        const detected = await events(long, 'CashSessionOpenLongDetected');
-        expect(detected).toEqual([
-          expect.objectContaining({
-            session_id: long,
-            cash_account_id: longPos.accountId,
-            site_id: longPos.siteId,
-            opened_by: longPos.vendor,
-            hours_open: 30,
-            threshold_hours: 24,
+        // Passes en transaction annulée : les marqueurs de fin de passe (types d'alerte partagés) ne
+        // doivent jamais être validés sur la base partagée avec les tests des autres fichiers.
+        await rolledBack(async (uow) => {
+          await handler(uow, slot());
+          expect(await eventsIn(uow, long)).toEqual([
+            expect.objectContaining({
+              session_id: long,
+              cash_account_id: longPos.accountId,
+              site_id: longPos.siteId,
+              opened_by: longPos.vendor,
+              hours_open: 30,
+              threshold_hours: 24,
+              business_day: '2026-10-08',
+            }),
+          ]);
+          expect(await eventsIn(uow, short)).toHaveLength(0);
+          expect(await eventsIn(uow, closed)).toHaveLength(0);
+          await handler(uow, slot()); // rejeu du même créneau : aucun doublon
+          expect(await eventsIn(uow, long)).toHaveLength(1);
+
+          // P9-07 : la tâche est une passe à identité ; une heure plus tard, nouvelle passe, nouvel
+          // événement (le compteur d'occurrences de l'alerte compte des heures) et un marqueur de fin.
+          const [first] = await eventsIn(uow, long);
+          expect(first!['pass_id']).toMatch(/^CASH_SESSION_OPEN_LONG:/);
+          clock.setTo(new Date(t('8', '15:00')));
+          await handler(uow, slot());
+          const hourly = await eventsIn(uow, long);
+          expect(hourly).toHaveLength(2);
+          expect(new Set(hourly.map((event) => event['pass_id'])).size).toBe(2);
+          const markers = await uow
+            .selectFrom('platform_domain_events')
+            .select('payload')
+            .where('event_type', '=', 'AlertDetectionPassCompleted')
+            .where((eb) =>
+              eb(
+                eb.fn('JSON_UNQUOTE', [eb.fn('JSON_EXTRACT', ['payload', eb.val('$.pass_id')])]),
+                '=',
+                String(hourly[1]!['pass_id']),
+              ),
+            )
+            .execute();
+          expect(markers).toHaveLength(1);
+          expect(markers[0]!.payload).toMatchObject({
+            alert_type: 'CASH_SESSION_OPEN_LONG',
             business_day: '2026-10-08',
-          }),
-        ]);
-        expect(await events(short, 'CashSessionOpenLongDetected')).toHaveLength(0);
-        expect(await events(closed, 'CashSessionOpenLongDetected')).toHaveLength(0);
-        await tx((trx) => handler(trx, {})); // rejouable le même jour
-        expect(await events(long, 'CashSessionOpenLongDetected')).toHaveLength(1);
+          });
+        });
         expect((await session(long)).status).toBe('OPEN');
       } finally {
         clock.setTo(new Date(NOW));

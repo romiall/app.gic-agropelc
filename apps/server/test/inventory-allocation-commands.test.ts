@@ -12,6 +12,7 @@
  * quota et par jour métier, et INV-STK-20 : Σ des entrées du registre = reste.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
 import {
   FixedClock,
   Uuidv7Generator,
@@ -880,6 +881,31 @@ describe('quotas d’appareil (P5-08, ADR-033)', () => {
       expect(await pendingEvents(id)).toBe(1);
       expect((await quota(id)).version).toBe(before.version + 1);
       expect(await entries(id)).toHaveLength(1);
+
+      // P9-08 : l'événement porte de quoi composer le message d'alerte et garde la causalité.
+      const published = await db
+        .selectFrom('platform_domain_events')
+        .select(['payload', 'causation_id', 'aggregate_type'])
+        .where('event_type', '=', 'AllocationRevocationPending')
+        .where('aggregate_id', '=', toBin(id))
+        .executeTakeFirstOrThrow();
+      expect(published.aggregate_type).toBe('STOCK_ALLOCATION');
+      expect(fromBin(published.causation_id!)).toBe(event.eventId);
+      expect(published.payload).toMatchObject({
+        allocation_id: id,
+        reason: 'DEVICE_BLOCKED',
+        holder_user_id: holder.userId,
+        holder_device_id: holder.deviceId,
+        product_id: productId,
+        product_label: 'Produit de test',
+        remaining: 40,
+        business_day: '2026-10-08',
+      });
+      // Emplacement du quota : identifiant et libellé exacts (ils composent le message de l'alerte).
+      expect(published.payload).toMatchObject({
+        location_id: fromBin(before.location_id),
+        location_label: 'Emplacement de test',
+      });
     });
 
     it('un quota libéré n’est pas signalé ; la révocation du responsable lève le signal', async () => {
@@ -949,6 +975,21 @@ describe('quotas d’appareil (P5-08, ADR-033)', () => {
       expect(cleared.revocation_pending).toBe(0);
       expect(cleared.status).toBe('ACTIVE');
       expect(Number(cleared.quantity_remaining)).toBe(40);
+
+      // P9-08 : la fin du signal est publiée une seule fois, sous l'identifiant du quota (elle ferme
+      // l'alerte `ALLOCATION_REVOCATION_PENDING`) ; le déblocage seul de l'appareil n'en a publié aucune.
+      const clearedEvents = await db
+        .selectFrom('platform_domain_events')
+        .select(['payload', 'producer_module'])
+        .where('event_type', '=', 'AllocationRevocationCleared')
+        .where('aggregate_id', '=', toBin(id))
+        .execute();
+      expect(clearedEvents).toHaveLength(1);
+      expect(clearedEvents[0]).toMatchObject({ producer_module: 'inventory' });
+      expect(clearedEvents[0]!.payload).toMatchObject({
+        allocation_id: id,
+        cleared_by: 'identity.user.reactivate',
+      });
     });
 
     it('événement étranger au consommateur : sans effet', async () => {
@@ -966,6 +1007,81 @@ describe('quotas d’appareil (P5-08, ADR-033)', () => {
       new AllocationExpiryJob(clock, idGenerator, jobs).onModuleInit();
       return jobs.resolve(ALLOCATION_EXPIRY_JOB_TYPE)!;
     }
+
+    it('P9-08 : un quota dont l’échéance est exactement l’instant de la passe est échu (borne comprise)', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(30);
+      const boundary = await grantOk(holder, productId, 10, { validityHours: 1 });
+      const row = await quota(boundary);
+      clock.setTo(row.valid_until!);
+      try {
+        // Créneau déjà publié par l'exécution précédente du fichier : seuls les quotas de ce cas publient.
+        await db
+          .transaction()
+          .execute((trx) => expiryHandler()(trx, { scheduledFor: '2026-10-08T11:00:00.000Z' }));
+        expect(await expiredEvents(boundary)).toBe(1);
+      } finally {
+        clock.setTo(new Date(OCCURRED_AT));
+      }
+    });
+
+    it('P9-08 : filet des révocations en attente — un événement par quota signalé, avec son motif et sa passe', async () => {
+      const holder = await newHolder();
+      const productId = await newProduct(20);
+      const flagged = await grantOk(holder, productId, 10);
+      const healthy = await grantOk(await newHolder(), productId, 10);
+      await db
+        .updateTable('identity_devices')
+        .set({ status: 'LOST' })
+        .where('id', '=', toBin(holder.deviceId))
+        .execute();
+      await db
+        .updateTable('inventory_stock_allocations')
+        .set({ revocation_pending: 1 })
+        .where('id', '=', toBin(flagged))
+        .execute();
+
+      // Créneau constant : l'identité de passe est la même à chaque exécution du fichier, les quotas déjà
+      // signalés par une exécution précédente ne sont pas republiés (le rejeu est reconnu), seuls ceux de ce
+      // cas le sont — la base d'essai est partagée et les événements immuables.
+      const slot = '2026-10-08T11:00:00.001Z';
+      await db.transaction().execute((trx) => expiryHandler()(trx, { scheduledFor: slot }));
+      const events = async (id: string) =>
+        db
+          .selectFrom('platform_domain_events')
+          .select('payload')
+          .where('event_type', '=', 'AllocationRevocationPending')
+          .where('aggregate_id', '=', toBin(id))
+          .execute();
+      const [net] = await events(flagged);
+      expect(net!.payload).toMatchObject({
+        allocation_id: flagged,
+        reason: 'DEVICE_LOST',
+        product_id: productId,
+        remaining: 10,
+        pass_id: `ALLOCATION_REVOCATION_PENDING:${slot}`.slice(0, 64),
+      });
+      expect(await events(healthy)).toEqual([]);
+
+      // Marqueur de la passe : un seul, avec le type d'alerte et la même identité.
+      const passId = `ALLOCATION_REVOCATION_PENDING:${slot}`.slice(0, 64);
+      const markers = await db
+        .selectFrom('platform_domain_events')
+        .select('payload')
+        .where('event_type', '=', 'AlertDetectionPassCompleted')
+        .where('producer_module', '=', 'inventory')
+        .where(sql<boolean>`JSON_UNQUOTE(JSON_EXTRACT(payload, '$.pass_id')) = ${passId}`)
+        .execute();
+      expect(markers).toHaveLength(1);
+      expect(markers[0]!.payload).toMatchObject({
+        alert_type: 'ALLOCATION_REVOCATION_PENDING',
+        pass_id: passId,
+      });
+
+      // Rejeu du même créneau : rien de plus.
+      await db.transaction().execute((trx) => expiryHandler()(trx, { scheduledFor: slot }));
+      expect(await events(flagged)).toHaveLength(1);
+    });
 
     async function expiredEvents(id: string): Promise<number> {
       const rows = await db

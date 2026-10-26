@@ -22,7 +22,7 @@ import {
   listPointsOfSale,
 } from '../modules/organization/application/public/index.js';
 import { activeAllocationHolderDevices } from '../modules/inventory/application/public/index.js';
-import { AUTHOR_DATASET_PREFIX, DEVICE_DATASET } from './sync-push.service.js';
+import { DEVICE_DATASET, authorOfDataset } from './sync-state-datasets.js';
 
 type Executor = Kysely<DB> | Transaction<DB>;
 
@@ -107,13 +107,6 @@ export async function freshnessWarningHoursAt(executor: Executor, at: Date): Pro
     : DEFAULT_FRESHNESS_WARNING_HOURS;
 }
 
-/** UUID d'un auteur depuis sa ligne `_a:<32 hexadécimaux>`. */
-function authorOf(dataset: string): string | null {
-  const hex = dataset.slice(AUTHOR_DATASET_PREFIX.length).toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(hex)) return null;
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 const latest = (...dates: readonly (Date | null)[]): Date | null =>
   dates.reduce<Date | null>(
     (max, date) => (date !== null && (max === null || date.getTime() > max.getTime()) ? date : max),
@@ -154,9 +147,17 @@ export async function deviceFreshness(
       eb.or([eb('dataset', '=', DEVICE_DATASET), eb('dataset', 'like', sql<string>`${'\\_a:%'}`)]),
     )
     .execute();
+  // États regroupés par appareil une fois pour toutes (pas de relecture de tous les états pour chaque appareil).
+  const statesOf = new Map<string, typeof states>();
+  for (const state of states) {
+    const key = state.device_id.toString('hex');
+    const list = statesOf.get(key);
+    if (list === undefined) statesOf.set(key, [state]);
+    else list.push(state);
+  }
   const thresholdMs = warningHours * 3_600_000;
   const report: DeviceFreshness[] = devices.map((device) => {
-    const own = states.filter((state) => state.device_id.equals(device.id));
+    const own = statesOf.get(device.id.toString('hex')) ?? [];
     const deviceState = own.find((state) => state.dataset === DEVICE_DATASET);
     const lastPushAt = deviceState?.last_push_at ?? null;
     const lastPullAt = deviceState?.last_pull_at ?? null;
@@ -164,7 +165,7 @@ export async function deviceFreshness(
     const authors: AuthorFreshness[] = [];
     for (const state of own) {
       if (state.dataset === DEVICE_DATASET) continue;
-      const userId = authorOf(state.dataset);
+      const userId = authorOfDataset(state.dataset);
       if (userId === null) continue;
       authors.push({
         userId,

@@ -590,6 +590,99 @@ describe('sales.order.* — confirmation (P4-06)', () => {
     expect(await onHandAt(product.id, storeId)).toBe(0);
   });
 
+  it('P9-07 : commande saisie hors ligne au prix périmé — conflit PRICE_MISMATCH et signal d’alerte (AV-445)', async () => {
+    // Deux versions d'une même règle : v1 jusqu'à 08:00, v2 (4 800) ensuite.
+    const productId = freshUuid();
+    await db
+      .insertInto('catalog_products')
+      .values({
+        id: toBin(productId),
+        code: `PRD-${productId.slice(-10)}`,
+        name: 'Poulet de chair',
+        category_id: toBin(categoryId),
+        stock_family: 'MARCHANDISE',
+        base_unit_code: 'PIECE',
+        pricing_mode: 'PER_UNIT',
+        is_sellable: 1,
+        created_by: toBin(admin.userId),
+      })
+      .execute();
+    const ruleCode = `PR-${productId.slice(-12)}`;
+    const rule = async (version: number, price: number, from: string, to?: string) => {
+      const id = freshUuid();
+      await db
+        .insertInto('pricing_price_rules')
+        .values({
+          id: toBin(id),
+          code: ruleCode,
+          version,
+          product_id: toBin(productId),
+          unit_price_xaf: price,
+          pricing_unit_code: 'PIECE',
+          status: 'ACTIVE',
+          valid_from: new Date(from),
+          ...(to !== undefined ? { valid_to: new Date(to) } : {}),
+          approved_by: toBin(admin.userId),
+          approved_at: new Date(from),
+          created_by: toBin(admin.userId),
+        })
+        .execute();
+      return id;
+    };
+    const v1 = await rule(1, 4500, '2026-01-01T00:00:00.000Z', at('08:00:00'));
+    const v2 = await rule(2, 4800, at('08:00:00'));
+    await stock(productId, 10, 3000);
+    const customer = await newCustomer({ credit: true });
+    const oldPrice: Sellable = { id: productId, ruleId: v1, price: 4500, unit: 'PIECE' };
+
+    // Hors ligne, saisie à 09:00 au prix de l'ancienne règle : appliquée telle quelle, écart signalé.
+    const late = await place({ customerId: customer, lines: [line(oldPrice, 1)] }, at('09:00:00'), {
+      offline: true,
+    });
+    expect(late.result.status, JSON.stringify(late.result)).toBe('APPLIED_WITH_WARNINGS');
+    const conflictTypes = (
+      await db
+        .selectFrom('sync_sync_conflicts')
+        .select('conflict_type')
+        .where('entity_id', '=', toBin(late.id))
+        .execute()
+    ).map((row) => row.conflict_type);
+    expect(conflictTypes).toContain('PRICE_MISMATCH');
+    const signals = await db
+      .selectFrom('platform_domain_events')
+      .select(['aggregate_id', 'aggregate_type', 'payload'])
+      .where('event_type', '=', 'PriceMismatchDetected')
+      .where('aggregate_id', '=', toBin(late.id))
+      .execute();
+    expect(signals).toHaveLength(1);
+    expect(signals[0]!.aggregate_type).toBe('SALES_ORDER');
+    expect(signals[0]!.payload).toMatchObject({
+      order_id: late.id,
+      document_type: 'SALES_ORDER',
+      applied_price_xaf: 4500,
+      expected_price_xaf: 4800,
+      declared_list_price_xaf: 4500,
+      lines_count: 1,
+      captured_offline: true,
+      seller_user_id: commercial.userId,
+    });
+
+    // Au prix courant (règle v2), en ligne : aucun signal.
+    const current = await place(
+      { customerId: customer, lines: [line({ ...oldPrice, ruleId: v2, price: 4800 }, 1)] },
+      at('09:30:00'),
+    );
+    expect(current.result.status, JSON.stringify(current.result)).toBe('APPLIED');
+    expect(
+      await db
+        .selectFrom('platform_domain_events')
+        .select('seq')
+        .where('event_type', '=', 'PriceMismatchDetected')
+        .where('aggregate_id', '=', toBin(current.id))
+        .execute(),
+    ).toEqual([]);
+  });
+
   it('brouillon : aucun effet de stock ni de chiffre d’affaires ; la confirmation reprend ses lignes et ses prix', async () => {
     const product = await sellable(1000);
     await stock(product.id, 5, 300);

@@ -66,7 +66,7 @@ flowchart TB
   api -.registre.-> sales
 ```
 
-Pour la lisibilité, le diagramme omet les dépendances transitives vers `platform`, `audit`, `identity` (droits), `org`, `sync-core` (écriture du flux de changements) et les références universelles : **tout** module métier en dispose.
+Pour la lisibilité, le diagramme omet les dépendances transitives vers `platform`, `audit`, `identity` (droits ; `analytics` en lit aussi les affectations et `evaluateAccess` pour l'étendue exacte des lignes, P9-14), `org` (sites, zones et équipes, idem), `sync-core` (écriture du flux de changements) et les références universelles : **tout** module métier en dispose.
 
 Notes :
 

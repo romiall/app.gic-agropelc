@@ -216,6 +216,12 @@ async function publishVariance(
     await cashSetting(uow, 'varianceCriticalXaf', input.session.siteId, input.occurredAt),
     10_000,
   );
+  // P9-07 : un écart dans la tolérance reste un constat (l'événement est publié) mais n'est pas une alerte :
+  // la validation d'office n'émet pas `CashSessionValidated`, l'alerte ne pourrait donc jamais se résoudre.
+  const toleranceXaf = nonNegativeInt(
+    await cashSetting(uow, 'varianceToleranceXaf', input.session.siteId, input.occurredAt),
+    0,
+  );
   await publishCashSessionEvent(uow, deps, {
     eventType: 'CashVarianceDetected',
     sessionId: input.session.id,
@@ -228,6 +234,8 @@ async function publishVariance(
       phase: input.phase,
       variance_xaf: input.varianceXaf,
       severity: varianceSeverity(input.varianceXaf, criticalXaf),
+      tolerated: Math.abs(input.varianceXaf) <= toleranceXaf,
+      business_day: businessDayOf(input.occurredAt),
       counted_xaf: input.countedXaf,
       expected_xaf: input.expectedXaf,
       // AV-155, AV-170 : responsable imputé, distinct du clôtureur et de l'auteur d'une clôture forcée.

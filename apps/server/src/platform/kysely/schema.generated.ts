@@ -23,6 +23,258 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export interface AnalyticsExportJobs {
+  catalog_version: number;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  dataset: string;
+  definition: Json;
+  duration_ms: number | null;
+  error_code: string | null;
+  expires_at: Date;
+  finished_at: Date | null;
+  format: string;
+  id: Buffer;
+  requested_by: Buffer;
+  row_count: number | null;
+  status: Generated<string>;
+  storage_key: string | null;
+}
+
+export interface AnalyticsFAttendance {
+  accepted_day_key: string | null;
+  business_day: Date | null;
+  duration_minutes: number | null;
+  override: Generated<number>;
+  session_count: Generated<number>;
+  session_id: Buffer;
+  status: Generated<string>;
+  user_id: Buffer;
+  zone_id: Buffer;
+}
+
+export interface AnalyticsFCash {
+  business_day: Date | null;
+  cash_account_id: Buffer;
+  holder_user_id: Generated<Buffer>;
+  inflow_xaf: Generated<number>;
+  is_reversal: Generated<number>;
+  movement_id: Buffer;
+  movement_type: string;
+  outflow_xaf: Generated<number>;
+  site_id: Buffer | null;
+}
+
+export interface AnalyticsFCosts {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  cost_object_id: Buffer;
+  cost_object_type: string;
+  cost_type: string;
+  created_by: Buffer;
+  entry_id: Buffer;
+  site_id: Buffer | null;
+}
+
+export interface AnalyticsFExpenses {
+  amount_xaf: number | null;
+  business_day: Date | null;
+  category_id: Buffer;
+  cost_object_type: string | null;
+  created_by: Buffer;
+  expense_id: Buffer;
+  pending_xaf: number | null;
+  site_id: Buffer;
+  status: string;
+  unjustified_xaf: number | null;
+}
+
+export interface AnalyticsFLosses {
+  business_day: Date | null;
+  category: string;
+  declared_by: Buffer;
+  location_id: Buffer;
+  loss_id: Buffer;
+  pending_quantity_base: Decimal | null;
+  pending_value_xaf: number | null;
+  product_id: Buffer;
+  production_lot_id: Buffer | null;
+  quantity_base: Decimal | null;
+  reason_code: string | null;
+  site_id: Buffer;
+  status: string;
+  stock_lot_id: Buffer | null;
+  value_xaf: number | null;
+}
+
+export interface AnalyticsFOrders {
+  amount_xaf: number;
+  business_day: Date | null;
+  channel: string;
+  commercial_user_id: Buffer;
+  customer_id: Buffer;
+  delivered_quantity: Generated<Decimal>;
+  line_id: Buffer;
+  order_id: Buffer;
+  ordered_quantity: Decimal;
+  product_id: Buffer;
+  site_id: Buffer;
+  status: Generated<string>;
+  zone_id: Buffer;
+}
+
+export interface AnalyticsFPayments {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  cash_account_id: Generated<Buffer>;
+  customer_id: Buffer | null;
+  event_kind: string | null;
+  payment_id: Generated<Buffer>;
+  payment_method: Generated<string>;
+  received_by_user_id: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFProductionDaily {
+  average_weight_kg: Decimal | null;
+  building_id: Buffer | null;
+  business_day: Date | null;
+  eggs_collected: number | null;
+  eggs_sellable: number | null;
+  feed_quantity: Decimal | null;
+  lot_id: Buffer | null;
+  lot_type: Generated<string>;
+  mortality_heads: Decimal | null;
+  recorded_by: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFProspecting {
+  business_day: Date | null;
+  contact_customer_id: Buffer | null;
+  converted_customer_id: Buffer | null;
+  created_customer_id: Buffer | null;
+  event_kind: string | null;
+  result: string | null;
+  source: Generated<string>;
+  stage: Generated<string>;
+  user_id: Buffer | null;
+  visit_id: Buffer | null;
+  visited_prospect_id: Buffer | null;
+  zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFPurchases {
+  accepted_quantity: Decimal | null;
+  amount_xaf: number | null;
+  business_day: Date | null;
+  created_by: Generated<Buffer>;
+  delivered_quantity: Decimal | null;
+  order_id: Buffer | null;
+  ordered_quantity: Decimal | null;
+  product_id: Generated<Buffer>;
+  receipt_id: Buffer | null;
+  rejected_quantity: Decimal | null;
+  site_id: Generated<Buffer>;
+  supplier_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFSalesLine {
+  amount_xaf: Generated<number>;
+  business_day: Date | null;
+  channel: Generated<string>;
+  commercial_user_id: Buffer | null;
+  cost_xaf: Generated<Decimal>;
+  counted_sale_id: Buffer | null;
+  customer_category_id: Buffer | null;
+  customer_id: Buffer | null;
+  discount_xaf: Generated<number>;
+  event_kind: string | null;
+  line_id: Generated<Buffer>;
+  margin_xaf: Decimal | null;
+  owner_user_id: Generated<Buffer>;
+  payment_status: string | null;
+  pos_id: Generated<Buffer>;
+  product_category_id: Generated<Buffer>;
+  product_id: Generated<Buffer>;
+  quantity_base: Generated<Decimal>;
+  sale_day: Date | null;
+  sale_id: Generated<Buffer>;
+  sale_type: Generated<string>;
+  seller_user_id: Generated<Buffer>;
+  site_id: Generated<Buffer>;
+  zone_id: Generated<Buffer>;
+}
+
+export interface AnalyticsFStockBalance {
+  allocated_base: Generated<Decimal>;
+  available_base: Generated<Decimal>;
+  balance_base: Generated<Decimal>;
+  custodian_user_id: Buffer | null;
+  family: string;
+  location_id: Buffer;
+  location_type: string;
+  product_id: Buffer;
+  site_id: Buffer | null;
+  stock_lot_id: Buffer | null;
+  value_xaf: Generated<Decimal>;
+}
+
+export interface AnalyticsFStockMoves {
+  business_day: Date | null;
+  from_custodian_user_id: Buffer | null;
+  from_location_id: Buffer;
+  from_site_id: Buffer | null;
+  is_reversal: Generated<number>;
+  move_id: Buffer;
+  move_type: string;
+  product_id: Buffer;
+  quantity_base: Decimal;
+  reason_code: string | null;
+  source_doc_type: string;
+  stock_lot_id: Buffer | null;
+  to_custodian_user_id: Buffer | null;
+  to_location_id: Buffer;
+  to_site_id: Buffer | null;
+  value_xaf: number;
+}
+
+export interface AnalyticsKpiSnapshots {
+  computed_at: Date;
+  payload: Json;
+  period_key: string;
+  scope_key: string;
+  user_id: Buffer;
+}
+
+export interface AnalyticsQueryLog {
+  created_at: Generated<Date>;
+  dataset: string;
+  definition: Json;
+  duration_ms: number | null;
+  error_code: string | null;
+  id: Buffer;
+  outcome: string;
+  row_count: number | null;
+  user_id: Buffer;
+}
+
+export interface AnalyticsSavedViews {
+  catalog_version: number;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  dataset: string;
+  definition: Json;
+  id: Buffer;
+  is_default_for_role: string | null;
+  name: string;
+  owner_user_id: Buffer;
+  shared_with_roles: Generated<Json>;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
 export interface ApprovalsApprovalRequests {
   active_pending_key: string | null;
   amount_xaf: number | null;
@@ -234,6 +486,128 @@ export interface CatalogUnits {
   is_active: Generated<number>;
   is_count: number;
   name: string;
+}
+
+export interface CommunicationAlertRecipients {
+  added_at: Generated<Date>;
+  alert_id: Buffer;
+  origin: string;
+  role_code: string | null;
+  user_id: Buffer;
+}
+
+export interface CommunicationAlertRules {
+  alert_type: string;
+  created_at: Generated<Date>;
+  enabled: Generated<number>;
+  escalation_hours: number | null;
+  escalation_roles: Generated<Json>;
+  recipient_roles: Json;
+  resolution_mode: string;
+  severity: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CommunicationAlerts {
+  acknowledged_at: Date | null;
+  acknowledged_by: Buffer | null;
+  action_screen: string | null;
+  alert_type: string;
+  business_day: Date | null;
+  created_at: Generated<Date>;
+  critical_since: Date | null;
+  dedup_key: string;
+  escalated_at: Date | null;
+  first_detected_at: Date;
+  id: Buffer;
+  last_detected_at: Date;
+  last_pass_id: string | null;
+  message: Generated<string>;
+  nature: string;
+  occurrences: Generated<number>;
+  open_dedup_key: string | null;
+  owner_user_id: Buffer | null;
+  payload: Json;
+  resolution_comment: string | null;
+  resolution_kind: string | null;
+  resolved_at: Date | null;
+  resolved_by: Buffer | null;
+  severity: string;
+  site_id: Buffer | null;
+  status: Generated<string>;
+  subject_id: Buffer;
+  subject_type: string;
+  title: string;
+  updated_at: Generated<Date>;
+  version: Generated<number>;
+  zone_id: Buffer | null;
+}
+
+export interface CommunicationInternalNotes {
+  archive_reason: string | null;
+  archived_at: Date | null;
+  body: string;
+  category: string;
+  command_id: Buffer | null;
+  created_at: Generated<Date>;
+  created_by: Buffer;
+  expires_at: Date | null;
+  id: Buffer;
+  published_at: Date | null;
+  related_entity_id: Buffer | null;
+  related_entity_type: string | null;
+  requires_ack: Generated<number>;
+  status: Generated<string>;
+  title: string;
+  updated_at: Generated<Date>;
+  updated_by: Buffer | null;
+  version: Generated<number>;
+}
+
+export interface CommunicationNoteAcknowledgements {
+  acknowledged_at: Date | null;
+  command_id: Buffer | null;
+  note_id: Buffer;
+  read_at: Date;
+  user_id: Buffer;
+}
+
+export interface CommunicationNoteAudiences {
+  audience_ref: Generated<string>;
+  audience_type: string;
+  note_id: Buffer;
+}
+
+export interface CommunicationNotifications {
+  alert_id: Buffer | null;
+  alert_type: string | null;
+  body: Generated<string>;
+  channel: string;
+  created_at: Generated<Date>;
+  delivered_at: Date | null;
+  id: Buffer;
+  kind: string;
+  link: string | null;
+  note_id: Buffer | null;
+  read_at: Date | null;
+  source_event_id: Buffer | null;
+  source_id: Buffer | null;
+  source_type: string | null;
+  title: string;
+  user_id: Buffer;
+}
+
+export interface CommunicationPushSubscriptions {
+  auth: string;
+  created_at: Generated<Date>;
+  device_id: Buffer;
+  endpoint: string;
+  id: Buffer;
+  p256dh: string;
+  revoked_at: Date | null;
+  user_id: Buffer;
 }
 
 export interface CrmCustomerAssignments {
@@ -1135,6 +1509,13 @@ export interface InventoryOverheadEntryLines {
   species_group: string;
 }
 
+export interface InventoryOverheadPoolLocks {
+  created_at: Generated<Date>;
+  period: string;
+  site_id: Buffer;
+  species_group: string;
+}
+
 export interface InventoryProductValuations {
   avg_unit_cost_xaf: Generated<Decimal>;
   last_entry_move_id: Buffer | null;
@@ -1471,6 +1852,17 @@ export interface PlatformDomainEvents {
   producer_module: string;
   recorded_at: Generated<Date>;
   seq: Generated<number>;
+}
+
+export interface PlatformEventConsumerFailures {
+  attempts: number;
+  consumer_name: string;
+  error_message: string;
+  event_id: Buffer;
+  event_seq: number;
+  event_type: string;
+  failed_at: Generated<Date>;
+  id: Generated<number>;
 }
 
 export interface PlatformEventConsumerMarks {
@@ -2389,6 +2781,23 @@ export interface SyncSyncConflicts {
 }
 
 export interface DB {
+  analytics_export_jobs: AnalyticsExportJobs;
+  analytics_f_attendance: AnalyticsFAttendance;
+  analytics_f_cash: AnalyticsFCash;
+  analytics_f_costs: AnalyticsFCosts;
+  analytics_f_expenses: AnalyticsFExpenses;
+  analytics_f_losses: AnalyticsFLosses;
+  analytics_f_orders: AnalyticsFOrders;
+  analytics_f_payments: AnalyticsFPayments;
+  analytics_f_production_daily: AnalyticsFProductionDaily;
+  analytics_f_prospecting: AnalyticsFProspecting;
+  analytics_f_purchases: AnalyticsFPurchases;
+  analytics_f_sales_line: AnalyticsFSalesLine;
+  analytics_f_stock_balance: AnalyticsFStockBalance;
+  analytics_f_stock_moves: AnalyticsFStockMoves;
+  analytics_kpi_snapshots: AnalyticsKpiSnapshots;
+  analytics_query_log: AnalyticsQueryLog;
+  analytics_saved_views: AnalyticsSavedViews;
   approvals_approval_requests: ApprovalsApprovalRequests;
   approvals_control_policies: ApprovalsControlPolicies;
   attachments_attachments: AttachmentsAttachments;
@@ -2402,6 +2811,14 @@ export interface DB {
   catalog_reason_codes: CatalogReasonCodes;
   catalog_sales_channels: CatalogSalesChannels;
   catalog_units: CatalogUnits;
+  communication_alert_recipients: CommunicationAlertRecipients;
+  communication_alert_rules: CommunicationAlertRules;
+  communication_alerts: CommunicationAlerts;
+  communication_internal_notes: CommunicationInternalNotes;
+  communication_note_acknowledgements: CommunicationNoteAcknowledgements;
+  communication_note_audiences: CommunicationNoteAudiences;
+  communication_notifications: CommunicationNotifications;
+  communication_push_subscriptions: CommunicationPushSubscriptions;
   crm_customer_assignments: CrmCustomerAssignments;
   crm_customer_stage_history: CrmCustomerStageHistory;
   crm_customers: CrmCustomers;
@@ -2426,8 +2843,8 @@ export interface DB {
   finance_supplier_payments: FinanceSupplierPayments;
   finance_v_payables: FinanceVPayables;
   identity_auth_sessions: IdentityAuthSessions;
-  identity_devices: IdentityDevices;
   identity_device_status_periods: IdentityDeviceStatusPeriods;
+  identity_devices: IdentityDevices;
   identity_login_attempts: IdentityLoginAttempts;
   identity_permissions: IdentityPermissions;
   identity_role_permissions: IdentityRolePermissions;
@@ -2441,6 +2858,7 @@ export interface DB {
   inventory_loss_declarations: InventoryLossDeclarations;
   inventory_overhead_entries: InventoryOverheadEntries;
   inventory_overhead_entry_lines: InventoryOverheadEntryLines;
+  inventory_overhead_pool_locks: InventoryOverheadPoolLocks;
   inventory_product_valuations: InventoryProductValuations;
   inventory_stock_allocation_entries: InventoryStockAllocationEntries;
   inventory_stock_allocations: InventoryStockAllocations;
@@ -2462,6 +2880,7 @@ export interface DB {
   organization_zones: OrganizationZones;
   platform_document_sequences: PlatformDocumentSequences;
   platform_domain_events: PlatformDomainEvents;
+  platform_event_consumer_failures: PlatformEventConsumerFailures;
   platform_event_consumer_marks: PlatformEventConsumerMarks;
   platform_event_consumer_offsets: PlatformEventConsumerOffsets;
   platform_job_schedules: PlatformJobSchedules;

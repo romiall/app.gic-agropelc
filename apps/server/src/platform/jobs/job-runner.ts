@@ -47,10 +47,14 @@ export class JobRunner {
   /**
    * `jobTypes` restreint la réclamation à ces types (utile à un worker spécialisé, ou pour
    * isoler une démonstration/un test des autres tâches en attente dans la même table
-   * partagée) ; omis, n'importe quelle tâche due peut être réclamée.
+   * partagée) ; omis, n'importe quelle tâche due peut être réclamée. `excludeJobTypes` écarte ces types (la voie
+   * courte du worker exclut les tâches longues, qu'une voie distincte réclame : `job-lanes.ts`, ADR-078 §3).
    */
   async claimAndProcessOne(
-    options: { readonly jobTypes?: readonly string[] } = {},
+    options: {
+      readonly jobTypes?: readonly string[];
+      readonly excludeJobTypes?: readonly string[];
+    } = {},
   ): Promise<JobRunOutcome> {
     return this.db.transaction().execute(async (trx) => {
       let query = trx
@@ -60,6 +64,9 @@ export class JobRunner {
         .where('run_at', '<=', this.clock.now());
       if (options.jobTypes) {
         query = query.where('job_type', 'in', options.jobTypes);
+      }
+      if (options.excludeJobTypes !== undefined && options.excludeJobTypes.length > 0) {
+        query = query.where('job_type', 'not in', options.excludeJobTypes);
       }
       const job = await query
         .orderBy('run_at', 'asc')

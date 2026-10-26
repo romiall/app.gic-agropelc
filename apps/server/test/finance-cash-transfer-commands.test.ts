@@ -40,6 +40,12 @@ import {
   CashTransferUnreceivedJob,
 } from '../src/modules/finance/application/jobs/cash-transfer-unreceived-job.js';
 import {
+  CASH_HOLDING_HIGH_JOB_TYPE,
+  CashHoldingHighJob,
+} from '../src/modules/finance/application/jobs/cash-holding-high-job.js';
+import { handleAlertEvent } from '../src/modules/communication/application/events/alerts-consumer.js';
+import { toDomainEvent } from '../src/platform/events/domain-event.js';
+import {
   cashTransferCounterKey,
   cashTransferPairsAt,
   cashTransferUnreceivedHoursAt,
@@ -71,6 +77,7 @@ import {
   withoutActivePolicies,
 } from './helpers.js';
 import { OfflineDevice } from './device-harness.js';
+import { rolledBack } from './communication-test-kit.js';
 import {
   approvalOf,
   auditOf,
@@ -1452,7 +1459,7 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     expect(await cashTransfersInTransit(db, { now, accountIds: [] })).toMatchObject({ count: 0 });
   });
 
-  it('tâche à 48 h : un CashTransferUnreceived par remise en retard et par jour métier ; rien pour une remise reçue ou récente', async () => {
+  it('tâche à 48 h : un CashTransferUnreceived par remise en retard et par passe horaire ; rien pour une remise reçue ou récente', async () => {
     const { seller, pos } = await newPdv();
     const central = await newCentral();
     const late = await send(
@@ -1476,28 +1483,295 @@ describe('P5-15 : remises de fonds', { timeout: 60_000 }, () => {
     const jobClock = new FixedClock(new Date(at('18:00'))); // 49 h après l'envoi tardif
     const jobs = new JobHandlerRegistry();
     new CashTransferUnreceivedJob(jobClock, new Uuidv7Generator(jobClock), jobs).onModuleInit();
-    const runJob = () => tx((trx) => jobs.resolve(CASH_TRANSFER_UNRECEIVED_JOB_TYPE)!(trx, {}));
-    await runJob();
-    await runJob(); // rejeu le même jour métier : aucun doublon
-    const events = await eventsOf(late.id, 'CashTransferUnreceived');
-    expect(events).toHaveLength(1);
-    expect(events[0]!.producer).toBe('finance');
-    expect(events[0]!.payload).toMatchObject({
-      transfer_id: late.id,
-      amount_sent_xaf: 11_000,
-      hours_elapsed: 49,
-      unreceived_hours: 48,
-      business_day: DAY,
-      sent_by: seller.userId,
+    const eventsIn = async (uow: UnitOfWork, transferId: string) =>
+      (
+        await uow
+          .selectFrom('platform_domain_events')
+          .select(['producer_module', 'payload'])
+          .where('event_type', '=', 'CashTransferUnreceived')
+          .where('aggregate_id', '=', toBin(transferId))
+          .orderBy('seq')
+          .execute()
+      ).map((row) => ({
+        producer: row.producer_module,
+        payload: row.payload as Record<string, unknown>,
+      }));
+    // Créneau propre à l'exécution (voir `finance-cash-session-commands.test.ts`).
+    const runSlot = freshUuid().slice(-8);
+    const runJob = (uow: UnitOfWork) =>
+      jobs.resolve(CASH_TRANSFER_UNRECEIVED_JOB_TYPE)!(uow, {
+        scheduledFor: `${jobClock.now().toISOString()}|${runSlot}`,
+      });
+    // Passes en transaction annulée : les marqueurs de fin de passe (types partagés) ne sont jamais
+    // validés sur la base partagée avec les tests des autres fichiers.
+    await rolledBack(async (uow) => {
+      await runJob(uow);
+      await runJob(uow); // rejeu du même créneau : aucun doublon
+      const events = await eventsIn(uow, late.id);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.producer).toBe('finance');
+      expect(events[0]!.payload).toMatchObject({
+        transfer_id: late.id,
+        amount_sent_xaf: 11_000,
+        hours_elapsed: 49,
+        unreceived_hours: 48,
+        business_day: DAY,
+        sent_by: seller.userId,
+      });
+      expect(await eventsIn(uow, receivedOld.id)).toHaveLength(0);
+      expect(await eventsIn(uow, recent.id)).toHaveLength(0);
+      // P9-07 : une heure plus tard, nouvelle passe (identité distincte), même remise.
+      jobClock.setTo(new Date(at('19:00')));
+      await runJob(uow);
+      const hourly = await eventsIn(uow, late.id);
+      expect(hourly).toHaveLength(2);
+      expect(new Set(hourly.map((event) => event.payload['pass_id'])).size).toBe(2);
+      expect(String(hourly[0]!.payload['pass_id'])).toMatch(/^CASH_TRANSFER_NOT_RECEIVED:/);
     });
-    expect(await eventsOf(receivedOld.id, 'CashTransferUnreceived')).toHaveLength(0);
-    expect(await eventsOf(recent.id, 'CashTransferUnreceived')).toHaveLength(0);
     expect(await transferRow(late.id)).toMatchObject({ status: 'SENT' });
-    // Le lendemain, un nouvel événement.
+    // Reçue ensuite, la remise n'est plus revue par la passe suivante (le marqueur la résoudra).
+    expect((await receive(fin1, late.id, 11_000, at('20:00'))).status).toBe('APPLIED');
     jobClock.setTo(new Date(at('08:00', '2026-10-09')));
-    await runJob();
-    expect(await eventsOf(late.id, 'CashTransferUnreceived')).toHaveLength(2);
+    await rolledBack(async (uow) => {
+      await runJob(uow);
+      expect(await eventsIn(uow, late.id)).toHaveLength(0);
+    });
   });
+
+  it('P9-07 : encaisse élevée ou sans remise — montant, durée, les deux ; ni solde nul, ni compte inactif, ni remise annulée comptée', async () => {
+    const jobClock = new FixedClock(new Date(at('08:00', '2026-10-10'))); // jour métier 2026-10-10
+    const jobs = new JobHandlerRegistry();
+    new CashHoldingHighJob(jobClock, new Uuidv7Generator(jobClock), jobs).onModuleInit();
+    const central = await newCentral();
+    const day = (dayOfMonth: string, hhmm = '08:00') => at(hhmm, `2026-10-${dayOfMonth}`);
+    const personal = async (balance: number, fundedAt: string) => {
+      const holder = await newTerrain();
+      const account = await newAccount({
+        type: 'CAISSE_UTILISATEUR',
+        responsible: holder.userId,
+        holder: holder.userId,
+      });
+      if (balance > 0) await fund(idGenerator, account, balance, fundedAt, root.userId);
+      return { holder, account };
+    };
+    const amountOnly = await personal(250_000, day('09'));
+    const daysOnly = await personal(50_000, day('02'));
+    const both = await personal(300_000, day('02'));
+    const empty = await personal(0, day('02'));
+    const inactive = await personal(300_000, day('02'));
+    await db
+      .updateTable('finance_cash_accounts')
+      .set({ status: 'INACTIVE' })
+      .where('id', '=', toBin(inactive.account))
+      .execute();
+    const cancelled = await personal(50_000, day('02'));
+    const sent = await personal(50_000, day('02'));
+    const within = await personal(100_000, day('08'));
+    // Deux entrées sans remise : l'espèce détenue est la plus ancienne qui n'a pas été remise (FIFO),
+    // soit celle du 2 — jamais la plus récente (9).
+    const layered = await personal(20_000, day('02'));
+    await fund(idGenerator, layered.account, 20_000, day('09'), root.userId);
+    // Compte vidé puis réalimenté : la dernière remise date de 5 jours à la passe du 13, mais l'espèce
+    // détenue est entrée la veille (FIFO) — jamais « sans remise depuis cinq jours » dès la première entrée.
+    const refilled = await personal(30_000, day('02'));
+    const emptied = await send(
+      refilled.holder,
+      { fromAccountId: refilled.account, toAccountId: central, amountXaf: 30_000 },
+      day('08'),
+    );
+    expect(emptied.result.status, JSON.stringify(emptied.result)).toBe('APPLIED');
+    await fund(idGenerator, refilled.account, 40_000, at('09:00', '2026-10-12'), root.userId);
+    // Une caisse de PDV (sessions de caisse) et une caisse centrale ne sont pas des encaisses
+    // personnelles : jamais signalées, même au-dessus du plafond et sans remise depuis 8 jours.
+    const pdvSite = await newPosSite(root.userId, zoneId);
+    const pdvCash = await newAccount({
+      type: 'CAISSE_PDV',
+      responsible: fin1.userId,
+      siteId: pdvSite,
+    });
+    await fund(idGenerator, pdvCash, 300_000, day('02'), root.userId);
+    const centralCash = await newAccount({ type: 'CAISSE_CENTRALE', responsible: fin1.userId });
+    await fund(idGenerator, centralCash, 300_000, day('02'), root.userId);
+    // Remise annulée : sans effet sur la référence de durée (retour à la première entrée du registre).
+    const toCancel = await send(
+      cancelled.holder,
+      { fromAccountId: cancelled.account, toAccountId: central, amountXaf: 10_000 },
+      day('08'),
+    );
+    expect(toCancel.result.status, JSON.stringify(toCancel.result)).toBe('APPLIED');
+    expect((await cancel(cancelled.holder, toCancel.id, day('08', '09:00'))).status).toBe(
+      'APPLIED',
+    );
+    // Remise envoyée hier : la référence est son envoi (1 jour), solde restant sous le plafond.
+    const recent = await send(
+      sent.holder,
+      { fromAccountId: sent.account, toAccountId: central, amountXaf: 10_000 },
+      day('09'),
+    );
+    expect(recent.result.status, JSON.stringify(recent.result)).toBe('APPLIED');
+
+    const mine = [
+      ...[amountOnly, daysOnly, both, empty, inactive, cancelled, sent, within].map(
+        (entry) => entry.account,
+      ),
+      refilled.account,
+      layered.account,
+      pdvCash,
+      centralCash,
+    ];
+    const holdingEvents = async (uow: UnitOfWork) =>
+      (
+        await uow
+          .selectFrom('platform_domain_events')
+          .selectAll()
+          .where('event_type', '=', 'CashHoldingHighDetected')
+          .where(
+            'aggregate_id',
+            'in',
+            mine.map((id) => toBin(id)),
+          )
+          .orderBy('seq')
+          .execute()
+      ).map((row) => toDomainEvent(row));
+
+    await rolledBack(async (uow) => {
+      const handler = jobs.resolve(CASH_HOLDING_HIGH_JOB_TYPE)!;
+      const slot = { scheduledFor: `${jobClock.now().toISOString()}|${freshUuid().slice(-8)}` };
+      await handler(uow, slot);
+      await handler(uow, slot); // rejeu du même créneau : aucun doublon
+      const events = await holdingEvents(uow);
+      const byAccount = new Map(
+        events.map((event) => [event.aggregateId, event.payload as Record<string, unknown>]),
+      );
+      expect([...byAccount.keys()].sort()).toEqual(
+        [
+          amountOnly.account,
+          daysOnly.account,
+          both.account,
+          cancelled.account,
+          layered.account,
+        ].sort(),
+      );
+      expect(events).toHaveLength(5);
+      expect(byAccount.get(layered.account)).toMatchObject({
+        reason: 'DAYS',
+        balance_xaf: 40_000,
+        days_without_transfer: 8,
+        held_since: day('02'),
+      });
+      expect(byAccount.get(amountOnly.account)).toMatchObject({
+        reason: 'AMOUNT',
+        balance_xaf: 250_000,
+        days_without_transfer: 1,
+        threshold_xaf: 200_000,
+        threshold_days: 3,
+        holder_user_id: amountOnly.holder.userId,
+        business_day: '2026-10-10',
+        last_transfer_at: null,
+      });
+      expect(byAccount.get(daysOnly.account)).toMatchObject({
+        reason: 'DAYS',
+        days_without_transfer: 8,
+        balance_xaf: 50_000,
+      });
+      expect(byAccount.get(both.account)).toMatchObject({
+        reason: 'BOTH',
+        days_without_transfer: 8,
+      });
+      expect(byAccount.get(cancelled.account)).toMatchObject({
+        reason: 'DAYS',
+        days_without_transfer: 8,
+        balance_xaf: 50_000,
+        last_transfer_at: null,
+      });
+      const holderName = await uow
+        .selectFrom('identity_users')
+        .select('full_name')
+        .where('id', '=', toBin(daysOnly.holder.userId))
+        .executeTakeFirstOrThrow();
+      expect(byAccount.get(daysOnly.account)!['holder_label']).toBe(holderName.full_name);
+      expect(byAccount.get(daysOnly.account)!['pass_id']).toMatch(/^CASH_HOLDING_HIGH:/);
+      // Le marqueur de fin de passe est publié (résolution des comptes revenus dans les limites).
+      const markers = await uow
+        .selectFrom('platform_domain_events')
+        .select('payload')
+        .where('event_type', '=', 'AlertDetectionPassCompleted')
+        .where((eb) =>
+          eb(
+            eb.fn('JSON_UNQUOTE', [eb.fn('JSON_EXTRACT', ['payload', eb.val('$.pass_id')])]),
+            '=',
+            String(byAccount.get(daysOnly.account)!['pass_id']),
+          ),
+        )
+        .execute();
+      expect(markers).toHaveLength(1);
+      expect(markers[0]!.payload).toMatchObject({
+        alert_type: 'CASH_HOLDING_HIGH',
+        business_day: '2026-10-10',
+      });
+
+      // De bout en bout : une alerte d'état par compte, au détenteur et à la Finance.
+      for (const event of events) {
+        await handleAlertEvent(uow, event, { idGenerator });
+      }
+      const alert = await uow
+        .selectFrom('communication_alerts')
+        .select(['status', 'severity', 'alert_type', 'occurrences', 'owner_user_id'])
+        .where('dedup_key', '=', `CASH_HOLDING_HIGH:${daysOnly.account}`)
+        .executeTakeFirstOrThrow();
+      expect(alert).toMatchObject({
+        status: 'OPEN',
+        severity: 'WARNING',
+        alert_type: 'CASH_HOLDING_HIGH',
+        occurrences: 1,
+      });
+      // Propriétaire de l'alerte : le détenteur de la caisse (le responsable de son équipe et la Finance
+      // en sont destinataires par leur rôle).
+      expect(fromBin(alert.owner_user_id!)).toBe(daysOnly.holder.userId);
+    });
+
+    // Le détenteur remet son encaisse : à la passe suivante, son compte n'est plus revu (le marqueur
+    // résoudra l'alerte) ; les autres comptes restent signalés.
+    const handedOver = await send(
+      daysOnly.holder,
+      { fromAccountId: daysOnly.account, toAccountId: central, amountXaf: 50_000 },
+      day('09', '09:00'),
+    );
+    expect(handedOver.result.status, JSON.stringify(handedOver.result)).toBe('APPLIED');
+    jobClock.setTo(new Date(at('09:00', '2026-10-10')));
+    await rolledBack(async (uow) => {
+      await jobs.resolve(CASH_HOLDING_HIGH_JOB_TYPE)!(uow, {
+        scheduledFor: `${jobClock.now().toISOString()}|${freshUuid().slice(-8)}`,
+      });
+      const accounts = (await holdingEvents(uow)).map((event) => event.aggregateId);
+      expect(accounts).not.toContain(daysOnly.account);
+      expect(accounts).toContain(both.account);
+      expect(accounts).toContain(amountOnly.account);
+    });
+
+    // Le 13 : le compte réalimenté la veille n'est pas signalé (espèce entrée le 12) bien que sa dernière
+    // remise date du 8 ; le compte de 250 000 XAF l'est pour le montant et pour la durée (entré le 9).
+    jobClock.setTo(new Date(at('08:00', '2026-10-13')));
+    await rolledBack(async (uow) => {
+      await jobs.resolve(CASH_HOLDING_HIGH_JOB_TYPE)!(uow, {
+        scheduledFor: `${jobClock.now().toISOString()}|${freshUuid().slice(-8)}`,
+      });
+      const byAccount = new Map(
+        (await holdingEvents(uow)).map((event) => [
+          event.aggregateId,
+          event.payload as Record<string, unknown>,
+        ]),
+      );
+      expect(byAccount.has(refilled.account)).toBe(false);
+      expect(byAccount.get(amountOnly.account)).toMatchObject({
+        reason: 'BOTH',
+        days_without_transfer: 4,
+        business_day: '2026-10-13',
+      });
+      // Détail de la référence : l'espèce détenue du compte de 50 000 XAF date du 2, sans remise.
+      expect(byAccount.get(both.account)).toMatchObject({ days_without_transfer: 11 });
+    });
+  }, 180_000);
 
   it('cohérence : un mouvement de trop qui cite la remise est signalé (verifyCashTransfers)', async () => {
     const { seller, pos } = await newPdv();

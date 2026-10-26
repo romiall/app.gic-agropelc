@@ -10,8 +10,9 @@
  * perte.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
+import { businessDayEndUtc, businessDayStartUtc } from '@gic/domain';
 import type { DB } from '../../../../platform/kysely/database.js';
-import { fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
+import { fromBin, fromBinOrNull, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
 export const LOSS_SUMMARY_GROUPS = ['product', 'lot', 'reason'] as const;
 export type LossSummaryGroup = (typeof LOSS_SUMMARY_GROUPS)[number];
@@ -99,4 +100,81 @@ export async function lossValueSummary(
       };
     })
     .sort((a, b) => b.valueXaf - a.valueXaf || b.pendingValueXaf - a.pendingValueXaf);
+}
+
+export interface DayLossLine {
+  readonly locationId: string;
+  readonly siteId: string;
+  /** Déclarations comptées du jour (constatées, en attente de validation, non justifiées, en annulation). */
+  readonly declarations: number;
+  /**
+   * Quantité de base perdue, **seulement** quand une seule référence de produit est en jeu ; `null` sinon
+   * (la somme de quantités de produits d'unités différentes n'a pas de sens, AV-453). La valeur reste, elle,
+   * toujours cumulable.
+   */
+  readonly quantityBase: number | null;
+  /** Valeur au coût figé des déclarations (champ protégé : jamais dans un message sans droit de valorisation). */
+  readonly valueXaf: number;
+}
+
+/**
+ * Pertes d'**un jour métier** par emplacement (P9-08 ; D13 §7.1 `HIGH_LOSS` : « valeur des pertes d'un
+ * emplacement sur 1 jour »). Partagée par le détecteur d'`inventory` (seuil absolu, à chaque déclaration) et
+ * par celui de `sales` (part du CA du jour) : une seule définition de la perte du jour.
+ *
+ * Statuts comptés : ceux de {@link lossValueSummary} **et** les déclarations en attente de validation —
+ * une perte déclarée alerte aussitôt, sans attendre la décision (D13 : « sur perte »). `excludeCategories`
+ * retire des catégories du cumul (la mortalité par défaut : elle a son alerte, `HIGH_MORTALITY`, AV-453).
+ */
+export async function dayLossByLocation(
+  executor: Kysely<DB> | Transaction<DB>,
+  filter: {
+    readonly businessDay: string;
+    readonly locationIds?: readonly string[];
+    readonly siteIds?: readonly string[];
+    readonly excludeCategories?: readonly string[];
+  },
+): Promise<readonly DayLossLine[]> {
+  if (filter.locationIds?.length === 0 || filter.siteIds?.length === 0) return [];
+  const rows = await executor
+    .selectFrom('inventory_loss_declarations')
+    .select([
+      'location_id',
+      'site_id',
+      sql<string>`COUNT(*)`.as('declarations'),
+      sql<string>`COALESCE(SUM(quantity_base), 0)`.as('quantity'),
+      sql<string>`COALESCE(SUM(value_xaf), 0)`.as('value'),
+      sql<string>`COUNT(DISTINCT product_id)`.as('products'),
+    ])
+    .where('occurred_at', '>=', businessDayStartUtc(filter.businessDay))
+    .where('occurred_at', '<', businessDayEndUtc(filter.businessDay))
+    .where('status', 'in', [...COUNTED, 'PENDING_APPROVAL'])
+    .$if(filter.locationIds !== undefined, (qb) =>
+      qb.where(
+        'location_id',
+        'in',
+        filter.locationIds!.map((id) => toBin(id)),
+      ),
+    )
+    .$if(filter.siteIds !== undefined, (qb) =>
+      qb.where(
+        'site_id',
+        'in',
+        filter.siteIds!.map((id) => toBin(id)),
+      ),
+    )
+    .$if((filter.excludeCategories?.length ?? 0) > 0, (qb) =>
+      qb.where('category', 'not in', [...filter.excludeCategories!]),
+    )
+    .groupBy(['location_id', 'site_id'])
+    .execute();
+  return rows
+    .map((row) => ({
+      locationId: fromBin(row.location_id),
+      siteId: fromBin(row.site_id),
+      declarations: Number(row.declarations),
+      quantityBase: Number(row.products) === 1 ? Number(row.quantity) : null,
+      valueXaf: Number(row.value),
+    }))
+    .sort((a, b) => b.valueXaf - a.valueXaf);
 }

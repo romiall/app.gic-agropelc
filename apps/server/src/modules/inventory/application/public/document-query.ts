@@ -479,8 +479,10 @@ export interface StockThresholdStatus {
 /**
  * `GET /thresholds?location_id=` : seuils actifs de l'emplacement, évalués sur le disponible
  * courant (BR-STK-051, `evaluateStockThreshold` partagé appareil/serveur). C'est la vue
- * « alertes de stock simples » de P2 (REQ-057) : l'émission d'alertes `STOCK_LOW`/`STOCK_OUT`
- * dans `communication.alerts` dépend du module `communication`, pas encore construit.
+ * « alertes de stock simples » de P2 (REQ-057) : les alertes `STOCK_LOW`/`STOCK_OUT`
+ * de `communication.alerts` sont levées par les transitions de `recordStockMove`, par
+ * `inventory.threshold.set` et par la passe horaire `inventory.alerts.stock_threshold_sweep` (P9-08,
+ * AV-405) ; cette lecture reste la vue de l'état courant.
  */
 export async function listStockThresholds(
   executor: Executor,

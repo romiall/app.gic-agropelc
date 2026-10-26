@@ -60,7 +60,9 @@ import {
   requestApproval,
 } from '../../../approvals/application/public/index.js';
 import {
+  lockOverheadPool,
   lotCostObjectStatus,
+  overheadPeriodOf,
   siteOverheadMonthAllocated,
 } from '../../../inventory/application/public/index.js';
 import { findSupplier } from '../../../procurement/application/public/index.js';
@@ -666,6 +668,15 @@ export function registerExpenseCommands(
     // Coût déjà écrit (enregistrée sans validation, ou approuvée) : contrepassé à la date de la dépense,
     // sauf si le mois de frais généraux de l'espèce est déjà réparti (ADR-026).
     if (expense.status === 'RECORDED' || expense.status === 'APPROVED') {
+      // Masse du mois de l'espèce verrouillée avant la garde (A7, ADR-038 rang N2b) : une répartition
+      // concurrente se termine avant elle, ou attend la fin de cette annulation.
+      if (expense.costObjectType === 'SITE' && expense.speciesGroup !== null) {
+        await lockOverheadPool(uow, {
+          siteId: expense.costObjectId!,
+          speciesGroup: expense.speciesGroup,
+          period: overheadPeriodOf(expense.occurredAt),
+        });
+      }
       if (
         expense.costObjectType === 'SITE' &&
         expense.speciesGroup !== null &&

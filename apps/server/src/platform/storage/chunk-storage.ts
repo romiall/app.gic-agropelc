@@ -17,6 +17,13 @@ export interface ChunkStorage {
   /** @returns la taille totale après ajout. @throws {ChunkOffsetMismatchError} si `offset` ne correspond pas à la taille actuelle. */
   appendChunk(key: string, offset: number, chunk: Buffer): Promise<number>;
   readAll(key: string): Promise<Buffer>;
+  /**
+   * Supprime le fichier de `key` ; sans effet s'il n'existe pas (rejeu d'une tâche, purge). Ajout de P9-20
+   * (exports, ADR-077 §5).
+   */
+  delete(key: string): Promise<void>;
+  /** Lit le fichier de `key` par morceaux d'au plus `chunkSize` octets, sans le charger en entier (P9-20). */
+  readChunks(key: string, chunkSize: number): AsyncIterable<Buffer>;
 }
 
 export class ChunkOffsetMismatchError extends Error {

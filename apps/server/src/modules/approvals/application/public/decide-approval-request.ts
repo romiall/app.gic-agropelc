@@ -31,6 +31,7 @@ import {
   type ApprovalDecisionHandlerRegistry,
 } from '../decision-handler-registry.js';
 import { recordRequesterChange } from '../approval-changes.js';
+import { publishApprovalDecided } from '../approval-events.js';
 import { canSelfApproveAt } from './approval-inbox.js';
 
 export interface DecideApprovalRequestInput {
@@ -199,5 +200,20 @@ export async function decideApprovalRequest(
     .where('id', '=', requestId)
     .execute();
   await recordRequesterChange(uow, fromBin(row.id), fromBin(row.requested_by));
+  // P9-11 (3/3, AV-480) : la décision prévient le demandeur (accordée ou refusée, avec le motif).
+  await publishApprovalDecided(uow, {
+    requestId: fromBin(row.id),
+    operationType: row.operation_type,
+    subjectType: row.subject_type,
+    subjectId: fromBin(row.subject_id),
+    siteId: fromBinOrNull(row.site_id),
+    zoneId: fromBinOrNull(row.zone_id),
+    requestedBy: fromBin(row.requested_by),
+    decision: input.decision,
+    decisionOption: input.decisionOption ?? null,
+    decidedBy: input.decidedBy,
+    decidedAt: input.decidedAt,
+    comment: input.comment?.trim() ? input.comment.trim() : null,
+  });
   return { ok: true };
 }

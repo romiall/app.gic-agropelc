@@ -15,12 +15,24 @@ import { SalesModule } from './modules/sales/sales.module.js';
 import { ProductionModule } from './modules/production/production.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { FinanceJobsModule } from './modules/finance/finance-jobs.module.js';
+import { ProductionJobsModule } from './modules/production/production-jobs.module.js';
+import { ProcurementJobsModule } from './modules/procurement/procurement-jobs.module.js';
+import { ApprovalsJobsModule } from './modules/approvals/approvals-jobs.module.js';
 import { SalesJobsModule } from './modules/sales/sales-jobs.module.js';
 import { FieldworkModule } from './modules/fieldwork/fieldwork.module.js';
 import { FieldworkJobsModule } from './modules/fieldwork/fieldwork-jobs.module.js';
 import { CrmModule } from './modules/crm/crm.module.js';
+import { CommunicationModule } from './modules/communication/communication.module.js';
+import { CommunicationJobsModule } from './modules/communication/communication-jobs.module.js';
+import { CommunicationRecipientsModule } from './communication-api/communication-recipients.module.js';
+import { CommunicationApiModule } from './communication-api/communication-api.module.js';
+import { AnalyticsApiModule } from './analytics-api/analytics-api.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { ChainVerificationModule } from './audit/chain-verification.module.js';
+import { SyncJobsModule } from './sync/sync-jobs.module.js';
+import { AnalyticsSnapshotsJobsModule } from './analytics-api/analytics-snapshots-jobs.module.js';
+import { AnalyticsJobsModule } from './modules/analytics/analytics-jobs.module.js';
 import { AuditApiModule } from './audit-api/audit-api.module.js';
 import { OrganizationApiModule } from './organization-api/organization-api.module.js';
 import { IdentityApiModule } from './identity-api/identity-api.module.js';
@@ -57,12 +69,24 @@ import { RootController } from './health/root.controller.js';
     ProductionModule,
     FinanceModule,
     FinanceJobsModule,
+    ProductionJobsModule,
+    ProcurementJobsModule,
+    ApprovalsJobsModule,
     SalesJobsModule,
     FieldworkModule,
     FieldworkJobsModule,
     CrmModule,
+    CommunicationModule,
+    AnalyticsModule,
+    CommunicationJobsModule,
+    CommunicationRecipientsModule,
+    CommunicationApiModule,
+    AnalyticsApiModule,
     CommandsModule,
     ChainVerificationModule,
+    SyncJobsModule,
+    AnalyticsSnapshotsJobsModule,
+    AnalyticsJobsModule,
     AuditApiModule,
     OrganizationApiModule,
     IdentityApiModule,

@@ -6,6 +6,27 @@ import type { Kysely, Transaction } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
 import { fromBin, toBin } from '../../../../platform/kysely/uuid-columns.js';
 
+/**
+ * Zones d'un ensemble de zones **et de leurs descendantes** (fermeture transitive `organization_zone_ancestors`,
+ * chaque zone étant sa propre ancêtre) : l'étendue exacte d'une permission de portée zone (P9-14, ADR-074 §4).
+ */
+export async function listZoneIdsWithDescendants(
+  executor: Kysely<DB> | Transaction<DB>,
+  zoneIds: readonly string[],
+): Promise<readonly string[]> {
+  if (zoneIds.length === 0) return [];
+  const rows = await executor
+    .selectFrom('organization_zone_ancestors')
+    .select('zone_id')
+    .where(
+      'ancestor_id',
+      'in',
+      zoneIds.map((id) => toBin(id)),
+    )
+    .execute();
+  return [...new Set(rows.map((row) => fromBin(row.zone_id)))];
+}
+
 export async function listSiteIdsInZones(
   executor: Kysely<DB> | Transaction<DB>,
   zoneIds: readonly string[],

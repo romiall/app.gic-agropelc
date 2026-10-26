@@ -8,7 +8,8 @@ import { FixedClock, Uuidv7Generator, type Clock, type IdGenerator } from '@gic/
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
 import { CommandHandlerRegistry } from '../src/platform/sync/command-handler-registry.js';
 import { registerThresholdCommands } from '../src/modules/inventory/application/commands/threshold-commands.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { recordStockMove } from '../src/modules/inventory/application/public/record-move.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -33,6 +34,7 @@ function buildEnvelope(
     readonly aggregate_type: string;
     readonly aggregate_id: string;
     readonly payload: unknown;
+    readonly occurred_at?: string;
   },
 ): Record<string, unknown> {
   return {
@@ -91,7 +93,7 @@ describe('inventory.threshold.set (P2-04)', () => {
     clock = new FixedClock(new Date(OCCURRED_AT));
     idGenerator = new Uuidv7Generator(clock);
     const registry = new CommandHandlerRegistry();
-    registerThresholdCommands(registry);
+    registerThresholdCommands(registry, idGenerator);
     pipeline = new CommandPipelineService(db, registry, clock, idGenerator);
 
     admin = await db.transaction().execute((trx) => insertTestUser(trx));
@@ -244,5 +246,108 @@ describe('inventory.threshold.set (P2-04)', () => {
     );
     expect(result.status).toBe('REJECTED');
     expect(result.status === 'REJECTED' && result.error.code).toMatch(/^VALIDATION_ERROR/);
+  });
+
+  it('P9-08 (AV-405) : premier seuil sur stock vide, minimum relevé puis abaissé, rejeu — un événement par franchissement', async () => {
+    const site = await db
+      .selectFrom('organization_locations')
+      .select('site_id')
+      .where('id', '=', toBin(storeA))
+      .executeTakeFirstOrThrow();
+    const store = await db
+      .transaction()
+      .execute((trx) =>
+        insertTestLocation(trx, admin, fromBin(site.site_id!), { locationType: 'STORE' }),
+      );
+    const productId = await insertProduct(admin);
+    const opening = await db
+      .selectFrom('organization_locations')
+      .select('id')
+      .where('location_type', '=', 'V_OPENING')
+      .executeTakeFirstOrThrow();
+
+    const setThreshold = async (
+      thresholdId: string,
+      minQtyBase: number,
+      targetQtyBase: number,
+      occurredAt: string,
+    ) => {
+      const result = await pipeline.handle(
+        buildEnvelope(admin, {
+          command_type: 'inventory.threshold.set',
+          aggregate_type: 'STOCK_THRESHOLD',
+          aggregate_id: thresholdId,
+          payload: { locationId: store, productId, minQtyBase, targetQtyBase },
+          occurred_at: occurredAt,
+        }),
+        ctx(),
+      );
+      expect(result.status).toBe('APPLIED');
+    };
+    const breaches = async () =>
+      (
+        await db
+          .selectFrom('platform_domain_events')
+          .select('payload')
+          .where('event_type', '=', 'StockThresholdBreached')
+          .orderBy('seq', 'desc')
+          .limit(500)
+          .execute()
+      )
+        .map((row) => row.payload as Record<string, unknown>)
+        .filter(
+          (payload) => payload['location_id'] === store && payload['product_id'] === productId,
+        )
+        .reverse();
+
+    // Stock vide : le premier seuil est aussitôt en rupture.
+    await setThreshold(freshUuid(), 10, 30, '2026-09-28T09:00:00.000Z');
+    expect((await breaches()).map((p) => [p['level'], p['breached']])).toEqual([['OUT', true]]);
+
+    await db.transaction().execute((trx) =>
+      recordStockMove(
+        trx,
+        { idGenerator },
+        {
+          productId,
+          quantityBase: 12,
+          fromLocationId: fromBin(opening.id),
+          toLocationId: store,
+          moveType: 'OPENING_BALANCE',
+          declaredUnitCostXaf: 300,
+          occurredAt: new Date(OCCURRED_AT),
+          sourceDocType: 'INVENTORY_COUNT',
+          sourceDocId: freshUuid(),
+          createdBy: admin,
+          allowNegative: false,
+        },
+      ),
+    );
+    // L'entrée met fin à la rupture signalée à la pose ; minimum 10 ≤ 12 : correct.
+    expect((await breaches()).map((p) => [p['level'], p['breached']])).toEqual([
+      ['OUT', true],
+      ['OUT', false],
+    ]);
+
+    // Relevé à 20 : 12 < 20, stock bas ; le jour métier est celui de la commande.
+    const raised = freshUuid();
+    await setThreshold(raised, 20, 60, '2026-09-30T09:00:00.000Z');
+    await setThreshold(raised, 20, 60, '2026-09-30T09:00:00.000Z'); // rejeu : rien de plus
+    const afterRaise = await breaches();
+    expect(afterRaise).toHaveLength(3);
+    expect(afterRaise[2]).toMatchObject({
+      level: 'LOW',
+      breached: true,
+      available: 12,
+      threshold: 20,
+      target: 60,
+      business_day: '2026-09-30',
+    });
+
+    // Abaissé à 5 : 12 ≥ 5, fin du niveau bas.
+    await setThreshold(freshUuid(), 5, 15, '2026-09-30T10:00:00.000Z');
+    const afterLower = await breaches();
+    expect(afterLower).toHaveLength(4);
+    expect(afterLower[3]).toMatchObject({ level: 'LOW', breached: false, threshold: 5 });
   });
 });

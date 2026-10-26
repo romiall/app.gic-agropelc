@@ -15,6 +15,10 @@
  *   écritures datées au plus tard de la fin du mois réparti.
  * - Part estimée d'un lot à sa clôture (`CLOSING_ESTIMATE`) : même calcul, seule la part du lot
  *   est écrite ; les exécutions suivantes du mois l'excluent.
+ * - Correctif A7 (revue de P8, ADR-038 rang N2b) : la répartition prend d'abord le verrou de la masse
+ *   (site, espèce, mois), puis lit la masse par une lecture verrouillante. Une annulation de saisie ou
+ *   de dépense du même mois attend la fin de la répartition (puis est refusée), ou la précède : la masse
+ *   lue ne contient jamais un frais annulé, et le site ne passe jamais en négatif.
  */
 import {
   allocateProRata,
@@ -30,6 +34,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work.js';
 import { fromBin, toBin } from '../../../platform/kysely/uuid-columns.js';
 import {
   costObjectBalance,
+  lockOverheadPool,
   lotHeadDays,
   recordCostEntry,
   type SpeciesGroup,
@@ -96,6 +101,8 @@ export async function overheadPool(
       at: new Date(input.end.getTime() - 1),
       costTypes: ['FRAIS_GENERAUX'],
       speciesGroup: input.speciesGroup,
+      // Masse validée à cet instant, sous le verrou de la masse (A7), pas l'instantané de la transaction.
+      current: true,
     })
   ).netXaf;
 }
@@ -106,6 +113,11 @@ export async function allocateOverheads(
   input: AllocationInput,
 ): Promise<AllocationResult> {
   const { start, end, days } = periodWindow(input.period, input.occurredAt);
+  await lockOverheadPool(uow, {
+    siteId: input.siteId,
+    speciesGroup: input.speciesGroup,
+    period: input.period,
+  });
   const pool = await overheadPool(uow, { ...input, start, end });
   if (pool <= 0 || days.length === 0) return { ok: false, reason: 'NOTHING_TO_ALLOCATE' };
 

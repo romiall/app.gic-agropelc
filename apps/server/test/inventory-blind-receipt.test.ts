@@ -11,6 +11,7 @@
  * balayage isolé par paire en échec (24).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { businessDayOf } from '@gic/domain';
 import type { Change } from '@gic/contracts';
 import { SyncPullService } from '../src/sync/sync-pull.service.js';
 import {
@@ -386,7 +387,11 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
       .where('aggregate_id', '=', toBin(transferId))
       .where('event_type', 'like', 'StockTransfer%')
       .execute();
-    expect(events.map((e) => e.event_type)).toEqual(['StockTransferDiscrepancyDetected']);
+    // L'expédition a publié le sien (P9-11 (3/3), AV-480) ; le balayage ajoute le seul écart, ni réception ni rapprochement.
+    expect(events.map((e) => e.event_type).sort()).toEqual([
+      'StockTransferDiscrepancyDetected',
+      'StockTransferDispatched',
+    ]);
     const audit = await db
       .selectFrom('audit_audit_log')
       .select('action')
@@ -685,6 +690,30 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
         .where('aggregate_id', '=', toBin(old.receiptId))
         .execute();
     expect(await events()).toHaveLength(1);
+    // P9-08 : l'événement porte de quoi composer le message d'alerte (numéro du document, temps écoulé).
+    const signalled = await db
+      .selectFrom('platform_domain_events')
+      .select(['payload', 'producer_module'])
+      .where('event_type', '=', 'StockTransferUnmatched')
+      .where('aggregate_id', '=', toBin(old.receiptId))
+      .executeTakeFirstOrThrow();
+    expect(signalled.producer_module).toBe('inventory');
+    expect(signalled.payload).toMatchObject({
+      transfer_id: old.receiptId,
+      doc_number: (await transferOf(old.receiptId)).doc_number,
+      from_location_id: pair.store,
+      to_location_id: pair.pos,
+      site_id: world.storeSite,
+      hours: 48,
+    });
+    // Temps écoulé depuis la réception (heure physique), au jour métier de la tâche.
+    const sweepNow = new Date(at('12:00'));
+    expect(signalled.payload).toMatchObject({
+      hours_elapsed: Math.floor(
+        (sweepNow.getTime() - new Date(at('08:00', '2026-10-06')).getTime()) / 3_600_000,
+      ),
+      business_day: businessDayOf(sweepNow),
+    });
     expect(await conflictsOn('TRANSFER_UNMATCHED', recent.receiptId)).toHaveLength(0);
     // Rejouable.
     expect((await sweep([pair])).signalled).toBe(0);
@@ -715,6 +744,44 @@ describe('réception sans document (P5-16, BR-STK-024)', () => {
     const [closed] = await conflictsOn('TRANSFER_UNMATCHED', old.receiptId);
     expect(closed).toMatchObject({ status: 'RESOLVED', resolution: 'MERGE' });
     expect(closed!.resolution_refs).toEqual([transferId]);
+
+    // P9-08 : le rapprochement tardif publie `BlindReceiptMatched` sous l'identifiant de la réception
+    // (ferme l'alerte `TRANSFER_UNMATCHED`), sans rien publier sous celui de l'expédition.
+    const matched = await db
+      .selectFrom('platform_domain_events')
+      .select(['payload', 'aggregate_id'])
+      .where('event_type', '=', 'BlindReceiptMatched')
+      .where('aggregate_id', '=', toBin(old.receiptId))
+      .execute();
+    expect(matched).toHaveLength(1);
+    expect(matched[0]!.payload).toMatchObject({
+      receipt_id: old.receiptId,
+      transfer_id: transferId,
+      site_id: world.storeSite,
+    });
+    const underDispatch = await db
+      .selectFrom('platform_domain_events')
+      .select('seq')
+      .where('event_type', '=', 'BlindReceiptMatched')
+      .where('aggregate_id', '=', toBin(transferId))
+      .execute();
+    expect(underDispatch).toHaveLength(0);
+
+    // P9-08 (AV-458) : l'expédition rapprochée par la réception tardive est « reçue » : un événement sous son
+    // identifiant ferme l'alerte `TRANSFER_NOT_RECEIVED` sans attendre la passe suivante.
+    const onDispatch = await db
+      .selectFrom('platform_domain_events')
+      .select(['payload', 'aggregate_type'])
+      .where('event_type', '=', 'TransferMatchedByBlindReceipt')
+      .where('aggregate_id', '=', toBin(transferId))
+      .execute();
+    expect(onDispatch).toHaveLength(1);
+    expect(onDispatch[0]!.aggregate_type).toBe('STOCK_TRANSFER');
+    expect(onDispatch[0]!.payload).toMatchObject({
+      transfer_id: transferId,
+      receipt_id: old.receiptId,
+      status: expect.stringMatching(/^(RECEIVED|DISCREPANCY_PENDING)$/),
+    });
   });
 
   it('16b — la tâche inventory.transfers.unmatched_sweep s’enregistre et s’exécute par son gestionnaire', async () => {

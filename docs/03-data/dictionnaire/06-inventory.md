@@ -432,3 +432,17 @@
 | `cost_entry_id` | uuid → cost_entries | Non | — | Écriture `SITE` `FRAIS_GENERAUX` (source `OVERHEAD_ENTRY`) |
 
 - **PK** `id`. **UQ** `(entry_id, species_group)`, `cost_entry_id`. **Suppr.** `IMMUABLE`.
+
+## inventory.overhead_pool_locks
+
+**Responsabilité** : verrou de la masse mensuelle des frais généraux d'une ferme (correctif A7, P9 ; [ADR-038](../../decisions/ADR-038-ordre-de-verrouillage-global.md), rang N2b). Une ligne par (site, espèce, mois métier), créée au premier besoin par un upsert sans effet, qui prend son verrou d'écriture jusqu'à la fin de la transaction. Elle ne porte aucune donnée métier.
+
+| Colonne | Type logique | Nullable | Défaut | Rôle |
+|---|---|---:|---|---|
+| `site_id` | uuid | Non | — | Ferme (sans clé étrangère : un site inconnu est rejeté par la commande, `SITE_NOT_FARM`) |
+| `species_group` | enum(`VOLAILLE`,`PORC`) | Non | — | |
+| `period` | char(7) | Non | — | Mois métier `AAAA-MM` (Africa/Douala) |
+| `created_at` | datetime(6) | Non | `CURRENT_TIMESTAMP(6)` | |
+
+- **PK** `(site_id, species_group, period)`. **CK** espèce ; `period` au format `AAAA-MM`. **Droits** `gic_app` : `SELECT`, `INSERT`, `UPDATE` (upsert sans effet). **Suppr.** sans objet (aucune donnée).
+- **Écrivains** (sous ce verrou) : `production.overhead.allocate`, `production.lot.close` (part estimée), `inventory.overhead.record` et `.cancel`, `finance.expense.record`, `.cancel` et l'approbation d'une dépense de frais généraux (toute écriture `SITE` `FRAIS_GENERAUX` passe par `recordCostEntry`).

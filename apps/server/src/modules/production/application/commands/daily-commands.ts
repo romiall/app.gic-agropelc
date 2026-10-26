@@ -46,6 +46,7 @@ import {
   rejected,
 } from './shared.js';
 import { emitProductionRecordChange } from '../sync-changes.js';
+import { signalHighMortality } from '../production-alert-events.js';
 
 const mortalityPayloadSchema = z.object({
   productionLotId: z.string().uuid(),
@@ -157,6 +158,18 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       },
     );
     if (!result.ok) return result.outcome;
+    // `HIGH_MORTALITY` (P9-09, AV-461) : sur le fait, avant les deux retours (le lot clos hors ligne est un
+    // fait appliqué : son alerte complète le conflit `LOT_CLOSED`). Ne lève jamais.
+    await signalHighMortality(uow, deps, {
+      lotId: lot.id,
+      lotLabel: lot.lotCode,
+      siteId: lot.siteId,
+      stockLotId: lot.stockLotId,
+      lossId: envelope.aggregate_id,
+      occurredAt: new Date(envelope.occurred_at),
+      commandId: envelope.command_id,
+      capturedOffline: envelope.captured_offline,
+    });
     const serverRefs = { docNumber: result.docNumber, status: result.status };
     if (closed) {
       const outcome = await recordLotClosedConflict(uow, deps, {
@@ -376,6 +389,10 @@ export function registerDailyCommands(
     payloadSchema: mortalityPayloadSchema,
     permissionCode: DAILY,
     handler: handlers.mortality,
+    // P9-09 : le cumul du jour est lu **après** le verrou du lot : en lecture confirmée, il voit les
+    // mortalités du même lot validées par une commande concurrente (sous la lecture répétable, l'instantané
+    // pris avant le verrou les ignorerait et l'alerte pourrait manquer le franchissement du seuil).
+    isolationLevel: 'read committed',
   });
   registry.register({
     commandType: 'production.input.record',

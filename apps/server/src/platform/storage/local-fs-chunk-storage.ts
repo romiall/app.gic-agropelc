@@ -4,7 +4,8 @@
  * strictement séquentiel (§ du port) : `fs.appendFile` après vérification de la taille
  * actuelle, jamais d'écriture positionnée.
  */
-import { mkdir, appendFile, readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdir, appendFile, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join, normalize, relative } from 'node:path';
 import { ChunkOffsetMismatchError, type ChunkStorage } from './chunk-storage.js';
 
@@ -34,6 +35,15 @@ export class LocalFsChunkStorage implements ChunkStorage {
 
   async readAll(key: string): Promise<Buffer> {
     return readFile(this.pathFor(key));
+  }
+
+  async delete(key: string): Promise<void> {
+    await rm(this.pathFor(key), { force: true });
+  }
+
+  async *readChunks(key: string, chunkSize: number): AsyncIterable<Buffer> {
+    const stream = createReadStream(this.pathFor(key), { highWaterMark: chunkSize });
+    for await (const chunk of stream) yield chunk as Buffer;
   }
 
   private pathFor(key: string): string {

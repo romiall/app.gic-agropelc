@@ -79,6 +79,7 @@ import { discountCeilingPct } from './sale-pricing.js';
 import { checkLineQuantity, resolveSaleLines, type ResolvedLine } from './sale-lines.js';
 import { planPayments, type PaymentWarning } from './sale-payments.js';
 import { writeAdvancePayments } from './advance-payments.js';
+import { publishPriceMismatchDetected, type PriceMismatchLine } from './price-alert-events.js';
 import {
   confirmOrderPending,
   lockOrder,
@@ -384,18 +385,29 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
     return { ok: true, approvalId };
   }
 
-  /** Insère les lignes (prix convenu figé) ; un prix périmé saisi hors ligne ouvre `PRICE_MISMATCH`. */
+  /**
+   * Insère les lignes (prix convenu figé) ; un prix périmé saisi hors ligne ouvre `PRICE_MISMATCH` (conflit
+   * de synchronisation, et alerte INFO pour le responsable commercial : un événement par appel, P9-07,
+   * AV-445).
+   */
   async function insertOrderLines(
     uow: Uow,
     input: {
       readonly orderId: string;
+      readonly docNumber: string;
       readonly lines: readonly ResolvedLine[];
       readonly approvalId: string | null;
       readonly commandId: string;
       readonly siteId: string;
+      readonly zoneId: string;
+      readonly sellerUserId: string;
+      readonly commercialUserId: string | null;
+      readonly occurredAt: Date;
+      readonly capturedOffline: boolean;
     },
   ): Promise<ReadonlySet<Warning>> {
     const warnings = new Set<Warning>();
+    const mismatches: PriceMismatchLine[] = [];
     for (const line of input.lines) {
       await uow
         .insertInto('sales_sales_order_lines')
@@ -423,6 +435,14 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       if (line.priced.needsApproval) warnings.add('PRICE_OVERRIDE_EXCEEDS_LIMIT');
       if (line.priced.priceMismatch) {
         warnings.add('PRICE_MISMATCH');
+        mismatches.push({
+          lineId: line.id,
+          productId: line.productId,
+          productLabel: line.productName,
+          appliedPriceXaf: line.priced.unitPriceXaf,
+          expectedPriceXaf: line.priced.serverUnitPriceXaf,
+          declaredListPriceXaf: line.priced.listUnitPriceXaf,
+        });
         await recordConflict(uow, {
           id: idGenerator.newId(),
           commandId: input.commandId,
@@ -442,6 +462,19 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         });
       }
     }
+    await publishPriceMismatchDetected(uow, idGenerator, {
+      documentType: 'SALES_ORDER',
+      documentId: input.orderId,
+      docNumber: input.docNumber,
+      siteId: input.siteId,
+      zoneId: input.zoneId,
+      lines: mismatches,
+      sellerUserId: input.sellerUserId,
+      commercialUserId: input.commercialUserId,
+      capturedOffline: input.capturedOffline,
+      occurredAt: input.occurredAt,
+      commandId: input.commandId,
+    });
     return warnings;
   }
 
@@ -539,10 +572,16 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
       .execute();
     const warnings = await insertOrderLines(uow, {
       orderId,
+      docNumber,
       lines: prepared.lines,
       approvalId: approval.approvalId,
       commandId: envelope.command_id,
       siteId: site.id,
+      zoneId: customer.zoneId,
+      sellerUserId: author,
+      commercialUserId,
+      occurredAt: at,
+      capturedOffline: offline,
     });
     return { ok: true as const, docNumber, customer, location, site, origin, warnings };
   }
@@ -1157,10 +1196,16 @@ function buildHandlers(idGenerator: IdGenerator, documentSequences: DocumentSequ
         if (!approval.ok) return approval.outcome;
         for (const warning of await insertOrderLines(uow, {
           orderId,
+          docNumber: order.doc_number,
           lines: added,
           approvalId: approval.approvalId,
           commandId: envelope.command_id,
           siteId: site.id,
+          zoneId: kept.zoneId,
+          sellerUserId: author,
+          commercialUserId: fromBin(order.commercial_user_id),
+          occurredAt: at,
+          capturedOffline: offline,
         })) {
           warnings.add(warning);
         }

@@ -24,6 +24,7 @@
  */
 import {
   adjustmentTreatment,
+  businessDayOf,
   isAllowedCashValidator,
   reevaluationDeltaXaf,
   varianceMovement,
@@ -271,6 +272,75 @@ export interface CashSessionReevaluation {
 }
 
 /**
+ * Événement `CashVarianceDetected` d'un ajustement (phase `ADJUSTMENT`) : la réévaluation d'une session
+ * close (opération tardive) et celle d'une ouverture (opération antérieure, `LATE_BEFORE_OPENING`,
+ * P9-07) publient la même charge utile ; l'alerte `CASH_VARIANCE` de la session se résout à sa validation.
+ */
+async function publishAdjustmentVariance(
+  uow: UnitOfWork,
+  deps: Deps,
+  input: {
+    readonly session: {
+      readonly id: string;
+      readonly cashAccountId: string;
+      readonly siteId: string;
+      readonly openedBy: string;
+      readonly closedBy: string | null;
+      readonly forceClosed: boolean;
+      readonly closingCountedXaf: number | null;
+      readonly openingCountedXaf: number;
+    };
+    readonly cause: string;
+    readonly adjustmentId: string;
+    readonly deltaXaf: number;
+    readonly varianceAfterXaf: number;
+    readonly expectedAfterXaf: number;
+    readonly countedXaf: number;
+    readonly treatment: string;
+    readonly approvalRequestId: string | null;
+    readonly occurredAt: Date;
+    readonly commandId: string | null;
+    /** Date servant à lire le seuil critique (clôture de la session, à défaut le fait déclencheur). */
+    readonly thresholdAt: Date;
+  },
+): Promise<void> {
+  const criticalXaf = await cashSetting(
+    uow,
+    'varianceCriticalXaf',
+    input.session.siteId,
+    input.thresholdAt,
+  );
+  await publishCashSessionEvent(uow, deps, {
+    eventType: 'CashVarianceDetected',
+    sessionId: input.session.id,
+    occurredAt: input.occurredAt,
+    commandId: input.commandId,
+    payload: {
+      session_id: input.session.id,
+      cash_account_id: input.session.cashAccountId,
+      site_id: input.session.siteId,
+      phase: 'ADJUSTMENT',
+      cause: input.cause,
+      adjustment_id: input.adjustmentId,
+      variance_xaf: input.deltaXaf,
+      variance_after_xaf: input.varianceAfterXaf,
+      severity: varianceSeverity(
+        input.deltaXaf,
+        Number.isSafeInteger(criticalXaf) && criticalXaf >= 0 ? criticalXaf : 10_000,
+      ),
+      business_day: businessDayOf(input.occurredAt),
+      expected_xaf: input.expectedAfterXaf,
+      counted_xaf: input.countedXaf,
+      treatment: input.treatment,
+      approval_request_id: input.approvalRequestId,
+      opened_by: input.session.openedBy,
+      closed_by: input.session.closedBy,
+      forced: input.session.forceClosed,
+    },
+  });
+}
+
+/**
  * Réaction à un mouvement tardif d'une caisse de PDV (ADR-032 §6) : si son `occurred_at` tombe dans
  * la fenêtre d'une session close, pose l'ajustement du delta. Appelé par `recordCashMovement` après
  * l'insertion du mouvement déclencheur (compte déjà verrouillé), jamais pour un `SESSION_VARIANCE` ni
@@ -415,37 +485,19 @@ export async function reevaluateClosedSession(
     applied: true,
     details,
   });
-  const criticalXaf = await cashSetting(
-    uow,
-    'varianceCriticalXaf',
-    session.siteId,
-    session.closedAt,
-  );
-  await publishCashSessionEvent(uow, deps, {
-    eventType: 'CashVarianceDetected',
-    sessionId: session.id,
+  await publishAdjustmentVariance(uow, deps, {
+    session,
+    cause: trigger.isReversal ? 'REVERSAL' : 'LATE_OPERATION',
+    adjustmentId,
+    deltaXaf,
+    varianceAfterXaf,
+    expectedAfterXaf,
+    countedXaf: session.closingCountedXaf,
+    treatment,
+    approvalRequestId,
     occurredAt: trigger.occurredAt,
     commandId: trigger.commandId ?? null,
-    payload: {
-      session_id: session.id,
-      cash_account_id: session.cashAccountId,
-      site_id: session.siteId,
-      phase: 'ADJUSTMENT',
-      adjustment_id: adjustmentId,
-      variance_xaf: deltaXaf,
-      variance_after_xaf: varianceAfterXaf,
-      severity: varianceSeverity(
-        deltaXaf,
-        Number.isSafeInteger(criticalXaf) && criticalXaf >= 0 ? criticalXaf : 10_000,
-      ),
-      expected_xaf: expectedAfterXaf,
-      counted_xaf: session.closingCountedXaf,
-      treatment,
-      approval_request_id: approvalRequestId,
-      opened_by: session.openedBy,
-      closed_by: session.closedBy,
-      forced: session.forceClosed,
-    },
+    thresholdAt: session.closedAt,
   });
   return { sessionId: session.id, adjustmentId, deltaXaf, treatment, approvalRequestId };
 }
@@ -622,6 +674,21 @@ export async function reevaluateNextOpening(
       deviceId: trigger.createdDeviceId ?? null,
       authorUserId: trigger.createdBy,
     },
+  });
+  // P9-07 : constat de l'écart d'ouverture corrigé, jusqu'ici silencieux ; l'écart ajouté est le delta.
+  await publishAdjustmentVariance(uow, deps, {
+    session,
+    cause: OPENING_ADJUSTMENT_CAUSE,
+    adjustmentId,
+    deltaXaf,
+    varianceAfterXaf,
+    expectedAfterXaf,
+    countedXaf: session.openingCountedXaf,
+    treatment,
+    approvalRequestId,
+    occurredAt: trigger.occurredAt,
+    commandId: trigger.commandId ?? null,
+    thresholdAt: session.openedAt,
   });
   return { sessionId: session.id, adjustmentId, deltaXaf, treatment, approvalRequestId };
 }
@@ -903,6 +970,36 @@ export async function validateCashSessionAdjustment(
       reason,
     },
   });
+  // P9-07 : l'alerte `CASH_VARIANCE` est portée par la session et se ferme à `CashSessionValidated` ; si
+  // d'autres ajustements de la session attendent encore leur validation, ils sont signalés de nouveau (un
+  // seul écart restant, cumulé), sans quoi ils resteraient en attente sans aucune alerte ouverte.
+  const remaining = await uow
+    .selectFrom('finance_cash_session_adjustments')
+    .select(['id', 'delta_xaf', 'variance_after_xaf', 'expected_after_xaf', 'approval_request_id'])
+    .where('session_id', '=', toBin(session.id))
+    .where('treatment', '=', 'OWN_APPROVAL')
+    .where('status', '=', 'PENDING')
+    .where('id', '<>', toBin(adjustment.id))
+    .orderBy('applied_at', 'desc')
+    .orderBy('id', 'desc')
+    .execute();
+  if (remaining.length > 0) {
+    const latest = remaining[0]!;
+    await publishAdjustmentVariance(uow, deps, {
+      session,
+      cause: 'REMAINING_ADJUSTMENTS',
+      adjustmentId: fromBin(latest.id),
+      deltaXaf: remaining.reduce((sum, row) => sum + Number(row.delta_xaf), 0),
+      varianceAfterXaf: Number(latest.variance_after_xaf),
+      expectedAfterXaf: Number(latest.expected_after_xaf),
+      countedXaf: session.closingCountedXaf ?? session.openingCountedXaf,
+      treatment: 'OWN_APPROVAL',
+      approvalRequestId: fromBinOrNull(latest.approval_request_id),
+      occurredAt: input.at,
+      commandId: input.commandId,
+      thresholdAt: session.closedAt ?? input.at,
+    });
+  }
   return null;
 }
 

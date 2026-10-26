@@ -27,7 +27,8 @@ import {
   EVENT_CONSUMER_REGISTRY,
   type EventConsumerRegistry,
 } from './event-consumer-registry.provider.js';
-import { toDomainEvent } from './domain-event.js';
+import { toDomainEvent, type DomainEvent } from './domain-event.js';
+import { toBin } from '../kysely/uuid-columns.js';
 import { settledSequenceBound } from '../kysely/settled-sequence.js';
 
 export interface EventConsumerRunOptions {
@@ -114,6 +115,10 @@ export class EventConsumerRunner {
       } else {
         failed++;
         batchError = errorMessageOf(lastError);
+        // `last_error` est réécrit par le premier événement traité ensuite : le saut est consigné
+        // à part (ajout seul), avant d'avancer la position (ADR-071 §12, AV-412). Un rejeu avant la
+        // position ne le double pas (unicité consommateur × position).
+        await this.recordFailure(consumerName, event, batchError, maxAttempts);
       }
       await this.saveOffset(consumerName, lastSeq, batchError);
     }
@@ -123,6 +128,32 @@ export class EventConsumerRunner {
     }
 
     return { processed, failed, lastSeq };
+  }
+
+  private async recordFailure(
+    consumerName: string,
+    event: DomainEvent,
+    message: string,
+    attempts: number,
+  ): Promise<void> {
+    try {
+      await this.db
+        .insertInto('platform_event_consumer_failures')
+        .values({
+          consumer_name: consumerName,
+          event_seq: event.seq,
+          event_id: toBin(event.eventId),
+          event_type: event.eventType.slice(0, 80),
+          error_message: message.slice(0, 1000),
+          attempts,
+        })
+        .execute();
+    } catch (error) {
+      // Un rejeu avant l'avancée de la position retrouve la ligne : seule l'unicité (consommateur × position) est
+      // ignorée. Toute autre erreur lève, si bien que la position n'avance pas sur un saut sans trace (un
+      // `INSERT IGNORE` aurait aussi avalé une valeur refusée). La table est en ajout seul : pas d'UPDATE accordé.
+      if (!isDuplicateKey(error)) throw error;
+    }
   }
 
   private async saveOffset(
@@ -136,6 +167,11 @@ export class EventConsumerRunner {
       .onDuplicateKeyUpdate({ last_seq: lastSeq, last_error: lastError })
       .execute();
   }
+}
+
+function isDuplicateKey(error: unknown): boolean {
+  const { code, errno } = (error ?? {}) as { code?: string; errno?: number };
+  return code === 'ER_DUP_ENTRY' || errno === 1062;
 }
 
 function errorMessageOf(error: unknown): string {

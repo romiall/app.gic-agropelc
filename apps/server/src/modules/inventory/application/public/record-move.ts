@@ -34,7 +34,7 @@
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { DB } from '../../../../platform/kysely/database.js';
-import type { IdGenerator } from '@gic/domain';
+import type { Clock, IdGenerator } from '@gic/domain';
 import {
   costPerHeadXaf,
   lineAmountXaf,
@@ -78,6 +78,11 @@ import {
   type QuotaConsumption,
   type QuotaRestoration,
 } from '../allocation-consumption.js';
+import {
+  publishStockLevelTransitions,
+  publishStockNegativeEvent,
+  type StockEndpointDelta,
+} from '../inventory-alert-events.js';
 
 const LOT_KEY_NULL = Buffer.alloc(16);
 
@@ -267,6 +272,11 @@ export interface RecordedMove {
 
 export interface RecordMoveDeps {
   readonly idGenerator: IdGenerator;
+  /**
+   * Horloge de détection des alertes de stock (P9-08, AV-457) : à défaut, celle du serveur. Un fait saisi
+   * hors ligne garde sa date dans le registre ; l'alerte qu'il déclenche est détectée à l'application.
+   */
+  readonly clock?: Clock;
 }
 
 interface LocationInfo {
@@ -1111,8 +1121,87 @@ export async function lockPhysicalStockCouples(
  * Point d'entrée principal : résout automatiquement le lot par FIFO (BR-STK-050) quand
  * `lotId` est omis et que la source est un emplacement physique (une sortie réelle) — peut
  * alors produire **plusieurs** mouvements (un par lot traversé). Sinon, un seul mouvement.
+ *
+ * P9-08 : une fois le mouvement écrit, les extrémités physiques dont le seuil change d'état et le solde
+ * physique devenu négatif publient leurs événements de détection (AV-405), dans la même transaction.
  */
 export async function recordStockMove(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+): Promise<readonly RecordedMove[]> {
+  const results = await writeStockMove(uow, deps, input);
+  await publishMoveAlerts(uow, deps, input, results);
+  return results;
+}
+
+/**
+ * Le mouvement dont la ligne de lot source est la plus négative (`fromBalanceAfter` < 0) ; `undefined` si
+ * aucune ligne n'est négative. À égalité, le premier.
+ */
+export function lowestNegativeMove<T extends Pick<RecordedMove, 'fromBalanceAfter'>>(
+  moves: readonly T[],
+): T | undefined {
+  let lowest: T | undefined;
+  for (const move of moves) {
+    if (
+      move.fromBalanceAfter < 0 &&
+      (lowest === undefined || move.fromBalanceAfter < lowest.fromBalanceAfter)
+    ) {
+      lowest = move;
+    }
+  }
+  return lowest;
+}
+
+const isPhysicalSide = (sides: readonly string[]): boolean =>
+  sides.length === 1 && sides[0] === 'PHYSICAL';
+
+/**
+ * Événements d'alerte d'un mouvement écrit : transitions `STOCK_LOW` / `STOCK_OUT` des extrémités
+ * physiques et `STOCK_NEGATIVE` d'une sortie physique qui laisse un solde négatif, **quel que soit** le
+ * mode du conflit de synchronisation (la vente directe ouvre le sien par ligne).
+ */
+async function publishMoveAlerts(
+  uow: Transaction<DB>,
+  deps: RecordMoveDeps,
+  input: RecordMoveInput,
+  results: readonly RecordedMove[],
+): Promise<void> {
+  if (results.length === 0) return;
+  const endpoints = MOVE_TYPE_ENDPOINTS[input.moveType];
+  const fromPhysical = isPhysicalSide(endpoints.from);
+  const toPhysical = isPhysicalSide(endpoints.to);
+  if (!fromPhysical && !toPhysical) return;
+  const quantity = results.reduce((sum, move) => sum + move.quantity, 0);
+  const deltas: StockEndpointDelta[] = [];
+  if (fromPhysical) deltas.push({ locationId: input.fromLocationId, quantity: -quantity });
+  if (toPhysical) deltas.push({ locationId: input.toLocationId, quantity });
+  await publishStockLevelTransitions(uow, deps, {
+    productId: input.productId,
+    endpoints: deltas,
+    occurredAt: input.occurredAt,
+    ...(input.commandId !== undefined ? { commandId: input.commandId } : {}),
+  });
+  if (!fromPhysical) return;
+  // Même prédicat qu'INV-STK-05 : une ligne de lot négative suffit, le disponible du couple peut rester positif.
+  const lowest = lowestNegativeMove(results);
+  if (lowest === undefined) return;
+  await publishStockNegativeEvent(uow, deps, {
+    locationId: input.fromLocationId,
+    productId: input.productId,
+    balance: lowest.fromBalanceAfter,
+    lotId: lowest.lotId,
+    moveType: input.moveType,
+    sourceDocType: input.sourceDocType,
+    sourceDocId: input.sourceDocId,
+    capturedOffline: input.capturedOffline ?? false,
+    factAt: input.occurredAt,
+    ...(input.commandId !== undefined ? { commandId: input.commandId } : {}),
+  });
+}
+
+async function writeStockMove(
   uow: Transaction<DB>,
   deps: RecordMoveDeps,
   input: RecordMoveInput,

@@ -40,7 +40,7 @@ Sources : CM §6–§9, §11, §34.2, §34.3, §50 ; PM §12.
 | UC-CRM-06 | Marquer un prospect perdu ; le rouvrir | `crm.customer.mark_lost`, `crm.customer.reopen` | Titulaire, RESP_COMMERCIAL | **Oui** |
 | UC-CRM-07 | Conversion automatique en client à la première vente | interne (réaction à `SaleConfirmed`) | `system` | n/a (serveur) |
 | UC-CRM-08 | Réaffecter un compte à un autre commercial | `crm.customer.reassign` | RESP_COMMERCIAL, DIRECTION | Non |
-| UC-CRM-09 | Fusionner deux comptes en doublon | `crm.customer.merge` | RESP_COMMERCIAL, ADMIN | Non |
+| UC-CRM-09 | Fusionner deux comptes en doublon | `crm.customer.merge` (ferme l'alerte `DUPLICATE_SUSPECTED` du compte, AV-469) | RESP_COMMERCIAL, ADMIN | Non |
 | UC-CRM-10 | Définir des objectifs | `crm.target.set`, `crm.target.cancel` | RESP_COMMERCIAL, DIRECTION | Non |
 | UC-CRM-11 | Consulter son portefeuille et une fiche client | requête | Commerciaux | **Oui** (périmètre) |
 | UC-CRM-12 | Consulter ses objectifs et performances | requête | Commerciaux | Partiel (instantané + données locales) |

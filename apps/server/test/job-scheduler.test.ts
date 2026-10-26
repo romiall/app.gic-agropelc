@@ -26,6 +26,28 @@ import {
   FinanceRecurringJobs,
   FINANCE_RECURRING_JOBS,
 } from '../src/modules/finance/application/jobs/finance-recurring-jobs.js';
+import {
+  SalesRecurringJobs,
+  SALES_RECURRING_JOBS,
+} from '../src/modules/sales/application/jobs/sales-recurring-jobs.js';
+import {
+  ProductionRecurringJobs,
+  PRODUCTION_RECURRING_JOBS,
+} from '../src/modules/production/application/jobs/production-recurring-jobs.js';
+import {
+  ProcurementRecurringJobs,
+  PROCUREMENT_RECURRING_JOBS,
+} from '../src/modules/procurement/application/jobs/procurement-recurring-jobs.js';
+import {
+  ApprovalsRecurringJobs,
+  APPROVALS_RECURRING_JOBS,
+} from '../src/modules/approvals/application/jobs/approvals-recurring-jobs.js';
+import { AUDIT_RECURRING_JOBS, AuditRecurringJobs } from '../src/audit/audit-recurring-jobs.js';
+import { SYNC_RECURRING_JOBS, SyncRecurringJobs } from '../src/sync/jobs/sync-recurring-jobs.js';
+import {
+  COMMUNICATION_RECURRING_JOBS,
+  CommunicationRecurringJobs,
+} from '../src/modules/communication/application/jobs/communication-recurring-jobs.js';
 import { toBin } from '../src/platform/kysely/uuid-columns.js';
 import { closeTestDb, db, freshUuid } from './helpers.js';
 
@@ -267,12 +289,114 @@ describe('ordonnanceur des tâches récurrentes (P5-16)', () => {
       kind: 'DAILY',
       localTime: '02:30',
     });
-    // Un même processus inscrit les deux modules sans collision de type de tâche.
+    // P9-07 : encaisse élevée (horaire : une remise ferme l'alerte dans l'heure) et justificatif de
+    // dépense manquant (quotidien à 06:15, heure de Douala).
+    expect(finance.get('finance.cash_holdings.high_check')?.schedule).toEqual({
+      kind: 'INTERVAL',
+      intervalSeconds: 3600,
+    });
+    expect(finance.get('finance.expenses.attachment_missing_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '06:15',
+    });
+    // P9-07 : récurrences de `sales` (créances 07:00, ventes non livrées 07:30, commerciaux inactifs 08:00).
+    const sales = new RecurringJobRegistry();
+    new SalesRecurringJobs(sales).onModuleInit();
+    expect(sales.list()).toEqual(SALES_RECURRING_JOBS);
+    expect(sales.get('sales.receivables.overdue_daily')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:00',
+    });
+    expect(sales.get('sales.orders.undelivered_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:30',
+    });
+    expect(sales.get('sales.commercial.inactivity_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '08:00',
+    });
+    // P9-09 : récurrences de `production` (coût standard manquant 07:45, saisie du jour manquante 10:00).
+    const production = new RecurringJobRegistry();
+    new ProductionRecurringJobs(production).onModuleInit();
+    expect(production.list()).toEqual(PRODUCTION_RECURRING_JOBS);
+    expect(production.get('production.products.standard_cost_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:45',
+    });
+    expect(production.get('production.lots.daily_entry_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '10:00',
+    });
+    // P9-09 : récurrences de `procurement` (photo de réception 06:15, réception incomplète 07:15) et
+    // d'`approvals` (validations en attente, toutes les heures).
+    const procurement = new RecurringJobRegistry();
+    new ProcurementRecurringJobs(procurement).onModuleInit();
+    expect(procurement.list()).toEqual(PROCUREMENT_RECURRING_JOBS);
+    expect(procurement.get('procurement.receipts.attachment_missing_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '06:15',
+    });
+    expect(procurement.get('procurement.orders.receipt_incomplete_check')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '07:15',
+    });
+    const approvals = new RecurringJobRegistry();
+    new ApprovalsRecurringJobs(approvals).onModuleInit();
+    expect(approvals.list()).toEqual(APPROVALS_RECURRING_JOBS);
+    expect(approvals.get('approvals.requests.pending_long_check')?.schedule).toEqual({
+      kind: 'INTERVAL',
+      intervalSeconds: 3600,
+    });
+    // P9-10 : vérification quotidienne de la chaîne d'audit, à 03:00 (AV-470).
+    const audit = new RecurringJobRegistry();
+    new AuditRecurringJobs(audit).onModuleInit();
+    expect(audit.list()).toEqual(AUDIT_RECURRING_JOBS);
+    expect(audit.get('audit.chain.verify_daily')?.schedule).toEqual({
+      kind: 'DAILY',
+      localTime: '03:00',
+    });
+    // P9-10 : alertes de synchronisation, toutes les heures (AV-471 à AV-474).
+    const sync = new RecurringJobRegistry();
+    new SyncRecurringJobs(sync).onModuleInit();
+    expect(sync.list()).toEqual(SYNC_RECURRING_JOBS);
+    expect(sync.list().map((job) => job.jobType)).toEqual([
+      'sync.errors.alert_check',
+      'sync.devices.stale_check',
+      'sync.devices.clock_skew_check',
+      'sync.devices.seq_gap_check',
+    ]);
+    for (const job of sync.list()) {
+      expect(job.schedule).toEqual({ kind: 'INTERVAL', intervalSeconds: 3600 });
+    }
+    // P9-05 et P9-10 : escalade (10 min), envoi des push (1 min), consommateurs en échec (5 min).
+    const communication = new RecurringJobRegistry();
+    new CommunicationRecurringJobs(communication).onModuleInit();
+    expect(communication.list()).toEqual(COMMUNICATION_RECURRING_JOBS);
+    expect(communication.get('communication.consumers.failure_check')?.schedule).toEqual({
+      kind: 'INTERVAL',
+      intervalSeconds: 300,
+    });
+    // Un même processus inscrit les modules sans collision de type de tâche.
     const both = new RecurringJobRegistry();
     new InventoryRecurringJobs(both).onModuleInit();
     new FinanceRecurringJobs(both).onModuleInit();
+    new SalesRecurringJobs(both).onModuleInit();
+    new ProductionRecurringJobs(both).onModuleInit();
+    new ProcurementRecurringJobs(both).onModuleInit();
+    new ApprovalsRecurringJobs(both).onModuleInit();
+    new AuditRecurringJobs(both).onModuleInit();
+    new SyncRecurringJobs(both).onModuleInit();
+    new CommunicationRecurringJobs(both).onModuleInit();
     expect(both.list()).toHaveLength(
-      INVENTORY_RECURRING_JOBS.length + FINANCE_RECURRING_JOBS.length,
+      INVENTORY_RECURRING_JOBS.length +
+        FINANCE_RECURRING_JOBS.length +
+        SALES_RECURRING_JOBS.length +
+        PRODUCTION_RECURRING_JOBS.length +
+        PROCUREMENT_RECURRING_JOBS.length +
+        APPROVALS_RECURRING_JOBS.length +
+        AUDIT_RECURRING_JOBS.length +
+        SYNC_RECURRING_JOBS.length +
+        COMMUNICATION_RECURRING_JOBS.length,
     );
   });
 });

@@ -47,7 +47,7 @@
 | Responsabilité | Journal d'audit chaîné (D12) |
 | Tables | `audit.audit_log` |
 | API | `audit.record(uow, entry)`, `audit.recordDenied(entry)` (transaction séparée) ; requête `GET /audit` |
-| Événements | `AuditChainBroken` |
+| Événements | `AuditChainBroken` (P9-10 : publié par `audit.chain.verify_daily`, 03:00 Douala, AV-470) |
 | Autorisées | `platform` |
 | Interdites | Tout module métier (il est appelé, il n'appelle pas) |
 
@@ -80,7 +80,8 @@
 | Responsabilité | Politiques de contrôle, demandes de validation, file de validation, exécution des décisions via les gestionnaires enregistrés |
 | Tables | `control_policies`, `approval_requests` |
 | API | `/approvals/inbox`, commandes `approvals.*` ; interne : `approvals.evaluatePolicy(op, context, at)`, `approvals.request(uow, …)`, `approvals.registerHandler(operationType, handler)` ; `approvals.decideApprovalRequest(uow, registry, …)` (P5-13 : cœur des décisions, appelable par un module propriétaire qui offre une commande en façade, ex. `finance.cash_session.validate`) |
-| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected`, `ApprovalCancelled`, `ControlPolicyChanged` |
+| Événements | `ApprovalRequested`, `ApprovalGranted`, `ApprovalRejected` (publiés depuis P9-11 par `requestApproval` et `decideApprovalRequest`, AV-480), `ApprovalCancelled`, `ControlPolicyChanged` (non publiés à ce jour), `ApprovalPendingLong` (P9-09) |
+| Tâches planifiées | P9-09 : `approvals.requests.pending_long_check` (horaire ; `escalated_at` posé une fois), dans `ApprovalsJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `attachments` (présence des pièces requises) |
 | Interdites | Modules métier (ils s'enregistrent auprès d'`approvals`, pas l'inverse) |
 
@@ -102,7 +103,7 @@
 | Responsabilité | Produits, unités, conditionnements, catégories, motifs, coûts standard |
 | Tables | `product_categories`, `units`, `products`, `product_units`, `reason_codes`, `product_standard_costs`, `customer_categories`, `sales_channels` (référentiels commerciaux partagés) |
 | API | `/products`, `/units`, `/reason-codes` ; interne : `catalog.product(id)`, `catalog.toBase(product, qty, unit)`, `catalog.standardCost(product, at)` |
-| Événements | `Product*`, `ReasonCodeChanged`, `ProductStandardCostChanged` |
+| Événements | `Product*`, `ReasonCodeChanged`, `ProductStandardCostChanged` (non publié), `StandardCostSet` (P9-09 : un par version de coût, résolution immédiate de `STANDARD_COST_MISSING`, AV-463) |
 | Autorisées | `platform`, `audit`, `identity` |
 | Interdites | Modules métier au-dessus |
 
@@ -113,7 +114,7 @@
 | Responsabilité | Pointages, sessions de travail, dérogations |
 | Tables | `geo_checkins`, `work_sessions` |
 | API | `/work-sessions` ; commandes `fieldwork.*` ; interne : `fieldwork.openSessionAt(user, at)` |
-| Événements | `CheckIn*`, `WorkSession*` |
+| Événements | `CheckIn*`, `WorkSession*`, `CheckInSuspicious` (P9-10 : sur `fieldwork.checkin.record`, AV-468) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `approvals` |
 | Interdites | `crm`, `sales` et au-dessus |
 
@@ -124,7 +125,7 @@
 | Responsabilité | Comptes clients, portefeuille, pipeline, visites, interactions, objectifs, référentiels commerciaux |
 | Tables | `customers`, `customer_assignments`, `customer_stage_history`, `pipeline_steps`, `lead_sources`, `visits`, `interactions`, `sales_targets` |
 | API | `/customers`, `/visits`, `/interactions`, `/targets` ; interne : `crm.customer(id)`, `crm.ownerAt(customer, at)`, `crm.creditStatus(customer)`, `crm.markConverted(uow, customer, sale)`, `crm.recordLastSale(uow, customer, at)`, `crm.createOrLinkFromExternal(uow, …)` |
-| Événements | `Prospect*`, `Customer*`, `Visit*`, `InteractionRecorded`, `SalesTargetSet` |
+| Événements | `Prospect*`, `Customer*`, `Visit*`, `InteractionRecorded`, `SalesTargetSet`, `CustomerDuplicateSuspected` et `CustomerDuplicateResolved` (P9-10 : sur `crm.customer.create` et `crm.customer.merge`, AV-469) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `fieldwork`, `approvals`, `attachments` |
 | Interdites | `sales`, `inventory`, `finance`, `pricing` (le CRM ne connaît pas les ventes : la conversion est déclenchée par l'appel de `sales`) |
 
@@ -145,7 +146,7 @@
 |---|---|
 | Responsabilité | Registre des mouvements, soldes, lots, transferts, allocations et réservations, pertes, consommations, inventaires, seuils, valorisation (CMUP, coût de lot), registre de coûts |
 | Tables | `stock_lots`, `stock_moves`, `stock_balances`, `stock_balance_snapshots`, `stock_transfers`, `stock_transfer_lines`, `transfer_pair_locks` (P5-16), `stock_allocations`, `stock_allocation_entries`, `loss_declarations`, `consumptions`, `inventory_counts`, `inventory_count_lines`, `stock_thresholds`, `product_valuations`, `cost_entries` |
-| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) ; P5-16 : `pairTransit` (transit net d'une paire de transfert, par produit), `transferTransit` (transit d'un document), `verifyTransferTransit` (INV-STK-08, relue par `inventory.ledger.reconcile_daily`). **Livré en P5-17** : lectures publiques des quotas `listAllocations`, `findAllocation`, `listAllocationEntries`, `activeAllocationTotals` (`allocation-query.ts`), exposées par `GET /allocations(/{id})` (`apps/server/src/inventory-api/`, droit `inventory.stock.read`) ; `isAllocationOvercommitted`, `hasNegativeStock` (`stock-conflict-conditions.ts`), consultées avant la clôture manuelle d'un conflit (AV-190). Tâches récurrentes inscrites à l'ordonnanceur : `inventory.transfers.unmatched_sweep` (horaire), `inventory.allocations.expiry_daily` (00:05), `inventory.ledger.reconcile_daily` (02:00), heures de Douala ; les tâches quotidiennes des autres modules (audit, finance, ventes, terrain) s'inscrivent de la même façon, une ligne chacune, dans leur module |
+| API | Endpoints §4.6 de l'architecture API ; interne : `recordMoves`, `availability`, `consumeAllocation`, `declareLoss`, `recordConsumption`, `createLot`, `lotHeadcount`, `unitCost`, `recordCost`, `reverseDocument` (contre-passation d'un document), `onLateMove` (rapprochements) ; P5-16 : `pairTransit` (transit net d'une paire de transfert, par produit), `transferTransit` (transit d'un document), `verifyTransferTransit` (INV-STK-08, relue par `inventory.ledger.reconcile_daily`). **Livré en P5-17** : lectures publiques des quotas `listAllocations`, `findAllocation`, `listAllocationEntries`, `activeAllocationTotals` (`allocation-query.ts`), exposées par `GET /allocations(/{id})` (`apps/server/src/inventory-api/`, droit `inventory.stock.read`) ; `isAllocationOvercommitted`, `hasNegativeStock` (`stock-conflict-conditions.ts`), consultées avant la clôture manuelle d'un conflit (AV-190). Tâches récurrentes inscrites à l'ordonnanceur : `inventory.transfers.unmatched_sweep` (horaire), `inventory.allocations.expiry_daily` (00:05), `inventory.ledger.reconcile_daily` (02:00) ; P9-08 : `inventory.alerts.stock_threshold_sweep` (horaire), `inventory.alerts.lot_expiring_daily` (06:00), `inventory.alerts.transfer_not_received_check` (06:30), et, dans `sales`, `sales.losses.sales_share_check` (06:45), heures de Douala ; les tâches quotidiennes des autres modules (audit, finance, ventes, terrain) s'inscrivent de la même façon, une ligne chacune, dans leur module |
 | Événements | `StockTransfer*`, `StockAllocation*`, `AllocationRevocationPending`, `AllocationExpired`, `StockLoss*`, `ConsumptionRecorded`, `InventoryCount*`, `InventoryAdjusted`, `StockThresholdBreached`, `StockNegativeDetected`, `ProductValuationChanged`, `CostEntryRecorded` |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments` |
 | Interdites | `sales`, `procurement`, `production`, `finance`, `crm` (ils l'appellent ; il ne les appelle jamais) |
@@ -157,7 +158,8 @@
 | Responsabilité | Fournisseurs, demandes d'achat, bons de commande, réceptions |
 | Tables | `suppliers`, `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `purchase_order_lines`, `goods_receipts`, `goods_receipt_lines` |
 | API | §4.8 ; interne : `findSupplier(id)` (P8-05), `lockOrderForInvoicing`, `applyInvoicedQuantities`, `receiptLinesForInvoicing` (facturation par `finance`, ADR-043 §3, P8-07), `purchaseOrderMatching`, `procurement.receiptForPlacement(receipt)` (mise en place directe : réception et entrée de lot dans le même lot de commandes, AV-112) |
-| Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived`, `GoodsReceiptQuarantined`, `GoodsReceiptCancelled`, `ReceiptIncompleteDetected` |
+| Événements | `Supplier*`, `PurchaseRequest*`, `PurchaseOrder*`, `GoodsReceived` (non publié), `GoodsReceiptQuarantined`, `GoodsReceiptQuarantineDecided`, `GoodsReceiptCancelled` (non publié), `ReceiptIncompleteDetected`, `ReceiptIncompleteCleared`, `AttachmentMissingDetected` (réceptions) — P9-09 |
+| Tâches planifiées | P9-09 : `procurement.receipts.attachment_missing_check` (06:15) et `procurement.orders.receipt_incomplete_check` (07:15), dans `ProcurementJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory` |
 | Interdites | `finance`, `production`, `sales` |
 
@@ -168,7 +170,8 @@
 | Responsabilité | Lots, entrées, saisies quotidiennes, collectes d'œufs, incubation, abattage, répartition des frais généraux (ADR-026) |
 | Tables | `production_lots`, `lot_entries`, `lot_weighings`, `lot_observations`, `egg_collections` (+ lignes), `incubation_batches`, `incubation_events`, `slaughter_batches` (+ produits), `overhead_allocations` (+ lignes) |
 | API | §4.7 ; interne : `production.lot(id)`, `production.lotStatus(id)` |
-| Événements | `ProductionLot*`, `LotEntryRecorded`, `MortalityRecorded`, `LotInputConsumed`, `Lot*Recorded`, `EggCollection*`, `Incubation*`, `Candling*`, `Hatch*`, `ProductionRecorded`, `LotStatusChanged`, `HighMortalityDetected` |
+| Événements | `ProductionLot*`, `LotEntryRecorded`, `MortalityRecorded` (non publié), `LotInputConsumed`, `Lot*Recorded`, `EggCollection*`, `Incubation*`, `Candling*`, `Hatch*`, `ProductionRecorded`, `LotStatusChanged`, `HighMortalityDetected` (P9-09 : sur `production.mortality.record`, agrégat lot × jour), `DailyEntryMissing`, `StandardCostMissing` (passes planifiées) |
+| Tâches planifiées | P9-09 : `production.products.standard_cost_check` (07:45), `production.lots.daily_entry_check` (10:00), dans `ProductionJobsModule` (importé aussi par le worker) |
 | Autorisées | `platform`, `audit`, `identity`, `organization`, `catalog`, `approvals`, `attachments`, `inventory`, `procurement` |
 | Interdites | `sales`, `finance`, `crm` |
 
@@ -201,7 +204,7 @@
 | Responsabilité | Règles d'alerte, alertes, notifications, push, notes de direction |
 | Tables | `alert_rules`, `alerts`, `notifications`, `push_subscriptions`, `internal_notes`, `note_audiences`, `note_acknowledgements` |
 | API | `/alerts`, `/notifications`, `/notes`. **Aucune API interne appelée par les modules métier** : les alertes naissent des gestionnaires d'événements de `communication` (et de ses tâches planifiées) |
-| Événements | `Alert*`, `InternalNote*` |
+| Événements | `Alert*`, `InternalNote*`, `ConsumerFailureDetected` (P9-10 : passe de 5 minutes, AV-475) |
 | Autorisées | `platform`, `audit`, `identity`, `organization` ; **consomme** les événements de tous les modules |
 | Interdites | Appels synchrones vers les modules métier (seulement de la lecture de résumé par événement) |
 
@@ -212,7 +215,7 @@
 | Responsabilité | Inbox des commandes, répartition vers les gestionnaires, flux de changements, chargement initial, conflits, supervision des appareils |
 | Tables | `command_inbox`, `sync_conflicts`, `change_feed`, `device_sync_state` |
 | API | `/sync/*`, `/commands` ; interne : `changeFeed.append(uow, …)` (utilisé par tous les modules), `conflicts.open(uow, …)`. **Livré en P5-17** : lectures du noyau (`apps/server/src/platform/sync/conflicts.ts`) `listConflicts`, `findConflict`, `closeConflict`, `CONFLICT_STATUSES`, `CONFLICT_RESOLUTIONS` ; transport `apps/server/src/sync/` : `GET /sync/conflicts(/{id})` (`conflicts-read.controller.ts`), visibilité par rôle propriétaire et portée (`conflict-access.ts`, AV-191), commandes `sync.conflict.resolve` et `.dismiss` enregistrées par `SyncConflictCommandsRegistrar` (`conflict-commands.ts`, AV-190) |
-| Événements | `CommandRejected`, `SyncConflict*` (`SyncConflictResolved` produit depuis P5-17, `SyncConflictDetected` pas encore), `DeviceSequenceGapDetected`, `ClockSkewDetected`, `DeviceSyncStale` |
+| Événements | `CommandRejected` (non publié), `SyncConflict*` (`SyncConflictResolved` produit depuis P5-17, `SyncConflictDetected` pas encore), `SyncErrorDetected`, `DeviceSequenceGapDetected`, `ClockSkewDetected`, `DeviceSyncStale` (P9-10 : passes horaires de la couche transport, `SyncJobsModule`, AV-471 à AV-474) |
 | Autorisées | `platform`, `audit`, `identity` ; **registre** des gestionnaires de commandes (inversion : les modules s'enregistrent) |
 | Interdites | Logique métier (aucune règle de domaine dans `sync`). Exception de transport (P5-17) : `apps/server/src/sync/` (et non le noyau `platform/sync/`) compose les API publiques d'`identity` (portée, `roleCodes`) et d'`inventory` (`findStockLocation`, `isAllocationOvercommitted`, `hasNegativeStock`) et le catalogue des rôles (`home-api/role-catalog.ts`) pour décider de la visibilité et de la clôture d'un conflit (AV-190 à AV-192) ; aucune table d'un autre module n'y est lue ni écrite |
 

@@ -28,6 +28,7 @@ import {
   type RecordMoveInput,
 } from '../src/modules/inventory/application/public/index.js';
 import { fromBin, fromBinOrNull, toBin } from '../src/platform/kysely/uuid-columns.js';
+import { rolledBack } from './communication-test-kit.js';
 import {
   assignTestRole,
   closeTestDb,
@@ -533,7 +534,7 @@ describe('invariants du stock (P2-07)', () => {
     });
 
     const jobs = new JobHandlerRegistry();
-    new LedgerReconciliationJob(jobs).onModuleInit();
+    new LedgerReconciliationJob(clock, idGenerator, jobs).onModuleInit();
     const reconcile = jobs.resolve(LEDGER_RECONCILIATION_JOB_TYPE)!;
     // Portée limitée au produit du test : la base de test est partagée (et, en exécution
     // parallèle, écrite par d'autres fichiers au même moment) — seul ce produit est altéré.
@@ -557,10 +558,35 @@ describe('invariants du stock (P2-07)', () => {
         { locationId: storeA, productId, lotId: null, projectedQty: 13, ledgerQty: 8 },
       ]);
       expect(verification.conservationBreaches).toEqual([{ productId, totalQty: 5 }]);
-      // Le job, lui, vérifie toute la base : il voit au moins cette altération.
-      await expect(db.transaction().execute((trx) => reconcile(trx, {}))).rejects.toThrow(
-        /LEDGER_MISMATCH/,
+      // Le job, lui, vérifie toute la base : il voit au moins cette altération, la signale par un
+      // événement `LedgerMismatchDetected` du site (P9-08, AV-459) et se termine en succès. Transaction
+      // annulée : les événements sont immuables, la base d'essai est partagée.
+      const siteA = fromBin(
+        (
+          await db
+            .selectFrom('organization_locations')
+            .select('site_id')
+            .where('id', '=', toBin(storeA))
+            .executeTakeFirstOrThrow()
+        ).site_id!,
       );
+      const detected = await rolledBack(async (uow) => {
+        await reconcile(uow, {});
+        return uow
+          .selectFrom('platform_domain_events')
+          .select(['payload'])
+          .where('event_type', '=', 'LedgerMismatchDetected')
+          .orderBy('seq', 'desc')
+          .limit(200)
+          .execute();
+      });
+      const ofSiteA = detected.find(
+        (row) => (row.payload as { site_id: string | null }).site_id === siteA,
+      );
+      expect(ofSiteA, 'événement du site de storeA').toBeDefined();
+      expect(
+        (ofSiteA!.payload as { sample: string[] }).sample.some((line) => line.includes(productId)),
+      ).toBe(true);
     } finally {
       // Réparation garantie, même si une assertion échoue : aucune altération ne reste en base.
       const corrected = await db.transaction().execute((trx) => rebuildStockBalances(trx, scope));
@@ -569,7 +595,22 @@ describe('invariants du stock (P2-07)', () => {
 
     expect(await balanceOf(productId, storeA)).toBe(8);
     expect((await verify()).ok).toBe(true);
-    await db.transaction().execute((trx) => reconcile(trx, {}));
+    // Après réparation, la tâche ne signale plus ce produit (autres écarts éventuels de la base : ignorés).
+    const afterRepair = await rolledBack(async (uow) => {
+      await reconcile(uow, {});
+      return uow
+        .selectFrom('platform_domain_events')
+        .select(['payload'])
+        .where('event_type', '=', 'LedgerMismatchDetected')
+        .orderBy('seq', 'desc')
+        .limit(200)
+        .execute();
+    });
+    expect(
+      afterRepair.some((row) =>
+        (row.payload as { sample: string[] }).sample.some((line) => line.includes(productId)),
+      ),
+    ).toBe(false);
   });
 
   it('INV-STK-17 / INV-STK-18 (ADR-029) : aucune origine dépassée, aucun solde « à livrer » négatif, aucun inverse de vente sur toute la base', async () => {

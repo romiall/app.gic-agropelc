@@ -10,12 +10,17 @@
  * (job-runner.ts, event-consumer-runner.ts), donc aucun état supplémentaire à purger à
  * l'arrêt.
  *
+ * Deux voies (P9-22, ADR-078 §3) : la voie courte (ordonnanceur, consommateurs, tâches courtes) et la voie longue
+ * (`LONG_RUNNING_JOB_TYPES` : calcul d'un export, instantanés), deux boucles concurrentes de `start()` ; un export de
+ * 120 s ne retarde ainsi ni une alerte ni une tâche courte. `runOnce()` (tests, passe unique) joue les deux voies.
+ *
  * Isolation des étapes (P5-16) : une étape du tour qui lève (ordonnanceur, un consommateur, la file
  * de tâches) est consignée dans le journal et le tour continue ; elle ne prive ni les autres étapes
  * ni les tours suivants, et n'arrête pas le processus.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JobRunner } from '../platform/jobs/job-runner.js';
+import { LONG_RUNNING_JOB_TYPES } from '../platform/jobs/job-lanes.js';
 import { JobScheduler } from '../platform/jobs/job-scheduler.js';
 import { EventConsumerRunner } from '../platform/events/event-consumer-runner.js';
 import {
@@ -48,13 +53,20 @@ export class WorkerService {
     this.logger.log(
       `Worker démarré (${this.consumers.names().length} consommateur(s) enregistré(s)).`,
     );
+    await Promise.all([
+      this.loop(pollIntervalMs, () => this.runShortLane()),
+      this.loop(pollIntervalMs, () => this.runLongLane()),
+    ]);
+    this.logger.log('Worker arrêté.');
+  }
+
+  private async loop(pollIntervalMs: number, turn: () => Promise<void>): Promise<void> {
     while (!this.stopping) {
-      await this.runOnce();
+      await turn();
       if (!this.stopping) {
         await sleep(pollIntervalMs);
       }
     }
-    this.logger.log('Worker arrêté.');
   }
 
   /** Signale l'arrêt à la prochaine vérification ; ne coupe pas le tour en cours. */
@@ -67,6 +79,12 @@ export class WorkerService {
    * étape est isolée : son échec est consigné et ne prive pas les suivantes.
    */
   async runOnce(): Promise<void> {
+    await this.runShortLane();
+    await this.runLongLane();
+  }
+
+  /** Voie courte : récurrences dues, consommateurs, tâches courtes (les tâches longues en sont exclues). */
+  async runShortLane(): Promise<void> {
     await this.guarded('ordonnanceur', () => this.scheduler.enqueueDue());
     for (const consumerName of this.consumers.names()) {
       await this.guarded(`consommateur « ${consumerName} »`, () =>
@@ -74,9 +92,21 @@ export class WorkerService {
       );
     }
     await this.guarded('tâches', async () => {
-      let outcome = await this.jobRunner.claimAndProcessOne();
+      const lane = { excludeJobTypes: LONG_RUNNING_JOB_TYPES };
+      let outcome = await this.jobRunner.claimAndProcessOne(lane);
       while (outcome.claimed) {
-        outcome = await this.jobRunner.claimAndProcessOne();
+        outcome = await this.jobRunner.claimAndProcessOne(lane);
+      }
+    });
+  }
+
+  /** Voie longue : les seules tâches longues, une à une. */
+  async runLongLane(): Promise<void> {
+    await this.guarded('tâches longues', async () => {
+      const lane = { jobTypes: LONG_RUNNING_JOB_TYPES };
+      let outcome = await this.jobRunner.claimAndProcessOne(lane);
+      while (outcome.claimed) {
+        outcome = await this.jobRunner.claimAndProcessOne(lane);
       }
     });
   }

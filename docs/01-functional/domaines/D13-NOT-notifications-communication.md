@@ -18,6 +18,7 @@ Produire des **alertes utiles, qui provoquent une action** et ne s'accumulent pa
 |---|---|---|
 | Règle d'alerte | `communication.alert_rules` | Type, seuils, gravité, destinataires, activation |
 | Alerte | `communication.alerts` | Occurrence avec cycle de vie |
+| Destinataire d'alerte | `communication.alert_recipients` | Boîte d'un utilisateur : qui doit voir l'alerte, et pourquoi (règle, propriétaire, escalade) — [ADR-072](../../decisions/ADR-072-destinataires-notifications-push-et-escalade.md) |
 | Notification | `communication.notifications` | Message à un utilisateur (in-app, push) |
 | Abonnement push | `communication.push_subscriptions` | Point de terminaison Web Push par appareil |
 | Note de direction | `communication.internal_notes`, `communication.note_audiences`, `communication.note_acknowledgements` | Communication interne ciblée |
@@ -57,44 +58,50 @@ Alertes routées, notifications in-app et push, notes ciblées, accusés de lect
 
 ### 7.1 Catalogue initial des alertes
 
-Toutes les valeurs de seuil sont des défauts paramétrables (AV-065).
+Toutes les valeurs de seuil sont des défauts paramétrables (AV-065). Les seuils sont des paramètres `organization.system_settings`, lus par le détecteur dans le module propriétaire ; la règle d'alerte porte l'activation, la gravité, les rôles et le mode de résolution (AV-400, [ADR-071](../../decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)).
 
 | Code | Déclencheur | Détection | Gravité | Destinataires | Résolution |
 |---|---|---|---|---|---|
-| `STOCK_LOW` | Disponible < minimum (BR-STK-051) | Sur mouvement | WARNING | Magasinier du site, vendeurs du PDV | Auto |
-| `STOCK_OUT` | Disponible ≤ 0 avec seuil défini | Sur mouvement | CRITICAL | Idem + RESP_COMMERCIAL | Auto |
-| `POS_REPLENISH` | Suggestion de réapprovisionnement > 0 pour un PDV | Planifiée (06:00) + sur mouvement | WARNING | Magasinier source, vendeurs du PDV | Auto |
-| `STOCK_NEGATIVE` | Solde physique < 0 (BR-STK-018) | Sur mouvement | CRITICAL | Responsable du site, DIRECTION | Manuelle (après régularisation) |
-| `HIGH_LOSS` | Valeur des pertes d'un emplacement sur 1 jour ≥ 50 000 XAF ou ≥ 5 % des ventes du jour | Sur perte | CRITICAL | Responsable du site, DIRECTION | Manuelle |
-| `HIGH_MORTALITY` | Mortalité journalière > 0,5 % de l'effectif ou > 20 têtes | Sur mortalité | CRITICAL | RESP_PRODUCTION, DIRECTION | Manuelle |
-| `DAILY_ENTRY_MISSING` | Lot actif sans saisie du jour la veille | Planifiée (10:00) | WARNING | RESP_FERME, RESP_PRODUCTION | Auto |
-| `STANDARD_COST_MISSING` | Production entrée en stock (collecte, naissance) d'un produit sans coût standard à la date de l'entrée (AV-124) | Sur production | WARNING | ADMIN | Auto (coût standard défini) |
-| `RECEIPT_INCOMPLETE` | BR-APP-015 | Planifiée + sur réception | WARNING | RESP_ACHATS | Auto (reliquat nul ou clôturé) |
-| `INVENTORY_VARIANCE` | Inventaire avec écart en valeur ≥ seuil | Sur soumission | WARNING | Responsable du site, FINANCE | Manuelle (validation) |
+| `STOCK_LOW` | Disponible physique < minimum du seuil actif (BR-STK-051) : événement `StockThresholdBreached` `LOW`, publié par `recordStockMove` aux extrémités physiques d'un mouvement, par `inventory.threshold.set` et par le filet horaire (P9-08, AV-405) | Sur mouvement (+ passe horaire) | WARNING | Magasinier du site, vendeurs du PDV | Auto (niveau terminé ou marqueur de passe) |
+| `STOCK_OUT` | Disponible ≤ 0 avec seuil défini : `StockThresholdBreached` `OUT` (P9-08, AV-405) ; un solde négatif lève aussi `STOCK_NEGATIVE` | Sur mouvement (+ passe horaire) | CRITICAL | Idem + RESP_COMMERCIAL | Auto |
+| `POS_REPLENISH` | Suggestion « cible − disponible − transit entrant » > 0 pour un point de vente (`inventory.replenish_alert_scope` : `BELOW_TARGET` par défaut, `BELOW_MINIMUM` au choix) : `ReplenishmentSuggested` de la passe horaire des seuils (P9-08, AV-452) | Planifiée (horaire, 06:00 compris) | WARNING | Magasinier du site du PDV, vendeurs du PDV | Auto (marqueur de passe) |
+| `STOCK_NEGATIVE` | Solde physique de lot < 0 après une sortie (BR-STK-018, INV-STK-05) : `StockNegativeDetected` de `recordStockMove`, quel que soit l'appelant (P9-08) | Sur mouvement | CRITICAL | Responsable du site, DIRECTION | Manuelle (après régularisation) |
+| `HIGH_LOSS` | Valeur des pertes d'un emplacement sur 1 jour métier ≥ `inventory.high_loss_alert_xaf` (50 000 XAF, `HighLossDetected` à chaque déclaration, déclarations en attente comprises, mortalité exclue, AV-453) ou ≥ `sales.high_loss_alert_sales_pct` (5 %) du CA net du site du jour pour une perte **sous** le seuil absolu (`HighLossSalesShareDetected`, deux derniers jours clos, 06:45, AV-455) | Sur perte (seuil absolu) ; planifiée (part du CA) | CRITICAL | Responsable du site, DIRECTION | Manuelle |
+| `HIGH_MORTALITY` | Mortalité journalière > 0,5 % de l'effectif ou > 20 têtes : cumul du jour métier du fait d'un lot, validé ou en attente, sur l'effectif en élevage au début du jour (comparaisons strictes, seuils `production.high_mortality_alert_*`, site puis global) ; un sujet par lot et par jour (AV-461) | Sur mortalité (`production.mortality.record`) | CRITICAL | RESP_PRODUCTION, DIRECTION | Manuelle |
+| `DAILY_ENTRY_MISSING` | Lot actif (`ACTIVE` ou `SELLING`, mis en place avant la veille, animaux en élevage) sans mortalité, intrant, pesée, observation ni collecte datés de la veille ; jours attendus : `production.daily_entry_working_days` (AV-462) | Planifiée (10:00 ; `production.lots.daily_entry_check`) | WARNING | RESP_FERME, RESP_PRODUCTION | Auto (la première passe dont le jour examiné a une saisie du lot) |
+| `STANDARD_COST_MISSING` | Production entrée en stock (collecte, naissance) d'un produit sans coût standard défini à l'instant de la passe, sur les `production.standard_cost_alert_lookback_days` derniers jours (AV-124, AV-463) | Planifiée (07:45 ; `production.products.standard_cost_check`) | WARNING | ADMIN | Auto (`StandardCostSet` ou passe suivante) |
+| `RECEIPT_INCOMPLETE` | BR-APP-015 : bon `SENT` ou `PARTIALLY_RECEIVED` avec un reliquat et (date prévue dépassée de plus de `procurement.receipt_incomplete_alert_days` jours, ou quantité rejetée à une réception comptée) (AV-464) | Planifiée (07:15 ; `procurement.orders.receipt_incomplete_check`) + sur réception | WARNING | RESP_ACHATS | Auto (reliquat nul ou clôturé, bon annulé, passe suivante) |
+| `INVENTORY_VARIANCE` | Inventaire dont l'écart exige une validation (valeur ≥ `inventory.count_approval_threshold_xaf`, ou animaux, AV-108) : `InventoryVarianceDetected` (P9-08, AV-456) | Sur soumission | WARNING | Responsable du site, FINANCE | Manuelle (validation) ; fermée par `InventoryAdjusted` |
 | `OVERDUE_RECEIVABLE` | Créance échue | Planifiée (07:00) | WARNING | Titulaire du client, RESP_COMMERCIAL, FINANCE | Auto |
-| `CASH_VARIANCE` | Écart de caisse ≠ 0 : événement `CashVarianceDetected` (P5-12 ; responsable imputé `imputed_user_id`, AV-155, AV-170) | Sur clôture ; aussi sur ouverture, phase `OPENING` (DÉDUIT d'AV-156 : l'écart d'ouverture, fonds initial compris, est validé par la Finance avec la session), et sur réévaluation d'une session close, phase `ADJUSTMENT` (P5-13) | WARNING (CRITICAL si ≥ `finance.cash_variance_critical_xaf`, 10 000 XAF par défaut) | FINANCE | Manuelle (validation) ; consommateur en P9 |
-| `CASH_HOLDING_HIGH` | Caisse utilisateur > plafond ou aucune remise depuis plus de 3 jours | Planifiée | WARNING | FINANCE, responsable | Auto |
-| `CASH_SESSION_OPEN_LONG` | Session de caisse ouverte depuis plus de `finance.cash_session_force_close_hours` (24 h par défaut, réglable par site) : événement `CashSessionOpenLongDetected` de la tâche `finance.cash_sessions.open_long_check` (P5-12), un par session et par jour métier | Planifiée | WARNING | FINANCE, vendeur | Auto ; consommateur en P9 |
-| `CASH_TRANSFER_NOT_RECEIVED` | Remise de fonds envoyée et non reçue depuis plus de 48 h (`finance.cash_transfer_unreceived_hours`, AV-158) | Planifiée (événement `CashTransferUnreceived`, tâche `finance.cash_transfers.unreceived_check`, P5-15) | WARNING | FINANCE, expéditeur | Auto (remise reçue ou annulée) |
-| `SYNC_ERROR` | Commande `REJECTED` ou `CONFLICT` sur un appareil | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto (conflit résolu) |
-| `SYNC_STALE` | Appareil actif sans synchronisation depuis plus de 24 h | Planifiée (horaire) | WARNING | Responsable de l'utilisateur, ADMIN | Auto |
-| `DEVICE_SEQ_GAP` | Trou de séquence non comblé depuis plus de 24 h | Planifiée | CRITICAL | ADMIN, DIRECTION | Manuelle |
-| `CLOCK_SKEW` | Écart d'horloge d'un appareil au-delà de `sync.clock_skew_flag_minutes` (5 min par défaut, AV-216) | Sur synchronisation | WARNING | Utilisateur, ADMIN | Auto |
-| `INACTIVE_COMMERCIAL` | BR-TER-013 | Planifiée (08:00) | WARNING | RESP_COMMERCIAL | Auto (nouvelle activité) |
-| `CHECKIN_SUSPICIOUS` | BR-TER-010 | Sur pointage | WARNING | RESP_COMMERCIAL | Manuelle |
-| `PRICE_MISMATCH` | BR-VEN-029 | Sur vente | INFO | RESP_COMMERCIAL | Manuelle |
-| `DUPLICATE_SUSPECTED` | Client, réception ou encaissement suspect de doublon | Sur application | WARNING | Responsable concerné | Manuelle (fusion ou décision) |
-| `APPROVAL_PENDING_LONG` | Demande de validation en attente depuis plus de 24 h | Planifiée | WARNING | Approbateurs + niveau supérieur | Auto |
-| `TRANSFER_NOT_RECEIVED` | Transfert expédié non reçu depuis plus de 48 h | Planifiée | WARNING | Expéditeur, destinataire | Auto |
-| `TRANSFER_UNMATCHED` | BR-STK-024 | Planifiée (tâche `inventory.transfers.unmatched_sweep`, événement `StockTransferUnmatched`, P5-16 ; l'alerte elle-même : P9) | WARNING | Magasinier, responsable | Manuelle |
-| `LOT_EXPIRING` | Lot fournisseur périmant sous 15 jours | Planifiée | WARNING | Magasinier | Auto |
-| `ATTACHMENT_MISSING` | Pièce requise non reçue après 7 jours | Planifiée | WARNING | Auteur, responsable | Auto |
+| `CASH_VARIANCE` | Écart de caisse ≠ 0 : événement `CashVarianceDetected` (P5-12 ; responsable imputé `imputed_user_id`, AV-155, AV-170) | Sur clôture ; aussi sur ouverture, phase `OPENING` (DÉDUIT d'AV-156 : l'écart d'ouverture, fonds initial compris, est validé par la Finance avec la session), et sur réévaluation d'une session close, phase `ADJUSTMENT` (P5-13 ; P9-07 : aussi quand l'opération antérieure à l'ouverture corrige l'écart d'ouverture, cause `LATE_BEFORE_OPENING`, AV-224) ; un écart dans `finance.cash_variance_tolerance_xaf` est un constat sans alerte (AV-450) | WARNING (CRITICAL si ≥ `finance.cash_variance_critical_xaf`, 10 000 XAF par défaut) | FINANCE | Manuelle (validation par la Finance) ; fermée aussi par la clôture validée d'office (`CashSessionClosed` avec `auto_validated`, AV-450) ; les ajustements encore en attente après une validation sont signalés de nouveau (cause `REMAINING_ADJUSTMENTS`) |
+| `CASH_HOLDING_HIGH` | Caisse utilisateur active de solde positif > `finance.cash_holding_max_xaf` (200 000 XAF) ou aucune remise depuis plus de `finance.cash_holding_max_days` (3) jours métier : événement `CashHoldingHighDetected` de la tâche `finance.cash_holdings.high_check` (P9-07, AV-447) | Planifiée (horaire) | WARNING | FINANCE, responsable | Auto |
+| `CASH_SESSION_OPEN_LONG` | Session de caisse ouverte depuis plus de `finance.cash_session_force_close_hours` (24 h par défaut, réglable par site) : événement `CashSessionOpenLongDetected` de la tâche `finance.cash_sessions.open_long_check` (P5-12), un par session et par passe horaire, suivi du marqueur de fin de passe (P9-07) | Planifiée | WARNING | FINANCE, vendeur | Auto ; consommateur en P9 |
+| `CASH_TRANSFER_NOT_RECEIVED` | Remise de fonds envoyée et non reçue depuis plus de 48 h (`finance.cash_transfer_unreceived_hours`, AV-158) | Planifiée (horaire : événement `CashTransferUnreceived` par remise et par passe, tâche `finance.cash_transfers.unreceived_check`, P5-15, P9-07) | WARNING | FINANCE, expéditeur | Auto (remise reçue ou annulée) |
+| `SYNC_ERROR` | Commande `/sync/push` `REJECTED` ou `CONFLICT` sur un appareil, dont la dernière prise en charge date des `sync.error_alert_window_hours` dernières heures, par appareil et par code ; un conflit de gestionnaire reste signalé tant qu'il est ouvert (conflit refermé et codes exclus écartés, `SyncErrorDetected`, AV-471) | Planifiée (horaire) | WARNING | Utilisateur (auteur du dernier rejet), ADMIN | Auto (erreur sortie de la fenêtre ou conflit résolu) |
+| `SYNC_STALE` | Appareil actif sans synchronisation depuis plus de `sync.stale_hours` heures (24), compté depuis le plus récent du dernier contact et de l'activation, jusqu'à l'horizon d'oubli `sync.stale_horizon_days` (`DeviceSyncStale`, AV-472) | Planifiée (horaire) | WARNING | Titulaire de l'appareil (qui l'a enrôlé), son responsable d'équipe, ADMIN | Auto |
+| `DEVICE_SEQ_GAP` | Trou de séquence non comblé depuis plus de `sync.seq_gap_alert_hours` heures (24) et non expliqué par les restes déclarés de l'appareil ; une plage n'est signalée qu'une fois (`DeviceSequenceGapDetected`, AV-473) | Planifiée (horaire) | CRITICAL | ADMIN, DIRECTION | Manuelle |
+| `CLOCK_SKEW` | Écart d'horloge du dernier envoi d'un appareil actif au-delà de `sync.clock_skew_flag_minutes` (5 min par défaut, AV-216), signé (`ClockSkewDetected`, AV-474) | Planifiée (horaire) | WARNING | Utilisateur (auteur du dernier envoi), ADMIN | Auto (appareil remis à l'heure ou silencieux) |
+| `INACTIVE_COMMERCIAL` | BR-TER-013 : jour ouvré précédent (`sales.commercial_working_days`), rôles `sales.inactive_commercial_role_codes` (`COMMERCIAL_TERRAIN`, AV-444), ni prise de service, ni visite, ni vente | Planifiée (08:00, tâche `sales.commercial.inactivity_check`) | WARNING | RESP_COMMERCIAL | Auto (nouvelle activité) |
+| `CHECKIN_SUSPICIOUS` | BR-TER-010 : au moins un signal sur un pointage, quels que soient son type et son résultat (`CheckInSuspicious`, AV-468) | Sur pointage | WARNING | RESP_COMMERCIAL (zone ou équipe), l'agent et son responsable d'équipe | Manuelle |
+| `PRICE_MISMATCH` | BR-VEN-029 : prix appliqué différent du prix en vigueur à la date du fait, vente directe ou commande saisie hors ligne (AV-445) | Sur vente | INFO | RESP_COMMERCIAL | Manuelle |
+| `DUPLICATE_SUSPECTED` | Client, réception ou encaissement suspect de doublon ; client : compte créé hors ligne avec un téléphone déjà détenu, sujet = le nouveau compte (`CustomerDuplicateSuspected`, AV-469) ; réception : toute mise en quarantaine, avec ses raisons (`GoodsReceiptQuarantined`, AV-465) | Sur application | WARNING | Responsable concerné | Manuelle (fusion ou décision ; fusion du compte et décision sur la quarantaine d'une réception : automatique) |
+| `APPROVAL_PENDING_LONG` | Demande de validation en attente depuis au moins `approvals.pending_long_hours` heures (24), depuis sa réception par le serveur ; `escalated_at` posé une fois par `approvals` (AV-466) | Planifiée (horaire ; `approvals.requests.pending_long_check`) | WARNING | Approbateurs + niveau supérieur | Auto (décision, retrait ou annulation ; le marqueur de la passe suivante pour une décision par façade) |
+| `TRANSFER_NOT_RECEIVED` | Transfert `STANDARD` expédié non reçu depuis plus de `inventory.transfer_not_received_hours` (48 h) : `StockTransferNotReceived` de la passe `inventory.alerts.transfer_not_received_check` (P9-08, AV-458) | Planifiée (06:30) | WARNING | Expéditeur, destinataire (site de réception) | Auto (reçu, annulé, refusé, retourné, rapproché d'une réception sans document, ou marqueur) |
+| `TRANSFER_UNMATCHED` | BR-STK-024 : réception sans document non rapprochée après `inventory.transfer_unmatched_hours` : événement `StockTransferUnmatched` de la tâche `inventory.transfers.unmatched_sweep` (P5-16 ; P9-08 : numéro du document et temps écoulé) | Planifiée (horaire) | WARNING | Magasinier, responsable | Manuelle ; fermée par `BlindReceiptMatched` (AV-460) |
+| `LOT_EXPIRING` | Lot ouvert portant une date de péremption et du stock physique, périmant sous `inventory.lot_expiring_days` (15) jours ou déjà périmé : `LotExpiringDetected`, un par lot, par site et par produit (P9-08, AV-454) | Planifiée (06:00) | WARNING | Magasinier | Auto (marqueur de passe) |
+| `ATTACHMENT_MISSING` | Pièce requise non reçue après `attachments.missing_alert_days` (7) jours depuis la réception par le serveur ; dépenses au-delà du seuil de justificatif : tâche quotidienne `finance.expenses.attachment_missing_check`, passe de portée `EXPENSE`, horizon `attachments.missing_alert_horizon_days` (90) (AV-449) ; réceptions dont la photo du bon de livraison est exigée (BR-APP-014) : `procurement.receipts.attachment_missing_check`, passe de portée `GOODS_RECEIPT` (AV-467) | Planifiée (06:15) | WARNING | Auteur, responsable | Auto |
 | `KOMMO_SYNC_FAILED` | Message d'intégration en échec définitif | Sur échec | WARNING | ADMIN | Manuelle (rejeu) |
-| `AUDIT_CHAIN_BROKEN` | BR-AUD-006 | Planifiée | CRITICAL | ADMIN, DIRECTION | Manuelle |
+| `AUDIT_CHAIN_BROKEN` | BR-AUD-006 : rupture de la chaîne sur le jour métier précédent le créneau planifié et la suite, sujet = mois métier de la ligne rompue et position (`AuditChainBroken`, AV-470) | Planifiée (03:00) | CRITICAL | ADMIN, DIRECTION | Manuelle |
+| `ALLOCATION_EXPIRED` | Quota d'appareil échu non libéré : `AllocationExpired` de la passe `inventory.allocations.expiry_daily` (P5-08 ; P9-08 : identité de passe, plus de déduplication par jour, AV-402, AV-460) | Planifiée (00:05) | WARNING | Magasinier du site, responsable | Auto (quota libéré ou révoqué, ou marqueur) |
+| `ALLOCATION_REVOCATION_PENDING` | Quota d'un appareil bloqué, perdu ou d'un utilisateur désactivé, en attente de révocation : `AllocationRevocationPending` (P5-08 ; P9-08 : libellés, filet quotidien, AV-402, AV-460) | Sur fait (+ filet quotidien) | WARNING | Magasinier du site, responsable | Auto (quota révoqué ou libéré, signal levé : `AllocationRevocationCleared`, ou marqueur) |
+| `SALE_UNDELIVERED` | Vente confirmée non livrée depuis plus de `sales.undelivered_alert_days` (7 par défaut ; AV-132, AV-402) : tâche `sales.orders.undelivered_check`, jours métier depuis la confirmation ou, si elle est postérieure, la livraison demandée par le client (AV-451) | Planifiée (07:30) | WARNING | Titulaire du client, vendeur, responsable | Auto (livrée ou annulée) |
+| `CONSUMER_FAILED` | Événement sauté après échec persistant (table des échecs du runner) dans les `communication.consumer_failure_window_hours` dernières heures (24), ou consommateur dont le plus ancien événement non traité date de plus de `communication.consumer_lag_alert_seconds` (300) ; un par consommateur (`ConsumerFailureDetected`, AV-412, AV-475) | Planifiée (5 minutes) | WARNING | ADMIN | Auto (retard résorbé et sauts sortis de la fenêtre) |
+| `LEDGER_MISMATCH` | Écart de la réconciliation quotidienne du registre de stock (INV-STK-01, AT-047) : `LedgerMismatchDetected`, un par site et par jour métier (`GLOBAL` pour une anomalie sans site ; une alerte par jour tant que l'anomalie dure, AV-459), publié par `inventory.ledger.reconcile_daily` avant de se terminer en succès (AV-402) | Planifiée (02:00) | CRITICAL | Responsable du site, DIRECTION, ADMIN | Manuelle (après régularisation) |
+| `CASH_MISMATCH` | Écart de la réconciliation quotidienne de la trésorerie (D09) : événement `CashMismatchDetected`, publié par `finance.cash.reconcile_daily` avant de se terminer en succès (AV-402) ; un événement par compte et par jour métier, les écarts sans compte sous la clé `NONE` (AV-448) | Planifiée (02:30) | CRITICAL | FINANCE, DIRECTION | Manuelle (après régularisation) |
 
 ## 8. Validations
 
-Règle d'alerte : seuils numériques ≥ 0 et destinataires non vides. Note : titre et corps non vides, audience non vide, expiration postérieure à la publication.
+Règle d'alerte : seuils numériques ≥ 0 et destinataires non vides. Note : titre et corps non vides, audience non vide dont les références existent (rôle actif, site, zone, utilisateur), expiration postérieure à la publication (instant du serveur) ; une note corrective référence une note existante (AV-477).
 
 ## 9. Dépendances
 
@@ -102,15 +109,17 @@ Consomme les événements de tous les modules ; utilise ADM (rôles, périmètre
 
 ## 10. Événements produits
 
-`AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved`, `InternalNotePublished`, `InternalNoteAcknowledged`.
+`AlertRaised`, `AlertEscalated`, `AlertAcknowledged`, `AlertResolved`, `InternalNotePublished`, `InternalNoteArchived`, `InternalNoteAcknowledged`.
 
 ## 11. Événements consommés
 
-Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `MortalityRecorded`, `CashVarianceDetected`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
+Tous les événements déclencheurs du §7.1 (ex. `StockThresholdBreached`, `StockNegativeDetected`, `StockLossDeclared`, `HighMortalityDetected`, `CashVarianceDetected`, `CashTransferDiscrepancyDetected`, `CashTransferUnreceived`, `CommandRejected`, `SyncConflictDetected`, `CheckInSuspicious`, `PriceMismatchDetected`, `PaymentFlaggedDuplicate`, `GoodsReceiptQuarantined`, `ApprovalRequested`, `PriceRuleActivated` pour une note automatique).
+
+**Notifications directes** (consommateur `communication.direct`, P9-11, AV-439, AV-480) : `ApprovalRequested` (aux approbateurs de la politique, la Direction à défaut), `ApprovalGranted` et `ApprovalRejected` (au demandeur, motif du refus compris — ils notifient aussi la décision d'une demande d'achat), `StockTransferRequested` (aux expéditeurs du site source) et `StockTransferDispatched` (aux réceptionnaires du site destinataire), en `IN_APP` seulement, sans valeur ni résumé de l'objet (RC-05) ; activation par type : `communication.direct_notification_disabled_types` (AV-481).
 
 ## 12. Fonctionnement hors ligne
 
-Les alertes et notes de l'utilisateur sont téléchargées : 50 dernières alertes ouvertes, notes non expirées. La prise en compte d'une alerte et l'accusé de lecture d'une note fonctionnent hors ligne. Les alertes locales (ex. « stock de votre allocation < 5 ») sont calculées sur l'appareil, sans passer par le serveur.
+Les alertes et notes de l'utilisateur sont téléchargées (jeu `comms`, P9-12, AV-483 à AV-485) : sa boîte d'alertes ouvertes, ses notifications non lues, ses notes non expirées avec son état de lecture. La prise en compte d'une alerte et l'accusé de lecture d'une note fonctionnent hors ligne. Les alertes locales (ex. « stock de votre allocation < 5 ») sont calculées sur l'appareil, sans passer par le serveur.
 
 ## 13. Permissions
 
@@ -123,3 +132,17 @@ Les alertes et notes de l'utilisateur sont téléchargées : 50 dernières alert
 | Tempête d'alertes (ex. panne généralisant les ruptures) | Déduplication (BR-NOT-002) + regroupement des notifications push : au plus 1 push par utilisateur et par type toutes les 15 minutes. |
 | Destinataire absent ou désactivé | Routage vers les autres titulaires du rôle dans le périmètre ; à défaut, la Direction. |
 | Push non supporté (navigateur, iOS ancien) | Notification in-app seulement. |
+
+## 15. Conception de P9 (14/10/2026)
+
+| Sujet | Décision |
+|---|---|
+| Architecture | Détection par les modules propriétaires, corrélation par le consommateur `communication.alerts` ; `communication` ne lit aucune table d'autrui ([ADR-070](../../decisions/ADR-070-architecture-de-p9-communication-et-analytics.md), [ADR-071](../../decisions/ADR-071-alertes-detection-correlation-et-cycle-de-vie.md)) |
+| Déduplication | Colonne générée `open_dedup_key` sous index unique (INV-NOT-01) ; événement marqué consommé à la première instruction |
+| Résolution | Alerte d'état : marqueur de fin de passe ou événement de résolution ; alerte d'événement : manuelle avec commentaire |
+| Destinataires | Explicites, écrits à la levée ; supervision par la portée de `comm.alert.read` ; repli sur la Direction ([ADR-072](../../decisions/ADR-072-destinataires-notifications-push-et-escalade.md)) |
+| Push | Port `WebPushSender`, adaptateur journal tant que le porteur n'a pas fourni bibliothèque ni clés (AV-415) |
+| Notes | Immuables après publication, audience évaluée à la lecture, accusés hors ligne ([ADR-073](../../decisions/ADR-073-notes-de-direction.md)) |
+| Placement des détecteurs | Dans le module qui porte la donnée, selon le graphe : `INACTIVE_COMMERCIAL`, `HIGH_LOSS` (part « % des ventes ») et `OVERDUE_RECEIVABLE` dans `sales` ; les passes d'état portent une identité (ADR-071 §2 et §3) |
+| Valeurs au coût | Jamais dans le message d'une alerte : champ protégé, rendu selon le droit `inventory.valuation.read` du lecteur (AV-440) |
+| Questions ouvertes | AV-400 à AV-420 et AV-438 à AV-442 |

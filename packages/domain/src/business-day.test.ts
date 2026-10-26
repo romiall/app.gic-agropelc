@@ -11,6 +11,7 @@ import {
   nextBusinessDay,
   businessPeriodDays,
   businessPeriodOf,
+  isoWeekdayOfBusinessDay,
 } from './business-day.js';
 import { DomainError } from './errors.js';
 
@@ -167,5 +168,20 @@ describe('périodes nommées des tableaux de bord (BR-ANA-002, P5-20)', () => {
     expect(() => businessPeriodDays({ fromDay: '2026-10-12', toDay: '2026-10-11' })).toThrow(
       DomainError,
     );
+  });
+});
+
+describe('jour de la semaine ISO d’un jour métier', () => {
+  it('lundi vaut 1, dimanche vaut 7', () => {
+    expect(isoWeekdayOfBusinessDay('2026-10-19')).toBe(1); // lundi
+    expect(isoWeekdayOfBusinessDay('2026-10-20')).toBe(2);
+    expect(isoWeekdayOfBusinessDay('2026-10-24')).toBe(6); // samedi
+    expect(isoWeekdayOfBusinessDay('2026-10-25')).toBe(7); // dimanche
+    expect(isoWeekdayOfBusinessDay('2027-01-01')).toBe(5); // vendredi
+  });
+
+  it('refuse un jour qui n’existe pas', () => {
+    expect(() => isoWeekdayOfBusinessDay('2026-02-30')).toThrow();
+    expect(() => isoWeekdayOfBusinessDay('26-10-20')).toThrow();
   });
 });

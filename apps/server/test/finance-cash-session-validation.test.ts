@@ -678,6 +678,78 @@ describe('P5-13 : validation et réévaluation des sessions de caisse', () => {
       await ledgerOk(pos.accountId);
     });
 
+    it('P9-07 : un ajustement validé alors que d’autres attendent — l’écart restant cumulé est signalé de nouveau, jamais perdu', async () => {
+      const pos = await newPos();
+      const sessionId = await open(pos, 0, t('08:00'));
+      await close(pos, sessionId, 0, t('18:00'));
+      const first = await movement(pos.accountId, 2_000, t('12:00'), 'CUSTOMER_PAYMENT', {
+        createdBy: finance,
+      });
+      const second = await movement(pos.accountId, 700, t('13:00'), 'CUSTOMER_PAYMENT', {
+        createdBy: pos.vendor,
+      });
+      const third = await movement(pos.accountId, 300, t('14:00'), 'CUSTOMER_PAYMENT', {
+        createdBy: pos.vendor,
+      });
+      for (const [late, delta] of [
+        [first, -2_000],
+        [second, -700],
+        [third, -300],
+      ] as const) {
+        expect(late.reevaluation).toMatchObject({ treatment: 'OWN_APPROVAL', deltaXaf: delta });
+      }
+      expect(await events(sessionId, 'CashVarianceDetected')).toHaveLength(3);
+
+      const approve = async (adjustmentId: string, reason: string) =>
+        (await validate(validator, validatorDevice, adjustmentId, reason)).status;
+
+      // Validation du premier : `CashSessionValidated` ferme l'alerte de la session ; les deux autres,
+      // encore en attente, sont signalés de nouveau (écart restant cumulé, dernier ajustement cité).
+      expect(await approve(first.reevaluation!.adjustmentId, 'Vente hors ligne tardive')).toBe(
+        'APPLIED',
+      );
+      const afterFirst = await events(sessionId, 'CashVarianceDetected');
+      expect(afterFirst).toHaveLength(4);
+      expect(afterFirst[3]).toMatchObject({
+        phase: 'ADJUSTMENT',
+        cause: 'REMAINING_ADJUSTMENTS',
+        variance_xaf: -1_000,
+        adjustment_id: third.reevaluation!.adjustmentId,
+        treatment: 'OWN_APPROVAL',
+      });
+      const order = await db
+        .selectFrom('platform_domain_events')
+        .select(['event_type', 'seq'])
+        .where('aggregate_id', '=', toBin(sessionId))
+        .where('event_type', 'in', ['CashSessionValidated', 'CashVarianceDetected'])
+        .orderBy('seq')
+        .execute();
+      expect(order.map((row) => row.event_type).slice(-2)).toEqual([
+        'CashSessionValidated',
+        'CashVarianceDetected',
+      ]);
+
+      // Validation du deuxième : il ne reste que le dernier.
+      expect(await approve(second.reevaluation!.adjustmentId, 'Seconde vente tardive')).toBe(
+        'APPLIED',
+      );
+      const afterSecond = await events(sessionId, 'CashVarianceDetected');
+      expect(afterSecond).toHaveLength(5);
+      expect(afterSecond[4]).toMatchObject({
+        cause: 'REMAINING_ADJUSTMENTS',
+        variance_xaf: -300,
+        adjustment_id: third.reevaluation!.adjustmentId,
+      });
+
+      // Validation du dernier : plus rien n'attend, aucun nouveau signalement.
+      expect(await approve(third.reevaluation!.adjustmentId, 'Troisième vente tardive')).toBe(
+        'APPLIED',
+      );
+      expect(await events(sessionId, 'CashVarianceDetected')).toHaveLength(5);
+      expect(await events(sessionId, 'CashSessionValidated')).toHaveLength(3);
+      await ledgerOk(pos.accountId);
+    });
+
     it('inverse d’un encaissement de la fenêtre : cause REVERSAL ; mouvement à la clôture ou session ouverte : aucun ajustement', async () => {
       const pos = await newPos();
       const sessionId = await open(pos, 0, t('08:00'));

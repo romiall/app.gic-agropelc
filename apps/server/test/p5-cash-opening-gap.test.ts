@@ -154,6 +154,35 @@ describe('P5-23 — opération entre deux sessions de caisse (AV-224)', { timeou
     ]).toEqual([2 * PRICE, -2 * PRICE, 0]);
     // Le registre égale le tiroir (vide), au lieu de −1 000.
     expect(await balance()).toBe(0);
+    // P9-07 : l'ajustement d'ouverture est signalé (jusqu'ici en silence) ; l'alerte CASH_VARIANCE de la
+    // session sera résolue par sa validation.
+    const variances = await db
+      .selectFrom('platform_domain_events')
+      .select('payload')
+      .where('event_type', '=', 'CashVarianceDetected')
+      .where('aggregate_id', '=', toBin(nextSession))
+      .orderBy('seq')
+      .execute();
+    expect(variances.map((row) => (row.payload as { phase: string }).phase)).toEqual([
+      'OPENING',
+      'ADJUSTMENT',
+    ]);
+    expect(
+      variances
+        .map((row) => row.payload)
+        .filter((p) => (p as { phase: string }).phase === 'ADJUSTMENT'),
+    ).toEqual([
+      expect.objectContaining({
+        session_id: nextSession,
+        phase: 'ADJUSTMENT',
+        cause: 'LATE_BEFORE_OPENING',
+        variance_xaf: 2 * PRICE,
+        variance_after_xaf: 0,
+        adjustment_id: fromBin(adjustment!.id),
+        // Jour de l'opération déclenchante (la remise saisie le 28 à 18:10), comme le repli du consommateur.
+        business_day: '2026-09-28',
+      }),
+    ]);
 
     // Clôture sans écart : l'ajustement d'ouverture se valide avec la session (jamais d'office).
     world.setNow(at('2026-09-29', '18:00'));

@@ -14,11 +14,7 @@ import { jsonValue } from '../../../platform/kysely/json-value.js';
 import { toBin, toBinOrNull } from '../../../platform/kysely/uuid-columns.js';
 
 export type CashSessionEventType =
-  | 'CashSessionOpened'
-  | 'CashSessionClosed'
-  | 'CashVarianceDetected'
-  | 'CashSessionOpenLongDetected'
-  | 'CashSessionValidated';
+  'CashSessionOpened' | 'CashSessionClosed' | 'CashVarianceDetected' | 'CashSessionValidated';
 
 export async function publishCashSessionEvent(
   uow: UnitOfWork,
