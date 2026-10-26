@@ -9,6 +9,8 @@
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeBonReception } from '../pieces/adaptateurs-achats.js';
 import { businessDayOf } from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
@@ -595,6 +597,17 @@ export function ReceiptScreen() {
                     receiptId={receipt.id}
                     userId={userId}
                     missing={own.get(receipt.id) === true}
+                  />
+                ) : null}
+                {/* Bon de réception (lot PP). Réceptionnaire connu pour une réception de l'appareil.
+                    Une réception en quarantaine ou refusée n'est pas comptabilisée : pas de bon. */}
+                {receipt.status !== 'QUARANTINED' && receipt.status !== 'REJECTED' ? (
+                  <PieceAction
+                    cle={`BR:${receipt.id}`}
+                    annulee={receipt.status === 'CANCELLED'}
+                    demande={() =>
+                      demandeBonReception(receipt, refs, own.has(receipt.id) ? userId : null)
+                    }
                   />
                 ) : null}
               </li>

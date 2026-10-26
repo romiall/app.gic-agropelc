@@ -12,8 +12,10 @@ import { ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { CommandResult } from './CommandResult.js';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeBonLivraison, type LivraisonSaisie } from '../pieces/adaptateurs-ventes.js';
 import { formatQuantity, unitLabel } from './format.js';
-import { openOrders } from './open-orders.js';
+import { openOrders, type OrderView } from './open-orders.js';
 import { useSalesReferences } from './references.js';
 import { MAX_COMMENT_LENGTH, MAX_RECIPIENT_LENGTH } from './sale-form.js';
 import { submitCommand } from './submit.js';
@@ -37,7 +39,12 @@ export function DeliverScreen() {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [recipient, setRecipient] = useState('');
   const [notes, setNotes] = useState('');
-  const [submitted, setSubmitted] = useState<{ commandId: string; doc: string }>();
+  const [submitted, setSubmitted] = useState<{
+    commandId: string;
+    doc: string;
+    order: OrderView;
+    delivery: Omit<LivraisonSaisie, 'numero'>;
+  }>();
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
@@ -55,6 +62,22 @@ export function DeliverScreen() {
       <section className="sale">
         <h1>{t('orders.deliver.title', { doc: submitted.doc })}</h1>
         <CommandResult commandId={submitted.commandId} messages="orders.deliver.result">
+          {/* Bon de livraison (lot PP) : numéro officiel dès que le serveur l'a attribué. */}
+          <PieceAction
+            cle={`BL:${submitted.commandId}`}
+            demande={() =>
+              demandeBonLivraison(
+                submitted.order,
+                {
+                  ...submitted.delivery,
+                  numero:
+                    refs.outbox.find((c) => c.command_id === submitted.commandId)?.server_refs
+                      ?.docNumber ?? null,
+                },
+                refs,
+              )
+            }
+          />
           <Link
             to={orderId ? ROUTES.order(orderId) : ROUTES.orders}
             className="action action-compact"
@@ -126,7 +149,21 @@ export function DeliverScreen() {
           })),
         },
       });
-      setSubmitted({ commandId: command.command_id, doc });
+      setSubmitted({
+        commandId: command.command_id,
+        doc,
+        order,
+        delivery: {
+          occurredAt: command.occurred_at,
+          auteurId: userId,
+          recuPar: recipient.trim() || null,
+          observations: notes.trim() || null,
+          lignes: toSend.map((entry) => ({
+            orderLineId: entry.line.id ?? '',
+            quantityBase: entry.value ?? 0,
+          })),
+        },
+      });
     } catch {
       setSaveError(true);
     } finally {

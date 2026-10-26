@@ -11,6 +11,8 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeDecaissementDepense } from '../pieces/adaptateurs-finance.js';
 import { Link, useSearchParams } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { clock, idGenerator } from '../../platform/composition.js';
@@ -111,6 +113,9 @@ export function ExpenseScreen() {
     </section>
   );
 }
+
+/** Dépense dont l'argent est sorti (payée tout de suite, ou payée ensuite). */
+const PAID_STATUSES = new Set(['PAID', 'PAID_PENDING_APPROVAL', 'PAID_REJECTED']);
 
 function ExpenseEntry({ userId }: { readonly userId: string }) {
   const { t } = useTranslation();
@@ -745,6 +750,31 @@ function MyExpenses({
         userId={userId}
         label={t('expense.attach_receipt', { label: labelOf(view) })}
       />
+      {/* Bon de décaissement (lot PP) : la dépense dans la mise en page de la pièce de caisse,
+          seulement une fois payée (une dépense à payer n'a encore rien décaissé). */}
+      {view.paidNow || PAID_STATUSES.has(view.status ?? '') ? (
+        <PieceAction
+          cle={`BD:${view.id}`}
+          annulee={view.status === 'CANCELLED'}
+          demande={() =>
+            demandeDecaissementDepense(
+              view,
+              refs,
+              userId,
+              imputationLabel(
+                t,
+                {
+                  type: view.costObjectType,
+                  id: view.costObjectId,
+                  speciesGroup: view.speciesGroup,
+                },
+                refs.productionLots,
+                refs.incubationBatches,
+              ) || null,
+            )
+          }
+        />
+      ) : null}
       {actions}
     </li>
   );

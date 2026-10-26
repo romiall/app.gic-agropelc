@@ -13,6 +13,8 @@
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeDecaissementFournisseur } from '../pieces/adaptateurs-finance.js';
 import { Link } from 'react-router-dom';
 import { holdsAnyRole, ROLE_SETS, ROUTES } from '../../app/screens.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -554,6 +556,36 @@ function PaymentList({
           <p className="home-muted">
             {t('supplier_payment.cancel_reason', { reason: item.cancelReason })}
           </p>
+        ) : null}
+        {/* Bon de décaissement (lot PP) : paiement ou avance au fournisseur, seulement une fois
+            l'argent sorti (en attente de la Direction ou refusé : aucun décaissement). */}
+        {item.status === 'RECORDED' || (item.status === 'CANCELLED' && item.disbursedAt) ? (
+          <PieceAction
+            cle={`BD:${item.id}`}
+            annulee={item.status === 'CANCELLED'}
+            demande={() =>
+              refs
+                ? demandeDecaissementFournisseur(
+                    {
+                      docNumber: item.docNumber,
+                      // Fournisseur inconnu de la liste : case laissée vide, jamais un identifiant.
+                      fournisseur:
+                        suppliers.find((supplier) => supplier.id === item.supplierId)?.name ?? null,
+                      compteId: item.fromAccountId,
+                      occurredAt: item.disbursedAt ?? item.occurredAt,
+                      creePar: item.createdBy,
+                      decidePar: item.decidedBy,
+                      montant: item.amountXaf,
+                      avance: item.unallocatedXaf >= item.amountXaf,
+                      factures: [],
+                      moyen: item.paymentMethodCode,
+                      reference: item.externalReference,
+                    },
+                    refs,
+                  )
+                : null
+            }
+          />
         ) : null}
         <button
           type="button"

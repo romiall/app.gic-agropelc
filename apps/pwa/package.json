@@ -16,6 +16,8 @@
     "size-check": "node tools/size-check.mjs"
   },
   "dependencies": {
+    "@fontsource/barlow-semi-condensed": "5.3.0",
+    "@fontsource/noto-sans": "5.3.0",
     "@gic/contracts": "workspace:*",
     "@gic/domain": "workspace:*",
     "dexie": "^4.4.6",

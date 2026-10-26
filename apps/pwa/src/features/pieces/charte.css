@@ -1,0 +1,193 @@
+/* ==========================================================================
+   GIC AGROPELC — feuille de style des pièces papier
+   Palette tirée du logo officiel (« logo gic.png ») :
+     vert du bandeau  #3a6351   olive de la poule #44612c   or de l'oeuf #cba900
+   Deux encres à l'impression : VERT (+ tramés) et ORANGE DORÉ (accent), plus le noir du texte.
+   Tout se mesure en mm / pt : le gabarit s'imprime à l'échelle 1:1.
+   ========================================================================== */
+:root {
+  --vert: #3a6351;
+  --vert-fonce: #2b4b3d;
+  --vert-15: #e2eae5;   /* tramé ~15 % : titres de colonnes, jamais sous une zone d'écriture */
+  --vert-8: #f0f5f2;    /* tramé ~8 %  : cartouches */
+  --orange: #c8780a;    /* accent unique : numéro de pièce, filet, repère */
+  --encre: #15211b;
+  --gris: #5f6d66;
+  --trait: 0.3pt;
+  --h: 7mm;             /* hauteur d'une ligne d'écriture */
+  --f-texte: "Segoe UI", Calibri, Arial, sans-serif;
+  --f-titre: "Bahnschrift", "Segoe UI", Arial, sans-serif;
+}
+@page { margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #fff; }
+body {
+  font-family: var(--f-texte); font-size: 7.5pt; line-height: 1.2; color: var(--encre);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* ---- feuille et formats ------------------------------------------------ */
+.feuille { position: relative; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
+.feuille:last-child { break-after: auto; page-break-after: auto; }
+.a4p { width: 210mm; height: 297mm; }
+.a4l { width: 297mm; height: 210mm; }
+.a5p { width: 148mm; height: 210mm; }
+.a5l { width: 210mm; height: 148mm; }
+.a6l { width: 148mm; height: 105mm; }
+.t3a4 { width: 210mm; height: 99mm; }
+/* zone utile : marges de sécurité (reliure : tête ou gauche selon la pièce) */
+.cadre { position: absolute; top: var(--mh, 8mm); right: var(--md, 8mm); bottom: var(--mb, 7mm); left: var(--mg, 8mm); display: flex; flex-direction: column; }
+.cadre.souche-gauche { display: flex; flex-direction: row; }
+.reperes i { position: absolute; width: 4mm; height: 4mm; border: 0 solid var(--vert); opacity: .65; }
+.reperes i:nth-child(1) { top: 3mm; left: 3mm; border-top-width: .4pt; border-left-width: .4pt; }
+.reperes i:nth-child(2) { top: 3mm; right: 3mm; border-top-width: .4pt; border-right-width: .4pt; }
+.reperes i:nth-child(3) { bottom: 3mm; left: 3mm; border-bottom-width: .4pt; border-left-width: .4pt; }
+.reperes i:nth-child(4) { bottom: 3mm; right: 3mm; border-bottom-width: .4pt; border-right-width: .4pt; }
+
+/* ---- en-tête ----------------------------------------------------------- */
+.entete { display: flex; align-items: center; gap: 3mm; height: 19mm; flex: none; }
+.entete .logo { height: 17.5mm; width: auto; flex: none; }
+.identite { flex: 1; min-width: 0; line-height: 1.25; }
+.identite .raison { font: 700 11.5pt/1 var(--f-titre); letter-spacing: .02em; color: var(--vert); text-transform: uppercase; }
+.identite .forme { font-size: 6.5pt; color: var(--gris); margin-top: .5mm; }
+.identite .coord { font-size: 6.3pt; color: var(--encre); margin-top: .6mm; white-space: nowrap; }
+.identite .coord b { color: var(--vert); font-weight: 600; margin-right: .6mm; }
+.identite .val { margin-right: 2.8mm; }
+.blanc { display: inline-block; min-width: 14mm; height: 2.4mm; border-bottom: .3pt dotted var(--gris); vertical-align: baseline; margin-right: 1.4mm; }
+.blanc.l { min-width: 24mm; } .blanc.s { min-width: 8mm; }
+.numero { flex: none; text-align: right; min-width: 31mm; border: .5pt solid var(--orange); border-radius: 1mm; padding: 1mm 2.4mm 1.2mm; }
+.numero .n-lib { display: block; font: 600 6pt var(--f-texte); color: var(--orange); letter-spacing: .08em; text-transform: uppercase; text-align: left; }
+.numero .n-val { display: block; font: 700 15pt/1 var(--f-titre); color: var(--orange); letter-spacing: .1em; min-height: 5.4mm; }
+
+/* ---- bandeau de titre -------------------------------------------------- */
+.bandeau { flex: none; display: flex; align-items: center; justify-content: space-between; background: var(--vert); color: #fff; height: 7.5mm; padding: 0 3mm; margin-top: 1mm; border-bottom: 0.7mm solid var(--orange); }
+.bandeau h1 { margin: 0; font: 700 11pt/1 var(--f-titre); letter-spacing: .1em; text-transform: uppercase; }
+.bandeau .sous { font-size: 6.5pt; opacity: .92; letter-spacing: .03em; }
+
+/* ---- corps ------------------------------------------------------------- */
+.corps { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 1.2mm; padding-top: 2mm; }
+.corps > * { flex: none; }
+.corps > .souple { flex: 1; min-height: 0; }
+.rang { display: grid; grid-template-columns: repeat(24, 1fr); column-gap: 3mm; }
+.c1 { grid-column: span 1; } .c2 { grid-column: span 2; } .c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c6 { grid-column: span 6; }
+.c7 { grid-column: span 7; } .c8 { grid-column: span 8; } .c9 { grid-column: span 9; } .c10 { grid-column: span 10; } .c11 { grid-column: span 11; } .c12 { grid-column: span 12; }
+.c13 { grid-column: span 13; } .c14 { grid-column: span 14; } .c15 { grid-column: span 15; } .c16 { grid-column: span 16; } .c18 { grid-column: span 18; } .c24 { grid-column: span 24; }
+
+/* champ : libellé à gauche, ligne d'écriture qui prolonge */
+.champ { display: flex; align-items: flex-end; height: var(--h); border-bottom: var(--trait) solid var(--vert); padding-bottom: .4mm; min-width: 0; }
+.champ .lib { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); white-space: nowrap; margin-right: 1.6mm; padding-bottom: .5mm; }
+.champ .aide { font: 5.8pt/1 var(--f-texte); color: var(--gris); margin-left: auto; padding-bottom: .6mm; white-space: nowrap; }
+.champ.haut { height: calc(var(--h) * 1.5); } .champ.double { height: calc(var(--h) * 2); }
+.champ .u { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); margin-left: auto; padding-bottom: .5mm; }
+
+/* cases à cocher */
+.cases { display: flex; flex-wrap: wrap; align-items: center; gap: .8mm 3.4mm; min-height: 6mm; font-size: 7pt; }
+.cases .lib { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); margin-right: .4mm; }
+.cases .o { display: inline-flex; align-items: center; gap: 1.2mm; white-space: nowrap; }
+.cases .o::before { content: ""; width: 3.3mm; height: 3.3mm; border: .5pt solid var(--vert); border-radius: .4mm; flex: none; }
+.cases.carre .o::before { border-radius: 0; }
+.cases .o.autre { flex: 1; min-width: 16mm; border-bottom: var(--trait) dotted var(--gris); }
+
+/* tableau de lignes manuscrites */
+table.lignes { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.lignes th { background: var(--vert-15); color: var(--vert-fonce); font: 600 6.2pt/1.1 var(--f-texte); text-align: center; padding: 1mm .8mm; border: var(--trait) solid var(--vert); height: 6mm; }
+table.lignes td { border: var(--trait) solid var(--vert); height: var(--hl, 7mm); padding: 0 1mm; }
+table.lignes td.n { text-align: center; color: var(--gris); font-size: 6pt; background: transparent; }
+table.lignes td.u { text-align: right; font: 600 6pt var(--f-texte); color: var(--vert); vertical-align: bottom; padding-bottom: .5mm; }
+table.lignes tr.total td { height: 7.5mm; background: var(--vert-8); font-weight: 600; }
+table.lignes tr.total td.lib { text-align: right; color: var(--vert-fonce); font-size: 6.6pt; letter-spacing: .04em; text-transform: uppercase; border-color: var(--vert); }
+table.lignes td.grise { background: var(--vert-8); }
+table.lignes th.s2 { background: var(--vert-8); font-weight: 500; }
+
+/* montants */
+.montant { display: flex; align-items: stretch; border: .6pt solid var(--vert); height: 9mm; }
+.montant .lib { display: flex; align-items: center; background: var(--vert); color: #fff; font: 700 7pt var(--f-titre); letter-spacing: .08em; text-transform: uppercase; padding: 0 2.4mm; }
+.montant .zone { flex: 1; }
+.montant .dev { display: flex; align-items: center; padding: 0 2mm; font: 700 7pt var(--f-titre); color: var(--vert); border-left: var(--trait) solid var(--vert); }
+.lettres { border-bottom: var(--trait) solid var(--vert); height: calc(var(--h) * 2); padding-top: .4mm; }
+.lettres .lib { font: 600 6.3pt/1 var(--f-texte); color: var(--vert); }
+.lettres .reglet { height: calc(var(--h) - 1.6mm); border-bottom: var(--trait) dotted var(--gris); }
+
+/* signatures */
+.signatures { display: grid; gap: 2.4mm; }
+.sign { border: var(--trait) solid var(--vert); border-radius: .6mm; padding: .8mm 1.6mm; display: flex; flex-direction: column; }
+.sign .t { font: 600 6.2pt/1.1 var(--f-texte); color: var(--vert); }
+.sign .s { font-size: 5.6pt; color: var(--gris); }
+.sign .zone { flex: 1; }
+.sign .nom { border-top: var(--trait) dotted var(--gris); font-size: 5.6pt; color: var(--gris); padding-top: .3mm; }
+.sign.cachet { border-style: dashed; }
+
+/* blocs encadrés, notes */
+.bloc { border: var(--trait) solid var(--vert); border-radius: .8mm; padding: 1.2mm 2mm 1.2mm; position: relative; }
+.bloc > .t { position: absolute; top: -1.7mm; left: 2mm; background: #fff; padding: 0 1.2mm; font: 700 6pt/1 var(--f-titre); color: var(--vert); letter-spacing: .08em; text-transform: uppercase; }
+.bloc.plein { background: var(--vert-8); }
+.titre-section { font: 700 6.6pt/1 var(--f-titre); color: var(--vert); letter-spacing: .1em; text-transform: uppercase; border-bottom: .6pt solid var(--vert); padding-bottom: .6mm; }
+.note { font-size: 6pt; color: var(--gris); line-height: 1.25; }
+.note b { color: var(--vert-fonce); }
+.pointille { border-bottom: var(--trait) dotted var(--gris); height: 6.4mm; }
+.grille { background-image: linear-gradient(var(--vert-15) .3pt, transparent .3pt), linear-gradient(90deg, var(--vert-15) .3pt, transparent .3pt); background-size: 5mm 5mm; }
+.ligne-note { border-bottom: .3pt solid var(--vert-15); height: 7.2mm; }
+
+/* report dans l'application : le pont avec la base */
+.report { display: flex; flex-wrap: wrap; align-items: center; gap: .8mm 3mm; border: .5pt dashed var(--vert); background: var(--vert-8); padding: 0.8mm 2mm; font-size: 6pt; color: var(--vert-fonce); min-height: 6.4mm; }
+.report .t { font: 700 5.8pt/1.05 var(--f-titre); letter-spacing: .06em; text-transform: uppercase; flex: none; color: var(--vert); }
+.report .f { display: inline-flex; align-items: flex-end; gap: 1mm; white-space: nowrap; }
+.report .f i { display: inline-block; min-width: 11mm; border-bottom: .3pt solid var(--gris); height: 3.4mm; }
+.report .f i.s { min-width: 6mm; } .report .f i.l { min-width: 18mm; }
+.report .o::before { content: ""; display: inline-block; width: 2.8mm; height: 2.8mm; border: .5pt solid var(--vert); margin-right: .8mm; vertical-align: -.5mm; }
+
+/* souche perforée à gauche */
+.souche { flex: none; width: 43mm; padding-right: 2.6mm; display: flex; flex-direction: column; gap: 0; border-right: 0; position: relative; }
+.souche::after { content: ""; position: absolute; top: -2mm; bottom: -2mm; right: 0; border-right: .6pt dashed var(--gris); }
+.perfo { position: absolute; top: 3mm; right: -1.6mm; font-size: 8pt; color: var(--gris); background: #fff; line-height: 1; transform: rotate(180deg); z-index: 2; }
+.souche .ent { text-align: center; padding-bottom: 1mm; }
+.souche .ent img { height: 9mm; width: auto; display: block; margin: 0 auto 1mm; }
+.souche .ent .t { font: 700 6pt var(--f-titre); color: var(--vert); letter-spacing: .1em; text-transform: uppercase; }
+.souche .n { border: .5pt solid var(--orange); border-radius: .8mm; text-align: center; font: 700 12pt/1 var(--f-titre); color: var(--orange); letter-spacing: .1em; padding: 1mm 0; margin: 1mm 0 1.4mm; min-height: 7.5mm; }
+.souche .n small { display: block; font: 600 5.4pt var(--f-texte); letter-spacing: .08em; text-align: center; }
+.souche .champ { --h: 7.4mm; }
+.souche .report { flex-direction: column; align-items: stretch; gap: 1.2mm; margin-top: 2mm; padding: 1.2mm 2mm 1.6mm; }
+.souche .report .f { display: flex; align-items: flex-end; gap: 1mm; }
+.souche .report .f i { flex: 1; min-width: 0; }
+.souche .report .f.o { margin-top: .4mm; }
+.souche .champ .lib { font-size: 5.8pt; }
+.souche .petit { font-size: 5.4pt; color: var(--gris); text-align: center; margin-top: auto; padding-top: 1mm; }
+.souche .cases { font-size: 6.3pt; min-height: 5mm; }
+.corps-souche { flex: 1; min-width: 0; padding-left: 3mm; display: flex; flex-direction: column; }
+
+/* pied de pièce */
+.pied { flex: none; display: flex; justify-content: space-between; align-items: flex-end; gap: 3mm; border-top: .3pt solid var(--vert); margin-top: 1.4mm; padding-top: .9mm; font-size: 5.6pt; color: var(--gris); line-height: 1.2; }
+.pied .ex b { color: var(--vert-fonce); }
+.pied .ref { text-align: right; white-space: nowrap; }
+.pied .annule { display: inline-flex; align-items: center; gap: 1mm; color: var(--vert-fonce); font-weight: 600; }
+.pied .annule::before { content: ""; width: 2.8mm; height: 2.8mm; border: .5pt solid var(--vert); }
+
+/* filigrane de maquette (jamais en impression) */
+.filigrane { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 9; }
+.filigrane span { transform: rotate(-24deg); font: 700 44pt var(--f-titre); letter-spacing: .12em; color: rgba(200,120,10,.16); border: 2pt solid rgba(200,120,10,.16); padding: 2mm 8mm; white-space: nowrap; }
+
+/* planche d'impression : fonds perdus 3 mm + traits de coupe */
+body.impression .planche { position: relative; break-after: page; page-break-after: always; overflow: hidden; background: #fff; }
+body.impression .planche:last-child { break-after: auto; page-break-after: auto; }
+body.impression .planche .feuille { position: absolute; top: var(--slug); left: var(--slug); }
+.coupe { position: absolute; background: #000; }
+.coupe.h { height: .25pt; width: 5mm; } .coupe.v { width: .25pt; height: 5mm; }
+.legende-planche { position: absolute; left: 8mm; bottom: 1.6mm; font: 5pt var(--f-texte); color: #000; }
+
+/* papeterie : lignes de bloc-notes, couvertures */
+.lignes-fond { background: repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, var(--vert-15) 7.1mm, var(--vert-15) 7.25mm); }
+.grille-fond { background-image: linear-gradient(var(--vert-15) .25pt, transparent .25pt), linear-gradient(90deg, var(--vert-15) .25pt, transparent .25pt); background-size: 5mm 5mm; }
+table.lignes td.pre { font: 600 6.8pt var(--f-texte); color: var(--vert-fonce); background: var(--vert-8); vertical-align: middle; padding-left: 1.6mm; }
+.cv { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.cv .haut { flex: none; height: 56%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; }
+.cv .haut img { height: 54%; width: auto; }
+.cv .titre { background: var(--vert); color: #fff; text-align: center; padding: 3mm 6mm; border-bottom: 1mm solid var(--orange); }
+.cv .titre h1 { margin: 0; font: 700 22pt/1.1 var(--f-titre); letter-spacing: .08em; text-transform: uppercase; }
+.cv .titre p { margin: 1.2mm 0 0; font-size: 8.5pt; opacity: .95; }
+.cv .bas { flex: 1; padding: 6mm 16mm 10mm; display: flex; flex-direction: column; justify-content: space-evenly; }
+.cv .serie span { white-space: nowrap; }
+.cv .serie { display: flex; align-items: center; justify-content: center; gap: 5mm; font: 600 9pt var(--f-texte); color: var(--vert); }
+.cv .serie .zone { min-width: 48mm; height: 12mm; border: .6pt solid var(--orange); border-radius: 1mm; }
+.cv .regles { font-size: 10.4pt; line-height: 1.4; padding: 0 3mm; }
+.cv .regles ol { margin: 0; padding-left: 6mm; } .cv .regles li { margin: 0 0 3.2mm; }
+.cv .regles li b { color: var(--vert-fonce); }

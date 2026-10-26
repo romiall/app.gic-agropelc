@@ -205,4 +205,4 @@
 | REQ-306 | Une table de présence simple, alimentée chaque semaine à partir de la fiche de pointage papier (D6). | Porteur, 20/10/2026 |
 | REQ-307 | Un bilan hebdomadaire du commercial : fiche papier et écran dans l'application (D8). | Porteur, 20/10/2026 |
 | REQ-308 | La visite porte une veille marché structurée (fournisseur ou concurrent, prix constaté) (D9) et le compte client un profil commercial (produit d'intérêt, potentiel par jour, mode de paiement habituel) (D10). | Porteur, 20/10/2026 |
-| REQ-309 | La facture client reste hors de l'application pour l'instant (D3) ; exclusion, AV-041 reste en vigueur. | Porteur, 20/10/2026 |
+| REQ-309 | La facture client reste hors de l'application pour l'instant (D3) ; exclusion, AV-041 reste en vigueur. **Levée le 26/10/2026** : la facture est imprimée par l'application dans le modèle du dossier papier (AV-041, ADR-048). | Porteur, 20/10/2026 et 26/10/2026 |

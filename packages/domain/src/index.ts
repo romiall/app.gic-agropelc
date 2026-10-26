@@ -23,6 +23,7 @@ export type { ClientProvidedIdCheck } from './uuid.js';
 export { Uuidv7Generator } from './uuidv7-generator.js';
 
 export type { Xaf } from './money.js';
+export { integerInFrenchWords, amountXafInFrenchWords } from './amount-in-words.js';
 export {
   xaf,
   ZERO_XAF,

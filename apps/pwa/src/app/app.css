@@ -1239,6 +1239,26 @@ ul.outbox-list li {
   height: 20px;
 }
 
+/* Pièce papier (lot PP) : l'aperçu tient dans la largeur de l'écran, la feuille garde ses mm. */
+.piece-action {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.piece-apercu {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #dfe5e1;
+}
+
+.piece-apercu iframe {
+  display: block;
+  border: 0;
+  background: #dfe5e1;
+}
+
 @media print {
   .app-header,
   .back-link,

@@ -8,6 +8,8 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeRemiseDeFonds } from '../pieces/adaptateurs-finance.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -257,6 +259,12 @@ export function CashTransfersScreen() {
       <p className={view.status === 'DISCREPANCY_PENDING' ? 'text-warn' : 'home-muted'}>
         {stateText(view)}
       </p>
+      {/* Bordereau de remise de fonds (lot PP). */}
+      <PieceAction
+        cle={`RF:${view.id}`}
+        annulee={view.status === 'CANCELLED'}
+        demande={() => demandeRemiseDeFonds(view, refs, null)}
+      />
       {actions}
     </li>
   );

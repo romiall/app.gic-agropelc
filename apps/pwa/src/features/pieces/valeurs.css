@@ -1,0 +1,64 @@
+/* ==========================================================================
+   Pièces imprimées par l'application (lot PP) : compléments à charte.css.
+   charte.css est la copie exacte de pieces-papier/charte/pieces.css (vérifiée par un test) ;
+   ce fichier n'ajoute que ce que le papier vierge n'a pas : les valeurs écrites dans les cases,
+   les cases cochées, les tampons DUPLICATA et ANNULÉE, l'aperçu à l'écran.
+   ========================================================================== */
+
+/* Polices : celles des gabarits (Windows) d'abord, sinon les polices libres embarquées. */
+:root {
+  --f-texte: "Segoe UI", "GIC Texte", Calibri, Arial, sans-serif;
+  --f-titre: "Bahnschrift", "GIC Titre", "Segoe UI", Arial, sans-serif;
+}
+
+/* valeur écrite sur la ligne d'un champ */
+.champ .v { flex: 1; min-width: 0; font: 400 7.6pt/1.15 var(--f-texte); color: var(--encre); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: .4mm; }
+.champ .v.num { text-align: right; }
+.champ.haut, .champ.double { position: relative; }
+/* champ haut ou double : le libellé reste en bas à gauche, le texte occupe la hauteur au-dessus */
+.champ.haut .v, .champ.double .v { position: absolute; top: .8mm; left: 0; right: 0; bottom: 3.4mm; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding: 0; text-align: left; }
+.champ.double .v { -webkit-line-clamp: 3; }
+.champ .v + .u { margin-left: 1.2mm; }
+
+/* case cochée */
+.cases .o.coche::before { content: "✕"; display: inline-flex; align-items: center; justify-content: center; font: 700 7pt/1 var(--f-texte); color: var(--encre); }
+.cases .o .vo { font-weight: 600; color: var(--encre); margin-left: .8mm; }
+
+/* tableau rempli */
+table.lignes td.val { font: 400 7pt/1.1 var(--f-texte); color: var(--encre); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+table.lignes td.val.r { text-align: right; }
+table.lignes td.val.l { white-space: normal; }
+table.lignes td.val .t2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.05; overflow-wrap: anywhere; }
+table.lignes td.val.c { text-align: center; }
+table.lignes tr.total td.val { font-weight: 700; text-align: right; }
+
+/* montant encadré, en lettres */
+.montant .zone { display: flex; align-items: center; justify-content: flex-end; padding: 0 2.4mm; font: 700 10pt/1 var(--f-titre); color: var(--encre); letter-spacing: .03em; }
+.lettres .reglet { display: flex; align-items: flex-end; }
+.lettres .reglet .v { font: italic 400 7.2pt/1.1 var(--f-texte); color: var(--encre); padding-bottom: .4mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* signatures, report, numéro */
+.sign .nom .v { color: var(--encre); font-size: 6.4pt; }
+.report .f .v { font: 600 6.2pt/1 var(--f-texte); color: var(--encre); border-bottom: .3pt solid var(--gris); padding: 0 .6mm .2mm; }
+.numero .n-val { white-space: nowrap; }
+.numero .n-val.long { font-size: 8.6pt; letter-spacing: 0; padding-top: 1mm; }
+.pied .annule.coche::before { content: "✕"; display: inline-flex; align-items: center; justify-content: center; font: 700 6pt/1 var(--f-texte); color: var(--encre); }
+.pied .page { color: var(--vert-fonce); font-weight: 600; margin-right: 2mm; }
+
+/* tampons : réimpression, pièce annulée (rien ne disparaît, ADR-006) */
+.tampon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 9; }
+.tampon span { transform: rotate(-20deg); font: 700 30pt/1 var(--f-titre); letter-spacing: .14em; text-transform: uppercase; color: rgba(200, 120, 10, .42); border: 1.6pt solid rgba(200, 120, 10, .42); border-radius: 2mm; padding: 2mm 7mm; white-space: nowrap; text-align: center; }
+.tampon span small { display: block; font: 600 8pt/1.2 var(--f-texte); letter-spacing: .04em; text-transform: none; margin-top: 1mm; }
+.tampon.annulee span { color: rgba(43, 75, 61, .5); border-color: rgba(43, 75, 61, .5); }
+.tampon + .tampon { align-items: flex-end; padding-bottom: 14mm; }
+
+/* aperçu à l'écran : la feuille posée sur un fond, rien de cela n'est imprimé */
+@media screen {
+  html, body { background: #dfe5e1; }
+  body { padding: 4mm; }
+  .feuille { margin: 0 auto 4mm; box-shadow: 0 .6mm 2.4mm rgba(21, 33, 27, .25); }
+}
+@media print {
+  body { padding: 0; }
+  .feuille { margin: 0; box-shadow: none; }
+}

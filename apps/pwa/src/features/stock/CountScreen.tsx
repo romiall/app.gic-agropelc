@@ -7,6 +7,8 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeFicheInventaire } from '../pieces/adaptateurs-stock.js';
 import { businessDayOf } from '@gic/domain';
 import { clock } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -193,6 +195,17 @@ export function CountScreen() {
                     : t(`count.status.${candidate.status}`, { defaultValue: candidate.status })}
                 <small>{formatMoment(candidate.occurredAt, today)}</small>
               </span>
+              {/* Fiche d'inventaire (lot PP) : un comptage servi par le serveur. */}
+              {refs.counts.some((count) => count.id === candidate.id) ? (
+                <PieceAction
+                  cle={`FI:${candidate.id}`}
+                  annulee={candidate.status === 'CANCELLED'}
+                  demande={() => {
+                    const count = refs.counts.find((item) => item.id === candidate.id);
+                    return count ? demandeFicheInventaire(count, refs, null) : null;
+                  }}
+                />
+              ) : null}
             </li>
           ))}
         </ul>
