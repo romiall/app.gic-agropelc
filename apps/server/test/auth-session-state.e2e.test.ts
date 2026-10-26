@@ -28,7 +28,7 @@ import { revokeUserSessions } from '../src/modules/identity/application/commands
 import { closeTestDb, db, freshPhone, freshUuid } from './helpers.js';
 
 const TEST_PASSWORD = 'mot-de-passe-de-test-mp11';
-const NEW_PASSWORD = 'nouveau-mot-de-passe-mp11';
+const NEW_PASSWORD = 'nouveau-mot-de-passe-mp11'; // gitleaks:allow (mot de passe de test, base jetable)
 
 // Adresses propres à l'exécution : les compteurs d'échecs par IP survivent d'une exécution à l'autre
 // (une IP reprise d'une exécution précédente peut être verrouillée).

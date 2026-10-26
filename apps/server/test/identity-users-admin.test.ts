@@ -907,7 +907,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
   });
 
   it('corps JSON mal formé : 400 générique, sans écho ni journal du mot de passe (non-régression)', async () => {
-    const secret = 'Fuite-MP13-provisoire';
+    const secret = 'Fuite-MP13-provisoire'; // gitleaks:allow (témoin de fuite, pas un secret)
     const spies = (['info', 'warn', 'error'] as const).map((level) => vi.spyOn(appLogger, level));
     try {
       const response = await app.inject({
