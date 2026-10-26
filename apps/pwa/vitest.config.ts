@@ -15,6 +15,9 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     // Les scénarios Playwright (e2e/) se lancent par `pnpm run e2e`, pas par Vitest.
     exclude: [...configDefaults.exclude, 'e2e/**'],
+    // Feuilles de style des pièces imprimées (lot PP) : lues en texte (`?raw`) et testées, donc
+    // traitées au lieu d'être remplacées par une chaîne vide comme les autres CSS.
+    css: { include: [/features\/pieces\/.*\.css/] },
     // Les parcours d'écran complets (plusieurs saisies, relectures, réponses simulées) dépassent
     // parfois 5 s quand la machine est chargée : délai relevé pour éviter les échecs de charge.
     testTimeout: 20_000,
