@@ -2552,7 +2552,10 @@ export const fr = {
     reset_sending: 'Réinitialisation…',
     reset_done:
       'Mot de passe de {{name}} réinitialisé : ses sessions sont fermées et il devra choisir son propre mot de passe à sa prochaine connexion.',
-    reset_offline: 'Pas de réseau : la réinitialisation n’a pas été faite. Réessayez en ligne.',
+    reset_offline:
+      'Réponse non reçue : la réinitialisation a peut-être été faite. Recommencez en ligne pour en être sûr.',
+    reset_session:
+      'Session expirée : reconnectez-vous puis recommencez. La réinitialisation n’a pas été envoyée.',
     reset_refused: 'Réinitialisation refusée : {{reason}}',
     create_action: 'Nouveau compte',
     create_title: 'Nouveau compte',
@@ -2571,7 +2574,12 @@ export const fr = {
     create_sending: 'Création…',
     create_done:
       'Compte de {{name}} créé : communiquez-lui son mot de passe provisoire, il devra le changer à sa première connexion.',
-    create_offline: 'Pas de réseau : le compte n’a pas été créé. Réessayez en ligne.',
+    create_offline:
+      'Réponse non reçue : le compte a peut-être été créé. Vérifiez la liste avant de recommencer.',
+    create_session:
+      'Session expirée : reconnectez-vous puis recommencez. Le compte n’a pas été envoyé.',
+    roles_unavailable:
+      'Lecture des rôles impossible pour l’instant : la création de compte et l’ajout de rôle sont indisponibles.',
     create_refused: 'Création refusée : {{reason}}',
     role_label: 'Rôle',
     no_role_option: 'Aucun rôle pour l’instant',
@@ -2597,8 +2605,8 @@ export const fr = {
     assign_duplicate: 'Ce compte a déjà ce rôle sur ce périmètre.',
     revoke_action: 'Retirer',
     revoke_open: 'Retirer le rôle {{role}} de {{name}}',
-    revoke_title: 'Retrait d’un rôle de {{name}}',
-    revoke_confirm: 'Confirmer le retrait du rôle',
+    revoke_title: 'Retrait du rôle {{role}} de {{name}}',
+    revoke_confirm: 'Confirmer le retrait du rôle {{role}}',
     reason_required: 'Motif (obligatoire)',
     reason_optional: 'Motif (facultatif)',
     status_short: {

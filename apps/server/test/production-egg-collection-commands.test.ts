@@ -41,7 +41,10 @@ import {
   insertTestZone,
 } from './helpers.js';
 
-const DAY = '2026-10-22';
+// Jour fixe hors des fenêtres que d'autres fichiers paramètrent autour de la date réelle (P7-13 pose
+// les calibres chaque jour de la semaine écoulée à 07:59, ce qui masquait ceux de ce fichier quand DAY
+// y tombait) : le résultat ne dépend plus du jour où la suite est jouée.
+const DAY = '2026-08-14';
 const at = (hhmmss: string) => `${DAY}T${hhmmss}.000Z`;
 const NOW = at('20:00:00');
 let deviceSeq = 0;
@@ -486,7 +489,7 @@ describe('P7-07 : collectes d’œufs', () => {
         nonconforming: 0,
         hatching: 0,
         grades: [{ productId: mediumId, quantity: 30 }],
-        collectionDate: '2026-10-21',
+        collectionDate: '2026-08-13',
       }),
     );
     const row = await db
@@ -496,7 +499,7 @@ describe('P7-07 : collectes d’œufs', () => {
       .where('c.id', '=', toBin(id))
       .executeTakeFirstOrThrow();
     // Date lue en SQL : indépendante du fuseau de la machine de test.
-    expect(row.expiry).toBe('2026-11-18');
+    expect(row.expiry).toBe('2026-09-10');
     // Un seul produit : le lot de stock le porte.
     expect(fromBin(row.product_id!)).toBe(mediumId);
   });
@@ -525,7 +528,7 @@ describe('P7-07 : collectes d’œufs', () => {
     expect(code((await collect(collection({ storageLocationId: otherStoreId }))).result)).toBe(
       'SITE_MISMATCH',
     );
-    expect(code((await collect(collection({ collectionDate: '2026-10-23' }))).result)).toBe(
+    expect(code((await collect(collection({ collectionDate: '2026-08-15' }))).result)).toBe(
       'COLLECTION_DATE_INVALID',
     );
     expect(code((await collect(collection(), otherFarmManager)).result)).toBe('FORBIDDEN_SCOPE');

@@ -8,12 +8,16 @@
  * (`enrollerLocators`, la règle des appareils, BR-ADM-025) ; une portée `ALL` voit tout. La liste est
  * filtrée élément par élément : une page peut être plus courte que `limit`, suivre `next_cursor`.
  *
- * Chaque compte porte ses affectations de rôle actives (identifiant, rôle, périmètre : l'écran révoque par
- * l'identifiant, MP-13) et les actions que le lecteur peut y faire : `resetPassword`, `suspend`, `reactivate`,
- * `deactivate` (`identity.user.manage`, jamais sur son propre compte pour suspendre, désactiver ou
- * réinitialiser ; un compte désactivé ne se réinitialise ni ne se suspend ; AV-252, AV-281) et `manageRoles`
- * (`identity.role_assignment.manage`, sauf compte désactivé). Jamais le mot de passe ni son empreinte ;
- * l'utilisateur système n'est jamais listé.
+ * Chaque compte porte les codes de ses rôles actifs et, pour un lecteur qui peut y gérer les rôles, le
+ * détail de ses affectations (identifiant, rôle, périmètre, validité : l'écran révoque par l'identifiant,
+ * MP-13) ; un autre lecteur ne voit pas les sites, zones et équipes des affectations, qui peuvent sortir de
+ * sa portée. Actions que le lecteur peut y faire : `resetPassword`, `suspend`, `reactivate`, `deactivate`
+ * (`identity.user.manage`, jamais sur son propre compte pour suspendre, désactiver ou réinitialiser, ce que
+ * les commandes imposent aussi ; un compte désactivé ne se réinitialise ni ne se suspend, et ne se réactive
+ * pas si un autre compte a repris son numéro ; AV-252, AV-281), `manageRoles` (octroi,
+ * `identity.role_assignment.manage`, sauf compte désactivé) et `revokeRoles` (retrait, même droit, aussi
+ * sur un compte désactivé). Jamais le mot de passe ni son empreinte ; l'utilisateur système n'est jamais
+ * listé.
  */
 import { Controller, Get, HttpCode, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -30,6 +34,7 @@ import {
   listActiveAssignmentsOfUsers,
   listUsersPage,
   locatorsInScope,
+  phonesInUse,
   type ResourceLocator,
   type UserSummary,
 } from '../modules/identity/application/public/index.js';
@@ -162,6 +167,11 @@ export class UsersReadController {
       users.map((user) => user.id),
       now,
     );
+    // Un compte désactivé ne porte pas la contrainte d'unicité : son numéro trouvé ici l'est par un autre.
+    const takenPhones = await phonesInUse(
+      this.db,
+      users.filter((user) => user.status === 'DEACTIVATED').map((user) => user.phone),
+    );
     for (const user of users) {
       const assignments = assignmentsOf.get(user.id) ?? [];
       const self = user.id === readerId;
@@ -178,7 +188,7 @@ export class UsersReadController {
         lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
         roles: [...new Set(assignments.map((assignment) => assignment.roleCode))].sort(),
-        assignments: assignments.map((assignment) => ({
+        assignments: (canAssign ? assignments : []).map((assignment) => ({
           id: assignment.id,
           roleId: assignment.roleId,
           roleCode: assignment.roleCode,
@@ -193,10 +203,14 @@ export class UsersReadController {
         actions: {
           resetPassword: !self && user.status !== 'DEACTIVATED' && canManage,
           suspend: !self && user.status === 'ACTIVE' && canManage,
-          reactivate: (user.status === 'SUSPENDED' || user.status === 'DEACTIVATED') && canManage,
+          reactivate:
+            (user.status === 'SUSPENDED' ||
+              (user.status === 'DEACTIVATED' && !takenPhones.has(user.phone))) &&
+            canManage,
           deactivate:
             !self && (user.status === 'ACTIVE' || user.status === 'SUSPENDED') && canManage,
           manageRoles: user.status !== 'DEACTIVATED' && canAssign,
+          revokeRoles: canAssign,
         },
       });
     }

@@ -379,7 +379,7 @@ describe('projections /sync/pull du jeu production (P7-12)', () => {
       });
       // Paramètres versionnés, sans date de fin : la version dont le `valid_from` est le plus
       // récent avant l'opération l'emporte, quel que soit le test qui l'a écrite (des tests
-      // datent les leurs d'un jour fixe, p. ex. les calibres au 22/10 et au 28/10). Chacun est
+      // datent les leurs d'un jour fixe, p. ex. les calibres au 14/08, au 12/09, au 23/10 et au 28/10). Chacun est
       // donc daté une seconde avant l'unique opération qui le lit (comme production-farm-week
       // pour les calibres), après les versions du seed, datées de son exécution.
       for (const [key, value, usedAt] of [

@@ -17,7 +17,7 @@ import type { TFunction } from 'i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useTranslation } from 'react-i18next';
 import { PASSWORD_MAX_LENGTH } from '@gic/domain';
-import { idGenerator } from '../../platform/composition.js';
+import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { getDb } from '../../storage/db.js';
 import { authorizedRequest } from '../../sync/api-client.js';
@@ -32,6 +32,7 @@ import {
   type Pages,
 } from '../sales/online-read.js';
 import { useSalesReferences } from '../sales/references.js';
+import { settingValue } from '../sales/stock.js';
 import {
   isBlockingWait,
   lastWaitingCommand,
@@ -47,12 +48,13 @@ import {
   canSendStatus,
   CREATE_PATH,
   createBody,
+  DEFAULT_COUNTRY_CODE,
   EMPTY_NEW_USER,
+  failureOutcome,
   grantPayload,
   matchesSearch,
   newUserProblem,
   REASON_MAX,
-  refusalOf,
   resetPath,
   resetProblem,
   revokePayload,
@@ -78,8 +80,8 @@ import {
 
 /** Pages lues au plus pour un filtre (200 comptes chacune). */
 const MAX_PAGES = 5;
-/** Commandes d'identité de la file d'envoi suivies par cet écran. */
-const PREFIX = 'identity.';
+/** Commandes de la file d'envoi suivies par cet écran : pas celles des appareils (ECR-ADM-05). */
+const PREFIX = ['identity.user.', 'identity.role_assignment.'] as const;
 
 const STATUS_BADGE: Record<string, string> = {
   ACTIVE: 'badge-ok',
@@ -102,6 +104,8 @@ type Open =
 // --- Mot de passe provisoire (partagé par la création et la réinitialisation) ---------------------
 
 interface PasswordFieldsProps {
+  /** Premier champ du formulaire : il reçoit le focus à l'ouverture. */
+  readonly autoFocus?: boolean;
   readonly password: string;
   readonly confirmation: string;
   readonly onPassword: (value: string) => void;
@@ -109,6 +113,7 @@ interface PasswordFieldsProps {
 }
 
 function PasswordFields({
+  autoFocus = false,
   password,
   confirmation,
   onPassword,
@@ -126,6 +131,7 @@ function PasswordFields({
         <input
           id={ids.password}
           className="text-input"
+          autoFocus={autoFocus}
           type={type}
           autoComplete="new-password"
           maxLength={PASSWORD_MAX_LENGTH}
@@ -179,18 +185,24 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
   const send = async () => {
     if (problem || sending) return;
     setSending(true);
-    const result = await authorizedRequest(getDb(), resetPath(user.id), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ new_password: password }),
-    });
-    // Le mot de passe saisi n'est gardé nulle part, pas même dans le formulaire.
-    setPassword('');
-    setConfirm('');
-    setSending(false);
-    if (result.ok) onDone({ kind: 'DONE' });
-    else if (result.reason === 'HTTP_ERROR') onDone({ kind: 'REFUSED', ...refusalOf(result.body) });
-    else onDone({ kind: 'OFFLINE' });
+    let outcome: ResetOutcome;
+    try {
+      const result = await authorizedRequest(getDb(), resetPath(user.id), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ new_password: password }),
+      });
+      outcome = result.ok ? { kind: 'DONE' } : failureOutcome(result);
+    } catch {
+      // Échec local imprévu (base locale, jeton) : issue inconnue, comme une réponse non reçue.
+      outcome = { kind: 'OFFLINE' };
+    } finally {
+      // Le mot de passe saisi n'est gardé nulle part, pas même dans le formulaire.
+      setPassword('');
+      setConfirm('');
+      setSending(false);
+    }
+    onDone(outcome);
   };
 
   return (
@@ -201,6 +213,7 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
     >
       <p className="home-muted">{t('users.reset_help')}</p>
       <PasswordFields
+        autoFocus
         password={password}
         confirmation={confirm}
         onPassword={setPassword}
@@ -215,7 +228,8 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
         >
           {sending ? t('users.reset_sending') : t('users.reset_submit', { name: user.fullName })}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        {/* Pendant l'envoi, la requête part quand même : « Annuler » ne l'arrêterait pas. */}
+        <button type="button" className="secondary" disabled={sending} onClick={onCancel}>
           {t('price_rules.cancel')}
         </button>
       </div>
@@ -226,6 +240,7 @@ function ResetForm({ user, onCancel, onDone }: ResetFormProps) {
 // --- Choix d'une affectation (création et ajout de rôle) -----------------------------------------
 
 interface AssignmentFieldsProps {
+  readonly autoFocus?: boolean;
   readonly choice: AssignmentChoice;
   readonly roles: readonly RoleView[];
   readonly sites: readonly SiteOption[];
@@ -233,7 +248,14 @@ interface AssignmentFieldsProps {
   readonly onChange: (choice: AssignmentChoice) => void;
 }
 
-function AssignmentFields({ choice, roles, sites, optional, onChange }: AssignmentFieldsProps) {
+function AssignmentFields({
+  autoFocus = false,
+  choice,
+  roles,
+  sites,
+  optional,
+  onChange,
+}: AssignmentFieldsProps) {
   const { t } = useTranslation();
   const ids = { role: useId(), scope: useId(), site: useId() };
   const role = roles.find((candidate) => candidate.id === choice.roleId);
@@ -254,6 +276,7 @@ function AssignmentFields({ choice, roles, sites, optional, onChange }: Assignme
         <select
           id={ids.role}
           className="text-input"
+          autoFocus={autoFocus}
           value={choice.roleId}
           onChange={(event) => pick(event.target.value)}
         >
@@ -314,36 +337,45 @@ function AssignmentFields({ choice, roles, sites, optional, onChange }: Assignme
 // --- Création d'un compte ------------------------------------------------------------------------
 
 interface CreateFormProps {
+  readonly countryCode: string;
+  readonly onSending: (sending: boolean) => void;
   readonly roles: readonly RoleView[];
   readonly sites: readonly SiteOption[];
   readonly onCancel: () => void;
   readonly onDone: (outcome: CreateOutcome, name: string) => void;
 }
 
-function CreateForm({ roles, sites, onCancel, onDone }: CreateFormProps) {
+function CreateForm({ countryCode, onSending, roles, sites, onCancel, onDone }: CreateFormProps) {
   const { t } = useTranslation();
   const ids = { name: useId(), phone: useId(), email: useId() };
   const [form, setForm] = useState<NewUserForm>(EMPTY_NEW_USER);
   const [sending, setSending] = useState(false);
-  const problem = newUserProblem(form, roles);
+  const problem = newUserProblem(form, roles, countryCode);
   const set = (patch: Partial<NewUserForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const send = async () => {
     if (problem || sending) return;
     setSending(true);
+    onSending(true);
     const name = form.fullName.trim();
-    const result = await authorizedRequest<{ id: string }>(getDb(), CREATE_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(createBody(form)),
-    });
-    // Le mot de passe saisi n'est gardé nulle part, pas même dans le formulaire.
-    setForm((current) => ({ ...current, password: '', confirmation: '' }));
-    setSending(false);
-    if (result.ok) onDone({ kind: 'CREATED', id: result.data.id }, name);
-    else if (result.reason === 'HTTP_ERROR') {
-      onDone({ kind: 'REFUSED', ...refusalOf(result.body) }, name);
-    } else onDone({ kind: 'OFFLINE' }, name);
+    let outcome: CreateOutcome;
+    try {
+      const result = await authorizedRequest<{ id: string }>(getDb(), CREATE_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(createBody(form, countryCode)),
+      });
+      outcome = result.ok ? { kind: 'CREATED', id: result.data.id } : failureOutcome(result);
+    } catch {
+      // Échec local imprévu : issue inconnue, la liste est relue comme après une réponse non reçue.
+      outcome = { kind: 'OFFLINE' };
+    } finally {
+      // Le mot de passe saisi n'est gardé nulle part, pas même dans le formulaire.
+      setForm((current) => ({ ...current, password: '', confirmation: '' }));
+      setSending(false);
+      onSending(false);
+    }
+    onDone(outcome, name);
   };
 
   return (
@@ -355,6 +387,7 @@ function CreateForm({ roles, sites, onCancel, onDone }: CreateFormProps) {
         <input
           id={ids.name}
           className="text-input"
+          autoFocus
           autoComplete="off"
           maxLength={200}
           value={form.fullName}
@@ -398,7 +431,11 @@ function CreateForm({ roles, sites, onCancel, onDone }: CreateFormProps) {
         onPassword={(value) => set({ password: value })}
         onConfirmation={(value) => set({ confirmation: value })}
       />
-      {form.fullName && problem && ['PHONE', 'EMAIL', 'SITE', 'SCOPE'].includes(problem) ? (
+      {/* Un défaut ne se signale que sur un champ commencé ; un rôle sans périmètre proposable l'est déjà
+          sous son choix (`scope_unavailable`). */}
+      {(problem === 'PHONE' && form.phone.trim() !== '') ||
+      (problem === 'EMAIL' && form.email.trim() !== '') ||
+      problem === 'SITE' ? (
         <p className="text-warn">{t(`users.create_problem.${problem}`)}</p>
       ) : null}
       <div className="result-actions">
@@ -410,7 +447,7 @@ function CreateForm({ roles, sites, onCancel, onDone }: CreateFormProps) {
         >
           {sending ? t('users.create_sending') : t('users.create_submit')}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="secondary" disabled={sending} onClick={onCancel}>
           {t('price_rules.cancel')}
         </button>
       </div>
@@ -444,6 +481,7 @@ function ReasonForm({ label, confirm, required, blocked, onCancel, onConfirm }: 
         <textarea
           id={id}
           className="text-input"
+          autoFocus
           maxLength={REASON_MAX}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -479,6 +517,19 @@ function scopeText(
   return t(`users.scope.${assignment.scopeType}`, { defaultValue: assignment.scopeType });
 }
 
+/** Rôle et périmètre d'une affectation du compte, pour nommer ce qu'un retrait vise. */
+function revokedRoleText(
+  user: UserView,
+  assignmentId: string,
+  siteName: (id: string | null) => string | null,
+  t: TFunction,
+): string {
+  const assignment = user.assignments.find((candidate) => candidate.id === assignmentId);
+  if (!assignment) return '';
+  const role = t(`users.role.${assignment.roleCode}`, { defaultValue: assignment.roleName });
+  return `${role} · ${scopeText(assignment, siteName, t)}`;
+}
+
 // --- Écran ---------------------------------------------------------------------------------------
 
 export function UsersScreen() {
@@ -492,6 +543,11 @@ export function UsersScreen() {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Open | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createSending, setCreateSending] = useState(false);
+  // Une création en cours d'envoi garde son formulaire : sa réponse peut demander de corriger la saisie.
+  const closeCreate = () => {
+    if (!createSending) setCreating(false);
+  };
   const [outcome, setOutcome] = useState<
     | { kind: 'RESET'; name: string; result: ResetOutcome }
     | { kind: 'CREATE'; name: string; result: CreateOutcome }
@@ -518,6 +574,7 @@ export function UsersScreen() {
     online,
     '',
   );
+  useRefreshOnVisible(rolesRead.retry);
 
   if (!userId) {
     return (
@@ -537,6 +594,11 @@ export function UsersScreen() {
   }
 
   const roles = rolesRead.data?.roles;
+  const countryCode = String(
+    (refs
+      ? settingValue(refs.settings, 'crm.phone_default_country_code', undefined, clock.now())
+      : undefined) ?? DEFAULT_COUNTRY_CODE,
+  );
   const sites: SiteOption[] = refs
     ? [...refs.sites.values()]
         .filter((site) => site.status === 'ACTIVE')
@@ -587,7 +649,11 @@ export function UsersScreen() {
         <p className="alert alert-error" role="alert">
           {outcome.result.kind === 'OFFLINE'
             ? t('users.reset_offline')
-            : t('users.reset_refused', { reason: outcome.result.message ?? outcome.result.code })}
+            : outcome.result.kind === 'SESSION'
+              ? t('users.reset_session')
+              : t('users.reset_refused', {
+                  reason: outcome.result.message ?? outcome.result.code,
+                })}
         </p>
       );
     }
@@ -599,7 +665,9 @@ export function UsersScreen() {
       <p className="alert alert-error" role="alert">
         {outcome.result.kind === 'OFFLINE'
           ? t('users.create_offline')
-          : t('users.create_refused', { reason: outcome.result.message ?? outcome.result.code })}
+          : outcome.result.kind === 'SESSION'
+            ? t('users.create_session')
+            : t('users.create_refused', { reason: outcome.result.message ?? outcome.result.code })}
       </p>
     );
   };
@@ -615,6 +683,14 @@ export function UsersScreen() {
         </p>
       ) : null}
       {outcomeNotice()}
+      {rolesRead.failed && !rolesRead.denied ? (
+        <div className="alert alert-error" role="alert">
+          <p>{t('users.roles_unavailable')}</p>
+          <button type="button" className="secondary" onClick={rolesRead.retry}>
+            {t('ledger.retry')}
+          </button>
+        </div>
+      ) : null}
       {roles && !creating ? (
         <div className="result-actions">
           <button
@@ -632,13 +708,16 @@ export function UsersScreen() {
       ) : null}
       {roles && creating ? (
         <CreateForm
+          countryCode={countryCode}
+          onSending={setCreateSending}
           roles={roles}
           sites={sites}
           onCancel={() => setCreating(false)}
           onDone={(result, name) => {
             setOutcome({ kind: 'CREATE', name, result });
-            if (result.kind === 'CREATED') {
-              setCreating(false);
+            if (result.kind === 'CREATED') setCreating(false);
+            // Sans réponse, le compte a pu être créé : la liste relue le montre avant un nouvel essai.
+            if (result.kind === 'CREATED' || result.kind === 'OFFLINE') {
               setReload((value) => value + 1);
             }
           }}
@@ -705,7 +784,14 @@ export function UsersScreen() {
                   </span>
                 </div>
                 <p className="home-muted">{user.phone}</p>
-                {user.assignments.length > 0 ? (
+                {user.assignments.length === 0 && user.roles.length > 0 ? (
+                  // Lecteur sans droit d'affecter : codes des rôles seulement, sans leurs périmètres.
+                  <p className="home-muted">
+                    {user.roles
+                      .map((code) => t(`users.role.${code}`, { defaultValue: code }))
+                      .join(', ')}
+                  </p>
+                ) : user.assignments.length > 0 ? (
                   <ul
                     className="line-list"
                     aria-label={t('users.assignments_label', { name: user.fullName })}
@@ -717,7 +803,7 @@ export function UsersScreen() {
                         })}
                         {' · '}
                         {scopeText(assignment, siteName, t)}
-                        {user.actions.manageRoles ? (
+                        {user.actions.revokeRoles ? (
                           <button
                             type="button"
                             className="secondary"
@@ -729,7 +815,7 @@ export function UsersScreen() {
                             })}
                             onClick={() => {
                               setOutcome(null);
-                              setCreating(false);
+                              closeCreate();
                               setOpen({
                                 userId: user.id,
                                 kind: 'REVOKE',
@@ -760,8 +846,13 @@ export function UsersScreen() {
                     onCancel={() => setOpen(null)}
                     onDone={(result) => {
                       setOutcome({ kind: 'RESET', name: user.fullName, result });
-                      setOpen(null);
-                      if (result.kind === 'DONE') setReload((value) => value + 1);
+                      // Ne ferme que ce formulaire : un autre a pu être ouvert pendant l'envoi.
+                      setOpen((current) =>
+                        current?.userId === user.id && current.kind === 'RESET' ? null : current,
+                      );
+                      if (result.kind === 'DONE' || result.kind === 'OFFLINE') {
+                        setReload((value) => value + 1);
+                      }
                     }}
                   />
                 ) : null}
@@ -784,8 +875,15 @@ export function UsersScreen() {
                 ) : null}
                 {mine?.kind === 'REVOKE' ? (
                   <ReasonForm
-                    label={t('users.revoke_title', { name: user.fullName })}
-                    confirm={t('users.revoke_confirm')}
+                    // Un autre « Retirer » du même compte repart d'un motif vide.
+                    key={mine.assignmentId}
+                    label={t('users.revoke_title', {
+                      name: user.fullName,
+                      role: revokedRoleText(user, mine.assignmentId, siteName, t),
+                    })}
+                    confirm={t('users.revoke_confirm', {
+                      role: revokedRoleText(user, mine.assignmentId, siteName, t),
+                    })}
                     required
                     blocked={blocked}
                     onCancel={() => setOpen(null)}
@@ -825,21 +923,21 @@ export function UsersScreen() {
                         aria-label={t('users.reset_open', { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
-                          setCreating(false);
+                          closeCreate();
                           setOpen({ userId: user.id, kind: 'RESET' });
                         }}
                       >
                         {t('users.reset_action')}
                       </button>
                     ) : null}
-                    {user.actions.manageRoles && user.status !== 'DEACTIVATED' && roles ? (
+                    {user.actions.manageRoles && roles ? (
                       <button
                         type="button"
                         className="secondary"
                         aria-label={t('users.assign_open', { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
-                          setCreating(false);
+                          closeCreate();
                           setOpen({ userId: user.id, kind: 'ASSIGN' });
                         }}
                       >
@@ -854,7 +952,7 @@ export function UsersScreen() {
                         aria-label={t(`users.status_action.${action}`, { name: user.fullName })}
                         onClick={() => {
                           setOutcome(null);
-                          setCreating(false);
+                          closeCreate();
                           setOpen({ userId: user.id, kind: 'STATUS', action });
                         }}
                       >
@@ -900,6 +998,7 @@ function AssignForm({ user, roles, sites, blocked, onCancel, onConfirm }: Assign
       aria-label={t('users.assign_title', { name: user.fullName })}
     >
       <AssignmentFields
+        autoFocus
         choice={choice}
         roles={roles}
         sites={sites}

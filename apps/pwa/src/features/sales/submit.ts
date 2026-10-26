@@ -65,6 +65,15 @@ export function phaseOf(command: Pick<OutboxCommand, 'status'>): CommandPhase {
   }
 }
 
+/** Préfixe du type de commande d'un domaine, ou plusieurs quand un écran en suit plusieurs. */
+export type CommandPrefix = string | readonly string[];
+
+function ofDomain(command: Pick<OutboxCommand, 'command_type'>, prefix: CommandPrefix): boolean {
+  return typeof prefix === 'string'
+    ? command.command_type.startsWith(prefix)
+    : prefix.some((candidate) => command.command_type.startsWith(candidate));
+}
+
 /**
  * Commandes de l'utilisateur d'un domaine (préfixe du type) encore sans réponse définitive, dans
  * l'ordre de saisie : un écran en ligne attend leur réponse avant l'opération suivante, même après un
@@ -72,13 +81,13 @@ export function phaseOf(command: Pick<OutboxCommand, 'status'>): CommandPhase {
  */
 export function waitingCommands(
   outbox: readonly OutboxCommand[],
-  prefix: string,
+  prefix: CommandPrefix,
   userId: string | undefined,
 ): OutboxCommand[] {
   if (!userId) return [];
   return outbox.filter(
     (command) =>
-      command.command_type.startsWith(prefix) &&
+      ofDomain(command, prefix) &&
       command.author_user_id === userId &&
       isBlockingWait(command, outbox),
   );
@@ -90,14 +99,14 @@ export function waitingCommands(
  */
 export function lastWaitingCommand(
   outbox: readonly OutboxCommand[],
-  prefix: string,
+  prefix: CommandPrefix,
   userId: string | undefined,
 ): OutboxCommand | undefined {
   if (!userId) return undefined;
   return outbox
     .filter(
       (command) =>
-        command.command_type.startsWith(prefix) &&
+        ofDomain(command, prefix) &&
         command.author_user_id === userId &&
         phaseOf(command) === 'WAITING',
     )
@@ -125,14 +134,14 @@ export function inRepeatedFailure(
  */
 export function waitingIds(
   outbox: readonly OutboxCommand[],
-  prefix: string,
+  prefix: CommandPrefix,
   userId: string | undefined,
 ): string {
   if (!userId) return '';
   return outbox
     .filter(
       (command) =>
-        command.command_type.startsWith(prefix) &&
+        ofDomain(command, prefix) &&
         command.author_user_id === userId &&
         phaseOf(command) === 'WAITING',
     )

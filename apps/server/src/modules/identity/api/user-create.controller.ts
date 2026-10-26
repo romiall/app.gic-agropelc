@@ -16,7 +16,11 @@
  * - Effets, dans une transaction : compte `ACTIVE` avec `must_change_password` (la PWA impose le
  *   changement à la première connexion, AV-251) ; affectation initiale facultative (mêmes contrôles que
  *   `identity.role_assignment.grant` : rôle actif, type de périmètre permis, site existant) ; audit
- *   `identity.user.create` sans mot de passe ni téléphone. Une affectation refusée annule le compte.
+ *   `identity.user.create` sans mot de passe ni téléphone, avec le rôle et le périmètre de l'affectation
+ *   initiale ; lignes `GLOBAL` du flux de changements pour le compte et l'affectation (jeux `user` et
+ *   `role_assignment`, comme le repli du pipeline pour les commandes : sans elles les appareils ne
+ *   nommeraient jamais le nouveau compte). Aucun événement de domaine (ADR-045). Une affectation refusée
+ *   annule le compte.
  */
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
@@ -35,6 +39,7 @@ import { toBin } from '../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../platform/kysely/bool-column.js';
 import { recordAudit } from '../../../audit/record-audit.js';
 import { recordDenied } from '../../../audit/record-denied.js';
+import { recordChanges } from '../../../platform/sync/change-feed.js';
 import { AuthGuard, type AuthenticatedRequest } from './auth.guard.js';
 import { PASSWORD_PROBLEM_MESSAGES } from './auth.controller.js';
 import { hashPassword } from '../application/auth/password.js';
@@ -89,7 +94,12 @@ function isDuplicateEntry(error: unknown): boolean {
   );
 }
 
-const REFUSAL_STATUS = { NOT_FOUND: 404, ROLE_INACTIVE: 400, SCOPE_TYPE_NOT_ALLOWED: 400 } as const;
+const REFUSAL_STATUS = {
+  NOT_FOUND: 404,
+  ROLE_INACTIVE: 400,
+  SCOPE_TYPE_NOT_ALLOWED: 400,
+  USER_DEACTIVATED: 409,
+} as const;
 
 @Controller('api/v1')
 export class UserCreateController {
@@ -211,11 +221,46 @@ export class UserCreateController {
           after: {
             status: 'ACTIVE',
             must_change_password: true,
-            ...(role !== undefined ? { role_assignment_id: assignmentId } : {}),
+            ...(role !== undefined
+              ? {
+                  role_assignment_id: assignmentId,
+                  role_id: role.role_id,
+                  scope_type: role.scope_type,
+                  ...(role.scope_site_id !== undefined
+                    ? { scope_site_id: role.scope_site_id }
+                    : {}),
+                  ...(role.scope_zone_id !== undefined
+                    ? { scope_zone_id: role.scope_zone_id }
+                    : {}),
+                  ...(role.scope_team_id !== undefined
+                    ? { scope_team_id: role.scope_team_id }
+                    : {}),
+                }
+              : {}),
           },
           result: 'SUCCESS',
           correlationId: request.correlationId,
         });
+        await recordChanges(trx, [
+          {
+            dataset: 'user',
+            entityType: 'USER',
+            entityId: userId,
+            scopeType: 'GLOBAL',
+            scopeId: null,
+          },
+          ...(role !== undefined
+            ? [
+                {
+                  dataset: 'role_assignment',
+                  entityType: 'ROLE_ASSIGNMENT',
+                  entityId: assignmentId,
+                  scopeType: 'GLOBAL' as const,
+                  scopeId: null,
+                },
+              ]
+            : []),
+        ]);
       });
     } catch (error) {
       // Course sur le numéro entre le contrôle et l'insertion (index `uq_identity_users_active_phone`).

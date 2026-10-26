@@ -29,7 +29,7 @@ export interface RoleAssignmentInput {
 
 /** Refus d'une affectation : code stable et message français. */
 export interface RoleAssignmentRefusal {
-  readonly code: 'NOT_FOUND' | 'ROLE_INACTIVE' | 'SCOPE_TYPE_NOT_ALLOWED';
+  readonly code: 'NOT_FOUND' | 'ROLE_INACTIVE' | 'SCOPE_TYPE_NOT_ALLOWED' | 'USER_DEACTIVATED';
   readonly message: string;
 }
 
@@ -40,10 +40,18 @@ export async function insertRoleAssignment(
 ): Promise<RoleAssignmentRefusal | null> {
   const targetUser = await uow
     .selectFrom('identity_users')
-    .select('id')
+    .select('status')
     .where('id', '=', toBin(input.userId))
     .executeTakeFirst();
   if (!targetUser) return { code: 'NOT_FOUND', message: 'Utilisateur introuvable.' };
+  // Un compte désactivé ne reçoit plus de rôle (MP-13) : il le retrouverait à sa réactivation. Le retrait
+  // reste possible (`identity.role_assignment.revoke` ne lit pas l'état du compte).
+  if (targetUser.status === 'DEACTIVATED') {
+    return {
+      code: 'USER_DEACTIVATED',
+      message: 'Compte désactivé : réactivez-le avant de lui donner un rôle.',
+    };
+  }
 
   const role = await uow
     .selectFrom('identity_roles')

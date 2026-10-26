@@ -1,10 +1,39 @@
-# Revue adverse de MP-13 — constats non vérifiés (26/10/2026)
+# Revue adverse de MP-13 — constats et traitement (26/10/2026)
 
 Ce fichier consigne ce que la revue adverse de MP-13 (écran des comptes, ECR-ADM-04) a produit avant de s’interrompre : la limite d’usage de la session a fait échouer 192 des 212 appels d’agents. **Les constats ci-dessous ont été rédigés par un premier relecteur ; 32 des 39 n’ont pas pu être revérifiés** (au moins un des deux vérificateurs a échoué : la ligne « Vérification » de chaque constat donne les verdicts obtenus, « ÉCHEC » quand l’agent n’a rien rendu). Il faut les rejouer un à un contre le code avant de les corriger : un constat non vérifié n’est pas un défaut établi.
 
 L’angle « documentation et cohérence » n’a produit aucun constat (échec complet) : à refaire.
 
 Angles couverts : ecran-pwa, lectures-et-actions, qualite-des-tests, refactor-grant, secret-et-autorisation.
+
+## Traitement (26/10/2026)
+
+Chaque constat a été rejoué contre le code avant d'être corrigé. Bilan : 36 corrigés (dont un en partie), 1 tranché par un AV, 1 réfuté, 1 laissé.
+
+| Constat | Issue |
+|---|---|
+| `refactor-grant-no-change-feed`, `secret-et-autorisation-feed-user-manquant` | **Corrigé** : `POST /users` écrit dans sa transaction les lignes `GLOBAL` du flux de changements du compte (jeu `user`) et de l'affectation (jeu `role_assignment`) ; toujours aucun événement de domaine (ADR-045). Test : lignes du flux lues après la création, avec et sans rôle. |
+| `lectures-et-actions-reactivate-numero-pris` | **Corrigé** : `identity.user.reactivate` rejette définitivement (`PHONE_ALREADY_USED`) un compte désactivé dont un autre compte non désactivé porte le numéro ; `GET /users` rend alors `reactivate: false` (`phonesInUse`, une requête par page). Test de bout en bout. |
+| `lectures-et-actions-soi-meme-non-impose` | **Corrigé** : `identity.user.suspend` et `.deactivate` rejettent son propre compte (`OWN_ACCOUNT`) ; SM-USER mis à jour. Test avec un second Admin actif (le refus ne vient pas d'INV-ADM-01). |
+| `lectures-et-actions-manageroles-desactive` | **Corrigé** : nouvelle action `revokeRoles` (retrait, vrai aussi sur un compte désactivé) ; `manageRoles` reste l'octroi. L'écran montre « Retirer » selon `revokeRoles`. |
+| `lectures-et-actions-affectations-hors-portee` | **Corrigé** : le détail des affectations (sites, zones, équipes, validité) n'est rendu qu'au lecteur qui peut gérer les rôles du compte ; les autres n'ont que les codes de rôle (`roles`), que l'écran affiche. Test avec le Resp. ferme. |
+| `secret-et-autorisation-audit-sans-role-ni-portee` | **Corrigé** : l'audit de la création porte `role_id`, `scope_type` et l'identifiant du site, de la zone ou de l'équipe (jamais mot de passe ni téléphone). |
+| `ecran-pwa-auto-affectation-de-roles` | **Tranché en AV-327** (défaut : l'Admin gère ses propres rôles, INV-ADM-01 garde un ADMIN) ; le test serveur affirme maintenant toutes les actions sur soi-même. |
+| `secret-et-autorisation-json-invalide-journalise` | **Réfuté** : Nest convertit l'erreur d'analyse de Fastify en 400 `VALIDATION_ERROR` au message générique (« Body is not valid JSON… »), sans extrait du corps, journalisé en `warn` sous le seul code. Test de non-régression ajouté (réponse et journaux sans le mot de passe). |
+| `lectures-et-actions-appareil-non-actif` | **Laissé** (un vérificateur l'avait réfuté) : le serveur refuse par un 403 `DEVICE_PENDING` audité, que l'écran affiche comme un refus ; masquer les boutons demanderait l'état de l'appareil dans chaque lecture. |
+| `ecran-pwa-create-offline-faux-message`, `ecran-pwa-send-sans-finally` | **Corrigé** : sans réponse (réseau, passerelle, délai, échec local), « Réponse non reçue : le compte a peut-être été créé. Vérifiez la liste avant de recommencer » et la liste est relue ; session à rouvrir : message propre (rien n'est parti) ; `try`/`finally` vide le mot de passe et libère le bouton dans tous les cas. Même traitement pour la réinitialisation. |
+| `ecran-pwa-annuler-pendant-envoi` | **Corrigé** : « Annuler » désactivé pendant l'envoi ; la réponse d'une réinitialisation ne ferme que son propre formulaire. |
+| `ecran-pwa-defaut-saisie-prematuré` | **Corrigé** : téléphone et courriel signalés seulement une fois commencés ; plus de doublon avec « périmètre indisponible ». |
+| `ecran-pwa-focus-perdu` | **Corrigé en partie** : le premier champ de chaque formulaire reçoit le focus à l'ouverture ; le retour du focus au bouton d'origine à la fermeture n'est pas fait. |
+| `ecran-pwa-indicatif-code-en-dur` | **Corrigé** : indicatif lu dans `crm.phone_default_country_code` (237 à défaut), comme la saisie d'un prospect. |
+| `ecran-pwa-lecture-roles-muette` | **Corrigé** : une panne de `GET /roles` (distincte d'un refus) affiche un message et « Réessayer » ; relecture au retour sur l'onglet. |
+| `ecran-pwa-prefixe-identity-trop-large` | **Corrigé** : l'écran ne suit que `identity.user.*` et `identity.role_assignment.*` (les fonctions de `submit.ts` acceptent plusieurs préfixes). |
+| `ecran-pwa-retrait-cible-ambigue` | **Corrigé** : titre et bouton du retrait nomment le rôle et le périmètre ; le motif repart vide pour une autre affectation. |
+| Les 20 constats `qualite-des-tests-*`, `refactor-grant-tests-gaps`, `lectures-et-actions-tests-lacunaires`, `secret-et-autorisation-test-*`, `ecran-pwa-tests-n-assertent-pas-leurs-titres` | **Corrigés** : auteur, appareil, `after` et `created_by` de la création ; boîte de réception et événements sans mot de passe ; acteur avec `identity.user.manage` sans droit d'affecter ; rôle désactivé (lecture, création, octroi, liste) ; affectations échue et future ; octroi avec échéance, début au fait, zones et équipes inconnues puis valides, création avec un rôle de zone ; numéro d'un compte suspendu et course de deux créations ; clés exactes de `GET /roles`. PWA : création sans réponse, session, échec local ; « Annuler » pendant l'envoi ; base locale et stockages web fouillés pour le mot de passe ; suivi et refus d'une commande, liste relue, confirmation suivante grisée ; commande d'appareil sans effet sur l'écran ; charges comparées exactement ; défauts multiples ; rôle de zone seulement ; panne de lecture des rôles ; lecteur sans droit d'affecter. |
+
+## Revue de clôture (26/10/2026)
+
+Un relecteur a repris les correctifs et refait l'angle « documentation et cohérence » (sans échec d'agent). Angle code : aucun constat HIGH ni MEDIUM ; six LOW, tous traités : identifiants comparés sans la casse pour `OWN_ACCOUNT` ; octroi refusé sur un compte désactivé (`USER_DEACTIVATED`, dans l'écriture partagée) ; création gardée quand une action de carte est ouverte pendant l'envoi ; attente avant d'affirmer l'absence de relecture (test PWA) ; journalisation du refus d'un JSON mal formé affirmée ; commentaires de date périmés. Angle documentation : neuf écarts, tous corrigés : la règle `OWN_ACCOUNT` tracée par AV-328 ; SM-USER (création par `POST /users`, emplacement et caisse non implémentés) ; statuts du plan et de la matrice ; `08-api` (corps et refus de `POST /users`, `DEVICE_REVOKED`, champs des affectations) ; ADR-045 ; D01 (UC-ADM-02, UC-ADM-03, exceptions) ; `02-securite` et `03-audit` ; impact d'AV-325 ; plan, matrice et suivi des écrans.
 
 ## ecran-pwa-create-offline-faux-message — MEDIUM
 

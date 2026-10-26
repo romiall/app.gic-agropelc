@@ -89,3 +89,21 @@ export async function listUsersPage(
     nextCursor: hasMore ? fromBin(page[page.length - 1]!.id) : null,
   };
 }
+
+/**
+ * Parmi ces numéros, ceux que porte un compte non désactivé (`uq_identity_users_active_phone`) : un compte
+ * désactivé dont le numéro est repris ne peut pas être réactivé (MP-13).
+ */
+export async function phonesInUse(
+  executor: Executor,
+  phones: readonly string[],
+): Promise<Set<string>> {
+  if (phones.length === 0) return new Set();
+  const rows = await executor
+    .selectFrom('identity_users')
+    .select('phone')
+    .where('phone', 'in', [...phones])
+    .where('status', '!=', 'DEACTIVATED')
+    .execute();
+  return new Set(rows.map((row) => row.phone));
+}

@@ -14,6 +14,7 @@ import type {
   CommandHandlerOutcome,
   CommandHandlerRegistry,
 } from '../../../../platform/sync/command-handler-registry.js';
+import type { UnitOfWork } from '../../../../platform/unit-of-work.js';
 import { toBin } from '../../../../platform/kysely/uuid-columns.js';
 import { toDbBool } from '../../../../platform/kysely/bool-column.js';
 import { hasOtherActiveAdmin } from './admin-guard.js';
@@ -48,6 +49,40 @@ function notFound(): CommandHandlerOutcome {
   return { status: 'REJECTED', errorCode: 'NOT_FOUND', messageFr: 'Utilisateur introuvable.' };
 }
 
+/** Suspendre ou désactiver son propre compte : jamais (AV-328 ; ce que `GET /users` affiche). */
+function ownAccount(): CommandHandlerOutcome {
+  return {
+    status: 'REJECTED',
+    errorCode: 'OWN_ACCOUNT',
+    messageFr: 'Impossible sur votre propre compte : un autre administrateur doit le faire.',
+  };
+}
+
+/** Identifiants comparés sans tenir compte de la casse : un UUID en majuscules désigne le même compte. */
+function isOwnAccount(envelope: { aggregate_id: string; author_user_id: string }): boolean {
+  return envelope.aggregate_id.toLowerCase() === envelope.author_user_id.toLowerCase();
+}
+
+function phoneAlreadyUsed(): CommandHandlerOutcome {
+  return {
+    status: 'REJECTED',
+    errorCode: 'PHONE_ALREADY_USED',
+    messageFr: 'Ce numéro est déjà utilisé par un compte actif.',
+  };
+}
+
+/** Un autre compte non désactivé porte ce numéro (`uq_identity_users_active_phone`). */
+async function phoneTakenByOther(uow: UnitOfWork, phone: string, userId: Buffer): Promise<boolean> {
+  const other = await uow
+    .selectFrom('identity_users')
+    .select('id')
+    .where('phone', '=', phone)
+    .where('status', '!=', 'DEACTIVATED')
+    .where('id', '!=', userId)
+    .executeTakeFirst();
+  return other !== undefined;
+}
+
 function lastAdmin(): CommandHandlerOutcome {
   return {
     status: 'REJECTED',
@@ -66,6 +101,7 @@ const suspend: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) => 
   if (!user) return notFound();
   if (user.status === 'SUSPENDED') return { status: 'APPLIED' };
   if (user.status !== 'ACTIVE') return invalidTransition(user.status);
+  if (isOwnAccount(envelope)) return ownAccount();
 
   const occurredAt = new Date(envelope.occurred_at);
   if (!(await hasOtherActiveAdmin(uow, envelope.aggregate_id, occurredAt))) return lastAdmin();
@@ -89,13 +125,18 @@ const reactivate: CommandHandler<EmptyPayload> = async (uow, envelope) => {
   const userId = toBin(envelope.aggregate_id);
   const user = await uow
     .selectFrom('identity_users')
-    .select('status')
+    .select(['status', 'phone'])
     .where('id', '=', userId)
     .executeTakeFirst();
   if (!user) return notFound();
   if (user.status === 'ACTIVE') return { status: 'APPLIED' };
   if (user.status !== 'SUSPENDED' && user.status !== 'DEACTIVATED') {
     return invalidTransition(user.status);
+  }
+  // Un compte désactivé libère son numéro (MP-13 : un autre compte a pu le reprendre). Rejet définitif
+  // plutôt que l'erreur de contrainte, que le pipeline traiterait à tort comme transitoire.
+  if (user.status === 'DEACTIVATED' && (await phoneTakenByOther(uow, user.phone, userId))) {
+    return phoneAlreadyUsed();
   }
 
   await uow
@@ -123,6 +164,7 @@ const deactivate: CommandHandler<ReasonRequiredPayload> = async (uow, envelope) 
   if (user.status === 'DEACTIVATED') return { status: 'APPLIED' };
   if (user.status !== 'ACTIVE' && user.status !== 'SUSPENDED')
     return invalidTransition(user.status);
+  if (isOwnAccount(envelope)) return ownAccount();
 
   const occurredAt = new Date(envelope.occurred_at);
   if (!(await hasOtherActiveAdmin(uow, envelope.aggregate_id, occurredAt))) return lastAdmin();
@@ -161,13 +203,7 @@ const create: CommandHandler<CreatePayload> = async (uow, envelope) => {
     .where('phone', '=', envelope.payload.phone)
     .where('status', '!=', 'DEACTIVATED')
     .executeTakeFirst();
-  if (phoneTaken) {
-    return {
-      status: 'REJECTED',
-      errorCode: 'PHONE_ALREADY_USED',
-      messageFr: 'Ce numéro est déjà utilisé par un compte actif.',
-    };
-  }
+  if (phoneTaken) return phoneAlreadyUsed();
 
   const passwordHash = await hashPassword(envelope.payload.initialPassword);
   await uow

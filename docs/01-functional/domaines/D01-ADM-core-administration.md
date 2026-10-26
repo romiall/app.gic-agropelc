@@ -44,8 +44,8 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 | ID | Cas d'usage | Commande technique | Acteur | Hors ligne |
 |---|---|---|---|---|
 | UC-ADM-01 | Créer ou modifier un utilisateur (création depuis l'écran : `POST /users`, route hors commandes, mot de passe provisoire, première affectation facultative ; MP-13, AV-325 ; `identity.user.update` non enregistrée) | `identity.user.create`, `identity.user.update` | ADMIN | Non |
-| UC-ADM-02 | Désactiver ou réactiver un utilisateur | `identity.user.deactivate`, `identity.user.reactivate` | ADMIN | Non |
-| UC-ADM-03 | Affecter ou révoquer un rôle sur un périmètre | `identity.role_assignment.grant`, `identity.role_assignment.revoke` | ADMIN | Non |
+| UC-ADM-02 | Suspendre, désactiver ou réactiver un utilisateur | `identity.user.suspend`, `identity.user.deactivate`, `identity.user.reactivate` | ADMIN | Non |
+| UC-ADM-03 | Affecter ou révoquer un rôle sur un périmètre (pas d'octroi sur un compte désactivé, retrait toujours possible ; l'Admin gère aussi ses propres rôles, AV-327) | `identity.role_assignment.grant`, `identity.role_assignment.revoke` | ADMIN | Non |
 | UC-ADM-04 | Configurer les permissions d'un rôle | `identity.role.set_permissions` | ADMIN | Non |
 | UC-ADM-05 | Se connecter et enrôler un appareil | `identity.device.enroll` (via `/auth`) | Tous | Non |
 | UC-ADM-06 | Lister les appareils de sa portée ; approuver, refuser (bloquer), débloquer, déclarer perdu ou retirer un appareil ; le déclarer partagé et le rattacher à un site (BR-DIS-003, AV-007) — écran ECR-ADM-05 (MP-06) | `GET /devices`, `identity.device.approve`, `identity.device.designate`, `identity.device.block`, `identity.device.unblock`, `identity.device.declare_lost`, `identity.device.retire` | ADMIN, responsable | Non |
@@ -167,6 +167,8 @@ Sources : CM §5.3, §42, §47, §48, §57/Core ; PM §17, §37.
 | Utilisateur désactivé avec des opérations hors ligne en attente | BR-ADM-002. Les opérations antérieures sont appliquées, les postérieures mises en quarantaine ; alerte à l'Admin. |
 | Appareil perdu avec des opérations non synchronisées | Les opérations sont perdues si l'appareil n'est jamais retrouvé. L'**écart de séquence** détecté (voir D14) signale le trou. Les stocks mobiles et les allocations du détenteur restent sous sa responsabilité jusqu'à inventaire. |
 | Dernier administrateur désactivé | Refusé (`LAST_ADMIN`) : au moins un utilisateur `ADMIN` actif doit exister. |
+| Suspendre ou désactiver son propre compte | Refusé (`OWN_ACCOUNT`, AV-328) : un autre Admin le fait. |
+| Réactiver un compte désactivé dont le numéro a été repris | Refusé (`PHONE_ALREADY_USED`) ; l'action n'est pas proposée par `GET /users` (MP-13). |
 | Validation demandée alors qu'aucun approbateur n'existe dans le périmètre | La demande est routée vers `DIRECTION` ; alerte « validation sans approbateur ». |
 | Pièce justificative jamais reçue (upload échoué au-delà de 7 jours) | Alerte `ATTACHMENT_MISSING` au responsable ; l'opération reste `PENDING_APPROVAL` si la pièce est requise pour la validation. |
 | Paramètre modifié pendant qu'un appareil est hors ligne | L'appareil applique l'ancienne valeur. À la synchronisation, le serveur réévalue selon la version en vigueur à `occurred_at` (BR-ADM-016). |

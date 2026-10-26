@@ -341,6 +341,8 @@ Classification (PM §45) :
 | AV-324 | Identité de la société imprimée sur les pièces | SECONDAIRE | PP | Paramètres de l'organisation ; rubrique vide imprimée en pointillés | OUVERT |
 | AV-325 | Création d'un compte par l'Admin : mot de passe provisoire hors du journal des commandes | IMPORTANTE | MP | Route en ligne `POST /users` hors journal, comme la réinitialisation (ADR-045) ; **implémenté** (MP-13) | OUVERT |
 | AV-326 | Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes | SECONDAIRE | MP | `GLOBAL` et `SITE` ; zones et équipes avec `GET /zones` et `GET /teams` (S-19, S-28) ; **implémenté** (MP-13) | OUVERT |
+| AV-327 | L'Admin gère-t-il les rôles de son propre compte ? | SECONDAIRE | MP | Oui, comme les autres comptes ; INV-ADM-01 garde un ADMIN actif ; **implémenté** (MP-13) | OUVERT |
+| AV-328 | Suspendre ou désactiver son propre compte | SECONDAIRE | MP | Refusé (`OWN_ACCOUNT`) : un autre Admin le fait ; **implémenté** (MP-13) | OUVERT |
 
 ---
 
@@ -2487,7 +2489,7 @@ Politique par défaut, paramétrable :
 - **Pourquoi** : sans écran de création, aucun compte du pilote ne se crée depuis l'application (seul `db:create-local-admin` existe). La commande `identity.user.create` existe, mais son mot de passe, masqué dans la boîte de réception, les événements et l'audit (ADR-045), reste en clair dans la file d'envoi (IndexedDB) de l'appareil de l'Admin jusqu'à l'application de la commande. La réinitialisation d'un mot de passe a déjà tranché ce point (AV-252) : route en ligne hors du journal. **CONFIRMÉ** (code)
 - **Choix** : (a) route en ligne `POST /users` hors du journal des commandes (même exception nommée qu'ADR-045) : compte, mot de passe provisoire et première affectation facultative écrits dans une transaction, audit `identity.user.create` sans mot de passe ni téléphone, mot de passe jamais conservé sur l'appareil ; (b) commande `identity.user.create` émise par la file d'envoi (mot de passe en clair dans IndexedDB jusqu'à l'envoi) ; (c) script d'installation `db:create-user` (palliatif sans écran).
 - **Recommandation** : (a).
-- **Impact** : `apps/server/src/modules/identity/api/user-create.controller.ts`, `identity/application/role-assignment-writer.ts` (écriture partagée avec `identity.role_assignment.grant`), écran des comptes, ADR-045 (extension), D01 UC-ADM-01, `08-api`, `02-securite`. Défaut implémenté (MP-13, 22/10/2026) : (a). La commande `identity.user.create` reste disponible pour les scripts et l'import (AV-072). **Reste** : la modification du nom, du téléphone et du courriel (`identity.user.update` n'est pas enregistrée).
+- **Impact** : `apps/server/src/modules/identity/api/user-create.controller.ts`, `identity/application/role-assignment-writer.ts` (écriture partagée avec `identity.role_assignment.grant`), écran des comptes, ADR-045 (extension), D01 UC-ADM-01, `08-api`, `02-securite`. Défaut implémenté (MP-13, 22/10/2026 ; correctifs de revue du 26/10 : la route écrit les lignes `GLOBAL` du flux de changements `user` et `role_assignment`, l'audit porte le rôle et le périmètre de la première affectation) : (a). La commande `identity.user.create` reste disponible pour les scripts et l'import (AV-072). **Reste** : la modification du nom, du téléphone et du courriel (`identity.user.update` n'est pas enregistrée).
 
 ### AV-326 — Périmètres proposés à l'affectation d'un rôle depuis l'écran des comptes — SECONDAIRE
 - **Question** : quels types de périmètre l'écran propose-t-il à l'Admin quand il donne un rôle (`GLOBAL`, `SITE`, `ZONE`, `TEAM`) ?
@@ -2495,6 +2497,20 @@ Politique par défaut, paramétrable :
 - **Choix** : (a) `GLOBAL` et `SITE` seulement, selon ce que le rôle permet ; zones et équipes quand leurs lectures existeront ; (b) saisie libre d'identifiants de zone et d'équipe : écartée ; (c) attendre S-19 et S-28 avant de livrer l'écran.
 - **Recommandation** : (a). Les permissions d'un rôle ne se modifient pas depuis l'application (AV-257, rôles figés, choix (a)).
 - **Impact** : `apps/pwa/src/features/users/users.ts` (`ASSIGNABLE_SCOPES`), `GET /roles` (rôles actifs et périmètres permis). Un rôle qui ne permet ni `GLOBAL` ni `SITE` (zone ou équipe seulement) est signalé « indisponible ici ». Défaut implémenté (MP-13, 22/10/2026) : (a).
+
+### AV-327 — L'Admin gère-t-il les rôles de son propre compte ? — SECONDAIRE
+- **Question** : l'écran des comptes propose-t-il à l'Admin d'ajouter ou de retirer des rôles sur son propre compte ?
+- **Pourquoi** : la réinitialisation de son propre compte est refusée (AV-281), la suspension et la désactivation aussi (AV-328), mais aucune règle ne tranche les rôles. La revue de MP-13 l'a relevé : un Admin peut retirer sa propre affectation ADMIN (s'il en reste une autre, INV-ADM-01) et perdre l'accès à l'écran en pleine session, ou s'ajouter un rôle sans l'accord d'un tiers. **CONFIRMÉ** (code)
+- **Choix** : (a) permis, comme sur les autres comptes ; INV-ADM-01 empêche de retirer le dernier ADMIN, l'audit trace l'auteur ; (b) interdit sur son propre compte (un autre Admin le fait) ; (c) retrait permis, ajout interdit.
+- **Recommandation** : (a) pour le pilote, qui n'a qu'un ou deux Admins : (b) bloquerait un Admin seul qui doit se donner un rôle de terrain. À revoir si le parc compte plusieurs Admins.
+- **Impact** : `GET /users` (`actions.manageRoles`, `actions.revokeRoles` vrais sur son propre compte), écran des comptes, test `identity-users-admin.test.ts`. Défaut implémenté (MP-13, 26/10/2026) : (a).
+
+### AV-328 — Suspendre ou désactiver son propre compte — SECONDAIRE
+- **Question** : l'Admin peut-il suspendre ou désactiver son propre compte ?
+- **Pourquoi** : `GET /users` ne lui proposait jamais ces actions sur son propre compte (MP-08, MP-13), mais les commandes `identity.user.suspend` et `.deactivate` l'acceptaient (revue de MP-13) : un client modifié, ou une commande restée dans la file, désactivait l'Admin dès qu'un autre ADMIN restait actif (INV-ADM-01). **CONFIRMÉ** (code)
+- **Choix** : (a) refusé par la commande (`OWN_ACCOUNT`) : un autre Admin le fait ; (b) permis, l'écran le masquant seulement ; (c) permis avec confirmation renforcée.
+- **Recommandation** : (a) : l'écran et le serveur disent la même chose, et un Admin ne se coupe pas l'accès par erreur.
+- **Impact** : `user-commands.ts` (`OWN_ACCOUNT`, identifiants comparés sans la casse), SM-USER, D01 §14, test `identity-users-admin.test.ts`. Défaut implémenté (MP-13, 26/10/2026) : (a).
 
 ---
 

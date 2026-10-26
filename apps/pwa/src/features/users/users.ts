@@ -50,7 +50,10 @@ export interface UserView {
     readonly suspend: boolean;
     readonly reactivate: boolean;
     readonly deactivate: boolean;
+    /** Ajout d'un rôle (jamais sur un compte désactivé). */
     readonly manageRoles: boolean;
+    /** Retrait d'un rôle (aussi sur un compte désactivé). */
+    readonly revokeRoles: boolean;
   };
 }
 
@@ -99,7 +102,10 @@ export function resetPath(userId: string): string {
 
 export type ResetOutcome =
   | { readonly kind: 'DONE' }
+  /** Réponse non reçue (réseau, passerelle, délai) : la requête a pu aboutir. */
   | { readonly kind: 'OFFLINE' }
+  /** Session à rouvrir : rien n'a été envoyé. */
+  | { readonly kind: 'SESSION' }
   /** Refus du serveur : code et message français à afficher. */
   | { readonly kind: 'REFUSED'; readonly code: string; readonly message: string | null };
 
@@ -113,6 +119,30 @@ export function refusalOf(body: unknown): { code: string; message: string | null
     code: typeof error?.code === 'string' ? error.code : 'UNKNOWN',
     message: typeof error?.message === 'string' ? error.message : null,
   };
+}
+
+/**
+ * Issue d'un envoi en ligne qui n'a pas abouti. `SESSION_INVALID` et `SESSION_CHANGED` sont constatés avant
+ * l'appel (rien n'est parti) ; `OFFLINE` couvre aussi une passerelle en erreur ou un délai dépassé, après
+ * lesquels le serveur a pu appliquer la requête.
+ */
+export function failureOutcome(
+  result:
+    | { readonly reason: 'OFFLINE' | 'SESSION_INVALID' | 'SESSION_CHANGED' }
+    | { readonly reason: 'HTTP_ERROR'; readonly body: unknown },
+):
+  | { readonly kind: 'OFFLINE' }
+  | { readonly kind: 'SESSION' }
+  | { readonly kind: 'REFUSED'; readonly code: string; readonly message: string | null } {
+  switch (result.reason) {
+    case 'HTTP_ERROR':
+      return { kind: 'REFUSED', ...refusalOf(result.body) };
+    case 'SESSION_INVALID':
+    case 'SESSION_CHANGED':
+      return { kind: 'SESSION' };
+    case 'OFFLINE':
+      return { kind: 'OFFLINE' };
+  }
 }
 
 // --- Périmètres et affectations ------------------------------------------------------------------
@@ -224,7 +254,10 @@ export function revokePayload(reason: string): Record<string, unknown> {
 
 // --- Création d'un compte ------------------------------------------------------------------------
 
-/** Indicatif national par défaut (DÉDUIT : GIC opère au Cameroun, `crm.phone_default_country_code`). */
+/**
+ * Indicatif national à défaut du paramètre `crm.phone_default_country_code` (DÉDUIT : GIC opère au
+ * Cameroun ; même repli que la saisie d'un prospect).
+ */
 export const DEFAULT_COUNTRY_CODE = '237';
 
 export interface NewUserForm {
@@ -298,5 +331,8 @@ export function createBody(
 
 export type CreateOutcome =
   | { readonly kind: 'CREATED'; readonly id: string }
+  /** Réponse non reçue : le compte a pu être créé (`POST /users` n'est pas idempotent). */
   | { readonly kind: 'OFFLINE' }
+  /** Session à rouvrir : rien n'a été envoyé. */
+  | { readonly kind: 'SESSION' }
   | { readonly kind: 'REFUSED'; readonly code: string; readonly message: string | null };

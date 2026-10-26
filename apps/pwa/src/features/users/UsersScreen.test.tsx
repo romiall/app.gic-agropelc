@@ -12,6 +12,7 @@ import {
   canSendStatus,
   createBody,
   EMPTY_NEW_USER,
+  failureOutcome,
   grantPayload,
   matchesSearch,
   newUserProblem,
@@ -75,7 +76,35 @@ const NO_ACTIONS = {
   reactivate: false,
   deactivate: false,
   manageRoles: false,
+  revokeRoles: false,
 };
+
+const FIELD_ROLE = '01900000-0000-7000-8000-0000000004a3';
+/** Rôle de zone seulement : aucun périmètre que l'écran sait proposer (AV-326). */
+const ZONE_ONLY: RoleView = {
+  id: FIELD_ROLE,
+  code: 'COMMERCIAL_TERRAIN',
+  name: 'Commercial terrain',
+  description: null,
+  allowedScopeTypes: ['ZONE'],
+  isSystem: true,
+};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Le texte figure-t-il quelque part dans la base locale ou les stockages web ? */
+async function storedAnywhere(text: string): Promise<boolean> {
+  const db = getDb();
+  for (const table of db.tables) {
+    if (JSON.stringify(await table.toArray()).includes(text)) return true;
+  }
+  for (const storage of [localStorage, sessionStorage]) {
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index)!;
+      if (key.includes(text) || (storage.getItem(key) ?? '').includes(text)) return true;
+    }
+  }
+  return false;
+}
 
 function assignment(overrides: Partial<AssignmentView> = {}): AssignmentView {
   return {
@@ -119,6 +148,8 @@ interface Served {
   readonly created?: unknown;
   /** Rôles servis : sans eux, la lecture est refusée comme pour un lecteur sans droit d'affecter. */
   readonly roles?: readonly RoleView[];
+  /** Réponse de la lecture des rôles, à la place de `roles` (panne passagère). */
+  readonly rolesResponse?: unknown;
 }
 
 /** Réponses du serveur : liste des comptes, rôles, création et réinitialisation. */
@@ -127,6 +158,7 @@ function serve({
   reset = { ok: true, data: { status: 'ok' } },
   created = { ok: true, data: { id: PAUL } },
   roles,
+  rolesResponse,
 }: Served) {
   vi.mocked(authorizedRequest).mockImplementation((_db, path, init) => {
     const target = String(path);
@@ -134,9 +166,11 @@ function serve({
     if (init?.method === 'POST') {
       response = target === '/api/v1/users' ? created : reset;
     } else if (target === '/api/v1/roles') {
-      response = roles
-        ? { ok: true, data: { roles } }
-        : { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
+      response = rolesResponse
+        ? rolesResponse
+        : roles
+          ? { ok: true, data: { roles } }
+          : { ok: false, reason: 'HTTP_ERROR', status: 403, body: {} };
     } else if (target.startsWith('/api/v1/users')) {
       response = { ok: true, data: { users, next_cursor: null } };
     } else {
@@ -179,6 +213,13 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
       refusalOf({ error: { code: 'USER_DEACTIVATED', message: 'Compte désactivé.' } }),
     ).toEqual({ code: 'USER_DEACTIVATED', message: 'Compte désactivé.' });
     expect(refusalOf(undefined)).toEqual({ code: 'UNKNOWN', message: null });
+    // Sans réponse, l'issue est inconnue ; une session à rouvrir n'a rien envoyé.
+    expect(failureOutcome({ reason: 'OFFLINE' })).toEqual({ kind: 'OFFLINE' });
+    expect(failureOutcome({ reason: 'SESSION_INVALID' })).toEqual({ kind: 'SESSION' });
+    expect(failureOutcome({ reason: 'SESSION_CHANGED' })).toEqual({ kind: 'SESSION' });
+    expect(
+      failureOutcome({ reason: 'HTTP_ERROR', body: { error: { code: 'X', message: 'Non.' } } }),
+    ).toEqual({ kind: 'REFUSED', code: 'X', message: 'Non.' });
   });
 
   it('périmètres proposés : GLOBAL et SITE seulement, selon ce que le rôle permet (AV-326)', () => {
@@ -270,6 +311,22 @@ describe('Utilisateurs : logique (ECR-ADM-04, MP-08 et MP-13)', () => {
       'TOO_SHORT',
     );
     expect(newUserProblem({ ...base, confirmation: 'autre-chose' }, ROLES)).toBe('MISMATCH');
+    // Plusieurs défauts : le premier dans l'ordre nom, téléphone, courriel, rôle, mot de passe.
+    expect(newUserProblem({ ...base, fullName: '', phone: '12', email: 'x' }, ROLES)).toBe('NAME');
+    expect(newUserProblem({ ...base, phone: '12', email: 'x', password: '' }, ROLES)).toBe('PHONE');
+    expect(
+      newUserProblem({ ...base, email: 'x', roleId: SELLER_ROLE, scopeType: 'SITE' }, ROLES),
+    ).toBe('EMAIL');
+    expect(
+      newUserProblem(
+        { ...base, roleId: SELLER_ROLE, scopeType: 'SITE', password: 'court', confirmation: '' },
+        ROLES,
+      ),
+    ).toBe('SITE');
+    // Indicatif du paramètre : un numéro local prend l'indicatif choisi.
+    expect(createBody({ ...base, phone: '6 12 34 56 78' }, '33')).toMatchObject({
+      phone: '+33612345678',
+    });
     expect(newUserProblem(base, ROLES)).toBeNull();
     expect(
       newUserProblem({ ...base, roleId: SELLER_ROLE, scopeType: 'SITE', siteId: IDS.site }, ROLES),
@@ -426,7 +483,9 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
       'provisoire-1',
     );
     await user.click(within(again).getByRole('button', { name: 'Réinitialiser pour Awa Nde' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Pas de réseau');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Réponse non reçue : la réinitialisation a peut-être été faite.',
+    );
   });
 
   it('mot de passe provisoire en cours signalé ; filtre ; hors ligne ; droit refusé', async () => {
@@ -465,13 +524,48 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     ).toBeInTheDocument();
   });
 
-  it('sans droit d’affecter (rôles refusés) : ni « Nouveau compte » ni ajout ou retrait de rôle', async () => {
-    serve({ users: [account()] });
+  it('rôles refusés : ni « Nouveau compte » ni ajout de rôle, sans message ; le retrait ne dépend que du serveur', async () => {
+    serve({
+      users: [account({ actions: { ...NO_ACTIONS, manageRoles: true, revokeRoles: true } })],
+    });
     renderScreen();
     const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await waitFor(() =>
+      expect(vi.mocked(authorizedRequest).mock.calls.map((call) => call[1])).toContain(
+        '/api/v1/roles',
+      ),
+    );
     expect(screen.queryByRole('button', { name: 'Nouveau compte' })).toBeNull();
     expect(within(card).queryByRole('button', { name: /Ajouter un rôle/ })).toBeNull();
-    expect(within(card).queryByRole('button', { name: /Retirer/ })).toBeNull();
+    expect(within(card).getByRole('button', { name: /Retirer le rôle/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Lecture des rôles impossible/)).toBeNull();
+
+    // Sans le droit côté serveur, aucun retrait non plus.
+    cleanup();
+    serve({ users: [account()] });
+    renderScreen();
+    const plain = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    expect(within(plain).queryByRole('button', { name: /Retirer/ })).toBeNull();
+  });
+
+  it('lecture des rôles en panne passagère : message et relecture, distincte d’un refus', async () => {
+    serve({ users: [account()], rolesResponse: { ok: false, reason: 'OFFLINE' } });
+    const user = userEvent.setup();
+    renderScreen();
+    const alert = await screen.findByText(/Lecture des rôles impossible/);
+    expect(screen.queryByRole('button', { name: 'Nouveau compte' })).toBeNull();
+    serve({ users: [account()], roles: ROLES });
+    await user.click(within(alert.closest('div')!).getByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByRole('button', { name: 'Nouveau compte' })).toBeInTheDocument();
+    expect(screen.queryByText(/Lecture des rôles impossible/)).toBeNull();
+  });
+
+  it('lecteur sans droit d’affecter : codes des rôles sans périmètre', async () => {
+    serve({ users: [account({ assignments: [], roles: ['VENDEUR_PDV', 'ADMIN'] })] });
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    expect(within(card).getByText(/Vendeur de point de vente, Administrateur/)).toBeInTheDocument();
+    expect(within(card).queryByText(/aucun rôle/)).toBeNull();
   });
 
   it('crée un compte avec son premier rôle : route hors file d’envoi, mot de passe jamais gardé, liste relue', async () => {
@@ -507,8 +601,9 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
       password: 'provisoire-1',
       role: { role_id: SELLER_ROLE, scope_type: 'SITE', scope_site_id: IDS.site },
     });
-    // Hors du journal des commandes : rien dans la file d'envoi ; formulaire refermé.
+    // Hors du journal des commandes : rien dans la file d'envoi ni ailleurs ; formulaire refermé.
     expect(await getDb().outbox.count()).toBe(0);
+    expect(await storedAnywhere('provisoire-1')).toBe(false);
     expect(screen.queryByRole('group', { name: 'Nouveau compte' })).toBeNull();
     await waitFor(() =>
       expect(
@@ -555,6 +650,107 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(within(form).getByLabelText('Nom complet')).toHaveValue('Paul Essomba');
     expect(within(form).getByLabelText('Mot de passe provisoire')).toHaveValue('');
     expect(await getDb().outbox.count()).toBe(0);
+    expect(await storedAnywhere('provisoire-1')).toBe(false);
+  });
+
+  it.each([
+    {
+      title: 'réponse non reçue',
+      created: { ok: false, reason: 'OFFLINE' },
+      message: 'Réponse non reçue : le compte a peut-être été créé. Vérifiez la liste',
+      reread: true,
+    },
+    {
+      title: 'session à rouvrir',
+      created: { ok: false, reason: 'SESSION_INVALID' },
+      message: 'Session expirée : reconnectez-vous',
+      reread: false,
+    },
+    {
+      title: 'échec local imprévu',
+      created: new Error('base locale indisponible'),
+      message: 'Réponse non reçue',
+      reread: true,
+    },
+  ])(
+    'création sans réponse ($title) : message juste, formulaire gardé, mot de passe vidé',
+    async ({ created, message, reread }) => {
+      serve({ users: [account()], roles: ROLES });
+      if (created instanceof Error) {
+        const served = vi.mocked(authorizedRequest).getMockImplementation()!;
+        vi.mocked(authorizedRequest).mockImplementation((db, path, init) =>
+          init?.method === 'POST' ? Promise.reject(created) : served(db, path, init),
+        );
+      } else {
+        serve({ users: [account()], roles: ROLES, created });
+      }
+      const user = userEvent.setup();
+      renderScreen();
+      await screen.findByRole('listitem', { name: 'Awa Nde' });
+      await user.click(await screen.findByRole('button', { name: 'Nouveau compte' }));
+      const form = screen.getByRole('group', { name: 'Nouveau compte' });
+      await user.type(within(form).getByLabelText('Nom complet'), 'Paul Essomba');
+      await user.type(within(form).getByLabelText('Téléphone'), '690000001');
+      await user.type(within(form).getByLabelText('Mot de passe provisoire'), 'provisoire-1');
+      await user.type(
+        within(form).getByLabelText('Confirmer le mot de passe provisoire'),
+        'provisoire-1',
+      );
+      const reads = () =>
+        vi
+          .mocked(authorizedRequest)
+          .mock.calls.filter((call) => call[1] === '/api/v1/users?limit=200&status=ACTIVE').length;
+      const readsBefore = reads();
+      await user.click(within(form).getByRole('button', { name: 'Créer le compte' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      expect(within(form).getByLabelText('Nom complet')).toHaveValue('Paul Essomba');
+      expect(within(form).getByLabelText('Mot de passe provisoire')).toHaveValue('');
+      // Plus d'envoi en cours : le bouton n'est pas figé sur « Création… ».
+      expect(within(form).queryByText('Création…')).toBeNull();
+      expect(within(form).getByRole('button', { name: 'Annuler' })).toBeEnabled();
+      expect(await storedAnywhere('provisoire-1')).toBe(false);
+      if (reread) await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+      else {
+        // Laisser passer les rendus suivants avant d'affirmer qu'aucune relecture n'est partie.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(reads()).toBe(readsBefore);
+      }
+    },
+  );
+
+  it('création en cours : « Annuler » désactivé jusqu’à la réponse', async () => {
+    serve({ users: [account()], roles: ROLES });
+    let answer: (value: unknown) => void = () => undefined;
+    const served = vi.mocked(authorizedRequest).getMockImplementation()!;
+    vi.mocked(authorizedRequest).mockImplementation((db, path, init) =>
+      init?.method === 'POST'
+        ? (new Promise((resolve) => {
+            answer = resolve;
+          }) as never)
+        : served(db, path, init),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await user.click(await screen.findByRole('button', { name: 'Nouveau compte' }));
+    const form = screen.getByRole('group', { name: 'Nouveau compte' });
+    expect(within(form).getByLabelText('Nom complet')).toHaveFocus();
+    await user.type(within(form).getByLabelText('Nom complet'), 'Paul Essomba');
+    await user.type(within(form).getByLabelText('Téléphone'), '690000001');
+    await user.type(within(form).getByLabelText('Mot de passe provisoire'), 'provisoire-1');
+    await user.type(
+      within(form).getByLabelText('Confirmer le mot de passe provisoire'),
+      'provisoire-1',
+    );
+    await user.click(within(form).getByRole('button', { name: 'Créer le compte' }));
+    expect(within(form).getByRole('button', { name: 'Annuler' })).toBeDisabled();
+    // Une action ouverte sur une carte pendant l'envoi ne ferme pas la création en cours.
+    await user.click(
+      screen.getByRole('button', { name: 'Réinitialiser le mot de passe de Awa Nde' }),
+    );
+    expect(screen.getByRole('group', { name: 'Nouveau compte' })).toBeInTheDocument();
+    answer({ ok: true, data: { id: PAUL } });
+    expect(await screen.findByText(/Compte de Paul Essomba créé/)).toBeInTheDocument();
   });
 
   it('numéro invalide signalé avant l’envoi ; aucune requête', async () => {
@@ -565,6 +761,8 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     await user.click(await screen.findByRole('button', { name: 'Nouveau compte' }));
     const form = screen.getByRole('group', { name: 'Nouveau compte' });
     await user.type(within(form).getByLabelText('Nom complet'), 'Paul Essomba');
+    // Rien n'est signalé sur le téléphone tant qu'il n'est pas commencé.
+    expect(within(form).queryByText(/Numéro de téléphone invalide/)).toBeNull();
     await user.type(within(form).getByLabelText('Téléphone'), '12');
     await user.type(within(form).getByLabelText('Mot de passe provisoire'), 'provisoire-1');
     await user.type(
@@ -574,6 +772,25 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(within(form).getByText(/Numéro de téléphone invalide/)).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: 'Créer le compte' })).toBeDisabled();
     expect(posts()).toHaveLength(0);
+  });
+
+  it('rôle sans périmètre proposable (zone seulement) : alerte unique, création bloquée', async () => {
+    serve({ users: [account()], roles: [...ROLES, ZONE_ONLY] });
+    const user = userEvent.setup();
+    renderScreen();
+    await screen.findByRole('listitem', { name: 'Awa Nde' });
+    await user.click(await screen.findByRole('button', { name: 'Nouveau compte' }));
+    const form = screen.getByRole('group', { name: 'Nouveau compte' });
+    await user.type(within(form).getByLabelText('Nom complet'), 'Paul Essomba');
+    await user.type(within(form).getByLabelText('Téléphone'), '690000001');
+    await user.selectOptions(within(form).getByLabelText('Rôle'), FIELD_ROLE);
+    await user.type(within(form).getByLabelText('Mot de passe provisoire'), 'provisoire-1');
+    await user.type(
+      within(form).getByLabelText('Confirmer le mot de passe provisoire'),
+      'provisoire-1',
+    );
+    expect(within(form).getAllByRole('alert')).toHaveLength(1);
+    expect(within(form).getByRole('button', { name: 'Créer le compte' })).toBeDisabled();
   });
 
   it('suspend un compte : motif exigé, commande identity.user.suspend sur le compte, liste relue', async () => {
@@ -600,8 +817,65 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
       aggregate_id: AWA,
       payload: { reason: 'Congé de deux mois' },
     });
-    // Le formulaire est refermé.
+    // Le formulaire est refermé ; l'envoi est suivi et retient l'opération suivante.
     expect(within(card).queryByLabelText('Motif (obligatoire)')).toBeNull();
+    expect(await screen.findByText('Opération en cours d’envoi…')).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Désactiver le compte de Awa Nde' }));
+    await user.type(within(card).getByLabelText('Motif (obligatoire)'), 'Départ');
+    expect(
+      within(card).getByRole('button', { name: 'Confirmer la désactivation de Awa Nde' }),
+    ).toBeDisabled();
+
+    // Refus du serveur : affiché ; la liste est relue à la réponse.
+    const reads = () =>
+      vi
+        .mocked(authorizedRequest)
+        .mock.calls.filter((call) => call[1] === '/api/v1/users?limit=200&status=ACTIVE').length;
+    const readsBefore = reads();
+    await getDb().outbox.update(command!.command_id, {
+      status: 'REJECTED',
+      last_error: { code: 'LAST_ADMIN', message_fr: 'Aucun autre ADMIN actif ne resterait.' },
+    });
+    expect(
+      await screen.findByText(/Opération refusée : Aucun autre ADMIN actif/),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+  });
+
+  it('une commande d’appareil en attente ne retient pas l’écran des comptes', async () => {
+    await getDb().outbox.add({
+      command_id: '01900000-0000-7000-8000-0000000009d1',
+      device_seq: 1,
+      command_version: 1,
+      command_type: 'identity.device.approve',
+      aggregate_type: 'DEVICE',
+      aggregate_id: '01900000-0000-7000-8000-0000000009d2',
+      author_user_id: '01900000-0000-7000-8000-000000000001',
+      base_version: null,
+      depends_on: [],
+      occurred_at: '2026-10-25T08:00:00.000Z',
+      client_created_at: '2026-10-25T08:00:00.000Z',
+      captured_offline: false,
+      backdated_reason: null,
+      attachment_ids: [],
+      payload: {},
+      status: 'PENDING',
+      attempts: 0,
+      last_error: null,
+    } as never);
+    serve({
+      users: [account({ actions: { ...NO_ACTIONS, suspend: true } })],
+      roles: ROLES,
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
+    expect(screen.queryByText('Opération en cours d’envoi…')).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Suspendre le compte de Awa Nde' }));
+    await user.type(within(card).getByLabelText('Motif (obligatoire)'), 'Congé');
+    expect(
+      within(card).getByRole('button', { name: 'Confirmer la suspension de Awa Nde' }),
+    ).toBeEnabled();
   });
 
   it('réactive un compte suspendu : aucun motif exigé', async () => {
@@ -624,8 +898,8 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
       command_type: 'identity.user.reactivate',
       aggregate_type: 'USER',
       aggregate_id: AWA,
-      payload: {},
     });
+    expect(command!.payload).toEqual({});
   });
 
   it('ajoute un rôle : périmètre permis par le rôle, doublon refusé, commande identity.role_assignment.grant', async () => {
@@ -656,25 +930,54 @@ describe('Utilisateurs (ECR-ADM-04, MP-08 et MP-13)', () => {
     expect(command).toMatchObject({
       command_type: 'identity.role_assignment.grant',
       aggregate_type: 'ROLE_ASSIGNMENT',
-      payload: { userId: AWA, roleId: ADMIN_ROLE, scopeType: 'GLOBAL' },
     });
+    // Le site choisi pour l'essai précédent ne part pas avec un rôle global.
+    expect(command!.payload).toEqual({ userId: AWA, roleId: ADMIN_ROLE, scopeType: 'GLOBAL' });
+    expect(command!.aggregate_id).toMatch(UUID);
     expect(command!.aggregate_id).not.toBe(AWA_ASSIGNMENT);
   });
 
-  it('retire un rôle : motif exigé, commande identity.role_assignment.revoke sur l’affectation', async () => {
+  it('retire un rôle : affectation nommée, motif exigé et propre à chaque affectation, commande identity.role_assignment.revoke', async () => {
+    const OTHER_ASSIGNMENT = '01900000-0000-7000-8000-0000000005a2';
     serve({
-      users: [account({ actions: { ...NO_ACTIONS, manageRoles: true } })],
+      users: [
+        account({
+          assignments: [
+            assignment(),
+            assignment({
+              id: OTHER_ASSIGNMENT,
+              roleId: ADMIN_ROLE,
+              roleCode: 'ADMIN',
+              roleName: 'Administrateur',
+              scopeType: 'GLOBAL',
+              scopeSiteId: null,
+            }),
+          ],
+          actions: { ...NO_ACTIONS, manageRoles: true, revokeRoles: true },
+        }),
+      ],
       roles: ROLES,
     });
     const user = userEvent.setup();
     renderScreen();
     const card = await screen.findByRole('listitem', { name: 'Awa Nde' });
     await user.click(
+      within(card).getByRole('button', { name: 'Retirer le rôle Administrateur de Awa Nde' }),
+    );
+    await user.type(within(card).getByLabelText('Motif (obligatoire)'), 'Motif pour l’admin');
+    await user.click(
       within(card).getByRole('button', {
         name: 'Retirer le rôle Vendeur de point de vente de Awa Nde',
       }),
     );
-    const confirm = within(card).getByRole('button', { name: 'Confirmer le retrait du rôle' });
+    // Autre affectation : formulaire nommé pour elle, motif vide.
+    expect(within(card).getByLabelText('Motif (obligatoire)')).toHaveValue('');
+    expect(
+      within(card).getByRole('group', { name: /Retrait du rôle Vendeur de point de vente · site/ }),
+    ).toBeInTheDocument();
+    const confirm = within(card).getByRole('button', {
+      name: /Confirmer le retrait du rôle Vendeur de point de vente · site/,
+    });
     expect(confirm).toBeDisabled();
     await user.type(within(card).getByLabelText('Motif (obligatoire)'), 'Changement de poste');
     await user.click(confirm);

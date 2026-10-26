@@ -145,11 +145,11 @@ stateDiagram-v2
 
 | État initial | Action | Condition | Nouvel état | Effets métier | Effets stock | Effets finance | Permission |
 |---|---|---|---|---|---|---|---|
-| `[*]` | `identity.user.create` | BR-ADM-001 | `ACTIVE` | `UserCreated` ; emplacement `MOBILE` et caisse utilisateur créés si le rôle l'exige | — | — | `identity.user.manage` |
-| `ACTIVE` | `identity.user.suspend` | Motif ; pas le dernier Admin | `SUSPENDED` | Sessions révoquées ; les commandes postérieures à la suspension sont mises en quarantaine | — | — | `identity.user.manage` |
+| `[*]` | `identity.user.create` (commande : scripts, import) ou `POST /users` (écran, MP-13, AV-325 : hors journal, première affectation facultative dans la même transaction, aucun événement, lignes `GLOBAL` du flux `user` et `role_assignment`) | BR-ADM-001 ; numéro libre parmi les comptes non désactivés (`PHONE_ALREADY_USED`) | `ACTIVE` | `UserCreated` pour la commande seulement ; emplacement `MOBILE` et caisse utilisateur : non implémentés | — | — | `identity.user.manage` (+ `identity.role_assignment.manage` avec un rôle) |
+| `ACTIVE` | `identity.user.suspend` | Motif ; pas le dernier Admin ; jamais son propre compte (`OWN_ACCOUNT`, AV-328) | `SUSPENDED` | Sessions révoquées ; les commandes postérieures à la suspension sont mises en quarantaine | — | — | `identity.user.manage` |
 | `SUSPENDED` | `identity.user.reactivate` | — | `ACTIVE` | — | — | — | `identity.user.manage` |
-| `ACTIVE`, `SUSPENDED` | `identity.user.deactivate` | Motif ; pas le dernier Admin | `DEACTIVATED` | `UserDeactivated` ; alertes : portefeuille, stock mobile et caisse à régulariser | Stock mobile à retransférer (humain) | Caisse utilisateur à remettre (humain) | `identity.user.manage` |
-| `DEACTIVATED` | `identity.user.reactivate` | — | `ACTIVE` | `UserReactivated` | — | — | `identity.user.manage` |
+| `ACTIVE`, `SUSPENDED` | `identity.user.deactivate` | Motif ; pas le dernier Admin ; jamais son propre compte (`OWN_ACCOUNT`, AV-328) | `DEACTIVATED` | `UserDeactivated` ; alertes : portefeuille, stock mobile et caisse à régulariser | Stock mobile à retransférer (humain) | Caisse utilisateur à remettre (humain) | `identity.user.manage` |
+| `DEACTIVATED` | `identity.user.reactivate` | Numéro non repris par un autre compte non désactivé (`PHONE_ALREADY_USED`, MP-13) | `ACTIVE` | `UserReactivated` | — | — | `identity.user.manage` |
 
 ---
 

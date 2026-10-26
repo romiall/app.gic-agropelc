@@ -8,7 +8,7 @@
  * Les mots de passe ci-dessous sont des valeurs de test, propres à ce fichier.
  */
 import { randomInt } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Clock } from '@gic/domain';
@@ -17,16 +17,21 @@ import { AppModule } from '../src/app.module.js';
 import { CLOCK } from '../src/platform/clock.provider.js';
 import { ID_GENERATOR } from '../src/platform/id-generator.provider.js';
 import { registerCorrelationId } from '../src/platform/http/register-correlation-id.js';
-import { toBin } from '../src/platform/kysely/uuid-columns.js';
+import { fromBin, toBin } from '../src/platform/kysely/uuid-columns.js';
 import { JWT_KEYS } from '../src/modules/identity/jwt-keys.provider.js';
 import { CommandPipelineService } from '../src/commands/command-pipeline.service.js';
+import { appLogger } from '../src/platform/observability/logger.js';
 import {
   closeTestDb,
   db,
   freshPhone,
   freshUuid,
+  assignTestRole,
+  grantTestPermission,
   insertTestDevice,
+  insertTestRole,
   insertTestSite,
+  insertTestTeam,
   insertTestUser,
   insertTestZone,
   signTestAccessToken,
@@ -58,6 +63,7 @@ interface UserEntry {
     readonly reactivate: boolean;
     readonly deactivate: boolean;
     readonly manageRoles: boolean;
+    readonly revokeRoles: boolean;
   };
   readonly [key: string]: unknown;
 }
@@ -68,6 +74,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
   let pipeline: CommandPipelineService;
   let root: string;
   let s1: string;
+  let zone1: string;
   let admin: Actor;
   let direction: Actor;
   let respFerme: Actor;
@@ -106,8 +113,9 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     aggregateType: string,
     aggregateId: string,
     payload: unknown,
+    occurredAt: Date = new Date(),
   ): Promise<CommandResult> => {
-    const now = new Date().toISOString();
+    const now = occurredAt.toISOString();
     return pipeline.handle(
       {
         command_id: freshUuid(),
@@ -153,7 +161,15 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
   const userByPhone = (phone: string) =>
     db
       .selectFrom('identity_users')
-      .select(['id', 'status', 'must_change_password', 'password_hash', 'full_name', 'email'])
+      .select([
+        'id',
+        'status',
+        'must_change_password',
+        'password_hash',
+        'full_name',
+        'email',
+        'created_by',
+      ])
       .where('phone', '=', phone)
       .executeTakeFirst();
 
@@ -168,8 +184,8 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
 
     root = await tx((trx) => insertTestUser(trx));
     await tx(async (trx) => {
-      const zone = await insertTestZone(trx, root);
-      s1 = await insertTestSite(trx, root, zone, { siteType: 'POINT_DE_VENTE' });
+      zone1 = await insertTestZone(trx, root);
+      s1 = await insertTestSite(trx, root, zone1, { siteType: 'POINT_DE_VENTE' });
     });
     admin = await newActor('ADMIN', root);
     direction = await newActor('DIRECTION', root);
@@ -223,13 +239,57 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
     ]);
     expect(JSON.stringify(audit)).not.toContain(PROVISIONAL);
     expect(JSON.stringify(audit)).not.toContain(phone);
+    // Création attribuée à l'Admin et à son appareil ; le rôle et le périmètre initiaux y figurent.
+    expect(fromBin(audit[0]!.actor_user_id!)).toBe(admin.userId);
+    expect(fromBin(audit[0]!.device_id!)).toBe(admin.deviceId);
+    const after: unknown =
+      typeof audit[0]!.after === 'string' ? JSON.parse(audit[0]!.after) : audit[0]!.after;
+    expect(after).toEqual({
+      status: 'ACTIVE',
+      must_change_password: true,
+      role_assignment_id: body.role_assignment_id,
+      role_id: sellerRole,
+      scope_type: 'SITE',
+      scope_site_id: s1,
+    });
+    expect(fromBin(row!.created_by)).toBe(admin.userId);
     const inbox = await db
       .selectFrom('sync_command_inbox')
-      .select('command_id')
+      .select(['command_type', 'payload'])
       .where('user_id', '=', toBin(admin.userId))
-      .where('command_type', '=', 'identity.user.create')
       .execute();
-    expect(inbox).toHaveLength(0);
+    expect(inbox.filter((entry) => entry.command_type === 'identity.user.create')).toEqual([]);
+    expect(JSON.stringify(inbox)).not.toContain(PROVISIONAL);
+    const events = await db
+      .selectFrom('platform_domain_events')
+      .select('event_type')
+      .where('aggregate_id', 'in', [row!.id, toBin(body.role_assignment_id)])
+      .execute();
+    expect(events).toEqual([]);
+
+    // Flux de changements : les appareils tirent le compte (jeu `user`) et son affectation.
+    const feed = await db
+      .selectFrom('sync_change_feed')
+      .select(['dataset', 'entity_type', 'scope_type', 'scope_id', 'change_type'])
+      .where('entity_id', 'in', [row!.id, toBin(body.role_assignment_id)])
+      .orderBy('seq')
+      .execute();
+    expect(feed).toEqual([
+      {
+        dataset: 'user',
+        entity_type: 'USER',
+        scope_type: 'GLOBAL',
+        scope_id: null,
+        change_type: 'UPSERT',
+      },
+      {
+        dataset: 'role_assignment',
+        entity_type: 'ROLE_ASSIGNMENT',
+        scope_type: 'GLOBAL',
+        scope_id: null,
+        change_type: 'UPSERT',
+      },
+    ]);
 
     // Le provisoire ouvre une session avec le changement imposé (AV-251).
     const session = await login(phone, PROVISIONAL);
@@ -271,6 +331,12 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       .execute();
     expect(assignments).toHaveLength(0);
     expect(row!.email).toBeNull();
+    const feed = await db
+      .selectFrom('sync_change_feed')
+      .select('dataset')
+      .where('entity_id', '=', row!.id)
+      .execute();
+    expect(feed).toEqual([{ dataset: 'user' }]);
   });
 
   it('gardes : droit, droit d’affecter, appareil en attente, données invalides sans écho du mot de passe', async () => {
@@ -399,7 +465,16 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       allowedScopeTypes: expect.arrayContaining(['GLOBAL']),
     });
     expect(roles.every((role) => typeof role.name === 'string' && role.name.length > 0)).toBe(true);
-    expect(JSON.stringify(roles)).not.toContain('permission');
+    for (const role of roles) {
+      expect(Object.keys(role).sort()).toEqual([
+        'allowedScopeTypes',
+        'code',
+        'description',
+        'id',
+        'isSystem',
+        'name',
+      ]);
+    }
 
     expect((await get(direction, '/api/v1/roles')).statusCode).toBe(403);
     expect((await get(respFerme, '/api/v1/roles')).statusCode).toBe(403);
@@ -428,6 +503,7 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       reactivate: false,
       deactivate: true,
       manageRoles: true,
+      revokeRoles: true,
     });
     expect(forAdmin.suspended!.actions).toEqual({
       resetPassword: true,
@@ -435,22 +511,30 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       reactivate: true,
       deactivate: true,
       manageRoles: true,
+      revokeRoles: true,
     });
+    // Désactivé : plus d'octroi, mais ses rôles restants se retirent sans le réactiver.
     expect(forAdmin.deactivated!.actions).toEqual({
       resetPassword: false,
       suspend: false,
       reactivate: true,
       deactivate: false,
       manageRoles: false,
+      revokeRoles: true,
     });
-    // Soi-même : ni suspension, ni désactivation, ni réinitialisation ; les rôles restent gérables.
-    expect(forAdmin.self!.actions).toMatchObject({
+    // Soi-même : ni suspension, ni désactivation, ni réinitialisation ; les rôles restent gérables
+    // (AV-327).
+    expect(forAdmin.self!.actions).toEqual({
       resetPassword: false,
       suspend: false,
+      reactivate: false,
       deactivate: false,
+      manageRoles: true,
+      revokeRoles: true,
     });
 
-    // Un lecteur sans le droit de gérer ne voit aucune de ces actions.
+    // Un lecteur sans le droit de gérer ne voit aucune de ces actions, ni le détail des affectations
+    // (leurs sites peuvent sortir de sa portée) : les codes de rôle seulement.
     const forFerme = await readUser(respFerme, activeBody.id);
     expect(forFerme!.actions).toEqual({
       resetPassword: false,
@@ -458,7 +542,10 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       reactivate: false,
       deactivate: false,
       manageRoles: false,
+      revokeRoles: false,
     });
+    expect(forFerme!.roles).toEqual(['VENDEUR_PDV']);
+    expect(forFerme!.assignments).toEqual([]);
 
     // Affectation retirée par la commande de révocation : elle quitte la liste, le compte garde son état.
     const revoked = await command(
@@ -518,5 +605,365 @@ describe('MP-13 : création de compte et affectations de rôle', { timeout: 180_
       .where('user_id', '=', toBin(userId))
       .execute();
     expect(rows).toHaveLength(2);
+  });
+
+  it('droit d’affecter : `identity.user.manage` sans `identity.role_assignment.manage` crée sans rôle, jamais avec', async () => {
+    const managerOnly = await tx(async (trx) => {
+      const roleId = await insertTestRole(trx, root);
+      await grantTestPermission(trx, roleId, 'identity.user.manage', root);
+      const userId = await insertTestUser(trx);
+      const deviceId = await insertTestDevice(trx, userId, { status: 'ACTIVE' });
+      await assignTestRole(trx, userId, roleId, root);
+      return { userId, deviceId };
+    });
+    const phone = await freshPhone();
+    const withRole = await create(managerOnly, {
+      full_name: 'Avec rôle',
+      phone,
+      password: PROVISIONAL,
+      role: { role_id: adminRole, scope_type: 'GLOBAL' },
+    });
+    expect(withRole.statusCode, withRole.body).toBe(403);
+    expect(withRole.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(await userByPhone(phone)).toBeUndefined();
+    const denied = await db
+      .selectFrom('audit_audit_log')
+      .select(['result', 'error_code'])
+      .where('actor_user_id', '=', toBin(managerOnly.userId))
+      .where('action', '=', 'identity.user.create')
+      .execute();
+    expect(denied).toEqual([{ result: 'DENIED', error_code: 'FORBIDDEN' }]);
+
+    const withoutRole = await create(managerOnly, {
+      full_name: 'Sans rôle',
+      phone,
+      password: PROVISIONAL,
+    });
+    expect(withoutRole.statusCode, withoutRole.body).toBe(201);
+  });
+
+  it('numéro : un compte suspendu le garde ; deux créations simultanées du même numéro donnent un 201 et un 409', async () => {
+    const suspendedId = await tx((trx) => insertTestUser(trx, { status: 'SUSPENDED' }));
+    const suspended = await db
+      .selectFrom('identity_users')
+      .select('phone')
+      .where('id', '=', toBin(suspendedId))
+      .executeTakeFirstOrThrow();
+    const onSuspended = await create(admin, {
+      full_name: 'Sur un suspendu',
+      phone: suspended.phone,
+      password: PROVISIONAL,
+    });
+    expect(onSuspended.statusCode, onSuspended.body).toBe(409);
+    expect(onSuspended.json()).toMatchObject({ error: { code: 'PHONE_ALREADY_USED' } });
+
+    const phone = await freshPhone();
+    const both = await Promise.all([
+      create(admin, { full_name: 'Course A', phone, password: PROVISIONAL }),
+      create(admin, { full_name: 'Course B', phone, password: PROVISIONAL }),
+    ]);
+    expect(both.map((response) => response.statusCode).sort()).toEqual([201, 409]);
+    const rows = await db
+      .selectFrom('identity_users')
+      .select('id')
+      .where('phone', '=', phone)
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it('réactivation d’un compte désactivé dont le numéro a été repris : action masquée, commande refusée définitivement', async () => {
+    const phone = await freshPhone();
+    const first = await create(admin, { full_name: 'Ancien', phone, password: PROVISIONAL });
+    const firstId = (first.json() as { id: string }).id;
+    const deactivated = await command(admin, 'identity.user.deactivate', 'USER', firstId, {
+      reason: 'Départ',
+    });
+    expect(deactivated.status, JSON.stringify(deactivated)).toBe('APPLIED');
+    expect((await readUser(admin, firstId))!.actions.reactivate).toBe(true);
+
+    const second = await create(admin, { full_name: 'Repreneur', phone, password: PROVISIONAL });
+    expect(second.statusCode, second.body).toBe(201);
+    expect((await readUser(admin, firstId))!.actions.reactivate).toBe(false);
+    const reactivated = await command(admin, 'identity.user.reactivate', 'USER', firstId, {});
+    expect(reactivated).toMatchObject({
+      status: 'REJECTED',
+      error: { code: 'PHONE_ALREADY_USED' },
+    });
+    const row = await db
+      .selectFrom('identity_users')
+      .select('status')
+      .where('id', '=', toBin(firstId))
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('DEACTIVATED');
+  });
+
+  it('soi-même : suspendre ou désactiver son propre compte est refusé par la commande', async () => {
+    // Un second Admin existe : le refus ne vient pas de INV-ADM-01.
+    await newActor('ADMIN', root);
+    for (const [commandType, payload] of [
+      ['identity.user.suspend', { reason: 'Essai' }],
+      ['identity.user.deactivate', { reason: 'Essai' }],
+    ] as const) {
+      const result = await command(admin, commandType, 'USER', admin.userId, payload);
+      expect(result, commandType).toMatchObject({
+        status: 'REJECTED',
+        error: { code: 'OWN_ACCOUNT' },
+      });
+    }
+    // Même compte écrit en majuscules : toujours lui.
+    const upper = await command(
+      admin,
+      'identity.user.suspend',
+      'USER',
+      admin.userId.toUpperCase(),
+      {
+        reason: 'Essai',
+      },
+    );
+    expect(upper).toMatchObject({ status: 'REJECTED', error: { code: 'OWN_ACCOUNT' } });
+    const row = await db
+      .selectFrom('identity_users')
+      .select('status')
+      .where('id', '=', toBin(admin.userId))
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('ACTIVE');
+  });
+
+  it('rôle désactivé : absent de GET /roles, refusé à la création et à l’octroi, affectation existante retirée de la liste', async () => {
+    const holder = await tx((trx) => insertTestUser(trx));
+    const roleId = await tx(async (trx) => {
+      const id = await insertTestRole(trx, root);
+      await assignTestRole(trx, holder, id, root);
+      return id;
+    });
+    expect((await readUser(admin, holder))!.assignments).toHaveLength(1);
+    await db
+      .updateTable('identity_roles')
+      .set({ is_active: 0 })
+      .where('id', '=', toBin(roleId))
+      .execute();
+
+    const roles = (await get(admin, '/api/v1/roles')).json() as { roles: { id: string }[] };
+    expect(roles.roles.map((role) => role.id)).not.toContain(roleId);
+
+    const phone = await freshPhone();
+    const created = await create(admin, {
+      full_name: 'Rôle inactif',
+      phone,
+      password: PROVISIONAL,
+      role: { role_id: roleId, scope_type: 'GLOBAL' },
+    });
+    expect(created.statusCode, created.body).toBe(400);
+    expect(created.json()).toMatchObject({ error: { code: 'ROLE_INACTIVE' } });
+    expect(await userByPhone(phone)).toBeUndefined();
+
+    const granted = await command(
+      admin,
+      'identity.role_assignment.grant',
+      'ROLE_ASSIGNMENT',
+      freshUuid(),
+      {
+        userId: holder,
+        roleId,
+        scopeType: 'GLOBAL',
+      },
+    );
+    expect(granted).toMatchObject({ status: 'REJECTED', error: { code: 'ROLE_INACTIVE' } });
+
+    const listed = await readUser(admin, holder);
+    expect(listed!.assignments).toEqual([]);
+    expect(listed!.roles).toEqual([]);
+  });
+
+  it('affectations hors de leur période (échue, pas encore commencée) : absentes de la liste', async () => {
+    const holder = await tx((trx) => insertTestUser(trx));
+    const now = Date.now();
+    await tx(async (trx) => {
+      await assignTestRole(trx, holder, sellerRole, root, {
+        scopeType: 'SITE',
+        scopeSiteId: s1,
+        validFrom: new Date(now - 10 * 86_400_000),
+        validTo: new Date(now - 86_400_000),
+      });
+      await assignTestRole(trx, holder, adminRole, root, {
+        validFrom: new Date(now + 86_400_000),
+      });
+    });
+    const listed = await readUser(admin, holder);
+    expect(listed!.assignments).toEqual([]);
+    expect(listed!.roles).toEqual([]);
+  });
+
+  it('octroi par commande : échéance, début au fait, auteur ; zones et équipes contrôlées ; création avec un rôle de zone', async () => {
+    const userId = (
+      (
+        await create(admin, {
+          full_name: 'Périmètres MP-13',
+          phone: await freshPhone(),
+          password: PROVISIONAL,
+        })
+      ).json() as { id: string }
+    ).id;
+    const fieldRole = await roleIdOf('COMMERCIAL_TERRAIN');
+    const leadRole = await roleIdOf('RESP_COMMERCIAL');
+    const team = await tx((trx) => insertTestTeam(trx, admin.userId, root));
+    const grant = (payload: object, occurredAt?: Date) => {
+      const id = freshUuid();
+      return command(
+        admin,
+        'identity.role_assignment.grant',
+        'ROLE_ASSIGNMENT',
+        id,
+        payload,
+        occurredAt,
+      ).then((result) => ({ id, result }));
+    };
+
+    const occurredAt = new Date(Date.now() - 60_000);
+    occurredAt.setUTCMilliseconds(0);
+    const validTo = new Date(Date.now() + 30 * 86_400_000);
+    validTo.setUTCMilliseconds(0);
+    const temporary = await grant(
+      {
+        userId,
+        roleId: sellerRole,
+        scopeType: 'SITE',
+        scopeSiteId: s1,
+        validTo: validTo.toISOString(),
+      },
+      occurredAt,
+    );
+    expect(temporary.result.status, JSON.stringify(temporary.result)).toBe('APPLIED');
+    const row = await db
+      .selectFrom('identity_user_role_assignments')
+      .select(['valid_from', 'valid_to', 'created_by'])
+      .where('id', '=', toBin(temporary.id))
+      .executeTakeFirstOrThrow();
+    expect(row.valid_from.toISOString()).toBe(occurredAt.toISOString());
+    expect(row.valid_to?.toISOString()).toBe(validTo.toISOString());
+    expect(fromBin(row.created_by)).toBe(admin.userId);
+
+    const unknownZone = await grant({
+      userId,
+      roleId: fieldRole,
+      scopeType: 'ZONE',
+      scopeZoneId: freshUuid(),
+    });
+    expect(unknownZone.result).toMatchObject({ status: 'REJECTED', error: { code: 'NOT_FOUND' } });
+    const zoneGrant = await grant({
+      userId,
+      roleId: fieldRole,
+      scopeType: 'ZONE',
+      scopeZoneId: zone1,
+    });
+    expect(zoneGrant.result.status, JSON.stringify(zoneGrant.result)).toBe('APPLIED');
+    const unknownTeam = await grant({
+      userId,
+      roleId: leadRole,
+      scopeType: 'TEAM',
+      scopeTeamId: freshUuid(),
+    });
+    expect(unknownTeam.result).toMatchObject({ status: 'REJECTED', error: { code: 'NOT_FOUND' } });
+    const teamGrant = await grant({
+      userId,
+      roleId: leadRole,
+      scopeType: 'TEAM',
+      scopeTeamId: team,
+    });
+    expect(teamGrant.result.status, JSON.stringify(teamGrant.result)).toBe('APPLIED');
+    const scoped = await db
+      .selectFrom('identity_user_role_assignments')
+      .select(['id', 'scope_zone_id', 'scope_team_id', 'scope_site_id'])
+      .where('id', 'in', [toBin(zoneGrant.id), toBin(teamGrant.id)])
+      .execute();
+    const byId = new Map(scoped.map((entry) => [fromBin(entry.id), entry]));
+    expect(fromBin(byId.get(zoneGrant.id)!.scope_zone_id!)).toBe(zone1);
+    expect(byId.get(zoneGrant.id)!.scope_team_id).toBeNull();
+    expect(fromBin(byId.get(teamGrant.id)!.scope_team_id!)).toBe(team);
+    expect(byId.get(teamGrant.id)!.scope_zone_id).toBeNull();
+
+    // `POST /users` avec un rôle de zone : le périmètre est écrit tel quel.
+    const phone = await freshPhone();
+    const created = await create(admin, {
+      full_name: 'Commercial de zone',
+      phone,
+      password: PROVISIONAL,
+      role: { role_id: fieldRole, scope_type: 'ZONE', scope_zone_id: zone1 },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const assignment = await db
+      .selectFrom('identity_user_role_assignments')
+      .select(['scope_type', 'scope_zone_id', 'scope_site_id', 'scope_team_id'])
+      .where(
+        'id',
+        '=',
+        toBin((created.json() as { role_assignment_id: string }).role_assignment_id),
+      )
+      .executeTakeFirstOrThrow();
+    expect(assignment.scope_type).toBe('ZONE');
+    expect(fromBin(assignment.scope_zone_id!)).toBe(zone1);
+    expect(assignment.scope_site_id).toBeNull();
+    expect(assignment.scope_team_id).toBeNull();
+  });
+
+  it('corps JSON mal formé : 400 générique, sans écho ni journal du mot de passe (non-régression)', async () => {
+    const secret = 'Fuite-MP13-provisoire';
+    const spies = (['info', 'warn', 'error'] as const).map((level) => vi.spyOn(appLogger, level));
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: {
+          authorization: `Bearer ${await tokenOf(admin)}`,
+          'content-type': 'application/json',
+        },
+        payload: `{"full_name":"X","phone":"+237690000000","password":"${secret}" ,}`,
+      });
+      expect(response.statusCode, response.body).toBe(400);
+      expect(response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+      expect(response.body).not.toContain(secret);
+      // Le refus est bien journalisé (par ce journal), sous son code et sans le corps.
+      expect(JSON.stringify(spies[1]!.mock.calls)).toContain('VALIDATION_ERROR');
+      for (const spy of spies) expect(JSON.stringify(spy.mock.calls)).not.toContain(secret);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it('compte désactivé : plus d’octroi de rôle, retrait toujours possible', async () => {
+    const created = await create(admin, {
+      full_name: 'Désactivé MP-13',
+      phone: await freshPhone(),
+      password: PROVISIONAL,
+      role: { role_id: sellerRole, scope_type: 'SITE', scope_site_id: s1 },
+    });
+    const { id, role_assignment_id } = created.json() as { id: string; role_assignment_id: string };
+    const deactivated = await command(admin, 'identity.user.deactivate', 'USER', id, {
+      reason: 'Départ',
+    });
+    expect(deactivated.status, JSON.stringify(deactivated)).toBe('APPLIED');
+    const granted = await command(
+      admin,
+      'identity.role_assignment.grant',
+      'ROLE_ASSIGNMENT',
+      freshUuid(),
+      {
+        userId: id,
+        roleId: adminRole,
+        scopeType: 'GLOBAL',
+      },
+    );
+    expect(granted).toMatchObject({ status: 'REJECTED', error: { code: 'USER_DEACTIVATED' } });
+    const revoked = await command(
+      admin,
+      'identity.role_assignment.revoke',
+      'ROLE_ASSIGNMENT',
+      role_assignment_id,
+      {
+        reason: 'Départ',
+      },
+    );
+    expect(revoked.status, JSON.stringify(revoked)).toBe('APPLIED');
+    expect((await readUser(admin, id))!.assignments).toEqual([]);
   });
 });
