@@ -8,6 +8,8 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeFichePerte, type PerteSaisie } from '../pieces/adaptateurs-stock.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -73,6 +75,27 @@ export function LossScreen() {
       <section className="sale">
         <h1>{t('nav.screens.loss')}</h1>
         <CommandResult commandId={submitted} messages="loss.result">
+          {/* Fiche de perte (lot PP) : la déclaration telle que saisie, numéro dès l'acceptation. */}
+          <PieceAction
+            cle={`FP:${submitted}`}
+            demande={() => {
+              const command = refs.outbox.find((candidate) => candidate.command_id === submitted);
+              if (!command) return null;
+              const payload = command.payload as Omit<
+                PerteSaisie,
+                'numero' | 'occurredAt' | 'declarantId'
+              >;
+              return demandeFichePerte(
+                {
+                  ...payload,
+                  numero: command.server_refs?.docNumber ?? null,
+                  occurredAt: command.occurred_at,
+                  declarantId: command.author_user_id,
+                },
+                refs,
+              );
+            }}
+          />
           <button
             type="button"
             onClick={() => {

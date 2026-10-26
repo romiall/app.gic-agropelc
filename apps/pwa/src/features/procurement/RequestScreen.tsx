@@ -6,6 +6,8 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeDemandeAchat } from '../pieces/adaptateurs-achats.js';
 import { businessDayOf } from '@gic/domain';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
@@ -381,6 +383,17 @@ export function RequestScreen() {
                   {t(`purchase_request.status.${request.status}`, { defaultValue: request.status })}
                   <small>{formatMoment(request.occurredAt, today)}</small>
                 </span>
+                {/* Demande d'achat (lot PP) : une demande servie par le serveur. */}
+                {refs.purchaseRequests.some((da) => da.id === request.id) ? (
+                  <PieceAction
+                    cle={`DA:${request.id}`}
+                    annulee={request.status === 'CANCELLED'}
+                    demande={() => {
+                      const da = refs.purchaseRequests.find((item) => item.id === request.id);
+                      return da ? demandeDemandeAchat(da, refs) : null;
+                    }}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

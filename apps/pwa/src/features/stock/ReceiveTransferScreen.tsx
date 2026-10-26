@@ -12,6 +12,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeBonTransfert } from '../pieces/adaptateurs-stock.js';
 import { businessDayOf } from '@gic/domain';
 import { ROUTES } from '../../app/screens.js';
 import { clock } from '../../platform/composition.js';
@@ -247,6 +249,11 @@ export function ReceiveTransferScreen() {
           })}
           {transfer.carrier_name ? ` · ${transfer.carrier_name}` : ''}
         </p>
+        {/* Bon de transfert (lot PP). */}
+        <PieceAction
+          cle={`BT:${transfer.id}`}
+          demande={() => demandeBonTransfert(transfer, refs)}
+        />
         {!online ? (
           <p className="home-banner" role="status">
             {t('receive.offline_banner')}

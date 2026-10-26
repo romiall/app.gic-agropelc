@@ -8,6 +8,8 @@
  */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PieceAction } from '../pieces/PieceAction.js';
+import { demandeBonCommandeFournisseur } from '../pieces/adaptateurs-achats.js';
 import { clock, idGenerator } from '../../platform/composition.js';
 import { useOnline } from '../../platform/useOnline.js';
 import { useAuth } from '../auth/AuthContext.js';
@@ -178,6 +180,12 @@ function OrderCard({
           })}
       </ul>
       {order.closedReason ? <p className="home-muted">{order.closedReason}</p> : null}
+      {/* Bon de commande fournisseur (lot PP). */}
+      <PieceAction
+        cle={`BC:${order.id}`}
+        annulee={order.status === 'CANCELLED'}
+        demande={() => demandeBonCommandeFournisseur(order, refs, supplierName || null)}
+      />
 
       {panel === null ? (
         <div className="result-actions">
