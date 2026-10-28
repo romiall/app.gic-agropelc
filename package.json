@@ -26,6 +26,7 @@
     "db:create-local-admin": "pnpm --filter @gic/db run create-local-admin --",
     "demo:data": "pnpm --filter @gic/server run demo:data",
     "db:approve-device": "pnpm --filter @gic/server run approve-device --",
+    "db:purge-alerts": "pnpm --filter @gic/server run purge-alerts --",
     "db:rollback": "pnpm --filter @gic/db run rollback",
     "server:dev": "pnpm --filter @gic/server run dev",
     "pwa:dev": "pnpm --filter @gic/pwa run dev",
